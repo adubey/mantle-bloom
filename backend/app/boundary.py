@@ -49,11 +49,14 @@ def _divergent_target(crust_type: str) -> float:
     return DIVERGENT_RIDGE_TARGET_M if crust_type == "oceanic" else DIVERGENT_RIFT_TARGET_M
 
 
-def _closing_rate(
+def closing_rate(
     points: np.ndarray, self_omega: np.ndarray, neighbor_omega: np.ndarray, neighbor_points: np.ndarray
 ) -> np.ndarray:
     """Positive = this plate's material is moving toward the neighbor's (convergent) at
-    this point; negative = moving apart (divergent)."""
+    this point; negative = moving apart (divergent). Public because merge_split.py also
+    needs it: two plates are already touching along their entire shared boundary by
+    construction (plates.py's tiling has no gaps), so proximity alone can't distinguish an
+    actively-colliding pair from any other pair of neighbors -- it has to check motion."""
     v_self = np.cross(self_omega, points)
     v_neighbor = np.cross(neighbor_omega, points)
     normal_dir = neighbor_points - points
@@ -148,7 +151,7 @@ def step_boundaries(world: World, years: float) -> None:
             neighbor_points = other_points[idx]
 
             neighbor_omega = np.array([plate_by_id[o].omega for o in neighbor_owner])
-            closing = _closing_rate(pts, plate.omega, neighbor_omega, neighbor_points)
+            closing = closing_rate(pts, plate.omega, neighbor_omega, neighbor_points)
 
             intensity = np.clip(1.0 - dist / FAR_THRESHOLD_RAD, 0.0, 1.0)
             near_boundary = dist < FAR_THRESHOLD_RAD

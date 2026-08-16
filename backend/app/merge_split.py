@@ -16,7 +16,7 @@ from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle
-from .boundary import MERGE_THRESHOLD_RAD
+from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, build_lines_from_lattice
 
 if TYPE_CHECKING:
@@ -50,6 +50,17 @@ def remove_consumed_plates(world: "World") -> None:
 
 
 def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
+    """Continental plate pairs that are both close *and* actively converging.
+
+    Distance alone isn't enough: plates.py's tiling has no gaps, so every pair of
+    neighboring plates is already touching along their shared boundary the moment they're
+    generated, whether that boundary is convergent, divergent, or transform. Checking
+    distance only would flag ordinary neighbors as "colliding" before they've moved at all
+    -- confirmed directly: for a meaningful fraction of random seeds, this fired on the very
+    first step regardless of how small `years` was, because the pre-existing generation-time
+    proximity was already enough on its own. Requiring a real closing rate (the same check
+    boundary.py uses to classify convergent boundaries) is what actually distinguishes a
+    genuine collision from any other pair of neighbors."""
     continental = [p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0]
     points = {p.plate_id: p.all_points_and_elevation()[0] for p in continental}
 
@@ -59,8 +70,15 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
             pa, pb = points[a.plate_id], points[b.plate_id]
             if len(pa) == 0 or len(pb) == 0:
                 continue
-            dist, _ = cKDTree(pb).query(pa)
-            if np.sum(dist < MERGE_CONTACT_DISTANCE_RAD) >= MERGE_MIN_CONTACT_NODES:
+            dist, idx = cKDTree(pb).query(pa)
+            close = dist < MERGE_CONTACT_DISTANCE_RAD
+            if np.sum(close) < MERGE_MIN_CONTACT_NODES:
+                continue
+
+            close_points = pa[close]
+            neighbor_points = pb[idx[close]]
+            closing = closing_rate(close_points, a.omega, b.omega, neighbor_points)
+            if np.sum(closing > TRANSFORM_RATE_THRESHOLD) >= MERGE_MIN_CONTACT_NODES:
                 pairs.append((a.plate_id, b.plate_id))
     return pairs
 

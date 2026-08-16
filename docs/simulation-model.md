@@ -171,12 +171,25 @@ matters for routine per-step motion.
   simply dropped from `world.plates` -- falls directly out of the boundary-evolution rule
   above, no special algorithm needed.
 - **Continental collision merge.** If two continental plates have at least
-  `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other,
-  they're fused: keep one plate's `frame`, and resample the union footprint from scratch --
-  a k-d tree over the pre-merge combined point cloud, with every candidate lattice node
-  within `MERGE_COVERAGE_RADIUS_RAD` of *some* old node kept and given that old node's
-  elevation (`plates.build_lines_from_lattice` again). The dropped plate's contribution is
-  gone; the boundary between them becomes ordinary interior territory.
+  `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other
+  *and* a real closing rate at those points (`boundary.closing_rate`, the same check
+  boundary.py uses to classify a convergent boundary), they're fused: keep one plate's
+  `frame`, and resample the union footprint from scratch -- a k-d tree over the pre-merge
+  combined point cloud, with every candidate lattice node within `MERGE_COVERAGE_RADIUS_RAD`
+  of *some* old node kept and given that old node's elevation
+  (`plates.build_lines_from_lattice` again). The dropped plate's contribution is gone; the
+  boundary between them becomes ordinary interior territory.
+
+  **Why distance alone isn't enough.** plates.py's tiling has no gaps (every point belongs
+  to exactly one plate at generation), so *every* pair of neighboring plates is already
+  touching along their shared boundary the instant they're generated, regardless of whether
+  that boundary is convergent, divergent, or transform. An earlier version checked distance
+  only, and for roughly a quarter of random seeds this flagged ordinary neighbors as
+  "colliding" before anything had moved at all -- a merge fired on literally the first
+  simulation step no matter how small `years` was, because the trigger was a pre-existing
+  generation-time condition, not anything that happened during the step. Requiring a genuine
+  closing rate, not just proximity, is what actually distinguishes a real collision from any
+  other pair of neighbors.
 - **Split.** Each plate's mantle-flow samples are clustered into two groups
   (`scipy.cluster.vq.kmeans2`, k=2) and a separate Euler pole is fit to each. If a single
   rigid rotation fits the whole plate poorly (RMS residual above

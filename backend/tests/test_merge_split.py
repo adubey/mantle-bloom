@@ -20,7 +20,40 @@ def test_remove_consumed_plates_drops_empty_plates_only():
     assert [p.plate_id for p in world.plates] == [0]
 
 
-def test_find_continental_collision_pairs_detects_close_plates():
+def _converging_omega_pair(rate_cm_per_yr=5.0):
+    """omega for (keep, absorb) such that -- given absorb is seeded at a small *positive*
+    angle from keep around +z (see the tiny_angle rotation below) -- each plate's material
+    moves toward the other's, matching test_boundary.py's closing-rate sign convention."""
+    rate = mantle.cm_per_yr_to_rad_per_yr(rate_cm_per_yr)
+    return np.array([0.0, 0.0, rate]), np.array([0.0, 0.0, -rate])
+
+
+def test_find_continental_collision_pairs_detects_close_and_converging_plates():
+    # Non-interleaved: keep's world-angle range ([-0.01, 0]) sits entirely left of
+    # absorb's ([0.005, 0.015]), so nearest-neighbor pairing is unambiguous and every
+    # closing-rate sign comes out consistent (an earlier version of this test used
+    # symmetric, overlapping ranges around each plate's own seed, which interleaved the
+    # two point sets and made nearest-neighbor pairing -- and therefore the sign of the
+    # closing rate -- inconsistent from point to point).
+    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.0, 6), np.zeros(6))
+    seed_absorb = geometry.rotate_vectors(
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=0.01
+    )[0]
+    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-0.005, 0.005, 6), np.full(6, 50.0))
+    keep.omega, absorb.omega = _converging_omega_pair()
+
+    world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
+    pairs = merge_split.find_continental_collision_pairs(world)
+    assert (0, 1) in pairs
+
+
+def test_find_continental_collision_pairs_ignores_close_but_not_converging_plates():
+    """The actual bug this guards against: plates.py's tiling has no gaps, so any two
+    neighboring plates are already touching the moment they're generated, regardless of
+    whether that boundary is convergent, divergent, or transform. Proximity with zero (or
+    non-convergent) relative motion must not be treated as a collision -- confirmed
+    directly to fire on the very first simulation step, for any `years`, before this check
+    was added."""
     theta = np.linspace(-0.01, 0.01, 5)
     keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
 
@@ -29,16 +62,16 @@ def test_find_continental_collision_pairs_detects_close_plates():
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
     )[0]
     absorb = _single_line_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
-
+    # Both plates motionless -- close, but nothing is actually colliding.
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
-    pairs = merge_split.find_continental_collision_pairs(world)
-    assert (0, 1) in pairs
+    assert merge_split.find_continental_collision_pairs(world) == []
 
 
 def test_find_continental_collision_pairs_ignores_far_plates():
     theta = np.linspace(-0.01, 0.01, 5)
     keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
     far = _single_line_plate(1, [0.0, 1.0, 0.0], "continental", theta, np.zeros(5))
+    keep.omega, far.omega = _converging_omega_pair()
     world = World(seed=0, plates=[keep, far], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
 
@@ -51,6 +84,7 @@ def test_find_continental_collision_pairs_ignores_oceanic():
     )[0]
     keep = _single_line_plate(0, [1.0, 0.0, 0.0], "oceanic", theta, np.zeros(5))
     absorb = _single_line_plate(1, seed_absorb, "continental", theta, np.zeros(5))
+    keep.omega, absorb.omega = _converging_omega_pair()
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
 
