@@ -50,13 +50,16 @@ class Plate:
     frame: np.ndarray  # 3x3 rotation matrix, local -> world
     crust_type: str  # "continental" or "oceanic"
     omega: np.ndarray = field(default_factory=lambda: np.zeros(3))  # angular velocity, world frame
-    boundary_vertices: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))
+    boundary_local: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))  # local xyz
     lines: list[ElevationLine] = field(default_factory=list)
 
     @property
     def seed_world(self) -> np.ndarray:
         """World position of this plate's local (phi=0, theta=0) reference point."""
         return self.frame[:, 0]
+
+    def boundary_world(self) -> np.ndarray:
+        return geometry.to_world(self.frame, self.boundary_local)
 
     def node_count(self) -> int:
         return sum(len(line.theta) for line in self.lines)
@@ -125,14 +128,15 @@ def generate_plates(seed: int, num_plates: int = 12) -> list[Plate]:
     plates: list[Plate] = []
     for i in range(num_plates):
         frame = geometry.plate_frame_from_seed(seed_xyz[i])
-        boundary_vertices = sv.vertices[sv.regions[i]]
+        boundary_world = sv.vertices[sv.regions[i]]
+        boundary_local = geometry.to_local(frame, boundary_world)
         lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise)
         plates.append(
             Plate(
                 plate_id=i,
                 frame=frame,
                 crust_type=crust_types[i],
-                boundary_vertices=boundary_vertices,
+                boundary_local=boundary_local,
                 lines=lines,
             )
         )
