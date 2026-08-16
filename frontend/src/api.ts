@@ -2,10 +2,16 @@ export const API_BASE = "http://localhost:8000";
 
 export type Projection = "behrmann" | "eckert4";
 
+export interface WorldEvent {
+  elapsed_years: number;
+  message: string;
+}
+
 export interface WorldSummary {
   seed: number;
   elapsed_years: number;
   num_plates: number;
+  events: WorldEvent[];
 }
 
 export interface RenderLine {
@@ -42,13 +48,14 @@ async function asJson<T>(resp: Response): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
-// No plate count here -- the world tiles itself into a plausible number of plates from the
-// seed alone (see backend app/plates.py's generate_plates).
-export function generateWorld(seed: number): Promise<WorldSummary> {
+// No total plate count here -- the world tiles itself into a plausible number from the seed
+// alone (see backend app/plates.py's generate_plates). numContinents is the continents
+// slider -- exactly that many plates are made continental.
+export function generateWorld(seed: number, numContinents: number): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seed }),
+    body: JSON.stringify({ seed, num_continents: numContinents }),
   }).then(asJson<WorldSummary>);
 }
 

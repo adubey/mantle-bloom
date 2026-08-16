@@ -10,6 +10,9 @@ from . import boundary, gaps, geometry, line_regrid, mantle, merge_split
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
+# Bounds how large World.events can grow over a long play session -- the UI's console only
+# ever needs recent history, not an unbounded transcript.
+MAX_EVENT_LOG_LENGTH = 200
 
 
 @dataclass
@@ -23,6 +26,16 @@ class World:
     # Number of times gaps.fill_gaps has actually run -- part of the deterministic RNG seed
     # for gap-fill's new-crust noise texture (see gaps.py), not just a counter.
     gap_fill_calls: int = 0
+    # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
+    # convergent years. See merge_split.update_collision_progress.
+    collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
+    # Human-readable log for the UI's event console, each entry (elapsed_years, message).
+    events: list[tuple[float, str]] = field(default_factory=list)
+
+    def log_event(self, message: str) -> None:
+        self.events.append((self.elapsed_years, message))
+        if len(self.events) > MAX_EVENT_LOG_LENGTH:
+            del self.events[: len(self.events) - MAX_EVENT_LOG_LENGTH]
 
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
@@ -52,11 +65,13 @@ def _update_plate_omega(
 def generate_world(
     seed: int,
     num_plates: int | None = None,
+    num_continents: int | None = None,
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
-    itself into a plausible number of plates rather than requiring the caller to pick one."""
-    plates = generate_plates(seed, num_plates=num_plates)
+    itself into a plausible number of plates rather than requiring the caller to pick one.
+    `num_continents` is the UI's continents slider -- see plates.generate_plates."""
+    plates = generate_plates(seed, num_plates=num_plates, num_continents=num_continents)
     # Separate RNG stream so changing num_mantle_centers doesn't reshuffle plate layout.
     mantle_rng = np.random.default_rng(seed + 1)
     mantle_centers = mantle.generate_convection_centers(mantle_rng, n_centers=num_mantle_centers)
@@ -70,6 +85,9 @@ def generate_world(
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)
+
+    n_continents = sum(1 for p in plates if p.crust_type == "continental")
+    world.log_event(f"World generated with {len(plates)} plates ({n_continents} continental).")
     return world
 
 
@@ -79,18 +97,21 @@ def step_world(world: World, years: float) -> None:
     `years` (exact for every carried point, no resampling), then let boundaries evolve --
     uplift/trench/ridge/rift elevation deltas and line growth/shrinkage where plates are
     now close to each other. Then topology changes: fully-subducted plates disappear,
-    colliding continental plates merge, and plates whose flow field no longer fits one
-    rigid rotation well can split. Every `line_regrid.GC_INTERVAL_STEPS` calls, also fills
-    any sphere-coverage gaps (a plate growing toward its own pole, or territory a
-    subducted plate left unclaimed -- see gaps.py) and regularizes any line whose interior
-    spacing has drifted (garbage collection)."""
+    colliding continental plates merge (at most one per step, only after a sustained
+    50-100 Myr collision -- see merge_split.py), and plates whose flow field no longer fits
+    one rigid rotation well can split; any resulting events are logged to world.events for
+    the UI's console. Every `line_regrid.GC_INTERVAL_STEPS` calls, also fills any
+    sphere-coverage gaps (a plate growing toward its own pole, or territory a subducted
+    plate left unclaimed -- see gaps.py) and regularizes any line whose interior spacing
+    has drifted (garbage collection)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
         plate.frame = increment @ plate.frame
     boundary.step_boundaries(world, years)
-    merge_split.apply_topology_changes(world)
     world.elapsed_years += years
+    for message in merge_split.apply_topology_changes(world, years):
+        world.log_event(message)
 
     world.steps_since_gc += 1
     if world.steps_since_gc >= line_regrid.GC_INTERVAL_STEPS:

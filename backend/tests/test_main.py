@@ -29,6 +29,28 @@ def test_generate_returns_summary(client):
     assert body["seed"] == 1
 
 
+def test_generate_returns_a_generation_event(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "num_continents": 3})
+    body = resp.json()
+    assert len(body["events"]) == 1
+    assert "6 plates" in body["events"][0]["message"]
+    assert "3 continental" in body["events"][0]["message"]
+    assert body["events"][0]["elapsed_years"] == 0.0
+
+
+def test_generate_with_num_continents_gives_exact_count(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 10, "num_continents": 4})
+    render_resp = client.get("/world/render", params={"projection": "behrmann"})
+    continental = [p for p in render_resp.json()["plates"] if p["crust_type"] == "continental"]
+    assert len(continental) == 4
+
+
+def test_step_response_includes_growing_event_log(client):
+    client.post("/world/generate", json={"seed": 2, "num_plates": 6})
+    resp = client.post("/world/step", json={"years": 1_000_000})
+    assert len(resp.json()["events"]) >= 1  # at least the generation event
+
+
 def test_step_advances_elapsed_years(client):
     client.post("/world/generate", json={"seed": 2, "num_plates": 6})
     resp = client.post("/world/step", json={"years": 1_000_000})

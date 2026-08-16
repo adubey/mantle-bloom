@@ -4,11 +4,16 @@ import { generateWorld, renderWorld, stepWorld } from "./api";
 import type { Projection, RenderResponse, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
 import type { MapView } from "./MapCanvas";
+import EventConsole from "./EventConsole";
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 500;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
 const PLAY_INTERVAL_MS = 400;
+// Matches backend app/plates.py's MIN_CONTINENTS/MAX_CONTINENTS.
+const MIN_CONTINENTS = 1;
+const MAX_CONTINENTS = 8;
+const DEFAULT_CONTINENTS = 4;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -17,6 +22,7 @@ function randomSeed(): number {
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
+  const [numContinents, setNumContinents] = useState(DEFAULT_CONTINENTS);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[2]);
   const [projection, setProjection] = useState<Projection>("behrmann");
@@ -40,7 +46,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const s = await generateWorld(seed);
+      const s = await generateWorld(seed, numContinents);
       setSummary(s);
       setShowGenerateDialog(false);
       await refresh(projection);
@@ -49,7 +55,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [seed, projection, refresh]);
+  }, [seed, numContinents, projection, refresh]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -155,7 +161,10 @@ export default function App() {
           {error && <div style={{ color: "#ff8080", fontSize: 13 }}>{error}</div>}
         </div>
 
-        <MapCanvas data={renderData} view={mapView} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <MapCanvas data={renderData} view={mapView} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+          <EventConsole events={summary?.events ?? []} />
+        </div>
       </div>
 
       {showGenerateDialog && (
@@ -198,6 +207,18 @@ export default function App() {
                   🎲
                 </button>
               </div>
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Continents: {numContinents}
+              <input
+                type="range"
+                min={MIN_CONTINENTS}
+                max={MAX_CONTINENTS}
+                value={numContinents}
+                onChange={(e) => setNumContinents(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
             </label>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

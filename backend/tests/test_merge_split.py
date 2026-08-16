@@ -89,6 +89,89 @@ def test_find_continental_collision_pairs_ignores_oceanic():
     assert merge_split.find_continental_collision_pairs(world) == []
 
 
+def _converging_pair_world(seed=123):
+    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.0, 6), np.zeros(6))
+    seed_absorb = geometry.rotate_vectors(
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=0.01
+    )[0]
+    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-0.005, 0.005, 6), np.full(6, 50.0))
+    keep.omega, absorb.omega = _converging_omega_pair()
+    return World(seed=seed, plates=[keep, absorb], next_plate_id=2)
+
+
+def test_collision_does_not_merge_before_sustained_threshold():
+    world = _converging_pair_world()
+    threshold = merge_split._collision_threshold_years(world.seed, (0, 1))
+    step_years = 5_000_000
+
+    years_run = 0.0
+    while years_run + step_years < threshold:
+        events = merge_split.apply_topology_changes(world, step_years)
+        years_run += step_years
+        assert len(world.plates) == 2, f"merged early at {years_run} of {threshold} years"
+        assert not any("merged" in e for e in events)
+
+
+def test_collision_merges_once_sustained_threshold_is_crossed():
+    world = _converging_pair_world()
+    threshold = merge_split._collision_threshold_years(world.seed, (0, 1))
+
+    # Run right up to (but not past) the threshold first...
+    step_years = 5_000_000
+    years_run = 0.0
+    while years_run + step_years < threshold:
+        merge_split.apply_topology_changes(world, step_years)
+        years_run += step_years
+    assert len(world.plates) == 2
+
+    # ...then one more step should cross it.
+    events = merge_split.apply_topology_changes(world, step_years * 2)
+    assert len(world.plates) == 1
+    assert any("merged" in e and "million years" in e for e in events)
+
+
+def test_collision_progress_resets_if_convergence_stops():
+    world = _converging_pair_world()
+    merge_split.apply_topology_changes(world, 10_000_000)
+    assert (0, 1) in world.collision_progress
+
+    # Convergence stops (both plates now motionless) -- progress must be dropped, not paused.
+    for p in world.plates:
+        p.omega = np.zeros(3)
+    merge_split.apply_topology_changes(world, 10_000_000)
+    assert (0, 1) not in world.collision_progress
+
+
+def test_apply_topology_changes_merges_at_most_one_pair_per_call():
+    # Three mutually close, mutually converging continental plates clustered together --
+    # every pairwise combination should register as a collision candidate.
+    theta = np.linspace(-0.003, 0.003, 6)
+    seeds = [
+        [1.0, 0.0, 0.0],
+        geometry.rotate_vectors(np.array([1.0, 0.0, 0.0])[None, :], np.array([0.0, 0.0, 1.0]), 0.005)[0],
+        geometry.rotate_vectors(np.array([1.0, 0.0, 0.0])[None, :], np.array([0.0, 0.0, 1.0]), 0.010)[0],
+    ]
+    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
+    omegas = [np.array([0.0, 0.0, rate]), np.zeros(3), np.array([0.0, 0.0, -rate])]
+    plates = [
+        _single_line_plate(i, seeds[i], "continental", theta, np.zeros(6)) for i in range(3)
+    ]
+    for p, om in zip(plates, omegas):
+        p.omega = om
+    world = World(seed=7, plates=plates, next_plate_id=3)
+
+    pairs = merge_split.find_continental_collision_pairs(world)
+    assert len(pairs) >= 2, f"expected at least 2 candidate pairs to test the cap, got {pairs}"
+
+    # Force every candidate pair to already be past its merge threshold.
+    for pair in pairs:
+        world.collision_progress[pair] = merge_split._collision_threshold_years(world.seed, pair) + 1
+    events = merge_split.apply_topology_changes(world, 1_000_000)
+
+    assert len(world.plates) == 2  # exactly one merge happened, not a cascade
+    assert sum("merged" in e for e in events) == 1
+
+
 def test_merge_plates_leaves_one_plate_with_nonzero_nodes():
     theta = np.linspace(-0.01, 0.01, 5)
     keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))

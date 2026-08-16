@@ -9,21 +9,35 @@ time.
 Request body:
 
 ```json
-{ "seed": 1, "num_plates": null, "num_mantle_centers": 8 }
+{ "seed": 1, "num_plates": null, "num_continents": 4, "num_mantle_centers": 8 }
 ```
 
 All fields optional. `num_plates` defaults to `null` -- omit it (the frontend always does)
 to let the world tile itself into a plausible plate count from `seed` alone
 (`plates.MIN_AUTO_PLATES` to `plates.MAX_AUTO_PLATES`, see
 [simulation-model.md#initial-plate-generation](simulation-model.md#initial-plate-generation)),
-or pass an explicit count to override it. `num_mantle_centers` defaults to
+or pass an explicit count to override it. `num_continents` is the UI's continents slider
+(`plates.MIN_CONTINENTS` to `plates.MAX_CONTINENTS`); also optional, falling back to an
+independent per-plate coin flip when omitted. `num_mantle_centers` defaults to
 `world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world previously existed.
 
 Response: a summary --
 
 ```json
-{ "seed": 1, "elapsed_years": 0.0, "num_plates": 13 }
+{
+  "seed": 1,
+  "elapsed_years": 0.0,
+  "num_plates": 13,
+  "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }]
+}
 ```
+
+`events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
+entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
+which just replaces its displayed console with it on every response, and small enough not to
+matter on the wire. See
+[simulation-model.md#merge-and-split](simulation-model.md#merge-and-split) for what generates
+an event (collisions starting/merging, consumption, splits) and how each one is worded.
 
 ## `POST /world/step`
 
@@ -35,7 +49,8 @@ Request body:
 
 Advances the current world by `years` (see
 [simulation-model.md](simulation-model.md) for what a step actually does). Returns the same
-summary shape as `/world/generate`. `404` if no world has been generated yet.
+summary shape as `/world/generate`, with `events` reflecting anything logged up through this
+step. `404` if no world has been generated yet.
 
 ## `GET /world/render?projection=behrmann|eckert4`
 

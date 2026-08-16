@@ -54,3 +54,23 @@ def test_different_plates_generally_acquire_different_omegas():
     # Not every plate should have picked up an identical rotation from a spatially-varying
     # mantle flow field.
     assert not np.allclose(omegas, omegas[0], atol=1e-12)
+
+
+def test_generate_world_logs_a_generation_event():
+    world = generate_world(seed=15, num_plates=8, num_continents=3)
+    assert len(world.events) == 1
+    elapsed, message = world.events[0]
+    assert elapsed == 0.0
+    assert "8 plates" in message and "3 continental" in message
+
+
+def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
+    world = generate_world(seed=16, num_plates=10, num_continents=6)
+    for _ in range(15):
+        step_world(world, years=8_000_000)
+    # Any event logged during stepping (merges/splits/consumption are plausible at this
+    # scale/seed count but not guaranteed for a specific seed) must be timestamped no later
+    # than the world's current elapsed_years.
+    for elapsed, _ in world.events:
+        assert elapsed <= world.elapsed_years
+    assert len(world.events) <= 200  # MAX_EVENT_LOG_LENGTH

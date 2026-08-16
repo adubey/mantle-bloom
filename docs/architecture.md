@@ -15,15 +15,15 @@
 ```
 Browser (App.tsx)
   │
-  │  POST /world/generate  { seed }
+  │  POST /world/generate  { seed, num_continents }
   ▼
 FastAPI (main.py)
-  │  world.generate_world(seed) -- builds the plate mosaic (plate count is chosen
-  │  automatically from the seed, not requested by the caller -- see
-  │  simulation-model.md#initial-plate-generation), stores it as the single in-memory
-  │  World (see below)
+  │  world.generate_world(seed, num_continents) -- builds the plate mosaic (total plate
+  │  count is chosen automatically from the seed; num_continents is the UI's continents
+  │  slider -- see simulation-model.md#initial-plate-generation), stores it as the single
+  │  in-memory World (see below)
   ▼
-  { seed, elapsed_years, num_plates }
+  { seed, elapsed_years, num_plates, events }
 
 Browser then fetches, for whichever projection is selected:
   GET /world/render?projection=behrmann|eckert4
@@ -32,12 +32,16 @@ Browser then fetches, for whichever projection is selected:
 Time-stepping:
   POST /world/step  { years }
   → world.step_world(world, years): refit Euler poles, rotate, evolve boundaries, apply
-    topology changes, occasionally garbage-collect -- see simulation-model.md
-  → browser re-fetches /world/render
+    topology changes (at most one collision merge per step, only after a sustained 50-100
+    Myr collision -- see simulation-model.md#merge-and-split), occasionally garbage-collect
+  → browser re-fetches /world/render, and appends any new `events` to the console
 ```
 
 The frontend never holds simulation state -- it's a thin client that re-fetches
-`/world/render` after every `generate`/`step` call and redraws the canvas from scratch.
+`/world/render` after every `generate`/`step` call and redraws the canvas from scratch (the
+event console is the one exception: it just displays whatever `events` the last
+`generate`/`step` response carried, which is already the full current log -- see
+api-reference.md).
 
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
@@ -53,6 +57,11 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `elapsed_years`, `steps_since_gc`, `next_plate_id` (a monotonically increasing counter so
   a plate created by a split never collides with an existing id, even after other plates
   have been removed).
+- `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
+  merge_split.py, pair of plate ids -> accumulated convergent years (see
+  [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
+- `events: list[(float, str)]` -- the event log for the UI's console (elapsed_years,
+  message), capped at `MAX_EVENT_LOG_LENGTH = 200` entries. Appended to via `World.log_event`.
 
 Each `Plate` (`backend/app/plates.py`) is:
 
@@ -64,6 +73,7 @@ Each `Plate` (`backend/app/plates.py`) is:
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames).
+
 A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
 "Plates" map view's outline overlay, and it visibly drifted out of sync with the real
@@ -89,8 +99,8 @@ boundary.py         per-step boundary adjacency detection (k-d tree against ever
                      plate's current nodes), convergent/divergent/transform classification,
                      elevation deltas, line growth/shrinkage
 line_regrid.py       periodic line-spacing regularization ("garbage collection")
-merge_split.py       plate consumption, continental-collision merging, mantle-flow-driven
-                     splitting
+merge_split.py       plate consumption, sustained-collision continental merging (50-100 Myr,
+                     at most one per step), mantle-flow-driven splitting, event log messages
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
                      plate or spawns a new one where no plate dominates
 world.py             World/Plate orchestration: generate_world, step_world

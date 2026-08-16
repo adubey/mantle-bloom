@@ -31,6 +31,11 @@ TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 # an inclusive range of plausible Earth-like plate counts.
 MIN_AUTO_PLATES = 8
 MAX_AUTO_PLATES = 20
+# Continent count *is* user-facing (a slider) -- see generate_plates' num_continents.
+MIN_CONTINENTS = 1
+MAX_CONTINENTS = 8
+# However few continents are requested, still leave room for real ocean floor.
+MIN_OCEANIC_PLATES = 3
 
 # How close to a plate-local pole (phi = +-pi/2) a line can get before its circumference
 # is too small to bother sampling.
@@ -167,10 +172,16 @@ def _build_lines_for_plate(
     return build_lines_from_lattice(frame, is_owned, elevation_at)
 
 
-def generate_plates(seed: int, num_plates: int | None = None) -> list[Plate]:
+def generate_plates(
+    seed: int, num_plates: int | None = None, num_continents: int | None = None
+) -> list[Plate]:
     """Tile the whole sphere into plates. `num_plates` is optional -- when omitted, a
     plausible Earth-like count is drawn from the seed's own RNG stream (so it's still fully
-    determined by `seed`, just not something the caller has to pick).
+    determined by `seed`, just not something the caller has to pick). `num_continents` is
+    also optional -- when given (the UI's continents slider), exactly that many plates are
+    made continental (clamped to MAX_CONTINENTS; `num_plates` is bumped up if needed so
+    there's still room for at least MIN_OCEANIC_PLATES of real ocean floor) instead of the
+    usual independent CONTINENTAL_FRACTION coin flip per plate.
 
     Every plate's territory comes from the same nearest-seed test (`owner_tree.query`
     below): each lattice node is claimed by exactly one plate, so the tiling has no gaps
@@ -180,13 +191,20 @@ def generate_plates(seed: int, num_plates: int | None = None) -> list[Plate]:
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
+    if num_continents is not None:
+        num_continents = max(0, min(num_continents, MAX_CONTINENTS))
+        num_plates = max(num_plates, num_continents + MIN_OCEANIC_PLATES)
 
     seed_xyz = rng.normal(size=(num_plates, 3))
     seed_xyz /= np.linalg.norm(seed_xyz, axis=-1, keepdims=True)
 
-    crust_types = [
-        "continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)
-    ]
+    if num_continents is None:
+        crust_types = [
+            "continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)
+        ]
+    else:
+        continental_indices = set(rng.choice(num_plates, size=num_continents, replace=False).tolist())
+        crust_types = ["continental" if i in continental_indices else "oceanic" for i in range(num_plates)]
 
     owner_tree = cKDTree(seed_xyz)
     noise = SphereNoise(rng, octaves=4, base_freq=2.5)

@@ -33,6 +33,9 @@ class GenerateRequest(BaseModel):
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
+    # The UI's continents slider -- optional (falls back to an independent per-plate coin
+    # flip, see plates.generate_plates) but the frontend always sends one.
+    num_continents: int | None = None
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS
 
 
@@ -52,12 +55,21 @@ def _summary(world: World) -> dict:
         "seed": world.seed,
         "elapsed_years": world.elapsed_years,
         "num_plates": len(world.plates),
+        # Full current log (bounded, see world.MAX_EVENT_LOG_LENGTH) every time -- simpler
+        # for the frontend than diffing "new since last call", and small enough not to
+        # matter on the wire.
+        "events": [{"elapsed_years": e, "message": m} for e, m in world.events],
     }
 
 
 @app.post("/world/generate")
 def generate(req: GenerateRequest) -> dict:
-    world = generate_world(req.seed, num_plates=req.num_plates, num_mantle_centers=req.num_mantle_centers)
+    world = generate_world(
+        req.seed,
+        num_plates=req.num_plates,
+        num_continents=req.num_continents,
+        num_mantle_centers=req.num_mantle_centers,
+    )
     _state["world"] = world
     return _summary(world)
 

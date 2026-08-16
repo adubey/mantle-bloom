@@ -61,13 +61,19 @@ to the plate.
 <a id="initial-plate-generation"></a>
 ## Initial plate generation (`plates.py`)
 
-Plate count isn't asked of the caller: `num_plates`, if not given, is drawn from the seed's
-own RNG stream (`plates.MIN_AUTO_PLATES = 8` to `plates.MAX_AUTO_PLATES = 20`), so the world
-still tiles itself the same deterministic way for a given seed without the caller having to
-pick a number. That many seed points are scattered uniformly on the unit sphere (normalized
-Gaussian samples) and classified continental/oceanic (`CONTINENTAL_FRACTION = 0.4`,
-Earth-like); each gets a plate-local frame built from its own seed
+Total plate count isn't asked of the caller: `num_plates`, if not given, is drawn from the
+seed's own RNG stream (`plates.MIN_AUTO_PLATES = 8` to `plates.MAX_AUTO_PLATES = 20`), so the
+world still tiles itself the same deterministic way for a given seed without the caller
+having to pick a number. That many seed points are scattered uniformly on the unit sphere
+(normalized Gaussian samples), and each gets a plate-local frame built from its own seed
 (`geometry.plate_frame_from_seed`).
+
+Continent count *is* user-facing -- the UI's continents slider passes `num_continents`
+(`plates.MIN_CONTINENTS = 1` to `plates.MAX_CONTINENTS = 8`). When given, exactly that many
+plates (`rng.choice`, without replacement) are made continental instead of the usual
+independent `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up
+if needed so there's still room for at least `MIN_OCEANIC_PLATES` of real ocean floor
+regardless of how many continents were requested.
 
 Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
 plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution, and for every
@@ -190,6 +196,33 @@ matters for routine per-step motion.
   generation-time condition, not anything that happened during the step. Requiring a genuine
   closing rate, not just proximity, is what actually distinguishes a real collision from any
   other pair of neighbors.
+
+  **Why an instantaneous closing rate still isn't enough.** A curving boundary is commonly
+  convergent along one stretch even while the two plates are mostly just sliding past each
+  other overall -- a single step can clear the closing-rate check without the plates being
+  in anything like a real collision. And real continental collisions play out over tens of
+  millions of years, not one step, however small. So a pair only actually merges once
+  they've been *continuously* close-and-converging for a sustained, randomized duration
+  between `COLLISION_MERGE_MIN_YEARS` and `COLLISION_MERGE_MAX_YEARS` (50-100 Myr,
+  randomized per pair via `_collision_threshold_years(seed, pair)` so unrelated collisions
+  don't all resolve in lockstep) -- tracked in `World.collision_progress` (pair -> years
+  accumulated so far) and advanced by `update_collision_progress` every step. A pair that
+  stops being close-and-converging before reaching its threshold has its progress dropped
+  entirely, not paused -- the collision didn't sustain. And even once one or more pairs
+  *are* ready, `apply_topology_changes` merges at most one per step -- multiple simultaneous
+  ready pairs don't all resolve in the same call, matching how every other change in this
+  model happens incrementally rather than in a batch. Confirmed directly: scanning random
+  seeds at a 1M-year step size, merges now take a realistic 50-100 Myr of sustained
+  collision to resolve (verified against `world.events`, see below) rather than firing on
+  the first or second step.
+
+  **Event log.** `apply_topology_changes` returns a list of human-readable strings for
+  anything that happened this step -- a new collision starting, a merge completing (with
+  how many million years it took), consumption, or a split -- which `world.step_world`
+  timestamps with the *post-step* `elapsed_years` and appends to `World.events` (capped at
+  `world.MAX_EVENT_LOG_LENGTH` entries). `generate_world` logs an initial "world generated"
+  event the same way. The API returns the full current log on every `/world/generate` and
+  `/world/step` call (see api-reference.md) for the frontend's collapsible console.
 - **Split.** Each plate's mantle-flow samples are clustered into two groups
   (`scipy.cluster.vq.kmeans2`, k=2) and a separate Euler pole is fit to each. If a single
   rigid rotation fits the whole plate poorly (RMS residual above

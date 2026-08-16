@@ -1,7 +1,7 @@
 import numpy as np
 
 from app import geometry
-from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, generate_plates
+from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, MIN_OCEANIC_PLATES, generate_plates
 from app.world import generate_world
 
 
@@ -82,6 +82,26 @@ def test_generate_plates_auto_count_is_deterministic_for_same_seed():
     for a, b in zip(p1, p2):
         assert a.crust_type == b.crust_type
         assert np.allclose(a.frame, b.frame)
+
+
+def test_generate_plates_num_continents_gives_exact_continental_count():
+    for n in range(1, 6):
+        plates = generate_plates(seed=3, num_plates=12, num_continents=n)
+        continental = [p for p in plates if p.crust_type == "continental"]
+        assert len(continental) == n
+
+
+def test_generate_plates_num_continents_bumps_up_total_plate_count_if_needed():
+    plates = generate_plates(seed=4, num_plates=5, num_continents=5)
+    assert len(plates) >= 5 + MIN_OCEANIC_PLATES
+    assert sum(1 for p in plates if p.crust_type == "continental") == 5
+
+
+def test_generate_plates_num_continents_is_clamped_to_max():
+    from app.plates import MAX_CONTINENTS
+
+    plates = generate_plates(seed=5, num_plates=10, num_continents=999)
+    assert sum(1 for p in plates if p.crust_type == "continental") == MAX_CONTINENTS
 
 
 def test_outline_world_traces_a_loop_covering_every_line():

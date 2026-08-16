@@ -5,6 +5,14 @@ Unlike rotation and boundary evolution, these are rare, discrete, topology-chang
 so a one-time resample onto a fresh local lattice (merge) or a plane cut through existing
 nodes (split) is an acceptable cost here -- the exact, no-resampling guarantee only matters
 for routine per-step motion.
+
+Merging in particular is deliberately slow: a pair of continental plates has to stay
+continuously close and converging (see find_continental_collision_pairs) for a sustained,
+randomized 50-100 Myr (COLLISION_MERGE_MIN/MAX_YEARS, tracked in
+World.collision_progress) before they actually fuse, and at most one merge happens per
+step -- see update_collision_progress and apply_topology_changes. apply_topology_changes
+returns a list of human-readable event strings for whatever happened, which world.step_world
+threads through to the API for the frontend's event console.
 """
 
 from __future__ import annotations
@@ -25,6 +33,17 @@ if TYPE_CHECKING:
 MERGE_CONTACT_DISTANCE_RAD = MERGE_THRESHOLD_RAD
 MERGE_MIN_CONTACT_NODES = 4
 MERGE_COVERAGE_RADIUS_RAD = 1.2 * TARGET_LINE_SPACING_RAD
+# A single step can already show a real (not just proximity-driven) closing rate over part
+# of a shared boundary without the two plates being in anything like a genuine, sustained
+# collision -- a curving boundary is often locally convergent in one stretch even while the
+# plates as a whole are just sliding past each other. Checking the instantaneous rate alone
+# still merged plates within a step or two of first contact. Real continental collisions
+# play out over tens of millions of years, so a pair only actually merges once they've been
+# continuously close-and-converging (see find_continental_collision_pairs) for a sustained
+# duration, randomized per pair within this range so unrelated collisions don't all resolve
+# in lockstep.
+COLLISION_MERGE_MIN_YEARS = 50_000_000
+COLLISION_MERGE_MAX_YEARS = 100_000_000
 
 SPLIT_MIN_NODES = 300
 # A single rigid rotation essentially never fits a wide footprint's flow samples exactly
@@ -79,8 +98,47 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
             neighbor_points = pb[idx[close]]
             closing = closing_rate(close_points, a.omega, b.omega, neighbor_points)
             if np.sum(closing > TRANSFORM_RATE_THRESHOLD) >= MERGE_MIN_CONTACT_NODES:
-                pairs.append((a.plate_id, b.plate_id))
+                # Sorted so a pair's identity as a dict key (collision-duration tracking,
+                # see update_collision_progress) doesn't depend on world.plates' current
+                # iteration order, which can change step to step.
+                pairs.append(tuple(sorted((a.plate_id, b.plate_id))))
     return pairs
+
+
+def _collision_threshold_years(seed: int, pair: tuple[int, int]) -> float:
+    """How long `pair` needs to stay continuously close-and-converging before it actually
+    merges -- deterministic per (world seed, pair) so it doesn't need to be stored, just
+    recomputed whenever it's needed."""
+    rng = np.random.default_rng((seed, pair[0], pair[1]))
+    return float(rng.uniform(COLLISION_MERGE_MIN_YEARS, COLLISION_MERGE_MAX_YEARS))
+
+
+def update_collision_progress(world: "World", years: float) -> tuple[list[tuple[int, int]], list[str]]:
+    """Advance sustained-collision tracking by `years` for every pair currently close and
+    converging (world.collision_progress: pair -> accumulated convergent years). Returns
+    (pairs that have now accumulated enough to merge, human-readable event messages for any
+    newly-started collision). A pair that stops being close-and-converging before reaching
+    its threshold has its progress dropped entirely -- the collision didn't sustain, so it
+    doesn't get partial credit toward a future one."""
+    current_pairs = find_continental_collision_pairs(world)
+    current_set = set(current_pairs)
+    events: list[str] = []
+
+    ready = []
+    for pair in current_pairs:
+        is_new = pair not in world.collision_progress
+        accumulated = world.collision_progress.get(pair, 0.0) + years
+        world.collision_progress[pair] = accumulated
+        if is_new:
+            events.append(f"Plates {pair[0]} and {pair[1]} have begun colliding.")
+        if accumulated >= _collision_threshold_years(world.seed, pair):
+            ready.append(pair)
+
+    for pair in list(world.collision_progress):
+        if pair not in current_set:
+            del world.collision_progress[pair]
+
+    return ready, events
 
 
 def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
@@ -180,19 +238,31 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     return plate_a, plate_b
 
 
-def apply_topology_changes(world: "World") -> None:
+def apply_topology_changes(world: "World", years: float) -> list[str]:
+    """Consumption, then at most one collision merge, then splits. Returns human-readable
+    event messages for anything that happened, for the UI's event console."""
+    events: list[str] = []
     for plate in world.plates:
         plate.age_steps += 1
 
+    consumed = [p for p in world.plates if p.node_count() == 0]
+    for p in consumed:
+        events.append(f"Plate {p.plate_id} ({p.crust_type}) was fully subducted and disappeared.")
     remove_consumed_plates(world)
 
-    merged = True
-    while merged:
-        merged = False
-        pairs = find_continental_collision_pairs(world)
-        if pairs:
-            merge_plates(world, *pairs[0])
-            merged = True
+    ready_pairs, collision_events = update_collision_progress(world, years)
+    events.extend(collision_events)
+    if ready_pairs:
+        # Real continental collisions don't resolve all at once, and merging every ready
+        # pair in the same call could still cascade through a whole chain of plates in one
+        # step -- fuse at most one collision per step, same as every other change here.
+        id_keep, id_absorb = ready_pairs[0]
+        elapsed_years = world.collision_progress.pop((id_keep, id_absorb), 0.0)
+        merge_plates(world, id_keep, id_absorb)
+        events.append(
+            f"Plates {id_keep} and {id_absorb} collided and merged into plate {id_keep} "
+            f"after {elapsed_years / 1e6:.0f} million years."
+        )
 
     new_plates: list[Plate] = []
     for plate in world.plates:
@@ -201,4 +271,9 @@ def apply_topology_changes(world: "World") -> None:
             new_plates.append(plate)
         else:
             new_plates.extend(split_result)
+            events.append(
+                f"Plate {plate.plate_id} split into plates {split_result[0].plate_id} "
+                f"and {split_result[1].plate_id}."
+            )
     world.plates = new_plates
+    return events
