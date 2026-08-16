@@ -13,10 +13,19 @@ export interface RenderLine {
   elevation: number[];
 }
 
+export interface VelocityArrow {
+  start: [number, number];
+  end: [number, number];
+}
+
 export interface RenderPlate {
   plate_id: number;
   crust_type: "continental" | "oceanic";
   lines: RenderLine[];
+  pole: [number, number] | null;
+  rotation_rate_deg_per_myr: number;
+  velocity_arrow: VelocityArrow | null;
+  boundary: [number, number][];
 }
 
 export interface RenderResponse {

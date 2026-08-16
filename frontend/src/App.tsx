@@ -3,34 +3,39 @@ import "./index.css";
 import { generateWorld, renderWorld, stepWorld } from "./api";
 import type { Projection, RenderResponse, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
+import type { MapView } from "./MapCanvas";
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 500;
-const DEFAULT_STEP_YEARS = 2_000_000;
+const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
 const PLAY_INTERVAL_MS = 400;
 
+function randomSeed(): number {
+  return Math.floor(Math.random() * 1_000_000_000);
+}
+
 export default function App() {
-  const [seed, setSeed] = useState(1);
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [seed, setSeed] = useState(randomSeed());
   const [numPlates, setNumPlates] = useState(12);
-  const [stepYears, setStepYears] = useState(DEFAULT_STEP_YEARS);
+
+  const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[2]);
   const [projection, setProjection] = useState<Projection>("behrmann");
+  const [mapView, setMapView] = useState<MapView>("elevation");
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(
-    async (proj: Projection) => {
-      try {
-        const data = await renderWorld(proj);
-        setRenderData(data);
-      } catch (e) {
-        setError(String(e));
-      }
-    },
-    [],
-  );
+  const refresh = useCallback(async (proj: Projection) => {
+    try {
+      const data = await renderWorld(proj);
+      setRenderData(data);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
 
   const handleGenerate = useCallback(async () => {
     setBusy(true);
@@ -38,6 +43,7 @@ export default function App() {
     try {
       const s = await generateWorld(seed, numPlates);
       setSummary(s);
+      setShowGenerateDialog(false);
       await refresh(projection);
     } catch (e) {
       setError(String(e));
@@ -85,66 +91,51 @@ export default function App() {
     <div style={{ fontFamily: "system-ui, sans-serif", color: "#e6e8ef", padding: 24 }}>
       <h1 style={{ fontSize: 20, marginBottom: 4 }}>mantle-bloom</h1>
       <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
-        sphere-native plate tectonics -- elevation view
+        sphere-native plate tectonics
       </p>
 
       <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 220 }}>
-          <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 10 }}>
-            <legend>Generate</legend>
-            <label style={{ display: "block", marginBottom: 6 }}>
-              Seed
-              <input
-                type="number"
-                value={seed}
-                onChange={(e) => setSeed(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
-            <label style={{ display: "block", marginBottom: 6 }}>
-              Plates
-              <input
-                type="number"
-                min={2}
-                max={40}
-                value={numPlates}
-                onChange={(e) => setNumPlates(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
-            <button onClick={handleGenerate} disabled={busy} style={{ width: "100%" }}>
-              Generate World
-            </button>
-          </fieldset>
+          <button onClick={() => setShowGenerateDialog(true)} disabled={busy}>
+            Generate World
+          </button>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 10 }}>
             <legend>Time</legend>
             <label style={{ display: "block", marginBottom: 6 }}>
               Years per step
-              <input
-                type="number"
-                min={1000}
+              <select
                 value={stepYears}
                 onChange={(e) => setStepYears(Number(e.target.value))}
                 style={{ width: "100%" }}
-              />
+              >
+                {STEP_YEARS_OPTIONS.map((y) => (
+                  <option key={y} value={y}>
+                    {y.toLocaleString()}
+                  </option>
+                ))}
+              </select>
             </label>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={handleStep} disabled={busy || !summary} style={{ flex: 1 }}>
                 Step
               </button>
-              <button
-                onClick={() => setPlaying((p) => !p)}
-                disabled={!summary}
-                style={{ flex: 1 }}
-              >
+              <button onClick={() => setPlaying((p) => !p)} disabled={!summary} style={{ flex: 1 }}>
                 {playing ? "Pause" : "Play"}
               </button>
             </div>
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 10 }}>
-            <legend>Projection</legend>
+            <legend>Map View</legend>
+            <select
+              value={mapView}
+              onChange={(e) => setMapView(e.target.value as MapView)}
+              style={{ width: "100%", marginBottom: 8 }}
+            >
+              <option value="plates">Plates (pole, rotation, boundary)</option>
+              <option value="elevation">Elevation (land + marine depth)</option>
+            </select>
             <select
               value={projection}
               onChange={(e) => setProjection(e.target.value as Projection)}
@@ -165,8 +156,74 @@ export default function App() {
           {error && <div style={{ color: "#ff8080", fontSize: 13 }}>{error}</div>}
         </div>
 
-        <MapCanvas data={renderData} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+        <MapCanvas data={renderData} view={mapView} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
       </div>
+
+      {showGenerateDialog && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "#151a2e",
+              border: "1px solid #333",
+              borderRadius: 8,
+              padding: 20,
+              minWidth: 280,
+            }}
+          >
+            <h2 style={{ fontSize: 16, marginTop: 0 }}>Generate World</h2>
+
+            <label style={{ display: "block", marginBottom: 10 }}>
+              Seed
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  type="number"
+                  value={seed}
+                  onChange={(e) => setSeed(Number(e.target.value))}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  title="Randomize seed"
+                  aria-label="Randomize seed"
+                  onClick={() => setSeed(randomSeed())}
+                >
+                  🎲
+                </button>
+              </div>
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Plates
+              <input
+                type="number"
+                min={2}
+                max={40}
+                value={numPlates}
+                onChange={(e) => setNumPlates(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setShowGenerateDialog(false)} disabled={busy}>
+                Cancel
+              </button>
+              <button onClick={handleGenerate} disabled={busy}>
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -50,6 +50,14 @@ def test_render_behrmann_and_eckert4(client):
         assert len(first_line["points"]) == len(first_line["elevation"])
         assert len(first_line["points"][0]) == 2
 
+        for plate in body["plates"]:
+            assert "boundary" in plate and isinstance(plate["boundary"], list)
+            assert "rotation_rate_deg_per_myr" in plate
+            if plate["pole"] is not None:
+                assert len(plate["pole"]) == 2
+            if plate["velocity_arrow"] is not None:
+                assert set(plate["velocity_arrow"].keys()) == {"start", "end"}
+
 
 def test_render_unknown_projection_returns_400(client):
     client.post("/world/generate", json={"seed": 4, "num_plates": 6})

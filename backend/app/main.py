@@ -9,8 +9,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import geometry, projections
+from . import geometry, mantle, projections
 from .world import DEFAULT_MANTLE_CENTERS, DEFAULT_NUM_PLATES, World, generate_world, step_world
+
+# Baseline angular length (radians) of a plate's velocity arrow on the map, before scaling
+# by how fast that plate is actually moving relative to the fastest allowed rate.
+ARROW_BASE_ANGULAR_LENGTH_RAD = 0.15
 
 app = FastAPI(title="mantle-bloom")
 
@@ -63,6 +67,44 @@ def step(req: StepRequest) -> dict:
     return _summary(world)
 
 
+def _project_points(projection: str, world_pts: np.ndarray) -> list[list[float]]:
+    lat, lon = geometry.xyz_to_latlon(world_pts)
+    x, y = projections.project(projection, lat, lon)
+    return np.stack([x, y], axis=-1).tolist()
+
+
+def _plate_tectonics(projection: str, plate) -> dict:
+    """Pole marker, velocity arrow, and boundary outline for the "Plates" map view --
+    everything except the elevation lines themselves."""
+    seed_xyz = plate.seed_world
+    speed = float(np.linalg.norm(plate.omega))
+
+    pole = None
+    arrow = None
+    if speed > 1e-15:
+        pole_xyz = plate.omega / speed
+        pole = _project_points(projection, pole_xyz[None, :])[0]
+
+        direction = np.cross(plate.omega, seed_xyz) / speed
+        intensity = np.clip(speed / mantle.MAX_PLATE_RATE, 0.3, 1.0)
+        arrow_len = ARROW_BASE_ANGULAR_LENGTH_RAD * intensity
+        end_xyz = np.cos(arrow_len) * seed_xyz + np.sin(arrow_len) * direction
+        end_xyz = end_xyz / np.linalg.norm(end_xyz)
+        start, end = _project_points(projection, np.stack([seed_xyz, end_xyz]))
+        arrow = {"start": start, "end": end}
+
+    boundary = (
+        _project_points(projection, plate.boundary_world()) if len(plate.boundary_local) > 0 else []
+    )
+
+    return {
+        "pole": pole,
+        "rotation_rate_deg_per_myr": np.degrees(speed) * 1e6,
+        "velocity_arrow": arrow,
+        "boundary": boundary,
+    }
+
+
 @app.get("/world/render")
 def render(projection: str = "behrmann") -> dict:
     world = _require_world()
@@ -76,11 +118,9 @@ def render(projection: str = "behrmann") -> dict:
             if len(line.theta) == 0:
                 continue
             world_pts = line.world_xyz(plate.frame)
-            lat, lon = geometry.xyz_to_latlon(world_pts)
-            x, y = projections.project(projection, lat, lon)
             lines_out.append(
                 {
-                    "points": np.stack([x, y], axis=-1).tolist(),
+                    "points": _project_points(projection, world_pts),
                     "elevation": line.elevation.tolist(),
                 }
             )
@@ -89,6 +129,7 @@ def render(projection: str = "behrmann") -> dict:
                 "plate_id": plate.plate_id,
                 "crust_type": plate.crust_type,
                 "lines": lines_out,
+                **_plate_tectonics(projection, plate),
             }
         )
 

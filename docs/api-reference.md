@@ -35,8 +35,9 @@ summary shape as `/world/generate`. `404` if no world has been generated yet.
 
 ## `GET /world/render?projection=behrmann|eckert4`
 
-Every plate's elevation-line nodes, projected to 2D. `400` for an unrecognized projection
-name, `404` if no world has been generated yet.
+Every plate's elevation-line nodes plus everything the "Plates" map view needs (pole,
+velocity arrow, boundary outline), all projected to 2D. `400` for an unrecognized
+projection name, `404` if no world has been generated yet.
 
 ```json
 {
@@ -48,13 +49,27 @@ name, `404` if no world has been generated yet.
       "crust_type": "continental",
       "lines": [
         { "points": [[x, y], ...], "elevation": [m, ...] }
-      ]
+      ],
+      "pole": [x, y],
+      "rotation_rate_deg_per_myr": 4.2,
+      "velocity_arrow": { "start": [x, y], "end": [x, y] },
+      "boundary": [[x, y], ...]
     }
   ]
 }
 ```
 
-`points` and `elevation` are index-aligned and the same length. Coordinates are in the
-projection's own planar units for a unit-radius sphere (see
-[simulation-model.md#projections](simulation-model.md#projections)); the frontend picks its
-own pixels-per-unit scale from the data's bounding box.
+`lines[].points`/`lines[].elevation` are index-aligned and the same length. All coordinates
+(`lines[].points`, `pole`, `velocity_arrow.start`/`.end`, `boundary`) are in the projection's
+own planar units for a unit-radius sphere (see
+[simulation-model.md#projections](simulation-model.md#projections)); the frontend picks a
+single pixels-per-unit scale from the union of all of them so switching map views never
+rescales or re-centers.
+
+- `pole` -- the plate's current Euler pole direction (`omega` normalized), or `null` if the
+  plate isn't moving (`omega` is ~0).
+- `velocity_arrow` -- a short great-circle arc from the plate's seed point in its current
+  velocity direction, length scaled by how fast it's moving relative to
+  `mantle.MAX_PLATE_RATE`; `null` under the same condition as `pole`.
+- `boundary` -- the plate's rough boundary outline. Cosmetic only -- see
+  [simulation-model.md#known-simplifications](simulation-model.md#known-simplifications).
