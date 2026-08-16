@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import boundary, geometry, mantle
+from . import boundary, geometry, line_regrid, mantle
 from .plates import Plate, generate_plates
 
 DEFAULT_NUM_PLATES = 12
@@ -19,6 +19,7 @@ class World:
     plates: list[Plate] = field(default_factory=list)
     mantle_centers: list[mantle.ConvectionCenter] = field(default_factory=list)
     elapsed_years: float = 0.0
+    steps_since_gc: int = 0
 
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
@@ -68,10 +69,16 @@ def step_world(world: World, years: float) -> None:
     field (damped toward the new target), rotate the plate rigidly by that pole for
     `years` (exact for every carried point, no resampling), then let boundaries evolve --
     uplift/trench/ridge/rift elevation deltas and line growth/shrinkage where plates are
-    now close to each other."""
+    now close to each other. Every `line_regrid.GC_INTERVAL_STEPS` calls, also regularizes
+    any line whose interior spacing has drifted (garbage collection)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
         plate.frame = increment @ plate.frame
     boundary.step_boundaries(world, years)
     world.elapsed_years += years
+
+    world.steps_since_gc += 1
+    if world.steps_since_gc >= line_regrid.GC_INTERVAL_STEPS:
+        line_regrid.garbage_collect_world(world)
+        world.steps_since_gc = 0
