@@ -42,7 +42,7 @@ MIN_AUTO_PLATES = 8
 MAX_AUTO_PLATES = 20
 # Continent count *is* user-facing (a slider) -- see generate_plates' num_continents.
 MIN_CONTINENTS = 1
-MAX_CONTINENTS = 8
+MAX_CONTINENTS = 12
 # However few continents are requested, still leave room for real ocean floor.
 MIN_OCEANIC_PLATES = 3
 

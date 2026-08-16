@@ -6,14 +6,14 @@ import MapCanvas from "./MapCanvas";
 import type { MapView } from "./MapCanvas";
 import EventConsole from "./EventConsole";
 
-const CANVAS_WIDTH = 900;
-const CANVAS_HEIGHT = 500;
+const CANVAS_WIDTH = 1100;
+const CANVAS_HEIGHT = 611;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
 const PLAY_INTERVAL_MS = 400;
 // Matches backend app/plates.py's MIN_CONTINENTS/MAX_CONTINENTS.
 const MIN_CONTINENTS = 1;
-const MAX_CONTINENTS = 8;
-const DEFAULT_CONTINENTS = 4;
+const MAX_CONTINENTS = 12;
+const DEFAULT_CONTINENTS = 7;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -24,13 +24,14 @@ export default function App() {
   const [seed, setSeed] = useState(randomSeed());
   const [numContinents, setNumContinents] = useState(DEFAULT_CONTINENTS);
 
-  const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[2]);
+  const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>("behrmann");
   const [mapView, setMapView] = useState<MapView>("elevation");
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (proj: Projection) => {
@@ -59,7 +60,7 @@ export default function App() {
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
-    setBusy(true);
+    setStepping(true);
     setError(null);
     try {
       const s = await stepWorld(stepYears);
@@ -69,7 +70,7 @@ export default function App() {
       setError(String(e));
       setPlaying(false);
     } finally {
-      setBusy(false);
+      setStepping(false);
     }
   }, [summary, stepYears, projection, refresh]);
 
@@ -114,20 +115,20 @@ export default function App() {
         sphere-native plate tectonics
       </p>
 
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 220 }}>
-          <button onClick={() => setShowGenerateDialog(true)} disabled={busy}>
+      <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 170, flexShrink: 0 }}>
+          <button onClick={() => setShowGenerateDialog(true)} disabled={busy} style={{ fontSize: 12 }}>
             Generate World
           </button>
 
-          <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 10 }}>
-            <legend>Time</legend>
+          <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+            <legend style={{ fontSize: 11 }}>Time</legend>
             <label style={{ display: "block", marginBottom: 6 }}>
               Years per step
               <select
                 value={stepYears}
                 onChange={(e) => setStepYears(Number(e.target.value))}
-                style={{ width: "100%" }}
+                style={{ width: "100%", fontSize: 12 }}
               >
                 {STEP_YEARS_OPTIONS.map((y) => (
                   <option key={y} value={y}>
@@ -136,30 +137,31 @@ export default function App() {
                 ))}
               </select>
             </label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={handleStep} disabled={busy || !summary} style={{ flex: 1 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={handleStep} disabled={busy || stepping || !summary} style={{ flex: 1, fontSize: 12 }}>
                 Step
               </button>
-              <button onClick={() => setPlaying((p) => !p)} disabled={!summary} style={{ flex: 1 }}>
+              <button onClick={() => setPlaying((p) => !p)} disabled={busy || !summary} style={{ flex: 1, fontSize: 12 }}>
                 {playing ? "Pause" : "Play"}
               </button>
             </div>
           </fieldset>
 
-          <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 10 }}>
-            <legend>Map View</legend>
+          <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+            <legend style={{ fontSize: 11 }}>Map View</legend>
             <select
               value={mapView}
               onChange={(e) => setMapView(e.target.value as MapView)}
-              style={{ width: "100%", marginBottom: 8 }}
+              style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
-              <option value="plates">Plates (pole, rotation, boundary)</option>
-              <option value="elevation">Elevation (land + marine depth)</option>
+              <option value="plates">Plates</option>
+              <option value="platesDetail">Plates (details)</option>
+              <option value="elevation">Elevation</option>
             </select>
             <select
               value={projection}
               onChange={(e) => setProjection(e.target.value as Projection)}
-              style={{ width: "100%" }}
+              style={{ width: "100%", fontSize: 12 }}
             >
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
               <option value="eckert4">Eckert IV (pseudocylindrical equal-area)</option>
@@ -167,18 +169,19 @@ export default function App() {
           </fieldset>
 
           {summary && (
-            <div style={{ fontSize: 13, opacity: 0.8 }}>
+            <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
               <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
             </div>
           )}
-          {error && <div style={{ color: "#ff8080", fontSize: 13 }}>{error}</div>}
+          {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
+
+          <EventConsole events={summary?.events ?? []} />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ marginTop: -50 }}>
           <MapCanvas data={renderData} view={mapView} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
-          <EventConsole events={summary?.events ?? []} />
         </div>
       </div>
 

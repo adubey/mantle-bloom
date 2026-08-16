@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import type { RenderResponse } from "./api";
 import { elevationColor } from "./elevationColor";
 
-export type MapView = "elevation" | "plates";
+export type MapView = "elevation" | "plates" | "platesDetail";
 
 interface Props {
   data: RenderResponse | null;
@@ -14,6 +14,7 @@ interface Props {
 const PADDING_PX = 20;
 const POLE_RADIUS_PX = 5;
 const ARROWHEAD_LENGTH_PX = 7;
+const NODE_DOT_RADIUS_PX = 1.6;
 // Cells are drawn slightly larger than their measured half-extent so adjacent cells
 // overlap a hair rather than risk a hairline gap from floating-point rounding.
 const CELL_OVERLAP_FACTOR = 1.15;
@@ -161,28 +162,50 @@ export default function MapCanvas({ data, view, width, height }: Props) {
     // The render grid: a uniform lat/lon sweep with every cell already assigned its
     // nearest data point (see backend main.py's _render_grid), each drawn at the size its
     // own row actually needs (cell_half_width/height) so the filled map has no gaps
-    // regardless of projection distortion.
-    const { grid } = data;
-    for (let i = 0; i < grid.points.length; i++) {
-      const [x, y] = grid.points[i];
-      const [px, py] = toPixel(t, x, y);
-      const w = grid.cell_half_width[i] * t.scale * 2 * CELL_OVERLAP_FACTOR;
-      const h = grid.cell_half_height[i] * t.scale * 2 * CELL_OVERLAP_FACTOR;
+    // regardless of projection distortion. Skipped for "platesDetail", which shows the raw
+    // per-plate line data (with its real gaps) instead of this gap-free reprojection of it.
+    if (view === "elevation" || view === "plates") {
+      const { grid } = data;
+      for (let i = 0; i < grid.points.length; i++) {
+        const [x, y] = grid.points[i];
+        const [px, py] = toPixel(t, x, y);
+        const w = grid.cell_half_width[i] * t.scale * 2 * CELL_OVERLAP_FACTOR;
+        const h = grid.cell_half_height[i] * t.scale * 2 * CELL_OVERLAP_FACTOR;
 
-      if (view === "elevation") {
-        ctx.fillStyle = elevationColor(grid.elevation[i]);
-      } else {
-        ctx.fillStyle = plateColor(grid.plate_id[i]);
+        if (view === "elevation") {
+          ctx.fillStyle = elevationColor(grid.elevation[i]);
+        } else {
+          ctx.fillStyle = plateColor(grid.plate_id[i]);
+        }
+        ctx.fillRect(px - w / 2, py - h / 2, w, h);
       }
-      ctx.fillRect(px - w / 2, py - h / 2, w, h);
     }
 
-    if (view === "plates") {
+    if (view === "platesDetail") {
+      // The actual line-based data structure: each plate's elevation nodes, drawn as dots
+      // colored by elevation rather than resampled onto a gap-free grid -- see this dot's
+      // own point density (and the gaps between lines) for what the simulation really
+      // tracks per plate.
+      for (const plate of data.plates) {
+        for (const line of plate.lines) {
+          for (let i = 0; i < line.points.length; i++) {
+            const [x, y] = line.points[i];
+            const [px, py] = toPixel(t, x, y);
+            ctx.fillStyle = elevationColor(line.elevation[i]);
+            ctx.beginPath();
+            ctx.arc(px, py, NODE_DOT_RADIUS_PX, 0, 2 * Math.PI);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    if (view === "plates" || view === "platesDetail") {
       for (const plate of data.plates) {
         const color = plateColor(plate.plate_id);
         strokeRobustLoop(ctx, plate.boundary, t, color);
 
-        if (plate.velocity_arrow) {
+        if (view === "plates" && plate.velocity_arrow) {
           const [sx, sy] = toPixel(t, ...plate.velocity_arrow.start);
           const [ex, ey] = toPixel(t, ...plate.velocity_arrow.end);
           const maxArrowPx = Math.min(width, height) * MAX_ARROW_FRACTION_OF_CANVAS;
@@ -191,7 +214,7 @@ export default function MapCanvas({ data, view, width, height }: Props) {
           }
         }
 
-        if (plate.pole) {
+        if (view === "plates" && plate.pole) {
           const [px, py] = toPixel(t, plate.pole[0], plate.pole[1]);
           ctx.fillStyle = "#ff2d55";
           ctx.strokeStyle = "#ffffff";

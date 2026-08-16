@@ -70,7 +70,7 @@ having to pick a number. That many seed points are scattered uniformly on the un
 (`geometry.plate_frame_from_seed`).
 
 Continent count *is* user-facing -- the UI's continents slider passes `num_continents`
-(`plates.MIN_CONTINENTS = 1` to `plates.MAX_CONTINENTS = 8`). When given, exactly that many
+(`plates.MIN_CONTINENTS = 1` to `plates.MAX_CONTINENTS = 12`). When given, exactly that many
 plates (`rng.choice`, without replacement) are made continental instead of the usual
 independent `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up
 if needed so there's still room for at least `MIN_OCEANIC_PLATES` of real ocean floor
