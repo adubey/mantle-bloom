@@ -9,7 +9,6 @@ import numpy as np
 from . import boundary, geometry, line_regrid, mantle, merge_split
 from .plates import Plate, generate_plates
 
-DEFAULT_NUM_PLATES = 12
 DEFAULT_MANTLE_CENTERS = 8
 
 
@@ -25,13 +24,11 @@ class World:
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
     """World positions used to sample the mantle flow field for fitting this plate's Euler
-    pole: every elevation-line node plus the boundary loop -- its current footprint, for
-    free (no separate sampling grid needed)."""
+    pole: every elevation-line node -- its current footprint, for free (no separate
+    sampling grid needed). This already includes each line's two endpoints, i.e. the
+    plate's actual edge, so no separate boundary sample is needed."""
     points, _ = plate.all_points_and_elevation()
-    boundary_pts = plate.boundary_world()
-    if len(points) == 0 and len(boundary_pts) == 0:
-        return np.zeros((0, 3))
-    return np.concatenate([points, boundary_pts], axis=0)
+    return points
 
 
 def _update_plate_omega(
@@ -51,9 +48,11 @@ def _update_plate_omega(
 
 def generate_world(
     seed: int,
-    num_plates: int = DEFAULT_NUM_PLATES,
+    num_plates: int | None = None,
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
 ) -> World:
+    """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
+    itself into a plausible number of plates rather than requiring the caller to pick one."""
     plates = generate_plates(seed, num_plates=num_plates)
     # Separate RNG stream so changing num_mantle_centers doesn't reshuffle plate layout.
     mantle_rng = np.random.default_rng(seed + 1)
@@ -64,7 +63,7 @@ def generate_world(
         plates=plates,
         mantle_centers=mantle_centers,
         elapsed_years=0.0,
-        next_plate_id=num_plates,
+        next_plate_id=len(plates),
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)

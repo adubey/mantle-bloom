@@ -2,9 +2,9 @@
 
 ## Stack
 
-- **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy
-  (`SphericalVoronoi` for initial plate seeding, `cKDTree` for boundary-adjacency and
-  merge-detection queries, `scipy.cluster.vq.kmeans2` for split clustering), pytest.
+- **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy (`cKDTree`
+  for initial plate assignment, boundary-adjacency, and merge-detection queries,
+  `scipy.cluster.vq.kmeans2` for split clustering), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library, the same choice plate-sim made and the same reasoning: the data is simple enough
   (points + a hand-rolled colormap) that a library would be more ceremony than the problem
@@ -15,11 +15,13 @@
 ```
 Browser (App.tsx)
   │
-  │  POST /world/generate  { seed, num_plates }
+  │  POST /world/generate  { seed }
   ▼
 FastAPI (main.py)
-  │  world.generate_world(seed, num_plates) -- builds the plate mosaic, stores it as the
-  │  single in-memory World (see below)
+  │  world.generate_world(seed) -- builds the plate mosaic (plate count is chosen
+  │  automatically from the seed, not requested by the caller -- see
+  │  simulation-model.md#initial-plate-generation), stores it as the single in-memory
+  │  World (see below)
   ▼
   { seed, elapsed_years, num_plates }
 
@@ -62,11 +64,14 @@ Each `Plate` (`backend/app/plates.py`) is:
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames).
-- `boundary_local` -- a rough polygon outline (from the initial spherical Voronoi cell),
-  kept only for a cosmetic loop overlay. It rotates rigidly along with everything else but
-  is *not* consulted by boundary evolution, garbage collection, or merge/split -- those all
-  work directly off the elevation-line nodes (see
-  [simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
+A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
+(`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
+"Plates" map view's outline overlay, and it visibly drifted out of sync with the real
+territory after enough stepping (looking like plates overlapping, since it was never
+touched by boundary evolution, merge, or split). `Plate.outline_world()` replaces it: every
+render, the outline is traced live from each line's current two endpoints -- the actual
+edge boundary evolution maintains -- so it can never be stale (see
+[simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
 
 ## The simulation pipeline, module by module
 
@@ -76,8 +81,8 @@ geometry.py       unit-vector <-> lat/lon conversion, Rodrigues-formula rotation
 projections.py     Behrmann and Eckert IV map projections, vectorized
 noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
 plates.py          Plate/ElevationLine data structures, the plate-local lattice sweep
-                    shared by generation and merge, initial plate generation via
-                    SphericalVoronoi
+                    shared by generation and merge, initial plate generation (nearest-seed
+                    tiling), the live per-plate outline used by the "Plates" map view
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
 boundary.py         per-step boundary adjacency detection (k-d tree against every other

@@ -150,7 +150,6 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         frame=plate.frame.copy(),
         crust_type=plate.crust_type,
         omega=mantle.clamp_rate(pole_a),
-        boundary_local=plate.boundary_local.copy(),
         lines=lines_a,
     )
     plate_b = Plate(
@@ -158,7 +157,6 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         frame=plate.frame.copy(),
         crust_type=plate.crust_type,
         omega=mantle.clamp_rate(pole_b),
-        boundary_local=plate.boundary_local.copy(),
         lines=lines_b,
     )
     return plate_a, plate_b

@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.spatial import SphericalVoronoi, cKDTree
+from scipy.spatial import cKDTree
 
 from . import geometry
 from .noise import SphereNoise
@@ -26,6 +26,11 @@ OCEANIC_NOISE_AMPLITUDE_M = 500.0
 
 TARGET_LINE_SPACING_KM = 250.0
 TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
+
+# Plate count is chosen automatically (see generate_plates) rather than asked of the user --
+# an inclusive range of plausible Earth-like plate counts.
+MIN_AUTO_PLATES = 8
+MAX_AUTO_PLATES = 20
 
 # How close to a plate-local pole (phi = +-pi/2) a line can get before its circumference
 # is too small to bother sampling.
@@ -50,7 +55,6 @@ class Plate:
     frame: np.ndarray  # 3x3 rotation matrix, local -> world
     crust_type: str  # "continental" or "oceanic"
     omega: np.ndarray = field(default_factory=lambda: np.zeros(3))  # angular velocity, world frame
-    boundary_local: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))  # local xyz
     lines: list[ElevationLine] = field(default_factory=list)
     # Steps since this plate was created (by generation, merge, or split). Gates split
     # eligibility in merge_split.py so a plate can't fragment repeatedly in quick
@@ -62,8 +66,32 @@ class Plate:
         """World position of this plate's local (phi=0, theta=0) reference point."""
         return self.frame[:, 0]
 
-    def boundary_world(self) -> np.ndarray:
-        return geometry.to_world(self.frame, self.boundary_local)
+    def outline_world(self) -> np.ndarray:
+        """A live approximation of this plate's current territory outline, derived
+        directly from each line's current two endpoints -- the actual edge boundary
+        evolution maintains (see boundary.py) -- rather than a separately-tracked polygon
+        that could drift out of sync with the real data. Traces the high-theta edge across
+        lines in ascending phi, then the low-theta edge back down: a standard scanline-to-
+        polygon conversion, exact for convex-ish plates and a reasonable envelope
+        otherwise. Always non-overlapping with a live-computed neighbor's outline in the
+        same sense the underlying elevation data is (see plates.iter_local_lattice /
+        boundary.step_boundaries), since it's read from that same data, not duplicated
+        state."""
+        lines_with_nodes = [line for line in self.lines if len(line.theta) > 0]
+        if not lines_with_nodes:
+            return np.zeros((0, 3))
+        ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
+        high_phi = np.array([line.phi for line in ordered])
+        high_theta = np.array([line.theta[-1] for line in ordered])
+        low_theta = np.array([line.theta[0] for line in ordered])
+        loop_local = np.concatenate(
+            [
+                geometry.local_xyz(high_phi, high_theta),
+                geometry.local_xyz(high_phi[::-1], low_theta[::-1]),
+            ],
+            axis=0,
+        )
+        return geometry.to_world(self.frame, loop_local)
 
     def node_count(self) -> int:
         return sum(len(line.theta) for line in self.lines)
@@ -139,8 +167,19 @@ def _build_lines_for_plate(
     return build_lines_from_lattice(frame, is_owned, elevation_at)
 
 
-def generate_plates(seed: int, num_plates: int = 12) -> list[Plate]:
+def generate_plates(seed: int, num_plates: int | None = None) -> list[Plate]:
+    """Tile the whole sphere into plates. `num_plates` is optional -- when omitted, a
+    plausible Earth-like count is drawn from the seed's own RNG stream (so it's still fully
+    determined by `seed`, just not something the caller has to pick).
+
+    Every plate's territory comes from the same nearest-seed test (`owner_tree.query`
+    below): each lattice node is claimed by exactly one plate, so the tiling has no gaps
+    and no overlaps by construction -- there's no separate polygon-boundary step that could
+    fall out of sync with it (see Plate.outline_world for the live, rendering-only outline
+    derived from this same data after the world has evolved)."""
     rng = np.random.default_rng(seed)
+    if num_plates is None:
+        num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
 
     seed_xyz = rng.normal(size=(num_plates, 3))
     seed_xyz /= np.linalg.norm(seed_xyz, axis=-1, keepdims=True)
@@ -149,25 +188,12 @@ def generate_plates(seed: int, num_plates: int = 12) -> list[Plate]:
         "continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)
     ]
 
-    sv = SphericalVoronoi(seed_xyz, radius=1.0)
-    sv.sort_vertices_of_regions()
-
     owner_tree = cKDTree(seed_xyz)
     noise = SphereNoise(rng, octaves=4, base_freq=2.5)
 
     plates: list[Plate] = []
     for i in range(num_plates):
         frame = geometry.plate_frame_from_seed(seed_xyz[i])
-        boundary_world = sv.vertices[sv.regions[i]]
-        boundary_local = geometry.to_local(frame, boundary_world)
         lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise)
-        plates.append(
-            Plate(
-                plate_id=i,
-                frame=frame,
-                crust_type=crust_types[i],
-                boundary_local=boundary_local,
-                lines=lines,
-            )
-        )
+        plates.append(Plate(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
     return plates

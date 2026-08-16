@@ -86,7 +86,3 @@ mantle-bloom/
 - **No persistence, single world.** World state lives in backend memory only, one world at
   a time; restarting the backend or calling `/world/generate` again loses whatever was
   there.
-- **No plate-boundary polygon overlay.** The rendered map is elevation-line points only; the
-  rough Voronoi outline kept per plate is cosmetic and not kept in sync with boundary
-  evolution (see
-  [docs/simulation-model.md#known-simplifications](docs/simulation-model.md#known-simplifications)).

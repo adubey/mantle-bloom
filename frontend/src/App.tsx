@@ -17,7 +17,6 @@ function randomSeed(): number {
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
-  const [numPlates, setNumPlates] = useState(12);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[2]);
   const [projection, setProjection] = useState<Projection>("behrmann");
@@ -41,7 +40,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const s = await generateWorld(seed, numPlates);
+      const s = await generateWorld(seed);
       setSummary(s);
       setShowGenerateDialog(false);
       await refresh(projection);
@@ -50,7 +49,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [seed, numPlates, projection, refresh]);
+  }, [seed, projection, refresh]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -181,7 +180,7 @@ export default function App() {
           >
             <h2 style={{ fontSize: 16, marginTop: 0 }}>Generate World</h2>
 
-            <label style={{ display: "block", marginBottom: 10 }}>
+            <label style={{ display: "block", marginBottom: 16 }}>
               Seed
               <div style={{ display: "flex", gap: 6 }}>
                 <input
@@ -199,18 +198,6 @@ export default function App() {
                   🎲
                 </button>
               </div>
-            </label>
-
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Plates
-              <input
-                type="number"
-                min={2}
-                max={40}
-                value={numPlates}
-                onChange={(e) => setNumPlates(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
             </label>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

@@ -42,11 +42,13 @@ async function asJson<T>(resp: Response): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
-export function generateWorld(seed: number, numPlates: number): Promise<WorldSummary> {
+// No plate count here -- the world tiles itself into a plausible number of plates from the
+// seed alone (see backend app/plates.py's generate_plates).
+export function generateWorld(seed: number): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seed, num_plates: numPlates }),
+    body: JSON.stringify({ seed }),
   }).then(asJson<WorldSummary>);
 }
 

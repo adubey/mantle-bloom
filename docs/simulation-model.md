@@ -60,21 +60,25 @@ to the plate.
 <a id="initial-plate-generation"></a>
 ## Initial plate generation (`plates.py`)
 
-`num_plates` seed points are scattered uniformly on the unit sphere (normalized Gaussian
-samples) and classified continental/oceanic (`CONTINENTAL_FRACTION = 0.4`, Earth-like).
-`scipy.spatial.SphericalVoronoi` builds the initial spherical Voronoi diagram from those
-seeds, which gives each plate both its local frame (built from its own seed) and a rough
-boundary polygon (kept only for a cosmetic overlay -- see
-[World state](architecture.md#world-state)).
+Plate count isn't asked of the caller: `num_plates`, if not given, is drawn from the seed's
+own RNG stream (`plates.MIN_AUTO_PLATES = 8` to `plates.MAX_AUTO_PLATES = 20`), so the world
+still tiles itself the same deterministic way for a given seed without the caller having to
+pick a number. That many seed points are scattered uniformly on the unit sphere (normalized
+Gaussian samples) and classified continental/oceanic (`CONTINENTAL_FRACTION = 0.4`,
+Earth-like); each gets a plate-local frame built from its own seed
+(`geometry.plate_frame_from_seed`).
 
 Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
 plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution, and for every
-candidate node, keep it only if this plate's seed is the *nearest* seed to it (the defining
-property of a spherical Voronoi cell -- no separate polygon-containment test needed). Kept
-nodes get a base elevation by crust type (`BASE_CONTINENTAL_M = 200`,
-`BASE_OCEANIC_M = -3800`) plus a smooth noise texture (`noise.py`, a small sum of sinusoids
-with random frequency/phase -- not true gradient noise, just enough texture to not look
-perfectly flat).
+candidate node, keep it only if this plate's seed is the *nearest* seed to it (`cKDTree`
+against all seeds) -- the defining property of a spherical [Voronoi
+diagram](https://en.wikipedia.org/wiki/Voronoi_diagram), computed directly rather than via
+an explicit polygon-construction step. Every node ends up owned by exactly one plate, so the
+initial tiling has no gaps and no overlaps *by construction* -- there's nothing to
+separately verify. Kept nodes get a base elevation by crust type
+(`BASE_CONTINENTAL_M = 200`, `BASE_OCEANIC_M = -3800`) plus a smooth noise texture
+(`noise.py`, a small sum of sinusoids with random frequency/phase -- not true gradient
+noise, just enough texture to not look perfectly flat).
 
 The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by plate merging
 (see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
@@ -206,10 +210,15 @@ equal-area on screen.
 Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
 than an oversight:
 
-- **`boundary_local` is cosmetic only.** The rough polygon outline from initial Voronoi
-  generation rotates rigidly with its plate but is never updated to reflect boundary
-  growth/shrinkage, and no code path other than rendering consults it -- the actual
-  "edge of the crust" is always wherever the outermost elevation-line nodes currently are.
+- **The rendered outline (`Plate.outline_world`) is an envelope, not an exact polygon.**
+  It's traced from each line's two current endpoints (ascending phi along the high-theta
+  edge, descending back down the low-theta edge), so it's always in sync with the real
+  territory -- unlike an earlier version that kept a separate polygon frozen at generation
+  and rotated it rigidly, which drifted out of sync after enough stepping and could visibly
+  overlap a neighboring plate's stale outline even though the underlying elevation data
+  never did. The current approach can't represent a concave notch in a single line's
+  extent (see the next bullet) -- a minor visual smoothing, not a data problem, since
+  nothing other than rendering reads this outline.
 - **Lines are assumed spatially contiguous.** A line's two ends (`theta[0]`, `theta[-1]`)
   are treated as its true territorial edges. A plate that develops a concave notch (or a
   split whose cut crosses one line's span twice) could in principle produce a

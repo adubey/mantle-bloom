@@ -9,16 +9,20 @@ time.
 Request body:
 
 ```json
-{ "seed": 1, "num_plates": 12, "num_mantle_centers": 8 }
+{ "seed": 1, "num_plates": null, "num_mantle_centers": 8 }
 ```
 
-All fields optional (defaults: `world.DEFAULT_NUM_PLATES = 12`,
-`world.DEFAULT_MANTLE_CENTERS = 8`). Replaces whatever world previously existed.
+All fields optional. `num_plates` defaults to `null` -- omit it (the frontend always does)
+to let the world tile itself into a plausible plate count from `seed` alone
+(`plates.MIN_AUTO_PLATES` to `plates.MAX_AUTO_PLATES`, see
+[simulation-model.md#initial-plate-generation](simulation-model.md#initial-plate-generation)),
+or pass an explicit count to override it. `num_mantle_centers` defaults to
+`world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world previously existed.
 
 Response: a summary --
 
 ```json
-{ "seed": 1, "elapsed_years": 0.0, "num_plates": 12 }
+{ "seed": 1, "elapsed_years": 0.0, "num_plates": 13 }
 ```
 
 ## `POST /world/step`
@@ -71,5 +75,8 @@ rescales or re-centers.
 - `velocity_arrow` -- a short great-circle arc from the plate's seed point in its current
   velocity direction, length scaled by how fast it's moving relative to
   `mantle.MAX_PLATE_RATE`; `null` under the same condition as `pole`.
-- `boundary` -- the plate's rough boundary outline. Cosmetic only -- see
-  [simulation-model.md#known-simplifications](simulation-model.md#known-simplifications).
+- `boundary` -- the plate's outline, traced live from its current elevation-line endpoints
+  every render (`Plate.outline_world`) -- always in sync with the actual territory, not a
+  separately-tracked polygon. See
+  [simulation-model.md#known-simplifications](simulation-model.md#known-simplifications) for
+  the (minor) sense in which it's still an approximation.

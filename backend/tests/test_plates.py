@@ -1,7 +1,7 @@
 import numpy as np
 
 from app import geometry
-from app.plates import generate_plates
+from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, generate_plates
 from app.world import generate_world
 
 
@@ -67,3 +67,34 @@ def test_generation_is_deterministic_for_same_seed():
         assert p1.crust_type == p2.crust_type
         assert np.allclose(p1.frame, p2.frame)
         assert len(p1.lines) == len(p2.lines)
+
+
+def test_generate_plates_without_num_plates_picks_a_plausible_count():
+    for seed in range(20):
+        plates = generate_plates(seed=seed)
+        assert MIN_AUTO_PLATES <= len(plates) <= MAX_AUTO_PLATES
+
+
+def test_generate_plates_auto_count_is_deterministic_for_same_seed():
+    p1 = generate_plates(seed=99)
+    p2 = generate_plates(seed=99)
+    assert len(p1) == len(p2)
+    for a, b in zip(p1, p2):
+        assert a.crust_type == b.crust_type
+        assert np.allclose(a.frame, b.frame)
+
+
+def test_outline_world_traces_a_loop_covering_every_line():
+    plates = generate_plates(seed=5, num_plates=8)
+    for p in plates:
+        lines_with_nodes = [line for line in p.lines if len(line.theta) > 0]
+        outline = p.outline_world()
+        assert len(outline) == 2 * len(lines_with_nodes)
+        assert np.allclose(np.linalg.norm(outline, axis=-1), 1.0, atol=1e-9)
+
+
+def test_outline_world_empty_for_plate_with_no_lines():
+    plates = generate_plates(seed=6, num_plates=8)
+    p = plates[0]
+    p.lines = []
+    assert len(p.outline_world()) == 0

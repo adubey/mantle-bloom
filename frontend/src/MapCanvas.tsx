@@ -39,6 +39,44 @@ function toPixel(t: Transform, x: number, y: number): [number, number] {
   return [t.scale * x + t.offsetX, -t.scale * y + t.offsetY];
 }
 
+// A plate's live outline (see backend Plate.outline_world) is built from many short
+// consecutive hops, but a plate whose local frame happens to put its own pole -- or the
+// map projection's antimeridian -- inside its territory can still produce one or two
+// segments that are wildly longer than the rest once projected. Rather than draw those as
+// a straight line straight across the map, break the path there: find the typical
+// (median) segment length for this loop and skip drawing anything far longer than that.
+function strokeRobustLoop(ctx: CanvasRenderingContext2D, points: [number, number][], t: Transform, color: string) {
+  if (points.length < 2) return;
+  const pixels = points.map(([x, y]) => toPixel(t, x, y));
+  const n = pixels.length;
+  const lengths = pixels.map(([x0, y0], i) => {
+    const [x1, y1] = pixels[(i + 1) % n];
+    return Math.hypot(x1 - x0, y1 - y0);
+  });
+  const sorted = [...lengths].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] || 0;
+  const breakThreshold = Math.max(median * 6, 20);
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  let penDown = false;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = pixels[i];
+    const [x1, y1] = pixels[(i + 1) % n];
+    if (!penDown) {
+      ctx.moveTo(x0, y0);
+      penDown = true;
+    }
+    if (lengths[i] > breakThreshold) {
+      penDown = false;
+    } else {
+      ctx.lineTo(x1, y1);
+    }
+  }
+  ctx.stroke();
+}
+
 function drawArrow(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number, color: string) {
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
@@ -140,18 +178,7 @@ export default function MapCanvas({ data, view, width, height }: Props) {
       }
       ctx.globalAlpha = 1;
 
-      if (plate.boundary.length > 1) {
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        plate.boundary.forEach(([x, y], i) => {
-          const [px, py] = toPixel(t, x, y);
-          if (i === 0) ctx.moveTo(px, py);
-          else ctx.lineTo(px, py);
-        });
-        ctx.closePath();
-        ctx.stroke();
-      }
+      strokeRobustLoop(ctx, plate.boundary, t, color);
 
       if (plate.velocity_arrow) {
         const [sx, sy] = toPixel(t, ...plate.velocity_arrow.start);

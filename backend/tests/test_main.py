@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 
 
 @pytest.fixture
@@ -71,3 +72,9 @@ def test_generate_replaces_previous_world(client):
     assert resp.json()["num_plates"] == 8
     render_resp = client.get("/world/render", params={"projection": "behrmann"})
     assert len(render_resp.json()["plates"]) == 8
+
+
+def test_generate_without_num_plates_picks_a_plausible_count(client):
+    resp = client.post("/world/generate", json={"seed": 7})
+    assert resp.status_code == 200
+    assert MIN_AUTO_PLATES <= resp.json()["num_plates"] <= MAX_AUTO_PLATES

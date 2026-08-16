@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from . import geometry, mantle, projections
-from .world import DEFAULT_MANTLE_CENTERS, DEFAULT_NUM_PLATES, World, generate_world, step_world
+from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # Baseline angular length (radians) of a plate's velocity arrow on the map, before scaling
 # by how fast that plate is actually moving relative to the fastest allowed rate.
@@ -30,7 +30,9 @@ _state: dict[str, World | None] = {"world": None}
 
 class GenerateRequest(BaseModel):
     seed: int = 0
-    num_plates: int = DEFAULT_NUM_PLATES
+    # Optional: the world tiles itself into a plausible plate count when omitted (see
+    # plates.generate_plates) -- the frontend doesn't ask for one.
+    num_plates: int | None = None
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS
 
 
@@ -93,9 +95,8 @@ def _plate_tectonics(projection: str, plate) -> dict:
         start, end = _project_points(projection, np.stack([seed_xyz, end_xyz]))
         arrow = {"start": start, "end": end}
 
-    boundary = (
-        _project_points(projection, plate.boundary_world()) if len(plate.boundary_local) > 0 else []
-    )
+    outline_world = plate.outline_world()
+    boundary = _project_points(projection, outline_world) if len(outline_world) > 0 else []
 
     return {
         "pole": pole,
