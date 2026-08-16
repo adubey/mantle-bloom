@@ -1,8 +1,31 @@
 import numpy as np
 
 from app import geometry
-from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, MIN_OCEANIC_PLATES, generate_plates
+from app.plates import (
+    MAX_AUTO_PLATES,
+    MIN_AUTO_PLATES,
+    MIN_OCEANIC_PLATES,
+    TARGET_LINE_SPACING_RAD,
+    generate_plates,
+    iter_local_lattice,
+)
 from app.world import generate_world
+
+
+def test_iter_local_lattice_default_spacing_matches_target():
+    rows = list(iter_local_lattice(np.eye(3)))
+    assert len(rows) > 0
+    phis = [phi for phi, _, _ in rows]
+    assert np.allclose(np.diff(sorted(phis)), TARGET_LINE_SPACING_RAD, atol=1e-9)
+
+
+def test_iter_local_lattice_custom_spacing_changes_row_count():
+    coarse = list(iter_local_lattice(np.eye(3), spacing_rad=TARGET_LINE_SPACING_RAD * 4))
+    fine = list(iter_local_lattice(np.eye(3), spacing_rad=TARGET_LINE_SPACING_RAD / 2))
+    assert len(fine) > len(coarse)
+    total_fine = sum(len(theta) for _, theta, _ in fine)
+    total_coarse = sum(len(theta) for _, theta, _ in coarse)
+    assert total_fine > total_coarse
 
 
 def test_generate_plates_count_and_crust_types():

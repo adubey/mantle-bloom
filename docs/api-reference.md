@@ -55,8 +55,9 @@ step. `404` if no world has been generated yet.
 ## `GET /world/render?projection=behrmann|eckert4`
 
 Every plate's elevation-line nodes plus everything the "Plates" map view needs (pole,
-velocity arrow, boundary outline), all projected to 2D. `400` for an unrecognized
-projection name, `404` if no world has been generated yet.
+velocity arrow, boundary outline), *and* a full-coverage render grid (see below), all
+projected to 2D. `400` for an unrecognized projection name, `404` if no world has been
+generated yet.
 
 ```json
 {
@@ -74,13 +75,21 @@ projection name, `404` if no world has been generated yet.
       "velocity_arrow": { "start": [x, y], "end": [x, y] },
       "boundary": [[x, y], ...]
     }
-  ]
+  ],
+  "grid": {
+    "points": [[x, y], ...],
+    "elevation": [m, ...],
+    "plate_id": [0, ...],
+    "crust_type": ["continental", ...],
+    "cell_half_width": [w, ...],
+    "cell_half_height": [h, ...]
+  }
 }
 ```
 
 `lines[].points`/`lines[].elevation` are index-aligned and the same length. All coordinates
-(`lines[].points`, `pole`, `velocity_arrow.start`/`.end`, `boundary`) are in the projection's
-own planar units for a unit-radius sphere (see
+(`lines[].points`, `pole`, `velocity_arrow.start`/`.end`, `boundary`, `grid.points`) are in
+the projection's own planar units for a unit-radius sphere (see
 [simulation-model.md#projections](simulation-model.md#projections)); the frontend picks a
 single pixels-per-unit scale from the union of all of them so switching map views never
 rescales or re-centers.
@@ -95,3 +104,11 @@ rescales or re-centers.
   separately-tracked polygon. See
   [simulation-model.md#known-simplifications](simulation-model.md#known-simplifications) for
   the (minor) sense in which it's still an approximation.
+- `grid` -- what the frontend actually paints as the filled map (`lines` is the raw
+  physical data, kept for reference). A uniform lat/lon sweep of the whole sphere with
+  every cell already assigned its nearest elevation node, so it has no data-dependent gaps
+  the way `lines` can once projected. `cell_half_width`/`cell_half_height` (same units as
+  `points`) are that row's actual on-screen footprint, measured from the projection's local
+  behavior rather than assumed -- draw each cell as a rectangle of (at least) that size, or
+  gaps reappear regardless of how dense the grid itself is. See
+  [simulation-model.md#render-grid](simulation-model.md#render-grid).

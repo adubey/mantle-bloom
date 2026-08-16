@@ -37,10 +37,6 @@ MAX_CONTINENTS = 8
 # However few continents are requested, still leave room for real ocean floor.
 MIN_OCEANIC_PLATES = 3
 
-# How close to a plate-local pole (phi = +-pi/2) a line can get before its circumference
-# is too small to bother sampling.
-_MAX_ABS_PHI = np.pi / 2 - TARGET_LINE_SPACING_RAD / 2
-
 
 @dataclass
 class ElevationLine:
@@ -118,14 +114,17 @@ def noise_amplitude(crust_type: str) -> float:
     return CONTINENTAL_NOISE_AMPLITUDE_M if crust_type == "continental" else OCEANIC_NOISE_AMPLITUDE_M
 
 
-def iter_local_lattice(frame: np.ndarray):
-    """Sweep a full plate-local (phi, theta) lattice at TARGET_LINE_SPACING_RAD resolution,
-    yielding (phi, theta_candidates, world_pts) per row. Shared by initial generation and
-    by plate-merge resampling (see merge_split.py) -- the two places a full-footprint sweep
-    is needed."""
-    phi_values = np.arange(-_MAX_ABS_PHI, _MAX_ABS_PHI, TARGET_LINE_SPACING_RAD)
+def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACING_RAD):
+    """Sweep a full plate-local (phi, theta) lattice at `spacing_rad` resolution, yielding
+    (phi, theta_candidates, world_pts) per row. Shared by initial generation and by
+    plate-merge resampling (see merge_split.py), and, at a resolution independent of the
+    physical line spacing, by the render-grid sweep (see main.py's _render_grid) that gives
+    the rendered map full coverage regardless of how sparse the underlying physical data
+    is once projected."""
+    max_abs_phi = np.pi / 2 - spacing_rad / 2
+    phi_values = np.arange(-max_abs_phi, max_abs_phi, spacing_rad)
     for phi in phi_values:
-        dtheta = TARGET_LINE_SPACING_RAD / max(np.cos(phi), 1e-3)
+        dtheta = spacing_rad / max(np.cos(phi), 1e-3)
         n_theta = max(int(np.round(2 * np.pi / dtheta)), 1)
         theta_candidates = np.linspace(-np.pi, np.pi, n_theta, endpoint=False)
 

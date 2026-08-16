@@ -12,9 +12,11 @@ interface Props {
 }
 
 const PADDING_PX = 20;
-const POINT_SIZE_PX = 2;
 const POLE_RADIUS_PX = 5;
 const ARROWHEAD_LENGTH_PX = 7;
+// Cells are drawn slightly larger than their measured half-extent so adjacent cells
+// overlap a hair rather than risk a hairline gap from floating-point rounding.
+const CELL_OVERLAP_FACTOR = 1.15;
 
 // A fixed categorical palette so each plate reads as a distinct region across
 // generate/step calls (plate_id is stable within one world's lifetime).
@@ -115,9 +117,9 @@ export default function MapCanvas({ data, view, width, height }: Props) {
 
     if (!data || data.plates.length === 0) return;
 
-    // Bounding box over every coordinate the payload carries (lines, boundary, pole,
-    // velocity arrow) regardless of the active view, so switching views never rescales
-    // or re-centers the map.
+    // Bounding box over every coordinate the payload carries (the render grid, plate
+    // boundaries, poles, velocity arrows) regardless of the active view, so switching
+    // views never rescales or re-centers the map.
     let minX = Infinity;
     let maxX = -Infinity;
     let minY = Infinity;
@@ -128,10 +130,8 @@ export default function MapCanvas({ data, view, width, height }: Props) {
       if (y < minY) minY = y;
       if (y > maxY) maxY = y;
     };
+    for (const [x, y] of data.grid.points) consider(x, y);
     for (const plate of data.plates) {
-      for (const line of plate.lines) {
-        for (const [x, y] of line.points) consider(x, y);
-      }
       for (const [x, y] of plate.boundary) consider(x, y);
       if (plate.pole) consider(plate.pole[0], plate.pole[1]);
       if (plate.velocity_arrow) {
@@ -150,51 +150,46 @@ export default function MapCanvas({ data, view, width, height }: Props) {
       offsetY: height / 2 + (scale * (minY + maxY)) / 2,
     };
 
-    if (view === "elevation") {
-      for (const plate of data.plates) {
-        for (const line of plate.lines) {
-          for (let i = 0; i < line.points.length; i++) {
-            const [px, py] = toPixel(t, line.points[i][0], line.points[i][1]);
-            ctx.fillStyle = elevationColor(line.elevation[i]);
-            ctx.fillRect(px - POINT_SIZE_PX / 2, py - POINT_SIZE_PX / 2, POINT_SIZE_PX, POINT_SIZE_PX);
-          }
-        }
+    // The render grid: a uniform lat/lon sweep with every cell already assigned its
+    // nearest data point (see backend main.py's _render_grid), each drawn at the size its
+    // own row actually needs (cell_half_width/height) so the filled map has no gaps
+    // regardless of projection distortion.
+    const { grid } = data;
+    for (let i = 0; i < grid.points.length; i++) {
+      const [x, y] = grid.points[i];
+      const [px, py] = toPixel(t, x, y);
+      const w = grid.cell_half_width[i] * t.scale * 2 * CELL_OVERLAP_FACTOR;
+      const h = grid.cell_half_height[i] * t.scale * 2 * CELL_OVERLAP_FACTOR;
+
+      if (view === "elevation") {
+        ctx.fillStyle = elevationColor(grid.elevation[i]);
+      } else {
+        ctx.fillStyle = plateColor(grid.plate_id[i]);
       }
-      return;
+      ctx.fillRect(px - w / 2, py - h / 2, w, h);
     }
 
-    // "plates" view: territory (faint, categorical) + boundary outline + pole marker +
-    // velocity arrow, per plate.
-    for (const plate of data.plates) {
-      const color = plateColor(plate.plate_id);
+    if (view === "plates") {
+      for (const plate of data.plates) {
+        const color = plateColor(plate.plate_id);
+        strokeRobustLoop(ctx, plate.boundary, t, color);
 
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.35;
-      for (const line of plate.lines) {
-        for (const [x, y] of line.points) {
-          const [px, py] = toPixel(t, x, y);
-          ctx.fillRect(px - POINT_SIZE_PX / 2, py - POINT_SIZE_PX / 2, POINT_SIZE_PX, POINT_SIZE_PX);
+        if (plate.velocity_arrow) {
+          const [sx, sy] = toPixel(t, ...plate.velocity_arrow.start);
+          const [ex, ey] = toPixel(t, ...plate.velocity_arrow.end);
+          drawArrow(ctx, sx, sy, ex, ey, "#ffffff");
         }
-      }
-      ctx.globalAlpha = 1;
 
-      strokeRobustLoop(ctx, plate.boundary, t, color);
-
-      if (plate.velocity_arrow) {
-        const [sx, sy] = toPixel(t, ...plate.velocity_arrow.start);
-        const [ex, ey] = toPixel(t, ...plate.velocity_arrow.end);
-        drawArrow(ctx, sx, sy, ex, ey, "#ffffff");
-      }
-
-      if (plate.pole) {
-        const [px, py] = toPixel(t, plate.pole[0], plate.pole[1]);
-        ctx.fillStyle = "#ff2d55";
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(px, py, POLE_RADIUS_PX, 0, 2 * Math.PI);
-        ctx.fill();
-        ctx.stroke();
+        if (plate.pole) {
+          const [px, py] = toPixel(t, plate.pole[0], plate.pole[1]);
+          ctx.fillStyle = "#ff2d55";
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(px, py, POLE_RADIUS_PX, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+        }
       }
     }
   }, [data, view, width, height]);

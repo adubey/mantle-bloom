@@ -82,6 +82,43 @@ def test_render_behrmann_and_eckert4(client):
                 assert set(plate["velocity_arrow"].keys()) == {"start", "end"}
 
 
+def test_render_grid_covers_the_sphere_with_no_gaps(client):
+    client.post("/world/generate", json={"seed": 8, "num_plates": 10})
+    resp = client.get("/world/render", params={"projection": "behrmann"})
+    grid = resp.json()["grid"]
+
+    n = len(grid["points"])
+    assert n > 1000  # a real full-sphere sweep, not a token few points
+    assert len(grid["elevation"]) == n
+    assert len(grid["plate_id"]) == n
+    assert len(grid["crust_type"]) == n
+    assert len(grid["cell_half_width"]) == n
+    assert len(grid["cell_half_height"]) == n
+    assert all(c in ("continental", "oceanic") for c in grid["crust_type"])
+    assert all(len(p) == 2 for p in grid["points"])
+    # Every cell must have a real, positive footprint -- a zero or negative half-extent
+    # would mean a hole in the map regardless of how densely the grid was swept.
+    assert all(w > 0 for w in grid["cell_half_width"])
+    assert all(h > 0 for h in grid["cell_half_height"])
+    # Sizes must actually vary row to row (projection distortion differs by latitude) --
+    # not a single fixed value applied everywhere, which would reintroduce the original gap.
+    assert len(set(grid["cell_half_width"])) > 1
+
+    # Every grid plate_id must reference a plate that actually exists.
+    render_body = resp.json()
+    live_ids = {p["plate_id"] for p in render_body["plates"]}
+    assert set(grid["plate_id"]) <= live_ids
+
+
+def test_render_grid_matches_selected_projection_shape(client):
+    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    behrmann = client.get("/world/render", params={"projection": "behrmann"}).json()["grid"]
+    eckert4 = client.get("/world/render", params={"projection": "eckert4"}).json()["grid"]
+    # Same sample count (same underlying sweep), different projected coordinates.
+    assert len(behrmann["points"]) == len(eckert4["points"])
+    assert behrmann["points"][0] != eckert4["points"][0]
+
+
 def test_render_unknown_projection_returns_400(client):
     client.post("/world/generate", json={"seed": 4, "num_plates": 6})
     resp = client.get("/world/render", params={"projection": "mercator"})

@@ -11,6 +11,7 @@
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage (gap-filling)](#gap-filling)
 - [Projections](#projections)
+- [Render grid](#render-grid)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -306,6 +307,45 @@ is a one-function, one-dict-entry change. Both take/return radians and operate o
 unit-radius sphere; the frontend picks a single uniform pixel scale from the returned data's
 bounding box (not independent x/y scales) so the equal-area property actually reads as
 equal-area on screen.
+
+<a id="render-grid"></a>
+## Render grid (`main.py`)
+
+The elevation-line/gap-filling data is genuinely Lagrangian: nodes are spaced at
+`TARGET_LINE_SPACING_KM` *within each plate's own local frame*, not on any shared, screen-
+aligned grid. Drawing that raw point cloud directly -- one dot per node -- leaves visible
+gaps once projected: projected spacing isn't uniform (Behrmann, for instance, stretches
+longitude spacing by roughly 50x at high latitudes relative to the equator, since
+`x = lon * cos(30deg)` doesn't compensate for the shrinking circumference the way the
+latitude term does), so a dot sized to look right at the equator leaves gaps near the
+poles, and no single fixed dot size closes the gap everywhere without grossly overlapping
+elsewhere.
+
+`_render_grid` fixes this the way the user asked: sweep a uniform lat/lon grid over the
+whole sphere (`plates.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` --
+the same identity-frame trick `gaps.py` uses for its coverage sweep, at
+`GRID_SPACING_RAD = TARGET_LINE_SPACING_RAD`), assign every cell its nearest elevation
+node via one `cKDTree` query against every plate's current nodes (no distance cutoff --
+every cell gets *some* value, so there's no gap by construction regardless of how far the
+nearest real data happens to be), and project the whole grid the same way everything else
+is projected. This is a one-time resample purely for rendering -- it never touches
+`world.plates`, so it has no bearing on the mass-conservation properties the rest of the
+model is built around (see [Why not a grid](#why-not-a-grid)); a fresh grid is computed
+from scratch on every `/world/render` call.
+
+**Sizing each cell correctly is what actually closes the gaps.** A uniform *sphere* grid
+still isn't a uniform *projected* grid -- so each cell is drawn at a size measured from the
+projection's own local behavior, not a fixed pixel size: `_row_cell_half_extent` projects
+two extra nearby samples per row (one step further in theta, one row further in phi) and
+measures the resulting on-screen offset directly, giving that row's `cell_half_width` and
+`cell_half_height` in the same projected units as the point coordinates. theta-only and
+phi-only offsets are used deliberately so each measurement isolates one derivative exactly
+(in both projections, moving in longitude at fixed latitude never perturbs the projected y
+coordinate, and vice versa) rather than approximating a mixed partial derivative. The
+frontend (`MapCanvas.tsx`) draws each cell as a rectangle of that measured size (with a
+small `CELL_OVERLAP_FACTOR` margin so adjacent cells overlap a hair rather than risk a
+hairline gap from floating-point rounding) -- confirmed visually to close every gap in both
+projections, including the sparsest cells right at the poles.
 
 <a id="known-simplifications"></a>
 ## Known simplifications

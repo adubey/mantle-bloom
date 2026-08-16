@@ -104,7 +104,8 @@ merge_split.py       plate consumption, sustained-collision continental merging 
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
                      plate or spawns a new one where no plate dominates
 world.py             World/Plate orchestration: generate_world, step_world
-main.py              FastAPI routes tying it all together
+main.py              FastAPI routes; also builds the full-coverage render grid each
+                     /world/render call (see simulation-model.md#render-grid)
 ```
 
 See [simulation-model.md](simulation-model.md) for what each of these actually computes and
