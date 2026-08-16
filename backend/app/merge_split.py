@@ -84,9 +84,19 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
     first step regardless of how small `years` was, because the pre-existing generation-time
     proximity was already enough on its own. Requiring a real closing rate (the same check
     boundary.py uses to classify convergent boundaries) is what actually distinguishes a
-    genuine collision from any other pair of neighbors."""
+    genuine collision from any other pair of neighbors.
+
+    Most continental pairs are nowhere near each other (separated by oceanic plates, or just
+    on opposite sides of the sphere), and building/querying a full point-cloud k-d tree for
+    every one of the O(n^2) pairs dominated step time once plates carry thousands of nodes
+    each (see docs/simulation-model.md's resolution note). Each plate's cheap bounding
+    sphere (see geometry.bounding_sphere) rules most pairs out with one arccos instead of a
+    full tree query, and each plate's tree is built once and reused across every pair it
+    appears in, rather than rebuilt per pair."""
     continental = [p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0]
     points = {p.plate_id: p.all_points_and_elevation()[0] for p in continental}
+    spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in points.items()}
+    trees: dict[int, cKDTree] = {}
 
     pairs = []
     for i, a in enumerate(continental):
@@ -94,7 +104,16 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
             pa, pb = points[a.plate_id], points[b.plate_id]
             if len(pa) == 0 or len(pb) == 0:
                 continue
-            dist, idx = cKDTree(pb).query(pa)
+
+            ca, ra = spheres[a.plate_id]
+            cb, rb = spheres[b.plate_id]
+            centroid_dist = float(geometry.angular_distance(ca, cb))
+            if centroid_dist - ra - rb > MERGE_CONTACT_DISTANCE_RAD:
+                continue  # no point in either cloud can possibly be within contact distance
+
+            if b.plate_id not in trees:
+                trees[b.plate_id] = cKDTree(pb)
+            dist, idx = trees[b.plate_id].query(pa)
             close = dist < MERGE_CONTACT_DISTANCE_RAD
             if np.sum(close) < MERGE_MIN_CONTACT_NODES:
                 continue

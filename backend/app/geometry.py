@@ -117,6 +117,17 @@ def angular_distance(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.arccos(dot)
 
 
+def bounding_sphere(points: np.ndarray) -> tuple[np.ndarray, float]:
+    """A point cloud's centroid direction and the max angular distance from it to any of
+    its own points. Cheap enough to compute per plate per step, and -- via the triangle
+    inequality on the sphere -- enough to lower-bound how close two point clouds' *closest*
+    points could possibly be without comparing every point in either cloud: if
+    `angular_distance(centroid_a, centroid_b) - radius_a - radius_b` exceeds some distance
+    threshold, no point in cloud a can be within that threshold of any point in cloud b."""
+    centroid = normalize(points.mean(axis=0))
+    return centroid, float(angular_distance(points, centroid).max())
+
+
 def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:
     """World unit vectors (..., 3) -> plate-local unit vectors, given local frame `frame`."""
     return world_xyz @ frame  # frame.T @ v for each v, vectorized as v @ frame

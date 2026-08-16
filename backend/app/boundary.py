@@ -5,9 +5,10 @@ ends, inserting new nodes (crust created at a divergent boundary) or deleting th
 destroyed/folded at a convergent one).
 
 Adjacency is *not* a maintained topological structure -- every step, each plate's nodes are
-matched against a fresh k-d tree of every other plate's current nodes. This is what lets
-plates evolve independently (see plates.py) while boundaries still behave sensibly: it's
-self-healing every step rather than requiring an always-consistent shared-edge structure.
+matched (via k-d tree, restricted to plates a cheap bounding-sphere check can't rule out --
+see step_boundaries) against every geometrically-nearby other plate's current nodes. This is
+what lets plates evolve independently (see plates.py) while boundaries still behave sensibly:
+it's self-healing every step rather than requiring an always-consistent shared-edge structure.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import mantle
+from . import geometry, mantle
 from .plates import TARGET_LINE_SPACING_RAD, ElevationLine
 
 if TYPE_CHECKING:
@@ -132,34 +133,61 @@ def step_boundaries(world: World, years: float) -> None:
             np.concatenate(pieces, axis=0) if pieces else np.zeros((0, 3))
         )
 
+    # Cheap bounding sphere per plate (see geometry.bounding_sphere): used below so each
+    # plate's tree/query is built from only the other plates a bounding-sphere check can't
+    # rule out, rather than literally every other plate concatenated -- and the query below
+    # runs once per plate (all its lines' points at once) rather than once per line, which
+    # together are what dominated step time once plates carry thousands of nodes each (see
+    # docs/simulation-model.md's resolution note).
+    spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in plate_points.items() if len(pts) > 0}
+
     for plate in world.plates:
-        other_points = []
-        other_owner = []
-        for other in world.plates:
-            if other.plate_id == plate.plate_id or len(plate_points[other.plate_id]) == 0:
-                continue
-            other_points.append(plate_points[other.plate_id])
-            other_owner.append(np.full(len(plate_points[other.plate_id]), other.plate_id))
-        if not other_points or not plate.lines:
+        own_points = plate_points[plate.plate_id]
+        if not plate.lines or len(own_points) == 0 or plate.plate_id not in spheres:
             continue
-        other_points = np.concatenate(other_points, axis=0)
-        other_owner = np.concatenate(other_owner, axis=0)
+
+        ca, ra = spheres[plate.plate_id]
+        other_points_list = []
+        other_owner_list = []
+        for other in world.plates:
+            if other.plate_id == plate.plate_id or other.plate_id not in spheres:
+                continue
+            cb, rb = spheres[other.plate_id]
+            centroid_dist = float(geometry.angular_distance(ca, cb))
+            if centroid_dist - ra - rb > FAR_THRESHOLD_RAD:
+                continue  # no point of "other" can possibly be within FAR_THRESHOLD_RAD
+            other_points_list.append(plate_points[other.plate_id])
+            other_owner_list.append(np.full(len(plate_points[other.plate_id]), other.plate_id))
+        if not other_points_list:
+            continue
+        other_points = np.concatenate(other_points_list, axis=0)
+        other_owner = np.concatenate(other_owner_list, axis=0)
         tree = cKDTree(other_points)
 
+        dist_all, idx_all = tree.query(own_points)
+        neighbor_owner_all = other_owner[idx_all]
+        neighbor_points_all = other_points[idx_all]
+        neighbor_omega_all = np.array([plate_by_id[o].omega for o in neighbor_owner_all])
+        closing_all = closing_rate(own_points, plate.omega, neighbor_omega_all, neighbor_points_all)
+
+        intensity_all = np.clip(1.0 - dist_all / FAR_THRESHOLD_RAD, 0.0, 1.0)
+        near_boundary_all = dist_all < FAR_THRESHOLD_RAD
+        convergent_all = near_boundary_all & (closing_all > TRANSFORM_RATE_THRESHOLD)
+        divergent_all = near_boundary_all & (closing_all < -TRANSFORM_RATE_THRESHOLD)
+
+        target = _divergent_target(plate.crust_type)
+        relax_factor = 1.0 - np.exp(-DIVERGENT_RELAX_RATE_PER_MYR * years_myr)
+
         new_lines = []
+        offset = 0
         for line in plate.lines:
-            pts = line.world_xyz(plate.frame)
-            dist, idx = tree.query(pts)
-            neighbor_owner = other_owner[idx]
-            neighbor_points = other_points[idx]
-
-            neighbor_omega = np.array([plate_by_id[o].omega for o in neighbor_owner])
-            closing = closing_rate(pts, plate.omega, neighbor_omega, neighbor_points)
-
-            intensity = np.clip(1.0 - dist / FAR_THRESHOLD_RAD, 0.0, 1.0)
-            near_boundary = dist < FAR_THRESHOLD_RAD
-            convergent = near_boundary & (closing > TRANSFORM_RATE_THRESHOLD)
-            divergent = near_boundary & (closing < -TRANSFORM_RATE_THRESHOLD)
+            n = len(line.theta)
+            dist = dist_all[offset : offset + n]
+            closing = closing_all[offset : offset + n]
+            intensity = intensity_all[offset : offset + n]
+            convergent = convergent_all[offset : offset + n]
+            divergent = divergent_all[offset : offset + n]
+            offset += n
 
             elevation = line.elevation.copy()
             if plate.crust_type == "continental":
@@ -167,8 +195,6 @@ def step_boundaries(world: World, years: float) -> None:
             else:
                 elevation[convergent] -= CONVERGENT_TRENCH_RATE_M_PER_MYR * years_myr * intensity[convergent]
 
-            target = _divergent_target(plate.crust_type)
-            relax_factor = 1.0 - np.exp(-DIVERGENT_RELAX_RATE_PER_MYR * years_myr)
             elevation[divergent] += (target - elevation[divergent]) * relax_factor * intensity[divergent]
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
