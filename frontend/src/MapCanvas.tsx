@@ -17,6 +17,14 @@ const ARROWHEAD_LENGTH_PX = 7;
 // Cells are drawn slightly larger than their measured half-extent so adjacent cells
 // overlap a hair rather than risk a hairline gap from floating-point rounding.
 const CELL_OVERLAP_FACTOR = 1.15;
+// Velocity arrows are always meant to be short, local indicators (backend
+// ARROW_BASE_ANGULAR_LENGTH_RAD caps them at ~0.15 rad on the sphere). If a plate's seed
+// happens to sit near the map's antimeridian or a pole, projecting its (geodesically short)
+// arrow endpoint can land it on the "other side" of the projection -- a tiny step in world
+// space, but a huge jump in projected coordinates -- and drawing a straight line between
+// the two would paint a stray line across most of the map. Any arrow this long on screen is
+// that artifact, not a real velocity indicator, so it's skipped rather than drawn.
+const MAX_ARROW_FRACTION_OF_CANVAS = 0.15;
 
 // A fixed categorical palette so each plate reads as a distinct region across
 // generate/step calls (plate_id is stable within one world's lifetime).
@@ -177,7 +185,10 @@ export default function MapCanvas({ data, view, width, height }: Props) {
         if (plate.velocity_arrow) {
           const [sx, sy] = toPixel(t, ...plate.velocity_arrow.start);
           const [ex, ey] = toPixel(t, ...plate.velocity_arrow.end);
-          drawArrow(ctx, sx, sy, ex, ey, "#ffffff");
+          const maxArrowPx = Math.min(width, height) * MAX_ARROW_FRACTION_OF_CANVAS;
+          if (Math.hypot(ex - sx, ey - sy) <= maxArrowPx) {
+            drawArrow(ctx, sx, sy, ex, ey, "#ffffff");
+          }
         }
 
         if (plate.pole) {
