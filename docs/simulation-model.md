@@ -1,0 +1,227 @@
+# Simulation Model
+
+## Table of contents
+
+- [Why not a grid](#why-not-a-grid)
+- [Plate-local frames](#plate-local-frames)
+- [Initial plate generation](#initial-plate-generation)
+- [Mantle flow](#mantle-flow)
+- [Boundary evolution](#boundary-evolution)
+- [Garbage collection](#garbage-collection)
+- [Merge and split](#merge-and-split)
+- [Projections](#projections)
+- [Known simplifications](#known-simplifications)
+
+<a id="why-not-a-grid"></a>
+## Why not a grid
+
+mantle-bloom is a from-scratch successor to
+[plate-sim](https://github.com/adubey/plate-sim), which modeled the planet as an
+equirectangular lat/lon grid. plate-sim's own docs catalog the problems that caused: pole
+cells need an artificial full-clique patch to be mutually adjacent, falloff radii need a
+[Dijkstra](https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm) search weighted by real 3D
+chord distance to correct for latitude-dependent cell size, and -- the significant one --
+elevation/sediment carried by a rotating plate has to be resampled onto the fixed grid every
+step via nearest-neighbor
+[semi-Lagrangian](https://en.wikipedia.org/wiki/Semi-Lagrangian_scheme) backward-advection,
+which doesn't conserve mass where a plate stretches or compresses.
+
+mantle-bloom drops the grid entirely: plates are spherical polygons, and elevation lives on
+polylines that rotate *exactly* with their plate (no resampling at all for ordinary motion)
+and are only ever touched where a boundary actually creates or destroys crust.
+
+<a id="plate-local-frames"></a>
+## Plate-local frames
+
+Each plate owns a rotation matrix `frame` (world = `frame @ local`, see
+`geometry.plate_frame_from_seed`) defining its own local spherical coordinate system
+`(phi, theta)`, with local `(phi=0, theta=0)` mapping to the plate's original seed point.
+Terrain is stored as `ElevationLine`s: each one a fixed plate-local latitude `phi`, holding
+elevation samples at plate-local longitude nodes `theta` -- literally a local graticule glued
+to the plate.
+
+- **Rotating a plate is exact.** Advancing `frame` by composing the incremental rotation
+  from the plate's current Euler pole/rate ([Rodrigues'
+  formula](https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula),
+  `geometry.rotation_matrix_from_omega`) updates every node's world position automatically,
+  with no interpolation and no lost material -- because ordinary rotation never resamples
+  anything. This is the direct fix for plate-sim's semi-Lagrangian mass-conservation
+  problem.
+- **Equidistant and parallel, by construction.** Equal `delta-phi` between lines is already
+  physically equidistant (meridional spacing on a sphere doesn't depend on latitude), and
+  each line's `delta-theta` node spacing is chosen from that line's angular radius
+  (`cos(phi)`) to hit `TARGET_LINE_SPACING_KM` (`plates.py`, default 250 km) -- the direct
+  fix for plate-sim's documented "latitude distortion" issue.
+- **Irregular intervals at boundaries, naturally.** A line only exists for the theta-range
+  currently inside the plate's territory; nodes at that cutoff are the ones boundary
+  evolution adds or removes (see below), which is exactly where irregular spacing should
+  show up.
+
+<a id="initial-plate-generation"></a>
+## Initial plate generation (`plates.py`)
+
+`num_plates` seed points are scattered uniformly on the unit sphere (normalized Gaussian
+samples) and classified continental/oceanic (`CONTINENTAL_FRACTION = 0.4`, Earth-like).
+`scipy.spatial.SphericalVoronoi` builds the initial spherical Voronoi diagram from those
+seeds, which gives each plate both its local frame (built from its own seed) and a rough
+boundary polygon (kept only for a cosmetic overlay -- see
+[World state](architecture.md#world-state)).
+
+Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
+plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution, and for every
+candidate node, keep it only if this plate's seed is the *nearest* seed to it (the defining
+property of a spherical Voronoi cell -- no separate polygon-containment test needed). Kept
+nodes get a base elevation by crust type (`BASE_CONTINENTAL_M = 200`,
+`BASE_OCEANIC_M = -3800`) plus a smooth noise texture (`noise.py`, a small sum of sinusoids
+with random frequency/phase -- not true gradient noise, just enough texture to not look
+perfectly flat).
+
+The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by plate merging
+(see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
+needed.
+
+<a id="mantle-flow"></a>
+## Mantle flow (`mantle.py`)
+
+A handful of upwelling/downwelling convection centers are placed via a **cubed-sphere
+mapping**: a point on a cube face `(u, v, +-1)`, normalized to the unit sphere
+(`mantle.cube_to_sphere`) -- "flow in a cube, projected to the sphere," chosen for even
+coverage with no pole clustering. Each center contributes a tangential flow vector pointing
+away from it (upwelling, positive strength) or toward it (downwelling, negative strength),
+with Gaussian falloff by angular distance (`mantle.flow_at`).
+
+Every step, each plate samples this field at its own current footprint (every elevation-line
+node plus its boundary loop -- already available, no separate sampling grid needed) and fits
+the best-fit rigid rotation via ordinary least squares: minimize
+`sum |omega x p_i - v_i|^2`, a linear problem in `omega` solved as one 3x3 system per plate
+(`mantle.fit_euler_pole`). `omega`'s direction is the [Euler
+pole](https://en.wikipedia.org/wiki/Euler_pole), its magnitude the rotation rate -- this is
+the real plate-tectonics formalism, not a hand-set per-plate velocity vector. The new target
+is blended with the plate's current `omega` (`VELOCITY_DAMPING = 0.3`, so a plate
+accelerates smoothly rather than snapping) and clamped to a plausible speed range
+(`MIN/MAX_PLATE_RATE`, equivalent to 0.5-15 cm/yr at `PLANET_RADIUS_KM = 6371`).
+
+<a id="boundary-evolution"></a>
+## Boundary evolution (`boundary.py`)
+
+There's no maintained shared-edge structure between plates -- every step, each plate's
+elevation-line nodes are matched against a fresh k-d tree of every other plate's current
+nodes (`scipy.spatial.cKDTree`). This is self-healing every step rather than requiring an
+always-consistent topology, and it's what makes merge/split tractable without a general
+spherical polygon-boolean library.
+
+For each node within `FAR_THRESHOLD_RAD` (1.6x target spacing) of some other plate's
+nearest node, the two plates' relative velocity at that point (from their `omega`s) is
+decomposed against the direction toward the neighbor into a **closing rate**: positive means
+this plate's material is moving toward the neighbor's (convergent), negative means moving
+apart (divergent); `TRANSFORM_RATE_THRESHOLD` (~1 cm/yr equivalent) separates both from
+transform.
+
+- **Convergent + continental** -> elevation rises (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`,
+  mountain building). **Convergent + oceanic** -> elevation falls
+  (`CONVERGENT_TRENCH_RATE_M_PER_MYR`, trench/subduction). Both scaled by an `intensity`
+  factor that fades from 1 at zero distance to 0 at `FAR_THRESHOLD_RAD`, so the effect is
+  concentrated right at the boundary without a separate distance-falloff pass.
+- **Divergent** -> elevation relaxes exponentially toward a ridge (`oceanic`,
+  `DIVERGENT_RIDGE_TARGET_M = -1500`) or rift (`continental`,
+  `DIVERGENT_RIFT_TARGET_M = -200`) target -- new crust forming at the boundary.
+- **Structural growth/shrink**, applied independently at each line's two ends (the true
+  edge of that line's territory, since lines are contiguous by construction): if divergent
+  and the gap has opened past `EXTEND_THRESHOLD_RAD`, insert one new node at target spacing,
+  given the ridge/rift target elevation directly (it's brand new material, not interpolated
+  from anything). If convergent and the gap has closed below `MERGE_THRESHOLD_RAD`, delete
+  the end node (crust destroyed/folded away) -- but never the plate's last remaining node.
+  This is where mass conservation actually lives: material is only ever created at
+  divergent boundaries and destroyed at convergent ones, as literal point insertion/deletion
+  -- there's no plate-sim-style resampling step that can lose or duplicate it.
+
+<a id="garbage-collection"></a>
+## Garbage collection (`line_regrid.py`)
+
+Per-step boundary evolution only ever touches a line's two ends, so interior spacing stays
+regular on its own during ordinary convergent/divergent motion -- but a *transform* boundary
+shears nodes along a line without inserting or deleting anything, which can leave spacing
+uneven. Every `GC_INTERVAL_STEPS` calls to `step_world` (default 5), any line whose gaps
+have drifted past `IRREGULARITY_TOLERANCE` (1.5x target spacing, either direction) gets a
+fresh evenly-spaced node set across its *existing* extent -- the two endpoints are preserved
+exactly, since GC never changes where a line's physical edge is, only how regularly it's
+sampled -- with elevation re-interpolated onto the new nodes (`np.interp`, 1D since it's
+along a single already-ordered curve, not 2D scattered-data interpolation).
+
+<a id="merge-and-split"></a>
+## Merge and split (`merge_split.py`)
+
+Unlike rotation and boundary evolution, these are rare, discrete, topology-changing events,
+so a one-time resample is an acceptable cost here -- the exact, no-resampling guarantee only
+matters for routine per-step motion.
+
+- **Consumption.** A plate whose every elevation node has been deleted (fully subducted) is
+  simply dropped from `world.plates` -- falls directly out of the boundary-evolution rule
+  above, no special algorithm needed.
+- **Continental collision merge.** If two continental plates have at least
+  `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other,
+  they're fused: keep one plate's `frame`, and resample the union footprint from scratch --
+  a k-d tree over the pre-merge combined point cloud, with every candidate lattice node
+  within `MERGE_COVERAGE_RADIUS_RAD` of *some* old node kept and given that old node's
+  elevation (`plates.build_lines_from_lattice` again). The dropped plate's contribution is
+  gone; the boundary between them becomes ordinary interior territory.
+- **Split.** Each plate's mantle-flow samples are clustered into two groups
+  (`scipy.cluster.vq.kmeans2`, k=2) and a separate Euler pole is fit to each. If a single
+  rigid rotation fits the whole plate poorly (RMS residual above
+  `SPLIT_RMS_RESIDUAL_THRESHOLD`) *and* the two clusters' poles genuinely disagree (more
+  than `SPLIT_MIN_POLE_SEPARATION` apart), the plate is cut along the great circle
+  equidistant from the two clusters' centroids (`P . (centroid_a - centroid_b) == 0` is
+  exactly that circle's plane) and every node partitioned by which side it falls on.
+
+  **Why splitting needs a cooldown.** A single rigid rotation essentially never fits a wide
+  footprint's flow samples *exactly* -- any spatially-varying field sampled over a large
+  angular extent has some residual, even for a plate with no business splitting. Early
+  versions tuned these thresholds against a small test scenario and found, at real scale,
+  that ordinary large plates cleared them on every single step; worse, a freshly-split
+  daughter plate -- cut from a continuous field, not a genuinely bimodal one -- would often
+  still clear the thresholds on the very next step, recursively re-splitting into dozens of
+  thin near-parallel slivers within a handful of steps (visually, this looked exactly like
+  elevation "banding," since each sliver rotates almost identically to its neighbors).
+  `SPLIT_MIN_AGE_STEPS` (a per-plate step counter, reset to 0 on creation by generation,
+  split, or merge) requires a plate to exist for a while before it's split-eligible again,
+  and `SPLIT_MIN_NODES = 300` keeps the check off small fragments entirely.
+
+<a id="projections"></a>
+## Projections (`projections.py`)
+
+[Behrmann](https://en.wikipedia.org/wiki/Cylindrical_equal-area_projection) (cylindrical
+equal-area, standard parallel 30 degrees) and [Eckert
+IV](https://en.wikipedia.org/wiki/Eckert_IV_projection) (pseudocylindrical equal-area,
+[Snyder 1987](https://pubs.usgs.gov/pp/1395/report.pdf)) both have short closed-form/
+Newton-iterated formulas, implemented directly in vectorized numpy rather than pulling in
+`pyproj` -- and registered in `projections.PROJECTIONS` so adding a third projection later
+is a one-function, one-dict-entry change. Both take/return radians and operate on a
+unit-radius sphere; the frontend picks a single uniform pixel scale from the returned data's
+bounding box (not independent x/y scales) so the equal-area property actually reads as
+equal-area on screen.
+
+<a id="known-simplifications"></a>
+## Known simplifications
+
+Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
+than an oversight:
+
+- **`boundary_local` is cosmetic only.** The rough polygon outline from initial Voronoi
+  generation rotates rigidly with its plate but is never updated to reflect boundary
+  growth/shrinkage, and no code path other than rendering consults it -- the actual
+  "edge of the crust" is always wherever the outermost elevation-line nodes currently are.
+- **Lines are assumed spatially contiguous.** A line's two ends (`theta[0]`, `theta[-1]`)
+  are treated as its true territorial edges. A plate that develops a concave notch (or a
+  split whose cut crosses one line's span twice) could in principle produce a
+  non-contiguous line; this isn't specially detected. In practice a stray gap like that just
+  gets treated as a small extra boundary by the next step's adjacency check and self-heals
+  the same way any other boundary does.
+- **No lines are added or removed at extreme plate-local latitudes.** Boundary evolution
+  grows/shrinks existing lines in the theta direction; a plate's poleward-most row doesn't
+  gain or lose whole new rows as it grows or shrinks near a plate-local pole. Minor at
+  `TARGET_LINE_SPACING_KM` resolution, a possible future refinement.
+- **No climate, hydrology, erosion, or biomes yet.** Explicitly out of scope for this v1 --
+  see plate-sim's own model for the shape that work would take once revisited on this
+  sphere-native foundation.
+- **Single in-memory world, no persistence.** See
+  [World state](architecture.md#world-state).
