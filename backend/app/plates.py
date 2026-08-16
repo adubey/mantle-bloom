@@ -105,11 +105,11 @@ class Plate:
         return points, elevation
 
 
-def _base_elevation(crust_type: str) -> float:
+def base_elevation(crust_type: str) -> float:
     return BASE_CONTINENTAL_M if crust_type == "continental" else BASE_OCEANIC_M
 
 
-def _noise_amplitude(crust_type: str) -> float:
+def noise_amplitude(crust_type: str) -> float:
     return CONTINENTAL_NOISE_AMPLITUDE_M if crust_type == "continental" else OCEANIC_NOISE_AMPLITUDE_M
 
 
@@ -154,8 +154,8 @@ def _build_lines_for_plate(
     """Keep only lattice nodes whose nearest seed is this plate's own seed (i.e. nodes
     actually inside this plate's spherical Voronoi cell), and assign each a base elevation
     plus noise texture."""
-    base = _base_elevation(crust_type)
-    amp = _noise_amplitude(crust_type)
+    base = base_elevation(crust_type)
+    amp = noise_amplitude(crust_type)
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         _, nearest_idx = owner_tree.query(world_pts)

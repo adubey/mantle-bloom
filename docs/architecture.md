@@ -91,6 +91,8 @@ boundary.py         per-step boundary adjacency detection (k-d tree against ever
 line_regrid.py       periodic line-spacing regularization ("garbage collection")
 merge_split.py       plate consumption, continental-collision merging, mantle-flow-driven
                      splitting
+gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
+                     plate or spawns a new one where no plate dominates
 world.py             World/Plate orchestration: generate_world, step_world
 main.py              FastAPI routes tying it all together
 ```

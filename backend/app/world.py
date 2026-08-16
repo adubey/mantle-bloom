@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import boundary, geometry, line_regrid, mantle, merge_split
+from . import boundary, gaps, geometry, line_regrid, mantle, merge_split
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -20,6 +20,9 @@ class World:
     elapsed_years: float = 0.0
     steps_since_gc: int = 0
     next_plate_id: int = 0
+    # Number of times gaps.fill_gaps has actually run -- part of the deterministic RNG seed
+    # for gap-fill's new-crust noise texture (see gaps.py), not just a counter.
+    gap_fill_calls: int = 0
 
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
@@ -77,8 +80,10 @@ def step_world(world: World, years: float) -> None:
     uplift/trench/ridge/rift elevation deltas and line growth/shrinkage where plates are
     now close to each other. Then topology changes: fully-subducted plates disappear,
     colliding continental plates merge, and plates whose flow field no longer fits one
-    rigid rotation well can split. Every `line_regrid.GC_INTERVAL_STEPS` calls, also
-    regularizes any line whose interior spacing has drifted (garbage collection)."""
+    rigid rotation well can split. Every `line_regrid.GC_INTERVAL_STEPS` calls, also fills
+    any sphere-coverage gaps (a plate growing toward its own pole, or territory a
+    subducted plate left unclaimed -- see gaps.py) and regularizes any line whose interior
+    spacing has drifted (garbage collection)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
@@ -89,5 +94,6 @@ def step_world(world: World, years: float) -> None:
 
     world.steps_since_gc += 1
     if world.steps_since_gc >= line_regrid.GC_INTERVAL_STEPS:
+        gaps.fill_gaps(world)
         line_regrid.garbage_collect_world(world)
         world.steps_since_gc = 0

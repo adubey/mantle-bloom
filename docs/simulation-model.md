@@ -9,6 +9,7 @@
 - [Boundary evolution](#boundary-evolution)
 - [Garbage collection](#garbage-collection)
 - [Merge and split](#merge-and-split)
+- [Whole-sphere coverage (gap-filling)](#gap-filling)
 - [Projections](#projections)
 - [Known simplifications](#known-simplifications)
 
@@ -131,13 +132,20 @@ transform.
   `DIVERGENT_RIFT_TARGET_M = -200`) target -- new crust forming at the boundary.
 - **Structural growth/shrink**, applied independently at each line's two ends (the true
   edge of that line's territory, since lines are contiguous by construction): if divergent
-  and the gap has opened past `EXTEND_THRESHOLD_RAD`, insert one new node at target spacing,
-  given the ridge/rift target elevation directly (it's brand new material, not interpolated
-  from anything). If convergent and the gap has closed below `MERGE_THRESHOLD_RAD`, delete
-  the end node (crust destroyed/folded away) -- but never the plate's last remaining node.
-  This is where mass conservation actually lives: material is only ever created at
-  divergent boundaries and destroyed at convergent ones, as literal point insertion/deletion
-  -- there's no plate-sim-style resampling step that can lose or duplicate it.
+  and the gap has opened past `EXTEND_THRESHOLD_RAD`, insert new nodes at target spacing --
+  as many as it actually takes to close the gap (`dist / TARGET_LINE_SPACING_RAD`, capped at
+  `MAX_EXTEND_NODES_PER_STEP` as a safety bound, not a normal limit), each given the
+  ridge/rift target elevation directly (it's brand new material, not interpolated from
+  anything). Inserting a fixed one node per step regardless of gap size used to be the rule;
+  at a large `years` step (the UI offers up to 10 Myr) a fast-diverging boundary can open by
+  many spacing units in a single step, and one node per step falls further behind every
+  step -- that perpetually-reopening leftover gap looked to gap-filling (below) like a
+  genuinely new, unclosable gap and kept spawning fresh micro-plates at the same busy
+  boundary. If convergent and the gap has closed below `MERGE_THRESHOLD_RAD`, delete the end
+  node (crust destroyed/folded away) -- but never the plate's last remaining node. This is
+  where mass conservation actually lives: material is only ever created at divergent
+  boundaries and destroyed at convergent ones, as literal point insertion/deletion -- there's
+  no plate-sim-style resampling step that can lose or duplicate it.
 
 <a id="garbage-collection"></a>
 ## Garbage collection (`line_regrid.py`)
@@ -190,6 +198,55 @@ matters for routine per-step motion.
   split, or merge) requires a plate to exist for a while before it's split-eligible again,
   and `SPLIT_MIN_NODES = 300` keeps the check off small fragments entirely.
 
+<a id="gap-filling"></a>
+## Whole-sphere coverage (gap-filling) (`gaps.py`)
+
+Boundary evolution above only ever grows/shrinks a line's *theta*-direction ends -- a plate
+can spread sideways along its existing rows, but it never gains a whole new row toward its
+own local pole, and territory a fully-subducted neighbor vacated isn't automatically
+reclaimed. Both leave literal gaps: sphere regions no plate currently covers.
+
+Every `line_regrid.GC_INTERVAL_STEPS` calls (the same cadence as garbage collection),
+`gaps.fill_gaps` sweeps a global lattice (`plates.iter_local_lattice` in the identity frame,
+reused as a plain lat/lon sweep purely for this one-off detection query), finds every
+candidate point farther than `COVERAGE_RADIUS_RAD` from any plate's nearest node, and
+clusters the results (`scipy.sparse.csgraph.connected_components` over a k-d-tree radius
+graph). Clusters smaller than `MIN_GAP_POINTS` are left alone -- ordinary growth lag that
+boundary.py's per-line extension already closes on its own.
+
+Each remaining cluster is resolved one of two ways:
+
+- **A plate's border dominates it** (`DOMINANT_BORDER_FRACTION` of nearby existing nodes),
+  **or a young plate has a meaningful share of it** (`age_steps <= YOUNG_PLATE_AGE_STEPS`,
+  `YOUNG_PLATE_MIN_BORDER_FRACTION`): absorbed into that plate. Its line set is rebuilt from
+  its own local lattice (`plates.build_lines_from_lattice`), preserving elevation wherever
+  old data exists (nearest-neighbor lookup, the same technique `merge_split.merge_plates`
+  uses) and giving newly-claimed area fresh ridge/rift elevation. This is what actually lets
+  a plate grow toward its own pole or reclaim vacated territory.
+- **No plate dominates and no young plate qualifies**: the cluster becomes a brand new
+  plate -- new crust genuinely forming in open space between separating plates, not
+  arbitrarily assigned to one side.
+
+**Keeping this gradual.** An absorb only claims the part of a gap within `GROWTH_RING_RAD`
+of the plate's *existing* nodes (one ring per pass, not an entire possibly-huge cluster at
+once -- e.g. an uncovered polar cap nobody's lines reach yet), and only up to
+`MAX_ABSORB_NODES_PER_PLATE_PER_CALL` total per plate per call, across every gap it
+dominates that call. Without these caps, whichever plate already has the longest border
+(i.e. is already the biggest) dominates nearly every nearby gap and can absorb hundreds of
+nodes in one call -- confirmed directly during development, where a large plate visibly
+ballooned in a single step. Every other change in this model happens incrementally; these
+caps keep gap-filling consistent with that instead of being the one place growth can jump.
+
+**Why a young plate gets first claim.** A wide, long-lived, genuinely-shared rift would,
+without this exception, spawn a brand new sliver plate at *every* pass -- a fresh spawn
+never dominates its own border any better than the last one did, since neither side of a
+symmetric spread is "winning." This was also confirmed directly: a busy boundary
+fragmenting into a fan of thin, near-parallel micro-plates over a few hundred Myr, each
+rotating almost identically to its neighbors. Letting a recently-created plate claim a
+meaningful (not necessarily dominant) share of its own neighborhood for a few passes after
+it's created breaks that chain -- it gets a chance to consolidate the rift it was born into
+before being treated as just another equal competitor.
+
 <a id="projections"></a>
 ## Projections (`projections.py`)
 
@@ -225,10 +282,14 @@ than an oversight:
   non-contiguous line; this isn't specially detected. In practice a stray gap like that just
   gets treated as a small extra boundary by the next step's adjacency check and self-heals
   the same way any other boundary does.
-- **No lines are added or removed at extreme plate-local latitudes.** Boundary evolution
-  grows/shrinks existing lines in the theta direction; a plate's poleward-most row doesn't
-  gain or lose whole new rows as it grows or shrinks near a plate-local pole. Minor at
-  `TARGET_LINE_SPACING_KM` resolution, a possible future refinement.
+- **Gap-filling absorption doesn't distinguish "genuinely my own natural growth direction"
+  from "I happen to have the longest border nearby."** `MAX_ABSORB_NODES_PER_PLATE_PER_CALL`
+  bounds the *rate*, but a plate that's already large still tends to keep winning the
+  dominant-border check at its edges over many gap-fill passes, so it can still end up
+  larger than a strict "each plate grows toward its own pole independently" rule would give
+  -- a coarser approximation than the rest of the model, not a bug, and a possible future
+  refinement (e.g. weighting by directional alignment with the plate's own motion rather
+  than raw border presence).
 - **No climate, hydrology, erosion, or biomes yet.** Explicitly out of scope for this v1 --
   see plate-sim's own model for the shape that work would take once revisited on this
   sphere-native foundation.

@@ -38,6 +38,12 @@ DIVERGENT_RELAX_RATE_PER_MYR = 0.5
 MIN_ELEVATION_M = -11000.0
 MAX_ELEVATION_M = 9000.0
 
+# Safety cap on how many nodes a single step can insert at one line end. Not meant to bind
+# in practice -- even at MAX_PLATE_RATE with the largest step size the UI offers, the real
+# gap is only ever a handful of spacing units (see the comment on _grow_or_shrink_line for
+# why a fixed one-node-per-step used to fall far short of that and why it matters).
+MAX_EXTEND_NODES_PER_STEP = 200
+
 
 def _divergent_target(crust_type: str) -> float:
     return DIVERGENT_RIDGE_TARGET_M if crust_type == "oceanic" else DIVERGENT_RIFT_TARGET_M
@@ -63,6 +69,16 @@ def _grow_or_shrink_line(
     closing: np.ndarray,
     crust_type: str,
 ) -> ElevationLine:
+    """Grow or shrink a line's two ends based on this step's boundary classification there.
+
+    Growth inserts as many nodes as it takes to actually close the gap (`dist`), not just
+    one -- at a small step size the two are the same thing, but at a large `years` step (the
+    UI offers up to 10 Myr/step) a fast-diverging boundary can open by many spacing units in
+    a single step, and inserting only one node per step falls further and further behind.
+    That leftover, perpetually-reopening gap looked to gaps.py's periodic gap-filling like a
+    genuinely new, unclosable gap and kept spawning fresh micro-plates at the same busy
+    boundary every interval -- fixing the actual growth rate here is what stops that at the
+    source, rather than only reacting to its symptom in gaps.py."""
     theta = line.theta.copy()
     elevation = line.elevation.copy()
     if len(theta) == 0:
@@ -73,8 +89,10 @@ def _grow_or_shrink_line(
 
     # High end first so the low-end index (0) is unaffected by any change made here.
     if dist[-1] > EXTEND_THRESHOLD_RAD and closing[-1] < -TRANSFORM_RATE_THRESHOLD:
-        theta = np.append(theta, theta[-1] + dtheta)
-        elevation = np.append(elevation, target)
+        n_new = min(max(int(dist[-1] / TARGET_LINE_SPACING_RAD), 1), MAX_EXTEND_NODES_PER_STEP)
+        new_theta = theta[-1] + dtheta * np.arange(1, n_new + 1)
+        theta = np.append(theta, new_theta)
+        elevation = np.append(elevation, np.full(n_new, target))
     elif dist[-1] < MERGE_THRESHOLD_RAD and closing[-1] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[:-1]
         elevation = elevation[:-1]
@@ -83,8 +101,10 @@ def _grow_or_shrink_line(
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation)
 
     if dist[0] > EXTEND_THRESHOLD_RAD and closing[0] < -TRANSFORM_RATE_THRESHOLD:
-        theta = np.insert(theta, 0, theta[0] - dtheta)
-        elevation = np.insert(elevation, 0, target)
+        n_new = min(max(int(dist[0] / TARGET_LINE_SPACING_RAD), 1), MAX_EXTEND_NODES_PER_STEP)
+        new_theta = theta[0] - dtheta * np.arange(n_new, 0, -1)
+        theta = np.insert(theta, 0, new_theta)
+        elevation = np.insert(elevation, 0, np.full(n_new, target))
     elif dist[0] < MERGE_THRESHOLD_RAD and closing[0] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[1:]
         elevation = elevation[1:]

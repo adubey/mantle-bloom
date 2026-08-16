@@ -1,7 +1,7 @@
 import numpy as np
 
 from app import boundary
-from app.plates import ElevationLine
+from app.plates import TARGET_LINE_SPACING_RAD, ElevationLine
 from app.world import generate_world, step_world
 
 
@@ -26,10 +26,10 @@ def test_closing_rate_positive_when_approaching():
     assert closing[0] < 0
 
 
-def test_grow_or_shrink_line_extends_when_divergent_and_far():
+def test_grow_or_shrink_line_extends_by_one_node_for_a_small_gap():
     line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([0.0, 0.0, 0.0]))
-    far = boundary.EXTEND_THRESHOLD_RAD * 2
-    dist = np.array([far, far, far])
+    just_over = boundary.EXTEND_THRESHOLD_RAD * 1.05  # under 2x target spacing -> one node
+    dist = np.array([just_over, just_over, just_over])
     closing = np.array(
         [-boundary.TRANSFORM_RATE_THRESHOLD * 2] * 3
     )  # strongly divergent everywhere
@@ -41,6 +41,34 @@ def test_grow_or_shrink_line_extends_when_divergent_and_far():
     assert grown.elevation[0] == boundary.DIVERGENT_RIDGE_TARGET_M
     assert grown.elevation[-1] == boundary.DIVERGENT_RIDGE_TARGET_M
     assert np.all(np.diff(grown.theta) > 0)
+
+
+def test_grow_or_shrink_line_extends_by_many_nodes_for_a_large_gap():
+    """A large `years` step can open a gap many spacing units wide in a single step --
+    growth must close it fully, not add a fixed one node regardless of gap size (see the
+    comment on _grow_or_shrink_line: under-provisioned growth here is what caused gaps.py's
+    periodic gap-filling to keep spawning fresh micro-plates at the same busy boundary)."""
+    line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([0.0, 0.0, 0.0]))
+    huge_gap = TARGET_LINE_SPACING_RAD * 10.5
+    dist = np.array([huge_gap, huge_gap, huge_gap])
+    closing = np.array([-boundary.TRANSFORM_RATE_THRESHOLD * 2] * 3)
+
+    grown = boundary._grow_or_shrink_line(line, dist, closing, "oceanic")
+    assert len(grown.theta) == 3 + 10 + 10  # 10 new nodes at each end
+    assert np.all(np.diff(grown.theta) > 0)
+    new_nodes = grown.elevation[(grown.theta > line.theta[-1]) | (grown.theta < line.theta[0])]
+    assert np.all(new_nodes == boundary.DIVERGENT_RIDGE_TARGET_M)
+
+
+def test_grow_or_shrink_line_extend_respects_max_nodes_cap():
+    line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1]), elevation=np.array([0.0, 0.0]))
+    absurd_gap = TARGET_LINE_SPACING_RAD * (boundary.MAX_EXTEND_NODES_PER_STEP + 50)
+    dist = np.array([absurd_gap, absurd_gap])
+    closing = np.array([-boundary.TRANSFORM_RATE_THRESHOLD * 2] * 2)
+
+    grown = boundary._grow_or_shrink_line(line, dist, closing, "oceanic")
+    added = len(grown.theta) - 2
+    assert added <= boundary.MAX_EXTEND_NODES_PER_STEP * 2
 
 
 def test_grow_or_shrink_line_shrinks_when_convergent_and_close():
