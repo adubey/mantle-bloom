@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import geometry, mantle
+from . import boundary, geometry, mantle
 from .plates import Plate, generate_plates
 
 DEFAULT_NUM_PLATES = 12
@@ -65,11 +65,13 @@ def generate_world(
 
 def step_world(world: World, years: float) -> None:
     """Advance the world by `years`: refit each plate's Euler pole from the mantle flow
-    field (damped toward the new target), then rotate the plate rigidly by that pole for
-    `years`. Boundary creation/destruction (rifting, subduction, mountain building) isn't
-    modelled yet -- this step is pure rigid rotation, exact for every carried point."""
+    field (damped toward the new target), rotate the plate rigidly by that pole for
+    `years` (exact for every carried point, no resampling), then let boundaries evolve --
+    uplift/trench/ridge/rift elevation deltas and line growth/shrinkage where plates are
+    now close to each other."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
         plate.frame = increment @ plate.frame
+    boundary.step_boundaries(world, years)
     world.elapsed_years += years
