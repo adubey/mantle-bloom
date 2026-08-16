@@ -97,6 +97,8 @@ def step_boundaries(world: World, years: float) -> None:
     each line's two ends. Call after rotation, using the plates' new positions."""
     years_myr = years / 1e6
 
+    plate_by_id = {plate.plate_id: plate for plate in world.plates}
+
     plate_points: dict[int, np.ndarray] = {}
     for plate in world.plates:
         pieces = [line.world_xyz(plate.frame) for line in plate.lines]
@@ -125,7 +127,7 @@ def step_boundaries(world: World, years: float) -> None:
             neighbor_owner = other_owner[idx]
             neighbor_points = other_points[idx]
 
-            neighbor_omega = np.array([world.plates[o].omega for o in neighbor_owner])
+            neighbor_omega = np.array([plate_by_id[o].omega for o in neighbor_owner])
             closing = _closing_rate(pts, plate.omega, neighbor_omega, neighbor_points)
 
             intensity = np.clip(1.0 - dist / FAR_THRESHOLD_RAD, 0.0, 1.0)

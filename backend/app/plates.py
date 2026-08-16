@@ -52,6 +52,10 @@ class Plate:
     omega: np.ndarray = field(default_factory=lambda: np.zeros(3))  # angular velocity, world frame
     boundary_local: np.ndarray = field(default_factory=lambda: np.zeros((0, 3)))  # local xyz
     lines: list[ElevationLine] = field(default_factory=list)
+    # Steps since this plate was created (by generation, merge, or split). Gates split
+    # eligibility in merge_split.py so a plate can't fragment repeatedly in quick
+    # succession -- see the note there on why that runaway is a real failure mode.
+    age_steps: int = 0
 
     @property
     def seed_world(self) -> np.ndarray:
@@ -64,6 +68,14 @@ class Plate:
     def node_count(self) -> int:
         return sum(len(line.theta) for line in self.lines)
 
+    def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
+        """Every elevation-line node's world position and elevation, concatenated."""
+        if not self.lines:
+            return np.zeros((0, 3)), np.zeros(0)
+        points = np.concatenate([line.world_xyz(self.frame) for line in self.lines], axis=0)
+        elevation = np.concatenate([line.elevation for line in self.lines], axis=0)
+        return points, elevation
+
 
 def _base_elevation(crust_type: str) -> float:
     return BASE_CONTINENTAL_M if crust_type == "continental" else BASE_OCEANIC_M
@@ -73,20 +85,11 @@ def _noise_amplitude(crust_type: str) -> float:
     return CONTINENTAL_NOISE_AMPLITUDE_M if crust_type == "continental" else OCEANIC_NOISE_AMPLITUDE_M
 
 
-def _build_lines_for_plate(
-    plate_index: int,
-    frame: np.ndarray,
-    crust_type: str,
-    owner_tree: cKDTree,
-    noise: SphereNoise,
-) -> list[ElevationLine]:
-    """Sweep a full plate-local (phi, theta) lattice, keep only nodes whose nearest seed
-    is this plate's own seed (i.e. nodes actually inside this plate's spherical Voronoi
-    cell), and assign each a base elevation plus noise texture."""
-    lines: list[ElevationLine] = []
-    base = _base_elevation(crust_type)
-    amp = _noise_amplitude(crust_type)
-
+def iter_local_lattice(frame: np.ndarray):
+    """Sweep a full plate-local (phi, theta) lattice at TARGET_LINE_SPACING_RAD resolution,
+    yielding (phi, theta_candidates, world_pts) per row. Shared by initial generation and
+    by plate-merge resampling (see merge_split.py) -- the two places a full-footprint sweep
+    is needed."""
     phi_values = np.arange(-_MAX_ABS_PHI, _MAX_ABS_PHI, TARGET_LINE_SPACING_RAD)
     for phi in phi_values:
         dtheta = TARGET_LINE_SPACING_RAD / max(np.cos(phi), 1e-3)
@@ -95,18 +98,45 @@ def _build_lines_for_plate(
 
         local_pts = geometry.local_xyz(np.full_like(theta_candidates, phi), theta_candidates)
         world_pts = geometry.to_world(frame, local_pts)
+        yield float(phi), theta_candidates, world_pts
 
-        _, nearest_idx = owner_tree.query(world_pts)
-        owned = nearest_idx == plate_index
+
+def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at) -> list[ElevationLine]:
+    """Build a plate's elevation lines by sweeping its local lattice and keeping whichever
+    nodes `is_owned(world_pts) -> bool array` selects, with elevation from
+    `elevation_at(owned_world_pts) -> array`."""
+    lines: list[ElevationLine] = []
+    for phi, theta_candidates, world_pts in iter_local_lattice(frame):
+        owned = is_owned(world_pts)
         if not np.any(owned):
             continue
-
         theta_owned = theta_candidates[owned]
-        world_owned = world_pts[owned]
-        elevation = base + amp * noise.sample(world_owned)
-
-        lines.append(ElevationLine(phi=float(phi), theta=theta_owned, elevation=elevation))
+        elevation = elevation_at(world_pts[owned])
+        lines.append(ElevationLine(phi=phi, theta=theta_owned, elevation=elevation))
     return lines
+
+
+def _build_lines_for_plate(
+    plate_index: int,
+    frame: np.ndarray,
+    crust_type: str,
+    owner_tree: cKDTree,
+    noise: SphereNoise,
+) -> list[ElevationLine]:
+    """Keep only lattice nodes whose nearest seed is this plate's own seed (i.e. nodes
+    actually inside this plate's spherical Voronoi cell), and assign each a base elevation
+    plus noise texture."""
+    base = _base_elevation(crust_type)
+    amp = _noise_amplitude(crust_type)
+
+    def is_owned(world_pts: np.ndarray) -> np.ndarray:
+        _, nearest_idx = owner_tree.query(world_pts)
+        return nearest_idx == plate_index
+
+    def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+        return base + amp * noise.sample(world_pts)
+
+    return build_lines_from_lattice(frame, is_owned, elevation_at)
 
 
 def generate_plates(seed: int, num_plates: int = 12) -> list[Plate]:
