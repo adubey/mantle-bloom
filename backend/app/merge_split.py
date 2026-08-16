@@ -45,7 +45,12 @@ MERGE_COVERAGE_RADIUS_RAD = 1.2 * TARGET_LINE_SPACING_RAD
 COLLISION_MERGE_MIN_YEARS = 50_000_000
 COLLISION_MERGE_MAX_YEARS = 100_000_000
 
-SPLIT_MIN_NODES = 300
+# A node count, not a distance -- doesn't scale automatically with TARGET_LINE_SPACING_RAD
+# the way the distance-based thresholds elsewhere do. Node count for a given physical plate
+# area scales with the *square* of resolution (more rows and more samples per row), so this
+# is scaled by ~4x alongside plates.py's most recent resolution doubling, to keep meaning
+# "the same physical plate size" rather than silently becoming 4x more split-happy.
+SPLIT_MIN_NODES = 1200
 # A single rigid rotation essentially never fits a wide footprint's flow samples exactly
 # -- any spatially-varying field sampled over a large angular extent has *some* residual,
 # even for a plate that has no business splitting. These thresholds need to sit well above

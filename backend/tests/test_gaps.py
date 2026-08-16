@@ -46,7 +46,12 @@ def test_preferred_border_plate_single_neighbor():
     tree = cKDTree(existing_points)
     plate_by_id = {0: _old_plate(0), 1: _old_plate(1)}
 
-    near_plate_0_only = np.array([[0.95, 0.02, 0.0]])
+    # A small fraction of BORDER_RADIUS_RAD, not a hardcoded absolute offset -- stays valid
+    # regardless of TARGET_LINE_SPACING_RAD (which this radius scales with).
+    offset = gaps.BORDER_RADIUS_RAD * 0.5
+    near_plate_0_only = geometry.rotate_vectors(
+        np.array([1.0, 0.0, 0.0])[None, :], np.array([0.0, 0.0, 1.0]), offset
+    )
     assert gaps._preferred_border_plate(near_plate_0_only, tree, existing_owner, plate_by_id) == 0
 
 
@@ -227,17 +232,17 @@ def test_fill_gaps_is_a_noop_immediately_after_generation():
 def test_fill_gaps_absorbs_an_interior_hole_into_its_one_bordering_plate():
     world = generate_world(seed=9, num_plates=8)
     plate = max(world.plates, key=lambda p: p.node_count())
-    # Carve a sizeable hole out of several consecutive interior lines -- big enough to clear
-    # MIN_GAP_POINTS, and well inside the plate's own territory, so it can only ever be
-    # bordered by this one plate.
+    # Carve a sizeable hole out of several consecutive interior lines -- comfortably bigger
+    # than MIN_GAP_POINTS once resampled onto the global detection grid, and well inside the
+    # plate's own territory, so it can only ever be bordered by this one plate.
     ordered_lines = sorted(plate.lines, key=lambda l: l.phi)
     mid = len(ordered_lines) // 2
-    for line in ordered_lines[max(mid - 3, 0) : mid + 3]:
-        if len(line.theta) < 20:
+    for line in ordered_lines[max(mid - 8, 0) : mid + 8]:
+        if len(line.theta) < 40:
             continue
         center = len(line.theta) // 2
         keep = np.ones(len(line.theta), dtype=bool)
-        keep[max(center - 6, 1) : min(center + 7, len(line.theta) - 1)] = False
+        keep[max(center - 14, 1) : min(center + 15, len(line.theta) - 1)] = False
         line.theta = line.theta[keep]
         line.elevation = line.elevation[keep]
 

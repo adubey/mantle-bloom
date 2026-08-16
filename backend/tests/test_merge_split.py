@@ -29,17 +29,21 @@ def _converging_omega_pair(rate_cm_per_yr=5.0):
 
 
 def test_find_continental_collision_pairs_detects_close_and_converging_plates():
-    # Non-interleaved: keep's world-angle range ([-0.01, 0]) sits entirely left of
-    # absorb's ([0.005, 0.015]), so nearest-neighbor pairing is unambiguous and every
-    # closing-rate sign comes out consistent (an earlier version of this test used
-    # symmetric, overlapping ranges around each plate's own seed, which interleaved the
-    # two point sets and made nearest-neighbor pairing -- and therefore the sign of the
-    # closing rate -- inconsistent from point to point).
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.0, 6), np.zeros(6))
+    # Every offset here is a fraction of MERGE_CONTACT_DISTANCE_RAD, not a hardcoded
+    # absolute angle -- stays valid regardless of TARGET_LINE_SPACING_RAD (which that
+    # constant scales with). Non-interleaved: keep's world-angle range ([-d, 0]) sits
+    # entirely left of absorb's ([0.1d, 0.5d]), so nearest-neighbor pairing is unambiguous
+    # and every closing-rate sign comes out consistent (an earlier version of this test used
+    # symmetric, overlapping ranges around each plate's own seed, which interleaved the two
+    # point sets and made nearest-neighbor pairing -- and therefore the sign of the closing
+    # rate -- inconsistent from point to point). Most, but not all, of keep's points end up
+    # within d of their nearest absorb point -- comfortably above MERGE_MIN_CONTACT_NODES.
+    d = merge_split.MERGE_CONTACT_DISTANCE_RAD
+    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
     seed_absorb = geometry.rotate_vectors(
-        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=0.01
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
-    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-0.005, 0.005, 6), np.full(6, 50.0))
+    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
     keep.omega, absorb.omega = _converging_omega_pair()
 
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
@@ -90,11 +94,14 @@ def test_find_continental_collision_pairs_ignores_oceanic():
 
 
 def _converging_pair_world(seed=123):
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.0, 6), np.zeros(6))
+    # See test_find_continental_collision_pairs_detects_close_and_converging_plates for why
+    # these offsets are fractions of MERGE_CONTACT_DISTANCE_RAD rather than hardcoded angles.
+    d = merge_split.MERGE_CONTACT_DISTANCE_RAD
+    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
     seed_absorb = geometry.rotate_vectors(
-        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=0.01
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
-    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-0.005, 0.005, 6), np.full(6, 50.0))
+    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
     keep.omega, absorb.omega = _converging_omega_pair()
     return World(seed=seed, plates=[keep, absorb], next_plate_id=2)
 
@@ -197,7 +204,8 @@ def test_maybe_split_plate_returns_none_for_small_plate():
 def test_maybe_split_plate_splits_under_engineered_flow_divergence():
     seed_xyz = np.array([1.0, 0.0, 0.0])
     frame = geometry.plate_frame_from_seed(seed_xyz)
-    theta = np.linspace(-0.5, 0.5, 700)
+    # Comfortably more than 2 * SPLIT_MIN_NODES, so each half still clears the threshold.
+    theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
     plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
 

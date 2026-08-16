@@ -24,7 +24,16 @@ BASE_OCEANIC_M = -3800.0
 CONTINENTAL_NOISE_AMPLITUDE_M = 1200.0
 OCEANIC_NOISE_AMPLITUDE_M = 500.0
 
-TARGET_LINE_SPACING_KM = 250.0
+# Halving this doubles resolution in each dimension (phi rows and theta samples per row),
+# i.e. ~4x the nodes per plate -- and, since main.py's render grid resolution is derived
+# directly from this same constant, ~4x the render grid points too (smaller cells in the
+# UI). Several other modules define *absolute node-count* thresholds (not distances, which
+# already scale automatically as multiples of TARGET_LINE_SPACING_RAD) that represent a
+# physical area or distance in terms of the *old* density -- those were rescaled alongside
+# this (merge_split.SPLIT_MIN_NODES, gaps.MIN_GAP_POINTS/MAX_ABSORB_NODES_PER_PLATE_PER_CALL
+# by ~4x for area, boundary.MAX_EXTEND_NODES_PER_STEP by ~2x for a 1D distance) -- see each
+# for the reasoning.
+TARGET_LINE_SPACING_KM = 125.0
 TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 
 # Plate count is chosen automatically (see generate_plates) rather than asked of the user --

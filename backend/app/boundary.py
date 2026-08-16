@@ -41,8 +41,11 @@ MAX_ELEVATION_M = 9000.0
 # Safety cap on how many nodes a single step can insert at one line end. Not meant to bind
 # in practice -- even at MAX_PLATE_RATE with the largest step size the UI offers, the real
 # gap is only ever a handful of spacing units (see the comment on _grow_or_shrink_line for
-# why a fixed one-node-per-step used to fall far short of that and why it matters).
-MAX_EXTEND_NODES_PER_STEP = 200
+# why a fixed one-node-per-step used to fall far short of that and why it matters). A count
+# along a 1D line, not an area, so this scales by ~2x (not ~4x) alongside plates.py's most
+# recent resolution doubling -- closing the same physical distance now takes ~2x as many,
+# half-as-far-apart nodes.
+MAX_EXTEND_NODES_PER_STEP = 400
 
 
 def _divergent_target(crust_type: str) -> float:

@@ -84,12 +84,27 @@ export default function App() {
   const stepRef = useRef(handleStep);
   stepRef.current = handleStep;
 
+  // Self-scheduling rather than setInterval: each step must finish before the next is
+  // scheduled, so a slow step (larger worlds take longer -- a step that also lands on a
+  // garbage-collection/gap-fill interval, or triggers a merge/split, can take noticeably
+  // longer than a routine one) can never overlap with the next tick. A fixed-cadence
+  // setInterval would keep firing regardless of whether the previous request had returned.
   useEffect(() => {
     if (!playing) return;
-    const id = setInterval(() => {
-      stepRef.current();
-    }, PLAY_INTERVAL_MS);
-    return () => clearInterval(id);
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const tick = () => {
+      timeoutId = setTimeout(async () => {
+        if (cancelled) return;
+        await stepRef.current();
+        if (!cancelled) tick();
+      }, PLAY_INTERVAL_MS);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
   }, [playing]);
 
   return (

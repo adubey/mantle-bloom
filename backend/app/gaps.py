@@ -68,7 +68,12 @@ GROWTH_RING_RAD = 2.0 * TARGET_LINE_SPACING_RAD
 # spawned, every GC interval, fragmenting a boundary into dozens of near-parallel micro-
 # plates within a few hundred Myr (the same failure shape merge_split.py's split threshold
 # had before it got a similar tightening -- see the note there).
-MIN_GAP_POINTS = 40
+# A point count over a 2D area, not a distance -- doesn't scale automatically with
+# TARGET_LINE_SPACING_RAD the way the distance-based radii above do. Point count for a
+# given physical area scales with the *square* of resolution, so this is scaled by ~4x
+# alongside plates.py's most recent resolution doubling, to keep meaning "the same physical
+# gap size" rather than silently reacting to 4x smaller gaps than before.
+MIN_GAP_POINTS = 160
 # A gap cluster's border is rarely split cleanly between plates -- usually it's mostly one
 # plate's edge with a few incidentally-close points from a neighbor. Only treat it as a
 # genuine new rift (spawn a new plate) when no single bordering plate dominates; otherwise
@@ -82,7 +87,9 @@ DOMINANT_BORDER_FRACTION = 0.75
 # mechanism rather than becoming the dominant growth channel for whichever plate is already
 # biggest (ordinary per-step boundary evolution, boundary.py, is still where most growth
 # should come from).
-MAX_ABSORB_NODES_PER_PLATE_PER_CALL = 40
+# Also an area-based count (see MIN_GAP_POINTS above for why that means ~4x, not the same
+# factor as the 1D distance-based constants).
+MAX_ABSORB_NODES_PER_PLATE_PER_CALL = 160
 # A wide, long-lived rift with no dominant side would, left alone, spawn a brand new sliver
 # plate at *every* gap-fill pass -- a fresh spawn never dominates its own border any better
 # than the last one did, since neither side of a genuinely symmetric spread is "winning".

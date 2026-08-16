@@ -52,7 +52,7 @@ to the plate.
 - **Equidistant and parallel, by construction.** Equal `delta-phi` between lines is already
   physically equidistant (meridional spacing on a sphere doesn't depend on latitude), and
   each line's `delta-theta` node spacing is chosen from that line's angular radius
-  (`cos(phi)`) to hit `TARGET_LINE_SPACING_KM` (`plates.py`, default 250 km) -- the direct
+  (`cos(phi)`) to hit `TARGET_LINE_SPACING_KM` (`plates.py`, default 125 km) -- the direct
   fix for plate-sim's documented "latitude distortion" issue.
 - **Irregular intervals at boundaries, naturally.** A line only exists for the theta-range
   currently inside the plate's territory; nodes at that cutoff are the ones boundary
@@ -243,7 +243,7 @@ matters for routine per-step motion.
   elevation "banding," since each sliver rotates almost identically to its neighbors).
   `SPLIT_MIN_AGE_STEPS` (a per-plate step counter, reset to 0 on creation by generation,
   split, or merge) requires a plate to exist for a while before it's split-eligible again,
-  and `SPLIT_MIN_NODES = 300` keeps the check off small fragments entirely.
+  and `SPLIT_MIN_NODES = 1200` keeps the check off small fragments entirely.
 
 <a id="gap-filling"></a>
 ## Whole-sphere coverage (gap-filling) (`gaps.py`)
