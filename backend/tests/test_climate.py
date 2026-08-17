@@ -1,7 +1,8 @@
 import numpy as np
 
-from app import climate
-from app.world import generate_world, step_world
+from app import climate, geometry
+from app.plates import ElevationLine, Plate
+from app.world import World, generate_world, step_world
 
 
 def _world(seed=1, num_plates=12, continental_fraction=0.7, land_fraction=0.29, steps=0, years=5_000_000):
@@ -31,6 +32,26 @@ def test_compute_climate_handles_extreme_land_ocean_fractions():
 
     mostly_land = climate.compute_climate(_world(seed=3, continental_fraction=1.0, land_fraction=0.9))
     assert np.all(np.isfinite(mostly_land.humidity))
+
+
+def test_submerged_continental_crust_is_treated_as_ocean():
+    # A continental plate whose elevation is everywhere below sea level (a fully-submerged
+    # continent, not just a shelf) should read as ocean everywhere -- is_ocean is derived
+    # from elevation, not crust_type, so evaporation/currents/coastal effects apply to it
+    # exactly like any other ocean cell.
+    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
+    lines = [
+        ElevationLine(phi=float(phi), theta=np.linspace(-np.pi, np.pi, 30, endpoint=False), elevation=np.full(30, -500.0))
+        for phi in np.linspace(-1.4, 1.4, 15)
+    ]
+    plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=lines)
+    world = World(seed=1, plates=[plate])
+
+    fields = climate.compute_climate(world, height=30, width=60)
+    assert np.all(fields.is_ocean)
+    # Evaporation should actually happen there -- an all-land reading would leave humidity at
+    # 0 everywhere, with no ocean source anywhere on the grid to draw from.
+    assert np.any(fields.humidity > 0.0)
 
 
 def test_insolation_peaks_at_equator_and_falls_toward_poles():

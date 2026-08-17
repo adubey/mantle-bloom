@@ -12,9 +12,9 @@ lattice or an irregular point cloud. This grid exists *only* here; it is never s
 `World` and never touches `world.plates`.
 
 **Fully stateless.** Every field here is recomputed from scratch on every call to
-`compute_climate`, from whatever the *current* plate elevation/crust_type happens to be
-(sampled via the same `cKDTree` nearest-neighbor technique `_render_grid_arrays` already
-uses) -- mirroring the render grid's own "recompute from scratch every call" philosophy, and
+`compute_climate`, from whatever the *current* plate elevation happens to be (sampled via the
+same `cKDTree` nearest-neighbor technique `_render_grid_arrays` already uses) -- mirroring
+the render grid's own "recompute from scratch every call" philosophy, and
 matching how plate-sim itself documents climate as something that "re-derives almost
 everything downstream of elevation from scratch" every step, unlike elevation itself. No new
 per-step cost: `step_world` is completely unaware this module exists. Climate is only ever
@@ -114,27 +114,29 @@ def _build_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.nda
 def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Nearest-elevation-node resample of the *current* plate state onto the climate grid --
     same cKDTree technique render_image.py's _render_grid_arrays already uses. Returns
-    (elevation_m, is_ocean), both (H, W)."""
+    (elevation_m, is_ocean), both (H, W). `is_ocean` is elevation-derived (elevation <= sea
+    level), *not* crust_type -- a submerged part of a continental plate (anything past its
+    shelf) is physically ocean, same as the render_image.py elevation view's own hypsometric
+    coloring already treats it, and needs the same ocean-side climate treatment (evaporation
+    source, current flow, coastal deflection) as any other ocean cell."""
     height, width, _ = world_xyz.shape
-    points_list, elev_list, crust_list = [], [], []
+    points_list, elev_list = [], []
     for plate in world.plates:
         pts, elev = plate.all_points_and_elevation()
         if len(pts) == 0:
             continue
         points_list.append(pts)
         elev_list.append(elev)
-        crust_list.append(np.full(len(pts), plate.crust_type == "oceanic"))
     flat_xyz = world_xyz.reshape(-1, 3)
     if not points_list:
         return np.zeros((height, width)), np.ones((height, width), dtype=bool)
 
     all_points = np.concatenate(points_list, axis=0)
     all_elev = np.concatenate(elev_list, axis=0)
-    all_is_oceanic = np.concatenate(crust_list, axis=0)
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz)
     elevation = all_elev[idx].reshape(height, width)
-    is_ocean = all_is_oceanic[idx].reshape(height, width)
+    is_ocean = elevation <= 0.0
     return elevation, is_ocean
 
 
