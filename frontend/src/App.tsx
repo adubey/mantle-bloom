@@ -150,13 +150,13 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: "system-ui, sans-serif", color: "#e6e8ef", padding: 24 }}>
-      <h1 style={{ fontSize: 20, marginBottom: 4 }}>mantle-bloom</h1>
-      <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
-        sphere-native plate tectonics
-      </p>
-
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 170, flexShrink: 0 }}>
+          <h1 style={{ fontSize: 20, marginTop: 0, marginBottom: 4 }}>Mantle Bloom</h1>
+          <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
+            Physical World Builder
+          </p>
+
           <button onClick={() => setShowGenerateDialog(true)} disabled={busy} style={{ fontSize: 12 }}>
             Generate World
           </button>
@@ -235,7 +235,7 @@ export default function App() {
           <EventConsole events={summary?.events ?? []} />
         </div>
 
-        <div style={{ marginTop: -50 }}>
+        <div>
           <MapCanvas
             imageBase64={renderData?.image_base64 ?? null}
             width={RENDER_WIDTH}
