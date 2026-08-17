@@ -63,6 +63,10 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
+- `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
+  insolation calculation on every future render (see
+  [simulation-model.md#climate](simulation-model.md#climate)). The one deliberate exception
+  to climate otherwise being fully stateless.
 - `events: list[(float, str)]` -- the event log for the UI's console (elapsed_years,
   message), capped at `MAX_EVENT_LOG_LENGTH = 200` entries. Appended to via `World.log_event`.
 
@@ -107,9 +111,12 @@ merge_split.py       plate consumption, sustained-collision continental merging 
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
                      plate or spawns a new one where no plate dominates
 world.py             World/Plate orchestration: generate_world, step_world
+climate.py           temperature/wind/currents/humidity/precipitation, computed fresh per
+                     render on their own fixed equirectangular grid (see
+                     simulation-model.md#climate)
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
-                     (see simulation-model.md#render-image)
+                     (see simulation-model.md#render-image and simulation-model.md#climate)
 ```
 
 See [simulation-model.md](simulation-model.md) for what each of these actually computes and

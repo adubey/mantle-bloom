@@ -18,6 +18,8 @@ const PLAY_INTERVAL_MS = 400;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
 const DEFAULT_LAND_PERCENT = 29;
+// Degrees, matching backend app/world.py's DEFAULT_AXIAL_TILT_DEG (Earth's real tilt).
+const DEFAULT_AXIAL_TILT_DEG = 23.5;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -28,6 +30,7 @@ export default function App() {
   const [seed, setSeed] = useState(randomSeed());
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
+  const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>("eckert4");
@@ -52,7 +55,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100);
+      const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg);
       setSummary(s);
       setShowGenerateDialog(false);
       await refresh(projection, mapView);
@@ -61,7 +64,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, projection, mapView, refresh]);
+  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, refresh]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -163,6 +166,11 @@ export default function App() {
               <option value="plates">Plates</option>
               <option value="platesDetail">Plates (details)</option>
               <option value="elevation">Elevation</option>
+              <option value="temperature">Temperature</option>
+              <option value="wind">Wind</option>
+              <option value="oceanCurrents">Ocean currents</option>
+              <option value="humidity">Humidity</option>
+              <option value="precipitation">Precipitation</option>
             </select>
             <select
               value={projection}
@@ -259,6 +267,19 @@ export default function App() {
                 max={100}
                 value={continentalPercent}
                 onChange={(e) => setContinentalPercent(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Axial tilt: {axialTiltDeg}°
+              <input
+                type="range"
+                min={0}
+                max={45}
+                step={0.5}
+                value={axialTiltDeg}
+                onChange={(e) => setAxialTiltDeg(Number(e.target.value))}
                 style={{ width: "100%" }}
               />
             </label>

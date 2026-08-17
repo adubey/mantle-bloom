@@ -38,6 +38,9 @@ class GenerateRequest(BaseModel):
     # always sends both.
     continental_fraction: float | None = None
     land_fraction: float | None = None
+    # The UI's "axial tilt" slider (degrees) -- optional, falls back to
+    # world.DEFAULT_AXIAL_TILT_DEG, but the frontend always sends it.
+    axial_tilt_deg: float | None = None
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS
 
 
@@ -72,6 +75,7 @@ def generate(req: GenerateRequest) -> dict:
         continental_fraction=req.continental_fraction,
         land_fraction=req.land_fraction,
         num_mantle_centers=req.num_mantle_centers,
+        axial_tilt_deg=req.axial_tilt_deg,
     )
     _state["world"] = world
     return _summary(world)

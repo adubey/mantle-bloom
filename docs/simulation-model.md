@@ -12,6 +12,7 @@
 - [Whole-sphere coverage (gap-filling)](#gap-filling)
 - [Projections](#projections)
 - [Render image](#render-image)
+- [Climate](#climate)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -429,6 +430,122 @@ PIL's arc-angle convention) increased or decreased. Confirmed directly that two 
 the same seed, differing only in the sign of `omega`, render as mirror-image arcs -- the
 direction is genuinely sourced from the physics, not a fixed assumption.
 
+<a id="climate"></a>
+## Climate (`climate.py`)
+
+Seven fields -- land temperature, ocean surface temperature, air temperature, wind, ocean
+currents, humidity, and precipitation -- computed for five map views (temperature, wind,
+ocean currents with swells marked, humidity, precipitation), ported from
+[plate-sim](https://github.com/adubey/plate-sim)'s own climate model where its mechanisms are
+richer than a first-principles description, with the caveat that mantle-bloom has no
+vegetation, rivers, or lakes.
+
+**A third, genuinely fixed-shape grid, used only here.** Elevation is Lagrangian (see [Why
+not a grid](#why-not-a-grid)); the render grid ([Render image](#render-image)) is a *ragged*
+lat/lon sweep, immediately flattened to 1D. Neither supports the array tricks climate leans
+on -- `np.roll` wraparound, centered-difference gradients, divergence, land-excluding
+neighbor averaging. So climate gets its own equirectangular array, `lat: (H,)` / `lon: (W,)`,
+every field `(H, W)`, `GRID_HEIGHT = 90` x `GRID_WIDTH = 180` (2 degrees/cell). It's never
+stored on `World` and never touches `world.plates`.
+
+**Fully stateless.** Every field is recomputed from scratch on every render call, from
+whatever the *current* plate elevation/crust_type happens to be (the same `cKDTree`
+nearest-neighbor sampling `_render_grid_arrays` already uses) -- `step_world` is completely
+unaware this module exists; climate only runs when a climate view is actually requested. The
+one exception: `World.axial_tilt_deg`, a fixed generation-time property like `seed` (set once
+by `generate_world`, read again on every future render), since insolation needs it long after
+generation and it isn't something to recompute per call.
+
+**Pipeline order.** Wind needs a temperature field, but the *final* (current-advected) ocean
+temperature needs currents, which need wind -- resolved by computing a pre-advection baseline
+first and closing the loop only for the final consumer-facing fields:
+
+1. **Insolation** -- `cos(lat)` zenith-angle law (clipped floor), plus axial tilt: with tilt
+   0 it's the flat law; otherwise the mean of that same law over
+   `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between `-tilt` and `+tilt` (the
+   sub-solar latitude's annual sweep -- this model has no calendar, so it's an annual mean,
+   not a season cycle).
+2. **Land temperature** = f(insolation) plus elevation-based lapse-rate cooling, kept as part
+   of the same base-heating formula rather than a separate causal channel (mountains being
+   cold is a consequence of solar heating at altitude, matching plate-sim's own
+   `compute_temperature`).
+3. **Ocean temperature baseline** = f(insolation) only, a narrower range plus a freezing
+   floor (water's greater thermal inertia) -- pre-advection.
+4. **Wind** -- latitude-banded meridional flow (trade winds/westerlies/polar easterlies,
+   empirical lookup, the near-surface branch of the real three-cell circulation) plus
+   Coriolis zonal deflection (`u = GAIN * sin(lat) * v`), plus an additive term from the real
+   local gradient of the pre-advection land/ocean surface temperature (`np.roll`
+   centered-difference) -- the empirical banding supplies planetary-scale structure a
+   gradient-alone field doesn't produce (matching plate-sim's own documented finding), the
+   gradient term is the genuinely temperature-responsive component. **Mountain
+   deflection/Venturi/wake**, ported directly from plate-sim's `wind.py`: smooth elevation
+   (Jacobi blur) before differencing into a gradient, cancel wind's into-slope component and
+   redirect it tangentially with a speedup factor, ramped so gentle hills don't fully block;
+   tangent side chosen by local topology (sample smoothed elevation along both perpendicular
+   candidates, pick whichever is lower) -- mesoscale flow-splitting has no Coriolis-preferred
+   side the way basin-scale currents do. Wake: walk backward along the (post-deflection) wind
+   direction checking for upstream terrain, damping speed near the obstacle and relaxing back
+   over a lookback window.
+5. **Ocean currents** -- Ekman base (wind rotated by a fixed angle, hemisphere-flipped),
+   redirected around coastlines by the same cancel/redirect mechanism as mountain deflection
+   but with the tangent side chosen by a *fixed hemisphere sense* instead of local topology
+   (real boundary currents have a Coriolis-preferred circulation direction), then smoothed
+   along the coast (land-excluding Jacobi averaging, re-deflected each pass, so the effect
+   propagates along a coastline rather than staying a single cell deep). **Land swirl**:
+   every ocean cell gets a tangential contribution from its *nearest land cell* (`cKDTree`,
+   confirmed against plate-sim's actual `_land_swirl_current` to be nearest-cell-based, not
+   landmass-grouped, so this is a faithful port), ramping from 0 at the coast to a peak then
+   decaying with distance, direction matching the coastal deflection's hemisphere sense so
+   the two agree. **Circumglobal boost**: a speedup on any row with zero land cells anywhere
+   along it (a complete ocean ring) -- the stand-in for the Antarctic Circumpolar Current.
+   **Wake**: the same backward-walk-and-damp structure as wind's, obstacle test is
+   land-instead-of-elevation, plus a per-world-state noise texture (deterministic in `(seed,
+   elapsed_years)`, so repeated renders of the same world state don't flicker) standing in
+   for turbulent mixing.
+6. **Ocean swells** -- convergence (negative divergence, `np.roll` centered differences) of
+   the *final* current field, weighted-sampled down to `MAX_OCEAN_SWELLS` points (same
+   weighted-without-replacement technique `hazards.py`-equivalent code uses elsewhere in
+   plate-sim for earthquake/volcano placement).
+7. **Final ocean surface temperature** -- semi-Lagrangian backward advection (single
+   fixed-distance backward sample, nearest-cell) of the baseline along the final current
+   field: "carried by ocean currents."
+8. **Air temperature** -- the land baseline's own solar-heating formula, pulled toward the
+   *nearest ocean cell's* final temperature by a distance-based (`exp` e-folding) falloff:
+   "moderating effect of oceans," literally, right down to the "nearest ocean and its
+   temperature" query being a `cKDTree` chord-distance search (true 3D distance, no
+   pole/antimeridian special-casing needed) rather than plate-sim's own lat/lon-tangent-plane
+   BFS. Land temperature itself is never moderated -- only air temperature is.
+9. **Humidity** -- an evaporation ceiling over ocean from the local final ocean temperature,
+   advected onto land by a wind-driven 2D sweep: a zonal pass and a meridional pass (each a
+   sequential flow-direction walk, vectorized across the perpendicular axis, single-column
+   evaporation/retention/orographic-dump step per iteration -- pure numpy, no `numba`),
+   blended per-cell by each wind component's share of total wind magnitude. The zonal pass's
+   sweep *direction* is the same fixed latitude-band lookup wind's meridional structure uses
+   (`zonal_direction_for_lat`), not the literal local wind sign -- matches plate-sim's own
+   `compute_humidity` exactly. No evapotranspiration term (needs vegetation, which doesn't
+   exist here -- an absent input, not a simplified one).
+10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
+    windward-slope moisture dump, from wind blowing up-elevation) -- no zonal
+    latitude-climatology baseline (equator/mid-latitude wet bands), cut deliberately.
+    Computed but consumed by nothing else yet (no rivers, no vegetation).
+
+**Scope, explicitly decided.** Kept out: river outflow feeding currents (no rivers exist),
+deep currents, precipitation's zonal climatology baseline. Included, even though richer than
+a one-line causal description: axial tilt, wind's mountain deflection/Venturi/wake, ocean
+currents' coastal deflection/land swirl/circumglobal boost/wake -- all ported from directly
+read plate-sim source, not simplified down. Dropped outright, not reduced (their inputs don't
+exist in mantle-bloom): humidity's evapotranspiration term, river outflow, lake climate
+influence.
+
+**Rendering.** `render_image.py`'s `CLIMATE_VIEWS` (`temperature`, `wind`, `oceanCurrents`,
+`humidity`, `precipitation`) route to `_render_climate_view`, a separate path from the
+plate-tectonics views since the data source (a real `(H, W)` array, always covering the whole
+sphere) is structurally different from the render grid's ragged lattice. Heatmap views
+(temperature/humidity/precipitation) reuse the elevation view's color-stop-interpolation
+technique with their own stop tables; wind/ocean-currents draw subsampled arrows (numpy-
+vectorized projection/direction math, looped only for the unavoidable per-arrow PIL draw
+calls), and ocean currents additionally marks each sampled swell point with a small circle.
+
 <a id="known-simplifications"></a>
 ## Known simplifications
 
@@ -458,8 +575,10 @@ than an oversight:
   -- a coarser approximation than the rest of the model, not a bug, and a possible future
   refinement (e.g. weighting by directional alignment with the plate's own motion rather
   than raw border presence).
-- **No climate, hydrology, erosion, or biomes yet.** Explicitly out of scope for this v1 --
-  see plate-sim's own model for the shape that work would take once revisited on this
-  sphere-native foundation.
+- **No hydrology (rivers/lakes), erosion, or biomes/vegetation yet.** Climate itself is now
+  modeled (see [Climate](#climate)) -- precipitation is measured but, per that section, feeds
+  nothing else yet, since river/lake/vegetation systems that would consume it don't exist.
+  Explicitly out of scope for this v1 -- see plate-sim's own model for the shape that work
+  would take once revisited on this sphere-native foundation.
 - **Single in-memory world, no persistence.** See
   [World state](architecture.md#world-state).

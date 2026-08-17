@@ -10,6 +10,7 @@ from . import boundary, gaps, geometry, line_regrid, mantle, merge_split
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
+DEFAULT_AXIAL_TILT_DEG = 23.5
 # Bounds how large World.events can grow over a long play session -- the UI's console only
 # ever needs recent history, not an unbounded transcript.
 MAX_EVENT_LOG_LENGTH = 200
@@ -23,6 +24,10 @@ class World:
     elapsed_years: float = 0.0
     steps_since_gc: int = 0
     next_plate_id: int = 0
+    # A fixed per-world property, like `seed` -- set once at generation and read again on
+    # every future climate render (see climate.py's compute_insolation), not rendering/cache
+    # state. The one deliberate exception to climate being otherwise fully stateless.
+    axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG
     # Number of times gaps.fill_gaps has actually run -- part of the deterministic RNG seed
     # for gap-fill's new-crust noise texture (see gaps.py), not just a counter.
     gap_fill_calls: int = 0
@@ -68,11 +73,15 @@ def generate_world(
     continental_fraction: float | None = None,
     land_fraction: float | None = None,
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
+    axial_tilt_deg: float | None = None,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
     `continental_fraction`/`land_fraction` are the UI's generation sliders -- see
-    plates.generate_plates."""
+    plates.generate_plates. `axial_tilt_deg` is the UI's third generation slider (degrees,
+    defaults to DEFAULT_AXIAL_TILT_DEG = Earth's real tilt) -- doesn't affect plate
+    generation at all, only climate.py's insolation, read at render time long after
+    generation, which is why it's stored on World rather than consumed once here."""
     plates = generate_plates(
         seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction
     )
@@ -86,6 +95,7 @@ def generate_world(
         mantle_centers=mantle_centers,
         elapsed_years=0.0,
         next_plate_id=len(plates),
+        axial_tilt_deg=DEFAULT_AXIAL_TILT_DEG if axial_tilt_deg is None else axial_tilt_deg,
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)

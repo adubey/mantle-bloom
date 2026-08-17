@@ -24,10 +24,15 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle, plates, projections
+from . import climate, geometry, mantle, plates, projections
 from .world import World
 
-VIEWS = ("elevation", "plates", "platesDetail")
+# Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
+# see climate.py's module docstring for why. Handled by a separate code path
+# (_render_climate_view) rather than threading a third data source through render_png's
+# existing elevation/plates machinery.
+CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitation")
+VIEWS = ("elevation", "plates", "platesDetail") + CLIMATE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 
@@ -102,6 +107,53 @@ def elevation_colors(elevations: np.ndarray) -> np.ndarray:
     old manual clamp)."""
     channels = [np.interp(elevations, _ELEVATION_STOP_E, _ELEVATION_STOP_RGB[:, c]) for c in range(3)]
     return np.clip(np.round(np.stack(channels, axis=-1)), 0, 255).astype(np.uint8)
+
+
+# Diverging cold -> hot, degrees C. Covers climate.py's land/air temperature range
+# comfortably (LAND_TEMP_MIN_C=-60 to LAND_TEMP_MIN_C+LAND_TEMP_RANGE_C=35).
+_TEMPERATURE_STOP_C = np.array([-60, -30, -10, 0, 10, 20, 30, 40], dtype=float)
+_TEMPERATURE_STOP_RGB = np.array(
+    [
+        (30, 20, 90), (40, 60, 170), (70, 130, 220), (150, 200, 230),
+        (230, 230, 140), (240, 170, 60), (210, 80, 40), (140, 20, 20),
+    ],
+    dtype=float,
+)
+
+# Dry (tan) -> humid (deep teal/blue). climate.py's humidity is roughly [0, MAX_EVAPORATION_CEILING=1.4].
+_HUMIDITY_STOP_V = np.array([0.0, 0.3, 0.6, 0.9, 1.2, 1.4], dtype=float)
+_HUMIDITY_STOP_RGB = np.array(
+    [
+        (120, 100, 60), (170, 150, 90), (140, 170, 110), (70, 150, 140), (30, 100, 140), (15, 60, 110),
+    ],
+    dtype=float,
+)
+
+# Dry (tan) -> wet (dark blue), mm/year. climate.py's precipitation_mm typically runs 0-2000+.
+_PRECIPITATION_STOP_MM = np.array([0, 250, 600, 1200, 2000, 3000], dtype=float)
+_PRECIPITATION_STOP_RGB = np.array(
+    [
+        (180, 160, 100), (200, 190, 110), (140, 180, 90), (60, 140, 90), (40, 90, 150), (20, 40, 120),
+    ],
+    dtype=float,
+)
+
+
+def _interp_colors(values: np.ndarray, stops: np.ndarray, stop_rgb: np.ndarray) -> np.ndarray:
+    channels = [np.interp(values, stops, stop_rgb[:, c]) for c in range(3)]
+    return np.clip(np.round(np.stack(channels, axis=-1)), 0, 255).astype(np.uint8)
+
+
+def temperature_colors(celsius: np.ndarray) -> np.ndarray:
+    return _interp_colors(celsius, _TEMPERATURE_STOP_C, _TEMPERATURE_STOP_RGB)
+
+
+def humidity_colors(humidity: np.ndarray) -> np.ndarray:
+    return _interp_colors(humidity, _HUMIDITY_STOP_V, _HUMIDITY_STOP_RGB)
+
+
+def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
+    return _interp_colors(precipitation_mm, _PRECIPITATION_STOP_MM, _PRECIPITATION_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -333,6 +385,164 @@ def _draw_rotation_arc(
     _draw_arrow_head(draw, head_px, tangent_px, color, ARROWHEAD_LENGTH_PX * pixel_scale)
 
 
+# Arrows are drawn at a coarser subsample of climate.py's own (90x180) computation grid --
+# one arrow per cell would be unreadable clutter at these sizes.
+ARROW_GRID_STRIDE = 6
+ARROW_MAX_LENGTH_PX = 14.0
+ARROW_LINE_WIDTH_PX = 1.3
+SWELL_MARKER_RADIUS_PX = 4.0
+WIND_ARROW_COLOR = (230, 230, 255)
+CURRENT_ARROW_COLOR = (140, 210, 255)
+CLIMATE_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=np.uint8)
+CLIMATE_LAND_BACKDROP_RGB = np.array([40, 46, 34], dtype=np.uint8)
+
+
+def _climate_row_cell_half_extent(projection: str, lat_deg: float, dlat_deg: float, dlon_deg: float) -> tuple[float, float]:
+    """Same measurement technique as _row_cell_half_extent, adapted to climate.py's plain
+    fixed-dlat/dlon equirectangular grid rather than the render grid's cos(phi)-reduced one."""
+    lat_r = np.radians(lat_deg)
+    origin = geometry.latlon_to_xyz(np.array([lat_r]), np.array([0.0]))
+    lon_neighbor = geometry.latlon_to_xyz(np.array([lat_r]), np.array([np.radians(dlon_deg)]))
+    lat_neighbor = geometry.latlon_to_xyz(np.array([lat_r + np.radians(dlat_deg)]), np.array([0.0]))
+    (ox, oy), (tx, ty), (px, py) = (
+        _project_points(projection, origin)[0],
+        _project_points(projection, lon_neighbor)[0],
+        _project_points(projection, lat_neighbor)[0],
+    )
+    return abs(tx - ox) / 2, abs(py - oy) / 2
+
+
+def _draw_climate_vectors(
+    draw: ImageDraw.ImageDraw,
+    fields: "climate.ClimateFields",
+    u: np.ndarray,
+    v: np.ndarray,
+    projection: str,
+    scale: float,
+    offset_x: float,
+    offset_y: float,
+    pixel_scale: float,
+    color: tuple[int, int, int],
+) -> None:
+    """Draws one arrow per subsampled grid cell, length scaled by speed relative to the max
+    speed present. Direction is found the same way as the plate rotation arc's tangent: a
+    small offset along the local (east, north) vector, projected, rather than assuming the
+    projection preserves on-screen angles."""
+    grid_h, grid_w = u.shape
+    rows = np.arange(0, grid_h, ARROW_GRID_STRIDE)
+    cols = np.arange(0, grid_w, ARROW_GRID_STRIDE)
+    rr, cc = np.meshgrid(rows, cols, indexing="ij")
+    rr, cc = rr.reshape(-1), cc.reshape(-1)
+
+    base_xyz = fields.world_xyz[rr, cc]
+    u_pts, v_pts = u[rr, cc], v[rr, cc]
+    speed = np.hypot(u_pts, v_pts)
+    keep = speed > 1e-6
+    if not np.any(keep):
+        return
+    base_xyz, u_pts, v_pts, speed = base_xyz[keep], u_pts[keep], v_pts[keep], speed[keep]
+    max_speed = float(speed.max())
+
+    lon = np.arctan2(base_xyz[:, 1], base_xyz[:, 0])
+    east = np.stack([-np.sin(lon), np.cos(lon), np.zeros_like(lon)], axis=-1)
+    north = np.cross(base_xyz, east)
+    direction = geometry.normalize(u_pts[:, None] * east + v_pts[:, None] * north)
+    offset_xyz = geometry.normalize(base_xyz + 0.02 * direction)
+
+    base_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, base_xyz))
+    offset_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, offset_xyz))
+
+    arrow_vec = offset_px - base_px
+    arrow_len = np.hypot(arrow_vec[:, 0], arrow_vec[:, 1])
+    line_width = max(int(round(ARROW_LINE_WIDTH_PX * pixel_scale)), 1)
+    head_len = ARROWHEAD_LENGTH_PX * 0.6 * pixel_scale
+
+    for i in range(len(base_px)):
+        if arrow_len[i] < 1e-6:
+            continue
+        dir_i = arrow_vec[i] / arrow_len[i]
+        length_px = ARROW_MAX_LENGTH_PX * pixel_scale * (0.3 + 0.7 * speed[i] / max_speed)
+        tip = base_px[i] + dir_i * length_px
+        draw.line([tuple(base_px[i]), tuple(tip)], fill=color, width=line_width)
+        _draw_arrow_head(draw, tip, dir_i, color, head_len)
+
+
+def _draw_swell_markers(
+    draw: ImageDraw.ImageDraw, fields: "climate.ClimateFields", projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float,
+) -> None:
+    if len(fields.swell_rows) == 0:
+        return
+    xyz = fields.world_xyz[fields.swell_rows, fields.swell_cols]
+    centers = _to_pixels(scale, offset_x, offset_y, _project_points(projection, xyz))
+    r = SWELL_MARKER_RADIUS_PX * pixel_scale
+    width_px = max(int(round(pixel_scale)), 1)
+    for px, py in centers:
+        draw.ellipse([px - r, py - r, px + r, py + r], outline=(255, 255, 255), width=width_px)
+
+
+def _render_climate_view(world: World, projection: str, view: str, width: int, height: int) -> bytes:
+    """Renders one of CLIMATE_VIEWS from climate.py's own fixed grid -- a separate path from
+    the plate-tectonics views below since the data source (a real (H, W) array, always
+    covering the whole sphere) is structurally different from the render grid's ragged
+    lattice, so there's little to share beyond the pixel-space primitives."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    fields = climate.compute_climate(world)
+    grid_h, grid_w = fields.elevation_m.shape
+    flat_xyz = fields.world_xyz.reshape(-1, 3)
+    flat_xy = _project_points(projection, flat_xyz)
+
+    min_x, min_y = flat_xy.min(axis=0)
+    max_x, max_y = flat_xy.max(axis=0)
+    data_w = max(max_x - min_x, 1e-9)
+    data_h = max(max_y - min_y, 1e-9)
+    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
+    offset_x = width / 2 - scale * (min_x + max_x) / 2
+    offset_y = height / 2 + scale * (min_y + max_y) / 2
+
+    pixels = blank.copy()
+    centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
+
+    dlat_deg = 180.0 / grid_h
+    dlon_deg = 360.0 / grid_w
+    half_w_by_row = np.empty(grid_h)
+    half_h_by_row = np.empty(grid_h)
+    for r in range(grid_h):
+        half_w_by_row[r], half_h_by_row[r] = _climate_row_cell_half_extent(projection, float(fields.lat_deg[r]), dlat_deg, dlon_deg)
+    half_w = np.repeat(half_w_by_row, grid_w) * scale * CELL_OVERLAP_FACTOR
+    half_h = np.repeat(half_h_by_row, grid_w) * scale * CELL_OVERLAP_FACTOR
+
+    if view == "temperature":
+        # Whichever temperature is physically meaningful at that cell: ocean surface where
+        # there's ocean, air temperature (already moderated toward nearby ocean) over land.
+        display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
+        colors = temperature_colors(display_temp.reshape(-1))
+        _fill_rects(pixels, centers, half_w, half_h, colors)
+    elif view == "humidity":
+        colors = humidity_colors(fields.humidity.reshape(-1))
+        _fill_rects(pixels, centers, half_w, half_h, colors)
+    elif view == "precipitation":
+        colors = precipitation_colors(fields.precipitation_mm.reshape(-1))
+        _fill_rects(pixels, centers, half_w, half_h, colors)
+    elif view in ("wind", "oceanCurrents"):
+        backdrop = np.where(fields.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
+        _fill_rects(pixels, centers, half_w, half_h, backdrop)
+
+    image = Image.fromarray(pixels, mode="RGB")
+
+    if view == "wind":
+        draw = ImageDraw.Draw(image)
+        _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR)
+    elif view == "oceanCurrents":
+        draw = ImageDraw.Draw(image)
+        _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR)
+        _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale)
+
+    return _encode_image(image)
+
+
 def render_png(world: World, projection: str, view: str, width: int, height: int) -> bytes:
     """Render `view` of `world` in `projection`, at `width`x`height` pixels, as PNG bytes.
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
@@ -340,6 +550,9 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    if view in CLIMATE_VIEWS:
+        return _render_climate_view(world, projection, view, width, height)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

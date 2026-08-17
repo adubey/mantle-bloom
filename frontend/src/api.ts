@@ -6,7 +6,15 @@ export type Projection = "behrmann" | "eckert4";
 // directly into the returned image (fill color rule, whether boundaries/poles/velocity
 // arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
 // draw raw coordinate data it fetched.
-export type MapView = "elevation" | "plates" | "platesDetail";
+export type MapView =
+  | "elevation"
+  | "plates"
+  | "platesDetail"
+  | "temperature"
+  | "wind"
+  | "oceanCurrents"
+  | "humidity"
+  | "precipitation";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -40,12 +48,24 @@ async function asJson<T>(resp: Response): Promise<T> {
 // alone (see backend app/plates.py's generate_plates). continentalFraction/landFraction are
 // the dialog's two sliders (0 to 1): the fraction of plates made continental, and the
 // fraction of the whole sphere that starts above sea level (independent of the first --
-// see plates.py's _land_noise_threshold for how the two combine).
-export function generateWorld(seed: number, continentalFraction: number, landFraction: number): Promise<WorldSummary> {
+// see plates.py's _land_noise_threshold for how the two combine). axialTiltDeg is the
+// dialog's third slider (degrees) -- doesn't affect plate generation, only climate.py's
+// insolation at render time (see world.py's World.axial_tilt_deg).
+export function generateWorld(
+  seed: number,
+  continentalFraction: number,
+  landFraction: number,
+  axialTiltDeg: number,
+): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seed, continental_fraction: continentalFraction, land_fraction: landFraction }),
+    body: JSON.stringify({
+      seed,
+      continental_fraction: continentalFraction,
+      land_fraction: landFraction,
+      axial_tilt_deg: axialTiltDeg,
+    }),
   }).then(asJson<WorldSummary>);
 }
 

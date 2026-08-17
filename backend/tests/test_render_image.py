@@ -4,7 +4,7 @@ import io
 import numpy as np
 from PIL import Image
 
-from app import geometry, render_image
+from app import climate, geometry, render_image
 from app.world import World, generate_world
 
 
@@ -136,6 +136,51 @@ def test_pole_marker_uses_plate_color_not_a_fixed_color():
     pixels = np.asarray(image).reshape(-1, 3)
     old_fixed_pole_color = np.array([255, 45, 85])
     assert not np.any(np.all(pixels == old_fixed_pole_color, axis=-1))
+
+
+def test_climate_views_render_as_distinct_images():
+    world = _world(seed=4, num_plates=10, continental_fraction=0.5)
+    pngs = {view: render_image.render_png(world, "behrmann", view, 320, 180) for view in render_image.CLIMATE_VIEWS}
+    views = list(pngs)
+    for i in range(len(views)):
+        for j in range(i + 1, len(views)):
+            assert pngs[views[i]] != pngs[views[j]], f"{views[i]} and {views[j]} rendered identically"
+
+
+def _synthetic_converging_currents_fields(height=20, width=40) -> "climate.ClimateFields":
+    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
+    lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
+    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
+    lon_grid = np.repeat(lon_deg[None, :], height, axis=0)
+    world_xyz = geometry.latlon_to_xyz(np.radians(lat_grid), np.radians(lon_grid))
+
+    is_ocean = np.ones((height, width), dtype=bool)
+    current_u = np.zeros((height, width))
+    current_u[:, : width // 2] = 3.0
+    current_u[:, width // 2 :] = -3.0  # converges on the seam at width // 2
+    current_v = np.zeros((height, width))
+
+    rows, cols = climate.compute_ocean_swells(current_u, current_v, is_ocean, np.random.default_rng(0))
+    zeros = np.zeros((height, width))
+    return climate.ClimateFields(
+        lat_deg=lat_deg, lon_deg=lon_deg, world_xyz=world_xyz,
+        elevation_m=zeros, is_ocean=is_ocean,
+        land_temperature_c=zeros, ocean_temperature_c=zeros, air_temperature_c=zeros,
+        wind_u=zeros, wind_v=zeros, current_u=current_u, current_v=current_v,
+        humidity=zeros, precipitation_mm=zeros, swell_rows=rows, swell_cols=cols,
+    )
+
+
+def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
+    fields = _synthetic_converging_currents_fields()
+    assert len(fields.swell_rows) > 0  # sanity: the synthetic setup actually produces swells
+    monkeypatch.setattr(render_image.climate, "compute_climate", lambda world, **kwargs: fields)
+
+    png = render_image.render_png(_world(), "behrmann", "oceanCurrents", 320, 180)
+    image = Image.open(io.BytesIO(png)).convert("RGB")
+    pixels = np.asarray(image).reshape(-1, 3)
+    swell_marker_white = np.array([255, 255, 255])
+    assert np.any(np.all(pixels == swell_marker_white, axis=-1))
 
 
 def test_rotation_arc_direction_mirrors_when_omega_sign_flips():

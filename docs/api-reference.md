@@ -9,7 +9,14 @@ time.
 Request body:
 
 ```json
-{ "seed": 1, "num_plates": null, "continental_fraction": 0.7, "land_fraction": 0.29, "num_mantle_centers": 8 }
+{
+  "seed": 1,
+  "num_plates": null,
+  "continental_fraction": 0.7,
+  "land_fraction": 0.29,
+  "axial_tilt_deg": 23.5,
+  "num_mantle_centers": 8
+}
 ```
 
 All fields optional. `num_plates` defaults to `null` -- omit it (the frontend always does)
@@ -22,8 +29,12 @@ UI's two generation sliders (0 to 1, defaulting in the frontend to
 both optional, each falling back to its own default behavior when omitted (an independent
 per-plate coin flip for crust type, a fixed elevation floor for land) -- see
 [simulation-model.md#initial-plate-generation](simulation-model.md#initial-plate-generation).
-`num_mantle_centers` defaults to `world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world
-previously existed.
+`axial_tilt_deg` is the UI's third generation slider (degrees), defaulting to
+`world.DEFAULT_AXIAL_TILT_DEG = 23.5` (Earth's real tilt) -- doesn't affect plate generation,
+only `climate.py`'s insolation on future renders (see
+[simulation-model.md#climate](simulation-model.md#climate)), which is why it's stored on
+`World` rather than consumed once here. `num_mantle_centers` defaults to
+`world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world previously existed.
 
 Response: a summary --
 
@@ -57,7 +68,7 @@ Advances the current world by `years` (see
 summary shape as `/world/generate`, with `events` reflecting anything logged up through this
 step. `404` if no world has been generated yet.
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail&width=1100&height=611`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|temperature|wind|oceanCurrents|humidity|precipitation&width=1100&height=611`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -77,7 +88,12 @@ unrecognized projection/view name or a width/height outside `[1, main.MAX_RENDER
 - `view` selects what gets drawn: `"elevation"` (colored by height/depth), `"plates"`
   (colored by owning plate, plus boundary outlines/pole markers/rotation arcs), or
   `"platesDetail"` (each plate's raw elevation-line nodes as dots, colored by elevation,
-  plus boundary outlines) -- the frontend's Map View dropdown picks this directly.
+  plus boundary outlines) -- the frontend's Map View dropdown picks this directly. Five more
+  views come from `climate.py` (see
+  [simulation-model.md#climate](simulation-model.md#climate)): `"temperature"`,
+  `"humidity"`, and `"precipitation"` are heatmaps; `"wind"` and `"oceanCurrents"` draw
+  subsampled direction/magnitude arrows, and `"oceanCurrents"` additionally marks detected
+  ocean swells with small circles.
 - `width`/`height` are the returned image's exact pixel dimensions. The frontend requests
   more than its canvas's displayed CSS size (`RENDER_SCALE` in `App.tsx`) for a sharper,
   retina-style render at the same on-screen footprint; line widths, dot/pole radii, and
