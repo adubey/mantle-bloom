@@ -33,6 +33,10 @@ function formatLatLon(latDeg: number, lonDeg: number): string {
   return `${Math.abs(latDeg).toFixed(1)}°${latDir}, ${Math.abs(lonDeg).toFixed(1)}°${lonDir}`;
 }
 
+function isIdentityRotation(rotation: Mat3): boolean {
+  return rotation.every((v, i) => v === IDENTITY_ROTATION[i]);
+}
+
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
@@ -98,6 +102,13 @@ export default function App() {
       setStepping(false);
     }
   }, [summary, stepYears, projection, mapView, rotation, refresh]);
+
+  // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
+  // updates state, same as a completed drag; the effect below does the actual re-fetch.
+  const handleRecenter = useCallback(() => {
+    setRotation(IDENTITY_ROTATION);
+    setCenterLatLon({ lat: 0, lon: 0 });
+  }, []);
 
   // Re-render with the current world whenever the projection, map view, or view rotation
   // changes -- all three are baked server-side into the returned image (see api.ts's
@@ -203,6 +214,13 @@ export default function App() {
             <div style={{ marginTop: 6, opacity: 0.8 }}>
               Center: {formatLatLon(centerLatLon.lat, centerLatLon.lon)}
             </div>
+            <button
+              onClick={handleRecenter}
+              disabled={busy || !summary || isIdentityRotation(rotation)}
+              style={{ width: "100%", marginTop: 6, fontSize: 12 }}
+            >
+              Re-center
+            </button>
           </fieldset>
 
           {summary && (
