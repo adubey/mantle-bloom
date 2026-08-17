@@ -167,6 +167,36 @@ def _project_points(projection: str, world_pts: np.ndarray) -> np.ndarray:
     return np.stack([x, y], axis=-1)
 
 
+def _project_offset(projection: str, world_pts: np.ndarray, reference_lon: np.ndarray) -> np.ndarray:
+    """Like _project_points, but for a point known to be a *small* true angular step away
+    from another point whose own longitude is `reference_lon` -- e.g. measuring a cell's
+    extent by projecting a nearby offset. `xyz_to_latlon`'s atan2 jumps from +pi to -pi at
+    the antimeridian, so two points a tiny 3D distance apart can still land on opposite sides
+    of that jump (this becomes common, not a rare edge case, once the view can rotate
+    arbitrarily -- the seam can fall anywhere). Longitude is unwrapped to the representative
+    within pi of `reference_lon` before projecting, since a true small step should always be
+    representable that way; ordinary data-point projection (_project_points) has no such
+    reference and doesn't need this -- there, the seam simply *is* the map's left/right edge,
+    correctly."""
+    lat, lon = geometry.xyz_to_latlon(world_pts)
+    lon = reference_lon + ((lon - reference_lon + np.pi) % (2 * np.pi) - np.pi)
+    x, y = projections.project(projection, lat, lon)
+    return np.stack([x, y], axis=-1)
+
+
+def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
+    """Applies the current view rotation to real world positions -- `view_rotation @ p` for
+    each column-vector p, vectorized over row-shaped points as `world_pts @ view_rotation.T`
+    (see geometry.py's to_world for the same row/column convention). Named `view_rotation`
+    (not just `rotation`) throughout this module to keep it unambiguous next to
+    `_plate_tectonics`'s unrelated `rotation_arc` (a plate's own Euler-pole tectonic
+    rotation). This is a pure render-time transform: it only ever runs on positions
+    immediately before they're projected to pixels, never on anything climate.py uses for
+    actual physics (insolation, Coriolis, latitude-banded wind/currents all key off the
+    true, un-rotated planetary frame -- see docs/simulation-model.md#rotating-the-view)."""
+    return world_pts @ view_rotation.T
+
+
 def _collect_all_points(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Every plate's current elevation-node positions, elevations, and owning plate_id,
     concatenated -- the source data the render grid resamples from."""
@@ -187,31 +217,36 @@ def _collect_all_points(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarra
     )
 
 
-def _row_cell_half_extent(projection: str, phi: float, dtheta: float) -> tuple[float, float]:
-    """How far apart (in *projected* units) this row's grid points end up, in each
-    direction. See docs/simulation-model.md#render-image for the full derivation -- measured
-    directly from the projection's local behavior (Behrmann, for instance, stretches
-    longitude spacing near the poles) rather than assumed, so cells drawn at this size tile
-    the map with no gaps anywhere, including at the poles."""
-    origin = geometry.local_xyz(np.array([phi]), np.array([0.0]))
-    theta_neighbor = geometry.local_xyz(np.array([phi]), np.array([dtheta]))
-    phi_neighbor = geometry.local_xyz(np.array([phi + GRID_SPACING_RAD]), np.array([0.0]))
-    (ox, oy), (tx, ty), (px, py) = (
-        _project_points(projection, origin)[0],
-        _project_points(projection, theta_neighbor)[0],
-        _project_points(projection, phi_neighbor)[0],
-    )
-    return abs(tx - ox) / 2, abs(py - oy) / 2
-
-
 def _render_grid_arrays(
-    world: World, projection: str
+    world: World, projection: str, view_rotation: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation
     and owning plate -- see docs/simulation-model.md#render-image. Returns flat concatenated
     (projected_xy, elevation, plate_id, cell_half_width, cell_half_height) arrays, or None
-    for an empty world."""
+    for an empty world.
+
+    Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
+    constant true latitude also has constant apparent latitude, so one measurement per row
+    was enough (see git history for that older version). Once the view can be rotated
+    arbitrarily that's no longer true -- a true-latitude row can span very different apparent
+    positions depending on longitude, so cell size becomes a genuinely per-cell property.
+    Measured via the cell's four *corners* (half a cell-step away on each diagonal), not its
+    edge-midpoint neighbors: a rotation can turn what was an axis-aligned cell into a rotated
+    or skewed quadrilateral, and a rotated square's axis-aligned bounding box is set by its
+    corners, not by how far its edge midpoints sit from its center (which underestimates it,
+    by a factor approaching sqrt(2) at a 45-degree rotation -- confirmed directly: this is
+    what was producing widespread pinhole gaps under rotation before this was corner-based).
+    Each corner is one extra projection call covering the whole row at once (four extra calls
+    total per row, not per cell -- cells just no longer share a single measurement), via
+    _project_offset rather than _project_points: once the view can rotate arbitrarily, the
+    antimeridian seam (where xyz_to_latlon's atan2 jumps from +pi to -pi) can land anywhere
+    within a row -- not a rare edge case, since the seam is a full line across the whole
+    sphere that the grid's dense sweep is guaranteed to cross somewhere -- and a naive
+    small-angle offset can still land on the far side of it, producing a wildly wrong extent
+    (confirmed directly: this was the source of a handful of huge false cells smearing all
+    the way across the render). _project_offset keeps the corner's longitude unwrapped
+    relative to the cell's own center, which a true small step should always permit."""
     collected = _collect_all_points(world)
     if collected is None:
         return None
@@ -221,15 +256,28 @@ def _render_grid_arrays(
     xy_chunks, elev_chunks, owner_chunks, hw_chunks, hh_chunks = [], [], [], [], []
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=GRID_SPACING_RAD):
         _, idx = tree.query(world_pts)
-        xy_chunks.append(_project_points(projection, world_pts))
+        rotated = _rotate(world_pts, view_rotation)
+        xy = _project_points(projection, rotated)
+        xy_chunks.append(xy)
         elev_chunks.append(all_elevation[idx])
         owner_chunks.append(all_owner[idx])
 
-        dtheta = GRID_SPACING_RAD / max(np.cos(phi), 1e-3)
-        half_w, half_h = _row_cell_half_extent(projection, phi, dtheta)
-        n = len(theta_candidates)
-        hw_chunks.append(np.full(n, half_w))
-        hh_chunks.append(np.full(n, half_h))
+        _, center_lon = geometry.xyz_to_latlon(rotated)
+        half_dtheta = GRID_SPACING_RAD / max(np.cos(phi), 1e-3) / 2
+        half_dphi = GRID_SPACING_RAD / 2
+
+        corner_steps = []
+        for dphi_sign in (1.0, -1.0):
+            for dtheta_sign in (1.0, -1.0):
+                corner_local = geometry.local_xyz(
+                    np.full_like(theta_candidates, phi + dphi_sign * half_dphi),
+                    theta_candidates + dtheta_sign * half_dtheta,
+                )
+                corner_xy = _project_offset(projection, _rotate(corner_local, view_rotation), center_lon)
+                corner_steps.append(corner_xy - xy)
+
+        hw_chunks.append(np.max([np.abs(s[:, 0]) for s in corner_steps], axis=0))
+        hh_chunks.append(np.max([np.abs(s[:, 1]) for s in corner_steps], axis=0))
 
     return (
         np.concatenate(xy_chunks, axis=0),
@@ -240,9 +288,13 @@ def _render_grid_arrays(
     )
 
 
-def _plate_tectonics(projection: str, plate) -> dict:
+def _plate_tectonics(projection: str, plate, view_rotation: np.ndarray) -> dict:
     """Pole marker, rotation arc, and boundary outline for a plate -- everything the
-    "Plates"/"Plates (details)" views draw besides the elevation-fill/node dots."""
+    "Plates"/"Plates (details)" views draw besides the elevation-fill/node dots. `pole_xyz`
+    inside `rotation_arc` is deliberately left in the *true* (un-rotated) frame -- it's
+    combined with `omega` (also true-frame) for tangent/sweep-direction geometry in
+    _draw_rotation_arc, which applies `view_rotation` itself at the point each of those
+    intermediate points gets projected, same as everywhere else in this module."""
     speed = float(np.linalg.norm(plate.omega))
 
     pole = None
@@ -253,7 +305,7 @@ def _plate_tectonics(projection: str, plate) -> dict:
         # on the map. The pole marker is colored by plate (see render_png) specifically so
         # it still reads as "belonging to" the right plate even when it's drawn far away.
         pole_xyz = plate.omega / speed
-        pole = _project_points(projection, pole_xyz[None, :])[0]
+        pole = _project_points(projection, _rotate(pole_xyz[None, :], view_rotation))[0]
 
         intensity = np.clip(speed / mantle.MAX_PLATE_RATE, 0.3, 1.0)
         rotation_arc = {
@@ -263,7 +315,7 @@ def _plate_tectonics(projection: str, plate) -> dict:
         }
 
     outline_world = plate.outline_world()
-    boundary = _project_points(projection, outline_world) if len(outline_world) > 0 else np.zeros((0, 2))
+    boundary = _project_points(projection, _rotate(outline_world, view_rotation)) if len(outline_world) > 0 else np.zeros((0, 2))
 
     return {"pole": pole, "rotation_arc": rotation_arc, "boundary": boundary}
 
@@ -332,6 +384,7 @@ def _draw_rotation_arc(
     offset_x: float,
     offset_y: float,
     pixel_scale: float,
+    view_rotation: np.ndarray,
 ) -> None:
     """A fixed-radius arc around the pole marker, swept in the plate's actual rotational
     direction (see below) by an angle representing its rotation rate (arc_info["extent_deg"],
@@ -352,7 +405,7 @@ def _draw_rotation_arc(
     omega = arc_info["omega"]
     extent_deg = arc_info["extent_deg"]
 
-    pole_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, pole_xyz[None, :]))[0]
+    pole_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(pole_xyz[None, :], view_rotation)))[0]
 
     helper = np.array([1.0, 0.0, 0.0]) if abs(pole_xyz[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
     tangent_dir = geometry.normalize(np.cross(pole_xyz, helper))
@@ -362,8 +415,8 @@ def _draw_rotation_arc(
         return
     step_point = geometry.normalize(near_point + 1e-4 * velocity)
 
-    near_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, near_point[None, :]))[0]
-    step_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, step_point[None, :]))[0]
+    near_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(near_point[None, :], view_rotation)))[0]
+    step_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(step_point[None, :], view_rotation)))[0]
 
     angle_near = np.degrees(np.arctan2(near_px[1] - pole_px[1], near_px[0] - pole_px[0]))
     angle_step = np.degrees(np.arctan2(step_px[1] - pole_px[1], step_px[0] - pole_px[0]))
@@ -397,21 +450,6 @@ CLIMATE_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=np.uint8)
 CLIMATE_LAND_BACKDROP_RGB = np.array([40, 46, 34], dtype=np.uint8)
 
 
-def _climate_row_cell_half_extent(projection: str, lat_deg: float, dlat_deg: float, dlon_deg: float) -> tuple[float, float]:
-    """Same measurement technique as _row_cell_half_extent, adapted to climate.py's plain
-    fixed-dlat/dlon equirectangular grid rather than the render grid's cos(phi)-reduced one."""
-    lat_r = np.radians(lat_deg)
-    origin = geometry.latlon_to_xyz(np.array([lat_r]), np.array([0.0]))
-    lon_neighbor = geometry.latlon_to_xyz(np.array([lat_r]), np.array([np.radians(dlon_deg)]))
-    lat_neighbor = geometry.latlon_to_xyz(np.array([lat_r + np.radians(dlat_deg)]), np.array([0.0]))
-    (ox, oy), (tx, ty), (px, py) = (
-        _project_points(projection, origin)[0],
-        _project_points(projection, lon_neighbor)[0],
-        _project_points(projection, lat_neighbor)[0],
-    )
-    return abs(tx - ox) / 2, abs(py - oy) / 2
-
-
 def _draw_climate_vectors(
     draw: ImageDraw.ImageDraw,
     fields: "climate.ClimateFields",
@@ -423,6 +461,7 @@ def _draw_climate_vectors(
     offset_y: float,
     pixel_scale: float,
     color: tuple[int, int, int],
+    view_rotation: np.ndarray,
 ) -> None:
     """Draws one arrow per subsampled grid cell, length scaled by speed relative to the max
     speed present. Direction is found the same way as the plate rotation arc's tangent: a
@@ -443,14 +482,17 @@ def _draw_climate_vectors(
     base_xyz, u_pts, v_pts, speed = base_xyz[keep], u_pts[keep], v_pts[keep], speed[keep]
     max_speed = float(speed.max())
 
+    # Direction is computed from the *true* (un-rotated) local east/north basis, matching
+    # how u/v were computed -- both the base and offset point are rotated together right
+    # before projecting, same as everywhere else in this module.
     lon = np.arctan2(base_xyz[:, 1], base_xyz[:, 0])
     east = np.stack([-np.sin(lon), np.cos(lon), np.zeros_like(lon)], axis=-1)
     north = np.cross(base_xyz, east)
     direction = geometry.normalize(u_pts[:, None] * east + v_pts[:, None] * north)
     offset_xyz = geometry.normalize(base_xyz + 0.02 * direction)
 
-    base_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, base_xyz))
-    offset_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, offset_xyz))
+    base_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(base_xyz, view_rotation)))
+    offset_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(offset_xyz, view_rotation)))
 
     arrow_vec = offset_px - base_px
     arrow_len = np.hypot(arrow_vec[:, 0], arrow_vec[:, 1])
@@ -469,11 +511,12 @@ def _draw_climate_vectors(
 
 def _draw_swell_markers(
     draw: ImageDraw.ImageDraw, fields: "climate.ClimateFields", projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float,
+    view_rotation: np.ndarray,
 ) -> None:
     if len(fields.swell_rows) == 0:
         return
     xyz = fields.world_xyz[fields.swell_rows, fields.swell_cols]
-    centers = _to_pixels(scale, offset_x, offset_y, _project_points(projection, xyz))
+    centers = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(xyz, view_rotation)))
     r = SWELL_MARKER_RADIUS_PX * pixel_scale
     width_px = max(int(round(pixel_scale)), 1)
     for px, py in centers:
@@ -628,7 +671,7 @@ def _elevation_legend_gradient() -> tuple[object, float, float, list[tuple[float
     return elevation_colors, lo, hi, ticks
 
 
-def _render_climate_view(world: World, projection: str, view: str, width: int, height: int) -> bytes:
+def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders one of CLIMATE_VIEWS from climate.py's own fixed grid -- a separate path from
     the plate-tectonics views below since the data source (a real (H, W) array, always
     covering the whole sphere) is structurally different from the render grid's ragged
@@ -640,10 +683,18 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     fields = climate.compute_climate(world)
     grid_h, grid_w = fields.elevation_m.shape
     flat_xyz = fields.world_xyz.reshape(-1, 3)
-    flat_xy = _project_points(projection, flat_xyz)
 
-    min_x, min_y = flat_xy.min(axis=0)
-    max_x, max_y = flat_xy.max(axis=0)
+    # The bounding box is always the *whole* sphere's projected extent (climate's grid
+    # always covers it), which is identical regardless of rotation -- rotation only permutes
+    # which physical points land at which lat/lon, never changes the set of lat/lon values a
+    # full sphere covers. So it's measured from the un-rotated grid (matching today's
+    # behavior exactly at the identity rotation), while `flat_xy` below -- what's actually
+    # drawn -- uses the rotated positions.
+    bbox_xy = _project_points(projection, flat_xyz)
+    flat_xy = _project_points(projection, _rotate(flat_xyz, view_rotation))
+
+    min_x, min_y = bbox_xy.min(axis=0)
+    max_x, max_y = bbox_xy.max(axis=0)
     data_w = max(max_x - min_x, 1e-9)
     data_h = max(max_y - min_y, 1e-9)
     scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
@@ -653,14 +704,35 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     pixels = blank.copy()
     centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
 
-    dlat_deg = 180.0 / grid_h
-    dlon_deg = 360.0 / grid_w
-    half_w_by_row = np.empty(grid_h)
-    half_h_by_row = np.empty(grid_h)
-    for r in range(grid_h):
-        half_w_by_row[r], half_h_by_row[r] = _climate_row_cell_half_extent(projection, float(fields.lat_deg[r]), dlat_deg, dlon_deg)
-    half_w = np.repeat(half_w_by_row, grid_w) * scale * CELL_OVERLAP_FACTOR
-    half_h = np.repeat(half_h_by_row, grid_w) * scale * CELL_OVERLAP_FACTOR
+    # Cell half-extents, per cell (see _render_grid_arrays's docstring for the full
+    # reasoning, which applies identically here): measured via the cell's four *corners*
+    # (half a cell-step away on each diagonal), not edge-midpoint neighbors, since a rotation
+    # can skew an axis-aligned cell into a shape whose axis-aligned bounding box is set by its
+    # corners; and via _project_offset (not _project_points), since a naive small-angle
+    # corner offset can still land on the far side of the antimeridian seam once the view can
+    # rotate arbitrarily -- the seam can fall anywhere, and climate's grid densely covers the
+    # whole sphere, so some cell is always near it somewhere.
+    xy_grid = flat_xy.reshape(grid_h, grid_w, 2)
+    _, center_lon_grid = geometry.xyz_to_latlon(_rotate(flat_xyz, view_rotation))
+    center_lon_grid = center_lon_grid.reshape(grid_h, grid_w)
+
+    half_dlat_deg = 180.0 / grid_h / 2
+    half_dlon_deg = 360.0 / grid_w / 2
+    lat_grid_deg = np.repeat(fields.lat_deg[:, None], grid_w, axis=1)
+    lon_grid_deg = np.repeat(fields.lon_deg[None, :], grid_h, axis=0)
+
+    def _corner_xy(dlat: float, dlon: float) -> np.ndarray:
+        xyz = geometry.latlon_to_xyz(np.radians(lat_grid_deg + dlat), np.radians(lon_grid_deg + dlon))
+        rotated = _rotate(xyz.reshape(-1, 3), view_rotation)
+        return _project_offset(projection, rotated, center_lon_grid.reshape(-1)).reshape(grid_h, grid_w, 2)
+
+    corner_steps = [
+        _corner_xy(dlat_sign * half_dlat_deg, dlon_sign * half_dlon_deg) - xy_grid
+        for dlat_sign in (1.0, -1.0)
+        for dlon_sign in (1.0, -1.0)
+    ]
+    half_w = np.max([np.abs(s[..., 0]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
+    half_h = np.max([np.abs(s[..., 1]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
 
     if view == "temperature":
         # Whichever temperature is physically meaningful at that cell: ocean surface where
@@ -682,10 +754,10 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     draw = ImageDraw.Draw(image)
 
     if view == "wind":
-        _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR)
+        _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
     elif view == "oceanCurrents":
-        _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR)
-        _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale)
+        _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
+        _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     if view == "temperature":
         ticks = [(-60.0, "-60°"), (-20.0, "-20°"), (20.0, "20°"), (40.0, "40°")]
@@ -719,22 +791,26 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     return _encode_image(image)
 
 
-def render_png(world: World, projection: str, view: str, width: int, height: int) -> bytes:
+def render_png(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> bytes:
     """Render `view` of `world` in `projection`, at `width`x`height` pixels, as PNG bytes.
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
-    is now the only place that drawing logic lives."""
+    is now the only place that drawing logic lives. `view_rotation` (default identity, i.e.
+    today's behavior exactly, center at lat=0/lon=0) is a pure render-time transform -- see
+    _rotate's docstring and docs/simulation-model.md#rotating-the-view."""
+    if view_rotation is None:
+        view_rotation = np.eye(3)
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     if view in CLIMATE_VIEWS:
-        return _render_climate_view(world, projection, view, width, height)
+        return _render_climate_view(world, projection, view, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    grid = _render_grid_arrays(world, projection) if view in ("elevation", "plates") else None
-    tectonics = {p.plate_id: _plate_tectonics(projection, p) for p in world.plates}
+    grid = _render_grid_arrays(world, projection, view_rotation) if view in ("elevation", "plates") else None
+    tectonics = {p.plate_id: _plate_tectonics(projection, p, view_rotation) for p in world.plates}
 
     detail_lines = []  # (projected_xy, elevation) per non-empty line, "platesDetail" only
     if view == "platesDetail":
@@ -742,7 +818,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             for line in plate.lines:
                 if len(line.theta) == 0:
                     continue
-                detail_lines.append((_project_points(projection, line.world_xyz(plate.frame)), line.elevation))
+                xy = _project_points(projection, _rotate(line.world_xyz(plate.frame), view_rotation))
+                detail_lines.append((xy, line.elevation))
 
     # Bounding box over every coordinate this view will draw (matches the old client-side
     # computation) so switching views never rescales or re-centers the map.
@@ -802,7 +879,7 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
                 _stroke_robust_loop(draw, boundary_px, color, BOUNDARY_LINE_WIDTH_PX * pixel_scale)
 
             if view == "plates" and info["rotation_arc"] is not None:
-                _draw_rotation_arc(draw, projection, info["rotation_arc"], scale, offset_x, offset_y, pixel_scale)
+                _draw_rotation_arc(draw, projection, info["rotation_arc"], scale, offset_x, offset_y, pixel_scale, view_rotation)
 
             if view == "plates" and info["pole"] is not None:
                 px, py = _to_pixels(scale, offset_x, offset_y, info["pole"][None, :])[0]
@@ -838,5 +915,5 @@ def _encode_image(image: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def render_png_base64(world: World, projection: str, view: str, width: int, height: int) -> str:
-    return base64.b64encode(render_png(world, projection, view, width, height)).decode("ascii")
+def render_png_base64(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> str:
+    return base64.b64encode(render_png(world, projection, view, width, height, view_rotation)).decode("ascii")

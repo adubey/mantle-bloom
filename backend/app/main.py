@@ -4,6 +4,7 @@ no persistence, one world at a time, matching the "elevation view only" v1 scope
 
 from __future__ import annotations
 
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -48,6 +49,29 @@ class StepRequest(BaseModel):
     years: float
 
 
+def _parse_view_rotation(rotation: str | None) -> np.ndarray:
+    """The map's current view orientation (see docs/simulation-model.md#rotating-the-view),
+    a row-major 3x3 rotation matrix as 9 comma-separated floats -- default identity (today's
+    behavior, center at lat=0/lon=0) when omitted. This is purely a render-time transform;
+    it's never stored on `World` (see world.py) since it's client-local view state, not
+    simulation state. Only shape/finiteness is validated here, not strict orthonormality --
+    the frontend only ever sends matrices built by composing exact rotation matrices, so any
+    drift is negligible, and this guard exists to reject malformed/malicious input before it
+    reaches numpy, not to re-derive a "correct" rotation from an arbitrary one."""
+    if rotation is None:
+        return np.eye(3)
+    parts = rotation.split(",")
+    if len(parts) != 9:
+        raise HTTPException(status_code=400, detail=f"rotation must be 9 comma-separated floats, got {len(parts)}")
+    try:
+        values = [float(p) for p in parts]
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="rotation must be 9 comma-separated floats") from exc
+    if not all(np.isfinite(values)):
+        raise HTTPException(status_code=400, detail="rotation values must be finite")
+    return np.array(values, dtype=float).reshape(3, 3)
+
+
 def _require_world() -> World:
     world = _state["world"]
     if world is None:
@@ -89,11 +113,15 @@ def step(req: StepRequest) -> dict:
 
 
 @app.get("/world/render")
-def render(projection: str = "behrmann", view: str = "elevation", width: int = 1100, height: int = 611) -> dict:
+def render(
+    projection: str = "behrmann", view: str = "elevation", width: int = 1100, height: int = 611, rotation: str | None = None
+) -> dict:
     """Renders `view` of the current world, in `projection`, as a `width`x`height` PNG,
     returned base64-encoded in `image_base64` -- see render_image.py for the actual
-    rasterization. `400` for an unrecognized projection/view or an out-of-range width/height,
-    `404` if no world has been generated yet."""
+    rasterization. `rotation` is the map's current view orientation (see
+    _parse_view_rotation), default identity. `400` for an unrecognized projection/view, an
+    out-of-range width/height, or a malformed rotation, `404` if no world has been generated
+    yet."""
     world = _require_world()
     if projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {projection!r}")
@@ -101,9 +129,10 @@ def render(projection: str = "behrmann", view: str = "elevation", width: int = 1
         raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {render_image.VIEWS}")
     if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
+    view_rotation = _parse_view_rotation(rotation)
 
     return {
         "projection": projection,
         "elapsed_years": world.elapsed_years,
-        "image_base64": render_image.render_png_base64(world, projection, view, width, height),
+        "image_base64": render_image.render_png_base64(world, projection, view, width, height, view_rotation),
     }

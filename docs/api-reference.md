@@ -68,14 +68,14 @@ Advances the current world by `years` (see
 summary shape as `/world/generate`, with `events` reflecting anything logged up through this
 step. `404` if no world has been generated yet.
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|temperature|wind|oceanCurrents|humidity|precipitation&width=1100&height=611`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|temperature|wind|oceanCurrents|humidity|precipitation&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
 (see [simulation-model.md#render-image](simulation-model.md#render-image)) -- the client
 just decodes and paints the image, it never sees raw coordinate data. `400` for an
-unrecognized projection/view name or a width/height outside `[1, main.MAX_RENDER_DIMENSION_PX]`
-(4000), `404` if no world has been generated yet.
+unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_DIMENSION_PX]`
+(4000), or a malformed `rotation`, `404` if no world has been generated yet.
 
 ```json
 {
@@ -94,6 +94,13 @@ unrecognized projection/view name or a width/height outside `[1, main.MAX_RENDER
   `"humidity"`, and `"precipitation"` are heatmaps; `"wind"` and `"oceanCurrents"` draw
   subsampled direction/magnitude arrows, and `"oceanCurrents"` additionally marks detected
   ocean swells with small circles.
+- `rotation` is the map's current view orientation (see
+  [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
+  row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world
+  position immediately before it's projected. Optional, defaults to identity (today's
+  behavior, center at lat=0/lon=0). Purely a render-time transform -- it's never stored on
+  `World` and has no bearing on climate simulation results, which key off the true,
+  un-rotated planetary frame regardless of what orientation is currently being viewed.
 - `width`/`height` are the returned image's exact pixel dimensions. The frontend requests
   more than its canvas's displayed CSS size (`RENDER_SCALE` in `App.tsx`) for a sharper,
   retina-style render at the same on-screen footprint; line widths, dot/pole radii, and

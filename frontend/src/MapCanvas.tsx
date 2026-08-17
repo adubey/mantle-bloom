@@ -1,4 +1,10 @@
 import { useEffect, useRef } from "react";
+import type { Projection } from "./api";
+import type { Mat3 } from "./rotation";
+import {
+  IDENTITY_ROTATION, getGraticule, getRenderTransform, matApply, matMultiply, project,
+  rotationBetween, screenToArcballVector, toPixels, xyzToLatLon,
+} from "./rotation";
 
 interface Props {
   imageBase64: string | null;
@@ -10,14 +16,42 @@ interface Props {
   height: number;
   displayWidth: number;
   displayHeight: number;
+  projection: Projection;
+  // The currently *committed* view rotation (see rotation.ts) -- each new drag starts from
+  // this and composes its own incremental rotation on top; a completed drag is reported back
+  // via onRotationCommitted, which the parent stores and re-renders with.
+  rotation: Mat3;
+  // Fired continuously while the user drags (long-press then move) with the map center's
+  // live lat/lon under the *in-progress* rotation -- needed because the real legend is baked
+  // server-side into the PNG and can't update mid-drag (see docs/simulation-model.md#rotating-the-view).
+  onRotationPreview: (latDeg: number, lonDeg: number) => void;
+  onRotationCommitted: (rotation: Mat3) => void;
 }
 
 const BACKGROUND = "#0b1020";
+const LONG_PRESS_MS = 350;
+// In *display* (CSS) pixels -- movement past this before the long-press timer fires cancels
+// it, so an ordinary click/drag-to-select-text gesture elsewhere on the page never
+// accidentally starts a rotation.
+const MOVE_CANCEL_PX = 6;
+const ARCBALL_RADIUS_FRACTION = 0.45; // of min(width, height), in backing-store pixels
+const GRATICULE_COLOR = "rgba(235, 238, 245, 0.85)";
+const GRATICULE_LINE_WIDTH = 1;
+// A graticule line segment longer than this multiple of the line's own median segment length
+// is skipped -- the same "don't draw across a projection discontinuity" technique
+// render_image.py's _stroke_robust_loop uses for plate boundaries.
+const SEGMENT_BREAK_FACTOR = 6;
 
 // All map drawing (fill colors, plate boundaries/poles/rotation arcs, per-plate node
-// dots) now happens server-side per requested view -- see backend app/render_image.py.
-// This component's only job is to decode the returned PNG and paint it onto the canvas.
-export default function MapCanvas({ imageBase64, width, height, displayWidth, displayHeight }: Props) {
+// dots) happens server-side per requested view -- see backend app/render_image.py. This
+// component decodes the returned PNG and paints it onto the canvas, and additionally handles
+// the long-press-and-drag "rotate the planet" gesture: while dragging, it draws a cheap
+// wireframe graticule preview client-side (see rotation.ts) instead of re-requesting the
+// real, much more expensive, detailed render on every mouse move.
+export default function MapCanvas({
+  imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
+  onRotationPreview, onRotationCommitted,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
   // `new Image()` per update -- lazily created here (the standard ref-during-render pattern
@@ -52,6 +86,157 @@ export default function MapCanvas({ imageBase64, width, height, displayWidth, di
     };
     img.src = `data:image/png;base64,${imageBase64}`;
   }, [imageBase64, width, height]);
+
+  // Interaction state lives in refs, not React state -- none of it should trigger a
+  // re-render; the canvas is painted directly, imperatively, same as the image-load effect
+  // above.
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragStartClientPos = useRef<{ clientX: number; clientY: number } | null>(null);
+  const dragStartArcballVec = useRef<[number, number, number] | null>(null);
+  const dragBaseRotation = useRef<Mat3>(IDENTITY_ROTATION);
+  const isRotating = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const toBackingPixels = (clientX: number, clientY: number) => {
+      const rect = canvas.getBoundingClientRect();
+      const displayX = clientX - rect.left;
+      const displayY = clientY - rect.top;
+      return { x: displayX * (width / displayWidth), y: displayY * (height / displayHeight), displayX, displayY };
+    };
+
+    const drawGraticule = (previewRotation: Mat3) => {
+      const ctx = canvas.getContext("2d");
+      const img = imgRef.current;
+      if (!ctx || !img) return;
+      if (imageBase64) ctx.drawImage(img, 0, 0, width, height);
+      else {
+        ctx.fillStyle = BACKGROUND;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      const transform = getRenderTransform(projection, width, height);
+      ctx.strokeStyle = GRATICULE_COLOR;
+      ctx.lineWidth = GRATICULE_LINE_WIDTH * (width / 1100);
+
+      for (const line of getGraticule()) {
+        const pixels = line.points.map((p) => {
+          const rotated = matApply(previewRotation, p);
+          const lon = Math.atan2(rotated[1], rotated[0]);
+          const lat = Math.asin(Math.min(1, Math.max(-1, rotated[2])));
+          const [x, y] = project(projection, lat, lon);
+          return toPixels(transform, x, y);
+        });
+        const segLengths: number[] = [];
+        for (let i = 0; i < pixels.length - 1; i++) {
+          segLengths.push(Math.hypot(pixels[i + 1][0] - pixels[i][0], pixels[i + 1][1] - pixels[i][1]));
+        }
+        const sorted = [...segLengths].sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)] || 0;
+        const breakThreshold = Math.max(median * SEGMENT_BREAK_FACTOR, 20 * (width / 1100));
+
+        ctx.beginPath();
+        let penDown = false;
+        for (let i = 0; i < pixels.length; i++) {
+          if (i > 0 && segLengths[i - 1] > breakThreshold) penDown = false;
+          if (!penDown) {
+            ctx.moveTo(pixels[i][0], pixels[i][1]);
+            penDown = true;
+          } else {
+            ctx.lineTo(pixels[i][0], pixels[i][1]);
+          }
+        }
+        ctx.stroke();
+      }
+    };
+
+    const previewRotationFor = (backingX: number, backingY: number): Mat3 => {
+      const start = dragStartArcballVec.current;
+      if (!start) return dragBaseRotation.current;
+      const radius = ARCBALL_RADIUS_FRACTION * Math.min(width, height);
+      const current = screenToArcballVector(backingX, backingY, width / 2, height / 2, radius);
+      const delta = rotationBetween(start, current);
+      return matMultiply(delta, dragBaseRotation.current);
+    };
+
+    const reportPreview = (previewRotation: Mat3) => {
+      const [lat, lon] = xyzToLatLon(matApply(previewRotation, [1, 0, 0]));
+      onRotationPreview((lat * 180) / Math.PI, (lon * 180) / Math.PI);
+    };
+
+    const onWindowMouseMove = (e: MouseEvent) => {
+      if (!isRotating.current) return;
+      const { x, y } = toBackingPixels(e.clientX, e.clientY);
+      const preview = previewRotationFor(x, y);
+      drawGraticule(preview);
+      reportPreview(preview);
+    };
+
+    const onWindowMouseUp = (e: MouseEvent) => {
+      window.removeEventListener("mousemove", onWindowMouseMove);
+      window.removeEventListener("mouseup", onWindowMouseUp);
+      if (!isRotating.current) return;
+      isRotating.current = false;
+      const { x, y } = toBackingPixels(e.clientX, e.clientY);
+      const finalRotation = previewRotationFor(x, y);
+      dragStartArcballVec.current = null;
+      onRotationCommitted(finalRotation);
+    };
+
+    const beginRotating = () => {
+      isRotating.current = true;
+      dragBaseRotation.current = rotation;
+      const pos = dragStartClientPos.current;
+      if (pos) {
+        const { x, y } = toBackingPixels(pos.clientX, pos.clientY);
+        const radius = ARCBALL_RADIUS_FRACTION * Math.min(width, height);
+        dragStartArcballVec.current = screenToArcballVector(x, y, width / 2, height / 2, radius);
+      }
+      const preview = dragBaseRotation.current;
+      drawGraticule(preview);
+      reportPreview(preview);
+      window.addEventListener("mousemove", onWindowMouseMove);
+      window.addEventListener("mouseup", onWindowMouseUp);
+    };
+
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      dragStartClientPos.current = { clientX: e.clientX, clientY: e.clientY };
+      longPressTimer.current = setTimeout(beginRotating, LONG_PRESS_MS);
+
+      const cancelIfMoved = (moveEvent: MouseEvent) => {
+        const dx = moveEvent.clientX - e.clientX;
+        const dy = moveEvent.clientY - e.clientY;
+        if (Math.hypot(dx, dy) > MOVE_CANCEL_PX && longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+          window.removeEventListener("mousemove", cancelIfMoved);
+          window.removeEventListener("mouseup", cancelOnEarlyRelease);
+        }
+      };
+      const cancelOnEarlyRelease = () => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+        window.removeEventListener("mousemove", cancelIfMoved);
+        window.removeEventListener("mouseup", cancelOnEarlyRelease);
+      };
+      window.addEventListener("mousemove", cancelIfMoved);
+      window.addEventListener("mouseup", cancelOnEarlyRelease);
+    };
+
+    canvas.addEventListener("mousedown", onMouseDown);
+    return () => {
+      canvas.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mousemove", onWindowMouseMove);
+      window.removeEventListener("mouseup", onWindowMouseUp);
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height, displayWidth, displayHeight, projection, rotation, imageBase64]);
 
   return (
     <canvas

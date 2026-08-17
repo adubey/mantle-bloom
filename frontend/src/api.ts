@@ -80,12 +80,17 @@ export function stepWorld(years: number): Promise<WorldSummary> {
 // width/height are the actual pixel dimensions of the returned image -- pass a higher
 // resolution than the canvas's displayed CSS size for a sharper (retina-style) render; the
 // server scales line widths/dot/pole sizes to match (see render_image.py's pixel_scale).
+// `rotation` is the map's current view orientation (see rotation.ts and
+// docs/simulation-model.md#rotating-the-view) -- a flattened row-major 3x3 matrix, default
+// identity (center at lat=0/lon=0) when omitted, matching backend main.py's own default.
 export function renderWorld(
   projection: Projection,
   view: MapView,
   width: number,
   height: number,
+  rotation?: number[],
 ): Promise<RenderResponse> {
   const params = new URLSearchParams({ projection, view, width: String(width), height: String(height) });
+  if (rotation) params.set("rotation", rotation.join(","));
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
 }

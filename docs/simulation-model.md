@@ -12,6 +12,7 @@
 - [Whole-sphere coverage (gap-filling)](#gap-filling)
 - [Projections](#projections)
 - [Render image](#render-image)
+- [Rotating the view](#rotating-the-view)
 - [Climate](#climate)
 - [Known simplifications](#known-simplifications)
 
@@ -439,6 +440,100 @@ plain color scale reusing that view's own `*_colors` function for the heatmap vi
 with the actual fill colors), boundary/pole/rotation-arc symbols for "Plates", a gradient
 plus a boundary symbol for "Plates (details)" (its node dots are colored by elevation, the
 same scale as "Elevation"), and arrow/ocean/land/swell symbols for wind/oceanCurrents.
+
+<a id="rotating-the-view"></a>
+## Rotating the view
+
+Every map view can be reoriented interactively: press and hold on the map, then drag (a full
+3-DOF arcball gesture, roll/twist included -- not constrained to north-up panning) to spin a
+virtual trackball; release to commit. This is a pure **view** transform, not a change to the
+simulated world -- see below for why that distinction matters and how it's enforced.
+
+**The transform itself.** A single 3x3 rotation matrix, applied to every *real* world
+position immediately before it's projected to pixels (`_rotate`, `p @ view_rotation.T`) --
+render grid cell positions, plate boundaries/poles/rotation-arc points, climate's whole grid,
+wind/current arrows, swell markers, platesDetail's node dots. It travels from the frontend to
+`GET /world/render` as a `rotation` query param (9 comma-separated floats, row-major, default
+identity -- see `main.py`'s `_parse_view_rotation`) and is never stored on `World`: it's
+client-local view state, sent fresh with every render call, exactly like `projection`/`view`
+already were, not simulation state. This means it isn't reset by stepping or regenerating,
+and different browser tabs can look at the same world from different orientations.
+
+**Why this can never touch climate physics.** `climate.py`'s own grid (`_build_grid`'s
+`lat_deg`/`world_xyz`) is the true, fixed planetary frame -- `compute_insolation`'s
+zenith-angle law, `coriolis_parameter`, and the latitude-banded wind/current/humidity
+structure all key off it directly. The view rotation is applied *only* at the final
+projection step, strictly downstream of all of that, so climate simulation results are
+completely unaffected by which orientation the user happens to be looking from -- rotating
+the view is exactly as consequential as rotating a printed map on a table, never a change to
+the planet's actual spin axis or sub-solar point.
+
+**Cell coverage had to become genuinely per-cell.** `_render_grid_arrays` and
+`_render_climate_view`'s cell-extent measurement used to take one representative sample per
+row (correct at identity rotation, since these projections' scale only depends on latitude,
+which is constant along a row) and broadcast it to every cell in that row. Once the view can
+rotate arbitrarily, a row of constant *true* latitude can span wildly different *apparent*
+positions depending on longitude, so cell size becomes a genuinely per-cell property.
+Getting this right took two real fixes, both confirmed by direct visual debugging against a
+render that showed pinhole gaps and, separately, huge false smears:
+
+- **Measure by the cell's four corners, not its edge-midpoint neighbors.** A rotation can
+  turn an axis-aligned cell into a rotated or skewed quadrilateral, and a rotated square's
+  axis-aligned bounding box is set by its corners, not by how far its edge midpoints sit from
+  its center -- edge-midpoint measurement underestimates the needed extent by a factor
+  approaching sqrt(2) at a 45-degree rotation, which was producing widespread pinhole gaps.
+- **Never measure a neighbor by reusing an adjacent cell's already-projected position** (e.g.
+  via a `np.roll` index shift, which would otherwise be free). `xyz_to_latlon`'s `atan2` jumps
+  from +pi to -pi at the antimeridian, and once the view can rotate arbitrarily that seam can
+  land anywhere within a row or grid -- not a rare edge case, since it's a full line across
+  the whole sphere that a dense grid sweep is guaranteed to cross somewhere. Reusing an
+  arbitrary neighbor's position risks straddling that jump and measuring a wildly wrong
+  extent (this was producing the huge false smears). The fix is `_project_offset`: like
+  `_project_points`, but for a point known to be a small true angular step from another point
+  whose longitude is already known -- it unwraps the new point's longitude to the
+  representative within pi of that reference before projecting, which a genuinely small step
+  should always permit.
+
+Both fixes together cost a handful of extra full-grid projection passes (corners instead of
+one sample per row) -- confirmed via direct benchmarking to add only tens of milliseconds at
+real render resolution, comfortably inside the render budget (this is a deliberate mouse-up
+action, not a per-frame interactive redraw, so it doesn't need to hit the same bar ordinary
+renders do).
+
+**The drag itself is client-side and cheap; the real render only happens on release.**
+Re-rendering the actual detailed map (elevation fill, plate boundaries, climate heatmaps) on
+every mouse move would be far too slow. `frontend/src/rotation.ts` ports just enough of
+`geometry.py`/`projections.py`/`render_image.py` to TypeScript to compute the drag gesture
+and preview it live:
+
+- **Arcball**: a canvas-space point maps to a point on a virtual unit trackball centered on
+  the canvas (`screenToArcballVector`, the standard Shoemake 1992 construction, points
+  outside the ball's radius clamped to its silhouette rather than left undefined); the
+  rotation between the drag's start vector and the current one is recomputed fresh from the
+  fixed start point on every move (not accumulated incrementally per-event, avoiding drift
+  over a long drag) and composed on top of whatever was already committed from prior drags.
+- **Graticule preview**: while dragging, a wireframe of meridians/parallels every 30 degrees
+  is rotated by the in-progress rotation, projected through the same `behrmann`/`eckert4`
+  ports (confirmed numerically identical to the Python originals to full float precision),
+  and drawn over the last real frame -- `MapCanvas.tsx` redraws the base image
+  (`ctx.drawImage`, a cheap raster blit) then the graticule on top, on every mouse move.
+- **The projected bounding box is rotation-invariant**, so the frontend's transform
+  (scale/offset) can be computed once per `(projection, width, height)` and reused for every
+  orientation: a full sphere's projected extent is identical regardless of rotation (rotation
+  only permutes which physical point lands at which lat/lon, never changes the *set* of
+  lat/lon values a full sphere covers). This is also why the graticule preview aligns
+  pixel-perfectly with the still-displayed static frame underneath it -- both use the exact
+  same transform.
+- **The legend's lat/lon-of-center readout is the one deliberate exception to "every legend
+  element is baked server-side."** It has to live-update during the drag, faster than any
+  server round trip could allow, so it's rendered in `App.tsx` from `MapCanvas`'s live
+  callback instead.
+
+**Interaction**: press and hold (`LONG_PRESS_MS`, with a small movement tolerance before that
+so an accidental brush of the map doesn't start a rotation) shows the graticule at the
+currently committed orientation; dragging updates it live; releasing commits the drag's
+rotation and triggers the real server render, the same `refresh` path a projection or map
+view change already used, just with `rotation` now also part of what's requested.
 
 <a id="climate"></a>
 ## Climate (`climate.py`)

@@ -14,7 +14,7 @@ def _world(seed=1, num_plates=10, continental_fraction=0.4):
 
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
     world = _world()
-    xy, elevation, plate_id, half_w, half_h = render_image._render_grid_arrays(world, "behrmann")
+    xy, elevation, plate_id, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
 
     n = len(xy)
     assert n > 1000  # a real full-sphere sweep, not a token few points
@@ -36,8 +36,8 @@ def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
 
 def test_render_grid_arrays_match_selected_projection_shape():
     world = _world(num_plates=8)
-    behrmann_xy, *_ = render_image._render_grid_arrays(world, "behrmann")
-    eckert4_xy, *_ = render_image._render_grid_arrays(world, "eckert4")
+    behrmann_xy, *_ = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
+    eckert4_xy, *_ = render_image._render_grid_arrays(world, "eckert4", np.eye(3))
     # Same sample count (same underlying sweep), different projected coordinates.
     assert len(behrmann_xy) == len(eckert4_xy)
     assert not np.allclose(behrmann_xy[0], eckert4_xy[0])
@@ -135,7 +135,7 @@ def test_plate_tectonics_pole_is_the_true_euler_pole():
         speed = np.linalg.norm(plate.omega)
         if speed < 1e-15:
             continue
-        info = render_image._plate_tectonics("eckert4", plate)
+        info = render_image._plate_tectonics("eckert4", plate, np.eye(3))
         assert np.allclose(info["rotation_arc"]["pole_xyz"], plate.omega / speed)
 
 
@@ -194,6 +194,66 @@ def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
     pixels = np.asarray(image).reshape(-1, 3)
     swell_marker_white = np.array([255, 255, 255])
     assert np.any(np.all(pixels == swell_marker_white, axis=-1))
+
+
+def test_rotate_maps_a_known_point_to_its_expected_position():
+    """The core operation the whole view-rotation feature rests on: a 180-degree rotation
+    about the z-axis should send lat=0/lon=0 to lat=0/lon=180 (its antipode on the equator)."""
+    rotation = geometry.rotation_matrix(np.array([0.0, 0.0, 1.0]), np.pi)
+    origin = geometry.latlon_to_xyz(np.array([0.0]), np.array([0.0]))
+    rotated = render_image._rotate(origin, rotation)
+    lat, lon = geometry.xyz_to_latlon(rotated)
+    assert np.isclose(lat[0], 0.0, atol=1e-9)
+    assert np.isclose(abs(lon[0]), np.pi, atol=1e-9)
+
+
+def test_identity_rotation_matches_omitting_rotation_entirely():
+    world = _world(seed=6, num_plates=8, continental_fraction=0.5)
+    for view in ("elevation", "plates", "temperature", "oceanCurrents"):
+        default = render_image.render_png(world, "eckert4", view, 320, 180)
+        explicit_identity = render_image.render_png(world, "eckert4", view, 320, 180, np.eye(3))
+        assert default == explicit_identity, f"{view}: omitting rotation should match explicit identity"
+
+
+def test_rotation_visibly_changes_every_view():
+    world = _world(seed=7, num_plates=9, continental_fraction=0.5)
+    rotation = geometry.rotation_matrix(np.array([0.3, 0.6, 0.1]), 2.1)  # an arbitrary, non-trivial rotation
+    for view in ("elevation", "plates", "platesDetail", "temperature", "wind"):
+        identity_png = render_image.render_png(world, "eckert4", view, 320, 180)
+        rotated_png = render_image.render_png(world, "eckert4", view, 320, 180, rotation)
+        assert identity_png != rotated_png, f"{view}: a non-trivial rotation should change the render"
+
+
+def test_render_grid_stays_gap_free_under_a_nontrivial_rotation():
+    """The per-cell half-extent fix (see _render_grid_arrays) exists specifically so rotation
+    doesn't reopen the gaps the render grid was built to avoid -- re-run the original
+    no-gaps assertions at a rotation that mixes all three axes, not just identity/90/180."""
+    world = _world(seed=8)
+    rotation = geometry.rotation_matrix(np.array([0.4, -0.5, 0.7]), 1.3)
+    xy, elevation, plate_id, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
+    assert len(xy) > 1000
+    assert np.all(half_w > 0)
+    assert np.all(half_h > 0)
+    assert len(set(half_w.round(6).tolist())) > 1  # genuinely per-cell now, not one value per row
+
+
+def test_climate_grid_stays_gap_free_under_a_nontrivial_rotation():
+    """A rotation reorients the oval map's *content*, not its outer shape (Eckert4's own
+    coverage is unchanged), so identity and rotated renders should paint the same fraction of
+    the canvas -- any gap the per-cell extent fix failed to close would show up as a lower
+    non-background fraction specifically at the rotated orientation, not baked into the oval
+    shape itself the way an absolute threshold would be."""
+    world = _world(seed=8)
+    rotation = geometry.rotation_matrix(np.array([0.4, -0.5, 0.7]), 1.3)
+
+    def non_background_fraction(rotation_matrix):
+        png = render_image.render_png(world, "eckert4", "temperature", 550, 306, rotation_matrix)
+        pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
+        return np.mean(np.any(pixels != np.array(render_image.BACKGROUND_RGB), axis=-1))
+
+    frac_identity = non_background_fraction(np.eye(3))
+    frac_rotated = non_background_fraction(rotation)
+    assert abs(frac_identity - frac_rotated) < 0.01
 
 
 def test_rotation_arc_direction_mirrors_when_omega_sign_flips():

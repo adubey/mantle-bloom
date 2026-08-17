@@ -9,7 +9,11 @@
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library, the same choice plate-sim made and the same reasoning: the frontend's whole job
   is decoding a PNG the backend already rendered and drawing it (`ctx.drawImage`), which a
-  library would be more ceremony than the problem needs.
+  library would be more ceremony than the problem needs. The one exception is
+  `rotation.ts` — a small, dependency-free port of just enough backend geometry/projection
+  math to drive the "rotate the planet" drag gesture and preview it live client-side (see
+  [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)); it's still
+  not a mapping library, and the real detailed rendering stays entirely server-side.
 
 ## Request flow
 
@@ -26,10 +30,13 @@ FastAPI (main.py)
   ▼
   { seed, elapsed_years, num_plates, events }
 
-Browser then fetches, for whichever projection/map view/resolution is selected:
-  GET /world/render?projection=...&view=...&width=...&height=...
+Browser then fetches, for whichever projection/map view/resolution/rotation is selected:
+  GET /world/render?projection=...&view=...&width=...&height=...&rotation=...
   → a PNG, base64-encoded, rendered entirely server-side -- see api-reference below and
-    simulation-model.md#render-image
+    simulation-model.md#render-image. `rotation` (see simulation-model.md#rotating-the-view)
+    is the map's current view orientation, driven by a long-press-and-drag gesture on the
+    canvas -- client-local view state, not simulation state, so it's sent fresh with every
+    render call rather than stored server-side.
 
 Time-stepping:
   POST /world/step  { years }
@@ -39,12 +46,16 @@ Time-stepping:
   → browser re-fetches /world/render, and appends any new `events` to the console
 ```
 
-The frontend never holds simulation state, and no longer holds any *rendering* logic either
--- it's a thin client that re-fetches `/world/render` after every `generate`/`step` call (or
-a projection/map-view change) and draws the returned PNG onto the canvas (`MapCanvas.tsx`;
-the event console is the one exception: it just displays whatever `events` the last
-`generate`/`step` response carried, which is already the full current log -- see
-api-reference.md).
+The frontend never holds simulation state, and holds only one small piece of *rendering*
+logic -- it's a thin client that re-fetches `/world/render` after every `generate`/`step`
+call (or a projection/map-view/rotation change) and draws the returned PNG onto the canvas
+(`MapCanvas.tsx`). That component also owns the rotate-the-planet drag gesture -- a
+long-press-and-drag interaction that previews a cheap wireframe graticule client-side (via
+`rotation.ts`) while dragging, then commits the real rotation and lets the usual
+`/world/render` re-fetch replace it with the actual detailed frame (see
+simulation-model.md#rotating-the-view). The event console is the one other exception: it
+just displays whatever `events` the last `generate`/`step` response carried, which is
+already the full current log -- see api-reference.md).
 
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)

@@ -148,3 +148,27 @@ def test_generate_without_num_plates_picks_a_plausible_count(client):
     resp = client.post("/world/generate", json={"seed": 7})
     assert resp.status_code == 200
     assert MIN_AUTO_PLATES <= resp.json()["num_plates"] <= MAX_AUTO_PLATES
+
+
+def test_render_omitted_rotation_matches_explicit_identity(client):
+    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    identity = "1,0,0,0,1,0,0,0,1"
+    default_body = client.get("/world/render", params={"width": 300, "height": 200}).json()
+    explicit_body = client.get("/world/render", params={"width": 300, "height": 200, "rotation": identity}).json()
+    assert default_body["image_base64"] == explicit_body["image_base64"]
+
+
+def test_render_nontrivial_rotation_changes_the_image(client):
+    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    identity = "1,0,0,0,1,0,0,0,1"
+    rotated = "0,0,1,0,1,0,-1,0,0"  # a valid 90-degree rotation matrix
+    identity_body = client.get("/world/render", params={"width": 300, "height": 200, "rotation": identity}).json()
+    rotated_body = client.get("/world/render", params={"width": 300, "height": 200, "rotation": rotated}).json()
+    assert identity_body["image_base64"] != rotated_body["image_base64"]
+
+
+def test_render_malformed_rotation_returns_400(client):
+    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    assert client.get("/world/render", params={"rotation": "1,0,0,0,1,0,0,0"}).status_code == 400  # only 8 values
+    assert client.get("/world/render", params={"rotation": "not,a,valid,rotation,matrix,at,all,here,either"}).status_code == 400
+    assert client.get("/world/render", params={"rotation": "1,0,0,0,1,0,0,0,nan"}).status_code == 400

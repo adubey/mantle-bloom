@@ -4,6 +4,8 @@ import { generateWorld, renderWorld, stepWorld } from "./api";
 import type { MapView, Projection, RenderResponse, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
 import EventConsole from "./EventConsole";
+import { IDENTITY_ROTATION } from "./rotation";
+import type { Mat3 } from "./rotation";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
@@ -25,6 +27,12 @@ function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
 }
 
+function formatLatLon(latDeg: number, lonDeg: number): string {
+  const latDir = latDeg >= 0 ? "N" : "S";
+  const lonDir = lonDeg >= 0 ? "E" : "W";
+  return `${Math.abs(latDeg).toFixed(1)}°${latDir}, ${Math.abs(lonDeg).toFixed(1)}°${lonDir}`;
+}
+
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
@@ -35,6 +43,15 @@ export default function App() {
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>("eckert4");
   const [mapView, setMapView] = useState<MapView>("elevation");
+  // The map's current view orientation (see rotation.ts and
+  // docs/simulation-model.md#rotating-the-view) -- lives entirely here, like
+  // projection/mapView, sent fresh with every render call rather than stored server-side
+  // (it's client-local view state, not simulation state). centerLatLon is derived display
+  // state: it tracks `rotation` normally, but during an active drag MapCanvas overrides it
+  // continuously via onRotationPreview, since the real legend is baked server-side into the
+  // PNG and can't update mid-drag.
+  const [rotation, setRotation] = useState<Mat3>(IDENTITY_ROTATION);
+  const [centerLatLon, setCenterLatLon] = useState({ lat: 0, lon: 0 });
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -42,9 +59,9 @@ export default function App() {
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async (proj: Projection, view: MapView) => {
+  const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
     try {
-      const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT);
+      const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
       setRenderData(data);
     } catch (e) {
       setError(String(e));
@@ -58,13 +75,13 @@ export default function App() {
       const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg);
       setSummary(s);
       setShowGenerateDialog(false);
-      await refresh(projection, mapView);
+      await refresh(projection, mapView, rotation);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, refresh]);
+  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -73,23 +90,26 @@ export default function App() {
     try {
       const s = await stepWorld(stepYears);
       setSummary(s);
-      await refresh(projection, mapView);
+      await refresh(projection, mapView, rotation);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, mapView, refresh]);
+  }, [summary, stepYears, projection, mapView, rotation, refresh]);
 
-  // Re-render with the current world whenever the projection or map view changes -- both
-  // are baked server-side into the returned image (see api.ts's renderWorld).
+  // Re-render with the current world whenever the projection, map view, or view rotation
+  // changes -- all three are baked server-side into the returned image (see api.ts's
+  // renderWorld). A completed drag (see MapCanvas's onRotationCommitted below) just updates
+  // `rotation` state; this effect is what actually re-fetches, the same pattern
+  // projection/mapView already used before rotation existed.
   useEffect(() => {
     if (summary) {
-      refresh(projection, mapView);
+      refresh(projection, mapView, rotation);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection, mapView]);
+  }, [projection, mapView, rotation]);
 
   const stepRef = useRef(handleStep);
   stepRef.current = handleStep;
@@ -180,6 +200,9 @@ export default function App() {
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
               <option value="eckert4">Eckert IV (pseudocylindrical equal-area)</option>
             </select>
+            <div style={{ marginTop: 6, opacity: 0.8 }}>
+              Center: {formatLatLon(centerLatLon.lat, centerLatLon.lon)}
+            </div>
           </fieldset>
 
           {summary && (
@@ -201,7 +224,14 @@ export default function App() {
             height={RENDER_HEIGHT}
             displayWidth={DISPLAY_WIDTH}
             displayHeight={DISPLAY_HEIGHT}
+            projection={projection}
+            rotation={rotation}
+            onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+            onRotationCommitted={(newRotation) => setRotation(newRotation)}
           />
+          <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+            Press and hold, then drag the map to rotate it.
+          </p>
         </div>
       </div>
 
