@@ -19,29 +19,38 @@ const BACKGROUND = "#0b1020";
 // This component's only job is to decode the returned PNG and paint it onto the canvas.
 export default function MapCanvas({ imageBase64, width, height, displayWidth, displayHeight }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // One Image element, reused for the component's whole lifetime rather than a fresh
+  // `new Image()` per update -- lazily created here (the standard ref-during-render pattern
+  // for a one-time, non-render-affecting object) since it doesn't depend on any prop.
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  if (imgRef.current === null) {
+    imgRef.current = new Image();
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const img = imgRef.current;
+    if (!canvas || !img) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.fillStyle = BACKGROUND;
-    ctx.fillRect(0, 0, width, height);
-    if (!imageBase64) return;
+    if (!imageBase64) {
+      ctx.fillStyle = BACKGROUND;
+      ctx.fillRect(0, 0, width, height);
+      return;
+    }
 
-    // Image decoding is async -- if a newer render arrives (or this component unmounts)
-    // before this one finishes loading, drop it rather than painting a stale frame.
-    let cancelled = false;
-    const img = new Image();
+    // The flicker fix: don't clear the canvas up front. The previous frame stays on screen,
+    // fully intact, right up until the new one has actually finished decoding -- then
+    // drawImage swaps it in with a single paint covering the whole canvas, so there's never
+    // a moment where the canvas shows neither frame. Reassigning .src on the same element
+    // (rather than creating a new Image) also means a still-decoding previous frame is
+    // simply superseded -- the browser never fires onload for an aborted load, so stepping
+    // faster than a decode completes can't paint a stale frame after a newer one.
     img.onload = () => {
-      if (cancelled) return;
       ctx.drawImage(img, 0, 0, width, height);
     };
     img.src = `data:image/png;base64,${imageBase64}`;
-    return () => {
-      cancelled = true;
-    };
   }, [imageBase64, width, height]);
 
   return (
