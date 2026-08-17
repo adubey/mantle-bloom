@@ -404,16 +404,14 @@ at the same on-screen footprint. Fixed-pixel-size visual constants (`PADDING_PX`
 `REFERENCE_WIDTH_PX = 1100` and scaled by `width / REFERENCE_WIDTH_PX` when drawing, so a
 higher-resolution request doesn't also make those features look proportionally thinner.
 
-**The pole marker is always on the plate.** A plate's rotation axis (`plate.omega`) meets
-the sphere at two antipodal points; either is a valid place to center the marker, since the
-axis passes through both, but real rotation axes are frequently nowhere near the plate they
-belong to -- in *either* direction (confirmed on a real generated world: the better of the
-two choices still landed 87 degrees from the plate's own seed for at least one plate).
-`_pole_on_plate` prefers whichever candidate actually falls within the plate's own bounding
-sphere (`geometry.bounding_sphere` -- the same proximity test `merge_split.py` and
-`boundary.py` already use elsewhere for "is this near plate X"); if *neither* does, it falls
-back to the single nearest point the plate actually owns, so the marker is always somewhere
-real rather than merely "the less-wrong of two bad options."
+**The pole marker is the true Euler pole, colored by plate.** `pole_xyz` is exactly
+`plate.omega / |plate.omega|` -- no adjustment toward the plate's own territory. Real
+rotation axes are frequently nowhere near the plate they belong to (this is physically
+normal for real plate tectonics, not something to correct for), so the marker can land
+anywhere on the map, including on top of, or far from, its own plate's fill. Since position
+alone can no longer tell you which plate a given pole belongs to, `render_png` fills the
+marker with that plate's own color (the same one used for its boundary and rotation arc)
+with a white outline for contrast, rather than a single fixed color for every plate.
 
 **The rotation arc replaces the old straight velocity arrow.** A fixed-pixel-radius arc is
 drawn around the pole marker itself (`ARC_RADIUS_PX`), swept by an angle between
@@ -429,10 +427,7 @@ the same formula `boundary.closing_rate` uses elsewhere), project both the point
 step along that velocity into pixel space, and see whether the angle around the pole (in
 PIL's arc-angle convention) increased or decreased. Confirmed directly that two plates at
 the same seed, differing only in the sign of `omega`, render as mirror-image arcs -- the
-direction is genuinely sourced from the physics, not a fixed assumption. Picking the
-antipodal point for *placement* (above) does not by itself reverse the apparent direction --
-the arc's sweep is re-measured from the real, un-flipped `omega` at whichever point ends up
-chosen, so the two concerns don't interact.
+direction is genuinely sourced from the physics, not a fixed assumption.
 
 <a id="known-simplifications"></a>
 ## Known simplifications

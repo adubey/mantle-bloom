@@ -188,27 +188,6 @@ def _render_grid_arrays(
     )
 
 
-def _pole_on_plate(candidate: np.ndarray, plate_points: np.ndarray, centroid: np.ndarray, radius: float) -> np.ndarray:
-    """The rotation axis meets the sphere at `candidate` and `-candidate` -- either is a
-    valid place to *center the marker*, since the axis passes through both, but real
-    rotation axes are often nowhere near the plate they belong to, in either direction (a
-    plausible physical outcome, not a bug -- confirmed on a real generated world that the
-    better of the two choices still landed 87 degrees from the plate's own seed for at
-    least one plate). Prefers whichever candidate actually falls within the plate's own
-    bounding sphere (see geometry.bounding_sphere -- the same proximity test merge_split.py
-    and boundary.py already use elsewhere for "is this near plate X"); if *neither* does,
-    falls back to the single nearest point the plate actually owns, so the marker is always
-    somewhere real rather than merely "the less-wrong of two bad options"."""
-    for p in (candidate, -candidate):
-        if geometry.angular_distance(p, centroid) <= radius:
-            return p
-    dist_to_pos = geometry.angular_distance(plate_points, candidate)
-    dist_to_neg = geometry.angular_distance(plate_points, -candidate)
-    if dist_to_pos.min() <= dist_to_neg.min():
-        return plate_points[np.argmin(dist_to_pos)]
-    return plate_points[np.argmin(dist_to_neg)]
-
-
 def _plate_tectonics(projection: str, plate) -> dict:
     """Pole marker, rotation arc, and boundary outline for a plate -- everything the
     "Plates"/"Plates (details)" views draw besides the elevation-fill/node dots."""
@@ -217,20 +196,13 @@ def _plate_tectonics(projection: str, plate) -> dict:
     pole = None
     rotation_arc = None
     if speed > 1e-15:
-        candidate = plate.omega / speed
-        plate_points, _ = plate.all_points_and_elevation()
-        if len(plate_points) == 0:
-            pole_xyz = candidate
-        else:
-            centroid, radius = geometry.bounding_sphere(plate_points)
-            pole_xyz = _pole_on_plate(candidate, plate_points, centroid, radius)
+        # The true Euler pole -- real rotation axes are frequently nowhere near the plate
+        # they belong to (this is physically normal, not a bug), so this can land anywhere
+        # on the map. The pole marker is colored by plate (see render_png) specifically so
+        # it still reads as "belonging to" the right plate even when it's drawn far away.
+        pole_xyz = plate.omega / speed
         pole = _project_points(projection, pole_xyz[None, :])[0]
 
-        # _draw_rotation_arc separately measures the true local sweep direction at whichever
-        # point gets chosen (via the real, un-flipped plate.omega), so the arc's direction is
-        # correct regardless of which point pole_xyz ends up being -- picking a different
-        # marker location doesn't reverse the apparent motion the way naively swapping in
-        # -omega as if it described the same rotation would.
         intensity = np.clip(speed / mantle.MAX_PLATE_RATE, 0.3, 1.0)
         rotation_arc = {
             "pole_xyz": pole_xyz,
@@ -446,7 +418,11 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             if view == "plates" and info["pole"] is not None:
                 px, py = _to_pixels(scale, offset_x, offset_y, info["pole"][None, :])[0]
                 r = POLE_RADIUS_PX * pixel_scale
-                draw.ellipse([px - r, py - r, px + r, py + r], fill=(255, 45, 85), outline=(255, 255, 255), width=1)
+                # Filled with the plate's own color (matching its boundary/arc) rather than
+                # a fixed color, with a white outline for contrast against the fill -- since
+                # the pole can land anywhere on the map (see _plate_tectonics), color is what
+                # ties a pole marker back to the plate it belongs to.
+                draw.ellipse([px - r, py - r, px + r, py + r], fill=color, outline=(255, 255, 255), width=1)
 
     return _encode_image(image)
 

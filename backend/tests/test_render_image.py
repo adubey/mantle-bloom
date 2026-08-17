@@ -113,52 +113,29 @@ def test_render_png_scales_visual_constants_with_resolution():
     assert abs(frac_small - frac_large) < 0.05
 
 
-def _small_plate_points():
-    # A tight cluster of points around world direction [1, 0, 0].
-    return np.array(
-        [geometry.normalize(np.array([1.0, dx, dy])) for dx, dy in [(-0.01, 0), (0.01, 0), (0, -0.01), (0, 0.01)]]
-    )
-
-
-def test_pole_on_plate_prefers_the_true_pole_when_it_lands_on_the_plate():
-    plate_points = _small_plate_points()
-    centroid, radius = geometry.bounding_sphere(plate_points)
-    candidate = np.array([1.0, 0.0, 0.0])  # essentially the centroid direction -- on the plate
-    chosen = render_image._pole_on_plate(candidate, plate_points, centroid, radius)
-    assert np.allclose(chosen, candidate, atol=1e-6)
-
-
-def test_pole_on_plate_falls_back_to_a_real_owned_point_when_axis_is_far():
-    plate_points = _small_plate_points()
-    centroid, radius = geometry.bounding_sphere(plate_points)
-    candidate = np.array([0.0, 1.0, 0.0])  # 90 degrees away -- neither +/- candidate is near the plate
-    chosen = render_image._pole_on_plate(candidate, plate_points, centroid, radius)
-    # Must be an exact, real position the plate actually owns -- not merely "closer."
-    assert any(np.allclose(chosen, p) for p in plate_points)
-
-
-def test_plate_tectonics_pole_is_always_within_bounding_sphere_or_owned():
-    """The end-to-end guarantee _pole_on_plate exists for: across a real, evolved world,
-    every plate's displayed pole is either genuinely within its own bounding sphere or is
-    one of its own points exactly -- never somewhere unrelated to the plate."""
-    from app.world import step_world
-
+def test_plate_tectonics_pole_is_the_true_euler_pole():
+    """Euler poles can be anywhere on the map, not necessarily near the plate they belong
+    to (this is physically normal for real plate tectonics too) -- pole_xyz should be
+    exactly +omega/|omega|, with no adjustment toward the plate's own territory."""
     world = _world(seed=9, num_plates=12, continental_fraction=0.7)
-    for _ in range(5):
-        step_world(world, 5_000_000)
-
     for plate in world.plates:
-        if np.linalg.norm(plate.omega) < 1e-15:
+        speed = np.linalg.norm(plate.omega)
+        if speed < 1e-15:
             continue
-        points, _ = plate.all_points_and_elevation()
-        if len(points) == 0:
-            continue
-        centroid, radius = geometry.bounding_sphere(points)
         info = render_image._plate_tectonics("eckert4", plate)
-        pole_xyz = info["rotation_arc"]["pole_xyz"]
-        within_sphere = geometry.angular_distance(pole_xyz, centroid) <= radius + 1e-9
-        is_owned_point = np.any(np.all(np.isclose(points, pole_xyz), axis=-1))
-        assert within_sphere or is_owned_point
+        assert np.allclose(info["rotation_arc"]["pole_xyz"], plate.omega / speed)
+
+
+def test_pole_marker_uses_plate_color_not_a_fixed_color():
+    """Since a plate's true Euler pole can project anywhere on the map, color -- not
+    position -- is what ties a pole marker back to its plate (see render_png); confirms the
+    marker no longer uses a fixed color regardless of which plate it belongs to."""
+    world = _world(seed=3, num_plates=6, continental_fraction=1.0)
+    png = render_image.render_png(world, "eckert4", "plates", 600, 400)
+    image = Image.open(io.BytesIO(png)).convert("RGB")
+    pixels = np.asarray(image).reshape(-1, 3)
+    old_fixed_pole_color = np.array([255, 45, 85])
+    assert not np.any(np.all(pixels == old_fixed_pole_color, axis=-1))
 
 
 def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
