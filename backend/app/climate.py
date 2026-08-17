@@ -228,7 +228,14 @@ def _weighted_sample_without_replacement(rng: np.random.Generator, weights: np.n
 # Insolation
 # ---------------------------------------------------------------------------------------
 
-SUNLIGHT = 1.0
+# Below 1.0 -- worlds at the full-sun value ran noticeably hot (median displayed temperature
+# ~18C, equatorial highs near 30C, with humidity pegged at its ceiling across a wide swath of
+# ocean) and correspondingly over-wet, since humidity's evaporation ceiling is driven
+# directly by ocean temperature (see compute_humidity). 0.85 was chosen by direct comparison
+# across a sweep of values: it brings the median down to a more Earth-like ~15C and pulls
+# humidity/precipitation down with it as a natural consequence, without needing a separate
+# knob for wetness.
+SUNLIGHT = 0.85
 INSOLATION_FLOOR = 0.03
 AXIAL_TILT_DECLINATION_SAMPLES = 24
 
