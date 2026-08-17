@@ -430,6 +430,16 @@ PIL's arc-angle convention) increased or decreased. Confirmed directly that two 
 the same seed, differing only in the sign of `omega`, render as mirror-image arcs -- the
 direction is genuinely sourced from the physics, not a fixed assumption.
 
+**Every view draws a legend**, anchored at the image's bottom-left corner
+(`_draw_legend`), baked into the PNG the same as everything else here rather than a
+separate frontend overlay -- one shared panel layout (title, then an optional horizontal
+color-gradient bar with tick labels, then any number of symbol rows) covers every case: a
+plain color scale reusing that view's own `*_colors` function for the heatmap views
+(elevation/temperature/humidity/precipitation, so the legend can never drift out of sync
+with the actual fill colors), boundary/pole/rotation-arc symbols for "Plates", a gradient
+plus a boundary symbol for "Plates (details)" (its node dots are colored by elevation, the
+same scale as "Elevation"), and arrow/ocean/land/swell symbols for wind/oceanCurrents.
+
 <a id="climate"></a>
 ## Climate (`climate.py`)
 

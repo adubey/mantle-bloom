@@ -21,7 +21,7 @@ import base64
 import io
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial import cKDTree
 
 from . import climate, geometry, mantle, plates, projections
@@ -480,6 +480,154 @@ def _draw_swell_markers(
         draw.ellipse([px - r, py - r, px + r, py + r], outline=(255, 255, 255), width=width_px)
 
 
+# ---------------------------------------------------------------------------------------
+# Legends
+# ---------------------------------------------------------------------------------------
+
+# All fixed pixel-space, scaled by pixel_scale like every other visual constant here (see
+# module docstring / REFERENCE_WIDTH_PX). One shared panel layout (title, then an optional
+# horizontal gradient bar with tick labels, then any number of symbol rows) covers every map
+# view: a plain color scale for the heatmap views (elevation/temperature/humidity/
+# precipitation), boundary/pole/rotation-arc symbols for the plate-tectonics views,
+# arrow/backdrop/swell symbols for wind/oceanCurrents, and gradient + a boundary symbol for
+# "Plates (details)" (its dots are colored by elevation, same scale as the elevation view).
+LEGEND_MARGIN_PX = 16
+LEGEND_PADDING_PX = 10
+LEGEND_PANEL_WIDTH_PX = 172
+LEGEND_TITLE_ROW_PX = 20
+LEGEND_ROW_PX = 18
+LEGEND_BAR_LENGTH_PX = 148
+LEGEND_BAR_THICKNESS_PX = 14
+LEGEND_TICK_ROW_PX = 16
+LEGEND_SWATCH_PX = 14
+LEGEND_TITLE_FONT_PX = 13
+LEGEND_LABEL_FONT_PX = 11
+LEGEND_BG_RGB = (16, 20, 34)
+LEGEND_BORDER_RGB = (75, 80, 96)
+LEGEND_TEXT_RGB = (222, 226, 235)
+LEGEND_SYMBOL_RGB = (200, 205, 215)  # neutral color for symbols not tied to any one plate
+
+
+def _legend_font(size_px: float) -> ImageFont.FreeTypeFont:
+    return ImageFont.load_default(size=max(int(round(size_px)), 6))
+
+
+def _draw_legend(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    height: int,
+    pixel_scale: float,
+    title: str,
+    gradient: tuple[object, float, float, list[tuple[float, str]]] | None = None,
+    symbol_entries: list[tuple[object, str]] = (),
+) -> None:
+    """Draws a legend panel anchored at the image's bottom-left corner. `gradient`, if given,
+    is `(colors_fn, value_min, value_max, [(tick_value, tick_label), ...])` -- colors_fn is
+    one of this module's own vectorized value -> RGB functions (elevation_colors etc.),
+    called here against a value ramp to build the bar image directly, so the legend is always
+    in sync with whatever coloring the map itself used. `symbol_entries` is
+    `[(draw_swatch(cx, cy, size), label), ...]`, stacked below the gradient (if any)."""
+    pad = int(round(LEGEND_PADDING_PX * pixel_scale))
+    title_h = int(round(LEGEND_TITLE_ROW_PX * pixel_scale))
+    row_h = int(round(LEGEND_ROW_PX * pixel_scale))
+    bar_w = int(round(LEGEND_BAR_LENGTH_PX * pixel_scale))
+    bar_h = int(round(LEGEND_BAR_THICKNESS_PX * pixel_scale))
+    tick_row_h = int(round(LEGEND_TICK_ROW_PX * pixel_scale))
+    panel_w = max(int(round(LEGEND_PANEL_WIDTH_PX * pixel_scale)), bar_w + 2 * pad)
+
+    content_h = (bar_h + tick_row_h if gradient is not None else 0) + row_h * len(symbol_entries)
+    panel_h = title_h + content_h + 2 * pad
+
+    margin = int(round(LEGEND_MARGIN_PX * pixel_scale))
+    x0 = margin
+    y0 = height - margin - panel_h
+    draw.rectangle([x0, y0, x0 + panel_w, y0 + panel_h], fill=LEGEND_BG_RGB, outline=LEGEND_BORDER_RGB, width=1)
+
+    title_font = _legend_font(LEGEND_TITLE_FONT_PX * pixel_scale)
+    label_font = _legend_font(LEGEND_LABEL_FONT_PX * pixel_scale)
+    inner_x = x0 + pad
+    cy = y0 + pad
+    draw.text((inner_x, cy), title, font=title_font, fill=LEGEND_TEXT_RGB)
+    cy += title_h
+
+    if gradient is not None:
+        colors_fn, value_min, value_max, ticks = gradient
+        values = np.linspace(value_min, value_max, bar_w)
+        bar_row = colors_fn(values)
+        bar_array = np.broadcast_to(bar_row[None, :, :], (bar_h, bar_w, 3))
+        image.paste(Image.fromarray(bar_array, mode="RGB"), (inner_x, cy))
+        tick_y = cy + bar_h
+        span = value_max - value_min
+        for value, label in ticks:
+            frac = 0.0 if span <= 0 else min(max((value - value_min) / span, 0.0), 1.0)
+            tick_x = inner_x + frac * (bar_w - 1)
+            draw.line([(tick_x, cy), (tick_x, tick_y)], fill=(0, 0, 0), width=1)
+            draw.text((tick_x, tick_y + 1), label, font=label_font, fill=LEGEND_TEXT_RGB, anchor="ma")
+        cy += bar_h + tick_row_h
+
+    swatch = int(round(LEGEND_SWATCH_PX * pixel_scale))
+    label_x = inner_x + swatch + int(round(6 * pixel_scale))
+    for draw_swatch, label in symbol_entries:
+        row_mid = cy + row_h / 2
+        draw_swatch(inner_x, row_mid, swatch)
+        draw.text((label_x, row_mid), label, font=label_font, fill=LEGEND_TEXT_RGB, anchor="lm")
+        cy += row_h
+
+
+def _swatch_line(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
+    return lambda cx, cy, size: draw.line([(cx, cy), (cx + size, cy)], fill=color, width=max(int(round(size / 6)), 1))
+
+
+def _swatch_square(draw: ImageDraw.ImageDraw, color) -> object:
+    color = tuple(int(c) for c in color)
+    return lambda cx, cy, size: draw.rectangle([cx, cy - size / 2, cx + size, cy + size / 2], fill=color)
+
+
+def _swatch_circle(draw: ImageDraw.ImageDraw, fill_color: tuple[int, int, int], outline_color: tuple[int, int, int]):
+    def paint(cx: float, cy: float, size: float) -> None:
+        r = size / 2
+        center = cx + r
+        draw.ellipse([center - r, cy - r, center + r, cy + r], fill=fill_color, outline=outline_color, width=1)
+
+    return paint
+
+
+def _swatch_ring(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
+    def paint(cx: float, cy: float, size: float) -> None:
+        r = size / 2
+        center = cx + r
+        draw.ellipse([center - r, cy - r, center + r, cy + r], outline=color, width=max(int(round(size / 8)), 1))
+
+    return paint
+
+
+def _swatch_arrow(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
+    def paint(cx: float, cy: float, size: float) -> None:
+        draw.line([(cx, cy), (cx + size, cy)], fill=color, width=max(int(round(size / 7)), 1))
+        _draw_arrow_head(draw, np.array([cx + size, cy]), np.array([1.0, 0.0]), color, size * 0.5)
+
+    return paint
+
+
+def _swatch_arc(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
+    def paint(cx: float, cy: float, size: float) -> None:
+        r = size / 2
+        center_x = cx + r
+        draw.arc([center_x - r, cy - r, center_x + r, cy + r], 30, 300, fill=color, width=max(int(round(size / 8)), 1))
+        head_rad = np.radians(300.0)
+        head_px = np.array([center_x, cy]) + r * np.array([np.cos(head_rad), np.sin(head_rad)])
+        tangent = np.array([-np.sin(head_rad), np.cos(head_rad)])
+        _draw_arrow_head(draw, head_px, tangent, color, size * 0.35)
+
+    return paint
+
+
+def _elevation_legend_gradient() -> tuple[object, float, float, list[tuple[float, str]]]:
+    lo, hi = float(_ELEVATION_STOP_E[0]), float(_ELEVATION_STOP_E[-1])
+    ticks = [(-8000.0, "-8k"), (-4000.0, "-4k"), (0.0, "0"), (4000.0, "4k"), (8000.0, "8k")]
+    return elevation_colors, lo, hi, ticks
+
+
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int) -> bytes:
     """Renders one of CLIMATE_VIEWS from climate.py's own fixed grid -- a separate path from
     the plate-tectonics views below since the data source (a real (H, W) array, always
@@ -531,14 +679,42 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _fill_rects(pixels, centers, half_w, half_h, backdrop)
 
     image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
 
     if view == "wind":
-        draw = ImageDraw.Draw(image)
         _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR)
     elif view == "oceanCurrents":
-        draw = ImageDraw.Draw(image)
         _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR)
         _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale)
+
+    if view == "temperature":
+        ticks = [(-60.0, "-60°"), (-20.0, "-20°"), (20.0, "20°"), (40.0, "40°")]
+        gradient = (temperature_colors, float(_TEMPERATURE_STOP_C[0]), float(_TEMPERATURE_STOP_C[-1]), ticks)
+        _draw_legend(image, draw, height, pixel_scale, "Temperature (°C)", gradient=gradient)
+    elif view == "humidity":
+        lo, hi = float(_HUMIDITY_STOP_V[0]), float(_HUMIDITY_STOP_V[-1])
+        gradient = (humidity_colors, lo, hi, [(lo, "Dry"), (hi, "Humid")])
+        _draw_legend(image, draw, height, pixel_scale, "Humidity", gradient=gradient)
+    elif view == "precipitation":
+        lo, hi = float(_PRECIPITATION_STOP_MM[0]), float(_PRECIPITATION_STOP_MM[-1])
+        ticks = [(lo, "0"), (hi / 2, f"{hi / 2:.0f}"), (hi, f"{hi:.0f}")]
+        gradient = (precipitation_colors, lo, hi, ticks)
+        _draw_legend(image, draw, height, pixel_scale, "Precipitation (mm/yr)", gradient=gradient)
+    elif view == "wind":
+        entries = [
+            (_swatch_arrow(draw, WIND_ARROW_COLOR), "Speed (arrow length)"),
+            (_swatch_square(draw, CLIMATE_OCEAN_BACKDROP_RGB), "Ocean"),
+            (_swatch_square(draw, CLIMATE_LAND_BACKDROP_RGB), "Land"),
+        ]
+        _draw_legend(image, draw, height, pixel_scale, "Wind", symbol_entries=entries)
+    elif view == "oceanCurrents":
+        entries = [
+            (_swatch_arrow(draw, CURRENT_ARROW_COLOR), "Speed (arrow length)"),
+            (_swatch_square(draw, CLIMATE_OCEAN_BACKDROP_RGB), "Ocean"),
+            (_swatch_square(draw, CLIMATE_LAND_BACKDROP_RGB), "Land"),
+            (_swatch_ring(draw, (255, 255, 255)), "Ocean swell"),
+        ]
+        _draw_legend(image, draw, height, pixel_scale, "Ocean currents", symbol_entries=entries)
 
     return _encode_image(image)
 
@@ -614,9 +790,9 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             _fill_rects(pixels, centers, dot_radius, dot_radius, colors)
 
     image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
 
     if view in ("plates", "platesDetail"):
-        draw = ImageDraw.Draw(image)
         for plate in world.plates:
             info = tectonics[plate.plate_id]
             color = tuple(int(c) for c in plate_colors(np.array([plate.plate_id]))[0])
@@ -636,6 +812,22 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
                 # the pole can land anywhere on the map (see _plate_tectonics), color is what
                 # ties a pole marker back to the plate it belongs to.
                 draw.ellipse([px - r, py - r, px + r, py + r], fill=color, outline=(255, 255, 255), width=1)
+
+    if view == "elevation":
+        _draw_legend(image, draw, height, pixel_scale, "Elevation (m)", gradient=_elevation_legend_gradient())
+    elif view == "plates":
+        entries = [
+            (_swatch_line(draw, LEGEND_SYMBOL_RGB), "Plate boundary"),
+            (_swatch_circle(draw, LEGEND_SYMBOL_RGB, (255, 255, 255)), "Euler pole"),
+            (_swatch_arc(draw, LEGEND_SYMBOL_RGB), "Rotation (rate & direction)"),
+        ]
+        _draw_legend(image, draw, height, pixel_scale, "Plates", symbol_entries=entries)
+    elif view == "platesDetail":
+        entries = [(_swatch_line(draw, LEGEND_SYMBOL_RGB), "Plate boundary")]
+        _draw_legend(
+            image, draw, height, pixel_scale, "Elevation (m)",
+            gradient=_elevation_legend_gradient(), symbol_entries=entries,
+        )
 
     return _encode_image(image)
 

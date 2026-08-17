@@ -74,6 +74,19 @@ def test_render_png_is_decodable_at_requested_size():
         assert image.size == (320, 180)
 
 
+def test_every_view_draws_a_legend_panel():
+    world = _world(seed=5, num_plates=8, continental_fraction=0.6)
+    for view in render_image.VIEWS:
+        png = render_image.render_png(world, "behrmann", view, 550, 306)
+        image = Image.open(io.BytesIO(png)).convert("RGB")
+        pixels = np.asarray(image)
+        # The legend panel is a solid-color rectangle anchored at the bottom-left corner --
+        # its exact background color should appear somewhere in that corner for every view
+        # now that all of them draw one.
+        corner = pixels[-90:, :220]
+        assert np.any(np.all(corner == np.array(render_image.LEGEND_BG_RGB), axis=-1)), f"{view} has no legend panel"
+
+
 def test_render_png_empty_world_returns_background_only():
     world = World(seed=1)  # plates defaults to [] -- shouldn't happen via the API, but shouldn't crash
     png = render_image.render_png(world, "behrmann", "elevation", 100, 60)
