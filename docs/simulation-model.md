@@ -69,12 +69,32 @@ having to pick a number. That many seed points are scattered uniformly on the un
 (normalized Gaussian samples), and each gets a plate-local frame built from its own seed
 (`geometry.plate_frame_from_seed`).
 
-Continent count *is* user-facing -- the UI's continents slider passes `num_continents`
-(`plates.MIN_CONTINENTS = 1` to `plates.MAX_CONTINENTS = 12`). When given, exactly that many
-plates (`rng.choice`, without replacement) are made continental instead of the usual
-independent `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up
-if needed so there's still room for at least `MIN_OCEANIC_PLATES` of real ocean floor
-regardless of how many continents were requested.
+Two generation choices *are* user-facing -- the UI's "continental plates" and "initial land"
+sliders, both 0 to 1 (percent in the UI), defaulting to `DEFAULT_CONTINENTAL_FRACTION = 0.70`
+and `DEFAULT_LAND_FRACTION = 0.29`.
+
+- `continental_fraction`: when given, `round(continental_fraction * num_plates)` plates
+  (`rng.choice`, without replacement) are made continental instead of the usual independent
+  `CONTINENTAL_FRACTION = 0.4` coin flip per plate, and `num_plates` is bumped up if needed
+  so there's still room for at least `MIN_OCEANIC_PLATES` of real ocean floor regardless of
+  how high a fraction was requested.
+- `land_fraction`: independently controls how much of the *whole sphere* -- not just of
+  continental crust -- starts above sea level. This is a genuinely separate knob from
+  `continental_fraction`, because continental crust from randomly-seeded Voronoi cells
+  doesn't cover a *fixed* area fraction just because a *plate-count* fraction was requested
+  (cells vary in size), and because not all continental crust needs to be dry land (compare
+  real continental shelves). `_land_noise_threshold` does the work: a one-off whole-sphere
+  sweep (independent of any plate's own lattice, at the coarser
+  `LAND_FRACTION_SAMPLE_SPACING_KM = 150`, since this only needs to be a statistically
+  representative sample) measures the *actual* continental area fraction, then finds the
+  noise quantile that would put exactly the right sub-fraction of continental crust above
+  sea level to hit the whole-sphere target (capped at 1.0 -- if there isn't enough
+  continental area to reach the requested land fraction, every bit of it becomes land and
+  that's as close as generation gets). Continental crust's elevation formula becomes
+  `amp * (noise - threshold)` instead of the usual `BASE_CONTINENTAL_M + amp * noise` when a
+  threshold is available; oceanic crust is untouched (its own base/amplitude make crossing
+  sea level implausible regardless). Confirmed directly: at the defaults, measured land
+  fraction across several seeds lands within about a percentage point of 29%.
 
 Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
 plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution, and for every
@@ -84,9 +104,10 @@ diagram](https://en.wikipedia.org/wiki/Voronoi_diagram), computed directly rathe
 an explicit polygon-construction step. Every node ends up owned by exactly one plate, so the
 initial tiling has no gaps and no overlaps *by construction* -- there's nothing to
 separately verify. Kept nodes get a base elevation by crust type
-(`BASE_CONTINENTAL_M = 200`, `BASE_OCEANIC_M = -3800`) plus a smooth noise texture
-(`noise.py`, a small sum of sinusoids with random frequency/phase -- not true gradient
-noise, just enough texture to not look perfectly flat).
+(`BASE_CONTINENTAL_M = 200`, `BASE_OCEANIC_M = -3800`, continental overridden by
+`land_fraction`'s threshold when given, see above) plus a smooth noise texture (`noise.py`,
+a small sum of sinusoids with random frequency/phase -- not true gradient noise, just enough
+texture to not look perfectly flat).
 
 The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by plate merging
 (see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
@@ -324,7 +345,7 @@ equal-area on screen.
 `MapCanvas.tsx` used to compute client-side from raw JSON, but paints them into a Pillow
 image instead of shipping the coordinates over the wire for the browser to draw. The
 client's job shrank to "decode this PNG and draw it on a canvas" (see `MapCanvas.tsx`);
-every drawing decision -- fill colors, grid-cell sizing, boundary/pole/velocity-arrow
+every drawing decision -- fill colors, grid-cell sizing, boundary/pole/rotation-arc
 overlays, per-node dots -- lives in one place now.
 
 **Why a grid, still.** The elevation-line/gap-filling data is genuinely Lagrangian: nodes
@@ -347,14 +368,18 @@ touches `world.plates`, so it has no bearing on the mass-conservation properties
 of the model is built around (see [Why not a grid](#why-not-a-grid)); a fresh grid is
 computed from scratch on every `/world/render` call.
 
-`GRID_SPACING_KM = 250` is a fixed, display-oriented constant, deliberately decoupled from
+`GRID_SPACING_KM = 100` is a fixed, display-oriented constant, deliberately decoupled from
 `plates.TARGET_LINE_SPACING_KM` (the simulation's physics resolution) -- the grid only
 needs to look smooth once rasterized, not match whatever resolution the simulation itself
 happens to run at. This used to matter for wire-payload size too (when the grid was
 serialized as JSON, aliasing it to the physics resolution silently quadrupled the response
 size the one time the physics resolution was doubled), but a PNG's size depends on how
 compressible its *pixels* are, not on how many samples went into it, so that concern no
-longer applies -- `GRID_SPACING_KM` is free to change independently now.
+longer applies -- `GRID_SPACING_KM` is free to change independently now, and was tightened
+from an initial 250km once the "Elevation"/"Plates" views' coastlines read as noticeably
+blockier than "Plates (details)" (which draws at the physics resolution): confirmed side by
+side that 100km closes most of that gap at a real render size (~220ms at 2200x1222, up from
+~117ms), while 250km's cell edges visibly stair-stepped even there.
 
 **Sizing each cell correctly is what actually closes the gaps.** A uniform *sphere* grid
 still isn't a uniform *projected* grid -- so each cell is drawn at a size measured from the
@@ -375,9 +400,39 @@ thousands of cells, which "Plates (details)" needs for its per-node dots too.
 request become the PNG's exact pixel dimensions; the frontend requests more pixels than its
 canvas's displayed CSS size (`App.tsx`'s `RENDER_SCALE`) for a sharper, retina-style render
 at the same on-screen footprint. Fixed-pixel-size visual constants (`PADDING_PX`,
-`POLE_RADIUS_PX`, boundary/arrow line widths, node dot radius) are all defined relative to
+`POLE_RADIUS_PX`, boundary/arc line widths, node dot radius) are all defined relative to
 `REFERENCE_WIDTH_PX = 1100` and scaled by `width / REFERENCE_WIDTH_PX` when drawing, so a
 higher-resolution request doesn't also make those features look proportionally thinner.
+
+**The pole marker is always on the plate.** A plate's rotation axis (`plate.omega`) meets
+the sphere at two antipodal points; either is a valid place to center the marker, since the
+axis passes through both, but real rotation axes are frequently nowhere near the plate they
+belong to -- in *either* direction (confirmed on a real generated world: the better of the
+two choices still landed 87 degrees from the plate's own seed for at least one plate).
+`_pole_on_plate` prefers whichever candidate actually falls within the plate's own bounding
+sphere (`geometry.bounding_sphere` -- the same proximity test `merge_split.py` and
+`boundary.py` already use elsewhere for "is this near plate X"); if *neither* does, it falls
+back to the single nearest point the plate actually owns, so the marker is always somewhere
+real rather than merely "the less-wrong of two bad options."
+
+**The rotation arc replaces the old straight velocity arrow.** A fixed-pixel-radius arc is
+drawn around the pole marker itself (`ARC_RADIUS_PX`), swept by an angle between
+`ARC_MIN_EXTENT_DEG` and `ARC_MAX_EXTENT_DEG` scaled by how fast the plate is moving
+relative to `mantle.MAX_PLATE_RATE`, with an arrowhead at the moving end
+(`_draw_rotation_arc`). Because it's centered on an already-projected point and sized
+entirely in pixel space, it can't straddle a projection discontinuity near the antimeridian
+the way the old arrow (drawn between two separately-projected world points) occasionally
+did. Its sweep direction can't be assumed from the sign of `omega` alone -- image y grows
+down and projections aren't guaranteed to preserve on-screen handedness -- so it's measured
+directly: take a point near the pole, find its true tangential velocity (`omega x point`,
+the same formula `boundary.closing_rate` uses elsewhere), project both the point and a small
+step along that velocity into pixel space, and see whether the angle around the pole (in
+PIL's arc-angle convention) increased or decreased. Confirmed directly that two plates at
+the same seed, differing only in the sign of `omega`, render as mirror-image arcs -- the
+direction is genuinely sourced from the physics, not a fixed assumption. Picking the
+antipodal point for *placement* (above) does not by itself reverse the apparent direction --
+the arc's sweep is re-measured from the real, un-flipped `omega` at whichever point ends up
+chosen, so the two concerns don't interact.
 
 <a id="known-simplifications"></a>
 ## Known simplifications

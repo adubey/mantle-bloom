@@ -25,14 +25,12 @@ CONTINENTAL_NOISE_AMPLITUDE_M = 1200.0
 OCEANIC_NOISE_AMPLITUDE_M = 500.0
 
 # Halving this doubles resolution in each dimension (phi rows and theta samples per row),
-# i.e. ~4x the nodes per plate -- and, since main.py's render grid resolution is derived
-# directly from this same constant, ~4x the render grid points too (smaller cells in the
-# UI). Several other modules define *absolute node-count* thresholds (not distances, which
-# already scale automatically as multiples of TARGET_LINE_SPACING_RAD) that represent a
-# physical area or distance in terms of the *old* density -- those were rescaled alongside
-# this (merge_split.SPLIT_MIN_NODES, gaps.MIN_GAP_POINTS/MAX_ABSORB_NODES_PER_PLATE_PER_CALL
-# by ~4x for area, boundary.MAX_EXTEND_NODES_PER_STEP by ~2x for a 1D distance) -- see each
-# for the reasoning.
+# i.e. ~4x the nodes per plate. Several other modules define *absolute node-count*
+# thresholds (not distances, which already scale automatically as multiples of
+# TARGET_LINE_SPACING_RAD) that represent a physical area or distance in terms of the *old*
+# density -- those were rescaled alongside this (merge_split.SPLIT_MIN_NODES,
+# gaps.MIN_GAP_POINTS/MAX_ABSORB_NODES_PER_PLATE_PER_CALL by ~4x for area,
+# boundary.MAX_EXTEND_NODES_PER_STEP by ~2x for a 1D distance) -- see each for the reasoning.
 TARGET_LINE_SPACING_KM = 125.0
 TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 
@@ -40,11 +38,17 @@ TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 # an inclusive range of plausible Earth-like plate counts.
 MIN_AUTO_PLATES = 8
 MAX_AUTO_PLATES = 20
-# Continent count *is* user-facing (a slider) -- see generate_plates' num_continents.
-MIN_CONTINENTS = 1
-MAX_CONTINENTS = 12
-# However few continents are requested, still leave room for real ocean floor.
+# Both user-facing (UI sliders) -- see generate_plates' continental_fraction/land_fraction.
+DEFAULT_CONTINENTAL_FRACTION = 0.70
+DEFAULT_LAND_FRACTION = 0.29
+# However high the requested continental fraction, still leave room for real ocean floor.
 MIN_OCEANIC_PLATES = 3
+# Resolution for the one-off whole-sphere sweep generate_plates uses to translate a
+# requested land_fraction into a concrete noise threshold (see _land_noise_threshold) --
+# coarser than the simulation/render grids since this only needs to be a statistically
+# representative sample, not something visually smooth or physically carried.
+LAND_FRACTION_SAMPLE_SPACING_KM = 150.0
+LAND_FRACTION_SAMPLE_SPACING_RAD = LAND_FRACTION_SAMPLE_SPACING_KM / PLANET_RADIUS_KM
 
 
 @dataclass
@@ -163,33 +167,84 @@ def _build_lines_for_plate(
     crust_type: str,
     owner_tree: cKDTree,
     noise: SphereNoise,
+    land_threshold: float | None = None,
 ) -> list[ElevationLine]:
     """Keep only lattice nodes whose nearest seed is this plate's own seed (i.e. nodes
     actually inside this plate's spherical Voronoi cell), and assign each a base elevation
-    plus noise texture."""
-    base = base_elevation(crust_type)
+    plus noise texture. `land_threshold` (continental crust only, see
+    _land_noise_threshold) overrides the usual fixed BASE_CONTINENTAL_M floor with one
+    derived from the requested land_fraction, so elevation = amp * (noise - threshold) is
+    positive for exactly the fraction of continental crust needed to hit that target."""
     amp = noise_amplitude(crust_type)
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         _, nearest_idx = owner_tree.query(world_pts)
         return nearest_idx == plate_index
 
-    def elevation_at(world_pts: np.ndarray) -> np.ndarray:
-        return base + amp * noise.sample(world_pts)
+    if crust_type == "continental" and land_threshold is not None:
+
+        def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+            return amp * (noise.sample(world_pts) - land_threshold)
+    else:
+        base = base_elevation(crust_type)
+
+        def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+            return base + amp * noise.sample(world_pts)
 
     return build_lines_from_lattice(frame, is_owned, elevation_at)
 
 
+def _land_noise_threshold(
+    owner_tree: cKDTree, crust_types: list[str], noise: SphereNoise, land_fraction: float
+) -> float | None:
+    """Translate a requested whole-sphere land_fraction into a concrete noise threshold for
+    continental crust's elevation formula (see _build_lines_for_plate).
+
+    A one-off whole-sphere sweep (independent of any plate's own lattice, at the coarser
+    LAND_FRACTION_SAMPLE_SPACING_RAD -- this only needs to be a statistically representative
+    sample) measures both which crust_type each sample point would land in (nearest-seed,
+    the same rule that decides real plate territory) and that point's noise value. The
+    measured continental *area* fraction -- not just the continental *plate count* fraction
+    passed in as continental_fraction, which can differ meaningfully since Voronoi cells
+    from random seed points aren't equal-area -- sets how much of that continental area
+    needs to end up above sea level to hit the requested whole-sphere land_fraction: e.g. if
+    continental crust only covers 40% of the sphere but 29% land was requested, ~72% of
+    continental crust needs to be land. Returns None if there's no continental crust at all
+    to place land on."""
+    sample_pts = np.concatenate(
+        [
+            world_pts
+            for _, _, world_pts in iter_local_lattice(np.eye(3), spacing_rad=LAND_FRACTION_SAMPLE_SPACING_RAD)
+        ],
+        axis=0,
+    )
+    _, nearest_idx = owner_tree.query(sample_pts)
+    is_continental = np.array([crust_types[i] == "continental" for i in nearest_idx])
+    continental_area_fraction = float(np.mean(is_continental))
+    if continental_area_fraction <= 0.0:
+        return None
+
+    target_sub_fraction = min(land_fraction / continental_area_fraction, 1.0)
+    continental_noise = noise.sample(sample_pts[is_continental])
+    return float(np.quantile(continental_noise, 1.0 - target_sub_fraction))
+
+
 def generate_plates(
-    seed: int, num_plates: int | None = None, num_continents: int | None = None
+    seed: int,
+    num_plates: int | None = None,
+    continental_fraction: float | None = None,
+    land_fraction: float | None = None,
 ) -> list[Plate]:
     """Tile the whole sphere into plates. `num_plates` is optional -- when omitted, a
     plausible Earth-like count is drawn from the seed's own RNG stream (so it's still fully
-    determined by `seed`, just not something the caller has to pick). `num_continents` is
-    also optional -- when given (the UI's continents slider), exactly that many plates are
-    made continental (clamped to MAX_CONTINENTS; `num_plates` is bumped up if needed so
-    there's still room for at least MIN_OCEANIC_PLATES of real ocean floor) instead of the
-    usual independent CONTINENTAL_FRACTION coin flip per plate.
+    determined by `seed`, just not something the caller has to pick). `continental_fraction`
+    is also optional -- when given (the UI's "continental plates" slider, 0 to 1), that
+    fraction of plates (rounded, `num_plates` bumped up if needed so there's still room for
+    at least MIN_OCEANIC_PLATES of real ocean floor) are made continental, instead of the
+    usual independent CONTINENTAL_FRACTION coin flip per plate. `land_fraction` (the UI's
+    "initial land" slider, also 0 to 1) similarly overrides how much of the *whole sphere*
+    -- not just of continental crust -- starts above sea level; see
+    _land_noise_threshold for how that target is actually hit.
 
     Every plate's territory comes from the same nearest-seed test (`owner_tree.query`
     below): each lattice node is claimed by exactly one plate, so the tiling has no gaps
@@ -199,8 +254,11 @@ def generate_plates(
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
-    if num_continents is not None:
-        num_continents = max(0, min(num_continents, MAX_CONTINENTS))
+
+    num_continents: int | None = None
+    if continental_fraction is not None:
+        continental_fraction = max(0.0, min(continental_fraction, 1.0))
+        num_continents = round(continental_fraction * num_plates)
         num_plates = max(num_plates, num_continents + MIN_OCEANIC_PLATES)
 
     seed_xyz = rng.normal(size=(num_plates, 3))
@@ -217,9 +275,14 @@ def generate_plates(
     owner_tree = cKDTree(seed_xyz)
     noise = SphereNoise(rng, octaves=4, base_freq=2.5)
 
+    land_threshold = None
+    if land_fraction is not None:
+        land_fraction = max(0.0, min(land_fraction, 1.0))
+        land_threshold = _land_noise_threshold(owner_tree, crust_types, noise, land_fraction)
+
     plates: list[Plate] = []
     for i in range(num_plates):
         frame = geometry.plate_frame_from_seed(seed_xyz[i])
-        lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise)
+        lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise, land_threshold)
         plates.append(Plate(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
     return plates

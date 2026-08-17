@@ -15,10 +15,9 @@ const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
 const PLAY_INTERVAL_MS = 400;
-// Matches backend app/plates.py's MIN_CONTINENTS/MAX_CONTINENTS.
-const MIN_CONTINENTS = 1;
-const MAX_CONTINENTS = 12;
-const DEFAULT_CONTINENTS = 7;
+// Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
+const DEFAULT_CONTINENTAL_PERCENT = 70;
+const DEFAULT_LAND_PERCENT = 29;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -27,10 +26,11 @@ function randomSeed(): number {
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
-  const [numContinents, setNumContinents] = useState(DEFAULT_CONTINENTS);
+  const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
+  const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
-  const [projection, setProjection] = useState<Projection>("behrmann");
+  const [projection, setProjection] = useState<Projection>("eckert4");
   const [mapView, setMapView] = useState<MapView>("elevation");
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
@@ -52,7 +52,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const s = await generateWorld(seed, numContinents);
+      const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100);
       setSummary(s);
       setShowGenerateDialog(false);
       await refresh(projection, mapView);
@@ -61,7 +61,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [seed, numContinents, projection, mapView, refresh]);
+  }, [seed, continentalPercent, landPercent, projection, mapView, refresh]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -240,13 +240,25 @@ export default function App() {
             </label>
 
             <label style={{ display: "block", marginBottom: 16 }}>
-              Continents: {numContinents}
+              Initial land: {landPercent}%
               <input
                 type="range"
-                min={MIN_CONTINENTS}
-                max={MAX_CONTINENTS}
-                value={numContinents}
-                onChange={(e) => setNumContinents(Number(e.target.value))}
+                min={0}
+                max={100}
+                value={landPercent}
+                onChange={(e) => setLandPercent(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Continental plates: {continentalPercent}%
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={continentalPercent}
+                onChange={(e) => setContinentalPercent(Number(e.target.value))}
                 style={{ width: "100%" }}
               />
             </label>

@@ -65,13 +65,17 @@ def _update_plate_omega(
 def generate_world(
     seed: int,
     num_plates: int | None = None,
-    num_continents: int | None = None,
+    continental_fraction: float | None = None,
+    land_fraction: float | None = None,
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
-    `num_continents` is the UI's continents slider -- see plates.generate_plates."""
-    plates = generate_plates(seed, num_plates=num_plates, num_continents=num_continents)
+    `continental_fraction`/`land_fraction` are the UI's generation sliders -- see
+    plates.generate_plates."""
+    plates = generate_plates(
+        seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction
+    )
     # Separate RNG stream so changing num_mantle_centers doesn't reshuffle plate layout.
     mantle_rng = np.random.default_rng(seed + 1)
     mantle_centers = mantle.generate_convection_centers(mantle_rng, n_centers=num_mantle_centers)

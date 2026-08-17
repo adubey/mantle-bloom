@@ -38,7 +38,7 @@ def test_generate_returns_summary(client):
 
 
 def test_generate_returns_a_generation_event(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "num_continents": 3})
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "continental_fraction": 0.5})
     body = resp.json()
     assert len(body["events"]) == 1
     assert "6 plates" in body["events"][0]["message"]
@@ -46,12 +46,20 @@ def test_generate_returns_a_generation_event(client):
     assert body["events"][0]["elapsed_years"] == 0.0
 
 
-def test_generate_with_num_continents_gives_exact_count(client):
+def test_generate_with_continental_fraction_gives_exact_count(client):
     # crust_type per plate isn't part of the render response (see render_image.py) -- the
     # generation event log is the documented way to confirm the exact count (also covered by
     # test_generate_returns_a_generation_event above; this locks in a second seed/count pair).
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 10, "num_continents": 4})
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 10, "continental_fraction": 0.4})
     assert "4 continental" in resp.json()["events"][0]["message"]
+
+
+def test_generate_with_land_fraction(client):
+    resp = client.post(
+        "/world/generate",
+        json={"seed": 1, "num_plates": 10, "continental_fraction": 0.7, "land_fraction": 0.29},
+    )
+    assert resp.status_code == 200
 
 
 def test_step_response_includes_growing_event_log(client):
@@ -95,7 +103,7 @@ def test_render_defaults_to_elevation_view_at_1100x611(client):
 def test_render_different_views_produce_different_images(client):
     """Not a pixel-exact check (that would just re-derive render_image.py's own math) --
     just confirms the `view` param actually changes what's drawn, at the HTTP layer."""
-    client.post("/world/generate", json={"seed": 3, "num_plates": 8, "num_continents": 4})
+    client.post("/world/generate", json={"seed": 3, "num_plates": 8, "continental_fraction": 0.5})
     bodies = {
         view: client.get("/world/render", params={"view": view, "width": 300, "height": 200}).json()["image_base64"]
         for view in ("elevation", "plates", "platesDetail")

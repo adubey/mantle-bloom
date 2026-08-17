@@ -57,7 +57,7 @@ def test_different_plates_generally_acquire_different_omegas():
 
 
 def test_generate_world_logs_a_generation_event():
-    world = generate_world(seed=15, num_plates=8, num_continents=3)
+    world = generate_world(seed=15, num_plates=8, continental_fraction=3 / 8)
     assert len(world.events) == 1
     elapsed, message = world.events[0]
     assert elapsed == 0.0
@@ -65,7 +65,7 @@ def test_generate_world_logs_a_generation_event():
 
 
 def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
-    world = generate_world(seed=16, num_plates=10, num_continents=6)
+    world = generate_world(seed=16, num_plates=10, continental_fraction=0.6)
     for _ in range(15):
         step_world(world, years=8_000_000)
     # Any event logged during stepping (merges/splits/consumption are plausible at this

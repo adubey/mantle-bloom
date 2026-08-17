@@ -41,28 +41,34 @@ POLE_RADIUS_PX = 5
 ARROWHEAD_LENGTH_PX = 7
 NODE_DOT_RADIUS_PX = 1.6
 BOUNDARY_LINE_WIDTH_PX = 1.5
-ARROW_LINE_WIDTH_PX = 1.5
+ARC_LINE_WIDTH_PX = 1.5
 # Cells are drawn slightly larger than their measured half-extent so adjacent cells overlap
 # a hair rather than risk a hairline gap from floating-point rounding. A ratio, not a pixel
 # size, so it does not scale with requested resolution.
 CELL_OVERLAP_FACTOR = 1.15
-# Velocity arrows are always meant to be short, local indicators (ARROW_BASE_ANGULAR_LENGTH_RAD
-# below caps them at ~0.15 rad on the sphere). If a plate's seed happens to sit near the map's
-# antimeridian or a pole, projecting its (geodesically short) arrow endpoint can land it on the
-# "other side" of the projection -- a tiny step in world space, but a huge jump in projected
-# coordinates -- and drawing a straight line between the two would paint a stray line across
-# most of the map. Any arrow this long on screen is that artifact, not a real velocity
-# indicator, so it's skipped rather than drawn.
-MAX_ARROW_FRACTION_OF_CANVAS = 0.15
-ARROW_BASE_ANGULAR_LENGTH_RAD = 0.15
+# The rotation-rate indicator (see _draw_rotation_arc) is a fixed-pixel-radius arc drawn
+# around the pole marker itself, its length (degrees of arc) scaled between these two bounds
+# by how fast the plate is moving relative to mantle.MAX_PLATE_RATE -- always at least a
+# little visible, never more than most of a full circle.
+ARC_RADIUS_PX = POLE_RADIUS_PX * 3.0
+ARC_MIN_EXTENT_DEG = 40.0
+ARC_MAX_EXTENT_DEG = 300.0
+# How far (radians) from the displayed pole to sample a point for measuring the arc's true
+# sweep direction once projected (see _draw_rotation_arc) -- small enough to stay a good
+# local approximation of the tangent at the pole itself, far enough that its projection
+# doesn't degenerate to a near-zero-length step.
+ARC_DIRECTION_SAMPLE_RAD = 0.05
 
 # Resolution of the render grid (see _render_grid_arrays), swept on a plate-independent
 # global grid so the map's coverage never depends on how sparse any one plate's own line
 # data looks once projected -- a fixed, display-oriented constant, deliberately *not* tied
 # to plates.TARGET_LINE_SPACING_RAD (the simulation's physics resolution): the render grid
 # only needs to look smooth once rasterized, which a resolution change in the physics has no
-# bearing on.
-GRID_SPACING_KM = 250.0
+# bearing on. 100km (rather than a coarser value) is affordable now that this is a fully
+# server-side numpy-slice fill (see _fill_rects) instead of one JSON number per point on the
+# wire: ~117ms -> ~220ms per 2200x1222 render, for visibly smoother coastlines (confirmed
+# side by side -- 250km left blocky, stair-stepped edges even at this canvas size).
+GRID_SPACING_KM = 100.0
 GRID_SPACING_RAD = GRID_SPACING_KM / plates.PLANET_RADIUS_KM
 
 # A fixed categorical palette so each plate reads as a distinct region across
@@ -182,30 +188,60 @@ def _render_grid_arrays(
     )
 
 
+def _pole_on_plate(candidate: np.ndarray, plate_points: np.ndarray, centroid: np.ndarray, radius: float) -> np.ndarray:
+    """The rotation axis meets the sphere at `candidate` and `-candidate` -- either is a
+    valid place to *center the marker*, since the axis passes through both, but real
+    rotation axes are often nowhere near the plate they belong to, in either direction (a
+    plausible physical outcome, not a bug -- confirmed on a real generated world that the
+    better of the two choices still landed 87 degrees from the plate's own seed for at
+    least one plate). Prefers whichever candidate actually falls within the plate's own
+    bounding sphere (see geometry.bounding_sphere -- the same proximity test merge_split.py
+    and boundary.py already use elsewhere for "is this near plate X"); if *neither* does,
+    falls back to the single nearest point the plate actually owns, so the marker is always
+    somewhere real rather than merely "the less-wrong of two bad options"."""
+    for p in (candidate, -candidate):
+        if geometry.angular_distance(p, centroid) <= radius:
+            return p
+    dist_to_pos = geometry.angular_distance(plate_points, candidate)
+    dist_to_neg = geometry.angular_distance(plate_points, -candidate)
+    if dist_to_pos.min() <= dist_to_neg.min():
+        return plate_points[np.argmin(dist_to_pos)]
+    return plate_points[np.argmin(dist_to_neg)]
+
+
 def _plate_tectonics(projection: str, plate) -> dict:
-    """Pole marker, velocity arrow, and boundary outline for a plate -- everything the
+    """Pole marker, rotation arc, and boundary outline for a plate -- everything the
     "Plates"/"Plates (details)" views draw besides the elevation-fill/node dots."""
-    seed_xyz = plate.seed_world
     speed = float(np.linalg.norm(plate.omega))
 
     pole = None
-    arrow = None
+    rotation_arc = None
     if speed > 1e-15:
-        pole_xyz = plate.omega / speed
+        candidate = plate.omega / speed
+        plate_points, _ = plate.all_points_and_elevation()
+        if len(plate_points) == 0:
+            pole_xyz = candidate
+        else:
+            centroid, radius = geometry.bounding_sphere(plate_points)
+            pole_xyz = _pole_on_plate(candidate, plate_points, centroid, radius)
         pole = _project_points(projection, pole_xyz[None, :])[0]
 
-        direction = np.cross(plate.omega, seed_xyz) / speed
+        # _draw_rotation_arc separately measures the true local sweep direction at whichever
+        # point gets chosen (via the real, un-flipped plate.omega), so the arc's direction is
+        # correct regardless of which point pole_xyz ends up being -- picking a different
+        # marker location doesn't reverse the apparent motion the way naively swapping in
+        # -omega as if it described the same rotation would.
         intensity = np.clip(speed / mantle.MAX_PLATE_RATE, 0.3, 1.0)
-        arrow_len = ARROW_BASE_ANGULAR_LENGTH_RAD * intensity
-        end_xyz = np.cos(arrow_len) * seed_xyz + np.sin(arrow_len) * direction
-        end_xyz = end_xyz / np.linalg.norm(end_xyz)
-        start, end = _project_points(projection, np.stack([seed_xyz, end_xyz]))
-        arrow = (start, end)
+        rotation_arc = {
+            "pole_xyz": pole_xyz,
+            "omega": plate.omega,
+            "extent_deg": ARC_MIN_EXTENT_DEG + intensity * (ARC_MAX_EXTENT_DEG - ARC_MIN_EXTENT_DEG),
+        }
 
     outline_world = plate.outline_world()
     boundary = _project_points(projection, outline_world) if len(outline_world) > 0 else np.zeros((0, 2))
 
-    return {"pole": pole, "velocity_arrow": arrow, "boundary": boundary}
+    return {"pole": pole, "rotation_arc": rotation_arc, "boundary": boundary}
 
 
 def _to_pixels(scale: float, offset_x: float, offset_y: float, xy: np.ndarray) -> np.ndarray:
@@ -255,13 +291,74 @@ def _stroke_robust_loop(draw: ImageDraw.ImageDraw, pixel_pts: np.ndarray, color:
             draw.line([tuple(pixel_pts[i]), tuple(next_pts[i])], fill=color, width=line_width)
 
 
-def _draw_arrow(draw: ImageDraw.ImageDraw, x0, y0, x1, y1, color, width_px: float, head_len_px: float) -> None:
-    line_width = max(int(round(width_px)), 1)
-    draw.line([(x0, y0), (x1, y1)], fill=color, width=line_width)
-    angle = np.arctan2(y1 - y0, x1 - x0)
-    p1 = (x1 - head_len_px * np.cos(angle - np.pi / 6), y1 - head_len_px * np.sin(angle - np.pi / 6))
-    p2 = (x1 - head_len_px * np.cos(angle + np.pi / 6), y1 - head_len_px * np.sin(angle + np.pi / 6))
-    draw.polygon([(x1, y1), p1, p2], fill=color)
+def _draw_arrow_head(draw: ImageDraw.ImageDraw, tip: np.ndarray, direction: np.ndarray, color, length_px: float) -> None:
+    """A small filled triangle at `tip`, pointing along the (already unit-length)
+    `direction`, in pixel space."""
+    angle = np.arctan2(direction[1], direction[0])
+    p1 = tip - length_px * np.array([np.cos(angle - np.pi / 6), np.sin(angle - np.pi / 6)])
+    p2 = tip - length_px * np.array([np.cos(angle + np.pi / 6), np.sin(angle + np.pi / 6)])
+    draw.polygon([tuple(tip), tuple(p1), tuple(p2)], fill=color)
+
+
+def _draw_rotation_arc(
+    draw: ImageDraw.ImageDraw,
+    projection: str,
+    arc_info: dict,
+    scale: float,
+    offset_x: float,
+    offset_y: float,
+    pixel_scale: float,
+) -> None:
+    """A fixed-radius arc around the pole marker, swept in the plate's actual rotational
+    direction (see below) by an angle representing its rotation rate (arc_info["extent_deg"],
+    set in _plate_tectonics), with an arrowhead at the moving end -- replaces the old
+    straight velocity arrow from the plate's seed point. Centering it on the pole (a single
+    already-projected point, unlike the old arrow's separately-projected endpoint) also
+    means it can no longer straddle a projection discontinuity the way the old arrow
+    occasionally did near the antimeridian.
+
+    **Sweep direction.** Image y grows down and projections aren't guaranteed to preserve
+    on-screen handedness, so "clockwise" can't just be assumed from the sign of omega --
+    it's measured directly: take a point near the pole, find its true tangential velocity
+    (omega x point, the same formula boundary.py's closing_rate uses elsewhere), project
+    both the point and a small step along that velocity into pixel space, and see whether
+    the angle (around the pole, in PIL's arc-angle convention) increased or decreased.
+    """
+    pole_xyz = arc_info["pole_xyz"]
+    omega = arc_info["omega"]
+    extent_deg = arc_info["extent_deg"]
+
+    pole_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, pole_xyz[None, :]))[0]
+
+    helper = np.array([1.0, 0.0, 0.0]) if abs(pole_xyz[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    tangent_dir = geometry.normalize(np.cross(pole_xyz, helper))
+    near_point = np.cos(ARC_DIRECTION_SAMPLE_RAD) * pole_xyz + np.sin(ARC_DIRECTION_SAMPLE_RAD) * tangent_dir
+    velocity = np.cross(omega, near_point)
+    if np.linalg.norm(velocity) < 1e-15:
+        return
+    step_point = geometry.normalize(near_point + 1e-4 * velocity)
+
+    near_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, near_point[None, :]))[0]
+    step_px = _to_pixels(scale, offset_x, offset_y, _project_points(projection, step_point[None, :]))[0]
+
+    angle_near = np.degrees(np.arctan2(near_px[1] - pole_px[1], near_px[0] - pole_px[0]))
+    angle_step = np.degrees(np.arctan2(step_px[1] - pole_px[1], step_px[0] - pole_px[0]))
+    delta = ((angle_step - angle_near + 180) % 360) - 180  # signed shortest angular step
+
+    radius = ARC_RADIUS_PX * pixel_scale
+    if delta >= 0:
+        start_deg, end_deg, head_angle, tangent_sign = angle_near, angle_near + extent_deg, angle_near + extent_deg, 1.0
+    else:
+        start_deg, end_deg, head_angle, tangent_sign = angle_near - extent_deg, angle_near, angle_near - extent_deg, -1.0
+
+    color = (255, 255, 255)
+    bbox = [pole_px[0] - radius, pole_px[1] - radius, pole_px[0] + radius, pole_px[1] + radius]
+    draw.arc(bbox, start_deg, end_deg, fill=color, width=max(int(round(ARC_LINE_WIDTH_PX * pixel_scale)), 1))
+
+    head_rad = np.radians(head_angle)
+    head_px = pole_px + radius * np.array([np.cos(head_rad), np.sin(head_rad)])
+    tangent_px = tangent_sign * np.array([-np.sin(head_rad), np.cos(head_rad)])
+    _draw_arrow_head(draw, head_px, tangent_px, color, ARROWHEAD_LENGTH_PX * pixel_scale)
 
 
 def render_png(world: World, projection: str, view: str, width: int, height: int) -> bytes:
@@ -296,8 +393,9 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             bbox_chunks.append(info["boundary"])
         if info["pole"] is not None:
             bbox_chunks.append(info["pole"][None, :])
-        if info["velocity_arrow"] is not None:
-            bbox_chunks.append(np.stack(info["velocity_arrow"]))
+        # The rotation arc itself isn't included here: it's a fixed-pixel-radius decoration
+        # drawn around the pole point after the transform is already fixed (see
+        # _draw_rotation_arc), not additional world-space data to fit on screen.
     for xy, _ in detail_lines:
         bbox_chunks.append(xy)
 
@@ -342,15 +440,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
                 boundary_px = _to_pixels(scale, offset_x, offset_y, info["boundary"])
                 _stroke_robust_loop(draw, boundary_px, color, BOUNDARY_LINE_WIDTH_PX * pixel_scale)
 
-            if view == "plates" and info["velocity_arrow"] is not None:
-                start, end = info["velocity_arrow"]
-                (sx, sy), (ex, ey) = _to_pixels(scale, offset_x, offset_y, np.stack([start, end]))
-                max_arrow_px = min(width, height) * MAX_ARROW_FRACTION_OF_CANVAS
-                if np.hypot(ex - sx, ey - sy) <= max_arrow_px:
-                    _draw_arrow(
-                        draw, sx, sy, ex, ey, (255, 255, 255),
-                        ARROW_LINE_WIDTH_PX * pixel_scale, ARROWHEAD_LENGTH_PX * pixel_scale,
-                    )
+            if view == "plates" and info["rotation_arc"] is not None:
+                _draw_rotation_arc(draw, projection, info["rotation_arc"], scale, offset_x, offset_y, pixel_scale)
 
             if view == "plates" and info["pole"] is not None:
                 px, py = _to_pixels(scale, offset_x, offset_y, info["pole"][None, :])[0]

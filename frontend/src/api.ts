@@ -37,13 +37,15 @@ async function asJson<T>(resp: Response): Promise<T> {
 }
 
 // No total plate count here -- the world tiles itself into a plausible number from the seed
-// alone (see backend app/plates.py's generate_plates). numContinents is the continents
-// slider -- exactly that many plates are made continental.
-export function generateWorld(seed: number, numContinents: number): Promise<WorldSummary> {
+// alone (see backend app/plates.py's generate_plates). continentalFraction/landFraction are
+// the dialog's two sliders (0 to 1): the fraction of plates made continental, and the
+// fraction of the whole sphere that starts above sea level (independent of the first --
+// see plates.py's _land_noise_threshold for how the two combine).
+export function generateWorld(seed: number, continentalFraction: number, landFraction: number): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ seed, num_continents: numContinents }),
+    body: JSON.stringify({ seed, continental_fraction: continentalFraction, land_fraction: landFraction }),
   }).then(asJson<WorldSummary>);
 }
 

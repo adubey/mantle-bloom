@@ -14,7 +14,7 @@ interface Props {
 
 const BACKGROUND = "#0b1020";
 
-// All map drawing (fill colors, plate boundaries/poles/velocity arrows, per-plate node
+// All map drawing (fill colors, plate boundaries/poles/rotation arcs, per-plate node
 // dots) now happens server-side per requested view -- see backend app/render_image.py.
 // This component's only job is to decode the returned PNG and paint it onto the canvas.
 export default function MapCanvas({ imageBase64, width, height, displayWidth, displayHeight }: Props) {

@@ -33,9 +33,11 @@ class GenerateRequest(BaseModel):
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
-    # The UI's continents slider -- optional (falls back to an independent per-plate coin
-    # flip, see plates.generate_plates) but the frontend always sends one.
-    num_continents: int | None = None
+    # The UI's "continental plates" and "initial land" sliders (0 to 1) -- optional (each
+    # falls back to its own default behavior, see plates.generate_plates) but the frontend
+    # always sends both.
+    continental_fraction: float | None = None
+    land_fraction: float | None = None
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS
 
 
@@ -67,7 +69,8 @@ def generate(req: GenerateRequest) -> dict:
     world = generate_world(
         req.seed,
         num_plates=req.num_plates,
-        num_continents=req.num_continents,
+        continental_fraction=req.continental_fraction,
+        land_fraction=req.land_fraction,
         num_mantle_centers=req.num_mantle_centers,
     )
     _state["world"] = world

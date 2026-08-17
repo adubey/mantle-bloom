@@ -107,24 +107,63 @@ def test_generate_plates_auto_count_is_deterministic_for_same_seed():
         assert np.allclose(a.frame, b.frame)
 
 
-def test_generate_plates_num_continents_gives_exact_continental_count():
+def test_generate_plates_continental_fraction_gives_exact_continental_count():
     for n in range(1, 6):
-        plates = generate_plates(seed=3, num_plates=12, num_continents=n)
+        # n / 12 divides evenly, so round() introduces no rounding-error ambiguity here.
+        plates = generate_plates(seed=3, num_plates=12, continental_fraction=n / 12)
         continental = [p for p in plates if p.crust_type == "continental"]
         assert len(continental) == n
 
 
-def test_generate_plates_num_continents_bumps_up_total_plate_count_if_needed():
-    plates = generate_plates(seed=4, num_plates=5, num_continents=5)
+def test_generate_plates_continental_fraction_bumps_up_total_plate_count_if_needed():
+    plates = generate_plates(seed=4, num_plates=5, continental_fraction=1.0)
     assert len(plates) >= 5 + MIN_OCEANIC_PLATES
     assert sum(1 for p in plates if p.crust_type == "continental") == 5
 
 
-def test_generate_plates_num_continents_is_clamped_to_max():
-    from app.plates import MAX_CONTINENTS
+def test_generate_plates_continental_fraction_is_clamped_to_one():
+    plates = generate_plates(seed=5, num_plates=10, continental_fraction=999.0)
+    continental = sum(1 for p in plates if p.crust_type == "continental")
+    assert continental == 10  # clamped to 1.0 -> round(1.0 * 10), not literally 999 plates
+    assert len(plates) == 10 + MIN_OCEANIC_PLATES
 
-    plates = generate_plates(seed=5, num_plates=10, num_continents=999)
-    assert sum(1 for p in plates if p.crust_type == "continental") == MAX_CONTINENTS
+
+def _measured_land_fraction(plates_list) -> float:
+    total = sum(p.node_count() for p in plates_list)
+    land = sum(int(np.sum(line.elevation > 0)) for p in plates_list for line in p.lines)
+    return land / total if total else 0.0
+
+
+def _measured_continental_area_fraction(plates_list) -> float:
+    total = sum(p.node_count() for p in plates_list)
+    continental = sum(p.node_count() for p in plates_list if p.crust_type == "continental")
+    return continental / total if total else 0.0
+
+
+def test_generate_plates_land_fraction_matches_target_when_achievable():
+    # 70% continental plates leaves comfortably more continental area than 29% land needs,
+    # so the target should land almost exactly (bounded only by the sampling in
+    # _land_noise_threshold, not by running out of continental crust to place land on).
+    plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.7, land_fraction=0.29)
+    assert abs(_measured_land_fraction(plates) - 0.29) < 0.02
+
+
+def test_generate_plates_land_fraction_is_capped_by_continental_area():
+    # Only ~1/4 of plates (by count, roughly by area too) are continental, so 80% land is
+    # not achievable -- every continental node should end up as land (elevation > 0) and no
+    # more, capping measured land at roughly the continental area fraction itself.
+    plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.25, land_fraction=0.8)
+    continental_area = _measured_continental_area_fraction(plates)
+    assert abs(_measured_land_fraction(plates) - continental_area) < 0.02
+
+
+def test_generate_plates_land_fraction_zero_gives_no_land():
+    # Not an exact 0.0: the threshold is estimated from a coarser whole-sphere sample
+    # (LAND_FRACTION_SAMPLE_SPACING_KM) than the actual plate lattice it's applied to, so a
+    # handful of real nodes can have a noise value fractionally above that sample's max --
+    # negligible (a few thousandths of a percent), not a sign the target was ignored.
+    plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.7, land_fraction=0.0)
+    assert _measured_land_fraction(plates) < 0.001
 
 
 def test_outline_world_traces_a_loop_covering_every_line():

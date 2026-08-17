@@ -4,12 +4,12 @@ import io
 import numpy as np
 from PIL import Image
 
-from app import render_image
+from app import geometry, render_image
 from app.world import World, generate_world
 
 
-def _world(seed=1, num_plates=10, num_continents=4):
-    return generate_world(seed, num_plates=num_plates, num_continents=num_continents)
+def _world(seed=1, num_plates=10, continental_fraction=0.4):
+    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction)
 
 
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
@@ -95,7 +95,7 @@ def test_render_png_scales_visual_constants_with_resolution():
     should double pixel_scale, so a fixed-size feature like the pole marker should occupy
     roughly proportionally more pixels at 2x than at 1x -- i.e. the map doesn't get
     thinner-looking lines/markers just because more pixels were requested."""
-    world = _world(num_plates=6, num_continents=6)
+    world = _world(num_plates=6, continental_fraction=1.0)
     small = render_image.render_png(world, "behrmann", "plates", 550, 306)
     large = render_image.render_png(world, "behrmann", "plates", 1100, 611)
 
@@ -111,3 +111,74 @@ def test_render_png_scales_visual_constants_with_resolution():
     assert frac_small > 0
     assert frac_large > 0
     assert abs(frac_small - frac_large) < 0.05
+
+
+def _small_plate_points():
+    # A tight cluster of points around world direction [1, 0, 0].
+    return np.array(
+        [geometry.normalize(np.array([1.0, dx, dy])) for dx, dy in [(-0.01, 0), (0.01, 0), (0, -0.01), (0, 0.01)]]
+    )
+
+
+def test_pole_on_plate_prefers_the_true_pole_when_it_lands_on_the_plate():
+    plate_points = _small_plate_points()
+    centroid, radius = geometry.bounding_sphere(plate_points)
+    candidate = np.array([1.0, 0.0, 0.0])  # essentially the centroid direction -- on the plate
+    chosen = render_image._pole_on_plate(candidate, plate_points, centroid, radius)
+    assert np.allclose(chosen, candidate, atol=1e-6)
+
+
+def test_pole_on_plate_falls_back_to_a_real_owned_point_when_axis_is_far():
+    plate_points = _small_plate_points()
+    centroid, radius = geometry.bounding_sphere(plate_points)
+    candidate = np.array([0.0, 1.0, 0.0])  # 90 degrees away -- neither +/- candidate is near the plate
+    chosen = render_image._pole_on_plate(candidate, plate_points, centroid, radius)
+    # Must be an exact, real position the plate actually owns -- not merely "closer."
+    assert any(np.allclose(chosen, p) for p in plate_points)
+
+
+def test_plate_tectonics_pole_is_always_within_bounding_sphere_or_owned():
+    """The end-to-end guarantee _pole_on_plate exists for: across a real, evolved world,
+    every plate's displayed pole is either genuinely within its own bounding sphere or is
+    one of its own points exactly -- never somewhere unrelated to the plate."""
+    from app.world import step_world
+
+    world = _world(seed=9, num_plates=12, continental_fraction=0.7)
+    for _ in range(5):
+        step_world(world, 5_000_000)
+
+    for plate in world.plates:
+        if np.linalg.norm(plate.omega) < 1e-15:
+            continue
+        points, _ = plate.all_points_and_elevation()
+        if len(points) == 0:
+            continue
+        centroid, radius = geometry.bounding_sphere(points)
+        info = render_image._plate_tectonics("eckert4", plate)
+        pole_xyz = info["rotation_arc"]["pole_xyz"]
+        within_sphere = geometry.angular_distance(pole_xyz, centroid) <= radius + 1e-9
+        is_owned_point = np.any(np.all(np.isclose(points, pole_xyz), axis=-1))
+        assert within_sphere or is_owned_point
+
+
+def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
+    """Two plates at the same seed, rotating at the same rate but in opposite senses,
+    should render different (mirror-image) arcs -- confirms the arc's sweep direction is
+    actually sensitive to the sign of omega, not just its magnitude."""
+    from app.plates import ElevationLine, Plate
+
+    def make_plate(plate_id, omega_sign):
+        seed_xyz = np.array([1.0, 0.0, 0.0])
+        frame = geometry.plate_frame_from_seed(seed_xyz)
+        lines = [
+            ElevationLine(phi=float(phi), theta=np.linspace(-0.3, 0.3, 8), elevation=np.full(8, 100.0))
+            for phi in np.linspace(-0.3, 0.3, 8)
+        ]
+        omega = omega_sign * 0.03 * seed_xyz  # pole exactly at the seed either way
+        return Plate(plate_id=plate_id, frame=frame, crust_type="continental", omega=omega, lines=lines)
+
+    world_pos = World(seed=1, plates=[make_plate(0, +1.0)])
+    world_neg = World(seed=1, plates=[make_plate(0, -1.0)])
+    png_pos = render_image.render_png(world_pos, "eckert4", "plates", 400, 400)
+    png_neg = render_image.render_png(world_neg, "eckert4", "plates", 400, 400)
+    assert png_pos != png_neg

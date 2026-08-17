@@ -9,17 +9,21 @@ time.
 Request body:
 
 ```json
-{ "seed": 1, "num_plates": null, "num_continents": 4, "num_mantle_centers": 8 }
+{ "seed": 1, "num_plates": null, "continental_fraction": 0.7, "land_fraction": 0.29, "num_mantle_centers": 8 }
 ```
 
 All fields optional. `num_plates` defaults to `null` -- omit it (the frontend always does)
 to let the world tile itself into a plausible plate count from `seed` alone
 (`plates.MIN_AUTO_PLATES` to `plates.MAX_AUTO_PLATES`, see
 [simulation-model.md#initial-plate-generation](simulation-model.md#initial-plate-generation)),
-or pass an explicit count to override it. `num_continents` is the UI's continents slider
-(`plates.MIN_CONTINENTS` to `plates.MAX_CONTINENTS`); also optional, falling back to an
-independent per-plate coin flip when omitted. `num_mantle_centers` defaults to
-`world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world previously existed.
+or pass an explicit count to override it. `continental_fraction` and `land_fraction` are the
+UI's two generation sliders (0 to 1, defaulting in the frontend to
+`plates.DEFAULT_CONTINENTAL_FRACTION = 0.70` and `plates.DEFAULT_LAND_FRACTION = 0.29`);
+both optional, each falling back to its own default behavior when omitted (an independent
+per-plate coin flip for crust type, a fixed elevation floor for land) -- see
+[simulation-model.md#initial-plate-generation](simulation-model.md#initial-plate-generation).
+`num_mantle_centers` defaults to `world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world
+previously existed.
 
 Response: a summary --
 
@@ -56,7 +60,7 @@ step. `404` if no world has been generated yet.
 ## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail&width=1100&height=611`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
-fill, boundary outlines, pole markers, velocity arrows, per-node dots) happens server-side
+fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
 (see [simulation-model.md#render-image](simulation-model.md#render-image)) -- the client
 just decodes and paints the image, it never sees raw coordinate data. `400` for an
 unrecognized projection/view name or a width/height outside `[1, main.MAX_RENDER_DIMENSION_PX]`
@@ -71,7 +75,7 @@ unrecognized projection/view name or a width/height outside `[1, main.MAX_RENDER
 ```
 
 - `view` selects what gets drawn: `"elevation"` (colored by height/depth), `"plates"`
-  (colored by owning plate, plus boundary outlines/pole markers/velocity arrows), or
+  (colored by owning plate, plus boundary outlines/pole markers/rotation arcs), or
   `"platesDetail"` (each plate's raw elevation-line nodes as dots, colored by elevation,
   plus boundary outlines) -- the frontend's Map View dropdown picks this directly.
 - `width`/`height` are the returned image's exact pixel dimensions. The frontend requests

@@ -16,13 +16,13 @@
 ```
 Browser (App.tsx)
   │
-  │  POST /world/generate  { seed, num_continents }
+  │  POST /world/generate  { seed, continental_fraction, land_fraction }
   ▼
 FastAPI (main.py)
-  │  world.generate_world(seed, num_continents) -- builds the plate mosaic (total plate
-  │  count is chosen automatically from the seed; num_continents is the UI's continents
-  │  slider -- see simulation-model.md#initial-plate-generation), stores it as the single
-  │  in-memory World (see below)
+  │  world.generate_world(seed, continental_fraction, land_fraction) -- builds the plate
+  │  mosaic (total plate count is chosen automatically from the seed; the two fractions are
+  │  the UI's generation sliders -- see simulation-model.md#initial-plate-generation),
+  │  stores it as the single in-memory World (see below)
   ▼
   { seed, elapsed_years, num_plates, events }
 
