@@ -53,6 +53,9 @@ export interface PlateSummary {
   num_rows: number;
   num_points: number;
   outline: [number, number, number][];
+  // Every node's own position (not just the outline loop) -- see PlateInspector.tsx, which
+  // plots these individually, bright for the selected plate and dim for every other one.
+  points: [number, number, number][];
   bounding_ellipse: BoundingEllipse | null;
 }
 

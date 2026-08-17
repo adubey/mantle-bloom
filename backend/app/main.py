@@ -91,6 +91,18 @@ def _summary(world: World) -> dict:
     }
 
 
+#  Rounding every coordinate sent to the client to this many decimal places -- plenty for a
+# unit sphere (1e-6 rad is sub-meter at planet scale, far finer than anything visible on
+# screen) -- meaningfully shrinks the /world/plates payload now that it includes every node
+# point per plate (`_plate_summary`'s "points" field), not just the much shorter outline/
+# ellipse loops.
+_COORD_DECIMALS = 6
+
+
+def _round_coords(arr: np.ndarray) -> list:
+    return np.round(arr, _COORD_DECIMALS).tolist()
+
+
 def _plate_summary(plate: plates.Plate) -> dict:
     outline = plate.outline_world()
     node_points, _ = plate.all_points_and_elevation()
@@ -103,14 +115,18 @@ def _plate_summary(plate: plates.Plate) -> dict:
         # filtering, so this doesn't look inconsistent next to num_points.
         "num_rows": sum(1 for line in plate.lines if len(line.theta) > 0),
         "num_points": plate.node_count(),
-        "outline": outline.tolist(),
+        "outline": _round_coords(outline),
+        # Every node's own position (not just the outline loop) -- lets the client plot each
+        # point individually (see docs/simulation-model.md#plate-inspector), highlighted for
+        # the selected plate and dimmed for every other one.
+        "points": _round_coords(node_points),
         "bounding_ellipse": None
         if ellipse is None
         else {
-            "center_xyz": ellipse.center_xyz.tolist(),
+            "center_xyz": _round_coords(ellipse.center_xyz),
             "diameter_a_km": ellipse.diameter_a_km,
             "diameter_b_km": ellipse.diameter_b_km,
-            "outline": ellipse.outline_xyz.tolist(),
+            "outline": _round_coords(ellipse.outline_xyz),
         },
     }
 

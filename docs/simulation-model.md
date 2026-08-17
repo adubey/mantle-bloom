@@ -564,6 +564,26 @@ territorial outline -- confirmed with the user that this replaces having any ele
 backdrop at all: overlapping plates are meant to be visible where their ellipses blend. The
 selected plate draws last, on top, at higher opacity with a crisp white outline.
 
+**Every plate's individual node points are also drawn**, not just its outline/ellipse --
+`GET /world/plates`'s `points` field is every node's own position (`Plate.
+all_points_and_elevation()`'s points, not just the outline loop), rounded to 6 decimal places
+before serializing (plenty for a unit sphere -- sub-meter at planet scale -- and it matters
+now that a payload can carry tens of thousands of points per world, not just the much shorter
+outline/ellipse loops). The selected plate's points are drawn last, in a highly visible white
+(`SELECTED_POINT_ALPHA`); every other plate's points are drawn dim, in that plate's own color
+at low alpha (`POINT_ALPHA`) -- confirmed with the user this dim/bright split is what
+distinguishing "visible" from "less visible" colors meant. Unlike the outline/ellipse loops,
+individual points don't need `wrapLongitudeNear`'s per-shape seam-unwrapping at all: each
+point is an independent dot, not connected to its neighbors by an edge, so there's no
+fill/stroke that could bow across the antimeridian -- the same reason `render_image.py`'s
+"Plates (details)" view never needed that treatment for its own per-node dots either.
+Measured directly: with points enabled, a full-world redraw (all plates, tens of thousands of
+points, since every one is re-projected every frame) costs roughly 30-50ms depending on
+projection (Eckert IV's forward projection needs Newton iteration per point; Behrmann is
+closed-form and somewhat cheaper) -- noticeably heavier than before points existed, though
+still comfortably interactive, not chosen to add throttling/level-of-detail for this since it
+wasn't asked for.
+
 **The bounding ellipse is a genuine minimum-area enclosing ellipse** (backend
 `app/ellipse.py`'s `min_enclosing_ellipse`, Khachiyan's algorithm for the 2D
 minimum-volume-enclosing-ellipsoid problem), not a bounding circle rendered as an ellipse by

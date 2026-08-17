@@ -128,6 +128,7 @@ has been generated yet.
       "num_rows": 85,
       "num_points": 3437,
       "outline": [[0.98, 0.12, -0.05], ["..."]],
+      "points": [[0.981423, 0.117582, -0.052207], ["..."]],
       "bounding_ellipse": {
         "center_xyz": [0.97, 0.15, -0.04],
         "diameter_a_km": 13478.2,
@@ -145,6 +146,12 @@ has been generated yet.
   across every row.
 - `outline` traces the plate's live territorial boundary (`Plate.outline_world()`) as a
   closed loop of world-space unit vectors.
+- `points` is every one of the plate's `num_points` node positions individually (not just the
+  outline loop) -- what the Plate Inspector plots per node, bright for the selected plate and
+  dim for every other one. All coordinates in this response (`outline`, `points`,
+  `bounding_ellipse`'s fields) are rounded to 6 decimal places before serializing -- far finer
+  than anything visible on screen, but it keeps the payload down now that `points` alone can
+  run to tens of thousands of entries for a whole world.
 - `bounding_ellipse` is `null` for an empty plate (`num_points == 0`), otherwise the minimum-
   area ellipse enclosing every one of the plate's nodes (see
   [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector) for the fitting

@@ -197,6 +197,7 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
         assert entry["num_points"] == truth.node_count()
         assert entry["num_rows"] == sum(1 for line in truth.lines if len(line.theta) > 0)
         assert len(entry["outline"]) == len(truth.outline_world())
+        assert len(entry["points"]) == truth.node_count()
         if truth.node_count() > 0:
             assert entry["bounding_ellipse"] is not None
             assert entry["bounding_ellipse"]["diameter_a_km"] >= entry["bounding_ellipse"]["diameter_b_km"] >= 0.0

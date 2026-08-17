@@ -30,6 +30,12 @@ const ELLIPSE_FILL_ALPHA = 0.28;
 const ELLIPSE_FILL_ALPHA_SELECTED = 0.6;
 const OUTLINE_ALPHA = 0.35;
 const SELECTED_OUTLINE_RGB = "255, 255, 255";
+// Matches backend render_image.py's NODE_DOT_RADIUS_PX -- same visual size as the "Plates
+// (details)" view's own per-node dots.
+const POINT_RADIUS_PX = 1.6;
+const POINT_ALPHA = 0.18; // other (non-selected) plates -- "less visible"
+const SELECTED_POINT_RGB = "255, 255, 255"; // the selected plate -- "visible"
+const SELECTED_POINT_ALPHA = 0.9;
 // Same "skip segments longer than N times the median" seam-break technique MapCanvas's
 // graticule uses (itself a port of backend render_image._stroke_robust_loop) -- necessary
 // for *stroking* a shape that crosses the antimeridian even after per-shape unwrapping (see
@@ -37,12 +43,13 @@ const SELECTED_OUTLINE_RGB = "255, 255, 255";
 // single reference-longitude unwrap can fully resolve.
 const SEGMENT_BREAK_FACTOR = 6;
 
-// Renders every plate's outline + bounding ellipse (see backend app/plates.py's
-// plate_bounding_ellipse and GET /world/plates) as an interactive display -- no server-baked
-// PNG for this view. Every plate is always drawn as a filled, translucent ellipse (so
-// overlapping plates visibly blend); the selected plate is drawn last, brighter, with a
-// crisp white true-boundary outline. Reuses the same long-press-drag rotate gesture as
-// MapCanvas (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle plates.
+// Renders every plate's outline + bounding ellipse + individual node points (see backend
+// app/plates.py's plate_bounding_ellipse and GET /world/plates) as an interactive display --
+// no server-baked PNG for this view. Every plate is always drawn as a filled, translucent
+// ellipse (so overlapping plates visibly blend) plus its own points, dim; the selected plate
+// is drawn last, brighter, with a crisp white true-boundary outline and its points in a
+// highly visible white. Reuses the same long-press-drag rotate gesture as MapCanvas (see
+// rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle plates.
 export default function PlateInspector({
   plates, width, height, displayWidth, displayHeight, projection, rotation,
   selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted,
@@ -100,6 +107,24 @@ export default function PlateInspector({
     const transform = getRenderTransform(projection, width, height);
     const pixelScale = width / 1100;
     const lineWidth = Math.max(1, pixelScale);
+    const pointRadius = POINT_RADIUS_PX * pixelScale;
+    const pointSize = pointRadius * 2;
+
+    // Individual node points -- unlike projectLoop, these are independent dots (no polygon
+    // edge connects one to the next), so there's no antimeridian-seam-crossing fill/stroke
+    // to worry about and no wrapLongitudeNear step is needed, matching how backend
+    // render_image.py's "Plates (details)" view projects its own per-node dots.
+    const drawPoints = (points: Vec3[], color: string) => {
+      ctx.fillStyle = color;
+      for (const p of points) {
+        const r = matApply(previewRotation, p);
+        const lat = Math.asin(Math.min(1, Math.max(-1, r[2])));
+        const lon = Math.atan2(r[1], r[0]);
+        const [x, y] = project(projection, lat, lon);
+        const [px, py] = toPixels(transform, x, y);
+        ctx.fillRect(px - pointRadius, py - pointRadius, pointSize, pointSize);
+      }
+    };
 
     const drawOne = (plate: PlateSummary, fillAlpha: number, selected: boolean) => {
       const [r, g, b] = plateColor(plate.plate_id);
@@ -121,6 +146,11 @@ export default function PlateInspector({
         const color = selected ? `rgba(${SELECTED_OUTLINE_RGB}, 1)` : `rgba(${r}, ${g}, ${b}, ${OUTLINE_ALPHA})`;
         strokeRobustLoop(ctx, pixels, color, selected ? lineWidth * 2 : lineWidth);
       }
+
+      const pointColor = selected
+        ? `rgba(${SELECTED_POINT_RGB}, ${SELECTED_POINT_ALPHA})`
+        : `rgba(${r}, ${g}, ${b}, ${POINT_ALPHA})`;
+      drawPoints(plate.points, pointColor);
     };
 
     for (const plate of plates) {
