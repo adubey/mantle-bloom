@@ -11,7 +11,7 @@
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage (gap-filling)](#gap-filling)
 - [Projections](#projections)
-- [Render grid](#render-grid)
+- [Render image](#render-image)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -308,44 +308,68 @@ unit-radius sphere; the frontend picks a single uniform pixel scale from the ret
 bounding box (not independent x/y scales) so the equal-area property actually reads as
 equal-area on screen.
 
-<a id="render-grid"></a>
-## Render grid (`main.py`)
+<a id="render-image"></a>
+## Render image (`render_image.py`)
 
-The elevation-line/gap-filling data is genuinely Lagrangian: nodes are spaced at
-`TARGET_LINE_SPACING_KM` *within each plate's own local frame*, not on any shared, screen-
-aligned grid. Drawing that raw point cloud directly -- one dot per node -- leaves visible
-gaps once projected: projected spacing isn't uniform (Behrmann, for instance, stretches
-longitude spacing by roughly 50x at high latitudes relative to the equator, since
-`x = lon * cos(30deg)` doesn't compensate for the shrinking circumference the way the
-latitude term does), so a dot sized to look right at the equator leaves gaps near the
-poles, and no single fixed dot size closes the gap everywhere without grossly overlapping
-elsewhere.
+`GET /world/render` returns a PNG, base64-encoded, rendered entirely server-side --
+`render_image.py` computes the same projected coordinates and drawing rules
+`MapCanvas.tsx` used to compute client-side from raw JSON, but paints them into a Pillow
+image instead of shipping the coordinates over the wire for the browser to draw. The
+client's job shrank to "decode this PNG and draw it on a canvas" (see `MapCanvas.tsx`);
+every drawing decision -- fill colors, grid-cell sizing, boundary/pole/velocity-arrow
+overlays, per-node dots -- lives in one place now.
 
-`_render_grid` fixes this the way the user asked: sweep a uniform lat/lon grid over the
-whole sphere (`plates.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` --
-the same identity-frame trick `gaps.py` uses for its coverage sweep, at
-`GRID_SPACING_RAD = TARGET_LINE_SPACING_RAD`), assign every cell its nearest elevation
-node via one `cKDTree` query against every plate's current nodes (no distance cutoff --
-every cell gets *some* value, so there's no gap by construction regardless of how far the
-nearest real data happens to be), and project the whole grid the same way everything else
-is projected. This is a one-time resample purely for rendering -- it never touches
-`world.plates`, so it has no bearing on the mass-conservation properties the rest of the
-model is built around (see [Why not a grid](#why-not-a-grid)); a fresh grid is computed
-from scratch on every `/world/render` call.
+**Why a grid, still.** The elevation-line/gap-filling data is genuinely Lagrangian: nodes
+are spaced at `TARGET_LINE_SPACING_KM` *within each plate's own local frame*, not on any
+shared, screen-aligned grid. Drawing that raw point cloud directly -- one dot per node --
+leaves visible gaps once projected: projected spacing isn't uniform (Behrmann, for
+instance, stretches longitude spacing by roughly 50x at high latitudes relative to the
+equator, since `x = lon * cos(30deg)` doesn't compensate for the shrinking circumference
+the way the latitude term does), so a dot sized to look right at the equator leaves gaps
+near the poles, and no single fixed dot size closes the gap everywhere without grossly
+overlapping elsewhere. `_render_grid_arrays` fixes this the way the user originally asked:
+sweep a uniform lat/lon grid over the whole sphere
+(`plates.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` -- the same
+identity-frame trick `gaps.py` uses for its coverage sweep), assign every cell its nearest
+elevation node via one `cKDTree` query against every plate's current nodes (no distance
+cutoff -- every cell gets *some* value, so there's no gap by construction regardless of how
+far the nearest real data happens to be), and project the whole grid the same way
+everything else is projected. This is a one-time resample purely for rendering -- it never
+touches `world.plates`, so it has no bearing on the mass-conservation properties the rest
+of the model is built around (see [Why not a grid](#why-not-a-grid)); a fresh grid is
+computed from scratch on every `/world/render` call.
+
+`GRID_SPACING_KM = 250` is a fixed, display-oriented constant, deliberately decoupled from
+`plates.TARGET_LINE_SPACING_KM` (the simulation's physics resolution) -- the grid only
+needs to look smooth once rasterized, not match whatever resolution the simulation itself
+happens to run at. This used to matter for wire-payload size too (when the grid was
+serialized as JSON, aliasing it to the physics resolution silently quadrupled the response
+size the one time the physics resolution was doubled), but a PNG's size depends on how
+compressible its *pixels* are, not on how many samples went into it, so that concern no
+longer applies -- `GRID_SPACING_KM` is free to change independently now.
 
 **Sizing each cell correctly is what actually closes the gaps.** A uniform *sphere* grid
 still isn't a uniform *projected* grid -- so each cell is drawn at a size measured from the
 projection's own local behavior, not a fixed pixel size: `_row_cell_half_extent` projects
 two extra nearby samples per row (one step further in theta, one row further in phi) and
-measures the resulting on-screen offset directly, giving that row's `cell_half_width` and
-`cell_half_height` in the same projected units as the point coordinates. theta-only and
-phi-only offsets are used deliberately so each measurement isolates one derivative exactly
-(in both projections, moving in longitude at fixed latitude never perturbs the projected y
-coordinate, and vice versa) rather than approximating a mixed partial derivative. The
-frontend (`MapCanvas.tsx`) draws each cell as a rectangle of that measured size (with a
-small `CELL_OVERLAP_FACTOR` margin so adjacent cells overlap a hair rather than risk a
-hairline gap from floating-point rounding) -- confirmed visually to close every gap in both
-projections, including the sparsest cells right at the poles.
+measures the resulting on-screen offset directly, giving that row's cell half-width and
+half-height in the same projected units as the point coordinates. theta-only and phi-only
+offsets are used deliberately so each measurement isolates one derivative exactly (in both
+projections, moving in longitude at fixed latitude never perturbs the projected y
+coordinate, and vice versa) rather than approximating a mixed partial derivative.
+`render_png` fills each cell as a rectangle of that measured size (with a small
+`CELL_OVERLAP_FACTOR` margin so adjacent cells overlap a hair rather than risk a hairline
+gap from floating-point rounding), written directly into a numpy pixel array via array
+slicing (`_fill_rects`) rather than one Pillow draw call per cell -- cheap even at tens of
+thousands of cells, which "Plates (details)" needs for its per-node dots too.
+
+**Resolution is a request parameter, not a fixed constant.** `width`/`height` in the
+request become the PNG's exact pixel dimensions; the frontend requests more pixels than its
+canvas's displayed CSS size (`App.tsx`'s `RENDER_SCALE`) for a sharper, retina-style render
+at the same on-screen footprint. Fixed-pixel-size visual constants (`PADDING_PX`,
+`POLE_RADIUS_PX`, boundary/arrow line widths, node dot radius) are all defined relative to
+`REFERENCE_WIDTH_PX = 1100` and scaled by `width / REFERENCE_WIDTH_PX` when drawing, so a
+higher-resolution request doesn't also make those features look proportionally thinner.
 
 <a id="known-simplifications"></a>
 ## Known simplifications

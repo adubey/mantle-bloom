@@ -4,11 +4,12 @@
 
 - **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy (`cKDTree`
   for initial plate assignment, boundary-adjacency, and merge-detection queries,
-  `scipy.cluster.vq.kmeans2` for split clustering), pytest.
+  `scipy.cluster.vq.kmeans2` for split clustering), Pillow (server-side map rendering, see
+  `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
-  library, the same choice plate-sim made and the same reasoning: the data is simple enough
-  (points + a hand-rolled colormap) that a library would be more ceremony than the problem
-  needs.
+  library, the same choice plate-sim made and the same reasoning: the frontend's whole job
+  is decoding a PNG the backend already rendered and drawing it (`ctx.drawImage`), which a
+  library would be more ceremony than the problem needs.
 
 ## Request flow
 
@@ -25,9 +26,10 @@ FastAPI (main.py)
   ▼
   { seed, elapsed_years, num_plates, events }
 
-Browser then fetches, for whichever projection is selected:
-  GET /world/render?projection=behrmann|eckert4
-  → every plate's elevation-line nodes, projected to 2D -- see api-reference below
+Browser then fetches, for whichever projection/map view/resolution is selected:
+  GET /world/render?projection=...&view=...&width=...&height=...
+  → a PNG, base64-encoded, rendered entirely server-side -- see api-reference below and
+    simulation-model.md#render-image
 
 Time-stepping:
   POST /world/step  { years }
@@ -37,9 +39,10 @@ Time-stepping:
   → browser re-fetches /world/render, and appends any new `events` to the console
 ```
 
-The frontend never holds simulation state -- it's a thin client that re-fetches
-`/world/render` after every `generate`/`step` call and redraws the canvas from scratch (the
-event console is the one exception: it just displays whatever `events` the last
+The frontend never holds simulation state, and no longer holds any *rendering* logic either
+-- it's a thin client that re-fetches `/world/render` after every `generate`/`step` call (or
+a projection/map-view change) and draws the returned PNG onto the canvas (`MapCanvas.tsx`;
+the event console is the one exception: it just displays whatever `events` the last
 `generate`/`step` response carried, which is already the full current log -- see
 api-reference.md).
 
@@ -104,8 +107,9 @@ merge_split.py       plate consumption, sustained-collision continental merging 
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
                      plate or spawns a new one where no plate dominates
 world.py             World/Plate orchestration: generate_world, step_world
-main.py              FastAPI routes; also builds the full-coverage render grid each
-                     /world/render call (see simulation-model.md#render-grid)
+main.py              FastAPI routes
+render_image.py      renders /world/render's requested view/resolution to a PNG server-side
+                     (see simulation-model.md#render-image)
 ```
 
 See [simulation-model.md](simulation-model.md) for what each of these actually computes and

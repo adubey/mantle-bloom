@@ -52,63 +52,31 @@ Advances the current world by `years` (see
 summary shape as `/world/generate`, with `events` reflecting anything logged up through this
 step. `404` if no world has been generated yet.
 
-## `GET /world/render?projection=behrmann|eckert4`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail&width=1100&height=611`
 
-Every plate's elevation-line nodes plus everything the "Plates" map view needs (pole,
-velocity arrow, boundary outline), *and* a full-coverage render grid (see below), all
-projected to 2D. `400` for an unrecognized projection name, `404` if no world has been
-generated yet.
+Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
+fill, boundary outlines, pole markers, velocity arrows, per-node dots) happens server-side
+(see [simulation-model.md#render-image](simulation-model.md#render-image)) -- the client
+just decodes and paints the image, it never sees raw coordinate data. `400` for an
+unrecognized projection/view name or a width/height outside `[1, main.MAX_RENDER_DIMENSION_PX]`
+(4000), `404` if no world has been generated yet.
 
 ```json
 {
   "projection": "behrmann",
   "elapsed_years": 2000000,
-  "plates": [
-    {
-      "plate_id": 0,
-      "crust_type": "continental",
-      "lines": [
-        { "points": [[x, y], ...], "elevation": [m, ...] }
-      ],
-      "pole": [x, y],
-      "rotation_rate_deg_per_myr": 4.2,
-      "velocity_arrow": { "start": [x, y], "end": [x, y] },
-      "boundary": [[x, y], ...]
-    }
-  ],
-  "grid": {
-    "points": [[x, y], ...],
-    "elevation": [m, ...],
-    "plate_id": [0, ...],
-    "crust_type": ["continental", ...],
-    "cell_half_width": [w, ...],
-    "cell_half_height": [h, ...]
-  }
+  "image_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
 }
 ```
 
-`lines[].points`/`lines[].elevation` are index-aligned and the same length. All coordinates
-(`lines[].points`, `pole`, `velocity_arrow.start`/`.end`, `boundary`, `grid.points`) are in
-the projection's own planar units for a unit-radius sphere (see
-[simulation-model.md#projections](simulation-model.md#projections)); the frontend picks a
-single pixels-per-unit scale from the union of all of them so switching map views never
-rescales or re-centers.
-
-- `pole` -- the plate's current Euler pole direction (`omega` normalized), or `null` if the
-  plate isn't moving (`omega` is ~0).
-- `velocity_arrow` -- a short great-circle arc from the plate's seed point in its current
-  velocity direction, length scaled by how fast it's moving relative to
-  `mantle.MAX_PLATE_RATE`; `null` under the same condition as `pole`.
-- `boundary` -- the plate's outline, traced live from its current elevation-line endpoints
-  every render (`Plate.outline_world`) -- always in sync with the actual territory, not a
-  separately-tracked polygon. See
-  [simulation-model.md#known-simplifications](simulation-model.md#known-simplifications) for
-  the (minor) sense in which it's still an approximation.
-- `grid` -- what the frontend actually paints as the filled map (`lines` is the raw
-  physical data, kept for reference). A uniform lat/lon sweep of the whole sphere with
-  every cell already assigned its nearest elevation node, so it has no data-dependent gaps
-  the way `lines` can once projected. `cell_half_width`/`cell_half_height` (same units as
-  `points`) are that row's actual on-screen footprint, measured from the projection's local
-  behavior rather than assumed -- draw each cell as a rectangle of (at least) that size, or
-  gaps reappear regardless of how dense the grid itself is. See
-  [simulation-model.md#render-grid](simulation-model.md#render-grid).
+- `view` selects what gets drawn: `"elevation"` (colored by height/depth), `"plates"`
+  (colored by owning plate, plus boundary outlines/pole markers/velocity arrows), or
+  `"platesDetail"` (each plate's raw elevation-line nodes as dots, colored by elevation,
+  plus boundary outlines) -- the frontend's Map View dropdown picks this directly.
+- `width`/`height` are the returned image's exact pixel dimensions. The frontend requests
+  more than its canvas's displayed CSS size (`RENDER_SCALE` in `App.tsx`) for a sharper,
+  retina-style render at the same on-screen footprint; line widths, dot/pole radii, and
+  padding all scale with the requested width (see `render_image.py`'s `pixel_scale`) so a
+  higher-resolution request doesn't also make those features look thinner.
+- `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
+  `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.

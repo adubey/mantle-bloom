@@ -1,5 +1,9 @@
+import base64
+import io
+
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.main import app
 from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
@@ -8,6 +12,10 @@ from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+def _decode_image(body: dict) -> Image.Image:
+    return Image.open(io.BytesIO(base64.b64decode(body["image_base64"])))
 
 
 def test_render_before_generate_returns_404(client):
@@ -39,10 +47,11 @@ def test_generate_returns_a_generation_event(client):
 
 
 def test_generate_with_num_continents_gives_exact_count(client):
+    # crust_type per plate isn't part of the render response (see render_image.py) -- the
+    # generation event log is the documented way to confirm the exact count (also covered by
+    # test_generate_returns_a_generation_event above; this locks in a second seed/count pair).
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 10, "num_continents": 4})
-    render_resp = client.get("/world/render", params={"projection": "behrmann"})
-    continental = [p for p in render_resp.json()["plates"] if p["crust_type"] == "continental"]
-    assert len(continental) == 4
+    assert "4 continental" in resp.json()["events"][0]["message"]
 
 
 def test_step_response_includes_growing_event_log(client):
@@ -58,81 +67,48 @@ def test_step_advances_elapsed_years(client):
     assert resp.json()["elapsed_years"] == 1_000_000
 
 
-def test_render_behrmann_and_eckert4(client):
+def test_render_returns_a_decodable_png_at_the_requested_size(client):
     client.post("/world/generate", json={"seed": 3, "num_plates": 6})
     for projection in ("behrmann", "eckert4"):
-        resp = client.get("/world/render", params={"projection": projection, "include_lines": True})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["projection"] == projection
-        assert len(body["plates"]) == 6
-        first_plate = body["plates"][0]
-        assert "crust_type" in first_plate
-        assert len(first_plate["lines"]) > 0
-        first_line = first_plate["lines"][0]
-        assert len(first_line["points"]) == len(first_line["elevation"])
-        assert len(first_line["points"][0]) == 2
+        for view in ("elevation", "plates", "platesDetail"):
+            resp = client.get(
+                "/world/render",
+                params={"projection": projection, "view": view, "width": 400, "height": 300},
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["projection"] == projection
+            assert "elapsed_years" in body
 
-        for plate in body["plates"]:
-            assert "boundary" in plate and isinstance(plate["boundary"], list)
-            assert "rotation_rate_deg_per_myr" in plate
-            if plate["pole"] is not None:
-                assert len(plate["pole"]) == 2
-            if plate["velocity_arrow"] is not None:
-                assert set(plate["velocity_arrow"].keys()) == {"start", "end"}
+            image = _decode_image(body)
+            assert image.format == "PNG"
+            assert image.size == (400, 300)
 
 
-def test_render_omits_lines_unless_requested(client):
-    """include_lines defaults to False -- the raw per-plate node payload (~2MB at this
-    resolution) is only worth sending when the frontend's "Plates (details)" view is
-    actually showing it; every other view paints entirely from `grid`."""
+def test_render_defaults_to_elevation_view_at_1100x611(client):
     client.post("/world/generate", json={"seed": 3, "num_plates": 6})
-
-    default_resp = client.get("/world/render", params={"projection": "behrmann"})
-    assert all(plate["lines"] == [] for plate in default_resp.json()["plates"])
-
-    explicit_off = client.get("/world/render", params={"projection": "behrmann", "include_lines": False})
-    assert all(plate["lines"] == [] for plate in explicit_off.json()["plates"])
-
-    with_lines = client.get("/world/render", params={"projection": "behrmann", "include_lines": True})
-    assert any(len(plate["lines"]) > 0 for plate in with_lines.json()["plates"])
+    resp = client.get("/world/render")
+    assert resp.status_code == 200
+    assert _decode_image(resp.json()).size == (1100, 611)
 
 
-def test_render_grid_covers_the_sphere_with_no_gaps(client):
-    client.post("/world/generate", json={"seed": 8, "num_plates": 10})
-    resp = client.get("/world/render", params={"projection": "behrmann"})
-    grid = resp.json()["grid"]
-
-    n = len(grid["points"])
-    assert n > 1000  # a real full-sphere sweep, not a token few points
-    assert len(grid["elevation"]) == n
-    assert len(grid["plate_id"]) == n
-    assert len(grid["crust_type"]) == n
-    assert len(grid["cell_half_width"]) == n
-    assert len(grid["cell_half_height"]) == n
-    assert all(c in ("continental", "oceanic") for c in grid["crust_type"])
-    assert all(len(p) == 2 for p in grid["points"])
-    # Every cell must have a real, positive footprint -- a zero or negative half-extent
-    # would mean a hole in the map regardless of how densely the grid was swept.
-    assert all(w > 0 for w in grid["cell_half_width"])
-    assert all(h > 0 for h in grid["cell_half_height"])
-    # Sizes must actually vary row to row (projection distortion differs by latitude) --
-    # not a single fixed value applied everywhere, which would reintroduce the original gap.
-    assert len(set(grid["cell_half_width"])) > 1
-
-    # Every grid plate_id must reference a plate that actually exists.
-    render_body = resp.json()
-    live_ids = {p["plate_id"] for p in render_body["plates"]}
-    assert set(grid["plate_id"]) <= live_ids
+def test_render_different_views_produce_different_images(client):
+    """Not a pixel-exact check (that would just re-derive render_image.py's own math) --
+    just confirms the `view` param actually changes what's drawn, at the HTTP layer."""
+    client.post("/world/generate", json={"seed": 3, "num_plates": 8, "num_continents": 4})
+    bodies = {
+        view: client.get("/world/render", params={"view": view, "width": 300, "height": 200}).json()["image_base64"]
+        for view in ("elevation", "plates", "platesDetail")
+    }
+    assert len(set(bodies.values())) == 3
 
 
-def test_render_grid_matches_selected_projection_shape(client):
-    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
-    behrmann = client.get("/world/render", params={"projection": "behrmann"}).json()["grid"]
-    eckert4 = client.get("/world/render", params={"projection": "eckert4"}).json()["grid"]
-    # Same sample count (same underlying sweep), different projected coordinates.
-    assert len(behrmann["points"]) == len(eckert4["points"])
-    assert behrmann["points"][0] != eckert4["points"][0]
+def test_render_different_resolutions_produce_different_size_images(client):
+    client.post("/world/generate", json={"seed": 3, "num_plates": 6})
+    small = client.get("/world/render", params={"width": 200, "height": 100}).json()
+    large = client.get("/world/render", params={"width": 800, "height": 400}).json()
+    assert _decode_image(small).size == (200, 100)
+    assert _decode_image(large).size == (800, 400)
 
 
 def test_render_unknown_projection_returns_400(client):
@@ -141,12 +117,23 @@ def test_render_unknown_projection_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_render_unknown_view_returns_400(client):
+    client.post("/world/generate", json={"seed": 4, "num_plates": 6})
+    resp = client.get("/world/render", params={"view": "topographic"})
+    assert resp.status_code == 400
+
+
+def test_render_out_of_range_dimensions_return_400(client):
+    client.post("/world/generate", json={"seed": 4, "num_plates": 6})
+    assert client.get("/world/render", params={"width": 0, "height": 100}).status_code == 400
+    assert client.get("/world/render", params={"width": 100, "height": 0}).status_code == 400
+    assert client.get("/world/render", params={"width": 100_000, "height": 100}).status_code == 400
+
+
 def test_generate_replaces_previous_world(client):
     client.post("/world/generate", json={"seed": 5, "num_plates": 6})
     resp = client.post("/world/generate", json={"seed": 6, "num_plates": 8})
     assert resp.json()["num_plates"] == 8
-    render_resp = client.get("/world/render", params={"projection": "behrmann"})
-    assert len(render_resp.json()["plates"]) == 8
 
 
 def test_generate_without_num_plates_picks_a_plausible_count(client):

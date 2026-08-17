@@ -127,9 +127,9 @@ def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACI
     """Sweep a full plate-local (phi, theta) lattice at `spacing_rad` resolution, yielding
     (phi, theta_candidates, world_pts) per row. Shared by initial generation and by
     plate-merge resampling (see merge_split.py), and, at a resolution independent of the
-    physical line spacing, by the render-grid sweep (see main.py's _render_grid) that gives
-    the rendered map full coverage regardless of how sparse the underlying physical data
-    is once projected."""
+    physical line spacing, by the render-grid sweep (see render_image.py's
+    _render_grid_arrays) that gives the rendered map full coverage regardless of how sparse
+    the underlying physical data is once projected."""
     max_abs_phi = np.pi / 2 - spacing_rad / 2
     phi_values = np.arange(-max_abs_phi, max_abs_phi, spacing_rad)
     for phi in phi_values:

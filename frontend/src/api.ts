@@ -2,6 +2,12 @@ export const API_BASE = "http://localhost:8000";
 
 export type Projection = "behrmann" | "eckert4";
 
+// The "kind of map" requested from /world/render -- the server now bakes this choice
+// directly into the returned image (fill color rule, whether boundaries/poles/velocity
+// arrows or raw per-plate node dots are drawn), rather than the frontend deciding how to
+// draw raw coordinate data it fetched.
+export type MapView = "elevation" | "plates" | "platesDetail";
+
 export interface WorldEvent {
   elapsed_years: number;
   message: string;
@@ -14,51 +20,12 @@ export interface WorldSummary {
   events: WorldEvent[];
 }
 
-export interface RenderLine {
-  points: [number, number][];
-  elevation: number[];
-}
-
-export interface VelocityArrow {
-  start: [number, number];
-  end: [number, number];
-}
-
-export interface RenderPlate {
-  plate_id: number;
-  crust_type: "continental" | "oceanic";
-  lines: RenderLine[];
-  pole: [number, number] | null;
-  rotation_rate_deg_per_myr: number;
-  velocity_arrow: VelocityArrow | null;
-  boundary: [number, number][];
-}
-
-// A uniform lat/lon grid covering the whole sphere, each cell assigned its nearest
-// elevation node -- gives the map full, gap-free coverage regardless of how sparse the
-// underlying per-plate line data looks once projected. This is what MapCanvas actually
-// paints as the filled map; RenderPlate.lines is the raw physical data (kept for
-// reference/debugging), not what's drawn as the territory fill.
-export interface RenderGrid {
-  points: [number, number][];
-  elevation: number[];
-  plate_id: number[];
-  crust_type: ("continental" | "oceanic")[];
-  // Each cell's half-width/half-height in the *same projected units* as points -- sized
-  // from the projection's actual local behavior at that latitude (see backend
-  // main.py's _row_cell_half_extent), not a fixed screen size. Projected spacing isn't
-  // uniform (e.g. Behrmann stretches longitude spacing near the poles by ~50x relative to
-  // the equator), so drawing every cell the same pixel size leaves gaps somewhere no
-  // matter what size is picked.
-  cell_half_width: number[];
-  cell_half_height: number[];
-}
-
 export interface RenderResponse {
   projection: Projection;
   elapsed_years: number;
-  plates: RenderPlate[];
-  grid: RenderGrid;
+  // Raw PNG bytes, base64-encoded -- decode via `data:image/png;base64,${image_base64}`.
+  // See backend app/render_image.py for how it's drawn.
+  image_base64: string;
 }
 
 async function asJson<T>(resp: Response): Promise<T> {
@@ -88,11 +55,15 @@ export function stepWorld(years: number): Promise<WorldSummary> {
   }).then(asJson<WorldSummary>);
 }
 
-// includeLines defaults to (and should stay) false for every view except "Plates (details)"
-// -- it's raw per-plate node data (position + elevation for every simulation node), ~2MB of
-// JSON that the other views never read (see backend main.py's render() docstring).
-export function renderWorld(projection: Projection, includeLines: boolean = false): Promise<RenderResponse> {
-  return fetch(`${API_BASE}/world/render?projection=${projection}&include_lines=${includeLines}`).then(
-    asJson<RenderResponse>,
-  );
+// width/height are the actual pixel dimensions of the returned image -- pass a higher
+// resolution than the canvas's displayed CSS size for a sharper (retina-style) render; the
+// server scales line widths/dot/pole sizes to match (see render_image.py's pixel_scale).
+export function renderWorld(
+  projection: Projection,
+  view: MapView,
+  width: number,
+  height: number,
+): Promise<RenderResponse> {
+  const params = new URLSearchParams({ projection, view, width: String(width), height: String(height) });
+  return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
 }

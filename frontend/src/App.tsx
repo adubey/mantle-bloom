@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
 import { generateWorld, renderWorld, stepWorld } from "./api";
-import type { Projection, RenderResponse, WorldSummary } from "./api";
+import type { MapView, Projection, RenderResponse, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
-import type { MapView } from "./MapCanvas";
 import EventConsole from "./EventConsole";
 
-const CANVAS_WIDTH = 1100;
-const CANVAS_HEIGHT = 611;
+// The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
+// before), but the image requested from the server is RENDER_SCALE times bigger -- a
+// sharper, retina-style render at the same on-screen size, rather than a bigger map.
+const DISPLAY_WIDTH = 1100;
+const DISPLAY_HEIGHT = 611;
+const RENDER_SCALE = 2;
+const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
+const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
 const PLAY_INTERVAL_MS = 400;
 // Matches backend app/plates.py's MIN_CONTINENTS/MAX_CONTINENTS.
@@ -34,12 +39,9 @@ export default function App() {
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // include_lines is only requested for "Plates (details)" -- the raw per-plate node data
-  // it carries (~2MB of JSON) goes unused by every other view, which paint entirely from
-  // the grid (see api.ts's renderWorld).
   const refresh = useCallback(async (proj: Projection, view: MapView) => {
     try {
-      const data = await renderWorld(proj, view === "platesDetail");
+      const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT);
       setRenderData(data);
     } catch (e) {
       setError(String(e));
@@ -77,8 +79,8 @@ export default function App() {
     }
   }, [summary, stepYears, projection, mapView, refresh]);
 
-  // Re-render with the current world whenever the projection or map view changes (the view
-  // matters because it decides whether include_lines is requested, above).
+  // Re-render with the current world whenever the projection or map view changes -- both
+  // are baked server-side into the returned image (see api.ts's renderWorld).
   useEffect(() => {
     if (summary) {
       refresh(projection, mapView);
@@ -185,7 +187,13 @@ export default function App() {
         </div>
 
         <div style={{ marginTop: -50 }}>
-          <MapCanvas data={renderData} view={mapView} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} />
+          <MapCanvas
+            imageBase64={renderData?.image_base64 ?? null}
+            width={RENDER_WIDTH}
+            height={RENDER_HEIGHT}
+            displayWidth={DISPLAY_WIDTH}
+            displayHeight={DISPLAY_HEIGHT}
+          />
         </div>
       </div>
 
