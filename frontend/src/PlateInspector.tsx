@@ -28,14 +28,20 @@ interface Props {
 const BACKGROUND = "#0b1020";
 const ELLIPSE_FILL_ALPHA = 0.28;
 const ELLIPSE_FILL_ALPHA_SELECTED = 0.6;
+// Outlines are always colored by plate identity (see plateColor) -- selected just gets full
+// opacity and a thicker stroke instead of the muted default, rather than switching to a
+// different color, so the outline's hue keeps meaning "which plate" in both states.
 const OUTLINE_ALPHA = 0.35;
-const SELECTED_OUTLINE_RGB = "255, 255, 255";
-// Matches backend render_image.py's NODE_DOT_RADIUS_PX -- same visual size as the "Plates
-// (details)" view's own per-node dots.
+const OUTLINE_ALPHA_SELECTED = 1.0;
+// Points are always this same neutral white/off-white -- deliberately *never* tinted by
+// plateColor, so a dot never reads as the same color as that plate's own outline: the two
+// are a different visual category (individual node vs. traced boundary) as well as usually a
+// different brightness (selection state). Matches backend render_image.py's
+// NODE_DOT_RADIUS_PX for the dot's on-screen size.
+const POINT_RGB = "255, 255, 255";
 const POINT_RADIUS_PX = 1.6;
 const POINT_ALPHA = 0.18; // other (non-selected) plates -- "less visible"
-const SELECTED_POINT_RGB = "255, 255, 255"; // the selected plate -- "visible"
-const SELECTED_POINT_ALPHA = 0.9;
+const SELECTED_POINT_ALPHA = 0.9; // the selected plate -- "visible"
 // Same "skip segments longer than N times the median" seam-break technique MapCanvas's
 // graticule uses (itself a port of backend render_image._stroke_robust_loop) -- necessary
 // for *stroking* a shape that crosses the antimeridian even after per-shape unwrapping (see
@@ -46,10 +52,12 @@ const SEGMENT_BREAK_FACTOR = 6;
 // Renders every plate's outline + bounding ellipse + individual node points (see backend
 // app/plates.py's plate_bounding_ellipse and GET /world/plates) as an interactive display --
 // no server-baked PNG for this view. Every plate is always drawn as a filled, translucent
-// ellipse (so overlapping plates visibly blend) plus its own points, dim; the selected plate
-// is drawn last, brighter, with a crisp white true-boundary outline and its points in a
-// highly visible white. Reuses the same long-press-drag rotate gesture as MapCanvas (see
-// rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle plates.
+// ellipse (so overlapping plates visibly blend) plus a plate-colored outline stroke plus its
+// own points (always neutral white/off-white, on top of everything else, deliberately never
+// the outline's own color, so it's always clear exactly where each point sits relative to
+// the traced boundary); the selected plate is drawn last, brighter, with a full-opacity
+// outline and highly visible points. Reuses the same long-press-drag rotate gesture as
+// MapCanvas (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle plates.
 export default function PlateInspector({
   plates, width, height, displayWidth, displayHeight, projection, rotation,
   selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted,
@@ -143,14 +151,15 @@ export default function PlateInspector({
 
       if (plate.outline.length > 0) {
         const pixels = projectLoop(plate.outline, centerXyz, previewRotation, transform);
-        const color = selected ? `rgba(${SELECTED_OUTLINE_RGB}, 1)` : `rgba(${r}, ${g}, ${b}, ${OUTLINE_ALPHA})`;
-        strokeRobustLoop(ctx, pixels, color, selected ? lineWidth * 2 : lineWidth);
+        const outlineAlpha = selected ? OUTLINE_ALPHA_SELECTED : OUTLINE_ALPHA;
+        strokeRobustLoop(ctx, pixels, `rgba(${r}, ${g}, ${b}, ${outlineAlpha})`, selected ? lineWidth * 2 : lineWidth);
       }
 
-      const pointColor = selected
-        ? `rgba(${SELECTED_POINT_RGB}, ${SELECTED_POINT_ALPHA})`
-        : `rgba(${r}, ${g}, ${b}, ${POINT_ALPHA})`;
-      drawPoints(plate.points, pointColor);
+      // Drawn last (on top of both the ellipse fill and the outline stroke above), in a
+      // color the outline never uses, so it's always possible to tell exactly where each
+      // point sits relative to the traced boundary.
+      const pointAlpha = selected ? SELECTED_POINT_ALPHA : POINT_ALPHA;
+      drawPoints(plate.points, `rgba(${POINT_RGB}, ${pointAlpha})`);
     };
 
     for (const plate of plates) {
