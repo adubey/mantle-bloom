@@ -88,6 +88,11 @@ export function stepWorld(years: number): Promise<WorldSummary> {
   }).then(asJson<WorldSummary>);
 }
 
-export function renderWorld(projection: Projection): Promise<RenderResponse> {
-  return fetch(`${API_BASE}/world/render?projection=${projection}`).then(asJson<RenderResponse>);
+// includeLines defaults to (and should stay) false for every view except "Plates (details)"
+// -- it's raw per-plate node data (position + elevation for every simulation node), ~2MB of
+// JSON that the other views never read (see backend main.py's render() docstring).
+export function renderWorld(projection: Projection, includeLines: boolean = false): Promise<RenderResponse> {
+  return fetch(`${API_BASE}/world/render?projection=${projection}&include_lines=${includeLines}`).then(
+    asJson<RenderResponse>,
+  );
 }

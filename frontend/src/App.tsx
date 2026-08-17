@@ -34,9 +34,12 @@ export default function App() {
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async (proj: Projection) => {
+  // include_lines is only requested for "Plates (details)" -- the raw per-plate node data
+  // it carries (~2MB of JSON) goes unused by every other view, which paint entirely from
+  // the grid (see api.ts's renderWorld).
+  const refresh = useCallback(async (proj: Projection, view: MapView) => {
     try {
-      const data = await renderWorld(proj);
+      const data = await renderWorld(proj, view === "platesDetail");
       setRenderData(data);
     } catch (e) {
       setError(String(e));
@@ -50,13 +53,13 @@ export default function App() {
       const s = await generateWorld(seed, numContinents);
       setSummary(s);
       setShowGenerateDialog(false);
-      await refresh(projection);
+      await refresh(projection, mapView);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, numContinents, projection, refresh]);
+  }, [seed, numContinents, projection, mapView, refresh]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -65,22 +68,23 @@ export default function App() {
     try {
       const s = await stepWorld(stepYears);
       setSummary(s);
-      await refresh(projection);
+      await refresh(projection, mapView);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, refresh]);
+  }, [summary, stepYears, projection, mapView, refresh]);
 
-  // Re-render with the current world whenever the projection changes.
+  // Re-render with the current world whenever the projection or map view changes (the view
+  // matters because it decides whether include_lines is requested, above).
   useEffect(() => {
     if (summary) {
-      refresh(projection);
+      refresh(projection, mapView);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection]);
+  }, [projection, mapView]);
 
   const stepRef = useRef(handleStep);
   stepRef.current = handleStep;

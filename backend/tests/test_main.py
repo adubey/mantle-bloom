@@ -61,7 +61,7 @@ def test_step_advances_elapsed_years(client):
 def test_render_behrmann_and_eckert4(client):
     client.post("/world/generate", json={"seed": 3, "num_plates": 6})
     for projection in ("behrmann", "eckert4"):
-        resp = client.get("/world/render", params={"projection": projection})
+        resp = client.get("/world/render", params={"projection": projection, "include_lines": True})
         assert resp.status_code == 200
         body = resp.json()
         assert body["projection"] == projection
@@ -80,6 +80,22 @@ def test_render_behrmann_and_eckert4(client):
                 assert len(plate["pole"]) == 2
             if plate["velocity_arrow"] is not None:
                 assert set(plate["velocity_arrow"].keys()) == {"start", "end"}
+
+
+def test_render_omits_lines_unless_requested(client):
+    """include_lines defaults to False -- the raw per-plate node payload (~2MB at this
+    resolution) is only worth sending when the frontend's "Plates (details)" view is
+    actually showing it; every other view paints entirely from `grid`."""
+    client.post("/world/generate", json={"seed": 3, "num_plates": 6})
+
+    default_resp = client.get("/world/render", params={"projection": "behrmann"})
+    assert all(plate["lines"] == [] for plate in default_resp.json()["plates"])
+
+    explicit_off = client.get("/world/render", params={"projection": "behrmann", "include_lines": False})
+    assert all(plate["lines"] == [] for plate in explicit_off.json()["plates"])
+
+    with_lines = client.get("/world/render", params={"projection": "behrmann", "include_lines": True})
+    assert any(len(plate["lines"]) > 0 for plate in with_lines.json()["plates"])
 
 
 def test_render_grid_covers_the_sphere_with_no_gaps(client):

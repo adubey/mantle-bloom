@@ -16,10 +16,16 @@ from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 # Baseline angular length (radians) of a plate's velocity arrow on the map, before scaling
 # by how fast that plate is actually moving relative to the fastest allowed rate.
 ARROW_BASE_ANGULAR_LENGTH_RAD = 0.15
-# Resolution of the render grid (see _render_grid) -- the same physical spacing the
-# simulation itself uses, but swept on a plate-independent global grid so the rendered map's
-# coverage never depends on how sparse any one plate's own line data looks once projected.
-GRID_SPACING_RAD = plates.TARGET_LINE_SPACING_RAD
+# Resolution of the render grid (see _render_grid), swept on a plate-independent global grid
+# so the rendered map's coverage never depends on how sparse any one plate's own line data
+# looks once projected. Deliberately a fixed display-oriented constant, *not* tied to
+# plates.TARGET_LINE_SPACING_RAD (the simulation's physics resolution): the render grid only
+# needs to look smooth at the frontend's ~1100px canvas width, which a resolution doubling
+# in the physics has no bearing on. This used to just alias TARGET_LINE_SPACING_RAD, which
+# meant the render grid (hence the /world/render payload) silently quadrupled in point count
+# when the simulation resolution was doubled -- ~32k grid points, ~4MB of JSON, every call.
+GRID_SPACING_KM = 250.0
+GRID_SPACING_RAD = GRID_SPACING_KM / plates.PLANET_RADIUS_KM
 
 app = FastAPI(title="mantle-bloom")
 
@@ -228,7 +234,12 @@ def _plate_tectonics(projection: str, plate) -> dict:
 
 
 @app.get("/world/render")
-def render(projection: str = "behrmann") -> dict:
+def render(projection: str = "behrmann", include_lines: bool = False) -> dict:
+    """`include_lines` defaults off: each plate's raw elevation-line nodes (position +
+    elevation for every simulation node, not just what's visible) is only ever drawn by the
+    frontend's "Plates (details)" view -- the default "Elevation"/"Plates" views paint
+    entirely from `grid` below. Computing and serializing it unconditionally used to add
+    ~2MB of unused JSON to every render call, fetched and parsed again on every step."""
     world = _require_world()
     if projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {projection!r}")
@@ -236,16 +247,17 @@ def render(projection: str = "behrmann") -> dict:
     plates_out = []
     for plate in world.plates:
         lines_out = []
-        for line in plate.lines:
-            if len(line.theta) == 0:
-                continue
-            world_pts = line.world_xyz(plate.frame)
-            lines_out.append(
-                {
-                    "points": _project_points(projection, world_pts),
-                    "elevation": line.elevation.tolist(),
-                }
-            )
+        if include_lines:
+            for line in plate.lines:
+                if len(line.theta) == 0:
+                    continue
+                world_pts = line.world_xyz(plate.frame)
+                lines_out.append(
+                    {
+                        "points": _project_points(projection, world_pts),
+                        "elevation": line.elevation.tolist(),
+                    }
+                )
         plates_out.append(
             {
                 "plate_id": plate.plate_id,
