@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import projections, render_image
+from . import geometry, plates, projections, render_image
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -91,6 +91,30 @@ def _summary(world: World) -> dict:
     }
 
 
+def _plate_summary(plate: plates.Plate) -> dict:
+    outline = plate.outline_world()
+    node_points, _ = plate.all_points_and_elevation()
+    ellipse = plates.plate_bounding_ellipse(node_points)
+    return {
+        "plate_id": plate.plate_id,
+        "crust_type": plate.crust_type,
+        # Lines with zero nodes are a real state a plate can be in (see merge_split.py's
+        # own "no_land"/consumption checks) -- excluded here to match outline_world()'s own
+        # filtering, so this doesn't look inconsistent next to num_points.
+        "num_rows": sum(1 for line in plate.lines if len(line.theta) > 0),
+        "num_points": plate.node_count(),
+        "outline": outline.tolist(),
+        "bounding_ellipse": None
+        if ellipse is None
+        else {
+            "center_xyz": ellipse.center_xyz.tolist(),
+            "diameter_a_km": ellipse.diameter_a_km,
+            "diameter_b_km": ellipse.diameter_b_km,
+            "outline": ellipse.outline_xyz.tolist(),
+        },
+    }
+
+
 @app.post("/world/generate")
 def generate(req: GenerateRequest) -> dict:
     world = generate_world(
@@ -136,3 +160,29 @@ def render(
         "elapsed_years": world.elapsed_years,
         "image_base64": render_image.render_png_base64(world, projection, view, width, height, view_rotation),
     }
+
+
+@app.get("/world/plates")
+def list_plates() -> dict:
+    """Every plate's outline + metadata (row/point counts, bounding ellipse) as JSON, for the
+    "Plate Inspector" map mode -- unlike /world/render, the client renders this itself
+    interactively rather than receiving a baked PNG. Un-rotated/true-frame throughout (no
+    `rotation` param): the client applies its current view rotation only at draw time, same
+    philosophy as climate/render-grid geometry (see docs/simulation-model.md#rotating-the-view).
+    `404` if no world has been generated yet."""
+    world = _require_world()
+    return {"elapsed_years": world.elapsed_years, "plates": [_plate_summary(p) for p in world.plates]}
+
+
+@app.get("/world/plate_at")
+def plate_at(lat_deg: float, lon_deg: float) -> dict:
+    """Which plate owns the node nearest (lat_deg, lon_deg) -- the Plate Inspector's click
+    hit-test. The client unprojects its click (through whatever view rotation is currently
+    active) to a true lat/lon before calling this, so this endpoint itself never needs to
+    know about rotation. `400` for non-finite input, `404` if no world has been generated
+    yet."""
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+    return {"plate_id": plates.nearest_plate_id(world.plates, query_xyz)}

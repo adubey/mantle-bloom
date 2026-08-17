@@ -70,6 +70,13 @@ export function matApply(m: Mat3, [x, y, z]: Vec3): Vec3 {
   ];
 }
 
+// Rotation matrices are orthonormal, so transpose == inverse -- used to go from a click's
+// world position in the *display* (rotated) frame back to the *true* frame (see
+// PlateInspector.tsx's click handling).
+export function matTranspose(m: Mat3): Mat3 {
+  return [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+}
+
 // Rodrigues' rotation formula -- same construction as backend geometry.py's rotation_matrix,
 // ported directly so the two stay in exact agreement.
 export function rotationMatrix(axis: Vec3, angleRad: number): Mat3 {
@@ -155,6 +162,39 @@ export function project(projection: Projection, lat: number, lon: number): [numb
   return projection === "behrmann" ? behrmann(lat, lon) : eckert4(lat, lon);
 }
 
+// --- Inverse projections: for turning a click's planar (x, y) back into (lat, lon), so
+// PlateInspector can unproject a click and ask the server which plate is there
+// (/world/plate_at). Both return null outside their valid domain (e.g. a click landed in the
+// canvas's background padding, off the sphere's own projected silhouette) -- callers must
+// skip the plate_at call on null, not coerce it to NaN.
+
+function inverseBehrmann(x: number, y: number): [number, number] | null {
+  const sinLat = y * BEHRMANN_COS_PHI0;
+  if (sinLat < -1 || sinLat > 1) return null;
+  const lon = x / BEHRMANN_COS_PHI0;
+  if (lon < -Math.PI || lon > Math.PI) return null;
+  return [Math.asin(sinLat), lon];
+}
+
+// Closed-form in this direction even though the forward direction needs Newton iteration:
+// y = C*pi*sin(theta) gives theta directly via one asin; plugging that theta into the same
+// defining equation (theta + sin(theta)cos(theta) + 2sin(theta) = (2+pi/2)*sin(lat)) then
+// solves lat via one more asin, since lat only ever appears there inside a sin.
+function inverseEckert4(x: number, y: number): [number, number] | null {
+  const sinTheta = y / (ECKERT4_C * Math.PI);
+  if (sinTheta < -1 || sinTheta > 1) return null;
+  const theta = Math.asin(sinTheta);
+  const sinLat = (theta + Math.sin(theta) * Math.cos(theta) + 2 * Math.sin(theta)) / ECKERT4_RHS_SCALE;
+  if (sinLat < -1 || sinLat > 1) return null;
+  const denom = ECKERT4_C * (1 + Math.cos(theta));
+  if (Math.abs(denom) < 1e-9) return null; // exactly at a pole (theta=+-pi/2): lon undefined
+  return [Math.asin(sinLat), x / denom];
+}
+
+export function unproject(projection: Projection, x: number, y: number): [number, number] | null {
+  return projection === "behrmann" ? inverseBehrmann(x, y) : inverseEckert4(x, y);
+}
+
 // --- The render transform (scale/offset from a bounding-box fit) -- see render_image.py's
 // render_png/_render_climate_view. Deliberately kept in exact sync (REFERENCE_WIDTH_PX,
 // PADDING_PX) since this needs to reproduce the server's own transform pixel-for-pixel for
@@ -217,6 +257,17 @@ export function getRenderTransform(projection: Projection, width: number, height
 
 export function toPixels(transform: RenderTransform, x: number, y: number): [number, number] {
   return [transform.scale * x + transform.offsetX, -transform.scale * y + transform.offsetY];
+}
+
+// Unwraps `lon` to the representative within +-pi of `referenceLon` -- a direct port of the
+// technique backend render_image._project_offset uses server-side. atan2's own +pi/-pi jump
+// at the antimeridian means two points a tiny true angular distance apart can still land on
+// opposite sides of it; a *known-nearby* reference longitude (e.g. a shape's own rotated
+// center) lets every other point in that same shape be unwrapped safely before projecting,
+// so a filled shape's edge never bows across the whole map (see PlateInspector.tsx).
+export function wrapLongitudeNear(lon: number, referenceLon: number): number {
+  const twoPi = 2 * Math.PI;
+  return referenceLon + (((((lon - referenceLon + Math.PI) % twoPi) + twoPi) % twoPi) - Math.PI);
 }
 
 // --- Graticule: meridians and parallels for the live drag preview.

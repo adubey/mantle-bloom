@@ -9,11 +9,15 @@
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library, the same choice plate-sim made and the same reasoning: the frontend's whole job
   is decoding a PNG the backend already rendered and drawing it (`ctx.drawImage`), which a
-  library would be more ceremony than the problem needs. The one exception is
-  `rotation.ts` — a small, dependency-free port of just enough backend geometry/projection
-  math to drive the "rotate the planet" drag gesture and preview it live client-side (see
-  [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)); it's still
-  not a mapping library, and the real detailed rendering stays entirely server-side.
+  library would be more ceremony than the problem needs. Two exceptions: `rotation.ts` — a
+  small, dependency-free port of just enough backend geometry/projection math to drive the
+  "rotate the planet" drag gesture and preview it live client-side (see
+  [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
+  Plate Inspector view (`PlateInspector.tsx`), which renders and drives its whole interaction
+  client-side from raw JSON rather than a baked PNG (see
+  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector)). Neither makes
+  this a mapping library, and the real detailed rendering stays entirely server-side for every
+  other view.
 
 ## Request flow
 
@@ -44,6 +48,13 @@ Time-stepping:
     topology changes (at most one collision merge per step, only after a sustained 50-100
     Myr collision -- see simulation-model.md#merge-and-split), occasionally garbage-collect
   → browser re-fetches /world/render, and appends any new `events` to the console
+
+When the "Plate Inspector" map view is active, the browser instead (also on every
+generate/step, but never on a projection/rotation-only change) fetches:
+  GET /world/plates
+  → every plate's outline + metadata as JSON, not a PNG -- see api-reference.md and
+    simulation-model.md#plate-inspector. Clicking a plate sends its unprojected true
+    lat/lon to GET /world/plate_at, a nearest-node lookup answering "which plate is here."
 ```
 
 The frontend never holds simulation state, and holds only one small piece of *rendering*
@@ -53,9 +64,12 @@ call (or a projection/map-view/rotation change) and draws the returned PNG onto 
 long-press-and-drag interaction that previews a cheap wireframe graticule client-side (via
 `rotation.ts`) while dragging, then commits the real rotation and lets the usual
 `/world/render` re-fetch replace it with the actual detailed frame (see
-simulation-model.md#rotating-the-view). The event console is the one other exception: it
-just displays whatever `events` the last `generate`/`step` response carried, which is
-already the full current log -- see api-reference.md).
+simulation-model.md#rotating-the-view); that gesture itself was later extracted into
+`rotationDrag.ts`'s `useRotationDrag` hook so `PlateInspector.tsx` could reuse it for a
+completely different kind of content (translucent plate ellipses, click-to-select,
+Tab/Shift+Tab). The event console is the one other exception: it just displays whatever
+`events` the last `generate`/`step` response carried, which is already the full current log
+-- see api-reference.md).
 
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
@@ -105,12 +119,16 @@ edge boundary evolution maintains -- so it can never be stale (see
 
 ```
 geometry.py       unit-vector <-> lat/lon conversion, Rodrigues-formula rotation matrices,
-                   plate-local coordinate frames
+                   plate-local coordinate frames, local tangent bases + azimuthal-equidistant
+                   projection (for the Plate Inspector's bounding-ellipse fit)
+ellipse.py         minimum-volume enclosing ellipse (Khachiyan's algorithm), sphere-agnostic
+                   pure 2D math -- see simulation-model.md#plate-inspector
 projections.py     Behrmann and Eckert IV map projections, vectorized
 noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
 plates.py          Plate/ElevationLine data structures, the plate-local lattice sweep
                     shared by generation and merge, initial plate generation (nearest-seed
-                    tiling), the live per-plate outline used by the "Plates" map view
+                    tiling), the live per-plate outline used by the "Plates" map view, the
+                    Plate Inspector's bounding-ellipse fit and nearest-plate click hit-test
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
 boundary.py         per-step boundary adjacency detection (k-d tree against every other

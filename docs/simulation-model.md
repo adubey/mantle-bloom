@@ -13,6 +13,7 @@
 - [Projections](#projections)
 - [Render image](#render-image)
 - [Rotating the view](#rotating-the-view)
+- [Plate Inspector](#plate-inspector)
 - [Climate](#climate)
 - [Known simplifications](#known-simplifications)
 
@@ -534,6 +535,86 @@ so an accidental brush of the map doesn't start a rotation) shows the graticule 
 currently committed orientation; dragging updates it live; releasing commits the drag's
 rotation and triggers the real server render, the same `refresh` path a projection or map
 view change already used, just with `rotation` now also part of what's requested.
+
+`MapCanvas.tsx`'s drag gesture itself was later extracted into a shared hook,
+`frontend/src/rotationDrag.ts`'s `useRotationDrag`, once the Plate Inspector view (below)
+needed the exact same long-press-then-arcball interaction to rotate a completely different
+kind of content (translucent plate ellipses instead of a PNG + graticule). Callbacks are read
+through refs updated every render rather than listed in the internal effect's own dependency
+array -- deliberately: `onRotationPreview` typically drives a parent state update (the live
+lat/lon readout) on every single mousemove, and including callbacks in that dependency array
+would tear down and rebuild the drag's window-level listeners on nearly every frame of the
+drag itself.
+
+<a id="plate-inspector"></a>
+## Plate Inspector
+
+A second interactive map mode, structurally different from every other view: `GET
+/world/plates` returns plate outlines and metadata as plain JSON (not a baked PNG), and
+`frontend/src/PlateInspector.tsx` renders and drives the interaction entirely client-side --
+reusing the same `rotationDrag.ts` gesture as `MapCanvas.tsx` (rotating still works
+identically in both views, and the two share one lifted `rotation` state in `App.tsx`, so
+switching between them preserves orientation), plus click-to-select and Tab/Shift+Tab to
+cycle through plates.
+
+**Every plate is drawn at all times** as a filled, translucent bounding ellipse (color from
+`frontend/src/platePalette.ts`, a hand-synced port of `render_image.py`'s `PLATE_PALETTE` so
+a plate's color matches its color in the "Plates" view) plus a thin stroke of its true
+territorial outline -- confirmed with the user that this replaces having any elevation-image
+backdrop at all: overlapping plates are meant to be visible where their ellipses blend. The
+selected plate draws last, on top, at higher opacity with a crisp white outline.
+
+**The bounding ellipse is a genuine minimum-area enclosing ellipse** (backend
+`app/ellipse.py`'s `min_enclosing_ellipse`, Khachiyan's algorithm for the 2D
+minimum-volume-enclosing-ellipsoid problem), not a bounding circle rendered as an ellipse by
+projection distortion -- confirmed with the user this is what "rotated to fit all points as
+closely as possible" meant, since a circle would only ever have one diameter, not two. A
+containment-safety post-step (shrinking the fitted shape matrix just enough to cover whichever
+input point Khachiyan's convergence tolerance left worst-covered) makes the guarantee
+"contains every point" exact rather than merely "within `tol`" -- verified directly against a
+closed-form oracle (a rectangle's true MVEE is analytically known) and against every node of
+every plate in a real generated world.
+
+Fitting happens in a **local flat-km coordinate system**, not naively in raw (phi, theta) or
+directly on the sphere: `geometry.local_tangent_basis` + `azimuthal_equidistant_forward`
+project the plate's points around its own `bounding_sphere` centroid into a plane where
+radial distance from that center is *exact* real-world km (not exact between two arbitrary
+non-center points, but fitting is always relative to that one shared center, so this doesn't
+matter here). Fit against *every* node point, not `outline_world()` -- the minimum enclosing
+ellipse of a full point set equals that of just its convex hull, and `outline_world()` isn't
+a guaranteed hull for a concave plate. The fitted ellipse is sampled back into ~72 world-space
+points (`azimuthal_equidistant_inverse`) and sent to the client already in true-frame 3D, same
+as the plate's own outline -- the client only ever rotates and projects, never refits.
+
+**Known, deliberately-accepted limitation**: `azimuthal_equidistant_forward` is numerically
+singular for a point antipodal (or very close to it) to the projection's own center -- real
+Voronoi-seeded plates are angularly compact around their own centroid, so this shouldn't
+occur in practice, but a pathological non-convex or hemisphere-spanning point cloud could
+trigger it. Not solving general spherical-MVEE for v1; flagged in code and covered by one
+deliberately-adversarial test documenting current (imperfect but non-crashing) behavior
+rather than leaving it silently untested.
+
+**Click-to-select is a server round trip, not client-side point-in-polygon.** The client
+unprojects the click (through whatever view rotation is currently active --
+`rotation.ts`'s `unproject`, plus a `matTranspose` since a rotation matrix's inverse is its
+own transpose) to a true (lat, lon) and asks `GET /world/plate_at`, which reuses the exact
+same nearest-node `cKDTree` lookup the render grid already uses
+(`plates.collect_all_points`/`nearest_plate_id`) to find the owning plate. This is more
+robust than projected-polygon hit-testing would be (which risks the same antimeridian-seam
+problems described above for filled/stroked shapes) and clicks are infrequent enough that one
+round trip per click doesn't matter. Tab/Shift+Tab, by contrast, needs no server call at all
+-- the full plate list is already in hand client-side, so cycling through it (sorted by
+`plate_id`, wrapping both directions) is pure local state.
+
+**Filling a shape that might cross the antimeridian is a genuinely new problem** existing
+views didn't have: a *stroke* can simply skip one bad segment (`_stroke_robust_loop`'s
+technique, already used for plate boundaries and the graticule), leaving an invisible gap,
+but a naive *fill* across a seam-crossing loop would connect two far-apart points and shade a
+wildly wrong region. Mitigated per shape: rotate the shape's own center first, use its
+longitude as a reference, and unwrap every other point in that same loop to within it
+(`rotation.ts`'s `wrapLongitudeNear`, a direct port of `render_image._project_offset`'s
+technique) before projecting -- exact as long as the shape's own true angular radius from its
+center stays under pi, the same scope boundary as the antipodal-singularity limitation above.
 
 <a id="climate"></a>
 ## Climate (`climate.py`)

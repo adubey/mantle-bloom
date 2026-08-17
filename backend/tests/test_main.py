@@ -1,12 +1,13 @@
 import base64
 import io
+import math
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.main import app
-from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
+from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, generate_plates
 
 
 @pytest.fixture
@@ -26,6 +27,14 @@ def test_render_before_generate_returns_404(client):
 def test_step_before_generate_returns_404(client):
     resp = client.post("/world/step", json={"years": 1_000_000})
     assert resp.status_code == 404
+
+
+def test_plates_before_generate_returns_404(client):
+    assert client.get("/world/plates").status_code == 404
+
+
+def test_plate_at_before_generate_returns_404(client):
+    assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
 def test_generate_returns_summary(client):
@@ -172,3 +181,43 @@ def test_render_malformed_rotation_returns_400(client):
     assert client.get("/world/render", params={"rotation": "1,0,0,0,1,0,0,0"}).status_code == 400  # only 8 values
     assert client.get("/world/render", params={"rotation": "not,a,valid,rotation,matrix,at,all,here,either"}).status_code == 400
     assert client.get("/world/render", params={"rotation": "1,0,0,0,1,0,0,0,nan"}).status_code == 400
+
+
+def test_plates_endpoint_matches_directly_generated_plate_state(client):
+    resp = client.post("/world/generate", json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
+    assert resp.status_code == 200
+
+    ground_truth = {p.plate_id: p for p in generate_plates(seed=11, num_plates=9, continental_fraction=0.5)}
+    body = client.get("/world/plates").json()
+    assert len(body["plates"]) == len(ground_truth)
+
+    for entry in body["plates"]:
+        truth = ground_truth[entry["plate_id"]]
+        assert entry["crust_type"] == truth.crust_type
+        assert entry["num_points"] == truth.node_count()
+        assert entry["num_rows"] == sum(1 for line in truth.lines if len(line.theta) > 0)
+        assert len(entry["outline"]) == len(truth.outline_world())
+        if truth.node_count() > 0:
+            assert entry["bounding_ellipse"] is not None
+            assert entry["bounding_ellipse"]["diameter_a_km"] >= entry["bounding_ellipse"]["diameter_b_km"] >= 0.0
+        else:
+            assert entry["bounding_ellipse"] is None
+
+
+def test_plate_at_returns_the_owning_plate_id(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    plates = client.get("/world/plates").json()["plates"]
+    target = next(p for p in plates if p["num_points"] > 0)
+    x, y, z = target["outline"][0]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+
+    resp = client.get("/world/plate_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
+    assert resp.status_code == 200
+    assert resp.json()["plate_id"] == target["plate_id"]
+
+
+def test_plate_at_rejects_non_finite_query(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    assert client.get("/world/plate_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
+    assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400

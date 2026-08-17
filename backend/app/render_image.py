@@ -197,26 +197,6 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
     return world_pts @ view_rotation.T
 
 
-def _collect_all_points(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Every plate's current elevation-node positions, elevations, and owning plate_id,
-    concatenated -- the source data the render grid resamples from."""
-    points_list, elevation_list, owner_list = [], [], []
-    for plate in world.plates:
-        pts, elev = plate.all_points_and_elevation()
-        if len(pts) == 0:
-            continue
-        points_list.append(pts)
-        elevation_list.append(elev)
-        owner_list.append(np.full(len(pts), plate.plate_id))
-    if not points_list:
-        return None
-    return (
-        np.concatenate(points_list, axis=0),
-        np.concatenate(elevation_list, axis=0),
-        np.concatenate(owner_list, axis=0),
-    )
-
-
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
@@ -247,7 +227,7 @@ def _render_grid_arrays(
     (confirmed directly: this was the source of a handful of huge false cells smearing all
     the way across the render). _project_offset keeps the corner's longitude unwrapped
     relative to the cell's own center, which a true small step should always permit."""
-    collected = _collect_all_points(world)
+    collected = plates.collect_all_points(world.plates)
     if collected is None:
         return None
     all_points, all_elevation, all_owner = collected

@@ -1,6 +1,6 @@
 # API Reference
 
-Three routes over a single in-memory world (see
+Routes over a single in-memory world (see
 [architecture.md#world-state](architecture.md#world-state)) -- no world id, one world at a
 time.
 
@@ -108,3 +108,59 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   higher-resolution request doesn't also make those features look thinner.
 - `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
   `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.
+
+## `GET /world/plates`
+
+The "Plate Inspector" map mode's data source (see
+[simulation-model.md#plate-inspector](simulation-model.md#plate-inspector)) -- unlike
+`/world/render`, this returns plain JSON, not a baked PNG; `frontend/src/PlateInspector.tsx`
+renders and drives the interaction itself. Un-rotated/true-frame throughout (no `rotation`
+param -- the client applies its current view rotation only at draw time). `404` if no world
+has been generated yet.
+
+```json
+{
+  "elapsed_years": 2000000,
+  "plates": [
+    {
+      "plate_id": 0,
+      "crust_type": "continental",
+      "num_rows": 85,
+      "num_points": 3437,
+      "outline": [[0.98, 0.12, -0.05], ["..."]],
+      "bounding_ellipse": {
+        "center_xyz": [0.97, 0.15, -0.04],
+        "diameter_a_km": 13478.2,
+        "diameter_b_km": 7148.9,
+        "outline": [[0.91, 0.28, -0.04], ["..."]]
+      }
+    }
+  ]
+}
+```
+
+- `num_rows` is the count of `ElevationLine`s with at least one node (a plate can carry
+  zero-node placeholder rows -- see `merge_split.py`'s own consumption checks -- excluded
+  here to match `outline_world()`'s own filtering). `num_points` is the total node count
+  across every row.
+- `outline` traces the plate's live territorial boundary (`Plate.outline_world()`) as a
+  closed loop of world-space unit vectors.
+- `bounding_ellipse` is `null` for an empty plate (`num_points == 0`), otherwise the minimum-
+  area ellipse enclosing every one of the plate's nodes (see
+  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector) for the fitting
+  method) -- `diameter_a_km`/`diameter_b_km` are the major/minor diameters in real km,
+  `outline` is ~72 sampled world-space points around its perimeter for drawing.
+
+## `GET /world/plate_at?lat_deg=0&lon_deg=0`
+
+The Plate Inspector's click hit-test: which plate owns the node nearest `(lat_deg, lon_deg)`
+-- both in the *true* (un-rotated) frame; the client unprojects its click through whatever
+view rotation is active first (see `rotation.ts`'s `unproject`/`matTranspose`). `400` for
+non-finite input, `404` if no world has been generated yet.
+
+```json
+{ "plate_id": 3 }
+```
+
+`plate_id` is `null` only if every plate is empty (shouldn't happen via the API, but a
+freshly-constructed `World` with no plates at all has no node to be nearest to).

@@ -14,7 +14,8 @@ export type MapView =
   | "wind"
   | "oceanCurrents"
   | "humidity"
-  | "precipitation";
+  | "precipitation"
+  | "plateInspector";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -34,6 +35,30 @@ export interface RenderResponse {
   // Raw PNG bytes, base64-encoded -- decode via `data:image/png;base64,${image_base64}`.
   // See backend app/render_image.py for how it's drawn.
   image_base64: string;
+}
+
+// Plate Inspector data -- unlike RenderResponse, this is raw JSON the client renders itself
+// (see PlateInspector.tsx), not a baked PNG. Un-rotated/true-frame throughout: the client
+// applies its current view rotation only at draw time (see rotation.ts).
+export interface BoundingEllipse {
+  center_xyz: [number, number, number];
+  diameter_a_km: number; // major
+  diameter_b_km: number; // minor
+  outline: [number, number, number][];
+}
+
+export interface PlateSummary {
+  plate_id: number;
+  crust_type: "continental" | "oceanic";
+  num_rows: number;
+  num_points: number;
+  outline: [number, number, number][];
+  bounding_ellipse: BoundingEllipse | null;
+}
+
+export interface PlatesResponse {
+  elapsed_years: number;
+  plates: PlateSummary[];
 }
 
 async function asJson<T>(resp: Response): Promise<T> {
@@ -93,4 +118,16 @@ export function renderWorld(
   const params = new URLSearchParams({ projection, view, width: String(width), height: String(height) });
   if (rotation) params.set("rotation", rotation.join(","));
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
+}
+
+export function fetchPlates(): Promise<PlatesResponse> {
+  return fetch(`${API_BASE}/world/plates`).then(asJson<PlatesResponse>);
+}
+
+// The Plate Inspector's click hit-test -- (latDeg, lonDeg) must already be in the *true*
+// (un-rotated) frame; the caller unprojects the click through whatever view rotation is
+// currently active first (see rotation.ts's unproject/matTranspose).
+export function fetchPlateAt(latDeg: number, lonDeg: number): Promise<{ plate_id: number | null }> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/plate_at?${params}`).then(asJson<{ plate_id: number | null }>);
 }

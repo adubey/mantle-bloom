@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
-import { generateWorld, renderWorld, stepWorld } from "./api";
-import type { MapView, Projection, RenderResponse, WorldSummary } from "./api";
+import { fetchPlates, generateWorld, renderWorld, stepWorld } from "./api";
+import type { MapView, PlateSummary, Projection, RenderResponse, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
+import PlateInspector from "./PlateInspector";
 import EventConsole from "./EventConsole";
 import { IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
@@ -58,15 +59,31 @@ export default function App() {
   const [centerLatLon, setCenterLatLon] = useState({ lat: 0, lon: 0 });
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
+  // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
+  // so unlike renderData it's only refetched on an actual world-state change (generate/step),
+  // never on a projection/rotation change. selectedPlateId only makes sense within one
+  // world's lifetime (plate ids aren't stable across a regenerate), so it resets there too.
+  const [platesData, setPlatesData] = useState<PlateSummary[]>([]);
+  const [selectedPlateId, setSelectedPlateId] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
+    if (view === "plateInspector") return; // that view never uses renderData -- see below
     try {
       const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
       setRenderData(data);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const refreshPlates = useCallback(async () => {
+    try {
+      const data = await fetchPlates();
+      setPlatesData(data.plates);
     } catch (e) {
       setError(String(e));
     }
@@ -78,14 +95,15 @@ export default function App() {
     try {
       const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg);
       setSummary(s);
+      setSelectedPlateId(null);
       setShowGenerateDialog(false);
-      await refresh(projection, mapView, rotation);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh]);
+  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh, refreshPlates]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -94,14 +112,14 @@ export default function App() {
     try {
       const s = await stepWorld(stepYears);
       setSummary(s);
-      await refresh(projection, mapView, rotation);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates()]);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, mapView, rotation, refresh]);
+  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -109,6 +127,8 @@ export default function App() {
     setRotation(IDENTITY_ROTATION);
     setCenterLatLon({ lat: 0, lon: 0 });
   }, []);
+
+  const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
 
   // Re-render with the current world whenever the projection, map view, or view rotation
   // changes -- all three are baked server-side into the returned image (see api.ts's
@@ -196,6 +216,7 @@ export default function App() {
             >
               <option value="plates">Plates</option>
               <option value="platesDetail">Plates (details)</option>
+              <option value="plateInspector">Plate Inspector</option>
               <option value="elevation">Elevation</option>
               <option value="temperature">Temperature</option>
               <option value="wind">Wind</option>
@@ -223,6 +244,28 @@ export default function App() {
             </button>
           </fieldset>
 
+          {mapView === "plateInspector" && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Selected plate</legend>
+              {selectedPlate ? (
+                <div style={{ opacity: 0.9 }}>
+                  <div>id: {selectedPlate.plate_id}</div>
+                  <div>crust: {selectedPlate.crust_type}</div>
+                  <div>rows: {selectedPlate.num_rows}</div>
+                  <div>points: {selectedPlate.num_points}</div>
+                  {selectedPlate.bounding_ellipse && (
+                    <>
+                      <div>diameter A: {selectedPlate.bounding_ellipse.diameter_a_km.toFixed(0)} km</div>
+                      <div>diameter B: {selectedPlate.bounding_ellipse.diameter_b_km.toFixed(0)} km</div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div style={{ opacity: 0.6 }}>Click a plate, or press Tab.</div>
+              )}
+            </fieldset>
+          )}
+
           {summary && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
@@ -236,19 +279,37 @@ export default function App() {
         </div>
 
         <div>
-          <MapCanvas
-            imageBase64={renderData?.image_base64 ?? null}
-            width={RENDER_WIDTH}
-            height={RENDER_HEIGHT}
-            displayWidth={DISPLAY_WIDTH}
-            displayHeight={DISPLAY_HEIGHT}
-            projection={projection}
-            rotation={rotation}
-            onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-            onRotationCommitted={(newRotation) => setRotation(newRotation)}
-          />
+          {mapView === "plateInspector" ? (
+            <PlateInspector
+              plates={platesData}
+              width={RENDER_WIDTH}
+              height={RENDER_HEIGHT}
+              displayWidth={DISPLAY_WIDTH}
+              displayHeight={DISPLAY_HEIGHT}
+              projection={projection}
+              rotation={rotation}
+              selectedPlateId={selectedPlateId}
+              onSelectPlate={setSelectedPlateId}
+              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+              onRotationCommitted={(newRotation) => setRotation(newRotation)}
+            />
+          ) : (
+            <MapCanvas
+              imageBase64={renderData?.image_base64 ?? null}
+              width={RENDER_WIDTH}
+              height={RENDER_HEIGHT}
+              displayWidth={DISPLAY_WIDTH}
+              displayHeight={DISPLAY_HEIGHT}
+              projection={projection}
+              rotation={rotation}
+              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+              onRotationCommitted={(newRotation) => setRotation(newRotation)}
+            />
+          )}
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-            Press and hold, then drag the map to rotate it.
+            {mapView === "plateInspector"
+              ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
+              : "Press and hold, then drag the map to rotate it."}
           </p>
         </div>
       </div>

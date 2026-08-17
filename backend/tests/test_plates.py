@@ -2,12 +2,16 @@ import numpy as np
 
 from app import geometry
 from app.plates import (
+    ELLIPSE_OUTLINE_POINTS,
     MAX_AUTO_PLATES,
     MIN_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
     TARGET_LINE_SPACING_RAD,
+    collect_all_points,
     generate_plates,
     iter_local_lattice,
+    nearest_plate_id,
+    plate_bounding_ellipse,
 )
 from app.world import generate_world
 
@@ -180,3 +184,88 @@ def test_outline_world_empty_for_plate_with_no_lines():
     p = plates[0]
     p.lines = []
     assert len(p.outline_world()) == 0
+
+
+def test_plate_bounding_ellipse_empty_for_no_points():
+    assert plate_bounding_ellipse(np.zeros((0, 3))) is None
+
+
+def test_plate_bounding_ellipse_contains_a_clustered_point_cloud():
+    rng = np.random.default_rng(7)
+    centroid = geometry.normalize(np.array([1.0, 0.0, 0.0]))
+    east, north = geometry.local_tangent_basis(centroid)
+    # A compact cluster within ~10 degrees of centroid -- comfortably inside
+    # azimuthal-equidistant's well-behaved regime (see its docstring).
+    offsets = rng.normal(size=(200, 2)) * np.radians(4.0)
+    points = geometry.azimuthal_equidistant_inverse(centroid, east, north, offsets)
+
+    ellipse = plate_bounding_ellipse(points)
+    assert ellipse is not None
+    assert ellipse.diameter_a_km >= ellipse.diameter_b_km >= 0.0
+    assert ellipse.outline_xyz.shape == (ELLIPSE_OUTLINE_POINTS, 3)
+    assert np.allclose(np.linalg.norm(ellipse.outline_xyz, axis=-1), 1.0, atol=1e-9)
+    assert np.isclose(np.linalg.norm(ellipse.center_xyz), 1.0, atol=1e-9)
+
+    # Every input point should fall within the fitted ellipse, measured the same way the
+    # ellipse itself was fit (azimuthal-equidistant km-plane around the point cloud's own
+    # bounding_sphere centroid).
+    from app.plates import PLANET_RADIUS_KM
+
+    fit_centroid, _ = geometry.bounding_sphere(points)
+    fit_east, fit_north = geometry.local_tangent_basis(fit_centroid)
+    xy_km = geometry.azimuthal_equidistant_forward(fit_centroid, fit_east, fit_north, points) * PLANET_RADIUS_KM
+    center_km = (
+        geometry.azimuthal_equidistant_forward(fit_centroid, fit_east, fit_north, ellipse.center_xyz[None, :])[0]
+        * PLANET_RADIUS_KM
+    )
+    rel = xy_km - center_km
+    semi_a = max(ellipse.diameter_a_km / 2.0, 1e-9)
+    semi_b = max(ellipse.diameter_b_km / 2.0, 1e-9)
+    # Not axis-aligned in general, so bound by the enclosing circle of the larger semi-axis
+    # rather than re-deriving the fitted rotation angle here (that's ellipse.py's own test).
+    assert np.all(np.hypot(rel[:, 0], rel[:, 1]) <= max(semi_a, semi_b) + 1e-6)
+
+
+def test_plate_bounding_ellipse_handles_more_than_a_hemisphere():
+    """Adversarial case per azimuthal_equidistant_forward's documented antipodal-singularity
+    limitation: points spread across more than a hemisphere from their own mean-direction
+    centroid. Not asserting a tight/correct fit here (known limitation, not solved for v1)
+    -- just that this doesn't crash or produce NaN/Inf, documenting current behavior."""
+    rng = np.random.default_rng(8)
+    lat = rng.uniform(-np.pi / 2, np.pi / 2, size=60)
+    lon = rng.uniform(-np.pi, np.pi, size=60)  # spread across the *entire* sphere
+    points = geometry.latlon_to_xyz(lat, lon)
+
+    ellipse = plate_bounding_ellipse(points)
+    assert ellipse is not None
+    assert np.all(np.isfinite(ellipse.center_xyz))
+    assert np.isfinite(ellipse.diameter_a_km)
+    assert np.isfinite(ellipse.diameter_b_km)
+    assert np.all(np.isfinite(ellipse.outline_xyz))
+
+
+def test_collect_all_points_concatenates_across_plates():
+    world_plates = generate_plates(seed=9, num_plates=6)
+    collected = collect_all_points(world_plates)
+    assert collected is not None
+    points, elevation, owner = collected
+    total = sum(p.node_count() for p in world_plates)
+    assert len(points) == total
+    assert len(elevation) == total
+    assert len(owner) == total
+    assert set(owner.tolist()) <= {p.plate_id for p in world_plates}
+
+
+def test_collect_all_points_none_when_every_plate_is_empty():
+    world_plates = generate_plates(seed=9, num_plates=3)
+    for p in world_plates:
+        p.lines = []
+    assert collect_all_points(world_plates) is None
+
+
+def test_nearest_plate_id_finds_the_owning_plate_at_its_own_seed():
+    world_plates = generate_plates(seed=10, num_plates=8)
+    for p in world_plates:
+        if p.node_count() == 0:
+            continue
+        assert nearest_plate_id(world_plates, p.seed_world) == p.plate_id

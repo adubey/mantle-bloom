@@ -90,3 +90,38 @@ def test_angular_distance_known_values():
     assert np.isclose(geometry.angular_distance(a, b), np.pi / 2)
     assert np.isclose(geometry.angular_distance(a, a), 0.0, atol=1e-9)
     assert np.isclose(geometry.angular_distance(a, -a), np.pi)
+
+
+def test_local_tangent_basis_is_orthonormal_to_pole():
+    pole = geometry.normalize(np.array([1.0, 2.0, 3.0]))
+    east, north = geometry.local_tangent_basis(pole)
+    assert np.isclose(np.dot(east, north), 0.0, atol=1e-9)
+    assert np.isclose(np.dot(east, pole), 0.0, atol=1e-9)
+    assert np.isclose(np.dot(north, pole), 0.0, atol=1e-9)
+    assert np.isclose(np.linalg.norm(east), 1.0, atol=1e-9)
+    assert np.isclose(np.linalg.norm(north), 1.0, atol=1e-9)
+
+
+def test_local_tangent_basis_handles_pole_at_global_pole():
+    pole = np.array([0.0, 0.0, 1.0])
+    east, north = geometry.local_tangent_basis(pole)
+    assert np.allclose(east @ east, 1.0, atol=1e-9)
+    assert np.allclose(north @ north, 1.0, atol=1e-9)
+    assert np.isclose(np.dot(east, north), 0.0, atol=1e-9)
+
+
+def test_azimuthal_equidistant_roundtrips_and_preserves_radius_from_pole():
+    rng = np.random.default_rng(3)
+    pole = geometry.normalize(rng.normal(size=3))
+    east, north = geometry.local_tangent_basis(pole)
+    # Points within a modest angular range of the pole -- azimuthal equidistant's own
+    # documented safe regime (see its docstring re: antipodal singularity).
+    points = geometry.normalize(pole[None, :] * 0.7 + rng.normal(size=(40, 3)) * 0.3)
+
+    xy = geometry.azimuthal_equidistant_forward(pole, east, north, points)
+    back = geometry.azimuthal_equidistant_inverse(pole, east, north, xy)
+    assert np.allclose(back, points, atol=1e-9)
+
+    true_radius = geometry.angular_distance(points, pole)
+    xy_radius = np.hypot(xy[:, 0], xy[:, 1])
+    assert np.allclose(true_radius, xy_radius, atol=1e-9)

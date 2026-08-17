@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry
+from . import ellipse, geometry
 from .noise import SphereNoise
 
 PLANET_RADIUS_KM = 6371.0
@@ -117,6 +117,93 @@ class Plate:
         points = np.concatenate([line.world_xyz(self.frame) for line in self.lines], axis=0)
         elevation = np.concatenate([line.elevation for line in self.lines], axis=0)
         return points, elevation
+
+
+ELLIPSE_OUTLINE_POINTS = 72
+
+
+@dataclass
+class BoundingEllipse:
+    center_xyz: np.ndarray  # unit vector, true/un-rotated world frame
+    diameter_a_km: float  # major
+    diameter_b_km: float  # minor
+    outline_xyz: np.ndarray  # (ELLIPSE_OUTLINE_POINTS, 3) unit vectors, true world frame
+
+
+def plate_bounding_ellipse(points_world_xyz: np.ndarray) -> BoundingEllipse | None:
+    """The minimum-area ellipse enclosing `points_world_xyz` (real diameters in km, "rotated
+    to fit as closely as possible" per the map-view feature this backs) -- fit in a local
+    azimuthal-equidistant projection centered on the point cloud's own `bounding_sphere`
+    centroid (exact true-km radial distance from that center; not exact between two
+    arbitrary points -- see geometry.azimuthal_equidistant_forward -- but fitting is always
+    done relative to that one shared center, so this doesn't matter here).
+
+    Fit against *every* node point, not just `outline_world()`: the minimum enclosing
+    ellipse of a full point set is identical to that of just its convex hull, and
+    `outline_world()`'s own docstring admits it isn't a guaranteed hull for a concave plate
+    ("exact for convex-ish plates, a reasonable envelope otherwise") -- using it risks
+    silently missing an interior extremal point. Cost is negligible either way (Khachiyan is
+    O(N) per iteration, no O(N^2) anywhere, and a plate's node count is a few thousand at
+    most).
+
+    `None` for an empty plate (`node_count() == 0`, e.g. one fully consumed by subduction but
+    not yet pruned)."""
+    if len(points_world_xyz) == 0:
+        return None
+    centroid, _ = geometry.bounding_sphere(points_world_xyz)
+    east, north = geometry.local_tangent_basis(centroid)
+    xy_km = geometry.azimuthal_equidistant_forward(centroid, east, north, points_world_xyz) * PLANET_RADIUS_KM
+
+    fit = ellipse.min_enclosing_ellipse(xy_km)
+
+    t = np.linspace(0.0, 2.0 * np.pi, ELLIPSE_OUTLINE_POINTS, endpoint=False)
+    local = np.stack([fit.semi_major * np.cos(t), fit.semi_minor * np.sin(t)], axis=-1)
+    cos_a, sin_a = np.cos(fit.angle_rad), np.sin(fit.angle_rad)
+    rotate = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+    boundary_km = fit.center + local @ rotate.T
+    outline_xyz = geometry.azimuthal_equidistant_inverse(centroid, east, north, boundary_km / PLANET_RADIUS_KM)
+    center_xyz = geometry.azimuthal_equidistant_inverse(centroid, east, north, (fit.center / PLANET_RADIUS_KM)[None, :])[0]
+
+    return BoundingEllipse(
+        center_xyz=center_xyz,
+        diameter_a_km=2.0 * fit.semi_major,
+        diameter_b_km=2.0 * fit.semi_minor,
+        outline_xyz=outline_xyz,
+    )
+
+
+def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+    """Every plate's current elevation-node positions, elevations, and owning plate_id,
+    concatenated -- shared by the render grid's nearest-node resample
+    (render_image._render_grid_arrays) and nearest_plate_id's click hit-test below. Takes a
+    plain plate list (not World) to avoid a plates.py -> world.py import cycle."""
+    points_list, elevation_list, owner_list = [], [], []
+    for plate in plate_list:
+        pts, elev = plate.all_points_and_elevation()
+        if len(pts) == 0:
+            continue
+        points_list.append(pts)
+        elevation_list.append(elev)
+        owner_list.append(np.full(len(pts), plate.plate_id))
+    if not points_list:
+        return None
+    return (
+        np.concatenate(points_list, axis=0),
+        np.concatenate(elevation_list, axis=0),
+        np.concatenate(owner_list, axis=0),
+    )
+
+
+def nearest_plate_id(plate_list: list[Plate], query_xyz: np.ndarray) -> int | None:
+    """Which plate owns the node nearest `query_xyz` -- the Plate Inspector's click
+    hit-test. `None` if every plate is empty (shouldn't happen via the API, but a
+    freshly-constructed empty World has no plates at all)."""
+    collected = collect_all_points(plate_list)
+    if collected is None:
+        return None
+    points, _, owner = collected
+    _, idx = cKDTree(points).query(query_xyz)
+    return int(owner[idx])
 
 
 def base_elevation(crust_type: str) -> float:

@@ -128,6 +128,61 @@ def bounding_sphere(points: np.ndarray) -> tuple[np.ndarray, float]:
     return centroid, float(angular_distance(points, centroid).max())
 
 
+def local_tangent_basis(pole: np.ndarray, up_hint: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """(east, north) unit tangent vectors at `pole`. Same up-hint-projected-into-tangent-
+    plane-with-near-pole-fallback construction as `plate_frame_from_seed`, but `pole` here
+    *is* the frame's actual pole (unlike `plate_frame_from_seed`, where the seed is the
+    equatorial phi=0/theta=0 reference point) -- what
+    `azimuthal_equidistant_forward`/`_inverse` below need."""
+    pole = normalize(np.asarray(pole, dtype=float))
+    up = up_hint if up_hint is not None else np.array([0.0, 0.0, 1.0])
+    up = np.asarray(up, dtype=float)
+    n = up - np.dot(up, pole) * pole
+    if np.linalg.norm(n) < 1e-6:
+        up = np.array([1.0, 0.0, 0.0])
+        n = up - np.dot(up, pole) * pole
+    north = normalize(n)
+    east = normalize(np.cross(north, pole))
+    return east, north
+
+
+def azimuthal_equidistant_forward(pole: np.ndarray, east: np.ndarray, north: np.ndarray, points: np.ndarray) -> np.ndarray:
+    """Unit vectors (..., 3) -> planar (x, y) in radians at unit-sphere radius (multiply by
+    a physical radius, e.g. plates.PLANET_RADIUS_KM, for real distances). Distance from the
+    origin is *exact* great-circle distance from `pole` -- this is not distance-preserving
+    between two arbitrary non-pole points, only from the shared center, which is all
+    `plates.plate_bounding_ellipse` needs (everything is fit relative to one center).
+
+    Numerically singular for a point antipodal (or extremely close to antipodal) to `pole`
+    (the tangent direction has ~zero length there) -- such a point silently maps to the
+    origin instead of its true (theta=pi, arbitrary bearing). Not a concern for the compact,
+    Voronoi-seeded plates this is actually used on, but a real limitation for an artificially
+    non-convex or hemisphere-spanning point cloud; not solved here (see
+    plates.plate_bounding_ellipse's docstring)."""
+    pole = normalize(pole)
+    cos_c = np.clip(np.sum(points * pole, axis=-1), -1.0, 1.0)
+    theta = np.arccos(cos_c)
+    tangent = points - cos_c[..., None] * pole
+    norm = np.linalg.norm(tangent, axis=-1, keepdims=True)
+    safe = np.where(norm < 1e-12, 1.0, norm)
+    tangent_dir = tangent / safe
+    # These are already cos(bearing)/sin(bearing) -- components of a unit vector along
+    # east/north -- so no separate atan2/trig round-trip is needed to get planar coordinates.
+    east_comp = np.sum(tangent_dir * east, axis=-1)
+    north_comp = np.sum(tangent_dir * north, axis=-1)
+    return np.stack([theta * east_comp, theta * north_comp], axis=-1)
+
+
+def azimuthal_equidistant_inverse(pole: np.ndarray, east: np.ndarray, north: np.ndarray, xy: np.ndarray) -> np.ndarray:
+    """Inverse of `azimuthal_equidistant_forward`: planar (x, y) radians -> unit vectors."""
+    pole = normalize(pole)
+    x, y = xy[..., 0], xy[..., 1]
+    theta = np.hypot(x, y)
+    safe = np.where(theta < 1e-12, 1.0, theta)
+    tangent_dir = (x / safe)[..., None] * east + (y / safe)[..., None] * north
+    return np.cos(theta)[..., None] * pole + np.sin(theta)[..., None] * tangent_dir
+
+
 def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:
     """World unit vectors (..., 3) -> plate-local unit vectors, given local frame `frame`."""
     return world_xyz @ frame  # frame.T @ v for each v, vectorized as v @ frame
