@@ -5,18 +5,32 @@ from app.plates import ElevationLine, Plate
 from app.world import World, generate_world, step_world
 
 
-def _single_line_plate(plate_id, seed_xyz, crust_type, theta, elevation):
+def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation):
+    """A plate with the given line at phi=0 (what each test actually exercises) plus a
+    second, far-away placeholder line at a different latitude -- purely so the plate has
+    more than one line. Otherwise apply_topology_changes's "no land left" pruning (a plate
+    reduced to a single line, see merge_split.remove_defunct_plates) would remove these
+    synthetic single-line test plates before the test's own logic ever ran."""
     frame = geometry.plate_frame_from_seed(seed_xyz)
     line = ElevationLine(phi=0.0, theta=np.asarray(theta, dtype=float), elevation=np.asarray(elevation, dtype=float))
-    return Plate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line])
+    filler = ElevationLine(phi=1.0, theta=np.array([0.0, 0.1]), elevation=np.zeros(2))
+    return Plate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
 
 
-def test_remove_consumed_plates_drops_empty_plates_only():
-    alive = _single_line_plate(0, [1.0, 0.0, 0.0], "oceanic", [0.0, 0.1], [1.0, 2.0])
+def test_remove_defunct_plates_drops_empty_and_single_line_plates():
+    survives = _test_plate(0, [1.0, 0.0, 0.0], "oceanic", [0.0, 0.1], [1.0, 2.0])
     empty = Plate(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=[])
-    world = World(seed=0, plates=[alive, empty])
+    # A single line, however many nodes it carries, counts as "no land left" too -- not just
+    # zero lines (see the new condition merge_split.remove_defunct_plates checks for).
+    sliver = Plate(
+        plate_id=2,
+        frame=np.eye(3),
+        crust_type="oceanic",
+        lines=[ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([1.0, 2.0, 3.0]))],
+    )
+    world = World(seed=0, plates=[survives, empty, sliver])
 
-    merge_split.remove_consumed_plates(world)
+    merge_split.remove_defunct_plates(world)
     assert [p.plate_id for p in world.plates] == [0]
 
 
@@ -39,11 +53,11 @@ def test_find_continental_collision_pairs_detects_close_and_converging_plates():
     # rate -- inconsistent from point to point). Most, but not all, of keep's points end up
     # within d of their nearest absorb point -- comfortably above MERGE_MIN_CONTACT_NODES.
     d = merge_split.MERGE_CONTACT_DISTANCE_RAD
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
-    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
+    absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
     keep.omega, absorb.omega = _converging_omega_pair()
 
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
@@ -59,13 +73,13 @@ def test_find_continental_collision_pairs_ignores_close_but_not_converging_plate
     directly to fire on the very first simulation step, for any `years`, before this check
     was added."""
     theta = np.linspace(-0.01, 0.01, 5)
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
 
     tiny_angle = merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
     )[0]
-    absorb = _single_line_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
+    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
     # Both plates motionless -- close, but nothing is actually colliding.
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
@@ -73,8 +87,8 @@ def test_find_continental_collision_pairs_ignores_close_but_not_converging_plate
 
 def test_find_continental_collision_pairs_ignores_far_plates():
     theta = np.linspace(-0.01, 0.01, 5)
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
-    far = _single_line_plate(1, [0.0, 1.0, 0.0], "continental", theta, np.zeros(5))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    far = _test_plate(1, [0.0, 1.0, 0.0], "continental", theta, np.zeros(5))
     keep.omega, far.omega = _converging_omega_pair()
     world = World(seed=0, plates=[keep, far], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
@@ -86,8 +100,8 @@ def test_find_continental_collision_pairs_ignores_oceanic():
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
     )[0]
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "oceanic", theta, np.zeros(5))
-    absorb = _single_line_plate(1, seed_absorb, "continental", theta, np.zeros(5))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "oceanic", theta, np.zeros(5))
+    absorb = _test_plate(1, seed_absorb, "continental", theta, np.zeros(5))
     keep.omega, absorb.omega = _converging_omega_pair()
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
@@ -97,11 +111,11 @@ def _converging_pair_world(seed=123):
     # See test_find_continental_collision_pairs_detects_close_and_converging_plates for why
     # these offsets are fractions of MERGE_CONTACT_DISTANCE_RAD rather than hardcoded angles.
     d = merge_split.MERGE_CONTACT_DISTANCE_RAD
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-d, 0.0, 6), np.zeros(6))
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
-    absorb = _single_line_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
+    absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
     keep.omega, absorb.omega = _converging_omega_pair()
     return World(seed=seed, plates=[keep, absorb], next_plate_id=2)
 
@@ -161,7 +175,7 @@ def test_apply_topology_changes_merges_at_most_one_pair_per_call():
     rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
     omegas = [np.array([0.0, 0.0, rate]), np.zeros(3), np.array([0.0, 0.0, -rate])]
     plates = [
-        _single_line_plate(i, seeds[i], "continental", theta, np.zeros(6)) for i in range(3)
+        _test_plate(i, seeds[i], "continental", theta, np.zeros(6)) for i in range(3)
     ]
     for p, om in zip(plates, omegas):
         p.omega = om
@@ -181,12 +195,12 @@ def test_apply_topology_changes_merges_at_most_one_pair_per_call():
 
 def test_merge_plates_leaves_one_plate_with_nonzero_nodes():
     theta = np.linspace(-0.01, 0.01, 5)
-    keep = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
     tiny_angle = merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
     seed_absorb = geometry.rotate_vectors(
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
     )[0]
-    absorb = _single_line_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
+    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
 
     merge_split.merge_plates(world, id_keep=0, id_absorb=1)
@@ -196,7 +210,7 @@ def test_merge_plates_leaves_one_plate_with_nonzero_nodes():
 
 
 def test_maybe_split_plate_returns_none_for_small_plate():
-    small = _single_line_plate(0, [1.0, 0.0, 0.0], "continental", [0.0, 0.1], [0.0, 0.0])
+    small = _test_plate(0, [1.0, 0.0, 0.0], "continental", [0.0, 0.1], [0.0, 0.0])
     world = World(seed=0, plates=[small], mantle_centers=[], next_plate_id=1)
     assert merge_split.maybe_split_plate(world, small) is None
 

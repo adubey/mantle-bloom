@@ -37,7 +37,8 @@ entries, oldest dropped first), not just what changed this call -- simplest for 
 which just replaces its displayed console with it on every response, and small enough not to
 matter on the wire. See
 [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split) for what generates
-an event (collisions starting/merging, consumption, splits) and how each one is worded.
+an event (merges, plates disappearing, splits -- a collision merely starting is deliberately
+not logged) and how each one is worded.
 
 ## `POST /world/step`
 

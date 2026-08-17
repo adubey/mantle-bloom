@@ -174,9 +174,11 @@ Unlike rotation and boundary evolution, these are rare, discrete, topology-chang
 so a one-time resample is an acceptable cost here -- the exact, no-resampling guarantee only
 matters for routine per-step motion.
 
-- **Consumption.** A plate whose every elevation node has been deleted (fully subducted) is
-  simply dropped from `world.plates` -- falls directly out of the boundary-evolution rule
-  above, no special algorithm needed.
+- **Consumption.** A plate whose every elevation node has been deleted (fully subducted), or
+  that's been eroded down to a single remaining line -- no real territory left, just a
+  sliver along one latitude, regardless of how many nodes are still on that one line -- is
+  simply dropped from `world.plates` (`remove_defunct_plates`). Falls directly out of the
+  boundary-evolution rule above; no special algorithm needed for either case.
 - **Continental collision merge.** If two continental plates have at least
   `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other
   *and* a real closing rate at those points (`boundary.closing_rate`, the same check
@@ -218,12 +220,18 @@ matters for routine per-step motion.
   the first or second step.
 
   **Event log.** `apply_topology_changes` returns a list of human-readable strings for
-  anything that happened this step -- a new collision starting, a merge completing (with
-  how many million years it took), consumption, or a split -- which `world.step_world`
-  timestamps with the *post-step* `elapsed_years` and appends to `World.events` (capped at
-  `world.MAX_EVENT_LOG_LENGTH` entries). `generate_world` logs an initial "world generated"
-  event the same way. The API returns the full current log on every `/world/generate` and
-  `/world/step` call (see api-reference.md) for the frontend's collapsible console.
+  outcomes that actually changed the world this step -- a merge completing (with how many
+  million years it took), a plate disappearing (consumption, in either sense above), or a
+  split creating a new plate -- which `world.step_world` timestamps with the *post-step*
+  `elapsed_years` and appends to `World.events` (capped at `world.MAX_EVENT_LOG_LENGTH`
+  entries). `generate_world` logs an initial "world generated" event the same way. A
+  collision merely *starting* is deliberately not logged: plates.py's tiling has every
+  neighbor pair already touching at generation, so a real fraction of pairs clear the
+  proximity-and-closing-rate check in `find_continental_collision_pairs` at some point
+  without ever accumulating the sustained duration needed to actually merge -- logging every
+  one of those would flood the console with events that don't end up mattering. The API
+  returns the full current log on every `/world/generate` and `/world/step` call (see
+  api-reference.md) for the frontend's collapsible console.
 - **Split.** Each plate's mantle-flow samples are clustered into two groups
   (`scipy.cluster.vq.kmeans2`, k=2) and a separate Euler pole is fit to each. If a single
   rigid rotation fits the whole plate poorly (RMS residual above

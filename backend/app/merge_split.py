@@ -67,10 +67,12 @@ SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(6.0)
 SPLIT_MIN_AGE_STEPS = 15
 
 
-def remove_consumed_plates(world: "World") -> None:
-    """A plate whose every elevation node was deleted (fully subducted, see boundary.py)
-    simply vanishes -- no special-cased merge algorithm needed."""
-    world.plates = [p for p in world.plates if p.node_count() > 0]
+def remove_defunct_plates(world: "World") -> None:
+    """A plate whose every elevation node was deleted (fully subducted, see boundary.py), or
+    that's been eroded down to a single line (or none) -- no real remaining territory, just
+    a sliver along one latitude -- simply vanishes. No special-cased merge algorithm needed
+    either way; see apply_topology_changes for the distinct log messages for each case."""
+    world.plates = [p for p in world.plates if len(p.lines) > 1]
 
 
 def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
@@ -137,24 +139,25 @@ def _collision_threshold_years(seed: int, pair: tuple[int, int]) -> float:
     return float(rng.uniform(COLLISION_MERGE_MIN_YEARS, COLLISION_MERGE_MAX_YEARS))
 
 
-def update_collision_progress(world: "World", years: float) -> tuple[list[tuple[int, int]], list[str]]:
+def update_collision_progress(world: "World", years: float) -> list[tuple[int, int]]:
     """Advance sustained-collision tracking by `years` for every pair currently close and
     converging (world.collision_progress: pair -> accumulated convergent years). Returns
-    (pairs that have now accumulated enough to merge, human-readable event messages for any
-    newly-started collision). A pair that stops being close-and-converging before reaching
-    its threshold has its progress dropped entirely -- the collision didn't sustain, so it
-    doesn't get partial credit toward a future one."""
+    pairs that have now accumulated enough to merge. A pair that stops being close-and-
+    converging before reaching its threshold has its progress dropped entirely -- the
+    collision didn't sustain, so it doesn't get partial credit toward a future one.
+
+    A collision *starting* isn't logged to the UI's event console (see
+    apply_topology_changes) -- plates.py's tiling has every neighbor pair already touching
+    at generation, so a real fraction of pairs pass this check at some point without ever
+    actually merging; only the outcomes that actually change the world (a completed merge,
+    a plate disappearing) are worth surfacing there."""
     current_pairs = find_continental_collision_pairs(world)
     current_set = set(current_pairs)
-    events: list[str] = []
 
     ready = []
     for pair in current_pairs:
-        is_new = pair not in world.collision_progress
         accumulated = world.collision_progress.get(pair, 0.0) + years
         world.collision_progress[pair] = accumulated
-        if is_new:
-            events.append(f"Plates {pair[0]} and {pair[1]} have begun colliding.")
         if accumulated >= _collision_threshold_years(world.seed, pair):
             ready.append(pair)
 
@@ -162,7 +165,7 @@ def update_collision_progress(world: "World", years: float) -> tuple[list[tuple[
         if pair not in current_set:
             del world.collision_progress[pair]
 
-    return ready, events
+    return ready
 
 
 def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
@@ -264,7 +267,10 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
 
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
-    event messages for anything that happened, for the UI's event console."""
+    event messages for anything that happened, for the UI's event console -- a plate
+    disappearing (fully subducted, or eroded down to no real land), two plates merging, or
+    a new plate being created by a split. A collision merely *starting* is deliberately not
+    logged here -- see update_collision_progress."""
     events: list[str] = []
     for plate in world.plates:
         plate.age_steps += 1
@@ -272,10 +278,17 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     consumed = [p for p in world.plates if p.node_count() == 0]
     for p in consumed:
         events.append(f"Plate {p.plate_id} ({p.crust_type}) was fully subducted and disappeared.")
-    remove_consumed_plates(world)
 
-    ready_pairs, collision_events = update_collision_progress(world, years)
-    events.extend(collision_events)
+    # "No land" here means no real remaining territory -- reduced to a single line (or, if
+    # it also has zero nodes, already counted as consumed above) -- not the crust_type sense
+    # of dry-land-above-sea-level; see remove_defunct_plates.
+    no_land = [p for p in world.plates if p.node_count() > 0 and len(p.lines) <= 1]
+    for p in no_land:
+        events.append(f"Plate {p.plate_id} ({p.crust_type}) had no land left and disappeared.")
+
+    remove_defunct_plates(world)
+
+    ready_pairs = update_collision_progress(world, years)
     if ready_pairs:
         # Real continental collisions don't resolve all at once, and merging every ready
         # pair in the same call could still cascade through a whole chain of plates in one
