@@ -30,7 +30,11 @@ actually converging:
   (TRANSFORM_RANGE_RAD, 50km) and gentler (TRANSFORM_UPLIFT_RATE_M_PER_MYR) than either
   convergent case, peaking at the boundary like collision/trench do.
 
-Divergent boundaries (ridge/rift relaxation) are unchanged -- see `_divergent_target`.
+**Divergent boundaries aren't uniform either.** Continental rifting stretches and thins the
+crust (subsidence) over RIFT_RANGE_RAD (300km) -- much wider than oceanic ridge spreading's
+unchanged FAR_THRESHOLD_RAD (~200km) reach. Both still relax exponentially toward their own
+target (`_divergent_target`) -- only the reach differs by crust type, same pattern as the
+convergent cases above.
 """
 
 from __future__ import annotations
@@ -61,6 +65,15 @@ DIVERGENT_RIDGE_TARGET_M = -1500.0  # new oceanic crust at a mid-ocean ridge
 DIVERGENT_RIFT_TARGET_M = -200.0  # new continental crust in a rift valley
 DIVERGENT_RELAX_RATE_PER_MYR = 0.5
 
+# Continental rifting stretches and thins the crust over a much wider zone than a plain
+# boundary's FAR_THRESHOLD_RAD reach -- the land subsides (relaxes toward
+# DIVERGENT_RIFT_TARGET_M) out to RIFT_RANGE_RAD, not just right at the fault line (e.g. the
+# East African Rift's actual subsidence zone is comparably wide). Continental-only: oceanic
+# ridge spreading is a narrower, already-well-modeled process and keeps FAR_THRESHOLD_RAD's
+# reach unchanged.
+RIFT_RANGE_KM = 300.0
+RIFT_RANGE_RAD = RIFT_RANGE_KM / PLANET_RADIUS_KM
+
 # Continent-continent collision crumples a much broader belt than a plain trench/mountain
 # boundary does (e.g. the Himalaya/Tibetan Plateau deformation zone) -- same decay-from-the-
 # boundary shape as CONVERGENT_MOUNTAIN_RATE_M_PER_MYR already used, just a wider reach.
@@ -90,7 +103,9 @@ TRANSFORM_UPLIFT_RATE_M_PER_MYR = 200.0
 # Widest reach any single boundary effect needs (currently COLLISION_RANGE_RAD) -- sizes the
 # candidate search (bounding-sphere prescreen and cKDTree query) so a node up to that far
 # away is never excluded before the per-effect distance checks above even get to run.
-MAX_BOUNDARY_EFFECT_RAD = max(FAR_THRESHOLD_RAD, COLLISION_RANGE_RAD, SUBDUCTION_ARC_OUTER_RAD, TRANSFORM_RANGE_RAD)
+MAX_BOUNDARY_EFFECT_RAD = max(
+    FAR_THRESHOLD_RAD, COLLISION_RANGE_RAD, SUBDUCTION_ARC_OUTER_RAD, TRANSFORM_RANGE_RAD, RIFT_RANGE_RAD
+)
 
 MIN_ELEVATION_M = -11000.0
 MAX_ELEVATION_M = 9000.0
@@ -258,13 +273,19 @@ def step_boundaries(world: World, years: float) -> None:
         # transform_intensity: plain decay again, but TRANSFORM_RANGE_RAD's much shorter
         # ~50km reach -- real strike-slip motion doesn't build real mountains.
         transform_intensity_all = np.clip(1.0 - dist_all / TRANSFORM_RANGE_RAD, 0.0, 1.0)
+        # rift_intensity: same plain decay shape as default_intensity, but reaching
+        # RIFT_RANGE_RAD (300km) instead -- continental rifting stretches and thins the
+        # crust over a much wider zone than oceanic ridge spreading (which still uses
+        # default_intensity/FAR_THRESHOLD_RAD, unchanged).
+        rift_intensity_all = np.clip(1.0 - dist_all / RIFT_RANGE_RAD, 0.0, 1.0)
 
         # Classification is by *rate* only (not distance) -- MAX_BOUNDARY_EFFECT_RAD here
         # just bounds the candidate search; each intensity array above already zeroes itself
         # out past its own specific (narrower) reach, so no further distance masking is
-        # needed below.
+        # needed below. divergent_all's own gate uses RIFT_RANGE_RAD (the wider of its two
+        # cases) for the same reason.
         convergent_all = (dist_all < MAX_BOUNDARY_EFFECT_RAD) & (closing_all > TRANSFORM_RATE_THRESHOLD)
-        divergent_all = (dist_all < FAR_THRESHOLD_RAD) & (closing_all < -TRANSFORM_RATE_THRESHOLD)
+        divergent_all = (dist_all < RIFT_RANGE_RAD) & (closing_all < -TRANSFORM_RATE_THRESHOLD)
         transform_all = (dist_all < TRANSFORM_RANGE_RAD) & (np.abs(closing_all) <= TRANSFORM_RATE_THRESHOLD)
         # Only meaningful when this plate itself is continental (see the per-line loop
         # below) -- computed for every point regardless, matching convergent_all/
@@ -285,6 +306,7 @@ def step_boundaries(world: World, years: float) -> None:
             collision_intensity = collision_intensity_all[offset : offset + n]
             arc_intensity = arc_intensity_all[offset : offset + n]
             transform_intensity = transform_intensity_all[offset : offset + n]
+            rift_intensity = rift_intensity_all[offset : offset + n]
             convergent = convergent_all[offset : offset + n]
             divergent = divergent_all[offset : offset + n]
             transform = transform_all[offset : offset + n]
@@ -301,7 +323,10 @@ def step_boundaries(world: World, years: float) -> None:
 
             elevation[transform] += TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * transform_intensity[transform]
 
-            elevation[divergent] += (target - elevation[divergent]) * relax_factor * default_intensity[divergent]
+            # Continental rifting reaches RIFT_RANGE_RAD (300km); oceanic ridge spreading
+            # keeps the original default_intensity/FAR_THRESHOLD_RAD (~200km) reach.
+            divergent_intensity = rift_intensity if plate.crust_type == "continental" else default_intensity
+            elevation[divergent] += (target - elevation[divergent]) * relax_factor * divergent_intensity[divergent]
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
             updated_line = ElevationLine(phi=line.phi, theta=line.theta, elevation=elevation)

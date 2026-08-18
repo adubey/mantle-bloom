@@ -208,3 +208,22 @@ def test_transform_boundary_produces_modest_uplift_within_50km():
     assert delta[1] < 1e-6  # beyond 50km -- no effect
     # "The rise isn't as big" -- confirm it stays well under real mountain-building rates.
     assert delta[0] < boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * 0.5
+
+
+def test_continental_rifting_reaches_300km():
+    # Two continental plates diverging (rifting). 274.6km is well past the *old*
+    # FAR_THRESHOLD_RAD (~200km) reach but within RIFT_RANGE_RAD's 300km.
+    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
+    theta_cont = np.array([0.0129, 0.0283, 0.0412])  # ~94/192/275 km
+    plate_a = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, rate], base_elevation=500.0)
+    plate_b = _plate(1, "continental", [-0.002, -0.0021, -0.0019], omega=[0.0, 0.0, -rate], base_elevation=500.0)
+    world = World(seed=0, plates=[plate_a, plate_b])
+
+    boundary.step_boundaries(world, years=1_000_000)
+
+    updated = next(p for p in world.plates if p.plate_id == 0).lines[0]
+    delta = updated.elevation[:3] - 500.0  # first 3 -- any growth-inserted nodes land after
+    # All three points subside (relax toward DIVERGENT_RIFT_TARGET_M, below 500), including
+    # the farthest one -- which the old ~200km reach would have left completely untouched.
+    assert np.all(delta < 0.0)
+    assert delta[0] < delta[1] < delta[2] < 0.0  # subsidence weakens with distance

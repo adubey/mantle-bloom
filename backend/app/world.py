@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import boundary, climate, erosion, gaps, geometry, line_regrid, mantle, merge_split, reassign
+from . import bathymetry, boundary, climate, erosion, gaps, geometry, line_regrid, mantle, merge_split, reassign
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -135,7 +135,8 @@ def step_world(world: World, years: float) -> None:
     based on the world's current climate (see erosion.py) -- rain/sheet erosion and
     weathering, the other half of the weather<->geology coupling from climate.py's own
     terrain-influences-weather mechanics (lapse rate, mountain wind deflection, orographic
-    rain shadow)."""
+    rain shadow) -- and relaxes submerged continental crust toward a shelf-or-deep-water
+    target based on distance to the nearest land (see bathymetry.py)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
@@ -146,6 +147,7 @@ def step_world(world: World, years: float) -> None:
         world.log_event(message)
 
     erosion.apply_erosion(world, years)
+    bathymetry.apply_bathymetry(world, years)
 
     world.steps_since_regularize += 1
     run_regularize_this_step = world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS

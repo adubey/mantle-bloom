@@ -17,6 +17,7 @@
 - [Plate Inspector](#plate-inspector)
 - [Climate](#climate)
 - [Erosion](#erosion)
+- [Bathymetry](#bathymetry)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -179,8 +180,10 @@ crust type, and how far the effect reaches (and its shape with distance) differs
   (50km).
 - **Divergent** -> elevation relaxes exponentially toward a ridge (`oceanic`,
   `DIVERGENT_RIDGE_TARGET_M = -1500`) or rift (`continental`, `DIVERGENT_RIFT_TARGET_M =
-  -200`) target -- new crust forming at the boundary. Unchanged: fades from 1 at zero
-  distance to 0 at `FAR_THRESHOLD_RAD` (~200km), same as before.
+  -200`) target -- new crust forming at the boundary. Oceanic ridge spreading is unchanged
+  (fades from 1 at zero distance to 0 at `FAR_THRESHOLD_RAD`, ~200km); continental rifting
+  reaches much farther (`RIFT_RANGE_RAD`, 300km) -- stretching and thinning the crust
+  subsides land well beyond the fault line itself, not just right at it.
 - **Structural growth/shrink**, applied independently at each line's two ends (the true
   edge of that line's territory, since lines are contiguous by construction): if divergent
   and the gap has opened past `EXTEND_THRESHOLD_RAD`, insert new nodes at target spacing --
@@ -885,6 +888,36 @@ after boundary evolution and topology changes, every step (not gated by the peri
 regularize/gap-fill/reassign cadence) -- a deliberate cost/fidelity tradeoff: climate
 computation adds real per-step latency (roughly doubling a step's cost), accepted in
 exchange for erosion responding smoothly every step rather than arriving in periodic bursts.
+
+<a id="bathymetry"></a>
+## Bathymetry (`bathymetry.py`)
+
+Nothing else pulls submerged continental crust toward any particular depth once it goes
+underwater -- generation-time noise can put a continental node a few hundred meters below
+sea level, and rifting (see [Boundary evolution](#boundary-evolution)) can push a node deep
+underwater without any further constraint on where it settles. This module is a slow
+background relaxation (same exponential-toward-a-target style as boundary.py's own divergent
+relaxation) pulling every submerged (`elevation <= 0`) continental node toward one of two
+targets, chosen by distance to the nearest land node (`elevation > 0`, any plate -- this is a
+geographic coastline-proximity question, not a plate-boundary one):
+
+- Within `SHELF_RANGE_RAD` (200km): `SHELF_TARGET_M` (-100m) -- the continental shelf.
+- Beyond it: `DEEP_CONTINENTAL_TARGET_M` (-3000m) -- genuinely deep water, though still
+  shallower than oceanic crust's own abyssal depth (`plates.BASE_OCEANIC_M = -3800`).
+
+Deliberately continental-only: oceanic crust's average depth already comes from its
+generation-time baseline and nothing erodes or otherwise drifts it away on its own
+(erosion.py explicitly excludes ocean nodes from both its sources), so it doesn't need a
+parallel correction. Relaxes at `BATHYMETRY_RELAX_RATE_PER_MYR` (0.3, slower than
+`boundary.DIVERGENT_RELAX_RATE_PER_MYR`'s 0.5 -- a passive equilibration of already-
+submerged, non-actively-deforming crust, not an active tectonic process). Runs every step,
+right after erosion.
+
+Confirmed directly on a 60 Myr run: submerged continental nodes within 200km of land
+averaged -400m (still relaxing toward -100m -- shoreline nodes keep moving as coastlines
+shift, so they rarely reach full equilibrium), nodes beyond 200km averaged -2869m (close to
+the -3000m target, since deep-water nodes are disturbed far less often); rendered, this
+shows up as a visibly lighter shelf band hugging every coastline.
 
 <a id="known-simplifications"></a>
 ## Known simplifications
