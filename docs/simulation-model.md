@@ -7,9 +7,10 @@
 - [Initial plate generation](#initial-plate-generation)
 - [Mantle flow](#mantle-flow)
 - [Boundary evolution](#boundary-evolution)
-- [Garbage collection](#garbage-collection)
+- [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage (gap-filling)](#gap-filling)
+- [Boundary point reassignment](#reassignment)
 - [Projections](#projections)
 - [Render image](#render-image)
 - [Rotating the view](#rotating-the-view)
@@ -178,18 +179,18 @@ transform.
   boundaries and destroyed at convergent ones, as literal point insertion/deletion -- there's
   no plate-sim-style resampling step that can lose or duplicate it.
 
-<a id="garbage-collection"></a>
-## Garbage collection (`line_regrid.py`)
+<a id="line-regularization"></a>
+## Line regularization (`line_regrid.py`)
 
 Per-step boundary evolution only ever touches a line's two ends, so interior spacing stays
 regular on its own during ordinary convergent/divergent motion -- but a *transform* boundary
 shears nodes along a line without inserting or deleting anything, which can leave spacing
-uneven. Every `GC_INTERVAL_STEPS` calls to `step_world` (default 5), any line whose gaps
-have drifted past `IRREGULARITY_TOLERANCE` (1.5x target spacing, either direction) gets a
-fresh evenly-spaced node set across its *existing* extent -- the two endpoints are preserved
-exactly, since GC never changes where a line's physical edge is, only how regularly it's
-sampled -- with elevation re-interpolated onto the new nodes (`np.interp`, 1D since it's
-along a single already-ordered curve, not 2D scattered-data interpolation).
+uneven. Every `REGULARIZE_INTERVAL_STEPS` calls to `step_world` (default 5), any line whose
+gaps have drifted past `IRREGULARITY_TOLERANCE` (1.5x target spacing, either direction) gets
+a fresh evenly-spaced node set across its *existing* extent -- the two endpoints are
+preserved exactly, since this never changes where a line's physical edge is, only how
+regularly it's sampled -- with elevation re-interpolated onto the new nodes (`np.interp`, 1D
+since it's along a single already-ordered curve, not 2D scattered-data interpolation).
 
 <a id="merge-and-split"></a>
 ## Merge and split (`merge_split.py`)
@@ -285,11 +286,11 @@ can spread sideways along its existing rows, but it never gains a whole new row 
 own local pole, and territory a fully-subducted neighbor vacated isn't automatically
 reclaimed. Both leave literal gaps: sphere regions no plate currently covers.
 
-Every `line_regrid.GC_INTERVAL_STEPS` calls (the same cadence as garbage collection),
-`gaps.fill_gaps` sweeps a global lattice (`plates.iter_local_lattice` in the identity frame,
-reused as a plain lat/lon sweep purely for this one-off detection query), finds every
-candidate point farther than `COVERAGE_RADIUS_RAD` from any plate's nearest node, and
-clusters the results (`scipy.sparse.csgraph.connected_components` over a k-d-tree radius
+Every `line_regrid.REGULARIZE_INTERVAL_STEPS` calls (the same cadence as line
+regularization), `gaps.fill_gaps` sweeps a global lattice (`plates.iter_local_lattice` in the
+identity frame, reused as a plain lat/lon sweep purely for this one-off detection query),
+finds every candidate point farther than `COVERAGE_RADIUS_RAD` from any plate's nearest node,
+and clusters the results (`scipy.sparse.csgraph.connected_components` over a k-d-tree radius
 graph). Clusters smaller than `MIN_GAP_POINTS` are left alone -- ordinary growth lag that
 boundary.py's per-line extension already closes on its own.
 
@@ -304,7 +305,9 @@ Each remaining cluster is resolved one of two ways:
   a plate grow toward its own pole or reclaim vacated territory.
 - **No plate dominates and no young plate qualifies**: the cluster becomes a brand new
   plate -- new crust genuinely forming in open space between separating plates, not
-  arbitrarily assigned to one side.
+  arbitrarily assigned to one side. `fill_gaps` returns one event message per newly spawned
+  plate (`world.step_world` logs each to `World.events`); absorption isn't logged, since it
+  grows a plate that already exists rather than adding or removing one.
 
 **Keeping this gradual.** An absorb only claims the part of a gap within `GROWTH_RING_RAD`
 of the plate's *existing* nodes (one ring per pass, not an entire possibly-huge cluster at
@@ -325,6 +328,47 @@ rotating almost identically to its neighbors. Letting a recently-created plate c
 meaningful (not necessarily dominant) share of its own neighborhood for a few passes after
 it's created breaks that chain -- it gets a chance to consolidate the rift it was born into
 before being treated as just another equal competitor.
+
+<a id="reassignment"></a>
+## Boundary point reassignment (`reassign.py`)
+
+Boundary evolution only ever grows or shrinks a line's two *ends* -- it never revisits
+whether an *interior* node still actually belongs to the plate carrying it. Enough shearing
+along a transform boundary, or a slow rotational drift, can leave a node geometrically
+embedded in a neighboring plate's own territory while its data still lives on its original
+plate's line. `reassign.reassign_misplaced_points` finds and fixes these.
+
+For every node, it finds that node's `NEIGHBOR_COUNT` (4) nearest neighbors across the whole
+world (not just its own plate). If at least `MIN_FOREIGN_NEIGHBORS` (3) of them belong to the
+same other plate, the node is misplaced and gets moved:
+
+- **Which line.** Among the *target* plate's lines, the closest one to the node is picked as
+  the destination -- but instead of searching every line the target plate owns, it checks
+  only the lines its own matching neighbors already sit on. Since those neighbors are, by
+  construction, some of the node's closest points in the whole world, the line they're on is
+  almost always the actual closest one too; this turns an O(lines-in-target-plate) search
+  into an O(1-3) one.
+- **Snapping onto it.** An `ElevationLine` is only ever defined at one fixed `phi`, so "on
+  line A" and "phi equals A's phi" are the same statement. The node's local phi (in the
+  target plate's frame) is overridden to A's phi -- its theta is left as computed, so this is
+  a small shift, not a resample, consistent with the node having already been established as
+  geometrically close to A.
+- **Elevation.** Interpolated as a straight average of the node's own prior elevation and
+  whichever existing node on line A sits nearest it in theta.
+
+Every node's fate is decided from one snapshot (a single global k-d tree built once at the
+start of the pass) and applied in two batched passes afterward -- all removals from source
+lines, then all insertions into destination lines -- rather than mutating plates
+mid-decision, so one node's move can't perturb another node's neighbor query within the same
+pass. Logged to `World.events` as one message per (source plate, destination plate) pair with
+a count, e.g. "3 points reassigned from plate 2 to plate 5 (boundary cleanup)."
+
+**Cadence.** Runs periodically (`REASSIGN_INTERVAL_STEPS`, default 5, its own counter
+`World.steps_since_reassign`) but deliberately never the same step as `gaps.fill_gaps` (see
+`world.step_world`): both are whole-sphere, cross-plate structural passes, and running them
+together would mean each one's "which plate owns what" picture could already be stale by the
+time it acts, from the other having just spawned, grown, or reassigned territory out from
+under it.
 
 <a id="projections"></a>
 ## Projections (`projections.py`)

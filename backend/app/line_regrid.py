@@ -1,4 +1,4 @@
-"""Periodic line regularization ("garbage collection").
+"""Periodic line regularization.
 
 Per-step boundary evolution (boundary.py) only ever touches the two ends of a line --
 inserting at target spacing when growing, deleting when shrinking -- so interior spacing
@@ -6,8 +6,8 @@ stays regular on its own. What it can't fix is spacing that's drifted at a *tran
 boundary (nodes sheared along the line without insertion/deletion) or after several steps'
 worth of end-growth at a slightly different rate than the line's original spacing. This
 module re-derives a fresh evenly-spaced node set spanning each line's *existing* extent
-(the two endpoints are preserved exactly -- GC never changes where a line's physical edge
-is, only how regularly it's sampled) and interpolates elevation onto it.
+(the two endpoints are preserved exactly -- regularizing never changes where a line's
+physical edge is, only how regularly it's sampled) and interpolates elevation onto it.
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate
 if TYPE_CHECKING:
     from .world import World
 
-GC_INTERVAL_STEPS = 5
-IRREGULARITY_TOLERANCE = 1.5  # trigger GC on a line if any gap exceeds this multiple of target
+REGULARIZE_INTERVAL_STEPS = 5
+IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
 
 
 def needs_regularizing(line: ElevationLine) -> bool:
@@ -48,12 +48,12 @@ def regularize_line(line: ElevationLine) -> ElevationLine:
     return ElevationLine(phi=line.phi, theta=new_theta, elevation=new_elevation)
 
 
-def garbage_collect_plate(plate: Plate) -> None:
+def regularize_plate_lines(plate: Plate) -> None:
     plate.lines = [
         regularize_line(line) if needs_regularizing(line) else line for line in plate.lines
     ]
 
 
-def garbage_collect_world(world: "World") -> None:
+def regularize_world_lines(world: "World") -> None:
     for plate in world.plates:
-        garbage_collect_plate(plate)
+        regularize_plate_lines(plate)

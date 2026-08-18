@@ -7,9 +7,9 @@ fully-subducted plate isn't automatically reclaimed by its neighbors (see plates
 docstring and docs/simulation-model.md for the underlying per-line design). Both leave
 literal gaps: sphere area no plate currently covers.
 
-This module finds those gaps periodically (same cadence as line_regrid's garbage
-collection, see world.step_world) and resolves each one of two ways depending on whether one
-plate dominates its border:
+This module finds those gaps periodically (same cadence as line_regrid's line
+regularization, see world.step_world) and resolves each one of two ways depending on whether
+one plate dominates its border:
 
 - One plate accounts for most of the gap's border (DOMINANT_BORDER_FRACTION), or, failing
   that, a *young* plate (age_steps <= YOUNG_PLATE_AGE_STEPS) has a meaningful share of it
@@ -96,7 +96,7 @@ MAX_ABSORB_NODES_PER_PLATE_PER_CALL = 160
 # Giving a recently-created plate first claim on its own neighborhood (even without an
 # outright majority) breaks that chain: it gets a few passes to consolidate the rift it was
 # born into before being treated as just another equal competitor.
-YOUNG_PLATE_AGE_STEPS = 4 * line_regrid.GC_INTERVAL_STEPS
+YOUNG_PLATE_AGE_STEPS = 4 * line_regrid.REGULARIZE_INTERVAL_STEPS
 YOUNG_PLATE_MIN_BORDER_FRACTION = 0.3
 
 # Sweeping in the identity frame reuses plates.iter_local_lattice as a plain global lat/lon
@@ -255,18 +255,20 @@ def _spawn_plate_from_gap(world: "World", gap_points: np.ndarray, rng: np.random
     return plate
 
 
-def fill_gaps(world: "World") -> None:
+def fill_gaps(world: "World") -> list[str]:
     """Find every sphere region no plate currently covers and resolve it (absorb into a
     single bordering plate, or spawn a new one). Mutates world.plates/world.next_plate_id
-    in place."""
+    in place. Returns one human-readable event message per newly spawned plate, for the UI's
+    event console -- absorption isn't logged, since it grows a plate that already exists
+    rather than adding or removing one (see world.step_world for where these get logged)."""
     existing_points, existing_owner = _all_existing_points(world)
     if len(existing_points) == 0:
-        return
+        return []
     existing_tree = cKDTree(existing_points)
 
     gap_points = _find_gap_points(existing_tree)
     if len(gap_points) == 0:
-        return
+        return []
 
     labels = _cluster(gap_points, CLUSTER_RADIUS_RAD)
     rng = np.random.default_rng((world.seed, world.gap_fill_calls))
@@ -291,3 +293,7 @@ def fill_gaps(world: "World") -> None:
             new_plates.append(_spawn_plate_from_gap(world, cluster_points, rng))
 
     world.plates.extend(new_plates)
+    return [
+        f"Plate {plate.plate_id} ({plate.crust_type}) formed from an uncovered gap."
+        for plate in new_plates
+    ]

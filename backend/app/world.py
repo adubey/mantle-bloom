@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import boundary, gaps, geometry, line_regrid, mantle, merge_split
+from . import boundary, gaps, geometry, line_regrid, mantle, merge_split, reassign
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -22,7 +22,11 @@ class World:
     plates: list[Plate] = field(default_factory=list)
     mantle_centers: list[mantle.ConvectionCenter] = field(default_factory=list)
     elapsed_years: float = 0.0
-    steps_since_gc: int = 0
+    steps_since_regularize: int = 0
+    # Separate from steps_since_regularize (and deliberately never triggered on the same
+    # step -- see step_world) so reassign.py's whole-sphere neighbor query never runs against
+    # a plate layout gaps.fill_gaps just changed out from under it, or vice versa.
+    steps_since_reassign: int = 0
     next_plate_id: int = 0
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
@@ -114,10 +118,14 @@ def step_world(world: World, years: float) -> None:
     colliding continental plates merge (at most one per step, only after a sustained
     50-100 Myr collision -- see merge_split.py), and plates whose flow field no longer fits
     one rigid rotation well can split; any resulting events are logged to world.events for
-    the UI's console. Every `line_regrid.GC_INTERVAL_STEPS` calls, also fills any
+    the UI's console. Every `line_regrid.REGULARIZE_INTERVAL_STEPS` calls, also fills any
     sphere-coverage gaps (a plate growing toward its own pole, or territory a subducted
-    plate left unclaimed -- see gaps.py) and regularizes any line whose interior spacing
-    has drifted (garbage collection)."""
+    plate left unclaimed -- see gaps.py, which now logs each newly spawned plate) and
+    regularizes any line whose interior spacing has drifted (line_regrid.py). On steps that
+    aren't a regularize/gap-fill step, also periodically reassigns any node that's ended up
+    geometrically embedded in a neighboring plate's own territory (see reassign.py) --
+    deliberately never the same step as the gap-fill pass above, so each one's picture of
+    "which plate owns what" stays current when it acts."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
@@ -127,8 +135,16 @@ def step_world(world: World, years: float) -> None:
     for message in merge_split.apply_topology_changes(world, years):
         world.log_event(message)
 
-    world.steps_since_gc += 1
-    if world.steps_since_gc >= line_regrid.GC_INTERVAL_STEPS:
-        gaps.fill_gaps(world)
-        line_regrid.garbage_collect_world(world)
-        world.steps_since_gc = 0
+    world.steps_since_regularize += 1
+    run_regularize_this_step = world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS
+    if run_regularize_this_step:
+        for message in gaps.fill_gaps(world):
+            world.log_event(message)
+        line_regrid.regularize_world_lines(world)
+        world.steps_since_regularize = 0
+
+    world.steps_since_reassign += 1
+    if not run_regularize_this_step and world.steps_since_reassign >= reassign.REASSIGN_INTERVAL_STEPS:
+        for message in reassign.reassign_misplaced_points(world):
+            world.log_event(message)
+        world.steps_since_reassign = 0

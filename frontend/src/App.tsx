@@ -147,9 +147,10 @@ export default function App() {
 
   // Self-scheduling rather than setInterval: each step must finish before the next is
   // scheduled, so a slow step (larger worlds take longer -- a step that also lands on a
-  // garbage-collection/gap-fill interval, or triggers a merge/split, can take noticeably
-  // longer than a routine one) can never overlap with the next tick. A fixed-cadence
-  // setInterval would keep firing regardless of whether the previous request had returned.
+  // regularize/gap-fill or reassignment interval, or triggers a merge/split, can take
+  // noticeably longer than a routine one) can never overlap with the next tick. A
+  // fixed-cadence setInterval would keep firing regardless of whether the previous request
+  // had returned.
   useEffect(() => {
     if (!playing) return;
     let cancelled = false;

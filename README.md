@@ -12,8 +12,8 @@ distortion, lossy resampling of plate-carried terrain).
 - **[docs/architecture.md](docs/architecture.md)** -- stack, request flow, how world state
   is held.
 - **[docs/simulation-model.md](docs/simulation-model.md)** -- the actual model: plate-local
-  frames, mantle flow, boundary evolution, garbage collection, merge/split, projections, and
-  why each simplification was an acceptable line to draw.
+  frames, mantle flow, boundary evolution, line regularization, merge/split, boundary point
+  reassignment, projections, and why each simplification was an acceptable line to draw.
 - **[docs/api-reference.md](docs/api-reference.md)** -- the three backend routes.
 
 ## Getting started

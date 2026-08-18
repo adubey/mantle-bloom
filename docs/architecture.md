@@ -46,7 +46,9 @@ Time-stepping:
   POST /world/step  { years }
   → world.step_world(world, years): refit Euler poles, rotate, evolve boundaries, apply
     topology changes (at most one collision merge per step, only after a sustained 50-100
-    Myr collision -- see simulation-model.md#merge-and-split), occasionally garbage-collect
+    Myr collision -- see simulation-model.md#merge-and-split), occasionally fill gaps and
+    regularize line spacing, and -- on the steps in between -- reassign misplaced boundary
+    points (see simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
 When the "Plate Inspector" map view is active, the browser instead (also on every
@@ -82,9 +84,11 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `mantle_centers` -- the convection-cell flow field (see
   [simulation-model.md#mantle-flow](simulation-model.md#mantle-flow)), fixed for the life of
   the world.
-- `elapsed_years`, `steps_since_gc`, `next_plate_id` (a monotonically increasing counter so
-  a plate created by a split never collides with an existing id, even after other plates
-  have been removed).
+- `elapsed_years`, `steps_since_regularize`, `steps_since_reassign` (the two periodic-
+  maintenance cadence counters -- see simulation-model.md#line-regularization and
+  simulation-model.md#reassignment, deliberately never both due on the same step),
+  `next_plate_id` (a monotonically increasing counter so a plate created by a split never
+  collides with an existing id, even after other plates have been removed).
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
@@ -134,11 +138,15 @@ mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pol
 boundary.py         per-step boundary adjacency detection (k-d tree against every other
                      plate's current nodes), convergent/divergent/transform classification,
                      elevation deltas, line growth/shrinkage
-line_regrid.py       periodic line-spacing regularization ("garbage collection")
+line_regrid.py       periodic line-spacing regularization
 merge_split.py       plate consumption, sustained-collision continental merging (50-100 Myr,
                      at most one per step), mantle-flow-driven splitting, event log messages
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
-                     plate or spawns a new one where no plate dominates
+                     plate or spawns a new one where no plate dominates, event log messages
+                     for newly spawned plates
+reassign.py          periodic pass (staggered against gaps.py's cadence) that hands a node
+                     over to a neighboring plate once most of its nearest neighbors belong to
+                     it, event log messages for each reassignment
 world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh per
                      render on their own fixed equirectangular grid (see

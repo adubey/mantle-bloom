@@ -49,17 +49,17 @@ def test_regularize_line_short_line_is_a_no_op():
     assert result is line
 
 
-def test_garbage_collection_runs_periodically_during_stepping():
+def test_regularization_runs_periodically_during_stepping():
     world = generate_world(seed=30, num_plates=8)
-    assert world.steps_since_gc == 0
-    for i in range(line_regrid.GC_INTERVAL_STEPS - 1):
+    assert world.steps_since_regularize == 0
+    for i in range(line_regrid.REGULARIZE_INTERVAL_STEPS - 1):
         step_world(world, years=1_000_000)
-        assert world.steps_since_gc == i + 1
+        assert world.steps_since_regularize == i + 1
     step_world(world, years=1_000_000)
-    assert world.steps_since_gc == 0  # just ran GC and reset
+    assert world.steps_since_regularize == 0  # just ran regularization and reset
 
 
-def test_lines_stay_well_formed_after_many_steps_with_gc():
+def test_lines_stay_well_formed_after_many_steps_with_regularization():
     world = generate_world(seed=31, num_plates=8)
     for _ in range(25):
         step_world(world, years=2_000_000)
