@@ -46,9 +46,10 @@ Time-stepping:
   POST /world/step  { years }
   → world.step_world(world, years): refit Euler poles, rotate, evolve boundaries, apply
     topology changes (at most one collision merge per step, only after a sustained 50-100
-    Myr collision -- see simulation-model.md#merge-and-split), occasionally fill gaps and
-    regularize line spacing, and -- on the steps in between -- reassign misplaced boundary
-    points (see simulation-model.md#reassignment)
+    Myr collision -- see simulation-model.md#merge-and-split), erode elevation from the
+    world's current climate (every step -- see simulation-model.md#erosion), and
+    occasionally fill gaps and regularize line spacing, and -- on the steps in between --
+    reassign misplaced boundary points (see simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
 When the "Plate Inspector" map view is active, the browser instead (also on every
@@ -148,9 +149,14 @@ reassign.py          periodic pass (staggered against gaps.py's cadence) that ha
                      over to a neighboring plate once most of its nearest neighbors belong to
                      it, event log messages for each reassignment
 world.py             World/Plate orchestration: generate_world, step_world
-climate.py           temperature/wind/currents/humidity/precipitation, computed fresh per
-                     render on their own fixed equirectangular grid (see
-                     simulation-model.md#climate)
+climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
+                     their own fixed equirectangular grid -- every render, and now every
+                     step too, to drive erosion.py (see simulation-model.md#climate)
+erosion.py           every-step rain/sheet erosion + weathering, elevation deltas driven by
+                     climate.py's current fields (see simulation-model.md#erosion) -- the
+                     weather-influences-geology half of the coupling; climate.py's own
+                     elevation-reading mechanics (lapse rate, mountain wind deflection,
+                     orographic rain shadow) are the other half
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate)

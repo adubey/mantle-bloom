@@ -16,6 +16,7 @@
 - [Rotating the view](#rotating-the-view)
 - [Plate Inspector](#plate-inspector)
 - [Climate](#climate)
+- [Erosion](#erosion)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -779,7 +780,8 @@ first and closing the loop only for the final consumer-facing fields:
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) -- no zonal
     latitude-climatology baseline (equator/mid-latitude wet bands), cut deliberately.
-    Computed but consumed by nothing else yet (no rivers, no vegetation).
+    Feeds erosion (see [Erosion](#erosion)) but still nothing else (no rivers, no
+    vegetation).
 
 **Scope, explicitly decided.** Kept out: river outflow feeding currents (no rivers exist),
 deep currents, precipitation's zonal climatology baseline. Included, even though richer than
@@ -797,6 +799,75 @@ sphere) is structurally different from the render grid's ragged lattice. Heatmap
 technique with their own stop tables; wind/ocean-currents draw subsampled arrows (numpy-
 vectorized projection/direction math, looped only for the unavoidable per-arrow PIL draw
 calls), and ocean currents additionally marks each sampled swell point with a small circle.
+
+<a id="erosion"></a>
+## Erosion (`erosion.py`)
+
+The other half of the weather<->geology coupling: [Climate](#climate) already has terrain
+influencing weather (lapse-rate cooling, mountain wind deflection, orographic rain shadow --
+all ported from plate-sim alongside the rest of its climate pipeline). This module is the
+new direction, weather influencing terrain, ported from plate-sim's own erosion model but
+cut down to the two sources that don't depend on infrastructure mantle-bloom doesn't have.
+
+**Scope cut from plate-sim's five erosion sources.** River/channelized erosion and
+deposition both need downhill flow-routing (plate-sim's `flow_target`/D8 accumulation),
+which assumes persistent per-cell state on a fixed grid -- building that over a rotating,
+irregular per-plate lattice is a separate, harder problem, not attempted here. Glacier
+erosion is dropped (no glacier field exists). Weathering's vegetation boost is dropped (no
+vegetation field exists, same reasoning as climate.py's own "deliberately not ported"
+list). What's left -- rain/sheet erosion and weathering -- are the two sources that need
+neither. Erosion here is one-way: material is removed, never redeposited elsewhere, so
+there's no persistent sediment field either.
+
+**The mapping problem, and why it's easier in this direction than the reverse.** climate.py
+already solves node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor
+resample) to build its grid from the current plate state. This module needs the reverse,
+grid -> node-cloud: a node's world position converts straight to (lat, lon)
+(`geometry.xyz_to_latlon`) and then to a climate-grid (row, col) by direct arithmetic --
+mirroring `climate._build_grid`'s own convention exactly -- no tree, no resampling needed at
+all, since (unlike the irregular node cloud) the climate grid is already a plain regular
+lattice.
+
+**Slope is the one genuinely new piece of math.** climate.py's grid gets slope for free
+from neighbor-index differences; an irregular node cloud has no such structure. This reuses
+`reassign.py`'s whole-world cKDTree pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
+nearest neighbors per node) instead: for each node, the elevation drop to the *lowest* of
+its nearest neighbors (0 if the node is already a local minimum -- matching plate-sim's own
+"slope to lowest neighbor" definition), divided by the real great-circle distance to that
+neighbor. This is a genuine dimensionless rise/run, unlike plate-sim's own slope --
+documented there as a known simplification, "elevation drop per grid step, not
+drop-over-real-distance" -- which is why `RAIN_EROSION_COEFFICIENT` isn't plate-sim's own
+value (tuned against meters-of-drop-per-grid-cell, a very different scale); it was instead
+picked by order-of-magnitude reasoning against `boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
+(800 m/Myr) and checked against real slope/precipitation distributions from an actual run.
+`WEATHERING_COEFFICIENT` ports closer to plate-sim's own value, since wind speed uses the
+identical scale in both codebases (`MERIDIONAL_BASE_SPEED = 6.0` in each).
+
+**The two formulas**, both computed per-node then subtracted directly from `line.elevation`
+(clamped to `MIN_ELEVATION_M`/`MAX_ELEVATION_M`, exactly like `boundary.py`'s own
+uplift/trench deltas -- no resampling, no topology change, so this can't interact with line
+regularization or point reassignment at all):
+
+- **Rain/sheet erosion** = `RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000) *
+  dt_myr`.
+- **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr`, where
+  `humidity_norm` is humidity clipped to `[0, 1]` against `HUMIDITY_REFERENCE`.
+- Both zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used everywhere
+  else) -- rain/weathering erosion is a subaerial process, matching plate-sim's own
+  `np.where(is_ocean, 0.0, ...)` masking of these same two sources.
+- The *combined* result is capped at the node's own drop-to-lowest-neighbor (in meters, not
+  the normalized slope) -- the same cap plate-sim applies, so a single step can't erode a
+  node *past* the valley it drains into and carve a new, lower pit.
+
+**Cadence: every step, no lag.** Unlike plate-sim (whose erosion reads the *previous* step's
+climate, because its climate is only computed once per step, late in a long pipeline, after
+erosion has already run), this module calls `climate.compute_climate(world)` fresh,
+immediately before using it -- climate.py is already fully stateless and cheap enough to
+call on demand, so there's no staleness to reason about. Runs in `world.step_world` right
+after boundary evolution and topology changes, every step (not gated by the periodic
+regularize/gap-fill/reassign cadence) -- a deliberate cost/fidelity tradeoff: climate
+computation adds real per-step latency (roughly doubling a step's cost), accepted in
+exchange for erosion responding smoothly every step rather than arriving in periodic bursts.
 
 <a id="known-simplifications"></a>
 ## Known simplifications
@@ -827,10 +898,11 @@ than an oversight:
   -- a coarser approximation than the rest of the model, not a bug, and a possible future
   refinement (e.g. weighting by directional alignment with the plate's own motion rather
   than raw border presence).
-- **No hydrology (rivers/lakes), erosion, or biomes/vegetation yet.** Climate itself is now
-  modeled (see [Climate](#climate)) -- precipitation is measured but, per that section, feeds
-  nothing else yet, since river/lake/vegetation systems that would consume it don't exist.
-  Explicitly out of scope for this v1 -- see plate-sim's own model for the shape that work
+- **No hydrology (rivers/lakes) or biomes/vegetation yet.** Climate is modeled (see
+  [Climate](#climate)) and now feeds erosion (see [Erosion](#erosion): rain/sheet erosion
+  and weathering, both ported from plate-sim), but river/lake/vegetation systems -- and the
+  channelized erosion, glacier erosion, and deposition that would depend on them -- remain
+  explicitly out of scope for this v1. See plate-sim's own model for the shape that work
   would take once revisited on this sphere-native foundation.
 - **Single in-memory world, no persistence.** See
   [World state](architecture.md#world-state).

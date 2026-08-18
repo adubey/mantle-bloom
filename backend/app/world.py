@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import boundary, gaps, geometry, line_regrid, mantle, merge_split, reassign
+from . import boundary, erosion, gaps, geometry, line_regrid, mantle, merge_split, reassign
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -125,7 +125,11 @@ def step_world(world: World, years: float) -> None:
     aren't a regularize/gap-fill step, also periodically reassigns any node that's ended up
     geometrically embedded in a neighboring plate's own territory (see reassign.py) --
     deliberately never the same step as the gap-fill pass above, so each one's picture of
-    "which plate owns what" stays current when it acts."""
+    "which plate owns what" stays current when it acts. Every step also erodes elevation
+    based on the world's current climate (see erosion.py) -- rain/sheet erosion and
+    weathering, the other half of the weather<->geology coupling from climate.py's own
+    terrain-influences-weather mechanics (lapse rate, mountain wind deflection, orographic
+    rain shadow)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
@@ -134,6 +138,8 @@ def step_world(world: World, years: float) -> None:
     world.elapsed_years += years
     for message in merge_split.apply_topology_changes(world, years):
         world.log_event(message)
+
+    erosion.apply_erosion(world, years)
 
     world.steps_since_regularize += 1
     run_regularize_this_step = world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS

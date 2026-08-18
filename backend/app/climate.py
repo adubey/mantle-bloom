@@ -49,12 +49,15 @@ See `compute_climate` for the concrete call order.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, plates
-from .world import World
+
+if TYPE_CHECKING:
+    from .world import World
 
 # ---------------------------------------------------------------------------------------
 # Grid
