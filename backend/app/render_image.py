@@ -114,8 +114,10 @@ def elevation_colors(elevations: np.ndarray) -> np.ndarray:
 # bounds (climate.py's land/air temperature can reach LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C =
 # 35, so the hottest cells do clamp to solid black, same as the coldest already clamp to
 # solid white -- an intentional saturation effect, not a range that quietly clips real data
-# without visual indication).
-_TEMPERATURE_STOP_C = np.linspace(-60.0, 30.0, 9)
+# without visual indication). green/yellow/red/black are pinned to specific requested
+# values (0/10/20/30); violet/indigo/blue fill the -60..0 span evenly, orange sits at the
+# midpoint of yellow and red since no exact value was requested for it.
+_TEMPERATURE_STOP_C = np.array([-60.0, -45.0, -30.0, -15.0, 0.0, 10.0, 15.0, 20.0, 30.0])
 _TEMPERATURE_STOP_RGB = np.array(
     [
         (255, 255, 255),  # white, -60
@@ -753,7 +755,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     if view == "temperature":
-        ticks = [(-60.0, "-60°"), (-30.0, "-30°"), (0.0, "0°"), (30.0, "30°")]
+        ticks = [(-60.0, "-60°"), (0.0, "0°"), (10.0, "10°"), (20.0, "20°"), (30.0, "30°")]
         gradient = (temperature_colors, float(_TEMPERATURE_STOP_C[0]), float(_TEMPERATURE_STOP_C[-1]), ticks)
         _draw_legend(image, draw, height, pixel_scale, "Temperature (°C)", gradient=gradient)
     elif view == "humidity":
