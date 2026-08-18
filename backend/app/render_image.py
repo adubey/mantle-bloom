@@ -109,13 +109,24 @@ def elevation_colors(elevations: np.ndarray) -> np.ndarray:
     return np.clip(np.round(np.stack(channels, axis=-1)), 0, 255).astype(np.uint8)
 
 
-# Diverging cold -> hot, degrees C. Covers climate.py's land/air temperature range
-# comfortably (LAND_TEMP_MIN_C=-60 to LAND_TEMP_MIN_C+LAND_TEMP_RANGE_C=35).
-_TEMPERATURE_STOP_C = np.array([-60, -30, -10, 0, 10, 20, 30, 40], dtype=float)
+# Spectral rainbow, degrees C: white at the cold end, violet -> indigo -> blue -> green ->
+# yellow -> orange -> red through the middle, black at the hot end -- white/black are hard
+# bounds (climate.py's land/air temperature can reach LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C =
+# 35, so the hottest cells do clamp to solid black, same as the coldest already clamp to
+# solid white -- an intentional saturation effect, not a range that quietly clips real data
+# without visual indication).
+_TEMPERATURE_STOP_C = np.linspace(-60.0, 30.0, 9)
 _TEMPERATURE_STOP_RGB = np.array(
     [
-        (30, 20, 90), (40, 60, 170), (70, 130, 220), (150, 200, 230),
-        (230, 230, 140), (240, 170, 60), (210, 80, 40), (140, 20, 20),
+        (255, 255, 255),  # white, -60
+        (148, 0, 211),  # violet
+        (75, 0, 130),  # indigo
+        (0, 0, 255),  # blue
+        (0, 200, 0),  # green
+        (255, 255, 0),  # yellow
+        (255, 140, 0),  # orange
+        (255, 0, 0),  # red
+        (0, 0, 0),  # black, +30
     ],
     dtype=float,
 )
@@ -130,7 +141,9 @@ _HUMIDITY_STOP_RGB = np.array(
 )
 
 # Dry (tan) -> wet (dark blue), mm/year. climate.py's precipitation_mm typically runs 0-2000+.
-_PRECIPITATION_STOP_MM = np.array([0, 250, 600, 1200, 2000, 3000], dtype=float)
+# Stops scaled 2x from an earlier 0-3000 range so the legend's max reads 6000, keeping the
+# same relative color distribution rather than just extending the darkest stop's clamp range.
+_PRECIPITATION_STOP_MM = np.array([0, 500, 1200, 2400, 4000, 6000], dtype=float)
 _PRECIPITATION_STOP_RGB = np.array(
     [
         (180, 160, 100), (200, 190, 110), (140, 180, 90), (60, 140, 90), (40, 90, 150), (20, 40, 120),
@@ -740,7 +753,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     if view == "temperature":
-        ticks = [(-60.0, "-60°"), (-20.0, "-20°"), (20.0, "20°"), (40.0, "40°")]
+        ticks = [(-60.0, "-60°"), (-30.0, "-30°"), (0.0, "0°"), (30.0, "30°")]
         gradient = (temperature_colors, float(_TEMPERATURE_STOP_C[0]), float(_TEMPERATURE_STOP_C[-1]), ticks)
         _draw_legend(image, draw, height, pixel_scale, "Temperature (°C)", gradient=gradient)
     elif view == "humidity":
