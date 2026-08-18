@@ -675,7 +675,10 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     padding_px = PADDING_PX * pixel_scale
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    fields = climate.compute_climate(world)
+    # Reuses whatever erosion.py already computed this step (see World.climate_cache)
+    # instead of triggering a second ~50ms recomputation, rather than calling
+    # climate.compute_climate directly.
+    fields = climate.compute_climate_cached(world)
     grid_h, grid_w = fields.elevation_m.shape
     flat_xyz = fields.world_xyz.reshape(-1, 3)
 

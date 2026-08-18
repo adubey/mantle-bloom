@@ -235,3 +235,48 @@ def test_air_temperature_pulled_toward_nearby_ocean_over_far_inland():
     # Land right next to the ocean should read warmer (pulled toward it) than land far away.
     assert air_temperature[row, near_coast_col] > air_temperature[row, far_inland_col]
     assert air_temperature[row, far_inland_col] < ocean_temperature[row, far_inland_col]
+
+
+def test_compute_climate_cached_populates_and_reuses_cache():
+    world = _world(seed=2, num_plates=8, steps=0)
+    assert world.climate_cache is None
+
+    fields = climate.compute_climate_cached(world)
+    assert world.climate_cache is fields  # populated by the call itself
+
+    # A second call must reuse the same object, not compute a fresh one -- confirmed by
+    # identity (`is`), not just equal values, since a fresh computation would also produce
+    # equal-looking fields for an unchanged world.
+    again = climate.compute_climate_cached(world)
+    assert again is fields
+
+
+def test_compute_climate_cached_ignores_stale_cache_by_design():
+    # Deliberately not a correctness guarantee -- see climate.py's own docstring. A manually
+    # planted sentinel proves compute_climate_cached really does trust whatever's already in
+    # the cache rather than checking it against current world state.
+    world = _world(seed=3, num_plates=8, steps=0)
+    sentinel = climate.compute_climate(world)
+    world.climate_cache = sentinel
+    assert climate.compute_climate_cached(world) is sentinel
+
+
+def test_step_world_populates_climate_cache_via_erosion():
+    world = _world(seed=4, num_plates=8, steps=0)
+    assert world.climate_cache is None
+    step_world(world, years=1_000_000)
+    assert world.climate_cache is not None
+
+
+def test_stats_and_render_reuse_the_same_step_cache():
+    from app import render_image, stats
+
+    world = _world(seed=5, num_plates=8, steps=1)
+    cached = world.climate_cache
+    assert cached is not None
+
+    stats.compute_stats(world)
+    assert world.climate_cache is cached  # compute_stats didn't replace it with a fresh one
+
+    render_image.render_png(world, "eckert4", "temperature", 200, 120)
+    assert world.climate_cache is cached  # neither did rendering a climate view

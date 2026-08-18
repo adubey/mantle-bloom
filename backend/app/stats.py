@@ -1,11 +1,14 @@
 """Aggregate world statistics for the frontend's Stats panel.
 
-Fully stateless, same philosophy as climate.py: every field here is recomputed from scratch
-from the *current* world state on every call, via climate.compute_climate's fixed
-equirectangular grid (so land/ocean, temperature, and precipitation stats all agree with
-what the climate map views actually display) -- no history, no caching. History across time
-is a frontend concern (see App.tsx), matching plate-sim's own precedent: the backend has no
-analogous per-step storage, only a stateless snapshot endpoint.
+Same philosophy as climate.py: every field here is derived from the *current* world state
+on every call, via climate.py's fixed equirectangular grid (so land/ocean, temperature, and
+precipitation stats all agree with what the climate map views actually display). Uses
+`climate.compute_climate_cached` rather than `compute_climate` directly, reusing whatever
+erosion.py already computed this step instead of triggering a second recomputation -- see
+that function's own docstring for what "cached" means here (same-turn reuse, up to one step
+stale, not a correctness mechanism). History across time is a frontend concern (see
+App.tsx), matching plate-sim's own precedent: the backend has no analogous per-step storage,
+only a snapshot endpoint.
 
 Land vs ocean, and land/ocean fractions, use climate.py's own `is_ocean` mask (elevation <=
 sea level, sea level = 0.0 -- see plates.py, there's no separate named SEA_LEVEL constant)
@@ -30,7 +33,7 @@ def _min_max_mean(values: np.ndarray) -> tuple[float | None, float | None, float
 
 
 def compute_stats(world: World) -> dict:
-    fields = climate.compute_climate(world)
+    fields = climate.compute_climate_cached(world)
     is_ocean = fields.is_ocean
     is_land = ~is_ocean
     total = is_ocean.size

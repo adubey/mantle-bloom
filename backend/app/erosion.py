@@ -149,13 +149,21 @@ def apply_erosion(world: "World", years: float) -> None:
     rain/sheet erosion (precipitation x slope) plus weathering (wind speed x humidity).
     Mutates world.plates' line elevations in place; never touches node positions or line
     topology, so this can't interact with line regularization or point reassignment at all
-    (both of those are purely about node density/position/ownership)."""
+    (both of those are purely about node density/position/ownership).
+
+    Always computes climate fresh (never reuses World.climate_cache itself -- this runs
+    right after this step's own tectonic/topology changes, so a cache from a previous step
+    would already be stale for erosion's own purposes) and stores the result back onto
+    World.climate_cache, so /world/stats and a climate map render don't each also trigger
+    their own recomputation this same turn -- see climate.compute_climate_cached."""
+    fields = climate.compute_climate(world)
+    world.climate_cache = fields
+
     points, elevation, line_refs = _gather_nodes(world)
     n = len(points)
     if n == 0:
         return
 
-    fields = climate.compute_climate(world)
     height, width = fields.precipitation_mm.shape
     row, col = _climate_grid_indices(points, height, width)
     precipitation_mm = fields.precipitation_mm[row, col]

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import boundary, erosion, gaps, geometry, line_regrid, mantle, merge_split, reassign
+from . import boundary, climate, erosion, gaps, geometry, line_regrid, mantle, merge_split, reassign
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -40,6 +40,12 @@ class World:
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
+    # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
+    # a fresh one every step regardless -- and reused by /world/stats and a climate map
+    # render so they don't each trigger their own (~50ms) recomputation the same turn. See
+    # climate.compute_climate_cached and climate.py's own module docstring for why reusing
+    # a value that's up to one step stale is an accepted simplification here, not a bug.
+    climate_cache: climate.ClimateFields | None = None
 
     def log_event(self, message: str) -> None:
         self.events.append((self.elapsed_years, message))

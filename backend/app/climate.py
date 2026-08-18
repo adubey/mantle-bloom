@@ -11,14 +11,24 @@ difference gradients, and land-excluding neighbor averaging, none of which work 
 lattice or an irregular point cloud. This grid exists *only* here; it is never stored on
 `World` and never touches `world.plates`.
 
-**Fully stateless.** Every field here is recomputed from scratch on every call to
-`compute_climate`, from whatever the *current* plate elevation happens to be (sampled via the
-same `cKDTree` nearest-neighbor technique `_render_grid_arrays` already uses) -- mirroring
-the render grid's own "recompute from scratch every call" philosophy, and
-matching how plate-sim itself documents climate as something that "re-derives almost
-everything downstream of elevation from scratch" every step, unlike elevation itself. No new
-per-step cost: `step_world` is completely unaware this module exists. Climate is only ever
-computed when a climate-related view is actually being rendered.
+**Fully stateless.** `compute_climate` itself always recomputes everything from scratch, from
+whatever the *current* plate elevation happens to be (sampled via the same `cKDTree`
+nearest-neighbor technique `_render_grid_arrays` already uses) -- mirroring the render grid's
+own "recompute from scratch every call" philosophy, and matching how plate-sim itself
+documents climate as something that "re-derives almost everything downstream of elevation
+from scratch" every step, unlike elevation itself.
+
+**Computed every step, not just on render.** erosion.py needs a live climate snapshot every
+step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
+that computation happens whether or not a climate view is currently being rendered. To avoid
+also recomputing it a second and third time that same turn -- once more for a climate map
+render, once more for `/world/stats` -- erosion.py stores its result on `World.climate_cache`,
+and `compute_climate_cached` (below) is what render_image.py/stats.py call instead of
+`compute_climate` directly, reusing that cached value when present. This is a same-turn
+convenience cache, not a correctness mechanism: it's never invalidated mid-step (a later
+gap-fill/regularize/reassign pass this same step won't retrigger a recompute), so the cached
+fields can be up to one step stale relative to the world's very latest mutation -- an accepted
+simplification, not a bug, since nothing here needs the cache to be exactly current.
 
 **Ported from plate-sim** (`~/plate-sim`, a sibling project, `docs/simulation-model.md`),
 adapted from its equirectangular-array grid (`grid.py`'s `latlon_axes`) to this module's own
@@ -878,3 +888,17 @@ def compute_climate(world: World, height: int = GRID_HEIGHT, width: int = GRID_W
         swell_rows=swell_rows,
         swell_cols=swell_cols,
     )
+
+
+def compute_climate_cached(world: World) -> ClimateFields:
+    """Same result as `compute_climate(world)` (default height/width -- the only resolution
+    anything in this codebase actually requests), but reuses `World.climate_cache` when
+    erosion.py has already populated it this step, instead of recomputing (see module
+    docstring for why that's a safe simplification, not a staleness bug). Populates the cache
+    itself when it's empty (e.g. a `/world/stats` call before the world has ever been
+    stepped), so a second same-turn caller still benefits."""
+    if world.climate_cache is not None:
+        return world.climate_cache
+    fields = compute_climate(world)
+    world.climate_cache = fields
+    return fields
