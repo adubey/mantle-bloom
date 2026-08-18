@@ -43,11 +43,8 @@ def test_reassign_moves_a_point_surrounded_by_a_foreign_plate():
     plate_1 = _plate_with_filler(1, [1.0, 0.0, 0.0], [foreign_line])
     world = World(seed=0, plates=[plate_0, plate_1])
 
-    events = reassign.reassign_misplaced_points(world)
+    reassign.reassign_misplaced_points(world)
 
-    # One summary line naming every plate touched and the total point count -- not one
-    # line per (source, destination) pair, which could flood the console on a busy pass.
-    assert events == ["Boundary cleanup on plates 0, 1, 1 points reassigned."]
     updated_0 = next(p for p in world.plates if p.plate_id == 0)
     updated_1 = next(p for p in world.plates if p.plate_id == 1)
     own_result = next(l for l in updated_0.lines if np.isclose(l.phi, 0.0))
@@ -71,9 +68,8 @@ def test_reassign_leaves_well_placed_points_alone():
     plate_1 = _plate_with_filler(1, [1.0, 0.0, 0.0], [line_b])
     world = World(seed=0, plates=[plate_0, plate_1])
 
-    events = reassign.reassign_misplaced_points(world)
+    reassign.reassign_misplaced_points(world)
 
-    assert events == []
     assert np.array_equal(next(p for p in world.plates if p.plate_id == 0).lines[0].theta, line_a.theta)
     assert np.array_equal(next(p for p in world.plates if p.plate_id == 1).lines[0].theta, line_b.theta)
 
@@ -86,7 +82,8 @@ def test_reassign_noop_with_too_few_nodes():
         lines=[ElevationLine(phi=0.0, theta=np.array([0.0, 0.1]), elevation=np.array([1.0, 2.0]))],
     )
     world = World(seed=0, plates=[tiny])
-    assert reassign.reassign_misplaced_points(world) == []
+    reassign.reassign_misplaced_points(world)  # must not raise
+    assert tiny.lines[0].theta.tolist() == [0.0, 0.1]  # untouched
 
 
 def test_reassign_runs_periodically_and_never_on_a_regularize_step():

@@ -157,6 +157,5 @@ def step_world(world: World, years: float) -> None:
 
     world.steps_since_reassign += 1
     if not run_regularize_this_step and world.steps_since_reassign >= reassign.REASSIGN_INTERVAL_STEPS:
-        for message in reassign.reassign_misplaced_points(world):
-            world.log_event(message)
+        reassign.reassign_misplaced_points(world)
         world.steps_since_reassign = 0

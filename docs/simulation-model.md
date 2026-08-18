@@ -379,10 +379,9 @@ Every node's fate is decided from one snapshot (a single global k-d tree built o
 start of the pass) and applied in two batched passes afterward -- all removals from source
 lines, then all insertions into destination lines -- rather than mutating plates
 mid-decision, so one node's move can't perturb another node's neighbor query within the same
-pass. Logged to `World.events` as a single summary line naming every plate touched (as
-source or destination) and the total point count moved, e.g. "Boundary cleanup on plates 2,
-3, 5, 7 points reassigned." -- not one line per (source, destination) pair, which could
-otherwise flood the console on a pass touching many plates at once.
+pass. Not logged to `World.events` -- on a busy boundary this can touch many plates and
+hundreds of points in a single pass, which flooded the console with little useful signal
+even collapsed into one summary line per pass.
 
 **Cadence.** Runs periodically (`REASSIGN_INTERVAL_STEPS`, default 5, its own counter
 `World.steps_since_reassign`) but deliberately never the same step as `gaps.fill_gaps` (see

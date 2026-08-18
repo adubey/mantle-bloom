@@ -77,17 +77,16 @@ def _find_target_line(plate: Plate, candidate_line_indices: set[int], point_worl
     return best_index
 
 
-def reassign_misplaced_points(world: "World") -> list[str]:
+def reassign_misplaced_points(world: "World") -> None:
     """Find every node whose NEIGHBOR_COUNT nearest neighbors are mostly owned by a
     different plate and hand it over -- see this module's docstring for the full algorithm.
-    Mutates world.plates' lines in place. Returns a single summary event message (or an
-    empty list if nothing moved) naming every plate involved and the total point count --
-    not one line per (source, destination) pair, which could otherwise flood the UI's event
-    console on a pass that touches many plates at once."""
+    Mutates world.plates' lines in place. Not logged to the UI's event console -- this runs
+    every REASSIGN_INTERVAL_STEPS steps and, on a busy boundary, can touch many plates and
+    hundreds of points per pass, which flooded the console with little useful signal."""
     points, elevations, owners = _gather_nodes(world)
     n = len(points)
     if n <= NEIGHBOR_COUNT:
-        return []
+        return
 
     tree = cKDTree(points)
     _, neighbor_idx = tree.query(points, k=NEIGHBOR_COUNT + 1)
@@ -149,7 +148,7 @@ def reassign_misplaced_points(world: "World") -> list[str]:
         transfer_counts[pair_key] = transfer_counts.get(pair_key, 0) + 1
 
     if not transfer_counts:
-        return []
+        return
 
     for (plate_id, line_index), remove_indices in remove_by_source.items():
         plate = plate_by_id[plate_id]
@@ -171,8 +170,3 @@ def reassign_misplaced_points(world: "World") -> list[str]:
         plate.lines[line_index] = ElevationLine(
             phi=line.phi, theta=combined_theta[order], elevation=combined_elevation[order]
         )
-
-    plate_ids = sorted({pid for pair in transfer_counts for pid in pair})
-    total_points = sum(transfer_counts.values())
-    plate_list = ", ".join(str(pid) for pid in plate_ids)
-    return [f"Boundary cleanup on plates {plate_list}, {total_points} points reassigned."]
