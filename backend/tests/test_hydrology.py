@@ -319,3 +319,140 @@ def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_step
     # -- just confirms boundary.py didn't wipe the whole world's ice to exactly 0.
     assert glacier_total_1 > 0.0
     assert glacier_total_2 > 0.0
+
+
+def _normalize(v):
+    v = np.asarray(v, dtype=float)
+    return v / np.linalg.norm(v)
+
+
+def _river_inspector_fields():
+    # A hand-built 7-node HydrologyFields for the River Inspector's grouping logic, not run
+    # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
+    # anyway). Two separate is_river-classified networks:
+    #   Network A -- a Y-confluence: 0 and 1 (two headwaters) both flow into 2, which flows
+    #   into 3 (the mouth, highest flow_accum in the group), which flows onward into ocean
+    #   node 4.
+    #   Network B -- a single lone node 5, sitting at its own sink with lake_depth above the
+    #   visible threshold (so it should read as ending in a lake, not the ocean).
+    # Node 6 is ordinary land with flow but deliberately *not* in the is_river mask, to check
+    # grouping doesn't pull in non-river neighbors.
+    points = np.array(
+        [
+            _normalize([1.0, 0.05, 0.0]),  # 0: headwater
+            _normalize([1.0, -0.05, 0.02]),  # 1: headwater
+            _normalize([1.0, 0.0, 0.03]),  # 2: confluence
+            _normalize([1.0, 0.0, 0.06]),  # 3: mouth
+            _normalize([1.0, 0.0, 0.09]),  # 4: ocean
+            _normalize([-1.0, 0.0, 0.0]),  # 5: lone river node, ends at a lake
+            _normalize([0.0, 1.0, 0.0]),  # 6: non-river land
+        ]
+    )
+    n = len(points)
+    elevation = np.array([100.0, 110.0, 80.0, 50.0, -10.0, 60.0, 40.0])
+    is_ocean = np.array([False, False, False, False, True, False, False])
+    flow_target = np.array([2, 2, 3, 4, -1, -1, -1])
+    flow_accum = np.array([10.0, 12.0, 25.0, 40.0, 0.0, 5.0, 0.0])
+    is_river = np.array([True, True, True, True, False, True, False])
+    lake_depth = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0])  # node 5 well above LAKE_MIN_VISIBLE_DEPTH_M
+    zeros = np.zeros(n)
+    return hydrology.HydrologyFields(
+        points=points,
+        elevation=elevation,
+        is_ocean=is_ocean,
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        flow_target=flow_target,
+        flow_accum=flow_accum,
+        water_deposited=zeros.copy(),
+        filled_elevation=zeros.copy(),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=is_river,
+        lake_depth=lake_depth,
+        glacier_depth=zeros.copy(),
+        line_refs=[],
+    )
+
+
+def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
+    fields = _river_inspector_fields()
+    rivers = hydrology.group_rivers(fields)
+    assert len(rivers) == 2
+
+    network_a = next(r for r in rivers if len(r.member_idx) == 4)
+    assert sorted(network_a.member_idx.tolist()) == [0, 1, 2, 3]
+    assert network_a.mouth_idx == 3  # highest flow_accum (40) in the group
+    assert network_a.flow_rate == 40.0
+    # Two headwaters (0 and 1) merging into one mainstem -- one tributary joins it.
+    assert network_a.num_tributaries == 1
+
+
+def test_group_rivers_classifies_mouth_type_ocean_vs_lake():
+    fields = _river_inspector_fields()
+    rivers = hydrology.group_rivers(fields)
+
+    network_a = next(r for r in rivers if len(r.member_idx) == 4)
+    assert network_a.mouth_type == "ocean"  # mouth's flow_target (4) is an ocean node
+
+    network_b = next(r for r in rivers if len(r.member_idx) == 1)
+    assert network_b.mouth_idx == 5
+    assert network_b.mouth_type == "lake"  # lake_depth[5] = 5.0 > LAKE_MIN_VISIBLE_DEPTH_M
+    assert network_b.num_tributaries == 0  # a single unbranched node has no tributaries
+
+
+def test_group_rivers_excludes_non_river_nodes():
+    fields = _river_inspector_fields()
+    rivers = hydrology.group_rivers(fields)
+    all_members = {i for r in rivers for i in r.member_idx.tolist()}
+    assert 4 not in all_members  # ocean node, never is_river
+    assert 6 not in all_members  # land node deliberately not classified as a river
+
+
+def test_group_rivers_on_no_rivers_returns_empty_list():
+    fields = _river_inspector_fields()
+    fields.is_river = np.zeros(len(fields.is_river), dtype=bool)
+    assert hydrology.group_rivers(fields) == []
+
+
+def test_river_at_finds_the_network_nearest_a_query_point():
+    fields = _river_inspector_fields()
+    rivers = hydrology.group_rivers(fields)
+    network_a_id = next(i for i, r in enumerate(rivers) if len(r.member_idx) == 4)
+    network_b_id = next(i for i, r in enumerate(rivers) if len(r.member_idx) == 1)
+
+    near_a = hydrology.river_at(fields, rivers, fields.points[0])
+    assert near_a == network_a_id
+
+    near_b = hydrology.river_at(fields, rivers, fields.points[5])
+    assert near_b == network_b_id
+
+
+def test_river_at_returns_none_when_there_are_no_rivers():
+    fields = _river_inspector_fields()
+    assert hydrology.river_at(fields, [], fields.points[0]) is None
+
+
+def test_group_rivers_on_a_real_monotonic_chain_is_one_unbranched_network():
+    # Reuses the same 12-node monotonic-descent fixture as the compute_hydrology end-to-end
+    # test above -- a single chain has no confluence, so grouping it should yield exactly one
+    # network with zero tributaries, mouthing into the ocean.
+    d = 0.002
+    theta = d * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+
+    fields = hydrology.compute_hydrology(world, np.full(12, 800.0), np.full(12, 15.0), years=1_000_000)
+    rivers = hydrology.group_rivers(fields)
+
+    assert len(rivers) == 1
+    assert rivers[0].num_tributaries == 0
+    assert rivers[0].mouth_type == "ocean"
+    assert fields.is_ocean[fields.flow_target[rivers[0].mouth_idx]]
+
+
+def test_compute_river_speed_increases_with_slope_and_flow():
+    base = hydrology.compute_river_speed(np.array([0.01]), np.array([1.0]))[0]
+    steeper = hydrology.compute_river_speed(np.array([0.1]), np.array([1.0]))[0]
+    more_flow = hydrology.compute_river_speed(np.array([0.01]), np.array([100.0]))[0]
+    assert steeper > base
+    assert more_flow > base

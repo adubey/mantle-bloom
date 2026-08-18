@@ -9,15 +9,16 @@
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library, the same choice plate-sim made and the same reasoning: the frontend's whole job
   is decoding a PNG the backend already rendered and drawing it (`ctx.drawImage`), which a
-  library would be more ceremony than the problem needs. Two exceptions: `rotation.ts` — a
+  library would be more ceremony than the problem needs. Three exceptions: `rotation.ts` — a
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
-  Plate Inspector view (`PlateInspector.tsx`), which renders and drives its whole interaction
-  client-side from raw JSON rather than a baked PNG (see
-  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector)). Neither makes
-  this a mapping library, and the real detailed rendering stays entirely server-side for every
-  other view.
+  Plate Inspector (`PlateInspector.tsx`) and River Inspector (`RiverInspector.tsx`) views,
+  which each render and drive their whole interaction client-side from raw JSON rather than a
+  baked PNG (see [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector)
+  and [simulation-model.md#river-inspector](simulation-model.md#river-inspector)). None of
+  this makes it a mapping library, and the real detailed rendering stays entirely server-side
+  for every other view.
 
 ## Request flow
 
@@ -62,6 +63,15 @@ generate/step, but never on a projection/rotation-only change) fetches:
   → every plate's outline + metadata as JSON, not a PNG -- see api-reference.md and
     simulation-model.md#plate-inspector. Clicking a plate sends its unprojected true
     lat/lon to GET /world/plate_at, a nearest-node lookup answering "which plate is here."
+
+When the "River Inspector" map view is active, the browser instead fetches (same cadence):
+  GET /world/rivers
+  → every distinct river network's flow-edge segments + mouth metadata as JSON, not a PNG --
+    see api-reference.md and simulation-model.md#river-inspector. Grouped fresh from
+    world.hydrology_cache on every call (no persistent river identity across steps -- see
+    hydrology.group_rivers), empty before the first step. Clicking a river sends its
+    unprojected true lat/lon to GET /world/river_at, the same nearest-node hit-test pattern
+    as plate_at.
 ```
 
 The frontend never holds simulation state, and holds only one small piece of *rendering*
@@ -176,7 +186,11 @@ hydrology.py         every-step flow routing over the geology node cloud (a k-ne
                      descent flow direction, downstream flow accumulation, glacier
                      accumulation/melt/flow -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
-                     simulation-model.md#hydrology and simulation-model.md#glaciation)
+                     simulation-model.md#hydrology and simulation-model.md#glaciation); also
+                     groups the flat is_river mask into distinct drainage networks
+                     (group_rivers) and answers the River Inspector's click hit-test
+                     (river_at), on demand rather than every step (see
+                     simulation-model.md#river-inspector)
 bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
                      (near land) or deep-water (far from land) target elevation (see
                      simulation-model.md#bathymetry)

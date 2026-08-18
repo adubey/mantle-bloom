@@ -171,3 +171,64 @@ non-finite input, `404` if no world has been generated yet.
 
 `plate_id` is `null` only if every plate is empty (shouldn't happen via the API, but a
 freshly-constructed `World` with no plates at all has no node to be nearest to).
+
+## `GET /world/rivers`
+
+The "River Inspector" map mode's data source (see
+[simulation-model.md#river-inspector](simulation-model.md#river-inspector)) -- same "plain
+JSON, client renders it" contract as `/world/plates`; `frontend/src/RiverInspector.tsx`
+renders and drives the interaction itself. Un-rotated/true-frame throughout, same as
+`/world/plates`. Regrouped fresh from `world.hydrology_cache` on every call (see
+`hydrology.group_rivers`) rather than persisted, so `river_id` is only meaningful against this
+same response -- not a stable identity across steps. `rivers` is `[]` before the first step
+(`hydrology_cache` is `None` until `erosion.py` runs once). `404` if no world has been
+generated yet.
+
+```json
+{
+  "elapsed_years": 2000000,
+  "rivers": [
+    {
+      "river_id": 0,
+      "num_nodes": 42,
+      "segments": [[[0.98, 0.12, -0.05], [0.97, 0.13, -0.05]], ["..."]],
+      "mouth_xyz": [0.91, 0.28, -0.04],
+      "mouth_type": "ocean",
+      "flow_rate": 3821.4,
+      "speed": 2.67,
+      "num_tributaries": 3
+    }
+  ]
+}
+```
+
+- `segments` is a flat list of flow edges (a node and its own `flow_target`), each a pair of
+  world-space points -- not an ordered polyline, since a river network can branch. Every
+  coordinate in this response is rounded to 6 decimal places before serializing, same as
+  `/world/plates`.
+- `mouth_xyz` is the network's own highest-`flow_accum` node (flow only accumulates downhill,
+  so nothing else in the network can out-flow it) -- what the River Inspector draws a ring
+  around for the selected river.
+- `mouth_type` is `"ocean"`, `"lake"` (checked first -- a river can end at a still-draining
+  lake), or `"other"` (a dry interior sink with no lake standing there).
+- `flow_rate` is `flow_accum` at the mouth; `speed` is `hydrology.compute_river_speed`
+  evaluated there. Both are stylized, unitless quantities -- meaningful only relative to other
+  rivers in the same world, not real physical units (see
+  [simulation-model.md#hydrology](simulation-model.md#hydrology)).
+- `num_tributaries` counts separate headwater branches feeding the network -- see
+  [simulation-model.md#river-inspector](simulation-model.md#river-inspector) for the exact
+  definition (an original one; no precedent to port).
+
+## `GET /world/river_at?lat_deg=0&lon_deg=0`
+
+The River Inspector's click hit-test: which river network owns the node nearest
+`(lat_deg, lon_deg)` -- same true-frame contract as `/world/plate_at`. `river_id` is an index
+into the most recent `/world/rivers` response, not a persistent id. `400` for non-finite
+input, `404` if no world has been generated yet.
+
+```json
+{ "river_id": 2 }
+```
+
+`river_id` is `null` if there are no rivers at all this step (before the first step, or a
+world with no land steep/wet enough to route any).

@@ -92,6 +92,15 @@ GLACIER_FLOW_RATE_PER_MYR = 0.15
 GLACIER_MAX_FLOW_FRACTION = 0.5
 GLACIER_VISIBLE_DEPTH_M = 10.0
 
+# River speed -- a stylized, unitless quantity (faster where slope is steeper and where more
+# water has accumulated), same formula/constants as plate-sim's own compute_river_speed;
+# meaningful only relative to other nodes in the same world, not a real physical speed. Lives
+# here (not erosion.py, which only *consumes* it for its deposition threshold) to match
+# plate-sim's own module boundary, and so the River Inspector's per-river mouth speed (see
+# group_rivers) can share it without a hydrology.py -> erosion.py reverse import.
+RIVER_SPEED_COEFFICIENT = 4.0
+RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
+
 
 @dataclass
 class HydrologyFields:
@@ -248,6 +257,13 @@ def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target
     run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
     run_m = np.maximum(run_m, 1.0)
     return np.where(has_target, np.clip(drop, 0.0, None) / run_m, 0.0)
+
+
+def compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarray:
+    """Stylized, unitless river speed -- faster where slope is steeper and where more water
+    has accumulated -- same formula/constants as plate-sim's own compute_river_speed;
+    meaningful only relative to other nodes in the same world, not a real physical speed."""
+    return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
 
 
 def route_downstream(
@@ -428,3 +444,126 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     )
     fields.lake_depth = update_lakes(fields, lake_depth_adjusted, water_deposited, years, is_accumulating)
     return fields
+
+
+@dataclass
+class RiverInfo:
+    """One connected drainage network within `HydrologyFields.is_river` -- the River
+    Inspector's unit of selection. There's no such grouping concept anywhere else in this
+    module; `is_river` is otherwise just a flat per-node boolean. `member_idx` indexes back
+    into the *same* HydrologyFields arrays (points/elevation/flow_accum/flow_target/...) this
+    was built from, so a caller (main.py) resolves geometry/segments straight from those
+    rather than this dataclass duplicating them."""
+
+    member_idx: np.ndarray  # (M,) indices into the source HydrologyFields arrays
+    mouth_idx: int  # index into the same arrays -- the network's max-flow_accum member
+    mouth_type: str  # "ocean" | "lake" | "other" (a dry interior sink)
+    flow_rate: float  # flow_accum at the mouth
+    speed: float  # compute_river_speed at the mouth
+    num_tributaries: int  # separate headwater branches feeding this network, see group_rivers
+
+
+def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
+    """Groups the flat `is_river` node mask into distinct connected drainage networks, via
+    union-find over `flow_target` edges restricted to nodes that are `is_river` on *both*
+    ends -- mirroring plate-sim's own extract_river_segments. This is exact (not a heuristic)
+    because flow_accum is monotonically non-decreasing downhill: once a node clears
+    RIVER_FLOW_PERCENTILE, every node further downstream in its own chain does too, so two
+    river nodes joined by a flow_target edge always belong to the same real drainage network,
+    and two nodes in different connected components never do.
+
+    A network's **mouth** is always its own max-flow_accum member -- flow only accumulates
+    downhill, so nothing in the group can out-flow it -- which also guarantees the mouth's
+    own `flow_target` (if any) points *outside* the group: a same-or-higher-flow_accum land
+    node downstream would itself have cleared the threshold and been unioned in already, so
+    the only things left outside are open ocean or a true dead-end sink.
+
+    **mouth_type** checks `lake_depth` first (a river can end at a still-spilling/draining
+    lake, which reads more usefully as `"lake"` than `"ocean"` even though it also has a
+    `flow_target`), then whether that `flow_target` lands on the ocean, else `"other"` (a dry
+    interior sink -- `flow_target == -1` with no lake standing there).
+
+    **num_tributaries** (no precedent in this codebase or plate-sim to follow -- an original
+    definition): counts each member's in-network in-degree (how many *other* members flow
+    directly into it); a member with in-degree 0 is a headwater -- a separate source stream
+    with nothing upstream of it in this network. A single unbranched channel has exactly one
+    headwater (itself) and therefore zero tributaries; each additional headwater is one more
+    distinct stream that joins the network somewhere along its course, so
+    `num_tributaries = headwater_count - 1`."""
+    river_idx = np.nonzero(fields.is_river)[0]
+    if len(river_idx) == 0:
+        return []
+
+    river_list = river_idx.tolist()
+    river_set = set(river_list)
+    flow_target_list = fields.flow_target.tolist()
+
+    parent = {i: i for i in river_list}
+
+    def find(x: int) -> int:
+        root = x
+        while parent[root] != root:
+            root = parent[root]
+        while parent[x] != root:
+            parent[x], x = root, parent[x]
+        return root
+
+    for i in river_list:
+        target = flow_target_list[i]
+        if target in river_set:
+            ra, rb = find(i), find(target)
+            if ra != rb:
+                parent[ra] = rb
+
+    groups: dict[int, list[int]] = {}
+    for i in river_list:
+        groups.setdefault(find(i), []).append(i)
+
+    slope_to_target = _slope_to_flow_target(fields.points, fields.elevation, fields.flow_target)
+
+    rivers: list[RiverInfo] = []
+    for members in groups.values():
+        member_idx = np.array(members, dtype=np.int64)
+        mouth_idx = int(member_idx[np.argmax(fields.flow_accum[member_idx])])
+
+        if fields.lake_depth[mouth_idx] > LAKE_MIN_VISIBLE_DEPTH_M:
+            mouth_type = "lake"
+        elif fields.flow_target[mouth_idx] >= 0:
+            mouth_type = "ocean"
+        else:
+            mouth_type = "other"
+
+        member_set = set(members)
+        in_degree = {m: 0 for m in members}
+        for m in members:
+            t = flow_target_list[m]
+            if t in member_set:
+                in_degree[t] += 1
+        headwater_count = sum(1 for m in members if in_degree[m] == 0)
+
+        rivers.append(
+            RiverInfo(
+                member_idx=member_idx,
+                mouth_idx=mouth_idx,
+                mouth_type=mouth_type,
+                flow_rate=float(fields.flow_accum[mouth_idx]),
+                speed=float(compute_river_speed(slope_to_target[mouth_idx], fields.flow_accum[mouth_idx])),
+                num_tributaries=max(0, headwater_count - 1),
+            )
+        )
+    return rivers
+
+
+def river_at(fields: HydrologyFields, rivers: list[RiverInfo], query_xyz: np.ndarray) -> int | None:
+    """Nearest-river-node lookup across every network's own member points -- the River
+    Inspector's click hit-test, mirroring plates.nearest_plate_id. Returns an index into
+    `rivers` (not a persistent id: rivers are regrouped fresh from the current
+    hydrology_cache on every request, see main.py), or None if there are no rivers this
+    step."""
+    if not rivers:
+        return None
+    all_idx = np.concatenate([r.member_idx for r in rivers])
+    owner = np.concatenate([np.full(len(r.member_idx), i, dtype=np.int64) for i, r in enumerate(rivers)])
+    tree = cKDTree(fields.points[all_idx])
+    _, nearest = tree.query(query_xyz.reshape(1, 3), k=1)
+    return int(owner[int(nearest[0])])

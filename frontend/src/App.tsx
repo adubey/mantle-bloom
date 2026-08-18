@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
-import { fetchPlates, fetchStats, generateWorld, renderWorld, stepWorld } from "./api";
-import type { MapView, PlateSummary, Projection, RenderResponse, WorldStats, WorldSummary } from "./api";
+import { fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld } from "./api";
+import type { MapView, PlateSummary, Projection, RenderResponse, RiverSummary, WorldStats, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
+import RiverInspector from "./RiverInspector";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import { IDENTITY_ROTATION } from "./rotation";
@@ -66,6 +67,13 @@ export default function App() {
   // world's lifetime (plate ids aren't stable across a regenerate), so it resets there too.
   const [platesData, setPlatesData] = useState<PlateSummary[]>([]);
   const [selectedPlateId, setSelectedPlateId] = useState<number | null>(null);
+  // River Inspector's own data (see RiverInspector.tsx) -- same true-frame/world-state-only
+  // refresh pattern as platesData. river_id is only meaningful against the most recent
+  // /world/rivers response (rivers are regrouped fresh every call, no persistent identity --
+  // see backend app/hydrology.py's group_rivers), so it's reset on every generate *and* step,
+  // not just generate like selectedPlateId.
+  const [riversData, setRiversData] = useState<RiverSummary[]>([]);
+  const [selectedRiverId, setSelectedRiverId] = useState<number | null>(null);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs, matching how plate-sim's own Stats feature builds its history entirely
@@ -81,7 +89,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "plateInspector") return; // that view never uses renderData -- see below
+    if (view === "plateInspector" || view === "riverInspector") return; // neither uses renderData -- see below
     try {
       const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
       setRenderData(data);
@@ -94,6 +102,15 @@ export default function App() {
     try {
       const data = await fetchPlates();
       setPlatesData(data.plates);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const refreshRivers = useCallback(async () => {
+    try {
+      const data = await fetchRivers();
+      setRiversData(data.rivers);
     } catch (e) {
       setError(String(e));
     }
@@ -121,15 +138,16 @@ export default function App() {
       const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg);
       setSummary(s);
       setSelectedPlateId(null);
+      setSelectedRiverId(null);
       setShowGenerateDialog(false);
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh, refreshPlates, recordStats]);
+  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -138,14 +156,15 @@ export default function App() {
     try {
       const s = await stepWorld(stepYears);
       setSummary(s);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), recordStats()]);
+      setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), recordStats()]);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, recordStats]);
+  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -155,6 +174,7 @@ export default function App() {
   }, []);
 
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
+  const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
 
   // Re-render with the current world whenever the projection, map view, or view rotation
   // changes -- all three are baked server-side into the returned image (see api.ts's
@@ -248,6 +268,7 @@ export default function App() {
               <option value="plates">Plates</option>
               <option value="platesDetail">Plates (details)</option>
               <option value="plateInspector">Plate Inspector</option>
+              <option value="riverInspector">River Inspector</option>
               <option value="elevation">Elevation</option>
               <option value="temperature">Temperature</option>
               <option value="wind">Wind</option>
@@ -297,6 +318,26 @@ export default function App() {
             </fieldset>
           )}
 
+          {mapView === "riverInspector" && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Selected river</legend>
+              {selectedRiver ? (
+                <div style={{ opacity: 0.9 }}>
+                  <div>id: {selectedRiver.river_id}</div>
+                  <div>ends at: {selectedRiver.mouth_type}</div>
+                  <div>flow rate: {selectedRiver.flow_rate.toFixed(1)}</div>
+                  <div>speed: {selectedRiver.speed.toFixed(2)}</div>
+                  <div>tributaries: {selectedRiver.num_tributaries}</div>
+                  <div>nodes: {selectedRiver.num_nodes}</div>
+                </div>
+              ) : (
+                <div style={{ opacity: 0.6 }}>
+                  {riversData.length > 0 ? "Click a river, or press Tab." : "No rivers yet -- step the world forward."}
+                </div>
+              )}
+            </fieldset>
+          )}
+
           {summary && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
@@ -324,6 +365,20 @@ export default function App() {
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
             />
+          ) : mapView === "riverInspector" ? (
+            <RiverInspector
+              rivers={riversData}
+              width={RENDER_WIDTH}
+              height={RENDER_HEIGHT}
+              displayWidth={DISPLAY_WIDTH}
+              displayHeight={DISPLAY_HEIGHT}
+              projection={projection}
+              rotation={rotation}
+              selectedRiverId={selectedRiverId}
+              onSelectRiver={setSelectedRiverId}
+              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+              onRotationCommitted={(newRotation) => setRotation(newRotation)}
+            />
           ) : (
             <MapCanvas
               imageBase64={renderData?.image_base64 ?? null}
@@ -340,7 +395,9 @@ export default function App() {
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
-              : "Press and hold, then drag the map to rotate it."}
+              : mapView === "riverInspector"
+                ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
+                : "Press and hold, then drag the map to rotate it."}
           </p>
         </div>
       </div>

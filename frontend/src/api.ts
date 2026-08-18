@@ -15,7 +15,8 @@ export type MapView =
   | "oceanCurrents"
   | "humidity"
   | "precipitation"
-  | "plateInspector";
+  | "plateInspector"
+  | "riverInspector";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -62,6 +63,30 @@ export interface PlateSummary {
 export interface PlatesResponse {
   elapsed_years: number;
   plates: PlateSummary[];
+}
+
+// River Inspector data -- same "raw JSON, client renders itself" philosophy as
+// PlatesResponse (see RiverInspector.tsx). `river_id` is only meaningful against the most
+// recent /world/rivers response -- rivers are regrouped fresh on every call, not given a
+// persistent identity across steps (see backend app/hydrology.py's group_rivers).
+export interface RiverSummary {
+  river_id: number;
+  num_nodes: number;
+  // Each entry is one flow edge (a node and its downstream flow_target) as a pair of world-
+  // space points -- a flat edge list, not an ordered polyline, since a river network can
+  // branch (see PlateInspector.tsx's segment-based river rendering for the same shape used
+  // server-side in render_image.py's _draw_rivers).
+  segments: [[number, number, number], [number, number, number]][];
+  mouth_xyz: [number, number, number];
+  mouth_type: "ocean" | "lake" | "other";
+  flow_rate: number;
+  speed: number;
+  num_tributaries: number;
+}
+
+export interface RiversResponse {
+  elapsed_years: number;
+  rivers: RiverSummary[];
 }
 
 // Stats panel data (see backend app/stats.py) -- a stateless snapshot of the *current* world;
@@ -164,4 +189,14 @@ export function fetchPlateAt(latDeg: number, lonDeg: number): Promise<{ plate_id
 
 export function fetchStats(): Promise<WorldStats> {
   return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
+}
+
+export function fetchRivers(): Promise<RiversResponse> {
+  return fetch(`${API_BASE}/world/rivers`).then(asJson<RiversResponse>);
+}
+
+// The River Inspector's click hit-test -- same true-frame contract as fetchPlateAt.
+export function fetchRiverAt(latDeg: number, lonDeg: number): Promise<{ river_id: number | null }> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/river_at?${params}`).then(asJson<{ river_id: number | null }>);
 }

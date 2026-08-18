@@ -20,6 +20,7 @@
 - [Bathymetry](#bathymetry)
 - [Hydrology (rivers and lakes)](#hydrology)
 - [Glaciation](#glaciation)
+- [River Inspector](#river-inspector)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -1132,6 +1133,76 @@ latitudes, visually distinct from both lakes and high-elevation terrain on the r
 population size and total ice depth fluctuate across steps as plates rotate glaciated nodes
 in and out of genuinely cold regions, rather than growing monotonically or vanishing
 outright.
+
+<a id="river-inspector"></a>
+## River Inspector
+
+A third interactive map mode, same "raw JSON, client renders it" philosophy as
+[Plate Inspector](#plate-inspector): `GET /world/rivers` returns every distinct river
+network's flow-edge segments plus mouth metadata as plain JSON, and
+`frontend/src/RiverInspector.tsx` renders and drives the interaction entirely client-side --
+reusing the same `rotationDrag.ts` gesture (rotation is shared with `MapCanvas`/
+`PlateInspector` via one lifted `App.tsx` state, so switching views preserves orientation),
+plus click-to-select and Tab/Shift+Tab to cycle through rivers.
+
+**There is no "a river" concept anywhere else in the codebase before this feature.**
+`hydrology.py`'s `is_river` is (and remains) a flat per-node boolean mask -- the top decile of
+land `flow_accum` -- with no grouping into distinct networks. `hydrology.group_rivers` adds
+exactly that grouping, via union-find over `flow_target` edges restricted to nodes that are
+`is_river` on *both* ends (mirroring plate-sim's own `extract_river_segments`). This is exact,
+not a heuristic: `flow_accum` is monotonically non-decreasing downhill, so once a node clears
+the top-decile threshold, every node further downstream in its own chain does too -- meaning
+two river nodes joined by a `flow_target` edge always belong to the same real drainage
+network, and two nodes in different connected components never do. Grouping is recomputed
+fresh from `world.hydrology_cache` on every `/world/rivers` (and `/world/river_at`) call
+rather than persisted -- `hydrology_cache` itself is already at most one step stale by design,
+and grouping it is cheap, so a `river_id` is only ever meaningful against the most recent
+`/world/rivers` response for that reason, not a stable identity across steps (unlike
+`plate_id`, which survives a plate's whole lifetime). `App.tsx` resets `selectedRiverId` on
+every step for the same reason, not just on generate.
+
+**A network's mouth is always its own max-`flow_accum` member** -- flow only accumulates
+downhill, so nothing in the group can out-flow it, which also guarantees the mouth's own
+`flow_target` (if any) points *outside* the group: a same-or-higher-`flow_accum` land node
+downstream would itself have cleared the threshold and been unioned in already, so the only
+things left outside are open ocean or a true dead-end sink. **`mouth_type`** checks
+`lake_depth` first (a river can end at a still-spilling/draining lake, which reads more
+usefully as `"lake"` than `"ocean"` even though it also has a `flow_target`), then whether
+that `flow_target` lands on the ocean, else `"other"` (a dry interior sink).
+
+**`num_tributaries` has no precedent in this codebase or plate-sim** -- an original
+definition, confirmed there's nothing to port. Counts each member's in-network in-degree (how
+many *other* members flow directly into it); a member with in-degree 0 is a headwater, a
+separate source stream with nothing upstream of it in this network. A single unbranched
+channel has exactly one headwater (itself) and zero tributaries; each additional headwater is
+one more distinct stream joining the network somewhere along its course, so
+`num_tributaries = headwater_count - 1`.
+
+**Speed** reuses `hydrology.compute_river_speed` (moved there from `erosion.py`, which only
+ever consumed it, to match plate-sim's own module boundary and let `group_rivers` share it
+without a `hydrology.py -> erosion.py` reverse import) evaluated at the mouth, against
+`_slope_to_flow_target`'s rise/run to the mouth's own `flow_target` -- the same slope
+definition glacier flow already uses, distinct from (but conceptually the same kind of
+quantity as) `erosion.py`'s own separate `SLOPE_NEIGHBOR_COUNT`-based slope.
+
+**Rendering**: every river is always drawn as a set of flow-edge line segments (a flat edge
+list, not an ordered polyline -- a network can branch), dim for every river and bright,
+thicker for the selected one, mirroring Plate Inspector's dim/bright split. Each segment is
+projected with the same "unwrap the second point's longitude relative to the first's own"
+technique `render_image.py`'s `_draw_rivers` already uses server-side (`_project_offset`),
+the two-point analogue of Plate Inspector's `projectLoop` (which unwraps a whole loop relative
+to its own center) -- needed because a naive independent projection of both endpoints can bow
+a short edge all the way across the map at the antimeridian seam. **The selected river's mouth
+draws a ring** (`ctx.arc`, a new drawing primitive Plate Inspector doesn't need at all),
+colored by `mouth_type` (`ocean`/`lake`/`other` each a distinct hue) so the endpoint
+classification is visible at a glance, not just in the sidebar text.
+
+**Click-to-select** is a server round trip (`GET /world/river_at`), the same nearest-node
+`cKDTree` hit-test pattern as `plate_at` (`hydrology.river_at`, searching every network's own
+member points at once) -- there's no shape to point-in-polygon test against, only a sparse
+node cloud, so this is the natural fit rather than a departure from the pattern. No baked-PNG
+elevation backdrop, matching Plate Inspector's own confirmed "the shapes are the whole visual"
+choice, rather than adding one just for this view.
 
 <a id="known-simplifications"></a>
 ## Known simplifications

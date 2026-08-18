@@ -37,6 +37,14 @@ def test_plate_at_before_generate_returns_404(client):
     assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
+def test_rivers_before_generate_returns_404(client):
+    assert client.get("/world/rivers").status_code == 404
+
+
+def test_river_at_before_generate_returns_404(client):
+    assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
+
+
 def test_stats_before_generate_returns_404(client):
     assert client.get("/world/stats").status_code == 404
 
@@ -226,6 +234,62 @@ def test_plate_at_rejects_non_finite_query(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 8})
     assert client.get("/world/plate_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_rivers_and_river_at_are_empty_before_the_first_step(client):
+    # hydrology_cache is None until erosion.py runs once (see World.hydrology_cache) --
+    # /world/rivers should degrade to an empty list rather than erroring, same spirit as
+    # /world/plates always having *something* right after generate.
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    resp = client.get("/world/rivers")
+    assert resp.status_code == 200
+    assert resp.json()["rivers"] == []
+    assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": 0}).json()["river_id"] is None
+
+
+def test_rivers_endpoint_returns_networks_with_expected_shape_after_stepping(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    for _ in range(3):
+        client.post("/world/step", json={"years": 2_000_000})
+
+    body = client.get("/world/rivers").json()
+    rivers = body["rivers"]
+    assert len(rivers) > 0  # seed 20 reliably produces rivers after 3 steps
+
+    seen_ids = set()
+    for river in rivers:
+        assert river["river_id"] not in seen_ids
+        seen_ids.add(river["river_id"])
+        assert river["num_nodes"] >= 1
+        assert len(river["mouth_xyz"]) == 3
+        assert river["mouth_type"] in ("ocean", "lake", "other")
+        assert river["flow_rate"] >= 0.0
+        assert river["speed"] >= 0.0
+        assert river["num_tributaries"] >= 0
+        for a, b in river["segments"]:
+            assert len(a) == 3 and len(b) == 3
+
+
+def test_river_at_finds_the_river_nearest_its_own_mouth(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    for _ in range(3):
+        client.post("/world/step", json={"years": 2_000_000})
+
+    rivers = client.get("/world/rivers").json()["rivers"]
+    target = rivers[0]
+    x, y, z = target["mouth_xyz"]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+
+    resp = client.get("/world/river_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
+    assert resp.status_code == 200
+    assert resp.json()["river_id"] == target["river_id"]
+
+
+def test_river_at_rejects_non_finite_query(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    assert client.get("/world/river_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
+    assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
 def test_stats_returns_expected_shape(client):

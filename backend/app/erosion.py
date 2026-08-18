@@ -98,12 +98,10 @@ MAX_CHANNEL_DEPTH_M = 2000.0
 
 # A big, slow river drops part of its sediment load locally (floodplain/delta) instead of
 # carrying all of it to the coast. river_speed here is a stylized, unitless quantity (see
-# hydrology.py) rather than a literal speed, same as plate-sim's own -- so its threshold
-# isn't a physical speed either, just re-derived (not ported) against this codebase's own
-# river_speed scale. DEPOSITION_MIN_FLOW_M and DEPOSITION_FRACTION port directly (both
-# already dimensionless/fractional, not grid-unit-dependent).
-RIVER_SPEED_COEFFICIENT = 4.0
-RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
+# hydrology.compute_river_speed) rather than a literal speed, same as plate-sim's own -- so
+# its threshold isn't a physical speed either, just re-derived (not ported) against this
+# codebase's own river_speed scale. DEPOSITION_MIN_FLOW_M and DEPOSITION_FRACTION port
+# directly (both already dimensionless/fractional, not grid-unit-dependent).
 DEPOSITION_SPEED_THRESHOLD = 2.0
 DEPOSITION_MIN_FLOW_M = 0.05
 DEPOSITION_FRACTION = 0.15
@@ -211,13 +209,6 @@ def _climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tup
     return row, col
 
 
-def _compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarray:
-    """Stylized, unitless river speed -- faster where slope is steeper and where more water
-    has accumulated -- same formula/constants as plate-sim's own compute_river_speed;
-    meaningful only relative to other nodes in the same world, not a real physical speed."""
-    return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
-
-
 def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: float) -> np.ndarray:
     """Glacier flattening (mantle-bloom-original, see module docstring): relaxes each node's
     elevation toward the mean of its hydrology.py flow-graph neighbors, scaled by
@@ -304,7 +295,7 @@ def apply_erosion(world: "World", years: float) -> None:
     # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
     # of the material passing through settles right there instead of continuing downstream
     # -- route_downstream still conserves the total exactly either way.
-    river_speed = _compute_river_speed(slope, hydro.flow_accum)
+    river_speed = hydrology.compute_river_speed(slope, hydro.flow_accum)
     is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
     retain_fraction = np.where(is_depositing, DEPOSITION_FRACTION, 0.0)
     _, sediment_deposited = hydrology.route_downstream(elevation, is_ocean_node, hydro.flow_target, erosion_amount, retain_fraction=retain_fraction)

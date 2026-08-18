@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import geometry, plates, projections, render_image, stats
+from . import geometry, hydrology, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -131,6 +131,24 @@ def _plate_summary(plate: plates.Plate) -> dict:
     }
 
 
+def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo, river_id: int) -> dict:
+    targets = fields.flow_target[river.member_idx]
+    has_target = targets >= 0
+    from_points = fields.points[river.member_idx[has_target]]
+    to_points = fields.points[targets[has_target]]
+    segments = np.round(np.stack([from_points, to_points], axis=1), _COORD_DECIMALS).tolist()
+    return {
+        "river_id": river_id,
+        "num_nodes": int(len(river.member_idx)),
+        "segments": segments,
+        "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
+        "mouth_type": river.mouth_type,
+        "flow_rate": river.flow_rate,
+        "speed": river.speed,
+        "num_tributaries": river.num_tributaries,
+    }
+
+
 @app.post("/world/generate")
 def generate(req: GenerateRequest) -> dict:
     world = generate_world(
@@ -213,3 +231,42 @@ def plate_at(lat_deg: float, lon_deg: float) -> dict:
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
     query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
     return {"plate_id": plates.nearest_plate_id(world.plates, query_xyz)}
+
+
+@app.get("/world/rivers")
+def list_rivers() -> dict:
+    """Every distinct river network's path + endpoint metadata as JSON, for the "River
+    Inspector" map mode -- same philosophy as /world/plates: the client renders and drives
+    this itself rather than receiving a baked PNG (see docs/simulation-model.md#hydrology and
+    #river-inspector). Grouped fresh from the current world.hydrology_cache (see
+    hydrology.group_rivers) on every call rather than persisted -- hydrology_cache itself is
+    already at most one step stale by design (see World.hydrology_cache), and grouping it is
+    cheap. Empty list before the first step (hydrology_cache is None until erosion.py runs
+    once). Un-rotated/true-frame throughout, same as /world/plates. `404` if no world has
+    been generated yet."""
+    world = _require_world()
+    if world.hydrology_cache is None:
+        return {"elapsed_years": world.elapsed_years, "rivers": []}
+    rivers = hydrology.group_rivers(world.hydrology_cache)
+    return {
+        "elapsed_years": world.elapsed_years,
+        "rivers": [_river_summary(world.hydrology_cache, river, i) for i, river in enumerate(rivers)],
+    }
+
+
+@app.get("/world/river_at")
+def river_at(lat_deg: float, lon_deg: float) -> dict:
+    """Which river network owns the node nearest (lat_deg, lon_deg) -- the River Inspector's
+    click hit-test, same pattern as /world/plate_at. `river_id` is an index into whatever
+    /world/rivers returns for *this same step* (rivers are regrouped fresh every call, not
+    given a persistent identity -- see hydrology.group_rivers), so the client should treat it
+    as only meaningful against its most recent /world/rivers response. `400` for non-finite
+    input, `404` if no world has been generated yet."""
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    if world.hydrology_cache is None:
+        return {"river_id": None}
+    query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+    rivers = hydrology.group_rivers(world.hydrology_cache)
+    return {"river_id": hydrology.river_at(world.hydrology_cache, rivers, query_xyz)}
