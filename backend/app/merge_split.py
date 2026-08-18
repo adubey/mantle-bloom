@@ -237,10 +237,24 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         world_pts = line.world_xyz(plate.frame)
         side = np.sum(world_pts * cut_normal, axis=-1) > 0
         if np.any(side):
-            lines_a.append(ElevationLine(phi=line.phi, theta=line.theta[side], elevation=line.elevation[side]))
+            lines_a.append(
+                ElevationLine(
+                    phi=line.phi,
+                    theta=line.theta[side],
+                    elevation=line.elevation[side],
+                    channel_depth=line.channel_depth[side],
+                    lake_depth=line.lake_depth[side],
+                )
+            )
         if np.any(~side):
             lines_b.append(
-                ElevationLine(phi=line.phi, theta=line.theta[~side], elevation=line.elevation[~side])
+                ElevationLine(
+                    phi=line.phi,
+                    theta=line.theta[~side],
+                    elevation=line.elevation[~side],
+                    channel_depth=line.channel_depth[~side],
+                    lake_depth=line.lake_depth[~side],
+                )
             )
 
     if sum(len(l.theta) for l in lines_a) < SPLIT_MIN_NODES or sum(len(l.theta) for l in lines_b) < SPLIT_MIN_NODES:

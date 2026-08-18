@@ -56,6 +56,23 @@ class ElevationLine:
     phi: float  # plate-local latitude, radians, constant along the line
     theta: np.ndarray  # plate-local longitudes of nodes, radians, ascending
     elevation: np.ndarray  # meters, same shape as theta
+    # Both persistent, land-only, meters, same shape as theta -- see hydrology.py. Unlike
+    # plate-sim (whose grid doesn't move with a plate, so a persistent field needs explicit
+    # semi-Lagrangian advection every step), these ride along for free just by being an
+    # ordinary parallel array on this same dataclass, exactly like elevation itself: rotating
+    # a plate only ever touches `frame`, never these arrays. Optional (default None,
+    # resolved to zeros in __post_init__) so every existing call site that doesn't know about
+    # hydrology continues to work unchanged -- a call site that actually needs to preserve a
+    # node's history (see boundary.py/erosion.py/line_regrid.py/reassign.py) passes it
+    # explicitly instead of letting it reset to zero.
+    channel_depth: np.ndarray | None = None  # river channel incision, self-reinforcing
+    lake_depth: np.ndarray | None = None  # standing lake water depth
+
+    def __post_init__(self) -> None:
+        if self.channel_depth is None:
+            self.channel_depth = np.zeros_like(self.theta)
+        if self.lake_depth is None:
+            self.lake_depth = np.zeros_like(self.theta)
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -192,6 +209,18 @@ def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray,
         np.concatenate(elevation_list, axis=0),
         np.concatenate(owner_list, axis=0),
     )
+
+
+def collect_all_lake_depth(plate_list: list[Plate]) -> np.ndarray:
+    """Every plate's current lake_depth, concatenated in the exact same per-plate/per-line
+    order collect_all_points uses -- so the two can be indexed together with the same
+    nearest-neighbor result (see render_image._render_grid_arrays), without
+    collect_all_points itself needing a new return value (most of its callers, e.g.
+    nearest_plate_id, don't need lake_depth at all)."""
+    chunks = [line.lake_depth for plate in plate_list for line in plate.lines if len(line.theta) > 0]
+    if not chunks:
+        return np.zeros(0)
+    return np.concatenate(chunks, axis=0)
 
 
 def nearest_plate_id(plate_list: list[Plate], query_xyz: np.ndarray) -> int | None:

@@ -1,9 +1,11 @@
-"""Weather-driven erosion: rain/sheet erosion and weathering, both directly reducing
-elevation every step. The other direction of the weather<->geology coupling -- terrain
-influencing weather (lapse-rate cooling, mountain wind deflection, orographic rain shadow)
--- already exists in climate.py, ported from plate-sim alongside the rest of its climate
-pipeline. This module is the new half: climate.py's fixed grid feeding back onto geology's
-irregular per-plate node cloud.
+"""Weather-driven erosion: rain/sheet erosion, river-channelized erosion, and weathering,
+all directly reducing elevation every step; slow/big rivers deposit part of what they carry
+downstream instead of losing it all to the coast. The other direction of the weather<->
+geology coupling -- terrain influencing weather (lapse-rate cooling, mountain wind
+deflection, orographic rain shadow) -- already exists in climate.py, ported from plate-sim
+alongside the rest of its climate pipeline. This module is the new half: climate.py's fixed
+grid, and hydrology.py's flow routing over the geology node cloud, feeding back onto
+elevation.
 
 **The mapping problem, and why it's easier in this direction.** climate.py already solves
 node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor resample) to
@@ -13,36 +15,38 @@ own world position converts straight to (lat, lon) (geometry.xyz_to_latlon) and 
 grid (row, col) by direct arithmetic -- no tree, no resampling, just array indexing (see
 `_climate_grid_indices`, whose row/col convention mirrors climate._build_grid exactly).
 
-**Slope is the one genuinely new piece of math.** climate.py's grid gets slope for free
-from neighbor-index differences; an irregular node cloud has no such structure. This reuses
-reassign.py's whole-world cKDTree pattern (build once, query k nearest neighbors) instead:
-for each node, the elevation drop to the *lowest* of its nearest neighbors (matching
-plate-sim's own "slope to lowest neighbor" definition), divided by the real great-circle
-distance to that neighbor. This is a genuine dimensionless rise/run, unlike plate-sim's own
-slope -- documented there as a known simplification, "elevation drop per grid step, not
-drop-over-real-distance" -- so RAIN_EROSION_COEFFICIENT below is *not* plate-sim's own
-0.15: that value was tuned against meters-of-drop-per-grid-cell (order 10-100s of meters),
-not a true rise/run (order 0.001-0.1), and porting it verbatim would make rain erosion
-negligible. WEATHERING_COEFFICIENT ports more directly, since wind speed uses the exact
-same scale in both codebases (MERIDIONAL_BASE_SPEED = 6.0 in each).
+**Slope is the one genuinely new piece of math climate.py's grid can't hand over for free**
+(it gets slope from neighbor-index differences; an irregular node cloud has no such
+structure) -- this reuses reassign.py's whole-world cKDTree pattern (build once, query k
+nearest neighbors) instead: for each node, the elevation drop to the *lowest* of its nearest
+neighbors (matching plate-sim's own "slope to lowest neighbor" definition), divided by the
+real great-circle distance to that neighbor. This is a genuine dimensionless rise/run, unlike
+plate-sim's own slope -- documented there as a known simplification, "elevation drop per grid
+step, not drop-over-real-distance" -- so RAIN_EROSION_COEFFICIENT below is *not* plate-sim's
+own 0.15: that value was tuned against meters-of-drop-per-grid-cell (order 10-100s of
+meters), not a true rise/run (order 0.001-0.1), and porting it verbatim would make rain
+erosion negligible. WEATHERING_COEFFICIENT ports more directly, since wind speed uses the
+exact same scale in both codebases (MERIDIONAL_BASE_SPEED = 6.0 in each). River erosion
+needs the same reasoning as rain erosion, one level further removed: it depends on
+`water_accum` (see hydrology.py), which is itself downstream-accumulated *precipitation*
+(not a raw grid-cell count the way plate-sim's own accumulation implicitly scales with
+resolution) -- RIVER_EROSION_COEFFICIENT is re-derived the same way RAIN_EROSION_COEFFICIENT
+was, not ported verbatim.
 
-**Scope cut from plate-sim's five erosion sources, for two reasons -- see the module
-docstring precedent (climate.py's own "why not ported" section) for the same style of
-call.** River/channelized erosion and deposition both need downhill flow-routing
-(plate-sim's `flow_target`/D8 accumulation), which assumes persistent per-cell state on a
-fixed grid -- building that over a rotating, irregular per-plate lattice is a separate, much
-harder problem, not attempted here. Glacier erosion is dropped because mantle-bloom has no
-glacier field at all. Vegetation's boost to weathering is dropped because mantle-bloom has
-no vegetation field (deliberately -- see climate.py's own "deliberately not ported" note).
-What's left, rain/sheet erosion and weathering, are the two sources that don't need any of
-that missing infrastructure -- and erosion here is one-way: material is removed, never
-redeposited elsewhere.
+**Scope cut from plate-sim's five erosion sources.** Glacier and ocean/coastal erosion are
+still dropped (no glacier field exists; coastal-current erosion is a distinct source never
+implemented here). Weathering's vegetation boost is still dropped (no vegetation field).
+River-channelized erosion and downstream deposition, previously dropped for the same reason
+("needs flow routing over a rotating, irregular per-plate lattice, a separate, harder
+problem") are now implemented -- see hydrology.py for how that flow-routing graph is built.
 
-**No lag, unlike plate-sim.** plate-sim's erosion reads the *previous* step's climate,
-because climate there is only computed once per step, late in a long per-step pipeline
-(`_finalize`), after erosion has already run. climate.py here is already fully stateless and
-cheap to call on demand, so this module just calls `climate.compute_climate(world)` fresh,
-immediately before using it -- no staleness to reason about.
+**No lag, unlike plate-sim.** plate-sim's erosion reads the *previous* step's climate and
+recomputes its own flow routing independently of hydrology.py's own pass (an accepted
+redundancy there, cheap under numba JIT). climate.py here is fully stateless and cheap
+enough to call fresh; flow routing here is comparatively expensive (no JIT), so this module
+computes it once (via hydrology.compute_hydrology) and reuses the result for both erosion
+and the world's cached river/lake fields (World.hydrology_cache), rather than paying for it
+twice.
 """
 
 from __future__ import annotations
@@ -52,7 +56,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, geometry
+from . import climate, geometry, hydrology
 from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
 from .plates import PLANET_RADIUS_KM, ElevationLine, Plate
 
@@ -75,14 +79,41 @@ WEATHERING_COEFFICIENT = 3.0
 # meaning as plate-sim's own HUMIDITY_REFERENCE.
 HUMIDITY_REFERENCE = 1.0
 
+# Stream-power river erosion: coefficient*channel_boost*water_accum^FLOW_EXPONENT*
+# slope^SLOPE_EXPONENT. Coefficient re-derived (not ported, see module docstring) by the
+# same order-of-magnitude reasoning as RAIN_EROSION_COEFFICIENT; the two exponents port
+# directly from plate-sim (dimensionless, not tied to any grid/unit convention).
+RIVER_EROSION_COEFFICIENT = 100.0
+RIVER_FLOW_EXPONENT = 0.5
+RIVER_SLOPE_EXPONENT = 1.0
+# A river preferentially re-carves its own established channel (real rivers meander within,
+# not across, their valley) -- ported values/meaning directly from plate-sim; channel depth
+# is a real length (meters) in both codebases, so these don't need re-derivation.
+CHANNEL_EROSION_BOOST = 0.6
+CHANNEL_BOOST_REFERENCE_M = 200.0
+MAX_CHANNEL_DEPTH_M = 2000.0
 
-def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
-    """Every node's world position and elevation, concatenated, alongside
-    (plate, line_index, start, end) references -- unlike reassign.py's own _gather_nodes
-    (which needs per-node plate/line identity, since nodes there can move between lines),
-    this only needs enough to slice the erosion result straight back onto each line's own
-    contiguous elevation range, since erosion never moves a node or changes line topology."""
-    points_list, elev_list = [], []
+# A big, slow river drops part of its sediment load locally (floodplain/delta) instead of
+# carrying all of it to the coast. river_speed here is a stylized, unitless quantity (see
+# hydrology.py) rather than a literal speed, same as plate-sim's own -- so its threshold
+# isn't a physical speed either, just re-derived (not ported) against this codebase's own
+# river_speed scale. DEPOSITION_MIN_FLOW_M and DEPOSITION_FRACTION port directly (both
+# already dimensionless/fractional, not grid-unit-dependent).
+RIVER_SPEED_COEFFICIENT = 4.0
+RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
+DEPOSITION_SPEED_THRESHOLD = 2.0
+DEPOSITION_MIN_FLOW_M = 0.05
+DEPOSITION_FRACTION = 0.15
+
+
+def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    """Every node's world position, elevation, and prior channel_depth, concatenated,
+    alongside (plate, line_index, start, end) references -- unlike reassign.py's own
+    _gather_nodes (which needs per-node plate/line identity, since nodes there can move
+    between lines), this only needs enough to slice the erosion result straight back onto
+    each line's own contiguous elevation range, since erosion never moves a node or changes
+    line topology."""
+    points_list, elev_list, channel_list = [], [], []
     line_refs: list[tuple[Plate, int, int, int]] = []
     offset = 0
     for plate in world.plates:
@@ -92,11 +123,17 @@ def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, list[tuple[Pl
                 continue
             points_list.append(line.world_xyz(plate.frame))
             elev_list.append(line.elevation)
+            channel_list.append(line.channel_depth)
             line_refs.append((plate, line_index, offset, offset + n))
             offset += n
     if not points_list:
-        return np.zeros((0, 3)), np.zeros(0), []
-    return np.concatenate(points_list, axis=0), np.concatenate(elev_list, axis=0), line_refs
+        return np.zeros((0, 3)), np.zeros(0), np.zeros(0), []
+    return (
+        np.concatenate(points_list, axis=0),
+        np.concatenate(elev_list, axis=0),
+        np.concatenate(channel_list, axis=0),
+        line_refs,
+    )
 
 
 def _compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -144,24 +181,39 @@ def _climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tup
     return row, col
 
 
+def _compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarray:
+    """Stylized, unitless river speed -- faster where slope is steeper and where more water
+    has accumulated -- same formula/constants as plate-sim's own compute_river_speed;
+    meaningful only relative to other nodes in the same world, not a real physical speed."""
+    return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
+
+
 def apply_erosion(world: "World", years: float) -> None:
-    """Erodes every plate's elevation nodes based on the world's current climate --
-    rain/sheet erosion (precipitation x slope) plus weathering (wind speed x humidity).
-    Mutates world.plates' line elevations in place; never touches node positions or line
-    topology, so this can't interact with line regularization or point reassignment at all
-    (both of those are purely about node density/position/ownership).
+    """Erodes every plate's elevation nodes based on the world's current climate and flow
+    routing -- rain/sheet erosion (precipitation x slope), river-channelized erosion
+    (accumulated flow x slope, boosted by the node's own established channel), and
+    weathering (wind speed x humidity) -- then routes the combined eroded material
+    downstream, redepositing part of it wherever a big, slow river drops its load (a
+    floodplain/delta) instead of losing everything to the coast. Also grows channel_depth
+    (from this step's river-erosion term) and lake_depth (from hydrology.py's own flow
+    routing) -- both persistent, see plates.ElevationLine. Mutates world.plates' line
+    elevations in place; never touches node positions or line topology, so this can't
+    interact with line regularization or point reassignment at all (both of those are purely
+    about node density/position/ownership).
 
     Always computes climate fresh (never reuses World.climate_cache itself -- this runs
     right after this step's own tectonic/topology changes, so a cache from a previous step
     would already be stale for erosion's own purposes) and stores the result back onto
-    World.climate_cache, so /world/stats and a climate map render don't each also trigger
-    their own recomputation this same turn -- see climate.compute_climate_cached."""
+    World.climate_cache/World.hydrology_cache, so /world/stats and a map render don't each
+    also trigger their own recomputation this same turn -- see
+    climate.compute_climate_cached."""
     fields = climate.compute_climate(world)
     world.climate_cache = fields
 
-    points, elevation, line_refs = _gather_nodes(world)
+    points, elevation, prior_channel_depth, line_refs = _gather_nodes(world)
     n = len(points)
     if n == 0:
+        world.hydrology_cache = None
         return
 
     height, width = fields.precipitation_mm.shape
@@ -173,22 +225,53 @@ def apply_erosion(world: "World", years: float) -> None:
     slope, drop_to_lowest_neighbor_m = _compute_slope(points, elevation)
     dt_myr = years / 1_000_000.0
 
+    hydro = hydrology.compute_hydrology(world, precipitation_mm)
+    world.hydrology_cache = hydro
+    prior_lake_depth = np.concatenate([plate.lines[li].lake_depth for plate, li, _, _ in line_refs])
+    water_accum_m = hydro.flow_accum / 1000.0
+
     rain = RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000.0) * dt_myr
+    channel_boost = 1.0 + CHANNEL_EROSION_BOOST * np.clip(prior_channel_depth / CHANNEL_BOOST_REFERENCE_M, 0.0, 1.0)
+    river = (
+        RIVER_EROSION_COEFFICIENT
+        * channel_boost
+        * np.power(np.clip(water_accum_m, 0.0, None), RIVER_FLOW_EXPONENT)
+        * np.power(slope, RIVER_SLOPE_EXPONENT)
+        * dt_myr
+    )
     humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr
     # Capped at the drop to the lowest neighbor -- same reason plate-sim caps its own
     # erosion at "slope" -- so a single step can't carve a node below the valley floor it
     # drains into. Zeroed over ocean nodes (elevation <= sea level, the same convention
-    # climate.py/plates.py use everywhere else): rain/weathering erosion is a subaerial
-    # process, and plate-sim itself excludes ocean cells from these same two sources (its
-    # separate coastal-current erosion source is the only one that touches the seafloor,
-    # and that's one of the sources this module deliberately doesn't implement -- see
-    # module docstring).
+    # climate.py/plates.py use everywhere else): every source here is a subaerial process,
+    # and plate-sim itself excludes ocean cells from these same three sources (its separate
+    # coastal-current erosion source is the only one that touches the seafloor, and that's
+    # one of the sources this module deliberately doesn't implement -- see module
+    # docstring).
     is_ocean_node = elevation <= 0.0
-    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(rain + weathering, 0.0, None))
+    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(rain + river + weathering, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
+
+    # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
+    # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
+    # of the material passing through settles right there instead of continuing downstream
+    # -- route_downstream still conserves the total exactly either way.
+    river_speed = _compute_river_speed(slope, hydro.flow_accum)
+    is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
+    retain_fraction = np.where(is_depositing, DEPOSITION_FRACTION, 0.0)
+    _, sediment_deposited = hydrology.route_downstream(elevation, is_ocean_node, hydro.flow_target, erosion_amount, retain_fraction=retain_fraction)
+
+    new_elevation = np.clip(elevation - erosion_amount + sediment_deposited, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + river, 0.0, MAX_CHANNEL_DEPTH_M))
+    new_lake_depth = hydrology.update_lakes(hydro, prior_lake_depth, hydro.water_deposited, years)
 
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        new_elevation = np.clip(line.elevation - erosion_amount[start:end], MIN_ELEVATION_M, MAX_ELEVATION_M)
-        plate.lines[line_index] = ElevationLine(phi=line.phi, theta=line.theta, elevation=new_elevation)
+        plate.lines[line_index] = ElevationLine(
+            phi=line.phi,
+            theta=line.theta,
+            elevation=new_elevation[start:end],
+            channel_depth=new_channel_depth[start:end],
+            lake_depth=new_lake_depth[start:end],
+        )

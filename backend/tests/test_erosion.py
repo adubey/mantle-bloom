@@ -50,25 +50,32 @@ def test_compute_slope_matches_known_gradient():
     assert np.isclose(slope[0], expected_drop / expected_run_m)
 
 
-def test_apply_erosion_never_changes_ocean_nodes():
+def test_apply_erosion_never_erodes_ocean_nodes_directly():
+    # Erosion itself (rain/river/weathering) is still zeroed over ocean nodes -- but unlike
+    # before river deposition existed, an ocean node's elevation *can* now rise, when a
+    # river empties sediment at its mouth (a delta) -- see test_deposition_can_raise_a
+    # downstream node below for a synthetic case proving that actually happens.
     world = generate_world(seed=20, num_plates=8)
-    _, elevation_before, _ = erosion._gather_nodes(world)
+    _, elevation_before, _, _ = erosion._gather_nodes(world)
     is_ocean = elevation_before <= 0.0
 
     erosion.apply_erosion(world, years=5_000_000)
 
-    _, elevation_after, _ = erosion._gather_nodes(world)
+    _, elevation_after, _, _ = erosion._gather_nodes(world)
     assert len(elevation_after) == len(elevation_before)
-    assert np.allclose(elevation_after[is_ocean], elevation_before[is_ocean])
+    assert np.all(elevation_after[is_ocean] >= elevation_before[is_ocean] - 1e-6)
 
 
-def test_apply_erosion_never_raises_land_elevation():
+def test_apply_erosion_keeps_elevation_finite_and_changing():
     world = generate_world(seed=21, num_plates=8)
-    _, elevation_before, _ = erosion._gather_nodes(world)
+    _, elevation_before, _, _ = erosion._gather_nodes(world)
     erosion.apply_erosion(world, years=5_000_000)
-    _, elevation_after, _ = erosion._gather_nodes(world)
-    # Erosion only ever removes material, at any node -- ocean (unchanged, see above) or land.
-    assert np.all(elevation_after <= elevation_before + 1e-6)
+    _, elevation_after, _, _ = erosion._gather_nodes(world)
+    # Erosion/deposition/weathering can now raise *or* lower any given node (deposition can
+    # outweigh local erosion at a floodplain or delta) -- just confirm the pass actually did
+    # something and didn't produce garbage.
+    assert np.all(np.isfinite(elevation_after))
+    assert not np.allclose(elevation_after, elevation_before)
 
 
 def test_apply_erosion_respects_elevation_bounds():

@@ -46,10 +46,13 @@ Time-stepping:
   POST /world/step  { years }
   → world.step_world(world, years): refit Euler poles, rotate, evolve boundaries, apply
     topology changes (at most one collision merge per step, only after a sustained 50-100
-    Myr collision -- see simulation-model.md#merge-and-split), erode elevation from the
-    world's current climate (every step -- see simulation-model.md#erosion), and
-    occasionally fill gaps and regularize line spacing, and -- on the steps in between --
-    reassign misplaced boundary points (see simulation-model.md#reassignment)
+    Myr collision -- see simulation-model.md#merge-and-split), erode elevation and route
+    rivers/lakes from the world's current climate (every step -- see
+    simulation-model.md#erosion and simulation-model.md#hydrology), relax submerged
+    continental crust toward a shelf-or-deep-water target (every step -- see
+    simulation-model.md#bathymetry), and occasionally fill gaps and regularize line
+    spacing, and -- on the steps in between -- reassign misplaced boundary points (see
+    simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
 When the "Plate Inspector" map view is active, the browser instead (also on every
@@ -99,6 +102,11 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   to climate otherwise being fully stateless.
 - `events: list[(float, str)]` -- the event log for the UI's console (elapsed_years,
   message), capped at `MAX_EVENT_LOG_LENGTH = 200` entries. Appended to via `World.log_event`.
+- `climate_cache`/`hydrology_cache` -- this step's climate/flow-routing snapshot, populated
+  by `erosion.py` (which needs a fresh one every step regardless) and reused by
+  `/world/stats`, a climate map render, and river/lake rendering so they don't each trigger
+  their own recomputation the same turn (see simulation-model.md#climate and
+  simulation-model.md#hydrology). Up to one step stale by design, not a bug.
 
 Each `Plate` (`backend/app/plates.py`) is:
 
@@ -109,7 +117,10 @@ Each `Plate` (`backend/app/plates.py`) is:
 - `lines: list[ElevationLine]` -- the actual carried terrain, each a set of elevation
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
-  [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames).
+  [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
+  line also carries `channel_depth`/`lake_depth` (persistent, land-only -- see
+  simulation-model.md#hydrology) as ordinary parallel arrays right alongside `elevation`
+  itself, so they rotate with the plate for free, no advection scheme needed.
 
 A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
@@ -152,11 +163,20 @@ world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
                      step too, to drive erosion.py (see simulation-model.md#climate)
-erosion.py           every-step rain/sheet erosion + weathering, elevation deltas driven by
-                     climate.py's current fields (see simulation-model.md#erosion) -- the
+erosion.py           every-step rain/river/weathering erosion + downstream sediment
+                     deposition, elevation deltas driven by climate.py's current fields and
+                     hydrology.py's flow routing (see simulation-model.md#erosion) -- the
                      weather-influences-geology half of the coupling; climate.py's own
                      elevation-reading mechanics (lapse rate, mountain wind deflection,
                      orographic rain shadow) are the other half
+hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
+                     neighbor graph, not a grid): basin-spill/lake detection, steepest-
+                     descent flow direction, downstream flow accumulation -- feeds
+                     erosion.py's river erosion/deposition and the rendered river/lake
+                     overlay (see simulation-model.md#hydrology)
+bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
+                     (near land) or deep-water (far from land) target elevation (see
+                     simulation-model.md#bathymetry)
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate)

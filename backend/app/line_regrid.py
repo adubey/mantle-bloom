@@ -45,7 +45,15 @@ def regularize_line(line: ElevationLine) -> ElevationLine:
 
     new_theta = np.linspace(theta_min, theta_max, n)
     new_elevation = np.interp(new_theta, line.theta, line.elevation)
-    return ElevationLine(phi=line.phi, theta=new_theta, elevation=new_elevation)
+    # channel_depth/lake_depth interpolated the same way -- a plain reset to 0 here would
+    # wipe out a river's carved channel every time this line's spacing drifts enough to
+    # trigger regularizing, which runs periodically throughout the simulation (see
+    # REGULARIZE_INTERVAL_STEPS), not as a rare one-off event like a merge/split resample.
+    new_channel_depth = np.interp(new_theta, line.theta, line.channel_depth)
+    new_lake_depth = np.interp(new_theta, line.theta, line.lake_depth)
+    return ElevationLine(
+        phi=line.phi, theta=new_theta, elevation=new_elevation, channel_depth=new_channel_depth, lake_depth=new_lake_depth
+    )
 
 
 def regularize_plate_lines(plate: Plate) -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import bathymetry, boundary, climate, erosion, gaps, geometry, line_regrid, mantle, merge_split, reassign
+from . import bathymetry, boundary, climate, erosion, gaps, geometry, hydrology, line_regrid, mantle, merge_split, reassign
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -46,6 +46,9 @@ class World:
     # climate.compute_climate_cached and climate.py's own module docstring for why reusing
     # a value that's up to one step stale is an accepted simplification here, not a bug.
     climate_cache: climate.ClimateFields | None = None
+    # This step's flow-routing snapshot (see hydrology.py), populated by erosion.py
+    # alongside climate_cache -- same reuse pattern, same one-step-stale simplification.
+    hydrology_cache: hydrology.HydrologyFields | None = None
 
     def log_event(self, message: str) -> None:
         self.events.append((self.elapsed_years, message))

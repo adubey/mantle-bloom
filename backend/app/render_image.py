@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, mantle, plates, projections
+from . import climate, geometry, hydrology, mantle, plates, projections
 from .world import World
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -35,6 +35,15 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 VIEWS = ("elevation", "plates", "platesDetail") + CLIMATE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
+# Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop), matching
+# plate-sim's own LAKE_COLOR_RGB choice for the same reason: a lake should read as visibly
+# distinct from the open ocean, not just "more blue."
+LAKE_COLOR_RGB = (58, 92, 122)
+# Same color plate-sim's own frontend uses for its river overlay (#4dd8e6) -- a fixed color/
+# width for every segment regardless of discharge, also matching plate-sim (only *which*
+# segments get drawn varies with flow magnitude, via RIVER_FLOW_PERCENTILE below).
+RIVER_COLOR_RGB = (77, 216, 230)
+RIVER_LINE_WIDTH_PX = 1.1
 
 # Visual constants below are all in pixel terms tuned at this reference width; render_png
 # scales them by (requested width / REFERENCE_WIDTH_PX) so a higher-resolution request (e.g.
@@ -214,12 +223,12 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
 
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
-    any plate's own line spacing), each cell assigned its nearest elevation node's elevation
-    and owning plate -- see docs/simulation-model.md#render-image. Returns flat concatenated
-    (projected_xy, elevation, plate_id, cell_half_width, cell_half_height) arrays, or None
-    for an empty world.
+    any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
+    owning plate, and lake_depth -- see docs/simulation-model.md#render-image. Returns flat
+    concatenated (projected_xy, elevation, plate_id, lake_depth, cell_half_width,
+    cell_half_height) arrays, or None for an empty world.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -246,9 +255,10 @@ def _render_grid_arrays(
     if collected is None:
         return None
     all_points, all_elevation, all_owner = collected
+    all_lake_depth = plates.collect_all_lake_depth(world.plates)
     tree = cKDTree(all_points)
 
-    xy_chunks, elev_chunks, owner_chunks, hw_chunks, hh_chunks = [], [], [], [], []
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, hw_chunks, hh_chunks = [], [], [], [], [], []
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=GRID_SPACING_RAD):
         _, idx = tree.query(world_pts)
         rotated = _rotate(world_pts, view_rotation)
@@ -256,6 +266,7 @@ def _render_grid_arrays(
         xy_chunks.append(xy)
         elev_chunks.append(all_elevation[idx])
         owner_chunks.append(all_owner[idx])
+        lake_chunks.append(all_lake_depth[idx])
 
         _, center_lon = geometry.xyz_to_latlon(rotated)
         half_dtheta = GRID_SPACING_RAD / max(np.cos(phi), 1e-3) / 2
@@ -278,6 +289,7 @@ def _render_grid_arrays(
         np.concatenate(xy_chunks, axis=0),
         np.concatenate(elev_chunks, axis=0),
         np.concatenate(owner_chunks, axis=0),
+        np.concatenate(lake_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
@@ -789,6 +801,37 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     return _encode_image(image)
 
 
+def _draw_rivers(
+    draw: ImageDraw.ImageDraw, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
+) -> None:
+    """Draws each river node's edge to its own downstream flow target as a short line
+    segment (see hydrology.py's is_river/flow_target) -- reads world.hydrology_cache
+    directly, populated by erosion.py every step (None before the world has ever been
+    stepped, in which case this draws nothing). Each segment is a real, short 3D hop between
+    two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent
+    _project_points calls) keeps it from being wrongly split across the antimeridian seam --
+    same technique _render_grid_arrays' own corner measurements already rely on."""
+    hydro = world.hydrology_cache
+    if hydro is None:
+        return
+    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0))[0]
+    if len(river_idx) == 0:
+        return
+    target_idx = hydro.flow_target[river_idx]
+
+    from_points = _rotate(hydro.points[river_idx], view_rotation)
+    to_points = _rotate(hydro.points[target_idx], view_rotation)
+    _, from_lon = geometry.xyz_to_latlon(from_points)
+    from_xy = _project_points(projection, from_points)
+    to_xy = _project_offset(projection, to_points, from_lon)
+
+    from_px = _to_pixels(scale, offset_x, offset_y, from_xy)
+    to_px = _to_pixels(scale, offset_x, offset_y, to_xy)
+    width_px = max(int(round(RIVER_LINE_WIDTH_PX * pixel_scale)), 1)
+    for (x1, y1), (x2, y2) in zip(from_px, to_px):
+        draw.line([(x1, y1), (x2, y2)], fill=RIVER_COLOR_RGB, width=width_px)
+
+
 def render_png(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> bytes:
     """Render `view` of `world` in `projection`, at `width`x`height` pixels, as PNG bytes.
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
@@ -850,11 +893,18 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, half_w, half_h = grid
+        xy, elev, owner, lake_depth, half_w, half_h = grid
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
         colors = elevation_colors(elev) if view == "elevation" else plate_colors(owner)
+        # Baked directly into the raster rather than a separate overlay/toggle -- same
+        # reasoning plate-sim's own docs give for its own lake baking: always visible, no
+        # separate overlay needed, and a lake is meaningful on every view that shows terrain
+        # at all (matches how ocean itself isn't specially toggle-able either).
+        is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+        if np.any(is_lake):
+            colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=np.uint8), colors)
         _fill_rects(pixels, centers, hw_px, hh_px, colors)
 
     if detail_lines:
@@ -866,6 +916,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
 
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
+
+    _draw_rivers(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     if view in ("plates", "platesDetail"):
         for plate in world.plates:
@@ -889,7 +941,11 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
                 draw.ellipse([px - r, py - r, px + r, py + r], fill=color, outline=(255, 255, 255), width=1)
 
     if view == "elevation":
-        _draw_legend(image, draw, height, pixel_scale, "Elevation (m)", gradient=_elevation_legend_gradient())
+        entries = [
+            (_swatch_line(draw, RIVER_COLOR_RGB), "River"),
+            (_swatch_square(draw, LAKE_COLOR_RGB), "Lake"),
+        ]
+        _draw_legend(image, draw, height, pixel_scale, "Elevation (m)", gradient=_elevation_legend_gradient(), symbol_entries=entries)
     elif view == "plates":
         entries = [
             (_swatch_line(draw, LEGEND_SYMBOL_RGB), "Plate boundary"),

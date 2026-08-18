@@ -18,6 +18,7 @@
 - [Climate](#climate)
 - [Erosion](#erosion)
 - [Bathymetry](#bathymetry)
+- [Hydrology (rivers and lakes)](#hydrology)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -800,8 +801,8 @@ first and closing the loop only for the final consumer-facing fields:
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) -- no zonal
     latitude-climatology baseline (equator/mid-latitude wet bands), cut deliberately.
-    Feeds erosion (see [Erosion](#erosion)) but still nothing else (no rivers, no
-    vegetation).
+    Feeds erosion and hydrology (see [Erosion](#erosion) and
+    [Hydrology](#hydrology)) but still nothing else (no vegetation).
 
 **Scope, explicitly decided.** Kept out: river outflow feeding currents (no rivers exist),
 deep currents, precipitation's zonal climatology baseline. Included, even though richer than
@@ -827,17 +828,16 @@ The other half of the weather<->geology coupling: [Climate](#climate) already ha
 influencing weather (lapse-rate cooling, mountain wind deflection, orographic rain shadow --
 all ported from plate-sim alongside the rest of its climate pipeline). This module is the
 new direction, weather influencing terrain, ported from plate-sim's own erosion model but
-cut down to the two sources that don't depend on infrastructure mantle-bloom doesn't have.
+cut down to the sources that don't depend on infrastructure mantle-bloom doesn't have.
 
-**Scope cut from plate-sim's five erosion sources.** River/channelized erosion and
-deposition both need downhill flow-routing (plate-sim's `flow_target`/D8 accumulation),
-which assumes persistent per-cell state on a fixed grid -- building that over a rotating,
-irregular per-plate lattice is a separate, harder problem, not attempted here. Glacier
-erosion is dropped (no glacier field exists). Weathering's vegetation boost is dropped (no
-vegetation field exists, same reasoning as climate.py's own "deliberately not ported"
-list). What's left -- rain/sheet erosion and weathering -- are the two sources that need
-neither. Erosion here is one-way: material is removed, never redeposited elsewhere, so
-there's no persistent sediment field either.
+**Scope cut from plate-sim's five erosion sources.** Glacier erosion is dropped (no glacier
+field exists) and so is coastal-current erosion (a distinct source, never implemented here).
+Weathering's vegetation boost is dropped (no vegetation field, same reasoning as climate.py's
+own "deliberately not ported" list). What's left -- rain/sheet erosion, river-channelized
+erosion, and weathering -- feed into a downstream deposition pass (see
+[Hydrology](#hydrology) for the flow-routing graph all of this depends on), so material
+isn't purely one-way removed anymore: a slow, big river drops part of its sediment load
+locally instead of carrying every last grain to the coast.
 
 **The mapping problem, and why it's easier in this direction than the reverse.** climate.py
 already solves node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor
@@ -861,33 +861,58 @@ value (tuned against meters-of-drop-per-grid-cell, a very different scale); it w
 picked by order-of-magnitude reasoning against `boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
 (800 m/Myr) and checked against real slope/precipitation distributions from an actual run.
 `WEATHERING_COEFFICIENT` ports closer to plate-sim's own value, since wind speed uses the
-identical scale in both codebases (`MERIDIONAL_BASE_SPEED = 6.0` in each).
+identical scale in both codebases (`MERIDIONAL_BASE_SPEED = 6.0` in each). River erosion
+needs the same re-derivation, one level further removed: it depends on `water_accum` (see
+[Hydrology](#hydrology)), itself downstream-accumulated *precipitation* rather than a raw
+grid-cell count the way plate-sim's own accumulation implicitly scales with grid resolution,
+so `RIVER_EROSION_COEFFICIENT` was re-derived the same order-of-magnitude way, then checked
+against real channel-depth growth over an actual run (see below).
 
-**The two formulas**, both computed per-node then subtracted directly from `line.elevation`
-(clamped to `MIN_ELEVATION_M`/`MAX_ELEVATION_M`, exactly like `boundary.py`'s own
-uplift/trench deltas -- no resampling, no topology change, so this can't interact with line
-regularization or point reassignment at all):
+**The three formulas**, all computed per-node:
 
 - **Rain/sheet erosion** = `RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000) *
   dt_myr`.
+- **River erosion** = `RIVER_EROSION_COEFFICIENT * channel_boost * water_accum_m^
+  RIVER_FLOW_EXPONENT * slope^RIVER_SLOPE_EXPONENT * dt_myr`, where `channel_boost = 1 +
+  CHANNEL_EROSION_BOOST * clip(channel_depth / CHANNEL_BOOST_REFERENCE_M, 0, 1)` -- a river
+  preferentially re-carves its own established channel, the real mechanism behind
+  meandering rivers staying within their valleys rather than cutting a fresh path every
+  step. `channel_depth` (persistent, see `plates.ElevationLine`) grows by this same term
+  every step (`clip(channel_depth + river_erosion_amount, 0, MAX_CHANNEL_DEPTH_M)`) --
+  monotonically non-decreasing, land-only, capped purely as a sanity bound (not a
+  physically-derived limit), all ported directly from plate-sim's own channel-memory model.
 - **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr`, where
   `humidity_norm` is humidity clipped to `[0, 1]` against `HUMIDITY_REFERENCE`.
-- Both zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used everywhere
-  else) -- rain/weathering erosion is a subaerial process, matching plate-sim's own
-  `np.where(is_ocean, 0.0, ...)` masking of these same two sources.
-- The *combined* result is capped at the node's own drop-to-lowest-neighbor (in meters, not
-  the normalized slope) -- the same cap plate-sim applies, so a single step can't erode a
-  node *past* the valley it drains into and carve a new, lower pit.
+- All three summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
+  everywhere else) -- every source here is a subaerial process, matching plate-sim's own
+  `np.where(is_ocean, 0.0, ...)` masking. The combined result is capped at the node's own
+  drop-to-lowest-neighbor (in meters, not the normalized slope) -- the same cap plate-sim
+  applies, so a single step can't erode a node *past* the valley it drains into and carve a
+  new, lower pit.
 
-**Cadence: every step, no lag.** Unlike plate-sim (whose erosion reads the *previous* step's
-climate, because its climate is only computed once per step, late in a long pipeline, after
-erosion has already run), this module calls `climate.compute_climate(world)` fresh,
-immediately before using it -- climate.py is already fully stateless and cheap enough to
-call on demand, so there's no staleness to reason about. Runs in `world.step_world` right
-after boundary evolution and topology changes, every step (not gated by the periodic
-regularize/gap-fill/reassign cadence) -- a deliberate cost/fidelity tradeoff: climate
-computation adds real per-step latency (roughly doubling a step's cost), accepted in
-exchange for erosion responding smoothly every step rather than arriving in periodic bursts.
+**Deposition.** The capped, combined erosion amount is routed downstream (see
+`hydrology.route_downstream`) with a `retain_fraction` wherever a river qualifies as "big and
+slow" -- `river_speed < DEPOSITION_SPEED_THRESHOLD` (a stylized, unitless quantity, faster
+where slope is steeper and where more water has accumulated) *and*
+`water_accum_m > DEPOSITION_MIN_FLOW_M` (guards against a merely-flat trickle depositing) --
+in which case `DEPOSITION_FRACTION` of the material passing through that node settles right
+there (a floodplain or delta) instead of continuing on; the rest keeps going, eventually
+reaching either another depositing node, an internal sink, or the coast (where it can raise
+an *ocean* node's own elevation -- a river delta building outward is real, intended
+behavior, not a bug). Both `line.elevation` and `line.channel_depth`/`line.lake_depth`
+(see [Hydrology](#hydrology)) get written back together per line, subtracted/added directly
+-- no resampling, no topology change, so none of this can interact with line regularization
+or point reassignment at all.
+
+**Cadence: every step, no lag on climate -- but a deliberate change from erosion's own
+earlier no-hydrology version regarding flow routing.** This module still calls
+`climate.compute_climate(world)` fresh every step (no staleness to reason about, same as
+before). Flow routing (`hydrology.compute_hydrology`) is comparatively expensive with no JIT
+available, so unlike plate-sim (which recomputes flow routing a second, independent time
+inside its own erosion pass) this module computes it once and reuses the result for both
+erosion and `World.hydrology_cache` (see [Hydrology](#hydrology)). Runs in `world.step_world`
+right after boundary evolution and topology changes, every step (not gated by the periodic
+regularize/gap-fill/reassign cadence).
 
 <a id="bathymetry"></a>
 ## Bathymetry (`bathymetry.py`)
@@ -919,6 +944,111 @@ shift, so they rarely reach full equilibrium), nodes beyond 200km averaged -2869
 the -3000m target, since deep-water nodes are disturbed far less often); rendered, this
 shows up as a visibly lighter shelf band hugging every coastline.
 
+<a id="hydrology"></a>
+## Hydrology: rivers and lakes (`hydrology.py`)
+
+Ported from plate-sim's own hydrology.py, adapted from its fixed grid to mantle-bloom's
+irregular per-plate node cloud. plate-sim's three core algorithms -- steepest-descent flow
+direction, priority-flood basin-spill (lake/depression detection), and elevation-ordered
+downstream flow accumulation -- all turn out not to actually need a *grid*, only a *graph*:
+plate-sim's regular 8-neighbor grid adjacency is just its convenient substrate. This module
+builds a graph instead, via a whole-world k-nearest-neighbor query (`FLOW_NEIGHBOR_COUNT =
+8`, the same technique `erosion.py`/`reassign.py` already use for their own whole-world
+passes), then runs the same three algorithms directly on it.
+
+**Persistence -- the central adaptation.** plate-sim's plates move relative to its fixed
+grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian advection
+every step just to keep following the crust. mantle-bloom's elevation-line nodes already
+rotate exactly with their own plate, so `channel_depth` and `lake_depth`, stored as ordinary
+parallel arrays on `ElevationLine` right alongside `elevation` itself (see
+[Why not a grid](#why-not-a-grid)), get that same "just works" persistence for free -- no
+advection scheme needed, since rotating a plate never touches those arrays at all. Making
+this persistence real required threading both fields through every place an `ElevationLine`
+gets rebuilt: preserved unchanged where a rebuild doesn't change node identity (boundary
+elevation deltas, bathymetry), sliced/concatenated to match where nodes are added or removed
+(boundary growth/shrink -- new nodes start at 0, no history to carry; a merge/split's
+boolean-mask slice), interpolated alongside elevation where a line gets resampled onto a
+fresh spacing (`line_regrid.regularize_line`, since that runs periodically throughout the
+simulation and a plain reset would erase rivers constantly, not rarely). Two call sites
+*do* deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice`
+(generation, gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled
+territory has no river history to carry) and a reassigned point in `reassign.py` (a rare,
+small-scale pass touching only a few boundary-adjacent nodes at a time, unlike
+`line_regrid.py`'s near-every-line-every-interval reach).
+
+`flow_target`/`flow_accum`/`river_speed` are deliberately *not* persisted, mirroring
+plate-sim (recomputed fresh every step there too, from that step's real climate) -- purely
+this-step derived quantities, cached on `World.hydrology_cache` only so a later same-turn
+caller (rendering) doesn't recompute them again, the same reuse pattern
+`climate.compute_climate_cached` already established.
+
+**Deliberate deviation from plate-sim**: plate-sim computes flow routing *twice* per step
+(once in hydrology.py for the real river_flow/rendering fields, again inside erosion.py for
+the water_accum erosion itself needs) -- an accepted redundancy there, cheap under numba
+JIT. Flow routing here has no JIT and is comparatively expensive (confirmed: ~70-100ms on a
+world with a few thousand land nodes, a real chunk of a step's total cost), so `erosion.py`
+computes it once (`hydrology.compute_hydrology`) and reuses the result for both erosion and
+`World.hydrology_cache`, rather than paying for it twice.
+
+**The three algorithms**, all operating on the k-NN graph:
+
+- **Basin-spill / lake detection** (`_compute_basin_spill`): a multi-source Dijkstra seeded
+  from every ocean node, relaxing by *max* (the highest point a path is forced to cross)
+  rather than by sum -- a minimax path cost, not a shortest path. Nested sub-basin chains
+  collapse to one hop each, cycle-free by construction, exactly matching plate-sim's own
+  algorithm and its documented rationale for needing this rather than a naive
+  single-neighbor check (a naive check can't see past more than one nested rim). Lakes are
+  single nodes here, same simplification plate-sim itself documents: a lake is its own sink
+  node plus a `lake_depth`, not a flood-filled multi-node shoreline region.
+- **Flow direction** (`_compute_flow_direction`): steepest descent among each node's k
+  nearest neighbors, or a sink (-1) if none is lower -- unless the sink's current water
+  surface (`elevation + previous step's lake_depth`, the same one-step-lagged "memory"
+  plate-sim's own version relies on) has already reached its basin's true spill point, in
+  which case it redirects to `spill_target` instead of staying a dead-end sink forever
+  (turning a filled-past-its-rim lake into a normal through-flowing river cell).
+- **Downstream accumulation** (`route_downstream`, public -- `erosion.py` reuses it
+  directly): a single forward sweep over land nodes in elevation-descending order,
+  accumulating a source quantity (precipitation, for `flow_accum`; eroded material, for
+  erosion's own deposition pass) along `flow_target` edges. Correct in one pass because
+  every node's target is guaranteed strictly lower, so it's always visited *later* in this
+  same order -- direct port of plate-sim's own algorithm, `retain_fraction` and all
+  (plate-sim's separate `loss_fraction`, used there only for in-transit river evaporation,
+  isn't ported -- not asked for, and this module already drops temperature-driven effects on
+  hydrology to match erosion.py's own "precipitation is enough" simplification).
+
+**Lakes** (`update_lakes`) grow at sink nodes from `route_downstream`'s own water-routing
+`deposited` output there, evaporate elsewhere, capped at the basin's true spill depth
+(`filled_elevation - elevation`) and pinned there once reached rather than evaporating back
+down -- the same oscillation plate-sim's own docs warn a naive version falls into (a full
+lake that evaporates even slightly un-redirects its `flow_target` back to a sink, refills,
+and oscillates forever instead of settling as a real, continuously-draining lake).
+`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` are *not* plate-sim's
+own values -- confirmed directly, porting them verbatim evaporated a lake with no new inflow
+from 15m to exactly 0 within a single 1 Myr step, since plate-sim takes much finer internal
+substeps than mantle-bloom's typical 1-10 Myr step; rescaled down to be consistent with this
+codebase's other already-tuned relaxation rates at its own actual step granularity
+(`boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5`, `bathymetry.BATHYMETRY_RELAX_RATE_PER_MYR =
+0.3`).
+
+**Rendering.** Both baked directly into the existing elevation/plates/platesDetail views
+(no new map-view mode or API surface needed) -- same reasoning plate-sim's own docs give for
+baking lakes specifically: always visible, no separate overlay toggle needed. Lake cells use
+a muddier, less-saturated blue than open ocean (`render_image.LAKE_COLOR_RGB`) via the same
+nearest-neighbor grid resample `_render_grid_arrays` already does for elevation/plate_id
+(`plates.collect_all_lake_depth`, index-aligned with `plates.collect_all_points`'s own
+output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one
+per `is_river` node to its own `flow_target` (top `RIVER_FLOW_PERCENTILE = 90.0` of land
+`flow_accum`, same threshold plate-sim's own `_major_river_mask` uses) -- fixed color and
+width for every segment regardless of discharge, matching plate-sim's own frontend rendering
+exactly (only *which* segments get drawn varies with flow magnitude, not how they're drawn).
+
+Confirmed live on a real run: river networks render as visibly branching, dendritic
+drainage patterns converging toward coasts and lake basins, matching real-world drainage
+network shapes; channel_depth grows from 0 to several hundred meters over tens of Myr
+without instantly saturating at `MAX_CHANNEL_DEPTH_M`; lakes form, persist, and fluctuate
+in count/depth across many steps rather than either vanishing or ratcheting monotonically
+upward.
+
 <a id="known-simplifications"></a>
 ## Known simplifications
 
@@ -948,11 +1078,14 @@ than an oversight:
   -- a coarser approximation than the rest of the model, not a bug, and a possible future
   refinement (e.g. weighting by directional alignment with the plate's own motion rather
   than raw border presence).
-- **No hydrology (rivers/lakes) or biomes/vegetation yet.** Climate is modeled (see
-  [Climate](#climate)) and now feeds erosion (see [Erosion](#erosion): rain/sheet erosion
-  and weathering, both ported from plate-sim), but river/lake/vegetation systems -- and the
-  channelized erosion, glacier erosion, and deposition that would depend on them -- remain
-  explicitly out of scope for this v1. See plate-sim's own model for the shape that work
-  would take once revisited on this sphere-native foundation.
+- **No biomes/vegetation yet.** Climate (see [Climate](#climate)) feeds erosion, deposition,
+  and hydrology (see [Erosion](#erosion) and [Hydrology](#hydrology): rain/river/weathering
+  erosion, downstream deposition, rivers and lakes, all ported from plate-sim). Glacier
+  erosion and vegetation's own effects (weathering boost, evapotranspiration) remain
+  explicitly out of scope, since their inputs (a glacier field, a vegetation field) don't
+  exist here at all -- see plate-sim's own model for the shape that work would take once
+  revisited on this sphere-native foundation.
+- **A lake is a single node, not a flood-filled shoreline region.** Same simplification
+  plate-sim itself documents -- see [Hydrology](#hydrology).
 - **Single in-memory world, no persistence.** See
   [World state](architecture.md#world-state).

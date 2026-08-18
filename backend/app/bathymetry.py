@@ -107,4 +107,10 @@ def apply_bathymetry(world: "World", years: float) -> None:
 
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        plate.lines[line_index] = ElevationLine(phi=line.phi, theta=line.theta, elevation=new_elevation[start:end])
+        plate.lines[line_index] = ElevationLine(
+            phi=line.phi,
+            theta=line.theta,
+            elevation=new_elevation[start:end],
+            channel_depth=line.channel_depth,
+            lake_depth=line.lake_depth,
+        )
