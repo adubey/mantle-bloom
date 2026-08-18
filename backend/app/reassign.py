@@ -80,9 +80,10 @@ def _find_target_line(plate: Plate, candidate_line_indices: set[int], point_worl
 def reassign_misplaced_points(world: "World") -> list[str]:
     """Find every node whose NEIGHBOR_COUNT nearest neighbors are mostly owned by a
     different plate and hand it over -- see this module's docstring for the full algorithm.
-    Mutates world.plates' lines in place. Returns one human-readable event message per
-    (source plate, destination plate) pair with at least one point moved, for the UI's event
-    console."""
+    Mutates world.plates' lines in place. Returns a single summary event message (or an
+    empty list if nothing moved) naming every plate involved and the total point count --
+    not one line per (source, destination) pair, which could otherwise flood the UI's event
+    console on a pass that touches many plates at once."""
     points, elevations, owners = _gather_nodes(world)
     n = len(points)
     if n <= NEIGHBOR_COUNT:
@@ -171,8 +172,7 @@ def reassign_misplaced_points(world: "World") -> list[str]:
             phi=line.phi, theta=combined_theta[order], elevation=combined_elevation[order]
         )
 
-    return [
-        f"{count} point{'s' if count != 1 else ''} reassigned from plate {source} to plate {target} "
-        "(boundary cleanup)."
-        for (source, target), count in transfer_counts.items()
-    ]
+    plate_ids = sorted({pid for pair in transfer_counts for pid in pair})
+    total_points = sum(transfer_counts.values())
+    plate_list = ", ".join(str(pid) for pid in plate_ids)
+    return [f"Boundary cleanup on plates {plate_list}, {total_points} points reassigned."]

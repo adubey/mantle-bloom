@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
-import { fetchPlates, generateWorld, renderWorld, stepWorld } from "./api";
-import type { MapView, PlateSummary, Projection, RenderResponse, WorldSummary } from "./api";
+import { fetchPlates, fetchStats, generateWorld, renderWorld, stepWorld } from "./api";
+import type { MapView, PlateSummary, Projection, RenderResponse, WorldStats, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
 import EventConsole from "./EventConsole";
+import StatsModal from "./StatsModal";
 import { IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
 
@@ -65,6 +66,15 @@ export default function App() {
   // world's lifetime (plate ids aren't stable across a regenerate), so it resets there too.
   const [platesData, setPlatesData] = useState<PlateSummary[]>([]);
   const [selectedPlateId, setSelectedPlateId] = useState<number | null>(null);
+  // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
+  // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
+  // tabs, matching how plate-sim's own Stats feature builds its history entirely
+  // client-side (the backend endpoint itself is stateless, see backend app/stats.py).
+  // Recorded continuously, not just while the modal is open, so opening it later still shows
+  // the full history since the world was generated.
+  const [stats, setStats] = useState<WorldStats | null>(null);
+  const [statsHistory, setStatsHistory] = useState<WorldStats[]>([]);
+  const [showStatsModal, setShowStatsModal] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
@@ -89,6 +99,21 @@ export default function App() {
     }
   }, []);
 
+  // Stats are a secondary/best-effort feature -- a failed fetch here (e.g. a transient
+  // network blip) shouldn't surface as the main error line or block generate/step, unlike
+  // refresh/refreshPlates above which are core to the map actually updating.
+  const recordStats = useCallback(async () => {
+    try {
+      const s = await fetchStats();
+      setStats(s);
+      setStatsHistory((prev) =>
+        prev.length > 0 && prev[prev.length - 1].elapsed_years === s.elapsed_years ? prev : [...prev, s],
+      );
+    } catch {
+      // ignored -- see comment above
+    }
+  }, []);
+
   const handleGenerate = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -97,13 +122,14 @@ export default function App() {
       setSummary(s);
       setSelectedPlateId(null);
       setShowGenerateDialog(false);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates()]);
+      setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh, refreshPlates]);
+  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh, refreshPlates, recordStats]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -112,14 +138,14 @@ export default function App() {
     try {
       const s = await stepWorld(stepYears);
       setSummary(s);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), recordStats()]);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates]);
+  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, recordStats]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -180,6 +206,10 @@ export default function App() {
 
           <button onClick={() => setShowGenerateDialog(true)} disabled={busy} style={{ fontSize: 12 }}>
             Generate World
+          </button>
+
+          <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
+            📊 Stats
           </button>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
@@ -405,6 +435,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {showStatsModal && <StatsModal stats={stats} history={statsHistory} onClose={() => setShowStatsModal(false)} />}
     </div>
   );
 }

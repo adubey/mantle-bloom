@@ -9,16 +9,20 @@ def _plate_with_filler(plate_id, seed_xyz, lines):
     """A plate with the given lines plus a placeholder line, purely so the plate always has
     more than one line -- matching test_merge_split.py's own pattern (a single-line plate is
     pruned as "no land left" by merge_split.remove_defunct_plates before a test's own logic
-    would ever run). The filler shares its `lines[0]` anchor's theta values, offset only in
-    phi, so it's always geometrically right next to that plate's own real data (not the
-    exact same point, which -- when two plates share a frame, as these tests' do -- would be
-    an exact-distance tie that confuses nearest-neighbor self-exclusion; and not off in some
-    arbitrary fixed direction either, which risked landing closer to the *other* plate's own
-    cluster than to this one's, since a shared frame gives both plates the same coordinate
-    system to be "close" or "far" in)."""
+    would ever run). The filler is 6 tightly-packed nodes (0.01 spacing) rather than 2 or 4
+    spread-out ones: every node's 3 nearest same-line siblings then sit far closer (~0.03)
+    than anything else in a test's geometry could possibly be, so the filler is always
+    "obviously its own plate" regardless of exactly where the other plate's own lines land --
+    no need to fine-tune its position relative to a specific test's boundary geometry (an
+    earlier version placed the filler by copying its anchor line's own theta values, which
+    for the misplaced-point test below accidentally recreated a *second* copy of the exact
+    boundary condition under test, since that test's own two lines are constructed to be
+    directly adjacent)."""
     frame = geometry.plate_frame_from_seed(seed_xyz)
     anchor = lines[0]
-    filler = ElevationLine(phi=anchor.phi + 0.15, theta=anchor.theta.copy(), elevation=np.zeros(len(anchor.theta)))
+    base_theta = anchor.theta[0] - 1.0
+    filler_theta = base_theta + 0.01 * np.arange(6)
+    filler = ElevationLine(phi=anchor.phi + 0.15, theta=filler_theta, elevation=np.zeros(6))
     return Plate(plate_id=plate_id, frame=frame, crust_type="oceanic", lines=[*lines, filler])
 
 
@@ -41,7 +45,9 @@ def test_reassign_moves_a_point_surrounded_by_a_foreign_plate():
 
     events = reassign.reassign_misplaced_points(world)
 
-    assert any("reassigned from plate 0 to plate 1" in e for e in events)
+    # One summary line naming every plate touched and the total point count -- not one
+    # line per (source, destination) pair, which could flood the console on a busy pass.
+    assert events == ["Boundary cleanup on plates 0, 1, 1 points reassigned."]
     updated_0 = next(p for p in world.plates if p.plate_id == 0)
     updated_1 = next(p for p in world.plates if p.plate_id == 1)
     own_result = next(l for l in updated_0.lines if np.isclose(l.phi, 0.0))

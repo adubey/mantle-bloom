@@ -64,6 +64,33 @@ export interface PlatesResponse {
   plates: PlateSummary[];
 }
 
+// Stats panel data (see backend app/stats.py) -- a stateless snapshot of the *current* world;
+// the client is what accumulates a history over time (see App.tsx's recordStats), same
+// division of responsibility /world/render already has with renderData. Land/air/ocean
+// temperature and precipitation fields are `null` when their domain has no grid cells at all
+// (e.g. an all-ocean world has no land cells, so every land_*/air_* field is null) --
+// StatsModal must handle that, not assume every field is always present.
+export interface WorldStats {
+  elapsed_years: number;
+  land_fraction: number;
+  ocean_fraction: number;
+  elevation_min_m: number;
+  elevation_max_m: number;
+  elevation_mean_m: number;
+  land_temperature_min_c: number | null;
+  land_temperature_max_c: number | null;
+  land_temperature_mean_c: number | null;
+  air_temperature_min_c: number | null;
+  air_temperature_max_c: number | null;
+  air_temperature_mean_c: number | null;
+  ocean_temperature_min_c: number | null;
+  ocean_temperature_max_c: number | null;
+  ocean_temperature_mean_c: number | null;
+  precipitation_min_mm: number;
+  precipitation_max_mm: number;
+  precipitation_mean_mm: number;
+}
+
 async function asJson<T>(resp: Response): Promise<T> {
   if (!resp.ok) {
     const detail = await resp.text();
@@ -133,4 +160,8 @@ export function fetchPlates(): Promise<PlatesResponse> {
 export function fetchPlateAt(latDeg: number, lonDeg: number): Promise<{ plate_id: number | null }> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
   return fetch(`${API_BASE}/world/plate_at?${params}`).then(asJson<{ plate_id: number | null }>);
+}
+
+export function fetchStats(): Promise<WorldStats> {
+  return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
 }

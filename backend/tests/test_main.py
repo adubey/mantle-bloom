@@ -37,6 +37,10 @@ def test_plate_at_before_generate_returns_404(client):
     assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
+def test_stats_before_generate_returns_404(client):
+    assert client.get("/world/stats").status_code == 404
+
+
 def test_generate_returns_summary(client):
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6})
     assert resp.status_code == 200
@@ -222,3 +226,33 @@ def test_plate_at_rejects_non_finite_query(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 8})
     assert client.get("/world/plate_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_stats_returns_expected_shape(client):
+    client.post("/world/generate", json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
+    resp = client.get("/world/stats")
+    assert resp.status_code == 200
+    body = resp.json()
+
+    assert body["elapsed_years"] == 0.0
+    assert 0.0 <= body["land_fraction"] <= 1.0
+    assert 0.0 <= body["ocean_fraction"] <= 1.0
+    assert math.isclose(body["land_fraction"] + body["ocean_fraction"], 1.0, abs_tol=1e-9)
+    assert body["elevation_min_m"] <= body["elevation_mean_m"] <= body["elevation_max_m"]
+    # A seed/continental_fraction generating both crust types should have both land and
+    # ocean grid cells, so none of these should fall back to their None (empty-mask) case.
+    for key in (
+        "land_temperature_min_c", "land_temperature_max_c", "land_temperature_mean_c",
+        "air_temperature_min_c", "air_temperature_max_c", "air_temperature_mean_c",
+        "ocean_temperature_min_c", "ocean_temperature_max_c", "ocean_temperature_mean_c",
+    ):
+        assert body[key] is not None
+    assert body["precipitation_min_mm"] <= body["precipitation_mean_mm"] <= body["precipitation_max_mm"]
+
+
+def test_stats_reflects_world_stepping(client):
+    client.post("/world/generate", json={"seed": 14, "num_plates": 8})
+    before = client.get("/world/stats").json()
+    client.post("/world/step", json={"years": 5_000_000})
+    after = client.get("/world/stats").json()
+    assert after["elapsed_years"] > before["elapsed_years"]

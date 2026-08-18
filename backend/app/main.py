@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import geometry, plates, projections, render_image
+from . import geometry, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -188,6 +188,17 @@ def list_plates() -> dict:
     `404` if no world has been generated yet."""
     world = _require_world()
     return {"elapsed_years": world.elapsed_years, "plates": [_plate_summary(p) for p in world.plates]}
+
+
+@app.get("/world/stats")
+def get_stats() -> dict:
+    """Aggregate physical/temperature/precipitation statistics for the Stats panel -- see
+    stats.py. Stateless: recomputed fresh from the current world state every call (the
+    frontend is what accumulates a history over time, by calling this after every
+    generate/step, same as it already does for /world/render). `404` if no world has been
+    generated yet."""
+    world = _require_world()
+    return stats.compute_stats(world)
 
 
 @app.get("/world/plate_at")
