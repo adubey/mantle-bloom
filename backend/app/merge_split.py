@@ -244,6 +244,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                     elevation=line.elevation[side],
                     channel_depth=line.channel_depth[side],
                     lake_depth=line.lake_depth[side],
+                    glacier_depth=line.glacier_depth[side],
                 )
             )
         if np.any(~side):
@@ -254,6 +255,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                     elevation=line.elevation[~side],
                     channel_depth=line.channel_depth[~side],
                     lake_depth=line.lake_depth[~side],
+                    glacier_depth=line.glacier_depth[~side],
                 )
             )
 

@@ -47,8 +47,9 @@ Time-stepping:
   → world.step_world(world, years): refit Euler poles, rotate, evolve boundaries, apply
     topology changes (at most one collision merge per step, only after a sustained 50-100
     Myr collision -- see simulation-model.md#merge-and-split), erode elevation and route
-    rivers/lakes from the world's current climate (every step -- see
-    simulation-model.md#erosion and simulation-model.md#hydrology), relax submerged
+    rivers/lakes/glaciers from the world's current climate (every step -- see
+    simulation-model.md#erosion, simulation-model.md#hydrology, and
+    simulation-model.md#glaciation), relax submerged
     continental crust toward a shelf-or-deep-water target (every step -- see
     simulation-model.md#bathymetry), and occasionally fill gaps and regularize line
     spacing, and -- on the steps in between -- reassign misplaced boundary points (see
@@ -118,9 +119,10 @@ Each `Plate` (`backend/app/plates.py`) is:
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
-  line also carries `channel_depth`/`lake_depth` (persistent, land-only -- see
-  simulation-model.md#hydrology) as ordinary parallel arrays right alongside `elevation`
-  itself, so they rotate with the plate for free, no advection scheme needed.
+  line also carries `channel_depth`/`lake_depth`/`glacier_depth` (persistent, land-only --
+  see simulation-model.md#hydrology and simulation-model.md#glaciation) as ordinary parallel
+  arrays right alongside `elevation` itself, so they rotate with the plate for free, no
+  advection scheme needed.
 
 A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
@@ -163,17 +165,18 @@ world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
                      step too, to drive erosion.py (see simulation-model.md#climate)
-erosion.py           every-step rain/river/weathering erosion + downstream sediment
-                     deposition, elevation deltas driven by climate.py's current fields and
-                     hydrology.py's flow routing (see simulation-model.md#erosion) -- the
-                     weather-influences-geology half of the coupling; climate.py's own
-                     elevation-reading mechanics (lapse rate, mountain wind deflection,
-                     orographic rain shadow) are the other half
+erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
+                     deposition + glacier flattening, elevation deltas driven by climate.py's
+                     current fields and hydrology.py's flow routing/glacier state (see
+                     simulation-model.md#erosion) -- the weather-influences-geology half of
+                     the coupling; climate.py's own elevation-reading mechanics (lapse rate,
+                     mountain wind deflection, orographic rain shadow) are the other half
 hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
                      neighbor graph, not a grid): basin-spill/lake detection, steepest-
-                     descent flow direction, downstream flow accumulation -- feeds
-                     erosion.py's river erosion/deposition and the rendered river/lake
-                     overlay (see simulation-model.md#hydrology)
+                     descent flow direction, downstream flow accumulation, glacier
+                     accumulation/melt/flow -- feeds erosion.py's river/glacier erosion and
+                     deposition and the rendered river/lake/glacier overlay (see
+                     simulation-model.md#hydrology and simulation-model.md#glaciation)
 bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
                      (near land) or deep-water (far from land) target elevation (see
                      simulation-model.md#bathymetry)

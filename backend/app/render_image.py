@@ -44,6 +44,10 @@ LAKE_COLOR_RGB = (58, 92, 122)
 # segments get drawn varies with flow magnitude, via RIVER_FLOW_PERCENTILE below).
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
+# A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
+# white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
+# as "just a tall mountain" or "just a lake" at a glance.
+GLACIER_COLOR_RGB = (221, 240, 245)
 
 # Visual constants below are all in pixel terms tuned at this reference width; render_png
 # scales them by (requested width / REFERENCE_WIDTH_PX) so a higher-resolution request (e.g.
@@ -223,12 +227,12 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
 
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, and lake_depth -- see docs/simulation-model.md#render-image. Returns flat
-    concatenated (projected_xy, elevation, plate_id, lake_depth, cell_half_width,
-    cell_half_height) arrays, or None for an empty world.
+    owning plate, lake_depth, and glacier_depth -- see docs/simulation-model.md#render-image.
+    Returns flat concatenated (projected_xy, elevation, plate_id, lake_depth, glacier_depth,
+    cell_half_width, cell_half_height) arrays, or None for an empty world.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -256,9 +260,10 @@ def _render_grid_arrays(
         return None
     all_points, all_elevation, all_owner = collected
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
+    all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     tree = cKDTree(all_points)
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, hw_chunks, hh_chunks = [], [], [], [], [], []
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, hw_chunks, hh_chunks = [], [], [], [], [], [], []
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=GRID_SPACING_RAD):
         _, idx = tree.query(world_pts)
         rotated = _rotate(world_pts, view_rotation)
@@ -267,6 +272,7 @@ def _render_grid_arrays(
         elev_chunks.append(all_elevation[idx])
         owner_chunks.append(all_owner[idx])
         lake_chunks.append(all_lake_depth[idx])
+        glacier_chunks.append(all_glacier_depth[idx])
 
         _, center_lon = geometry.xyz_to_latlon(rotated)
         half_dtheta = GRID_SPACING_RAD / max(np.cos(phi), 1e-3) / 2
@@ -290,6 +296,7 @@ def _render_grid_arrays(
         np.concatenate(elev_chunks, axis=0),
         np.concatenate(owner_chunks, axis=0),
         np.concatenate(lake_chunks, axis=0),
+        np.concatenate(glacier_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
@@ -893,18 +900,25 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, half_w, half_h = grid
+        xy, elev, owner, lake_depth, glacier_depth, half_w, half_h = grid
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
         colors = elevation_colors(elev) if view == "elevation" else plate_colors(owner)
         # Baked directly into the raster rather than a separate overlay/toggle -- same
         # reasoning plate-sim's own docs give for its own lake baking: always visible, no
-        # separate overlay needed, and a lake is meaningful on every view that shows terrain
-        # at all (matches how ocean itself isn't specially toggle-able either).
+        # separate overlay needed, and a lake (or a glacier) is meaningful on every view that
+        # shows terrain at all (matches how ocean itself isn't specially toggle-able either).
+        # Glacier drawn after lake so ice wins on the rare cell where both would apply (a
+        # lake that just froze this same step still shows lake_depth from the previous
+        # render's snapshot for one extra frame in the worst case -- ice is the more
+        # physically current state there).
         is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
         if np.any(is_lake):
             colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=np.uint8), colors)
+        is_glacier = glacier_depth > hydrology.GLACIER_VISIBLE_DEPTH_M
+        if np.any(is_glacier):
+            colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=np.uint8), colors)
         _fill_rects(pixels, centers, hw_px, hh_px, colors)
 
     if detail_lines:
@@ -944,6 +958,7 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         entries = [
             (_swatch_line(draw, RIVER_COLOR_RGB), "River"),
             (_swatch_square(draw, LAKE_COLOR_RGB), "Lake"),
+            (_swatch_square(draw, GLACIER_COLOR_RGB), "Glacier"),
         ]
         _draw_legend(image, draw, height, pixel_scale, "Elevation (m)", gradient=_elevation_legend_gradient(), symbol_entries=entries)
     elif view == "plates":

@@ -33,12 +33,15 @@ needs the same reasoning as rain erosion, one level further removed: it depends 
 resolution) -- RIVER_EROSION_COEFFICIENT is re-derived the same way RAIN_EROSION_COEFFICIENT
 was, not ported verbatim.
 
-**Scope cut from plate-sim's five erosion sources.** Glacier and ocean/coastal erosion are
-still dropped (no glacier field exists; coastal-current erosion is a distinct source never
-implemented here). Weathering's vegetation boost is still dropped (no vegetation field).
-River-channelized erosion and downstream deposition, previously dropped for the same reason
-("needs flow routing over a rotating, irregular per-plate lattice, a separate, harder
-problem") are now implemented -- see hydrology.py for how that flow-routing graph is built.
+**Scope cut from plate-sim's five erosion sources.** Ocean/coastal erosion is still dropped
+(a distinct source never implemented here). Weathering's vegetation boost is still dropped
+(no vegetation field). River-channelized erosion, downstream deposition, and glacier erosion
+-- previously dropped for the same reason ("needs flow routing over a rotating, irregular
+per-plate lattice, a separate, harder problem") -- are now implemented, see hydrology.py for
+how that flow-routing graph is built and how glacier_depth itself is grown/melted/flowed.
+Glacier-driven **flattening** (broad terrain smoothing under an ice sheet, distinct from the
+directional erosion term) is a mantle-bloom-original addition, not a plate-sim port -- see
+`_flatten` below.
 
 **No lag, unlike plate-sim.** plate-sim's erosion reads the *previous* step's climate and
 recomputes its own flow routing independently of hydrology.py's own pass (an accepted
@@ -105,15 +108,40 @@ DEPOSITION_SPEED_THRESHOLD = 2.0
 DEPOSITION_MIN_FLOW_M = 0.05
 DEPOSITION_FRACTION = 0.15
 
+# Glacier erosion: scales with slope and actual accumulated ice depth (hydrology.py's
+# glacier_depth, a real persistent field, not a stateless cold proxy) -- depth*slope
+# approximates basal shear stress, a standard real glacial-erosion proxy: a flat-bottomed
+# accumulation bowl still correctly erodes near zero regardless of ice depth. Ported
+# directly from plate-sim -- temperature/precipitation-driven ice depth uses the same units
+# in both codebases (unlike the slope-based rain/river coefficients above), so this doesn't
+# need the same re-derivation.
+GLACIER_EROSION_COEFFICIENT = 0.05
+GLACIER_EROSION_REFERENCE_DEPTH_M = 100.0
+GLACIER_EROSION_MAX_FACTOR = 2.0
 
-def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
-    """Every node's world position, elevation, and prior channel_depth, concatenated,
-    alongside (plate, line_index, start, end) references -- unlike reassign.py's own
-    _gather_nodes (which needs per-node plate/line identity, since nodes there can move
-    between lines), this only needs enough to slice the erosion result straight back onto
-    each line's own contiguous elevation range, since erosion never moves a node or changes
-    line topology."""
-    points_list, elev_list, channel_list = [], [], []
+# Glacier flattening -- NOT a plate-sim mechanic (confirmed: no flatten/smooth/scour effect
+# tied to ice cover exists there at all), a mantle-bloom-original addition modeling how real
+# continental ice sheets grind down local relief over broad areas (e.g. the Canadian
+# Shield/Fennoscandia read as glacially smoothed bedrock, not just eroded-lower). Implemented
+# as a relaxation of each node's elevation toward the mean of its hydrology.py flow-graph
+# neighbors (a genuine local blur, not a directional erosion/deposition), scaled by the same
+# ice_factor glacier erosion uses -- reuses hydrology's own k=FLOW_NEIGHBOR_COUNT neighbor
+# graph rather than a separate query. GLACIER_FLATTEN_RATE_PER_MYR has no real-world number
+# to port; picked as a starting point, checked against a live run the same way every other
+# from-scratch rate in this codebase was.
+GLACIER_FLATTEN_RATE_PER_MYR = 0.2
+
+
+def _gather_nodes(
+    world: "World",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    """Every node's world position, elevation, and prior channel_depth/glacier_depth,
+    concatenated, alongside (plate, line_index, start, end) references -- unlike
+    reassign.py's own _gather_nodes (which needs per-node plate/line identity, since nodes
+    there can move between lines), this only needs enough to slice the erosion result
+    straight back onto each line's own contiguous elevation range, since erosion never moves
+    a node or changes line topology."""
+    points_list, elev_list, channel_list, glacier_list = [], [], [], []
     line_refs: list[tuple[Plate, int, int, int]] = []
     offset = 0
     for plate in world.plates:
@@ -124,14 +152,16 @@ def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, l
             points_list.append(line.world_xyz(plate.frame))
             elev_list.append(line.elevation)
             channel_list.append(line.channel_depth)
+            glacier_list.append(line.glacier_depth)
             line_refs.append((plate, line_index, offset, offset + n))
             offset += n
     if not points_list:
-        return np.zeros((0, 3)), np.zeros(0), np.zeros(0), []
+        return np.zeros((0, 3)), np.zeros(0), np.zeros(0), np.zeros(0), []
     return (
         np.concatenate(points_list, axis=0),
         np.concatenate(elev_list, axis=0),
         np.concatenate(channel_list, axis=0),
+        np.concatenate(glacier_list, axis=0),
         line_refs,
     )
 
@@ -188,18 +218,32 @@ def _compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarra
     return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
 
 
+def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: float) -> np.ndarray:
+    """Glacier flattening (mantle-bloom-original, see module docstring): relaxes each node's
+    elevation toward the mean of its hydrology.py flow-graph neighbors, scaled by
+    GLACIER_FLATTEN_RATE_PER_MYR and the same ice_factor glacier erosion uses -- a genuine
+    local blur (can raise a valley or lower a peak), not a directional erosion/deposition
+    term, so it's returned as a signed delta rather than folded into erosion_amount."""
+    years_myr = years / 1_000_000.0
+    local_mean = hydro.elevation[hydro.neighbor_idx].mean(axis=1)
+    relax = 1.0 - np.exp(-GLACIER_FLATTEN_RATE_PER_MYR * ice_factor * years_myr)
+    return (local_mean - hydro.elevation) * relax
+
+
 def apply_erosion(world: "World", years: float) -> None:
     """Erodes every plate's elevation nodes based on the world's current climate and flow
     routing -- rain/sheet erosion (precipitation x slope), river-channelized erosion
-    (accumulated flow x slope, boosted by the node's own established channel), and
-    weathering (wind speed x humidity) -- then routes the combined eroded material
-    downstream, redepositing part of it wherever a big, slow river drops its load (a
-    floodplain/delta) instead of losing everything to the coast. Also grows channel_depth
-    (from this step's river-erosion term) and lake_depth (from hydrology.py's own flow
-    routing) -- both persistent, see plates.ElevationLine. Mutates world.plates' line
-    elevations in place; never touches node positions or line topology, so this can't
-    interact with line regularization or point reassignment at all (both of those are purely
-    about node density/position/ownership).
+    (accumulated flow x slope, boosted by the node's own established channel), weathering
+    (wind speed x humidity), and glacier erosion (accumulated ice depth x slope) -- then
+    routes the combined eroded material downstream, redepositing part of it wherever a big,
+    slow river drops its load (a floodplain/delta) instead of losing everything to the coast.
+    Separately relaxes elevation under thick ice toward its local neighborhood mean (glacial
+    flattening, see `_flatten`). Also grows channel_depth (from this step's river-erosion
+    term); lake_depth/glacier_depth are hydrology.py's own state transitions, read directly
+    from World.hydrology_cache. All three persistent, see plates.ElevationLine. Mutates
+    world.plates' line elevations in place; never touches node positions or line topology,
+    so this can't interact with line regularization or point reassignment at all (both of
+    those are purely about node density/position/ownership).
 
     Always computes climate fresh (never reuses World.climate_cache itself -- this runs
     right after this step's own tectonic/topology changes, so a cache from a previous step
@@ -210,7 +254,7 @@ def apply_erosion(world: "World", years: float) -> None:
     fields = climate.compute_climate(world)
     world.climate_cache = fields
 
-    points, elevation, prior_channel_depth, line_refs = _gather_nodes(world)
+    points, elevation, prior_channel_depth, prior_glacier_depth, line_refs = _gather_nodes(world)
     n = len(points)
     if n == 0:
         world.hydrology_cache = None
@@ -221,13 +265,16 @@ def apply_erosion(world: "World", years: float) -> None:
     precipitation_mm = fields.precipitation_mm[row, col]
     wind_speed = np.hypot(fields.wind_u, fields.wind_v)[row, col]
     humidity = fields.humidity[row, col]
+    is_ocean_node = elevation <= 0.0
+    # The same real temperature a node actually experiences that render_image.py's own
+    # temperature view displays -- ocean surface over water, moderated air over land.
+    temperature = np.where(is_ocean_node, fields.ocean_temperature_c[row, col], fields.air_temperature_c[row, col])
 
     slope, drop_to_lowest_neighbor_m = _compute_slope(points, elevation)
     dt_myr = years / 1_000_000.0
 
-    hydro = hydrology.compute_hydrology(world, precipitation_mm)
+    hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years)
     world.hydrology_cache = hydro
-    prior_lake_depth = np.concatenate([plate.lines[li].lake_depth for plate, li, _, _ in line_refs])
     water_accum_m = hydro.flow_accum / 1000.0
 
     rain = RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000.0) * dt_myr
@@ -241,16 +288,16 @@ def apply_erosion(world: "World", years: float) -> None:
     )
     humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
     weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr
+    ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
+    glacier = GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr
     # Capped at the drop to the lowest neighbor -- same reason plate-sim caps its own
-    # erosion at "slope" -- so a single step can't carve a node below the valley floor it
+    # erosion at "slope" -- so a single step can't erode a node below the valley floor it
     # drains into. Zeroed over ocean nodes (elevation <= sea level, the same convention
     # climate.py/plates.py use everywhere else): every source here is a subaerial process,
-    # and plate-sim itself excludes ocean cells from these same three sources (its separate
+    # and plate-sim itself excludes ocean cells from these same sources (its separate
     # coastal-current erosion source is the only one that touches the seafloor, and that's
-    # one of the sources this module deliberately doesn't implement -- see module
-    # docstring).
-    is_ocean_node = elevation <= 0.0
-    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(rain + river + weathering, 0.0, None))
+    # the one source this module still doesn't implement -- see module docstring).
+    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(rain + river + weathering + glacier, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
 
     # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
@@ -262,9 +309,10 @@ def apply_erosion(world: "World", years: float) -> None:
     retain_fraction = np.where(is_depositing, DEPOSITION_FRACTION, 0.0)
     _, sediment_deposited = hydrology.route_downstream(elevation, is_ocean_node, hydro.flow_target, erosion_amount, retain_fraction=retain_fraction)
 
-    new_elevation = np.clip(elevation - erosion_amount + sediment_deposited, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    flatten_delta = _flatten(hydro, ice_factor, years)
+
+    new_elevation = np.clip(elevation - erosion_amount + sediment_deposited + flatten_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + river, 0.0, MAX_CHANNEL_DEPTH_M))
-    new_lake_depth = hydrology.update_lakes(hydro, prior_lake_depth, hydro.water_deposited, years)
 
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
@@ -273,5 +321,6 @@ def apply_erosion(world: "World", years: float) -> None:
             theta=line.theta,
             elevation=new_elevation[start:end],
             channel_depth=new_channel_depth[start:end],
-            lake_depth=new_lake_depth[start:end],
+            lake_depth=hydro.lake_depth[start:end],
+            glacier_depth=hydro.glacier_depth[start:end],
         )

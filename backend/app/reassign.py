@@ -161,6 +161,7 @@ def reassign_misplaced_points(world: "World") -> None:
             elevation=line.elevation[keep_mask],
             channel_depth=line.channel_depth[keep_mask],
             lake_depth=line.lake_depth[keep_mask],
+            glacier_depth=line.glacier_depth[keep_mask],
         )
 
     for (plate_id, line_index), new_nodes in add_by_target.items():
@@ -170,14 +171,15 @@ def reassign_misplaced_points(world: "World") -> None:
         new_elevation = np.array([e for _, e in new_nodes])
         combined_theta = np.concatenate([line.theta, new_theta])
         combined_elevation = np.concatenate([line.elevation, new_elevation])
-        # A reassigned point's own channel_depth/lake_depth resets to 0 -- this pass only
-        # ever touches a small number of boundary-adjacent nodes at a time, so losing a
-        # carved channel right at the moment its owning plate changes is an acceptable
-        # simplification (unlike line_regrid.py's regularize_line, which runs on nearly
-        # every line, every regularize interval -- resetting there would erase rivers
-        # constantly, not rarely).
+        # A reassigned point's own channel_depth/lake_depth/glacier_depth resets to 0 --
+        # this pass only ever touches a small number of boundary-adjacent nodes at a time,
+        # so losing a carved channel (or a glacier) right at the moment its owning plate
+        # changes is an acceptable simplification (unlike line_regrid.py's regularize_line,
+        # which runs on nearly every line, every regularize interval -- resetting there
+        # would erase rivers/glaciers constantly, not rarely).
         combined_channel_depth = np.concatenate([line.channel_depth, np.zeros(len(new_nodes))])
         combined_lake_depth = np.concatenate([line.lake_depth, np.zeros(len(new_nodes))])
+        combined_glacier_depth = np.concatenate([line.glacier_depth, np.zeros(len(new_nodes))])
         order = np.argsort(combined_theta)
         plate.lines[line_index] = ElevationLine(
             phi=line.phi,
@@ -185,4 +187,5 @@ def reassign_misplaced_points(world: "World") -> None:
             elevation=combined_elevation[order],
             channel_depth=combined_channel_depth[order],
             lake_depth=combined_lake_depth[order],
+            glacier_depth=combined_glacier_depth[order],
         )

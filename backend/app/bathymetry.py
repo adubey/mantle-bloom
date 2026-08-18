@@ -113,4 +113,5 @@ def apply_bathymetry(world: "World", years: float) -> None:
             elevation=new_elevation[start:end],
             channel_depth=line.channel_depth,
             lake_depth=line.lake_depth,
+            glacier_depth=line.glacier_depth,
         )

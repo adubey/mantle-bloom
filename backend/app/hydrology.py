@@ -1,19 +1,20 @@
-"""Rivers and lakes: flow routing, basin/lake detection, and downstream flow accumulation
-over the world's current node cloud.
+"""Rivers, lakes, and glaciers: flow routing, basin/lake detection, ice accumulation/melt/
+flow, and downstream flow accumulation over the world's current node cloud.
 
 Ported from plate-sim's hydrology.py, adapted from its fixed grid (whose regular 8-neighbor
 adjacency gives flow routing, depression filling, and downstream accumulation a natural
 substrate) to mantle-bloom's irregular per-plate node cloud. All three of plate-sim's core
-algorithms -- steepest-descent flow direction, priority-flood basin-spill, and
+flow-routing algorithms -- steepest-descent flow direction, priority-flood basin-spill, and
 elevation-ordered downstream accumulation -- turn out not to actually need a *grid*, only a
 *graph*: this module builds one via a whole-world k-nearest-neighbor query (the same
 technique reassign.py/erosion.py already use for their own whole-world passes), then runs
-the same three algorithms directly on it.
+the same algorithms directly on it. Glacier flow (accumulated ice moving one hop downhill
+per step) reuses the same `flow_target` graph water uses.
 
 **Persistence.** Unlike plate-sim -- whose plates move relative to a fixed grid, so a
 persistent field like channel_depth needs deliberate semi-Lagrangian advection every step to
 keep following the crust -- mantle-bloom's elevation-line nodes already rotate exactly with
-their own plate. channel_depth and lake_depth, stored as ordinary parallel arrays on
+their own plate. lake_depth and glacier_depth, stored as ordinary parallel arrays on
 ElevationLine right alongside elevation itself (see plates.py), get that same "just works"
 persistence for free: no advection scheme needed, since rotating a plate never touches those
 arrays at all. flow_target/flow_accum/river_speed are deliberately *not* persisted, mirroring
@@ -25,7 +26,11 @@ so a later same-turn caller (rendering, stats) doesn't recompute them again.
 (once in hydrology.py for the real river_flow/rendering fields, again inside erosion.py for
 the water_accum erosion itself needs) -- an accepted redundancy there, cheap under numba JIT.
 Flow routing here has no JIT and is comparatively expensive, so this module computes it once
-and erosion.py reuses the same result, rather than duplicating a cost that's real here.
+and erosion.py reuses the same result, rather than duplicating a cost that's real here. This
+module owns lake and glacier *state transitions* (this step's final lake_depth/glacier_depth,
+both returned via HydrologyFields) -- erosion.py only reads glacier_depth (for its own
+glacier-erosion/flattening terms) and channel_depth (which erosion.py itself owns, since it's
+the module that actually carves it), matching plate-sim's own module split.
 
 **Lakes are single nodes**, same simplification plate-sim itself documents: a lake is its own
 sink node plus a `lake_depth`, not a flood-filled multi-node shoreline region.
@@ -40,7 +45,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .plates import ElevationLine, Plate
+from . import geometry
+from .plates import PLANET_RADIUS_KM, ElevationLine, Plate
 
 if TYPE_CHECKING:
     from .world import World
@@ -68,13 +74,34 @@ LAKE_FILL_RATE = 0.12
 LAKE_EVAPORATION_RATE_PER_MYR = 0.3
 LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 
+# Glaciers -- ported closer to plate-sim's own values than the lake evaporation rate needed
+# re-scaling: these are flat per-Myr rates (linear in dt_myr), not plate-sim's own
+# exponential-decay lake formula, so they don't blow up the same way at mantle-bloom's
+# larger typical step size -- a bigger step just melts/grows proportionally more, same
+# character as every other elevation delta in this codebase (boundary.py's uplift/trench
+# rates are also flat per-Myr rates applied directly). No seasons modeled here either
+# (matching plate-sim, and mantle-bloom's climate.py generally) -- GLACIER_ACCUMULATION_TEMP_C
+# being well below 0C is what keeps this meaning *permanent* accumulation, not a place with
+# ordinary seasonal snow that would fully melt over a real year.
+GLACIER_ACCUMULATION_TEMP_C = -10.0
+GLACIER_ACCUMULATION_RATE = 0.02
+GLACIER_MELT_RATE_M_PER_MYR = 400.0
+GLACIER_MELT_REFERENCE_DEGREES_C = 20.0
+GLACIER_MELT_MAX_FACTOR = 3.0
+GLACIER_FLOW_RATE_PER_MYR = 0.15
+GLACIER_MAX_FLOW_FRACTION = 0.5
+GLACIER_VISIBLE_DEPTH_M = 10.0
+
 
 @dataclass
 class HydrologyFields:
     """Everything derived from one whole-world flow-routing pass, all shape (N,) aligned
     with `points`/`elevation` -- the irregular-node-cloud analogue of plate-sim's
     HydrologyField grid. `line_refs` is (plate, line_index, start, end) per line, letting a
-    caller slice any of these flat arrays back onto a specific line's own node range."""
+    caller slice any of these flat arrays back onto a specific line's own node range.
+    `lake_depth`/`glacier_depth` are already this step's *final* values (state-transition
+    owned by this module, see module docstring) -- a caller doesn't need to call anything
+    else to get the up-to-date depth."""
 
     points: np.ndarray
     elevation: np.ndarray
@@ -86,15 +113,19 @@ class HydrologyFields:
     filled_elevation: np.ndarray  # (N,) minimal-bottleneck elevation to reach open ocean
     spill_target: np.ndarray  # (N,) one-hop basin-escape neighbor index; -1 = none/ocean
     is_river: np.ndarray  # (N,) bool -- top RIVER_FLOW_PERCENTILE of land flow_accum
+    lake_depth: np.ndarray  # (N,) this step's final standing lake depth
+    glacier_depth: np.ndarray  # (N,) this step's final accumulated ice depth
     line_refs: list[tuple[Plate, int, int, int]]
 
 
-def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
-    """Every node's world position, elevation, prior lake_depth, and whether it's ocean
-    (elevation <= 0, the sea-level convention used everywhere else in this codebase),
-    concatenated, alongside (plate, line_index, start, end) references -- same shape as
-    erosion.py's/bathymetry.py's own _gather_nodes."""
-    points_list, elev_list, lake_list = [], [], []
+def _gather_nodes(
+    world: "World",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    """Every node's world position, elevation, prior lake_depth, prior glacier_depth, and
+    whether it's ocean (elevation <= 0, the sea-level convention used everywhere else in
+    this codebase), concatenated, alongside (plate, line_index, start, end) references --
+    same shape as erosion.py's/bathymetry.py's own _gather_nodes."""
+    points_list, elev_list, lake_list, glacier_list = [], [], [], []
     line_refs: list[tuple[Plate, int, int, int]] = []
     offset = 0
     for plate in world.plates:
@@ -105,16 +136,18 @@ def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, n
             points_list.append(line.world_xyz(plate.frame))
             elev_list.append(line.elevation)
             lake_list.append(line.lake_depth)
+            glacier_list.append(line.glacier_depth)
             line_refs.append((plate, line_index, offset, offset + n))
             offset += n
     if not points_list:
         empty = np.zeros(0)
-        return np.zeros((0, 3)), empty, empty, np.zeros(0, dtype=bool), []
+        return np.zeros((0, 3)), empty, empty, empty, np.zeros(0, dtype=bool), []
     points = np.concatenate(points_list, axis=0)
     elevation = np.concatenate(elev_list, axis=0)
     prev_lake_depth = np.concatenate(lake_list, axis=0)
+    prev_glacier_depth = np.concatenate(glacier_list, axis=0)
     is_ocean = elevation <= 0.0
-    return points, elevation, prev_lake_depth, is_ocean, line_refs
+    return points, elevation, prev_lake_depth, prev_glacier_depth, is_ocean, line_refs
 
 
 def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
@@ -203,6 +236,20 @@ def _compute_flow_direction(
     return np.where(is_ocean, -1, flow_target).astype(np.int64)
 
 
+def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
+    """Dimensionless rise/run from each node to its own flow_target (0 for a node with no
+    target) -- the slope glacier flow moves along, distinct from erosion.py's own
+    SLOPE_NEIGHBOR_COUNT=4 "lowest of k neighbors" slope: glacier flow specifically follows
+    `flow_target` (this module's own k=FLOW_NEIGHBOR_COUNT graph), not erosion's separate,
+    smaller neighborhood."""
+    has_target = flow_target >= 0
+    safe_target = np.where(has_target, flow_target, 0)
+    drop = np.where(has_target, elevation - elevation[safe_target], 0.0)
+    run_m = geometry.angular_distance(points, points[safe_target]) * PLANET_RADIUS_KM * 1000.0
+    run_m = np.maximum(run_m, 1.0)
+    return np.where(has_target, np.clip(drop, 0.0, None) / run_m, 0.0)
+
+
 def route_downstream(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -246,38 +293,51 @@ def route_downstream(
     return np.array(through_flux), np.array(deposited)
 
 
-def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray) -> HydrologyFields:
-    """Runs the full flow-routing pipeline against the world's current node cloud and this
-    step's climate: basin-spill -> flow direction -> precipitation-weighted downstream
-    accumulation -> river classification. `precipitation_at_nodes` is precomputed by the
-    caller (erosion.py, which already needs the same climate-grid lookup for its own rain
-    erosion term) rather than looked up again here."""
-    points, elevation, prev_lake_depth, is_ocean, line_refs = _gather_nodes(world)
-    n = len(points)
-    if n <= FLOW_NEIGHBOR_COUNT:
-        empty_i = np.zeros(n, dtype=np.int64)
-        empty_f = np.zeros(n)
-        return HydrologyFields(
-            points, elevation, is_ocean, np.zeros((n, 0), dtype=np.int64), empty_i, empty_f, empty_f, empty_f, empty_i, np.zeros(n, dtype=bool), line_refs
-        )
+def _update_glaciers(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    flow_target: np.ndarray,
+    slope_to_target: np.ndarray,
+    prev_glacier_depth: np.ndarray,
+    frozen_precip: np.ndarray,
+    frozen_from_lake: np.ndarray,
+    is_accumulating: np.ndarray,
+    temperature: np.ndarray,
+    years: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Grows/melts/flows glacier ice -- direct port of plate-sim's own _update_glaciers,
+    generalized from grid 8-neighbor D8 routing to this module's flow_target graph. Returns
+    (new_glacier_depth, melt): melt feeds back into this step's water source (see
+    compute_hydrology) as real meltwater, not a separate accounting bucket -- matching
+    plate-sim's own "real meltwater, feeding real river discharge" design."""
+    years_myr = years / 1_000_000.0
+    accumulation = np.where(is_accumulating, GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, 0.0)
+    depth_before_flow = prev_glacier_depth + frozen_from_lake + accumulation
 
-    neighbor_idx = _build_neighbor_graph(points)
-    filled_elevation, spill_target = _compute_basin_spill(elevation, is_ocean, neighbor_idx)
-    flow_target = _compute_flow_direction(elevation, is_ocean, neighbor_idx, prev_lake_depth, filled_elevation, spill_target)
-    flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, precipitation_at_nodes)
-
-    land = ~is_ocean
-    is_river = np.zeros(n, dtype=bool)
-    if np.any(land) and np.any(flow_accum[land] > 0):
-        threshold = np.percentile(flow_accum[land], RIVER_FLOW_PERCENTILE)
-        is_river = land & (flow_accum > 0) & (flow_accum >= threshold)
-
-    return HydrologyFields(
-        points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target, is_river, line_refs
+    melt_factor = np.clip(
+        (temperature - GLACIER_ACCUMULATION_TEMP_C) / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
     )
+    melt = np.minimum(GLACIER_MELT_RATE_M_PER_MYR * melt_factor * years_myr, depth_before_flow)
+    depth_after_melt = depth_before_flow - melt
+
+    flow_fraction = np.clip(GLACIER_FLOW_RATE_PER_MYR * slope_to_target * years_myr, 0.0, GLACIER_MAX_FLOW_FRACTION)
+    has_target = flow_target >= 0
+    outflow = np.where(has_target, depth_after_melt * flow_fraction, 0.0)
+    remaining = depth_after_melt - outflow
+
+    inflow = np.zeros_like(elevation)
+    np.add.at(inflow, flow_target[has_target], outflow[has_target])
+
+    # Ice reaching (or accumulating on) an ocean node is discarded, not piled up -- real sea
+    # ice is a different, thinner, seasonal phenomenon this model doesn't represent; this
+    # same guard reads as calving where a glacier reaches a coast.
+    new_depth = np.where(is_ocean, 0.0, np.clip(remaining + inflow, 0.0, None))
+    return new_depth, melt
 
 
-def update_lakes(fields: HydrologyFields, prev_lake_depth: np.ndarray, water_deposited: np.ndarray, years: float) -> np.ndarray:
+def update_lakes(
+    fields: HydrologyFields, prev_lake_depth: np.ndarray, water_deposited: np.ndarray, years: float, is_accumulating: np.ndarray
+) -> np.ndarray:
     """New lake_depth per node -- grows at sink nodes fed by route_downstream's own
     terminal deposition there (`water_deposited`, the water-routing pass's `deposited`
     output -- nonzero only at a true sink, since a through-flowing node's water all
@@ -287,30 +347,84 @@ def update_lakes(fields: HydrologyFields, prev_lake_depth: np.ndarray, water_dep
     style for why a persistent field needs this kind of steady-state pinning, and
     plate-sim's own docs for the oscillation bug this specifically avoids (a full lake that
     evaporates even slightly un-redirects its flow_target back to a sink, refills, and
-    oscillates forever instead of settling as a real, continuously-draining lake)."""
+    oscillates forever instead of settling as a real, continuously-draining lake).
+
+    `is_accumulating` (a node cold enough for permanent glaciation, see
+    GLACIER_ACCUMULATION_TEMP_C) forces both branches to 0/empty rather than the ordinary
+    grow-or-stay-at-cap behavior -- without this, a lake that just froze (see
+    compute_hydrology's freeze conversion, which already moved its water into
+    `frozen_from_lake` before this function ever runs) would immediately re-fill right back
+    up to its own basin cap the same step, double-counting the same water as both a lake and
+    a glacier at once -- the exact failure mode plate-sim's own docs describe fixing."""
     years_myr = years / 1_000_000.0
     is_sink = (fields.flow_target < 0) & ~fields.is_ocean
     retention = np.exp(-LAKE_EVAPORATION_RATE_PER_MYR * years_myr)
-    inflow_gain = np.where(is_sink, LAKE_FILL_RATE * water_deposited * years_myr, 0.0)
+    inflow_gain = np.where(is_sink & ~is_accumulating, LAKE_FILL_RATE * water_deposited * years_myr, 0.0)
     baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
     cap = np.clip(fields.filled_elevation - fields.elevation, 0.0, None)
 
     grown = np.clip(prev_lake_depth * retention + inflow_gain - baseline_loss, 0.0, cap)
-    not_sink_depth = np.zeros_like(prev_lake_depth)
+    not_sink_depth = np.where(is_accumulating, 0.0, cap)
     result = np.where(is_sink, grown, not_sink_depth)
     return np.where(fields.is_ocean, 0.0, result)
 
 
-def write_lake_depth(fields: HydrologyFields, new_lake_depth: np.ndarray) -> None:
-    """Writes new_lake_depth (aligned with fields.points/elevation) back onto each line's
-    own lake_depth array, matching fields.line_refs' (plate, line_index, start, end)
-    slices."""
-    for plate, line_index, start, end in fields.line_refs:
-        line = plate.lines[line_index]
-        plate.lines[line_index] = ElevationLine(
-            phi=line.phi,
-            theta=line.theta,
-            elevation=line.elevation,
-            channel_depth=line.channel_depth,
-            lake_depth=new_lake_depth[start:end],
+def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temperature_at_nodes: np.ndarray, years: float) -> HydrologyFields:
+    """Runs the full flow-routing pipeline against the world's current node cloud and this
+    step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->
+    glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater downstream
+    accumulation -> lake growth/evaporation -> river classification. `precipitation_at_nodes`/
+    `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
+    same climate-grid lookups for its own erosion terms) rather than looked up again here.
+
+    A node colder than GLACIER_ACCUMULATION_TEMP_C never holds liquid water at all: any
+    precipitation there is treated as fully frozen (no partial liquid/frozen split like
+    plate-sim's own compute_liquid_precipitation -- matching erosion.py's existing "use
+    precipitation is enough" simplification, just gated by the same accumulation threshold),
+    and an existing lake sitting there freezes solid into glacier_depth this same step,
+    *before* flow_target is (re)computed -- so a lake that just froze is correctly treated as
+    a genuine sink again this step (see update_lakes's own docstring for why the ordering
+    matters, and the failure mode it avoids)."""
+    points, elevation, prev_lake_depth, prev_glacier_depth, is_ocean, line_refs = _gather_nodes(world)
+    n = len(points)
+    if n <= FLOW_NEIGHBOR_COUNT:
+        empty_i = np.zeros(n, dtype=np.int64)
+        empty_f = np.zeros(n)
+        return HydrologyFields(
+            points, elevation, is_ocean, np.zeros((n, 0), dtype=np.int64), empty_i, empty_f, empty_f, empty_f, empty_i,
+            np.zeros(n, dtype=bool), empty_f, empty_f, line_refs,
         )
+
+    neighbor_idx = _build_neighbor_graph(points)
+    filled_elevation, spill_target = _compute_basin_spill(elevation, is_ocean, neighbor_idx)
+
+    is_accumulating = temperature_at_nodes < GLACIER_ACCUMULATION_TEMP_C
+    freezing_lake = is_accumulating & (prev_lake_depth > 0.0)
+    lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
+    frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
+
+    flow_target = _compute_flow_direction(elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target)
+
+    frozen_precip = np.where(is_accumulating, precipitation_at_nodes, 0.0)
+    liquid_precip = np.where(is_accumulating, 0.0, precipitation_at_nodes)
+
+    slope_to_target = _slope_to_flow_target(points, elevation, flow_target)
+    new_glacier_depth, melt = _update_glaciers(
+        elevation, is_ocean, flow_target, slope_to_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_accumulating, temperature_at_nodes, years
+    )
+
+    water_source = liquid_precip + melt
+    flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source)
+
+    land = ~is_ocean
+    is_river = np.zeros(n, dtype=bool)
+    if np.any(land) and np.any(flow_accum[land] > 0):
+        threshold = np.percentile(flow_accum[land], RIVER_FLOW_PERCENTILE)
+        is_river = land & (flow_accum > 0) & (flow_accum >= threshold)
+
+    fields = HydrologyFields(
+        points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
+        is_river, lake_depth_adjusted, new_glacier_depth, line_refs,
+    )
+    fields.lake_depth = update_lakes(fields, lake_depth_adjusted, water_deposited, years, is_accumulating)
+    return fields

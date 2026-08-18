@@ -19,6 +19,7 @@
 - [Erosion](#erosion)
 - [Bathymetry](#bathymetry)
 - [Hydrology (rivers and lakes)](#hydrology)
+- [Glaciation](#glaciation)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -830,14 +831,16 @@ all ported from plate-sim alongside the rest of its climate pipeline). This modu
 new direction, weather influencing terrain, ported from plate-sim's own erosion model but
 cut down to the sources that don't depend on infrastructure mantle-bloom doesn't have.
 
-**Scope cut from plate-sim's five erosion sources.** Glacier erosion is dropped (no glacier
-field exists) and so is coastal-current erosion (a distinct source, never implemented here).
-Weathering's vegetation boost is dropped (no vegetation field, same reasoning as climate.py's
-own "deliberately not ported" list). What's left -- rain/sheet erosion, river-channelized
-erosion, and weathering -- feed into a downstream deposition pass (see
-[Hydrology](#hydrology) for the flow-routing graph all of this depends on), so material
-isn't purely one-way removed anymore: a slow, big river drops part of its sediment load
-locally instead of carrying every last grain to the coast.
+**Scope cut from plate-sim's five erosion sources.** Coastal-current erosion is dropped (a
+distinct source, never implemented here). Weathering's vegetation boost is dropped (no
+vegetation field, same reasoning as climate.py's own "deliberately not ported" list).
+Rain/sheet erosion, river-channelized erosion, weathering, and glacier erosion all feed into
+a downstream deposition pass (see [Hydrology](#hydrology) for the flow-routing graph all of
+this depends on, and [Glaciation](#glaciation) for how `glacier_depth` itself is
+grown/melted/flowed), so material isn't purely one-way removed anymore: a slow, big river
+drops part of its sediment load locally instead of carrying every last grain to the coast.
+Glacier-driven **flattening** (broad terrain smoothing under an ice sheet) is a
+mantle-bloom-original addition, not a plate-sim port -- see below.
 
 **The mapping problem, and why it's easier in this direction than the reverse.** climate.py
 already solves node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor
@@ -866,9 +869,12 @@ needs the same re-derivation, one level further removed: it depends on `water_ac
 [Hydrology](#hydrology)), itself downstream-accumulated *precipitation* rather than a raw
 grid-cell count the way plate-sim's own accumulation implicitly scales with grid resolution,
 so `RIVER_EROSION_COEFFICIENT` was re-derived the same order-of-magnitude way, then checked
-against real channel-depth growth over an actual run (see below).
+against real channel-depth growth over an actual run (see below). Glacier erosion needs no
+such re-derivation -- `glacier_depth` is driven by temperature and precipitation, which use
+the same units in both codebases (unlike slope), so `GLACIER_EROSION_COEFFICIENT` ports
+directly from plate-sim.
 
-**The three formulas**, all computed per-node:
+**The four formulas**, all computed per-node:
 
 - **Rain/sheet erosion** = `RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000) *
   dt_myr`.
@@ -883,12 +889,34 @@ against real channel-depth growth over an actual run (see below).
   physically-derived limit), all ported directly from plate-sim's own channel-memory model.
 - **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr`, where
   `humidity_norm` is humidity clipped to `[0, 1]` against `HUMIDITY_REFERENCE`.
-- All three summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
+- **Glacier erosion** = `GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr`, where
+  `ice_factor = clip(glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0,
+  GLACIER_EROSION_MAX_FACTOR)` -- driven by the node's own *actual accumulated ice depth*
+  (a real persistent field, see [Glaciation](#glaciation)), not a stateless cold proxy;
+  `depth * slope` approximates basal shear stress, a standard real glacial-erosion proxy: a
+  flat-bottomed accumulation bowl still correctly erodes near zero regardless of how thick
+  the ice sitting in it is. Uses the *previous* step's `glacier_depth` (same one-step lag
+  `channel_boost` above already uses for `channel_depth`), since this step's fresh value
+  isn't computed until `hydrology.compute_hydrology` runs, just before this term does.
+- All four summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
   everywhere else) -- every source here is a subaerial process, matching plate-sim's own
   `np.where(is_ocean, 0.0, ...)` masking. The combined result is capped at the node's own
   drop-to-lowest-neighbor (in meters, not the normalized slope) -- the same cap plate-sim
   applies, so a single step can't erode a node *past* the valley it drains into and carve a
   new, lower pit.
+
+**Glacier flattening** (`_flatten`, mantle-bloom-original -- confirmed no equivalent exists
+in plate-sim, no flatten/smooth/scour mechanic is tied to ice cover there at all): real
+continental ice sheets grind down local relief over broad areas (the Canadian Shield and
+Fennoscandia read as glacially smoothed bedrock today, not just eroded lower) -- a genuine
+local blur, not a directional erosion/deposition term, so it's applied as a separate signed
+elevation delta rather than folded into `erosion_amount`. Each node relaxes toward the mean
+elevation of its own `hydrology.py` flow-graph neighbors (reusing that graph rather than a
+separate query), scaled by `GLACIER_FLATTEN_RATE_PER_MYR` and the same `ice_factor` glacier
+erosion uses -- glacier-free nodes (`ice_factor = 0`) are completely untouched. Confirmed
+directly on a real run: near-zero delta at nodes with little local relief, tens to 100+
+meters at nodes combining real local relief with thick ice, consistent with "smooths sharp
+terrain under ice, leaves already-flat terrain alone."
 
 **Deposition.** The capped, combined erosion amount is routed downstream (see
 `hydrology.route_downstream`) with a `retain_fraction` wherever a river qualifies as "big and
@@ -899,10 +927,11 @@ in which case `DEPOSITION_FRACTION` of the material passing through that node se
 there (a floodplain or delta) instead of continuing on; the rest keeps going, eventually
 reaching either another depositing node, an internal sink, or the coast (where it can raise
 an *ocean* node's own elevation -- a river delta building outward is real, intended
-behavior, not a bug). Both `line.elevation` and `line.channel_depth`/`line.lake_depth`
-(see [Hydrology](#hydrology)) get written back together per line, subtracted/added directly
--- no resampling, no topology change, so none of this can interact with line regularization
-or point reassignment at all.
+behavior, not a bug). `line.elevation`, `line.channel_depth` (this module's own), and
+`line.lake_depth`/`line.glacier_depth` (state transitions owned by `hydrology.py`, read
+directly from `World.hydrology_cache` -- see [Hydrology](#hydrology)) all get written back
+together per line -- no resampling, no topology change, so none of this can interact with
+line regularization or point reassignment at all.
 
 **Cadence: every step, no lag on climate -- but a deliberate change from erosion's own
 earlier no-hydrology version regarding flow routing.** This module still calls
@@ -959,22 +988,23 @@ passes), then runs the same three algorithms directly on it.
 **Persistence -- the central adaptation.** plate-sim's plates move relative to its fixed
 grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian advection
 every step just to keep following the crust. mantle-bloom's elevation-line nodes already
-rotate exactly with their own plate, so `channel_depth` and `lake_depth`, stored as ordinary
-parallel arrays on `ElevationLine` right alongside `elevation` itself (see
-[Why not a grid](#why-not-a-grid)), get that same "just works" persistence for free -- no
-advection scheme needed, since rotating a plate never touches those arrays at all. Making
-this persistence real required threading both fields through every place an `ElevationLine`
-gets rebuilt: preserved unchanged where a rebuild doesn't change node identity (boundary
-elevation deltas, bathymetry), sliced/concatenated to match where nodes are added or removed
-(boundary growth/shrink -- new nodes start at 0, no history to carry; a merge/split's
-boolean-mask slice), interpolated alongside elevation where a line gets resampled onto a
-fresh spacing (`line_regrid.regularize_line`, since that runs periodically throughout the
-simulation and a plain reset would erase rivers constantly, not rarely). Two call sites
-*do* deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice`
-(generation, gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled
-territory has no river history to carry) and a reassigned point in `reassign.py` (a rare,
-small-scale pass touching only a few boundary-adjacent nodes at a time, unlike
-`line_regrid.py`'s near-every-line-every-interval reach).
+rotate exactly with their own plate, so `channel_depth`, `lake_depth`, and `glacier_depth`
+(see [Glaciation](#glaciation)), stored as ordinary parallel arrays on `ElevationLine` right
+alongside `elevation` itself (see [Why not a grid](#why-not-a-grid)), get that same "just
+works" persistence for free -- no advection scheme needed, since rotating a plate never
+touches those arrays at all. Making this persistence real required threading all three
+fields through every place an `ElevationLine` gets rebuilt: preserved unchanged where a
+rebuild doesn't change node identity (boundary elevation deltas, bathymetry),
+sliced/concatenated to match where nodes are added or removed (boundary growth/shrink -- new
+nodes start at 0, no history to carry; a merge/split's boolean-mask slice), interpolated
+alongside elevation where a line gets resampled onto a fresh spacing
+(`line_regrid.regularize_line`, since that runs periodically throughout the simulation and a
+plain reset would erase rivers/glaciers constantly, not rarely). Two call sites *do*
+deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice` (generation,
+gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled territory has no
+history to carry) and a reassigned point in `reassign.py` (a rare, small-scale pass touching
+only a few boundary-adjacent nodes at a time, unlike `line_regrid.py`'s
+near-every-line-every-interval reach).
 
 `flow_target`/`flow_accum`/`river_speed` are deliberately *not* persisted, mirroring
 plate-sim (recomputed fresh every step there too, from that step's real climate) -- purely
@@ -1049,6 +1079,60 @@ without instantly saturating at `MAX_CHANNEL_DEPTH_M`; lakes form, persist, and 
 in count/depth across many steps rather than either vanishing or ratcheting monotonically
 upward.
 
+<a id="glaciation"></a>
+## Glaciation (`hydrology.py`)
+
+A node colder than `GLACIER_ACCUMULATION_TEMP_C` (-10C, matching plate-sim's own value and
+its own rationale for why: this model has no seasons, so a mean annual temperature just
+barely below 0C represents a place with seasonal snow that would fully melt over a real
+year, not permanent glaciation) permanently accumulates ice instead of ever holding liquid
+water: any precipitation there is treated as fully frozen -- no partial liquid/frozen split
+like plate-sim's own `compute_liquid_precipitation`, matching `erosion.py`'s existing "use
+precipitation is enough" simplification, just gated by the same accumulation threshold
+rather than dropped entirely -- and an existing lake sitting there freezes solid into
+`glacier_depth` this same step, *before* `flow_target` is (re)computed, so a lake that just
+froze is correctly treated as a genuine sink again this step rather than immediately
+re-filling from this same step's routed water (see `update_lakes`'s own docstring, and
+plate-sim's documented failure mode this specifically avoids: without the freeze-before-
+routing ordering and an `is_accumulating` gate on `update_lakes`'s own inflow/pin-at-cap
+logic, a lake formed in a warmer epoch would never freeze, and a just-frozen basin's
+non-sink interior would re-flood back to its old cap the very same step, double-counting the
+same water as both a lake and a glacier at once).
+
+- **Accumulation**: `GLACIER_ACCUMULATION_RATE` converts a step's frozen precipitation into
+  meters of ice-depth gain, the same stylized-units-to-meters role `LAKE_FILL_RATE` plays
+  for lakes. No cap on `glacier_depth` -- real ice sheets have no basin-capacity analogue.
+- **Melt**: once a node warms back above the threshold, `GLACIER_MELT_RATE_M_PER_MYR`
+  (scaled by how far above the threshold, capped at `GLACIER_MELT_MAX_FACTOR`) melts ice
+  back down, capped so a step can't melt more than actually exists. The melted amount feeds
+  directly into that step's water source for `route_downstream` -- real meltwater, feeding
+  real river discharge, not a separate accounting bucket.
+- **Flow**: a slope-scaled fraction of each node's ice (`GLACIER_FLOW_RATE_PER_MYR`, capped
+  at `GLACIER_MAX_FLOW_FRACTION`) moves to its own `flow_target` each step -- the same graph
+  water uses, via a direct scatter-add (`np.add.at`) rather than `route_downstream`'s
+  elevation-ordered sweep, since glacier flow is a one-hop-per-step process, not a
+  full-accumulation-to-terminus one. Ice reaching (or accumulating on) an ocean node is
+  discarded rather than piling up -- real sea ice is a different, thinner, seasonal
+  phenomenon this model doesn't represent; the same guard reads as calving where a glacier
+  reaches a coast.
+- **Erosion and flattening**: see [Erosion](#erosion) -- both driven by the *previous* step's
+  `glacier_depth` (this step's fresh value isn't ready until this module runs, just before
+  those terms are computed), the same one-step lag `channel_boost` already uses.
+
+**Not ported from plate-sim, confirmed absent there**: no rendering as a distinct color/
+layer beyond the same `LAKE_COLOR_RGB`-style baking treatment lakes get (plate-sim bakes
+glaciers into its SNOW biome instead, which mantle-bloom has no equivalent of, so this uses
+its own `GLACIER_COLOR_RGB`, distinct from both `LAKE_COLOR_RGB` and `elevation_colors`' own
+high-peak white/gray stops, applied the same nearest-neighbor-grid-resample way as lakes via
+`plates.collect_all_glacier_depth`), no glacial eustatic sea-level coupling (glaciation is
+purely local/per-node here, same as plate-sim), no seasonal accumulation/ablation cycle.
+
+Confirmed live on a real run: glaciers form and grow preferentially at cold (polar)
+latitudes, visually distinct from both lakes and high-elevation terrain on the rendered map;
+population size and total ice depth fluctuate across steps as plates rotate glaciated nodes
+in and out of genuinely cold regions, rather than growing monotonically or vanishing
+outright.
+
 <a id="known-simplifications"></a>
 ## Known simplifications
 
@@ -1079,13 +1163,16 @@ than an oversight:
   refinement (e.g. weighting by directional alignment with the plate's own motion rather
   than raw border presence).
 - **No biomes/vegetation yet.** Climate (see [Climate](#climate)) feeds erosion, deposition,
-  and hydrology (see [Erosion](#erosion) and [Hydrology](#hydrology): rain/river/weathering
-  erosion, downstream deposition, rivers and lakes, all ported from plate-sim). Glacier
-  erosion and vegetation's own effects (weathering boost, evapotranspiration) remain
-  explicitly out of scope, since their inputs (a glacier field, a vegetation field) don't
-  exist here at all -- see plate-sim's own model for the shape that work would take once
-  revisited on this sphere-native foundation.
+  hydrology, and glaciation (see [Erosion](#erosion), [Hydrology](#hydrology), and
+  [Glaciation](#glaciation): rain/river/weathering/glacier erosion, downstream deposition,
+  rivers, lakes, and glaciers, all ported from plate-sim except glacier flattening, a
+  mantle-bloom-original addition). Vegetation's own effects (weathering boost,
+  evapotranspiration) remain explicitly out of scope, since their input (a vegetation field)
+  doesn't exist here at all -- see plate-sim's own model for the shape that work would take
+  once revisited on this sphere-native foundation.
 - **A lake is a single node, not a flood-filled shoreline region.** Same simplification
   plate-sim itself documents -- see [Hydrology](#hydrology).
+- **No glacial eustatic sea-level coupling, no seasons.** Glaciation is purely local/per-node
+  here, same as plate-sim -- see [Glaciation](#glaciation).
 - **Single in-memory world, no persistence.** See
   [World state](architecture.md#world-state).
