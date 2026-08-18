@@ -148,21 +148,39 @@ nodes (`scipy.spatial.cKDTree`). This is self-healing every step rather than req
 always-consistent topology, and it's what makes merge/split tractable without a general
 spherical polygon-boolean library.
 
-For each node within `FAR_THRESHOLD_RAD` (1.6x target spacing) of some other plate's
-nearest node, the two plates' relative velocity at that point (from their `omega`s) is
-decomposed against the direction toward the neighbor into a **closing rate**: positive means
-this plate's material is moving toward the neighbor's (convergent), negative means moving
-apart (divergent); `TRANSFORM_RATE_THRESHOLD` (~1 cm/yr equivalent) separates both from
-transform.
+For each node within `MAX_BOUNDARY_EFFECT_RAD` (the widest reach any single effect below
+needs -- currently `COLLISION_RANGE_RAD`, 400km) of some other plate's nearest node, the two
+plates' relative velocity at that point (from their `omega`s) is decomposed against the
+direction toward the neighbor into a **closing rate**: positive means this plate's material
+is moving toward the neighbor's (convergent), negative means moving apart (divergent);
+`TRANSFORM_RATE_THRESHOLD` (~1 cm/yr equivalent) separates both from transform.
 
-- **Convergent + continental** -> elevation rises (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`,
-  mountain building). **Convergent + oceanic** -> elevation falls
-  (`CONVERGENT_TRENCH_RATE_M_PER_MYR`, trench/subduction). Both scaled by an `intensity`
-  factor that fades from 1 at zero distance to 0 at `FAR_THRESHOLD_RAD`, so the effect is
-  concentrated right at the boundary without a separate distance-falloff pass.
+**Convergent boundaries aren't a single effect** -- what happens depends on both plates'
+crust type, and how far the effect reaches (and its shape with distance) differs by case:
+
+- **Continent-continent collision** (both plates continental) -> elevation rises
+  (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`), scaled by an intensity that fades from 1 at zero
+  distance to 0 at `COLLISION_RANGE_RAD` (400km) -- a broad crumple zone, matching how wide a
+  real collision belt is (e.g. the Himalaya/Tibetan Plateau).
+- **Oceanic-under-continental subduction** (continental plate, oceanic neighbor) -> elevation
+  rises on the continental side too, but shaped as a **band** (`_band_intensity`): zero right
+  at the boundary, peaking at the midpoint of `SUBDUCTION_ARC_INNER_RAD`..
+  `SUBDUCTION_ARC_OUTER_RAD` (100-300km), zero again past the outer edge -- a volcanic arc
+  forms where the subducting slab has descended deep enough to melt, not at the trench
+  itself. This is the one non-monotonic shape here; every other effect peaks at the boundary
+  and decays outward.
+- **A subducting oceanic plate's own trench** (oceanic plate, any neighbor) -> elevation
+  falls (`CONVERGENT_TRENCH_RATE_M_PER_MYR`), fading from 1 at zero distance to 0 at
+  `FAR_THRESHOLD_RAD` (~200km) -- unaffected by the neighbor's crust type or by the two cases
+  above.
+- **Transform** -> elevation rises modestly (`TRANSFORM_UPLIFT_RATE_M_PER_MYR`, a fraction of
+  the mountain-building rate -- real strike-slip motion produces at most local pressure-ridge
+  relief, not real mountains), fading from 1 at zero distance to 0 at `TRANSFORM_RANGE_RAD`
+  (50km).
 - **Divergent** -> elevation relaxes exponentially toward a ridge (`oceanic`,
-  `DIVERGENT_RIDGE_TARGET_M = -1500`) or rift (`continental`,
-  `DIVERGENT_RIFT_TARGET_M = -200`) target -- new crust forming at the boundary.
+  `DIVERGENT_RIDGE_TARGET_M = -1500`) or rift (`continental`, `DIVERGENT_RIFT_TARGET_M =
+  -200`) target -- new crust forming at the boundary. Unchanged: fades from 1 at zero
+  distance to 0 at `FAR_THRESHOLD_RAD` (~200km), same as before.
 - **Structural growth/shrink**, applied independently at each line's two ends (the true
   edge of that line's territory, since lines are contiguous by construction): if divergent
   and the gap has opened past `EXTEND_THRESHOLD_RAD`, insert new nodes at target spacing --
