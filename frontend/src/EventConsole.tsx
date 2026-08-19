@@ -24,10 +24,9 @@ function EventList({ events, maxHeight }: { events: WorldEvent[]; maxHeight: num
 export default function EventConsole({ events }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   // The popped-out view is a separate, larger in-page overlay reusing the same fixed-scrim
-  // pattern as the Generate World / Stats dialogs -- not a real separate OS window (see
-  // rotationDrag.ts-adjacent precedent: neither this app nor its sibling plate-sim has ever
-  // used window.open, so a true detached window would be a new, untested interaction rather
-  // than a reuse of an established one).
+  // pattern as the Generate World / Stats dialogs -- not a real separate OS window (this app
+  // has never used window.open, so a true detached window would be a new, untested
+  // interaction rather than a reuse of an established one).
   const [poppedOut, setPoppedOut] = useState(false);
 
   return (

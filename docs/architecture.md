@@ -7,9 +7,9 @@
   `scipy.cluster.vq.kmeans2` for split clustering), Pillow (server-side map rendering, see
   `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
-  library, the same choice plate-sim made and the same reasoning: the frontend's whole job
-  is decoding a PNG the backend already rendered and drawing it (`ctx.drawImage`), which a
-  library would be more ceremony than the problem needs. Three exceptions: `rotation.ts` — a
+  library: the frontend's whole job is decoding a PNG the backend already rendered and
+  drawing it (`ctx.drawImage`), which a library would be more ceremony than the problem
+  needs. Three exceptions: `rotation.ts` — a
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
@@ -95,7 +95,6 @@ Tab/Shift+Tab). The event console is the one other exception: it just displays w
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 
-Unlike plate-sim (which keeps up to 5 generated worlds in memory, addressed by id),
 mantle-bloom keeps exactly **one** world at a time, in a module-level dict in `main.py` --
 simpler, matching the v1 "elevation view only" scope. A `World` holds:
 
@@ -116,8 +115,14 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   [simulation-model.md#volcanism](simulation-model.md#volcanism)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
-  [simulation-model.md#climate](simulation-model.md#climate)). The one deliberate exception
-  to climate otherwise being fully stateless.
+  [simulation-model.md#climate](simulation-model.md#climate)).
+- `sea_level_m`/`solar_multiplier` -- live-adjustable via `POST /world/controls` (the UI's
+  "Controls" window, unlike every other generation-time property here), read fresh by
+  `climate.py`/`hydrology.py`/`bathymetry.py`/`render_image.py` on every call rather than
+  cached, and forced to an immediate `climate_cache` recompute when changed (see
+  api-reference.md) so a render/stats call right after doesn't wait for the next step. These,
+  together with `axial_tilt_deg` above, are the only deliberate exceptions to climate
+  otherwise being fully stateless.
 - `events: list[(float, str)]` -- the event log for the UI's console (elapsed_years,
   message), capped at `MAX_EVENT_LOG_LENGTH = 200` entries. Appended to via `World.log_event`.
 - `climate_cache`/`hydrology_cache` -- this step's climate/flow-routing snapshot, populated
@@ -136,7 +141,7 @@ Each `Plate` (`backend/app/plates.py`) is:
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
-  line also carries `channel_depth`/`channel_width`/`lake_depth`/`glacier_depth`
+  line also carries `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/`glacier_depth`
   (persistent, land-only -- see simulation-model.md#hydrology and
   simulation-model.md#glaciation) and `is_volcano`/`volcano_active_years_remaining`
   (persistent -- see simulation-model.md#volcanism) as ordinary parallel arrays right
@@ -199,7 +204,7 @@ erosion.py           every-step rain/river/weathering/glacier erosion + downstre
                      the coupling; climate.py's own elevation-reading mechanics (lapse rate,
                      mountain wind deflection, orographic rain shadow) are the other half
 hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
-                     neighbor graph, not a grid): basin-spill/lake detection, steepest-
+                     neighbor graph, not a grid): basin-spill detection, steepest-
                      descent flow direction, downstream flow accumulation, glacier
                      accumulation/melt/flow -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
@@ -208,6 +213,11 @@ hydrology.py         every-step flow routing over the geology node cloud (a k-ne
                      (group_rivers) and answers the River Inspector's click hit-test
                      (river_at), on demand rather than every step (see
                      simulation-model.md#river-inspector)
+lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
+                     tree of Lake objects built from a depression-hierarchy pass over
+                     hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
+                     projects back down into the same flat lake_depth array every other
+                     consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree)
 bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
                      (near land) or deep-water (far from land) target elevation (see
                      simulation-model.md#bathymetry)

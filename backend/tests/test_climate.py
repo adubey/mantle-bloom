@@ -190,9 +190,9 @@ def test_humidity_is_higher_near_warm_ocean_and_decays_inland():
 
     humidity, _ = climate.compute_humidity(is_ocean, elevation, ocean_temperature, wind_u, wind_v, elevation_factor, lat_deg)
     # The zonal sweep's transport direction is the fixed latitude-band lookup
-    # (zonal_direction_for_lat), not the literal sign of wind_u (matches plate-sim) -- pick a
-    # row where that band direction actually runs west-to-east (ocean -> land, increasing
-    # column) so "coast" and "inland" mean what they say.
+    # (zonal_direction_for_lat), not the literal sign of wind_u -- pick a row where that band
+    # direction actually runs west-to-east (ocean -> land, increasing column) so "coast" and
+    # "inland" mean what they say.
     row = next(r for r in range(height) if climate.zonal_direction_for_lat(lat_deg[r : r + 1])[0] == 1.0)
     coast_col = width // 2
     inland_col = width - 1

@@ -21,7 +21,7 @@ import base64
 import io
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
 from . import biomes, climate, coastline, geometry, hydrology, mantle, plates, projections
@@ -37,13 +37,12 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 VIEWS = ("elevation", "plates", "platesDetail") + CLIMATE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
-# Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop), matching
-# plate-sim's own LAKE_COLOR_RGB choice for the same reason: a lake should read as visibly
-# distinct from the open ocean, not just "more blue."
+# Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
+# should read as visibly distinct from the open ocean, not just "more blue."
 LAKE_COLOR_RGB = (58, 92, 122)
-# Same color plate-sim's own frontend uses for its river overlay (#4dd8e6) -- a fixed color/
-# width for every segment regardless of discharge, also matching plate-sim (only *which*
-# segments get drawn varies with flow magnitude, via RIVER_FLOW_PERCENTILE below).
+# Fixed river overlay color (#4dd8e6) and a fixed color/width for every segment regardless
+# of discharge -- only *which* segments get drawn varies with flow magnitude, via
+# RIVER_FLOW_PERCENTILE below.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
 # A second, independent cut on top of hydrology.py's own is_river classification
@@ -53,7 +52,7 @@ RIVER_LINE_WIDTH_PX = 1.1
 # /world/rivers, RiverInspector.tsx), which deliberately keeps showing every is_river network
 # regardless of flow_rate, since picking a small tributary out from the full list is exactly
 # what that view is for.
-RIVER_DRAW_MIN_FLOW = 25_000.0
+RIVER_DRAW_MIN_FLOW = 10_000.0
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
 # white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
 # as "just a tall mountain" or "just a lake" at a glance.
@@ -126,23 +125,30 @@ PLATE_PALETTE = np.array(
 )
 
 # A simple hypsometric tint: deep blue -> shallow blue -> coastal green -> tan -> brown ->
-# white peaks. Kept in sync by hand with the palette this was ported from
-# (frontend/src/elevationColor.ts, now deleted -- this is the sole copy).
+# pale rocky gray peaks. Kept in sync by hand with the palette this was ported from
+# (frontend/src/elevationColor.ts, now deleted -- this is the sole copy). Deliberately no
+# stop here is pure (255, 255, 255) white, even at the highest peaks -- white is reserved
+# exclusively for actual ice cover (GLACIER_COLOR_RGB, applied as an overlay below) so it
+# reads unambiguously as "glaciated," not "merely high/rocky."
 _ELEVATION_STOP_E = np.array([-11000, -4000, -1500, -200, 0, 200, 1200, 3000, 6000, 9000], dtype=float)
 _ELEVATION_STOP_RGB = np.array(
     [
         (10, 10, 40), (15, 40, 110), (40, 110, 190), (110, 170, 210), (200, 210, 150),
-        (90, 150, 60), (170, 160, 90), (120, 90, 60), (230, 230, 230), (255, 255, 255),
+        (90, 150, 60), (170, 160, 90), (120, 90, 60), (195, 188, 178), (222, 217, 210),
     ],
     dtype=float,
 )
 
 
-def elevation_colors(elevations: np.ndarray) -> np.ndarray:
+def elevation_colors(elevations: np.ndarray, sea_level_m: float = 0.0) -> np.ndarray:
     """Vectorized elevation -> RGB: piecewise-linear interpolation through the hypsometric
     stops above, clamped at the ends (numpy.interp's default behavior already matches the
-    old manual clamp)."""
-    channels = [np.interp(elevations, _ELEVATION_STOP_E, _ELEVATION_STOP_RGB[:, c]) for c in range(3)]
+    old manual clamp). `sea_level_m` (World.sea_level_m, live-adjustable -- see
+    World.sea_level_m/main.py's /world/controls) shifts every stop together, so the
+    ocean/land color transition (the stop at 0) always tracks the *current* sea level rather
+    than the fixed elevation value 0 -- the whole point of a real-time sea-level control is
+    seeing the coastline visibly rise or recede on this same map."""
+    channels = [np.interp(elevations - sea_level_m, _ELEVATION_STOP_E, _ELEVATION_STOP_RGB[:, c]) for c in range(3)]
     return np.clip(np.round(np.stack(channels, axis=-1)), 0, 255).astype(np.uint8)
 
 
@@ -289,8 +295,19 @@ def _render_grid_arrays(
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
     tree = cKDTree(all_points)
 
+    # At the default node_density, GRID_SPACING_RAD (100km) is already finer than the
+    # physics resolution (plates.line_spacing_rad(1.0) = 125km), so it's the effective
+    # resolution ceiling. At a higher node_density (e.g. 4x), the physics data itself gets
+    # finer than 100km -- capping this render grid at the fixed 100km spacing regardless
+    # made "Elevation" look visibly blockier than "Plates (details)" (which draws the raw
+    # physics nodes directly, see render_png's `detail_lines`) even though both are drawing
+    # the exact same underlying data. Taking the finer of the two keeps this view at least
+    # as sharp as the data actually supports, without wasting resolution at the default
+    # density where 100km was already the tighter bound.
+    grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
+
     xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, hw_chunks, hh_chunks = [], [], [], [], [], [], [], []
-    for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=GRID_SPACING_RAD):
+    for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
         rotated = _rotate(world_pts, view_rotation)
         xy = _project_points(projection, rotated)
@@ -302,8 +319,8 @@ def _render_grid_arrays(
         volcano_chunks.append(all_is_volcano[idx])
 
         _, center_lon = geometry.xyz_to_latlon(rotated)
-        half_dtheta = GRID_SPACING_RAD / max(np.cos(phi), 1e-3) / 2
-        half_dphi = GRID_SPACING_RAD / 2
+        half_dtheta = grid_spacing_rad / max(np.cos(phi), 1e-3) / 2
+        half_dphi = grid_spacing_rad / 2
 
         corner_steps = []
         for dphi_sign in (1.0, -1.0):
@@ -565,154 +582,6 @@ def _draw_swell_markers(
         draw.ellipse([px - r, py - r, px + r, py + r], outline=(255, 255, 255), width=width_px)
 
 
-# ---------------------------------------------------------------------------------------
-# Legends
-# ---------------------------------------------------------------------------------------
-
-# All fixed pixel-space, scaled by pixel_scale like every other visual constant here (see
-# module docstring / REFERENCE_WIDTH_PX). One shared panel layout (title, then an optional
-# horizontal gradient bar with tick labels, then any number of symbol rows) covers every map
-# view: a plain color scale for the heatmap views (elevation/temperature/humidity/
-# precipitation), boundary/pole/rotation-arc symbols for the plate-tectonics views,
-# arrow/backdrop/swell symbols for wind/oceanCurrents, and gradient + a boundary symbol for
-# "Plates (details)" (its dots are colored by elevation, same scale as the elevation view).
-LEGEND_MARGIN_PX = 16
-LEGEND_PADDING_PX = 10
-LEGEND_PANEL_WIDTH_PX = 172
-LEGEND_TITLE_ROW_PX = 20
-LEGEND_ROW_PX = 18
-LEGEND_BAR_LENGTH_PX = 148
-LEGEND_BAR_THICKNESS_PX = 14
-LEGEND_TICK_ROW_PX = 16
-LEGEND_SWATCH_PX = 14
-LEGEND_TITLE_FONT_PX = 13
-LEGEND_LABEL_FONT_PX = 11
-LEGEND_BG_RGB = (16, 20, 34)
-LEGEND_BORDER_RGB = (75, 80, 96)
-LEGEND_TEXT_RGB = (222, 226, 235)
-LEGEND_SYMBOL_RGB = (200, 205, 215)  # neutral color for symbols not tied to any one plate
-
-
-def _legend_font(size_px: float) -> ImageFont.FreeTypeFont:
-    return ImageFont.load_default(size=max(int(round(size_px)), 6))
-
-
-def _draw_legend(
-    image: Image.Image,
-    draw: ImageDraw.ImageDraw,
-    height: int,
-    pixel_scale: float,
-    title: str,
-    gradient: tuple[object, float, float, list[tuple[float, str]]] | None = None,
-    symbol_entries: list[tuple[object, str]] = (),
-) -> None:
-    """Draws a legend panel anchored at the image's bottom-left corner. `gradient`, if given,
-    is `(colors_fn, value_min, value_max, [(tick_value, tick_label), ...])` -- colors_fn is
-    one of this module's own vectorized value -> RGB functions (elevation_colors etc.),
-    called here against a value ramp to build the bar image directly, so the legend is always
-    in sync with whatever coloring the map itself used. `symbol_entries` is
-    `[(draw_swatch(cx, cy, size), label), ...]`, stacked below the gradient (if any)."""
-    pad = int(round(LEGEND_PADDING_PX * pixel_scale))
-    title_h = int(round(LEGEND_TITLE_ROW_PX * pixel_scale))
-    row_h = int(round(LEGEND_ROW_PX * pixel_scale))
-    bar_w = int(round(LEGEND_BAR_LENGTH_PX * pixel_scale))
-    bar_h = int(round(LEGEND_BAR_THICKNESS_PX * pixel_scale))
-    tick_row_h = int(round(LEGEND_TICK_ROW_PX * pixel_scale))
-    panel_w = max(int(round(LEGEND_PANEL_WIDTH_PX * pixel_scale)), bar_w + 2 * pad)
-
-    content_h = (bar_h + tick_row_h if gradient is not None else 0) + row_h * len(symbol_entries)
-    panel_h = title_h + content_h + 2 * pad
-
-    margin = int(round(LEGEND_MARGIN_PX * pixel_scale))
-    x0 = margin
-    y0 = height - margin - panel_h
-    draw.rectangle([x0, y0, x0 + panel_w, y0 + panel_h], fill=LEGEND_BG_RGB, outline=LEGEND_BORDER_RGB, width=1)
-
-    title_font = _legend_font(LEGEND_TITLE_FONT_PX * pixel_scale)
-    label_font = _legend_font(LEGEND_LABEL_FONT_PX * pixel_scale)
-    inner_x = x0 + pad
-    cy = y0 + pad
-    draw.text((inner_x, cy), title, font=title_font, fill=LEGEND_TEXT_RGB)
-    cy += title_h
-
-    if gradient is not None:
-        colors_fn, value_min, value_max, ticks = gradient
-        values = np.linspace(value_min, value_max, bar_w)
-        bar_row = colors_fn(values)
-        bar_array = np.broadcast_to(bar_row[None, :, :], (bar_h, bar_w, 3))
-        image.paste(Image.fromarray(bar_array, mode="RGB"), (inner_x, cy))
-        tick_y = cy + bar_h
-        span = value_max - value_min
-        for value, label in ticks:
-            frac = 0.0 if span <= 0 else min(max((value - value_min) / span, 0.0), 1.0)
-            tick_x = inner_x + frac * (bar_w - 1)
-            draw.line([(tick_x, cy), (tick_x, tick_y)], fill=(0, 0, 0), width=1)
-            draw.text((tick_x, tick_y + 1), label, font=label_font, fill=LEGEND_TEXT_RGB, anchor="ma")
-        cy += bar_h + tick_row_h
-
-    swatch = int(round(LEGEND_SWATCH_PX * pixel_scale))
-    label_x = inner_x + swatch + int(round(6 * pixel_scale))
-    for draw_swatch, label in symbol_entries:
-        row_mid = cy + row_h / 2
-        draw_swatch(inner_x, row_mid, swatch)
-        draw.text((label_x, row_mid), label, font=label_font, fill=LEGEND_TEXT_RGB, anchor="lm")
-        cy += row_h
-
-
-def _swatch_line(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
-    return lambda cx, cy, size: draw.line([(cx, cy), (cx + size, cy)], fill=color, width=max(int(round(size / 6)), 1))
-
-
-def _swatch_square(draw: ImageDraw.ImageDraw, color) -> object:
-    color = tuple(int(c) for c in color)
-    return lambda cx, cy, size: draw.rectangle([cx, cy - size / 2, cx + size, cy + size / 2], fill=color)
-
-
-def _swatch_circle(draw: ImageDraw.ImageDraw, fill_color: tuple[int, int, int], outline_color: tuple[int, int, int]):
-    def paint(cx: float, cy: float, size: float) -> None:
-        r = size / 2
-        center = cx + r
-        draw.ellipse([center - r, cy - r, center + r, cy + r], fill=fill_color, outline=outline_color, width=1)
-
-    return paint
-
-
-def _swatch_ring(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
-    def paint(cx: float, cy: float, size: float) -> None:
-        r = size / 2
-        center = cx + r
-        draw.ellipse([center - r, cy - r, center + r, cy + r], outline=color, width=max(int(round(size / 8)), 1))
-
-    return paint
-
-
-def _swatch_arrow(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
-    def paint(cx: float, cy: float, size: float) -> None:
-        draw.line([(cx, cy), (cx + size, cy)], fill=color, width=max(int(round(size / 7)), 1))
-        _draw_arrow_head(draw, np.array([cx + size, cy]), np.array([1.0, 0.0]), color, size * 0.5)
-
-    return paint
-
-
-def _swatch_arc(draw: ImageDraw.ImageDraw, color: tuple[int, int, int]):
-    def paint(cx: float, cy: float, size: float) -> None:
-        r = size / 2
-        center_x = cx + r
-        draw.arc([center_x - r, cy - r, center_x + r, cy + r], 30, 300, fill=color, width=max(int(round(size / 8)), 1))
-        head_rad = np.radians(300.0)
-        head_px = np.array([center_x, cy]) + r * np.array([np.cos(head_rad), np.sin(head_rad)])
-        tangent = np.array([-np.sin(head_rad), np.cos(head_rad)])
-        _draw_arrow_head(draw, head_px, tangent, color, size * 0.35)
-
-    return paint
-
-
-def _elevation_legend_gradient() -> tuple[object, float, float, list[tuple[float, str]]]:
-    lo, hi = float(_ELEVATION_STOP_E[0]), float(_ELEVATION_STOP_E[-1])
-    ticks = [(-8000.0, "-8k"), (-4000.0, "-4k"), (0.0, "0"), (4000.0, "4k"), (8000.0, "8k")]
-    return elevation_colors, lo, hi, ticks
-
-
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders one of CLIMATE_VIEWS from climate.py's own fixed grid -- a separate path from
     the plate-tectonics views below since the data source (a real (H, W) array, always
@@ -814,39 +683,13 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
         _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
-    coastline_entries = [(_swatch_line(draw, COASTLINE_COLOR_RGB), "Coastline")]
-    if view == "temperature":
-        ticks = [(-60.0, "-60°"), (0.0, "0°"), (10.0, "10°"), (20.0, "20°"), (30.0, "30°")]
-        gradient = (temperature_colors, float(_TEMPERATURE_STOP_C[0]), float(_TEMPERATURE_STOP_C[-1]), ticks)
-        _draw_legend(image, draw, height, pixel_scale, "Temperature (°C)", gradient=gradient, symbol_entries=coastline_entries)
-    elif view == "humidity":
-        lo, hi = float(_HUMIDITY_STOP_V[0]), float(_HUMIDITY_STOP_V[-1])
-        gradient = (humidity_colors, lo, hi, [(lo, "Dry"), (hi, "Humid")])
-        _draw_legend(image, draw, height, pixel_scale, "Humidity", gradient=gradient, symbol_entries=coastline_entries)
-    elif view == "precipitation":
-        lo, hi = float(_PRECIPITATION_STOP_MM[0]), float(_PRECIPITATION_STOP_MM[-1])
-        ticks = [(lo, "0"), (hi / 2, f"{hi / 2:.0f}"), (hi, f"{hi:.0f}")]
-        gradient = (precipitation_colors, lo, hi, ticks)
-        _draw_legend(image, draw, height, pixel_scale, "Precipitation (mm/yr)", gradient=gradient, symbol_entries=coastline_entries)
-    elif view == "wind":
-        entries = [
-            (_swatch_arrow(draw, WIND_ARROW_COLOR), "Speed (arrow length)"),
-            (_swatch_square(draw, CLIMATE_OCEAN_BACKDROP_RGB), "Ocean"),
-            (_swatch_square(draw, CLIMATE_LAND_BACKDROP_RGB), "Land"),
-        ]
-        _draw_legend(image, draw, height, pixel_scale, "Wind", symbol_entries=entries)
-    elif view == "oceanCurrents":
-        entries = [
-            (_swatch_arrow(draw, CURRENT_ARROW_COLOR), "Speed (arrow length)"),
-            (_swatch_square(draw, CLIMATE_OCEAN_BACKDROP_RGB), "Ocean"),
-            (_swatch_square(draw, CLIMATE_LAND_BACKDROP_RGB), "Land"),
-            (_swatch_ring(draw, (255, 255, 255)), "Ocean swell"),
-        ]
-        _draw_legend(image, draw, height, pixel_scale, "Ocean currents", symbol_entries=entries)
-    elif view == "biome":
-        entries = [(_swatch_square(draw, biomes.BIOME_COLORS[i]), name) for i, name in enumerate(biomes.BIOME_NAMES)]
-        _draw_legend(image, draw, height, pixel_scale, "Biome", symbol_entries=entries)
-
+    # No server-side legend here -- see frontend/src/legendData.ts/Legend.tsx, which renders
+    # it as a client-side HTML overlay instead (keyed purely on `view`, since none of this
+    # module's legend content is actually data-dependent). Baking it into the PNG meant it
+    # couldn't update mid-drag (the live-rotation preview draws a cheap client-side
+    # graticule over the *last* rendered frame -- see MapCanvas.tsx) and meant every view's
+    # legend text/gradient had to be hand-duplicated in Pillow drawing calls instead of
+    # ordinary CSS/SVG.
     return _encode_image(image)
 
 
@@ -977,21 +820,24 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
-        colors = elevation_colors(elev) if view == "elevation" else plate_colors(owner)
-        # Baked directly into the raster rather than a separate overlay/toggle -- same
-        # reasoning plate-sim's own docs give for its own lake baking: always visible, no
-        # separate overlay needed, and a lake (or a glacier) is meaningful on every view that
-        # shows terrain at all (matches how ocean itself isn't specially toggle-able either).
-        # Volcano drawn after lake (a volcanic vent is dry land in practice, but this keeps
-        # the same precedence as everything else here), glacier drawn last so ice wins on the
-        # rare cell where more than one would apply (a lake that just froze this same step
-        # still shows lake_depth from the previous render's snapshot for one extra frame in
-        # the worst case, and a volcano cold enough to glaciate should read as ice-covered,
-        # not lava-red) -- ice is the more physically current/visually dominant state there.
+        colors = elevation_colors(elev, world.sea_level_m) if view == "elevation" else plate_colors(owner)
+        # Baked directly into the raster rather than a separate overlay/toggle: always
+        # visible, no separate overlay needed, and a lake (or a glacier) is meaningful on
+        # every view that shows terrain at all (matches how ocean itself isn't specially
+        # toggle-able either).
+        # Volcano is skipped on "elevation" specifically -- its saturated red used to
+        # overwrite the actual hypsometric elevation color at every volcanic node, defeating
+        # the point of an elevation view there (see VOLCANO_COLOR_RGB's own callers below);
+        # it's still drawn on "plates", a categorical view with no elevation information to
+        # lose. Glacier drawn last so ice wins on the rare cell where more than one overlay
+        # would apply (a lake that just froze this same step still shows lake_depth from the
+        # previous render's snapshot for one extra frame in the worst case, and a volcano
+        # cold enough to glaciate should read as ice-covered, not lava-red) -- ice is the
+        # more physically current/visually dominant state there.
         is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
         if np.any(is_lake):
             colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=np.uint8), colors)
-        if np.any(is_volcano):
+        if view != "elevation" and np.any(is_volcano):
             colors = np.where(is_volcano[:, None], np.array(VOLCANO_COLOR_RGB, dtype=np.uint8), colors)
         is_glacier = glacier_depth > hydrology.GLACIER_VISIBLE_DEPTH_M
         if np.any(is_glacier):
@@ -1002,7 +848,7 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         dot_radius = NODE_DOT_RADIUS_PX * pixel_scale
         for xy, elev in detail_lines:
             centers = _to_pixels(scale, offset_x, offset_y, xy)
-            colors = elevation_colors(elev)
+            colors = elevation_colors(elev, world.sea_level_m)
             _fill_rects(pixels, centers, dot_radius, dot_radius, colors)
 
     image = Image.fromarray(pixels, mode="RGB")
@@ -1031,28 +877,9 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
                 # ties a pole marker back to the plate it belongs to.
                 draw.ellipse([px - r, py - r, px + r, py + r], fill=color, outline=(255, 255, 255), width=1)
 
-    if view == "elevation":
-        entries = [
-            (_swatch_line(draw, RIVER_COLOR_RGB), "River"),
-            (_swatch_square(draw, LAKE_COLOR_RGB), "Lake"),
-            (_swatch_square(draw, VOLCANO_COLOR_RGB), "Volcano"),
-            (_swatch_square(draw, GLACIER_COLOR_RGB), "Glacier"),
-        ]
-        _draw_legend(image, draw, height, pixel_scale, "Elevation (m)", gradient=_elevation_legend_gradient(), symbol_entries=entries)
-    elif view == "plates":
-        entries = [
-            (_swatch_line(draw, LEGEND_SYMBOL_RGB), "Plate boundary"),
-            (_swatch_circle(draw, LEGEND_SYMBOL_RGB, (255, 255, 255)), "Euler pole"),
-            (_swatch_arc(draw, LEGEND_SYMBOL_RGB), "Rotation (rate & direction)"),
-        ]
-        _draw_legend(image, draw, height, pixel_scale, "Plates", symbol_entries=entries)
-    elif view == "platesDetail":
-        entries = [(_swatch_line(draw, LEGEND_SYMBOL_RGB), "Plate boundary")]
-        _draw_legend(
-            image, draw, height, pixel_scale, "Elevation (m)",
-            gradient=_elevation_legend_gradient(), symbol_entries=entries,
-        )
-
+    # No server-side legend here -- see the "No server-side legend" comment in
+    # _render_climate_view above; the same client-side overlay covers elevation/plates/
+    # platesDetail too.
     return _encode_image(image)
 
 

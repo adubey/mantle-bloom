@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
-import { fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld } from "./api";
+import { fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld, updateControls } from "./api";
 import type { MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
+import ControlsModal from "./ControlsModal";
+import Legend from "./Legend";
 import { IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
 
@@ -30,6 +32,15 @@ const DEFAULT_AXIAL_TILT_DEG = 23.5;
 // "how many times as many."
 const NODE_DENSITY_CHOICES = [1, 4];
 const DEFAULT_NODE_DENSITY = 1;
+// Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
+// world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
+// always lands somewhere the auto behavior could plausibly have picked too.
+const MIN_PLATES = 8;
+const MAX_PLATES = 20;
+const DEFAULT_PLATES = 14;
+// Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
+const DEFAULT_SEA_LEVEL_M = 0;
+const DEFAULT_SOLAR_MULTIPLIER = 1;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -52,6 +63,8 @@ export default function App() {
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [nodeDensity, setNodeDensity] = useState(DEFAULT_NODE_DENSITY);
+  const [autoPlates, setAutoPlates] = useState(true);
+  const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>("eckert4");
@@ -85,13 +98,19 @@ export default function App() {
   const [coastlineSegments, setCoastlineSegments] = useState<Segment[]>([]);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
-  // tabs, matching how plate-sim's own Stats feature builds its history entirely
-  // client-side (the backend endpoint itself is stateless, see backend app/stats.py).
-  // Recorded continuously, not just while the modal is open, so opening it later still shows
-  // the full history since the world was generated.
+  // tabs, built entirely client-side since the backend endpoint itself is stateless (see
+  // backend app/stats.py). Recorded continuously, not just while the modal is open, so
+  // opening it later still shows the full history since the world was generated.
   const [stats, setStats] = useState<WorldStats | null>(null);
   const [statsHistory, setStatsHistory] = useState<WorldStats[]>([]);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  // Live world controls (see ControlsModal.tsx and backend app/world.py's World.sea_level_m/
+  // World.solar_multiplier) -- reset to their defaults on every fresh Generate, same as
+  // every other generation-time value here, even though these two are adjustable afterward
+  // too (unlike the others) via /world/controls.
+  const [seaLevelM, setSeaLevelM] = useState(DEFAULT_SEA_LEVEL_M);
+  const [solarMultiplier, setSolarMultiplier] = useState(DEFAULT_SOLAR_MULTIPLIER);
+  const [showControlsModal, setShowControlsModal] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
@@ -145,19 +164,53 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity);
+      const s = await generateWorld(
+        seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity, autoPlates ? null : numPlates,
+      );
       setSummary(s);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
       setShowGenerateDialog(false);
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
+      setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
+      setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats]);
+  }, [
+    seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, autoPlates, numPlates,
+    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats,
+  ]);
+
+  // Debounced so dragging a Controls slider doesn't fire a network request (and force a
+  // climate recompute, see main.py's /world/controls) on every single pixel of movement --
+  // only once movement has paused briefly. Local slider state (seaLevelM/solarMultiplier)
+  // still updates immediately on every change, so the slider itself never feels laggy.
+  const controlsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pushControls = useCallback((next: { seaLevelM?: number; solarMultiplier?: number }) => {
+    if (controlsDebounceRef.current) clearTimeout(controlsDebounceRef.current);
+    controlsDebounceRef.current = setTimeout(async () => {
+      try {
+        await updateControls(next);
+        await Promise.all([refresh(projection, mapView, rotation), recordStats()]);
+      } catch (e) {
+        setError(String(e));
+      }
+    }, 150);
+  }, [projection, mapView, rotation, refresh, recordStats]);
+
+  const handleSeaLevelChange = useCallback((v: number) => {
+    setSeaLevelM(v);
+    pushControls({ seaLevelM: v });
+  }, [pushControls]);
+
+  const handleSolarMultiplierChange = useCallback((v: number) => {
+    setSolarMultiplier(v);
+    pushControls({ solarMultiplier: v });
+  }, [pushControls]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -240,6 +293,10 @@ export default function App() {
 
           <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
             📊 Stats
+          </button>
+
+          <button onClick={() => setShowControlsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
+            🎛️ Controls
           </button>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
@@ -362,6 +419,7 @@ export default function App() {
         </div>
 
         <div>
+          <div style={{ position: "relative", width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
           {mapView === "plateInspector" ? (
             <PlateInspector
               plates={platesData}
@@ -404,6 +462,8 @@ export default function App() {
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
             />
           )}
+          <Legend mapView={mapView} />
+          </div>
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
@@ -480,6 +540,24 @@ export default function App() {
               />
             </label>
 
+            <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 12 }}>
+              <input type="checkbox" checked={autoPlates} onChange={(e) => setAutoPlates(e.target.checked)} />
+              Number of plates: Auto (seed-based)
+            </label>
+            {!autoPlates && (
+              <label style={{ display: "block", marginBottom: 16 }}>
+                Plates: {numPlates}
+                <input
+                  type="range"
+                  min={MIN_PLATES}
+                  max={MAX_PLATES}
+                  value={numPlates}
+                  onChange={(e) => setNumPlates(Number(e.target.value))}
+                  style={{ width: "100%" }}
+                />
+              </label>
+            )}
+
             <label style={{ display: "block", marginBottom: 16 }}>
               Axial tilt: {axialTiltDeg}°
               <input
@@ -526,6 +604,16 @@ export default function App() {
       )}
 
       {showStatsModal && <StatsModal stats={stats} history={statsHistory} onClose={() => setShowStatsModal(false)} />}
+
+      {showControlsModal && (
+        <ControlsModal
+          seaLevelM={seaLevelM}
+          solarMultiplier={solarMultiplier}
+          onSeaLevelChange={handleSeaLevelChange}
+          onSolarMultiplierChange={handleSolarMultiplierChange}
+          onClose={() => setShowControlsModal(false)}
+        />
+      )}
     </div>
   );
 }

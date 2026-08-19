@@ -62,6 +62,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     new_channel_width = np.interp(new_theta, line.theta, line.channel_width)
     new_lake_depth = np.interp(new_theta, line.theta, line.lake_depth)
     new_glacier_depth = np.interp(new_theta, line.theta, line.glacier_depth)
+    new_silt_depth = np.interp(new_theta, line.theta, line.silt_depth)
     # volcano_active_years_remaining interpolates the same way; is_volcano is interpolated as
     # a float (blending a volcano node's 1.0 against a non-volcano neighbor's 0.0) then
     # thresholded back to bool, same spirit as the others -- a resampled node keeps "was this
@@ -76,6 +77,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         channel_width=new_channel_width,
         lake_depth=new_lake_depth,
         glacier_depth=new_glacier_depth,
+        silt_depth=new_silt_depth,
         is_volcano=new_is_volcano,
         volcano_active_years_remaining=new_volcano_active_years_remaining,
     )

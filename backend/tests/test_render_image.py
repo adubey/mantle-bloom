@@ -48,13 +48,24 @@ def test_elevation_colors_matches_known_stops():
     colors = render_image.elevation_colors(np.array([-11000.0, 0.0, 9000.0]))
     assert tuple(colors[0]) == (10, 10, 40)
     assert tuple(colors[1]) == (200, 210, 150)
-    assert tuple(colors[2]) == (255, 255, 255)
+    assert tuple(colors[2]) == (222, 217, 210)
+    # Never pure white -- reserved exclusively for ice cover (GLACIER_COLOR_RGB), see
+    # elevation_colors' own docstring.
+    assert tuple(colors[2]) != (255, 255, 255)
 
 
 def test_elevation_colors_clamps_outside_the_stop_range():
     colors = render_image.elevation_colors(np.array([-999999.0, 999999.0]))
     assert tuple(colors[0]) == (10, 10, 40)
-    assert tuple(colors[1]) == (255, 255, 255)
+    assert tuple(colors[1]) == (222, 217, 210)
+
+
+def test_elevation_colors_shifts_with_sea_level():
+    # A cell right at the new sea level should get the "coastal" stop's color (0m in the
+    # unshifted table), the same way elevation=0 does at the default sea_level_m=0.0.
+    shifted = render_image.elevation_colors(np.array([500.0]), sea_level_m=500.0)
+    baseline = render_image.elevation_colors(np.array([0.0]), sea_level_m=0.0)
+    assert tuple(shifted[0]) == tuple(baseline[0])
 
 
 def test_plate_colors_is_stable_and_wraps():
@@ -72,19 +83,6 @@ def test_render_png_is_decodable_at_requested_size():
         image = Image.open(io.BytesIO(png))
         assert image.format == "PNG"
         assert image.size == (320, 180)
-
-
-def test_every_view_draws_a_legend_panel():
-    world = _world(seed=5, num_plates=8, continental_fraction=0.6)
-    for view in render_image.VIEWS:
-        png = render_image.render_png(world, "behrmann", view, 550, 306)
-        image = Image.open(io.BytesIO(png)).convert("RGB")
-        pixels = np.asarray(image)
-        # The legend panel is a solid-color rectangle anchored at the bottom-left corner --
-        # its exact background color should appear somewhere in that corner for every view
-        # now that all of them draw one.
-        corner = pixels[-90:, :220]
-        assert np.any(np.all(corner == np.array(render_image.LEGEND_BG_RGB), axis=-1)), f"{view} has no legend panel"
 
 
 def test_render_png_empty_world_returns_background_only():

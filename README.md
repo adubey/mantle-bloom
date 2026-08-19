@@ -2,10 +2,9 @@
 
 A sphere-native plate tectonics simulator: plates are spherical polygons (not grid cells)
 carrying their own elevation data, driven by Euler poles fit each step to a simple mantle
-convection model. v1 is elevation-only -- a successor to
-[plate-sim](https://github.com/adubey/plate-sim)'s grid-based approach, built to fix the
-sphere/grid problems documented in that project's own docs (pole topology, latitude
-distortion, lossy resampling of plate-carried terrain).
+convection model. v1 is elevation-only, built around a sphere-native representation
+specifically to avoid the problems a fixed lat/lon grid runs into once plates carry terrain
+across it: pole topology, latitude distortion, and lossy resampling.
 
 ## Where to look
 

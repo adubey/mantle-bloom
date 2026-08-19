@@ -163,6 +163,7 @@ def reassign_misplaced_points(world: "World") -> None:
             channel_width=line.channel_width[keep_mask],
             lake_depth=line.lake_depth[keep_mask],
             glacier_depth=line.glacier_depth[keep_mask],
+            silt_depth=line.silt_depth[keep_mask],
             is_volcano=line.is_volcano[keep_mask],
             volcano_active_years_remaining=line.volcano_active_years_remaining[keep_mask],
         )
@@ -175,7 +176,7 @@ def reassign_misplaced_points(world: "World") -> None:
         combined_theta = np.concatenate([line.theta, new_theta])
         combined_elevation = np.concatenate([line.elevation, new_elevation])
         # A reassigned point's own channel_depth/channel_width/lake_depth/glacier_depth/
-        # is_volcano/volcano_active_years_remaining resets to 0/False -- this pass only ever
+        # silt_depth/is_volcano/volcano_active_years_remaining resets to 0/False -- this pass only ever
         # touches a small number of boundary-adjacent nodes at a time, so losing a carved
         # channel (or a glacier, or volcanic provenance) right at the moment its owning plate
         # changes is an acceptable simplification (unlike line_regrid.py's regularize_line,
@@ -185,6 +186,7 @@ def reassign_misplaced_points(world: "World") -> None:
         combined_channel_width = np.concatenate([line.channel_width, np.zeros(len(new_nodes))])
         combined_lake_depth = np.concatenate([line.lake_depth, np.zeros(len(new_nodes))])
         combined_glacier_depth = np.concatenate([line.glacier_depth, np.zeros(len(new_nodes))])
+        combined_silt_depth = np.concatenate([line.silt_depth, np.zeros(len(new_nodes))])
         combined_is_volcano = np.concatenate([line.is_volcano, np.zeros(len(new_nodes), dtype=bool)])
         combined_volcano_active_years_remaining = np.concatenate([line.volcano_active_years_remaining, np.zeros(len(new_nodes))])
         order = np.argsort(combined_theta)
@@ -196,6 +198,7 @@ def reassign_misplaced_points(world: "World") -> None:
             channel_width=combined_channel_width[order],
             lake_depth=combined_lake_depth[order],
             glacier_depth=combined_glacier_depth[order],
+            silt_depth=combined_silt_depth[order],
             is_volcano=combined_is_volcano[order],
             volcano_active_years_remaining=combined_volcano_active_years_remaining[order],
         )

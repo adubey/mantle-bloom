@@ -64,8 +64,7 @@ function niceTicks(rawMin: number, rawMax: number, count = 4): number[] {
 }
 
 // A small, dependency-free multi-series line chart for a value plotted against elapsed
-// years (ported from the sibling plate-sim project, which has the same need and the same
-// "no charting library" constraint -- see its TimeSeriesChart.tsx). 2px round-cap lines,
+// years, avoiding a charting library for a relatively simple need. 2px round-cap lines,
 // hairline gridlines, an always-on crosshair+tooltip, a legend for 2+ series, an 8px
 // surface-ringed end-dot per series. Single-series charts skip the legend -- the caller's
 // own heading/dropdown already names what's plotted.

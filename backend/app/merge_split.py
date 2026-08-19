@@ -261,6 +261,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                     channel_width=line.channel_width[side],
                     lake_depth=line.lake_depth[side],
                     glacier_depth=line.glacier_depth[side],
+                    silt_depth=line.silt_depth[side],
                     is_volcano=line.is_volcano[side],
                     volcano_active_years_remaining=line.volcano_active_years_remaining[side],
                 )
@@ -275,6 +276,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                     channel_width=line.channel_width[~side],
                     lake_depth=line.lake_depth[~side],
                     glacier_depth=line.glacier_depth[~side],
+                    silt_depth=line.silt_depth[~side],
                     is_volcano=line.is_volcano[~side],
                     volcano_active_years_remaining=line.volcano_active_years_remaining[~side],
                 )

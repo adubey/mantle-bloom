@@ -207,8 +207,8 @@ def _grow_or_shrink_line(
     boundary every interval -- fixing the actual growth rate here is what stops that at the
     source, rather than only reacting to its symptom in gaps.py.
 
-    channel_depth/channel_width/lake_depth/glacier_depth/is_volcano/volcano_active_years_
-    remaining ride along: a surviving node keeps its own prior value (sliced the same way
+    channel_depth/channel_width/lake_depth/glacier_depth/silt_depth/is_volcano/volcano_active_
+    years_remaining ride along: a surviving node keeps its own prior value (sliced the same way
     theta/elevation are), a newly-inserted node (brand new crust) starts at 0/False -- no
     history to carry, the same reasoning plates.ElevationLine's own defaulting already uses
     for a call site that doesn't pass them at all.
@@ -226,6 +226,7 @@ def _grow_or_shrink_line(
         "channel_width": line.channel_width.copy(),
         "lake_depth": line.lake_depth.copy(),
         "glacier_depth": line.glacier_depth.copy(),
+        "silt_depth": line.silt_depth.copy(),
         "is_volcano": line.is_volcano.copy(),
         "volcano_active_years_remaining": line.volcano_active_years_remaining.copy(),
     }

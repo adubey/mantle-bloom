@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import coastline, geometry, hydrology, plates, projections, render_image, stats
+from . import climate, coastline, geometry, hydrology, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -53,6 +53,15 @@ class GenerateRequest(BaseModel):
 
 class StepRequest(BaseModel):
     years: float
+
+
+class ControlsRequest(BaseModel):
+    # Both optional and independently settable -- the UI's "Controls" window (see
+    # StatsModal.tsx's "Controls" button) sends only whichever slider the user actually
+    # moved. Omitted fields leave that World attribute untouched. See World.sea_level_m/
+    # World.solar_multiplier for what each one does physically.
+    sea_level_m: float | None = None
+    solar_multiplier: float | None = None
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
@@ -210,6 +219,23 @@ def render(
         "elapsed_years": world.elapsed_years,
         "image_base64": render_image.render_png_base64(world, projection, view, width, height, view_rotation),
     }
+
+
+@app.post("/world/controls")
+def set_controls(req: ControlsRequest) -> dict:
+    """Live-adjusts sea level and/or solar heat on the current world (the "Controls" window
+    -- see World.sea_level_m/World.solar_multiplier) and immediately recomputes
+    world.climate_cache so the very next /world/render or /world/stats call reflects the
+    change without waiting for a step -- climate_cache is otherwise only refreshed by
+    erosion.py once per step (see World.climate_cache), which would make a real-time control
+    feel laggy or unresponsive between steps. `404` if no world has been generated yet."""
+    world = _require_world()
+    if req.sea_level_m is not None:
+        world.sea_level_m = req.sea_level_m
+    if req.solar_multiplier is not None:
+        world.solar_multiplier = req.solar_multiplier
+    world.climate_cache = climate.compute_climate(world)
+    return {"sea_level_m": world.sea_level_m, "solar_multiplier": world.solar_multiplier}
 
 
 @app.get("/world/plates")

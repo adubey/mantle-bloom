@@ -78,16 +78,16 @@ def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, l
 
 
 def apply_bathymetry(world: "World", years: float) -> None:
-    """Relaxes every submerged (elevation <= 0) continental node toward SHELF_TARGET_M if
-    within SHELF_RANGE_RAD of the nearest land node (elevation > 0, any plate), or
-    DEEP_CONTINENTAL_TARGET_M otherwise. Mutates world.plates' line elevations in place;
-    never touches node positions or line topology, so this can't interact with line
-    regularization or point reassignment at all."""
+    """Relaxes every submerged (elevation <= world.sea_level_m) continental node toward
+    SHELF_TARGET_M if within SHELF_RANGE_RAD of the nearest land node (elevation >
+    world.sea_level_m, any plate), or DEEP_CONTINENTAL_TARGET_M otherwise. Mutates
+    world.plates' line elevations in place; never touches node positions or line topology,
+    so this can't interact with line regularization or point reassignment at all."""
     points, elevation, is_continental, line_refs = _gather_nodes(world)
     if len(points) == 0:
         return
 
-    is_land = elevation > 0.0
+    is_land = elevation > world.sea_level_m
     if not np.any(is_land):
         return  # no coastline anywhere to measure distance from
 

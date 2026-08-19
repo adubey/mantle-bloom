@@ -2,10 +2,9 @@
 all directly reducing elevation every step; slow/big rivers deposit part of what they carry
 downstream instead of losing it all to the coast. The other direction of the weather<->
 geology coupling -- terrain influencing weather (lapse-rate cooling, mountain wind
-deflection, orographic rain shadow) -- already exists in climate.py, ported from plate-sim
-alongside the rest of its climate pipeline. This module is the new half: climate.py's fixed
-grid, and hydrology.py's flow routing over the geology node cloud, feeding back onto
-elevation.
+deflection, orographic rain shadow) -- already exists in climate.py, as part of its climate
+pipeline. This module is the new half: climate.py's fixed grid, and hydrology.py's flow
+routing over the geology node cloud, feeding back onto elevation.
 
 **The mapping problem, and why it's easier in this direction.** climate.py already solves
 node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor resample) to
@@ -19,37 +18,36 @@ grid (row, col) by direct arithmetic -- no tree, no resampling, just array index
 (it gets slope from neighbor-index differences; an irregular node cloud has no such
 structure) -- this reuses reassign.py's whole-world cKDTree pattern (build once, query k
 nearest neighbors) instead: for each node, the elevation drop to the *lowest* of its nearest
-neighbors (matching plate-sim's own "slope to lowest neighbor" definition), divided by the
-real great-circle distance to that neighbor. This is a genuine dimensionless rise/run, unlike
-plate-sim's own slope -- documented there as a known simplification, "elevation drop per grid
-step, not drop-over-real-distance" -- so RAIN_EROSION_COEFFICIENT below is *not* plate-sim's
-own 0.15: that value was tuned against meters-of-drop-per-grid-cell (order 10-100s of
-meters), not a true rise/run (order 0.001-0.1), and porting it verbatim would make rain
-erosion negligible. WEATHERING_COEFFICIENT ports more directly, since wind speed uses the
-exact same scale in both codebases (MERIDIONAL_BASE_SPEED = 6.0 in each). River erosion
-needs the same reasoning as rain erosion, one level further removed: it depends on
-`water_accum` (see hydrology.py), which is itself downstream-accumulated *precipitation*
-(not a raw grid-cell count the way plate-sim's own accumulation implicitly scales with
-resolution) -- RIVER_EROSION_COEFFICIENT is re-derived the same way RAIN_EROSION_COEFFICIENT
-was, not ported verbatim.
+neighbors (the "slope to lowest neighbor" definition used throughout this module), divided
+by the real great-circle distance to that neighbor. This is a genuine dimensionless rise/run
+-- not elevation-drop-per-grid-step, which would conflate slope with grid resolution -- so
+RAIN_EROSION_COEFFICIENT below is tuned for this rise/run scale (order 0.001-0.1), not for
+meters-of-drop-per-grid-cell (order 10-100s of meters); a coefficient tuned against that
+coarser, resolution-dependent scale would make rain erosion negligible here.
+WEATHERING_COEFFICIENT needs no such rescaling, since it depends only on wind speed, whose
+scale (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline rather
+than by any grid convention. River erosion needs the same reasoning as rain erosion, one
+level further removed: it depends on `water_accum` (see hydrology.py), which is itself
+downstream-accumulated *precipitation* (not a raw grid-cell count, which would implicitly
+scale with resolution) -- RIVER_EROSION_COEFFICIENT is derived the same order-of-magnitude
+way RAIN_EROSION_COEFFICIENT is.
 
-**Scope cut from plate-sim's five erosion sources.** Ocean/coastal erosion is still dropped
-(a distinct source never implemented here). Weathering's vegetation boost is still dropped
-(no vegetation field). River-channelized erosion, downstream deposition, and glacier erosion
--- previously dropped for the same reason ("needs flow routing over a rotating, irregular
-per-plate lattice, a separate, harder problem") -- are now implemented, see hydrology.py for
-how that flow-routing graph is built and how glacier_depth itself is grown/melted/flowed.
-Glacier-driven **flattening** (broad terrain smoothing under an ice sheet, distinct from the
-directional erosion term) is a mantle-bloom-original addition, not a plate-sim port -- see
+**Erosion sources implemented here, and what's still out of scope.** Ocean/coastal erosion is
+out of scope (a distinct source never implemented here). Weathering's vegetation boost is out
+of scope (no vegetation field). River-channelized erosion, downstream deposition, and glacier
+erosion -- previously out of scope for the same reason ("needs flow routing over a rotating,
+irregular per-plate lattice, a separate, harder problem") -- are now implemented, see
+hydrology.py for how that flow-routing graph is built and how glacier_depth itself is
+grown/melted/flowed. Glacier-driven **flattening** (broad terrain smoothing under an ice
+sheet, distinct from the directional erosion term) is a mantle-bloom-original addition -- see
 `_flatten` below.
 
-**No lag, unlike plate-sim.** plate-sim's erosion reads the *previous* step's climate and
-recomputes its own flow routing independently of hydrology.py's own pass (an accepted
-redundancy there, cheap under numba JIT). climate.py here is fully stateless and cheap
-enough to call fresh; flow routing here is comparatively expensive (no JIT), so this module
-computes it once (via hydrology.compute_hydrology) and reuses the result for both erosion
-and the world's cached river/lake fields (World.hydrology_cache), rather than paying for it
-twice.
+**No lag.** This module always erodes against the *current* step's climate and flow routing,
+never a stale previous-step snapshot: climate.py here is fully stateless and cheap enough to
+call fresh every step. Flow routing, though, is comparatively expensive (no JIT), so rather
+than computing it twice, this module computes it once (via hydrology.compute_hydrology) and
+reuses the result for both erosion and the world's cached river/lake fields
+(World.hydrology_cache).
 """
 
 from __future__ import annotations
@@ -72,15 +70,16 @@ SLOPE_NEIGHBOR_COUNT = 4
 # Starting points, not final -- see module docstring. Tuned by rough order-of-magnitude
 # reasoning against boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR (800 m/Myr): at a
 # moderately steep slope (~0.05) and moderate precipitation (~1000 mm/yr), this coefficient
-# gives rain erosion the same order of magnitude as mountain-building uplift, matching
-# plate-sim's own stated design goal ("tuned so it roughly balances typical uplift rates")
-# without being able to reuse its actual number (different slope units -- see above).
+# gives rain erosion the same order of magnitude as mountain-building uplift -- the design
+# goal being that erosion should roughly balance typical uplift rates, not swamp them or be
+# swamped by them (the raw number can't be picked from a grid-cell-based slope convention;
+# see above for why).
 RAIN_EROSION_COEFFICIENT = 6000.0
-# Ported close to plate-sim's own 3.0 -- wind speed uses the same scale in both codebases
-# (MERIDIONAL_BASE_SPEED = 6.0), so this needs less re-derivation than the rain coefficient.
+# Needs no rescaling the way the rain coefficient does, since wind speed's scale
+# (MERIDIONAL_BASE_SPEED = 6.0) is fixed by this module's own climate pipeline, not tied to a
+# grid-resolution-dependent slope convention.
 WEATHERING_COEFFICIENT = 3.0
-# Humidity level at which the weathering-humidity factor saturates to 1.0 -- same value and
-# meaning as plate-sim's own HUMIDITY_REFERENCE.
+# Humidity level at which the weathering-humidity factor saturates to 1.0.
 HUMIDITY_REFERENCE = 1.0
 # Unlike rain/river erosion (both already multiply by `slope`), weathering had no relief
 # dependence at all until this was added -- confirmed as the main reason flat, low-lying
@@ -97,23 +96,24 @@ HUMIDITY_REFERENCE = 1.0
 WEATHERING_RELIEF_REFERENCE_SLOPE = 0.002
 
 # Stream-power river erosion: coefficient*channel_boost*water_accum^FLOW_EXPONENT*
-# slope^SLOPE_EXPONENT. Coefficient re-derived (not ported, see module docstring) by the
-# same order-of-magnitude reasoning as RAIN_EROSION_COEFFICIENT; the two exponents port
-# directly from plate-sim (dimensionless, not tied to any grid/unit convention).
+# slope^SLOPE_EXPONENT. Coefficient re-derived by the same order-of-magnitude reasoning as
+# RAIN_EROSION_COEFFICIENT (see module docstring); the two exponents need no such
+# re-derivation, being dimensionless and not tied to any grid/unit convention.
 RIVER_EROSION_COEFFICIENT = 100.0
 RIVER_FLOW_EXPONENT = 0.5
 RIVER_SLOPE_EXPONENT = 1.0
 # A river preferentially re-carves its own established channel (real rivers meander within,
-# not across, their valley) -- ported values/meaning directly from plate-sim; channel depth
-# is a real length (meters) in both codebases, so these don't need re-derivation.
+# not across, their valley). Channel depth is a real length (meters), so these values are
+# plain physical quantities, not tied to any grid/unit convention that would need
+# re-derivation.
 CHANNEL_EROSION_BOOST = 0.6
 CHANNEL_BOOST_REFERENCE_M = 200.0
 MAX_CHANNEL_DEPTH_M = 2000.0
 
-# Channel width -- not a plate-sim mechanic (confirmed absent there), a mantle-bloom-original
-# addition. "Larger flows make a channel larger": standard hydraulic-geometry scaling
-# (width ~ discharge^b, b commonly observed near 0.5 for real rivers) -- same discharge
-# exponent as RIVER_FLOW_EXPONENT above, but width is purely a function of how much water
+# Channel width is a mantle-bloom-original addition. "Larger flows make a channel larger":
+# standard hydraulic-geometry scaling (width ~ discharge^b, b commonly observed near 0.5 for
+# real rivers) -- same discharge exponent as RIVER_FLOW_EXPONENT above, but width is purely a
+# function of how much water
 # passes through, not of slope (a wide, lazy lowland river and a narrow, steep mountain
 # torrent can carry comparable discharge, but width is driven by the water, not the
 # gradient). Grows the same way channel_depth does -- persistent, monotonically
@@ -125,10 +125,10 @@ MAX_CHANNEL_WIDTH_M = 5000.0
 
 # A big, slow river drops part of its sediment load locally (floodplain/delta) instead of
 # carrying all of it to the coast. river_speed here is a stylized, unitless quantity (see
-# hydrology.compute_river_speed) rather than a literal speed, same as plate-sim's own -- so
-# its threshold isn't a physical speed either, just re-derived (not ported) against this
-# codebase's own river_speed scale. DEPOSITION_MIN_FLOW_M and DEPOSITION_FRACTION port
-# directly (both already dimensionless/fractional, not grid-unit-dependent).
+# hydrology.compute_river_speed) rather than a literal speed -- so its threshold isn't a
+# physical speed either, just derived against this codebase's own river_speed scale.
+# DEPOSITION_MIN_FLOW_M and DEPOSITION_FRACTION need no such derivation (both are already
+# dimensionless/fractional, not tied to any particular scale convention).
 DEPOSITION_SPEED_THRESHOLD = 2.0
 DEPOSITION_MIN_FLOW_M = 0.05
 DEPOSITION_FRACTION = 0.15
@@ -136,24 +136,23 @@ DEPOSITION_FRACTION = 0.15
 # Glacier erosion: scales with slope and actual accumulated ice depth (hydrology.py's
 # glacier_depth, a real persistent field, not a stateless cold proxy) -- depth*slope
 # approximates basal shear stress, a standard real glacial-erosion proxy: a flat-bottomed
-# accumulation bowl still correctly erodes near zero regardless of ice depth. Ported
-# directly from plate-sim -- temperature/precipitation-driven ice depth uses the same units
-# in both codebases (unlike the slope-based rain/river coefficients above), so this doesn't
-# need the same re-derivation.
+# accumulation bowl still correctly erodes near zero regardless of ice depth.
+# Temperature/precipitation-driven ice depth is a real length in consistent units (unlike the
+# slope-based rain/river coefficients above, which needed re-derivation for a rise/run
+# convention), so this coefficient doesn't need the same treatment.
 GLACIER_EROSION_COEFFICIENT = 0.05
 GLACIER_EROSION_REFERENCE_DEPTH_M = 100.0
 GLACIER_EROSION_MAX_FACTOR = 2.0
 
-# Glacier flattening -- NOT a plate-sim mechanic (confirmed: no flatten/smooth/scour effect
-# tied to ice cover exists there at all), a mantle-bloom-original addition modeling how real
-# continental ice sheets grind down local relief over broad areas (e.g. the Canadian
-# Shield/Fennoscandia read as glacially smoothed bedrock, not just eroded-lower). Implemented
-# as a relaxation of each node's elevation toward the mean of its hydrology.py flow-graph
-# neighbors (a genuine local blur, not a directional erosion/deposition), scaled by the same
-# ice_factor glacier erosion uses -- reuses hydrology's own k=FLOW_NEIGHBOR_COUNT neighbor
-# graph rather than a separate query. GLACIER_FLATTEN_RATE_PER_MYR has no real-world number
-# to port; picked as a starting point, checked against a live run the same way every other
-# from-scratch rate in this codebase was.
+# Glacier flattening is a mantle-bloom-original addition modeling how real continental ice
+# sheets grind down local relief over broad areas (e.g. the Canadian Shield/Fennoscandia read
+# as glacially smoothed bedrock, not just eroded-lower). Implemented as a relaxation of each
+# node's elevation toward the mean of its hydrology.py flow-graph neighbors (a genuine local
+# blur, not a directional erosion/deposition), scaled by the same ice_factor glacier erosion
+# uses -- reuses hydrology's own k=FLOW_NEIGHBOR_COUNT neighbor graph rather than a separate
+# query. GLACIER_FLATTEN_RATE_PER_MYR has no established real-world value to draw on; picked
+# as a starting point, checked against a live run the same way every other from-scratch rate
+# in this codebase was.
 GLACIER_FLATTEN_RATE_PER_MYR = 0.2
 
 
@@ -195,15 +194,15 @@ def _gather_nodes(
 
 def _compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-node dimensionless rise/run -- elevation drop to the *lowest* of each node's
-    SLOPE_NEIGHBOR_COUNT nearest neighbors (0 if this node is already a local minimum,
-    matching plate-sim's own "slope to lowest neighbor" definition), divided by the real
+    SLOPE_NEIGHBOR_COUNT nearest neighbors (0 if this node is already a local minimum -- the
+    "slope to lowest neighbor" definition used throughout this module), divided by the real
     great-circle distance to that specific neighbor -- alongside the raw drop in meters,
     unnormalized. Returns (slope, drop_m): `slope` drives the erosion rate formula, `drop_m`
     caps it (see apply_erosion) so a single step can't erode a node *past* its lowest
     neighbor's own elevation, which would carve a new pit lower than the valley it drains
-    into -- the same cap plate-sim's own erosion applies (there, "slope" -- its own raw
-    per-grid-cell drop, not a rise/run -- doubles directly as that cap; here the two need to
-    be tracked separately, since this module's `slope` is normalized and plate-sim's isn't)."""
+    into. The two are tracked as separate return values because `slope` here is normalized
+    (dimensionless rise/run) while the cap needs the raw, unnormalized drop -- capping against
+    the normalized value would bound elevation change in the wrong units entirely."""
     n = len(points)
     if n <= SLOPE_NEIGHBOR_COUNT:
         return np.zeros(n), np.zeros(n)
@@ -260,7 +259,7 @@ def apply_erosion(world: "World", years: float) -> None:
     Separately relaxes elevation under thick ice toward its local neighborhood mean (glacial
     flattening, see `_flatten`). Also grows channel_depth (from this step's river-erosion
     term) and channel_width (from discharge alone -- larger flows carve a wider channel);
-    lake_depth/glacier_depth are hydrology.py's own state transitions, read directly from
+    lake_depth/glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
     World.hydrology_cache. All persistent, see plates.ElevationLine. Mutates world.plates'
     line elevations in place; never touches node positions or line topology, so this can't
     interact with line regularization or point reassignment at all (both of those are
@@ -296,6 +295,8 @@ def apply_erosion(world: "World", years: float) -> None:
 
     hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years)
     world.hydrology_cache = hydro
+    for message in hydro.lake_events:
+        world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
 
     rain = RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000.0) * dt_myr
@@ -312,13 +313,11 @@ def apply_erosion(world: "World", years: float) -> None:
     weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
     glacier = GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr
-    # Capped at the drop to the lowest neighbor -- same reason plate-sim caps its own
-    # erosion at "slope" -- so a single step can't erode a node below the valley floor it
-    # drains into. Zeroed over ocean nodes (elevation <= sea level, the same convention
-    # climate.py/plates.py use everywhere else): every source here is a subaerial process,
-    # and plate-sim itself excludes ocean cells from these same sources (its separate
-    # coastal-current erosion source is the only one that touches the seafloor, and that's
-    # the one source this module still doesn't implement -- see module docstring).
+    # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
+    # valley floor it drains into. Zeroed over ocean nodes (elevation <= sea level, the same
+    # convention climate.py/plates.py use everywhere else): every source here is a subaerial
+    # process -- coastal/ocean erosion is a separate source that would touch the seafloor, and
+    # that's the one source this module still doesn't implement (see module docstring).
     erosion_amount = np.where(is_ocean_node, 0.0, np.clip(rain + river + weathering + glacier, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
 
@@ -353,4 +352,5 @@ def apply_erosion(world: "World", years: float) -> None:
             channel_width=new_channel_width[start:end],
             lake_depth=hydro.lake_depth[start:end],
             glacier_depth=hydro.glacier_depth[start:end],
+            silt_depth=hydro.silt_depth[start:end],
         )
