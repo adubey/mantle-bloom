@@ -16,14 +16,14 @@ def test_cluster_groups_nearby_and_splits_far_points():
             [10.001, 0.0, 0.0],
         ]
     )
-    labels = gaps._cluster(pts, radius=0.01)
+    labels = gaps.cluster_points(pts, radius=0.01)
     assert labels[0] == labels[1] == labels[2]
     assert labels[3] == labels[4]
     assert labels[0] != labels[3]
 
 
 def test_cluster_empty_input():
-    assert len(gaps._cluster(np.zeros((0, 3)), radius=0.01)) == 0
+    assert len(gaps.cluster_points(np.zeros((0, 3)), radius=0.01)) == 0
 
 
 def _old_plate(plate_id: int) -> Plate:
@@ -270,7 +270,7 @@ def test_fill_gaps_leaves_no_large_gaps_after_a_long_simulation():
     remaining_gap_points = gaps._find_gap_points(tree)
     if len(remaining_gap_points) == 0:
         return
-    labels = gaps._cluster(remaining_gap_points, gaps.CLUSTER_RADIUS_RAD)
+    labels = gaps.cluster_points(remaining_gap_points, gaps.CLUSTER_RADIUS_RAD)
     counts = np.bincount(labels)
     assert counts.max() < gaps.MIN_GAP_POINTS
 

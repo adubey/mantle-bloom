@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import bathymetry, boundary, climate, erosion, gaps, geometry, hydrology, line_regrid, mantle, merge_split, reassign
+from . import bathymetry, boundary, climate, erosion, gaps, geometry, hydrology, line_regrid, mantle, merge_split, reassign, volcanism
 from .plates import Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -38,6 +38,14 @@ class World:
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
+    # plate_ids currently tracked as an active volcanic field -- removed (and relabeled as an
+    # ordinary continental plate) once fewer than volcanism.VOLCANO_FRACTION_DORMANT_
+    # THRESHOLD of the plate's own nodes are still is_volcano. See volcanism.py.
+    volcanic_field_plate_ids: set[int] = field(default_factory=set)
+    # Number of times volcanism.detect_and_spawn_volcanic_fields has actually run -- part of
+    # the deterministic RNG seed for that pass (see volcanism.py), same role
+    # World.gap_fill_calls plays for gaps.py's own new-crust noise texture.
+    volcanic_field_calls: int = 0
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
@@ -138,8 +146,11 @@ def step_world(world: World, years: float) -> None:
     based on the world's current climate (see erosion.py) -- rain/sheet erosion and
     weathering, the other half of the weather<->geology coupling from climate.py's own
     terrain-influences-weather mechanics (lapse rate, mountain wind deflection, orographic
-    rain shadow) -- and relaxes submerged continental crust toward a shelf-or-deep-water
-    target based on distance to the nearest land (see bathymetry.py)."""
+    rain shadow) -- relaxes submerged continental crust toward a shelf-or-deep-water target
+    based on distance to the nearest land (see bathymetry.py), and rolls each active
+    volcano's own eruption chance (see volcanism.py). On the same cadence as the gap-fill/
+    regularize pass, also scans for divergent gaps between plates and spawns any new
+    volcanic fields they warrant (see volcanism.py)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
@@ -151,10 +162,14 @@ def step_world(world: World, years: float) -> None:
 
     erosion.apply_erosion(world, years)
     bathymetry.apply_bathymetry(world, years)
+    for message in volcanism.apply_volcanic_activity(world, years):
+        world.log_event(message)
 
     world.steps_since_regularize += 1
     run_regularize_this_step = world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS
     if run_regularize_this_step:
+        for message in volcanism.detect_and_spawn_volcanic_fields(world):
+            world.log_event(message)
         for message in gaps.fill_gaps(world):
             world.log_event(message)
         line_regrid.regularize_world_lines(world)

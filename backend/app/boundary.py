@@ -169,18 +169,22 @@ def _grow_or_shrink_line(
     boundary every interval -- fixing the actual growth rate here is what stops that at the
     source, rather than only reacting to its symptom in gaps.py.
 
-    channel_depth/lake_depth/glacier_depth ride along: a surviving node keeps its own prior
-    value (sliced the same way theta/elevation are), a newly-inserted node (brand new crust)
-    starts at 0 -- no history to carry, the same reasoning plates.ElevationLine's own
-    defaulting already uses for a call site that doesn't pass them at all."""
+    channel_depth/lake_depth/glacier_depth/is_volcano/volcano_active_years_remaining ride
+    along: a surviving node keeps its own prior value (sliced the same way theta/elevation
+    are), a newly-inserted node (brand new crust) starts at 0/False -- no history to carry,
+    the same reasoning plates.ElevationLine's own defaulting already uses for a call site
+    that doesn't pass them at all."""
     theta = line.theta.copy()
     elevation = line.elevation.copy()
     channel_depth = line.channel_depth.copy()
     lake_depth = line.lake_depth.copy()
     glacier_depth = line.glacier_depth.copy()
+    is_volcano = line.is_volcano.copy()
+    volcano_active_years_remaining = line.volcano_active_years_remaining.copy()
     if len(theta) == 0:
         return ElevationLine(
-            phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth
+            phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth,
+            is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining,
         )
 
     dtheta = TARGET_LINE_SPACING_RAD / max(np.cos(line.phi), 1e-3)
@@ -195,16 +199,21 @@ def _grow_or_shrink_line(
         channel_depth = np.append(channel_depth, np.zeros(n_new))
         lake_depth = np.append(lake_depth, np.zeros(n_new))
         glacier_depth = np.append(glacier_depth, np.zeros(n_new))
+        is_volcano = np.append(is_volcano, np.zeros(n_new, dtype=bool))
+        volcano_active_years_remaining = np.append(volcano_active_years_remaining, np.zeros(n_new))
     elif dist[-1] < MERGE_THRESHOLD_RAD and closing[-1] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[:-1]
         elevation = elevation[:-1]
         channel_depth = channel_depth[:-1]
         lake_depth = lake_depth[:-1]
         glacier_depth = glacier_depth[:-1]
+        is_volcano = is_volcano[:-1]
+        volcano_active_years_remaining = volcano_active_years_remaining[:-1]
 
     if len(theta) == 0:
         return ElevationLine(
-            phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth
+            phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth,
+            is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining,
         )
 
     if dist[0] > EXTEND_THRESHOLD_RAD and closing[0] < -TRANSFORM_RATE_THRESHOLD:
@@ -215,15 +224,20 @@ def _grow_or_shrink_line(
         channel_depth = np.insert(channel_depth, 0, np.zeros(n_new))
         lake_depth = np.insert(lake_depth, 0, np.zeros(n_new))
         glacier_depth = np.insert(glacier_depth, 0, np.zeros(n_new))
+        is_volcano = np.insert(is_volcano, 0, np.zeros(n_new, dtype=bool))
+        volcano_active_years_remaining = np.insert(volcano_active_years_remaining, 0, np.zeros(n_new))
     elif dist[0] < MERGE_THRESHOLD_RAD and closing[0] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[1:]
         elevation = elevation[1:]
         channel_depth = channel_depth[1:]
         lake_depth = lake_depth[1:]
         glacier_depth = glacier_depth[1:]
+        is_volcano = is_volcano[1:]
+        volcano_active_years_remaining = volcano_active_years_remaining[1:]
 
     return ElevationLine(
-        phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth
+        phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth,
+        is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining,
     )
 
 
@@ -362,6 +376,8 @@ def step_boundaries(world: World, years: float) -> None:
                 channel_depth=line.channel_depth,
                 lake_depth=line.lake_depth,
                 glacier_depth=line.glacier_depth,
+                is_volcano=line.is_volcano,
+                volcano_active_years_remaining=line.volcano_active_years_remaining,
             )
             grown_line = _grow_or_shrink_line(updated_line, dist, closing, plate.crust_type)
             if len(grown_line.theta) > 0:

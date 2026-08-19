@@ -48,6 +48,10 @@ RIVER_LINE_WIDTH_PX = 1.1
 # white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
 # as "just a tall mountain" or "just a lake" at a glance.
 GLACIER_COLOR_RGB = (221, 240, 245)
+# A hot, saturated red-orange -- distinct from elevation_colors' own high-peak browns/whites
+# and from both LAKE_COLOR_RGB/GLACIER_COLOR_RGB's cool blues, so a volcanic node reads as
+# "active/recent volcanism" at a glance rather than blending into ordinary high terrain.
+VOLCANO_COLOR_RGB = (207, 63, 28)
 # Coastline: drawn on views that have no other land/ocean cue at all (temperature/humidity/
 # precipitation's color scales carry no land information on their own, unlike elevation's
 # hypsometric coloring) -- see coastline.py. A single fixed color would vanish against parts
@@ -237,12 +241,13 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
 
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, lake_depth, and glacier_depth -- see docs/simulation-model.md#render-image.
-    Returns flat concatenated (projected_xy, elevation, plate_id, lake_depth, glacier_depth,
-    cell_half_width, cell_half_height) arrays, or None for an empty world.
+    owning plate, lake_depth, glacier_depth, and is_volcano -- see
+    docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy,
+    elevation, plate_id, lake_depth, glacier_depth, is_volcano, cell_half_width,
+    cell_half_height) arrays, or None for an empty world.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -271,9 +276,10 @@ def _render_grid_arrays(
     all_points, all_elevation, all_owner = collected
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
+    all_is_volcano = plates.collect_all_is_volcano(world.plates)
     tree = cKDTree(all_points)
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, hw_chunks, hh_chunks = [], [], [], [], [], [], []
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, hw_chunks, hh_chunks = [], [], [], [], [], [], [], []
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=GRID_SPACING_RAD):
         _, idx = tree.query(world_pts)
         rotated = _rotate(world_pts, view_rotation)
@@ -283,6 +289,7 @@ def _render_grid_arrays(
         owner_chunks.append(all_owner[idx])
         lake_chunks.append(all_lake_depth[idx])
         glacier_chunks.append(all_glacier_depth[idx])
+        volcano_chunks.append(all_is_volcano[idx])
 
         _, center_lon = geometry.xyz_to_latlon(rotated)
         half_dtheta = GRID_SPACING_RAD / max(np.cos(phi), 1e-3) / 2
@@ -307,6 +314,7 @@ def _render_grid_arrays(
         np.concatenate(owner_chunks, axis=0),
         np.concatenate(lake_chunks, axis=0),
         np.concatenate(glacier_chunks, axis=0),
+        np.concatenate(volcano_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
@@ -943,7 +951,7 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, half_w, half_h = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, half_w, half_h = grid
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
@@ -952,13 +960,17 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         # reasoning plate-sim's own docs give for its own lake baking: always visible, no
         # separate overlay needed, and a lake (or a glacier) is meaningful on every view that
         # shows terrain at all (matches how ocean itself isn't specially toggle-able either).
-        # Glacier drawn after lake so ice wins on the rare cell where both would apply (a
-        # lake that just froze this same step still shows lake_depth from the previous
-        # render's snapshot for one extra frame in the worst case -- ice is the more
-        # physically current state there).
+        # Volcano drawn after lake (a volcanic vent is dry land in practice, but this keeps
+        # the same precedence as everything else here), glacier drawn last so ice wins on the
+        # rare cell where more than one would apply (a lake that just froze this same step
+        # still shows lake_depth from the previous render's snapshot for one extra frame in
+        # the worst case, and a volcano cold enough to glaciate should read as ice-covered,
+        # not lava-red) -- ice is the more physically current/visually dominant state there.
         is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
         if np.any(is_lake):
             colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=np.uint8), colors)
+        if np.any(is_volcano):
+            colors = np.where(is_volcano[:, None], np.array(VOLCANO_COLOR_RGB, dtype=np.uint8), colors)
         is_glacier = glacier_depth > hydrology.GLACIER_VISIBLE_DEPTH_M
         if np.any(is_glacier):
             colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=np.uint8), colors)
@@ -1001,6 +1013,7 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         entries = [
             (_swatch_line(draw, RIVER_COLOR_RGB), "River"),
             (_swatch_square(draw, LAKE_COLOR_RGB), "Lake"),
+            (_swatch_square(draw, VOLCANO_COLOR_RGB), "Volcano"),
             (_swatch_square(draw, GLACIER_COLOR_RGB), "Glacier"),
         ]
         _draw_legend(image, draw, height, pixel_scale, "Elevation (m)", gradient=_elevation_legend_gradient(), symbol_entries=entries)

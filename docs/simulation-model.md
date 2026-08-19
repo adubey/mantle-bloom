@@ -10,6 +10,7 @@
 - [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage (gap-filling)](#gap-filling)
+- [Volcanism](#volcanism)
 - [Boundary point reassignment](#reassignment)
 - [Projections](#projections)
 - [Render image](#render-image)
@@ -354,6 +355,88 @@ rotating almost identically to its neighbors. Letting a recently-created plate c
 meaningful (not necessarily dominant) share of its own neighborhood for a few passes after
 it's created breaks that chain -- it gets a chance to consolidate the rift it was born into
 before being treated as just another equal competitor.
+
+<a id="volcanism"></a>
+## Volcanism (`volcanism.py`)
+
+New continental crust forming where plates are separating -- run on the same
+`steps_since_regularize`-gated cadence as gap-filling/line regularization above (detection),
+plus every step (eruption and field-lifecycle bookkeeping, alongside erosion.py/bathymetry.py).
+
+**Detection, two passes.** First, every elevation point's own nearest neighbor, whole-world,
+unrestricted by plate -- the median of all these distances is "how far apart elevation points
+normally sit." Second, only *boundary* points (each plate's own line endpoints,
+`Plate.outline_world()`'s own definition of a plate's territory, reused directly) get checked
+against each other: for each boundary point, the nearest boundary point on a *different*
+plate. If that's more than `GAP_OUTLIER_FACTOR` (3x) the pass-1 median, it fires.
+
+Restricting pass 2 to boundary points, rather than every point whole-world, turned out to be
+essential, not a stylistic choice. An earlier version checked every point's own k=4 nearest
+neighbors, whole-world, for the *same* point being both the density reference and the outlier
+check -- and never fired, across dozens of seeds and step sizes, even with boundary.py's own
+line-growth completely disabled. The reason: a point sitting right next to a genuinely wide
+inter-plate gap still has plenty of *same-plate* interior neighbors much closer than that gap,
+so an unrestricted whole-world nearest-neighbor query never sees the gap at all -- confirmed
+directly by a separate cross-plate-specific distance measurement, which found real gaps up to
+5x the typical spacing the whole-world query was blind to. Restricting pass 2's search to
+boundary-vs-boundary removes the same-plate interior points that were masking the signal,
+without changing what "normal spacing" means (pass 1 stays whole-world, since that's a stable
+reference regardless of where the boundary happens to be).
+
+Every qualifying pair contributes one new volcano point (the great-circle midpoint between
+the two boundary points -- the actual empty space between the separating plates, not either
+plate's own territory). All of this pass's new volcano points are then clustered by proximity
+(`gaps.cluster_points`, the same connected-components technique gaps.py's own gap-clustering
+already uses) and each cluster becomes one brand-new `Plate` with `crust_type="continental"`
+("volcanic fields ... result in continental plates," per spec -- the rock has continental
+physical properties regardless of whether the two separating plates were themselves oceanic
+or continental). Every node of a freshly-spawned field starts as an active volcano.
+
+`VOLCANIC_FIELD_CLUSTER_RADIUS_RAD` is deliberately much wider than gaps.py's own
+`CLUSTER_RADIUS_RAD` (~1.5x line spacing, ~187km): gap-clustering there groups points from
+one dense, contiguous coverage scan, but pass 2's candidate points here are individual
+boundary-point pairs spread out along a whole divergent boundary's length -- at gaps.py's own
+radius, a single long rift's many independently-qualifying points never merged into one
+cluster at all, each spawning its own tiny field instead (confirmed directly: 11-40+ new
+plates from a single clean-up pass on a 10-plate world, the same "boundary fragmenting into a
+fan of micro-plates" failure shape gap-filling's own `MIN_GAP_POINTS`/young-plate exception
+above were built to prevent). 15x line spacing (~1875km) merges same-rift detections into one
+field while still keeping genuinely separate rifts elsewhere on the sphere apart.
+
+A boundary point belonging to a plate that's *currently* a tracked volcanic field
+(`World.volcanic_field_plate_ids`) is excluded as a pass-2 *source* candidate -- without this,
+a field's own still-forming edge could immediately re-fire against the very neighbor it just
+separated from, spawning another field on top of the last one every single clean-up pass.
+It's still a valid *target* for some other plate's own check, so a genuinely separate rift on
+the field's far side isn't blocked.
+
+**A plate stops being tracked as a volcanic field once fewer than
+`VOLCANO_FRACTION_DORMANT_THRESHOLD` (5%) of its own nodes are still `is_volcano`** -- not a
+fixed elapsed-time countdown. `is_volcano` never reverts to False once set, so this ratio can
+only ever fall, and only by dilution: as the field's own edges grow via ordinary boundary
+evolution (or absorb gap territory via gaps.py), each newly-added node starts non-volcanic, so
+a field that keeps growing eventually reads as "just an ordinary continental plate that
+happens to have a few old volcanoes embedded in it." Checked every step, alongside the
+eruption roll below, so the transition is caught within one step of crossing the threshold,
+not lagged to the next clean-up interval.
+
+**Eruption, every step.** Each individual volcano point has its own
+`volcano_active_years_remaining` (`VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years, drawn once at
+creation), decremented every step. While active, it rolls a per-step eruption chance
+(`1 - exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1e6)`, the same
+exponential-arrival-rate shape used elsewhere in this codebase, e.g. lake evaporation's own
+retention factor -- expected roughly 0.3 to 3 eruption events over a volcano's own full active
+life, "occasionally," not every step) and, if it erupts, adds `ERUPTION_ELEVATION_M` (100m) of
+new land. Deterministic per `(seed, elapsed_years, plate_id, line_index)`, the same
+reproducibility precedent merge_split.py's own per-pair collision threshold sets.
+`active_years_this_step` is clamped to the volcano's own *remaining* life, not the full step
+size -- a large step (the UI offers up to 10 Myr) shouldn't roll eruption chances for years
+past when a short-lived volcano actually went dormant.
+
+**Rendering.** Baked directly into the elevation/plates views' raster the same way lakes and
+glaciers are (`VOLCANO_COLOR_RGB`, a hot red-orange distinct from both), drawn after lake but
+before glacier so ice still wins where both would apply (a volcano cold enough to glaciate
+should read as ice-covered, not lava-red).
 
 <a id="reassignment"></a>
 ## Boundary point reassignment (`reassign.py`)

@@ -14,7 +14,7 @@ def _world(seed=1, num_plates=10, continental_fraction=0.4):
 
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
     world = _world()
-    xy, elevation, plate_id, lake_depth, glacier_depth, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
 
     n = len(xy)
     assert n > 1000  # a real full-sphere sweep, not a token few points
@@ -230,7 +230,7 @@ def test_render_grid_stays_gap_free_under_a_nontrivial_rotation():
     no-gaps assertions at a rotation that mixes all three axes, not just identity/90/180."""
     world = _world(seed=8)
     rotation = geometry.rotation_matrix(np.array([0.4, -0.5, 0.7]), 1.3)
-    xy, elevation, plate_id, lake_depth, glacier_depth, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
     assert len(xy) > 1000
     assert np.all(half_w > 0)
     assert np.all(half_h > 0)

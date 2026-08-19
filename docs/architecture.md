@@ -52,8 +52,10 @@ Time-stepping:
     simulation-model.md#erosion, simulation-model.md#hydrology, and
     simulation-model.md#glaciation), relax submerged
     continental crust toward a shelf-or-deep-water target (every step -- see
-    simulation-model.md#bathymetry), and occasionally fill gaps and regularize line
-    spacing, and -- on the steps in between -- reassign misplaced boundary points (see
+    simulation-model.md#bathymetry), roll each active volcano's own eruption chance (every
+    step -- see simulation-model.md#volcanism), and occasionally fill gaps, detect divergent
+    boundaries and spawn any new volcanic fields they warrant, and regularize line spacing,
+    and -- on the steps in between -- reassign misplaced boundary points (see
     simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
@@ -109,6 +111,9 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
+- `volcanic_field_plate_ids: set[int]` -- plate ids currently tracked as an active volcanic
+  field, removed once diluted below volcanism.VOLCANO_FRACTION_DORMANT_THRESHOLD (see
+  [simulation-model.md#volcanism](simulation-model.md#volcanism)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
   [simulation-model.md#climate](simulation-model.md#climate)). The one deliberate exception
@@ -132,9 +137,10 @@ Each `Plate` (`backend/app/plates.py`) is:
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
   line also carries `channel_depth`/`lake_depth`/`glacier_depth` (persistent, land-only --
-  see simulation-model.md#hydrology and simulation-model.md#glaciation) as ordinary parallel
-  arrays right alongside `elevation` itself, so they rotate with the plate for free, no
-  advection scheme needed.
+  see simulation-model.md#hydrology and simulation-model.md#glaciation) and
+  `is_volcano`/`volcano_active_years_remaining` (persistent -- see
+  simulation-model.md#volcanism) as ordinary parallel arrays right alongside `elevation`
+  itself, so they rotate with the plate for free, no advection scheme needed.
 
 A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
@@ -170,6 +176,10 @@ merge_split.py       plate consumption, sustained-collision continental merging 
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
                      plate or spawns a new one where no plate dominates, event log messages
                      for newly spawned plates
+volcanism.py          periodic (same cadence as gaps.py) detection of divergent boundary
+                     gaps and new continental "volcanic field" plate spawning, plus every-
+                     step eruption/field-lifecycle bookkeeping (see
+                     simulation-model.md#volcanism)
 reassign.py          periodic pass (staggered against gaps.py's cadence) that hands a node
                      over to a neighboring plate once most of its nearest neighbors belong to
                      it, event log messages for each reassignment

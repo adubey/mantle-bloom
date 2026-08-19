@@ -69,6 +69,12 @@ class ElevationLine:
     channel_depth: np.ndarray | None = None  # river channel incision, self-reinforcing
     lake_depth: np.ndarray | None = None  # standing lake water depth
     glacier_depth: np.ndarray | None = None  # accumulated ice, meters ice-equivalent
+    # Two more of the same "rides along for free" persistent fields, see volcanism.py.
+    # is_volcano never reverts to False once set (permanent provenance -- a dormant volcano
+    # is still excluded from being redetected as a fresh rift gap); volcano_active_years_
+    # remaining is a countdown, 0 once dormant (whether or not is_volcano is set).
+    is_volcano: np.ndarray | None = None  # bool
+    volcano_active_years_remaining: np.ndarray | None = None  # years
 
     def __post_init__(self) -> None:
         if self.channel_depth is None:
@@ -77,6 +83,10 @@ class ElevationLine:
             self.lake_depth = np.zeros_like(self.theta)
         if self.glacier_depth is None:
             self.glacier_depth = np.zeros_like(self.theta)
+        if self.is_volcano is None:
+            self.is_volcano = np.zeros_like(self.theta, dtype=bool)
+        if self.volcano_active_years_remaining is None:
+            self.volcano_active_years_remaining = np.zeros_like(self.theta)
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -234,6 +244,16 @@ def collect_all_glacier_depth(plate_list: list[Plate]) -> np.ndarray:
     chunks = [line.glacier_depth for plate in plate_list for line in plate.lines if len(line.theta) > 0]
     if not chunks:
         return np.zeros(0)
+    return np.concatenate(chunks, axis=0)
+
+
+def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
+    """Every plate's current is_volcano, concatenated the same way collect_all_lake_depth
+    is -- see its own docstring for why this is a separate function rather than a new
+    collect_all_points return value."""
+    chunks = [line.is_volcano for plate in plate_list for line in plate.lines if len(line.theta) > 0]
+    if not chunks:
+        return np.zeros(0, dtype=bool)
     return np.concatenate(chunks, axis=0)
 
 

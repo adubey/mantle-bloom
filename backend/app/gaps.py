@@ -133,9 +133,11 @@ def _find_gap_points(existing_tree: cKDTree) -> np.ndarray:
     return np.concatenate(gap_chunks, axis=0)
 
 
-def _cluster(points: np.ndarray, radius: float) -> np.ndarray:
+def cluster_points(points: np.ndarray, radius: float) -> np.ndarray:
     """Connected-component label per point: points within `radius` of each other (directly
-    or transitively) share a label."""
+    or transitively) share a label. Public (not `_cluster`) -- volcanism.py reuses this
+    exact clustering step for grouping nearby new volcano points into one field, rather than
+    duplicating the same cKDTree-query_pairs-plus-connected-components logic."""
     n = len(points)
     if n == 0:
         return np.zeros(0, dtype=int)
@@ -270,7 +272,7 @@ def fill_gaps(world: "World") -> list[str]:
     if len(gap_points) == 0:
         return []
 
-    labels = _cluster(gap_points, CLUSTER_RADIUS_RAD)
+    labels = cluster_points(gap_points, CLUSTER_RADIUS_RAD)
     rng = np.random.default_rng((world.seed, world.gap_fill_calls))
     world.gap_fill_calls += 1
 
@@ -278,19 +280,19 @@ def fill_gaps(world: "World") -> list[str]:
     absorb_budget: dict[int, int] = {}
     new_plates: list[Plate] = []
     for label in np.unique(labels):
-        cluster_points = gap_points[labels == label]
-        if len(cluster_points) < MIN_GAP_POINTS:
+        gap_cluster_points = gap_points[labels == label]
+        if len(gap_cluster_points) < MIN_GAP_POINTS:
             continue
 
-        dominant = _preferred_border_plate(cluster_points, existing_tree, existing_owner, plate_by_id)
+        dominant = _preferred_border_plate(gap_cluster_points, existing_tree, existing_owner, plate_by_id)
         if dominant is not None:
             remaining = absorb_budget.setdefault(dominant, MAX_ABSORB_NODES_PER_PLATE_PER_CALL)
             if remaining <= 0:
                 continue
-            claimed = _absorb_gap_into_plate(plate_by_id[dominant], cluster_points, rng, remaining)
+            claimed = _absorb_gap_into_plate(plate_by_id[dominant], gap_cluster_points, rng, remaining)
             absorb_budget[dominant] -= claimed
         else:
-            new_plates.append(_spawn_plate_from_gap(world, cluster_points, rng))
+            new_plates.append(_spawn_plate_from_gap(world, gap_cluster_points, rng))
 
     world.plates.extend(new_plates)
     return [
