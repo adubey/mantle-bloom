@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
 import { fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld } from "./api";
-import type { MapView, PlateSummary, Projection, RenderResponse, RiverSummary, WorldStats, WorldSummary } from "./api";
+import type { MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
@@ -74,6 +74,9 @@ export default function App() {
   // not just generate like selectedPlateId.
   const [riversData, setRiversData] = useState<RiverSummary[]>([]);
   const [selectedRiverId, setSelectedRiverId] = useState<number | null>(null);
+  // The land/lake-vs-ocean boundary (see backend app/coastline.py), fetched alongside rivers
+  // from the same /world/rivers response -- the River Inspector has no other land/ocean cue.
+  const [coastlineSegments, setCoastlineSegments] = useState<Segment[]>([]);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs, matching how plate-sim's own Stats feature builds its history entirely
@@ -111,6 +114,7 @@ export default function App() {
     try {
       const data = await fetchRivers();
       setRiversData(data.rivers);
+      setCoastlineSegments(data.coastline_segments);
     } catch (e) {
       setError(String(e));
     }
@@ -368,6 +372,7 @@ export default function App() {
           ) : mapView === "riverInspector" ? (
             <RiverInspector
               rivers={riversData}
+              coastlineSegments={coastlineSegments}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}
               displayWidth={DISPLAY_WIDTH}

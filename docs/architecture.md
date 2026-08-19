@@ -66,12 +66,14 @@ generate/step, but never on a projection/rotation-only change) fetches:
 
 When the "River Inspector" map view is active, the browser instead fetches (same cadence):
   GET /world/rivers
-  → every distinct river network's flow-edge segments + mouth metadata as JSON, not a PNG --
-    see api-reference.md and simulation-model.md#river-inspector. Grouped fresh from
-    world.hydrology_cache on every call (no persistent river identity across steps -- see
-    hydrology.group_rivers), empty before the first step. Clicking a river sends its
-    unprojected true lat/lon to GET /world/river_at, the same nearest-node hit-test pattern
-    as plate_at.
+  → every distinct river network's flow-edge segments + mouth metadata, plus the current
+    coastline (coastline_segments -- see simulation-model.md#coastline, the same segments
+    drawn server-side into the temperature/humidity/precipitation renders below), as JSON,
+    not a PNG -- see api-reference.md and simulation-model.md#river-inspector. Grouped fresh
+    from world.hydrology_cache/climate_cache on every call (no persistent river identity
+    across steps -- see hydrology.group_rivers), empty before the first step. Clicking a
+    river sends its unprojected true lat/lon to GET /world/river_at, the same nearest-node
+    hit-test pattern as plate_at.
 ```
 
 The frontend never holds simulation state, and holds only one small piece of *rendering*
@@ -194,6 +196,10 @@ hydrology.py         every-step flow routing over the geology node cloud (a k-ne
 bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
                      (near land) or deep-water (far from land) target elevation (see
                      simulation-model.md#bathymetry)
+coastline.py          traces the land/ocean and lake boundary as line segments over
+                     climate.py's own grid, on demand (not every step) -- drawn into the
+                     temperature/humidity/precipitation renders and sent as JSON alongside
+                     GET /world/rivers (see simulation-model.md#coastline)
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate)

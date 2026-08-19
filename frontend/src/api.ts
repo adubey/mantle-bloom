@@ -76,7 +76,7 @@ export interface RiverSummary {
   // space points -- a flat edge list, not an ordered polyline, since a river network can
   // branch (see PlateInspector.tsx's segment-based river rendering for the same shape used
   // server-side in render_image.py's _draw_rivers).
-  segments: [[number, number, number], [number, number, number]][];
+  segments: Segment[];
   mouth_xyz: [number, number, number];
   mouth_type: "ocean" | "lake" | "other";
   flow_rate: number;
@@ -84,9 +84,17 @@ export interface RiverSummary {
   num_tributaries: number;
 }
 
+// A world-space segment pair -- shared shape for both RiverSummary.segments and
+// coastline_segments below.
+export type Segment = [[number, number, number], [number, number, number]];
+
 export interface RiversResponse {
   elapsed_years: number;
   rivers: RiverSummary[];
+  // The land/lake-vs-ocean boundary (see backend app/coastline.py) -- included here because
+  // the River Inspector draws no filled backdrop at all, so without this there's no
+  // land/ocean cue in this view whatsoever.
+  coastline_segments: Segment[];
 }
 
 // Stats panel data (see backend app/stats.py) -- a stateless snapshot of the *current* world;

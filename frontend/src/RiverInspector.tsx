@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
-import type { Projection, RiverSummary } from "./api";
+import type { Projection, RiverSummary, Segment } from "./api";
 import { fetchRiverAt } from "./api";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon } from "./rotation";
@@ -8,6 +8,7 @@ import { useRotationDrag } from "./rotationDrag";
 
 interface Props {
   rivers: RiverSummary[];
+  coastlineSegments: Segment[];
   width: number;
   height: number;
   displayWidth: number;
@@ -40,6 +41,13 @@ const MOUTH_RING_COLOR: Record<RiverSummary["mouth_type"], string> = {
 };
 const MOUTH_RING_RADIUS_PX = 7;
 
+// Matches backend render_image.py's COASTLINE_COLOR_RGB/COASTLINE_HALO_RGB -- same
+// dark-halo-plus-light-line stroke, drawn there for the same reason it's needed here: this
+// view has no filled backdrop at all, so without a coastline there's no land/ocean cue
+// whatsoever, unlike the elevation/plates views' own hypsometric coloring.
+const COASTLINE_RGB = "235, 235, 235";
+const COASTLINE_HALO_RGB = "15, 15, 15";
+
 // Renders every river network's flow-edge segments (see backend app/hydrology.py's
 // group_rivers and GET /world/rivers) as an interactive display -- no server-baked PNG for
 // this view, same "raw JSON, client draws it" philosophy as PlateInspector.tsx. Every river
@@ -47,7 +55,7 @@ const MOUTH_RING_RADIUS_PX = 7;
 // (colored by endpoint type). Reuses the same long-press-drag rotate gesture as MapCanvas/
 // PlateInspector (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle rivers.
 export default function RiverInspector({
-  rivers, width, height, displayWidth, displayHeight, projection, rotation,
+  rivers, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
   selectedRiverId, onSelectRiver, onRotationPreview, onRotationCommitted,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -83,6 +91,21 @@ export default function RiverInspector({
     const transform = getRenderTransform(projection, width, height);
     const pixelScale = width / 1100;
     const lineWidth = Math.max(1, pixelScale);
+
+    const strokeSegments = (segments: [Vec3, Vec3][], color: string, width: number) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      for (const [a, b] of segments) {
+        const [[x1, y1], [x2, y2]] = projectSegment(a, b, previewRotation, transform);
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+    };
+    // Halo first, then a lighter line on top -- see COASTLINE_HALO_RGB's own comment.
+    strokeSegments(coastlineSegments, `rgba(${COASTLINE_HALO_RGB}, 1.0)`, lineWidth * 2.6);
+    strokeSegments(coastlineSegments, `rgba(${COASTLINE_RGB}, 1.0)`, lineWidth * 1.1);
 
     const drawOne = (river: RiverSummary, selected: boolean) => {
       const alpha = selected ? SELECTED_RIVER_ALPHA : RIVER_ALPHA;
@@ -125,7 +148,7 @@ export default function RiverInspector({
   useEffect(() => {
     drawRivers(rotation);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rivers, selectedRiverId, projection, rotation, width, height]);
+  }, [rivers, coastlineSegments, selectedRiverId, projection, rotation, width, height]);
 
   const handleClick = (backingX: number, backingY: number) => {
     const transform = getRenderTransform(projection, width, height);

@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, hydrology, mantle, plates, projections
+from . import climate, coastline, geometry, hydrology, mantle, plates, projections
 from .world import World
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -48,6 +48,16 @@ RIVER_LINE_WIDTH_PX = 1.1
 # white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
 # as "just a tall mountain" or "just a lake" at a glance.
 GLACIER_COLOR_RGB = (221, 240, 245)
+# Coastline: drawn on views that have no other land/ocean cue at all (temperature/humidity/
+# precipitation's color scales carry no land information on their own, unlike elevation's
+# hypsometric coloring) -- see coastline.py. A single fixed color would vanish against parts
+# of some of those scales (temperature's own white/black extremes in particular), so this is
+# always drawn as a dark halo pass first, then a light line on top -- the same "halo" trick
+# real maps use for a boundary that has to stay legible over an arbitrary backdrop color.
+COASTLINE_COLOR_RGB = (235, 235, 235)
+COASTLINE_HALO_RGB = (15, 15, 15)
+COASTLINE_LINE_WIDTH_PX = 1.1
+COASTLINE_HALO_WIDTH_PX = 2.6
 
 # Visual constants below are all in pixel terms tuned at this reference width; render_png
 # scales them by (requested width / REFERENCE_WIDTH_PX) so a higher-resolution request (e.g.
@@ -770,25 +780,29 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
 
+    if view in ("temperature", "humidity", "precipitation"):
+        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+
     if view == "wind":
         _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
     elif view == "oceanCurrents":
         _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
         _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
+    coastline_entries = [(_swatch_line(draw, COASTLINE_COLOR_RGB), "Coastline")]
     if view == "temperature":
         ticks = [(-60.0, "-60°"), (0.0, "0°"), (10.0, "10°"), (20.0, "20°"), (30.0, "30°")]
         gradient = (temperature_colors, float(_TEMPERATURE_STOP_C[0]), float(_TEMPERATURE_STOP_C[-1]), ticks)
-        _draw_legend(image, draw, height, pixel_scale, "Temperature (°C)", gradient=gradient)
+        _draw_legend(image, draw, height, pixel_scale, "Temperature (°C)", gradient=gradient, symbol_entries=coastline_entries)
     elif view == "humidity":
         lo, hi = float(_HUMIDITY_STOP_V[0]), float(_HUMIDITY_STOP_V[-1])
         gradient = (humidity_colors, lo, hi, [(lo, "Dry"), (hi, "Humid")])
-        _draw_legend(image, draw, height, pixel_scale, "Humidity", gradient=gradient)
+        _draw_legend(image, draw, height, pixel_scale, "Humidity", gradient=gradient, symbol_entries=coastline_entries)
     elif view == "precipitation":
         lo, hi = float(_PRECIPITATION_STOP_MM[0]), float(_PRECIPITATION_STOP_MM[-1])
         ticks = [(lo, "0"), (hi / 2, f"{hi / 2:.0f}"), (hi, f"{hi:.0f}")]
         gradient = (precipitation_colors, lo, hi, ticks)
-        _draw_legend(image, draw, height, pixel_scale, "Precipitation (mm/yr)", gradient=gradient)
+        _draw_legend(image, draw, height, pixel_scale, "Precipitation (mm/yr)", gradient=gradient, symbol_entries=coastline_entries)
     elif view == "wind":
         entries = [
             (_swatch_arrow(draw, WIND_ARROW_COLOR), "Speed (arrow length)"),
@@ -837,6 +851,35 @@ def _draw_rivers(
     width_px = max(int(round(RIVER_LINE_WIDTH_PX * pixel_scale)), 1)
     for (x1, y1), (x2, y2) in zip(from_px, to_px):
         draw.line([(x1, y1), (x2, y2)], fill=RIVER_COLOR_RGB, width=width_px)
+
+
+def _draw_coastline(
+    draw: ImageDraw.ImageDraw, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
+) -> None:
+    """Draws the land/lake-vs-ocean boundary (see coastline.compute_coastline_segments) as a
+    dark-halo-plus-light-line stroke, so it stays legible over any backdrop color. Each
+    segment is a real, short step between two adjacent grid-cell corners, so _project_offset
+    (not two independent _project_points calls) keeps it from being wrongly split across the
+    antimeridian seam -- same technique _draw_rivers already uses for the same reason."""
+    point_a, point_b = coastline.compute_coastline_segments(world)
+    if len(point_a) == 0:
+        return
+
+    from_points = _rotate(point_a, view_rotation)
+    to_points = _rotate(point_b, view_rotation)
+    _, from_lon = geometry.xyz_to_latlon(from_points)
+    from_xy = _project_points(projection, from_points)
+    to_xy = _project_offset(projection, to_points, from_lon)
+
+    from_px = _to_pixels(scale, offset_x, offset_y, from_xy)
+    to_px = _to_pixels(scale, offset_x, offset_y, to_xy)
+    halo_width_px = max(int(round(COASTLINE_HALO_WIDTH_PX * pixel_scale)), 1)
+    line_width_px = max(int(round(COASTLINE_LINE_WIDTH_PX * pixel_scale)), 1)
+    segments = list(zip(from_px, to_px))
+    for (x1, y1), (x2, y2) in segments:
+        draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_HALO_RGB, width=halo_width_px)
+    for (x1, y1), (x2, y2) in segments:
+        draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_COLOR_RGB, width=line_width_px)
 
 
 def render_png(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> bytes:

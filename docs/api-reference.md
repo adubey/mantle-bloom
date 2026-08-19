@@ -91,7 +91,9 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   plus boundary outlines) -- the frontend's Map View dropdown picks this directly. Five more
   views come from `climate.py` (see
   [simulation-model.md#climate](simulation-model.md#climate)): `"temperature"`,
-  `"humidity"`, and `"precipitation"` are heatmaps; `"wind"` and `"oceanCurrents"` draw
+  `"humidity"`, and `"precipitation"` are heatmaps (each also drawing the current coastline --
+  see [simulation-model.md#coastline](simulation-model.md#coastline) -- since a color-scale
+  view carries no land/ocean cue on its own); `"wind"` and `"oceanCurrents"` draw
   subsampled direction/magnitude arrows, and `"oceanCurrents"` additionally marks detected
   ocean swells with small circles.
 - `rotation` is the map's current view orientation (see
@@ -180,9 +182,9 @@ JSON, client renders it" contract as `/world/plates`; `frontend/src/RiverInspect
 renders and drives the interaction itself. Un-rotated/true-frame throughout, same as
 `/world/plates`. Regrouped fresh from `world.hydrology_cache` on every call (see
 `hydrology.group_rivers`) rather than persisted, so `river_id` is only meaningful against this
-same response -- not a stable identity across steps. `rivers` is `[]` before the first step
-(`hydrology_cache` is `None` until `erosion.py` runs once). `404` if no world has been
-generated yet.
+same response -- not a stable identity across steps. `rivers`/`coastline_segments` are both
+`[]` before the first step (`hydrology_cache`/`climate_cache` are `None` until `erosion.py`
+runs once). `404` if no world has been generated yet.
 
 ```json
 {
@@ -198,7 +200,8 @@ generated yet.
       "speed": 2.67,
       "num_tributaries": 3
     }
-  ]
+  ],
+  "coastline_segments": [[[0.91, 0.28, -0.04], [0.90, 0.29, -0.03]], ["..."]]
 }
 ```
 
@@ -218,6 +221,13 @@ generated yet.
 - `num_tributaries` counts separate headwater branches feeding the network -- see
   [simulation-model.md#river-inspector](simulation-model.md#river-inspector) for the exact
   definition (an original one; no precedent to port).
+- `coastline_segments` is the land/ocean/lake boundary (see
+  [simulation-model.md#coastline](simulation-model.md#coastline)), same segment-pair shape as
+  `segments` above -- included because this view draws no filled backdrop at all, so without
+  it there's no land/ocean/lake cue in the River Inspector whatsoever. The exact same segments
+  are also drawn server-side into the `temperature`/`humidity`/`precipitation` views returned
+  by `GET /world/render` (no separate endpoint or query param -- it's baked directly into
+  those PNGs, same as rivers/lakes are baked into the elevation view).
 
 ## `GET /world/river_at?lat_deg=0&lon_deg=0`
 

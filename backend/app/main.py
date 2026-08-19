@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import geometry, hydrology, plates, projections, render_image, stats
+from . import coastline, geometry, hydrology, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -149,6 +149,13 @@ def _river_summary(fields: hydrology.HydrologyFields, river: hydrology.RiverInfo
     }
 
 
+def _coastline_segments_json(world: World) -> list:
+    point_a, point_b = coastline.compute_coastline_segments(world)
+    if len(point_a) == 0:
+        return []
+    return np.round(np.stack([point_a, point_b], axis=1), _COORD_DECIMALS).tolist()
+
+
 @app.post("/world/generate")
 def generate(req: GenerateRequest) -> dict:
     world = generate_world(
@@ -235,22 +242,26 @@ def plate_at(lat_deg: float, lon_deg: float) -> dict:
 
 @app.get("/world/rivers")
 def list_rivers() -> dict:
-    """Every distinct river network's path + endpoint metadata as JSON, for the "River
-    Inspector" map mode -- same philosophy as /world/plates: the client renders and drives
-    this itself rather than receiving a baked PNG (see docs/simulation-model.md#hydrology and
-    #river-inspector). Grouped fresh from the current world.hydrology_cache (see
-    hydrology.group_rivers) on every call rather than persisted -- hydrology_cache itself is
-    already at most one step stale by design (see World.hydrology_cache), and grouping it is
-    cheap. Empty list before the first step (hydrology_cache is None until erosion.py runs
-    once). Un-rotated/true-frame throughout, same as /world/plates. `404` if no world has
-    been generated yet."""
+    """Every distinct river network's path + endpoint metadata, plus the current coastline, as
+    JSON, for the "River Inspector" map mode -- same philosophy as /world/plates: the client
+    renders and drives this itself rather than receiving a baked PNG (see
+    docs/simulation-model.md#hydrology and #river-inspector). Rivers are grouped fresh from
+    the current world.hydrology_cache (see hydrology.group_rivers) on every call rather than
+    persisted -- hydrology_cache itself is already at most one step stale by design (see
+    World.hydrology_cache), and grouping it is cheap. `coastline_segments` is computed the
+    same way and drawn server-side in the temperature/humidity/precipitation views (see
+    coastline.py) -- included here too since this view has no other land/ocean cue at all
+    (unlike those, it draws no filled backdrop). Both are `[]` before the first step
+    (climate_cache/hydrology_cache are None until erosion.py runs once). Un-rotated/
+    true-frame throughout, same as /world/plates. `404` if no world has been generated yet."""
     world = _require_world()
     if world.hydrology_cache is None:
-        return {"elapsed_years": world.elapsed_years, "rivers": []}
+        return {"elapsed_years": world.elapsed_years, "rivers": [], "coastline_segments": []}
     rivers = hydrology.group_rivers(world.hydrology_cache)
     return {
         "elapsed_years": world.elapsed_years,
         "rivers": [_river_summary(world.hydrology_cache, river, i) for i, river in enumerate(rivers)],
+        "coastline_segments": _coastline_segments_json(world),
     }
 
 

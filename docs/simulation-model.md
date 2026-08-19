@@ -21,6 +21,7 @@
 - [Hydrology (rivers and lakes)](#hydrology)
 - [Glaciation](#glaciation)
 - [River Inspector](#river-inspector)
+- [Coastline](#coastline)
 - [Known simplifications](#known-simplifications)
 
 <a id="why-not-a-grid"></a>
@@ -822,6 +823,9 @@ sphere) is structurally different from the render grid's ragged lattice. Heatmap
 technique with their own stop tables; wind/ocean-currents draw subsampled arrows (numpy-
 vectorized projection/direction math, looped only for the unavoidable per-arrow PIL draw
 calls), and ocean currents additionally marks each sampled swell point with a small circle.
+Temperature/humidity/precipitation additionally draw the current coastline (see
+[Coastline](#coastline)) -- a color-scale view carries no land/ocean information on its own,
+unlike elevation's own hypsometric coloring.
 
 <a id="erosion"></a>
 ## Erosion (`erosion.py`)
@@ -1157,7 +1161,9 @@ outright.
 
 A third interactive map mode, same "raw JSON, client renders it" philosophy as
 [Plate Inspector](#plate-inspector): `GET /world/rivers` returns every distinct river
-network's flow-edge segments plus mouth metadata as plain JSON, and
+network's flow-edge segments plus mouth metadata, plus the current coastline
+(`coastline_segments` -- see [Coastline](#coastline); this view has no filled backdrop at
+all, so without it there'd be no land/ocean/lake cue whatsoever), as plain JSON, and
 `frontend/src/RiverInspector.tsx` renders and drives the interaction entirely client-side --
 reusing the same `rotationDrag.ts` gesture (rotation is shared with `MapCanvas`/
 `PlateInspector` via one lifted `App.tsx` state, so switching views preserves orientation),
@@ -1221,6 +1227,66 @@ member points at once) -- there's no shape to point-in-polygon test against, onl
 node cloud, so this is the natural fit rather than a departure from the pattern. No baked-PNG
 elevation backdrop, matching Plate Inspector's own confirmed "the shapes are the whole visual"
 choice, rather than adding one just for this view.
+
+<a id="coastline"></a>
+## Coastline (`coastline.py`)
+
+The temperature/humidity/precipitation views and the River Inspector all needed a coastline
+for the same reason: none of them have any other land/ocean cue at all. The elevation/plates
+views show it implicitly through hypsometric coloring, and rivers/lakes draw directly onto
+that same backdrop, but a climate value's color scale (or the River Inspector's otherwise
+blank canvas) carries no land information on its own -- confirmed live: without this, a river
+network on the River Inspector was just a handful of disconnected cyan squiggles floating on
+black, with no way to tell where the coast actually was.
+
+**Traced on climate.py's own grid, not the node cloud.** A coastline is inherently about
+*land shape*, which needs a "here or not" decision at every point on the sphere -- climate's
+`(H, W)` grid already covers the whole sphere densely and uniformly (see
+[Climate](#climate)), exactly what's needed, and `world.climate_cache` is already there to
+reuse (same one-step-stale caching philosophy as everywhere else that reuses it) rather than
+building a second grid just for this.
+
+**Land, ocean, and lake are three separate categories, not two.** `climate.py` has no lake
+concept of its own (see its "deliberately not ported" list), so lake-ness is resampled onto
+that same grid here, the same nearest-node `cKDTree` technique
+`climate._sample_elevation_and_crust` already uses for elevation. The first version of this
+folded "land" and "lake" into one combined category contrasted only against ocean -- which
+turned out wrong the moment it was tested against an inland lake (one entirely surrounded by
+land, the common case): both sides of that boundary read as the same "land-or-lake" value, so
+no segment was ever drawn there at all. Fixed by keeping all three categories distinct
+(`0=ocean, 1=lake, 2=land`) and tracing an edge wherever *any* pair of adjacent cells
+disagrees -- ocean/land (the ordinary coastline), land/lake (an inland lake's own shoreline),
+and ocean/lake (a lake that happens to sit right at the coast). A lake mask is also masked to
+`~is_ocean` first: `is_lake` and `is_ocean` are two independent nearest-neighbor resamples (of
+`hydrology_cache.points` and the plate node cloud respectively), so they can disagree right at
+a coastline -- ocean always wins that conflict, rather than a cell reading as both at once.
+
+**A rectilinear trace, not a smoothed contour.** For every pair of horizontally- or
+vertically-adjacent grid cells whose category disagrees, the shared edge between them (half a
+cell-step in from each of their centers) is one coastline segment -- deliberately matching the
+grid's own existing visual language everywhere else it's drawn (render_image.py's
+`_fill_rects`, itself rectangular per cell) rather than introducing a marching-squares-style
+smoothing pass this codebase has no other use for. Segments are a flat edge list, not an
+ordered polyline or closed loop, matching the same `(point_a, point_b)` convention
+`hydrology`'s river edges already use -- land/lake shapes aren't simple loops (a lake can sit
+inside a landmass that itself isn't one), so there's no ordering to preserve anyway.
+
+**Two consumers, one computation.** `render_image._draw_coastline` projects each segment
+(reusing `_project_offset`, same antimeridian-seam handling `_draw_rivers` already needs, for
+the same reason: a real, short step between two adjacent grid points can still land on
+opposite sides of the seam once the view can rotate arbitrarily) and strokes it into the
+temperature/humidity/precipitation PNGs, plus a legend entry. `GET /world/rivers` sends the
+same segments as `coastline_segments` (world-space xyz, same shape as `river.segments`) for
+the River Inspector to project and draw itself -- see [River Inspector](#river-inspector).
+Both call `coastline.compute_coastline_segments` directly rather than each re-deriving the
+land/ocean/lake grid their own way, so the coastline a climate view bakes into its PNG and the
+one the River Inspector draws client-side are always exactly the same shape.
+
+**A single fixed line color would vanish against parts of the temperature gradient's own
+white/black extremes** (see [Render image](#render-image)'s temperature stops), so this is
+always drawn as a dark halo pass first, then a lighter line on top -- the same "halo" trick
+real maps use for a boundary that has to stay legible over an arbitrary backdrop color, ported
+identically to both the server-side PNG stroke and the River Inspector's canvas stroke.
 
 <a id="known-simplifications"></a>
 ## Known simplifications
