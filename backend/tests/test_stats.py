@@ -20,8 +20,7 @@ def test_compute_stats_land_and_ocean_fractions_sum_to_one():
 
 def test_compute_stats_land_temperature_none_for_all_ocean_world():
     # No land grid cells at all -- land/air temperature stats must not divide by zero,
-    # they should report None instead (same defensive pattern plate-sim's own stats
-    # endpoint uses for an empty mask).
+    # they should report None instead (the defensive pattern used here for an empty mask).
     world = _all_ocean_world()
     result = stats.compute_stats(world)
     assert result["land_temperature_mean_c"] is None

@@ -85,10 +85,9 @@ export default function App() {
   const [coastlineSegments, setCoastlineSegments] = useState<Segment[]>([]);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
-  // tabs, matching how plate-sim's own Stats feature builds its history entirely
-  // client-side (the backend endpoint itself is stateless, see backend app/stats.py).
-  // Recorded continuously, not just while the modal is open, so opening it later still shows
-  // the full history since the world was generated.
+  // tabs, built entirely client-side since the backend endpoint itself is stateless (see
+  // backend app/stats.py). Recorded continuously, not just while the modal is open, so
+  // opening it later still shows the full history since the world was generated.
   const [stats, setStats] = useState<WorldStats | null>(null);
   const [statsHistory, setStatsHistory] = useState<WorldStats[]>([]);
   const [showStatsModal, setShowStatsModal] = useState(false);

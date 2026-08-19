@@ -7,15 +7,14 @@ precipitation stats all agree with what the climate map views actually display).
 erosion.py already computed this step instead of triggering a second recomputation -- see
 that function's own docstring for what "cached" means here (same-turn reuse, up to one step
 stale, not a correctness mechanism). History across time is a frontend concern (see
-App.tsx), matching plate-sim's own precedent: the backend has no analogous per-step storage,
-only a snapshot endpoint.
+App.tsx) -- the backend has no per-step storage of its own, only a snapshot endpoint.
 
 Land vs ocean, and land/ocean fractions, use climate.py's own `is_ocean` mask (elevation <=
 sea level, sea level = 0.0 -- see plates.py, there's no separate named SEA_LEVEL constant)
 rather than crust_type, for the same reason climate.py itself does: a submerged continental
 shelf is physically ocean. Fractions are a plain count over grid cells, not cos(lat)-weighted
 -- the climate grid is a plain equirectangular lattice, not an equal-area projection, so this
-is an approximation, but it's the same one plate-sim's own stats endpoint makes.
+is an approximation.
 """
 
 from __future__ import annotations

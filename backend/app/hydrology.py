@@ -1,36 +1,36 @@
 """Rivers, lakes, and glaciers: flow routing, basin/lake detection, ice accumulation/melt/
 flow, and downstream flow accumulation over the world's current node cloud.
 
-Ported from plate-sim's hydrology.py, adapted from its fixed grid (whose regular 8-neighbor
-adjacency gives flow routing, depression filling, and downstream accumulation a natural
-substrate) to mantle-bloom's irregular per-plate node cloud. All three of plate-sim's core
-flow-routing algorithms -- steepest-descent flow direction, priority-flood basin-spill, and
-elevation-ordered downstream accumulation -- turn out not to actually need a *grid*, only a
-*graph*: this module builds one via a whole-world k-nearest-neighbor query (the same
+A fixed grid's regular 8-neighbor adjacency would give flow routing, depression filling, and
+downstream accumulation a natural substrate, but mantle-bloom's world is instead an irregular
+per-plate node cloud. All three core flow-routing algorithms -- steepest-descent flow
+direction, priority-flood basin-spill, and elevation-ordered downstream accumulation -- turn
+out not to actually need a *grid*, only a *graph*: this module builds one via a whole-world
+k-nearest-neighbor query (the same
 technique reassign.py/erosion.py already use for their own whole-world passes), then runs
 the same algorithms directly on it. Glacier flow (accumulated ice moving one hop downhill
 per step) reuses the same `flow_target` graph water uses.
 
-**Persistence.** Unlike plate-sim -- whose plates move relative to a fixed grid, so a
-persistent field like channel_depth needs deliberate semi-Lagrangian advection every step to
-keep following the crust -- mantle-bloom's elevation-line nodes already rotate exactly with
-their own plate. lake_depth and glacier_depth, stored as ordinary parallel arrays on
-ElevationLine right alongside elevation itself (see plates.py), get that same "just works"
-persistence for free: no advection scheme needed, since rotating a plate never touches those
-arrays at all. flow_target/flow_accum/river_speed are deliberately *not* persisted, mirroring
-plate-sim (where they're recomputed fresh every step too, from that step's real climate) --
-they're purely this-step derived quantities, cached on World (see World.hydrology_cache) only
-so a later same-turn caller (rendering, stats) doesn't recompute them again.
+**Persistence.** A grid-based approach where plates move relative to fixed cells would need a
+persistent field like channel_depth to be deliberately advected (semi-Lagrangian, every step)
+to keep following the crust -- mantle-bloom's elevation-line nodes sidestep that entirely,
+since they already rotate exactly with their own plate. lake_depth and glacier_depth, stored
+as ordinary parallel arrays on ElevationLine right alongside elevation itself (see plates.py),
+get that same "just works" persistence for free: no advection scheme needed, since rotating a
+plate never touches those arrays at all. flow_target/flow_accum/river_speed are deliberately
+*not* persisted -- they're recomputed fresh every step, from that step's real climate, purely
+this-step derived quantities, cached on World (see World.hydrology_cache) only so a later
+same-turn caller (rendering, stats) doesn't recompute them again.
 
-**Deliberate deviation from plate-sim**: plate-sim computes flow routing *twice* per step
-(once in hydrology.py for the real river_flow/rendering fields, again inside erosion.py for
-the water_accum erosion itself needs) -- an accepted redundancy there, cheap under numba JIT.
-Flow routing here has no JIT and is comparatively expensive, so this module computes it once
-and erosion.py reuses the same result, rather than duplicating a cost that's real here. This
-module owns lake and glacier *state transitions* (this step's final lake_depth/glacier_depth,
-both returned via HydrologyFields) -- erosion.py only reads glacier_depth (for its own
-glacier-erosion/flattening terms) and channel_depth (which erosion.py itself owns, since it's
-the module that actually carves it), matching plate-sim's own module split.
+**Flow routing is computed once, not twice.** Recomputing flow routing separately for
+rendering fields and for the water_accum erosion needs would be an accepted redundancy under
+a JIT compiler, where the repeated pass is cheap. Flow routing here has no JIT and is
+comparatively expensive, so this module computes it once and erosion.py reuses the same
+result, rather than duplicating a cost that's real here. This module owns lake and glacier
+*state transitions* (this step's final lake_depth/glacier_depth, both returned via
+HydrologyFields) -- erosion.py only reads glacier_depth (for its own glacier-erosion/
+flattening terms) and channel_depth (which erosion.py itself owns, since it's the module that
+actually carves it).
 
 **Lakes fill their whole basin**, not just their own single sink node: every node that held
 water last step tracks its own water balance (grow from inflow if it's this step's sink,
@@ -78,11 +78,12 @@ from .plates import PLANET_RADIUS_KM, ElevationLine, Plate
 if TYPE_CHECKING:
     from .world import World
 
-# Matches plate-sim's 8-neighbor D8 structure -- the graph every algorithm below runs on.
+# Same 8-neighbor D8 structure as a regular grid's adjacency -- the graph every algorithm
+# below runs on.
 FLOW_NEIGHBOR_COUNT = 8
 
-# Top decile of land flow_accum counts as "a river" -- same threshold plate-sim's own
-# _major_river_mask uses for both rendering and the major_river_fraction stat.
+# Top decile of land flow_accum counts as "a river" -- used for both rendering and the
+# major_river_fraction stat.
 RIVER_FLOW_PERCENTILE = 90.0
 
 # How established a downhill neighbor's own channel needs to be before flow direction
@@ -92,10 +93,10 @@ RIVER_FLOW_PERCENTILE = 90.0
 # starts favoring it as soon as there's genuine, non-noise incision.
 CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 
-# Lake growth/evaporation -- meaning ported from plate-sim, but NOT its evaporation rate
-# values verbatim: plate-sim takes much finer internal substeps than mantle-bloom's typical
-# 1-10 Myr step, so its own per-Myr exponential-decay rate, applied over a full mantle-bloom
-# step, evaporated a lake almost entirely in a single step (confirmed directly -- a lake at
+# Lake growth/evaporation. The evaporation rate is scaled for mantle-bloom's own step
+# granularity: an exponential-decay rate suited to much finer internal substeps than
+# mantle-bloom's typical 1-10 Myr step, applied directly over a full mantle-bloom step,
+# evaporated a lake almost entirely in a single step (confirmed directly -- a lake at
 # 15m with no new inflow dropped to exactly 0 after one 1 Myr step). Rescaled down to be
 # consistent with this codebase's other already-tuned relaxation rates at its own actual
 # step granularity (boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5,
@@ -151,13 +152,12 @@ MAX_LAKE_NEW_HOPS_PER_MYR = 0.5
 # "digging a deep channel out" without needing a second, parallel erosion pathway.
 LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 
-# Glaciers -- ported closer to plate-sim's own values than the lake evaporation rate needed
-# re-scaling: these are flat per-Myr rates (linear in dt_myr), not plate-sim's own
-# exponential-decay lake formula, so they don't blow up the same way at mantle-bloom's
+# Glaciers use flat per-Myr rates (linear in dt_myr), not an exponential-decay formula like
+# the lake evaporation rate above -- so they don't blow up the same way at mantle-bloom's
 # larger typical step size -- a bigger step just melts/grows proportionally more, same
 # character as every other elevation delta in this codebase (boundary.py's uplift/trench
 # rates are also flat per-Myr rates applied directly). No seasons modeled here either
-# (matching plate-sim, and mantle-bloom's climate.py generally) -- GLACIER_ACCUMULATION_TEMP_C
+# (consistent with mantle-bloom's climate.py generally) -- GLACIER_ACCUMULATION_TEMP_C
 # being well below 0C is what keeps this meaning *permanent* accumulation, not a place with
 # ordinary seasonal snow that would fully melt over a real year.
 GLACIER_ACCUMULATION_TEMP_C = -10.0
@@ -170,11 +170,10 @@ GLACIER_MAX_FLOW_FRACTION = 0.5
 GLACIER_VISIBLE_DEPTH_M = 10.0
 
 # River speed -- a stylized, unitless quantity (faster where slope is steeper and where more
-# water has accumulated), same formula/constants as plate-sim's own compute_river_speed;
-# meaningful only relative to other nodes in the same world, not a real physical speed. Lives
-# here (not erosion.py, which only *consumes* it for its deposition threshold) to match
-# plate-sim's own module boundary, and so the River Inspector's per-river mouth speed (see
-# group_rivers) can share it without a hydrology.py -> erosion.py reverse import.
+# water has accumulated); meaningful only relative to other nodes in the same world, not a
+# real physical speed. Lives here rather than erosion.py (which only *consumes* it for its
+# deposition threshold) so the River Inspector's per-river mouth speed (see group_rivers)
+# can share it without a hydrology.py -> erosion.py reverse import.
 RIVER_SPEED_COEFFICIENT = 4.0
 RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 
@@ -182,8 +181,8 @@ RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 @dataclass
 class HydrologyFields:
     """Everything derived from one whole-world flow-routing pass, all shape (N,) aligned
-    with `points`/`elevation` -- the irregular-node-cloud analogue of plate-sim's
-    HydrologyField grid. `line_refs` is (plate, line_index, start, end) per line, letting a
+    with `points`/`elevation` -- one flat array per field over the irregular node cloud, in
+    place of a grid. `line_refs` is (plate, line_index, start, end) per line, letting a
     caller slice any of these flat arrays back onto a specific line's own node range.
     `lake_depth`/`glacier_depth` are already this step's *final* values (state-transition
     owned by this module, see module docstring) -- a caller doesn't need to call anything
@@ -252,9 +251,9 @@ def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
 def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Priority-flood depression filling: a multi-source Dijkstra seeded from every ocean
     node, relaxing by *max* (the highest point a path is forced to cross) rather than by
-    sum -- a minimax path cost, not a shortest path. Direct port of plate-sim's own
-    compute_basin_spill, generalized from grid 8-neighbor adjacency to the k-NN graph's
-    edges. Returns (filled_elevation, spill_target): the minimal-bottleneck elevation to
+    sum -- a minimax path cost, not a shortest path. The same priority-flood algorithm
+    generalizes cleanly from grid 8-neighbor adjacency to the k-NN graph's edges. Returns
+    (filled_elevation, spill_target): the minimal-bottleneck elevation to
     reach open ocean from each node, and a one-hop escape neighbor toward it (-1 for ocean
     or a node with no path to any ocean at all)."""
     n = len(elevation)
@@ -354,8 +353,8 @@ def _compute_flow_direction(
     applied to routing itself, distinct from (and upstream of) erosion.py's own
     channel_boost, which only affects how *fast* a node erodes once water is already flowing
     there. -1 if there's no downhill candidate at all (a sink) -- unless the sink's current
-    water surface (elevation + the *previous* step's lake_depth, the same one-step-lagged
-    "memory" plate-sim's own compute_flow_direction relies on) has already reached its
+    water surface (elevation + the *previous* step's lake_depth, a one-step-lagged "memory"
+    of the water surface) has already reached its
     basin's true spill point, in which case it redirects to spill_target instead of staying
     a dead-end sink forever. Ocean nodes are never routed (they're a destination, not a
     source).
@@ -409,8 +408,8 @@ def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target
 
 def compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarray:
     """Stylized, unitless river speed -- faster where slope is steeper and where more water
-    has accumulated -- same formula/constants as plate-sim's own compute_river_speed;
-    meaningful only relative to other nodes in the same world, not a real physical speed."""
+    has accumulated; meaningful only relative to other nodes in the same world, not a real
+    physical speed."""
     return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
 
 
@@ -424,10 +423,10 @@ def route_downstream(
     """Single forward sweep over land nodes in elevation-descending order, accumulating
     `source_amount` downstream along `flow_target` edges. Correct in one pass because every
     node's target is guaranteed strictly lower in elevation, so it's always visited *later*
-    in this same order -- direct port of plate-sim's own route_downstream (its loss_fraction
-    parameter, used there only for in-transit river evaporation, isn't ported -- not asked
-    for and this module already drops temperature-driven effects on hydrology, see
-    LAKE_EVAPORATION_* above). Returns (through_flux, deposited): each node's own
+    in this same order. No in-transit river evaporation term (a loss_fraction consumed along
+    the way) is modeled here -- not asked for, and this module already drops
+    temperature-driven effects on hydrology, see LAKE_EVAPORATION_* above. Returns
+    (through_flux, deposited): each node's own
     accumulated flux passing through it, and how much settled there (from `retain_fraction`
     and/or reaching a sink/ocean)."""
     n = len(elevation)
@@ -469,11 +468,11 @@ def _update_glaciers(
     temperature: np.ndarray,
     years: float,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Grows/melts/flows glacier ice -- direct port of plate-sim's own _update_glaciers,
-    generalized from grid 8-neighbor D8 routing to this module's flow_target graph. Returns
-    (new_glacier_depth, melt): melt feeds back into this step's water source (see
-    compute_hydrology) as real meltwater, not a separate accounting bucket -- matching
-    plate-sim's own "real meltwater, feeding real river discharge" design."""
+    """Grows/melts/flows glacier ice, generalized from grid 8-neighbor D8 routing to this
+    module's flow_target graph. Returns (new_glacier_depth, melt): melt feeds back into this
+    step's water source (see compute_hydrology) as real meltwater, not a separate accounting
+    bucket -- glacial melt becomes real river discharge rather than a parallel, disconnected
+    accounting path."""
     years_myr = years / 1_000_000.0
     accumulation = np.where(is_accumulating, GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, 0.0)
     depth_before_flow = prev_glacier_depth + frozen_from_lake + accumulation
@@ -621,10 +620,9 @@ def update_lakes(
     inflow to that one current sink; every other previously-wet node just evaporates, capped
     at its own local spill depth (`filled_elevation - elevation`) -- see this module's
     docstring and boundary.py's own divergent-relaxation style for why a persistent field
-    needs this kind of steady-state capping, and plate-sim's own docs for the oscillation bug
-    it specifically avoids (a full lake that evaporates even slightly un-redirects its
-    `flow_target` back to a sink, refills, and oscillates forever instead of settling as a
-    real, continuously-draining lake).
+    needs this kind of steady-state capping. Without it, a full lake that evaporates even
+    slightly un-redirects its `flow_target` back to a sink, refills, and oscillates forever
+    instead of settling as a real, continuously-draining lake.
 
     `is_accumulating` (a node cold enough for permanent glaciation, see
     GLACIER_ACCUMULATION_TEMP_C) forces a node's own depth to 0 rather than the ordinary
@@ -632,7 +630,7 @@ def update_lakes(
     compute_hydrology's freeze conversion, which already moved its water into
     `frozen_from_lake` before this function ever runs) would immediately re-fill right back
     up to its own basin cap the same step, double-counting the same water as both a lake and
-    a glacier at once -- the exact failure mode plate-sim's own docs describe fixing.
+    a glacier at once.
 
     Two more blunt, unconditional rate limits are applied on top of everything above, because
     the identity fixes alone still left several tested worlds with 100x-800x single-step
@@ -692,9 +690,9 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
 
     A node colder than GLACIER_ACCUMULATION_TEMP_C never holds liquid water at all: any
-    precipitation there is treated as fully frozen (no partial liquid/frozen split like
-    plate-sim's own compute_liquid_precipitation -- matching erosion.py's existing "use
-    precipitation is enough" simplification, just gated by the same accumulation threshold),
+    precipitation there is treated as fully frozen (no partial liquid/frozen split --
+    matching erosion.py's existing "use precipitation is enough" simplification, just gated
+    by the same accumulation threshold),
     and an existing lake sitting there freezes solid into glacier_depth this same step,
     *before* flow_target is (re)computed -- so a lake that just froze is correctly treated as
     a genuine sink again this step (see update_lakes's own docstring for why the ordering
@@ -781,8 +779,8 @@ class RiverInfo:
 def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     """Groups the flat `is_river` node mask into distinct connected drainage networks, via
     union-find over `flow_target` edges restricted to nodes that are `is_river` on *both*
-    ends -- mirroring plate-sim's own extract_river_segments. This is exact (not a heuristic)
-    because flow_accum is monotonically non-decreasing downhill: once a node clears
+    ends. This is exact (not a heuristic) because flow_accum is monotonically non-decreasing
+    downhill: once a node clears
     RIVER_FLOW_PERCENTILE, every node further downstream in its own chain does too, so two
     river nodes joined by a flow_target edge always belong to the same real drainage network,
     and two nodes in different connected components never do.
@@ -798,8 +796,8 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     `flow_target`), then whether that `flow_target` lands on the ocean, else `"other"` (a dry
     interior sink -- `flow_target == -1` with no lake standing there).
 
-    **num_tributaries** (no precedent in this codebase or plate-sim to follow -- an original
-    definition): counts each member's in-network in-degree (how many *other* members flow
+    **num_tributaries** (an original definition, with no existing precedent in this codebase
+    to follow): counts each member's in-network in-degree (how many *other* members flow
     directly into it); a member with in-degree 0 is a headwater -- a separate source stream
     with nothing upstream of it in this network. A single unbranched channel has exactly one
     headwater (itself) and therefore zero tributaries; each additional headwater is one more

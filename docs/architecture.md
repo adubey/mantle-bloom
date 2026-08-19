@@ -7,9 +7,9 @@
   `scipy.cluster.vq.kmeans2` for split clustering), Pillow (server-side map rendering, see
   `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
-  library, the same choice plate-sim made and the same reasoning: the frontend's whole job
-  is decoding a PNG the backend already rendered and drawing it (`ctx.drawImage`), which a
-  library would be more ceremony than the problem needs. Three exceptions: `rotation.ts` — a
+  library: the frontend's whole job is decoding a PNG the backend already rendered and
+  drawing it (`ctx.drawImage`), which a library would be more ceremony than the problem
+  needs. Three exceptions: `rotation.ts` — a
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
@@ -95,7 +95,6 @@ Tab/Shift+Tab). The event console is the one other exception: it just displays w
 <a id="world-state"></a>
 ## World state (`backend/app/world.py`)
 
-Unlike plate-sim (which keeps up to 5 generated worlds in memory, addressed by id),
 mantle-bloom keeps exactly **one** world at a time, in a module-level dict in `main.py` --
 simpler, matching the v1 "elevation view only" scope. A `World` holds:
 

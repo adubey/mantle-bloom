@@ -37,13 +37,12 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 VIEWS = ("elevation", "plates", "platesDetail") + CLIMATE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
-# Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop), matching
-# plate-sim's own LAKE_COLOR_RGB choice for the same reason: a lake should read as visibly
-# distinct from the open ocean, not just "more blue."
+# Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
+# should read as visibly distinct from the open ocean, not just "more blue."
 LAKE_COLOR_RGB = (58, 92, 122)
-# Same color plate-sim's own frontend uses for its river overlay (#4dd8e6) -- a fixed color/
-# width for every segment regardless of discharge, also matching plate-sim (only *which*
-# segments get drawn varies with flow magnitude, via RIVER_FLOW_PERCENTILE below).
+# Fixed river overlay color (#4dd8e6) and a fixed color/width for every segment regardless
+# of discharge -- only *which* segments get drawn varies with flow magnitude, via
+# RIVER_FLOW_PERCENTILE below.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
 # A second, independent cut on top of hydrology.py's own is_river classification
@@ -978,10 +977,10 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
         colors = elevation_colors(elev) if view == "elevation" else plate_colors(owner)
-        # Baked directly into the raster rather than a separate overlay/toggle -- same
-        # reasoning plate-sim's own docs give for its own lake baking: always visible, no
-        # separate overlay needed, and a lake (or a glacier) is meaningful on every view that
-        # shows terrain at all (matches how ocean itself isn't specially toggle-able either).
+        # Baked directly into the raster rather than a separate overlay/toggle: always
+        # visible, no separate overlay needed, and a lake (or a glacier) is meaningful on
+        # every view that shows terrain at all (matches how ocean itself isn't specially
+        # toggle-able either).
         # Volcano drawn after lake (a volcanic vent is dry land in practice, but this keeps
         # the same precedence as everything else here), glacier drawn last so ice wins on the
         # rare cell where more than one would apply (a lake that just froze this same step

@@ -81,10 +81,11 @@ class ElevationLine:
     theta: np.ndarray  # plate-local longitudes of nodes, radians, ascending
     elevation: np.ndarray  # meters, same shape as theta
     # All three persistent, land-only, meters, same shape as theta -- see hydrology.py.
-    # Unlike plate-sim (whose grid doesn't move with a plate, so a persistent field needs
-    # explicit semi-Lagrangian advection every step), these ride along for free just by
-    # being an ordinary parallel array on this same dataclass, exactly like elevation
-    # itself: rotating a plate only ever touches `frame`, never these arrays. Optional
+    # Because the grid is plate-local and rotates with `frame` rather than sitting fixed in
+    # world space, these ride along for free just by being an ordinary parallel array on
+    # this same dataclass, exactly like elevation itself -- no explicit semi-Lagrangian
+    # advection needed every step: rotating a plate only ever touches `frame`, never these
+    # arrays. Optional
     # (default None, resolved to zeros in __post_init__) so every existing call site that
     # doesn't know about hydrology/glaciers continues to work unchanged -- a call site that
     # actually needs to preserve a node's history (see

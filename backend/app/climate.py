@@ -14,9 +14,9 @@ lattice or an irregular point cloud. This grid exists *only* here; it is never s
 **Fully stateless.** `compute_climate` itself always recomputes everything from scratch, from
 whatever the *current* plate elevation happens to be (sampled via the same `cKDTree`
 nearest-neighbor technique `_render_grid_arrays` already uses) -- mirroring the render grid's
-own "recompute from scratch every call" philosophy, and matching how plate-sim itself
-documents climate as something that "re-derives almost everything downstream of elevation
-from scratch" every step, unlike elevation itself.
+own "recompute from scratch every call" philosophy: climate re-derives almost everything
+downstream of elevation from scratch every step, unlike elevation itself, which persists
+incrementally on the plates rather than being rebuilt.
 
 **Computed every step, not just on render.** erosion.py needs a live climate snapshot every
 step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
@@ -30,16 +30,14 @@ gap-fill/regularize/reassign pass this same step won't retrigger a recompute), s
 fields can be up to one step stale relative to the world's very latest mutation -- an accepted
 simplification, not a bug, since nothing here needs the cache to be exactly current.
 
-**Ported from plate-sim** (`~/plate-sim`, a sibling project, `docs/simulation-model.md`),
-adapted from its equirectangular-array grid (`grid.py`'s `latlon_axes`) to this module's own
-fixed grid, and from plate-sim's own source (`wind.py`, `ocean_currents.py`, `climate.py`)
-read directly for exact formulas: latitude-banded meridional wind + Coriolis zonal
-deflection, mountain deflection/Venturi/wake, Ekman-based ocean currents + coastal
-deflection/smoothing/wake + land swirl + circumglobal boost, convergence-based swell
-detection, semi-Lagrangian temperature advection along currents, evaporation-ceiling +
-wind-driven 2D humidity advection, and orographic precipitation.
+**Mechanism summary**, each described in more detail near its own implementation below:
+latitude-banded meridional wind + Coriolis zonal deflection, mountain deflection/Venturi/
+wake, Ekman-based ocean currents + coastal deflection/smoothing/wake + land swirl +
+circumglobal boost, convergence-based swell detection, semi-Lagrangian temperature
+advection along currents, evaporation-ceiling + wind-driven 2D humidity advection, and
+orographic precipitation.
 
-**Deliberately not ported** (mantle-bloom has no vegetation, rivers, or lakes -- these
+**Out of scope** (mantle-bloom has no vegetation, rivers, or lakes -- these
 mechanisms' *inputs* don't exist here, not a reduced-fidelity choice): humidity's
 evapotranspiration term, river outflow feeding currents, lake climate influence.
 **Deliberately cut** (confirmed with the user): river outflow, deep currents, and
@@ -80,8 +78,7 @@ GRID_WIDTH = 180
 
 # A fixed reference grid width, decoupled from GRID_WIDTH, purely so the fixed-*degree*
 # offset distances below (mountain/coast wake lookback, mountain tangent sampling) stay
-# physically meaningful if GRID_WIDTH is retuned later -- same pattern as plate-sim's own
-# module-level `_REFERENCE_CELL_DEG`.
+# physically meaningful if GRID_WIDTH is retuned later.
 _REFERENCE_WIDTH = 180
 _REFERENCE_CELL_DEG = 360.0 / _REFERENCE_WIDTH
 
@@ -114,8 +111,8 @@ class ClimateFields:
 
 
 def _build_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Row 0 = north pole, row increases southward (matches plate-sim's own convention);
-    column increases eastward, wraps. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3))."""
+    """Row 0 = north pole, row increases southward; column increases eastward, wraps.
+    Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3))."""
     lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
     lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
@@ -171,8 +168,8 @@ def _smooth_field(field: np.ndarray, iterations: int) -> np.ndarray:
 
 def _centered_gradient(field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(eastward, northward) centered-difference gradient, longitude-wrapping. Row 0 = north
-    pole, so "northward" is the *negative* row direction -- matches plate-sim's own sign
-    convention (`np.roll(f, 1, axis=0) - np.roll(f, -1, axis=0)`)."""
+    pole, so "northward" is the *negative* row direction
+    (`np.roll(f, 1, axis=0) - np.roll(f, -1, axis=0)`)."""
     gx = (np.roll(field, -1, axis=1) - np.roll(field, 1, axis=1)) / 2.0
     gy = (np.roll(field, 1, axis=0) - np.roll(field, -1, axis=0)) / 2.0
     return gx, gy
@@ -181,7 +178,7 @@ def _centered_gradient(field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 def _sample_at_offset(field: np.ndarray, dir_u: np.ndarray, dir_v: np.ndarray, dist_deg: float, lat_deg: np.ndarray) -> np.ndarray:
     """Samples `field` at each cell's own position offset by `dist_deg` along (dir_u, dir_v)
     (already unit-length), nearest-cell. Same closed-form lat/lon -> row/col technique used
-    throughout plate-sim for offset-position sampling (mountain tangent picking, wake
+    throughout this module for offset-position sampling (mountain tangent picking, wake
     lookback, current advection)."""
     height, width = field.shape
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
@@ -224,8 +221,8 @@ def _cancel_and_redirect(
 
 def _weighted_sample_without_replacement(rng: np.random.Generator, weights: np.ndarray, k: int) -> np.ndarray:
     """Indices of up to `k` points sampled without replacement, probability proportional to
-    `weights` (zero-weight points never selected). Same technique plate-sim's hazards.py
-    uses for earthquake/volcano placement and ocean_currents.py for swells."""
+    `weights` (zero-weight points never selected). Used by `compute_ocean_swells` below for
+    weighted swell placement."""
     positive = weights > 0
     n_positive = int(np.sum(positive))
     if n_positive == 0:
@@ -284,8 +281,8 @@ MARITIME_INFLUENCE_DIST_DEG = 15.0
 def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray) -> np.ndarray:
     """Solar heating only (the user's own description), plus elevation-based lapse-rate
     cooling -- kept as part of the *same* base-heating formula rather than a separate causal
-    channel, matching plate-sim's own compute_temperature (mountains being cold is a
-    consequence of solar heating at altitude, not an extra input)."""
+    channel (mountains being cold is a consequence of solar heating at altitude, not an
+    extra input)."""
     base = LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C * insolation_row[:, None]
     altitude_cooling = LAPSE_RATE_C_PER_KM * np.clip(elevation_m, 0.0, None) / 1000.0
     return base - altitude_cooling
@@ -293,7 +290,7 @@ def compute_land_temperature(insolation_row: np.ndarray, elevation_m: np.ndarray
 
 def compute_ocean_temperature_baseline(insolation_row: np.ndarray, height: int, width: int) -> np.ndarray:
     """Pre-advection zonal baseline -- narrower range and a freezing floor relative to land,
-    water has far more thermal inertia (mirrors plate-sim's compute_water_temperature)."""
+    since water has far more thermal inertia."""
     base = WATER_TEMP_MIN_C + WATER_TEMP_RANGE_C * insolation_row[:, None]
     return np.repeat(base, width, axis=1) if base.shape[1] == 1 else base
 
@@ -301,9 +298,9 @@ def compute_ocean_temperature_baseline(insolation_row: np.ndarray, height: int, 
 def _nearest_ocean_gather(is_ocean: np.ndarray, world_xyz: np.ndarray, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """For every grid cell, the great-circle angular distance to the nearest ocean cell and
     that ocean cell's own `field` value -- a cKDTree chord-distance query over ocean-cell 3D
-    positions, replacing plate-sim's lat/lon-tangent-plane BFS (`multi_source_bfs_nearest`)
-    with an equivalent (true 3D distance, no pole/antimeridian special-casing needed)
-    technique already idiomatic in this codebase. Returns (dist_rad, gathered_value), both
+    positions: true 3D distance needs no pole/antimeridian special-casing the way a
+    lat/lon-tangent-plane offset search would, and this technique is already idiomatic
+    elsewhere in this codebase. Returns (dist_rad, gathered_value), both
     (H, W); if there's no ocean at all, dist is +inf and gathered_value is 0 everywhere."""
     height, width = is_ocean.shape
     flat_ocean = is_ocean.reshape(-1)
@@ -340,9 +337,9 @@ MERIDIONAL_BASE_SPEED = 6.0
 CORIOLIS_DEFLECTION_GAIN = 1.8
 # Additive contribution from the real local gradient of the (pre-advection) surface
 # temperature -- the user's explicit "wind is affected by temperature gradients" ask, layered
-# on top of the latitude-banded structure above rather than replacing it (plate-sim's own
-# docs record that deriving wind from a computed gradient *alone* produced no visible
-# planetary-scale structure).
+# on top of the latitude-banded structure above rather than replacing it: deriving wind from
+# a computed temperature gradient *alone*, with no latitude-banded base flow, produces no
+# visible planetary-scale structure.
 GRADIENT_WIND_COEFFICIENT = 0.4
 ELEVATION_SLOWDOWN_REF_M = 4000.0
 MIN_ELEVATION_SPEED_FACTOR = 0.4
@@ -547,9 +544,9 @@ def _smooth_along_coast(u: np.ndarray, v: np.ndarray, is_ocean: np.ndarray, lat_
 
 def _land_swirl_current(wind_u: np.ndarray, wind_v: np.ndarray, is_ocean: np.ndarray, lat_deg: np.ndarray, world_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Rotational swirl around every landmass -- keyed off nearest *land cell* (a cKDTree
-    chord-distance query, equivalent to plate-sim's own BFS-based `_land_swirl_current`,
-    which is also nearest-cell, not a connected-landmass grouping), ramping up from 0 at the
-    coast to full strength at SWIRL_PEAK_DIST_DEG, decaying exponentially beyond that. Real
+    chord-distance query, nearest-cell rather than a connected-landmass grouping), ramping
+    up from 0 at the coast to full strength at SWIRL_PEAK_DIST_DEG, decaying exponentially
+    beyond that. Real
     ocean gyres are wind-driven *and* basin-shaped; Ekman + coastal deflection alone gives
     flat latitude-banded flow with no closed loops (see module docstring) -- this is what
     actually produces current-like circulation."""
@@ -565,8 +562,9 @@ def _land_swirl_current(wind_u: np.ndarray, wind_v: np.ndarray, is_ocean: np.nda
     dist_deg = np.degrees(dist_rad)
 
     # Outward-from-land direction: this cell's own position minus the nearest land cell's --
-    # a genuine 3D tangent-plane-ish direction rather than plate-sim's lat/lon offset (their
-    # simplification for an equirectangular grid; a real vector difference works directly here).
+    # a genuine 3D tangent-plane-ish direction rather than a lat/lon offset (a simplification
+    # that fits a purely equirectangular grid; a real vector difference works directly here
+    # since 3D unit-vector positions are already on hand).
     nearest_land_xyz = land_xyz[nearest_idx].reshape(height, width, 3)
     to_here = world_xyz - nearest_land_xyz
     # Project out the radial (through-the-sphere) component, keep only the tangent-plane
