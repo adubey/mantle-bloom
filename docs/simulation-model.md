@@ -621,23 +621,30 @@ PIL's arc-angle convention) increased or decreased. Confirmed directly that two 
 the same seed, differing only in the sign of `omega`, render as mirror-image arcs -- the
 direction is genuinely sourced from the physics, not a fixed assumption.
 
-**Every view draws a legend**, anchored at the image's bottom-left corner
-(`_draw_legend`), baked into the PNG the same as everything else here rather than a
-separate frontend overlay -- one shared panel layout (title, then an optional horizontal
-color-gradient bar with tick labels, then any number of symbol rows) covers every case: a
-plain color scale reusing that view's own `*_colors` function for the heatmap views
-(elevation/temperature/humidity/precipitation, so the legend can never drift out of sync
-with the actual fill colors), boundary/pole/rotation-arc symbols for "Plates", a gradient
-plus a boundary symbol for "Plates (details)" (its node dots are colored by elevation, the
-same scale as "Elevation"), and arrow/ocean/land/swell symbols for wind/oceanCurrents.
+**Every view has a legend**, anchored at the map's bottom-left corner -- rendered entirely
+client-side (`frontend/src/legendData.ts`/`Legend.tsx`) as an ordinary HTML overlay, not baked
+into the PNG the way it used to be (see git history for the old `_draw_legend`/Pillow
+version). None of a legend's content is actually data-dependent -- the color stops and symbol
+sets are fixed per view, not derived from world state -- so `legendData.ts` is a plain static
+table keyed on `MapView`, hand-kept in sync with `render_image.py`'s own color constants (the
+same relationship the deleted `elevationColor.ts` used to have, see that history, brought back
+for just the legend). Moving it off the server fixed a real limitation: the PNG-baked legend
+couldn't update while a rotation drag was in progress (see "Rotating the view" below), since
+the live preview only redraws the *previous* rendered frame underneath a wireframe graticule,
+never the legend baked into it.
 
 <a id="rotating-the-view"></a>
 ## Rotating the view
 
-Every map view can be reoriented interactively: press and hold on the map, then drag (a full
-3-DOF arcball gesture, roll/twist included -- not constrained to north-up panning) to spin a
-virtual trackball; release to commit. This is a pure **view** transform, not a change to the
-simulated world -- see below for why that distinction matters and how it's enforced.
+Every map view can be reoriented interactively: press and hold on the map, then drag to pan
+it -- simple linear panning (dragging N pixels always pans the view by the same angle,
+calibrated so a feature under the cursor at the map's own center stays under the cursor as
+you drag), not an arcball trackball (see git history for that earlier version, which allowed
+a full 3-DOF roll/twist and had drag sensitivity that varied with distance from the canvas
+center). Longitude wraps cyclically and latitude wraps *over* the pole, so dragging far in
+one direction just keeps circling the globe rather than clamping at an edge. Release to
+commit. This is a pure **view** transform, not a change to the simulated world -- see below
+for why that distinction matters and how it's enforced.
 
 **The transform itself.** A single 3x3 rotation matrix, applied to every *real* world
 position immediately before it's projected to pixels (`_rotate`, `p @ view_rotation.T`) --
@@ -696,12 +703,18 @@ every mouse move would be far too slow. `frontend/src/rotation.ts` ports just en
 `geometry.py`/`projections.py`/`render_image.py` to TypeScript to compute the drag gesture
 and preview it live:
 
-- **Arcball**: a canvas-space point maps to a point on a virtual unit trackball centered on
-  the canvas (`screenToArcballVector`, the standard Shoemake 1992 construction, points
-  outside the ball's radius clamped to its silhouette rather than left undefined); the
-  rotation between the drag's start vector and the current one is recomputed fresh from the
-  fixed start point on every move (not accumulated incrementally per-event, avoiding drift
-  over a long drag) and composed on top of whatever was already committed from prior drags.
+- **Pan-to-center**: the drag tracks a target true (lat, lon) -- the point that should sit at
+  the display center -- starting from wherever the committed rotation's own center already
+  is (`centerOfRotation`) and offsetting it by the drag's pixel delta *from the drag's start*
+  (not accumulated incrementally per-event, avoiding drift over a long drag), converted to an
+  angle via a pixels-per-radian calibration measured from the projection's own Jacobian at the
+  map's center (`getPixelsPerRadian`). `rotationForCenter` then builds the actual rotation
+  matrix -- the shortest-arc rotation from the unrotated center to that target
+  (`rotationBetween`), chosen specifically because it has no roll/twist about the target axis,
+  so repeated small pans never accumulate spurious roll. Longitude wraps mod 2*pi; latitude
+  "wraps" by reflecting back down past +-90 degrees with a 180-degree longitude flip, the same
+  way walking a full meridian circle returns you to your start with no net longitude change
+  (`wrapPanLatLon`).
 - **Graticule preview**: while dragging, a wireframe of meridians/parallels every 30 degrees
   is rotated by the in-progress rotation, projected through the same `behrmann`/`eckert4`
   ports (confirmed numerically identical to the Python originals to full float precision),
@@ -714,10 +727,10 @@ and preview it live:
   lat/lon values a full sphere covers). This is also why the graticule preview aligns
   pixel-perfectly with the still-displayed static frame underneath it -- both use the exact
   same transform.
-- **The legend's lat/lon-of-center readout is the one deliberate exception to "every legend
-  element is baked server-side."** It has to live-update during the drag, faster than any
-  server round trip could allow, so it's rendered in `App.tsx` from `MapCanvas`'s live
-  callback instead.
+- **The lat/lon-of-center readout live-updates during the drag** the same way the legend
+  itself now does (see above) -- both are ordinary client-side state/DOM, not baked into
+  anything the server sends, so neither needs a special-cased exception anymore the way the
+  legend readout used to under the old PNG-baked legend.
 
 **Interaction**: press and hold (`LONG_PRESS_MS`, with a small movement tolerance before that
 so an accidental brush of the map doesn't start a rotation) shows the graticule at the
@@ -727,7 +740,7 @@ view change already used, just with `rotation` now also part of what's requested
 
 `MapCanvas.tsx`'s drag gesture itself was later extracted into a shared hook,
 `frontend/src/rotationDrag.ts`'s `useRotationDrag`, once the Plate Inspector view (below)
-needed the exact same long-press-then-arcball interaction to rotate a completely different
+needed the exact same long-press-then-drag-to-pan interaction to rotate a completely different
 kind of content (translucent plate ellipses instead of a PNG + graticule). Callbacks are read
 through refs updated every render rather than listed in the internal effect's own dependency
 array -- deliberately: `onRotationPreview` typically drives a parent state update (the live

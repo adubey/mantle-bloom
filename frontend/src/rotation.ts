@@ -1,5 +1,5 @@
 // Client-side math for the "rotate the planet" feature: just enough of geometry.py/
-// projections.py/render_image.py ported to TypeScript to (a) drive the arcball drag gesture
+// projections.py/render_image.py ported to TypeScript to (a) drive the drag-to-pan gesture
 // and (b) draw a cheap wireframe graticule preview while dragging, without needing a round
 // trip to the server for every mouse move (the real detailed map -- elevation fill, plate
 // boundaries, climate heatmaps -- is far too slow to re-render at that rate; see
@@ -107,22 +107,103 @@ export function rotationBetween(from: Vec3, to: Vec3): Mat3 {
   return rotationMatrix(axis, Math.acos(dot));
 }
 
-// --- Arcball: maps a canvas-space point to a point on a virtual unit trackball centered on
-// the canvas, the standard Shoemake (1992) construction. Points outside the ball's radius
-// are clamped to its silhouette (z = 0) rather than left undefined, so a drag that leaves the
-// nominal circle still produces a sensible (increasingly edge-on, twisting) rotation instead
-// of breaking.
-export function screenToArcballVector(px: number, py: number, centerX: number, centerY: number, radius: number): Vec3 {
-  let x = (px - centerX) / radius;
-  let y = -(py - centerY) / radius; // screen y grows down; the trackball's y should grow up
-  const lenSq = x * x + y * y;
-  if (lenSq > 1) {
-    const scale = 1 / Math.sqrt(lenSq);
-    x *= scale;
-    y *= scale;
-    return [x, y, 0];
+// --- Pan-to-center: given a target view center (lat, lon), the rotation that puts it there.
+// Replaces the old arcball trackball drag: dragging is now simple linear panning (see
+// rotationDrag.ts) -- N screen pixels of drag always yields the same angular pan regardless
+// of where on the canvas or in which direction the drag happens, unlike an arcball's
+// position/edge-dependent sensitivity.
+//
+// Which true-world point is currently shown at the display center? render_image.py's
+// _rotate computes `display_pos = view_rotation @ true_pos` for every drawn point (ported
+// here as matApply's convention); PlateInspector.tsx/RiverInspector.tsx's own click handlers
+// independently confirm the inverse direction is `true_pos = view_rotation^T @ display_pos`
+// (`matApply(matTranspose(rotation), displayXyz)`, load-bearing there since it's what's sent
+// to the server's plate_at/river_at). So the true point at the display center (display_pos =
+// [1, 0, 0]) is `view_rotation^T @ [1, 0, 0]` -- meaning the rotation that puts a *chosen*
+// target there needs `view_rotation^T @ [1, 0, 0] = target`, i.e. `view_rotation =
+// rotationBetween(target, [1, 0, 0])` (not the other argument order -- that would instead
+// solve the untransposed equation, mirroring every pan). `rotationBetween`'s own shortest-
+// arc construction also has no roll/twist about the target axis (matching the identity
+// rotation's own "no twist" convention at lat=0/lon=0), so repeated small pans never
+// accumulate spurious roll the way naively composing incremental rotations would.
+export function rotationForCenter(latRad: number, lonRad: number): Mat3 {
+  return rotationBetween(latLonToXyz(latRad, lonRad), [1, 0, 0]);
+}
+
+// The inverse of rotationForCenter: which true (lat, lon) is currently shown at the display
+// center, for a given committed rotation -- see rotationForCenter's own docstring for the
+// transpose relationship this relies on. Used to seed a new drag from wherever the *previous*
+// one left off (see rotationDrag.ts), and (via App.tsx) for the "Center: ..." readout once a
+// drag has committed.
+export function centerOfRotation(rotation: Mat3): [number, number] {
+  return xyzToLatLon(matApply(matTranspose(rotation), [1, 0, 0]));
+}
+
+// Normalizes a pan target (lat, lon) in radians: longitude wraps cyclically (a full
+// east-or-west drag just keeps circling the globe), and latitude "wraps" by going *over*
+// the pole -- past +-90 degrees, it reflects back down and the longitude flips 180 degrees,
+// the same way a real globe looks continuous if you keep dragging past a pole rather than
+// clamping dead at it. `latRad` is reduced modulo a full turn *before* reflecting so this
+// stays correct for a single large cumulative drag, not just a small overshoot past the
+// pole: two pole crossings 180 degrees of longitude-flip apart cancel out, the same way
+// walking a full meridian circle (360 degrees of arc) returns you to your start with no net
+// longitude change at all.
+export function wrapPanLatLon(latRad: number, lonRad: number): [number, number] {
+  const twoPi = 2 * Math.PI;
+  const t = (((latRad + Math.PI) % twoPi) + twoPi) % twoPi - Math.PI; // latRad reduced to [-pi, pi)
+  let lat = t;
+  let lon = lonRad;
+  if (t > Math.PI / 2) {
+    lat = Math.PI - t;
+    lon += Math.PI;
+  } else if (t < -Math.PI / 2) {
+    lat = -Math.PI - t;
+    lon += Math.PI;
   }
-  return [x, y, Math.sqrt(1 - lenSq)];
+  lon = (((lon + Math.PI) % twoPi) + twoPi) % twoPi - Math.PI;
+  return [lat, lon];
+}
+
+// Pixels-per-radian at the map's own center (lat=0/lon=0), derived from the projection's
+// local Jacobian there (central difference) combined with the current render transform's
+// pixel scale -- this is what calibrates "dragging N pixels pans the view by N pixels" (see
+// rotationDrag.ts): dragging by this many backing pixels rotates the view by exactly 1
+// radian, so a feature that was under the cursor at the *center* of the map stays under the
+// cursor throughout the drag. Away from center, real projection distortion means this is an
+// approximation, same inherent limit as panning any non-equirectangular map projection.
+const JACOBIAN_EPS_RAD = 1e-4;
+
+export interface PixelsPerRadian {
+  x: number; // longitude (east-west drag)
+  y: number; // latitude (north-south drag)
+}
+
+function computePixelsPerRadian(projection: Projection, width: number, height: number): PixelsPerRadian {
+  const transform = getRenderTransform(projection, width, height);
+  const [xLonPlus, yLonPlus] = project(projection, 0, JACOBIAN_EPS_RAD);
+  const [xLonMinus, yLonMinus] = project(projection, 0, -JACOBIAN_EPS_RAD);
+  const [xLatPlus, yLatPlus] = project(projection, JACOBIAN_EPS_RAD, 0);
+  const [xLatMinus, yLatMinus] = project(projection, -JACOBIAN_EPS_RAD, 0);
+  const dxdlon = (xLonPlus - xLonMinus) / (2 * JACOBIAN_EPS_RAD);
+  const dydlon = (yLonPlus - yLonMinus) / (2 * JACOBIAN_EPS_RAD);
+  const dxdlat = (xLatPlus - xLatMinus) / (2 * JACOBIAN_EPS_RAD);
+  const dydlat = (yLatPlus - yLatMinus) / (2 * JACOBIAN_EPS_RAD);
+  return {
+    x: transform.scale * Math.hypot(dxdlon, dydlon),
+    y: transform.scale * Math.hypot(dxdlat, dydlat),
+  };
+}
+
+const pixelsPerRadianCache = new Map<string, PixelsPerRadian>();
+
+export function getPixelsPerRadian(projection: Projection, width: number, height: number): PixelsPerRadian {
+  const key = `${projection}:${width}:${height}`;
+  let cached = pixelsPerRadianCache.get(key);
+  if (!cached) {
+    cached = computePixelsPerRadian(projection, width, height);
+    pixelsPerRadianCache.set(key, cached);
+  }
+  return cached;
 }
 
 // --- Projections: direct ports of backend/app/projections.py, same formulas, same units

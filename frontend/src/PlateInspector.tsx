@@ -198,7 +198,7 @@ export default function PlateInspector({
 
   useRotationDrag({
     elementRef: canvasRef,
-    width, height, displayWidth, displayHeight, rotation,
+    width, height, displayWidth, displayHeight, projection, rotation,
     onFrame: drawPlates,
     onRotationPreview,
     onRotationCommitted,

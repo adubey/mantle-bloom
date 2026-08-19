@@ -37,22 +37,38 @@ function numMetric(key: string, label: string, get: (s: WorldStats) => number | 
   };
 }
 
-type TabKey = "physical" | "temperature" | "precipitation";
+type TabKey = "physical" | "temperature" | "precipitation" | "biome";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "physical", label: "Physical" },
   { key: "temperature", label: "Temperature" },
   { key: "precipitation", label: "Precipitation" },
+  { key: "biome", label: "Biome" },
+];
+
+// Fixed order (biomes.BIOME_NAMES minus "Ocean") rather than sorted by current fraction --
+// keeps the tab's rows, and the Graph dropdown/legend, in a stable order across generate/
+// step calls instead of visibly reshuffling every time the world changes.
+const BIOME_NAMES = [
+  "Ice", "Tundra", "Boreal Forest", "Temperate Desert", "Temperate Grassland",
+  "Woodland/Shrubland", "Temperate Seasonal Forest", "Temperate Rainforest",
+  "Subtropical Desert", "Savanna", "Tropical Seasonal Forest", "Tropical Rainforest",
 ];
 
 const TAB_METRICS: Record<TabKey, Metric[]> = {
   physical: [
     pctMetric("land_fraction", "Land", (s) => s.land_fraction),
     pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction),
-    numMetric("elevation_min_m", "Elevation min", (s) => s.elevation_min_m, 0, " m"),
-    numMetric("elevation_mean_m", "Elevation avg", (s) => s.elevation_mean_m, 0, " m"),
-    numMetric("elevation_max_m", "Elevation max", (s) => s.elevation_max_m, 0, " m"),
+    numMetric("elevation_min_m", "Elevation min (land)", (s) => s.elevation_min_m, 0, " m"),
+    numMetric("elevation_mean_m", "Elevation avg (land)", (s) => s.elevation_mean_m, 0, " m"),
+    numMetric("elevation_max_m", "Elevation max (land)", (s) => s.elevation_max_m, 0, " m"),
+    numMetric("ocean_depth_min_m", "Ocean depth min", (s) => s.ocean_depth_min_m, 0, " m"),
+    numMetric("ocean_depth_mean_m", "Ocean depth avg", (s) => s.ocean_depth_mean_m, 0, " m"),
+    numMetric("ocean_depth_max_m", "Ocean depth max", (s) => s.ocean_depth_max_m, 0, " m"),
   ],
+  biome: BIOME_NAMES.map((name) =>
+    pctMetric(name, name, (s) => (name in s.biome_land_fraction ? s.biome_land_fraction[name] : null)),
+  ),
   temperature: [
     numMetric("land_temperature_min_c", "Land temp min", (s) => s.land_temperature_min_c, 1, "°C"),
     numMetric("land_temperature_mean_c", "Land temp avg", (s) => s.land_temperature_mean_c, 1, "°C"),

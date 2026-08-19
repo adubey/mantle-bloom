@@ -100,17 +100,23 @@ export interface RiversResponse {
 
 // Stats panel data (see backend app/stats.py) -- a stateless snapshot of the *current* world;
 // the client is what accumulates a history over time (see App.tsx's recordStats), same
-// division of responsibility /world/render already has with renderData. Land/air/ocean
-// temperature and precipitation fields are `null` when their domain has no grid cells at all
-// (e.g. an all-ocean world has no land cells, so every land_*/air_* field is null) --
+// division of responsibility /world/render already has with renderData. Land/ocean
+// temperature/elevation/depth fields are `null` when their domain has no grid cells at all
+// (e.g. an all-ocean world has no land cells, so elevation_*/land_*/air_* are all null; a
+// world with no ocean at all would similarly null out ocean_depth_*/ocean_temperature_*) --
 // StatsModal must handle that, not assume every field is always present.
 export interface WorldStats {
   elapsed_years: number;
   land_fraction: number;
   ocean_fraction: number;
-  elevation_min_m: number;
-  elevation_max_m: number;
-  elevation_mean_m: number;
+  // Land only (height above the current sea level) -- see stats.py's module docstring.
+  elevation_min_m: number | null;
+  elevation_max_m: number | null;
+  elevation_mean_m: number | null;
+  // Ocean only, positive meters below the current sea level.
+  ocean_depth_min_m: number | null;
+  ocean_depth_max_m: number | null;
+  ocean_depth_mean_m: number | null;
   land_temperature_min_c: number | null;
   land_temperature_max_c: number | null;
   land_temperature_mean_c: number | null;
@@ -123,6 +129,10 @@ export interface WorldStats {
   precipitation_min_mm: number;
   precipitation_max_mm: number;
   precipitation_mean_mm: number;
+  // Percent of *land* cells (0 to 1 each) in each named biome (see backend app/biomes.py) --
+  // "Ocean" is never a key here (it's always 0% of land, by construction) and the dict is
+  // `{}` entirely when there are no land cells at all.
+  biome_land_fraction: Record<string, number>;
 }
 
 async function asJson<T>(resp: Response): Promise<T> {
@@ -133,34 +143,50 @@ async function asJson<T>(resp: Response): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
-// No total plate count here -- the world tiles itself into a plausible number from the seed
-// alone (see backend app/plates.py's generate_plates). continentalFraction/landFraction are
-// the dialog's two sliders (0 to 1): the fraction of plates made continental, and the
-// fraction of the whole sphere that starts above sea level (independent of the first --
-// see plates.py's _land_noise_threshold for how the two combine). axialTiltDeg is the
-// dialog's third slider (degrees) -- doesn't affect plate generation, only climate.py's
-// insolation at render time (see world.py's World.axial_tilt_deg). nodeDensity is the
-// dialog's "point density" choice (1 or 4, see plates.NODE_DENSITY_CHOICES) -- how many
-// elevation-line nodes each plate starts with, and stays scaled to for the rest of that
-// world's life (see world.py's World.node_density).
+// `numPlates`: the "Number of plates" slider (see backend app/plates.py's MIN_AUTO_PLATES/
+// MAX_AUTO_PLATES) -- `null`/omitted means "Auto," the world's original behavior of tiling
+// itself into a plausible plate count drawn from the seed alone (see plates.generate_plates).
+// continentalFraction/landFraction are the dialog's two sliders (0 to 1): the fraction of
+// plates made continental, and the fraction of the whole sphere that starts above sea level
+// (independent of the first -- see plates.py's _land_noise_threshold for how the two
+// combine). axialTiltDeg is the dialog's fourth slider (degrees) -- doesn't affect plate
+// generation, only climate.py's insolation at render time (see world.py's
+// World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (1 or 4, see
+// plates.NODE_DENSITY_CHOICES) -- how many elevation-line nodes each plate starts with, and
+// stays scaled to for the rest of that world's life (see world.py's World.node_density).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
   landFraction: number,
   axialTiltDeg: number,
   nodeDensity: number,
+  numPlates: number | null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       seed,
+      num_plates: numPlates,
       continental_fraction: continentalFraction,
       land_fraction: landFraction,
       axial_tilt_deg: axialTiltDeg,
       node_density: nodeDensity,
     }),
   }).then(asJson<WorldSummary>);
+}
+
+// Live-adjusts sea level and/or solar heat on the current world (the "Controls" window --
+// see backend app/world.py's World.sea_level_m/World.solar_multiplier and main.py's
+// /world/controls) -- either argument may be omitted to leave that value untouched. Forces
+// an immediate server-side climate recompute, so the caller should re-fetch /world/render
+// and /world/stats right after this resolves to see the effect.
+export function updateControls(controls: { seaLevelM?: number; solarMultiplier?: number }): Promise<{ sea_level_m: number; solar_multiplier: number }> {
+  return fetch(`${API_BASE}/world/controls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sea_level_m: controls.seaLevelM, solar_multiplier: controls.solarMultiplier }),
+  }).then(asJson<{ sea_level_m: number; solar_multiplier: number }>);
 }
 
 export function stepWorld(years: number): Promise<WorldSummary> {

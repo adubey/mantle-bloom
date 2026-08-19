@@ -207,9 +207,10 @@ def _gather_nodes(
     world: "World",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
     """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
-    channel_depth, and whether it's ocean (elevation <= 0, the sea-level convention used
-    everywhere else in this codebase), concatenated, alongside (plate, line_index, start,
-    end) references -- same shape as erosion.py's/bathymetry.py's own _gather_nodes.
+    channel_depth, and whether it's ocean (elevation <= world.sea_level_m, the live-
+    adjustable sea-level convention used everywhere else in this codebase -- see
+    World.sea_level_m), concatenated, alongside (plate, line_index, start, end) references
+    -- same shape as erosion.py's/bathymetry.py's own _gather_nodes.
     channel_depth is read-only here (erosion.py still owns growing it) -- flow direction
     just needs to know where an established channel already is, see
     _compute_flow_direction."""
@@ -236,7 +237,7 @@ def _gather_nodes(
     prev_lake_depth = np.concatenate(lake_list, axis=0)
     prev_glacier_depth = np.concatenate(glacier_list, axis=0)
     prev_channel_depth = np.concatenate(channel_list, axis=0)
-    is_ocean = elevation <= 0.0
+    is_ocean = elevation <= world.sea_level_m
     return points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, is_ocean, line_refs
 
 

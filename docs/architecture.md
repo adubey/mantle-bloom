@@ -115,8 +115,14 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   [simulation-model.md#volcanism](simulation-model.md#volcanism)).
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
-  [simulation-model.md#climate](simulation-model.md#climate)). The one deliberate exception
-  to climate otherwise being fully stateless.
+  [simulation-model.md#climate](simulation-model.md#climate)).
+- `sea_level_m`/`solar_multiplier` -- live-adjustable via `POST /world/controls` (the UI's
+  "Controls" window, unlike every other generation-time property here), read fresh by
+  `climate.py`/`hydrology.py`/`bathymetry.py`/`render_image.py` on every call rather than
+  cached, and forced to an immediate `climate_cache` recompute when changed (see
+  api-reference.md) so a render/stats call right after doesn't wait for the next step. These,
+  together with `axial_tilt_deg` above, are the only deliberate exceptions to climate
+  otherwise being fully stateless.
 - `events: list[(float, str)]` -- the event log for the UI's console (elapsed_years,
   message), capped at `MAX_EVENT_LOG_LENGTH = 200` entries. Appended to via `World.log_event`.
 - `climate_cache`/`hydrology_cache` -- this step's climate/flow-routing snapshot, populated

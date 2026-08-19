@@ -66,6 +66,15 @@ class World:
     # This step's flow-routing snapshot (see hydrology.py), populated by erosion.py
     # alongside climate_cache -- same reuse pattern, same one-step-stale simplification.
     hydrology_cache: hydrology.HydrologyFields | None = None
+    # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
+    # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
+    # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
+    # every is_ocean check in this codebase used to hardcode (climate.py, hydrology.py,
+    # bathymetry.py); solar_multiplier scales climate.py's own SUNLIGHT constant. Changing
+    # either forces an immediate climate_cache recompute (see main.py's controls route) so
+    # /world/render and /world/stats reflect it right away, without waiting for a step.
+    sea_level_m: float = 0.0
+    solar_multiplier: float = 1.0
 
     def log_event(self, message: str) -> None:
         self.events.append((self.elapsed_years, message))

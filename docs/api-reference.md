@@ -19,9 +19,10 @@ Request body:
 }
 ```
 
-All fields optional. `num_plates` defaults to `null` -- omit it (the frontend always does)
-to let the world tile itself into a plausible plate count from `seed` alone
-(`plates.MIN_AUTO_PLATES` to `plates.MAX_AUTO_PLATES`, see
+All fields optional. `num_plates` defaults to `null` -- omit it (or check the frontend's
+"Auto" box, the default) to let the world tile itself into a plausible plate count from
+`seed` alone (`plates.MIN_AUTO_PLATES` to `plates.MAX_AUTO_PLATES`, the same range the UI's
+own plate-count slider covers when "Auto" is unchecked, see
 [simulation-model.md#initial-plate-generation](simulation-model.md#initial-plate-generation)),
 or pass an explicit count to override it. `continental_fraction` and `land_fraction` are the
 UI's two generation sliders (0 to 1, defaulting in the frontend to
@@ -68,7 +69,31 @@ Advances the current world by `years` (see
 summary shape as `/world/generate`, with `events` reflecting anything logged up through this
 step. `404` if no world has been generated yet.
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|temperature|wind|oceanCurrents|humidity|precipitation&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `POST /world/controls`
+
+Request body (both optional, independently settable -- the "Controls" window sends only
+whichever slider the user moved):
+
+```json
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1 }
+```
+
+Live-adjusts `World.sea_level_m` (default `0.0`) and/or `World.solar_multiplier` (default
+`1.0`, scales `climate.SUNLIGHT`) on the *current* world -- no regenerate needed. Unlike
+`axial_tilt_deg`/`node_density`, these are meant to be tweaked mid-simulation: every
+`is_ocean` check in the codebase (`climate.py`, `hydrology.py`, `bathymetry.py`) keys off
+`sea_level_m` instead of a bare `elevation <= 0.0`, and `render_image.py`'s elevation-view
+hypsometric coloring shifts by it too, so raising sea level visibly floods the elevation map
+immediately. Forces an immediate `climate.compute_climate` recompute (stored back onto
+`world.climate_cache`) so the very next `/world/render` or `/world/stats` call reflects the
+change without waiting for a step -- `climate_cache` is otherwise only refreshed once per
+step by `erosion.py`. `404` if no world has been generated yet.
+
+```json
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1 }
+```
+
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|temperature|wind|oceanCurrents|humidity|precipitation|biome&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side

@@ -172,7 +172,7 @@ export default function RiverInspector({
 
   useRotationDrag({
     elementRef: canvasRef,
-    width, height, displayWidth, displayHeight, rotation,
+    width, height, displayWidth, displayHeight, projection, rotation,
     onFrame: drawRivers,
     onRotationPreview,
     onRotationCommitted,

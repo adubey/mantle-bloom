@@ -127,7 +127,7 @@ export default function MapCanvas({
 
   useRotationDrag({
     elementRef: canvasRef,
-    width, height, displayWidth, displayHeight, rotation,
+    width, height, displayWidth, displayHeight, projection, rotation,
     onFrame: drawGraticule,
     onRotationPreview,
     onRotationCommitted,

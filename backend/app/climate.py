@@ -124,11 +124,12 @@ def _build_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.nda
 def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Nearest-elevation-node resample of the *current* plate state onto the climate grid --
     same cKDTree technique render_image.py's _render_grid_arrays already uses. Returns
-    (elevation_m, is_ocean), both (H, W). `is_ocean` is elevation-derived (elevation <= sea
-    level), *not* crust_type -- a submerged part of a continental plate (anything past its
-    shelf) is physically ocean, same as the render_image.py elevation view's own hypsometric
-    coloring already treats it, and needs the same ocean-side climate treatment (evaporation
-    source, current flow, coastal deflection) as any other ocean cell."""
+    (elevation_m, is_ocean), both (H, W). `is_ocean` is elevation-derived (elevation <=
+    world.sea_level_m, live-adjustable via POST /world/controls -- see World.sea_level_m),
+    *not* crust_type -- a submerged part of a continental plate (anything past its shelf) is
+    physically ocean, same as the render_image.py elevation view's own hypsometric coloring
+    already treats it, and needs the same ocean-side climate treatment (evaporation source,
+    current flow, coastal deflection) as any other ocean cell."""
     height, width, _ = world_xyz.shape
     points_list, elev_list = [], []
     for plate in world.plates:
@@ -146,7 +147,7 @@ def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz)
     elevation = all_elev[idx].reshape(height, width)
-    is_ocean = elevation <= 0.0
+    is_ocean = elevation <= world.sea_level_m
     return elevation, is_ocean
 
 
@@ -244,24 +245,27 @@ def _weighted_sample_without_replacement(rng: np.random.Generator, weights: np.n
 # directly by ocean temperature (see compute_humidity). 0.85 was chosen by direct comparison
 # across a sweep of values: it brings the median down to a more Earth-like ~15C and pulls
 # humidity/precipitation down with it as a natural consequence, without needing a separate
-# knob for wetness.
+# knob for wetness. `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's
+# "Controls" window, see main.py's /world/controls) scales this same baseline live, rather
+# than replacing it, so the default-multiplier case reproduces today's SUNLIGHT exactly.
 SUNLIGHT = 0.85
 INSOLATION_FLOOR = 0.03
 AXIAL_TILT_DECLINATION_SAMPLES = 24
 
 
-def compute_insolation(lat_deg: np.ndarray, axial_tilt_deg: float) -> np.ndarray:
+def compute_insolation(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multiplier: float = 1.0) -> np.ndarray:
     """Annual-mean insolation, (H,) broadcastable. Flat zenith-angle cosine law with no
     tilt; with tilt, the mean of that same law (clipped at 0, sun below horizon) over
     `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between -tilt and +tilt -- the
     sub-solar latitude's annual sweep, not an actual season cycle (this model has no
     calendar; one step spans thousands to millions of years)."""
+    sunlight = SUNLIGHT * solar_multiplier
     lat_r = np.radians(lat_deg)
     if axial_tilt_deg <= 1e-6:
-        return np.clip(np.cos(lat_r), INSOLATION_FLOOR, 1.0) * SUNLIGHT
+        return np.clip(np.cos(lat_r), INSOLATION_FLOOR, 1.0) * sunlight
     declinations = np.radians(np.linspace(-axial_tilt_deg, axial_tilt_deg, AXIAL_TILT_DECLINATION_SAMPLES))
     cos_zenith = np.cos(lat_r[:, None] - declinations[None, :])
-    return np.clip(np.clip(cos_zenith, 0.0, None).mean(axis=1), INSOLATION_FLOOR, 1.0) * SUNLIGHT
+    return np.clip(np.clip(cos_zenith, 0.0, None).mean(axis=1), INSOLATION_FLOOR, 1.0) * sunlight
 
 
 # ---------------------------------------------------------------------------------------
@@ -846,7 +850,7 @@ def compute_climate(world: World, height: int = GRID_HEIGHT, width: int = GRID_W
     lat_deg, lon_deg, world_xyz = _build_grid(height, width)
     elevation_m, is_ocean = _sample_elevation_and_crust(world, world_xyz)
 
-    insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg)
+    insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_temperature_c = compute_land_temperature(insolation_row, elevation_m)
     ocean_baseline_c = compute_ocean_temperature_baseline(insolation_row, height, width)
     surface_temperature_c = np.where(is_ocean, ocean_baseline_c, land_temperature_c)

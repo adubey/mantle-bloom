@@ -1,20 +1,29 @@
 import { useEffect, useRef } from "react";
 import type { RefObject } from "react";
+import type { Projection } from "./api";
 import type { Mat3 } from "./rotation";
-import { IDENTITY_ROTATION, matApply, matMultiply, rotationBetween, screenToArcballVector, xyzToLatLon } from "./rotation";
+import { centerOfRotation, getPixelsPerRadian, rotationForCenter, wrapPanLatLon } from "./rotation";
 
-// The long-press-then-arcball-drag "rotate the planet" gesture (see
+// The long-press-then-drag "rotate the planet" gesture (see
 // docs/simulation-model.md#rotating-the-view), extracted out of MapCanvas.tsx so
 // PlateInspector.tsx can reuse the exact same interaction instead of duplicating this
-// state machine -- both need "drag to rotate the view," they just draw completely different
+// state machine -- both need "drag to pan the view," they just draw completely different
 // content while doing it (a PNG + graticule wireframe vs. translucent plate ellipses).
+//
+// Dragging is simple linear panning, not an arcball trackball: N backing-store pixels of
+// drag always pans the view by the same angle regardless of where on the canvas the drag
+// starts or which direction it goes, calibrated (via rotation.ts's getPixelsPerRadian) so a
+// feature under the cursor at the map's own center stays under the cursor as you drag --
+// "scrolling left by one pixel moves the planet left by one pixel." Longitude wraps
+// cyclically and latitude wraps *over* the pole (see rotation.ts's wrapPanLatLon), so
+// dragging far in any one direction just keeps circling the globe rather than stopping dead
+// at an edge.
 
 const LONG_PRESS_MS = 350;
 // In *display* (CSS) pixels -- movement past this before the long-press timer fires cancels
 // it, so an ordinary click/drag-to-select-text gesture elsewhere on the page never
 // accidentally starts a rotation.
 const MOVE_CANCEL_PX = 6;
-const ARCBALL_RADIUS_FRACTION = 0.45; // of min(width, height), in backing-store pixels
 
 export interface UseRotationDragOptions {
   elementRef: RefObject<HTMLElement | null>;
@@ -22,6 +31,7 @@ export interface UseRotationDragOptions {
   height: number;
   displayWidth: number;
   displayHeight: number;
+  projection: Projection;
   // The currently *committed* view rotation -- each new drag starts from this and composes
   // its own incremental rotation on top.
   rotation: Mat3;
@@ -42,15 +52,19 @@ export interface UseRotationDragOptions {
 }
 
 export function useRotationDrag(options: UseRotationDragOptions): void {
-  const { elementRef, width, height, displayWidth, displayHeight, rotation, onFrame, onRotationCommitted, onRotationPreview, onClick } =
+  const { elementRef, width, height, displayWidth, displayHeight, projection, rotation, onFrame, onRotationCommitted, onRotationPreview, onClick } =
     options;
 
   // Interaction state lives in refs, not React state -- none of it should trigger a
   // re-render; content is painted directly, imperatively, by the caller's onFrame.
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragStartClientPos = useRef<{ clientX: number; clientY: number } | null>(null);
-  const dragStartArcballVec = useRef<[number, number, number] | null>(null);
-  const dragBaseRotation = useRef<Mat3>(IDENTITY_ROTATION);
+  const dragStartBackingPos = useRef<{ x: number; y: number } | null>(null);
+  // The true (lat, lon) shown at the display center when this drag began (see
+  // rotation.ts's centerOfRotation) -- every subsequent frame computes its pan target as an
+  // offset from this fixed base, not incrementally frame-to-frame, so small per-frame
+  // rounding can never accumulate drift over a long drag.
+  const dragBaseCenter = useRef<[number, number]>([0, 0]);
   const isRotating = useRef(false);
 
   // Callbacks are read through refs updated on every render (not via the effect's own
@@ -80,27 +94,30 @@ export function useRotationDrag(options: UseRotationDragOptions): void {
       return { x: displayX * (width / displayWidth), y: displayY * (height / displayHeight) };
     };
 
-    const previewRotationFor = (backingX: number, backingY: number): Mat3 => {
-      const start = dragStartArcballVec.current;
-      if (!start) return dragBaseRotation.current;
-      const radius = ARCBALL_RADIUS_FRACTION * Math.min(width, height);
-      const current = screenToArcballVector(backingX, backingY, width / 2, height / 2, radius);
-      const delta = rotationBetween(start, current);
-      return matMultiply(delta, dragBaseRotation.current);
+    // Pan target for a given backing-pixel offset from where this drag started -- linear in
+    // pixel delta (see rotation.ts's getPixelsPerRadian for the calibration and module
+    // docstring above for the sign convention: dragging left/up moves the displayed content
+    // left/up by the same number of pixels, same as grabbing and dragging a photo).
+    const panTargetFor = (backingX: number, backingY: number): [number, number] => {
+      const startPos = dragStartBackingPos.current;
+      if (!startPos) return dragBaseCenter.current;
+      const ppr = getPixelsPerRadian(projection, width, height);
+      const dx = backingX - startPos.x;
+      const dy = backingY - startPos.y;
+      const [baseLat, baseLon] = dragBaseCenter.current;
+      return wrapPanLatLon(baseLat + dy / ppr.y, baseLon - dx / ppr.x);
     };
 
-    const reportPreview = (previewRotation: Mat3) => {
-      if (!onRotationPreviewRef.current) return;
-      const [lat, lon] = xyzToLatLon(matApply(previewRotation, [1, 0, 0]));
-      onRotationPreviewRef.current((lat * 180) / Math.PI, (lon * 180) / Math.PI);
+    const reportPreview = (lat: number, lon: number) => {
+      onRotationPreviewRef.current?.((lat * 180) / Math.PI, (lon * 180) / Math.PI);
     };
 
     const onWindowMouseMove = (e: MouseEvent) => {
       if (!isRotating.current) return;
       const { x, y } = toBackingPixels(e.clientX, e.clientY);
-      const preview = previewRotationFor(x, y);
-      onFrameRef.current(preview);
-      reportPreview(preview);
+      const [lat, lon] = panTargetFor(x, y);
+      onFrameRef.current(rotationForCenter(lat, lon));
+      reportPreview(lat, lon);
     };
 
     const onWindowMouseUp = (e: MouseEvent) => {
@@ -109,23 +126,21 @@ export function useRotationDrag(options: UseRotationDragOptions): void {
       if (!isRotating.current) return;
       isRotating.current = false;
       const { x, y } = toBackingPixels(e.clientX, e.clientY);
-      const finalRotation = previewRotationFor(x, y);
-      dragStartArcballVec.current = null;
-      onRotationCommittedRef.current(finalRotation);
+      const [lat, lon] = panTargetFor(x, y);
+      dragStartBackingPos.current = null;
+      onRotationCommittedRef.current(rotationForCenter(lat, lon));
     };
 
     const beginRotating = () => {
       isRotating.current = true;
-      dragBaseRotation.current = rotation;
+      dragBaseCenter.current = centerOfRotation(rotation);
       const pos = dragStartClientPos.current;
       if (pos) {
-        const { x, y } = toBackingPixels(pos.clientX, pos.clientY);
-        const radius = ARCBALL_RADIUS_FRACTION * Math.min(width, height);
-        dragStartArcballVec.current = screenToArcballVector(x, y, width / 2, height / 2, radius);
+        dragStartBackingPos.current = toBackingPixels(pos.clientX, pos.clientY);
       }
-      const preview = dragBaseRotation.current;
-      onFrameRef.current(preview);
-      reportPreview(preview);
+      const [lat, lon] = dragBaseCenter.current;
+      onFrameRef.current(rotationForCenter(lat, lon));
+      reportPreview(lat, lon);
       window.addEventListener("mousemove", onWindowMouseMove);
       window.addEventListener("mouseup", onWindowMouseUp);
     };
@@ -176,5 +191,5 @@ export function useRotationDrag(options: UseRotationDragOptions): void {
     // render (very likely: onRotationPreview typically drives a parent state update on every
     // mousemove) never tears down and rebuilds the drag's window-level listeners mid-drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elementRef, width, height, displayWidth, displayHeight, rotation]);
+  }, [elementRef, width, height, displayWidth, displayHeight, projection, rotation]);
 }
