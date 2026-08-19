@@ -53,7 +53,7 @@ RIVER_LINE_WIDTH_PX = 1.1
 # /world/rivers, RiverInspector.tsx), which deliberately keeps showing every is_river network
 # regardless of flow_rate, since picking a small tributary out from the full list is exactly
 # what that view is for.
-RIVER_DRAW_MIN_FLOW = 10_000.0
+RIVER_DRAW_MIN_FLOW = 25_000.0
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
 # white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
 # as "just a tall mountain" or "just a lake" at a glance.
