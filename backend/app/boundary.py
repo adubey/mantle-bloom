@@ -17,7 +17,17 @@ actually converging:
 - **Continent-continent collision** (own plate continental, neighbor continental): a broad
   crumple zone, up to COLLISION_RANGE_RAD (400km) -- peaks right at the boundary, decays
   outward, same shape as before, just reaching much farther (e.g. the Himalaya/Tibetan
-  Plateau's real deformation belt is comparably wide).
+  Plateau's real deformation belt is comparably wide). On top of that, the same collision
+  also drives a second, far weaker effect much farther inland: a gentle intraplate rise
+  from FAR_FIELD_COLLISION_INNER_RAD to FAR_FIELD_COLLISION_OUTER_RAD (1000-3000km) -- real
+  collisions transmit stress well past their own suture (the Himalayan-Tibetan collision's
+  effects reach the Tien Shan/Baikal region at comparable distances; the Arabian-Eurasian
+  collision's shortening is distributed across Anatolia the same way; the Laramide orogeny's
+  basement uplifts sat ~1000-1500km inland of the contemporary margin). See
+  FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR below for why it's additive rather than replacing the
+  near-field effect: at any given point at most one of the two bands is actually nonzero
+  (400km and 1000km don't overlap), so "additive" only matters in the sense that both use
+  `+=` against the same elevation array.
 - **Oceanic-under-continental subduction** (own plate continental, neighbor oceanic): a
   volcanic arc, but *offset inland* rather than peaking at the boundary -- real arcs form
   where the subducting slab has descended deep enough to melt, not right at the trench. See
@@ -81,6 +91,29 @@ RIFT_RANGE_RAD = RIFT_RANGE_KM / PLANET_RADIUS_KM
 COLLISION_RANGE_KM = 400.0
 COLLISION_RANGE_RAD = COLLISION_RANGE_KM / PLANET_RADIUS_KM
 
+# Continent-continent collision's far-field effect: real collisions bend and reactivate
+# continental interior far beyond their own suture's crumple zone (COLLISION_RANGE_RAD,
+# above). Modeled as a second band, entirely separate from and much farther out than the
+# near-field one -- zero out to FAR_FIELD_COLLISION_INNER_RAD (leaving the 400-1000km gap
+# where the near-field band has already decayed to nothing untouched), ramping linearly from
+# full intensity at the inner edge back to zero by FAR_FIELD_COLLISION_OUTER_RAD (see
+# _far_field_intensity). Distances tuned against real broad collisional belts: the
+# Himalayan-Tibetan collision's far-field reactivation reaches the Tien Shan/Baikal region
+# roughly 1500-2500km from the suture; the Arabian-Eurasian (Zagros) collision's shortening
+# is distributed across Anatolia at comparable range; the Variscan-Appalachian and Uralian
+# orogenies both left deformation belts far wider than their core sutures; the Laramide
+# orogeny's basement-cored uplifts sat roughly 1000-1500km inland of the margin. Deliberately
+# a much smaller rate than CONVERGENT_MOUNTAIN_RATE_M_PER_MYR -- this is a gentle rise, not
+# real mountain-building -- but like the near-field collision effect (and unlike the
+# divergent cases' relax-toward-a-target behavior) it adds unconditionally every step it
+# applies, so a long-lived collision can still accumulate it into a substantial broad rise
+# (e.g. the Colorado Plateau's multi-km Laramide-and-after surface uplift).
+FAR_FIELD_COLLISION_INNER_KM = 1000.0
+FAR_FIELD_COLLISION_OUTER_KM = 3000.0
+FAR_FIELD_COLLISION_INNER_RAD = FAR_FIELD_COLLISION_INNER_KM / PLANET_RADIUS_KM
+FAR_FIELD_COLLISION_OUTER_RAD = FAR_FIELD_COLLISION_OUTER_KM / PLANET_RADIUS_KM
+FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR = 60.0
+
 # Oceanic-under-continental subduction: the volcanic arc forms *inland* of the trench, not
 # at it -- offset by how far the subducting slab needs to descend before it starts melting,
 # not by proximity to the boundary itself. Modeled as a band (see _band_intensity), zero at
@@ -101,11 +134,16 @@ TRANSFORM_RANGE_KM = 50.0
 TRANSFORM_RANGE_RAD = TRANSFORM_RANGE_KM / PLANET_RADIUS_KM
 TRANSFORM_UPLIFT_RATE_M_PER_MYR = 200.0
 
-# Widest reach any single boundary effect needs (currently COLLISION_RANGE_RAD) -- sizes the
-# candidate search (bounding-sphere prescreen and cKDTree query) so a node up to that far
-# away is never excluded before the per-effect distance checks above even get to run.
+# Widest reach any single boundary effect needs (currently FAR_FIELD_COLLISION_OUTER_RAD) --
+# sizes the candidate search (bounding-sphere prescreen and cKDTree query) so a node up to
+# that far away is never excluded before the per-effect distance checks above even get to run.
 MAX_BOUNDARY_EFFECT_RAD = max(
-    FAR_THRESHOLD_RAD, COLLISION_RANGE_RAD, SUBDUCTION_ARC_OUTER_RAD, TRANSFORM_RANGE_RAD, RIFT_RANGE_RAD
+    FAR_THRESHOLD_RAD,
+    COLLISION_RANGE_RAD,
+    FAR_FIELD_COLLISION_OUTER_RAD,
+    SUBDUCTION_ARC_OUTER_RAD,
+    TRANSFORM_RANGE_RAD,
+    RIFT_RANGE_RAD,
 )
 
 MIN_ELEVATION_M = -11000.0
@@ -145,7 +183,14 @@ def _merge_threshold_rad(spacing_rad: float) -> float:
 
 
 def _max_boundary_effect_rad(spacing_rad: float) -> float:
-    return max(_far_threshold_rad(spacing_rad), COLLISION_RANGE_RAD, SUBDUCTION_ARC_OUTER_RAD, TRANSFORM_RANGE_RAD, RIFT_RANGE_RAD)
+    return max(
+        _far_threshold_rad(spacing_rad),
+        COLLISION_RANGE_RAD,
+        FAR_FIELD_COLLISION_OUTER_RAD,
+        SUBDUCTION_ARC_OUTER_RAD,
+        TRANSFORM_RANGE_RAD,
+        RIFT_RANGE_RAD,
+    )
 
 
 def _max_extend_nodes_per_step(node_density: float) -> int:
@@ -167,6 +212,15 @@ def _band_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
     mid = (inner + outer) / 2.0
     half_width = (outer - inner) / 2.0
     return np.clip(1.0 - np.abs(dist - mid) / half_width, 0.0, 1.0)
+
+
+def _far_field_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
+    """One-sided ramp: 0 below `inner` (unlike the plain decay-from-zero shape every
+    near-boundary effect uses, this effect only exists *starting* at `inner`), 1.0 right at
+    `inner`, decaying linearly back to 0 by `outer`. Used for the collision far-field band,
+    which is deliberately offset inland rather than continuous with the boundary itself."""
+    ramp = np.clip(1.0 - (dist - inner) / (outer - inner), 0.0, 1.0)
+    return np.where(dist < inner, 0.0, ramp)
 
 
 def closing_rate(
@@ -344,6 +398,13 @@ def step_boundaries(world: World, years: float) -> None:
         # collision_intensity: same shape, but reaching COLLISION_RANGE_RAD (400km) instead
         # -- a continent-continent suture crumples a much wider belt than a plain boundary.
         collision_intensity_all = np.clip(1.0 - dist_all / COLLISION_RANGE_RAD, 0.0, 1.0)
+        # far_field_intensity: the collision's second, much weaker and much farther-reaching
+        # band -- zero out to FAR_FIELD_COLLISION_INNER_RAD, then ramping down to zero by
+        # FAR_FIELD_COLLISION_OUTER_RAD (see _far_field_intensity and the comment on the
+        # constants themselves for why 1000-3000km).
+        far_field_intensity_all = _far_field_intensity(
+            dist_all, FAR_FIELD_COLLISION_INNER_RAD, FAR_FIELD_COLLISION_OUTER_RAD
+        )
         # arc_intensity: the one non-monotonic shape here -- see _band_intensity. Zero right
         # at the boundary, peaks inland at the volcanic arc's typical offset, zero again past
         # SUBDUCTION_ARC_OUTER_RAD.
@@ -382,6 +443,7 @@ def step_boundaries(world: World, years: float) -> None:
             closing = closing_all[offset : offset + n]
             default_intensity = default_intensity_all[offset : offset + n]
             collision_intensity = collision_intensity_all[offset : offset + n]
+            far_field_intensity = far_field_intensity_all[offset : offset + n]
             arc_intensity = arc_intensity_all[offset : offset + n]
             transform_intensity = transform_intensity_all[offset : offset + n]
             rift_intensity = rift_intensity_all[offset : offset + n]
@@ -396,6 +458,7 @@ def step_boundaries(world: World, years: float) -> None:
             if plate.crust_type == "continental":
                 elevation[subduction] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * arc_intensity[subduction]
                 elevation[collision] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * collision_intensity[collision]
+                elevation[collision] += FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR * years_myr * far_field_intensity[collision]
             else:
                 elevation[convergent] -= CONVERGENT_TRENCH_RATE_M_PER_MYR * years_myr * default_intensity[convergent]
 

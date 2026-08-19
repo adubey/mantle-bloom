@@ -190,7 +190,7 @@ always-consistent topology, and it's what makes merge/split tractable without a 
 spherical polygon-boolean library.
 
 For each node within `MAX_BOUNDARY_EFFECT_RAD` (the widest reach any single effect below
-needs -- currently `COLLISION_RANGE_RAD`, 400km) of some other plate's nearest node, the two
+needs -- currently `FAR_FIELD_COLLISION_OUTER_RAD`, 3000km) of some other plate's nearest node, the two
 plates' relative velocity at that point (from their `omega`s) is decomposed against the
 direction toward the neighbor into a **closing rate**: positive means this plate's material
 is moving toward the neighbor's (convergent), negative means moving apart (divergent);
@@ -202,7 +202,18 @@ crust type, and how far the effect reaches (and its shape with distance) differs
 - **Continent-continent collision** (both plates continental) -> elevation rises
   (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`), scaled by an intensity that fades from 1 at zero
   distance to 0 at `COLLISION_RANGE_RAD` (400km) -- a broad crumple zone, matching how wide a
-  real collision belt is (e.g. the Himalaya/Tibetan Plateau).
+  real collision belt is (e.g. the Himalaya/Tibetan Plateau). The same collision also adds a
+  second, much gentler rise (`FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR`, well under a tenth of the
+  near-field rate) far inland: zero out to `FAR_FIELD_COLLISION_INNER_RAD` (1000km, leaving
+  the 400-1000km gap where the near-field crumple zone has already faded to nothing
+  untouched), ramping to full intensity there and back to zero by
+  `FAR_FIELD_COLLISION_OUTER_RAD` (3000km). Real collisions transmit stress this far into the
+  continental interior -- the Himalayan-Tibetan and Arabian-Eurasian (Zagros) collisions both
+  have deformation reaching comparable distances (Tien Shan/Baikal, Anatolia), the
+  Variscan-Appalachian and Uralian orogenies both left belts wider than their core sutures,
+  and the Laramide orogeny's basement-cored uplifts sat ~1000-1500km inland of the margin.
+  Unlike the divergent cases below, this doesn't relax toward a target -- it adds every step
+  it applies, so it can accumulate into a substantial rise over a long-lived collision.
 - **Oceanic-under-continental subduction** (continental plate, oceanic neighbor) -> elevation
   rises on the continental side too, but shaped as a **band** (`_band_intensity`): zero right
   at the boundary, peaking at the midpoint of `SUBDUCTION_ARC_INNER_RAD`..

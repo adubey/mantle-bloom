@@ -191,6 +191,40 @@ def test_continental_collision_crumple_zone_reaches_400km():
     assert delta[0] > delta[1] > delta[2]  # peaks at the boundary, decays outward
 
 
+def test_far_field_intensity_zero_below_inner_ramps_to_zero_at_outer():
+    dist = np.array([0.0, 0.05, 0.1, 0.2, 0.3])
+    result = boundary._far_field_intensity(dist, inner=0.1, outer=0.3)
+    assert result[0] == 0.0  # well below inner
+    assert result[1] == 0.0  # still below inner
+    assert result[2] == 1.0  # right at inner edge -- full intensity
+    assert np.isclose(result[3], 0.5)  # midway between inner and outer
+    assert np.isclose(result[4], 0.0)  # at outer edge
+    assert np.all((result >= 0.0) & (result <= 1.0))
+
+
+def test_continental_collision_far_field_reaches_1000_to_3000km():
+    # Two continental plates converging. Points at ~zero, ~near, and ~far within the
+    # far-field band (1000-3000km), plus one point past COLLISION_RANGE_RAD (400km) but
+    # still short of the far-field band's own inner edge (1000km) -- confirms the 400-1000km
+    # gap between the near-field and far-field bands stays untouched.
+    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
+    theta_cont = np.array([0.0766, 0.1158, 0.2336, 0.3905])  # ~500/750/1500/2500 km
+    plate_a = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, -rate], base_elevation=500.0)
+    plate_b = _plate(1, "continental", [-0.002, -0.0021, -0.0019], omega=[0.0, 0.0, rate], base_elevation=500.0)
+    world = World(seed=0, plates=[plate_a, plate_b])
+
+    boundary.step_boundaries(world, years=1_000_000)
+
+    updated = next(p for p in world.plates if p.plate_id == 0).lines[0].elevation
+    delta = updated - 500.0
+    assert delta[0] < 1e-6  # ~500km: past the near-field band, short of the far-field one
+    assert delta[1] < 1e-6  # ~750km: same gap
+    assert delta[2] > 0.0  # ~1500km: inside the far-field band
+    assert delta[3] > 0.0  # ~2500km: inside the far-field band
+    # Gentle rather than real mountain-building.
+    assert delta[2] < boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * 0.5
+
+
 def test_transform_boundary_produces_modest_uplift_within_50km():
     # A near-zero closing rate (well under TRANSFORM_RATE_THRESHOLD) -- neither strongly
     # convergent nor divergent, the definition of a transform boundary.
