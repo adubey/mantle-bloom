@@ -23,6 +23,7 @@
 - [Hydrology (rivers and lakes)](#hydrology)
 - [Glaciation](#glaciation)
 - [River Inspector](#river-inspector)
+- [Lake Inspector](#lake-inspector)
 - [Coastline](#coastline)
 - [Known simplifications](#known-simplifications)
 
@@ -1501,6 +1502,70 @@ member points at once) -- there's no shape to point-in-polygon test against, onl
 node cloud, so this is the natural fit rather than a departure from the pattern. No baked-PNG
 elevation backdrop, matching Plate Inspector's own confirmed "the shapes are the whole visual"
 choice, rather than adding one just for this view.
+
+<a id="lake-inspector"></a>
+## Lake Inspector
+
+A fourth interactive map mode, same "raw JSON, client renders it" philosophy as
+[River Inspector](#river-inspector): `GET /world/lakes` returns every currently-visible lake's
+basin info as plain JSON, and `frontend/src/LakeInspector.tsx` renders and drives the
+interaction entirely client-side -- reusing the same rotation gesture and Tab/Shift+Tab
+cycling pattern as the other inspectors, plus a click that always resolves to *something*
+useful (the user's own spec: click a lake and see its inflows and where its water would spill
+out; click ordinary dry land and see "the basin nonetheless," including its own lowest point).
+
+**A "lake" here means one connected component of `lake_depth >
+hydrology.LAKE_MIN_VISIBLE_DEPTH_M` nodes** -- exactly the mask `render_image.py`/`coastline.py`
+already use to draw standing water, grouped via `hydrology.lake_components` (an undirected
+union-find over the k-NN flow graph, factored out of what used to be `_lake_component_sizes`'s
+own private tally so `main.py` could reuse the real grouping, not just a count). This is a
+different unit than `lakes.Lake` itself: a `Lake` is a node in the depression *hierarchy* --
+one basin's own catchment, dry or wet, geometric regardless of whether water currently reaches
+it -- while a Lake Inspector "lake" is specifically the *currently-manifested* connected body
+of standing water, which can span more than one `Lake` once several small basins have merged.
+`main._smallest_lake_containing` bridges the two: given a wet component, it walks this step's
+freshly-rebuilt hierarchy (`lakes.build_lake_hierarchy`, same "recomputed fresh, not persisted"
+philosophy `group_rivers` already follows) top-down for the smallest tree node whose own
+`members` fully contains that component -- the basin exactly as currently manifested, so its
+own `outlet_node_idx`/`max_depth` is the *current* rim, not an interior saddle that's already
+flooded by an earlier merge.
+
+**A lake's displayed extent is its wet members only, not its whole geometric catchment.** A
+`Lake`'s own `members` routinely includes dry higher ground on the way down to the basin's
+floor (see `lakes.py`'s own docstring) -- drawing all of it as "lake" would both misrepresent
+what's actually underwater and mean a click near the lake's own edge could land on a dry
+catchment member and read back as a plain basin instead (confirmed directly while building
+this: the very first version did exactly that on a small, newly-formed lake). `main.
+_lake_basin_summary` filters to `fields.lake_depth`-wet members before reporting `member_xyz`/
+`member_count`/`floor_xyz` whenever `is_lake` is true; a dry basin has no such distinction to
+make, so it keeps reporting its whole catchment.
+
+**A land click always resolves to a basin, not just a lake hit.** `GET /world/lake_at` finds
+the node nearest the click, then classifies it into one of four `kind`s: `"lake"` (currently
+flooded -- same info shape as a `/world/lakes` entry), `"basin"` (dry land that's still part of
+a real catchment -- `main._leaf_lakes_by_node` maps every catchment-owning node straight to its
+own leaf `Lake`, no hierarchy walk needed since a dry click doesn't need to align with any
+currently-merged water body), `"no_basin"` (an ordinary hillslope whose steepest-descent chain
+reaches the ocean without ever passing a local minimum -- `lakes.py`'s own `_OCEAN_CATCHMENT`,
+never part of any basin at all), or `"ocean"`. Every non-ocean, non-no_basin case reports the
+same shape: `floor_xyz`/`floor_elevation_m` (the basin's own lowest point) and
+`outlet_xyz`/`outlet_elevation_m` -- "the lowest point of the edge of the basin," the saddle a
+river out of it would source from, `null` for an unresolved closed/endorheic basin with no
+known spill (a legitimate state, not missing data), plus every `RiverInfo` (see
+[River Inspector](#river-inspector)) whose own mouth lands somewhere in the basin, regardless
+of that river's own `mouth_type` label -- both `"lake"` and `"other"` read as "a river that
+ends here" from the basin's own point of view.
+
+**Rendering** is a point cloud, not traced shapes: each lake's own wet members (and, for a
+selected dry basin, its whole catchment) are drawn as dots, dim for every lake and bright for
+the selected basin, mirroring Plate Inspector's dim/bright split -- there's no natural polygon
+outline for a scattered k-NN node group the way a plate's own boundary line already gives one
+for free. The selected basin's floor and outlet (and every inflowing river's own mouth) each
+draw a ring, the same drawing primitive River Inspector's mouth marker uses, so "where would
+this basin drain out" is visible at a glance rather than only in the sidebar text. The same
+`coastline_segments` River Inspector already fetches is reused rather than a second copy, since
+`/world/lakes` computes the identical boundary -- both endpoints expose it independently
+(matching `/world/rivers`' own precedent) but the frontend only needs to fetch it once.
 
 <a id="coastline"></a>
 ## Coastline (`coastline.py`)

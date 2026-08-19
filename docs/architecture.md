@@ -13,12 +13,14 @@
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
-  Plate Inspector (`PlateInspector.tsx`) and River Inspector (`RiverInspector.tsx`) views,
-  which each render and drive their whole interaction client-side from raw JSON rather than a
-  baked PNG (see [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector)
-  and [simulation-model.md#river-inspector](simulation-model.md#river-inspector)). None of
-  this makes it a mapping library, and the real detailed rendering stays entirely server-side
-  for every other view.
+  Plate Inspector (`PlateInspector.tsx`), River Inspector (`RiverInspector.tsx`), and Lake
+  Inspector (`LakeInspector.tsx`) views, which each render and drive their whole interaction
+  client-side from raw JSON rather than a baked PNG (see
+  [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
+  [simulation-model.md#river-inspector](simulation-model.md#river-inspector), and
+  [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector)). None of this makes
+  it a mapping library, and the real detailed rendering stays entirely server-side for every
+  other view.
 
 ## Request flow
 
@@ -76,6 +78,16 @@ When the "River Inspector" map view is active, the browser instead fetches (same
     across steps -- see hydrology.group_rivers), empty before the first step. Clicking a
     river sends its unprojected true lat/lon to GET /world/river_at, the same nearest-node
     hit-test pattern as plate_at.
+
+When the "Lake Inspector" map view is active, the browser instead fetches (same cadence):
+  GET /world/lakes
+  → every currently-visible lake's basin info (floor, outlet, current water level, inflowing
+    rivers), as JSON, not a PNG -- see api-reference.md and
+    simulation-model.md#lake-inspector. Regrouped fresh from world.hydrology_cache on every
+    call, same non-persistent-identity contract as river_id, empty before the first step.
+    Clicking anywhere on land -- not just a visible lake -- sends its unprojected true lat/lon
+    to GET /world/lake_at, which always resolves to something informative: a lake, a dry but
+    real basin, "drains straight to the ocean, no basin here," or open ocean.
 ```
 
 The frontend never holds simulation state, and holds only one small piece of *rendering*
@@ -217,14 +229,17 @@ lakes.py              every-step lake growth/evaporation/merge/split/silt, an ex
                      tree of Lake objects built from a depression-hierarchy pass over
                      hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
                      projects back down into the same flat lake_depth array every other
-                     consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree)
+                     consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree);
+                     also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
+                     GET /world/lakes and GET /world/lake_at (see
+                     simulation-model.md#lake-inspector)
 bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
                      (near land) or deep-water (far from land) target elevation (see
                      simulation-model.md#bathymetry)
 coastline.py          traces the land/ocean and lake boundary as line segments over
                      climate.py's own grid, on demand (not every step) -- drawn into the
                      temperature/humidity/precipitation renders and sent as JSON alongside
-                     GET /world/rivers (see simulation-model.md#coastline)
+                     GET /world/rivers and GET /world/lakes (see simulation-model.md#coastline)
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate)

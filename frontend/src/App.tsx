@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./index.css";
-import { fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld, updateControls } from "./api";
-import type { MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary } from "./api";
+import { fetchLakes, fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld, updateControls } from "./api";
+import type {
+  LakeAtResponse, LakeSummary, MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary,
+} from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
+import LakeInspector from "./LakeInspector";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
@@ -106,6 +109,18 @@ export default function App() {
   // The land/lake-vs-ocean boundary (see backend app/coastline.py), fetched alongside rivers
   // from the same /world/rivers response -- the River Inspector has no other land/ocean cue.
   const [coastlineSegments, setCoastlineSegments] = useState<Segment[]>([]);
+  // Lake Inspector's own data (see LakeInspector.tsx) -- same true-frame/world-state-only
+  // refresh pattern as riversData, and reuses the same coastlineSegments fetched above rather
+  // than a second copy (both /world/rivers and /world/lakes compute the identical boundary).
+  // `selectedBasin` is whatever's currently displayed -- either one of `lakesData`
+  // (`selectedBasin.is_lake`) or a dry basin/no-basin/ocean result from a land click, which
+  // isn't itself a member of `lakesData` (see api.ts's LakeAtResponse) -- `selectedKind` carries
+  // which of those a `null` `selectedBasin` actually means (nothing clicked yet vs. an ocean or
+  // no-basin click). Reset on every generate *and* step, same as selectedRiverId: lake_id is
+  // only meaningful against the most recent /world/lakes response.
+  const [lakesData, setLakesData] = useState<LakeSummary[]>([]);
+  const [selectedBasin, setSelectedBasin] = useState<LakeSummary | null>(null);
+  const [selectedBasinKind, setSelectedBasinKind] = useState<LakeAtResponse["kind"] | null>(null);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs, built entirely client-side since the backend endpoint itself is stateless (see
@@ -127,7 +142,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "plateInspector" || view === "riverInspector") return; // neither uses renderData -- see below
+    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector") return; // none of these use renderData -- see below
     try {
       const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
       setRenderData(data);
@@ -150,6 +165,15 @@ export default function App() {
       const data = await fetchRivers();
       setRiversData(data.rivers);
       setCoastlineSegments(data.coastline_segments);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const refreshLakes = useCallback(async () => {
+    try {
+      const data = await fetchLakes();
+      setLakesData(data.lakes);
     } catch (e) {
       setError(String(e));
     }
@@ -180,11 +204,13 @@ export default function App() {
       setSummary(s);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
+      setSelectedBasin(null);
+      setSelectedBasinKind(null);
       setShowGenerateDialog(false);
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
       setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -192,7 +218,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, autoPlates, numPlates,
-    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats,
+    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
   // Debounced so dragging a Controls slider doesn't fire a network request (and force a
@@ -230,14 +256,16 @@ export default function App() {
       const s = await stepWorld(stepYears);
       setSummary(s);
       setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), recordStats()]);
+      setSelectedBasin(null); // lakes are regrouped fresh every step too -- same reasoning
+      setSelectedBasinKind(null);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats]);
+  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -346,6 +374,7 @@ export default function App() {
               <option value="platesDetail">Plates (details)</option>
               <option value="plateInspector">Plate Inspector</option>
               <option value="riverInspector">River Inspector</option>
+              <option value="lakeInspector">Lake Inspector</option>
               <option value="elevation">Elevation</option>
               <option value="temperature">Temperature</option>
               <option value="wind">Wind</option>
@@ -417,6 +446,45 @@ export default function App() {
             </fieldset>
           )}
 
+          {mapView === "lakeInspector" && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Selected basin</legend>
+              {selectedBasin ? (
+                <div style={{ opacity: 0.9 }}>
+                  <div>{selectedBasin.is_lake ? `lake id: ${selectedBasin.lake_id}` : "dry basin (no standing water)"}</div>
+                  <div>nodes: {selectedBasin.member_count}</div>
+                  <div>lowest point: {selectedBasin.floor_elevation_m.toFixed(0)} m</div>
+                  {selectedBasin.is_lake && (
+                    <>
+                      <div>water level: {selectedBasin.water_elevation_m?.toFixed(0)} m</div>
+                      <div>{selectedBasin.is_spilling ? "spilling over its outlet" : "not currently spilling"}</div>
+                    </>
+                  )}
+                  <div>
+                    exit (edge low point):{" "}
+                    {selectedBasin.outlet_elevation_m != null ? `${selectedBasin.outlet_elevation_m.toFixed(0)} m` : "none known -- closed basin"}
+                  </div>
+                  <div style={{ marginTop: 6 }}>
+                    inflowing rivers: {selectedBasin.inflow_rivers.length === 0 ? "none" : ""}
+                  </div>
+                  {selectedBasin.inflow_rivers.map((r, i) => (
+                    <div key={i} style={{ paddingLeft: 8, opacity: 0.8 }}>
+                      - flow {r.flow_rate.toFixed(1)}, {r.num_nodes} nodes
+                    </div>
+                  ))}
+                </div>
+              ) : selectedBasinKind === "ocean" ? (
+                <div style={{ opacity: 0.6 }}>That's open ocean.</div>
+              ) : selectedBasinKind === "no_basin" ? (
+                <div style={{ opacity: 0.6 }}>This point drains straight to the ocean -- no enclosed basin here.</div>
+              ) : (
+                <div style={{ opacity: 0.6 }}>
+                  {lakesData.length > 0 ? "Click a lake or basin, or press Tab." : "Click any point on land to inspect its basin."}
+                </div>
+              )}
+            </fieldset>
+          )}
+
           {summary && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
@@ -460,6 +528,24 @@ export default function App() {
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
             />
+          ) : mapView === "lakeInspector" ? (
+            <LakeInspector
+              lakes={lakesData}
+              coastlineSegments={coastlineSegments}
+              width={RENDER_WIDTH}
+              height={RENDER_HEIGHT}
+              displayWidth={DISPLAY_WIDTH}
+              displayHeight={DISPLAY_HEIGHT}
+              projection={projection}
+              rotation={rotation}
+              selectedBasin={selectedBasin}
+              onSelect={(kind, basin) => {
+                setSelectedBasinKind(kind);
+                setSelectedBasin(basin);
+              }}
+              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+              onRotationCommitted={(newRotation) => setRotation(newRotation)}
+            />
           ) : (
             <MapCanvas
               imageBase64={renderData?.image_base64 ?? null}
@@ -485,7 +571,9 @@ export default function App() {
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
               : mapView === "riverInspector"
                 ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
-                : "Press and hold, then drag the map to rotate it."}
+                : mapView === "lakeInspector"
+                  ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
+                  : "Press and hold, then drag the map to rotate it."}
           </p>
         </div>
       </div>
