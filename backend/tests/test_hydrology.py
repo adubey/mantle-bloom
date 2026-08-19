@@ -37,13 +37,15 @@ def test_compute_flow_direction_sink_redirects_once_lake_reaches_spill_point():
     filled = np.array([50.0, 50.0, 20.0, -10.0])
     spill = np.array([2, 2, 3, -1])
 
-    not_yet_full = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4))
+    not_yet_full, not_yet_spilling = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4))
     assert not_yet_full[0] == -1  # water surface 30 < 50, still a plain sink
+    assert not not_yet_spilling[0]
 
-    now_full = hydrology._compute_flow_direction(
+    now_full, now_spilling = hydrology._compute_flow_direction(
         elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4)
     )
     assert now_full[0] == 2  # water surface 30+25=55 >= 50 -- redirects to spill_target
+    assert now_spilling[0]
 
 
 def test_route_downstream_accumulates_along_a_chain():
@@ -154,6 +156,60 @@ def test_compute_hydrology_end_to_end_on_a_small_synthetic_world():
     assert np.all(np.diff(land_accum) >= -1e-6)
 
 
+def test_lake_component_sizes_groups_connected_lake_nodes_and_ignores_dry_ones():
+    # 0-1-2 chain all flooded, node 3 (also flooded) reachable only from node 1 via a
+    # one-directional edge (1 lists 3 as a neighbor, 3 does not list 1 back) -- confirms
+    # sizing treats neighbor_idx as undirected, not just whatever direction happens to be
+    # listed. Node 4 is dry and must read 0 regardless of being graph-adjacent to lake nodes.
+    is_lake = np.array([True, True, True, True, False])
+    neighbor_idx = np.array([[1, 1], [2, 3], [1, 1], [1, 1], [2, 2]])
+
+    sizes = hydrology._lake_component_sizes(is_lake, neighbor_idx)
+    assert sizes.tolist() == [4, 4, 4, 4, 0]
+
+
+def test_lake_component_sizes_splits_disconnected_lakes():
+    # Two separate two-node ponds (0-1 and 2-3), never connected to each other.
+    is_lake = np.array([True, True, True, True])
+    neighbor_idx = np.array([[1], [0], [3], [2]])
+
+    sizes = hydrology._lake_component_sizes(is_lake, neighbor_idx)
+    assert sizes.tolist() == [2, 2, 2, 2]
+
+
+def test_compute_hydrology_spilling_lake_erodes_its_outlet_from_its_own_surface_area():
+    # A 22-node line: an upland ramp (0-9) feeding a sink (10) sitting behind a barrier
+    # (11-13, peaking at 300) that descends to the ocean (19-21). filled_elevation[10] works
+    # out to 200 (the true minimal-bottleneck crossing, confirmed directly against this exact
+    # layout) -- lake_depth[10]=160 puts the sink's water surface at 50+160=210, over that
+    # cap, so it's actively spilling this step.
+    d = 0.002
+    theta = d * np.arange(22)
+    elevation = np.array(
+        [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
+        + [50.0]
+        + [250.0, 300.0, 260.0, 200.0, 150.0, 100.0, 50.0, 20.0]
+        + [-10.0, -50.0, -100.0]
+    )
+    lake_depth = np.zeros(22)
+    lake_depth[10] = 160.0
+
+    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=elevation, lake_depth=lake_depth)
+    plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate])
+
+    precipitation_at_nodes = np.full(22, 10.0)  # small -- the breach term should dominate
+    temperature_at_nodes = np.full(22, 15.0)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+
+    # A single-node lake (only node 10 is above LAKE_MIN_VISIBLE_DEPTH_M), so the breach term
+    # there is exactly one component-size's worth of LAKE_BREACH_EROSION_COEFFICIENT --
+    # dwarfing the handful of small precip contributions reaching the same node.
+    assert fields.flow_accum[10] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    assert fields.flow_accum[10] < hydrology.LAKE_BREACH_EROSION_COEFFICIENT * 1.1
+
+
 def test_channel_depth_and_lake_depth_persist_across_boundary_and_erosion_steps():
     # A direct regression check on the field-threading work: a node's channel_depth/
     # lake_depth must survive being touched by boundary.py (which runs every step, before
@@ -190,11 +246,11 @@ def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_ste
     filled = np.array([30.0, 20.0, 25.0])
     spill = np.full(3, -1)
 
-    steepest = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3))
+    steepest, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3))
     assert steepest[0] == 1  # no channel anywhere -- plain steepest descent
 
     channel_depth = np.array([0.0, 0.0, 50.0])  # node 2's channel is well-established
-    channelized = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
+    channelized, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
     assert channelized[0] == 2  # prefers the channelized neighbor even though it's less steep
 
 
@@ -208,7 +264,7 @@ def test_compute_flow_direction_ignores_a_barely_established_channel():
     spill = np.full(3, -1)
     channel_depth = np.array([0.0, 0.0, hydrology.CHANNEL_PREFERENCE_THRESHOLD_M - 1.0])
 
-    result = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
+    result, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
     assert result[0] == 1
 
 

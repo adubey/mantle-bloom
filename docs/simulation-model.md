@@ -1221,6 +1221,25 @@ river's own classification ends at the lake's shore rather than jumping straight
 water to whatever's on the far side, even though the water itself (`flow_target`/`flow_accum`)
 still physically continues through if the lake is spilling.
 
+**A spilling lake erodes its own outlet hard**, proportional to the lake's own surface area,
+not just the ordinary precipitation-driven flow passing through that one channel node. Once a
+sink's `should_spill` fires (see `_compute_flow_direction`), `compute_hydrology` adds an extra
+term into `water_source` right there -- `LAKE_BREACH_EROSION_COEFFICIENT` times the node count
+of that lake's own connected component (`_lake_component_sizes`, a union-find grouping over
+the same k-NN graph flow routing uses; no separate "physical area" concept exists elsewhere in
+this codebase, so node count is the same implicit area proxy `flow_accum` itself already
+relies on). That extra term then rides `route_downstream` downstream through the whole outflow
+channel exactly like real precipitation would, so it's already fully picked up by erosion.py's
+existing river-erosion and channel-growth formulas with no changes needed there -- both
+channel_depth and channel_width grow from it automatically. This models a real phenomenon a
+plain per-node flow_accum can't: a large standing lake finding an outlet carries far more
+erosive force at that point than an equivalent ordinary river of the same instantaneous
+discharge, because the whole reservoir sits behind a narrow breach rather than just whatever
+rain fell immediately upstream this step -- confirmed directly against a real generated world
+that a several-hundred-node lake's breach source (in the low millions) dwarfs the handful of
+millimeters of ordinary precipitation reaching that same point, carving its spillway down
+hard rather than leaving a shallow, precipitation-scale groove.
+
 **Channel width** (`channel_width`, grown in `erosion.py` alongside `channel_depth`) is a
 mantle-bloom addition, not a plate-sim port: standard hydraulic-geometry scaling (width ~
 discharge^0.5, the same discharge exponent `RIVER_EROSION_COEFFICIENT`'s own stream-power law

@@ -51,6 +51,15 @@ Flow *routing* itself also isn't pure steepest descent: `_compute_flow_direction
 downhill neighbor that already has a real, established channel over the literal lowest one,
 so a river stays in its own valley rather than recalculating the mathematically steepest path
 every step -- real rivers meander within, not across, their banks.
+
+**A lake that finds a way out erodes its outlet hard.** Once a lake is actively spilling
+(`should_spill`, from `_compute_flow_direction`), `compute_hydrology` injects extra "water"
+at its sink sized by the lake's own connected surface area (node count), which then rides
+`route_downstream` through the whole outflow channel like real precipitation would -- so
+erosion.py's existing river-erosion and channel-growth formulas, unchanged, carve that
+spillway into a real, deep channel proportional to how big the lake behind it actually is,
+not just the trickle of ordinary flow passing through that one point (see
+`LAKE_BREACH_EROSION_COEFFICIENT`).
 """
 
 from __future__ import annotations
@@ -124,6 +133,23 @@ MAX_LAKE_DEPTH_CHANGE_M_PER_MYR = 20.0
 # were already wet last step cost nothing to keep -- this only throttles growth into land the
 # lake did not already occupy.
 MAX_LAKE_NEW_HOPS_PER_MYR = 0.5
+
+# A spilling lake's outlet channel erodes based on the *lake's* own surface area, not just
+# the ordinary precip-routed flow passing through that one node. Real overflowing lakes carry
+# far more erosive force at their outlet than an equivalent plain river of the same
+# instantaneous discharge -- the whole standing body sits behind a narrow breach, not just
+# whatever rain happened to fall immediately upstream this step -- and this is what actually
+# cuts a lake's spillway down into a real gorge over time rather than a shallow trickle-carved
+# groove. Expressed as an extra term added directly into `water_source` (in the same units as
+# precipitation) at whichever sink node is spilling this step, sized by node-count of that
+# lake's connected component (see `_lake_component_sizes` -- no separate "physical area"
+# concept exists anywhere else in this codebase, so node count is the same implicit area
+# proxy `flow_accum` itself already relies on). It then rides the ordinary `route_downstream`
+# machinery downstream through the whole outflow channel to the sea exactly like real
+# precipitation would, so erosion.py's existing river-erosion/channel-width formulas pick it
+# up completely unchanged -- both channel_depth and channel_width grow from it automatically,
+# "digging a deep channel out" without needing a second, parallel erosion pathway.
+LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 
 # Glaciers -- ported closer to plate-sim's own values than the lake evaporation rate needed
 # re-scaling: these are flat per-Myr rates (linear in dt_myr), not plate-sim's own
@@ -269,6 +295,47 @@ def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
     return np.array(cost), np.array(spill_target, dtype=np.int64)
 
 
+def _lake_component_sizes(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
+    """Per-node size (node count) of the connected `is_lake` component containing that node,
+    0 for every non-lake node -- a same-lake grouping via union-find over `neighbor_idx`'s
+    edges, treated as **undirected** here even though the k-NN graph itself isn't strictly
+    symmetric (a node isn't guaranteed to be among its own neighbor's k nearest). Unlike
+    `_flood_fill_lake_extent`'s directed traversal (fine for its own purpose, spreading a
+    water *level* outward from a seed), a size count needs two lake nodes joined by only a
+    one-directional edge to still read as the same lake, not be split apart by an accident of
+    which node happens to list the other as one of its own nearest neighbors."""
+    n = len(is_lake)
+    if not np.any(is_lake):
+        return np.zeros(n, dtype=np.int64)
+
+    parent = list(range(n))
+
+    def find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    lake_list = is_lake.tolist()
+    neighbor_list = neighbor_idx.tolist()
+    for i in range(n):
+        if not lake_list[i]:
+            continue
+        for j in neighbor_list[i]:
+            if lake_list[j]:
+                ri, rj = find(i), find(j)
+                if ri != rj:
+                    parent[ri] = rj
+
+    lake_idx = np.nonzero(is_lake)[0]
+    roots = np.array([find(i) for i in lake_idx.tolist()])
+    _, inverse, counts = np.unique(roots, return_inverse=True, return_counts=True)
+
+    sizes = np.zeros(n, dtype=np.int64)
+    sizes[lake_idx] = counts[inverse]
+    return sizes
+
+
 def _compute_flow_direction(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -277,7 +344,7 @@ def _compute_flow_direction(
     filled_elevation: np.ndarray,
     spill_target: np.ndarray,
     prev_channel_depth: np.ndarray,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Flow target per node, among its k nearest neighbors strictly below its own elevation
     (a downhill candidate) -- preferring whichever candidate already has the deepest
     established channel (`prev_channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`), falling back
@@ -291,7 +358,14 @@ def _compute_flow_direction(
     "memory" plate-sim's own compute_flow_direction relies on) has already reached its
     basin's true spill point, in which case it redirects to spill_target instead of staying
     a dead-end sink forever. Ocean nodes are never routed (they're a destination, not a
-    source)."""
+    source).
+
+    Also returns `should_spill`, the exact per-node mask of which sinks got redirected this
+    way -- `compute_hydrology` needs this specific mask (not something recomputed after the
+    fact from `flow_target == spill_target`, which could false-positive on an ordinary
+    steepest-descent node that happens to coincide with a neighboring basin's spill_target) to
+    know which lakes just found a real outlet, for the breach-erosion term (see its own
+    docstring in `compute_hydrology`)."""
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
@@ -315,7 +389,8 @@ def _compute_flow_direction(
     water_surface = elevation + prev_lake_depth
     should_spill = is_sink & (water_surface >= filled_elevation)
     flow_target = np.where(should_spill, spill_target, flow_target).astype(np.int64)
-    return np.where(is_ocean, -1, flow_target).astype(np.int64)
+    flow_target = np.where(is_ocean, -1, flow_target).astype(np.int64)
+    return flow_target, should_spill
 
 
 def _slope_to_flow_target(points: np.ndarray, elevation: np.ndarray, flow_target: np.ndarray) -> np.ndarray:
@@ -603,13 +678,18 @@ def update_lakes(
 def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temperature_at_nodes: np.ndarray, years: float) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->
-    glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater downstream
-    accumulation -> lake growth/evaporation (now a whole-basin flood fill, not just the
-    single sink node) -> river classification (now excluding flooded lake nodes, so a river
-    ends at a lake's shore rather than being treated as continuing through it -- see
-    `update_lakes`/`_flood_fill_lake_extent`). `precipitation_at_nodes`/`temperature_at_nodes`
-    are precomputed by the caller (erosion.py, which already needs the same climate-grid
-    lookups for its own erosion terms) rather than looked up again here.
+    glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
+    breach downstream accumulation -> lake growth/evaporation (now a whole-basin flood fill,
+    not just the single sink node) -> river classification (now excluding flooded lake nodes,
+    so a river ends at a lake's shore rather than being treated as continuing through it --
+    see `update_lakes`/`_flood_fill_lake_extent`). A lake that's actively spilling this step
+    also adds `LAKE_BREACH_EROSION_COEFFICIENT`-scaled extra "water" into the routed total at
+    its own sink, sized by its connected lake's own node count (see that constant's own
+    comment) -- so `flow_accum`, and everything erosion.py derives from it (river erosion,
+    channel_depth/channel_width growth), reflects a spilling lake's real erosive force, not
+    just the ordinary precip passing through that one node. `precipitation_at_nodes`/
+    `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
+    same climate-grid lookups for its own erosion terms) rather than looked up again here.
 
     A node colder than GLACIER_ACCUMULATION_TEMP_C never holds liquid water at all: any
     precipitation there is treated as fully frozen (no partial liquid/frozen split like
@@ -637,7 +717,7 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
     frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
 
-    flow_target = _compute_flow_direction(
+    flow_target, should_spill = _compute_flow_direction(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth
     )
 
@@ -649,7 +729,14 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
         elevation, is_ocean, flow_target, slope_to_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_accumulating, temperature_at_nodes, years
     )
 
-    water_source = liquid_precip + melt
+    # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of
+    # whatever ordinary precip/melt landed there this step -- see LAKE_BREACH_EROSION_
+    # COEFFICIENT's own comment for why. Sized from *last* step's lake extent (lake_depth_
+    # adjusted), the same one-step-lagged memory should_spill itself is already computed from.
+    lake_component_size = _lake_component_sizes(lake_depth_adjusted > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
+    lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
+
+    water_source = liquid_precip + melt + lake_breach_source
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source)
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
