@@ -83,47 +83,6 @@ def test_route_downstream_retain_fraction_deposits_partway():
     assert np.isclose(deposited.sum(), source.sum())
 
 
-def test_update_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
-    not_accumulating = np.zeros(2, dtype=bool)
-    fields = hydrology.HydrologyFields(
-        points=np.zeros((2, 3)),
-        elevation=np.array([10.0, -5.0]),
-        is_ocean=np.array([False, True]),
-        neighbor_idx=np.zeros((2, 1), dtype=np.int64),
-        flow_target=np.array([-1, -1]),
-        flow_accum=np.zeros(2),
-        water_deposited=np.array([50.0, 0.0]),  # a lot of water settled at the sink this step
-        filled_elevation=np.array([25.0, -5.0]),  # sink's basin spills at elevation 25
-        spill_target=np.array([-1, -1]),
-        is_river=np.zeros(2, dtype=bool),
-        lake_depth=np.zeros(2),
-        glacier_depth=np.zeros(2),
-        line_refs=[],
-    )
-    grown = hydrology.update_lakes(
-        fields, prev_lake_depth=np.zeros(2), water_deposited=fields.water_deposited, years=1_000_000, is_accumulating=not_accumulating
-    )
-    assert grown[0] > 0.0  # grew from inflow
-    assert grown[0] <= 25.0 - 10.0  # never exceeds the basin's true spill depth
-    assert grown[1] == 0.0  # never touches ocean
-
-    # A lake already sitting at its cap should stay pinned there, not evaporate back down --
-    # water_deposited=0 here (nothing new arriving) but it must still hold near the cap.
-    at_cap = hydrology.update_lakes(
-        fields, prev_lake_depth=np.array([15.0, 0.0]), water_deposited=np.zeros(2), years=1_000_000, is_accumulating=not_accumulating
-    )
-    assert at_cap[0] > 10.0  # decays some (evaporation), but nowhere near back to 0
-
-    # Now cold enough to freeze -- a just-frozen sink (prev_lake_depth already zeroed by the
-    # caller, see compute_hydrology's own freeze conversion) must not re-fill from this
-    # step's inflow even though water_deposited is nonzero there.
-    freezing = np.array([True, False])
-    frozen = hydrology.update_lakes(
-        fields, prev_lake_depth=np.zeros(2), water_deposited=fields.water_deposited, years=1_000_000, is_accumulating=freezing
-    )
-    assert frozen[0] == 0.0
-
-
 def _flow_line_plate(plate_id, theta, elevation):
     frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
     theta = np.asarray(theta, dtype=float)
@@ -266,126 +225,6 @@ def test_compute_flow_direction_ignores_a_barely_established_channel():
 
     result, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
     assert result[0] == 1
-
-
-def test_flood_fill_lake_extent_covers_every_node_below_the_seed_water_surface():
-    # A basin: node 0 is the sink (seeded), nodes 1/2 are shallower but still below a
-    # generous water surface, node 3 is above it (dry shoreline, never flooded).
-    elevation = np.array([10.0, 12.0, 14.0, 20.0])
-    is_ocean = np.zeros(4, dtype=bool)
-    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1], [0, 1]])
-    seed_mask = np.array([True, False, False, False])
-    water_surface = np.array([15.0, 0.0, 0.0, 0.0])  # only the seed's own entry is read
-
-    prev_wet_mask = np.zeros(4, dtype=bool)
-    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=10)
-    assert result.tolist() == [5.0, 3.0, 1.0, 0.0]  # 15-10, 15-12, 15-14, dry (20 >= 15)
-
-
-def test_flood_fill_lake_extent_never_floods_ocean():
-    elevation = np.array([10.0, -5.0])
-    is_ocean = np.array([False, True])
-    neighbor_idx = np.array([[1], [0]])
-    seed_mask = np.array([True, False])
-    water_surface = np.array([50.0, 0.0])  # would easily submerge the ocean node too, if allowed
-
-    prev_wet_mask = np.zeros(2, dtype=bool)
-    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=10)
-    assert result[1] == 0.0
-
-
-def test_flood_fill_lake_extent_limits_growth_into_brand_new_territory():
-    # A 4-node chain 0-1-2-3, all below the seed's generous water surface. None were wet last
-    # step, so each additional hop away from the seed costs one unit of the new-territory hop
-    # budget -- with max_new_hops=1, only the seed and its immediate neighbor may be claimed
-    # this step, even though nodes 2/3 are also below the water surface.
-    elevation = np.array([10.0, 11.0, 12.0, 13.0])
-    is_ocean = np.zeros(4, dtype=bool)
-    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
-    seed_mask = np.array([True, False, False, False])
-    water_surface = np.array([20.0, 0.0, 0.0, 0.0])
-    prev_wet_mask = np.zeros(4, dtype=bool)
-
-    result = hydrology._flood_fill_lake_extent(
-        elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=1
-    )
-    assert result.tolist() == [10.0, 9.0, 0.0, 0.0]  # nodes 2/3 unreached at this hop budget
-
-
-def test_flood_fill_lake_extent_does_not_hop_limit_already_wet_territory():
-    # Same chain, but nodes 1 and 2 were already wet last step -- passing through them should
-    # cost nothing, so node 3 (one new hop beyond the already-wet region) is still reachable
-    # even at max_new_hops=1.
-    elevation = np.array([10.0, 11.0, 12.0, 13.0])
-    is_ocean = np.zeros(4, dtype=bool)
-    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
-    seed_mask = np.array([True, False, False, False])
-    water_surface = np.array([20.0, 0.0, 0.0, 0.0])
-    prev_wet_mask = np.array([False, True, True, False])
-
-    result = hydrology._flood_fill_lake_extent(
-        elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=1
-    )
-    assert result.tolist() == [10.0, 9.0, 8.0, 7.0]  # all reachable -- 1/2 free, 3 costs one hop
-
-
-def test_update_lakes_caps_depth_change_per_step():
-    # A sink with an enormous amount of new inflow in one step would, without a rate limit,
-    # jump straight up to its basin's (very deep) spill cap in a single step. The per-step
-    # rate limit should instead cap how much this node's depth may actually change.
-    not_accumulating = np.zeros(2, dtype=bool)
-    fields = hydrology.HydrologyFields(
-        points=np.zeros((2, 3)),
-        elevation=np.array([10.0, -5.0]),
-        is_ocean=np.array([False, True]),
-        neighbor_idx=np.zeros((2, 1), dtype=np.int64),
-        flow_target=np.array([-1, -1]),
-        flow_accum=np.zeros(2),
-        water_deposited=np.array([1_000_000.0, 0.0]),  # huge inflow this step
-        filled_elevation=np.array([5000.0, -5.0]),  # basin could theoretically hold ~4990m
-        spill_target=np.array([-1, -1]),
-        is_river=np.zeros(2, dtype=bool),
-        lake_depth=np.zeros(2),
-        glacier_depth=np.zeros(2),
-        line_refs=[],
-    )
-    grown = hydrology.update_lakes(
-        fields, prev_lake_depth=np.zeros(2), water_deposited=fields.water_deposited, years=1_000_000, is_accumulating=not_accumulating
-    )
-    assert 0.0 < grown[0] <= hydrology.MAX_LAKE_DEPTH_CHANGE_M_PER_MYR  # capped well short of the ~4990m basin cap
-
-
-def test_update_lakes_floods_a_whole_basin_not_just_the_sink():
-    # Same shape as test_update_lakes_grows_at_a_sink_and_caps_at_the_spill_point, but with a
-    # second land node (2) in the same basin, shallower than the sink and reachable via
-    # neighbor_idx -- once the sink accumulates enough water, node 2 should show up as
-    # flooded too, at a shallower depth than the sink itself.
-    # water_deposited=50 over 1 Myr grows the sink to depth 5.5 (see
-    # test_update_lakes_grows_at_a_sink_and_caps_at_the_spill_point for the same arithmetic),
-    # a water surface of 10+5.5=15.5 -- node 2 (elevation 12) sits below that, node 1 is ocean.
-    not_accumulating = np.zeros(3, dtype=bool)
-    fields = hydrology.HydrologyFields(
-        points=np.zeros((3, 3)),
-        elevation=np.array([10.0, -5.0, 12.0]),
-        is_ocean=np.array([False, True, False]),
-        neighbor_idx=np.array([[2, 2], [0, 0], [0, 0]], dtype=np.int64),
-        flow_target=np.array([-1, -1, -1]),
-        flow_accum=np.zeros(3),
-        water_deposited=np.array([50.0, 0.0, 0.0]),
-        filled_elevation=np.array([25.0, -5.0, 25.0]),
-        spill_target=np.array([-1, -1, -1]),
-        is_river=np.zeros(3, dtype=bool),
-        lake_depth=np.zeros(3),
-        glacier_depth=np.zeros(3),
-        line_refs=[],
-    )
-    grown = hydrology.update_lakes(
-        fields, prev_lake_depth=np.zeros(3), water_deposited=fields.water_deposited, years=1_000_000, is_accumulating=not_accumulating
-    )
-    assert grown[0] > 0.0  # the sink itself
-    assert grown[2] > 0.0  # flooded too -- part of the same basin, below the water surface
-    assert grown[2] < grown[0]  # shallower than the sink (elevation 18 vs. sink's own 10)
-    assert grown[1] == 0.0  # never touches ocean
 
 
 def test_rivers_never_overlap_lakes_in_a_real_stepped_world():
@@ -580,6 +419,24 @@ def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_step
     # -- just confirms boundary.py didn't wipe the whole world's ice to exactly 0.
     assert glacier_total_1 > 0.0
     assert glacier_total_2 > 0.0
+
+
+def test_silt_depth_persists_across_boundary_and_erosion_steps():
+    # Regression check on silt_depth's own field-threading (plates.py/boundary.py/
+    # line_regrid.py/reassign.py/merge_split.py) -- same shape as the channel/lake/glacier
+    # persistence test above: confirms boundary.py (which runs every step, before erosion.py
+    # sets silt_depth) doesn't silently reset it to 0, and that it's actually accumulating
+    # somewhere after several steps of real lake inflow.
+    world = generate_world(seed=34, num_plates=10, continental_fraction=0.5)
+    for _ in range(6):
+        step_world(world, years=2_000_000)
+
+    silt_total_1 = sum(line.silt_depth.sum() for p in world.plates for line in p.lines)
+    step_world(world, years=2_000_000)  # boundary.step_boundaries runs first here again
+    silt_total_2 = sum(line.silt_depth.sum() for p in world.plates for line in p.lines)
+
+    assert silt_total_1 > 0.0
+    assert silt_total_2 > 0.0
 
 
 def _normalize(v):

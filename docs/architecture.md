@@ -141,7 +141,7 @@ Each `Plate` (`backend/app/plates.py`) is:
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
-  line also carries `channel_depth`/`channel_width`/`lake_depth`/`glacier_depth`
+  line also carries `channel_depth`/`channel_width`/`lake_depth`/`silt_depth`/`glacier_depth`
   (persistent, land-only -- see simulation-model.md#hydrology and
   simulation-model.md#glaciation) and `is_volcano`/`volcano_active_years_remaining`
   (persistent -- see simulation-model.md#volcanism) as ordinary parallel arrays right
@@ -204,7 +204,7 @@ erosion.py           every-step rain/river/weathering/glacier erosion + downstre
                      the coupling; climate.py's own elevation-reading mechanics (lapse rate,
                      mountain wind deflection, orographic rain shadow) are the other half
 hydrology.py         every-step flow routing over the geology node cloud (a k-nearest-
-                     neighbor graph, not a grid): basin-spill/lake detection, steepest-
+                     neighbor graph, not a grid): basin-spill detection, steepest-
                      descent flow direction, downstream flow accumulation, glacier
                      accumulation/melt/flow -- feeds erosion.py's river/glacier erosion and
                      deposition and the rendered river/lake/glacier overlay (see
@@ -213,6 +213,11 @@ hydrology.py         every-step flow routing over the geology node cloud (a k-ne
                      (group_rivers) and answers the River Inspector's click hit-test
                      (river_at), on demand rather than every step (see
                      simulation-model.md#river-inspector)
+lakes.py              every-step lake growth/evaporation/merge/split/silt, an explicit n-ary
+                     tree of Lake objects built from a depression-hierarchy pass over
+                     hydrology.py's own k-NN graph -- called from hydrology.compute_hydrology,
+                     projects back down into the same flat lake_depth array every other
+                     consumer already reads (see simulation-model.md#lakes-are-an-explicit-tree)
 bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
                      (near land) or deep-water (far from land) target elevation (see
                      simulation-model.md#bathymetry)

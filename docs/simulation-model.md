@@ -1097,8 +1097,9 @@ there (a floodplain or delta) instead of continuing on; the rest keeps going, ev
 reaching either another depositing node, an internal sink, or the coast (where it can raise
 an *ocean* node's own elevation -- a river delta building outward is real, intended
 behavior, not a bug). `line.elevation`, `line.channel_depth` (this module's own), and
-`line.lake_depth`/`line.glacier_depth` (state transitions owned by `hydrology.py`, read
-directly from `World.hydrology_cache` -- see [Hydrology](#hydrology)) all get written back
+`line.lake_depth`/`line.glacier_depth`/`line.silt_depth` (state transitions owned by
+`hydrology.py`/`lakes.py`, read directly from `World.hydrology_cache` -- see
+[Hydrology](#hydrology)) all get written back
 together per line -- no resampling, no topology change, so none of this can interact with
 line regularization or point reassignment at all.
 
@@ -1157,7 +1158,8 @@ passes), then runs the same three algorithms directly on it.
 **Persistence comes for free.** A fixed-grid tectonic model has plates moving relative to
 its grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian
 advection every step just to keep following the crust. mantle-bloom's elevation-line nodes
-already rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`, and
+already rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`,
+`silt_depth` (see [Lakes](#lakes-are-an-explicit-tree) below), and
 `glacier_depth` (see [Glaciation](#glaciation)), stored as ordinary parallel arrays on
 `ElevationLine` right alongside `elevation` itself (see
 [Why not a grid](#why-not-a-grid)), get that same "just works" persistence for free -- no
@@ -1195,11 +1197,14 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
 
 **The three algorithms**, all operating on the k-NN graph:
 
-- **Basin-spill / lake detection** (`_compute_basin_spill`): a multi-source Dijkstra seeded
+- **Basin-spill** (`_compute_basin_spill`): a multi-source Dijkstra seeded
   from every ocean node, relaxing by *max* (the highest point a path is forced to cross)
   rather than by sum -- a minimax path cost, not a shortest path. Nested sub-basin chains
   collapse to one hop each, cycle-free by construction -- necessary because a naive
-  single-neighbor check can't see past more than one nested rim.
+  single-neighbor check can't see past more than one nested rim. Still used for flow
+  *routing* (`_compute_flow_direction`'s `should_spill`, below) -- lake *detection* itself now
+  lives in `lakes.py`'s own, different (nested-basin-aware) algorithm, see
+  [Lakes](#lakes-are-an-explicit-tree) below.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -1224,61 +1229,84 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   not needed, and this module already drops temperature-driven effects on
   hydrology to match erosion.py's own "precipitation is enough" simplification.
 
-**Lakes** (`update_lakes`) fill their whole basin, not just one single node, and persist
-gradually across steps rather than snapping instantly to whatever their basin's current
-geometry would technically allow. Every node that held any water *last* step
-(`prev_lake_depth > 0`) evaporates its own depth forward independently and becomes its own
-flood-fill seed this step, alongside whichever node is this step's literal sink (gaining fresh
-inflow from `route_downstream`'s own `deposited` output there). This is a deliberate departure
-from an earlier, simpler design that gated all lake growth/persistence directly off of
-`flow_target < 0` (the literal sink identity): that specific node can change from one step to
-the next for entirely ordinary reasons (erosion/deposition flipping which point is locally
-lowest, or a lake finishing filling and `_compute_flow_direction` correctly redirecting its
-own sink away from `-1` toward `spill_target` so it can drain) -- confirmed directly as a real
-bug, a lake's total volume swinging by two-plus orders of magnitude step to step with nothing
-physical actually having changed. Letting every previously-wet node carry its own depth
-forward sidesteps needing any "which node represents this basin" identity at all; mutually
-reachable seeds simply merge into one flood via the flood-fill's own reachability.
-`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` were tuned specifically
-for this codebase's own step granularity -- confirmed directly, a naive value scaled for
-much finer internal substeps evaporated a lake with no new inflow
-from 15m to exactly 0 within a single 1 Myr step, well beyond mantle-bloom's typical 1-10 Myr
-step; rescaled down to be consistent with this
-codebase's other already-tuned relaxation rates at its own actual step granularity
-(`boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5`, `bathymetry.BATHYMETRY_RELAX_RATE_PER_MYR =
-0.3`), each node's own carried depth still capped at its basin's true spill depth
-(`filled_elevation - elevation`) -- this avoids an oscillation failure mode a naive
-version falls into (a full lake that evaporates even slightly un-redirects its `flow_target`
-back to a sink, refills, and oscillates forever instead of settling as a real, continuously-
-draining lake).
+<a id="lakes-are-an-explicit-tree"></a>
+**Lakes are an explicit object tree (`lakes.py`, not `hydrology.py`)**, replacing an earlier
+flat per-node flood-fill design (`update_lakes`/`_flood_fill_lake_extent`, since removed).
+That design fixed a real bug of its own (letting every previously-wet node, not just the
+literal sink, carry its own depth forward and become a flood-fill seed -- see the surrounding
+history preserved in `hydrology.py`'s own module docstring), but even with two added rate
+limits (a hop budget on growth into new territory, a hard cap on per-node depth change per
+step) it only bounded how *fast* a lake's flood-fill could grow, not whether it ever reached a
+real equilibrium: a sufficiently large, gently-sloped catchment could keep creeping outward
+step after step without ever stopping. `lakes.py` instead computes each basin's actual
+floor/rim geometry directly, so a lake's maximum extent is known immediately rather than
+discovered incrementally, which is what actually fixes that runaway-growth failure mode.
 
-`_flood_fill_lake_extent` then spreads every seed's own current water surface outward over the
-same k-NN flow graph to every other node actually below it, so a lake that's still filling
-covers less area than its basin's full theoretical capacity, growing and shrinking in step
-with how much water has actually accumulated -- a mantle-bloom addition, filling a lake's
-whole basin rather than treating it as a single node. Seeds are processed highest-water-
-surface-first so a taller, more-capacious seed claims shared territory over a weaker
-neighboring one, rather than a small low seed processed first "shadowing" it out.
+The core data structure is `lakes.Lake`: an n-ary tree built by `build_lake_hierarchy`, a
+two-phase algorithm distinct from `_compute_basin_spill` above (which only finds one
+component's own bottleneck to the ocean, with no notion of *nested* sub-basins merging with
+each other first) -- a "depression hierarchy" / "watershed by immersion" technique (Barnes et
+al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k-NN graph:
 
-On top of that, two more rate limits keep a lake's *observable* size changing gradually even
-when the underlying basin geometry would technically allow an instant jump -- confirmed
-directly that the identity fix above was not sufficient on its own: a large, gently-sloped
-basin sitting almost entirely below one seed's water surface could still be claimed by the
-flood-fill in a single step (mean depth per node stayed modest, but total area, and so total
-volume, still jumped 100x-800x in some tested worlds). First, `_flood_fill_lake_extent` takes
-a `max_new_hops` budget (`MAX_LAKE_NEW_HOPS_PER_MYR * years`): a node that wasn't already wet
-last step costs one hop to claim, so a lake's edge can only advance a limited number of
-graph-hops into new territory per step, like a real flood front, while nodes already wet cost
-nothing to keep (a lake that's merely persisting is never hop-limited, only its growth beyond
-where it already was). Second, the whole per-node result is clamped against `prev_lake_depth`
-by `MAX_LAKE_DEPTH_CHANGE_M_PER_MYR`, a hard cap on how much any single node's own depth may
-rise or fall in one step. Together these make a large lake's size change gradually over many
-steps rather than in one -- a big lake takes a long time to fill or evaporate, and never just
-appears or vanishes in a single turn.
+- **Phase 1** assigns every node to the catchment of the true local minimum its own *pure*
+  steepest descent (not `_compute_flow_direction`'s channel-biased version -- a routing
+  concern, orthogonal to basin geometry) eventually drains to, or marks it as draining
+  straight to the ocean if that chain never passes through a land local minimum first. Without
+  this phase, a naive merge over every raw graph edge would wrongly treat every intermediate
+  ridge/rim node passed on the way down to the ocean as its own trivial one-node "lake"
+  (confirmed directly during development). Every genuine catchment gets a leaf `Lake` eagerly,
+  not lazily on first merge -- a catchment that never merges with anything (a real, fully
+  enclosed endorheic basin with no ocean anywhere reachable) would otherwise never get a `Lake`
+  object at all, despite being exactly the "no known spill, could fill indefinitely" case this
+  needs to represent.
+- **Phase 2** walks catchment-boundary edges (weighted by `max(elevation[i], elevation[j])`,
+  the saddle/col height a path between them is forced to cross) in ascending order,
+  union-finding catchments together -- Kruskal's minimum-spanning-tree construction, except
+  the "tree" being built is the *merge tree* of the elevation field itself. A lake's own
+  `max_depth` is just the elevation of the very next merge event it takes part in, whether that
+  unions it with a sibling lake (creating a parent, whose own `min_depth` is that same
+  elevation -- "the point where the basins split") or with the ocean (finalizing it as a root)
+  -- both are "reaching the top of the basin," one spilling to another basin, the other to the
+  sea.
+
+Each step, `lakes.step_lakes` rebuilds this hierarchy from scratch (`elevation +
+prev_silt_depth`, not bare `elevation` -- see below) -- consistent with `flow_target`/
+`flow_accum` above being recomputed fresh every step rather than advected -- then resolves
+every lake's own water balance top-down: evaporate `prev_level`'s depth (same
+`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` constants and tuning
+rationale the old per-node design already used), grow from this step's own inflow (the sum of
+`route_downstream`'s `water_deposited` over every one of the lake's own members, since more
+than one can be a true sink once several originally separate basins have merged), spread as a
+level rise over the lake's own member count (the same area proxy `_lake_component_sizes`/
+`LAKE_BREACH_EROSION_COEFFICIENT` already use), clipped to `[floor_elevation, max_depth]`.
+Tracking a lake's level as one scalar shared by every member, rather than a per-node depth, is
+what removes the old design's threshold-crossing failure mode entirely. Merge/split
+transitions fall out of comparing this against each lake's own `min_depth`: a still-separate
+child whose own new level reaches its parent's saddle promotes to one merged body (pinned at
+exactly the saddle, continuity); an already-merged lake whose new level recedes below its own
+saddle demotes back into its children (both starting at exactly the saddle, continuity in
+reverse). No cross-step `Lake`-object registry is needed for any of this -- see
+`lakes.py`'s own module docstring for why continuity is instead derived from the same
+persisted `lake_depth` array (`elevation + prev_lake_depth`, the same "last step's water
+surface" the old per-node design itself already used) rather than matching this step's
+freshly-rebuilt tree against last step's by member-overlap, which would be fragile to a tree's
+exact shape shifting from ordinary terrain churn even when nothing physical about the lake
+changed.
+
+**Lakes accumulate silt.** `silt_depth` (a new persistent per-node array, threaded through
+`boundary.py`/`line_regrid.py`/`reassign.py`/`merge_split.py` exactly like `lake_depth`) is a
+small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
+(monotonically -- silt never erodes back away) on a lake's own bed. `build_lake_hierarchy`
+is given `elevation + silt_depth`, not bare elevation, so a lake's own floor rises as silt
+accumulates without touching the real terrain `elevation` other modules read -- a small,
+low-inflow lake can plausibly silt in entirely over a long enough run: once its floor has
+risen to meet the surrounding rim, it stops registering as a local minimum at all (steepest
+descent no longer sees a depression there), and the lake disappears outright, exactly the
+"reaches ground level" case a lake should eventually hit.
 
 A river's own `flow_target` can point at a node that's genuinely part of a lake (real inflow),
 but a flooded node is never itself classified `is_river` -- checked against this step's
-*final* lake extent, after `update_lakes` runs, not the flat land/ocean split alone -- so a
+*final* lake extent, after `lakes.step_lakes` runs, not the flat land/ocean split alone -- so a
 river's own classification ends at the lake's shore rather than jumping straight across the
 water to whatever's on the far side, even though the water itself (`flow_target`/`flow_accum`)
 still physically continues through if the lake is spilling.
@@ -1334,12 +1362,11 @@ since picking a minor tributary out of the full list is exactly what that view i
 Confirmed live on a real run: river networks render as visibly branching, dendritic
 drainage patterns converging toward coasts and lake basins, matching real-world drainage
 network shapes; channel_depth grows from 0 to several hundred meters over tens of Myr
-without instantly saturating at `MAX_CHANNEL_DEPTH_M`; lakes form, persist, and fluctuate
-in count/depth across many steps rather than either vanishing or ratcheting monotonically
-upward; `is_river & is_lake` never overlaps on a real stepped world (a river's own
-classification genuinely stops at a lake's shore); a majority of a real lake's own flooded
-nodes are its own sink, the rest neighbors the flood-fill actually reached, not a majority
-of unrelated basin-interior nodes as the pre-fix version showed.
+without instantly saturating at `MAX_CHANNEL_DEPTH_M`; lakes form, merge, split, and
+fluctuate in count/depth across many steps rather than either vanishing or ratcheting
+monotonically upward, staying a small fraction of a world's total land nodes even after many
+steps rather than creeping to cover a whole continent; `is_river & is_lake` never overlaps on
+a real stepped world (a river's own classification genuinely stops at a lake's shore).
 
 <a id="glaciation"></a>
 ## Glaciation (`hydrology.py`)
@@ -1353,11 +1380,11 @@ enough" simplification, just gated by the same accumulation threshold rather tha
 entirely -- and an existing lake sitting there freezes solid into `glacier_depth` this same
 step, *before* `flow_target` is (re)computed, so a lake that just froze is correctly treated
 as a genuine sink again this step rather than immediately re-filling from this same step's
-routed water (see `update_lakes`'s own docstring). This ordering avoids a specific failure
+routed water (see `lakes.step_lakes`'s own docstring). This ordering avoids a specific failure
 mode: without the freeze-before-routing ordering and an `is_accumulating` gate on
-`update_lakes`'s own inflow/pin-at-cap logic, a lake formed in a warmer epoch would never
-freeze, and a just-frozen basin's non-sink interior would re-flood back to its old cap the
-very same step, double-counting the same water as both a lake and a glacier at once.
+`lakes.step_lakes`'s own inflow/pin-at-cap logic, a lake formed in a warmer epoch would never
+freeze, and a just-frozen basin would re-flood back to its old cap the very same step,
+double-counting the same water as both a lake and a glacier at once.
 
 - **Accumulation**: `GLACIER_ACCUMULATION_RATE` converts a step's frozen precipitation into
   meters of ice-depth gain, the same stylized-units-to-meters role `LAKE_FILL_RATE` plays

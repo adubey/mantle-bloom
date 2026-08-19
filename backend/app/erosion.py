@@ -259,7 +259,7 @@ def apply_erosion(world: "World", years: float) -> None:
     Separately relaxes elevation under thick ice toward its local neighborhood mean (glacial
     flattening, see `_flatten`). Also grows channel_depth (from this step's river-erosion
     term) and channel_width (from discharge alone -- larger flows carve a wider channel);
-    lake_depth/glacier_depth are hydrology.py's own state transitions, read directly from
+    lake_depth/glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
     World.hydrology_cache. All persistent, see plates.ElevationLine. Mutates world.plates'
     line elevations in place; never touches node positions or line topology, so this can't
     interact with line regularization or point reassignment at all (both of those are
@@ -295,6 +295,8 @@ def apply_erosion(world: "World", years: float) -> None:
 
     hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years)
     world.hydrology_cache = hydro
+    for message in hydro.lake_events:
+        world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
 
     rain = RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000.0) * dt_myr
@@ -350,4 +352,5 @@ def apply_erosion(world: "World", years: float) -> None:
             channel_width=new_channel_width[start:end],
             lake_depth=hydro.lake_depth[start:end],
             glacier_depth=hydro.glacier_depth[start:end],
+            silt_depth=hydro.silt_depth[start:end],
         )

@@ -109,6 +109,11 @@ class ElevationLine:
     channel_width: np.ndarray | None = None  # river channel width, grows with flow -- see erosion.py
     lake_depth: np.ndarray | None = None  # standing lake water depth
     glacier_depth: np.ndarray | None = None  # accumulated ice, meters ice-equivalent
+    # Sediment settled on a lake's own bed, monotonically increasing (never erodes back away,
+    # same self-reinforcing character as channel_depth) -- raises the *effective* floor a lake's
+    # own depth is measured against without touching real terrain `elevation` itself, see
+    # lakes.py's own module docstring for why. Always 0 outside an active lake.
+    silt_depth: np.ndarray | None = None
     # Two more of the same "rides along for free" persistent fields, see volcanism.py.
     # is_volcano never reverts to False once set (permanent provenance -- a dormant volcano
     # is still excluded from being redetected as a fresh rift gap); volcano_active_years_
@@ -125,6 +130,8 @@ class ElevationLine:
             self.lake_depth = np.zeros_like(self.theta)
         if self.glacier_depth is None:
             self.glacier_depth = np.zeros_like(self.theta)
+        if self.silt_depth is None:
+            self.silt_depth = np.zeros_like(self.theta)
         if self.is_volcano is None:
             self.is_volcano = np.zeros_like(self.theta, dtype=bool)
         if self.volcano_active_years_remaining is None:
