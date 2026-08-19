@@ -81,9 +81,10 @@ having to pick a number. That many seed points are scattered uniformly on the un
 (normalized Gaussian samples), and each gets a plate-local frame built from its own seed
 (`geometry.plate_frame_from_seed`).
 
-Two generation choices *are* user-facing -- the UI's "continental plates" and "initial land"
-sliders, both 0 to 1 (percent in the UI), defaulting to `DEFAULT_CONTINENTAL_FRACTION = 0.70`
-and `DEFAULT_LAND_FRACTION = 0.29`.
+Three generation choices *are* user-facing -- the UI's "continental plates" and "initial
+land" sliders, both 0 to 1 (percent in the UI), defaulting to
+`DEFAULT_CONTINENTAL_FRACTION = 0.70` and `DEFAULT_LAND_FRACTION = 0.29`, plus a "point
+density" choice (`NODE_DENSITY_CHOICES = (1.0, 4.0)`, see below).
 
 - `continental_fraction`: when given, `round(continental_fraction * num_plates)` plates
   (`rng.choice`, without replacement) are made continental instead of the usual independent
@@ -109,9 +110,10 @@ and `DEFAULT_LAND_FRACTION = 0.29`.
   fraction across several seeds lands within about a percentage point of 29%.
 
 Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
-plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution, and for every
-candidate node, keep it only if this plate's seed is the *nearest* seed to it (`cKDTree`
-against all seeds) -- the defining property of a spherical [Voronoi
+plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution (or a finer one --
+see "Elevation point density" below), and for every candidate node, keep it only if this
+plate's seed is the *nearest* seed to it (`cKDTree` against all seeds) -- the defining
+property of a spherical [Voronoi
 diagram](https://en.wikipedia.org/wiki/Voronoi_diagram), computed directly rather than via
 an explicit polygon-construction step. Every node ends up owned by exactly one plate, so the
 initial tiling has no gaps and no overlaps *by construction* -- there's nothing to
@@ -124,6 +126,38 @@ texture to not look perfectly flat).
 The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by plate merging
 (see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
 needed.
+
+**Elevation point density.** The UI's "point density" choice (`node_density`, 1x default or
+4x) scales `TARGET_LINE_SPACING_RAD` down via `plates.line_spacing_rad` (halved at 4x --
+node count for a fixed area scales with the *square* of resolution, so 4x the nodes needs
+half the spacing, not a quarter). Stored on `World.node_density`, set once at generation and
+read for that world's entire life, not just at the moment it's generated: every later module
+that builds new elevation-line nodes or derives a distance/count threshold from
+`TARGET_LINE_SPACING_RAD` -- `line_regrid.py`'s periodic regularization,
+`boundary.py`'s per-step growth/merge/reach thresholds, `gaps.py`'s coverage-gap detection
+and absorption/spawning, `merge_split.py`'s plate-merge contact distance and split-size
+floor, `volcanism.py`'s volcanic-field clustering/coverage -- calls `line_spacing_rad(world.
+node_density)` (or scales its own reference constant by the same ratio) instead of reading
+the bare module constant. This matters because it's not just a generation-time cosmetic
+choice: `line_regrid.py`'s regularize pass in particular runs unconditionally every
+`REGULARIZE_INTERVAL_STEPS` steps and, before this threading existed, always resampled a
+line back down to the *reference* spacing regardless of what density the world was actually
+generated at -- confirmed directly as a real bug during development, a 4x-density world's
+own node count reverting to the 1x baseline within the first handful of steps. Every
+distance-based threshold derived from `TARGET_LINE_SPACING_RAD` (e.g. `boundary.py`'s
+`EXTEND_THRESHOLD_RAD`) scales linearly with the new spacing; every absolute node-*count*
+constant tied to a fixed physical area (`gaps.MIN_GAP_POINTS`, `merge_split.SPLIT_MIN_NODES`,
+etc.) scales with `node_density` directly, not its square root, since it's already an area
+-- see each constant's own comment for the exact reasoning, which predates this option (the
+same rescaling used to happen as a one-off hardcoded code change whenever
+`TARGET_LINE_SPACING_KM` itself changed; this option just makes it a per-world runtime
+choice instead). Genuine fixed physical distances unrelated to sampling resolution (e.g.
+`boundary.COLLISION_RANGE_KM`, a real ~400km-wide collision belt) are deliberately *not*
+scaled -- only thresholds explicitly defined as multiples of `TARGET_LINE_SPACING_RAD` are.
+4x density comes with a real, continuous performance cost, not just a one-time generation
+cost -- confirmed directly, roughly a 5x slower per-step time (not just 4x, since flow-
+routing/reassignment passes are `O(n log n)` rather than linear) -- which the UI surfaces as
+a short note when 4x is selected.
 
 <a id="mantle-flow"></a>
 ## Mantle flow (`mantle.py`)

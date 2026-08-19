@@ -75,7 +75,7 @@ from scipy.spatial import cKDTree
 from . import gaps, geometry, mantle
 from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
 from .noise import SphereNoise
-from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, base_elevation, build_lines_from_lattice, noise_amplitude
+from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, base_elevation, build_lines_from_lattice, line_spacing_rad, noise_amplitude
 
 if TYPE_CHECKING:
     from .world import World
@@ -94,12 +94,15 @@ VOLCANO_FRACTION_DORMANT_THRESHOLD = 0.05
 # qualifying points never merge into one cluster at all, each spawning its own tiny field
 # instead (confirmed directly: 11-40+ new plates from one clean-up pass on a 10-plate world).
 # 15x spacing (~1875km) merges same-rift detections into one field while still keeping
-# genuinely separate rifts elsewhere on the sphere apart.
+# genuinely separate rifts elsewhere on the sphere apart. Reference (World.node_density ==
+# 1.0) value -- scaled at the point of use in detect_and_spawn_volcanic_fields, same
+# reasoning as boundary.py's own _far_threshold_rad and friends.
 VOLCANIC_FIELD_CLUSTER_RADIUS_RAD = 15.0 * TARGET_LINE_SPACING_RAD
 # How far from a detected volcano point the new plate's own lattice extends -- same question
 # gaps._spawn_plate_from_gap answers for its own new-plate spawning, at its own (tighter)
 # scale, since this is about "the new plate's own coverage," not "how far apart do
 # same-rift detections still count as one field" (VOLCANIC_FIELD_CLUSTER_RADIUS_RAD above).
+# Also a reference value -- see gaps.COVERAGE_RADIUS_RAD's own comment.
 VOLCANIC_FIELD_COVERAGE_RADIUS_RAD = gaps.COVERAGE_RADIUS_RAD
 
 # Expected number of eruption events over a volcano's full active life is
@@ -175,6 +178,9 @@ def _spawn_volcanic_field_plate(world: "World", cluster_points: np.ndarray, rng:
     gaps._spawn_plate_from_gap uses for an ordinary gap-spawned plate, but continental crust
     (volcanic fields "result in continental plates," regardless of what kind of plates were
     separating) and with every resulting node marked as its own active volcano."""
+    spacing_rad = line_spacing_rad(world.node_density)
+    coverage_radius_rad = VOLCANIC_FIELD_COVERAGE_RADIUS_RAD * (spacing_rad / TARGET_LINE_SPACING_RAD)
+
     centroid = geometry.normalize(cluster_points.mean(axis=0))
     frame = geometry.plate_frame_from_seed(centroid)
     crust_type = "continental"
@@ -186,12 +192,12 @@ def _spawn_volcanic_field_plate(world: "World", cluster_points: np.ndarray, rng:
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         dist, _ = tree.query(world_pts)
-        return dist < VOLCANIC_FIELD_COVERAGE_RADIUS_RAD
+        return dist < coverage_radius_rad
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         return base + amp * noise.sample(world_pts)
 
-    lines = build_lines_from_lattice(frame, is_owned, elevation_at)
+    lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     volcanic_lines = [
         ElevationLine(
             phi=line.phi,
@@ -244,7 +250,8 @@ def detect_and_spawn_volcanic_fields(world: "World") -> list[str]:
 
     new_volcano_points = geometry.normalize((points[pair_i] + points[pair_j]) / 2.0)
 
-    labels = gaps.cluster_points(new_volcano_points, VOLCANIC_FIELD_CLUSTER_RADIUS_RAD)
+    cluster_radius_rad = VOLCANIC_FIELD_CLUSTER_RADIUS_RAD * (line_spacing_rad(world.node_density) / TARGET_LINE_SPACING_RAD)
+    labels = gaps.cluster_points(new_volcano_points, cluster_radius_rad)
     rng = np.random.default_rng((world.seed, world.volcanic_field_calls))
     world.volcanic_field_calls += 1
 

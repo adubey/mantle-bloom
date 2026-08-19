@@ -25,11 +25,15 @@ from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, build_lines_from_lattice
+from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, build_lines_from_lattice, line_spacing_rad
 
 if TYPE_CHECKING:
     from .world import World
 
+# Reference (World.node_density == 1.0) values -- kept as bare module constants (still the
+# default any direct caller/test without a World gets), scaled at the point of use inside
+# find_continental_collision_pairs/merge_plates by this world's own node_density instead of
+# read bare, same reasoning as boundary.py's own _far_threshold_rad and friends.
 MERGE_CONTACT_DISTANCE_RAD = MERGE_THRESHOLD_RAD
 MERGE_MIN_CONTACT_NODES = 4
 MERGE_COVERAGE_RADIUS_RAD = 1.2 * TARGET_LINE_SPACING_RAD
@@ -95,6 +99,11 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
     sphere (see geometry.bounding_sphere) rules most pairs out with one arccos instead of a
     full tree query, and each plate's tree is built once and reused across every pair it
     appears in, rather than rebuilt per pair."""
+    # Scaled to this world's own node_density (see the module constants' own comment) --
+    # ratio against TARGET_LINE_SPACING_RAD rather than a fresh 0.4 multiplier, so this
+    # doesn't duplicate boundary.py's own MERGE_THRESHOLD_RAD derivation.
+    merge_contact_distance_rad = MERGE_THRESHOLD_RAD * (line_spacing_rad(world.node_density) / TARGET_LINE_SPACING_RAD)
+
     continental = [p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0]
     points = {p.plate_id: p.all_points_and_elevation()[0] for p in continental}
     spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in points.items()}
@@ -110,13 +119,13 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
             ca, ra = spheres[a.plate_id]
             cb, rb = spheres[b.plate_id]
             centroid_dist = float(geometry.angular_distance(ca, cb))
-            if centroid_dist - ra - rb > MERGE_CONTACT_DISTANCE_RAD:
+            if centroid_dist - ra - rb > merge_contact_distance_rad:
                 continue  # no point in either cloud can possibly be within contact distance
 
             if b.plate_id not in trees:
                 trees[b.plate_id] = cKDTree(pb)
             dist, idx = trees[b.plate_id].query(pa)
-            close = dist < MERGE_CONTACT_DISTANCE_RAD
+            close = dist < merge_contact_distance_rad
             if np.sum(close) < MERGE_MIN_CONTACT_NODES:
                 continue
 
@@ -175,6 +184,9 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     keep = next(p for p in world.plates if p.plate_id == id_keep)
     absorb = next(p for p in world.plates if p.plate_id == id_absorb)
 
+    spacing_rad = line_spacing_rad(world.node_density)
+    coverage_radius_rad = MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / TARGET_LINE_SPACING_RAD)
+
     keep_pts, keep_elev = keep.all_points_and_elevation()
     absorb_pts, absorb_elev = absorb.all_points_and_elevation()
     old_points = np.concatenate([keep_pts, absorb_pts], axis=0)
@@ -183,13 +195,13 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         dist, _ = tree.query(world_pts)
-        return dist < MERGE_COVERAGE_RADIUS_RAD
+        return dist < coverage_radius_rad
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         _, idx = tree.query(world_pts)
         return old_elevation[idx]
 
-    keep.lines = build_lines_from_lattice(keep.frame, is_owned, elevation_at)
+    keep.lines = build_lines_from_lattice(keep.frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     keep.omega = mantle.clamp_rate((keep.omega + absorb.omega) / 2.0)
     keep.age_steps = 0
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
@@ -204,7 +216,10 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     """If a single rigid rotation poorly explains the mantle flow across this plate's
     footprint, cluster the flow into two regimes and, if they're genuinely different, cut
     the plate along the great circle separating them."""
-    if plate.node_count() < SPLIT_MIN_NODES:
+    # An area-based count -- scales with node_density directly (see SPLIT_MIN_NODES' own
+    # comment), not with spacing_rad the way the distance thresholds elsewhere do.
+    min_nodes = max(1, round(SPLIT_MIN_NODES * world.node_density))
+    if plate.node_count() < min_nodes:
         return None
     if plate.age_steps < SPLIT_MIN_AGE_STEPS:
         return None
@@ -265,7 +280,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                 )
             )
 
-    if sum(len(l.theta) for l in lines_a) < SPLIT_MIN_NODES or sum(len(l.theta) for l in lines_b) < SPLIT_MIN_NODES:
+    if sum(len(l.theta) for l in lines_a) < min_nodes or sum(len(l.theta) for l in lines_b) < min_nodes:
         return None
 
     new_id = world.next_plate_id

@@ -49,6 +49,7 @@ from .plates import (
     base_elevation,
     build_lines_from_lattice,
     iter_local_lattice,
+    line_spacing_rad,
     noise_amplitude,
 )
 
@@ -90,6 +91,41 @@ DOMINANT_BORDER_FRACTION = 0.75
 # Also an area-based count (see MIN_GAP_POINTS above for why that means ~4x, not the same
 # factor as the 1D distance-based constants).
 MAX_ABSORB_NODES_PER_PLATE_PER_CALL = 160
+
+# All five constants above are the reference (World.node_density == 1.0) values -- kept as
+# bare module constants, still the default for every function below, so a direct call
+# without a World in hand (tests, mainly) behaves exactly as before. fill_gaps itself, which
+# does have a World, computes the scaled versions below once and threads them down instead.
+# The four *_RADIUS_RAD distances scale linearly with spacing (same reasoning as
+# boundary.py's own _far_threshold_rad and friends); the two point counts scale with
+# node_density directly, not sqrt(node_density) -- see MIN_GAP_POINTS' own comment for why
+# an area-based count needs the different exponent.
+
+
+def _coverage_radius_rad(spacing_rad: float) -> float:
+    return 1.2 * spacing_rad
+
+
+def _border_radius_rad(spacing_rad: float) -> float:
+    return 2.5 * spacing_rad
+
+
+def _cluster_radius_rad(spacing_rad: float) -> float:
+    return 1.5 * spacing_rad
+
+
+def _growth_ring_rad(spacing_rad: float) -> float:
+    return 2.0 * spacing_rad
+
+
+def _min_gap_points(node_density: float) -> int:
+    return max(1, round(MIN_GAP_POINTS * node_density))
+
+
+def _max_absorb_nodes_per_plate_per_call(node_density: float) -> int:
+    return max(1, round(MAX_ABSORB_NODES_PER_PLATE_PER_CALL * node_density))
+
+
 # A wide, long-lived rift with no dominant side would, left alone, spawn a brand new sliver
 # plate at *every* gap-fill pass -- a fresh spawn never dominates its own border any better
 # than the last one did, since neither side of a genuinely symmetric spread is "winning".
@@ -121,11 +157,13 @@ def _all_existing_points(world: "World") -> tuple[np.ndarray, np.ndarray]:
     return np.concatenate(points_list, axis=0), np.concatenate(owner_list, axis=0)
 
 
-def _find_gap_points(existing_tree: cKDTree) -> np.ndarray:
+def _find_gap_points(
+    existing_tree: cKDTree, spacing_rad: float = TARGET_LINE_SPACING_RAD, coverage_radius_rad: float = COVERAGE_RADIUS_RAD
+) -> np.ndarray:
     gap_chunks = []
-    for _, _, world_pts in iter_local_lattice(_GLOBAL_FRAME):
+    for _, _, world_pts in iter_local_lattice(_GLOBAL_FRAME, spacing_rad=spacing_rad):
         dist, _ = existing_tree.query(world_pts)
-        uncovered = dist > COVERAGE_RADIUS_RAD
+        uncovered = dist > coverage_radius_rad
         if np.any(uncovered):
             gap_chunks.append(world_pts[uncovered])
     if not gap_chunks:
@@ -154,6 +192,7 @@ def _preferred_border_plate(
     existing_tree: cKDTree,
     existing_owner: np.ndarray,
     plate_by_id: dict[int, Plate],
+    border_radius_rad: float = BORDER_RADIUS_RAD,
 ) -> int | None:
     """The plate id this gap cluster should be absorbed into, if any -- otherwise None,
     meaning the gap is genuinely shared and should become a new plate.
@@ -163,7 +202,7 @@ def _preferred_border_plate(
     least YOUNG_PLATE_MIN_BORDER_FRACTION -- see YOUNG_PLATE_AGE_STEPS for why that
     exception exists."""
     dist, idx = existing_tree.query(cluster_points)
-    close = dist < BORDER_RADIUS_RAD
+    close = dist < border_radius_rad
     owners = existing_owner[idx[close]]
     if len(owners) == 0:
         return None
@@ -185,12 +224,18 @@ def _preferred_border_plate(
 
 
 def _absorb_gap_into_plate(
-    plate: Plate, gap_points: np.ndarray, rng: np.random.Generator, max_new_points: int
+    plate: Plate,
+    gap_points: np.ndarray,
+    rng: np.random.Generator,
+    max_new_points: int,
+    growth_ring_rad: float = GROWTH_RING_RAD,
+    coverage_radius_rad: float = COVERAGE_RADIUS_RAD,
+    spacing_rad: float = TARGET_LINE_SPACING_RAD,
 ) -> int:
     """Grow `plate` into (some of) `gap_points`, claiming at most `max_new_points` of them
     (the ones closest to the plate's existing territory first) -- see
     MAX_ABSORB_NODES_PER_PLATE_PER_CALL for why that cap exists. Also restricted to
-    GROWTH_RING_RAD of the plate's *existing* nodes -- one ring of new territory, not the
+    `growth_ring_rad` of the plate's *existing* nodes -- one ring of new territory, not the
     whole (possibly huge, e.g. an entire uncovered polar cap nobody's lines reach yet)
     cluster at once. Whatever isn't claimed this pass -- because of either limit -- is
     picked up over subsequent gap-fill passes instead. Returns how many points were
@@ -201,7 +246,7 @@ def _absorb_gap_into_plate(
         claimed_points = gap_points[:max_new_points]
     else:
         dist_to_old, _ = cKDTree(old_points).query(gap_points)
-        within_ring = dist_to_old < GROWTH_RING_RAD
+        within_ring = dist_to_old < growth_ring_rad
         candidates = gap_points[within_ring]
         order = np.argsort(dist_to_old[within_ring])
         claimed_points = candidates[order][:max_new_points]
@@ -219,17 +264,23 @@ def _absorb_gap_into_plate(
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         dist, _ = tree.query(world_pts)
-        return dist < COVERAGE_RADIUS_RAD
+        return dist < coverage_radius_rad
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         _, idx = tree.query(world_pts)
         return combined_elevation[idx]
 
-    plate.lines = build_lines_from_lattice(plate.frame, is_owned, elevation_at)
+    plate.lines = build_lines_from_lattice(plate.frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     return len(claimed_points)
 
 
-def _spawn_plate_from_gap(world: "World", gap_points: np.ndarray, rng: np.random.Generator) -> Plate:
+def _spawn_plate_from_gap(
+    world: "World",
+    gap_points: np.ndarray,
+    rng: np.random.Generator,
+    coverage_radius_rad: float = COVERAGE_RADIUS_RAD,
+    spacing_rad: float = TARGET_LINE_SPACING_RAD,
+) -> Plate:
     centroid = geometry.normalize(gap_points.mean(axis=0))
     frame = geometry.plate_frame_from_seed(centroid)
     crust_type = "oceanic"  # new crust between separating plates
@@ -241,12 +292,12 @@ def _spawn_plate_from_gap(world: "World", gap_points: np.ndarray, rng: np.random
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         dist, _ = tree.query(world_pts)
-        return dist < COVERAGE_RADIUS_RAD
+        return dist < coverage_radius_rad
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         return base + amp * noise.sample(world_pts)
 
-    lines = build_lines_from_lattice(frame, is_owned, elevation_at)
+    lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     plate = Plate(plate_id=world.next_plate_id, frame=frame, crust_type=crust_type, lines=lines)
     world.next_plate_id += 1
 
@@ -263,16 +314,24 @@ def fill_gaps(world: "World") -> list[str]:
     in place. Returns one human-readable event message per newly spawned plate, for the UI's
     event console -- absorption isn't logged, since it grows a plate that already exists
     rather than adding or removing one (see world.step_world for where these get logged)."""
+    spacing_rad = line_spacing_rad(world.node_density)
+    coverage_radius_rad = _coverage_radius_rad(spacing_rad)
+    border_radius_rad = _border_radius_rad(spacing_rad)
+    cluster_radius_rad = _cluster_radius_rad(spacing_rad)
+    growth_ring_rad = _growth_ring_rad(spacing_rad)
+    min_gap_points = _min_gap_points(world.node_density)
+    max_absorb_per_call = _max_absorb_nodes_per_plate_per_call(world.node_density)
+
     existing_points, existing_owner = _all_existing_points(world)
     if len(existing_points) == 0:
         return []
     existing_tree = cKDTree(existing_points)
 
-    gap_points = _find_gap_points(existing_tree)
+    gap_points = _find_gap_points(existing_tree, spacing_rad, coverage_radius_rad)
     if len(gap_points) == 0:
         return []
 
-    labels = cluster_points(gap_points, CLUSTER_RADIUS_RAD)
+    labels = cluster_points(gap_points, cluster_radius_rad)
     rng = np.random.default_rng((world.seed, world.gap_fill_calls))
     world.gap_fill_calls += 1
 
@@ -281,18 +340,20 @@ def fill_gaps(world: "World") -> list[str]:
     new_plates: list[Plate] = []
     for label in np.unique(labels):
         gap_cluster_points = gap_points[labels == label]
-        if len(gap_cluster_points) < MIN_GAP_POINTS:
+        if len(gap_cluster_points) < min_gap_points:
             continue
 
-        dominant = _preferred_border_plate(gap_cluster_points, existing_tree, existing_owner, plate_by_id)
+        dominant = _preferred_border_plate(gap_cluster_points, existing_tree, existing_owner, plate_by_id, border_radius_rad)
         if dominant is not None:
-            remaining = absorb_budget.setdefault(dominant, MAX_ABSORB_NODES_PER_PLATE_PER_CALL)
+            remaining = absorb_budget.setdefault(dominant, max_absorb_per_call)
             if remaining <= 0:
                 continue
-            claimed = _absorb_gap_into_plate(plate_by_id[dominant], gap_cluster_points, rng, remaining)
+            claimed = _absorb_gap_into_plate(
+                plate_by_id[dominant], gap_cluster_points, rng, remaining, growth_ring_rad, coverage_radius_rad, spacing_rad
+            )
             absorb_budget[dominant] -= claimed
         else:
-            new_plates.append(_spawn_plate_from_gap(world, gap_cluster_points, rng))
+            new_plates.append(_spawn_plate_from_gap(world, gap_cluster_points, rng, coverage_radius_rad, spacing_rad))
 
     world.plates.extend(new_plates)
     return [

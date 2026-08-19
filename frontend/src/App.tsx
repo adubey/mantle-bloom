@@ -25,6 +25,11 @@ const DEFAULT_CONTINENTAL_PERCENT = 70;
 const DEFAULT_LAND_PERCENT = 29;
 // Degrees, matching backend app/world.py's DEFAULT_AXIAL_TILT_DEG (Earth's real tilt).
 const DEFAULT_AXIAL_TILT_DEG = 23.5;
+// Matching backend app/plates.py's NODE_DENSITY_CHOICES/DEFAULT_NODE_DENSITY -- a discrete
+// set, not a free-form slider, since there's no continuous unit for "how many points," only
+// "how many times as many."
+const NODE_DENSITY_CHOICES = [1, 4];
+const DEFAULT_NODE_DENSITY = 1;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -46,6 +51,7 @@ export default function App() {
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
+  const [nodeDensity, setNodeDensity] = useState(DEFAULT_NODE_DENSITY);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>("eckert4");
@@ -139,7 +145,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg);
+      const s = await generateWorld(seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity);
       setSummary(s);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
@@ -151,7 +157,7 @@ export default function App() {
     } finally {
       setBusy(false);
     }
-  }, [seed, continentalPercent, landPercent, axialTiltDeg, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats]);
+  }, [seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, recordStats]);
 
   const handleStep = useCallback(async () => {
     if (!summary) return;
@@ -485,6 +491,26 @@ export default function App() {
                 onChange={(e) => setAxialTiltDeg(Number(e.target.value))}
                 style={{ width: "100%" }}
               />
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Elevation point density
+              <select
+                value={nodeDensity}
+                onChange={(e) => setNodeDensity(Number(e.target.value))}
+                style={{ width: "100%", marginTop: 4 }}
+              >
+                {NODE_DENSITY_CHOICES.map((d) => (
+                  <option key={d} value={d}>
+                    {d === 1 ? "1x (default)" : `${d}x`}
+                  </option>
+                ))}
+              </select>
+              {nodeDensity > 1 && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  More detail, but simulation steps will run noticeably slower.
+                </div>
+              )}
             </label>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>

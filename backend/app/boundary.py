@@ -46,7 +46,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle
-from .plates import PLANET_RADIUS_KM, TARGET_LINE_SPACING_RAD, ElevationLine
+from .plates import PLANET_RADIUS_KM, TARGET_LINE_SPACING_RAD, ElevationLine, line_spacing_rad
 
 if TYPE_CHECKING:
     from .world import World
@@ -120,6 +120,39 @@ MAX_ELEVATION_M = 9000.0
 # half-as-far-apart nodes.
 MAX_EXTEND_NODES_PER_STEP = 400
 
+# FAR_THRESHOLD_RAD/EXTEND_THRESHOLD_RAD/MERGE_THRESHOLD_RAD/MAX_EXTEND_NODES_PER_STEP above
+# are the reference (World.node_density == 1.0) values -- kept as bare module constants,
+# still the default for every function below, so existing direct calls (tests, any other
+# caller without a World in hand) behave exactly as before. step_boundaries itself, which
+# does have a World, calls these with `plates.line_spacing_rad(world.node_density)` instead,
+# so a world generated at a non-default density keeps growing/merging/reaching at a scale
+# consistent with its own actual node spacing rather than the reference one. Unlike
+# COLLISION_RANGE_RAD/SUBDUCTION_ARC_*_RAD/TRANSFORM_RANGE_RAD/RIFT_RANGE_RAD (genuine fixed
+# physical distances, e.g. "a continent-continent suture is ~400km wide" -- unrelated to how
+# many points happen to sample it), these three are explicitly defined as multiples of
+# TARGET_LINE_SPACING_RAD, i.e. "roughly N node-spacings," so they're the only boundary
+# thresholds that should track a change in spacing at all.
+def _far_threshold_rad(spacing_rad: float) -> float:
+    return 1.6 * spacing_rad
+
+
+def _extend_threshold_rad(spacing_rad: float) -> float:
+    return 1.3 * spacing_rad
+
+
+def _merge_threshold_rad(spacing_rad: float) -> float:
+    return 0.4 * spacing_rad
+
+
+def _max_boundary_effect_rad(spacing_rad: float) -> float:
+    return max(_far_threshold_rad(spacing_rad), COLLISION_RANGE_RAD, SUBDUCTION_ARC_OUTER_RAD, TRANSFORM_RANGE_RAD, RIFT_RANGE_RAD)
+
+
+def _max_extend_nodes_per_step(node_density: float) -> int:
+    # A 1D count, not an area -- see MAX_EXTEND_NODES_PER_STEP's own comment for why this
+    # scales by sqrt(node_density) (~2x at 4x density), not node_density itself.
+    return max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(node_density)))
+
 
 def _divergent_target(crust_type: str) -> float:
     return DIVERGENT_RIDGE_TARGET_M if crust_type == "oceanic" else DIVERGENT_RIFT_TARGET_M
@@ -158,6 +191,10 @@ def _grow_or_shrink_line(
     dist: np.ndarray,
     closing: np.ndarray,
     crust_type: str,
+    spacing_rad: float = TARGET_LINE_SPACING_RAD,
+    extend_threshold_rad: float = EXTEND_THRESHOLD_RAD,
+    merge_threshold_rad: float = MERGE_THRESHOLD_RAD,
+    max_extend_nodes: int = MAX_EXTEND_NODES_PER_STEP,
 ) -> ElevationLine:
     """Grow or shrink a line's two ends based on this step's boundary classification there.
 
@@ -195,19 +232,19 @@ def _grow_or_shrink_line(
     if len(theta) == 0:
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
-    dtheta = TARGET_LINE_SPACING_RAD / max(np.cos(line.phi), 1e-3)
+    dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)
     target = _divergent_target(crust_type)
 
     # High end first so the low-end index (0) is unaffected by any change made here.
-    if dist[-1] > EXTEND_THRESHOLD_RAD and closing[-1] < -TRANSFORM_RATE_THRESHOLD:
-        n_new = min(max(int(dist[-1] / TARGET_LINE_SPACING_RAD), 1), MAX_EXTEND_NODES_PER_STEP)
+    if dist[-1] > extend_threshold_rad and closing[-1] < -TRANSFORM_RATE_THRESHOLD:
+        n_new = min(max(int(dist[-1] / spacing_rad), 1), max_extend_nodes)
         new_theta = theta[-1] + dtheta * np.arange(1, n_new + 1)
         theta = np.append(theta, new_theta)
         elevation = np.append(elevation, np.full(n_new, target))
         for name, values in persistent_fields.items():
             fill = np.zeros(n_new, dtype=values.dtype)
             persistent_fields[name] = np.append(values, fill)
-    elif dist[-1] < MERGE_THRESHOLD_RAD and closing[-1] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
+    elif dist[-1] < merge_threshold_rad and closing[-1] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[:-1]
         elevation = elevation[:-1]
         persistent_fields = {name: values[:-1] for name, values in persistent_fields.items()}
@@ -215,15 +252,15 @@ def _grow_or_shrink_line(
     if len(theta) == 0:
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
-    if dist[0] > EXTEND_THRESHOLD_RAD and closing[0] < -TRANSFORM_RATE_THRESHOLD:
-        n_new = min(max(int(dist[0] / TARGET_LINE_SPACING_RAD), 1), MAX_EXTEND_NODES_PER_STEP)
+    if dist[0] > extend_threshold_rad and closing[0] < -TRANSFORM_RATE_THRESHOLD:
+        n_new = min(max(int(dist[0] / spacing_rad), 1), max_extend_nodes)
         new_theta = theta[0] - dtheta * np.arange(n_new, 0, -1)
         theta = np.insert(theta, 0, new_theta)
         elevation = np.insert(elevation, 0, np.full(n_new, target))
         for name, values in persistent_fields.items():
             fill = np.zeros(n_new, dtype=values.dtype)
             persistent_fields[name] = np.insert(values, 0, fill)
-    elif dist[0] < MERGE_THRESHOLD_RAD and closing[0] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
+    elif dist[0] < merge_threshold_rad and closing[0] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[1:]
         elevation = elevation[1:]
         persistent_fields = {name: values[1:] for name, values in persistent_fields.items()}
@@ -235,6 +272,16 @@ def step_boundaries(world: World, years: float) -> None:
     """Mutates world.plates in place: applies boundary elevation deltas and grows/shrinks
     each line's two ends. Call after rotation, using the plates' new positions."""
     years_myr = years / 1e6
+
+    # Scaled to this world's own node_density (see the block above _divergent_target for
+    # why only these particular thresholds/cap need it) rather than reading the bare
+    # reference-density module constants directly.
+    spacing_rad = line_spacing_rad(world.node_density)
+    far_threshold_rad = _far_threshold_rad(spacing_rad)
+    extend_threshold_rad = _extend_threshold_rad(spacing_rad)
+    merge_threshold_rad = _merge_threshold_rad(spacing_rad)
+    max_boundary_effect_rad = _max_boundary_effect_rad(spacing_rad)
+    max_extend_nodes = _max_extend_nodes_per_step(world.node_density)
 
     plate_by_id = {plate.plate_id: plate for plate in world.plates}
 
@@ -266,8 +313,8 @@ def step_boundaries(world: World, years: float) -> None:
                 continue
             cb, rb = spheres[other.plate_id]
             centroid_dist = float(geometry.angular_distance(ca, cb))
-            if centroid_dist - ra - rb > MAX_BOUNDARY_EFFECT_RAD:
-                continue  # no point of "other" can possibly be within MAX_BOUNDARY_EFFECT_RAD
+            if centroid_dist - ra - rb > max_boundary_effect_rad:
+                continue  # no point of "other" can possibly be within max_boundary_effect_rad
             other_points_list.append(plate_points[other.plate_id])
             other_owner_list.append(np.full(len(plate_points[other.plate_id]), other.plate_id))
         if not other_points_list:
@@ -292,7 +339,7 @@ def step_boundaries(world: World, years: float) -> None:
         # default_intensity: the original plain decay-from-the-boundary shape, still used
         # for divergent boundaries and a subducting oceanic plate's own trench (neither
         # changed here) -- FAR_THRESHOLD_RAD's ~200km reach, unchanged.
-        default_intensity_all = np.clip(1.0 - dist_all / FAR_THRESHOLD_RAD, 0.0, 1.0)
+        default_intensity_all = np.clip(1.0 - dist_all / far_threshold_rad, 0.0, 1.0)
         # collision_intensity: same shape, but reaching COLLISION_RANGE_RAD (400km) instead
         # -- a continent-continent suture crumples a much wider belt than a plain boundary.
         collision_intensity_all = np.clip(1.0 - dist_all / COLLISION_RANGE_RAD, 0.0, 1.0)
@@ -314,7 +361,7 @@ def step_boundaries(world: World, years: float) -> None:
         # out past its own specific (narrower) reach, so no further distance masking is
         # needed below. divergent_all's own gate uses RIFT_RANGE_RAD (the wider of its two
         # cases) for the same reason.
-        convergent_all = (dist_all < MAX_BOUNDARY_EFFECT_RAD) & (closing_all > TRANSFORM_RATE_THRESHOLD)
+        convergent_all = (dist_all < max_boundary_effect_rad) & (closing_all > TRANSFORM_RATE_THRESHOLD)
         divergent_all = (dist_all < RIFT_RANGE_RAD) & (closing_all < -TRANSFORM_RATE_THRESHOLD)
         transform_all = (dist_all < TRANSFORM_RANGE_RAD) & (np.abs(closing_all) <= TRANSFORM_RATE_THRESHOLD)
         # Only meaningful when this plate itself is continental (see the per-line loop
@@ -362,7 +409,9 @@ def step_boundaries(world: World, years: float) -> None:
             # theta unchanged -- dataclasses.replace copies every other field (channel_width
             # included) from the existing line automatically.
             updated_line = dataclasses.replace(line, elevation=elevation)
-            grown_line = _grow_or_shrink_line(updated_line, dist, closing, plate.crust_type)
+            grown_line = _grow_or_shrink_line(
+                updated_line, dist, closing, plate.crust_type, spacing_rad, extend_threshold_rad, merge_threshold_rad, max_extend_nodes
+            )
             if len(grown_line.theta) > 0:
                 new_lines.append(grown_line)
 

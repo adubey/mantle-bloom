@@ -10,6 +10,29 @@ def test_generate_world_gives_plates_nonzero_omega():
     assert any(r > 0 for r in rates)
 
 
+def test_node_density_persists_through_regularize_and_gap_fill():
+    # The core correctness concern for a runtime density option: line_regrid.py's own
+    # regularize pass (and gaps.py's gap-filling, merge_split.py's merging, volcanism.py's
+    # field-spawning) previously always rebuilt/resampled nodes at the module's default
+    # TARGET_LINE_SPACING_RAD regardless of what density a world was actually generated at,
+    # silently reverting a non-default density back to the reference one within a handful of
+    # steps. Confirmed directly this stays fixed: total node count should keep tracking
+    # node_density's ratio, not decay toward the 1x baseline, across enough steps to trigger
+    # at least one regularize/gap-fill pass (line_regrid.REGULARIZE_INTERVAL_STEPS == 5).
+    reference = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=1.0)
+    denser = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=4.0)
+
+    def total_nodes(world):
+        return sum(len(line.theta) for p in world.plates for line in p.lines)
+
+    for _ in range(8):
+        step_world(reference, years=300_000)
+        step_world(denser, years=300_000)
+
+    ratio = total_nodes(denser) / total_nodes(reference)
+    assert 3.0 < ratio < 5.0  # stays roughly 4x -- not decayed back toward 1x
+
+
 def test_step_world_advances_elapsed_years():
     world = generate_world(seed=11, num_plates=6)
     step_world(world, years=1_000_000)

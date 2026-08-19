@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import bathymetry, boundary, climate, erosion, gaps, geometry, hydrology, line_regrid, mantle, merge_split, reassign, volcanism
-from .plates import Plate, generate_plates
+from .plates import DEFAULT_NODE_DENSITY, Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
@@ -32,6 +32,15 @@ class World:
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG
+    # Another fixed per-world property, set once at generation (see plates.generate_plates'
+    # own node_density parameter) and read for the rest of this world's life by every module
+    # that builds new elevation-line nodes or derives a distance/count threshold from
+    # plates.TARGET_LINE_SPACING_RAD (line_regrid.py, boundary.py, gaps.py, merge_split.py,
+    # volcanism.py -- see plates.line_spacing_rad's own docstring for why each of those needs
+    # this rather than reading the bare module constant), so a world generated at a
+    # non-default density stays self-consistent through regularizing/gap-filling/merging/
+    # splitting/volcanism, not just at the moment it's generated.
+    node_density: float = DEFAULT_NODE_DENSITY
     # Number of times gaps.fill_gaps has actually run -- part of the deterministic RNG seed
     # for gap-fill's new-crust noise texture (see gaps.py), not just a counter.
     gap_fill_calls: int = 0
@@ -95,6 +104,7 @@ def generate_world(
     land_fraction: float | None = None,
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
     axial_tilt_deg: float | None = None,
+    node_density: float = DEFAULT_NODE_DENSITY,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
@@ -102,9 +112,12 @@ def generate_world(
     plates.generate_plates. `axial_tilt_deg` is the UI's third generation slider (degrees,
     defaults to DEFAULT_AXIAL_TILT_DEG = Earth's real tilt) -- doesn't affect plate
     generation at all, only climate.py's insolation, read at render time long after
-    generation, which is why it's stored on World rather than consumed once here."""
+    generation, which is why it's stored on World rather than consumed once here.
+    `node_density` (the UI's "point density" choice) similarly affects only generation
+    itself directly, but -- unlike axial_tilt_deg -- is stored on World because every later
+    step also needs it (see World.node_density's own comment)."""
     plates = generate_plates(
-        seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction
+        seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, node_density=node_density
     )
     # Separate RNG stream so changing num_mantle_centers doesn't reshuffle plate layout.
     mantle_rng = np.random.default_rng(seed + 1)
@@ -117,6 +130,7 @@ def generate_world(
         elapsed_years=0.0,
         next_plate_id=len(plates),
         axial_tilt_deg=DEFAULT_AXIAL_TILT_DEG if axial_tilt_deg is None else axial_tilt_deg,
+        node_density=node_density,
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)

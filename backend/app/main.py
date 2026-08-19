@@ -43,6 +43,12 @@ class GenerateRequest(BaseModel):
     # world.DEFAULT_AXIAL_TILT_DEG, but the frontend always sends it.
     axial_tilt_deg: float | None = None
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS
+    # The UI's "point density" choice -- how many elevation-line nodes each plate starts
+    # with, relative to plates.DEFAULT_NODE_DENSITY (1.0 = plates.TARGET_LINE_SPACING_KM's
+    # own default spacing). Validated against plates.NODE_DENSITY_CHOICES below rather than
+    # accepted as an arbitrary float -- there's no continuous "in-between" density the UI
+    # offers, only a fixed set of multipliers.
+    node_density: float = plates.DEFAULT_NODE_DENSITY
 
 
 class StepRequest(BaseModel):
@@ -158,6 +164,8 @@ def _coastline_segments_json(world: World) -> list:
 
 @app.post("/world/generate")
 def generate(req: GenerateRequest) -> dict:
+    if req.node_density not in plates.NODE_DENSITY_CHOICES:
+        raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {plates.NODE_DENSITY_CHOICES}")
     world = generate_world(
         req.seed,
         num_plates=req.num_plates,
@@ -165,6 +173,7 @@ def generate(req: GenerateRequest) -> dict:
         land_fraction=req.land_fraction,
         num_mantle_centers=req.num_mantle_centers,
         axial_tilt_deg=req.axial_tilt_deg,
+        node_density=req.node_density,
     )
     _state["world"] = world
     return _summary(world)

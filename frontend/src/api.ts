@@ -139,12 +139,16 @@ async function asJson<T>(resp: Response): Promise<T> {
 // fraction of the whole sphere that starts above sea level (independent of the first --
 // see plates.py's _land_noise_threshold for how the two combine). axialTiltDeg is the
 // dialog's third slider (degrees) -- doesn't affect plate generation, only climate.py's
-// insolation at render time (see world.py's World.axial_tilt_deg).
+// insolation at render time (see world.py's World.axial_tilt_deg). nodeDensity is the
+// dialog's "point density" choice (1 or 4, see plates.NODE_DENSITY_CHOICES) -- how many
+// elevation-line nodes each plate starts with, and stays scaled to for the rest of that
+// world's life (see world.py's World.node_density).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
   landFraction: number,
   axialTiltDeg: number,
+  nodeDensity: number,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -154,6 +158,7 @@ export function generateWorld(
       continental_fraction: continentalFraction,
       land_fraction: landFraction,
       axial_tilt_deg: axialTiltDeg,
+      node_density: nodeDensity,
     }),
   }).then(asJson<WorldSummary>);
 }

@@ -31,8 +31,32 @@ OCEANIC_NOISE_AMPLITUDE_M = 500.0
 # density -- those were rescaled alongside this (merge_split.SPLIT_MIN_NODES,
 # gaps.MIN_GAP_POINTS/MAX_ABSORB_NODES_PER_PLATE_PER_CALL by ~4x for area,
 # boundary.MAX_EXTEND_NODES_PER_STEP by ~2x for a 1D distance) -- see each for the reasoning.
+# This is the reference value for the default node_density=1.0 -- see line_spacing_rad below
+# for how a world's own chosen density (World.node_density, set once at generation and read
+# by every module in this same list for the rest of that world's life) scales it at runtime,
+# now that density is a per-world user choice rather than a hardcoded, one-off code change.
 TARGET_LINE_SPACING_KM = 125.0
 TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
+
+# UI-facing choices for World.node_density -- a discrete set (not a free-form slider) since
+# there's no natural continuous unit for "how many points," only "how many times as many."
+NODE_DENSITY_CHOICES = (1.0, 4.0)
+DEFAULT_NODE_DENSITY = 1.0
+
+
+def line_spacing_rad(node_density: float) -> float:
+    """The line spacing (radians) that gives a plate ~node_density times as many nodes as
+    the default TARGET_LINE_SPACING_RAD would. Node count for a fixed physical area scales
+    with the *square* of resolution (see TARGET_LINE_SPACING_KM's own comment -- halving
+    spacing quadruples node count), so this divides by sqrt(node_density), not
+    node_density itself. Every module that derives a distance threshold or an absolute
+    node-count cap from TARGET_LINE_SPACING_RAD calls this (with the world's own
+    node_density) instead of reading the bare module constant directly, so that a world
+    generated at a non-default density stays self-consistent for its entire life -- not just
+    at generation, but through every later regularize/gap-fill/merge/split/volcanism pass
+    too (each of those modules' own docstrings/comments explain why its own particular
+    thresholds need this)."""
+    return TARGET_LINE_SPACING_RAD / np.sqrt(node_density)
 
 # Plate count is chosen automatically (see generate_plates) rather than asked of the user --
 # an inclusive range of plausible Earth-like plate counts.
@@ -313,12 +337,16 @@ def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACI
         yield float(phi), theta_candidates, world_pts
 
 
-def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at) -> list[ElevationLine]:
+def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> list[ElevationLine]:
     """Build a plate's elevation lines by sweeping its local lattice and keeping whichever
     nodes `is_owned(world_pts) -> bool array` selects, with elevation from
-    `elevation_at(owned_world_pts) -> array`."""
+    `elevation_at(owned_world_pts) -> array`. `spacing_rad` defaults to the reference
+    density (1.0) -- every caller that has a `World` in hand should instead pass
+    `line_spacing_rad(world.node_density)`, so newly-built lines (initial generation, gap
+    absorption/spawning, plate merges, volcanic fields) match whatever density that world was
+    actually generated at, not silently fall back to the default."""
     lines: list[ElevationLine] = []
-    for phi, theta_candidates, world_pts in iter_local_lattice(frame):
+    for phi, theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
         owned = is_owned(world_pts)
         if not np.any(owned):
             continue
@@ -335,6 +363,7 @@ def _build_lines_for_plate(
     owner_tree: cKDTree,
     noise: SphereNoise,
     land_threshold: float | None = None,
+    spacing_rad: float = TARGET_LINE_SPACING_RAD,
 ) -> list[ElevationLine]:
     """Keep only lattice nodes whose nearest seed is this plate's own seed (i.e. nodes
     actually inside this plate's spherical Voronoi cell), and assign each a base elevation
@@ -358,7 +387,7 @@ def _build_lines_for_plate(
         def elevation_at(world_pts: np.ndarray) -> np.ndarray:
             return base + amp * noise.sample(world_pts)
 
-    return build_lines_from_lattice(frame, is_owned, elevation_at)
+    return build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
 
 
 def _land_noise_threshold(
@@ -401,6 +430,7 @@ def generate_plates(
     num_plates: int | None = None,
     continental_fraction: float | None = None,
     land_fraction: float | None = None,
+    node_density: float = DEFAULT_NODE_DENSITY,
 ) -> list[Plate]:
     """Tile the whole sphere into plates. `num_plates` is optional -- when omitted, a
     plausible Earth-like count is drawn from the seed's own RNG stream (so it's still fully
@@ -411,7 +441,9 @@ def generate_plates(
     usual independent CONTINENTAL_FRACTION coin flip per plate. `land_fraction` (the UI's
     "initial land" slider, also 0 to 1) similarly overrides how much of the *whole sphere*
     -- not just of continental crust -- starts above sea level; see
-    _land_noise_threshold for how that target is actually hit.
+    _land_noise_threshold for how that target is actually hit. `node_density` (the UI's
+    "point density" choice, see NODE_DENSITY_CHOICES) scales how many elevation-line nodes
+    each plate starts with -- see line_spacing_rad.
 
     Every plate's territory comes from the same nearest-seed test (`owner_tree.query`
     below): each lattice node is claimed by exactly one plate, so the tiling has no gaps
@@ -447,9 +479,10 @@ def generate_plates(
         land_fraction = max(0.0, min(land_fraction, 1.0))
         land_threshold = _land_noise_threshold(owner_tree, crust_types, noise, land_fraction)
 
+    spacing_rad = line_spacing_rad(node_density)
     plates: list[Plate] = []
     for i in range(num_plates):
         frame = geometry.plate_frame_from_seed(seed_xyz[i])
-        lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise, land_threshold)
+        lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise, land_threshold, spacing_rad=spacing_rad)
         plates.append(Plate(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
     return plates

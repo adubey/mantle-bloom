@@ -8,7 +8,15 @@ worth of end-growth at a slightly different rate than the line's original spacin
 module re-derives a fresh evenly-spaced node set spanning each line's *existing* extent
 (the two endpoints are preserved exactly -- regularizing never changes where a line's
 physical edge is, only how regularly it's sampled) and interpolates elevation onto it.
-"""
+
+`spacing_rad` (default plates.TARGET_LINE_SPACING_RAD, the reference density) should always
+be `plates.line_spacing_rad(world.node_density)` in practice -- regularize_world_lines
+computes it once per call and threads it down. Without this, a world generated at a
+non-default density would regularize itself right back down to the reference density the
+first time any line's spacing drifted enough to trigger this pass (every
+REGULARIZE_INTERVAL_STEPS steps) -- confirmed directly as the failure mode that made a
+"just build denser lines at generation" version of a density option pointless within a
+handful of steps."""
 
 from __future__ import annotations
 
@@ -16,7 +24,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate
+from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, line_spacing_rad
 
 if TYPE_CHECKING:
     from .world import World
@@ -25,20 +33,20 @@ REGULARIZE_INTERVAL_STEPS = 5
 IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
 
 
-def needs_regularizing(line: ElevationLine) -> bool:
+def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
     if len(line.theta) < 3:
         return False
-    dtheta_target = TARGET_LINE_SPACING_RAD / max(np.cos(line.phi), 1e-3)
+    dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
     gaps = np.diff(line.theta)
     ratio = gaps / dtheta_target
     return bool(np.any(ratio > IRREGULARITY_TOLERANCE) or np.any(ratio < 1.0 / IRREGULARITY_TOLERANCE))
 
 
-def regularize_line(line: ElevationLine) -> ElevationLine:
+def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> ElevationLine:
     if len(line.theta) < 3:
         return line
 
-    dtheta_target = TARGET_LINE_SPACING_RAD / max(np.cos(line.phi), 1e-3)
+    dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
     theta_min, theta_max = line.theta[0], line.theta[-1]
     span = theta_max - theta_min
     n = max(int(round(span / dtheta_target)) + 1, 2)
@@ -73,12 +81,13 @@ def regularize_line(line: ElevationLine) -> ElevationLine:
     )
 
 
-def regularize_plate_lines(plate: Plate) -> None:
+def regularize_plate_lines(plate: Plate, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> None:
     plate.lines = [
-        regularize_line(line) if needs_regularizing(line) else line for line in plate.lines
+        regularize_line(line, spacing_rad) if needs_regularizing(line, spacing_rad) else line for line in plate.lines
     ]
 
 
 def regularize_world_lines(world: "World") -> None:
+    spacing_rad = line_spacing_rad(world.node_density)
     for plate in world.plates:
-        regularize_plate_lines(plate)
+        regularize_plate_lines(plate, spacing_rad)

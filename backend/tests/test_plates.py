@@ -6,10 +6,12 @@ from app.plates import (
     MAX_AUTO_PLATES,
     MIN_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
+    NODE_DENSITY_CHOICES,
     TARGET_LINE_SPACING_RAD,
     collect_all_points,
     generate_plates,
     iter_local_lattice,
+    line_spacing_rad,
     nearest_plate_id,
     plate_bounding_ellipse,
 )
@@ -30,6 +32,31 @@ def test_iter_local_lattice_custom_spacing_changes_row_count():
     total_fine = sum(len(theta) for _, theta, _ in fine)
     total_coarse = sum(len(theta) for _, theta, _ in coarse)
     assert total_fine > total_coarse
+
+
+def test_line_spacing_rad_matches_default_at_density_one():
+    assert line_spacing_rad(1.0) == TARGET_LINE_SPACING_RAD
+
+
+def test_line_spacing_rad_halves_at_4x_density():
+    # Node count scales with the square of resolution, so 4x the nodes needs the spacing
+    # *halved*, not quartered.
+    assert np.isclose(line_spacing_rad(4.0), TARGET_LINE_SPACING_RAD / 2)
+
+
+def test_generate_plates_node_density_quadruples_node_count():
+    reference = generate_plates(seed=7, num_plates=8, node_density=1.0)
+    denser = generate_plates(seed=7, num_plates=8, node_density=4.0)
+    reference_nodes = sum(p.node_count() for p in reference)
+    denser_nodes = sum(p.node_count() for p in denser)
+    ratio = denser_nodes / reference_nodes
+    assert 3.5 < ratio < 4.5  # not exact -- lattice row/column counts round to integers
+
+
+def test_node_density_choices_all_produce_a_valid_world():
+    for density in NODE_DENSITY_CHOICES:
+        plates = generate_plates(seed=3, num_plates=6, node_density=density)
+        assert all(p.node_count() > 0 for p in plates)
 
 
 def test_generate_plates_count_and_crust_types():

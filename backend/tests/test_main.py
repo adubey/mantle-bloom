@@ -83,6 +83,16 @@ def test_generate_with_land_fraction(client):
     assert resp.status_code == 200
 
 
+def test_generate_with_node_density(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 4.0})
+    assert resp.status_code == 200
+
+
+def test_generate_with_unknown_node_density_returns_400(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 2.5})
+    assert resp.status_code == 400
+
+
 def test_step_response_includes_growing_event_log(client):
     client.post("/world/generate", json={"seed": 2, "num_plates": 6})
     resp = client.post("/world/step", json={"years": 1_000_000})
