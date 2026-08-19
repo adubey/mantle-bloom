@@ -1163,35 +1163,63 @@ computes it once (`hydrology.compute_hydrology`) and reuses the result for both 
   isn't ported -- not asked for, and this module already drops temperature-driven effects on
   hydrology to match erosion.py's own "precipitation is enough" simplification).
 
-**Lakes** (`update_lakes`) fill their whole basin, not just their own single sink node.
-First, each sink's *own* depth grows from `route_downstream`'s own water-routing `deposited`
-output there, evaporates otherwise, capped at the basin's true spill depth
+**Lakes** (`update_lakes`) fill their whole basin, not just one single node, and persist
+gradually across steps rather than snapping instantly to whatever their basin's current
+geometry would technically allow. Every node that held any water *last* step
+(`prev_lake_depth > 0`) evaporates its own depth forward independently and becomes its own
+flood-fill seed this step, alongside whichever node is this step's literal sink (gaining fresh
+inflow from `route_downstream`'s own `deposited` output there). This is a deliberate departure
+from an earlier, simpler design that gated all lake growth/persistence directly off of
+`flow_target < 0` (the literal sink identity): that specific node can change from one step to
+the next for entirely ordinary reasons (erosion/deposition flipping which point is locally
+lowest, or a lake finishing filling and `_compute_flow_direction` correctly redirecting its
+own sink away from `-1` toward `spill_target` so it can drain) -- confirmed directly as a real
+bug, a lake's total volume swinging by two-plus orders of magnitude step to step with nothing
+physical actually having changed. Letting every previously-wet node carry its own depth
+forward sidesteps needing any "which node represents this basin" identity at all; mutually
+reachable seeds simply merge into one flood via the flood-fill's own reachability.
+`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` are *not* plate-sim's
+own values -- confirmed directly, porting them verbatim evaporated a lake with no new inflow
+from 15m to exactly 0 within a single 1 Myr step, since plate-sim takes much finer internal
+substeps than mantle-bloom's typical 1-10 Myr step; rescaled down to be consistent with this
+codebase's other already-tuned relaxation rates at its own actual step granularity
+(`boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5`, `bathymetry.BATHYMETRY_RELAX_RATE_PER_MYR =
+0.3`), each node's own carried depth still capped at its basin's true spill depth
 (`filled_elevation - elevation`) -- the same oscillation plate-sim's own docs warn a naive
 version falls into (a full lake that evaporates even slightly un-redirects its `flow_target`
 back to a sink, refills, and oscillates forever instead of settling as a real, continuously-
-draining lake). `LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` are
-*not* plate-sim's own values -- confirmed directly, porting them verbatim evaporated a lake
-with no new inflow from 15m to exactly 0 within a single 1 Myr step, since plate-sim takes
-much finer internal substeps than mantle-bloom's typical 1-10 Myr step; rescaled down to be
-consistent with this codebase's other already-tuned relaxation rates at its own actual step
-granularity (`boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5`,
-`bathymetry.BATHYMETRY_RELAX_RATE_PER_MYR = 0.3`).
+draining lake).
 
-Then, `_flood_fill_lake_extent` spreads that sink's own current water surface outward over
-the same k-NN flow graph to every other node actually below it, so a lake that's still
-filling covers less area than its basin's full theoretical capacity, growing and shrinking
-in step with how much water the sink has actually accumulated -- a mantle-bloom addition
-(plate-sim's own lakes are single-cell too, its own documented simplification). An earlier
-version of this instead gave *every* node inside a basin's rim the basin's full cap
-depth unconditionally, regardless of how little water the sink itself had actually built up
--- confirmed directly as a real bug (visibly a majority of "lake" nodes weren't the sink at
-all), fixed by deriving the flood extent from the seed's real water level via an explicit
-flood-fill instead. A river's own `flow_target` can point at a node that's genuinely part of
-a lake (real inflow), but a flooded node is never itself classified `is_river` -- checked
-against this step's *final* lake extent, after `update_lakes` runs, not the flat land/ocean
-split alone -- so a river's own classification ends at the lake's shore rather than jumping
-straight across the water to whatever's on the far side, even though the water itself
-(`flow_target`/`flow_accum`) still physically continues through if the lake is spilling.
+`_flood_fill_lake_extent` then spreads every seed's own current water surface outward over the
+same k-NN flow graph to every other node actually below it, so a lake that's still filling
+covers less area than its basin's full theoretical capacity, growing and shrinking in step
+with how much water has actually accumulated -- a mantle-bloom addition (plate-sim's own lakes
+are single-cell too, its own documented simplification). Seeds are processed highest-water-
+surface-first so a taller, more-capacious seed claims shared territory over a weaker
+neighboring one, rather than a small low seed processed first "shadowing" it out.
+
+On top of that, two more rate limits keep a lake's *observable* size changing gradually even
+when the underlying basin geometry would technically allow an instant jump -- confirmed
+directly that the identity fix above was not sufficient on its own: a large, gently-sloped
+basin sitting almost entirely below one seed's water surface could still be claimed by the
+flood-fill in a single step (mean depth per node stayed modest, but total area, and so total
+volume, still jumped 100x-800x in some tested worlds). First, `_flood_fill_lake_extent` takes
+a `max_new_hops` budget (`MAX_LAKE_NEW_HOPS_PER_MYR * years`): a node that wasn't already wet
+last step costs one hop to claim, so a lake's edge can only advance a limited number of
+graph-hops into new territory per step, like a real flood front, while nodes already wet cost
+nothing to keep (a lake that's merely persisting is never hop-limited, only its growth beyond
+where it already was). Second, the whole per-node result is clamped against `prev_lake_depth`
+by `MAX_LAKE_DEPTH_CHANGE_M_PER_MYR`, a hard cap on how much any single node's own depth may
+rise or fall in one step. Together these make a large lake's size change gradually over many
+steps rather than in one -- a big lake takes a long time to fill or evaporate, and never just
+appears or vanishes in a single turn.
+
+A river's own `flow_target` can point at a node that's genuinely part of a lake (real inflow),
+but a flooded node is never itself classified `is_river` -- checked against this step's
+*final* lake extent, after `update_lakes` runs, not the flat land/ocean split alone -- so a
+river's own classification ends at the lake's shore rather than jumping straight across the
+water to whatever's on the far side, even though the water itself (`flow_target`/`flow_accum`)
+still physically continues through if the lake is spilling.
 
 **Channel width** (`channel_width`, grown in `erosion.py` alongside `channel_depth`) is a
 mantle-bloom addition, not a plate-sim port: standard hydraulic-geometry scaling (width ~

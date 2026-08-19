@@ -32,15 +32,21 @@ both returned via HydrologyFields) -- erosion.py only reads glacier_depth (for i
 glacier-erosion/flattening terms) and channel_depth (which erosion.py itself owns, since it's
 the module that actually carves it), matching plate-sim's own module split.
 
-**Lakes fill their whole basin**, not just their own single sink node: each sink tracks its
-own water balance exactly as before (grow from inflow, evaporate, capped at the basin's true
-spill depth), and `_flood_fill_lake_extent` spreads that sink's *current* water surface
-outward over the same k-NN flow graph to every other node actually below it -- a lake that's
-still filling covers less area than its basin's full capacity, matching how much water has
-actually accumulated, not an instant jump to the theoretical maximum. A river's flow_target
-can point at a node that's part of a lake (real inflow), but a flooded node itself is never
-classified `is_river` -- a river ends at the lake's shore rather than its classification
-continuing straight across the water to whatever's on the far side (see `compute_hydrology`).
+**Lakes fill their whole basin**, not just their own single sink node: every node that held
+water last step tracks its own water balance (grow from inflow if it's this step's sink,
+evaporate otherwise, capped at the basin's true spill depth) and becomes its own flood-fill
+seed, and `_flood_fill_lake_extent` spreads each seed's *current* water surface outward over
+the same k-NN flow graph to every other node actually below it -- a lake that's still filling
+covers less area than its basin's full capacity, matching how much water has actually
+accumulated, not an instant jump to the theoretical maximum. Both a lake's spatial growth into
+new territory and its per-node depth change are additionally rate-limited per step
+(`MAX_LAKE_NEW_HOPS_PER_MYR`, `MAX_LAKE_DEPTH_CHANGE_M_PER_MYR`) so a large lake's size changes
+gradually across many steps rather than snapping instantly to whatever a step's basin geometry
+would technically allow -- see `update_lakes`'s own docstring for why this turned out to be
+necessary on top of correct per-node water-balance tracking. A river's flow_target can point
+at a node that's part of a lake (real inflow), but a flooded node itself is never classified
+`is_river` -- a river ends at the lake's shore rather than its classification continuing
+straight across the water to whatever's on the far side (see `compute_hydrology`).
 Flow *routing* itself also isn't pure steepest descent: `_compute_flow_direction` prefers a
 downhill neighbor that already has a real, established channel over the literal lowest one,
 so a river stays in its own valley rather than recalculating the mathematically steepest path
@@ -50,6 +56,7 @@ every step -- real rivers meander within, not across, their banks.
 from __future__ import annotations
 
 import heapq
+from collections import deque
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -91,6 +98,32 @@ LAKE_MIN_VISIBLE_DEPTH_M = 1.0
 LAKE_FILL_RATE = 0.12
 LAKE_EVAPORATION_RATE_PER_MYR = 0.3
 LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
+
+# Hard ceiling on how fast any single node's lake_depth may rise or fall in one step,
+# independent of everything else update_lakes computes. The flood-fill extent a lake
+# occupies is a threshold phenomenon: a node sits either just above or just below the
+# current water surface, so an ordinary, gradual nudge to the terrain or to a neighboring
+# seed's own depth (erosion, sediment deposition, which literal node currently holds
+# flow_target == -1) can flip a huge, nearly-flat basin from "not flooded" to "flooded" (or
+# back) in one step even though nothing about the lake's actual stored water changed by much.
+# Confirmed directly, empirically, across many generated worlds: without this cap, total lake
+# volume can swing 100x-800x step to step. This cap makes that physically impossible -- a lake
+# that big can only ever change this fast, so reaching a wildly different volume necessarily
+# takes many steps, matching the real-world intuition that a large lake takes a long time to
+# fill or evaporate.
+MAX_LAKE_DEPTH_CHANGE_M_PER_MYR = 20.0
+
+# Separately from the depth cap above: how many graph-hops of brand-new (not already-wet last
+# step) territory a lake's flood may claim in one step. Confirmed empirically that the depth
+# cap alone was not enough -- a large, gently-sloped basin can sit almost entirely below a
+# seed's water surface, so even with every individual node's depth capped, the flood-fill
+# could still claim thousands of new nodes in a single step (mean depth per node stayed
+# modest, but total *area*, and so total volume, still jumped by 10x-70x). Capping hops into
+# new territory makes a lake's edge advance outward like a real flood front, a limited
+# distance per step, regardless of how large the eventually-reachable basin is. Nodes that
+# were already wet last step cost nothing to keep -- this only throttles growth into land the
+# lake did not already occupy.
+MAX_LAKE_NEW_HOPS_PER_MYR = 0.5
 
 # Glaciers -- ported closer to plate-sim's own values than the lake evaporation rate needed
 # re-scaling: these are flat per-Myr rates (linear in dt_myr), not plate-sim's own
@@ -392,22 +425,47 @@ def _update_glaciers(
 
 
 def _flood_fill_lake_extent(
-    elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray, seed_mask: np.ndarray, water_surface: np.ndarray
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    seed_mask: np.ndarray,
+    water_surface: np.ndarray,
+    prev_wet_mask: np.ndarray,
+    max_new_hops: int,
 ) -> np.ndarray:
     """A lake fills its whole basin, not just its own single deepest point: flood-fills
-    outward from every seed node (a sink currently holding water) via the same k-NN
-    `neighbor_idx` graph flow routing itself uses, claiming every reachable node whose bare
-    elevation sits below that seed's own current water surface (`elevation + lake_depth` at
-    the seed). Grows and shrinks together with the seed's own tracked depth (see
+    outward from every seed node via the same k-NN `neighbor_idx` graph flow routing itself
+    uses, claiming every reachable node whose bare elevation sits below that seed's own
+    current water surface. Grows and shrinks together with each seed's own tracked depth (see
     `update_lakes`) rather than jumping straight to the basin's full theoretical capacity
     regardless of how much water has actually accumulated -- confirmed directly that an
     earlier version of this module did exactly that (every node inside a basin's rim read as
-    permanently flooded to the rim, however little water the sink itself had actually built
-    up), which is corrected here by deriving the flood extent from the seed's real water
-    level instead. `visited` prevents a node from being claimed by two different seeds -- by
-    construction a node can only be below the rim of the one basin it actually drains into,
-    so this shouldn't happen, but a plain flag is cheap insurance against a coincidental
-    equal-elevation edge case rather than something to reason carefully about here."""
+    permanently flooded to the rim, however little water had actually built up), which is
+    corrected here by deriving the flood extent from each seed's real water level instead.
+
+    Seeds are processed **highest water surface first**, not in whatever order they happen to
+    appear in `seed_mask`: `update_lakes` can now hand this dozens or hundreds of seeds at
+    once (every node that held any water last step, not just one representative per basin --
+    see its own docstring for why), several of which can be mutually reachable neighbors of
+    the same real lake. Once any seed's flood has claimed a node (`visited`), a later,
+    *weaker* seed reaching the same node must not re-claim it at its own lower level -- doing
+    the reverse (weakest-first) let a small, low seed processed early "shadow" a taller,
+    more-capacious neighboring seed out of territory it should have flooded to its own higher
+    level, confirmed directly as a real source of visibly wrong (too-shallow, wrong-shaped)
+    lake extents once seeding stopped being one-seed-per-basin.
+
+    `max_new_hops` bounds how many graph-hops of brand-new (`prev_wet_mask` false) territory
+    one seed's flood may cross to reach a node, via a 0-1 BFS (`deque`, zero-cost edges into
+    already-wet nodes pushed to the front, one-cost edges into new nodes pushed to the back --
+    the standard technique for shortest-path with only {0,1} edge weights, here counting "how
+    many new nodes deep" a candidate is rather than raw graph distance). Nodes that were
+    already wet last step never consume hop budget, so a lake that's merely persisting (not
+    growing beyond where it already was) is never hop-limited, only its growth into land it
+    did not already occupy -- confirmed directly as necessary: without it, a large, gently
+    sloped basin sitting almost entirely below one seed's water surface could still be claimed
+    in a single step even with every node's own depth capped by `update_lakes`, because area
+    (node count), not per-node depth, was the dominant driver of the volume swings the user
+    reported."""
     n = len(elevation)
     lake_depth = [0.0] * n
     visited = [False] * n
@@ -415,61 +473,131 @@ def _flood_fill_lake_extent(
     elevation_list = elevation.tolist()
     is_ocean_list = is_ocean.tolist()
     surface_list = water_surface.tolist()
+    prev_wet_list = prev_wet_mask.tolist()
 
-    for seed in np.nonzero(seed_mask)[0].tolist():
+    seed_idx = np.nonzero(seed_mask)[0]
+    seed_order = seed_idx[np.argsort(-water_surface[seed_idx])].tolist()
+
+    for seed in seed_order:
         if visited[seed]:
             continue
         surface = surface_list[seed]
-        stack = [seed]
-        while stack:
-            node = stack.pop()
-            if visited[node] or is_ocean_list[node] or elevation_list[node] >= surface:
+        hop = {seed: 0}
+        queue: deque[int] = deque([seed])
+        while queue:
+            node = queue.popleft()
+            if visited[node]:
+                continue
+            if is_ocean_list[node] or elevation_list[node] >= surface:
                 continue
             visited[node] = True
             lake_depth[node] = surface - elevation_list[node]
+            node_hop = hop[node]
             for neighbor in neighbor_list[node]:
-                if not visited[neighbor] and not is_ocean_list[neighbor] and elevation_list[neighbor] < surface:
-                    stack.append(neighbor)
+                if visited[neighbor] or is_ocean_list[neighbor] or elevation_list[neighbor] >= surface:
+                    continue
+                cost = 0 if prev_wet_list[neighbor] else 1
+                new_hop = node_hop + cost
+                if new_hop > max_new_hops:
+                    continue
+                if neighbor not in hop or new_hop < hop[neighbor]:
+                    hop[neighbor] = new_hop
+                    if cost == 0:
+                        queue.appendleft(neighbor)
+                    else:
+                        queue.append(neighbor)
     return np.array(lake_depth)
 
 
 def update_lakes(
     fields: HydrologyFields, prev_lake_depth: np.ndarray, water_deposited: np.ndarray, years: float, is_accumulating: np.ndarray
 ) -> np.ndarray:
-    """New lake_depth per node. First, each sink's *own* depth: grows fed by
-    route_downstream's own terminal deposition there (`water_deposited`, the water-routing
-    pass's `deposited` output -- nonzero only at a true sink, since a through-flowing node's
-    water all continues downstream), evaporates otherwise, capped at the basin's true spill
-    depth (`filled_elevation - elevation`) -- see this module's docstring and boundary.py's
-    own divergent-relaxation style for why a persistent field needs this kind of
-    steady-state capping, and plate-sim's own docs for the oscillation bug it specifically
-    avoids (a full lake that evaporates even slightly un-redirects its flow_target back to a
-    sink, refills, and oscillates forever instead of settling as a real, continuously-
-    draining lake). Then, `_flood_fill_lake_extent` spreads each sink's own current water
-    surface outward to every other node in the same basin actually below it -- a lake is the
-    whole flooded extent, not just its own deepest point.
+    """New lake_depth per node. Every node that held any water *last* step (`prev_lake_depth
+    > 0`) evaporates its own depth forward independently and becomes its own flood-fill seed
+    this step -- not just whichever single node happens to have `flow_target == -1` right
+    now. That specific node-level identity turns out to be unstable to hang lake persistence
+    directly off of: (1) ordinary terrain churn (erosion, sediment deposition, a nearby
+    eruption, line regridding) can flip which specific point is locally lowest from one step
+    to the next, and (2) once a lake actually *fills* to its own basin's cap,
+    `_compute_flow_direction` correctly redirects its own flow_target away from -1 (toward
+    `spill_target`, so the lake can drain) -- meaning the exact node holding a lake's
+    accumulated depth can stop being `flow_target == -1` right when the lake finishes filling
+    and is at its largest. Both, left untreated (an earlier version of this function gated
+    growth/seeding on `is_sink` directly), read as the lake instantly vanishing: confirmed
+    directly as a real bug, a real generated world's total lake volume swinging by two-plus
+    orders of magnitude step to step, thousands of nodes and most of a lake's volume
+    disappearing and then reappearing (mostly intact) a step or two later, with nothing
+    physical about the lake actually having changed in between. A grouping-based fix (basins
+    identified by shared `filled_elevation`) was tried and also confirmed insufficient:
+    `filled_elevation` is each node's own individual bottleneck, which is *not* uniform across
+    one physically-connected lake once nested sub-basins are involved (a shoreline node with
+    cheap, direct ocean access has a much lower value than an interior node that has to cross
+    the same outer rim that node doesn't), so grouping by it either splits one real lake into
+    disconnected pieces or fails to carry a deep interior seed's own history forward at all.
+
+    Letting *every* previously-wet node seed its own flood sidesteps needing any such
+    "basin identity" abstraction: whichever seeds are still mutually reachable this step
+    naturally merge into one flood (highest water surface wins shared territory -- see
+    `_flood_fill_lake_extent`'s own docstring for why processing order matters once there can
+    be many overlapping seeds), and a seed that's no longer reachable from any other simply
+    stays its own separate, still-correctly-persisting pool. `route_downstream`'s own
+    terminal deposition (`water_deposited`, the water-routing pass's `deposited` output --
+    nonzero only at whichever node is the literal sink this step) still only credits *new*
+    inflow to that one current sink; every other previously-wet node just evaporates, capped
+    at its own local spill depth (`filled_elevation - elevation`) -- see this module's
+    docstring and boundary.py's own divergent-relaxation style for why a persistent field
+    needs this kind of steady-state capping, and plate-sim's own docs for the oscillation bug
+    it specifically avoids (a full lake that evaporates even slightly un-redirects its
+    `flow_target` back to a sink, refills, and oscillates forever instead of settling as a
+    real, continuously-draining lake).
 
     `is_accumulating` (a node cold enough for permanent glaciation, see
-    GLACIER_ACCUMULATION_TEMP_C) forces a sink's own depth to 0 rather than the ordinary
+    GLACIER_ACCUMULATION_TEMP_C) forces a node's own depth to 0 rather than the ordinary
     grow-or-stay-at-cap behavior -- without this, a lake that just froze (see
     compute_hydrology's freeze conversion, which already moved its water into
     `frozen_from_lake` before this function ever runs) would immediately re-fill right back
     up to its own basin cap the same step, double-counting the same water as both a lake and
-    a glacier at once -- the exact failure mode plate-sim's own docs describe fixing."""
+    a glacier at once -- the exact failure mode plate-sim's own docs describe fixing.
+
+    Two more blunt, unconditional rate limits are applied on top of everything above, because
+    the identity fixes alone still left several tested worlds with 100x-800x single-step
+    swings in total lake volume: (1) `_flood_fill_lake_extent` is given `max_new_hops`
+    (`MAX_LAKE_NEW_HOPS_PER_MYR * years_myr`) so a lake's edge can only advance a limited
+    number of graph-hops into land it did not already occupy last step, rather than being
+    able to claim an entire gently-sloped basin (thousands of new nodes) the moment it's all
+    below the current water surface -- confirmed directly that this, not per-node depth, was
+    the dominant remaining driver of the volume swings (mean depth per node stayed modest
+    even in the worst swings; total *area* was what jumped). (2) the final per-node result is
+    passed through `MAX_LAKE_DEPTH_CHANGE_M_PER_MYR` as a hard cap on how much any single
+    node's own depth may rise or fall against `prev_lake_depth` in one step. Together they
+    make a large, sudden volume swing physically impossible regardless of its root cause: a
+    lake that large can only ever grow this much area, and deepen this much, per step, so
+    reaching a very different volume necessarily takes several steps -- which is also exactly
+    the user-facing behavior wanted, a big lake takes a long time to fill or evaporate, and
+    never just appears or vanishes in one turn."""
     years_myr = years / 1_000_000.0
     is_sink = (fields.flow_target < 0) & ~fields.is_ocean
     retention = np.exp(-LAKE_EVAPORATION_RATE_PER_MYR * years_myr)
-    inflow_gain = np.where(is_sink & ~is_accumulating, LAKE_FILL_RATE * water_deposited * years_myr, 0.0)
     baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
     cap = np.clip(fields.filled_elevation - fields.elevation, 0.0, None)
 
-    sink_depth = np.clip(prev_lake_depth * retention + inflow_gain - baseline_loss, 0.0, cap)
-    sink_depth = np.where(is_accumulating, 0.0, sink_depth)
-    sink_water_surface = fields.elevation + sink_depth
+    carried_depth = np.clip(prev_lake_depth * retention - baseline_loss, 0.0, cap)
+    inflow_gain = np.where(is_sink & ~is_accumulating, LAKE_FILL_RATE * water_deposited * years_myr, 0.0)
+    depth = np.clip(carried_depth + inflow_gain, 0.0, cap)
+    depth = np.where(is_accumulating, 0.0, depth)
 
-    flood_seed = is_sink & (sink_depth > 0.0)
-    flooded = _flood_fill_lake_extent(fields.elevation, fields.is_ocean, fields.neighbor_idx, flood_seed, sink_water_surface)
-    return np.where(fields.is_ocean, 0.0, flooded)
+    water_surface = fields.elevation + depth
+    flood_seed = depth > 0.0
+    prev_wet_mask = prev_lake_depth > 0.0
+    max_new_hops = max(1, round(MAX_LAKE_NEW_HOPS_PER_MYR * years_myr))
+    flooded = _flood_fill_lake_extent(
+        fields.elevation, fields.is_ocean, fields.neighbor_idx, flood_seed, water_surface, prev_wet_mask, max_new_hops
+    )
+    flooded = np.where(fields.is_ocean, 0.0, flooded)
+
+    max_change = MAX_LAKE_DEPTH_CHANGE_M_PER_MYR * years_myr
+    rate_limited = np.clip(flooded, prev_lake_depth - max_change, prev_lake_depth + max_change)
+    return np.clip(rate_limited, 0.0, None)
 
 
 def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temperature_at_nodes: np.ndarray, years: float) -> HydrologyFields:

@@ -221,7 +221,8 @@ def test_flood_fill_lake_extent_covers_every_node_below_the_seed_water_surface()
     seed_mask = np.array([True, False, False, False])
     water_surface = np.array([15.0, 0.0, 0.0, 0.0])  # only the seed's own entry is read
 
-    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface)
+    prev_wet_mask = np.zeros(4, dtype=bool)
+    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=10)
     assert result.tolist() == [5.0, 3.0, 1.0, 0.0]  # 15-10, 15-12, 15-14, dry (20 >= 15)
 
 
@@ -232,8 +233,70 @@ def test_flood_fill_lake_extent_never_floods_ocean():
     seed_mask = np.array([True, False])
     water_surface = np.array([50.0, 0.0])  # would easily submerge the ocean node too, if allowed
 
-    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface)
+    prev_wet_mask = np.zeros(2, dtype=bool)
+    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=10)
     assert result[1] == 0.0
+
+
+def test_flood_fill_lake_extent_limits_growth_into_brand_new_territory():
+    # A 4-node chain 0-1-2-3, all below the seed's generous water surface. None were wet last
+    # step, so each additional hop away from the seed costs one unit of the new-territory hop
+    # budget -- with max_new_hops=1, only the seed and its immediate neighbor may be claimed
+    # this step, even though nodes 2/3 are also below the water surface.
+    elevation = np.array([10.0, 11.0, 12.0, 13.0])
+    is_ocean = np.zeros(4, dtype=bool)
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    seed_mask = np.array([True, False, False, False])
+    water_surface = np.array([20.0, 0.0, 0.0, 0.0])
+    prev_wet_mask = np.zeros(4, dtype=bool)
+
+    result = hydrology._flood_fill_lake_extent(
+        elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=1
+    )
+    assert result.tolist() == [10.0, 9.0, 0.0, 0.0]  # nodes 2/3 unreached at this hop budget
+
+
+def test_flood_fill_lake_extent_does_not_hop_limit_already_wet_territory():
+    # Same chain, but nodes 1 and 2 were already wet last step -- passing through them should
+    # cost nothing, so node 3 (one new hop beyond the already-wet region) is still reachable
+    # even at max_new_hops=1.
+    elevation = np.array([10.0, 11.0, 12.0, 13.0])
+    is_ocean = np.zeros(4, dtype=bool)
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    seed_mask = np.array([True, False, False, False])
+    water_surface = np.array([20.0, 0.0, 0.0, 0.0])
+    prev_wet_mask = np.array([False, True, True, False])
+
+    result = hydrology._flood_fill_lake_extent(
+        elevation, is_ocean, neighbor_idx, seed_mask, water_surface, prev_wet_mask, max_new_hops=1
+    )
+    assert result.tolist() == [10.0, 9.0, 8.0, 7.0]  # all reachable -- 1/2 free, 3 costs one hop
+
+
+def test_update_lakes_caps_depth_change_per_step():
+    # A sink with an enormous amount of new inflow in one step would, without a rate limit,
+    # jump straight up to its basin's (very deep) spill cap in a single step. The per-step
+    # rate limit should instead cap how much this node's depth may actually change.
+    not_accumulating = np.zeros(2, dtype=bool)
+    fields = hydrology.HydrologyFields(
+        points=np.zeros((2, 3)),
+        elevation=np.array([10.0, -5.0]),
+        is_ocean=np.array([False, True]),
+        neighbor_idx=np.zeros((2, 1), dtype=np.int64),
+        flow_target=np.array([-1, -1]),
+        flow_accum=np.zeros(2),
+        water_deposited=np.array([1_000_000.0, 0.0]),  # huge inflow this step
+        filled_elevation=np.array([5000.0, -5.0]),  # basin could theoretically hold ~4990m
+        spill_target=np.array([-1, -1]),
+        is_river=np.zeros(2, dtype=bool),
+        lake_depth=np.zeros(2),
+        glacier_depth=np.zeros(2),
+        line_refs=[],
+    )
+    grown = hydrology.update_lakes(
+        fields, prev_lake_depth=np.zeros(2), water_deposited=fields.water_deposited, years=1_000_000, is_accumulating=not_accumulating
+    )
+    assert 0.0 < grown[0] <= hydrology.MAX_LAKE_DEPTH_CHANGE_M_PER_MYR  # capped well short of the ~4990m basin cap
 
 
 def test_update_lakes_floods_a_whole_basin_not_just_the_sink():
