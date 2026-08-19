@@ -2,9 +2,9 @@ import base64
 import io
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
-from app import climate, geometry, render_image
+from app import climate, geometry, hydrology, render_image
 from app.world import World, generate_world
 
 
@@ -101,6 +101,48 @@ def test_render_png_base64_round_trips():
     decoded = base64.b64decode(encoded)
     image = Image.open(io.BytesIO(decoded))
     assert image.size == (100, 60)
+
+
+def test_draw_rivers_only_draws_segments_above_the_flow_floor():
+    # The main map views (unlike the River Inspector, which deliberately shows every
+    # is_river-classified network regardless of flow_rate) additionally require flow_accum
+    # to clear RIVER_DRAW_MIN_FLOW -- confirmed here by drawing the exact same is_river/
+    # flow_target topology twice, once with flow_accum below the floor (no river pixels
+    # should appear at all) and once above it (some must). Calls _draw_rivers directly
+    # (rather than the full render_png) so a legend swatch that happens to reuse
+    # RIVER_COLOR_RGB can't make an unconditional pixel show up either way.
+    world = _world()
+    points = np.array([[1.0, 0.0, 0.0], [0.99, 0.05, 0.0], [0.0, 1.0, 0.0], [0.0, 0.95, 0.05]])
+    points = points / np.linalg.norm(points, axis=1, keepdims=True)
+    n = len(points)
+    base_fields = dict(
+        points=points,
+        elevation=np.array([10.0, 5.0, 10.0, 5.0]),
+        is_ocean=np.zeros(n, dtype=bool),
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=np.array([True, False, True, False]),
+        flow_target=np.array([1, -1, 3, -1]),
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        line_refs=[],
+    )
+
+    def river_pixel_count(flow_accum):
+        world.hydrology_cache = hydrology.HydrologyFields(flow_accum=flow_accum, **base_fields)
+        image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
+        draw = ImageDraw.Draw(image)
+        render_image._draw_rivers(draw, world, "behrmann", 50.0, 150.0, 100.0, 1.0, np.eye(3))
+        pixels = np.asarray(image)
+        return int(np.all(pixels == np.array(render_image.RIVER_COLOR_RGB), axis=-1).sum())
+
+    below_floor = river_pixel_count(np.full(n, render_image.RIVER_DRAW_MIN_FLOW * 0.5))
+    above_floor = river_pixel_count(np.full(n, render_image.RIVER_DRAW_MIN_FLOW * 2.0))
+
+    assert below_floor == 0
+    assert above_floor > 0
 
 
 def test_render_png_scales_visual_constants_with_resolution():

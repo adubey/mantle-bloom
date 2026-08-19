@@ -44,6 +44,14 @@ LAKE_COLOR_RGB = (58, 92, 122)
 # segments get drawn varies with flow magnitude, via RIVER_FLOW_PERCENTILE below).
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
+# A second, independent cut on top of hydrology.py's own is_river classification
+# (RIVER_FLOW_PERCENTILE): the main map views only draw a river segment if its own
+# flow_accum also clears this absolute floor, so a large world's merely-top-decile trickles
+# don't clutter every general-purpose view -- unlike the River Inspector (main.py's
+# /world/rivers, RiverInspector.tsx), which deliberately keeps showing every is_river network
+# regardless of flow_rate, since picking a small tributary out from the full list is exactly
+# what that view is for.
+RIVER_DRAW_MIN_FLOW = 100_000.0
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
 # white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
 # as "just a tall mountain" or "just a lake" at a glance.
@@ -839,11 +847,13 @@ def _draw_rivers(
     stepped, in which case this draws nothing). Each segment is a real, short 3D hop between
     two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent
     _project_points calls) keeps it from being wrongly split across the antimeridian seam --
-    same technique _render_grid_arrays' own corner measurements already rely on."""
+    same technique _render_grid_arrays' own corner measurements already rely on. Also cut by
+    RIVER_DRAW_MIN_FLOW -- see that constant's own comment for why this view is stricter than
+    the River Inspector's own /world/rivers listing."""
     hydro = world.hydrology_cache
     if hydro is None:
         return
-    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0))[0]
+    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= RIVER_DRAW_MIN_FLOW))[0]
     if len(river_idx) == 0:
         return
     target_idx = hydro.flow_target[river_idx]
