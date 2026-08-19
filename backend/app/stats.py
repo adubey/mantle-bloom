@@ -21,9 +21,11 @@ kept as two separate stats rather than one combined min/max/mean the way it used
 since lumping a -11000m trench and a 9000m peak into the same range made neither number
 very informative on its own.
 
-`biome_land_fraction` reuses biomes.classify_biomes against the same land/ocean split the
-"biome" map view itself uses (see render_image.py's own CLIMATE_VIEWS branch for `view ==
-"biome"`: land cells use air_temperature_c, ocean cells are forced to Ocean regardless) --
+`biome_land_fraction` reuses biomes.classify_biomes the same way the "biome" map view itself
+does (see render_image.py's `_render_biome_view`: land cells use air_temperature_c, ocean
+cells are forced to Ocean regardless), though against climate.py's native (coarser) grid
+here rather than that view's own finer render grid -- an aggregate land fraction doesn't need
+the extra resolution the way a rendered map's coastlines visibly do --
 the denominator is land cells only (Ocean is always 0% by construction, so it's omitted from
 the dict entirely rather than reported as a permanent zero).
 """

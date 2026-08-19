@@ -148,22 +148,29 @@ const PRECIPITATION_GRADIENT: LegendGradient = {
   ],
 };
 
-// biomes.BIOME_NAMES / biomes.BIOME_COLORS.
-const BIOME_ENTRIES: [string, string][] = [
-  ["Ocean", rgb(18, 28, 55)],
-  ["Ice", rgb(223, 235, 240)],
-  ["Tundra", rgb(156, 171, 158)],
-  ["Boreal Forest", rgb(61, 96, 74)],
-  ["Temperate Desert", rgb(176, 152, 116)],
-  ["Temperate Grassland", rgb(168, 178, 107)],
-  ["Woodland/Shrubland", rgb(126, 143, 90)],
-  ["Temperate Seasonal Forest", rgb(79, 121, 66)],
-  ["Temperate Rainforest", rgb(42, 94, 68)],
-  ["Subtropical Desert", rgb(214, 178, 115)],
-  ["Savanna", rgb(196, 178, 92)],
-  ["Tropical Seasonal Forest", rgb(58, 122, 66)],
-  ["Tropical Rainforest", rgb(26, 84, 46)],
+// biomes.BIOME_NAMES / biomes.BIOME_COLORS. Kept as raw [r, g, b] tuples (not just CSS
+// strings) and exported, so MapCanvas.tsx's legend-click-to-highlight feature can compare
+// them directly against decoded canvas pixel data -- the Biome view draws every pixel as
+// one of exactly these colors (see backend app/render_image.py's _render_biome_view: no
+// coastline/graticule overlay drawn on top), so an exact RGB match is enough to pick out a
+// clicked biome's cells with no server round-trip.
+export const BIOME_RGB_ENTRIES: [string, [number, number, number]][] = [
+  ["Ocean", [18, 28, 55]],
+  ["Ice", [223, 235, 240]],
+  ["Tundra", [156, 171, 158]],
+  ["Boreal Forest", [61, 96, 74]],
+  ["Temperate Desert", [176, 152, 116]],
+  ["Temperate Grassland", [168, 178, 107]],
+  ["Woodland/Shrubland", [126, 143, 90]],
+  ["Temperate Seasonal Forest", [79, 121, 66]],
+  ["Temperate Rainforest", [42, 94, 68]],
+  ["Subtropical Desert", [214, 178, 115]],
+  ["Savanna", [196, 178, 92]],
+  ["Tropical Seasonal Forest", [58, 122, 66]],
+  ["Tropical Rainforest", [26, 84, 46]],
 ];
+
+const BIOME_ENTRIES: [string, string][] = BIOME_RGB_ENTRIES.map(([label, [r, g, b]]) => [label, rgb(r, g, b)]);
 
 const COASTLINE_SYMBOL: LegendSymbol = { kind: "line", color: COASTLINE_COLOR, label: "Coastline" };
 
@@ -223,6 +230,22 @@ export function legendFor(view: MapView): LegendSpec | null {
       return {
         title: "Biome",
         symbols: BIOME_ENTRIES.map(([label, color]) => ({ kind: "square", color, label }) as LegendSymbol),
+      };
+    case "combined":
+      return {
+        // Ocean/land relief both follow the elevation gradient (see backend
+        // app/render_image.py's _render_combined_view); land is additionally tinted by
+        // biome -- see the swatches below, which skip Ocean since that's covered by the
+        // gradient instead.
+        title: "Combined (true color)",
+        gradient: ELEVATION_GRADIENT,
+        symbols: [
+          { kind: "square", color: LAKE_COLOR, label: "Lake" },
+          { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
+          ...BIOME_ENTRIES.filter(([label]) => label !== "Ocean").map(
+            ([label, color]) => ({ kind: "square", color, label }) as LegendSymbol
+          ),
+        ],
       };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either

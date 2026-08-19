@@ -34,7 +34,10 @@ from .world import World
 # climate.py's own raw fields -- it's a pure classification (biomes.classify_biomes) derived
 # entirely from two fields (temperature, precipitation) that path already has in hand.
 CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome")
-VIEWS = ("elevation", "plates", "platesDetail") + CLIMATE_VIEWS
+# "combined" isn't a CLIMATE_VIEWS member (see _render_combined_view): it draws from the same
+# fine per-node elevation data the elevation/plates views use, not climate.py's own grid, so
+# it belongs with them structurally even though its coloring leans on biome classification.
+VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -111,6 +114,19 @@ ARC_DIRECTION_SAMPLE_RAD = 0.05
 # side by side -- 250km left blocky, stair-stepped edges even at this canvas size).
 GRID_SPACING_KM = 100.0
 GRID_SPACING_RAD = GRID_SPACING_KM / plates.PLANET_RADIUS_KM
+
+# The Biome/Combined views' own render grid (see _biome_fields) -- a fixed-shape
+# equirectangular grid, like climate.py's native one, but swept at roughly GRID_SPACING_KM
+# resolution instead of climate's coarser 2-degree simulation grid, so a biome map reads with
+# elevation-view-level detail. Deliberately *not* a change to climate.py's own grid (that one
+# is recomputed every step, not just on render -- see that module's own docstring for why
+# coarsening it for anything other than "looks good rasterized" would cost real per-step
+# performance); this is purely a render-time upsample of climate.py's already-computed
+# temperature/precipitation fields (see _bilinear_resample) plus a fresh nearest-node
+# resample of the actual elevation data at this finer resolution for land/ocean/lake/glacier
+# (see _biome_fields) -- the same technique _render_grid_arrays already uses for elevation.
+BIOME_GRID_HEIGHT = round(np.pi / GRID_SPACING_RAD)
+BIOME_GRID_WIDTH = round(2 * np.pi / GRID_SPACING_RAD)
 
 # A fixed categorical palette so each plate reads as a distinct region across
 # generate/step calls (plate_id is stable within one world's lifetime).
@@ -345,6 +361,148 @@ def _render_grid_arrays(
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
+
+
+def _biome_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Same lat/lon/world_xyz construction as climate.py's own `_build_grid` (row 0 = north
+    pole, increasing southward; column increasing eastward, wrapping) -- duplicated rather
+    than imported since that's a private helper of climate.py's own native simulation grid,
+    and this one is deliberately a different (finer) shape -- see BIOME_GRID_HEIGHT/WIDTH."""
+    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
+    lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
+    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
+    lon_grid = np.repeat(lon_deg[None, :], height, axis=0)
+    world_xyz = geometry.latlon_to_xyz(np.radians(lat_grid), np.radians(lon_grid))
+    return lat_deg, lon_deg, world_xyz
+
+
+def _bilinear_resample(
+    field: np.ndarray, src_lat_deg: np.ndarray, src_lon_deg: np.ndarray, dst_lat_deg: np.ndarray, dst_lon_deg: np.ndarray
+) -> np.ndarray:
+    """Upsamples a coarse (H, W) equirectangular field onto a finer (H2, W2) lat/lon grid by
+    bilinear interpolation -- gives the Biome/Combined views' render grid (see
+    BIOME_GRID_HEIGHT/WIDTH) a smoothly-varying temperature/precipitation field instead of
+    climate.py's native grid's hard 2-degree cell boundaries, without re-running the
+    simulation at a finer resolution. `src_lat_deg`/`src_lon_deg` are assumed uniformly
+    spaced (true of climate.py's `_build_grid`, the only source this is ever called with).
+    Latitude is clamped at the poles (not periodic); longitude wraps (periodic, matching the
+    sphere's own topology) -- handled with explicit row/column index math rather than a
+    generic scipy.interpolate call specifically so the two axes can differ that way."""
+    src_h, src_w = field.shape
+    row_step = 180.0 / src_h
+    row_f = np.clip((90.0 - dst_lat_deg) / row_step - 0.5, 0, src_h - 1)
+    row0 = np.floor(row_f).astype(int)
+    row1 = np.clip(row0 + 1, 0, src_h - 1)
+    row_t = (row_f - row0)[:, None]
+
+    col_step = 360.0 / src_w
+    lon_norm = ((dst_lon_deg + 180.0) % 360.0) - 180.0
+    col_f = (lon_norm + 180.0) / col_step - 0.5
+    col0 = np.floor(col_f).astype(int) % src_w
+    col1 = (col0 + 1) % src_w
+    col_t = (col_f - np.floor(col_f))[None, :]
+
+    f00 = field[np.ix_(row0, col0)]
+    f01 = field[np.ix_(row0, col1)]
+    f10 = field[np.ix_(row1, col0)]
+    f11 = field[np.ix_(row1, col1)]
+    top = f00 * (1 - col_t) + f01 * col_t
+    bot = f10 * (1 - col_t) + f11 * col_t
+    return top * (1 - row_t) + bot * row_t
+
+
+def _biome_fields(world: World, grid_h: int, grid_w: int):
+    """The fine equirectangular grid shared by the Biome and Combined views: elevation/lake
+    depth/glacier depth are a fresh nearest-node resample of the actual plate data at this
+    grid's resolution (the same cKDTree technique _render_grid_arrays already uses for the
+    Elevation/Plates views, via the same plates.collect_all_* helpers), so land/ocean/lake/
+    glacier all line up with the Elevation view's own at matching detail; temperature/
+    precipitation are bilinearly upsampled (_bilinear_resample) from climate.py's own
+    coarser, fixed-shape simulation grid (see climate.compute_climate_cached) rather than
+    resimulated at this resolution. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3),
+    elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
+    lake_depth, glacier_depth), all (H, W) besides the first three."""
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    flat_xyz = world_xyz.reshape(-1, 3)
+    shape = (grid_h, grid_w)
+
+    collected = plates.collect_all_points(world.plates)
+    if collected is None:
+        elevation_m = np.zeros(shape)
+        is_ocean = np.ones(shape, dtype=bool)
+        lake_depth = np.zeros(shape)
+        glacier_depth = np.zeros(shape)
+    else:
+        all_points, all_elevation, _ = collected
+        all_lake_depth = plates.collect_all_lake_depth(world.plates)
+        all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
+        tree = cKDTree(all_points)
+        _, idx = tree.query(flat_xyz)
+        elevation_m = all_elevation[idx].reshape(shape)
+        lake_depth = all_lake_depth[idx].reshape(shape)
+        glacier_depth = all_glacier_depth[idx].reshape(shape)
+        is_ocean = elevation_m <= world.sea_level_m
+
+    fields = climate.compute_climate_cached(world)
+    air_temp = _bilinear_resample(fields.air_temperature_c, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
+    ocean_temp = _bilinear_resample(fields.ocean_temperature_c, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
+    precip = _bilinear_resample(fields.precipitation_mm, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
+
+    return lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth
+
+
+def _project_climate_grid(
+    lat_deg: np.ndarray, lon_deg: np.ndarray, world_xyz: np.ndarray,
+    projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float]:
+    """Projects a full-sphere equirectangular (H, W, 3) grid to pixel space: fits the view's
+    scale/offset to the whole sphere's projected extent (identical regardless of rotation --
+    rotation only permutes which physical points land at which lat/lon, never changes the set
+    of lat/lon values a full sphere covers), then returns each cell's pixel center and its
+    per-cell axis-aligned half-extent in pixels (corner-based, not edge-midpoint-based --
+    see _render_grid_arrays' own docstring for why that's required once the view can rotate).
+    Shared by every CLIMATE_VIEWS renderer and the Biome/Combined views' own finer grid (see
+    BIOME_GRID_HEIGHT/WIDTH) so they all place the sphere identically and never rescale or
+    re-center relative to one another when the user switches views."""
+    grid_h, grid_w = world_xyz.shape[:2]
+    flat_xyz = world_xyz.reshape(-1, 3)
+
+    bbox_xy = _project_points(projection, flat_xyz)
+    flat_xy = _project_points(projection, _rotate(flat_xyz, view_rotation))
+
+    min_x, min_y = bbox_xy.min(axis=0)
+    max_x, max_y = bbox_xy.max(axis=0)
+    data_w = max(max_x - min_x, 1e-9)
+    data_h = max(max_y - min_y, 1e-9)
+    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
+    offset_x = width / 2 - scale * (min_x + max_x) / 2
+    offset_y = height / 2 + scale * (min_y + max_y) / 2
+
+    centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
+
+    xy_grid = flat_xy.reshape(grid_h, grid_w, 2)
+    _, center_lon_grid = geometry.xyz_to_latlon(_rotate(flat_xyz, view_rotation))
+    center_lon_grid = center_lon_grid.reshape(grid_h, grid_w)
+
+    half_dlat_deg = 180.0 / grid_h / 2
+    half_dlon_deg = 360.0 / grid_w / 2
+    lat_grid_deg = np.repeat(lat_deg[:, None], grid_w, axis=1)
+    lon_grid_deg = np.repeat(lon_deg[None, :], grid_h, axis=0)
+
+    def _corner_xy(dlat: float, dlon: float) -> np.ndarray:
+        xyz = geometry.latlon_to_xyz(np.radians(lat_grid_deg + dlat), np.radians(lon_grid_deg + dlon))
+        rotated = _rotate(xyz.reshape(-1, 3), view_rotation)
+        return _project_offset(projection, rotated, center_lon_grid.reshape(-1)).reshape(grid_h, grid_w, 2)
+
+    corner_steps = [
+        _corner_xy(dlat_sign * half_dlat_deg, dlon_sign * half_dlon_deg) - xy_grid
+        for dlat_sign in (1.0, -1.0)
+        for dlon_sign in (1.0, -1.0)
+    ]
+    half_w = np.max([np.abs(s[..., 0]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
+    half_h = np.max([np.abs(s[..., 1]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
+
+    return centers, half_w, half_h, scale, offset_x, offset_y
 
 
 def _plate_tectonics(projection: str, plate, view_rotation: np.ndarray) -> dict:
@@ -583,10 +741,14 @@ def _draw_swell_markers(
 
 
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of CLIMATE_VIEWS from climate.py's own fixed grid -- a separate path from
-    the plate-tectonics views below since the data source (a real (H, W) array, always
-    covering the whole sphere) is structurally different from the render grid's ragged
-    lattice, so there's little to share beyond the pixel-space primitives."""
+    """Renders one of CLIMATE_VIEWS (besides "biome", which has its own finer-grid path --
+    see _render_biome_view) from climate.py's own fixed grid -- a separate path from the
+    plate-tectonics views below since the data source (a real (H, W) array, always covering
+    the whole sphere) is structurally different from the render grid's ragged lattice, so
+    there's little to share beyond the pixel-space primitives."""
+    if view == "biome":
+        return _render_biome_view(world, projection, width, height, view_rotation)
+
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -595,58 +757,11 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     # instead of triggering a second ~50ms recomputation, rather than calling
     # climate.compute_climate directly.
     fields = climate.compute_climate_cached(world)
-    grid_h, grid_w = fields.elevation_m.shape
-    flat_xyz = fields.world_xyz.reshape(-1, 3)
-
-    # The bounding box is always the *whole* sphere's projected extent (climate's grid
-    # always covers it), which is identical regardless of rotation -- rotation only permutes
-    # which physical points land at which lat/lon, never changes the set of lat/lon values a
-    # full sphere covers. So it's measured from the un-rotated grid (matching today's
-    # behavior exactly at the identity rotation), while `flat_xy` below -- what's actually
-    # drawn -- uses the rotated positions.
-    bbox_xy = _project_points(projection, flat_xyz)
-    flat_xy = _project_points(projection, _rotate(flat_xyz, view_rotation))
-
-    min_x, min_y = bbox_xy.min(axis=0)
-    max_x, max_y = bbox_xy.max(axis=0)
-    data_w = max(max_x - min_x, 1e-9)
-    data_h = max(max_y - min_y, 1e-9)
-    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
-    offset_x = width / 2 - scale * (min_x + max_x) / 2
-    offset_y = height / 2 + scale * (min_y + max_y) / 2
 
     pixels = blank.copy()
-    centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
-
-    # Cell half-extents, per cell (see _render_grid_arrays's docstring for the full
-    # reasoning, which applies identically here): measured via the cell's four *corners*
-    # (half a cell-step away on each diagonal), not edge-midpoint neighbors, since a rotation
-    # can skew an axis-aligned cell into a shape whose axis-aligned bounding box is set by its
-    # corners; and via _project_offset (not _project_points), since a naive small-angle
-    # corner offset can still land on the far side of the antimeridian seam once the view can
-    # rotate arbitrarily -- the seam can fall anywhere, and climate's grid densely covers the
-    # whole sphere, so some cell is always near it somewhere.
-    xy_grid = flat_xy.reshape(grid_h, grid_w, 2)
-    _, center_lon_grid = geometry.xyz_to_latlon(_rotate(flat_xyz, view_rotation))
-    center_lon_grid = center_lon_grid.reshape(grid_h, grid_w)
-
-    half_dlat_deg = 180.0 / grid_h / 2
-    half_dlon_deg = 360.0 / grid_w / 2
-    lat_grid_deg = np.repeat(fields.lat_deg[:, None], grid_w, axis=1)
-    lon_grid_deg = np.repeat(fields.lon_deg[None, :], grid_h, axis=0)
-
-    def _corner_xy(dlat: float, dlon: float) -> np.ndarray:
-        xyz = geometry.latlon_to_xyz(np.radians(lat_grid_deg + dlat), np.radians(lon_grid_deg + dlon))
-        rotated = _rotate(xyz.reshape(-1, 3), view_rotation)
-        return _project_offset(projection, rotated, center_lon_grid.reshape(-1)).reshape(grid_h, grid_w, 2)
-
-    corner_steps = [
-        _corner_xy(dlat_sign * half_dlat_deg, dlon_sign * half_dlon_deg) - xy_grid
-        for dlat_sign in (1.0, -1.0)
-        for dlon_sign in (1.0, -1.0)
-    ]
-    half_w = np.max([np.abs(s[..., 0]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
-    half_h = np.max([np.abs(s[..., 1]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        fields.lat_deg, fields.lon_deg, fields.world_xyz, projection, view_rotation, width, height, padding_px
+    )
 
     if view == "temperature":
         # Whichever temperature is physically meaningful at that cell: ocean surface where
@@ -659,13 +774,6 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _fill_rects(pixels, centers, half_w, half_h, colors)
     elif view == "precipitation":
         colors = precipitation_colors(fields.precipitation_mm.reshape(-1))
-        _fill_rects(pixels, centers, half_w, half_h, colors)
-    elif view == "biome":
-        # Same land/ocean temperature split the "temperature" view above uses -- ocean cells
-        # always classify as Ocean regardless, so only the land branch actually matters here.
-        display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
-        biome_ids = biomes.classify_biomes(display_temp.reshape(-1), fields.precipitation_mm.reshape(-1), fields.is_ocean.reshape(-1))
-        colors = biomes.BIOME_COLORS[biome_ids]
         _fill_rects(pixels, centers, half_w, half_h, colors)
     elif view in ("wind", "oceanCurrents"):
         backdrop = np.where(fields.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
@@ -691,6 +799,83 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     # legend text/gradient had to be hand-duplicated in Pillow drawing calls instead of
     # ordinary CSS/SVG.
     return _encode_image(image)
+
+
+def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Biome, unlike the rest of CLIMATE_VIEWS, is rendered on its own much finer grid (see
+    BIOME_GRID_HEIGHT/WIDTH and _biome_fields) rather than climate.py's native 90x180
+    simulation grid directly, so its coastlines and color boundaries read at roughly
+    Elevation-view resolution instead of climate's coarser simulation grid."""
+    padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    lat_deg, lon_deg, world_xyz, _, is_ocean, air_temp, ocean_temp, precip, _, _ = _biome_fields(
+        world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
+    )
+    display_temp = np.where(is_ocean, ocean_temp, air_temp)
+    biome_ids = biomes.classify_biomes(display_temp.reshape(-1), precip.reshape(-1), is_ocean.reshape(-1))
+    colors = biomes.BIOME_COLORS[biome_ids]
+
+    centers, half_w, half_h, _, _, _ = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    # No server-side legend/coastline overlay here -- same reasoning as _render_climate_view's
+    # own trailing comment (see there); biome's colors already carry a land/ocean cue on
+    # their own (Ocean is always the same fixed color), unlike temperature/humidity/
+    # precipitation's scales.
+    return _encode_image(Image.fromarray(pixels, mode="RGB"))
+
+
+# Land colors blend toward the elevation-hypsometric shade by up to this fraction at the
+# highest elevations -- a cheap "relief" cue (mountains read visibly lighter/rockier, matching
+# real satellite natural-color imagery) without a full hillshade, which would need neighbor
+# gradients the Biome/Combined grid's flat per-point sampling doesn't have on hand.
+RELIEF_BLEND_MAX = 0.55
+# Elevation (m above sea level) at which the relief blend reaches its max -- roughly
+# ELEVATION_GRADIENT's own high-mountain stop, so full blend only kicks in near real peaks.
+RELIEF_ELEVATION_RANGE_M = 6000.0
+
+
+def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """"Combined": biome color for land, hypsometric ocean-depth shading for water (reusing
+    elevation_colors, the same gradient the Elevation view itself uses) -- an approximation
+    of what the planet would look like in true color from orbit, on the same fine grid the
+    Biome view uses (see BIOME_GRID_HEIGHT/WIDTH and _biome_fields). Land color is blended
+    toward that same hypsometric shade at high elevation for a cheap relief cue (see
+    RELIEF_BLEND_MAX), and lakes/glaciers are overlaid the same way the Elevation view itself
+    draws them, at this grid's own resolution."""
+    padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth = _biome_fields(
+        world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
+    )
+    display_temp = np.where(is_ocean, ocean_temp, air_temp)
+    biome_ids = biomes.classify_biomes(display_temp.reshape(-1), precip.reshape(-1), is_ocean.reshape(-1))
+    biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
+    terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
+
+    relief_t = np.clip((elevation_m.reshape(-1) - world.sea_level_m) / RELIEF_ELEVATION_RANGE_M, 0.0, 1.0)
+    blend = (relief_t * RELIEF_BLEND_MAX)[:, None]
+    land_rgb = biome_rgb * (1 - blend) + terrain_rgb * blend
+
+    colors = np.where(is_ocean.reshape(-1)[:, None], terrain_rgb, land_rgb)
+    is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    if np.any(is_lake):
+        colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=float), colors)
+    is_glacier = glacier_depth.reshape(-1) > hydrology.GLACIER_VISIBLE_DEPTH_M
+    if np.any(is_glacier):
+        colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
+    colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
+
+    centers, half_w, half_h, _, _, _ = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    return _encode_image(Image.fromarray(pixels, mode="RGB"))
 
 
 def _draw_rivers(
@@ -769,6 +954,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
 
     if view in CLIMATE_VIEWS:
         return _render_climate_view(world, projection, view, width, height, view_rotation)
+    if view == "combined":
+        return _render_combined_view(world, projection, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

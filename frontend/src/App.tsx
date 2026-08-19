@@ -9,6 +9,7 @@ import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import Legend from "./Legend";
+import { BIOME_RGB_ENTRIES } from "./legendData";
 import { IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
 
@@ -78,6 +79,15 @@ export default function App() {
   // PNG and can't update mid-drag.
   const [rotation, setRotation] = useState<Mat3>(IDENTITY_ROTATION);
   const [centerLatLon, setCenterLatLon] = useState({ lat: 0, lon: 0 });
+  // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
+  // Biome view (the only legend whose swatches are clickable), so it's cleared any time the
+  // view changes away from "biome" rather than silently carrying a stale selection into a
+  // view whose legend can't reflect or clear it.
+  const [highlightedBiome, setHighlightedBiome] = useState<string | null>(null);
+  useEffect(() => {
+    if (mapView !== "biome") setHighlightedBiome(null);
+  }, [mapView]);
+  const highlightColor = mapView === "biome" ? (BIOME_RGB_ENTRIES.find(([label]) => label === highlightedBiome)?.[1] ?? null) : null;
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -343,6 +353,7 @@ export default function App() {
               <option value="humidity">Humidity</option>
               <option value="precipitation">Precipitation</option>
               <option value="biome">Biome</option>
+              <option value="combined">Combined</option>
             </select>
             <select
               value={projection}
@@ -460,9 +471,14 @@ export default function App() {
               rotation={rotation}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
+              highlightColor={highlightColor}
             />
           )}
-          <Legend mapView={mapView} />
+          <Legend
+            mapView={mapView}
+            highlightedBiome={highlightedBiome}
+            onBiomeClick={(label) => setHighlightedBiome((cur) => (cur === label ? null : label))}
+          />
           </div>
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "plateInspector"

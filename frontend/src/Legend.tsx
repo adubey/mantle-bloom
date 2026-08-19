@@ -4,6 +4,12 @@ import type { LegendGradient, LegendSymbol, SwatchKind } from "./legendData";
 
 interface Props {
   mapView: MapView;
+  // Legend-click-to-highlight (biome view only -- see App.tsx/MapCanvas.tsx): the currently
+  // highlighted biome's label, and a callback fired with a swatch's label on click (App.tsx
+  // toggles it off if the same label is clicked again). Both omitted on every other view,
+  // where the legend stays the plain, non-interactive read-only panel it always was.
+  highlightedBiome?: string | null;
+  onBiomeClick?: (label: string) => void;
 }
 
 const SWATCH_SIZE = 14;
@@ -87,11 +93,23 @@ function GradientBar({ gradient }: { gradient: LegendGradient }) {
   );
 }
 
-function SymbolRow({ symbol }: { symbol: LegendSymbol }) {
+function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClick?: () => void; selected?: boolean }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
+    <div
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "2px 4px",
+        margin: "0 -4px",
+        borderRadius: 3,
+        cursor: onClick ? "pointer" : undefined,
+        background: selected ? "rgba(255, 255, 255, 0.16)" : "transparent",
+      }}
+    >
       <Swatch kind={symbol.kind} color={symbol.color} outline={symbol.outline} />
-      <span style={{ fontSize: 11 }}>{symbol.label}</span>
+      <span style={{ fontSize: 11, fontWeight: selected ? 700 : 400 }}>{symbol.label}</span>
     </div>
   );
 }
@@ -100,9 +118,15 @@ function SymbolRow({ symbol }: { symbol: LegendSymbol }) {
 // bottom-left corner, in the same spot the old server-baked panel occupied. Unlike that PNG-
 // baked version, this one updates instantly on a projection/view change and stays legible
 // during a live rotation-preview drag (which only ever re-draws the canvas underneath it).
-export default function Legend({ mapView }: Props) {
+export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Props) {
   const spec = legendFor(mapView);
   if (!spec) return null;
+
+  // Only the biome view's swatches are ever clickable -- see the Props doc comment. The
+  // panel is pointerEvents: "none" everywhere else (letting a drag-to-rotate gesture that
+  // starts over the legend's own screen area still reach the canvas underneath it); here it
+  // has to switch to "auto" so its rows can actually receive the click.
+  const clickable = mapView === "biome" && !!onBiomeClick;
 
   return (
     <div
@@ -117,14 +141,19 @@ export default function Legend({ mapView }: Props) {
         border: "1px solid #4b5060",
         borderRadius: 4,
         color: "#dee2eb",
-        pointerEvents: "none",
+        pointerEvents: clickable ? "auto" : "none",
         userSelect: "none",
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{spec.title}</div>
       {spec.gradient && <GradientBar gradient={spec.gradient} />}
       {spec.symbols.map((sym) => (
-        <SymbolRow key={sym.label} symbol={sym} />
+        <SymbolRow
+          key={sym.label}
+          symbol={sym}
+          onClick={clickable ? () => onBiomeClick!(sym.label) : undefined}
+          selected={clickable && highlightedBiome === sym.label}
+        />
       ))}
     </div>
   );
