@@ -39,6 +39,7 @@ convergent cases above.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -169,23 +170,30 @@ def _grow_or_shrink_line(
     boundary every interval -- fixing the actual growth rate here is what stops that at the
     source, rather than only reacting to its symptom in gaps.py.
 
-    channel_depth/lake_depth/glacier_depth/is_volcano/volcano_active_years_remaining ride
-    along: a surviving node keeps its own prior value (sliced the same way theta/elevation
-    are), a newly-inserted node (brand new crust) starts at 0/False -- no history to carry,
-    the same reasoning plates.ElevationLine's own defaulting already uses for a call site
-    that doesn't pass them at all."""
+    channel_depth/channel_width/lake_depth/glacier_depth/is_volcano/volcano_active_years_
+    remaining ride along: a surviving node keeps its own prior value (sliced the same way
+    theta/elevation are), a newly-inserted node (brand new crust) starts at 0/False -- no
+    history to carry, the same reasoning plates.ElevationLine's own defaulting already uses
+    for a call site that doesn't pass them at all.
+
+    Every persistent field is threaded through the same append/insert/slice as theta/
+    elevation here (not dataclasses.replace -- there's no "unchanged" value to copy when the
+    array itself is being reshaped), keyed in one dict rather than one local variable per
+    field, so a future persistent field only needs to be added to `persistent_fields` below,
+    not duplicated across every branch of this function -- see plates.ElevationLine's own
+    docstring for the bug class this avoids."""
     theta = line.theta.copy()
     elevation = line.elevation.copy()
-    channel_depth = line.channel_depth.copy()
-    lake_depth = line.lake_depth.copy()
-    glacier_depth = line.glacier_depth.copy()
-    is_volcano = line.is_volcano.copy()
-    volcano_active_years_remaining = line.volcano_active_years_remaining.copy()
+    persistent_fields = {
+        "channel_depth": line.channel_depth.copy(),
+        "channel_width": line.channel_width.copy(),
+        "lake_depth": line.lake_depth.copy(),
+        "glacier_depth": line.glacier_depth.copy(),
+        "is_volcano": line.is_volcano.copy(),
+        "volcano_active_years_remaining": line.volcano_active_years_remaining.copy(),
+    }
     if len(theta) == 0:
-        return ElevationLine(
-            phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth,
-            is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining,
-        )
+        return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
     dtheta = TARGET_LINE_SPACING_RAD / max(np.cos(line.phi), 1e-3)
     target = _divergent_target(crust_type)
@@ -196,49 +204,31 @@ def _grow_or_shrink_line(
         new_theta = theta[-1] + dtheta * np.arange(1, n_new + 1)
         theta = np.append(theta, new_theta)
         elevation = np.append(elevation, np.full(n_new, target))
-        channel_depth = np.append(channel_depth, np.zeros(n_new))
-        lake_depth = np.append(lake_depth, np.zeros(n_new))
-        glacier_depth = np.append(glacier_depth, np.zeros(n_new))
-        is_volcano = np.append(is_volcano, np.zeros(n_new, dtype=bool))
-        volcano_active_years_remaining = np.append(volcano_active_years_remaining, np.zeros(n_new))
+        for name, values in persistent_fields.items():
+            fill = np.zeros(n_new, dtype=values.dtype)
+            persistent_fields[name] = np.append(values, fill)
     elif dist[-1] < MERGE_THRESHOLD_RAD and closing[-1] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[:-1]
         elevation = elevation[:-1]
-        channel_depth = channel_depth[:-1]
-        lake_depth = lake_depth[:-1]
-        glacier_depth = glacier_depth[:-1]
-        is_volcano = is_volcano[:-1]
-        volcano_active_years_remaining = volcano_active_years_remaining[:-1]
+        persistent_fields = {name: values[:-1] for name, values in persistent_fields.items()}
 
     if len(theta) == 0:
-        return ElevationLine(
-            phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth,
-            is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining,
-        )
+        return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
     if dist[0] > EXTEND_THRESHOLD_RAD and closing[0] < -TRANSFORM_RATE_THRESHOLD:
         n_new = min(max(int(dist[0] / TARGET_LINE_SPACING_RAD), 1), MAX_EXTEND_NODES_PER_STEP)
         new_theta = theta[0] - dtheta * np.arange(n_new, 0, -1)
         theta = np.insert(theta, 0, new_theta)
         elevation = np.insert(elevation, 0, np.full(n_new, target))
-        channel_depth = np.insert(channel_depth, 0, np.zeros(n_new))
-        lake_depth = np.insert(lake_depth, 0, np.zeros(n_new))
-        glacier_depth = np.insert(glacier_depth, 0, np.zeros(n_new))
-        is_volcano = np.insert(is_volcano, 0, np.zeros(n_new, dtype=bool))
-        volcano_active_years_remaining = np.insert(volcano_active_years_remaining, 0, np.zeros(n_new))
+        for name, values in persistent_fields.items():
+            fill = np.zeros(n_new, dtype=values.dtype)
+            persistent_fields[name] = np.insert(values, 0, fill)
     elif dist[0] < MERGE_THRESHOLD_RAD and closing[0] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
         theta = theta[1:]
         elevation = elevation[1:]
-        channel_depth = channel_depth[1:]
-        lake_depth = lake_depth[1:]
-        glacier_depth = glacier_depth[1:]
-        is_volcano = is_volcano[1:]
-        volcano_active_years_remaining = volcano_active_years_remaining[1:]
+        persistent_fields = {name: values[1:] for name, values in persistent_fields.items()}
 
-    return ElevationLine(
-        phi=line.phi, theta=theta, elevation=elevation, channel_depth=channel_depth, lake_depth=lake_depth, glacier_depth=glacier_depth,
-        is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining,
-    )
+    return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
 
 def step_boundaries(world: World, years: float) -> None:
@@ -369,16 +359,9 @@ def step_boundaries(world: World, years: float) -> None:
             elevation[divergent] += (target - elevation[divergent]) * relax_factor * divergent_intensity[divergent]
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
-            updated_line = ElevationLine(
-                phi=line.phi,
-                theta=line.theta,
-                elevation=elevation,
-                channel_depth=line.channel_depth,
-                lake_depth=line.lake_depth,
-                glacier_depth=line.glacier_depth,
-                is_volcano=line.is_volcano,
-                volcano_active_years_remaining=line.volcano_active_years_remaining,
-            )
+            # theta unchanged -- dataclasses.replace copies every other field (channel_width
+            # included) from the existing line automatically.
+            updated_line = dataclasses.replace(line, elevation=elevation)
             grown_line = _grow_or_shrink_line(updated_line, dist, closing, plate.crust_type)
             if len(grown_line.theta) > 0:
                 new_lines.append(grown_line)

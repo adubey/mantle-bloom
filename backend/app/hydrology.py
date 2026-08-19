@@ -32,8 +32,19 @@ both returned via HydrologyFields) -- erosion.py only reads glacier_depth (for i
 glacier-erosion/flattening terms) and channel_depth (which erosion.py itself owns, since it's
 the module that actually carves it), matching plate-sim's own module split.
 
-**Lakes are single nodes**, same simplification plate-sim itself documents: a lake is its own
-sink node plus a `lake_depth`, not a flood-filled multi-node shoreline region.
+**Lakes fill their whole basin**, not just their own single sink node: each sink tracks its
+own water balance exactly as before (grow from inflow, evaporate, capped at the basin's true
+spill depth), and `_flood_fill_lake_extent` spreads that sink's *current* water surface
+outward over the same k-NN flow graph to every other node actually below it -- a lake that's
+still filling covers less area than its basin's full capacity, matching how much water has
+actually accumulated, not an instant jump to the theoretical maximum. A river's flow_target
+can point at a node that's part of a lake (real inflow), but a flooded node itself is never
+classified `is_river` -- a river ends at the lake's shore rather than its classification
+continuing straight across the water to whatever's on the far side (see `compute_hydrology`).
+Flow *routing* itself also isn't pure steepest descent: `_compute_flow_direction` prefers a
+downhill neighbor that already has a real, established channel over the literal lowest one,
+so a river stays in its own valley rather than recalculating the mathematically steepest path
+every step -- real rivers meander within, not across, their banks.
 """
 
 from __future__ import annotations
@@ -57,6 +68,13 @@ FLOW_NEIGHBOR_COUNT = 8
 # Top decile of land flow_accum counts as "a river" -- same threshold plate-sim's own
 # _major_river_mask uses for both rendering and the major_river_fraction stat.
 RIVER_FLOW_PERCENTILE = 90.0
+
+# How established a downhill neighbor's own channel needs to be before flow direction
+# prefers it over the literal steepest candidate -- see _compute_flow_direction. Deliberately
+# far below erosion.CHANNEL_BOOST_REFERENCE_M (200m, where channel_boost saturates): this
+# only needs to detect "a real channel exists here at all," not "a mature one," so routing
+# starts favoring it as soon as there's genuine, non-noise incision.
+CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 
 # Lake growth/evaporation -- meaning ported from plate-sim, but NOT its evaporation rate
 # values verbatim: plate-sim takes much finer internal substeps than mantle-bloom's typical
@@ -129,12 +147,15 @@ class HydrologyFields:
 
 def _gather_nodes(
     world: "World",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
-    """Every node's world position, elevation, prior lake_depth, prior glacier_depth, and
-    whether it's ocean (elevation <= 0, the sea-level convention used everywhere else in
-    this codebase), concatenated, alongside (plate, line_index, start, end) references --
-    same shape as erosion.py's/bathymetry.py's own _gather_nodes."""
-    points_list, elev_list, lake_list, glacier_list = [], [], [], []
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
+    channel_depth, and whether it's ocean (elevation <= 0, the sea-level convention used
+    everywhere else in this codebase), concatenated, alongside (plate, line_index, start,
+    end) references -- same shape as erosion.py's/bathymetry.py's own _gather_nodes.
+    channel_depth is read-only here (erosion.py still owns growing it) -- flow direction
+    just needs to know where an established channel already is, see
+    _compute_flow_direction."""
+    points_list, elev_list, lake_list, glacier_list, channel_list = [], [], [], [], []
     line_refs: list[tuple[Plate, int, int, int]] = []
     offset = 0
     for plate in world.plates:
@@ -146,17 +167,19 @@ def _gather_nodes(
             elev_list.append(line.elevation)
             lake_list.append(line.lake_depth)
             glacier_list.append(line.glacier_depth)
+            channel_list.append(line.channel_depth)
             line_refs.append((plate, line_index, offset, offset + n))
             offset += n
     if not points_list:
         empty = np.zeros(0)
-        return np.zeros((0, 3)), empty, empty, empty, np.zeros(0, dtype=bool), []
+        return np.zeros((0, 3)), empty, empty, empty, empty, np.zeros(0, dtype=bool), []
     points = np.concatenate(points_list, axis=0)
     elevation = np.concatenate(elev_list, axis=0)
     prev_lake_depth = np.concatenate(lake_list, axis=0)
     prev_glacier_depth = np.concatenate(glacier_list, axis=0)
+    prev_channel_depth = np.concatenate(channel_list, axis=0)
     is_ocean = elevation <= 0.0
-    return points, elevation, prev_lake_depth, prev_glacier_depth, is_ocean, line_refs
+    return points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, is_ocean, line_refs
 
 
 def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
@@ -220,9 +243,17 @@ def _compute_flow_direction(
     prev_lake_depth: np.ndarray,
     filled_elevation: np.ndarray,
     spill_target: np.ndarray,
+    prev_channel_depth: np.ndarray,
 ) -> np.ndarray:
-    """Steepest-descent flow target per node: the lowest of its k nearest neighbors,
-    strictly below its own elevation, or -1 if none (a sink) -- unless the sink's current
+    """Flow target per node, among its k nearest neighbors strictly below its own elevation
+    (a downhill candidate) -- preferring whichever candidate already has the deepest
+    established channel (`prev_channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`), falling back
+    to plain steepest descent only when *no* downhill candidate has a real channel yet. Real
+    rivers meander within, and stay inside, their own existing valley rather than
+    recalculating the mathematically steepest path every step -- this is that preference
+    applied to routing itself, distinct from (and upstream of) erosion.py's own
+    channel_boost, which only affects how *fast* a node erodes once water is already flowing
+    there. -1 if there's no downhill candidate at all (a sink) -- unless the sink's current
     water surface (elevation + the *previous* step's lake_depth, the same one-step-lagged
     "memory" plate-sim's own compute_flow_direction relies on) has already reached its
     basin's true spill point, in which case it redirects to spill_target instead of staying
@@ -232,10 +263,19 @@ def _compute_flow_direction(
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
     lower_mask = neighbor_elev < own_elev
-    masked = np.where(lower_mask, neighbor_elev, np.inf)
-    best_col = np.argmin(masked, axis=1)
+
+    steepest_masked = np.where(lower_mask, neighbor_elev, np.inf)
+    steepest_col = np.argmin(steepest_masked, axis=1)
     rows = np.arange(n)
-    has_lower = np.isfinite(masked[rows, best_col])
+    has_lower = np.isfinite(steepest_masked[rows, steepest_col])
+
+    neighbor_channel = prev_channel_depth[neighbor_idx]  # (n, k)
+    channelized_mask = lower_mask & (neighbor_channel > CHANNEL_PREFERENCE_THRESHOLD_M)
+    has_channelized = np.any(channelized_mask, axis=1)
+    channel_masked = np.where(channelized_mask, neighbor_channel, -np.inf)
+    channel_col = np.argmax(channel_masked, axis=1)
+
+    best_col = np.where(has_channelized, channel_col, steepest_col)
     flow_target = np.where(has_lower, neighbor_idx[rows, best_col], -1).astype(np.int64)
 
     is_sink = (flow_target < 0) & ~is_ocean
@@ -351,22 +391,66 @@ def _update_glaciers(
     return new_depth, melt
 
 
+def _flood_fill_lake_extent(
+    elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray, seed_mask: np.ndarray, water_surface: np.ndarray
+) -> np.ndarray:
+    """A lake fills its whole basin, not just its own single deepest point: flood-fills
+    outward from every seed node (a sink currently holding water) via the same k-NN
+    `neighbor_idx` graph flow routing itself uses, claiming every reachable node whose bare
+    elevation sits below that seed's own current water surface (`elevation + lake_depth` at
+    the seed). Grows and shrinks together with the seed's own tracked depth (see
+    `update_lakes`) rather than jumping straight to the basin's full theoretical capacity
+    regardless of how much water has actually accumulated -- confirmed directly that an
+    earlier version of this module did exactly that (every node inside a basin's rim read as
+    permanently flooded to the rim, however little water the sink itself had actually built
+    up), which is corrected here by deriving the flood extent from the seed's real water
+    level instead. `visited` prevents a node from being claimed by two different seeds -- by
+    construction a node can only be below the rim of the one basin it actually drains into,
+    so this shouldn't happen, but a plain flag is cheap insurance against a coincidental
+    equal-elevation edge case rather than something to reason carefully about here."""
+    n = len(elevation)
+    lake_depth = [0.0] * n
+    visited = [False] * n
+    neighbor_list = neighbor_idx.tolist()
+    elevation_list = elevation.tolist()
+    is_ocean_list = is_ocean.tolist()
+    surface_list = water_surface.tolist()
+
+    for seed in np.nonzero(seed_mask)[0].tolist():
+        if visited[seed]:
+            continue
+        surface = surface_list[seed]
+        stack = [seed]
+        while stack:
+            node = stack.pop()
+            if visited[node] or is_ocean_list[node] or elevation_list[node] >= surface:
+                continue
+            visited[node] = True
+            lake_depth[node] = surface - elevation_list[node]
+            for neighbor in neighbor_list[node]:
+                if not visited[neighbor] and not is_ocean_list[neighbor] and elevation_list[neighbor] < surface:
+                    stack.append(neighbor)
+    return np.array(lake_depth)
+
+
 def update_lakes(
     fields: HydrologyFields, prev_lake_depth: np.ndarray, water_deposited: np.ndarray, years: float, is_accumulating: np.ndarray
 ) -> np.ndarray:
-    """New lake_depth per node -- grows at sink nodes fed by route_downstream's own
-    terminal deposition there (`water_deposited`, the water-routing pass's `deposited`
-    output -- nonzero only at a true sink, since a through-flowing node's water all
-    continues downstream), evaporates elsewhere, capped at the basin's true spill depth
-    (`filled_elevation - elevation`) and pinned there once reached rather than evaporating
-    back down -- see this module's docstring and boundary.py's own divergent-relaxation
-    style for why a persistent field needs this kind of steady-state pinning, and
-    plate-sim's own docs for the oscillation bug this specifically avoids (a full lake that
-    evaporates even slightly un-redirects its flow_target back to a sink, refills, and
-    oscillates forever instead of settling as a real, continuously-draining lake).
+    """New lake_depth per node. First, each sink's *own* depth: grows fed by
+    route_downstream's own terminal deposition there (`water_deposited`, the water-routing
+    pass's `deposited` output -- nonzero only at a true sink, since a through-flowing node's
+    water all continues downstream), evaporates otherwise, capped at the basin's true spill
+    depth (`filled_elevation - elevation`) -- see this module's docstring and boundary.py's
+    own divergent-relaxation style for why a persistent field needs this kind of
+    steady-state capping, and plate-sim's own docs for the oscillation bug it specifically
+    avoids (a full lake that evaporates even slightly un-redirects its flow_target back to a
+    sink, refills, and oscillates forever instead of settling as a real, continuously-
+    draining lake). Then, `_flood_fill_lake_extent` spreads each sink's own current water
+    surface outward to every other node in the same basin actually below it -- a lake is the
+    whole flooded extent, not just its own deepest point.
 
     `is_accumulating` (a node cold enough for permanent glaciation, see
-    GLACIER_ACCUMULATION_TEMP_C) forces both branches to 0/empty rather than the ordinary
+    GLACIER_ACCUMULATION_TEMP_C) forces a sink's own depth to 0 rather than the ordinary
     grow-or-stay-at-cap behavior -- without this, a lake that just froze (see
     compute_hydrology's freeze conversion, which already moved its water into
     `frozen_from_lake` before this function ever runs) would immediately re-fill right back
@@ -379,19 +463,25 @@ def update_lakes(
     baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
     cap = np.clip(fields.filled_elevation - fields.elevation, 0.0, None)
 
-    grown = np.clip(prev_lake_depth * retention + inflow_gain - baseline_loss, 0.0, cap)
-    not_sink_depth = np.where(is_accumulating, 0.0, cap)
-    result = np.where(is_sink, grown, not_sink_depth)
-    return np.where(fields.is_ocean, 0.0, result)
+    sink_depth = np.clip(prev_lake_depth * retention + inflow_gain - baseline_loss, 0.0, cap)
+    sink_depth = np.where(is_accumulating, 0.0, sink_depth)
+    sink_water_surface = fields.elevation + sink_depth
+
+    flood_seed = is_sink & (sink_depth > 0.0)
+    flooded = _flood_fill_lake_extent(fields.elevation, fields.is_ocean, fields.neighbor_idx, flood_seed, sink_water_surface)
+    return np.where(fields.is_ocean, 0.0, flooded)
 
 
 def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temperature_at_nodes: np.ndarray, years: float) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->
     glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater downstream
-    accumulation -> lake growth/evaporation -> river classification. `precipitation_at_nodes`/
-    `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
-    same climate-grid lookups for its own erosion terms) rather than looked up again here.
+    accumulation -> lake growth/evaporation (now a whole-basin flood fill, not just the
+    single sink node) -> river classification (now excluding flooded lake nodes, so a river
+    ends at a lake's shore rather than being treated as continuing through it -- see
+    `update_lakes`/`_flood_fill_lake_extent`). `precipitation_at_nodes`/`temperature_at_nodes`
+    are precomputed by the caller (erosion.py, which already needs the same climate-grid
+    lookups for its own erosion terms) rather than looked up again here.
 
     A node colder than GLACIER_ACCUMULATION_TEMP_C never holds liquid water at all: any
     precipitation there is treated as fully frozen (no partial liquid/frozen split like
@@ -401,7 +491,7 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     *before* flow_target is (re)computed -- so a lake that just froze is correctly treated as
     a genuine sink again this step (see update_lakes's own docstring for why the ordering
     matters, and the failure mode it avoids)."""
-    points, elevation, prev_lake_depth, prev_glacier_depth, is_ocean, line_refs = _gather_nodes(world)
+    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, is_ocean, line_refs = _gather_nodes(world)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
         empty_i = np.zeros(n, dtype=np.int64)
@@ -419,7 +509,9 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
     frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
 
-    flow_target = _compute_flow_direction(elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target)
+    flow_target = _compute_flow_direction(
+        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth
+    )
 
     frozen_precip = np.where(is_accumulating, precipitation_at_nodes, 0.0)
     liquid_precip = np.where(is_accumulating, 0.0, precipitation_at_nodes)
@@ -432,17 +524,25 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     water_source = liquid_precip + melt
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source)
 
+    # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
+    # flooded nodes, so fields is built with a placeholder here and finished after.
+    fields = HydrologyFields(
+        points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
+        np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, line_refs,
+    )
+    fields.lake_depth = update_lakes(fields, lake_depth_adjusted, water_deposited, years, is_accumulating)
+
+    # A lake, however wide it's flooded, is never itself "a river" -- excluding it (not just
+    # its own former sink node, every flooded node) is what makes a river actually end at a
+    # lake's shore instead of its classification jumping straight across to whatever's on
+    # the far side of the water.
     land = ~is_ocean
+    is_lake = fields.lake_depth > LAKE_MIN_VISIBLE_DEPTH_M
     is_river = np.zeros(n, dtype=bool)
     if np.any(land) and np.any(flow_accum[land] > 0):
         threshold = np.percentile(flow_accum[land], RIVER_FLOW_PERCENTILE)
-        is_river = land & (flow_accum > 0) & (flow_accum >= threshold)
-
-    fields = HydrologyFields(
-        points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
-        is_river, lake_depth_adjusted, new_glacier_depth, line_refs,
-    )
-    fields.lake_depth = update_lakes(fields, lake_depth_adjusted, water_deposited, years, is_accumulating)
+        is_river = land & (flow_accum > 0) & (flow_accum >= threshold) & ~is_lake
+    fields.is_river = is_river
     return fields
 
 

@@ -66,7 +66,22 @@ class ElevationLine:
     # actually needs to preserve a node's history (see
     # boundary.py/erosion.py/line_regrid.py/reassign.py) passes it explicitly instead of
     # letting it reset to zero.
+    #
+    # **This defaulting is a real footgun, confirmed directly**: erosion.py's and
+    # bathymetry.py's own reconstruction sites were both written before is_volcano/
+    # volcano_active_years_remaining existed, so neither passed them through -- silently
+    # wiping every node's volcanic status to False every single step (erosion.py runs
+    # before volcanism.apply_volcanic_activity even gets a chance to read it), long before
+    # this was caught. Any call site that changes *only* a field or two and leaves theta
+    # (and therefore every other parallel array's shape/order) untouched should use
+    # `dataclasses.replace(line, elevation=new_elevation, ...)` instead of reconstructing
+    # explicitly field-by-field -- it copies every field the caller doesn't mention from the
+    # original line, so a future persistent field added here is automatically preserved
+    # there without that call site needing to change at all. Only a site that actually
+    # reshapes theta (grow/shrink, split, boolean-mask filtering) still has to thread every
+    # parallel array explicitly, since there's no "unchanged" value to copy in that case.
     channel_depth: np.ndarray | None = None  # river channel incision, self-reinforcing
+    channel_width: np.ndarray | None = None  # river channel width, grows with flow -- see erosion.py
     lake_depth: np.ndarray | None = None  # standing lake water depth
     glacier_depth: np.ndarray | None = None  # accumulated ice, meters ice-equivalent
     # Two more of the same "rides along for free" persistent fields, see volcanism.py.
@@ -79,6 +94,8 @@ class ElevationLine:
     def __post_init__(self) -> None:
         if self.channel_depth is None:
             self.channel_depth = np.zeros_like(self.theta)
+        if self.channel_width is None:
+            self.channel_width = np.zeros_like(self.theta)
         if self.lake_depth is None:
             self.lake_depth = np.zeros_like(self.theta)
         if self.glacier_depth is None:

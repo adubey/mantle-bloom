@@ -66,6 +66,7 @@ actually went dormant.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -302,14 +303,11 @@ def apply_volcanic_activity(world: "World", years: float) -> list[str]:
             new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
             new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
 
-            plate.lines[line_index] = ElevationLine(
-                phi=line.phi,
-                theta=line.theta,
-                elevation=new_elevation,
-                channel_depth=line.channel_depth,
-                lake_depth=line.lake_depth,
-                glacier_depth=line.glacier_depth,
-                is_volcano=line.is_volcano,
-                volcano_active_years_remaining=new_remaining,
+            # theta unchanged -- dataclasses.replace copies every other field (including
+            # channel_width) from the existing line automatically. See plates.ElevationLine's
+            # own docstring for why this pattern replaced explicit field-by-field
+            # reconstruction here.
+            plate.lines[line_index] = dataclasses.replace(
+                line, elevation=new_elevation, volcano_active_years_remaining=new_remaining
             )
     return events

@@ -54,6 +54,7 @@ twice.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -61,7 +62,7 @@ from scipy.spatial import cKDTree
 
 from . import climate, geometry, hydrology
 from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import PLANET_RADIUS_KM, ElevationLine, Plate
+from .plates import PLANET_RADIUS_KM, Plate
 
 if TYPE_CHECKING:
     from .world import World
@@ -109,6 +110,19 @@ CHANNEL_EROSION_BOOST = 0.6
 CHANNEL_BOOST_REFERENCE_M = 200.0
 MAX_CHANNEL_DEPTH_M = 2000.0
 
+# Channel width -- not a plate-sim mechanic (confirmed absent there), a mantle-bloom-original
+# addition. "Larger flows make a channel larger": standard hydraulic-geometry scaling
+# (width ~ discharge^b, b commonly observed near 0.5 for real rivers) -- same discharge
+# exponent as RIVER_FLOW_EXPONENT above, but width is purely a function of how much water
+# passes through, not of slope (a wide, lazy lowland river and a narrow, steep mountain
+# torrent can carry comparable discharge, but width is driven by the water, not the
+# gradient). Grows the same way channel_depth does -- persistent, monotonically
+# non-decreasing, capped -- rather than a stateless function of this step's flow alone, so a
+# river that temporarily dries up doesn't instantly narrow either.
+WIDTH_GROWTH_COEFFICIENT = 50.0
+WIDTH_FLOW_EXPONENT = 0.5
+MAX_CHANNEL_WIDTH_M = 5000.0
+
 # A big, slow river drops part of its sediment load locally (floodplain/delta) instead of
 # carrying all of it to the coast. river_speed here is a stylized, unitless quantity (see
 # hydrology.compute_river_speed) rather than a literal speed, same as plate-sim's own -- so
@@ -145,14 +159,14 @@ GLACIER_FLATTEN_RATE_PER_MYR = 0.2
 
 def _gather_nodes(
     world: "World",
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
-    """Every node's world position, elevation, and prior channel_depth/glacier_depth,
-    concatenated, alongside (plate, line_index, start, end) references -- unlike
-    reassign.py's own _gather_nodes (which needs per-node plate/line identity, since nodes
-    there can move between lines), this only needs enough to slice the erosion result
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    """Every node's world position, elevation, and prior channel_depth/channel_width/
+    glacier_depth, concatenated, alongside (plate, line_index, start, end) references --
+    unlike reassign.py's own _gather_nodes (which needs per-node plate/line identity, since
+    nodes there can move between lines), this only needs enough to slice the erosion result
     straight back onto each line's own contiguous elevation range, since erosion never moves
     a node or changes line topology."""
-    points_list, elev_list, channel_list, glacier_list = [], [], [], []
+    points_list, elev_list, channel_list, width_list, glacier_list = [], [], [], [], []
     line_refs: list[tuple[Plate, int, int, int]] = []
     offset = 0
     for plate in world.plates:
@@ -163,15 +177,17 @@ def _gather_nodes(
             points_list.append(line.world_xyz(plate.frame))
             elev_list.append(line.elevation)
             channel_list.append(line.channel_depth)
+            width_list.append(line.channel_width)
             glacier_list.append(line.glacier_depth)
             line_refs.append((plate, line_index, offset, offset + n))
             offset += n
     if not points_list:
-        return np.zeros((0, 3)), np.zeros(0), np.zeros(0), np.zeros(0), []
+        return np.zeros((0, 3)), np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0), []
     return (
         np.concatenate(points_list, axis=0),
         np.concatenate(elev_list, axis=0),
         np.concatenate(channel_list, axis=0),
+        np.concatenate(width_list, axis=0),
         np.concatenate(glacier_list, axis=0),
         line_refs,
     )
@@ -243,11 +259,12 @@ def apply_erosion(world: "World", years: float) -> None:
     slow river drops its load (a floodplain/delta) instead of losing everything to the coast.
     Separately relaxes elevation under thick ice toward its local neighborhood mean (glacial
     flattening, see `_flatten`). Also grows channel_depth (from this step's river-erosion
-    term); lake_depth/glacier_depth are hydrology.py's own state transitions, read directly
-    from World.hydrology_cache. All three persistent, see plates.ElevationLine. Mutates
-    world.plates' line elevations in place; never touches node positions or line topology,
-    so this can't interact with line regularization or point reassignment at all (both of
-    those are purely about node density/position/ownership).
+    term) and channel_width (from discharge alone -- larger flows carve a wider channel);
+    lake_depth/glacier_depth are hydrology.py's own state transitions, read directly from
+    World.hydrology_cache. All persistent, see plates.ElevationLine. Mutates world.plates'
+    line elevations in place; never touches node positions or line topology, so this can't
+    interact with line regularization or point reassignment at all (both of those are
+    purely about node density/position/ownership).
 
     Always computes climate fresh (never reuses World.climate_cache itself -- this runs
     right after this step's own tectonic/topology changes, so a cache from a previous step
@@ -258,7 +275,7 @@ def apply_erosion(world: "World", years: float) -> None:
     fields = climate.compute_climate(world)
     world.climate_cache = fields
 
-    points, elevation, prior_channel_depth, prior_glacier_depth, line_refs = _gather_nodes(world)
+    points, elevation, prior_channel_depth, prior_channel_width, prior_glacier_depth, line_refs = _gather_nodes(world)
     n = len(points)
     if n == 0:
         world.hydrology_cache = None
@@ -318,14 +335,22 @@ def apply_erosion(world: "World", years: float) -> None:
 
     new_elevation = np.clip(elevation - erosion_amount + sediment_deposited + flatten_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + river, 0.0, MAX_CHANNEL_DEPTH_M))
+    # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
+    # own comment for why), same persistent/monotonic/capped shape as depth.
+    width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
+    new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
+    # theta (and therefore every other parallel array's shape) is never touched here -- see
+    # plates.ElevationLine's own docstring for why dataclasses.replace, not an explicit
+    # field-by-field reconstruction, is the pattern that stays correct as more persistent
+    # fields get added (this site used to silently wipe is_volcano to False every step).
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        plate.lines[line_index] = ElevationLine(
-            phi=line.phi,
-            theta=line.theta,
+        plate.lines[line_index] = dataclasses.replace(
+            line,
             elevation=new_elevation[start:end],
             channel_depth=new_channel_depth[start:end],
+            channel_width=new_channel_width[start:end],
             lake_depth=hydro.lake_depth[start:end],
             glacier_depth=hydro.glacier_depth[start:end],
         )

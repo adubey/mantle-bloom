@@ -37,10 +37,12 @@ def test_compute_flow_direction_sink_redirects_once_lake_reaches_spill_point():
     filled = np.array([50.0, 50.0, 20.0, -10.0])
     spill = np.array([2, 2, 3, -1])
 
-    not_yet_full = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill)
+    not_yet_full = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4))
     assert not_yet_full[0] == -1  # water surface 30 < 50, still a plain sink
 
-    now_full = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill)
+    now_full = hydrology._compute_flow_direction(
+        elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4)
+    )
     assert now_full[0] == 2  # water surface 30+25=55 >= 50 -- redirects to spill_target
 
 
@@ -177,6 +179,146 @@ def test_apply_erosion_conserves_mass_between_erosion_and_deposition():
         step_world(world, years=2_000_000)
     assert world.hydrology_cache is not None
     assert world.hydrology_cache.is_river.sum() >= 0  # river classification ran without error
+
+
+def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_steepest_neighbor():
+    # Node 0's two downhill candidates: node 1 (elevation 20, steeper, no channel) and node 2
+    # (elevation 25, less steep, but already has a real established channel).
+    elevation = np.array([30.0, 20.0, 25.0])
+    is_ocean = np.zeros(3, dtype=bool)
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1]])
+    filled = np.array([30.0, 20.0, 25.0])
+    spill = np.full(3, -1)
+
+    steepest = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3))
+    assert steepest[0] == 1  # no channel anywhere -- plain steepest descent
+
+    channel_depth = np.array([0.0, 0.0, 50.0])  # node 2's channel is well-established
+    channelized = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
+    assert channelized[0] == 2  # prefers the channelized neighbor even though it's less steep
+
+
+def test_compute_flow_direction_ignores_a_barely_established_channel():
+    # Same setup, but node 2's channel is below CHANNEL_PREFERENCE_THRESHOLD_M -- too new/
+    # shallow to count as "an existing channel," so plain steepest descent still wins.
+    elevation = np.array([30.0, 20.0, 25.0])
+    is_ocean = np.zeros(3, dtype=bool)
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1]])
+    filled = np.array([30.0, 20.0, 25.0])
+    spill = np.full(3, -1)
+    channel_depth = np.array([0.0, 0.0, hydrology.CHANNEL_PREFERENCE_THRESHOLD_M - 1.0])
+
+    result = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
+    assert result[0] == 1
+
+
+def test_flood_fill_lake_extent_covers_every_node_below_the_seed_water_surface():
+    # A basin: node 0 is the sink (seeded), nodes 1/2 are shallower but still below a
+    # generous water surface, node 3 is above it (dry shoreline, never flooded).
+    elevation = np.array([10.0, 12.0, 14.0, 20.0])
+    is_ocean = np.zeros(4, dtype=bool)
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1], [0, 1]])
+    seed_mask = np.array([True, False, False, False])
+    water_surface = np.array([15.0, 0.0, 0.0, 0.0])  # only the seed's own entry is read
+
+    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface)
+    assert result.tolist() == [5.0, 3.0, 1.0, 0.0]  # 15-10, 15-12, 15-14, dry (20 >= 15)
+
+
+def test_flood_fill_lake_extent_never_floods_ocean():
+    elevation = np.array([10.0, -5.0])
+    is_ocean = np.array([False, True])
+    neighbor_idx = np.array([[1], [0]])
+    seed_mask = np.array([True, False])
+    water_surface = np.array([50.0, 0.0])  # would easily submerge the ocean node too, if allowed
+
+    result = hydrology._flood_fill_lake_extent(elevation, is_ocean, neighbor_idx, seed_mask, water_surface)
+    assert result[1] == 0.0
+
+
+def test_update_lakes_floods_a_whole_basin_not_just_the_sink():
+    # Same shape as test_update_lakes_grows_at_a_sink_and_caps_at_the_spill_point, but with a
+    # second land node (2) in the same basin, shallower than the sink and reachable via
+    # neighbor_idx -- once the sink accumulates enough water, node 2 should show up as
+    # flooded too, at a shallower depth than the sink itself.
+    # water_deposited=50 over 1 Myr grows the sink to depth 5.5 (see
+    # test_update_lakes_grows_at_a_sink_and_caps_at_the_spill_point for the same arithmetic),
+    # a water surface of 10+5.5=15.5 -- node 2 (elevation 12) sits below that, node 1 is ocean.
+    not_accumulating = np.zeros(3, dtype=bool)
+    fields = hydrology.HydrologyFields(
+        points=np.zeros((3, 3)),
+        elevation=np.array([10.0, -5.0, 12.0]),
+        is_ocean=np.array([False, True, False]),
+        neighbor_idx=np.array([[2, 2], [0, 0], [0, 0]], dtype=np.int64),
+        flow_target=np.array([-1, -1, -1]),
+        flow_accum=np.zeros(3),
+        water_deposited=np.array([50.0, 0.0, 0.0]),
+        filled_elevation=np.array([25.0, -5.0, 25.0]),
+        spill_target=np.array([-1, -1, -1]),
+        is_river=np.zeros(3, dtype=bool),
+        lake_depth=np.zeros(3),
+        glacier_depth=np.zeros(3),
+        line_refs=[],
+    )
+    grown = hydrology.update_lakes(
+        fields, prev_lake_depth=np.zeros(3), water_deposited=fields.water_deposited, years=1_000_000, is_accumulating=not_accumulating
+    )
+    assert grown[0] > 0.0  # the sink itself
+    assert grown[2] > 0.0  # flooded too -- part of the same basin, below the water surface
+    assert grown[2] < grown[0]  # shallower than the sink (elevation 18 vs. sink's own 10)
+    assert grown[1] == 0.0  # never touches ocean
+
+
+def test_rivers_never_overlap_lakes_in_a_real_stepped_world():
+    # Regression check for "rivers end at lakes and don't go through them": a lake, however
+    # widely flooded, must never also be classified is_river.
+    world = generate_world(seed=32, num_plates=10, continental_fraction=0.5)
+    for _ in range(10):
+        step_world(world, years=2_000_000)
+    hydro = world.hydrology_cache
+    assert hydro is not None
+    is_lake = hydro.lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    assert not np.any(hydro.is_river & is_lake)
+
+
+def test_channel_width_grows_with_flow_and_persists_across_steps():
+    world = generate_world(seed=33, num_plates=8, continental_fraction=0.5)
+    for _ in range(4):
+        step_world(world, years=2_000_000)
+
+    widths = np.concatenate([line.channel_width for p in world.plates for line in p.lines])
+    depths = np.concatenate([line.channel_depth for p in world.plates for line in p.lines])
+    assert np.any(widths > 0.0)
+    assert np.all(widths <= erosion.MAX_CHANNEL_WIDTH_M)
+    # Width grows from discharge alone, unlike depth (which also needs real slope -- see
+    # erosion.py's own river term) -- a flat, wide, slow-flowing stretch can widen without
+    # incising at all, so this only checks that *some* overlap exists, not that every widened
+    # node is also a channel-depth node.
+    assert np.any((widths > 0.0) & (depths > 0.0))
+
+    width_total_1 = widths.sum()
+    step_world(world, years=2_000_000)
+    width_total_2 = sum(line.channel_width.sum() for p in world.plates for line in p.lines)
+    # Monotonic like channel_depth -- if boundary.py/bathymetry.py had reset it, this would
+    # have dropped back toward 0 instead.
+    assert width_total_2 >= width_total_1 * 0.5  # loose bound: some nodes can be pruned/moved
+
+
+def test_is_volcano_survives_a_full_step_cycle():
+    # Direct regression check for the bug this session found: bathymetry.py's and erosion.py's
+    # own line-reconstruction sites didn't know about is_volcano/volcano_active_years_remaining
+    # and silently wiped them to False/0 every step, before volcanism.apply_volcanic_activity
+    # ever got a chance to read them.
+    world = generate_world(seed=34, num_plates=10, continental_fraction=0.4)
+    found_a_field = False
+    for _ in range(20):
+        step_world(world, years=2_000_000)
+        if world.volcanic_field_plate_ids:
+            found_a_field = True
+            total_volcano_nodes = sum(int(line.is_volcano.sum()) for p in world.plates for line in p.lines)
+            assert total_volcano_nodes > 0
+            break
+    assert found_a_field  # sanity: this seed/step count should produce at least one field
 
 
 def test_update_glaciers_accumulates_when_cold_and_precipitating():

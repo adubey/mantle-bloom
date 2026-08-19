@@ -21,12 +21,13 @@ membership is irrelevant to how close it is to *some* coastline.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .plates import PLANET_RADIUS_KM, ElevationLine, Plate
+from .plates import PLANET_RADIUS_KM, Plate
 
 if TYPE_CHECKING:
     from .world import World
@@ -105,13 +106,13 @@ def apply_bathymetry(world: "World", years: float) -> None:
     new_elevation[submerged_indices] += (target - elevation[submerged_indices]) * relax_factor
     new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
 
+    # theta (and therefore every other parallel array's shape) is never touched here -- only
+    # elevation changes -- so dataclasses.replace copies every other field (channel_depth/
+    # channel_width/lake_depth/glacier_depth/is_volcano/volcano_active_years_remaining, and
+    # whatever else gets added later) from the existing line automatically, rather than
+    # needing to name each one explicitly here. See plates.ElevationLine's own docstring for
+    # the bug this exact pattern replaces (this site used to silently wipe is_volcano to
+    # False every step).
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        plate.lines[line_index] = ElevationLine(
-            phi=line.phi,
-            theta=line.theta,
-            elevation=new_elevation[start:end],
-            channel_depth=line.channel_depth,
-            lake_depth=line.lake_depth,
-            glacier_depth=line.glacier_depth,
-        )
+        plate.lines[line_index] = dataclasses.replace(line, elevation=new_elevation[start:end])

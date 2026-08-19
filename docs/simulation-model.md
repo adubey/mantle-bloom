@@ -1094,23 +1094,28 @@ passes), then runs the same three algorithms directly on it.
 **Persistence -- the central adaptation.** plate-sim's plates move relative to its fixed
 grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian advection
 every step just to keep following the crust. mantle-bloom's elevation-line nodes already
-rotate exactly with their own plate, so `channel_depth`, `lake_depth`, and `glacier_depth`
-(see [Glaciation](#glaciation)), stored as ordinary parallel arrays on `ElevationLine` right
-alongside `elevation` itself (see [Why not a grid](#why-not-a-grid)), get that same "just
-works" persistence for free -- no advection scheme needed, since rotating a plate never
-touches those arrays at all. Making this persistence real required threading all three
-fields through every place an `ElevationLine` gets rebuilt: preserved unchanged where a
-rebuild doesn't change node identity (boundary elevation deltas, bathymetry),
-sliced/concatenated to match where nodes are added or removed (boundary growth/shrink -- new
-nodes start at 0, no history to carry; a merge/split's boolean-mask slice), interpolated
-alongside elevation where a line gets resampled onto a fresh spacing
-(`line_regrid.regularize_line`, since that runs periodically throughout the simulation and a
-plain reset would erase rivers/glaciers constantly, not rarely). Two call sites *do*
-deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice` (generation,
-gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled territory has no
-history to carry) and a reassigned point in `reassign.py` (a rare, small-scale pass touching
-only a few boundary-adjacent nodes at a time, unlike `line_regrid.py`'s
-near-every-line-every-interval reach).
+rotate exactly with their own plate, so `channel_depth`, `channel_width`, `lake_depth`, and
+`glacier_depth` (see [Glaciation](#glaciation)), stored as ordinary parallel arrays on
+`ElevationLine` right alongside `elevation` itself (see
+[Why not a grid](#why-not-a-grid)), get that same "just works" persistence for free -- no
+advection scheme needed, since rotating a plate never touches those arrays at all. Making
+this persistence real required threading every one of these fields through every place an
+`ElevationLine` gets rebuilt: preserved unchanged where a rebuild doesn't change node
+identity (boundary elevation deltas, bathymetry -- via `dataclasses.replace`, not an
+explicit field-by-field reconstruction, specifically so a *future* persistent field is
+preserved automatically rather than needing every such call site updated by hand; see
+`plates.ElevationLine`'s own docstring for the concrete bug this replaced -- `is_volcano`
+silently reset to `False` every step at exactly these two sites, for several steps of actual
+development, before it was caught), sliced/concatenated to match where nodes are added or
+removed (boundary growth/shrink -- new nodes start at 0, no history to carry; a merge/split's
+boolean-mask slice), interpolated alongside elevation where a line gets resampled onto a
+fresh spacing (`line_regrid.regularize_line`, since that runs periodically throughout the
+simulation and a plain reset would erase rivers/glaciers constantly, not rarely). Two call
+sites *do* deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice`
+(generation, gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled
+territory has no history to carry) and a reassigned point in `reassign.py` (a rare,
+small-scale pass touching only a few boundary-adjacent nodes at a time, unlike
+`line_regrid.py`'s near-every-line-every-interval reach).
 
 `flow_target`/`flow_accum`/`river_speed` are deliberately *not* persisted, mirroring
 plate-sim (recomputed fresh every step there too, from that step's real climate) -- purely
@@ -1133,15 +1138,21 @@ computes it once (`hydrology.compute_hydrology`) and reuses the result for both 
   rather than by sum -- a minimax path cost, not a shortest path. Nested sub-basin chains
   collapse to one hop each, cycle-free by construction, exactly matching plate-sim's own
   algorithm and its documented rationale for needing this rather than a naive
-  single-neighbor check (a naive check can't see past more than one nested rim). Lakes are
-  single nodes here, same simplification plate-sim itself documents: a lake is its own sink
-  node plus a `lake_depth`, not a flood-filled multi-node shoreline region.
-- **Flow direction** (`_compute_flow_direction`): steepest descent among each node's k
-  nearest neighbors, or a sink (-1) if none is lower -- unless the sink's current water
-  surface (`elevation + previous step's lake_depth`, the same one-step-lagged "memory"
-  plate-sim's own version relies on) has already reached its basin's true spill point, in
-  which case it redirects to `spill_target` instead of staying a dead-end sink forever
-  (turning a filled-past-its-rim lake into a normal through-flowing river cell).
+  single-neighbor check (a naive check can't see past more than one nested rim).
+- **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
+  strictly below its own elevation (a downhill candidate), prefers whichever one already has
+  the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
+  falling back to plain steepest descent only when *no* downhill candidate has a real channel
+  yet -- real rivers meander within, and stay inside, their own existing valley rather than
+  recalculating the mathematically steepest path every step. This is a mantle-bloom addition,
+  not a plate-sim port: distinct from (and upstream of) `erosion.py`'s own `channel_boost`,
+  which only affects how *fast* a node erodes once water is already routed there, not *where*
+  it gets routed to begin with. A sink is -1 if there's no downhill candidate at all -- unless
+  the sink's current water surface (`elevation + previous step's lake_depth`, the same
+  one-step-lagged "memory" plate-sim's own version relies on) has already reached its basin's
+  true spill point, in which case it redirects to `spill_target` instead of staying a
+  dead-end sink forever (turning a filled-past-its-rim lake into a normal through-flowing
+  river cell).
 - **Downstream accumulation** (`route_downstream`, public -- `erosion.py` reuses it
   directly): a single forward sweep over land nodes in elevation-descending order,
   accumulating a source quantity (precipitation, for `flow_accum`; eroded material, for
@@ -1152,19 +1163,46 @@ computes it once (`hydrology.compute_hydrology`) and reuses the result for both 
   isn't ported -- not asked for, and this module already drops temperature-driven effects on
   hydrology to match erosion.py's own "precipitation is enough" simplification).
 
-**Lakes** (`update_lakes`) grow at sink nodes from `route_downstream`'s own water-routing
-`deposited` output there, evaporate elsewhere, capped at the basin's true spill depth
-(`filled_elevation - elevation`) and pinned there once reached rather than evaporating back
-down -- the same oscillation plate-sim's own docs warn a naive version falls into (a full
-lake that evaporates even slightly un-redirects its `flow_target` back to a sink, refills,
-and oscillates forever instead of settling as a real, continuously-draining lake).
-`LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` are *not* plate-sim's
-own values -- confirmed directly, porting them verbatim evaporated a lake with no new inflow
-from 15m to exactly 0 within a single 1 Myr step, since plate-sim takes much finer internal
-substeps than mantle-bloom's typical 1-10 Myr step; rescaled down to be consistent with this
-codebase's other already-tuned relaxation rates at its own actual step granularity
-(`boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5`, `bathymetry.BATHYMETRY_RELAX_RATE_PER_MYR =
-0.3`).
+**Lakes** (`update_lakes`) fill their whole basin, not just their own single sink node.
+First, each sink's *own* depth grows from `route_downstream`'s own water-routing `deposited`
+output there, evaporates otherwise, capped at the basin's true spill depth
+(`filled_elevation - elevation`) -- the same oscillation plate-sim's own docs warn a naive
+version falls into (a full lake that evaporates even slightly un-redirects its `flow_target`
+back to a sink, refills, and oscillates forever instead of settling as a real, continuously-
+draining lake). `LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` are
+*not* plate-sim's own values -- confirmed directly, porting them verbatim evaporated a lake
+with no new inflow from 15m to exactly 0 within a single 1 Myr step, since plate-sim takes
+much finer internal substeps than mantle-bloom's typical 1-10 Myr step; rescaled down to be
+consistent with this codebase's other already-tuned relaxation rates at its own actual step
+granularity (`boundary.DIVERGENT_RELAX_RATE_PER_MYR = 0.5`,
+`bathymetry.BATHYMETRY_RELAX_RATE_PER_MYR = 0.3`).
+
+Then, `_flood_fill_lake_extent` spreads that sink's own current water surface outward over
+the same k-NN flow graph to every other node actually below it, so a lake that's still
+filling covers less area than its basin's full theoretical capacity, growing and shrinking
+in step with how much water the sink has actually accumulated -- a mantle-bloom addition
+(plate-sim's own lakes are single-cell too, its own documented simplification). An earlier
+version of this instead gave *every* node inside a basin's rim the basin's full cap
+depth unconditionally, regardless of how little water the sink itself had actually built up
+-- confirmed directly as a real bug (visibly a majority of "lake" nodes weren't the sink at
+all), fixed by deriving the flood extent from the seed's real water level via an explicit
+flood-fill instead. A river's own `flow_target` can point at a node that's genuinely part of
+a lake (real inflow), but a flooded node is never itself classified `is_river` -- checked
+against this step's *final* lake extent, after `update_lakes` runs, not the flat land/ocean
+split alone -- so a river's own classification ends at the lake's shore rather than jumping
+straight across the water to whatever's on the far side, even though the water itself
+(`flow_target`/`flow_accum`) still physically continues through if the lake is spilling.
+
+**Channel width** (`channel_width`, grown in `erosion.py` alongside `channel_depth`) is a
+mantle-bloom addition, not a plate-sim port: standard hydraulic-geometry scaling (width ~
+discharge^0.5, the same discharge exponent `RIVER_EROSION_COEFFICIENT`'s own stream-power law
+uses) but with no slope term at all -- width is driven by how much water passes through, not
+by gradient, so a slow, wide lowland river and a narrow, steep mountain torrent can carry
+comparable discharge without needing comparable width. Persistent, monotonically non-
+decreasing, capped at `MAX_CHANNEL_WIDTH_M`, the same shape `channel_depth` already has,
+rather than a stateless function of the current step's flow alone -- a river that temporarily
+dries up doesn't instantly narrow either. Not yet surfaced anywhere in rendering or the River
+Inspector's own per-river stats (`hydrology.RiverInfo`) -- tracked, but not yet exposed.
 
 **Rendering.** Both baked directly into the existing elevation/plates/platesDetail views
 (no new map-view mode or API surface needed) -- same reasoning plate-sim's own docs give for
@@ -1183,7 +1221,10 @@ drainage patterns converging toward coasts and lake basins, matching real-world 
 network shapes; channel_depth grows from 0 to several hundred meters over tens of Myr
 without instantly saturating at `MAX_CHANNEL_DEPTH_M`; lakes form, persist, and fluctuate
 in count/depth across many steps rather than either vanishing or ratcheting monotonically
-upward.
+upward; `is_river & is_lake` never overlaps on a real stepped world (a river's own
+classification genuinely stops at a lake's shore); a majority of a real lake's own flooded
+nodes are its own sink, the rest neighbors the flood-fill actually reached, not a majority
+of unrelated basin-interior nodes as the pre-fix version showed.
 
 <a id="glaciation"></a>
 ## Glaciation (`hydrology.py`)

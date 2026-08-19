@@ -160,6 +160,7 @@ def reassign_misplaced_points(world: "World") -> None:
             theta=line.theta[keep_mask],
             elevation=line.elevation[keep_mask],
             channel_depth=line.channel_depth[keep_mask],
+            channel_width=line.channel_width[keep_mask],
             lake_depth=line.lake_depth[keep_mask],
             glacier_depth=line.glacier_depth[keep_mask],
             is_volcano=line.is_volcano[keep_mask],
@@ -173,14 +174,15 @@ def reassign_misplaced_points(world: "World") -> None:
         new_elevation = np.array([e for _, e in new_nodes])
         combined_theta = np.concatenate([line.theta, new_theta])
         combined_elevation = np.concatenate([line.elevation, new_elevation])
-        # A reassigned point's own channel_depth/lake_depth/glacier_depth/is_volcano/
-        # volcano_active_years_remaining resets to 0/False -- this pass only ever touches a
-        # small number of boundary-adjacent nodes at a time, so losing a carved channel (or
-        # a glacier, or volcanic provenance) right at the moment its owning plate changes is
-        # an acceptable simplification (unlike line_regrid.py's regularize_line, which runs
-        # on nearly every line, every regularize interval -- resetting there would erase
-        # rivers/glaciers/volcanoes constantly, not rarely).
+        # A reassigned point's own channel_depth/channel_width/lake_depth/glacier_depth/
+        # is_volcano/volcano_active_years_remaining resets to 0/False -- this pass only ever
+        # touches a small number of boundary-adjacent nodes at a time, so losing a carved
+        # channel (or a glacier, or volcanic provenance) right at the moment its owning plate
+        # changes is an acceptable simplification (unlike line_regrid.py's regularize_line,
+        # which runs on nearly every line, every regularize interval -- resetting there would
+        # erase rivers/glaciers/volcanoes constantly, not rarely).
         combined_channel_depth = np.concatenate([line.channel_depth, np.zeros(len(new_nodes))])
+        combined_channel_width = np.concatenate([line.channel_width, np.zeros(len(new_nodes))])
         combined_lake_depth = np.concatenate([line.lake_depth, np.zeros(len(new_nodes))])
         combined_glacier_depth = np.concatenate([line.glacier_depth, np.zeros(len(new_nodes))])
         combined_is_volcano = np.concatenate([line.is_volcano, np.zeros(len(new_nodes), dtype=bool)])
@@ -191,6 +193,7 @@ def reassign_misplaced_points(world: "World") -> None:
             theta=combined_theta[order],
             elevation=combined_elevation[order],
             channel_depth=combined_channel_depth[order],
+            channel_width=combined_channel_width[order],
             lake_depth=combined_lake_depth[order],
             glacier_depth=combined_glacier_depth[order],
             is_volcano=combined_is_volcano[order],

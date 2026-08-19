@@ -136,11 +136,16 @@ Each `Plate` (`backend/app/plates.py`) is:
   samples at fixed plate-local longitudes along one plate-local latitude. This is the
   central data structure; see
   [simulation-model.md#plate-local-frames](simulation-model.md#plate-local-frames). Each
-  line also carries `channel_depth`/`lake_depth`/`glacier_depth` (persistent, land-only --
-  see simulation-model.md#hydrology and simulation-model.md#glaciation) and
-  `is_volcano`/`volcano_active_years_remaining` (persistent -- see
-  simulation-model.md#volcanism) as ordinary parallel arrays right alongside `elevation`
-  itself, so they rotate with the plate for free, no advection scheme needed.
+  line also carries `channel_depth`/`channel_width`/`lake_depth`/`glacier_depth`
+  (persistent, land-only -- see simulation-model.md#hydrology and
+  simulation-model.md#glaciation) and `is_volcano`/`volcano_active_years_remaining`
+  (persistent -- see simulation-model.md#volcanism) as ordinary parallel arrays right
+  alongside `elevation` itself, so they rotate with the plate for free, no advection scheme
+  needed. Any such field should be threaded via `dataclasses.replace(line, ...)` at a call
+  site that only changes elevation/a value or two (not `theta`), rather than an explicit
+  field-by-field reconstruction -- see `plates.ElevationLine`'s own docstring for a real bug
+  that pattern caused (`is_volcano` silently wiped every step at two call sites that predated
+  it).
 
 A plate has no separately-tracked boundary polygon at all -- an earlier version kept one
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
