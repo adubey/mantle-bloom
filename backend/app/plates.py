@@ -41,7 +41,7 @@ TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 # UI-facing choices for World.node_density -- a discrete set (not a free-form slider) since
 # there's no natural continuous unit for "how many points," only "how many times as many."
 NODE_DENSITY_CHOICES = (1.0, 4.0)
-DEFAULT_NODE_DENSITY = 1.0
+DEFAULT_NODE_DENSITY = 4.0
 
 
 def line_spacing_rad(node_density: float) -> float:
