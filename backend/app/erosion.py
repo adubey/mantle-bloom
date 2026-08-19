@@ -81,6 +81,19 @@ WEATHERING_COEFFICIENT = 3.0
 # Humidity level at which the weathering-humidity factor saturates to 1.0 -- same value and
 # meaning as plate-sim's own HUMIDITY_REFERENCE.
 HUMIDITY_REFERENCE = 1.0
+# Unlike rain/river erosion (both already multiply by `slope`), weathering had no relief
+# dependence at all until this was added -- confirmed as the main reason flat, low-lying
+# coastal land was drowning within a step or two of being created: wind/humidity-driven
+# weathering ate a real coastal plain (whose slope is close to 0) exactly as fast as a
+# mountain flank, even though its whole elevation buffer is often just a few meters. Real
+# denudation is strongly relief-correlated -- flat lowlands erode far slower than steep
+# terrain -- so `relief_factor` reintroduces that, same normalize-and-saturate idiom as
+# `humidity_norm` above. WEATHERING_RELIEF_REFERENCE_SLOPE is the slope at which weathering
+# reaches full strength; picked against a real generated world's own slope distribution
+# (median land slope ~2.7e-4, far below this -- so typical flat terrain gets a small
+# fraction of full weathering -- while land already at the ~90th percentile of steepness,
+# ~3e-3, reaches full strength).
+WEATHERING_RELIEF_REFERENCE_SLOPE = 0.002
 
 # Stream-power river erosion: coefficient*channel_boost*water_accum^FLOW_EXPONENT*
 # slope^SLOPE_EXPONENT. Coefficient re-derived (not ported, see module docstring) by the
@@ -278,7 +291,8 @@ def apply_erosion(world: "World", years: float) -> None:
         * dt_myr
     )
     humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
-    weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr
+    relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
+    weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
     glacier = GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr
     # Capped at the drop to the lowest neighbor -- same reason plate-sim caps its own

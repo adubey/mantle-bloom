@@ -888,8 +888,26 @@ directly from plate-sim.
   every step (`clip(channel_depth + river_erosion_amount, 0, MAX_CHANNEL_DEPTH_M)`) --
   monotonically non-decreasing, land-only, capped purely as a sanity bound (not a
   physically-derived limit), all ported directly from plate-sim's own channel-memory model.
-- **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * dt_myr`, where
-  `humidity_norm` is humidity clipped to `[0, 1]` against `HUMIDITY_REFERENCE`.
+- **Weathering** = `WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor *
+  dt_myr`, where `humidity_norm` is humidity clipped to `[0, 1]` against
+  `HUMIDITY_REFERENCE`, and `relief_factor = clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE,
+  0, 1)` (same normalize-and-saturate idiom as `humidity_norm`). `relief_factor` is a
+  mantle-bloom-original addition, not ported from plate-sim (whose own weathering formula has
+  no slope term at all, only `vegetation_factor`/`wind_erosion_rate` multipliers this port
+  already drops) -- added after a real bug: unlike rain/river erosion (both already `*
+  slope`), weathering originally had no relief dependence at all, so a flat, low-lying coastal
+  plain weathered exactly as
+  fast as a steep mountain flank -- confirmed directly against a real generated world (a
+  single 2 Myr step converted ~4.9% of all land nodes to ocean; at the affected nodes,
+  weathering alone -- uniform regardless of relief -- exceeded the node's *entire* elevation,
+  well beyond rain/river's own, already slope-gated contribution). `WEATHERING_RELIEF_REFERENCE_SLOPE` (the slope at which weathering reaches full
+  strength) was picked against a real world's own slope distribution: median land slope is
+  roughly 2.7e-4, far below the reference, so typical flat terrain now gets only a small
+  fraction of full weathering, while land already near the 90th percentile of steepness
+  (roughly 3e-3) reaches full strength. This roughly halved the single-step land-to-ocean
+  flip rate in the same test; the remainder is rain erosion (already slope-gated, but tuned
+  with a large coefficient to balance mountain-building rates) eroding low-lying land with
+  nonzero slope -- a separate, not-yet-addressed contributor to the same overall trend.
 - **Glacier erosion** = `GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr`, where
   `ice_factor = clip(glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0,
   GLACIER_EROSION_MAX_FACTOR)` -- driven by the node's own *actual accumulated ice depth*

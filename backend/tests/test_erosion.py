@@ -50,6 +50,28 @@ def test_compute_slope_matches_known_gradient():
     assert np.isclose(slope[0], expected_drop / expected_run_m)
 
 
+def test_weathering_relief_factor_suppresses_flat_terrain_and_saturates_on_steep_terrain():
+    # Regression check for the "flat coastal plain weathers exactly as fast as a mountain"
+    # bug: weathering must scale down toward 0 as slope -> 0 (same clip-and-normalize idiom
+    # humidity_norm already uses), and saturate to full strength on genuinely steep terrain,
+    # rather than being a flat function of wind/humidity alone.
+    d = 0.01
+    theta = d * np.arange(6)
+    points = geometry.local_xyz(np.zeros_like(theta), theta)
+
+    flat_elevation = np.full(6, 30.0)  # uniform -- see test_compute_slope_zero_for_flat_cluster
+    flat_slope, _ = erosion._compute_slope(points, flat_elevation)
+    flat_relief_factor = np.clip(flat_slope / erosion.WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
+    assert np.allclose(flat_relief_factor, 0.0)
+
+    steep_elevation = 30.0 + 2000.0 * np.arange(6)  # steep monotonic gradient
+    steep_slope, _ = erosion._compute_slope(points, steep_elevation)
+    steep_relief_factor = np.clip(steep_slope / erosion.WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
+    # Every point except the global minimum (point 0, which has no lower neighbor at all)
+    # should be steep enough to saturate weathering to full strength.
+    assert np.allclose(steep_relief_factor[1:], 1.0)
+
+
 def test_apply_erosion_never_erodes_ocean_nodes_directly():
     # Erosion itself (rain/river/weathering) is still zeroed over ocean nodes -- but unlike
     # before river deposition existed, an ocean node's elevation *can* now rise, when a
