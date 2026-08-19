@@ -17,6 +17,7 @@
 - [Rotating the view](#rotating-the-view)
 - [Plate Inspector](#plate-inspector)
 - [Climate](#climate)
+  - [Biomes](#biomes)
 - [Erosion](#erosion)
 - [Bathymetry](#bathymetry)
 - [Hydrology (rivers and lakes)](#hydrology)
@@ -899,16 +900,42 @@ exist in mantle-bloom): humidity's evapotranspiration term, river outflow, lake 
 influence.
 
 **Rendering.** `render_image.py`'s `CLIMATE_VIEWS` (`temperature`, `wind`, `oceanCurrents`,
-`humidity`, `precipitation`) route to `_render_climate_view`, a separate path from the
-plate-tectonics views since the data source (a real `(H, W)` array, always covering the whole
-sphere) is structurally different from the render grid's ragged lattice. Heatmap views
+`humidity`, `precipitation`, `biome`) route to `_render_climate_view`, a separate path from
+the plate-tectonics views since the data source (a real `(H, W)` array, always covering the
+whole sphere) is structurally different from the render grid's ragged lattice. Heatmap views
 (temperature/humidity/precipitation) reuse the elevation view's color-stop-interpolation
 technique with their own stop tables; wind/ocean-currents draw subsampled arrows (numpy-
 vectorized projection/direction math, looped only for the unavoidable per-arrow PIL draw
 calls), and ocean currents additionally marks each sampled swell point with a small circle.
 Temperature/humidity/precipitation additionally draw the current coastline (see
 [Coastline](#coastline)) -- a color-scale view carries no land/ocean information on its own,
-unlike elevation's own hypsometric coloring.
+unlike elevation's own hypsometric coloring. `biome` is categorical, not a heatmap -- see
+[Biomes](#biomes) below -- and (like wind/oceanCurrents) skips the separate coastline stroke,
+since its own flat Ocean color already reads as a land/ocean boundary on its own.
+
+<a id="biomes"></a>
+### Biomes (`biomes.py`)
+
+A pure, stateless classification -- `biomes.classify_biomes(temperature_c, precipitation_mm,
+is_ocean)` -- bucketing each climate-grid cell into one of thirteen named biomes (Ocean, Ice,
+Tundra, Boreal Forest, five temperate bands from desert to rainforest, and four tropical bands
+from desert to rainforest) purely from two axes already computed by this module:
+land-surface temperature and annual precipitation. Same two axes the real Whittaker biome
+diagram uses, in the same broad cold-to-hot/dry-to-wet relative order, though with this
+module's own boundary values -- a simplification in the same spirit as this codebase's other
+openly-approximate constants (e.g. erosion.py's `RAIN_EROSION_COEFFICIENT`), not fit against
+any specific real-world dataset. `ICE_TEMP_C` reuses `hydrology.GLACIER_ACCUMULATION_TEMP_C`
+directly (rather than inventing a second, potentially-inconsistent cold cutoff) so a biome
+map's Ice region lines up with where the simulation would actually grow a glacier. `is_ocean`
+always wins over temperature/precipitation, since those are land-surface concepts and
+`is_ocean` already settles the question for a water cell.
+
+No new per-step state or caching -- like `render_image.py`'s own `temperature_colors`/
+`humidity_colors`, this runs fresh from whatever `climate.compute_climate_cached` already
+produced, entirely inside `_render_climate_view`'s `"biome"` branch. Implemented with
+`np.select` (first-matching condition wins) rather than chained `np.where` overwrites, so
+each temperature/precipitation band's cutoffs stay a self-contained, independently checkable
+list instead of depending on write order to get boundary cells right.
 
 <a id="erosion"></a>
 ## Erosion (`erosion.py`)

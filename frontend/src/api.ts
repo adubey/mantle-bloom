@@ -15,6 +15,7 @@ export type MapView =
   | "oceanCurrents"
   | "humidity"
   | "precipitation"
+  | "biome"
   | "plateInspector"
   | "riverInspector";
 

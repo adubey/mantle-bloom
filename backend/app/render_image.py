@@ -24,14 +24,16 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy.spatial import cKDTree
 
-from . import climate, coastline, geometry, hydrology, mantle, plates, projections
+from . import biomes, climate, coastline, geometry, hydrology, mantle, plates, projections
 from .world import World
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
 # see climate.py's module docstring for why. Handled by a separate code path
 # (_render_climate_view) rather than threading a third data source through render_png's
-# existing elevation/plates machinery.
-CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitation")
+# existing elevation/plates machinery. "biome" belongs here too, even though it isn't one of
+# climate.py's own raw fields -- it's a pure classification (biomes.classify_biomes) derived
+# entirely from two fields (temperature, precipitation) that path already has in hand.
+CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome")
 VIEWS = ("elevation", "plates", "platesDetail") + CLIMATE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -789,6 +791,13 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     elif view == "precipitation":
         colors = precipitation_colors(fields.precipitation_mm.reshape(-1))
         _fill_rects(pixels, centers, half_w, half_h, colors)
+    elif view == "biome":
+        # Same land/ocean temperature split the "temperature" view above uses -- ocean cells
+        # always classify as Ocean regardless, so only the land branch actually matters here.
+        display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
+        biome_ids = biomes.classify_biomes(display_temp.reshape(-1), fields.precipitation_mm.reshape(-1), fields.is_ocean.reshape(-1))
+        colors = biomes.BIOME_COLORS[biome_ids]
+        _fill_rects(pixels, centers, half_w, half_h, colors)
     elif view in ("wind", "oceanCurrents"):
         backdrop = np.where(fields.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
         _fill_rects(pixels, centers, half_w, half_h, backdrop)
@@ -834,6 +843,9 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
             (_swatch_ring(draw, (255, 255, 255)), "Ocean swell"),
         ]
         _draw_legend(image, draw, height, pixel_scale, "Ocean currents", symbol_entries=entries)
+    elif view == "biome":
+        entries = [(_swatch_square(draw, biomes.BIOME_COLORS[i]), name) for i, name in enumerate(biomes.BIOME_NAMES)]
+        _draw_legend(image, draw, height, pixel_scale, "Biome", symbol_entries=entries)
 
     return _encode_image(image)
 

@@ -279,6 +279,7 @@ export default function App() {
               <option value="oceanCurrents">Ocean currents</option>
               <option value="humidity">Humidity</option>
               <option value="precipitation">Precipitation</option>
+              <option value="biome">Biome</option>
             </select>
             <select
               value={projection}
