@@ -32,7 +32,7 @@ const DEFAULT_AXIAL_TILT_DEG = 23.5;
 // set, not a free-form slider, since there's no continuous unit for "how many points," only
 // "how many times as many."
 const NODE_DENSITY_CHOICES = [1, 4];
-const DEFAULT_NODE_DENSITY = 1;
+const DEFAULT_NODE_DENSITY = 4;
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
 // always lands somewhere the auto behavior could plausibly have picked too.
@@ -596,7 +596,7 @@ export default function App() {
               >
                 {NODE_DENSITY_CHOICES.map((d) => (
                   <option key={d} value={d}>
-                    {d === 1 ? "1x (default)" : `${d}x`}
+                    {d === 1 ? "1x" : `${d}x`}
                   </option>
                 ))}
               </select>
