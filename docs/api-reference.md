@@ -267,3 +267,83 @@ input, `404` if no world has been generated yet.
 
 `river_id` is `null` if there are no rivers at all this step (before the first step, or a
 world with no land steep/wet enough to route any).
+
+## `GET /world/lakes`
+
+The "Lake Inspector" map mode's data source (see
+[simulation-model.md#lake-inspector](simulation-model.md#lake-inspector)) -- same "plain
+JSON, client renders it" contract as `/world/rivers`; `frontend/src/LakeInspector.tsx` renders
+and drives the interaction itself. A "lake" here is one connected component of
+`hydrology.LAKE_MIN_VISIBLE_DEPTH_M`-deep nodes -- exactly what's drawn as standing water
+everywhere else in this codebase -- regrouped fresh from `world.hydrology_cache` on every call,
+so `lake_id` is only meaningful against this same response, not a persistent identity across
+steps. `lakes`/`coastline_segments` are both `[]` before the first step. `404` if no world has
+been generated yet.
+
+```json
+{
+  "elapsed_years": 12000000,
+  "lakes": [
+    {
+      "lake_id": 0,
+      "is_lake": true,
+      "member_count": 6,
+      "member_xyz": [[0.35, -0.11, -0.93], ["..."]],
+      "floor_xyz": [0.35, -0.11, -0.93],
+      "floor_elevation_m": 1170.9,
+      "outlet_xyz": [0.37, -0.09, -0.93],
+      "outlet_elevation_m": 1902.8,
+      "water_elevation_m": 1902.8,
+      "is_spilling": true,
+      "inflow_rivers": [{ "mouth_xyz": [0.36, -0.10, -0.93], "flow_rate": 812.4, "num_nodes": 9 }]
+    }
+  ],
+  "coastline_segments": [[[0.91, 0.28, -0.04], [0.90, 0.29, -0.03]], ["..."]]
+}
+```
+
+- `member_xyz` is every currently-*flooded* node's own position (not the whole geometric
+  catchment, which routinely includes dry higher ground on the way down to the basin's floor --
+  see `main._lake_basin_summary`'s own comment) -- what the Lake Inspector plots per node,
+  bright for the selected lake and dim for every other one.
+- `floor_xyz`/`floor_elevation_m` is this lake's own lowest point.
+- `outlet_xyz`/`outlet_elevation_m` is "the lowest point of the edge of the basin" -- the
+  saddle a river out of it would source from, resolved from this step's freshly-rebuilt
+  depression hierarchy (`lakes.build_lake_hierarchy`) so a lake that's currently the result of
+  several smaller basins merging together reports its own *current* rim, not an interior saddle
+  that's already flooded. `null` for an unresolved closed/endorheic basin with no known spill
+  (a legitimate state, not missing data -- see `lakes.py`'s own docstring).
+- `water_elevation_m`/`is_spilling` describe this lake's current water surface and whether
+  it's actively overflowing its own outlet.
+- `inflow_rivers` is every `RiverInfo` (see `/world/rivers`) whose own mouth lands somewhere in
+  this basin, as a small inline summary rather than a full `RiverSummary` -- the River
+  Inspector's own map mode is what draws a river's full path.
+- `coastline_segments` is the same land/lake-vs-ocean boundary `/world/rivers` returns, included
+  here for the same reason: this view draws no filled backdrop of its own.
+
+## `GET /world/lake_at?lat_deg=0&lon_deg=0`
+
+The Lake Inspector's click hit-test: which *basin* owns the node nearest `(lat_deg, lon_deg)`
+-- same true-frame contract as `/world/river_at`, except it always resolves to something
+informative for any land click, not just a hit on a currently-visible lake, so "click a basin
+that has no water in it right now" still returns real information (the user's own spec: "give
+me information about the basin nonetheless"). `400` for non-finite input, `404` if no world has
+been generated yet.
+
+```json
+{ "kind": "lake", "basin": { "lake_id": 0, "is_lake": true, "...": "same shape as /world/lakes" } }
+```
+
+`kind` is one of:
+
+- `"lake"` -- the nearest node is currently flooded; `basin` is that lake's own info (`lake_id`
+  set, matching the same node's `/world/lakes` entry for this same step).
+- `"basin"` -- dry land, but part of a real (possibly still-unresolved/endorheic) basin;
+  `basin` is that basin's own leaf catchment info, same shape as a lake entry but `is_lake:
+  false`, `lake_id: null`, `member_xyz` covering the whole geometric catchment (there's no
+  flooded subset to narrow it to), and `water_elevation_m`/`is_spilling` both meaningless
+  (`null`/`false`).
+- `"no_basin"` -- dry land whose own steepest-descent chain drains straight to the ocean
+  without ever passing through a local minimum first -- an ordinary hillslope, never part of
+  any basin. `basin` is `null`.
+- `"ocean"` -- the nearest node is open ocean. `basin` is `null`.

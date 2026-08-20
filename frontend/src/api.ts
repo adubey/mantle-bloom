@@ -18,7 +18,8 @@ export type MapView =
   | "biome"
   | "combined"
   | "plateInspector"
-  | "riverInspector";
+  | "riverInspector"
+  | "lakeInspector";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -97,6 +98,55 @@ export interface RiversResponse {
   // the River Inspector draws no filled backdrop at all, so without this there's no
   // land/ocean cue in this view whatsoever.
   coastline_segments: Segment[];
+}
+
+// A river feeding into a lake/basin (see LakeSummary.inflow_rivers below) -- a small inline
+// summary, not a full RiverSummary, since the Lake Inspector only needs to say "a river ends
+// here, this big" rather than draw that river's own full path (that's what the River
+// Inspector's own map mode is for).
+export interface InflowRiver {
+  mouth_xyz: [number, number, number];
+  flow_rate: number;
+  num_nodes: number;
+}
+
+// Lake Inspector data -- same "raw JSON, client renders itself" philosophy as PlatesResponse/
+// RiversResponse (see LakeInspector.tsx). `lake_id` is only meaningful against the most recent
+// /world/lakes response -- lakes are regrouped fresh every call, same non-persistent-identity
+// contract as `river_id` (see backend app/hydrology.py's group_rivers/lake_components).
+// This same shape is also embedded (with `lake_id: null`) in a `LakeAtResponse` for a click
+// that lands on a dry, never-flooded basin -- see backend app/main.py's `_lake_basin_summary`.
+export interface LakeSummary {
+  lake_id: number | null;
+  is_lake: boolean;
+  member_count: number;
+  // Every member node's own position -- what the Lake Inspector plots per node, mirroring
+  // PlateSummary.points (bright for the selected basin, dim for every other one).
+  member_xyz: [number, number, number][];
+  floor_xyz: [number, number, number];
+  floor_elevation_m: number;
+  // "The lowest point of the edge of the basin" -- the saddle a river out of it would source
+  // from. `null` for an unresolved closed/endorheic basin with no known spill (a legitimate
+  // state, not missing data -- see backend app/lakes.py's own docstring).
+  outlet_xyz: [number, number, number] | null;
+  outlet_elevation_m: number | null;
+  // `null` unless `is_lake` (a dry basin has no water surface at all).
+  water_elevation_m: number | null;
+  is_spilling: boolean;
+  inflow_rivers: InflowRiver[];
+}
+
+export interface LakesResponse {
+  elapsed_years: number;
+  lakes: LakeSummary[];
+  coastline_segments: Segment[];
+}
+
+// The Lake Inspector's click hit-test result -- see backend app/main.py's `lake_at` for what
+// each `kind` means. `basin` is `null` for "ocean"/"no_basin", set otherwise.
+export interface LakeAtResponse {
+  kind: "lake" | "basin" | "no_basin" | "ocean";
+  basin: LakeSummary | null;
 }
 
 // Stats panel data (see backend app/stats.py) -- a stateless snapshot of the *current* world;
@@ -240,4 +290,16 @@ export function fetchRivers(): Promise<RiversResponse> {
 export function fetchRiverAt(latDeg: number, lonDeg: number): Promise<{ river_id: number | null }> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
   return fetch(`${API_BASE}/world/river_at?${params}`).then(asJson<{ river_id: number | null }>);
+}
+
+export function fetchLakes(): Promise<LakesResponse> {
+  return fetch(`${API_BASE}/world/lakes`).then(asJson<LakesResponse>);
+}
+
+// The Lake Inspector's click hit-test -- same true-frame contract as fetchPlateAt/fetchRiverAt,
+// but (unlike those) always resolves to *something* informative for any land click, not just a
+// hit on the thing being inspected -- see LakeAtResponse's own comment.
+export function fetchLakeAt(latDeg: number, lonDeg: number): Promise<LakeAtResponse> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/lake_at?${params}`).then(asJson<LakeAtResponse>);
 }

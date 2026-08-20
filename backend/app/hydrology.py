@@ -273,18 +273,20 @@ def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
     return np.array(cost), np.array(spill_target, dtype=np.int64)
 
 
-def _lake_component_sizes(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
-    """Per-node size (node count) of the connected `is_lake` component containing that node,
-    0 for every non-lake node -- a same-lake grouping via union-find over `neighbor_idx`'s
-    edges, treated as **undirected** here even though the k-NN graph itself isn't strictly
-    symmetric (a node isn't guaranteed to be among its own neighbor's k nearest). Unlike
-    `_flood_fill_lake_extent`'s directed traversal (fine for its own purpose, spreading a
-    water *level* outward from a seed), a size count needs two lake nodes joined by only a
-    one-directional edge to still read as the same lake, not be split apart by an accident of
-    which node happens to list the other as one of its own nearest neighbors."""
+def lake_components(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> list[np.ndarray]:
+    """Every connected `is_lake` component (as an array of member node indices) via union-find
+    over `neighbor_idx`'s edges, treated as **undirected** here even though the k-NN graph
+    itself isn't strictly symmetric (a node isn't guaranteed to be among its own neighbor's k
+    nearest). Unlike `_flood_fill_lake_extent`'s directed traversal (fine for its own purpose,
+    spreading a water *level* outward from a seed), a same-lake grouping needs two lake nodes
+    joined by only a one-directional edge to still read as the same lake, not be split apart by
+    an accident of which node happens to list the other as one of its own nearest neighbors.
+    Shared building block for `_lake_component_sizes` (below) and main.py's Lake Inspector
+    (`GET /world/lakes`/`GET /world/lake_at`), which needs the actual per-lake node groups, not
+    just their sizes."""
     n = len(is_lake)
     if not np.any(is_lake):
-        return np.zeros(n, dtype=np.int64)
+        return []
 
     parent = list(range(n))
 
@@ -306,11 +308,19 @@ def _lake_component_sizes(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> np.n
                     parent[ri] = rj
 
     lake_idx = np.nonzero(is_lake)[0]
-    roots = np.array([find(i) for i in lake_idx.tolist()])
-    _, inverse, counts = np.unique(roots, return_inverse=True, return_counts=True)
+    groups: dict[int, list[int]] = {}
+    for i in lake_idx.tolist():
+        groups.setdefault(find(i), []).append(i)
+    return [np.array(members, dtype=np.int64) for members in groups.values()]
 
+
+def _lake_component_sizes(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
+    """Per-node size (node count) of the connected `is_lake` component containing that node, 0
+    for every non-lake node -- see `lake_components`, which this just tallies."""
+    n = len(is_lake)
     sizes = np.zeros(n, dtype=np.int64)
-    sizes[lake_idx] = counts[inverse]
+    for members in lake_components(is_lake, neighbor_idx):
+        sizes[members] = len(members)
     return sizes
 
 

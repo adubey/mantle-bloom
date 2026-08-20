@@ -8,8 +8,9 @@ import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from scipy.spatial import cKDTree
 
-from . import climate, coastline, geometry, hydrology, plates, projections, render_image, stats
+from . import climate, coastline, geometry, hydrology, lakes, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -171,6 +172,128 @@ def _coastline_segments_json(world: World) -> list:
     return np.round(np.stack([point_a, point_b], axis=1), _COORD_DECIMALS).tolist()
 
 
+def _leaf_lakes_by_node(forest: list[lakes.Lake]) -> dict[int, lakes.Lake]:
+    """Every land node that belongs to some real catchment (i.e. isn't on a chain that drains
+    straight to the ocean without ever passing a local minimum -- see lakes.py's own
+    `_OCEAN_CATCHMENT`), mapped to its own *leaf* `Lake` -- the basin the Lake Inspector shows
+    for a click that lands on dry, never-merged land."""
+    by_node: dict[int, lakes.Lake] = {}
+    for lake in lakes.iter_all_lakes(forest):
+        if lake.children:
+            continue
+        for member in lake.members.tolist():
+            by_node[member] = lake
+    return by_node
+
+
+def _smallest_lake_containing(forest: list[lakes.Lake], wet_set: set[int]) -> lakes.Lake | None:
+    """The smallest `Lake` tree node (leaf or merged parent) whose own `members` fully contains
+    `wet_set` -- i.e. the basin exactly as currently manifested by a connected body of standing
+    water that may already span more than one original leaf catchment. Searches top-down rather
+    than needing parent pointers on `Lake` (which nothing else in lakes.py needs): a level whose
+    `members` doesn't yet contain the whole wet set can't be the answer, so every other branch at
+    that level is skipped."""
+
+    def search(lake: lakes.Lake) -> lakes.Lake | None:
+        if not wet_set.issubset(lake.members.tolist()):
+            return None
+        for child in lake.children:
+            found = search(child)
+            if found is not None:
+                return found
+        return lake
+
+    for root in forest:
+        found = search(root)
+        if found is not None:
+            return found
+    return None
+
+
+def _lake_components_sorted(fields: hydrology.HydrologyFields) -> list[np.ndarray]:
+    """Every currently-visible lake's node group (`hydrology.lake_components`), in a fixed,
+    deterministic order (by each component's own lowest node index) -- so the index into this
+    list (`lake_id`) means the same thing across a `/world/lakes` call and a same-step
+    `/world/lake_at` call, the same "meaningful only against this step" contract `river_id`
+    already has (see hydrology.group_rivers)."""
+    components = hydrology.lake_components(fields.lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M, fields.neighbor_idx)
+    components.sort(key=lambda members: int(members.min()))
+    return components
+
+
+def _lake_basin_summary(
+    fields: hydrology.HydrologyFields, lake: lakes.Lake, lake_id: int | None, rivers: list[hydrology.RiverInfo], is_lake: bool
+) -> dict:
+    """One basin's full inspector payload, for both a currently-wet lake (`is_lake=True`, `lake`
+    is whatever `_smallest_lake_containing` resolved) and a dry, never-flooded basin
+    (`is_lake=False`, `lake` is the leaf catchment straight from `_leaf_lakes_by_node`) -- same
+    shape either way, since "a basin nonetheless" (the user's own framing) should read as the
+    same kind of information, just without live water. `floor_*` is this basin's own lowest
+    point (`lake.floor_elevation`'s own node); `outlet_*` is "the lowest point of the edge of the
+    basin" -- `lake.max_depth`'s own saddle node, `None` for an unresolved closed/endorheic basin
+    with no known spill (a legitimate case, see lakes.py's own docstring), not a bug. Rivers
+    "feeding into" this basin are simply every `RiverInfo` whose own mouth lands on one of this
+    basin's members, regardless of that river's own `mouth_type` label ("lake", or "other" for a
+    river dead-ending in a currently-dry sink) -- from this basin's own point of view both are
+    equally "a river that ends here"."""
+    members = lake.members
+    effective_elev = fields.elevation + fields.silt_depth
+
+    # `lake.members` is the *geometric* catchment -- every node on the way down to this basin's
+    # own floor, not just whichever of them are currently underwater (a leaf's own catchment
+    # routinely includes dry higher ground, see lakes.py's own docstring). For a currently-wet
+    # lake, the *displayed* extent (what's drawn as water, and what a click needs to land on to
+    # read back as "lake") should be the actual flooded subset (`fields.lake_depth`, this step's
+    # real, continuity-resolved water state), not the full basin outline -- a dry basin has no
+    # such distinction to make, so it keeps showing its whole catchment.
+    wet_mask = fields.lake_depth[members] > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    wet_members = members[wet_mask]
+    display_members = wet_members if is_lake and len(wet_members) > 0 else members
+
+    floor_node = int(display_members[np.argmin(effective_elev[display_members])])
+    outlet_elev = lake.max_depth
+    outlet_node = lake.outlet_node_idx
+
+    # `lake_depth` is depth above the *silt-adjusted* bed (lakes.py's own `effective_elevation`
+    # basis, see step_lakes), so the actual water surface needs `silt_depth` added back in too,
+    # not just bare `elevation` -- otherwise a silted-in lake reads as underwater at its own bed.
+    water_elevation = (
+        float(np.max(fields.elevation[wet_members] + fields.silt_depth[wet_members] + fields.lake_depth[wet_members]))
+        if len(wet_members) > 0
+        else None
+    )
+    is_spilling = outlet_elev is not None and water_elevation is not None and water_elevation >= outlet_elev
+
+    # Rivers "feeding into" this basin are matched against the full geometric catchment, not
+    # just `display_members` -- a river can plausibly end anywhere in the basin (e.g. a dry
+    # higher-elevation sink not yet part of the standing water), and that's still meaningfully
+    # "a river that ends in this basin" from the user's point of view.
+    member_set = set(members.tolist())
+    inflow_rivers = [
+        {
+            "mouth_xyz": _round_coords(fields.points[river.mouth_idx]),
+            "flow_rate": river.flow_rate,
+            "num_nodes": int(len(river.member_idx)),
+        }
+        for river in rivers
+        if river.mouth_idx in member_set
+    ]
+
+    return {
+        "lake_id": lake_id,
+        "is_lake": is_lake,
+        "member_count": int(len(display_members)),
+        "member_xyz": _round_coords(fields.points[display_members]),
+        "floor_xyz": _round_coords(fields.points[floor_node]),
+        "floor_elevation_m": float(effective_elev[floor_node]),
+        "outlet_xyz": None if outlet_elev is None else _round_coords(fields.points[outlet_node]),
+        "outlet_elevation_m": outlet_elev,
+        "water_elevation_m": water_elevation,
+        "is_spilling": bool(is_spilling),
+        "inflow_rivers": inflow_rivers,
+    }
+
+
 @app.post("/world/generate")
 def generate(req: GenerateRequest) -> dict:
     if req.node_density not in plates.NODE_DENSITY_CHOICES:
@@ -316,3 +439,86 @@ def river_at(lat_deg: float, lon_deg: float) -> dict:
     query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
     rivers = hydrology.group_rivers(world.hydrology_cache)
     return {"river_id": hydrology.river_at(world.hydrology_cache, rivers, query_xyz)}
+
+
+@app.get("/world/lakes")
+def list_lakes() -> dict:
+    """Every currently-visible lake's basin info, for the "Lake Inspector" map mode -- same
+    "raw JSON, client renders it" philosophy as `/world/rivers`. A "lake" here means one
+    connected component of `lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M` nodes (see
+    `hydrology.lake_components`) -- exactly what's drawn as standing water everywhere else in
+    this codebase -- resolved back up to its own basin in this step's freshly-rebuilt
+    depression hierarchy (`lakes.build_lake_hierarchy`) so a lake that's currently the result of
+    several original catchments merging together reports its own *current* outlet, not some
+    interior saddle that's already flooded. Regrouped fresh from `world.hydrology_cache` on
+    every call, same as `/world/rivers` -- `lake_id` is only meaningful against this same
+    response, not a stable identity across steps. `coastline_segments` included for the same
+    reason `/world/rivers` includes it: this view draws no filled backdrop of its own. Both are
+    `[]` before the first step. `404` if no world has been generated yet."""
+    world = _require_world()
+    fields = world.hydrology_cache
+    if fields is None:
+        return {"elapsed_years": world.elapsed_years, "lakes": [], "coastline_segments": []}
+    effective_elev = fields.elevation + fields.silt_depth
+    forest = lakes.build_lake_hierarchy(effective_elev, fields.is_ocean, fields.neighbor_idx)
+    components = _lake_components_sorted(fields)
+    rivers = hydrology.group_rivers(fields)
+    result = []
+    for lake_id, members in enumerate(components):
+        lake_obj = _smallest_lake_containing(forest, set(members.tolist()))
+        if lake_obj is None:
+            continue  # defensive only -- every wet node belongs to some catchment by construction
+        result.append(_lake_basin_summary(fields, lake_obj, lake_id, rivers, is_lake=True))
+    return {"elapsed_years": world.elapsed_years, "lakes": result, "coastline_segments": _coastline_segments_json(world)}
+
+
+@app.get("/world/lake_at")
+def lake_at(lat_deg: float, lon_deg: float) -> dict:
+    """The Lake Inspector's click hit-test, resolving to whichever *basin* owns the node
+    nearest `(lat_deg, lon_deg)` -- not just a currently-wet lake, so a click on ordinary dry
+    land still returns "the basin nonetheless" (the user's own spec), including its lowest
+    point, as long as that land actually drains into some enclosed catchment at all (see
+    `kind` below). `400` for non-finite input, `404` if no world has been generated yet.
+
+    `kind` is one of:
+    - `"lake"` -- the node is currently flooded; `basin` is that connected lake's own info
+      (`lake_id` set, matching the same node's `/world/lakes` entry for this same step).
+    - `"basin"` -- dry land, but part of a real (possibly still-unresolved/endorheic) basin;
+      `basin` is that basin's own leaf catchment info (`lake_id` is `None` -- a dry basin has
+      no visible-lake identity to be stable against).
+    - `"no_basin"` -- dry land whose own steepest-descent chain drains straight to the ocean
+      without ever passing through a local minimum first -- an ordinary hillslope, never part
+      of any basin (see lakes.py's own `_OCEAN_CATCHMENT`). `basin` is `null`.
+    - `"ocean"` -- the nearest node is open ocean. `basin` is `null`.
+    """
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    fields = world.hydrology_cache
+    if fields is None or len(fields.points) == 0:
+        return {"kind": "no_basin", "basin": None}
+
+    query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+    tree = cKDTree(fields.points)
+    _, nearest = tree.query(query_xyz.reshape(1, 3), k=1)
+    node_idx = int(nearest[0])
+
+    if fields.is_ocean[node_idx]:
+        return {"kind": "ocean", "basin": None}
+
+    effective_elev = fields.elevation + fields.silt_depth
+    forest = lakes.build_lake_hierarchy(effective_elev, fields.is_ocean, fields.neighbor_idx)
+    leaf = _leaf_lakes_by_node(forest).get(node_idx)
+    if leaf is None:
+        return {"kind": "no_basin", "basin": None}
+
+    rivers = hydrology.group_rivers(fields)
+    if fields.lake_depth[node_idx] > hydrology.LAKE_MIN_VISIBLE_DEPTH_M:
+        components = _lake_components_sorted(fields)
+        lake_id, members = next((i, m) for i, m in enumerate(components) if node_idx in m.tolist())
+        lake_obj = _smallest_lake_containing(forest, set(members.tolist())) or leaf
+        basin = _lake_basin_summary(fields, lake_obj, lake_id, rivers, is_lake=True)
+        return {"kind": "lake", "basin": basin}
+
+    basin = _lake_basin_summary(fields, leaf, None, rivers, is_lake=False)
+    return {"kind": "basin", "basin": basin}
