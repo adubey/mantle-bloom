@@ -262,10 +262,11 @@ def _grow_or_shrink_line(
     source, rather than only reacting to its symptom in gaps.py.
 
     channel_depth/channel_width/lake_depth/glacier_depth/silt_depth/is_volcano/volcano_active_
-    years_remaining ride along: a surviving node keeps its own prior value (sliced the same way
-    theta/elevation are), a newly-inserted node (brand new crust) starts at 0/False -- no
-    history to carry, the same reasoning plates.ElevationLine's own defaulting already uses
-    for a call site that doesn't pass them at all.
+    years_remaining/soil_depth/soil_mineral_content/soil_organic_content/coal_deposit_m/
+    oil_gas_deposit_m/mineral_deposit_m ride along: a surviving node keeps its own prior value
+    (sliced the same way theta/elevation are), a newly-inserted node (brand new crust) starts
+    at 0/False -- no history to carry, the same reasoning plates.ElevationLine's own defaulting
+    already uses for a call site that doesn't pass them at all.
 
     Every persistent field is threaded through the same append/insert/slice as theta/
     elevation here (not dataclasses.replace -- there's no "unchanged" value to copy when the
@@ -283,6 +284,12 @@ def _grow_or_shrink_line(
         "silt_depth": line.silt_depth.copy(),
         "is_volcano": line.is_volcano.copy(),
         "volcano_active_years_remaining": line.volcano_active_years_remaining.copy(),
+        "soil_depth": line.soil_depth.copy(),
+        "soil_mineral_content": line.soil_mineral_content.copy(),
+        "soil_organic_content": line.soil_organic_content.copy(),
+        "coal_deposit_m": line.coal_deposit_m.copy(),
+        "oil_gas_deposit_m": line.oil_gas_deposit_m.copy(),
+        "mineral_deposit_m": line.mineral_deposit_m.copy(),
     }
     if len(theta) == 0:
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)

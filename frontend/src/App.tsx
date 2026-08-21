@@ -31,6 +31,9 @@ const DEFAULT_CONTINENTAL_PERCENT = 70;
 const DEFAULT_LAND_PERCENT = 29;
 // Degrees, matching backend app/world.py's DEFAULT_AXIAL_TILT_DEG (Earth's real tilt).
 const DEFAULT_AXIAL_TILT_DEG = 23.5;
+// Percent, matching backend app/geology.py's own default (0, a fully barren starting world --
+// see geology.seed_initial_soil).
+const DEFAULT_INITIAL_SOIL_MATURITY_PERCENT = 0;
 // Matching backend app/plates.py's NODE_DENSITY_CHOICES/DEFAULT_NODE_DENSITY -- a discrete
 // set, not a free-form slider, since there's no continuous unit for "how many points," only
 // "how many times as many."
@@ -67,6 +70,7 @@ export default function App() {
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [nodeDensity, setNodeDensity] = useState(DEFAULT_NODE_DENSITY);
+  const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
 
@@ -204,7 +208,8 @@ export default function App() {
     setError(null);
     try {
       const s = await generateWorld(
-        seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity, autoPlates ? null : numPlates,
+        seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity, initialSoilMaturityPercent / 100,
+        autoPlates ? null : numPlates,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -222,7 +227,7 @@ export default function App() {
       setBusy(false);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, autoPlates, numPlates,
+    seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, initialSoilMaturityPercent, autoPlates, numPlates,
     projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
@@ -388,6 +393,8 @@ export default function App() {
               <option value="precipitation">Precipitation</option>
               <option value="biome">Biome</option>
               <option value="combined">Combined</option>
+              <option value="resources">Resources</option>
+              <option value="soilQuality">Soil Quality</option>
             </select>
             <select
               value={projection}
@@ -678,6 +685,22 @@ export default function App() {
                 onChange={(e) => setAxialTiltDeg(Number(e.target.value))}
                 style={{ width: "100%" }}
               />
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Initial soil maturity: {initialSoilMaturityPercent}%
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={initialSoilMaturityPercent}
+                onChange={(e) => setInitialSoilMaturityPercent(Number(e.target.value))}
+                style={{ width: "100%" }}
+              />
+              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                0% starts fully barren (bare rock, no soil) -- soil then forms gradually as the
+                world steps forward. Higher values start with some soil already in place.
+              </div>
             </label>
 
             <label style={{ display: "block", marginBottom: 16 }}>

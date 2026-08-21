@@ -120,6 +120,17 @@ class ElevationLine:
     # remaining is a countdown, 0 once dormant (whether or not is_volcano is set).
     is_volcano: np.ndarray | None = None  # bool
     volcano_active_years_remaining: np.ndarray | None = None  # years
+    # Soil, land-only -- see geology.py. Unlike every other field on this line, these three can
+    # both rise *and* fall (real soil forms and erodes), not just accumulate.
+    soil_depth: np.ndarray | None = None  # meters, regolith/soil thickness
+    soil_mineral_content: np.ndarray | None = None  # [0, 1], weathered/hydrothermal richness
+    soil_organic_content: np.ndarray | None = None  # [0, 1], accumulated organic matter
+    # Resource deposits -- see geology.py/volcanism.py. All monotonically non-decreasing, the
+    # same self-reinforcing "once formed, never erodes back away" convention silt_depth
+    # already uses (buried peat/hydrocarbons/ore aren't un-buried by a later climate shift).
+    coal_deposit_m: np.ndarray | None = None  # land-only
+    oil_gas_deposit_m: np.ndarray | None = None  # ocean-only
+    mineral_deposit_m: np.ndarray | None = None  # either -- grown by volcanism.py's own eruptions
 
     def __post_init__(self) -> None:
         if self.channel_depth is None:
@@ -136,6 +147,18 @@ class ElevationLine:
             self.is_volcano = np.zeros_like(self.theta, dtype=bool)
         if self.volcano_active_years_remaining is None:
             self.volcano_active_years_remaining = np.zeros_like(self.theta)
+        if self.soil_depth is None:
+            self.soil_depth = np.zeros_like(self.theta)
+        if self.soil_mineral_content is None:
+            self.soil_mineral_content = np.zeros_like(self.theta)
+        if self.soil_organic_content is None:
+            self.soil_organic_content = np.zeros_like(self.theta)
+        if self.coal_deposit_m is None:
+            self.coal_deposit_m = np.zeros_like(self.theta)
+        if self.oil_gas_deposit_m is None:
+            self.oil_gas_deposit_m = np.zeros_like(self.theta)
+        if self.mineral_deposit_m is None:
+            self.mineral_deposit_m = np.zeros_like(self.theta)
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -304,6 +327,43 @@ def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
     if not chunks:
         return np.zeros(0, dtype=bool)
     return np.concatenate(chunks, axis=0)
+
+
+def _collect_all(plate_list: list[Plate], attr: str) -> np.ndarray:
+    """Every plate's current `attr` (a per-line ElevationLine array), concatenated in the
+    exact same per-plate/per-line order collect_all_points uses -- see
+    collect_all_lake_depth's own docstring for why this is index-aligned with it. Backs the
+    newer soil/resource fields (geology.py/volcanism.py) below; the three older fields
+    (lake_depth/glacier_depth/is_volcano) keep their own hand-written functions rather than
+    being retrofitted onto this helper, since they predate it and already work."""
+    chunks = [getattr(line, attr) for plate in plate_list for line in plate.lines if len(line.theta) > 0]
+    if not chunks:
+        return np.zeros(0)
+    return np.concatenate(chunks, axis=0)
+
+
+def collect_all_soil_depth(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "soil_depth")
+
+
+def collect_all_soil_mineral_content(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "soil_mineral_content")
+
+
+def collect_all_soil_organic_content(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "soil_organic_content")
+
+
+def collect_all_coal_deposit(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "coal_deposit_m")
+
+
+def collect_all_oil_gas_deposit(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "oil_gas_deposit_m")
+
+
+def collect_all_mineral_deposit(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "mineral_deposit_m")
 
 
 def nearest_plate_id(plate_list: list[Plate], query_xyz: np.ndarray) -> int | None:

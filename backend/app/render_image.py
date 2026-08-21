@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, geometry, hydrology, mantle, plates, projections
+from . import biomes, climate, coastline, geology, geometry, hydrology, mantle, plates, projections, volcanism
 from .world import World
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -37,7 +37,13 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # "combined" isn't a CLIMATE_VIEWS member (see _render_combined_view): it draws from the same
 # fine per-node elevation data the elevation/plates views use, not climate.py's own grid, so
 # it belongs with them structurally even though its coloring leans on biome classification.
-VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS
+# Resources/Soil Quality (see geology.py/volcanism.py) are node-cloud-derived like elevation/
+# plates, not climate-grid-derived -- see _resource_fields -- but get their own tuple/dispatch
+# branch (_render_resource_view) rather than folding into VIEWS' first group directly, since
+# they share a render path with each other (one shared fine-grid resample) but not with
+# elevation/plates' own render-grid machinery.
+RESOURCE_VIEWS = ("resources", "soilQuality")
+VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -74,6 +80,32 @@ COASTLINE_COLOR_RGB = (235, 235, 235)
 COASTLINE_HALO_RGB = (15, 15, 15)
 COASTLINE_LINE_WIDTH_PX = 1.1
 COASTLINE_HALO_WIDTH_PX = 2.6
+
+# Resources view (see geology.py/volcanism.py): a muted, deliberately low-saturation
+# land/ocean backdrop -- distinct from every other view's own colors -- so the three
+# resource overlays (blended in on top by richness fraction, see _render_resources_view)
+# read as the whole point of this view rather than competing with a busy backdrop.
+RESOURCE_LAND_BACKDROP_RGB = np.array([82, 76, 68], dtype=float)
+RESOURCE_OCEAN_BACKDROP_RGB = np.array([22, 32, 48], dtype=float)
+COAL_COLOR_RGB = np.array([28, 24, 22], dtype=float)  # near-black charcoal
+OIL_GAS_COLOR_RGB = np.array([92, 56, 14], dtype=float)  # dark amber/brown-black crude
+MINERAL_COLOR_RGB = np.array([175, 62, 205], dtype=float)  # vivid purple -- ore veins
+
+# Soil Quality view: barren bare rock -> rich, near-black fertile soil (real chernozem
+# "black earth" is the visual reference). fertility (see _render_soil_view) is already
+# [0, 1], so these stops are keyed on that directly rather than a physical unit.
+_SOIL_STOP_V = np.array([0.0, 0.15, 0.35, 0.6, 1.0], dtype=float)
+_SOIL_STOP_RGB = np.array(
+    [
+        (168, 150, 120),  # barren -- pale rocky tan
+        (150, 120, 80),  # poor -- thin dry soil
+        (120, 90, 55),  # moderate
+        (80, 58, 36),  # fertile
+        (35, 26, 18),  # rich -- dark, organic-and-mineral-rich earth
+    ],
+    dtype=float,
+)
+SOIL_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=float)
 
 # Visual constants below are all in pixel terms tuned at this reference width; render_png
 # scales them by (requested width / REFERENCE_WIDTH_PX) so a higher-resolution request (e.g.
@@ -228,6 +260,10 @@ def humidity_colors(humidity: np.ndarray) -> np.ndarray:
 
 def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
     return _interp_colors(precipitation_mm, _PRECIPITATION_STOP_MM, _PRECIPITATION_STOP_RGB)
+
+
+def soil_fertility_colors(fertility: np.ndarray) -> np.ndarray:
+    return _interp_colors(fertility, _SOIL_STOP_V, _SOIL_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -449,6 +485,62 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     precip = _bilinear_resample(fields.precipitation_mm, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
 
     return lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth
+
+
+def _resource_fields(world: World, grid_h: int, grid_w: int):
+    """Fine equirectangular grid (same shape/construction as _biome_fields, see _biome_grid)
+    for the Resources/Soil Quality views: coal/oil-gas/mineral deposit richness and soil
+    depth/mineral-content/organic-content, each a fresh nearest-node resample of the actual
+    plate data (plates.collect_all_* helpers) -- these views need none of climate.py's own
+    fields, unlike Biome/Combined, so this is a separate, narrower resample rather than
+    bloating _biome_fields' own return shape for views that don't need it. Both node-cloud
+    fields (unlike climate.py's) are always defined, even before the first step -- soil/
+    resources simply read as all-zero/barren then, same as any other freshly generated
+    world's persistent fields (channel_depth, silt_depth, ...)."""
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    flat_xyz = world_xyz.reshape(-1, 3)
+    shape = (grid_h, grid_w)
+
+    collected = plates.collect_all_points(world.plates)
+    if collected is None:
+        z = np.zeros(shape)
+        return lat_deg, lon_deg, world_xyz, np.ones(shape, dtype=bool), z, z, z, z, z, z
+
+    all_points, all_elevation, _ = collected
+    tree = cKDTree(all_points)
+    _, idx = tree.query(flat_xyz)
+    is_ocean = (all_elevation[idx].reshape(shape)) <= world.sea_level_m
+
+    def resample(collector) -> np.ndarray:
+        return collector(world.plates)[idx].reshape(shape)
+
+    soil_depth = resample(plates.collect_all_soil_depth)
+    soil_mineral = resample(plates.collect_all_soil_mineral_content)
+    soil_organic = resample(plates.collect_all_soil_organic_content)
+    coal = resample(plates.collect_all_coal_deposit)
+    oil_gas = resample(plates.collect_all_oil_gas_deposit)
+    mineral = resample(plates.collect_all_mineral_deposit)
+    return lat_deg, lon_deg, world_xyz, is_ocean, soil_depth, soil_mineral, soil_organic, coal, oil_gas, mineral
+
+
+def grid_slope(elevation_m: np.ndarray, lat_deg: np.ndarray) -> np.ndarray:
+    """Dimensionless rise/run slope on the fine Biome/Combined grid (see _biome_fields) --
+    real elevation difference to each cell's north/south or east/west neighbor (whichever is
+    steeper), divided by that neighbor's real great-circle spacing in meters (longitude
+    narrowed by cos(lat), same convention as everywhere else in this codebase -- see
+    plates.iter_local_lattice). Feeds biomes.classify_wetland's own WETLAND_MAX_SLOPE cutoff --
+    the same threshold erosion.compute_slope's own node-cloud slope (a different, finer
+    discretization) is tuned against; see biomes.py's own module docstring for why an
+    approximate, visually-tuned cutoff, not fit to any dataset, is this codebase's norm.
+    np.roll wraps at the poles too (a minor, visually inconsequential artifact right at the
+    map's own poles), the same "not worth special-casing" tradeoff this codebase already
+    accepts elsewhere (e.g. the Plate Inspector's antipodal-projection limitation)."""
+    grid_h, grid_w = elevation_m.shape
+    dlat_km = (np.pi / grid_h) * plates.PLANET_RADIUS_KM
+    dlon_km = np.maximum((2 * np.pi / grid_w) * plates.PLANET_RADIUS_KM * np.cos(np.radians(lat_deg))[:, None], 1.0)
+    d_ns = np.abs(elevation_m - np.roll(elevation_m, 1, axis=0)) / (dlat_km * 1000.0)
+    d_ew = np.abs(elevation_m - np.roll(elevation_m, 1, axis=1)) / (dlon_km * 1000.0)
+    return np.maximum(d_ns, d_ew)
 
 
 def _project_climate_grid(
@@ -809,11 +901,14 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, _, is_ocean, air_temp, ocean_temp, precip, _, _ = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _, _ = _biome_fields(
         world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    biome_ids = biomes.classify_biomes(display_temp.reshape(-1), precip.reshape(-1), is_ocean.reshape(-1))
+    slope = grid_slope(elevation_m, lat_deg)
+    biome_ids = biomes.classify_biomes(
+        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
+    )
     colors = biomes.BIOME_COLORS[biome_ids]
 
     centers, half_w, half_h, _, _, _ = _project_climate_grid(
@@ -870,7 +965,10 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    biome_ids = biomes.classify_biomes(display_temp.reshape(-1), precip.reshape(-1), is_ocean.reshape(-1))
+    slope = grid_slope(elevation_m, lat_deg)
+    biome_ids = biomes.classify_biomes(
+        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
+    )
     biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
 
@@ -898,6 +996,81 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
     _draw_rivers(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+
+    return _encode_image(image)
+
+
+def _blend(backdrop: np.ndarray, color: np.ndarray, fraction: np.ndarray) -> np.ndarray:
+    """Per-cell linear blend of a flat `color` into `backdrop`, weighted by `fraction`
+    ([0, 1], one value per cell) -- the same "clamped-fraction color blend" shape
+    _land_shade_factor's own relief blend in _render_combined_view already uses, reused here
+    for the Resources view's sequential coal/oil-gas-then-minerals overlay (see
+    _render_resources_view)."""
+    return backdrop * (1.0 - fraction[:, None]) + color[None, :] * fraction[:, None]
+
+
+def _render_resources_view(is_ocean: np.ndarray, coal: np.ndarray, oil_gas: np.ndarray, mineral: np.ndarray) -> np.ndarray:
+    """Categorical-ish overlay: a muted, low-saturation land/ocean backdrop, then coal (land)
+    or oil & gas (ocean -- coal and oil & gas never spatially overlap, since one is strictly
+    land-only and the other strictly ocean-only, see geology.py) blended in by richness
+    fraction, then minerals blended on top last (can co-occur with either, since volcanism
+    isn't restricted by crust type) -- drawing minerals last makes the rarer, more "exciting"
+    deposit visually prominent wherever it does co-occur, the same "later layer wins where it
+    applies" precedent render_image.py's own lake-before-glacier draw order already sets."""
+    backdrop = np.where(is_ocean.reshape(-1)[:, None], RESOURCE_OCEAN_BACKDROP_RGB[None, :], RESOURCE_LAND_BACKDROP_RGB[None, :])
+    coal_t = np.clip(coal.reshape(-1) / geology.MAX_COAL_DEPOSIT_M, 0.0, 1.0)
+    oil_gas_t = np.clip(oil_gas.reshape(-1) / geology.MAX_OIL_GAS_DEPOSIT_M, 0.0, 1.0)
+    mineral_t = np.clip(mineral.reshape(-1) / volcanism.MAX_MINERAL_DEPOSIT_M, 0.0, 1.0)
+
+    colors = _blend(backdrop, COAL_COLOR_RGB, coal_t)
+    colors = _blend(colors, OIL_GAS_COLOR_RGB, oil_gas_t)
+    colors = _blend(colors, MINERAL_COLOR_RGB, mineral_t)
+    return np.clip(np.round(colors), 0, 255).astype(np.uint8)
+
+
+def _render_soil_view(is_ocean: np.ndarray, soil_depth: np.ndarray, soil_mineral: np.ndarray, soil_organic: np.ndarray) -> np.ndarray:
+    """Continuous heatmap: fertility = sqrt(mineral * organic), the same "richest soil needs
+    *both* high mineral and high organic content" scoring geology.py's own module docstring
+    describes -- a geometric mean rewards having both far more than either alone, unlike a
+    plain average. Zeroed wherever there's no soil at all (bare rock has nothing to hold
+    either component, regardless of what the now-physically-meaningless relaxed fractions
+    say) or over ocean (soil is a land-only concept)."""
+    has_soil = soil_depth.reshape(-1) > 0.0
+    fertility = np.sqrt(np.clip(soil_mineral.reshape(-1), 0.0, 1.0) * np.clip(soil_organic.reshape(-1), 0.0, 1.0))
+    fertility = np.where(has_soil & ~is_ocean.reshape(-1), fertility, 0.0)
+    colors = soil_fertility_colors(fertility)
+    return np.where(is_ocean.reshape(-1)[:, None], SOIL_OCEAN_BACKDROP_RGB.astype(np.uint8)[None, :], colors)
+
+
+def _render_resource_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "resources" or "soilQuality" (see RESOURCE_VIEWS) from the fine node-cloud
+    resample _resource_fields provides -- structurally like _render_biome_view/
+    _render_combined_view (same _biome_grid/_project_climate_grid machinery), but on data that
+    exists independently of climate.py entirely, so (unlike Biome) this renders sensibly even
+    before the first step has ever run."""
+    padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    lat_deg, lon_deg, world_xyz, is_ocean, soil_depth, soil_mineral, soil_organic, coal, oil_gas, mineral = _resource_fields(
+        world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
+    )
+    if view == "resources":
+        colors = _render_resources_view(is_ocean, coal, oil_gas, mineral)
+    else:
+        colors = _render_soil_view(is_ocean, soil_depth, soil_mineral, soil_organic)
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    image = Image.fromarray(pixels, mode="RGB")
+    if view == "soilQuality":
+        # A continuous color scale carries no land/ocean cue on its own, same reasoning
+        # temperature/humidity/precipitation already have -- resources' own backdrop already
+        # distinguishes land/ocean directly, so it doesn't need this.
+        draw = ImageDraw.Draw(image)
+        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
 
     return _encode_image(image)
 
@@ -980,6 +1153,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         return _render_climate_view(world, projection, view, width, height, view_rotation)
     if view == "combined":
         return _render_combined_view(world, projection, width, height, view_rotation)
+    if view in RESOURCE_VIEWS:
+        return _render_resource_view(world, projection, view, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

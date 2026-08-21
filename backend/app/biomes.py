@@ -1,8 +1,9 @@
 """Whittaker-diagram-inspired biome classification: buckets a (temperature, precipitation)
-pair into one of a fixed set of named terrestrial biomes, purely from climate.py's own
-already-computed grid fields -- no new simulation state, nothing cached anywhere, since (like
+pair -- plus elevation/slope for three biomes that need more than climate alone (Wetland,
+Carboniferous Forest, Intertidal Zone) -- into one of a fixed set of named biomes, purely from
+already-computed fields -- no new simulation state, nothing cached anywhere, since (like
 render_image.py's own temperature_colors/humidity_colors) this is a stateless function of
-values climate.py already produces every step. The boundary values below are a
+values other modules already produce every step. The boundary values below are a
 simplification, same spirit as this codebase's other openly-approximate constants (e.g.
 erosion.py's own RAIN_EROSION_COEFFICIENT, "tuned by rough order-of-magnitude reasoning" not
 lifted from a literal scientific reference) -- picked for a visually sensible spread of named
@@ -28,6 +29,30 @@ SEMI_ARID_MM = 500.0
 SUB_HUMID_MM = 1000.0
 HUMID_MM = 2000.0
 
+# Wetland/Carboniferous Forest need two axes the rest of this module's classification doesn't:
+# elevation (a wetland sits right near sea level -- a floodplain, delta, or coastal marsh, not
+# an upland bog) and slope (flat enough for water to pool/waterlog rather than drain away).
+# Both are real quantities this codebase already computes elsewhere (erosion.py's own
+# node-cloud slope, or render_image._grid_slope's grid analogue for the map view) -- not new
+# simulation state. WETLAND_MAX_SLOPE is a dimensionless rise/run, the same convention
+# erosion.py's own slope uses, picked (like every other cutoff in this module) for a visually
+# sensible result rather than fit against a dataset.
+WETLAND_MAX_ELEVATION_M = 50.0
+WETLAND_MAX_SLOPE = 0.001
+WETLAND_MIN_PRECIP_MM = SEMI_ARID_MM
+# Carboniferous Forest is the warm, very-wet subtype of wetland -- the real geological analog
+# of Carboniferous/Permian coal swamps, which were predominantly tropical lowland swamp
+# forest, not the cooler bogs/marshes "Wetland" alone covers. geology.py's own coal formation
+# reuses this exact split (see classify_wetland below) so the map's Carboniferous Forest
+# region always lines up with where the simulation is actually forming coal fastest -- the
+# same "one shared cutoff" precedent ICE_TEMP_C above already sets.
+CARBONIFEROUS_MIN_TEMP_C = TROPICAL_TEMP_C
+CARBONIFEROUS_MIN_PRECIP_MM = HUMID_MM
+
+# Intertidal Zone: a pure elevation-band split of the ocean category (real tides aren't
+# modeled) -- ocean water shallow enough to read as "coastal shallows" rather than open ocean.
+INTERTIDAL_MAX_DEPTH_M = 30.0
+
 BIOME_NAMES = [
     "Ocean",
     "Ice",
@@ -42,6 +67,11 @@ BIOME_NAMES = [
     "Savanna",
     "Tropical Seasonal Forest",
     "Tropical Rainforest",
+    # Appended, not interleaved -- keeps every existing index stable for any external
+    # reference to BIOME_NAMES/BIOME_COLORS by position.
+    "Wetland",
+    "Carboniferous Forest",
+    "Intertidal Zone",
 ]
 
 (
@@ -58,6 +88,9 @@ BIOME_NAMES = [
     SAVANNA,
     TROPICAL_SEASONAL_FOREST,
     TROPICAL_RAINFOREST,
+    WETLAND,
+    CARBONIFEROUS_FOREST,
+    INTERTIDAL,
 ) = range(len(BIOME_NAMES))
 
 # Index-aligned with BIOME_NAMES. Ocean reuses render_image.CLIMATE_OCEAN_BACKDROP_RGB's own
@@ -82,33 +115,79 @@ BIOME_COLORS = np.array(
         [196, 178, 92],  # Savanna
         [58, 122, 66],  # Tropical Seasonal Forest
         [26, 84, 46],  # Tropical Rainforest
+        [101, 111, 66],  # Wetland -- muddy marsh/bog green-brown
+        [20, 66, 40],  # Carboniferous Forest -- dense, dark primeval swamp-forest green
+        [70, 120, 130],  # Intertidal Zone -- lighter, sandier turquoise than open Ocean
     ],
     dtype=np.uint8,
 )
 
 
-def classify_biomes(temperature_c: np.ndarray, precipitation_mm: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
-    """Per-cell biome id (index into BIOME_NAMES/BIOME_COLORS) from mean temperature and
-    annual precipitation alone -- the same two axes the real Whittaker diagram uses, in the
-    same broad relative order (cold-to-hot, dry-to-wet), though with this module's own
-    boundary values (see module docstring for why). `is_ocean` wins over everything else --
-    temperature/precipitation are land-surface climate concepts, and is_ocean already settles
-    the question for a water cell. All three arrays must be the same shape; the result is
-    that same shape. Uses np.select (first-matching condition wins) rather than chained
-    np.where overwrites, so each band's cutoffs stay a self-contained, independently
-    checkable list instead of relying on write order to get right-of-boundary cells correct."""
+def classify_wetland(
+    temperature_c: np.ndarray, precipitation_mm: np.ndarray, elevation_m: np.ndarray, slope: np.ndarray, is_ocean: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """(is_wetland, is_carboniferous_forest) boolean arrays, same shape as the inputs -- shared
+    by classify_biomes (the map view, below) and geology.py's own per-node coal-formation
+    accumulation, so the map's Carboniferous Forest region always lines up with where the
+    simulation is actually forming coal fastest (see WETLAND_MAX_ELEVATION_M's own comment for
+    the ICE_TEMP_C precedent this follows). Both require flat, low-lying land -- a floodplain,
+    delta, or coastal marsh, not an upland bog perched on a slope; Carboniferous Forest is the
+    warm (>= CARBONIFEROUS_MIN_TEMP_C), very wet (>= CARBONIFEROUS_MIN_PRECIP_MM) subtype,
+    Wetland the cooler/drier remainder (>= ICE_TEMP_C so it excludes frozen ground, >=
+    WETLAND_MIN_PRECIP_MM)."""
+    elevation_m = np.asarray(elevation_m)
+    slope = np.asarray(slope)
     temp = np.asarray(temperature_c)
     precip = np.asarray(precipitation_mm)
+    is_ocean = np.asarray(is_ocean)
+
+    flat_low = ~is_ocean & (elevation_m > 0) & (elevation_m <= WETLAND_MAX_ELEVATION_M) & (slope <= WETLAND_MAX_SLOPE)
+    is_carboniferous = flat_low & (temp >= CARBONIFEROUS_MIN_TEMP_C) & (precip >= CARBONIFEROUS_MIN_PRECIP_MM)
+    is_wetland = flat_low & (temp >= ICE_TEMP_C) & (precip >= WETLAND_MIN_PRECIP_MM) & ~is_carboniferous
+    return is_wetland, is_carboniferous
+
+
+def classify_biomes(
+    temperature_c: np.ndarray,
+    precipitation_mm: np.ndarray,
+    elevation_m: np.ndarray,
+    slope: np.ndarray,
+    is_ocean: np.ndarray,
+    sea_level_m: float = 0.0,
+) -> np.ndarray:
+    """Per-cell biome id (index into BIOME_NAMES/BIOME_COLORS) from mean temperature and
+    annual precipitation, plus elevation/slope for Wetland/Carboniferous Forest/Intertidal
+    Zone (see classify_wetland and INTERTIDAL_MAX_DEPTH_M) -- the core temp/precip axes are
+    the same two the real Whittaker diagram uses, in the same broad relative order
+    (cold-to-hot, dry-to-wet), though with this module's own boundary values (see module
+    docstring for why). `is_ocean` still wins over temperature/precipitation for the ordinary
+    land bands -- temperature/precipitation/wetland-detection are land-surface concepts, and
+    is_ocean already settles the question for a water cell -- Intertidal Zone is purely a
+    further elevation-band split *within* the ocean category, not an exception to that rule.
+    `temperature_c`/`precipitation_mm`/`elevation_m`/`slope`/`is_ocean` must all be the same
+    shape; the result is that same shape. Uses np.select (first-matching condition wins)
+    rather than chained np.where overwrites, so each band's cutoffs stay a self-contained,
+    independently checkable list instead of relying on write order to get right-of-boundary
+    cells correct."""
+    temp = np.asarray(temperature_c)
+    precip = np.asarray(precipitation_mm)
+    elevation_m = np.asarray(elevation_m)
+    slope = np.asarray(slope)
     is_ocean = np.asarray(is_ocean)
 
     tropical = temp >= TROPICAL_TEMP_C
     temperate = (temp >= COLD_TEMP_C) & (temp < TROPICAL_TEMP_C)
     cold = (temp >= ICE_TEMP_C) & (temp < COLD_TEMP_C)
     ice = temp < ICE_TEMP_C
+    is_intertidal = is_ocean & ((sea_level_m - elevation_m) <= INTERTIDAL_MAX_DEPTH_M)
+    is_wetland, is_carboniferous = classify_wetland(temp, precip, elevation_m, slope, is_ocean)
 
     condlist = [
+        is_ocean & is_intertidal,
         is_ocean,
         ice,
+        is_carboniferous,
+        is_wetland,
         cold & (precip < SEMI_ARID_MM),
         cold,
         temperate & (precip < ARID_MM),
@@ -122,8 +201,11 @@ def classify_biomes(temperature_c: np.ndarray, precipitation_mm: np.ndarray, is_
         tropical,
     ]
     choicelist = [
+        INTERTIDAL,
         OCEAN,
         ICE,
+        CARBONIFEROUS_FOREST,
+        WETLAND,
         TUNDRA,
         BOREAL_FOREST,
         TEMPERATE_DESERT,

@@ -15,7 +15,9 @@ Request body:
   "continental_fraction": 0.7,
   "land_fraction": 0.29,
   "axial_tilt_deg": 23.5,
-  "num_mantle_centers": 8
+  "num_mantle_centers": 8,
+  "node_density": 4.0,
+  "initial_soil_maturity": 0.0
 }
 ```
 
@@ -35,7 +37,13 @@ per-plate coin flip for crust type, a fixed elevation floor for land) -- see
 only `climate.py`'s insolation on future renders (see
 [simulation-model.md#climate](simulation-model.md#climate)), which is why it's stored on
 `World` rather than consumed once here. `num_mantle_centers` defaults to
-`world.DEFAULT_MANTLE_CENTERS = 8`. Replaces whatever world previously existed.
+`world.DEFAULT_MANTLE_CENTERS = 8`. `node_density` is the UI's "point density" choice
+(`plates.NODE_DENSITY_CHOICES = (1.0, 4.0)`, defaults to `plates.DEFAULT_NODE_DENSITY = 4.0`)
+-- `400` if it isn't one of those two values. `initial_soil_maturity` is the UI's fifth
+generation slider (0 to 1, defaults to `0.0` -- a fully barren starting world, no soil on any
+land node) -- a one-time seed for `soil_depth`/`soil_mineral_content`/`soil_organic_content`
+(see [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)), not
+stored on `World` afterward. Replaces whatever world previously existed.
 
 Response: a summary --
 
@@ -93,7 +101,7 @@ step by `erosion.py`. `404` if no world has been generated yet.
 { "sea_level_m": 500.0, "solar_multiplier": 1.1 }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|temperature|wind|oceanCurrents|humidity|precipitation|biome&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -113,14 +121,21 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 - `view` selects what gets drawn: `"elevation"` (colored by height/depth), `"plates"`
   (colored by owning plate, plus boundary outlines/pole markers/rotation arcs), or
   `"platesDetail"` (each plate's raw elevation-line nodes as dots, colored by elevation,
-  plus boundary outlines) -- the frontend's Map View dropdown picks this directly. Five more
-  views come from `climate.py` (see
-  [simulation-model.md#climate](simulation-model.md#climate)): `"temperature"`,
-  `"humidity"`, and `"precipitation"` are heatmaps (each also drawing the current coastline --
-  see [simulation-model.md#coastline](simulation-model.md#coastline) -- since a color-scale
-  view carries no land/ocean cue on its own); `"wind"` and `"oceanCurrents"` draw
-  subsampled direction/magnitude arrows, and `"oceanCurrents"` additionally marks detected
-  ocean swells with small circles.
+  plus boundary outlines) -- the frontend's Map View dropdown picks this directly. `"biome"`
+  and `"combined"` (biome-colored land, hypsometric ocean, lakes/glaciers/rivers overlaid) are
+  a categorical classification (see
+  [simulation-model.md#biomes](simulation-model.md#biomes)). Five more views come from
+  `climate.py` (see [simulation-model.md#climate](simulation-model.md#climate)):
+  `"temperature"`, `"humidity"`, and `"precipitation"` are heatmaps (each also drawing the
+  current coastline -- see [simulation-model.md#coastline](simulation-model.md#coastline) --
+  since a color-scale view carries no land/ocean cue on its own); `"wind"` and
+  `"oceanCurrents"` draw subsampled direction/magnitude arrows, and `"oceanCurrents"`
+  additionally marks detected ocean swells with small circles. `"resources"` and
+  `"soilQuality"` (see
+  [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)) are
+  node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
+  coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
+  continuous fertility heatmap (barren to rich) plus the coastline overlay.
 - `rotation` is the map's current view orientation (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world

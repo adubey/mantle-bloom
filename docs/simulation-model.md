@@ -20,6 +20,7 @@
   - [Biomes](#biomes)
 - [Erosion](#erosion)
 - [Bathymetry](#bathymetry)
+- [Resources and soil](#resources-and-soil)
 - [Hydrology (rivers and lakes)](#hydrology)
 - [Glaciation](#glaciation)
 - [River Inspector](#river-inspector)
@@ -970,25 +971,53 @@ since its own flat Ocean color already reads as a land/ocean boundary on its own
 ### Biomes (`biomes.py`)
 
 A pure, stateless classification -- `biomes.classify_biomes(temperature_c, precipitation_mm,
-is_ocean)` -- bucketing each climate-grid cell into one of thirteen named biomes (Ocean, Ice,
-Tundra, Boreal Forest, five temperate bands from desert to rainforest, and four tropical bands
-from desert to rainforest) purely from two axes already computed by this module:
-land-surface temperature and annual precipitation. Same two axes the real Whittaker biome
-diagram uses, in the same broad cold-to-hot/dry-to-wet relative order, though with this
-module's own boundary values -- a simplification in the same spirit as this codebase's other
-openly-approximate constants (e.g. erosion.py's `RAIN_EROSION_COEFFICIENT`), not fit against
-any specific real-world dataset. `ICE_TEMP_C` reuses `hydrology.GLACIER_ACCUMULATION_TEMP_C`
-directly (rather than inventing a second, potentially-inconsistent cold cutoff) so a biome
-map's Ice region lines up with where the simulation would actually grow a glacier. `is_ocean`
-always wins over temperature/precipitation, since those are land-surface concepts and
-`is_ocean` already settles the question for a water cell.
+elevation_m, slope, is_ocean, sea_level_m)` -- bucketing each cell into one of sixteen named
+biomes (Ocean, Intertidal Zone, Ice, Tundra, Boreal Forest, five temperate bands from desert to
+rainforest, four tropical bands from desert to rainforest, Wetland, and Carboniferous Forest)
+from temperature and precipitation (the same two axes the real Whittaker biome diagram uses, in
+the same broad cold-to-hot/dry-to-wet relative order) plus elevation/slope for the three biomes
+that need more than climate alone. This module's own boundary values are a simplification in
+the same spirit as this codebase's other openly-approximate constants (e.g. erosion.py's
+`RAIN_EROSION_COEFFICIENT`), not fit against any specific real-world dataset. `ICE_TEMP_C`
+reuses `hydrology.GLACIER_ACCUMULATION_TEMP_C` directly (rather than inventing a second,
+potentially-inconsistent cold cutoff) so a biome map's Ice region lines up with where the
+simulation would actually grow a glacier. `is_ocean` still wins over temperature/precipitation
+for the ordinary land bands, since those are land-surface concepts and `is_ocean` already
+settles the question for a water cell -- Intertidal Zone is purely a further elevation-band
+split *within* the ocean category (`(sea_level_m - elevation_m) <= INTERTIDAL_MAX_DEPTH_M`,
+real tides not being modeled), not an exception to that rule.
+
+**Wetland and Carboniferous Forest** (`classify_wetland`, shared with `geology.py`'s own
+per-node coal formation -- see [Resources and soil](#resources-and-soil)) need flat, low-lying
+land -- a floodplain, delta, or coastal marsh, not an upland bog on a slope --
+(`elevation_m > 0`, `<= WETLAND_MAX_ELEVATION_M`, `slope <= WETLAND_MAX_SLOPE`, the same
+dimensionless rise/run convention `erosion.compute_slope` uses). Carboniferous Forest is the
+warm (`>= CARBONIFEROUS_MIN_TEMP_C`, aliased to `TROPICAL_TEMP_C`), very wet
+(`>= CARBONIFEROUS_MIN_PRECIP_MM`, aliased to `HUMID_MM`) subtype -- the real geological analog
+of Carboniferous/Permian coal swamps, which were predominantly tropical lowland swamp forest,
+not the cooler bogs/marshes plain Wetland alone covers -- and `geology.py` reuses this exact
+split so the map's Carboniferous Forest region always lines up with where the simulation is
+actually forming coal fastest, the same "one shared cutoff" precedent `ICE_TEMP_C` already sets.
+
+**Slope, for the map view specifically**, comes from `render_image.grid_slope` -- real
+elevation difference to each cell's steeper of its north/south or east/west neighbor, divided
+by that neighbor's real great-circle spacing in meters (longitude narrowed by `cos(lat)`, the
+same convention `plates.iter_local_lattice` uses) -- computed on the fine Biome/Combined grid
+(`_biome_fields`'s own `elevation_m`, previously unused by these two views) rather than
+climate.py's coarser native grid. A different, coarser discretization than
+`erosion.compute_slope`'s own node-cloud slope (used by `geology.py`, see below), but both are
+genuine rise/run slopes over roughly comparable real distances (~100-125km), so
+`WETLAND_MAX_SLOPE` is a shared, visually-tuned cutoff rather than two independently-fit
+thresholds -- `stats.py`'s own `biome_land_fraction` reuses `grid_slope` too, against its own
+coarser native climate grid, for the same reason.
 
 No new per-step state or caching -- like `render_image.py`'s own `temperature_colors`/
 `humidity_colors`, this runs fresh from whatever `climate.compute_climate_cached` already
-produced, entirely inside `_render_climate_view`'s `"biome"` branch. Implemented with
-`np.select` (first-matching condition wins) rather than chained `np.where` overwrites, so
-each temperature/precipitation band's cutoffs stay a self-contained, independently checkable
-list instead of depending on write order to get boundary cells right.
+produced, entirely inside `_render_climate_view`'s `"biome"` branch (and `_render_combined_view`
+for "Combined", though Ocean/Intertidal Zone's own biome color is never actually visible there
+-- see that view's own legend). Implemented with `np.select` (first-matching condition wins)
+rather than chained `np.where` overwrites, so each band's cutoffs stay a self-contained,
+independently checkable list instead of depending on write order to get boundary cells right.
 
 <a id="erosion"></a>
 ## Erosion (`erosion.py`)
@@ -1154,6 +1183,105 @@ averaged -400m (still relaxing toward -100m -- shoreline nodes keep moving as co
 shift, so they rarely reach full equilibrium), nodes beyond 200km averaged -2869m (close to
 the -3000m target, since deep-water nodes are disturbed far less often); rendered, this
 shows up as a visibly lighter shelf band hugging every coastline.
+
+<a id="resources-and-soil"></a>
+## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)
+
+Six new persistent per-node fields on `ElevationLine` (see [Why not a
+grid](#why-not-a-grid)/[World state](architecture.md#world-state) for why "persistent" is
+free here) -- `soil_depth`/`soil_mineral_content`/`soil_organic_content` (can rise *and*
+fall, real soil erodes) and `coal_deposit_m`/`oil_gas_deposit_m`/`mineral_deposit_m`
+(monotonically non-decreasing, the same self-reinforcing convention `silt_depth`/
+`channel_depth` already establish -- buried peat/hydrocarbons/ore aren't un-buried by a later
+climate shift). Threaded through every explicit `ElevationLine` reconstruction site the same
+way `channel_depth`/`is_volcano` already are (`boundary.py`'s growth/shrink, `line_regrid.py`'s
+regularize interpolation, `merge_split.py`'s split, `reassign.py`'s filter/insert) -- every
+other mutation site already uses `dataclasses.replace`, which copies them automatically (see
+`plates.ElevationLine`'s own docstring).
+
+**Minerals** come from real hydrothermal circulation around volcanic activity (porphyry-copper/
+VMS-style ore deposits) -- grown directly inside `volcanism.apply_volcanic_activity`'s existing
+per-line eruption roll, at the same `erupts` mask that already adds `ERUPTION_ELEVATION_M`, so
+no separate detection pass is needed: "an eruption deposits mineral-rich material" is exactly
+what that mask already means. This only ever fires where this codebase's own volcanism model
+already places `is_volcano` nodes (rift-spawned volcanic fields, see
+[Volcanism](#volcanism)) -- a fair collapse of real geology's two ore-forming settings
+(mid-ocean-ridge VMS deposits, arc porphyry deposits) into the one volcanism mechanism this
+simulator has.
+
+**`erosion.apply_erosion` now returns an `ErosionResult`** (`points`/`elevation`/`slope`/
+`rain`/`river`/`weathering`/`sediment_deposited`/`temperature_c`/`precipitation_mm`, all this
+step's already-computed per-node terms, `None` for an empty world) instead of nothing, so
+`geology.apply_resource_formation` -- called right after it (and after `bathymetry.py`/
+`volcanism.py`, so `mineral_deposit_m` is already this step's fresh value before soil reads it)
+from `world.step_world` -- can reuse them directly rather than re-deriving them a second time.
+Two of its own private helpers became public for the same reason (mirroring
+`hydrology.compute_river_speed`'s own earlier relocation): `climate_grid_indices`,
+`compute_slope`. `geology.py`'s own node ordering comes directly from
+`World.hydrology_cache.line_refs` -- the exact `(plate, line_index, start, end)` list that
+produced `hydro`'s own flat arrays -- rather than a second independent gather, so there's
+nothing to keep in sync by hand.
+
+**Coal** forms from peat accumulating in flat, low-lying, waterlogged land -- Wetland or
+Carboniferous Forest (see [Biomes](#biomes)'s `classify_wetland`, shared directly so the map's
+Carboniferous Forest region always lines up with where coal is actually forming fastest).
+Carboniferous Forest (warm, tropical swamp) accumulates several times faster than plain
+Wetland (a cooler bog/marsh) -- real Carboniferous/Permian coal is predominantly of that
+tropical-swamp origin.
+
+**Oil and gas** form the same way in shallow marine shelf water instead of on land --
+organic-rich (mostly planktonic) sediment settling in a quiet, sunlit, nutrient-fed shelf sea,
+real petroleum source rocks. Gated to shelf water via the same shelf-distance concept
+`bathymetry.py` already established (`bathymetry.SHELF_RANGE_RAD`, a fresh land-distance
+`cKDTree` query mirroring that module's own technique), boosted near a river mouth by reusing
+`hydrology.py`'s own `water_deposited` directly (real petroleum provinces cluster near deltas
+-- the Gulf of Mexico, Niger Delta -- for exactly this reason; an ocean node a river empties
+into already tells this module "nutrient runoff reaches the sea here," no separate river-mouth
+search needed).
+
+**Soil** forms from weathered rock (a fraction of `erosion.py`'s own weathering term becomes
+fresh regolith in place) plus organic matter from a warmth/moisture-driven `productivity` term
+(this codebase has no vegetation field to draw on directly), is stripped by fast rain/river
+erosion (real topsoil loss), and gets an extra deposit wherever a slow, big river drops its
+sediment load -- `erosion.py`'s own floodplain deposition term (`sediment_deposited`), reused
+directly rather than re-derived: soil "carried down river ... and deposited in flood plains"
+is literally the same mechanism erosion.py already models for sediment generally.
+`soil_organic_content` relaxes toward that same `productivity` term (same
+exponential-toward-target style `bathymetry.py`'s own shelf relaxation already uses);
+`soil_mineral_content` relaxes toward a target driven by the node's own accumulated
+`mineral_deposit_m` (weathered/hydrothermal rock feeding the soil above it) plus a small
+baseline from ordinary rock weathering. Both are zeroed wherever `soil_depth` reads as zero
+(bare rock has nothing to hold either) or over ocean. The richest soil needs *both* high
+mineral and high organic content at once -- the Soil Quality map view scores fertility as
+`sqrt(mineral_content * organic_content)`, a geometric mean that rewards having both far more
+than either alone, rather than a plain average.
+
+**Generation-time "initial soil maturity."** `geology.seed_initial_soil`, called once from
+`world.generate_world` right after `plates.generate_plates` (not stored on `World` afterward --
+a one-time seed, the same treatment `continental_fraction`/`land_fraction` already get), seeds
+`soil_depth`/`soil_organic_content`/`soil_mineral_content` on land nodes scaled by the UI's
+"initial soil maturity" slider (0 to 1, default 0). At 0, every land node starts at exactly
+zero soil -- `ElevationLine`'s own zero defaults already give this, so the function is a no-op
+rather than special-casing it; the planet is barren by default, the same way `channel_depth`/
+`glacier_depth` start empty at generation. Deliberately *not* climate-informed at seed time (no
+biome differentiation yet at generation, unlike the organic-content relaxation
+`apply_resource_formation` drives every step thereafter) -- just a uniform-ish starting
+maturity with a `SphereNoise` texture for visual variation, the same role `plates.py`'s own
+initial elevation noise plays, on a fresh RNG stream (`seed + 2`) so it doesn't disturb
+`plates.generate_plates`' own stream or `world.py`'s `seed + 1` mantle-center stream.
+
+**Rendering.** Two new node-cloud-derived views (`render_image.py`'s `RESOURCE_VIEWS`), sharing
+one fine-grid resample (`_resource_fields`, structured like `_biome_fields` but narrower --
+these views need none of `climate.py`'s own fields) that -- unlike Biome/Combined -- reads only
+always-defined persistent fields, so both render sensibly even before the first step (all-zero/
+barren, same as any other freshly generated world's persistent fields). "Resources" is a
+categorical-ish overlay: a muted, low-saturation land/ocean backdrop, then coal (land) or oil &
+gas (ocean -- the two never spatially overlap, one being strictly land-only and the other
+strictly ocean-only) blended in by richness fraction, then minerals blended on top last (can
+co-occur with either, since volcanism isn't restricted by crust type). "Soil Quality" is a
+continuous fertility heatmap (the same color-stop-interpolation technique
+temperature/humidity/precipitation already use), plus the coastline overlay (a continuous
+color scale carries no land/ocean cue on its own).
 
 <a id="hydrology"></a>
 ## Hydrology: rivers and lakes (`hydrology.py`)

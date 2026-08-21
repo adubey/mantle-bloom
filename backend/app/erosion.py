@@ -12,7 +12,8 @@ build the grid in the first place. This module needs the reverse, grid -> node-c
 turns out to be simpler: the climate grid is a plain regular lat/lon lattice, so a node's
 own world position converts straight to (lat, lon) (geometry.xyz_to_latlon) and then to a
 grid (row, col) by direct arithmetic -- no tree, no resampling, just array indexing (see
-`_climate_grid_indices`, whose row/col convention mirrors climate._build_grid exactly).
+`climate_grid_indices`, whose row/col convention mirrors climate._build_grid exactly -- public,
+not private, since geology.py also needs it, see that module).
 
 **Slope is the one genuinely new piece of math climate.py's grid can't hand over for free**
 (it gets slope from neighbor-index differences; an irregular node cloud has no such
@@ -53,6 +54,7 @@ reuses the result for both erosion and the world's cached river/lake fields
 from __future__ import annotations
 
 import dataclasses
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -156,6 +158,33 @@ GLACIER_EROSION_MAX_FACTOR = 2.0
 GLACIER_FLATTEN_RATE_PER_MYR = 0.2
 
 
+@dataclass
+class ErosionResult:
+    """This step's per-node erosion breakdown, returned by apply_erosion for geology.py's own
+    soil/coal/oil-gas formation (see that module) to reuse directly rather than re-deriving --
+    the same "don't recompute, reuse what a prior step already produced" precedent World.
+    climate_cache/World.hydrology_cache already set, except this one is threaded as a plain
+    function return/argument rather than cached on World, since (unlike climate/hydrology) it
+    has exactly one consumer, called from the same step_world function that produced it -- no
+    later same-turn caller (rendering, /world/stats) ever needs it. Index-aligned with
+    World.hydrology_cache's own arrays (points/line_refs/is_ocean in particular -- this
+    dataclass deliberately doesn't repeat those, geology.py reads them off
+    World.hydrology_cache directly, including its own sea_level_m-aware is_ocean rather than
+    this module's own internal elevation<=0.0 shorthand): both come from an identical
+    per-plate/per-line gather over the same (unreordered) world.plates within the same
+    step_world call."""
+
+    points: np.ndarray
+    elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
+    slope: np.ndarray
+    rain: np.ndarray
+    river: np.ndarray
+    weathering: np.ndarray
+    sediment_deposited: np.ndarray
+    temperature_c: np.ndarray
+    precipitation_mm: np.ndarray
+
+
 def _gather_nodes(
     world: "World",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
@@ -192,7 +221,7 @@ def _gather_nodes(
     )
 
 
-def _compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per-node dimensionless rise/run -- elevation drop to the *lowest* of each node's
     SLOPE_NEIGHBOR_COUNT nearest neighbors (0 if this node is already a local minimum -- the
     "slope to lowest neighbor" definition used throughout this module), divided by the real
@@ -223,7 +252,7 @@ def _compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarra
     return drop_m / run_m, drop_m
 
 
-def _climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
+def climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
     """Nearest climate-grid (row, col) for each node's world position -- direct array
     indexing, not a tree lookup, since (unlike the geology side) the climate grid is
     already a plain regular lat/lon lattice. Mirrors climate._build_grid's own convention
@@ -249,7 +278,7 @@ def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: 
     return (local_mean - hydro.elevation) * relax
 
 
-def apply_erosion(world: "World", years: float) -> None:
+def apply_erosion(world: "World", years: float) -> ErosionResult | None:
     """Erodes every plate's elevation nodes based on the world's current climate and flow
     routing -- rain/sheet erosion (precipitation x slope), river-channelized erosion
     (accumulated flow x slope, boosted by the node's own established channel), weathering
@@ -270,7 +299,12 @@ def apply_erosion(world: "World", years: float) -> None:
     would already be stale for erosion's own purposes) and stores the result back onto
     World.climate_cache/World.hydrology_cache, so /world/stats and a map render don't each
     also trigger their own recomputation this same turn -- see
-    climate.compute_climate_cached."""
+    climate.compute_climate_cached.
+
+    Returns this step's ErosionResult (or None for an empty world, mirroring the
+    World.hydrology_cache = None branch below) so geology.py's own soil/coal/oil-gas formation
+    (called right after this, from world.step_world) can reuse these same per-node terms
+    instead of re-deriving them -- see ErosionResult's own docstring."""
     fields = climate.compute_climate(world)
     world.climate_cache = fields
 
@@ -278,10 +312,10 @@ def apply_erosion(world: "World", years: float) -> None:
     n = len(points)
     if n == 0:
         world.hydrology_cache = None
-        return
+        return None
 
     height, width = fields.precipitation_mm.shape
-    row, col = _climate_grid_indices(points, height, width)
+    row, col = climate_grid_indices(points, height, width)
     precipitation_mm = fields.precipitation_mm[row, col]
     wind_speed = np.hypot(fields.wind_u, fields.wind_v)[row, col]
     humidity = fields.humidity[row, col]
@@ -290,7 +324,7 @@ def apply_erosion(world: "World", years: float) -> None:
     # temperature view displays -- ocean surface over water, moderated air over land.
     temperature = np.where(is_ocean_node, fields.ocean_temperature_c[row, col], fields.air_temperature_c[row, col])
 
-    slope, drop_to_lowest_neighbor_m = _compute_slope(points, elevation)
+    slope, drop_to_lowest_neighbor_m = compute_slope(points, elevation)
     dt_myr = years / 1_000_000.0
 
     hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years)
@@ -354,3 +388,15 @@ def apply_erosion(world: "World", years: float) -> None:
             glacier_depth=hydro.glacier_depth[start:end],
             silt_depth=hydro.silt_depth[start:end],
         )
+
+    return ErosionResult(
+        points=points,
+        elevation=elevation,
+        slope=slope,
+        rain=rain,
+        river=river,
+        weathering=weathering,
+        sediment_deposited=sediment_deposited,
+        temperature_c=temperature,
+        precipitation_mm=precipitation_mm,
+    )

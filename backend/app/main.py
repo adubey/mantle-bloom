@@ -50,6 +50,10 @@ class GenerateRequest(BaseModel):
     # accepted as an arbitrary float -- there's no continuous "in-between" density the UI
     # offers, only a fixed set of multipliers.
     node_density: float = plates.DEFAULT_NODE_DENSITY
+    # The UI's "initial soil maturity" slider (0 to 1) -- optional, falls back to
+    # world.generate_world's own default (0.0, a fully barren starting world -- see
+    # geology.seed_initial_soil), but the frontend always sends it.
+    initial_soil_maturity: float | None = None
 
 
 class StepRequest(BaseModel):
@@ -306,6 +310,7 @@ def generate(req: GenerateRequest) -> dict:
         num_mantle_centers=req.num_mantle_centers,
         axial_tilt_deg=req.axial_tilt_deg,
         node_density=req.node_density,
+        initial_soil_maturity=req.initial_soil_maturity,
     )
     _state["world"] = world
     return _summary(world)

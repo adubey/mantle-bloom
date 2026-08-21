@@ -168,11 +168,40 @@ export const BIOME_RGB_ENTRIES: [string, [number, number, number]][] = [
   ["Savanna", [196, 178, 92]],
   ["Tropical Seasonal Forest", [58, 122, 66]],
   ["Tropical Rainforest", [26, 84, 46]],
+  ["Wetland", [101, 111, 66]],
+  ["Carboniferous Forest", [20, 66, 40]],
+  ["Intertidal Zone", [70, 120, 130]],
 ];
 
 const BIOME_ENTRIES: [string, string][] = BIOME_RGB_ENTRIES.map(([label, [r, g, b]]) => [label, rgb(r, g, b)]);
 
 const COASTLINE_SYMBOL: LegendSymbol = { kind: "line", color: COASTLINE_COLOR, label: "Coastline" };
+
+// Resources view -- see backend app/render_image.py's RESOURCE_LAND_BACKDROP_RGB/
+// RESOURCE_OCEAN_BACKDROP_RGB/COAL_COLOR_RGB/OIL_GAS_COLOR_RGB/MINERAL_COLOR_RGB.
+const RESOURCE_LAND_COLOR = rgb(82, 76, 68);
+const RESOURCE_OCEAN_COLOR = rgb(22, 32, 48);
+const COAL_COLOR = rgb(28, 24, 22);
+const OIL_GAS_COLOR = rgb(92, 56, 14);
+const MINERAL_COLOR = rgb(175, 62, 205);
+
+// geology.py's own soil_fertility_colors stops (_SOIL_STOP_V / _SOIL_STOP_RGB) -- fertility
+// is already a [0, 1] score (sqrt(mineral_content * organic_content)), not a physical unit.
+const SOIL_QUALITY_GRADIENT: LegendGradient = {
+  min: 0,
+  max: 1,
+  stops: [
+    { value: 0.0, color: rgb(168, 150, 120) },
+    { value: 0.15, color: rgb(150, 120, 80) },
+    { value: 0.35, color: rgb(120, 90, 55) },
+    { value: 0.6, color: rgb(80, 58, 36) },
+    { value: 1.0, color: rgb(35, 26, 18) },
+  ],
+  ticks: [
+    { value: 0, label: "Barren" },
+    { value: 1, label: "Rich" },
+  ],
+};
 
 // The actual fixed pixel colors Combined mode paints for these two overlays (see backend
 // app/render_image.py's LAKE_COLOR_RGB/GLACIER_COLOR_RGB) -- kept separate from the
@@ -302,11 +331,28 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
-          ...BIOME_ENTRIES.filter(([label]) => label !== "Ocean").map(
+          // Ocean and Intertidal Zone are both is_ocean cells, which Combined always paints
+          // with the elevation gradient instead of a biome color (see backend
+          // app/render_image.py's _render_combined_view) -- so neither's own biome color is
+          // ever actually visible here, same reason Ocean was already excluded.
+          ...BIOME_ENTRIES.filter(([label]) => label !== "Ocean" && label !== "Intertidal Zone").map(
             ([label, color]) => ({ kind: "square", color, label }) as LegendSymbol
           ),
         ],
       };
+    case "resources":
+      return {
+        title: "Resources",
+        symbols: [
+          { kind: "square", color: RESOURCE_LAND_COLOR, label: "Land" },
+          { kind: "square", color: RESOURCE_OCEAN_COLOR, label: "Ocean" },
+          { kind: "square", color: COAL_COLOR, label: "Coal" },
+          { kind: "square", color: OIL_GAS_COLOR, label: "Oil & Gas" },
+          { kind: "square", color: MINERAL_COLOR, label: "Minerals" },
+        ],
+      };
+    case "soilQuality":
+      return { title: "Soil Quality", gradient: SOIL_QUALITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }

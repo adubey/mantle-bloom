@@ -14,7 +14,7 @@ def test_climate_grid_indices_matches_build_grid_convention():
             geometry.latlon_to_xyz(0.0, 0.0),
         ]
     )
-    row, col = erosion._climate_grid_indices(world_xyz, height=90, width=180)
+    row, col = erosion.climate_grid_indices(world_xyz, height=90, width=180)
     assert row[0] == 0
     assert row[1] == 89
     assert col[0] == 0
@@ -27,7 +27,7 @@ def test_compute_slope_zero_for_flat_cluster():
     theta = np.linspace(0.0, 0.01, 8)
     points = geometry.local_xyz(np.zeros_like(theta), theta)
     elevation = np.full(8, 500.0)
-    slope, drop_m = erosion._compute_slope(points, elevation)
+    slope, drop_m = erosion.compute_slope(points, elevation)
     assert np.allclose(slope, 0.0)
     assert np.allclose(drop_m, 0.0)
 
@@ -42,7 +42,7 @@ def test_compute_slope_matches_known_gradient():
     points = geometry.local_xyz(np.zeros_like(theta), theta)
     elevation = 500.0 - 100.0 * np.arange(6)
 
-    slope, drop_m = erosion._compute_slope(points, elevation)
+    slope, drop_m = erosion.compute_slope(points, elevation)
 
     expected_drop = elevation[0] - elevation[4]
     expected_run_m = geometry.angular_distance(points[0], points[4]) * plates.PLANET_RADIUS_KM * 1000.0
@@ -60,12 +60,12 @@ def test_weathering_relief_factor_suppresses_flat_terrain_and_saturates_on_steep
     points = geometry.local_xyz(np.zeros_like(theta), theta)
 
     flat_elevation = np.full(6, 30.0)  # uniform -- see test_compute_slope_zero_for_flat_cluster
-    flat_slope, _ = erosion._compute_slope(points, flat_elevation)
+    flat_slope, _ = erosion.compute_slope(points, flat_elevation)
     flat_relief_factor = np.clip(flat_slope / erosion.WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     assert np.allclose(flat_relief_factor, 0.0)
 
     steep_elevation = 30.0 + 2000.0 * np.arange(6)  # steep monotonic gradient
-    steep_slope, _ = erosion._compute_slope(points, steep_elevation)
+    steep_slope, _ = erosion.compute_slope(points, steep_elevation)
     steep_relief_factor = np.clip(steep_slope / erosion.WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
     # Every point except the global minimum (point 0, which has no lower neighbor at all)
     # should be steep enough to saturate weathering to full strength.

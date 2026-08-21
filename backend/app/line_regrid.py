@@ -69,6 +69,15 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # near a volcano" rather than silently losing volcanic provenance every regularize pass.
     new_volcano_active_years_remaining = np.interp(new_theta, line.theta, line.volcano_active_years_remaining)
     new_is_volcano = np.interp(new_theta, line.theta, line.is_volcano.astype(float)) > 0.5
+    # Soil/resource fields (see geology.py/volcanism.py) interpolated the same way as the
+    # rest -- a plain reset to 0 here would wipe out accumulated soil/coal/oil-gas/mineral
+    # deposits every time a line's spacing drifts enough to trigger regularizing.
+    new_soil_depth = np.interp(new_theta, line.theta, line.soil_depth)
+    new_soil_mineral_content = np.interp(new_theta, line.theta, line.soil_mineral_content)
+    new_soil_organic_content = np.interp(new_theta, line.theta, line.soil_organic_content)
+    new_coal_deposit_m = np.interp(new_theta, line.theta, line.coal_deposit_m)
+    new_oil_gas_deposit_m = np.interp(new_theta, line.theta, line.oil_gas_deposit_m)
+    new_mineral_deposit_m = np.interp(new_theta, line.theta, line.mineral_deposit_m)
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,
@@ -80,6 +89,12 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         silt_depth=new_silt_depth,
         is_volcano=new_is_volcano,
         volcano_active_years_remaining=new_volcano_active_years_remaining,
+        soil_depth=new_soil_depth,
+        soil_mineral_content=new_soil_mineral_content,
+        soil_organic_content=new_soil_organic_content,
+        coal_deposit_m=new_coal_deposit_m,
+        oil_gas_deposit_m=new_oil_gas_deposit_m,
+        mineral_deposit_m=new_mineral_deposit_m,
     )
 
 

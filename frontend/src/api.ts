@@ -17,6 +17,8 @@ export type MapView =
   | "precipitation"
   | "biome"
   | "combined"
+  | "resources"
+  | "soilQuality"
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector";
@@ -205,12 +207,17 @@ async function asJson<T>(resp: Response): Promise<T> {
 // World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (1 or 4, see
 // plates.NODE_DENSITY_CHOICES) -- how many elevation-line nodes each plate starts with, and
 // stays scaled to for the rest of that world's life (see world.py's World.node_density).
+// initialSoilMaturity is the dialog's fifth slider (0 to 1) -- how much soil the world starts
+// with (0 = fully barren, matching every other persistent field's own zero-start default; see
+// backend app/geology.py's seed_initial_soil), a one-time generation-time seed, not stored on
+// World the way nodeDensity is (see world.generate_world's own docstring for why).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
   landFraction: number,
   axialTiltDeg: number,
   nodeDensity: number,
+  initialSoilMaturity: number,
   numPlates: number | null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
@@ -223,6 +230,7 @@ export function generateWorld(
       land_fraction: landFraction,
       axial_tilt_deg: axialTiltDeg,
       node_density: nodeDensity,
+      initial_soil_maturity: initialSoilMaturity,
     }),
   }).then(asJson<WorldSummary>);
 }

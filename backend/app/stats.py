@@ -35,6 +35,7 @@ from __future__ import annotations
 import numpy as np
 
 from . import biomes, climate
+from .render_image import grid_slope
 from .world import World
 
 
@@ -59,7 +60,8 @@ def compute_stats(world: World) -> dict:
     precip_min, precip_max, precip_mean = _min_max_mean(fields.precipitation_mm)
 
     display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
-    biome_ids = biomes.classify_biomes(display_temp, fields.precipitation_mm, fields.is_ocean)
+    slope = grid_slope(fields.elevation_m, fields.lat_deg)
+    biome_ids = biomes.classify_biomes(display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m)
     land_biome_ids = biome_ids[is_land]
     n_land = int(is_land.sum())
     biome_land_fraction = {

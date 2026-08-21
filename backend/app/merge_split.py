@@ -264,6 +264,12 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                     silt_depth=line.silt_depth[side],
                     is_volcano=line.is_volcano[side],
                     volcano_active_years_remaining=line.volcano_active_years_remaining[side],
+                    soil_depth=line.soil_depth[side],
+                    soil_mineral_content=line.soil_mineral_content[side],
+                    soil_organic_content=line.soil_organic_content[side],
+                    coal_deposit_m=line.coal_deposit_m[side],
+                    oil_gas_deposit_m=line.oil_gas_deposit_m[side],
+                    mineral_deposit_m=line.mineral_deposit_m[side],
                 )
             )
         if np.any(~side):
@@ -279,6 +285,12 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
                     silt_depth=line.silt_depth[~side],
                     is_volcano=line.is_volcano[~side],
                     volcano_active_years_remaining=line.volcano_active_years_remaining[~side],
+                    soil_depth=line.soil_depth[~side],
+                    soil_mineral_content=line.soil_mineral_content[~side],
+                    soil_organic_content=line.soil_organic_content[~side],
+                    coal_deposit_m=line.coal_deposit_m[~side],
+                    oil_gas_deposit_m=line.oil_gas_deposit_m[~side],
+                    mineral_deposit_m=line.mineral_deposit_m[~side],
                 )
             )
 

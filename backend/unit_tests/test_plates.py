@@ -7,7 +7,14 @@ from app.plates import (
     MIN_OCEANIC_PLATES,
     NODE_DENSITY_CHOICES,
     TARGET_LINE_SPACING_RAD,
+    ElevationLine,
+    collect_all_coal_deposit,
+    collect_all_mineral_deposit,
+    collect_all_oil_gas_deposit,
     collect_all_points,
+    collect_all_soil_depth,
+    collect_all_soil_mineral_content,
+    collect_all_soil_organic_content,
     generate_plates,
     iter_local_lattice,
     line_spacing_rad,
@@ -294,3 +301,40 @@ def test_nearest_plate_id_finds_the_owning_plate_at_its_own_seed():
         if p.node_count() == 0:
             continue
         assert nearest_plate_id(world_plates, p.seed_world) == p.plate_id
+
+
+def test_elevation_line_soil_and_resource_fields_default_to_zero():
+    theta = np.array([0.0, 0.1, 0.2])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
+    for field in ("soil_depth", "soil_mineral_content", "soil_organic_content", "coal_deposit_m", "oil_gas_deposit_m", "mineral_deposit_m"):
+        values = getattr(line, field)
+        assert values.shape == theta.shape
+        assert np.all(values == 0.0)
+
+
+def test_collect_all_soil_and_resource_fields_are_index_aligned_with_collect_all_points():
+    world_plates = generate_plates(seed=9, num_plates=6)
+    for p in world_plates:
+        for i, line in enumerate(p.lines):
+            n = len(line.theta)
+            if n == 0:
+                continue
+            p.lines[i] = ElevationLine(
+                phi=line.phi,
+                theta=line.theta,
+                elevation=line.elevation,
+                soil_depth=np.full(n, 2.5),
+                coal_deposit_m=np.full(n, 1.5),
+            )
+    points, _, _ = collect_all_points(world_plates)
+    soil_depth = collect_all_soil_depth(world_plates)
+    coal = collect_all_coal_deposit(world_plates)
+    mineral = collect_all_mineral_deposit(world_plates)
+    oil_gas = collect_all_oil_gas_deposit(world_plates)
+    soil_mineral = collect_all_soil_mineral_content(world_plates)
+    soil_organic = collect_all_soil_organic_content(world_plates)
+    for arr in (soil_depth, coal, mineral, oil_gas, soil_mineral, soil_organic):
+        assert arr.shape == (len(points),)
+    assert np.all(soil_depth == 2.5)
+    assert np.all(coal == 1.5)
+    assert np.all(mineral == 0.0)

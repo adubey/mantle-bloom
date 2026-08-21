@@ -116,6 +116,19 @@ ERUPTION_RATE_PER_MYR = 3.0
 # consistent with "a discrete volcanic event" rather than a smooth continuous uplift rate.
 ERUPTION_ELEVATION_M = 100.0
 
+# Mineral deposits: real hydrothermal circulation around an active volcanic vent precipitates
+# metal-rich ore (porphyry-copper/VMS-style deposits), so mineral_deposit_m is grown right
+# here, at the same eruption roll that already adds ERUPTION_ELEVATION_M -- "an eruption
+# deposits mineral-rich material" is exactly what that mask already means, no separate
+# detection pass needed. This only ever fires where this codebase's own volcanism model
+# already places is_volcano nodes (rift-spawned volcanic fields) -- a fair collapse of real
+# geology's two ore-forming settings (mid-ocean-ridge VMS deposits, arc porphyry deposits)
+# into the one volcanism mechanism this simulator has, not a new detection concept.
+# Monotonically non-decreasing (see plates.ElevationLine), same self-reinforcing convention
+# silt_depth/coal_deposit_m/oil_gas_deposit_m already use.
+MINERAL_DEPOSIT_PER_ERUPTION_M = 0.5
+MAX_MINERAL_DEPOSIT_M = 20.0
+
 
 def _whole_world_median_spacing(world: "World") -> float:
     """Pass 1: every elevation point's own nearest neighbor, whole-world, unrestricted by
@@ -309,12 +322,15 @@ def apply_volcanic_activity(world: "World", years: float) -> list[str]:
             new_elevation[erupts] += ERUPTION_ELEVATION_M
             new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
             new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
+            new_mineral_deposit = np.clip(
+                line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
+            )
 
             # theta unchanged -- dataclasses.replace copies every other field (including
             # channel_width) from the existing line automatically. See plates.ElevationLine's
             # own docstring for why this pattern replaced explicit field-by-field
             # reconstruction here.
             plate.lines[line_index] = dataclasses.replace(
-                line, elevation=new_elevation, volcano_active_years_remaining=new_remaining
+                line, elevation=new_elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
             )
     return events

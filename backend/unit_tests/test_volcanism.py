@@ -179,3 +179,24 @@ def test_apply_volcanic_activity_can_erupt_and_add_elevation():
 def test_apply_volcanic_activity_noop_for_empty_world():
     world = World(seed=0, plates=[])
     assert volcanism.apply_volcanic_activity(world, years=1_000_000) == []
+
+
+def test_apply_volcanic_activity_erupting_grows_mineral_deposit_monotonically():
+    # Same setup as test_apply_volcanic_activity_can_erupt_and_add_elevation -- an eruption
+    # should also grow mineral_deposit_m, and never let it fall (monotonic, like silt_depth).
+    n = 200
+    line = ElevationLine(
+        phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),
+        is_volcano=np.ones(n, dtype=bool), volcano_active_years_remaining=np.full(n, 1_000_000.0),
+    )
+    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate])
+
+    prior = world.plates[0].lines[0].mineral_deposit_m.copy()
+    for _ in range(5):
+        volcanism.apply_volcanic_activity(world, years=100_000)
+        current = world.plates[0].lines[0].mineral_deposit_m
+        assert np.all(current >= prior)  # never decreases
+        prior = current.copy()
+    assert np.any(prior > 0.0)  # at least one node actually erupted somewhere over 5 steps
+    assert np.all(prior <= volcanism.MAX_MINERAL_DEPOSIT_M)

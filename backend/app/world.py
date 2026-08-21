@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import bathymetry, boundary, climate, erosion, gaps, geometry, hydrology, line_regrid, mantle, merge_split, reassign, volcanism
+from . import bathymetry, boundary, climate, erosion, gaps, geology, geometry, hydrology, line_regrid, mantle, merge_split, reassign, volcanism
 from .plates import DEFAULT_NODE_DENSITY, Plate, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
@@ -114,6 +114,7 @@ def generate_world(
     num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
     axial_tilt_deg: float | None = None,
     node_density: float = DEFAULT_NODE_DENSITY,
+    initial_soil_maturity: float | None = None,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
@@ -124,10 +125,14 @@ def generate_world(
     generation, which is why it's stored on World rather than consumed once here.
     `node_density` (the UI's "point density" choice) similarly affects only generation
     itself directly, but -- unlike axial_tilt_deg -- is stored on World because every later
-    step also needs it (see World.node_density's own comment)."""
+    step also needs it (see World.node_density's own comment). `initial_soil_maturity` (the
+    UI's "initial soil maturity" slider, 0 to 1, default None -> 0.0/barren) is a one-time
+    generation-time seed -- like continental_fraction/land_fraction, not stored on World,
+    since nothing later needs to know what it was (see geology.seed_initial_soil)."""
     plates = generate_plates(
         seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, node_density=node_density
     )
+    geology.seed_initial_soil(plates, seed, initial_soil_maturity or 0.0)
     # Separate RNG stream so changing num_mantle_centers doesn't reshuffle plate layout.
     mantle_rng = np.random.default_rng(seed + 1)
     mantle_centers = mantle.generate_convection_centers(mantle_rng, n_centers=num_mantle_centers)
@@ -171,8 +176,10 @@ def step_world(world: World, years: float) -> None:
     terrain-influences-weather mechanics (lapse rate, mountain wind deflection, orographic
     rain shadow) -- relaxes submerged continental crust toward a shelf-or-deep-water target
     based on distance to the nearest land (see bathymetry.py), and rolls each active
-    volcano's own eruption chance (see volcanism.py). On the same cadence as the gap-fill/
-    regularize pass, also scans for divergent gaps between plates and spawns any new
+    volcano's own eruption chance, growing mineral_deposit_m wherever one erupts (see
+    volcanism.py). Right after that, grows/relaxes soil and coal/oil-gas deposits from this
+    same step's erosion/flow-routing results (see geology.py). On the same cadence as the
+    gap-fill/regularize pass, also scans for divergent gaps between plates and spawns any new
     volcanic fields they warrant (see volcanism.py)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
@@ -183,10 +190,12 @@ def step_world(world: World, years: float) -> None:
     for message in merge_split.apply_topology_changes(world, years):
         world.log_event(message)
 
-    erosion.apply_erosion(world, years)
+    erosion_result = erosion.apply_erosion(world, years)
     bathymetry.apply_bathymetry(world, years)
     for message in volcanism.apply_volcanic_activity(world, years):
         world.log_event(message)
+    if erosion_result is not None:
+        geology.apply_resource_formation(world, years, erosion_result)
 
     world.steps_since_regularize += 1
     run_regularize_this_step = world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS

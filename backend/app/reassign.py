@@ -166,6 +166,12 @@ def reassign_misplaced_points(world: "World") -> None:
             silt_depth=line.silt_depth[keep_mask],
             is_volcano=line.is_volcano[keep_mask],
             volcano_active_years_remaining=line.volcano_active_years_remaining[keep_mask],
+            soil_depth=line.soil_depth[keep_mask],
+            soil_mineral_content=line.soil_mineral_content[keep_mask],
+            soil_organic_content=line.soil_organic_content[keep_mask],
+            coal_deposit_m=line.coal_deposit_m[keep_mask],
+            oil_gas_deposit_m=line.oil_gas_deposit_m[keep_mask],
+            mineral_deposit_m=line.mineral_deposit_m[keep_mask],
         )
 
     for (plate_id, line_index), new_nodes in add_by_target.items():
@@ -176,12 +182,14 @@ def reassign_misplaced_points(world: "World") -> None:
         combined_theta = np.concatenate([line.theta, new_theta])
         combined_elevation = np.concatenate([line.elevation, new_elevation])
         # A reassigned point's own channel_depth/channel_width/lake_depth/glacier_depth/
-        # silt_depth/is_volcano/volcano_active_years_remaining resets to 0/False -- this pass only ever
-        # touches a small number of boundary-adjacent nodes at a time, so losing a carved
-        # channel (or a glacier, or volcanic provenance) right at the moment its owning plate
-        # changes is an acceptable simplification (unlike line_regrid.py's regularize_line,
-        # which runs on nearly every line, every regularize interval -- resetting there would
-        # erase rivers/glaciers/volcanoes constantly, not rarely).
+        # silt_depth/is_volcano/volcano_active_years_remaining/soil_depth/soil_mineral_content/
+        # soil_organic_content/coal_deposit_m/oil_gas_deposit_m/mineral_deposit_m resets to
+        # 0/False -- this pass only ever touches a small number of boundary-adjacent nodes at a
+        # time, so losing a carved channel (or a glacier, volcanic provenance, or accumulated
+        # soil/resources) right at the moment its owning plate changes is an acceptable
+        # simplification (unlike line_regrid.py's regularize_line, which runs on nearly every
+        # line, every regularize interval -- resetting there would erase rivers/glaciers/
+        # volcanoes/soil constantly, not rarely).
         combined_channel_depth = np.concatenate([line.channel_depth, np.zeros(len(new_nodes))])
         combined_channel_width = np.concatenate([line.channel_width, np.zeros(len(new_nodes))])
         combined_lake_depth = np.concatenate([line.lake_depth, np.zeros(len(new_nodes))])
@@ -189,6 +197,12 @@ def reassign_misplaced_points(world: "World") -> None:
         combined_silt_depth = np.concatenate([line.silt_depth, np.zeros(len(new_nodes))])
         combined_is_volcano = np.concatenate([line.is_volcano, np.zeros(len(new_nodes), dtype=bool)])
         combined_volcano_active_years_remaining = np.concatenate([line.volcano_active_years_remaining, np.zeros(len(new_nodes))])
+        combined_soil_depth = np.concatenate([line.soil_depth, np.zeros(len(new_nodes))])
+        combined_soil_mineral_content = np.concatenate([line.soil_mineral_content, np.zeros(len(new_nodes))])
+        combined_soil_organic_content = np.concatenate([line.soil_organic_content, np.zeros(len(new_nodes))])
+        combined_coal_deposit_m = np.concatenate([line.coal_deposit_m, np.zeros(len(new_nodes))])
+        combined_oil_gas_deposit_m = np.concatenate([line.oil_gas_deposit_m, np.zeros(len(new_nodes))])
+        combined_mineral_deposit_m = np.concatenate([line.mineral_deposit_m, np.zeros(len(new_nodes))])
         order = np.argsort(combined_theta)
         plate.lines[line_index] = ElevationLine(
             phi=line.phi,
@@ -201,4 +215,10 @@ def reassign_misplaced_points(world: "World") -> None:
             silt_depth=combined_silt_depth[order],
             is_volcano=combined_is_volcano[order],
             volcano_active_years_remaining=combined_volcano_active_years_remaining[order],
+            soil_depth=combined_soil_depth[order],
+            soil_mineral_content=combined_soil_mineral_content[order],
+            soil_organic_content=combined_soil_organic_content[order],
+            coal_deposit_m=combined_coal_deposit_m[order],
+            oil_gas_deposit_m=combined_oil_gas_deposit_m[order],
+            mineral_deposit_m=combined_mineral_deposit_m[order],
         )
