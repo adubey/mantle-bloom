@@ -45,23 +45,32 @@ cd ..
 ### Running it
 
 ```bash
-./restart.sh
+./bin/restart.sh
 ```
 
-Starts the backend (FastAPI/uvicorn on `:8000`) and the frontend dev server (Vite on
-`:5173`) in the background and waits for both to respond. Logs land in
-`/tmp/mantle-bloom-backend.log` and `/tmp/mantle-bloom-frontend.log`. Open
+Starts the backend (FastAPI/uvicorn on `:8000`) and the frontend (on `:5173`) in the
+background and waits for both to respond. By default the frontend is built and served as a
+production build (`vite build` + `vite preview`); pass `--dev` to run the Vite dev server
+(hot module reload) instead:
+
+```bash
+./bin/restart.sh --dev
+```
+
+Logs land in `/tmp/mantle-bloom-backend.log` and `/tmp/mantle-bloom-frontend.log`. Open
 `http://localhost:5173`, click **Generate World**, then **Step** or **Play**.
 
-Stop everything with `./stop.sh`.
+Stop everything with `./bin/stop.sh`.
 
 ### Running the tests
 
 ```bash
-cd backend
-source .venv/bin/activate
-python -m pytest tests/ -q
+./bin/unit_test.sh
 ```
+
+Runs the backend's pytest suite (`backend/tests/`) -- the frontend has no unit test
+framework set up yet. Extra arguments are forwarded to pytest, e.g. `./bin/unit_test.sh -k
+biome`.
 
 ## Project layout
 
@@ -73,8 +82,10 @@ mantle-bloom/
   frontend/
     src/             # React + TypeScript + Canvas map viewer
   docs/              # you are here
-  restart.sh         # start/restart the backend and frontend dev server
-  stop.sh            # stop everything restart.sh started
+  bin/
+    restart.sh       # start/restart the backend and frontend server
+    stop.sh          # stop everything restart.sh started
+    unit_test.sh     # run the backend's pytest suite
 ```
 
 ## Known limitations
