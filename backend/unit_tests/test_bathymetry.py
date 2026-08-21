@@ -1,5 +1,4 @@
 import numpy as np
-
 from app import bathymetry, geometry
 from app.plates import ElevationLine, Plate
 from app.world import World, generate_world
@@ -63,17 +62,3 @@ def test_noop_for_empty_world():
     world = World(seed=0, plates=[])
     bathymetry.apply_bathymetry(world, years=1_000_000)  # must not raise
     assert world.plates == []
-
-
-def test_stepping_a_real_world_keeps_bathymetry_well_formed():
-    world = generate_world(seed=15, num_plates=10, continental_fraction=0.5)
-    from app.world import step_world
-
-    for _ in range(10):
-        step_world(world, years=2_000_000)
-
-    for plate in world.plates:
-        for line in plate.lines:
-            assert np.all(np.isfinite(line.elevation))
-            assert np.all(line.elevation >= bathymetry.MIN_ELEVATION_M)
-            assert np.all(line.elevation <= bathymetry.MAX_ELEVATION_M)

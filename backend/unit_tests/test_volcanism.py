@@ -1,5 +1,4 @@
 import numpy as np
-
 from app import geometry, volcanism
 from app.plates import ElevationLine, Plate
 from app.world import World, generate_world, step_world
@@ -180,13 +179,3 @@ def test_apply_volcanic_activity_can_erupt_and_add_elevation():
 def test_apply_volcanic_activity_noop_for_empty_world():
     world = World(seed=0, plates=[])
     assert volcanism.apply_volcanic_activity(world, years=1_000_000) == []
-
-
-def test_volcanism_integration_is_deterministic_for_the_same_seed():
-    def run():
-        world = generate_world(seed=17, num_plates=10, continental_fraction=0.4)
-        for _ in range(10):
-            step_world(world, years=2_000_000)
-        return sorted(world.volcanic_field_plate_ids), len(world.plates)
-
-    assert run() == run()

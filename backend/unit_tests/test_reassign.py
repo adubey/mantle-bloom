@@ -1,5 +1,4 @@
 import numpy as np
-
 from app import geometry, reassign
 from app.plates import ElevationLine, Plate
 from app.world import World, generate_world, step_world
@@ -84,15 +83,3 @@ def test_reassign_noop_with_too_few_nodes():
     world = World(seed=0, plates=[tiny])
     reassign.reassign_misplaced_points(world)  # must not raise
     assert tiny.lines[0].theta.tolist() == [0.0, 0.1]  # untouched
-
-
-def test_reassign_runs_periodically_and_never_on_a_regularize_step():
-    world = generate_world(seed=40, num_plates=8)
-    from app import line_regrid
-
-    assert line_regrid.REGULARIZE_INTERVAL_STEPS == reassign.REASSIGN_INTERVAL_STEPS  # same period by default
-    for _ in range(30):
-        step_world(world, years=1_000_000)
-        # The two cadence counters must never both be reset (i.e. both passes run) on the
-        # same step -- the whole point of staggering them (see world.step_world).
-        assert not (world.steps_since_regularize == 0 and world.steps_since_reassign == 0)

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Run the backend's pytest suite -- the only unit tests in this repo (the frontend has no
-# test framework set up yet, see frontend/package.json's scripts). Extra arguments are
-# forwarded to pytest, e.g. `./bin/unit_test.sh -k biome` or `./bin/unit_test.sh tests/test_hydrology.py`.
+# Run the backend's fast unit tests (backend/unit_tests/) -- every test under ~1s, meant to
+# be run often during development. The suite's slow, full-simulation tests (many-step
+# integration/determinism checks) live in backend/stress_tests/ instead -- see
+# bin/stress_test.sh -- so this stays quick. Extra arguments are forwarded to pytest, e.g.
+# `./bin/unit_test.sh -k biome` or `./bin/unit_test.sh unit_tests/test_hydrology.py`.
 #
 # Runs across all available cores via pytest-xdist (-n auto). --dist loadscope keeps every
 # file's own tests on a single worker rather than freely interleaving them: test_main.py's
@@ -18,4 +20,4 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$REPO_ROOT/backend"
 source .venv/bin/activate
-python -m pytest tests/ -q -n auto --dist loadscope "$@"
+python -m pytest unit_tests/ -q -n auto --dist loadscope "$@"

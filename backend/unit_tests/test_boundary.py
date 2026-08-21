@@ -1,5 +1,4 @@
 import numpy as np
-
 from app import boundary, geometry, mantle
 from app.plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate
 from app.world import World, generate_world, step_world
@@ -113,27 +112,6 @@ def test_grow_or_shrink_line_untouched_when_transform_or_far_middle():
     result = boundary._grow_or_shrink_line(line, dist, closing, "continental")
     assert np.array_equal(result.theta, line.theta)
     assert np.array_equal(result.elevation, line.elevation)
-
-
-def test_stepping_with_boundary_evolution_keeps_lines_sorted_and_elevation_bounded():
-    world = generate_world(seed=21, num_plates=8)
-    for _ in range(15):
-        step_world(world, years=3_000_000)
-
-    for plate in world.plates:
-        for line in plate.lines:
-            assert np.all(np.diff(line.theta) > 0), "line thetas must stay strictly ascending"
-            assert np.all(line.elevation >= boundary.MIN_ELEVATION_M)
-            assert np.all(line.elevation <= boundary.MAX_ELEVATION_M)
-
-
-def test_boundary_evolution_changes_node_counts_over_time():
-    world = generate_world(seed=22, num_plates=10)
-    before = sum(p.node_count() for p in world.plates)
-    for _ in range(20):
-        step_world(world, years=4_000_000)
-    after = sum(p.node_count() for p in world.plates)
-    assert after != before
 
 
 def test_band_intensity_zero_outside_band_peaks_at_midpoint():

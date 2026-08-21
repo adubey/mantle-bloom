@@ -68,9 +68,17 @@ Stop everything with `./bin/stop.sh`.
 ./bin/unit_test.sh
 ```
 
-Runs the backend's pytest suite (`backend/tests/`) -- the frontend has no unit test
-framework set up yet. Extra arguments are forwarded to pytest, e.g. `./bin/unit_test.sh -k
-biome`.
+Runs the backend's fast unit tests (`backend/unit_tests/`, every test well under a second)
+-- the frontend has no unit test framework set up yet. Extra arguments are forwarded to
+pytest, e.g. `./bin/unit_test.sh -k biome`.
+
+The suite's slow, full-simulation tests (many-step integration/determinism checks, anywhere
+from a few seconds to several minutes each) live separately in `backend/stress_tests/`,
+run with:
+
+```bash
+./bin/stress_test.sh
+```
 
 ## Project layout
 
@@ -78,14 +86,16 @@ biome`.
 mantle-bloom/
   backend/
     app/             # simulation pipeline + FastAPI routes -- see docs/architecture.md
-    tests/           # pytest suite
+    unit_tests/      # fast pytest suite (well under a second per test)
+    stress_tests/    # slow pytest suite (full-simulation integration/determinism checks)
   frontend/
     src/             # React + TypeScript + Canvas map viewer
   docs/              # you are here
   bin/
     restart.sh       # start/restart the backend and frontend server
     stop.sh          # stop everything restart.sh started
-    unit_test.sh     # run the backend's pytest suite
+    unit_test.sh     # run the backend's fast unit test suite
+    stress_test.sh   # run the backend's slow, full-simulation test suite
 ```
 
 ## Known limitations
