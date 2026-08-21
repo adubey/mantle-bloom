@@ -230,7 +230,13 @@ def test_fill_gaps_is_a_noop_immediately_after_generation():
 
 
 def test_fill_gaps_absorbs_an_interior_hole_into_its_one_bordering_plate():
-    world = generate_world(seed=9, num_plates=8)
+    # node_density pinned to 1.0 (not DEFAULT_NODE_DENSITY): the carved hole below is sized
+    # by a fixed line/index-count window, not a fixed physical area, so at a higher density
+    # (finer line/theta spacing) the same window covers a physically smaller hole -- while
+    # MIN_GAP_POINTS' own threshold scales *up* with density (see _min_gap_points) -- and the
+    # carved hole no longer clears it. 1.0 is the density this window was actually tuned
+    # against ("comfortably bigger than MIN_GAP_POINTS" below).
+    world = generate_world(seed=9, num_plates=8, node_density=1.0)
     plate = max(world.plates, key=lambda p: p.node_count())
     # Carve a sizeable hole out of several consecutive interior lines -- comfortably bigger
     # than MIN_GAP_POINTS once resampled onto the global detection grid, and well inside the

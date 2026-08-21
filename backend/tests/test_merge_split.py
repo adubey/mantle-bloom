@@ -233,7 +233,12 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence():
         mantle.ConvectionCenter(position=west_pt, strength=strong_rate, falloff=0.3),
         mantle.ConvectionCenter(position=east_pt, strength=-strong_rate, falloff=0.3),
     ]
-    world = World(seed=0, plates=[plate], mantle_centers=centers, next_plate_id=1)
+    # node_density pinned to 1.0 (not DEFAULT_NODE_DENSITY): the plate above is sized to
+    # 4 * SPLIT_MIN_NODES total (2x that threshold per resulting half), but maybe_split_plate's
+    # own min_nodes scales *up* with node_density (see that function's own comment) -- at
+    # DEFAULT_NODE_DENSITY that threshold would be 4x SPLIT_MIN_NODES, well above what either
+    # half of this engineered plate has, so the split it's testing for would be rejected.
+    world = World(seed=0, plates=[plate], mantle_centers=centers, next_plate_id=1, node_density=1.0)
 
     points, _ = plate.all_points_and_elevation()
     velocities = mantle.flow_at(points, centers)

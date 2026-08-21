@@ -93,7 +93,12 @@ def test_every_node_is_closest_to_its_own_plate_seed():
 
 
 def test_lines_are_evenly_spaced_in_phi():
-    plates = generate_plates(seed=4, num_plates=6)
+    # node_density pinned to 1.0 (not DEFAULT_NODE_DENSITY): the spacing check below compares
+    # against the reference TARGET_LINE_SPACING_RAD, which only holds at density 1.0 -- at any
+    # other density, actual line spacing is TARGET_LINE_SPACING_RAD / sqrt(node_density) (see
+    # line_spacing_rad), and this test only cares that spacing is *even*, not what density
+    # produced it.
+    plates = generate_plates(seed=4, num_plates=6, node_density=1.0)
     for p in plates:
         phis = sorted(line.phi for line in p.lines)
         if len(phis) < 2:
