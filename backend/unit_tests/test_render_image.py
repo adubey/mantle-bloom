@@ -107,6 +107,36 @@ def test_render_png_is_decodable_at_requested_size():
         assert image.size == (320, 180)
 
 
+def test_biome_grid_dimensions_matches_reference_at_density_one():
+    assert render_image.biome_grid_dimensions(1.0) == (render_image.BIOME_GRID_HEIGHT, render_image.BIOME_GRID_WIDTH)
+
+
+def test_biome_grid_dimensions_doubles_each_dimension_at_density_two():
+    # Within 1 of an exact double, not necessarily exact -- BIOME_GRID_HEIGHT/WIDTH are
+    # themselves already round()-derived from an irrational spacing ratio, so a second
+    # independent round() at half the spacing doesn't always commute perfectly with "times 2"
+    # (confirmed directly: BIOME_GRID_WIDTH=400 but biome_grid_dimensions(2.0)'s width is 801,
+    # not 800). Unlike climate.grid_dimensions, whose GRID_HEIGHT/WIDTH reference values are
+    # already nice round numbers, so that doubling happens to land exactly.
+    height, width = render_image.biome_grid_dimensions(2.0)
+    assert abs(height - render_image.BIOME_GRID_HEIGHT * 2) <= 1
+    assert abs(width - render_image.BIOME_GRID_WIDTH * 2) <= 1
+
+
+def test_render_png_is_decodable_at_requested_size_with_doubled_climate_density():
+    # Same sweep as test_render_png_is_decodable_at_requested_size, but at
+    # World.climate_density=2.0 -- confirms every view (climate-grid-derived and
+    # biome-grid-derived alike) still renders correctly at the finer resolution, not just the
+    # default one.
+    world = _world()
+    world.climate_density = 2.0
+    for view in render_image.VIEWS:
+        png = render_image.render_png(world, "behrmann", view, 320, 180)
+        image = Image.open(io.BytesIO(png))
+        assert image.format == "PNG"
+        assert image.size == (320, 180)
+
+
 def test_render_png_empty_world_returns_background_only():
     world = World(seed=1)  # plates defaults to [] -- shouldn't happen via the API, but shouldn't crash
     png = render_image.render_png(world, "behrmann", "elevation", 100, 60)
@@ -225,7 +255,7 @@ def test_climate_views_render_as_distinct_images():
 def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
     fields = _synthetic_converging_currents_fields()
     assert len(fields.swell_rows) > 0  # sanity: the synthetic setup actually produces swells
-    monkeypatch.setattr(render_image.climate, "compute_climate", lambda world, **kwargs: fields)
+    monkeypatch.setattr(render_image.climate, "compute_climate", lambda world, *args, **kwargs: fields)
 
     png = render_image.render_png(_world(), "behrmann", "oceanCurrents", 320, 180)
     image = Image.open(io.BytesIO(png)).convert("RGB")

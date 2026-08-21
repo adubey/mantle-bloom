@@ -247,3 +247,40 @@ def test_compute_climate_cached_ignores_stale_cache_by_design():
     sentinel = climate.compute_climate(world)
     world.climate_cache = sentinel
     assert climate.compute_climate_cached(world) is sentinel
+
+
+def test_grid_dimensions_matches_defaults_at_density_one():
+    assert climate.grid_dimensions(1.0) == (climate.GRID_HEIGHT, climate.GRID_WIDTH)
+
+
+def test_grid_dimensions_doubles_each_dimension_at_density_two():
+    # The UI's own framing is "double the density in each dimension" -- literally 2x height
+    # and 2x width (4x total cells), not sqrt-scaled the way plates.py's node_density is.
+    height, width = climate.grid_dimensions(2.0)
+    assert height == climate.GRID_HEIGHT * 2
+    assert width == climate.GRID_WIDTH * 2
+
+
+def test_compute_climate_at_higher_density_produces_correctly_shaped_finite_fields():
+    world = _world(seed=4, num_plates=8, steps=0)
+    height, width = climate.grid_dimensions(2.0)
+    fields = climate.compute_climate(world, height, width)
+    assert fields.elevation_m.shape == (height, width)
+    assert fields.precipitation_mm.shape == (height, width)
+    assert np.all(np.isfinite(fields.air_temperature_c))
+    assert np.all(np.isfinite(fields.precipitation_mm))
+
+
+def test_compute_climate_cached_uses_worlds_own_climate_density():
+    world = _world(seed=5, num_plates=8, steps=0)
+    world.climate_density = 2.0
+    fields = climate.compute_climate_cached(world)
+    assert fields.elevation_m.shape == climate.grid_dimensions(2.0)
+
+
+def test_generate_world_stores_climate_density_and_defaults_to_one():
+    default_world = generate_world(seed=6, num_plates=6)
+    assert default_world.climate_density == climate.DEFAULT_CLIMATE_DENSITY
+
+    doubled = generate_world(seed=6, num_plates=6, climate_density=2.0)
+    assert doubled.climate_density == 2.0

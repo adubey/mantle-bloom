@@ -865,16 +865,32 @@ not a grid](#why-not-a-grid)); the render grid ([Render image](#render-image)) i
 lat/lon sweep, immediately flattened to 1D. Neither supports the array tricks climate leans
 on -- `np.roll` wraparound, centered-difference gradients, divergence, land-excluding
 neighbor averaging. So climate gets its own equirectangular array, `lat: (H,)` / `lon: (W,)`,
-every field `(H, W)`, `GRID_HEIGHT = 90` x `GRID_WIDTH = 180` (2 degrees/cell). It's never
-stored on `World` and never touches `world.plates`.
+every field `(H, W)`, `GRID_HEIGHT = 90` x `GRID_WIDTH = 180` (2 degrees/cell) by default --
+scaled directly in each dimension by a world's own `World.climate_density` (the UI's "climate
+& biome resolution" choice, `climate.CLIMATE_DENSITY_CHOICES = (1.0, 2.0)`, see
+`climate.grid_dimensions`) for a sharper, less pixelated climate map at the cost of real
+compute: confirmed directly, `2.0` (4x the cells) costs roughly 2-3x longer to render a
+climate/biome-family view and only a modest ~10% longer per simulation step (climate is a
+comparatively small share of a step's total cost next to boundary evolution/erosion/hydrology
+over the plate node cloud). Fixed-*degree* offset distances internal to the wind/current
+mechanics below (mountain/coastal wake lookback, mountain tangent sampling) stay physically
+meaningful at any density via `_REFERENCE_CELL_DEG`, a reference cell size decoupled from the
+grid's own actual width -- one exception, noted where it's defined
+(`MOUNTAIN_GRADIENT_SMOOTHING_ITERATIONS`): a handful of *iteration*-count-based smoothing
+passes blur by a fixed number of grid cells rather than a fixed real distance, so their
+real-world smoothing radius shrinks proportionally at a higher density -- a deliberate,
+smaller-scope simplification, not rescaled. This grid is never stored on `World` and never
+touches `world.plates`.
 
-**Fully stateless.** Every field is recomputed from scratch on every render call, from
-whatever the *current* plate elevation/crust_type happens to be (the same `cKDTree`
-nearest-neighbor sampling `_render_grid_arrays` already uses) -- `step_world` is completely
-unaware this module exists; climate only runs when a climate view is actually requested. The
-one exception: `World.axial_tilt_deg`, a fixed generation-time property like `seed` (set once
-by `generate_world`, read again on every future render), since insolation needs it long after
-generation and it isn't something to recompute per call.
+**Fully stateless.** Every field is recomputed from scratch on every call, from whatever the
+*current* plate elevation/crust_type happens to be (the same `cKDTree` nearest-neighbor
+sampling `_render_grid_arrays` already uses) -- climate is genuinely recomputed every step
+regardless of whether a climate view is currently being rendered (see [Erosion](#erosion),
+which needs a live climate snapshot for rain/wind/humidity every step), not just on render.
+Two exceptions: `World.axial_tilt_deg` and `World.climate_density`, both fixed generation-time
+properties like `seed` (set once by `generate_world`, read again on every future step/render),
+since insolation needs the former and the grid's own shape needs the latter long after
+generation, neither being something to recompute per call.
 
 **Pipeline order.** Wind needs a temperature field, but the *final* (current-advected) ocean
 temperature needs currents, which need wind -- resolved by computing a pre-advection baseline

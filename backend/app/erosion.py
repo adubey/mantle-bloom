@@ -305,7 +305,7 @@ def apply_erosion(world: "World", years: float) -> ErosionResult | None:
     World.hydrology_cache = None branch below) so geology.py's own soil/coal/oil-gas formation
     (called right after this, from world.step_world) can reuse these same per-node terms
     instead of re-deriving them -- see ErosionResult's own docstring."""
-    fields = climate.compute_climate(world)
+    fields = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
     world.climate_cache = fields
 
     points, elevation, prior_channel_depth, prior_channel_width, prior_glacier_depth, line_refs = _gather_nodes(world)

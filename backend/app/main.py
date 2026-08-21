@@ -54,6 +54,12 @@ class GenerateRequest(BaseModel):
     # world.generate_world's own default (0.0, a fully barren starting world -- see
     # geology.seed_initial_soil), but the frontend always sends it.
     initial_soil_maturity: float | None = None
+    # The UI's "climate & biome resolution" choice -- how finely climate.py's own grid
+    # resolves temperature/wind/humidity/precipitation, and (scaled the same way) how finely
+    # the Biome/Combined/Resources/Soil-Quality views' own render grid resolves them, relative
+    # to climate.DEFAULT_CLIMATE_DENSITY. Validated against climate.CLIMATE_DENSITY_CHOICES
+    # below, same reasoning node_density's own validation gives.
+    climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
 
 
 class StepRequest(BaseModel):
@@ -302,6 +308,10 @@ def _lake_basin_summary(
 def generate(req: GenerateRequest) -> dict:
     if req.node_density not in plates.NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {plates.NODE_DENSITY_CHOICES}")
+    if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown climate_density {req.climate_density!r}; choices are {climate.CLIMATE_DENSITY_CHOICES}"
+        )
     world = generate_world(
         req.seed,
         num_plates=req.num_plates,
@@ -311,6 +321,7 @@ def generate(req: GenerateRequest) -> dict:
         axial_tilt_deg=req.axial_tilt_deg,
         node_density=req.node_density,
         initial_soil_maturity=req.initial_soil_maturity,
+        climate_density=req.climate_density,
     )
     _state["world"] = world
     return _summary(world)
@@ -362,7 +373,7 @@ def set_controls(req: ControlsRequest) -> dict:
         world.sea_level_m = req.sea_level_m
     if req.solar_multiplier is not None:
         world.solar_multiplier = req.solar_multiplier
-    world.climate_cache = climate.compute_climate(world)
+    world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
     return {"sea_level_m": world.sea_level_m, "solar_multiplier": world.solar_multiplier}
 
 

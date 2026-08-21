@@ -72,15 +72,39 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------------------
 
 # Starting resolution -- tunable/benchmarked the same way GRID_SPACING_KM was tuned for the
-# render grid. 2 degrees per cell in each direction.
+# render grid. 2 degrees per cell in each direction. Reference value for the default
+# World.climate_density == 1.0 -- see grid_dimensions below for how a world's own chosen
+# density (set once at generation, like plates.py's own node_density) scales it at runtime.
 GRID_HEIGHT = 90
 GRID_WIDTH = 180
 
 # A fixed reference grid width, decoupled from GRID_WIDTH, purely so the fixed-*degree*
 # offset distances below (mountain/coast wake lookback, mountain tangent sampling) stay
-# physically meaningful if GRID_WIDTH is retuned later.
+# physically meaningful if GRID_WIDTH is retuned later -- including at runtime now, via
+# World.climate_density, not just by hand-editing GRID_WIDTH itself.
 _REFERENCE_WIDTH = 180
 _REFERENCE_CELL_DEG = 360.0 / _REFERENCE_WIDTH
+
+# UI-facing choices for World.climate_density (the "climate & biome resolution" generation
+# choice) -- a discrete set, not a free-form slider, same reasoning plates.py's own
+# NODE_DENSITY_CHOICES gives for node_density: there's no natural continuous unit for "how
+# many grid cells," only "how many times as many per dimension."
+CLIMATE_DENSITY_CHOICES = (1.0, 2.0)
+DEFAULT_CLIMATE_DENSITY = 1.0
+
+
+def grid_dimensions(climate_density: float) -> tuple[int, int]:
+    """(height, width) for a world generated at `climate_density` -- GRID_HEIGHT/GRID_WIDTH
+    each scaled directly by the density multiplier (not sqrt, unlike plates.py's own
+    node_density -> line_spacing_rad relationship): the UI's own framing is "double the
+    density in each dimension," so density=2.0 means literally double the rows *and* double
+    the columns (4x the total cells), not double the total cell count. Every caller that
+    computes climate against a specific World should pass this rather than the bare
+    GRID_HEIGHT/GRID_WIDTH constants, so a world generated at a non-default density stays
+    self-consistent for its entire life (every step, not just the moment it's generated) --
+    the same "thread the world's own chosen density through, don't read the bare module
+    constant" precedent plates.line_spacing_rad already sets."""
+    return round(GRID_HEIGHT * climate_density), round(GRID_WIDTH * climate_density)
 
 _EPS = 1e-9
 
@@ -347,6 +371,14 @@ CORIOLIS_DEFLECTION_GAIN = 1.8
 GRADIENT_WIND_COEFFICIENT = 0.4
 ELEVATION_SLOWDOWN_REF_M = 4000.0
 MIN_ELEVATION_SPEED_FACTOR = 0.4
+# A fixed *iteration* count, not a real-distance one like MOUNTAIN_TANGENT_SAMPLE_STEPS/
+# MOUNTAIN_WAKE_LOOKBACK_STEPS above (both scaled by _REFERENCE_CELL_DEG so their real-world
+# reach stays constant across resolutions) -- each Jacobi pass blurs by one grid cell
+# (_smooth_field's own np.roll), so at a higher World.climate_density this smoothing's real-
+# world radius shrinks proportionally (half the real distance at density=2.0). A deliberate,
+# smaller-scope simplification left as-is rather than rescaled: the visual effect (a gentler,
+# still-present mountain gradient) is not obviously wrong at higher resolution, just not
+# perfectly resolution-invariant the way the reference-degree-based offsets are.
 MOUNTAIN_GRADIENT_SMOOTHING_ITERATIONS = 4
 MOUNTAIN_OBSTACLE_ELEVATION_M = 2000.0
 MOUNTAIN_OBSTACLE_RAMP_M = 800.0
@@ -893,14 +925,15 @@ def compute_climate(world: World, height: int = GRID_HEIGHT, width: int = GRID_W
 
 
 def compute_climate_cached(world: World) -> ClimateFields:
-    """Same result as `compute_climate(world)` (default height/width -- the only resolution
-    anything in this codebase actually requests), but reuses `World.climate_cache` when
-    erosion.py has already populated it this step, instead of recomputing (see module
+    """Same result as `compute_climate(world, *grid_dimensions(world.climate_density))` (the
+    world's own resolution -- see World.climate_density), but reuses `World.climate_cache`
+    when erosion.py has already populated it this step, instead of recomputing (see module
     docstring for why that's a safe simplification, not a staleness bug). Populates the cache
     itself when it's empty (e.g. a `/world/stats` call before the world has ever been
     stepped), so a second same-turn caller still benefits."""
     if world.climate_cache is not None:
         return world.climate_cache
-    fields = compute_climate(world)
+    height, width = grid_dimensions(world.climate_density)
+    fields = compute_climate(world, height, width)
     world.climate_cache = fields
     return fields

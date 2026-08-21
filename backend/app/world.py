@@ -41,6 +41,19 @@ class World:
     # non-default density stays self-consistent through regularizing/gap-filling/merging/
     # splitting/volcanism, not just at the moment it's generated.
     node_density: float = DEFAULT_NODE_DENSITY
+    # Another fixed per-world property, set once at generation (the UI's "climate & biome
+    # resolution" choice, see climate.CLIMATE_DENSITY_CHOICES) and read for the rest of this
+    # world's life by every caller that computes climate (erosion.py every step,
+    # climate.compute_climate_cached for render_image.py/stats.py, main.py's /world/controls)
+    # or the Biome/Combined/Resources/Soil-Quality views' own finer render grid
+    # (render_image.biome_grid_dimensions) -- see climate.grid_dimensions' own docstring. Not
+    # purely cosmetic: erosion.py samples precipitation/wind/humidity/temperature from this
+    # same grid every step, so a finer grid resolves orographic rain shadow and mountain wind
+    # deflection more precisely, which can subtly change simulated erosion outcomes too, not
+    # just how smoothly the climate/biome maps render -- still fundamentally a resolution
+    # choice, not a different climate model, but not entirely inconsequential to physics
+    # either the way a pure render-quality setting would be.
+    climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
     # Number of times gaps.fill_gaps has actually run -- part of the deterministic RNG seed
     # for gap-fill's new-crust noise texture (see gaps.py), not just a counter.
     gap_fill_calls: int = 0
@@ -115,6 +128,7 @@ def generate_world(
     axial_tilt_deg: float | None = None,
     node_density: float = DEFAULT_NODE_DENSITY,
     initial_soil_maturity: float | None = None,
+    climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
@@ -128,7 +142,11 @@ def generate_world(
     step also needs it (see World.node_density's own comment). `initial_soil_maturity` (the
     UI's "initial soil maturity" slider, 0 to 1, default None -> 0.0/barren) is a one-time
     generation-time seed -- like continental_fraction/land_fraction, not stored on World,
-    since nothing later needs to know what it was (see geology.seed_initial_soil)."""
+    since nothing later needs to know what it was (see geology.seed_initial_soil).
+    `climate_density` (the UI's "climate & biome resolution" choice, see
+    climate.CLIMATE_DENSITY_CHOICES) doesn't affect plate generation at all, only how finely
+    climate.py's own grid resolves the world's climate every future step/render -- stored on
+    World for the same reason node_density is (see World.climate_density's own comment)."""
     plates = generate_plates(
         seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, node_density=node_density
     )
@@ -145,6 +163,7 @@ def generate_world(
         next_plate_id=len(plates),
         axial_tilt_deg=DEFAULT_AXIAL_TILT_DEG if axial_tilt_deg is None else axial_tilt_deg,
         node_density=node_density,
+        climate_density=climate_density,
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)

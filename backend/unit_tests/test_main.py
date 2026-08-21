@@ -99,6 +99,16 @@ def test_generate_with_unknown_node_density_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_generate_with_climate_density(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 2.0})
+    assert resp.status_code == 200
+
+
+def test_generate_with_unknown_climate_density_returns_400(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 3.0})
+    assert resp.status_code == 400
+
+
 def test_render_defaults_to_elevation_view_at_1100x611(client):
     client.post("/world/generate", json={"seed": 3, "num_plates": 6})
     resp = client.get("/world/render")

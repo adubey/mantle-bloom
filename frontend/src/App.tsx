@@ -39,6 +39,12 @@ const DEFAULT_INITIAL_SOIL_MATURITY_PERCENT = 0;
 // "how many times as many."
 const NODE_DENSITY_CHOICES = [1, 4];
 const DEFAULT_NODE_DENSITY = 4;
+// Matching backend app/climate.py's CLIMATE_DENSITY_CHOICES/DEFAULT_CLIMATE_DENSITY -- same
+// "discrete multiplier choice, not a free-form slider" reasoning as NODE_DENSITY_CHOICES,
+// but for climate.py's own simulation grid (and the Biome/Combined/Resources/Soil-Quality
+// views' own render grid, scaled the same way) rather than plate elevation nodes.
+const CLIMATE_DENSITY_CHOICES = [1, 2];
+const DEFAULT_CLIMATE_DENSITY = 1;
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
 // always lands somewhere the auto behavior could plausibly have picked too.
@@ -71,6 +77,7 @@ export default function App() {
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [nodeDensity, setNodeDensity] = useState(DEFAULT_NODE_DENSITY);
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
+  const [climateDensity, setClimateDensity] = useState(DEFAULT_CLIMATE_DENSITY);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
 
@@ -209,7 +216,7 @@ export default function App() {
     try {
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity, initialSoilMaturityPercent / 100,
-        autoPlates ? null : numPlates,
+        climateDensity, autoPlates ? null : numPlates,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -227,7 +234,7 @@ export default function App() {
       setBusy(false);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, initialSoilMaturityPercent, autoPlates, numPlates,
+    seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, initialSoilMaturityPercent, climateDensity, autoPlates, numPlates,
     projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
@@ -719,6 +726,29 @@ export default function App() {
               {nodeDensity > 1 && (
                 <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                   More detail, but simulation steps will run noticeably slower.
+                </div>
+              )}
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Climate & biome resolution
+              <select
+                value={climateDensity}
+                onChange={(e) => setClimateDensity(Number(e.target.value))}
+                style={{ width: "100%", marginTop: 4 }}
+              >
+                {CLIMATE_DENSITY_CHOICES.map((d) => (
+                  <option key={d} value={d}>
+                    {d === 1 ? "1x" : `${d}x`}
+                  </option>
+                ))}
+              </select>
+              {climateDensity > 1 && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Sharper, less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
+                  Biome/Combined/Resources/Soil Quality maps -- doubles resolution in each
+                  dimension (4x the grid cells). Those views render noticeably slower (roughly
+                  2-3x); simulation steps only slightly slower.
                 </div>
               )}
             </label>

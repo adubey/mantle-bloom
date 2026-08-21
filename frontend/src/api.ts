@@ -211,6 +211,11 @@ async function asJson<T>(resp: Response): Promise<T> {
 // with (0 = fully barren, matching every other persistent field's own zero-start default; see
 // backend app/geology.py's seed_initial_soil), a one-time generation-time seed, not stored on
 // World the way nodeDensity is (see world.generate_world's own docstring for why).
+// climateDensity is the dialog's "climate & biome resolution" choice (1 or 2, see backend
+// app/climate.py's CLIMATE_DENSITY_CHOICES) -- how finely climate.py's own grid (and the
+// Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
+// temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
+// same reasoning nodeDensity's own storage gives (see world.py's World.climate_density).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -218,6 +223,7 @@ export function generateWorld(
   axialTiltDeg: number,
   nodeDensity: number,
   initialSoilMaturity: number,
+  climateDensity: number,
   numPlates: number | null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
@@ -231,6 +237,7 @@ export function generateWorld(
       axial_tilt_deg: axialTiltDeg,
       node_density: nodeDensity,
       initial_soil_maturity: initialSoilMaturity,
+      climate_density: climateDensity,
     }),
   }).then(asJson<WorldSummary>);
 }

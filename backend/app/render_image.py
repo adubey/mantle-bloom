@@ -147,18 +147,32 @@ ARC_DIRECTION_SAMPLE_RAD = 0.05
 GRID_SPACING_KM = 100.0
 GRID_SPACING_RAD = GRID_SPACING_KM / plates.PLANET_RADIUS_KM
 
-# The Biome/Combined views' own render grid (see _biome_fields) -- a fixed-shape
-# equirectangular grid, like climate.py's native one, but swept at roughly GRID_SPACING_KM
-# resolution instead of climate's coarser 2-degree simulation grid, so a biome map reads with
-# elevation-view-level detail. Deliberately *not* a change to climate.py's own grid (that one
-# is recomputed every step, not just on render -- see that module's own docstring for why
-# coarsening it for anything other than "looks good rasterized" would cost real per-step
-# performance); this is purely a render-time upsample of climate.py's already-computed
-# temperature/precipitation fields (see _bilinear_resample) plus a fresh nearest-node
-# resample of the actual elevation data at this finer resolution for land/ocean/lake/glacier
-# (see _biome_fields) -- the same technique _render_grid_arrays already uses for elevation.
+# The Biome/Combined/Resources/Soil-Quality views' own render grid (see _biome_fields/
+# _resource_fields) -- a fixed-shape equirectangular grid, like climate.py's native one, but
+# swept at roughly GRID_SPACING_KM resolution (scaled by a world's own World.climate_density,
+# see biome_grid_dimensions below) instead of climate's coarser native simulation grid, so a
+# biome map reads with elevation-view-level detail even at climate_density's own default
+# (1.0). This is purely a render-time upsample of climate.py's already-computed temperature/
+# precipitation fields (see _bilinear_resample) plus a fresh nearest-node resample of the
+# actual elevation data at this finer resolution for land/ocean/lake/glacier (see
+# _biome_fields) -- the same technique _render_grid_arrays already uses for elevation.
 BIOME_GRID_HEIGHT = round(np.pi / GRID_SPACING_RAD)
 BIOME_GRID_WIDTH = round(2 * np.pi / GRID_SPACING_RAD)
+
+
+def biome_grid_dimensions(climate_density: float) -> tuple[int, int]:
+    """(height, width) for the Biome/Combined/Resources/Soil-Quality views' own render grid,
+    scaled by a world's own World.climate_density the same direct-per-dimension way
+    climate.grid_dimensions scales climate.py's native simulation grid -- density=2.0 means
+    literally double BIOME_GRID_HEIGHT and double BIOME_GRID_WIDTH (4x the cells), matching
+    the UI's own "double the density in each dimension" framing. BIOME_GRID_HEIGHT/WIDTH
+    above stay as the density=1.0 reference values (also still the exact grid used by any
+    caller not aware of climate_density -- there is none left after this change, but keeping
+    them as plain names rather than folding them into this function preserves the "reference
+    value the runtime one is scaled from" precedent plates.TARGET_LINE_SPACING_RAD and
+    climate.GRID_HEIGHT/WIDTH both already set)."""
+    spacing_rad = GRID_SPACING_RAD / climate_density
+    return round(np.pi / spacing_rad), round(2 * np.pi / spacing_rad)
 
 # A fixed categorical palette so each plate reads as a distinct region across
 # generate/step calls (plate_id is stable within one world's lifetime).
@@ -747,8 +761,10 @@ def _draw_rotation_arc(
     _draw_arrow_head(draw, head_px, tangent_px, color, ARROWHEAD_LENGTH_PX * pixel_scale)
 
 
-# Arrows are drawn at a coarser subsample of climate.py's own (90x180) computation grid --
-# one arrow per cell would be unreadable clutter at these sizes.
+# Arrows are drawn at a coarser subsample of climate.py's own computation grid (90x180 at the
+# default World.climate_density, finer if a world was generated at a higher one -- a fixed
+# stride, so a finer grid draws proportionally more arrows, not fewer/thinner ones) -- one
+# arrow per cell would be unreadable clutter at these sizes.
 ARROW_GRID_STRIDE = 6
 ARROW_MAX_LENGTH_PX = 14.0
 ARROW_LINE_WIDTH_PX = 1.3
@@ -902,7 +918,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _, _ = _biome_fields(
-        world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
+        world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = grid_slope(elevation_m, lat_deg)
@@ -962,7 +978,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth = _biome_fields(
-        world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
+        world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = grid_slope(elevation_m, lat_deg)
@@ -1052,7 +1068,7 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     lat_deg, lon_deg, world_xyz, is_ocean, soil_depth, soil_mineral, soil_organic, coal, oil_gas, mineral = _resource_fields(
-        world, BIOME_GRID_HEIGHT, BIOME_GRID_WIDTH
+        world, *biome_grid_dimensions(world.climate_density)
     )
     if view == "resources":
         colors = _render_resources_view(is_ocean, coal, oil_gas, mineral)
