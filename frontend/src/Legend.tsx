@@ -4,10 +4,10 @@ import type { LegendGradient, LegendSymbol, SwatchKind } from "./legendData";
 
 interface Props {
   mapView: MapView;
-  // Legend-click-to-highlight (biome view only -- see App.tsx/MapCanvas.tsx): the currently
-  // highlighted biome's label, and a callback fired with a swatch's label on click (App.tsx
-  // toggles it off if the same label is clicked again). Both omitted on every other view,
-  // where the legend stays the plain, non-interactive read-only panel it always was.
+  // Legend-click-to-highlight (Biome and Combined views only -- see App.tsx/MapCanvas.tsx):
+  // the currently highlighted swatch's label, and a callback fired with a swatch's label on
+  // click (App.tsx toggles it off if the same label is clicked again). Both omitted on every
+  // other view, where the legend stays the plain, non-interactive read-only panel it always was.
   highlightedBiome?: string | null;
   onBiomeClick?: (label: string) => void;
 }
@@ -114,47 +114,50 @@ function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClic
   );
 }
 
-// Rendered client-side (see legendData.ts for why) as an HTML overlay anchored at the map's
-// bottom-left corner, in the same spot the old server-baked panel occupied. Unlike that PNG-
-// baked version, this one updates instantly on a projection/view change and stays legible
-// during a live rotation-preview drag (which only ever re-draws the canvas underneath it).
+// Rendered client-side (see legendData.ts for why) as a full-width HTML bar below the map,
+// in normal document flow (see App.tsx) rather than overlaid on top of it -- unlike that old
+// server-baked panel, which sat in the map's bottom-left corner and partially covered it,
+// this one never obscures any part of the map. Still updates instantly on a projection/view
+// change and stays legible during a live rotation-preview drag (which only ever re-draws the
+// canvas above it).
 export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Props) {
   const spec = legendFor(mapView);
   if (!spec) return null;
 
-  // Only the biome view's swatches are ever clickable -- see the Props doc comment. The
-  // panel is pointerEvents: "none" everywhere else (letting a drag-to-rotate gesture that
-  // starts over the legend's own screen area still reach the canvas underneath it); here it
-  // has to switch to "auto" so its rows can actually receive the click.
-  const clickable = mapView === "biome" && !!onBiomeClick;
+  // Biome and Combined are the only views whose swatches are clickable -- see the Props doc
+  // comment.
+  const clickable = (mapView === "biome" || mapView === "combined") && !!onBiomeClick;
 
   return (
     <div
       style={{
-        position: "absolute",
-        left: 16,
-        bottom: 16,
-        minWidth: 150,
-        maxWidth: 210,
+        marginTop: 10,
         padding: 10,
         background: "rgba(16, 20, 34, 0.92)",
         border: "1px solid #4b5060",
         borderRadius: 4,
         color: "#dee2eb",
-        pointerEvents: clickable ? "auto" : "none",
         userSelect: "none",
       }}
     >
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{spec.title}</div>
-      {spec.gradient && <GradientBar gradient={spec.gradient} />}
-      {spec.symbols.map((sym) => (
-        <SymbolRow
-          key={sym.label}
-          symbol={sym}
-          onClick={clickable ? () => onBiomeClick!(sym.label) : undefined}
-          selected={clickable && highlightedBiome === sym.label}
-        />
-      ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 13, fontWeight: 600, flexShrink: 0 }}>{spec.title}</div>
+        {spec.gradient && (
+          <div style={{ flex: "1 1 260px", minWidth: 200, maxWidth: 420 }}>
+            <GradientBar gradient={spec.gradient} />
+          </div>
+        )}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient ? 2 : 8 }}>
+        {spec.symbols.map((sym) => (
+          <SymbolRow
+            key={sym.label}
+            symbol={sym}
+            onClick={clickable ? () => onBiomeClick!(sym.label) : undefined}
+            selected={clickable && highlightedBiome === sym.label}
+          />
+        ))}
+      </div>
     </div>
   );
 }

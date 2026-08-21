@@ -837,16 +837,33 @@ RELIEF_BLEND_MAX = 0.55
 # ELEVATION_GRADIENT's own high-mountain stop, so full blend only kicks in near real peaks.
 RELIEF_ELEVATION_RANGE_M = 6000.0
 
+# A "layer-tint" brightness multiplier applied to each land cell's flat biome color, keyed on
+# elevation above the current sea level -- same hue, several visibly distinct shades. Unlike
+# RELIEF_BLEND_MAX's blend (which shifts hue toward bare rock/snow and only becomes visible
+# within a few hundred meters of its own 6000m peak stop), this covers the much more common
+# few-hundred-to-a-couple-thousand-meter range so ordinary hills and plateaus don't all render
+# as one flat, undifferentiated color for their biome. frontend/src/legendData.ts's
+# shadedVariants mirrors these same stops for its own purposes -- see that function's docstring.
+_LAND_SHADE_STOP_E = np.array([0, 500, 1500, 3000, 6000], dtype=float)
+_LAND_SHADE_STOP_FACTOR = np.array([0.78, 0.92, 1.05, 1.2, 1.38], dtype=float)
+
+
+def _land_shade_factor(elevation_m: np.ndarray, sea_level_m: float) -> np.ndarray:
+    return np.interp(elevation_m - sea_level_m, _LAND_SHADE_STOP_E, _LAND_SHADE_STOP_FACTOR)
+
 
 def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """"Combined": biome color for land, hypsometric ocean-depth shading for water (reusing
     elevation_colors, the same gradient the Elevation view itself uses) -- an approximation
     of what the planet would look like in true color from orbit, on the same fine grid the
-    Biome view uses (see BIOME_GRID_HEIGHT/WIDTH and _biome_fields). Land color is blended
-    toward that same hypsometric shade at high elevation for a cheap relief cue (see
-    RELIEF_BLEND_MAX), and lakes/glaciers are overlaid the same way the Elevation view itself
-    draws them, at this grid's own resolution."""
-    padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
+    Biome view uses (see BIOME_GRID_HEIGHT/WIDTH and _biome_fields). Land color is first
+    shaded by elevation for a mid-range relief cue (see _land_shade_factor), then blended
+    toward that same hypsometric shade at high elevation for a further cue at real peaks (see
+    RELIEF_BLEND_MAX); lakes/glaciers are overlaid the same way the Elevation view itself
+    draws them, and rivers are drawn on top the same way too (see _draw_rivers), all at this
+    grid's own resolution."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth = _biome_fields(
@@ -857,9 +874,12 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
 
+    shade = _land_shade_factor(elevation_m.reshape(-1), world.sea_level_m)[:, None]
+    shaded_biome_rgb = np.clip(biome_rgb * shade, 0, 255)
+
     relief_t = np.clip((elevation_m.reshape(-1) - world.sea_level_m) / RELIEF_ELEVATION_RANGE_M, 0.0, 1.0)
     blend = (relief_t * RELIEF_BLEND_MAX)[:, None]
-    land_rgb = biome_rgb * (1 - blend) + terrain_rgb * blend
+    land_rgb = shaded_biome_rgb * (1 - blend) + terrain_rgb * blend
 
     colors = np.where(is_ocean.reshape(-1)[:, None], terrain_rgb, land_rgb)
     is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
@@ -870,12 +890,16 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
-    centers, half_w, half_h, _, _, _ = _project_climate_grid(
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
         lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
     )
     _fill_rects(pixels, centers, half_w, half_h, colors)
 
-    return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    _draw_rivers(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+
+    return _encode_image(image)
 
 
 def _draw_rivers(

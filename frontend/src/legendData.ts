@@ -174,6 +174,65 @@ const BIOME_ENTRIES: [string, string][] = BIOME_RGB_ENTRIES.map(([label, [r, g, 
 
 const COASTLINE_SYMBOL: LegendSymbol = { kind: "line", color: COASTLINE_COLOR, label: "Coastline" };
 
+// The actual fixed pixel colors Combined mode paints for these two overlays (see backend
+// app/render_image.py's LAKE_COLOR_RGB/GLACIER_COLOR_RGB) -- kept separate from the
+// LAKE_COLOR/GLACIER_COLOR swatch colors above since Glacier's swatch is a deliberately pure
+// white for legend legibility and doesn't match the actual rendered pixel color; matching
+// (see highlightTargetFor below) needs the real one.
+const LAKE_RENDER_RGB: [number, number, number] = [58, 92, 122];
+const GLACIER_RENDER_RGB: [number, number, number] = [221, 240, 245];
+
+// Mirrors backend app/render_image.py's _LAND_SHADE_STOP_E/_LAND_SHADE_STOP_FACTOR -- the
+// same elevation-keyed brightness multiplier Combined mode applies to a biome's flat color
+// (see that module's _land_shade_factor). Combined's legend-click-to-highlight (see
+// highlightTargetFor/MapCanvas.tsx) needs the actual range of shaded RGBs a biome's color can
+// appear as on the rendered map, since -- unlike the plain Biome view, whose pixels are each
+// exactly one of BIOME_RGB_ENTRIES with nothing else drawn on top -- Combined never paints a
+// biome's flat, unshaded color for any land cell.
+const LAND_SHADE_FACTORS = [0.78, 0.92, 1.05, 1.2, 1.38];
+
+function shadedVariants([r, g, b]: [number, number, number]): [number, number, number][] {
+  return LAND_SHADE_FACTORS.map((f) => [
+    Math.min(255, Math.round(r * f)),
+    Math.min(255, Math.round(g * f)),
+    Math.min(255, Math.round(b * f)),
+  ]);
+}
+
+// How close (Euclidean RGB distance) a Combined-view pixel has to be to one of a biome's
+// shaded variants to still count as "that biome" for highlighting -- needs slack because
+// Combined additionally blends land color toward the elevation gradient above
+// RELIEF_ELEVATION_RANGE_M (see render_image.py's RELIEF_BLEND_MAX), which this deliberately
+// doesn't try to reverse: a real mountain peak inside a forest biome reading as "too rocky to
+// highlight" once its blend gets large is an acceptable, even fitting, edge case -- the whole
+// point of that blend is to visually stop reading as flat forest color up there.
+const COMBINED_MATCH_TOLERANCE = 28;
+
+export interface HighlightTarget {
+  colors: [number, number, number][];
+  tolerance: number;
+}
+
+// Resolves a clicked legend swatch label to the set of actual pixel colors (see MapCanvas.tsx's
+// applyHighlight) that count as a match, for the two views whose legends are clickable (see
+// Legend.tsx). Biome's own pixels are an exact, single fixed color per swatch (tolerance 0);
+// Combined's land swatches can appear as any of several elevation-shaded variants (see
+// shadedVariants above) within COMBINED_MATCH_TOLERANCE, while its Lake/Glacier swatches are
+// still exact fixed colors, same as Biome's.
+export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
+  if (view === "biome") {
+    const entry = BIOME_RGB_ENTRIES.find(([l]) => l === label);
+    return entry ? { colors: [entry[1]], tolerance: 0 } : null;
+  }
+  if (view === "combined") {
+    if (label === "Lake") return { colors: [LAKE_RENDER_RGB], tolerance: 0 };
+    if (label === "Glacier (ice cover)") return { colors: [GLACIER_RENDER_RGB], tolerance: 0 };
+    const entry = BIOME_RGB_ENTRIES.find(([l]) => l === label);
+    return entry ? { colors: shadedVariants(entry[1]), tolerance: COMBINED_MATCH_TOLERANCE } : null;
+  }
+  return null;
+}
+
 export function legendFor(view: MapView): LegendSpec | null {
   switch (view) {
     case "elevation":
@@ -240,6 +299,7 @@ export function legendFor(view: MapView): LegendSpec | null {
         title: "Combined (true color)",
         gradient: ELEVATION_GRADIENT,
         symbols: [
+          { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
           ...BIOME_ENTRIES.filter(([label]) => label !== "Ocean").map(

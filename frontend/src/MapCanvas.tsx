@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Projection } from "./api";
+import type { HighlightTarget } from "./legendData";
 import type { Mat3 } from "./rotation";
 import { getGraticule, getRenderTransform, matApply, project, toPixels } from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
@@ -24,11 +25,12 @@ interface Props {
   // server-side into the PNG and can't update mid-drag (see docs/simulation-model.md#rotating-the-view).
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
-  // Legend-click-to-highlight (biome view only -- see Legend.tsx/App.tsx): when set, every
-  // decoded pixel that doesn't exactly match this color is faded toward gray so the selected
-  // biome's cells visibly pop against the rest of the map (see applyBiomeHighlight below).
-  // `null`/omitted paints the decoded frame as-is, same as before this feature existed.
-  highlightColor?: [number, number, number] | null;
+  // Legend-click-to-highlight (Biome and Combined views -- see Legend.tsx/App.tsx): when
+  // set, every decoded pixel that doesn't come within `tolerance` of one of `colors` is
+  // faded toward gray so the selected swatch's cells visibly pop against the rest of the map
+  // (see applyHighlight below). `null`/omitted paints the decoded frame as-is, same as before
+  // this feature existed.
+  highlightTarget?: HighlightTarget | null;
 }
 
 const BACKGROUND = "#0b1020";
@@ -45,15 +47,28 @@ const HIGHLIGHT_DIM_FACTOR = 0.35;
 
 // The Biome view (see backend app/render_image.py's _render_biome_view) draws every pixel as
 // exactly one of biomes.BIOME_COLORS' fixed palette -- no coastline/graticule overlay on top
-// -- so an exact RGB match against the clicked legend swatch's color is enough to pick out
-// that biome's cells, entirely client-side, with no new server render mode needed.
-function applyBiomeHighlight(ctx: CanvasRenderingContext2D, width: number, height: number, color: [number, number, number]): void {
-  const [hr, hg, hb] = color;
+// -- so an exact RGB match (tolerance 0) against the clicked legend swatch's color is enough
+// to pick out that biome's cells, entirely client-side, with no new server render mode
+// needed. The Combined view instead matches within `tolerance` against several candidate
+// colors (see legendData.ts's highlightTargetFor) since a biome's flat color there gets
+// shaded by elevation and, at real peaks, blended toward the elevation gradient.
+function applyHighlight(ctx: CanvasRenderingContext2D, width: number, height: number, target: HighlightTarget): void {
+  const { colors, tolerance } = target;
+  const tolerance2 = tolerance * tolerance;
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i] === hr && data[i + 1] === hg && data[i + 2] === hb) continue;
-    const gray = (0.3 * data[i] + 0.59 * data[i + 1] + 0.11 * data[i + 2]) * HIGHLIGHT_DIM_FACTOR;
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    let matched = false;
+    for (const [cr, cg, cb] of colors) {
+      const dr = r - cr, dg = g - cg, db = b - cb;
+      if (dr * dr + dg * dg + db * db <= tolerance2) {
+        matched = true;
+        break;
+      }
+    }
+    if (matched) continue;
+    const gray = (0.3 * r + 0.59 * g + 0.11 * b) * HIGHLIGHT_DIM_FACTOR;
     data[i] = gray;
     data[i + 1] = gray;
     data[i + 2] = gray;
@@ -69,7 +84,7 @@ function applyBiomeHighlight(ctx: CanvasRenderingContext2D, width: number, heigh
 // re-requesting the real, much more expensive, detailed render on every mouse move.
 export default function MapCanvas({
   imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
-  onRotationPreview, onRotationCommitted, highlightColor,
+  onRotationPreview, onRotationCommitted, highlightTarget,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
@@ -81,13 +96,13 @@ export default function MapCanvas({
   }
   // Read from the highlight-toggle effect below without also making the (decode-driven) base
   // paint effect re-run just because the highlight selection changed.
-  const highlightColorRef = useRef(highlightColor);
-  highlightColorRef.current = highlightColor;
+  const highlightTargetRef = useRef(highlightTarget);
+  highlightTargetRef.current = highlightTarget;
 
   // Draws the already-decoded frame plus, if a legend highlight is active, the filter on top
   // of it -- shared by both the initial decode (below) and the highlight-toggle effect, so
   // toggling a legend swatch doesn't need a fresh server render to update the map. Reads
-  // highlightColor via a ref (not a direct closure) so its identity only changes with
+  // highlightTarget via a ref (not a direct closure) so its identity only changes with
   // width/height, not with the highlight selection -- see that effect's own comment for why.
   const paintDecodedFrame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -95,7 +110,7 @@ export default function MapCanvas({
     const ctx = canvas?.getContext("2d");
     if (!canvas || !img || !ctx) return;
     ctx.drawImage(img, 0, 0, width, height);
-    if (highlightColorRef.current) applyBiomeHighlight(ctx, width, height, highlightColorRef.current);
+    if (highlightTargetRef.current) applyHighlight(ctx, width, height, highlightTargetRef.current);
   }, [width, height]);
 
   useEffect(() => {
@@ -125,13 +140,13 @@ export default function MapCanvas({
   // Re-applies (or clears) the highlight filter the instant the legend selection changes,
   // without waiting for a fresh render -- the image element already holds the fully decoded
   // frame at this point, so it can be redrawn synchronously. Deliberately keyed on
-  // highlightColor alone (imageBase64/paintDecodedFrame omitted from deps on purpose): this
+  // highlightTarget alone (imageBase64/paintDecodedFrame omitted from deps on purpose): this
   // effect exists to react to the highlight selection specifically, not to re-run
   // redundantly, one render after the effect above, on every image change too.
   useEffect(() => {
     if (imageBase64 && imgRef.current?.complete) paintDecodedFrame();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
-  }, [highlightColor]);
+  }, [highlightTarget]);
 
   const drawGraticule = (previewRotation: Mat3) => {
     const canvas = canvasRef.current;

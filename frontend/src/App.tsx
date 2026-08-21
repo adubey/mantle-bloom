@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import { fetchLakes, fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld, updateControls } from "./api";
 import type {
@@ -12,7 +12,7 @@ import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import Legend from "./Legend";
-import { BIOME_RGB_ENTRIES } from "./legendData";
+import { highlightTargetFor } from "./legendData";
 import { IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
 
@@ -83,14 +83,19 @@ export default function App() {
   const [rotation, setRotation] = useState<Mat3>(IDENTITY_ROTATION);
   const [centerLatLon, setCenterLatLon] = useState({ lat: 0, lon: 0 });
   // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
-  // Biome view (the only legend whose swatches are clickable), so it's cleared any time the
-  // view changes away from "biome" rather than silently carrying a stale selection into a
-  // view whose legend can't reflect or clear it.
+  // Biome and Combined views (the only legends whose swatches are clickable), so it's cleared
+  // any time the view changes away from both rather than silently carrying a stale selection
+  // into a view whose legend can't reflect or clear it.
   const [highlightedBiome, setHighlightedBiome] = useState<string | null>(null);
   useEffect(() => {
-    if (mapView !== "biome") setHighlightedBiome(null);
+    if (mapView !== "biome" && mapView !== "combined") setHighlightedBiome(null);
   }, [mapView]);
-  const highlightColor = mapView === "biome" ? (BIOME_RGB_ENTRIES.find(([label]) => label === highlightedBiome)?.[1] ?? null) : null;
+  // Memoized so its identity only changes with the selection itself, not on every render --
+  // MapCanvas.tsx's highlight-toggle effect is keyed directly on this object's identity.
+  const highlightTarget = useMemo(
+    () => (highlightedBiome ? highlightTargetFor(mapView, highlightedBiome) : null),
+    [mapView, highlightedBiome],
+  );
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -557,15 +562,15 @@ export default function App() {
               rotation={rotation}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              highlightColor={highlightColor}
+              highlightTarget={highlightTarget}
             />
           )}
+          </div>
           <Legend
             mapView={mapView}
             highlightedBiome={highlightedBiome}
             onBiomeClick={(label) => setHighlightedBiome((cur) => (cur === label ? null : label))}
           />
-          </div>
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "plateInspector"
               ? "Click a plate to select it. Tab / Shift+Tab cycles plates. Press and hold, then drag to rotate."
