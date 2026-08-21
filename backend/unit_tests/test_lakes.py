@@ -191,7 +191,7 @@ def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
     is_accumulating = np.zeros(3, dtype=bool)
 
     depth, silt, forest, events = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_accumulating=is_accumulating
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth[0] > 0.0  # grew from inflow
     assert depth[0] <= 25.0 - 10.0  # never exceeds the basin's true spill depth (its own max_depth)
@@ -203,7 +203,7 @@ def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
     # A lake already sitting at its cap should stay pinned there, not evaporate back down.
     at_cap = np.array([15.0, 0.0, 0.0])
     depth_at_cap, _, _, _ = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, at_cap, prev_silt_depth, water_deposited, years=1_000_000, is_accumulating=is_accumulating
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, at_cap, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth_at_cap[0] == 15.0
 
@@ -215,7 +215,7 @@ def test_step_lakes_evaporates_a_dry_spell_to_nothing():
     is_accumulating = np.zeros(3, dtype=bool)
 
     depth, _, _, events = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=100_000_000, is_accumulating=is_accumulating
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=100_000_000, is_frozen=is_accumulating
     )
     assert depth[0] == 0.0
     assert events == []
@@ -228,7 +228,7 @@ def test_step_lakes_freezes_a_lake_to_its_dry_floor_regardless_of_inflow():
     is_accumulating = np.array([True, False, False])
 
     depth, silt, _, _ = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_accumulating=is_accumulating
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth[0] == 0.0
     assert silt[0] == 0.0  # frozen -- no liquid water to carry sediment either
@@ -245,7 +245,7 @@ def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
     is_accumulating = np.zeros(6, dtype=bool)
 
     depth, _, forest, events = lakes.step_lakes(
-        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_accumulating=is_accumulating
+        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert len(events) == 1 and "merged" in events[0]
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor)
@@ -269,7 +269,7 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     is_accumulating = np.zeros(6, dtype=bool)
 
     depth, _, forest, events = lakes.step_lakes(
-        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=5_000_000, is_accumulating=is_accumulating
+        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=5_000_000, is_frozen=is_accumulating
     )
     assert len(events) == 1 and "split" in events[0]
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor) -- both children land exactly there
@@ -296,7 +296,7 @@ def test_step_lakes_silt_accumulates_and_eventually_fills_a_small_lake_in():
     depths_over_time = []
     for _ in range(400):
         depth, prev_silt_depth, _, _ = lakes.step_lakes(
-            _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_accumulating=is_accumulating
+            _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
         )
         prev_lake_depth = depth
         depths_over_time.append(depth[0])

@@ -124,9 +124,21 @@ LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 # larger typical step size -- a bigger step just melts/grows proportionally more, same
 # character as every other elevation delta in this codebase (boundary.py's uplift/trench
 # rates are also flat per-Myr rates applied directly). No seasons modeled here either
-# (consistent with mantle-bloom's climate.py generally) -- GLACIER_ACCUMULATION_TEMP_C
-# being well below 0C is what keeps this meaning *permanent* accumulation, not a place with
-# ordinary seasonal snow that would fully melt over a real year.
+# (consistent with mantle-bloom's climate.py generally).
+#
+# Two separate cold thresholds, not one. FREEZE_POINT_C (below) is the real phase-change
+# point: precipitation below it falls as snow/ice rather than rain, and standing lake water or
+# flowing river water below it freezes solid *this same step* (see compute_hydrology). But a
+# real place that's merely below freezing on average doesn't necessarily hold a permanent ice
+# sheet -- GLACIER_ACCUMULATION_TEMP_C stays a separate, colder reference (unchanged from
+# before this distinction existed) used only by the melt-rate formula below: it's where
+# melt_factor bottoms out at 0, i.e. the temperature below which ice simply never melts. A
+# tundra lake at, say, -3C now genuinely freezes solid (FREEZE_POINT_C), but the ice it forms
+# still melts back at a real (if reduced) rate every step -- confirmed directly this stays a
+# self-correcting near-zero *net* accumulation there, not a spreading permanent glacier --
+# while only the much colder GLACIER_ACCUMULATION_TEMP_C-and-below zone keeps enough of its own
+# snowfall through every step's melt term to actually build one.
+FREEZE_POINT_C = 0.0
 GLACIER_ACCUMULATION_TEMP_C = -10.0
 GLACIER_ACCUMULATION_RATE = 0.02
 GLACIER_MELT_RATE_M_PER_MYR = 400.0
@@ -135,6 +147,22 @@ GLACIER_MELT_MAX_FACTOR = 3.0
 GLACIER_FLOW_RATE_PER_MYR = 0.15
 GLACIER_MAX_FLOW_FRACTION = 0.5
 GLACIER_VISIBLE_DEPTH_M = 10.0
+
+# River evaporation: a fraction of a river's own downstream flux evaporates at every node it
+# passes through this step -- warmer nodes lose a bigger fraction, up to
+# RIVER_EVAPORATION_MAX_FRACTION (capped well short of 1.0 so a single very large step can't
+# evaporate a river's entire flow in one hop). This is the "evaporation decreases the amount of
+# water in rivers" half of the moisture-recycling ask; the *other* half -- that lost water
+# actually reappearing as atmospheric humidity -- lives in climate.py's own land-surface
+# moisture source, not here: climate.py runs strictly *before* this module each step (it
+# produces the precipitation/temperature this module consumes), so this step's real
+# evaporation loss can't feed back into this same step's climate. climate.py's own term is a
+# same-step stand-in sized from the *persisted* channel_depth instead (see that module's own
+# docstring for why that isn't circular). Flat per-Myr rate, the same "linear in dt_myr, no
+# exponential blow-up at a large step" character GLACIER_ACCUMULATION_RATE above already has.
+RIVER_EVAPORATION_REFERENCE_TEMP_C = 25.0
+RIVER_EVAPORATION_RATE_PER_MYR = 0.2
+RIVER_EVAPORATION_MAX_FRACTION = 0.6
 
 # River speed -- a stylized, unitless quantity (faster where slope is steeper and where more
 # water has accumulated); meaningful only relative to other nodes in the same world, not a
@@ -332,6 +360,7 @@ def _compute_flow_direction(
     filled_elevation: np.ndarray,
     spill_target: np.ndarray,
     prev_channel_depth: np.ndarray,
+    is_frozen: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Flow target per node, among its k nearest neighbors strictly below its own elevation
     (a downhill candidate) -- preferring whichever candidate already has the deepest
@@ -353,7 +382,20 @@ def _compute_flow_direction(
     fact from `flow_target == spill_target`, which could false-positive on an ordinary
     steepest-descent node that happens to coincide with a neighboring basin's spill_target) to
     know which lakes just found a real outlet, for the breach-erosion term (see its own
-    docstring in `compute_hydrology`)."""
+    docstring in `compute_hydrology`).
+
+    A frozen node (`is_frozen`, gated at the real freezing point `FREEZE_POINT_C` -- colder
+    than, and unrelated to, the permanent-glacier `GLACIER_ACCUMULATION_TEMP_C`) can't pass
+    liquid water downstream at all this step -- rivers freeze over. This override is applied
+    *after* the should_spill redirect above, unconditionally, rather than folded into the same
+    is_sink/should_spill check that redirect uses: an ordinary, otherwise-unobstructed
+    downhill node has `filled_elevation` exactly equal to its own elevation (no real rim ever
+    blocks it), so forcing such a node to look like a sink would make it trivially satisfy
+    `water_surface >= filled_elevation` and get redirected right back onto its own normal
+    downhill neighbor via spill_target -- silently undoing the freeze for most ordinary
+    terrain. Applying the override to the final flow_target instead has no such escape hatch;
+    `should_spill`'s own returned mask still reflects genuine basin-spill events only, since
+    it's computed before this override runs."""
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
@@ -377,6 +419,7 @@ def _compute_flow_direction(
     water_surface = elevation + prev_lake_depth
     should_spill = is_sink & (water_surface >= filled_elevation)
     flow_target = np.where(should_spill, spill_target, flow_target).astype(np.int64)
+    flow_target = np.where(is_frozen & ~is_ocean, -1, flow_target).astype(np.int64)
     flow_target = np.where(is_ocean, -1, flow_target).astype(np.int64)
     return flow_target, should_spill
 
@@ -408,20 +451,25 @@ def route_downstream(
     flow_target: np.ndarray,
     source_amount: np.ndarray,
     retain_fraction: np.ndarray | None = None,
+    loss_fraction: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Single forward sweep over land nodes in elevation-descending order, accumulating
     `source_amount` downstream along `flow_target` edges. Correct in one pass because every
     node's target is guaranteed strictly lower in elevation, so it's always visited *later*
-    in this same order. No in-transit river evaporation term (a loss_fraction consumed along
-    the way) is modeled here -- not asked for, and this module already drops
-    temperature-driven effects on hydrology, see LAKE_EVAPORATION_* above. Returns
-    (through_flux, deposited): each node's own
-    accumulated flux passing through it, and how much settled there (from `retain_fraction`
-    and/or reaching a sink/ocean)."""
+    in this same order. `loss_fraction` is an in-transit evaporative loss (see
+    hydrology.RIVER_EVAPORATION_* constants): unlike `retain_fraction`, which *deposits* the
+    retained share locally (sediment settling out of the flow), a lost share simply vanishes
+    -- it isn't added to `deposited` at all, since it left as atmospheric moisture, not as
+    material staying in the channel. Applied first, at every node's own turn, before
+    retention -- so, like flow_accum itself, the lost fraction compounds along a long flow
+    path rather than being taken once at the very end. Returns (through_flux, deposited): each
+    node's own accumulated flux passing through it (net of any loss), and how much settled
+    there (from `retain_fraction` and/or reaching a sink/ocean)."""
     n = len(elevation)
     through_flux = np.where(~is_ocean, source_amount, 0.0).astype(np.float64).tolist()
     deposited = [0.0] * n
     retain = (retain_fraction if retain_fraction is not None else np.zeros(n)).tolist()
+    loss = (loss_fraction if loss_fraction is not None else np.zeros(n)).tolist()
     is_ocean_list = is_ocean.tolist()
     flow_target_list = flow_target.tolist()
 
@@ -429,6 +477,9 @@ def route_downstream(
     order = land_indices[np.argsort(-elevation[land_indices])].tolist()
 
     for i in order:
+        evaporated_here = through_flux[i] * loss[i]
+        through_flux[i] -= evaporated_here
+
         retained_here = through_flux[i] * retain[i]
         through_flux[i] -= retained_here
         deposited[i] += retained_here
@@ -453,7 +504,7 @@ def _update_glaciers(
     prev_glacier_depth: np.ndarray,
     frozen_precip: np.ndarray,
     frozen_from_lake: np.ndarray,
-    is_accumulating: np.ndarray,
+    is_frozen: np.ndarray,
     temperature: np.ndarray,
     years: float,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -463,7 +514,7 @@ def _update_glaciers(
     bucket -- glacial melt becomes real river discharge rather than a parallel, disconnected
     accounting path."""
     years_myr = years / 1_000_000.0
-    accumulation = np.where(is_accumulating, GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, 0.0)
+    accumulation = np.where(is_frozen, GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, 0.0)
     depth_before_flow = prev_glacier_depth + frozen_from_lake + accumulation
 
     melt_factor = np.clip(
@@ -502,14 +553,19 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
 
-    A node colder than GLACIER_ACCUMULATION_TEMP_C never holds liquid water at all: any
-    precipitation there is treated as fully frozen (no partial liquid/frozen split --
-    matching erosion.py's existing "use precipitation is enough" simplification, just gated
-    by the same accumulation threshold),
-    and an existing lake sitting there freezes solid into glacier_depth this same step,
-    *before* flow_target is (re)computed -- so a lake that just froze is correctly treated as
-    a genuine sink again this step (see `lakes.step_lakes`'s own docstring for the freeze
-    handling this feeds into)."""
+    A node colder than FREEZE_POINT_C never holds liquid water at all: any precipitation
+    there is treated as fully frozen (no partial liquid/frozen split -- matching erosion.py's
+    existing "use precipitation is enough" simplification, just gated by the freeze
+    threshold), an existing lake sitting there freezes solid into glacier_depth this same
+    step, and a river reaching it stops flowing entirely this step (its incoming flux freezes
+    in place too, also joining glacier_depth) -- both *before* flow_target is (re)computed, so
+    a lake that just froze is correctly treated as a genuine sink again this step (see
+    `lakes.step_lakes`'s own docstring for the freeze handling this feeds into), and a frozen
+    river node is correctly forced to a sink in `_compute_flow_direction` (see its own
+    docstring for why that override can't reuse the ordinary should_spill escape valve). This
+    is deliberately a *different*, warmer threshold than GLACIER_ACCUMULATION_TEMP_C (see that
+    constant's own comment) -- freezing solid for a step doesn't imply building a *permanent*
+    glacier."""
     points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, line_refs = _gather_nodes(world)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
@@ -523,21 +579,21 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     neighbor_idx = _build_neighbor_graph(points)
     filled_elevation, spill_target = _compute_basin_spill(elevation, is_ocean, neighbor_idx)
 
-    is_accumulating = temperature_at_nodes < GLACIER_ACCUMULATION_TEMP_C
-    freezing_lake = is_accumulating & (prev_lake_depth > 0.0)
+    is_frozen = temperature_at_nodes < FREEZE_POINT_C
+    freezing_lake = is_frozen & (prev_lake_depth > 0.0)
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
     frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
 
     flow_target, should_spill = _compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth
+        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen
     )
 
-    frozen_precip = np.where(is_accumulating, precipitation_at_nodes, 0.0)
-    liquid_precip = np.where(is_accumulating, 0.0, precipitation_at_nodes)
+    frozen_precip = np.where(is_frozen, precipitation_at_nodes, 0.0)
+    liquid_precip = np.where(is_frozen, 0.0, precipitation_at_nodes)
 
     slope_to_target = _slope_to_flow_target(points, elevation, flow_target)
     new_glacier_depth, melt = _update_glaciers(
-        elevation, is_ocean, flow_target, slope_to_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_accumulating, temperature_at_nodes, years
+        elevation, is_ocean, flow_target, slope_to_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years
     )
 
     # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of
@@ -547,8 +603,27 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     lake_component_size = _lake_component_sizes(lake_depth_adjusted > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
     lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
 
+    # River evaporation (see RIVER_EVAPORATION_* above) -- excluded at an already-frozen node
+    # (its flow_target is already forced closed, see _compute_flow_direction) and, deliberately,
+    # at a should_spill node: the breach term above models a lake's own concentrated overflow
+    # surge, sized purely from its surface area, not an ordinary trickle that should also lose a
+    # further fraction to evaporation in the very same step it's cut loose.
+    years_myr = years / 1_000_000.0
+    river_evap_fraction = np.clip(temperature_at_nodes / RIVER_EVAPORATION_REFERENCE_TEMP_C, 0.0, 1.0) * RIVER_EVAPORATION_RATE_PER_MYR * years_myr
+    river_evap_fraction = np.where(is_frozen | is_ocean | should_spill, 0.0, np.clip(river_evap_fraction, 0.0, RIVER_EVAPORATION_MAX_FRACTION))
+
     water_source = liquid_precip + melt + lake_breach_source
-    flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source)
+    flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
+
+    # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right
+    # where it froze (route_downstream already deposited it there, since a frozen node's
+    # flow_target was forced to -1 above), joining this step's glacier_depth the same way a
+    # frozen lake's own water already does via frozen_from_lake. Added after _update_glaciers
+    # (which ran before this routing pass could know water_deposited) rather than folded into
+    # its own accumulation term -- this newly-frozen river ice simply starts flowing/melting
+    # from next step onward, an accepted one-step lag matching this codebase's general
+    # tolerance for that (see e.g. climate_cache/hydrology_cache's own docstrings on World).
+    new_glacier_depth = np.where(is_frozen & ~is_ocean, new_glacier_depth + water_deposited, new_glacier_depth)
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
     # flooded nodes, so fields is built with a placeholder here and finished after.
@@ -557,7 +632,7 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, line_refs,
     )
     fields.lake_depth, fields.silt_depth, _lake_forest, fields.lake_events = lakes.step_lakes(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, prev_silt_depth, water_deposited, years, is_accumulating
+        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, prev_silt_depth, water_deposited, years, is_frozen
     )
 
     # A lake, however wide it's flooded, is never itself "a river" -- excluding it (not just

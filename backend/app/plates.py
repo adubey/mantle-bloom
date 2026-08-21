@@ -319,6 +319,17 @@ def collect_all_glacier_depth(plate_list: list[Plate]) -> np.ndarray:
     return np.concatenate(chunks, axis=0)
 
 
+def collect_all_channel_depth(plate_list: list[Plate]) -> np.ndarray:
+    """Every plate's current channel_depth (river-channel incision -- see erosion.py),
+    concatenated the same way collect_all_lake_depth is -- used by climate.py to size a
+    river's own evaporative surface for its moisture-recycling humidity source (see that
+    module)."""
+    chunks = [line.channel_depth for plate in plate_list for line in plate.lines if len(line.theta) > 0]
+    if not chunks:
+        return np.zeros(0)
+    return np.concatenate(chunks, axis=0)
+
+
 def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
     """Every plate's current is_volcano, concatenated the same way collect_all_lake_depth
     is -- see its own docstring for why this is a separate function rather than a new

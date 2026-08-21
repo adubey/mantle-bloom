@@ -909,8 +909,10 @@ center stays under pi, the same scope boundary as the antipodal-singularity limi
 Seven fields -- land temperature, ocean surface temperature, air temperature, wind, ocean
 currents, humidity, and precipitation -- computed for five map views (temperature, wind,
 ocean currents with swells marked, humidity, precipitation), implementing a climate model
-whose mechanisms are richer than a first-principles description would suggest, with the
-caveat that mantle-bloom has no vegetation, rivers, or lakes.
+whose mechanisms are richer than a first-principles description would suggest. Rivers, lakes,
+and vegetation *do* feed back into humidity here (see step 9 below and "Moisture recycling")
+-- the one place this module reaches outside its own fixed grid, into the persisted node
+fields hydrology.py/erosion.py/biomes.py already maintain.
 
 **A third, genuinely fixed-shape grid, used only here.** Elevation is Lagrangian (see [Why
 not a grid](#why-not-a-grid)); the render grid ([Render image](#render-image)) is a *ragged*
@@ -1001,25 +1003,63 @@ first and closing the loop only for the final consumer-facing fields:
    pole/antimeridian special-casing is needed the way a lat/lon-tangent-plane BFS search would
    require. Land temperature itself is never moderated -- only air temperature is.
 9. **Humidity** -- an evaporation ceiling over ocean from the local final ocean temperature,
-   advected onto land by a wind-driven 2D sweep: a zonal pass and a meridional pass (each a
-   sequential flow-direction walk, vectorized across the perpendicular axis, single-column
-   evaporation/retention/orographic-dump step per iteration -- pure numpy, no `numba`),
-   blended per-cell by each wind component's share of total wind magnitude. The zonal pass's
-   sweep *direction* is the same fixed latitude-band lookup wind's meridional structure uses
-   (`zonal_direction_for_lat`), not the literal local wind sign. No evapotranspiration term
-   (needs vegetation, which doesn't exist here -- an absent input, not a simplified one).
+   *plus* a local land-surface moisture source (lake/river evaporation and vegetation
+   transpiration -- see "Moisture recycling" below), advected onto land by a wind-driven 2D
+   sweep: a zonal pass and a meridional pass (each a sequential flow-direction walk,
+   vectorized across the perpendicular axis, single-column evaporation/retention/orographic-
+   dump step per iteration -- pure numpy, no `numba`), blended per-cell by each wind
+   component's share of total wind magnitude. The zonal pass's sweep *direction* is the same
+   fixed latitude-band lookup wind's meridional structure uses (`zonal_direction_for_lat`),
+   not the literal local wind sign. Land-cell moisture (advected carry-over plus local source)
+   is capped at the same ceiling ocean evaporation saturates at -- without that cap, a long,
+   uniformly-sourced land stretch (a continent-spanning rainforest belt) would compound its
+   own source additively, cell after cell, toward an asymptote many multiples of any
+   physically sensible humidity value; confirmed directly during development as a genuine
+   runaway (mean land precipitation still climbing after ten simulated steps, land humidity
+   exceeding the ocean's own maximum) before this cap was added.
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) -- no zonal
     latitude-climatology baseline (equator/mid-latitude wet bands), cut deliberately.
-    Feeds erosion and hydrology (see [Erosion](#erosion) and
-    [Hydrology](#hydrology)) but still nothing else (no vegetation).
+    Feeds erosion and hydrology (see [Erosion](#erosion) and [Hydrology](#hydrology)), and
+    -- one step later, via the moisture-recycling source above -- itself.
 
-**Scope, explicitly decided.** Kept out: river outflow feeding currents (no rivers exist),
-deep currents, precipitation's zonal climatology baseline. Included, even though richer than
-a one-line causal description: axial tilt, wind's mountain deflection/Venturi/wake, ocean
-currents' coastal deflection/land swirl/circumglobal boost/wake -- implemented in full, not
-simplified down. Dropped outright, not reduced (their inputs don't exist in mantle-bloom):
-humidity's evapotranspiration term, river outflow, lake climate influence.
+**Moisture recycling: rivers, lakes, and vegetation release moisture too** -- the "rain in a
+rainforest" effect, where a wet, densely-vegetated region partly sustains its own
+precipitation. `compute_humidity` samples `plates.ElevationLine`'s own persisted `lake_depth`/
+`channel_depth` fields onto the climate grid (the same nearest-neighbor resample elevation
+itself already gets, see `_sample_elevation_and_crust`) to size a lake-evaporation and a
+river-evaporation source; a third source, vegetation transpiration, comes from
+`biomes.classify_biomes` (`VEGETATION_TRANSPIRATION_BY_BIOME`, a hand-picked weight per named
+biome peaking at Tropical Rainforest/Carboniferous Forest, near zero at Ice/Tundra/desert
+biomes) applied to a *flat*, slope-less classification (this module has no grid-based slope of
+its own -- an approximation that only matters for the Wetland/Carboniferous-Forest split,
+irrelevant to a transpiration weight). Classifying vegetation needs a precipitation value, and
+this step's own precipitation is exactly what transpiration itself feeds into -- so, like
+every other circular coupling in this module (e.g. ocean current <-> temperature), the loop is
+broken with a one-step lag: vegetation is classified from `World.climate_cache`, last step's
+already-cached snapshot, not this step's still-unknown one. Zero everywhere on a world's very
+first call (`world.climate_cache is None`), self-correcting after one step. A frozen surface
+(`air_temperature_c` below `hydrology.FREEZE_POINT_C`) can't evaporate, so lake/river
+evaporation -- but not transpiration, already near zero in any biome cold enough to freeze --
+is zeroed there.
+
+This also decreases the standing water it comes from, per the same request that asked for the
+recycling effect in the first place: lake evaporation already shrinks `lake_depth` (lakes.py's
+own water balance, a separate, unrelated mechanism computing the same physical process); river
+evaporation is a new loss along `hydrology.route_downstream` (`RIVER_EVAPORATION_*`), reducing
+`flow_accum` as water flows through a warm, dry stretch. That evaporation loss can't be the
+same one climate.py's own source term reads, since hydrology.py runs *after* climate.py each
+step (consuming its precipitation/temperature output) -- climate.py's land-surface term is
+necessarily a same-step stand-in sized from the persisted channel_depth instead, not the
+literal amount hydrology.py evaporates this same step.
+
+**Scope, explicitly decided.** Kept out: river outflow feeding currents, deep currents,
+precipitation's zonal climatology baseline. Included, even though richer than a one-line
+causal description: axial tilt, wind's mountain deflection/Venturi/wake, ocean currents'
+coastal deflection/land swirl/circumglobal boost/wake, and (as of the moisture-recycling
+addition above) humidity's evapotranspiration term and lake/river climate influence --
+implemented in full, not simplified down. Dropped outright: river outflow feeding currents,
+the one river/lake/vegetation-climate coupling still not modeled.
 
 **Rendering.** `render_image.py`'s `CLIMATE_VIEWS` (`temperature`, `wind`, `oceanCurrents`,
 `humidity`, `precipitation`, `biome`) route to `_render_climate_view`, a separate path from
@@ -1426,16 +1466,25 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   "memory") has already reached its basin's
   true spill point, in which case it redirects to `spill_target` instead of staying a
   dead-end sink forever (turning a filled-past-its-rim lake into a normal through-flowing
-  river cell).
+  river cell). A node below `FREEZE_POINT_C` (see [Glaciation](#glaciation) for why this is a
+  separate, warmer threshold than the one permanent glaciers use) is unconditionally forced to
+  -1 *after* the should_spill check above, rather than folded into the same check: an
+  ordinary, unobstructed downhill node has `filled_elevation` exactly equal to its own
+  elevation, so forcing it to look like a sink first would make it trivially satisfy
+  `water_surface >= filled_elevation` and get redirected right back onto its own normal
+  neighbor via `spill_target` -- silently undoing the freeze for most ordinary terrain (caught
+  directly by this module's own test coverage). Applying the override to the final
+  `flow_target` instead has no such escape hatch.
 - **Downstream accumulation** (`route_downstream`, public -- `erosion.py` reuses it
   directly): a single forward sweep over land nodes in elevation-descending order,
   accumulating a source quantity (precipitation, for `flow_accum`; eroded material, for
   erosion's own deposition pass) along `flow_target` edges, weighted by a `retain_fraction`
-  per edge. Correct in one pass because
-  every node's target is guaranteed strictly lower, so it's always visited *later* in this
-  same order. There is no separate `loss_fraction` term for in-transit river evaporation --
-  not needed, and this module already drops temperature-driven effects on
-  hydrology to match erosion.py's own "precipitation is enough" simplification.
+  per edge (deposited locally, e.g. sediment) and, as of the moisture-recycling addition, a
+  separate `loss_fraction` per edge (in-transit river evaporation, `RIVER_EVAPORATION_*`) --
+  unlike a retained share, a lost share simply vanishes rather than being added to `deposited`,
+  since it left as atmospheric moisture rather than staying in the channel. Correct in one
+  pass because every node's target is guaranteed strictly lower, so it's always visited
+  *later* in this same order.
 
 <a id="lakes-are-an-explicit-tree"></a>
 **Lakes are an explicit object tree (`lakes.py`, not `hydrology.py`)**, replacing an earlier
@@ -1579,29 +1628,63 @@ a real stepped world (a river's own classification genuinely stops at a lake's s
 <a id="glaciation"></a>
 ## Glaciation (`hydrology.py`)
 
-A node colder than `GLACIER_ACCUMULATION_TEMP_C` (-10C -- this model has no seasons, so a
-mean annual temperature just barely below 0C represents a place with seasonal snow that
-would fully melt over a real year, not permanent glaciation) permanently accumulates ice
-instead of ever holding liquid water: any precipitation there is treated as fully frozen --
-no partial liquid/frozen split, matching `erosion.py`'s existing "use precipitation is
-enough" simplification, just gated by the same accumulation threshold rather than dropped
-entirely -- and an existing lake sitting there freezes solid into `glacier_depth` this same
-step, *before* `flow_target` is (re)computed, so a lake that just froze is correctly treated
-as a genuine sink again this step rather than immediately re-filling from this same step's
-routed water (see `lakes.step_lakes`'s own docstring). This ordering avoids a specific failure
-mode: without the freeze-before-routing ordering and an `is_accumulating` gate on
-`lakes.step_lakes`'s own inflow/pin-at-cap logic, a lake formed in a warmer epoch would never
-freeze, and a just-frozen basin would re-flood back to its old cap the very same step,
-double-counting the same water as both a lake and a glacier at once.
+**Two separate cold thresholds, not one.** `FREEZE_POINT_C` (0C, the real phase-change point)
+governs whether precipitation falls as snow/ice rather than rain, and whether standing lake
+water or flowing river water freezes solid *this same step* -- a node below it never holds
+liquid water at all: any precipitation there is treated as fully frozen (no partial
+liquid/frozen split, matching `erosion.py`'s existing "use precipitation is enough"
+simplification), an existing lake sitting there freezes solid into `glacier_depth`, and a
+river reaching it stops flowing entirely this step. `GLACIER_ACCUMULATION_TEMP_C` (-10C) stays
+a separate, colder reference used only by the melt-rate formula below (where melt bottoms out
+at zero) -- this model has no seasons, so a mean annual temperature only slightly below
+freezing represents a place with seasonal snow/ice that still melts back down every step, not
+permanent glaciation; only the much colder zone keeps enough of its own snowfall through every
+step's melt term to actually build a permanent ice sheet. Confirmed directly this stays
+self-correcting: a node at, say, -3C genuinely freezes its lake/river solid every step (the
+warmer threshold), but the ice it forms also melts back at a real, if reduced, rate the very
+same step, converging to a near-zero *net* accumulation there rather than a spreading glacier.
+
+Freezing (whichever threshold) happens *before* `flow_target` is (re)computed, so a lake that
+just froze is correctly treated as a genuine sink again this step rather than immediately
+re-filling from this same step's routed water (see `lakes.step_lakes`'s own docstring). This
+ordering avoids a specific failure mode: without the freeze-before-routing ordering and an
+`is_frozen` gate on `lakes.step_lakes`'s own inflow/pin-at-cap logic, a lake formed in a
+warmer epoch would never freeze, and a just-frozen basin would re-flood back to its old cap
+the very same step, double-counting the same water as both a lake and a glacier at once.
+
+**A frozen river doesn't just vanish.** `_compute_flow_direction` forces a frozen node's
+`flow_target` to -1 unconditionally (see [Hydrology](#hydrology) for why this override can't
+reuse the ordinary should-spill escape valve a genuine closed-basin lake gets) -- water
+arriving there this step has nowhere to go, so `route_downstream` deposits it in place
+(`water_deposited`), and that deposited amount is folded straight into `glacier_depth` right
+after routing finishes (`_update_glaciers` itself already ran by then, so this newly-frozen
+river ice starts flowing/melting from next step onward -- an accepted one-step lag, the same
+tolerance this codebase generally has for that kind of staleness). A river's flow also loses a
+real, evaporating fraction of itself every step it's *not* frozen (`RIVER_EVAPORATION_*`,
+applied as `route_downstream`'s new `loss_fraction`, distinct from `retain_fraction`'s
+locally-deposited share -- an evaporated share simply vanishes rather than settling anywhere)
+-- warmer nodes lose more, capped well short of 1.0 so a single very large step can't
+evaporate an entire river in one hop. Excluded at an already-frozen node (already blocked
+above) and at a spilling lake's own breach node (`should_spill`, see [Hydrology](#hydrology)):
+that term already models a lake's concentrated overflow surge sized purely from its own
+surface area, and shouldn't also lose a further fraction to evaporation in the very same step
+it's cut loose. This evaporated water is genuinely lost from the river system, and is exactly
+half of the "rivers, lakes, and vegetation release moisture" ask (see [Climate](#climate)'s own
+"Moisture recycling" section for the other half -- that lost moisture actually reappearing as
+atmospheric humidity, which for architectural reasons can't be the literal same-step amount
+this module evaporates, since climate.py runs *before* this module each step).
 
 - **Accumulation**: `GLACIER_ACCUMULATION_RATE` converts a step's frozen precipitation into
   meters of ice-depth gain, the same stylized-units-to-meters role `LAKE_FILL_RATE` plays
   for lakes. No cap on `glacier_depth` -- real ice sheets have no basin-capacity analogue.
-- **Melt**: once a node warms back above the threshold, `GLACIER_MELT_RATE_M_PER_MYR`
-  (scaled by how far above the threshold, capped at `GLACIER_MELT_MAX_FACTOR`) melts ice
-  back down, capped so a step can't melt more than actually exists. The melted amount feeds
-  directly into that step's water source for `route_downstream` -- real meltwater, feeding
-  real river discharge, not a separate accounting bucket.
+- **Melt**: `GLACIER_MELT_RATE_M_PER_MYR`, scaled by how far the node's temperature sits above
+  `GLACIER_ACCUMULATION_TEMP_C` specifically (capped at `GLACIER_MELT_MAX_FACTOR`) -- not
+  `FREEZE_POINT_C` -- melts ice back down every step regardless of whether that step's water
+  is currently freezing solid or not (this is exactly what keeps the 0C-to--10C band from
+  building a permanent ice sheet, see above), capped so a step can't melt more than actually
+  exists. The melted amount feeds directly into that step's water source for
+  `route_downstream` -- real meltwater, feeding real river discharge, not a separate
+  accounting bucket.
 - **Flow**: a slope-scaled fraction of each node's ice (`GLACIER_FLOW_RATE_PER_MYR`, capped
   at `GLACIER_MAX_FLOW_FRACTION`) moves to its own `flow_target` each step -- the same graph
   water uses, via a direct scatter-add (`np.add.at`) rather than `route_downstream`'s
@@ -1852,14 +1935,19 @@ than an oversight:
   -- a coarser approximation than the rest of the model, not a bug, and a possible future
   refinement (e.g. weighting by directional alignment with the plate's own motion rather
   than raw border presence).
-- **No biomes/vegetation yet.** Climate (see [Climate](#climate)) feeds erosion, deposition,
-  hydrology, and glaciation (see [Erosion](#erosion), [Hydrology](#hydrology), and
-  [Glaciation](#glaciation): rain/river/weathering/glacier erosion, downstream deposition,
-  rivers, lakes, and glaciers, with glacier flattening as a mantle-bloom-original addition).
-  Vegetation's own effects (weathering boost,
-  evapotranspiration) remain explicitly out of scope, since their input (a vegetation field)
-  doesn't exist here at all -- that work would need to be designed from scratch if revisited
-  on this sphere-native foundation.
+- **Vegetation is a derived climate classification, not a persisted field.** Climate (see
+  [Climate](#climate)) feeds erosion, deposition, hydrology, and glaciation (see
+  [Erosion](#erosion), [Hydrology](#hydrology), and [Glaciation](#glaciation):
+  rain/river/weathering/glacier erosion, downstream deposition, rivers, lakes, and glaciers,
+  with glacier flattening as a mantle-bloom-original addition) and, since the moisture-
+  recycling addition (see [Climate](#climate)'s own "Moisture recycling" section), humidity's
+  evapotranspiration term feeds back the other way too, sourced from `biomes.classify_biomes`.
+  Vegetation still isn't a *persisted* per-node field anywhere, though (`biomes.py`'s
+  classification, and climate.py's own transpiration weight derived from it, are both
+  recomputed fresh from climate every call) -- so weathering's own vegetation boost
+  (erosion.py) and soil formation's vegetation input (geology.py, which still falls back to a
+  warmth/moisture `productivity` proxy) remain out of scope, since neither has a persisted
+  field to read like hydrology.py's `lake_depth`/`channel_depth`.
 - **No glacial eustatic sea-level coupling, no seasons.** Glaciation is purely local/per-node
   here -- see [Glaciation](#glaciation).
 - **Single in-memory world, no persistence.** See

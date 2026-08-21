@@ -34,15 +34,36 @@ simplification, not a bug, since nothing here needs the cache to be exactly curr
 latitude-banded meridional wind + Coriolis zonal deflection, mountain deflection/Venturi/
 wake, Ekman-based ocean currents + coastal deflection/smoothing/wake + land swirl +
 circumglobal boost, convergence-based swell detection, semi-Lagrangian temperature
-advection along currents, evaporation-ceiling + wind-driven 2D humidity advection, and
-orographic precipitation.
+advection along currents, evaporation-ceiling + land-surface moisture source + wind-driven
+2D humidity advection, and orographic precipitation.
 
-**Out of scope** (mantle-bloom has no vegetation, rivers, or lakes -- these
-mechanisms' *inputs* don't exist here, not a reduced-fidelity choice): humidity's
-evapotranspiration term, river outflow feeding currents, lake climate influence.
-**Deliberately cut** (confirmed with the user): river outflow, deep currents, and
-precipitation's zonal latitude-climatology baseline (equator/mid-latitude wet bands) --
-precipitation here is purely a function of humidity and orographic lift.
+**Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
+humidity field ocean evaporation does** -- the "rain in a rainforest" effect, where a wet,
+densely-vegetated region partly sustains its own precipitation. `compute_humidity`'s land
+cells get an extra local source alongside ocean cells' own evaporation ceiling: lake surface
+and river-channel evaporation (sized from the *persisted*, already-known `lake_depth`/
+`channel_depth` fields on `plates.ElevationLine`, resampled onto this grid exactly like
+elevation itself -- see `_sample_elevation_and_crust`) plus vegetation transpiration (sized
+from a biome classification, `biomes.classify_biomes`, of *last* step's climate snapshot --
+this step's own precipitation isn't known yet at the point transpiration needs to be decided,
+so, like every other circular coupling in this module, this one is broken with a one-step lag
+rather than solved simultaneously -- see `_vegetation_transpiration_source`). A frozen surface
+(`air_temperature_c` below `hydrology.FREEZE_POINT_C`) can't evaporate, so lake/river
+evaporation -- but not vegetation transpiration, already near zero in any biome cold enough to
+freeze -- is zeroed there. This also decreases the standing water it comes from: lake
+evaporation already shrinks `lake_depth` (lakes.py's own water balance, unrelated bookkeeping,
+same physical process); river evaporation is a genuinely new loss along `route_downstream`,
+see hydrology.py's own `RIVER_EVAPORATION_*` constants -- climate.py's source term here can't
+be sized from that same-step loss directly (hydrology.py runs *after* this module each step,
+consuming its precipitation/temperature output), so it's a same-step stand-in sized from the
+persisted channel_depth instead.
+
+**Out of scope** (mantle-bloom has no lakes/rivers/vegetation *state of its own* to persist
+here -- this module borrows plates.py's/biomes.py's already-persisted state above rather than
+maintaining a parallel copy): river outflow feeding currents. **Deliberately cut** (confirmed
+with the user): river outflow into currents, deep currents, and precipitation's zonal
+latitude-climatology baseline (equator/mid-latitude wet bands) -- precipitation here is purely
+a function of humidity and orographic lift.
 
 **Pipeline order** (breaks what would otherwise be a circular dependency -- wind needs
 temperature, but the *final* ocean temperature needs currents, which need wind): insolation
@@ -62,7 +83,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, plates
+from . import biomes, geometry, hydrology, plates
 
 if TYPE_CHECKING:
     from .world import World
@@ -145,15 +166,21 @@ def _build_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.nda
     return lat_deg, lon_deg, world_xyz
 
 
-def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Nearest-elevation-node resample of the *current* plate state onto the climate grid --
     same cKDTree technique render_image.py's _render_grid_arrays already uses. Returns
-    (elevation_m, is_ocean), both (H, W). `is_ocean` is elevation-derived (elevation <=
-    world.sea_level_m, live-adjustable via POST /world/controls -- see World.sea_level_m),
-    *not* crust_type -- a submerged part of a continental plate (anything past its shelf) is
-    physically ocean, same as the render_image.py elevation view's own hypsometric coloring
-    already treats it, and needs the same ocean-side climate treatment (evaporation source,
-    current flow, coastal deflection) as any other ocean cell."""
+    (elevation_m, is_ocean, lake_depth_m, channel_depth_m), all (H, W). `is_ocean` is
+    elevation-derived (elevation <= world.sea_level_m, live-adjustable via POST
+    /world/controls -- see World.sea_level_m), *not* crust_type -- a submerged part of a
+    continental plate (anything past its shelf) is physically ocean, same as the
+    render_image.py elevation view's own hypsometric coloring already treats it, and needs the
+    same ocean-side climate treatment (evaporation source, current flow, coastal deflection)
+    as any other ocean cell. `lake_depth_m`/`channel_depth_m` are the same persisted per-node
+    fields hydrology.py/erosion.py already carry on `plates.ElevationLine`
+    (`plates.collect_all_lake_depth`/`collect_all_channel_depth`, index-aligned with
+    `all_points_and_elevation`'s own per-plate/per-line order -- see those functions' own
+    docstrings), resampled with this same nearest-neighbor `idx` rather than a second query --
+    climate.py's own moisture-recycling humidity source (see compute_humidity)."""
     height, width, _ = world_xyz.shape
     points_list, elev_list = [], []
     for plate in world.plates:
@@ -164,15 +191,20 @@ def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np
         elev_list.append(elev)
     flat_xyz = world_xyz.reshape(-1, 3)
     if not points_list:
-        return np.zeros((height, width)), np.ones((height, width), dtype=bool)
+        empty = np.zeros((height, width))
+        return empty, np.ones((height, width), dtype=bool), empty.copy(), empty.copy()
 
     all_points = np.concatenate(points_list, axis=0)
     all_elev = np.concatenate(elev_list, axis=0)
+    all_lake = plates.collect_all_lake_depth(world.plates)
+    all_channel = plates.collect_all_channel_depth(world.plates)
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz)
     elevation = all_elev[idx].reshape(height, width)
     is_ocean = elevation <= world.sea_level_m
-    return elevation, is_ocean
+    lake_depth = all_lake[idx].reshape(height, width)
+    channel_depth = all_channel[idx].reshape(height, width)
+    return elevation, is_ocean, lake_depth, channel_depth
 
 
 # ---------------------------------------------------------------------------------------
@@ -751,9 +783,90 @@ OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
 PRECIP_HUMIDITY_COEFFICIENT_MM = 1500.0
 OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 
+# Moisture recycling: lake/river evaporation and vegetation transpiration, all added as a
+# local land-surface source alongside ocean cells' own evap_ceiling -- see module docstring.
+# Reference depths pick the point at which a lake/river reads as "big enough to evaporate at
+# its own full rate" -- LAKE_EVAPORATION_REFERENCE_DEPTH_M against lake_depth's own realistic
+# range (lakes.py's LAKE_FILL_RATE-driven depths), RIVER_EVAPORATION_REFERENCE_DEPTH_M against
+# channel_depth's much larger range (erosion.py's MAX_CHANNEL_DEPTH_M = 2000 -- a real river
+# doesn't need to be anywhere near that incised to have a substantial, fully-evaporating
+# surface). Ceilings are smaller than a full ocean cell's own MAX_EVAPORATION_CEILING -- a
+# lake or river covers only part of a land cell's own area, unlike an ocean cell, which is
+# entirely water.
+LAKE_EVAPORATION_CEILING = 0.5
+LAKE_EVAPORATION_REFERENCE_DEPTH_M = 20.0
+RIVER_EVAPORATION_CEILING = 0.15
+RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
+
+# Vegetation transpiration: VEGETATION_TRANSPIRATION_MAX is a Tropical-Rainforest-strength
+# source (see VEGETATION_TRANSPIRATION_BY_BIOME below, index-aligned with
+# biomes.BIOME_NAMES), picked below MAX_EVAPORATION_CEILING's own scale -- transpiration
+# meaningfully thickens local humidity but shouldn't on its own out-evaporate the open ocean.
+VEGETATION_TRANSPIRATION_MAX = 0.6
+VEGETATION_TRANSPIRATION_BY_BIOME = np.array(
+    [
+        0.0,   # Ocean
+        0.0,   # Ice
+        0.05,  # Tundra -- sparse, cold-stunted vegetation
+        0.5,   # Boreal Forest
+        0.02,  # Temperate Desert
+        0.2,   # Temperate Grassland
+        0.35,  # Woodland/Shrubland
+        0.7,   # Temperate Seasonal Forest
+        0.9,   # Temperate Rainforest
+        0.02,  # Subtropical Desert
+        0.3,   # Savanna
+        0.75,  # Tropical Seasonal Forest
+        1.0,   # Tropical Rainforest -- the archetypal "rain recycles itself" biome
+        0.5,   # Wetland
+        0.95,  # Carboniferous Forest -- dense primeval swamp-forest
+        0.0,   # Intertidal Zone
+    ]
+)
+assert len(VEGETATION_TRANSPIRATION_BY_BIOME) == len(biomes.BIOME_NAMES)
+
 
 def _evaporation_ceiling(ocean_temperature_c: np.ndarray) -> np.ndarray:
     return np.clip(ocean_temperature_c / EVAPORATION_REFERENCE_TEMP_C, MIN_EVAPORATION_CEILING, MAX_EVAPORATION_CEILING)
+
+
+def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
+    """Land-surface transpiration source, (H, W) -- see module docstring for why this is
+    necessarily a one-step-lagged quantity: biome density needs a precipitation value, and
+    this step's own precipitation is what transpiration itself feeds into. Classifies *last*
+    step's cached climate snapshot (`world.climate_cache`, already the "up to one step stale,
+    an accepted simplification" value every other same-turn caller of climate.py reuses --
+    see World.climate_cache's own docstring) with `biomes.classify_biomes`, against *this*
+    step's own elevation_m/is_ocean (terrain barely changes step to step, so this mismatch is
+    negligible) -- passing a flat (all-zero) slope, since this module has no grid-based slope
+    of its own to offer (unlike erosion.py's node-cloud slope); classify_biomes only needs
+    slope for the Wetland/Carboniferous Forest split, and this call only cares about the
+    resulting *transpiration weight*, not an authoritative biome map, so that approximation is
+    fine here. Returns zeros everywhere on a world's very first call (`world.climate_cache is
+    None`, before any step has run) -- self-correcting after one step, the same tolerance for
+    initial staleness the cache itself already has."""
+    prev = world.climate_cache
+    if prev is None:
+        return np.zeros_like(elevation_m)
+    prev_temperature_c = np.where(prev.is_ocean, prev.ocean_temperature_c, prev.air_temperature_c)
+    flat_slope = np.zeros_like(elevation_m)
+    biome_id = biomes.classify_biomes(prev_temperature_c, prev.precipitation_mm, elevation_m, flat_slope, is_ocean, world.sea_level_m)
+    return VEGETATION_TRANSPIRATION_BY_BIOME[biome_id] * VEGETATION_TRANSPIRATION_MAX
+
+
+def _land_moisture_source(
+    air_temperature_c: np.ndarray, lake_depth_m: np.ndarray, channel_depth_m: np.ndarray, vegetation_source: np.ndarray
+) -> np.ndarray:
+    """Combines lake evaporation, river evaporation, and vegetation transpiration into one
+    local land-surface moisture source, (H, W) -- see module docstring. Lake/river evaporation
+    (but not transpiration, already near zero in any biome cold enough to freeze) is zeroed
+    wherever the surface is below `hydrology.FREEZE_POINT_C` -- a frozen lake or river can't
+    evaporate."""
+    lake_fraction = np.clip(lake_depth_m / LAKE_EVAPORATION_REFERENCE_DEPTH_M, 0.0, 1.0)
+    river_fraction = np.clip(channel_depth_m / RIVER_EVAPORATION_REFERENCE_DEPTH_M, 0.0, 1.0)
+    water_source = lake_fraction * LAKE_EVAPORATION_CEILING + river_fraction * RIVER_EVAPORATION_CEILING
+    water_source = np.where(air_temperature_c < hydrology.FREEZE_POINT_C, 0.0, water_source)
+    return water_source + vegetation_source
 
 
 def _retention_factor(elevation_factor_cell: np.ndarray) -> np.ndarray:
@@ -767,7 +880,10 @@ def _orographic_retained_fraction(gain_m: np.ndarray) -> np.ndarray:
     return np.where(gain_m > 0, retained, 1.0)
 
 
-def _humidity_zonal_sweep(is_ocean: np.ndarray, elevation_m: np.ndarray, evap_ceiling: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _humidity_zonal_sweep(
+    is_ocean: np.ndarray, elevation_m: np.ndarray, evap_ceiling: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray,
+    land_source: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
     height, width = is_ocean.shape
     zonal_dir = zonal_direction_for_lat(lat_deg)
     rows = np.arange(height)
@@ -783,8 +899,17 @@ def _humidity_zonal_sweep(is_ocean: np.ndarray, elevation_m: np.ndarray, evap_ce
             ocean_i = is_ocean[rows, cols]
             ceiling_i = evap_ceiling[rows, cols]
             ef_i = elevation_factor[rows, cols]
+            source_i = land_source[rows, cols]
 
-            land_moisture = moisture * _retention_factor(ef_i)
+            # Capped at the same physical ceiling ocean evaporation itself saturates at --
+            # air can only hold so much moisture regardless of source. Without this cap, a
+            # long, uniformly-sourced land stretch (e.g. a continent-spanning rainforest belt)
+            # would compound its own local source additively, cell after cell, toward an
+            # asymptote of source/(1 - retention) -- confirmed directly this blows past any
+            # physically sensible value (multiples of MAX_EVAPORATION_CEILING) well before a
+            # world's vegetation even finishes saturating, since the fixed point of that
+            # recurrence is a real cliff, not a gentle diminishing return.
+            land_moisture = np.minimum(moisture * _retention_factor(ef_i) + source_i, MAX_EVAPORATION_CEILING)
             after_source = np.where(ocean_i, ceiling_i, land_moisture)
             retained = _orographic_retained_fraction(elev_i - prev_elev)
             new_moisture = np.where(ocean_i, after_source, after_source * retained)
@@ -815,7 +940,10 @@ def _meridional_bands(lat_deg: np.ndarray) -> list[np.ndarray]:
     return bands
 
 
-def _humidity_meridional_sweep(is_ocean: np.ndarray, elevation_m: np.ndarray, evap_ceiling: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _humidity_meridional_sweep(
+    is_ocean: np.ndarray, elevation_m: np.ndarray, evap_ceiling: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray,
+    land_source: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
     height, width = is_ocean.shape
     humidity = np.zeros((height, width))
     orographic = np.zeros((height, width))
@@ -827,8 +955,11 @@ def _humidity_meridional_sweep(is_ocean: np.ndarray, elevation_m: np.ndarray, ev
             ocean_r = is_ocean[r]
             ceiling_r = evap_ceiling[r]
             ef_r = elevation_factor[r]
+            source_r = land_source[r]
 
-            land_moisture = moisture * _retention_factor(ef_r)
+            # See the matching cap in _humidity_zonal_sweep for why this can't be left
+            # uncapped.
+            land_moisture = np.minimum(moisture * _retention_factor(ef_r) + source_r, MAX_EVAPORATION_CEILING)
             after_source = np.where(ocean_r, ceiling_r, land_moisture)
             retained = _orographic_retained_fraction(elev_r - prev_elev)
             new_moisture = np.where(ocean_r, after_source, after_source * retained)
@@ -842,17 +973,29 @@ def _humidity_meridional_sweep(is_ocean: np.ndarray, elevation_m: np.ndarray, ev
 
 
 def compute_humidity(
-    is_ocean: np.ndarray, elevation_m: np.ndarray, ocean_temperature_c: np.ndarray,
+    is_ocean: np.ndarray, elevation_m: np.ndarray, ocean_temperature_c: np.ndarray, air_temperature_c: np.ndarray,
     wind_u: np.ndarray, wind_v: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray,
+    lake_depth_m: np.ndarray | None = None, channel_depth_m: np.ndarray | None = None, vegetation_source: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Evaporation ceiling over ocean (from local ocean temperature), wind-driven 2D
-    advection onto land -- a zonal sweep and a meridional sweep, blended per-cell by each
-    wind component's share of total wind magnitude (a cell whose wind is mostly north-south
-    gets its humidity mostly from the meridional pass, and vice versa). No evapotranspiration
-    term (needs vegetation, which doesn't exist here). Returns (humidity, orographic_dump)."""
+    """Evaporation ceiling over ocean (from local ocean temperature), plus a local
+    lake/river-evaporation-and-vegetation-transpiration source over land (see module
+    docstring and `_land_moisture_source`), wind-driven 2D advection onto land -- a zonal
+    sweep and a meridional sweep, blended per-cell by each wind component's share of total
+    wind magnitude (a cell whose wind is mostly north-south gets its humidity mostly from the
+    meridional pass, and vice versa). `lake_depth_m`/`channel_depth_m`/`vegetation_source`
+    default to zero (no land moisture source at all) so existing callers -- most usefully,
+    test fixtures exercising this function in isolation -- keep working unchanged. Returns
+    (humidity, orographic_dump)."""
     evap_ceiling = _evaporation_ceiling(ocean_temperature_c)
-    humidity_zonal, oro_zonal = _humidity_zonal_sweep(is_ocean, elevation_m, evap_ceiling, elevation_factor, lat_deg)
-    humidity_meridional, oro_meridional = _humidity_meridional_sweep(is_ocean, elevation_m, evap_ceiling, elevation_factor, lat_deg)
+    zero_land = np.zeros_like(elevation_m)
+    land_source = _land_moisture_source(
+        air_temperature_c,
+        zero_land if lake_depth_m is None else lake_depth_m,
+        zero_land if channel_depth_m is None else channel_depth_m,
+        zero_land if vegetation_source is None else vegetation_source,
+    )
+    humidity_zonal, oro_zonal = _humidity_zonal_sweep(is_ocean, elevation_m, evap_ceiling, elevation_factor, lat_deg, land_source)
+    humidity_meridional, oro_meridional = _humidity_meridional_sweep(is_ocean, elevation_m, evap_ceiling, elevation_factor, lat_deg, land_source)
 
     abs_u, abs_v = np.abs(wind_u), np.abs(wind_v)
     total = abs_u + abs_v
@@ -880,7 +1023,8 @@ def compute_climate(world: World, height: int = GRID_HEIGHT, width: int = GRID_W
     """Runs the full climate pipeline against the world's *current* plate state. See module
     docstring for the pipeline order and why it's structured this way."""
     lat_deg, lon_deg, world_xyz = _build_grid(height, width)
-    elevation_m, is_ocean = _sample_elevation_and_crust(world, world_xyz)
+    elevation_m, is_ocean, lake_depth_m, channel_depth_m = _sample_elevation_and_crust(world, world_xyz)
+    vegetation_source = _vegetation_transpiration_source(world, elevation_m, is_ocean)
 
     insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_temperature_c = compute_land_temperature(insolation_row, elevation_m)
@@ -901,7 +1045,10 @@ def compute_climate(world: World, height: int = GRID_HEIGHT, width: int = GRID_W
     ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
     air_temperature_c = compute_air_temperature(land_temperature_c, ocean_temperature_c, is_ocean, world_xyz)
 
-    humidity, orographic_dump = compute_humidity(is_ocean, elevation_m, ocean_temperature_c, wind_u, wind_v, elevation_factor, lat_deg)
+    humidity, orographic_dump = compute_humidity(
+        is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
+        lake_depth_m, channel_depth_m, vegetation_source,
+    )
     precipitation_mm = compute_precipitation(humidity, orographic_dump)
 
     return ClimateFields(

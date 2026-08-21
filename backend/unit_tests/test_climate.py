@@ -176,7 +176,8 @@ def test_humidity_is_higher_near_warm_ocean_and_decays_inland():
     wind_v = np.zeros((height, width))
     elevation_factor = np.ones((height, width))
 
-    humidity, _ = climate.compute_humidity(is_ocean, elevation, ocean_temperature, wind_u, wind_v, elevation_factor, lat_deg)
+    air_temperature = ocean_temperature.copy()
+    humidity, _ = climate.compute_humidity(is_ocean, elevation, ocean_temperature, air_temperature, wind_u, wind_v, elevation_factor, lat_deg)
     # The zonal sweep's transport direction is the fixed latitude-band lookup
     # (zonal_direction_for_lat), not the literal sign of wind_u -- pick a row where that band
     # direction actually runs west-to-east (ocean -> land, increasing column) so "coast" and

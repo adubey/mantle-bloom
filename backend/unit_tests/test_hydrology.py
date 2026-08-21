@@ -104,15 +104,40 @@ def test_compute_flow_direction_sink_redirects_once_lake_reaches_spill_point():
     filled = np.array([50.0, 50.0, 20.0, -10.0])
     spill = np.array([2, 2, 3, -1])
 
-    not_yet_full, not_yet_spilling = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4))
+    not_frozen = np.zeros(4, dtype=bool)
+    not_yet_full, not_yet_spilling = hydrology._compute_flow_direction(
+        elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4), not_frozen
+    )
     assert not_yet_full[0] == -1  # water surface 30 < 50, still a plain sink
     assert not not_yet_spilling[0]
 
     now_full, now_spilling = hydrology._compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4)
+        elevation, is_ocean, neighbor_idx, np.array([25.0, 0.0, 0.0, 0.0]), filled, spill, np.zeros(4), not_frozen
     )
     assert now_full[0] == 2  # water surface 30+25=55 >= 50 -- redirects to spill_target
     assert now_spilling[0]
+
+
+def test_compute_flow_direction_frozen_node_blocks_flow_even_on_unobstructed_terrain():
+    # Node 2 (elevation 20) has a real downhill neighbor (node 3, the ocean) with nothing
+    # blocking it -- filled_elevation[2] is exactly its own elevation, so if the frozen
+    # override were folded into the same is_sink/should_spill check the redirect above uses,
+    # forcing node 2's flow_target to -1 would make it trivially satisfy
+    # water_surface(20) >= filled_elevation(20) and get redirected right back onto its own
+    # ordinary downhill neighbor via spill_target -- silently undoing the freeze. The override
+    # must instead apply to the final flow_target, after that check has already run.
+    elevation = np.array([30.0, 50.0, 20.0, -10.0])
+    is_ocean = np.array([False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    filled = np.array([50.0, 50.0, 20.0, -10.0])
+    spill = np.array([2, 2, 3, -1])
+    is_frozen = np.array([False, False, True, False])
+
+    flow_target, should_spill = hydrology._compute_flow_direction(
+        elevation, is_ocean, neighbor_idx, np.zeros(4), filled, spill, np.zeros(4), is_frozen
+    )
+    assert flow_target[2] == -1  # frozen -- blocked, not redirected to its own ordinary neighbor
+    assert not should_spill[2]  # should_spill itself still reflects genuine basin-spill only
 
 
 def test_route_downstream_accumulates_along_a_chain():
@@ -148,6 +173,28 @@ def test_route_downstream_retain_fraction_deposits_partway():
     assert deposited[3] == 2.0
     # Conservation: total deposited equals total source.
     assert np.isclose(deposited.sum(), source.sum())
+
+
+def test_route_downstream_loss_fraction_evaporates_without_depositing():
+    # Same chain, but node 1 evaporates half of whatever passes through it -- unlike
+    # retain_fraction, that half must simply vanish (not show up in `deposited` anywhere),
+    # since it left as atmospheric moisture, not as material staying in the channel.
+    elevation = np.array([40.0, 30.0, 20.0, -5.0])
+    is_ocean = np.array([False, False, False, True])
+    flow_target = np.array([1, 2, 3, -1])
+    source = np.array([1.0, 1.0, 1.0, 0.0])
+    loss = np.array([0.0, 0.5, 0.0, 0.0])
+
+    through_flux, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, source, loss_fraction=loss)
+    # Node 1 receives 1.0 (its own) + 1.0 (from node 0) = 2.0, evaporates half (1.0), passes
+    # 1.0 onward -- none of the evaporated half is deposited anywhere.
+    assert through_flux[1] == 1.0
+    assert deposited[1] == 0.0
+    assert through_flux[2] == 2.0  # node 2's own 1.0 + the 1.0 that made it past node 1
+    assert deposited[3] == 2.0
+    # Conservation is broken on purpose here: 1.0 of the original 3.0 total source evaporated
+    # away instead of ending up in `deposited`.
+    assert np.isclose(deposited.sum(), source.sum() - 1.0)
 
 
 def test_compute_hydrology_end_to_end_on_a_small_synthetic_world():
@@ -238,11 +285,12 @@ def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_ste
     filled = np.array([30.0, 20.0, 25.0])
     spill = np.full(3, -1)
 
-    steepest, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3))
+    not_frozen = np.zeros(3, dtype=bool)
+    steepest, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, np.zeros(3), not_frozen)
     assert steepest[0] == 1  # no channel anywhere -- plain steepest descent
 
     channel_depth = np.array([0.0, 0.0, 50.0])  # node 2's channel is well-established
-    channelized, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
+    channelized, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth, not_frozen)
     assert channelized[0] == 2  # prefers the channelized neighbor even though it's less steep
 
 
@@ -256,7 +304,7 @@ def test_compute_flow_direction_ignores_a_barely_established_channel():
     spill = np.full(3, -1)
     channel_depth = np.array([0.0, 0.0, hydrology.CHANNEL_PREFERENCE_THRESHOLD_M - 1.0])
 
-    result, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth)
+    result, _ = hydrology._compute_flow_direction(elevation, is_ocean, neighbor_idx, np.zeros(3), filled, spill, channel_depth, np.zeros(3, dtype=bool))
     assert result[0] == 1
 
 
@@ -372,6 +420,49 @@ def test_compute_hydrology_freezes_an_existing_lake_when_cold():
 
     assert fields.lake_depth[7] == 0.0  # the lake froze, not still sitting there as water
     assert fields.glacier_depth[7] > 0.0  # its water moved into glacier_depth instead
+
+
+def test_compute_hydrology_freezes_a_lake_below_freezing_even_above_glacier_accumulation_temp():
+    # Same fixture as the -20C test above, but at -3C -- well above GLACIER_ACCUMULATION_TEMP_C
+    # (-10, permanent-glacier reference) but still below FREEZE_POINT_C (0, the real freezing
+    # point). A lake here must still freeze solid: freezing is gated at FREEZE_POINT_C, a
+    # separate, warmer threshold from the one permanent glaciers use.
+    d = 0.002
+    theta = d * np.arange(16)
+    elevation = np.array(
+        [500, 450, 400, 350, 300, 250, 200, 50, 300, 250, 200, 150, 100, 50, 10, -50], dtype=float
+    )
+    lake_depth = np.zeros(16)
+    lake_depth[7] = 30.0
+    plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
+    world = World(seed=0, plates=[plate])
+
+    precipitation = np.full(16, 500.0)
+    mildly_cold_temperature = np.full(16, -3.0)  # above GLACIER_ACCUMULATION_TEMP_C, below FREEZE_POINT_C
+
+    fields = hydrology.compute_hydrology(world, precipitation, mildly_cold_temperature, years=1_000_000)
+    assert fields.lake_depth[7] == 0.0  # frozen solid despite being nowhere near -10C
+    assert fields.glacier_depth[7] > 0.0
+
+
+def test_compute_hydrology_freezing_river_blocks_flow_and_banks_ice_at_the_freeze_point():
+    # Same 12-node monotonic-descent chain as the end-to-end test, but cold enough (-3C) to
+    # freeze without being anywhere near GLACIER_ACCUMULATION_TEMP_C. No liquid water should
+    # reach the ocean at all this step -- it's blocked and frozen in place instead.
+    d = 0.002
+    theta = d * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+
+    precipitation_at_nodes = np.full(12, 800.0)
+    temperature_at_nodes = np.full(12, -3.0)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+
+    land = ~fields.is_ocean
+    assert np.all(fields.flow_target[land] == -1)  # every land node frozen -- nothing routes onward
+    assert np.all(fields.water_deposited[fields.is_ocean] == 0.0)  # so nothing reaches the ocean this step
+    assert np.all(fields.glacier_depth[land] > 0.0)  # the water that would have flowed froze in place instead
 
 
 def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
