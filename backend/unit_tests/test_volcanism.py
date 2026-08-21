@@ -108,6 +108,145 @@ def test_detect_and_spawn_volcanic_fields_skips_points_already_on_a_tracked_fiel
     assert events == []  # plate 0's boundary points are excluded as source candidates
 
 
+def _volcanic_field_plate(plate_id: int, theta: np.ndarray, phi: float = 0.0) -> Plate:
+    line = ElevationLine(
+        phi=phi,
+        theta=theta,
+        elevation=np.full(len(theta), 200.0),
+        is_volcano=np.ones(len(theta), dtype=bool),
+        volcano_active_years_remaining=np.full(len(theta), 500_000.0),
+    )
+    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
+
+
+def test_find_close_volcanic_field_pairs_finds_a_close_pair():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta_a = d * np.arange(10)
+    theta_b = theta_a[-1] + 2 * d + d * np.arange(10)  # well under the 6x-spacing merge distance
+    world = World(
+        seed=0,
+        plates=[_volcanic_field_plate(0, theta_a), _volcanic_field_plate(1, theta_b)],
+        next_plate_id=2,
+        volcanic_field_plate_ids={0, 1},
+        node_density=1.0,
+    )
+    assert volcanism.find_close_volcanic_field_pairs(world) == [(0, 1)]
+
+
+def test_find_close_volcanic_field_pairs_ignores_a_far_pair():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta_a = d * np.arange(10)
+    theta_b = theta_a[-1] + 50 * d + d * np.arange(10)  # well past the merge distance
+    world = World(
+        seed=0,
+        plates=[_volcanic_field_plate(0, theta_a), _volcanic_field_plate(1, theta_b)],
+        next_plate_id=2,
+        volcanic_field_plate_ids={0, 1},
+        node_density=1.0,
+    )
+    assert volcanism.find_close_volcanic_field_pairs(world) == []
+
+
+def test_find_close_volcanic_field_pairs_ignores_a_close_but_untracked_plate():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta_a = d * np.arange(10)
+    theta_b = theta_a[-1] + 2 * d + d * np.arange(10)
+    world = World(
+        seed=0,
+        plates=[_volcanic_field_plate(0, theta_a), _volcanic_field_plate(1, theta_b)],
+        next_plate_id=2,
+        volcanic_field_plate_ids={0},  # plate 1 is close but not a tracked field
+        node_density=1.0,
+    )
+    assert volcanism.find_close_volcanic_field_pairs(world) == []
+
+
+def test_merge_close_volcanic_fields_fuses_and_bridges_the_gap():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta_a = d * np.arange(10)
+    theta_b = theta_a[-1] + 2 * d + d * np.arange(10)
+    world = World(
+        seed=0,
+        plates=[_volcanic_field_plate(0, theta_a), _volcanic_field_plate(1, theta_b)],
+        next_plate_id=2,
+        volcanic_field_plate_ids={0, 1},
+        node_density=1.0,
+    )
+
+    events = volcanism.merge_close_volcanic_fields(world)
+    assert len(events) == 1
+    assert "merged" in events[0].lower()
+    assert len(world.plates) == 1
+
+    merged = world.plates[0]
+    assert world.volcanic_field_plate_ids == {merged.plate_id}
+    combined_theta = np.sort(np.concatenate([line.theta for line in merged.lines if len(line.theta) > 0]))
+    # Covers (about) the full original span, with the gap between the two fields actually
+    # bridged rather than left as a hole once unioned.
+    assert combined_theta.min() < theta_a[1]
+    assert combined_theta.max() > theta_b[-2]
+    assert np.all(np.diff(combined_theta) < 2.5 * d)
+    assert any(np.any(line.is_volcano) for line in merged.lines)
+
+
+def test_merge_close_volcanic_fields_noop_when_nothing_is_close():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta_a = d * np.arange(10)
+    theta_b = theta_a[-1] + 50 * d + d * np.arange(10)
+    world = World(
+        seed=0,
+        plates=[_volcanic_field_plate(0, theta_a), _volcanic_field_plate(1, theta_b)],
+        next_plate_id=2,
+        volcanic_field_plate_ids={0, 1},
+        node_density=1.0,
+    )
+    assert volcanism.merge_close_volcanic_fields(world) == []
+    assert len(world.plates) == 2
+
+
+def test_grow_isolated_volcanic_fields_extends_a_lone_field_with_no_neighbors():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta = d * np.arange(10)
+    world = World(
+        seed=0, plates=[_volcanic_field_plate(0, theta)], next_plate_id=1, volcanic_field_plate_ids={0}, node_density=1.0
+    )
+
+    volcanism.grow_isolated_volcanic_fields(world)
+    line = world.plates[0].lines[0]
+    assert len(line.theta) == len(theta) + 2 * volcanism.ISOLATED_GROWTH_NODES_PER_END
+    assert np.all(line.is_volcano)
+    assert line.theta.min() < theta.min()
+    assert line.theta.max() > theta.max()
+
+
+def test_grow_isolated_volcanic_fields_does_not_grow_toward_a_nearby_plate():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    theta_a = d * np.arange(10)
+    theta_b = theta_a[-1] + 2 * d + d * np.arange(10)  # within ISOLATED_GROWTH_CLEARANCE_RAD (6x spacing)
+    world = World(
+        seed=0,
+        plates=[_volcanic_field_plate(0, theta_a), _line_plate(1, theta_b)],  # plate 1: ordinary, not a field
+        next_plate_id=2,
+        volcanic_field_plate_ids={0},
+        node_density=1.0,
+    )
+
+    volcanism.grow_isolated_volcanic_fields(world)
+    line = world.plates[0].lines[0]
+    # High end (toward plate 1) stayed put; low end (open space) grew.
+    assert line.theta.max() == theta_a.max()
+    assert line.theta.min() < theta_a.min()
+    assert len(line.theta) == len(theta_a) + volcanism.ISOLATED_GROWTH_NODES_PER_END
+
+
+def test_grow_isolated_volcanic_fields_noop_for_untracked_plates():
+    d = volcanism.TARGET_LINE_SPACING_RAD
+    plate = _line_plate(0, d * np.arange(10))  # not a tracked field
+    world = World(seed=0, plates=[plate], next_plate_id=1, node_density=1.0)
+    volcanism.grow_isolated_volcanic_fields(world)
+    assert len(world.plates[0].lines[0].theta) == 10
+
+
 def test_volcano_fraction():
     line_all_volcano = ElevationLine(phi=0.0, theta=np.zeros(4), elevation=np.zeros(4), is_volcano=np.ones(4, dtype=bool))
     line_none = ElevationLine(phi=0.0, theta=np.zeros(4), elevation=np.zeros(4))

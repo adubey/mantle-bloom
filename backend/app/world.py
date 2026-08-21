@@ -199,7 +199,10 @@ def step_world(world: World, years: float) -> None:
     volcanism.py). Right after that, grows/relaxes soil and coal/oil-gas deposits from this
     same step's erosion/flow-routing results (see geology.py). On the same cadence as the
     gap-fill/regularize pass, also scans for divergent gaps between plates and spawns any new
-    volcanic fields they warrant (see volcanism.py)."""
+    volcanic fields they warrant, fuses any currently-tracked volcanic fields that have ended
+    up close to each other (bridging the gap between them with new interpolated land/
+    volcanoes), and grows any volcanic field whose own edge has no other plate nearby to bound
+    it (see volcanism.py)."""
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
         increment = geometry.rotation_matrix_from_omega(plate.omega, years)
@@ -221,6 +224,9 @@ def step_world(world: World, years: float) -> None:
     if run_regularize_this_step:
         for message in volcanism.detect_and_spawn_volcanic_fields(world):
             world.log_event(message)
+        for message in volcanism.merge_close_volcanic_fields(world):
+            world.log_event(message)
+        volcanism.grow_isolated_volcanic_fields(world)
         for message in gaps.fill_gaps(world):
             world.log_event(message)
         line_regrid.regularize_world_lines(world)

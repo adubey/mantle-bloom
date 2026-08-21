@@ -481,6 +481,58 @@ reproducibility precedent merge_split.py's own per-pair collision threshold sets
 size -- a large step (the UI offers up to 10 Myr) shouldn't roll eruption chances for years
 past when a short-lived volcano actually went dormant.
 
+**Merging close fields.** Also run on the clean-up cadence, right after detection/spawning:
+`merge_close_volcanic_fields` finds every pair of *currently-tracked* field plates whose
+nearest points come within `VOLCANIC_FIELD_MERGE_DISTANCE_RAD` (6x line spacing) -- the same
+cheap bounding-sphere-prescreened-then-k-d-tree check `merge_split.
+find_continental_collision_pairs` uses, but without that function's closing-rate requirement:
+these are already newly-formed rift crust of the same kind, not two mature plates that happen
+to be neighbors purely by plates.py's generation-time tiling, so proximity alone is a
+meaningful signal here in a way it isn't there. Pairs are grouped into connected clusters
+(`scipy.sparse.csgraph.connected_components` over the pair graph, the same technique
+gaps.cluster_points already uses for spatial clustering, just over a small plate-id graph
+instead of a point cloud) so a chain of three or more mutually-close fields fuses into one
+plate in a single call, not one pairwise merge per pass. Running this right after spawning
+matters in practice: a freshly-detected field very often lands close to an existing one along
+the same rift, and without this step it would just sit there as a separate plate.
+
+Merging doesn't only resample the union footprint (the way `merge_split.merge_plates` does for
+a continental collision) -- it also **bridges the physical gap** between fields that were close
+but not yet touching, so the merge doesn't leave a hole down the middle. For each pair of
+plates in a cluster, `_bridge_points` finds their closest cross-plate point pairs (up to
+`BRIDGE_MAX_PAIRS`) and spherically interpolates (`_slerp`, great-circle SLERP rather than a
+linear blend, so a bridge point actually sits on the sphere) new nodes at target spacing along
+each pair's own great-circle arc -- real new land/fresh active volcanoes filling the rift
+between them, not an empty strip a plain nearest-point resample would silently skip over
+(`build_lines_from_lattice`-style resampling only ever keeps a lattice node near an *existing*
+point). The whole cluster's original points plus every bridge point are then resampled onto
+whichever plate had the most territory (`_build_field_lines_with_volcano_state` -- like
+`build_lines_from_lattice`, but also carries `is_volcano`/`volcano_active_years_remaining`
+through the same nearest-neighbor lookup elevation already uses, since a plain
+`build_lines_from_lattice` call only threads elevation and would otherwise silently wipe every
+merged node's volcanic status, the exact bug class `plates.ElevationLine`'s own docstring warns
+about). The absorbed plate(s) are dropped from `world.plates` and their ids removed from
+`World.volcanic_field_plate_ids`; the surviving plate keeps its own id and stays tracked.
+
+**Growing into open space.** `boundary.step_boundaries` only ever grows a line relative to a
+*neighbor's* own motion -- a field that has drifted, or was spawned, into open water with no
+other plate within reach never gets a boundary classification there at all (the plate is
+skipped outright once no other plate's bounding sphere is close enough to matter, see
+boundary.py), so without something else acting on it, it would sit frozen at that edge forever
+regardless of how long the world runs. `grow_isolated_volcanic_fields` (same clean-up cadence,
+run after merging) closes that gap: for each tracked field plate, every line's two ends are
+checked against a k-d tree of every *other* plate's current nodes; an end farther than
+`ISOLATED_GROWTH_CLEARANCE_RAD` (6x line spacing -- deliberately much wider than
+`boundary.EXTEND_THRESHOLD_RAD`'s reach, since this is about there being no neighbor at all,
+not about how far an ordinary gap has opened) from every other plate's nearest node counts as
+genuinely isolated and grows outward by `ISOLATED_GROWTH_NODES_PER_END` new nodes (fixed and
+small, not distance-derived -- unlike an ordinary divergent gap, open space has no far edge to
+close against, so there's nothing to measure the growth amount from, and this stays gradual the
+same way `gaps.py`'s own one-ring-per-pass absorption does). New nodes get ordinary continental
+base elevation plus noise texture and start as fresh active volcanoes, the same convention
+`_spawn_volcanic_field_plate` uses for a field's very first nodes. Not logged to `World.events`
+-- ordinary incremental growth, the same reasoning gap absorption isn't logged either.
+
 **Rendering.** Baked directly into the elevation/plates views' raster the same way lakes and
 glaciers are (`VOLCANO_COLOR_RGB`, a hot red-orange distinct from both), drawn after lake but
 before glacier so ice still wins where both would apply (a volcano cold enough to glaciate
