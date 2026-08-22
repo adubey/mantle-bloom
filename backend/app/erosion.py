@@ -352,8 +352,17 @@ def apply_erosion(world: "World", years: float) -> ErosionResult | None:
     # convention climate.py/plates.py use everywhere else): every source here is a subaerial
     # process -- coastal/ocean erosion is a separate source that would touch the seafloor, and
     # that's the one source this module still doesn't implement (see module docstring).
-    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(rain + river + weathering + glacier, 0.0, None))
+    raw_erosion_total = rain + river + weathering + glacier
+    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
+    # channel_depth is the terrain's own carved-channel record, so it must never grow past
+    # what actually got taken off this point's elevation: when the neighbor-drop cap above
+    # holds erosion_amount below raw_erosion_total, scale river's contribution down by the
+    # same factor rather than banking the full, unapplied amount -- otherwise a node pinned
+    # near its lowest neighbor (a valley floor at grade) would keep "carving" toward
+    # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields.
+    applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
+    applied_river = river * applied_scale
 
     # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
     # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
@@ -367,7 +376,7 @@ def apply_erosion(world: "World", years: float) -> ErosionResult | None:
     flatten_delta = _flatten(hydro, ice_factor, years)
 
     new_elevation = np.clip(elevation - erosion_amount + sediment_deposited + flatten_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
-    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + river, 0.0, MAX_CHANNEL_DEPTH_M))
+    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr

@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, geology, geometry, hydrology, mantle, plates, projections, volcanism
+from . import biomes, climate, coastline, erosion, geology, geometry, hydrology, mantle, plates, projections, volcanism
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -49,11 +49,16 @@ BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
 # should read as visibly distinct from the open ocean, not just "more blue."
 LAKE_COLOR_RGB = (58, 92, 122)
-# Fixed river overlay color (#4dd8e6) and a fixed color/width for every segment regardless
-# of discharge -- only *which* segments get drawn varies with flow magnitude, via
+# Fixed river overlay color (#4dd8e6); line width is not fixed -- it scales with the node's
+# own channel_width (erosion.py's persistent, grows-with-discharge field), see _draw_rivers
+# -- only *which* segments get drawn varies with flow magnitude directly, via
 # RIVER_FLOW_PERCENTILE below.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
+# Widest a river is ever drawn, reached as channel_width approaches erosion.MAX_CHANNEL_WIDTH_M.
+# _draw_rivers maps channel_width to this range via sqrt (not linear), so a modest stream
+# isn't squeezed to a near-hairline next to a handful of true megariver outliers.
+RIVER_LINE_WIDTH_MAX_PX = 5.0
 # A second, independent cut on top of hydrology.py's own is_river classification
 # (RIVER_FLOW_PERCENTILE): the main map views only draw a river segment if its own
 # flow_accum also clears this absolute floor, so a large world's merely-top-decile trickles
@@ -1102,7 +1107,11 @@ def _draw_rivers(
     _project_points calls) keeps it from being wrongly split across the antimeridian seam --
     same technique _render_grid_arrays' own corner measurements already rely on. Also cut by
     RIVER_DRAW_MIN_FLOW -- see that constant's own comment for why this view is stricter than
-    the River Inspector's own /world/rivers listing."""
+    the River Inspector's own /world/rivers listing. Line width scales per-segment with the
+    node's own channel_width (plates.collect_all_channel_width, erosion.py's persistent
+    grows-with-discharge field, aligned index-for-index with hydro.points -- both are built
+    by the same per-plate/per-line gather over world.plates), so a wide river reads as
+    visibly thicker than a narrow one instead of every segment sharing one fixed width."""
     hydro = world.hydrology_cache
     if hydro is None:
         return
@@ -1110,6 +1119,12 @@ def _draw_rivers(
     if len(river_idx) == 0:
         return
     target_idx = hydro.flow_target[river_idx]
+
+    channel_width = plates.collect_all_channel_width(world.plates)[river_idx]
+    width_norm = np.sqrt(np.clip(channel_width / erosion.MAX_CHANNEL_WIDTH_M, 0.0, 1.0))
+    width_px = np.maximum(
+        np.round((RIVER_LINE_WIDTH_PX + width_norm * (RIVER_LINE_WIDTH_MAX_PX - RIVER_LINE_WIDTH_PX)) * pixel_scale).astype(int), 1
+    )
 
     from_points = _rotate(hydro.points[river_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
@@ -1119,9 +1134,8 @@ def _draw_rivers(
 
     from_px = _to_pixels(scale, offset_x, offset_y, from_xy)
     to_px = _to_pixels(scale, offset_x, offset_y, to_xy)
-    width_px = max(int(round(RIVER_LINE_WIDTH_PX * pixel_scale)), 1)
-    for (x1, y1), (x2, y2) in zip(from_px, to_px):
-        draw.line([(x1, y1), (x2, y2)], fill=RIVER_COLOR_RGB, width=width_px)
+    for (x1, y1), (x2, y2), w in zip(from_px, to_px, width_px):
+        draw.line([(x1, y1), (x2, y2)], fill=RIVER_COLOR_RGB, width=int(w))
 
 
 def _draw_coastline(

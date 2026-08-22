@@ -330,6 +330,16 @@ def collect_all_channel_depth(plate_list: list[Plate]) -> np.ndarray:
     return np.concatenate(chunks, axis=0)
 
 
+def collect_all_channel_width(plate_list: list[Plate]) -> np.ndarray:
+    """Every plate's current channel_width (river-channel width, grows with discharge -- see
+    erosion.py), concatenated the same way collect_all_channel_depth is -- used by
+    render_image.py to draw a wide river thicker than a narrow one."""
+    chunks = [line.channel_width for plate in plate_list for line in plate.lines if len(line.theta) > 0]
+    if not chunks:
+        return np.zeros(0)
+    return np.concatenate(chunks, axis=0)
+
+
 def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
     """Every plate's current is_volcano, concatenated the same way collect_all_lake_depth
     is -- see its own docstring for why this is a separate function rather than a new
