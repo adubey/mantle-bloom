@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
-import { fetchLakes, fetchPlates, fetchRivers, fetchStats, generateWorld, renderWorld, stepWorld, updateControls } from "./api";
+import {
+  fetchLakes, fetchPlates, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+} from "./api";
 import type {
   LakeAtResponse, LakeSummary, MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary,
 } from "./api";
@@ -14,8 +16,9 @@ import ControlsModal from "./ControlsModal";
 import FileModal from "./FileModal";
 import Legend from "./Legend";
 import { highlightTargetFor } from "./legendData";
-import { IDENTITY_ROTATION } from "./rotation";
+import { centerOfRotation, IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
+import { getCookie, setCookie } from "./cookies";
 
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
@@ -70,6 +73,46 @@ function isIdentityRotation(rotation: Mat3): boolean {
   return rotation.every((v, i) => v === IDENTITY_ROTATION[i]);
 }
 
+// Persists the map's view state (projection/mapView/rotation) across a browser refresh --
+// these three are otherwise pure client-local React state (see the `rotation` field's own
+// comment above), so without this a refresh would silently reset the view to its defaults
+// even when /world/summary below finds the same world still sitting in server memory. Kept
+// as its own small cookie rather than folded into anything server-side since it's display
+// state, not simulation state -- same reasoning `rotation` itself already gets.
+const VIEW_COOKIE_NAME = "mantle-bloom-view";
+const MAP_VIEW_CHOICES = new Set<MapView>([
+  "elevation", "plates", "platesDetail", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
+  "resources", "soilQuality", "plateInspector", "riverInspector", "lakeInspector",
+]);
+const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
+
+interface ViewCookie {
+  projection: Projection;
+  mapView: MapView;
+  rotation: Mat3;
+}
+
+function loadViewCookie(): ViewCookie | null {
+  const raw = getCookie(VIEW_COOKIE_NAME);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!PROJECTION_CHOICES.has(parsed.projection) || !MAP_VIEW_CHOICES.has(parsed.mapView)) return null;
+    if (!Array.isArray(parsed.rotation) || parsed.rotation.length !== 9 || !parsed.rotation.every((v: unknown) => typeof v === "number" && Number.isFinite(v))) {
+      return null;
+    }
+    return { projection: parsed.projection, mapView: parsed.mapView, rotation: parsed.rotation };
+  } catch {
+    return null;
+  }
+}
+
+// Read once at module load (this is a browser-only SPA bundle, so `document` is always
+// available) rather than inside the component -- every useState initializer below just reads
+// this same snapshot, so a page that never had a cookie set falls back to the same defaults
+// it always used.
+const initialView = loadViewCookie();
+
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
@@ -83,8 +126,8 @@ export default function App() {
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
-  const [projection, setProjection] = useState<Projection>("eckert4");
-  const [mapView, setMapView] = useState<MapView>("elevation");
+  const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
+  const [mapView, setMapView] = useState<MapView>(initialView?.mapView ?? "elevation");
   // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
   // mode changes while that step is still in flight, its post-step refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
@@ -100,8 +143,12 @@ export default function App() {
   // state: it tracks `rotation` normally, but during an active drag MapCanvas overrides it
   // continuously via onRotationPreview, since the real legend is baked server-side into the
   // PNG and can't update mid-drag.
-  const [rotation, setRotation] = useState<Mat3>(IDENTITY_ROTATION);
-  const [centerLatLon, setCenterLatLon] = useState({ lat: 0, lon: 0 });
+  const [rotation, setRotation] = useState<Mat3>(initialView?.rotation ?? IDENTITY_ROTATION);
+  const [centerLatLon, setCenterLatLon] = useState(() => {
+    if (!initialView) return { lat: 0, lon: 0 };
+    const [latRad, lonRad] = centerOfRotation(initialView.rotation);
+    return { lat: (latRad * 180) / Math.PI, lon: (lonRad * 180) / Math.PI };
+  });
   // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
   // Biome and Combined views (the only legends whose swatches are clickable), so it's cleared
   // any time the view changes away from both rather than silently carrying a stale selection
@@ -359,6 +406,35 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projection, mapView, rotation]);
+
+  // Persists projection/mapView/rotation to VIEW_COOKIE_NAME on every change, so the next
+  // page load's `initialView` (see loadViewCookie above) picks up wherever the user left off.
+  useEffect(() => {
+    setCookie(VIEW_COOKIE_NAME, JSON.stringify({ projection, mapView, rotation }));
+  }, [projection, mapView, rotation]);
+
+  // Restores the map after a browser refresh: the world itself lives entirely in server
+  // memory (see backend main.py's module docstring), so it's often still there even though
+  // this component's own state (summary, platesData, ...) always starts blank on a fresh
+  // mount. If /world/summary finds one, this replaces the blank starting state with it (via
+  // the same "replace the current world" path FileModal's Load World uses) using the
+  // projection/mapView/rotation the cookie above just restored; a 404 (no world generated
+  // yet this server session) just leaves the normal blank/Generate-dialog state in place.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await fetchWorldSummary();
+        if (!cancelled) await handleWorldReplaced(s);
+      } catch {
+        // no world in server memory -- nothing to restore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stepRef = useRef(handleStep);
   stepRef.current = handleStep;

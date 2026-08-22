@@ -362,6 +362,17 @@ def generate(req: GenerateRequest) -> dict:
     return _summary(world)
 
 
+@app.get("/world/summary")
+def get_summary() -> dict:
+    """The current world's summary (same shape /world/generate and /world/step return) --
+    lets the client re-sync with whatever world is already sitting in server memory (e.g.
+    after a browser refresh, see App.tsx's restore-on-mount effect and its view-state cookie)
+    without generating a new one. `404` if no world has been generated yet, same as every
+    other /world/* endpoint."""
+    world = _require_world()
+    return _summary(world)
+
+
 @app.post("/world/step")
 def step(req: StepRequest) -> dict:
     world = _require_world()

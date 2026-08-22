@@ -318,6 +318,13 @@ export function fetchStats(): Promise<WorldStats> {
   return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
 }
 
+// Re-syncs with whatever world is already sitting in server memory -- used on page load to
+// restore the map after a browser refresh (see App.tsx) without generating a new world.
+// Rejects (404) if no world has been generated yet in this server session.
+export function fetchWorldSummary(): Promise<WorldSummary> {
+  return fetch(`${API_BASE}/world/summary`).then(asJson<WorldSummary>);
+}
+
 export function fetchRivers(): Promise<RiversResponse> {
   return fetch(`${API_BASE}/world/rivers`).then(asJson<RiversResponse>);
 }
