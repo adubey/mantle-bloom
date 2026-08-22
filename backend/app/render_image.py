@@ -58,7 +58,7 @@ RIVER_LINE_WIDTH_PX = 1.1
 # Widest a river is ever drawn, reached as channel_width approaches erosion.MAX_CHANNEL_WIDTH_M.
 # _draw_rivers maps channel_width to this range via sqrt (not linear), so a modest stream
 # isn't squeezed to a near-hairline next to a handful of true megariver outliers.
-RIVER_LINE_WIDTH_MAX_PX = 5.0
+RIVER_LINE_WIDTH_MAX_PX = 3.0
 # A second, independent cut on top of hydrology.py's own is_river classification
 # (RIVER_FLOW_PERCENTILE): the main map views only draw a river segment if its own
 # flow_accum also clears this absolute floor, so a large world's merely-top-decile trickles
