@@ -265,16 +265,19 @@ def _lake_basin_summary(
     is whatever `_smallest_lake_containing` resolved) and a dry, never-flooded basin
     (`is_lake=False`, `lake` is the leaf catchment straight from `_leaf_lakes_by_node`) -- same
     shape either way, since "a basin nonetheless" (the user's own framing) should read as the
-    same kind of information, just without live water. `floor_*` is this basin's own lowest
-    point (`lake.floor_elevation`'s own node); `outlet_*` is "the lowest point of the edge of the
-    basin" -- `lake.max_depth`'s own saddle node, `None` for an unresolved closed/endorheic basin
-    with no known spill (a legitimate case, see lakes.py's own docstring), not a bug. Rivers
-    "feeding into" this basin are simply every `RiverInfo` whose own mouth lands on one of this
-    basin's members, regardless of that river's own `mouth_type` label ("lake", or "other" for a
-    river dead-ending in a currently-dry sink) -- from this basin's own point of view both are
-    equally "a river that ends here"."""
+    same kind of information, just without live water. `floor_*`/`outlet_*`/`water_elevation_m`/
+    `is_spilling` are read directly off `lake` itself (`floor_elevation`/`max_depth`/
+    `current_water_elevation`/`is_spilling`, already resolved by `lakes.step_lakes` -- see
+    `HydrologyFields.lake_forest`'s own docstring for why this must be the *same* `Lake` object
+    that produced `fields.lake_depth`, not a hierarchy rebuilt from a different elevation/silt
+    snapshot: the two can genuinely disagree on basin topology, which used to surface as a
+    lake's own `outlet_elevation_m` reading *below* its `floor_elevation_m`) -- `outlet_*` is
+    `None` for an unresolved closed/endorheic basin with no known spill (a legitimate case, see
+    lakes.py's own docstring), not a bug. Rivers "feeding into" this basin are simply every
+    `RiverInfo` whose own mouth lands on one of this basin's members, regardless of that
+    river's own `mouth_type` label ("lake", or "other" for a river dead-ending in a currently-dry
+    sink) -- from this basin's own point of view both are equally "a river that ends here"."""
     members = lake.members
-    effective_elev = fields.elevation + fields.silt_depth
 
     # `lake.members` is the *geometric* catchment -- every node on the way down to this basin's
     # own floor, not just whichever of them are currently underwater (a leaf's own catchment
@@ -287,18 +290,14 @@ def _lake_basin_summary(
     wet_members = members[wet_mask]
     display_members = wet_members if is_lake and len(wet_members) > 0 else members
 
-    floor_node = int(display_members[np.argmin(effective_elev[display_members])])
+    # Bare elevation only picks *which* node represents the floor for the map marker's
+    # position -- the reported elevation *value* comes from `lake.floor_elevation` itself
+    # (below), not a separate recomputation, so it's guaranteed consistent with `outlet_elev`.
+    floor_node = int(display_members[np.argmin(fields.elevation[display_members])])
     outlet_elev = lake.max_depth
     outlet_node = lake.outlet_node_idx
 
-    # `lake_depth` is depth above the *silt-adjusted* bed (lakes.py's own `effective_elevation`
-    # basis, see step_lakes), so the actual water surface needs `silt_depth` added back in too,
-    # not just bare `elevation` -- otherwise a silted-in lake reads as underwater at its own bed.
-    water_elevation = (
-        float(np.max(fields.elevation[wet_members] + fields.silt_depth[wet_members] + fields.lake_depth[wet_members]))
-        if len(wet_members) > 0
-        else None
-    )
+    water_elevation = lake.current_water_elevation if len(wet_members) > 0 else None
     is_spilling = outlet_elev is not None and water_elevation is not None and water_elevation >= outlet_elev
 
     # Rivers "feeding into" this basin are matched against the full geometric catchment, not
@@ -322,10 +321,10 @@ def _lake_basin_summary(
         "member_count": int(len(display_members)),
         "member_xyz": _round_coords(fields.points[display_members]),
         "floor_xyz": _round_coords(fields.points[floor_node]),
-        "floor_elevation_m": float(effective_elev[floor_node]),
+        "floor_elevation_m": float(lake.floor_elevation),
         "outlet_xyz": None if outlet_elev is None else _round_coords(fields.points[outlet_node]),
         "outlet_elevation_m": outlet_elev,
-        "water_elevation_m": water_elevation,
+        "water_elevation_m": None if water_elevation is None else float(water_elevation),
         "is_spilling": bool(is_spilling),
         "inflow_rivers": inflow_rivers,
     }
@@ -548,10 +547,12 @@ def list_lakes() -> dict:
     "raw JSON, client renders it" philosophy as `/world/rivers`. A "lake" here means one
     connected component of `lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M` nodes (see
     `hydrology.lake_components`) -- exactly what's drawn as standing water everywhere else in
-    this codebase -- resolved back up to its own basin in this step's freshly-rebuilt
-    depression hierarchy (`lakes.build_lake_hierarchy`) so a lake that's currently the result of
-    several original catchments merging together reports its own *current* outlet, not some
-    interior saddle that's already flooded. Regrouped fresh from `world.hydrology_cache` on
+    this codebase -- resolved back up to its own basin in `fields.lake_forest`, this step's
+    already-resolved depression hierarchy (see `HydrologyFields.lake_forest`'s own docstring
+    for why this must be the *same* tree `lakes.step_lakes` used, not a separately rebuilt
+    one), so a lake that's currently the result of several original catchments merging
+    together reports its own *current* outlet, not some interior saddle that's already
+    flooded. Regrouped fresh from `world.hydrology_cache` on
     every call, same as `/world/rivers` -- `lake_id` is only meaningful against this same
     response, not a stable identity across steps. `coastline_segments` included for the same
     reason `/world/rivers` includes it: this view draws no filled backdrop of its own. Both are
@@ -560,8 +561,7 @@ def list_lakes() -> dict:
     fields = world.hydrology_cache
     if fields is None:
         return {"elapsed_years": world.elapsed_years, "lakes": [], "coastline_segments": []}
-    effective_elev = fields.elevation + fields.silt_depth
-    forest = lakes.build_lake_hierarchy(effective_elev, fields.is_ocean, fields.neighbor_idx)
+    forest = fields.lake_forest
     components = _lake_components_sorted(fields)
     rivers = hydrology.group_rivers(fields)
     result = []
@@ -607,8 +607,7 @@ def lake_at(lat_deg: float, lon_deg: float) -> dict:
     if fields.is_ocean[node_idx]:
         return {"kind": "ocean", "basin": None}
 
-    effective_elev = fields.elevation + fields.silt_depth
-    forest = lakes.build_lake_hierarchy(effective_elev, fields.is_ocean, fields.neighbor_idx)
+    forest = fields.lake_forest
     leaf = _leaf_lakes_by_node(forest).get(node_idx)
     if leaf is None:
         return {"kind": "no_basin", "basin": None}

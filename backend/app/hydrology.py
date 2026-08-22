@@ -205,6 +205,22 @@ class HydrologyFields:
     # final value" character as lake_depth/glacier_depth above) -- also defaulted, see
     # lake_events' own comment for why.
     silt_depth: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # This step's fully-resolved depression hierarchy (lakes.step_lakes's own internal
+    # `lakes.build_lake_hierarchy` result, built from `elevation + prev_silt_depth` and
+    # already reconciled against last step's lake_depth -- see step_lakes's own docstring),
+    # exposed here rather than discarded so a caller needing basin floor/outlet/current-water
+    # info (main.py's Lake Inspector) can read it straight off these already-resolved `Lake`
+    # objects instead of rebuilding its own hierarchy from a *different* elevation+silt
+    # snapshot. Rebuilding separately is more than a wasted computation: `elevation +
+    # fields.silt_depth` (this step's own *final*, already-grown silt) is a different array
+    # than the `elevation + prev_silt_depth` this module actually resolved lake_depth against,
+    # and depression-hierarchy topology is sensitive enough to small elevation shifts that the
+    # two rebuilds can genuinely disagree on which basin merged with which -- confirmed
+    # directly as a real bug this way: a lake whose reported `outlet_elevation_m` sat *below*
+    # its own `floor_elevation_m`, from a rebuild-with-newer-silt hierarchy disagreeing with
+    # the hierarchy that had actually produced that lake's `lake_depth`. Also defaulted, same
+    # backward-compatibility reasoning as `lake_events`/`silt_depth` above.
+    lake_forest: list["lakes.Lake"] = field(default_factory=list)
 
 
 def _gather_nodes(
@@ -631,7 +647,7 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, line_refs,
     )
-    fields.lake_depth, fields.silt_depth, _lake_forest, fields.lake_events = lakes.step_lakes(
+    fields.lake_depth, fields.silt_depth, fields.lake_forest, fields.lake_events = lakes.step_lakes(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, prev_silt_depth, water_deposited, years, is_frozen
     )
 
