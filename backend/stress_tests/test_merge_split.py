@@ -38,7 +38,13 @@ def _converging_pair_world(seed=123):
 
 
 def test_apply_topology_changes_runs_without_error_during_long_simulation():
-    world = generate_world(seed=40, num_plates=10)
+    # node_density=2.0 (half the default 4.0, see plates.NODE_DENSITY_CHOICES) -- this test
+    # only checks topology invariants (plate count, unique ids), not exact node positions.
+    world = generate_world(seed=40, num_plates=10, node_density=2.0)
+    # merge_split.py only reacts to plate/node geometry, never to climate/erosion/hydrology
+    # output (see World.simulate_climate_biomes) -- skipping that per-step computation cuts
+    # this long-running test's cost substantially without changing what it exercises.
+    world.simulate_climate_biomes = False
     for _ in range(20):
         step_world(world, years=5_000_000)
     assert len(world.plates) > 0

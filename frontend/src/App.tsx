@@ -40,14 +40,15 @@ const DEFAULT_AXIAL_TILT_DEG = 23.5;
 const DEFAULT_INITIAL_SOIL_MATURITY_PERCENT = 0;
 // Matching backend app/plates.py's NODE_DENSITY_CHOICES/DEFAULT_NODE_DENSITY -- a discrete
 // set, not a free-form slider, since there's no continuous unit for "how many points," only
-// "how many times as many."
-const NODE_DENSITY_CHOICES = [1, 4];
+// "how many times as many." 2 is half the default (4) -- a lower-resolution middle ground.
+const NODE_DENSITY_CHOICES = [1, 2, 4];
 const DEFAULT_NODE_DENSITY = 4;
 // Matching backend app/climate.py's CLIMATE_DENSITY_CHOICES/DEFAULT_CLIMATE_DENSITY -- same
 // "discrete multiplier choice, not a free-form slider" reasoning as NODE_DENSITY_CHOICES,
 // but for climate.py's own simulation grid (and the Biome/Combined/Resources/Soil-Quality
-// views' own render grid, scaled the same way) rather than plate elevation nodes.
-const CLIMATE_DENSITY_CHOICES = [1, 2];
+// views' own render grid, scaled the same way) rather than plate elevation nodes. 0.5 is
+// half the default (1) -- a lower-resolution option.
+const CLIMATE_DENSITY_CHOICES = [0.5, 1, 2];
 const DEFAULT_CLIMATE_DENSITY = 1;
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
@@ -58,6 +59,10 @@ const DEFAULT_PLATES = 14;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
+// Matching backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes
+// defaults -- both on, i.e. a normal full simulation.
+const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
+const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -207,6 +212,11 @@ export default function App() {
   // too (unlike the others) via /world/controls.
   const [seaLevelM, setSeaLevelM] = useState(DEFAULT_SEA_LEVEL_M);
   const [solarMultiplier, setSolarMultiplier] = useState(DEFAULT_SOLAR_MULTIPLIER);
+  // Same live-adjustable-via-Controls pattern as seaLevelM/solarMultiplier above -- lets the
+  // user run plate tectonics only, climate & biomes only, or (the default) both together. See
+  // backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes.
+  const [simulatePlateMovement, setSimulatePlateMovement] = useState(DEFAULT_SIMULATE_PLATE_MOVEMENT);
+  const [simulateClimateBiomes, setSimulateClimateBiomes] = useState(DEFAULT_SIMULATE_CLIMATE_BIOMES);
   const [showControlsModal, setShowControlsModal] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
   // The div wrapping whichever map view component is currently mounted -- see
@@ -288,6 +298,8 @@ export default function App() {
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
       setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
+      setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
+      setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
@@ -304,7 +316,12 @@ export default function App() {
   // only once movement has paused briefly. Local slider state (seaLevelM/solarMultiplier)
   // still updates immediately on every change, so the slider itself never feels laggy.
   const controlsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pushControls = useCallback((next: { seaLevelM?: number; solarMultiplier?: number }) => {
+  const pushControls = useCallback((next: {
+    seaLevelM?: number;
+    solarMultiplier?: number;
+    simulatePlateMovement?: boolean;
+    simulateClimateBiomes?: boolean;
+  }) => {
     if (controlsDebounceRef.current) clearTimeout(controlsDebounceRef.current);
     controlsDebounceRef.current = setTimeout(async () => {
       try {
@@ -319,6 +336,18 @@ export default function App() {
   const handleSeaLevelChange = useCallback((v: number) => {
     setSeaLevelM(v);
     pushControls({ seaLevelM: v });
+  }, [pushControls]);
+
+  // Checkboxes, not sliders, so no dragging concern -- still routed through the same
+  // (harmlessly short) debounce as the sliders above, for one shared code path.
+  const handleSimulatePlateMovementChange = useCallback((v: boolean) => {
+    setSimulatePlateMovement(v);
+    pushControls({ simulatePlateMovement: v });
+  }, [pushControls]);
+
+  const handleSimulateClimateBiomesChange = useCallback((v: boolean) => {
+    setSimulateClimateBiomes(v);
+    pushControls({ simulateClimateBiomes: v });
   }, [pushControls]);
 
   const handleSolarMultiplierChange = useCallback((v: number) => {
@@ -349,11 +378,12 @@ export default function App() {
   }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
 
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
-  // fresh Generate (see handleGenerate above), plus syncing seaLevelM/solarMultiplier's
-  // local slider state to the *loaded* world's own real values: calling updateControls with
-  // no fields set changes nothing but still returns the current world's current values
-  // (see api.ts's updateControls/backend app/main.py's /world/controls), which is simpler
-  // than adding a new endpoint just to read them back.
+  // fresh Generate (see handleGenerate above), plus syncing every live Controls value
+  // (seaLevelM/solarMultiplier/simulatePlateMovement/simulateClimateBiomes) to the *loaded*
+  // world's own real values: calling updateControls with no fields set changes nothing but
+  // still returns the current world's current values (see api.ts's updateControls/backend
+  // app/main.py's /world/controls), which is simpler than adding a new endpoint just to read
+  // them back.
   const handleWorldReplaced = useCallback(async (s: WorldSummary) => {
     setBusy(true);
     setError(null);
@@ -367,6 +397,8 @@ export default function App() {
       const controls = await updateControls({});
       setSeaLevelM(controls.sea_level_m);
       setSolarMultiplier(controls.solar_multiplier);
+      setSimulatePlateMovement(controls.simulate_plate_movement);
+      setSimulateClimateBiomes(controls.simulate_climate_biomes);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
@@ -885,6 +917,13 @@ export default function App() {
                   2-3x); simulation steps only slightly slower.
                 </div>
               )}
+              {climateDensity < 1 && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Coarser, more pixelated Temperature/Wind/Currents/Humidity/Precipitation/
+                  Biome/Combined/Resources/Soil Quality maps -- quarters the grid cells.
+                  Simulation steps run somewhat faster.
+                </div>
+              )}
             </label>
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -905,8 +944,12 @@ export default function App() {
         <ControlsModal
           seaLevelM={seaLevelM}
           solarMultiplier={solarMultiplier}
+          simulatePlateMovement={simulatePlateMovement}
+          simulateClimateBiomes={simulateClimateBiomes}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
+          onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
+          onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
           onClose={() => setShowControlsModal(false)}
         />
       )}

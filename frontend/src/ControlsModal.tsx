@@ -1,17 +1,32 @@
 interface Props {
   seaLevelM: number;
   solarMultiplier: number;
+  simulatePlateMovement: boolean;
+  simulateClimateBiomes: boolean;
   onSeaLevelChange: (v: number) => void;
   onSolarMultiplierChange: (v: number) => void;
+  onSimulatePlateMovementChange: (v: boolean) => void;
+  onSimulateClimateBiomesChange: (v: boolean) => void;
   onClose: () => void;
 }
 
-// Real-time controls for two of World's live-adjustable properties (see backend
-// app/world.py's World.sea_level_m/World.solar_multiplier and main.py's /world/controls) --
-// unlike the "Generate World" dialog's sliders, these apply to the *current* world
-// immediately, no regenerate needed. Sliders are controlled from App.tsx's own state (not
-// local state here) since the same values also need to reset on a fresh Generate.
-export default function ControlsModal({ seaLevelM, solarMultiplier, onSeaLevelChange, onSolarMultiplierChange, onClose }: Props) {
+// Real-time controls for World's live-adjustable properties (see backend app/world.py's
+// World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
+// World.simulate_climate_biomes and main.py's /world/controls) -- unlike the "Generate
+// World" dialog's sliders, these apply to the *current* world immediately, no regenerate
+// needed. Controlled from App.tsx's own state (not local state here) since the same values
+// also need to reset on a fresh Generate.
+export default function ControlsModal({
+  seaLevelM,
+  solarMultiplier,
+  simulatePlateMovement,
+  simulateClimateBiomes,
+  onSeaLevelChange,
+  onSolarMultiplierChange,
+  onSimulatePlateMovementChange,
+  onSimulateClimateBiomesChange,
+  onClose,
+}: Props) {
   return (
     <div
       onClick={onClose}
@@ -62,7 +77,7 @@ export default function ControlsModal({ seaLevelM, solarMultiplier, onSeaLevelCh
           />
         </label>
 
-        <label style={{ display: "block" }}>
+        <label style={{ display: "block", marginBottom: 16 }}>
           Solar heat: {solarMultiplier.toFixed(2)}×
           <input
             type="range"
@@ -74,6 +89,30 @@ export default function ControlsModal({ seaLevelM, solarMultiplier, onSeaLevelCh
             style={{ width: "100%" }}
           />
         </label>
+
+        <div style={{ borderTop: "1px solid #333", paddingTop: 14 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={simulatePlateMovement}
+              onChange={(e) => onSimulatePlateMovementChange(e.target.checked)}
+            />
+            Simulate plate movement
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={simulateClimateBiomes}
+              onChange={(e) => onSimulateClimateBiomesChange(e.target.checked)}
+            />
+            Simulate climate & biomes
+          </label>
+          {!simulatePlateMovement && !simulateClimateBiomes && (
+            <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+              Both are off -- stepping will only advance elapsed years, nothing else changes.
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

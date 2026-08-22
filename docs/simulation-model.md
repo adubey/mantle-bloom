@@ -86,7 +86,7 @@ having to pick a number. That many seed points are scattered uniformly on the un
 Three generation choices *are* user-facing -- the UI's "continental plates" and "initial
 land" sliders, both 0 to 1 (percent in the UI), defaulting to
 `DEFAULT_CONTINENTAL_FRACTION = 0.70` and `DEFAULT_LAND_FRACTION = 0.29`, plus a "point
-density" choice (`NODE_DENSITY_CHOICES = (1.0, 4.0)`, see below).
+density" choice (`NODE_DENSITY_CHOICES = (1.0, 2.0, 4.0)`, see below).
 
 - `continental_fraction`: when given, `round(continental_fraction * num_plates)` plates
   (`rng.choice`, without replacement) are made continental instead of the usual independent
@@ -921,12 +921,13 @@ on -- `np.roll` wraparound, centered-difference gradients, divergence, land-excl
 neighbor averaging. So climate gets its own equirectangular array, `lat: (H,)` / `lon: (W,)`,
 every field `(H, W)`, `GRID_HEIGHT = 90` x `GRID_WIDTH = 180` (2 degrees/cell) by default --
 scaled directly in each dimension by a world's own `World.climate_density` (the UI's "climate
-& biome resolution" choice, `climate.CLIMATE_DENSITY_CHOICES = (1.0, 2.0)`, see
+& biome resolution" choice, `climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0)`, see
 `climate.grid_dimensions`) for a sharper, less pixelated climate map at the cost of real
 compute: confirmed directly, `2.0` (4x the cells) costs roughly 2-3x longer to render a
 climate/biome-family view and only a modest ~10% longer per simulation step (climate is a
 comparatively small share of a step's total cost next to boundary evolution/erosion/hydrology
-over the plate node cloud). Fixed-*degree* offset distances internal to the wind/current
+over the plate node cloud); `0.5` (a quarter of the cells) is the corresponding lower-resolution
+option, for a coarser climate map and slightly faster steps. Fixed-*degree* offset distances internal to the wind/current
 mechanics below (mountain/coastal wake lookback, mountain tangent sampling) stay physically
 meaningful at any density via `_REFERENCE_CELL_DEG`, a reference cell size decoupled from the
 grid's own actual width -- one exception, noted where it's defined

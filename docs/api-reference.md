@@ -39,18 +39,21 @@ only `climate.py`'s insolation on future renders (see
 [simulation-model.md#climate](simulation-model.md#climate)), which is why it's stored on
 `World` rather than consumed once here. `num_mantle_centers` defaults to
 `world.DEFAULT_MANTLE_CENTERS = 8`. `node_density` is the UI's "point density" choice
-(`plates.NODE_DENSITY_CHOICES = (1.0, 4.0)`, defaults to `plates.DEFAULT_NODE_DENSITY = 4.0`)
--- `400` if it isn't one of those two values. `initial_soil_maturity` is the UI's fifth
-generation slider (0 to 1, defaults to `0.0` -- a fully barren starting world, no soil on any
-land node) -- a one-time seed for `soil_depth`/`soil_mineral_content`/`soil_organic_content`
-(see [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)), not
-stored on `World` afterward. `climate_density` is the UI's "climate & biome resolution" choice
-(`climate.CLIMATE_DENSITY_CHOICES = (1.0, 2.0)`, defaults to
-`climate.DEFAULT_CLIMATE_DENSITY = 1.0`) -- `400` if it isn't one of those two values. Doubles
-`climate.py`'s own simulation grid (and, scaled the same way, the Biome/Combined/Resources/
-Soil-Quality views' own finer render grid) in *each* dimension at `2.0`, for sharper, less
-pixelated climate/biome maps -- stored on `World` (unlike `initial_soil_maturity`) since every
-future step/render reads it again, same reasoning `node_density`'s own storage gives (see
+(`plates.NODE_DENSITY_CHOICES = (1.0, 2.0, 4.0)`, defaults to
+`plates.DEFAULT_NODE_DENSITY = 4.0`) -- `400` if it isn't one of those three values; `2.0` is
+a lower-resolution middle ground (half the default). `initial_soil_maturity` is the UI's
+fifth generation slider (0 to 1, defaults to `0.0` -- a fully barren starting world, no soil
+on any land node) -- a one-time seed for `soil_depth`/`soil_mineral_content`/
+`soil_organic_content` (see
+[simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)), not
+stored on `World` afterward. `climate_density` is the UI's "climate & biome resolution"
+choice (`climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0)`, defaults to
+`climate.DEFAULT_CLIMATE_DENSITY = 1.0`) -- `400` if it isn't one of those three values.
+Scales `climate.py`'s own simulation grid (and, scaled the same way, the Biome/Combined/
+Resources/Soil-Quality views' own finer render grid) in *each* dimension -- `2.0` doubles it,
+for sharper, less pixelated climate/biome maps; `0.5` halves it, for a coarser but faster
+grid -- stored on `World` (unlike `initial_soil_maturity`) since every future step/render
+reads it again, same reasoning `node_density`'s own storage gives (see
 [simulation-model.md#climate](simulation-model.md#climate)). Replaces whatever world
 previously existed.
 
@@ -112,26 +115,41 @@ this is caught broadly).
 
 ## `POST /world/controls`
 
-Request body (both optional, independently settable -- the "Controls" window sends only
-whichever slider the user moved):
+Request body (all four optional, independently settable -- the "Controls" window sends only
+whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1 }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true }
 ```
 
-Live-adjusts `World.sea_level_m` (default `0.0`) and/or `World.solar_multiplier` (default
-`1.0`, scales `climate.SUNLIGHT`) on the *current* world -- no regenerate needed. Unlike
-`axial_tilt_deg`/`node_density`, these are meant to be tweaked mid-simulation: every
-`is_ocean` check in the codebase (`climate.py`, `hydrology.py`, `bathymetry.py`) keys off
-`sea_level_m` instead of a bare `elevation <= 0.0`, and `render_image.py`'s elevation-view
-hypsometric coloring shifts by it too, so raising sea level visibly floods the elevation map
-immediately. Forces an immediate `climate.compute_climate` recompute (stored back onto
+Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
+scales `climate.SUNLIGHT`), `World.simulate_plate_movement`, and/or
+`World.simulate_climate_biomes` (both default `true`) on the *current* world -- no
+regenerate needed. Unlike `axial_tilt_deg`/`node_density`, these are meant to be tweaked
+mid-simulation: every `is_ocean` check in the codebase (`climate.py`, `hydrology.py`,
+`bathymetry.py`) keys off `sea_level_m` instead of a bare `elevation <= 0.0`, and
+`render_image.py`'s elevation-view hypsometric coloring shifts by it too, so raising sea
+level visibly floods the elevation map immediately.
+
+`simulate_plate_movement`/`simulate_climate_biomes` let the user run just one half of
+`world.step_world` -- see that function's own docstring. With `simulate_plate_movement`
+`false`, a step skips plate rotation, boundary evolution, topology changes, volcanism, and
+the periodic gap-fill/regularize/reassign passes. With `simulate_climate_biomes` `false`, a
+step skips erosion (and the `climate.compute_climate` call inside it), hydrology,
+bathymetry, and resource formation -- by far the most expensive part of a step. Either can
+be turned off independently to watch (or speed up) just the other half; `elapsed_years`
+always advances regardless of both.
+
+Forces an immediate `climate.compute_climate` recompute (stored back onto
 `world.climate_cache`) so the very next `/world/render` or `/world/stats` call reflects the
 change without waiting for a step -- `climate_cache` is otherwise only refreshed once per
-step by `erosion.py`. `404` if no world has been generated yet.
+step by `erosion.py`, and not at all while `simulate_climate_biomes` is `false`. `404` if no
+world has been generated yet.
+
+Response echoes back the world's current values for all four:
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1 }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true }
 ```
 
 ## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`

@@ -40,7 +40,11 @@ TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 
 # UI-facing choices for World.node_density -- a discrete set (not a free-form slider) since
 # there's no natural continuous unit for "how many points," only "how many times as many."
-NODE_DENSITY_CHOICES = (1.0, 4.0)
+# 2.0 (half the default multiplier) is a lower-resolution middle ground -- fewer nodes than the
+# default, so plate-movement-only stepping (World.simulate_plate_movement,
+# World.simulate_climate_biomes off) runs faster, without dropping all the way to 1.0's much
+# coarser boundary geometry.
+NODE_DENSITY_CHOICES = (1.0, 2.0, 4.0)
 DEFAULT_NODE_DENSITY = 4.0
 
 

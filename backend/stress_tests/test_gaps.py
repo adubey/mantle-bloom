@@ -14,7 +14,14 @@ def _young_plate(plate_id: int) -> Plate:
 
 
 def test_fill_gaps_leaves_no_large_gaps_after_a_long_simulation():
-    world = generate_world(seed=55, num_plates=10)
+    # node_density=2.0 (half the default 4.0, see plates.NODE_DENSITY_CHOICES) -- this test
+    # only checks that no large *gap* remains, a geometric property that doesn't need the
+    # default's full node density to verify.
+    world = generate_world(seed=55, num_plates=10, node_density=2.0)
+    # gaps.py only reacts to plate/node geometry, never to climate/erosion/hydrology output
+    # (see World.simulate_climate_biomes) -- skipping that per-step computation cuts this
+    # long-running test's cost substantially without changing what it exercises.
+    world.simulate_climate_biomes = False
     for _ in range(25):
         step_world(world, years=6_000_000)
     # A single fill_gaps call only claims one ring of a gap (see GROWTH_RING_RAD) --
@@ -35,7 +42,8 @@ def test_fill_gaps_leaves_no_large_gaps_after_a_long_simulation():
 
 def test_gap_fill_is_deterministic_for_same_seed_and_step_sequence():
     def run():
-        w = generate_world(seed=77, num_plates=10)
+        w = generate_world(seed=77, num_plates=10, node_density=2.0)  # see the test above for why this is safe
+        w.simulate_climate_biomes = False  # see the test above for why this is safe here
         for _ in range(12):
             step_world(w, years=5_000_000)
         return w

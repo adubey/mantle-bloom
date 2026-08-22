@@ -212,14 +212,14 @@ async function asBlob(resp: Response): Promise<Blob> {
 // (independent of the first -- see plates.py's _land_noise_threshold for how the two
 // combine). axialTiltDeg is the dialog's fourth slider (degrees) -- doesn't affect plate
 // generation, only climate.py's insolation at render time (see world.py's
-// World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (1 or 4, see
+// World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (1, 2, or 4, see
 // plates.NODE_DENSITY_CHOICES) -- how many elevation-line nodes each plate starts with, and
 // stays scaled to for the rest of that world's life (see world.py's World.node_density).
 // initialSoilMaturity is the dialog's fifth slider (0 to 1) -- how much soil the world starts
 // with (0 = fully barren, matching every other persistent field's own zero-start default; see
 // backend app/geology.py's seed_initial_soil), a one-time generation-time seed, not stored on
 // World the way nodeDensity is (see world.generate_world's own docstring for why).
-// climateDensity is the dialog's "climate & biome resolution" choice (1 or 2, see backend
+// climateDensity is the dialog's "climate & biome resolution" choice (0.5, 1, or 2, see backend
 // app/climate.py's CLIMATE_DENSITY_CHOICES) -- how finely climate.py's own grid (and the
 // Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
 // temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
@@ -250,17 +250,36 @@ export function generateWorld(
   }).then(asJson<WorldSummary>);
 }
 
-// Live-adjusts sea level and/or solar heat on the current world (the "Controls" window --
-// see backend app/world.py's World.sea_level_m/World.solar_multiplier and main.py's
-// /world/controls) -- either argument may be omitted to leave that value untouched. Forces
-// an immediate server-side climate recompute, so the caller should re-fetch /world/render
-// and /world/stats right after this resolves to see the effect.
-export function updateControls(controls: { seaLevelM?: number; solarMultiplier?: number }): Promise<{ sea_level_m: number; solar_multiplier: number }> {
+// Live-adjusts sea level, solar heat, and/or the plate-movement/climate-biomes step toggles
+// on the current world (the "Controls" window -- see backend app/world.py's
+// World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
+// World.simulate_climate_biomes and main.py's /world/controls) -- any argument may be
+// omitted to leave that value untouched. Forces an immediate server-side climate recompute,
+// so the caller should re-fetch /world/render and /world/stats right after this resolves to
+// see the effect.
+export interface ControlsState {
+  sea_level_m: number;
+  solar_multiplier: number;
+  simulate_plate_movement: boolean;
+  simulate_climate_biomes: boolean;
+}
+
+export function updateControls(controls: {
+  seaLevelM?: number;
+  solarMultiplier?: number;
+  simulatePlateMovement?: boolean;
+  simulateClimateBiomes?: boolean;
+}): Promise<ControlsState> {
   return fetch(`${API_BASE}/world/controls`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sea_level_m: controls.seaLevelM, solar_multiplier: controls.solarMultiplier }),
-  }).then(asJson<{ sea_level_m: number; solar_multiplier: number }>);
+    body: JSON.stringify({
+      sea_level_m: controls.seaLevelM,
+      solar_multiplier: controls.solarMultiplier,
+      simulate_plate_movement: controls.simulatePlateMovement,
+      simulate_climate_biomes: controls.simulateClimateBiomes,
+    }),
+  }).then(asJson<ControlsState>);
 }
 
 // The backend rejects an overlapping /world/step with 503 (see backend app/main.py's

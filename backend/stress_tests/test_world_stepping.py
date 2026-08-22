@@ -14,6 +14,11 @@ def test_node_density_persists_through_regularize_and_gap_fill():
     # at least one regularize/gap-fill pass (line_regrid.REGULARIZE_INTERVAL_STEPS == 5).
     reference = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=1.0)
     denser = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=4.0)
+    # This test only checks node counts, never climate/erosion/hydrology output (see
+    # World.simulate_climate_biomes) -- skipping that per-step computation speeds this up
+    # without changing what it exercises.
+    reference.simulate_climate_biomes = False
+    denser.simulate_climate_biomes = False
 
     def total_nodes(world):
         return sum(len(line.theta) for p in world.plates for line in p.lines)
@@ -38,6 +43,7 @@ def test_rigid_rotation_preserves_interior_node_spacing_exactly():
     """The whole point of the plate-local-frame design: rotating a plate must not disturb
     the relative spacing of its own elevation-line nodes at all (no resampling)."""
     world = generate_world(seed=12, num_plates=6)
+    world.simulate_climate_biomes = False  # only node spacing/rotation is checked here
     plate = max(world.plates, key=lambda p: p.node_count())
     line = max(plate.lines, key=lambda l: len(l.theta))
 
@@ -57,6 +63,7 @@ def test_rigid_rotation_preserves_interior_node_spacing_exactly():
 
 def test_rigid_rotation_preserves_plate_frame_orthonormality():
     world = generate_world(seed=13, num_plates=6)
+    world.simulate_climate_biomes = False  # only plate.frame orthonormality is checked here
     for _ in range(10):
         step_world(world, years=5_000_000)
     for plate in world.plates:
@@ -66,6 +73,10 @@ def test_rigid_rotation_preserves_plate_frame_orthonormality():
 
 def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
     world = generate_world(seed=16, num_plates=10, continental_fraction=0.6)
+    # Only event timestamps/log length are checked here, never climate/erosion/hydrology
+    # output (see World.simulate_climate_biomes) -- plate-movement events (merges/splits/
+    # gap-fills/volcanism) still fire normally, since simulate_plate_movement stays on.
+    world.simulate_climate_biomes = False
     for _ in range(15):
         step_world(world, years=8_000_000)
     # Any event logged during stepping (merges/splits/consumption are plausible at this

@@ -109,8 +109,10 @@ _REFERENCE_CELL_DEG = 360.0 / _REFERENCE_WIDTH
 # UI-facing choices for World.climate_density (the "climate & biome resolution" generation
 # choice) -- a discrete set, not a free-form slider, same reasoning plates.py's own
 # NODE_DENSITY_CHOICES gives for node_density: there's no natural continuous unit for "how
-# many grid cells," only "how many times as many per dimension."
-CLIMATE_DENSITY_CHOICES = (1.0, 2.0)
+# many grid cells," only "how many times as many per dimension." 0.5 (half the default) is a
+# lower-resolution option -- a coarser grid, so climate-and-biomes-only stepping (or any step
+# where climate.py's own grid computation dominates the cost) runs faster.
+CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0)
 DEFAULT_CLIMATE_DENSITY = 1.0
 
 

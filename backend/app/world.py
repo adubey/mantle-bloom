@@ -88,6 +88,23 @@ class World:
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
     solar_multiplier: float = 1.0
+    # Live-adjustable via POST /world/controls, same pattern as sea_level_m/solar_multiplier
+    # above -- the UI's "Controls" window lets the user run *just* plate tectonics or *just*
+    # climate & biomes. When False, step_world skips plate rotation, boundary evolution
+    # (uplift/trench/ridge/rift), topology changes (merge/split), volcanism, and the periodic
+    # gap-fill/regularize/reassign passes entirely -- world.plates is otherwise frozen, so
+    # climate & biomes (if simulate_climate_biomes is still True) can be watched evolving on a
+    # static landscape. elapsed_years still advances either way -- these two flags gate *what*
+    # a step computes, not whether time passes.
+    simulate_plate_movement: bool = True
+    # Companion to simulate_plate_movement above, same live-adjustable pattern. When False,
+    # step_world skips climate/erosion/hydrology/bathymetry/resource-formation entirely -- by
+    # far the most expensive part of a step (climate.py's grid computation and hydrology.py's
+    # flow routing) -- leaving climate_cache/hydrology_cache at whatever they were last
+    # computed to (stale, the same one-step-behind tolerance World.climate_cache already
+    # documents) rather than None, so a render/stats call right after toggling this off still
+    # shows the last real climate snapshot instead of going blank.
+    simulate_climate_biomes: bool = True
 
     def log_event(self, message: str) -> None:
         self.events.append((self.elapsed_years, message))
@@ -202,32 +219,49 @@ def step_world(world: World, years: float) -> None:
     volcanic fields they warrant, fuses any currently-tracked volcanic fields that have ended
     up close to each other (bridging the gap between them with new interpolated land/
     volcanoes), and grows any volcanic field whose own edge has no other plate nearby to bound
-    it (see volcanism.py)."""
-    for plate in world.plates:
-        _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
-        increment = geometry.rotation_matrix_from_omega(plate.omega, years)
-        plate.frame = increment @ plate.frame
-    boundary.step_boundaries(world, years)
-    world.elapsed_years += years
-    for message in merge_split.apply_topology_changes(world, years):
-        world.log_event(message)
+    it (see volcanism.py).
 
-    # Gathered once here (rather than independently inside erosion.apply_erosion/
-    # bathymetry.apply_bathymetry) since node positions are fixed for the rest of this step --
-    # nothing between here and the next step's rotation moves a node or changes line topology
-    # (only elevation and other per-node fields still change, which each of climate.py/
-    # erosion.py/hydrology.py/bathymetry.py still reads fresh off world.plates itself) -- see
-    # plates.gather_node_positions's own docstring for why this was worth factoring out.
-    node_cloud = gather_node_positions(world.plates)
-    erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
-    bathymetry.apply_bathymetry(world, years, node_cloud=node_cloud)
-    for message in volcanism.apply_volcanic_activity(world, years):
-        world.log_event(message)
+    Both halves above are individually skippable, live, via World.simulate_plate_movement/
+    World.simulate_climate_biomes (see their own docstrings and main.py's /world/controls) --
+    "plate movement" below means rotation, boundary evolution, topology changes, volcanism,
+    and the periodic gap-fill/regularize/reassign passes; "climate & biomes" means erosion
+    (which itself computes this step's climate.py fields), hydrology, bathymetry, and
+    geology's resource formation. elapsed_years always advances regardless of either flag."""
+    if world.simulate_plate_movement:
+        for plate in world.plates:
+            _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
+            increment = geometry.rotation_matrix_from_omega(plate.omega, years)
+            plate.frame = increment @ plate.frame
+        boundary.step_boundaries(world, years)
+    world.elapsed_years += years
+    if world.simulate_plate_movement:
+        for message in merge_split.apply_topology_changes(world, years):
+            world.log_event(message)
+
+    erosion_result = None
+    if world.simulate_climate_biomes:
+        # Gathered once here (rather than independently inside erosion.apply_erosion/
+        # bathymetry.apply_bathymetry) since node positions are fixed for the rest of this
+        # step -- nothing between here and the next step's rotation moves a node or changes
+        # line topology (only elevation and other per-node fields still change, which each of
+        # climate.py/erosion.py/hydrology.py/bathymetry.py still reads fresh off world.plates
+        # itself) -- see plates.gather_node_positions's own docstring for why this was worth
+        # factoring out. Skipped entirely, alongside erosion/bathymetry below, when
+        # simulate_climate_biomes is off -- no plate-movement module reads climate/hydrology
+        # output (see World.simulate_climate_biomes), so there's nothing here for them to miss.
+        node_cloud = gather_node_positions(world.plates)
+        erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
+        bathymetry.apply_bathymetry(world, years, node_cloud=node_cloud)
+    if world.simulate_plate_movement:
+        for message in volcanism.apply_volcanic_activity(world, years):
+            world.log_event(message)
     if erosion_result is not None:
         geology.apply_resource_formation(world, years, erosion_result)
 
     world.steps_since_regularize += 1
-    run_regularize_this_step = world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS
+    run_regularize_this_step = (
+        world.simulate_plate_movement and world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS
+    )
     if run_regularize_this_step:
         for message in volcanism.detect_and_spawn_volcanic_fields(world):
             world.log_event(message)
@@ -240,6 +274,10 @@ def step_world(world: World, years: float) -> None:
         world.steps_since_regularize = 0
 
     world.steps_since_reassign += 1
-    if not run_regularize_this_step and world.steps_since_reassign >= reassign.REASSIGN_INTERVAL_STEPS:
+    if (
+        world.simulate_plate_movement
+        and not run_regularize_this_step
+        and world.steps_since_reassign >= reassign.REASSIGN_INTERVAL_STEPS
+    ):
         reassign.reassign_misplaced_points(world)
         world.steps_since_reassign = 0
