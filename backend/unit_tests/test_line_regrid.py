@@ -46,3 +46,38 @@ def test_regularize_line_short_line_is_a_no_op():
     line = ElevationLine(phi=0.0, theta=theta, elevation=elevation)
     result = line_regrid.regularize_line(line)
     assert result is line
+
+
+def test_regularize_line_too_dense_crumples_instead_of_thinning_out():
+    # 30 points packed into a span target spacing would only need ~6 for -- points are too
+    # close, the "vulcanism increased density" case, not the "gaps too wide" one.
+    theta = np.linspace(0.0, 0.03, 30)
+    elevation = 50.0 * np.sin(theta * 300)
+    line = ElevationLine(phi=0.0, theta=theta, elevation=elevation)
+
+    regularized = line_regrid.regularize_line(line, spacing_rad=0.005)
+    assert len(regularized.theta) < len(theta)
+    assert np.isclose(regularized.theta[0], theta[0])
+    assert np.isclose(regularized.theta[-1], theta[-1])
+    assert regularized.elevation[0] == elevation[0]
+    assert regularized.elevation[-1] == elevation[-1]
+
+
+def test_crumple_elevation_amplifies_peaks_and_valleys():
+    n = 40
+    x = np.linspace(0.0, 1.0, n)
+    elevation = 100.0 * np.sin(x * 6 * np.pi)
+
+    crumpled = line_regrid._crumple_elevation(elevation, 8)
+    assert len(crumpled) == 8
+    # Squashing the same shape into fewer points should exaggerate its vertical range, not
+    # just resample it -- a plain linear thin-out would stay within the original min/max.
+    assert crumpled.max() > elevation.max()
+    assert crumpled.min() < elevation.min()
+
+
+def test_crumple_elevation_preserves_endpoints_exactly():
+    elevation = np.array([10.0, 40.0, -20.0, 5.0, 30.0, 0.0, -15.0, 25.0])
+    crumpled = line_regrid._crumple_elevation(elevation, 4)
+    assert crumpled[0] == elevation[0]
+    assert crumpled[-1] == elevation[-1]

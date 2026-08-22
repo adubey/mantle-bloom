@@ -32,6 +32,16 @@ if TYPE_CHECKING:
 REGULARIZE_INTERVAL_STEPS = 5
 IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
 
+# Self-affine scaling exponent used by _crumple_elevation below: real terrain roughened by
+# compressing a profile horizontally by k doesn't just get resampled at the new spacing, its
+# vertical amplitude grows by roughly k**-CRUMPLE_HURST_EXPONENT (a Hurst exponent -- 0.5 is
+# the standard "random walk" / Brownian terrain default used when no better estimate of a
+# specific landscape's roughness is available). This is what makes the vulcanism-driven
+# density increase that triggers crumpling look like real compression -- ridges pushed
+# together get taller, not just thinned out -- rather than plain decimation, which would
+# leave peak/valley heights untouched and only make the line coarser.
+CRUMPLE_HURST_EXPONENT = 0.5
+
 
 def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
     if len(line.theta) < 3:
@@ -40,6 +50,57 @@ def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPA
     gaps = np.diff(line.theta)
     ratio = gaps / dtheta_target
     return bool(np.any(ratio > IRREGULARITY_TOLERANCE) or np.any(ratio < 1.0 / IRREGULARITY_TOLERANCE))
+
+
+def _crumple_elevation(elevation: np.ndarray, m: int, hurst: float = CRUMPLE_HURST_EXPONENT) -> np.ndarray:
+    """Replace n points' worth of elevation with m < n points' worth by "crumpling": fit a
+    smooth curve e = f(x) to the n original points (x = 0..n-1, plain sample index -- the
+    fit doesn't need to know about theta/phi, just the shape), then read m new values off a
+    horizontally squashed version of that same curve, e' = f(x / k), where k = m/n < 1 is how
+    squashed the m points are relative to the n they replace. Dividing by k (rather than
+    multiplying) is what makes k < 1 actually squash the domain: as the m new sample indices
+    range over [0, m-1], x/k ranges over [0, (m-1)/k] = [0, n-1] -- i.e. the same few new
+    points now have to cover the *entire* original curve's span, packing all of its shape
+    into fewer samples, exactly like real crumpling packs the same strip of material into
+    less room.
+
+    Squashing alone (no amplitude change) would keep every new sample within the original
+    curve's min/max -- steeper-looking between points, but never actually taller. Real
+    crumpled terrain isn't just steeper, it's taller: compressing a self-affine profile
+    horizontally by k grows its vertical amplitude by k**-hurst (see CRUMPLE_HURST_EXPONENT),
+    so peaks get pushed higher and valleys pulled lower in proportion to how aggressively
+    this call is squashing, not by some unrelated fixed multiplier.
+
+    The fit itself is a truncated cosine series (a real, non-periodic basis -- unlike a raw
+    FFT, it has no wraparound artifact at the two ends of what is an open curve, never a
+    periodic one) with only m+1 terms, not n -- deliberately under-resolved relative to the n
+    input points, so the fit is a smoothing regression through them rather than an exact
+    interpolation. That smoothing is what discards the sub-target-spacing detail crumpling is
+    supposed to be discarding in the first place; fitting all n harmonics would just
+    reconstruct every original point exactly and defeat the point of thinning them out.
+    """
+    n = len(elevation)
+    x = np.arange(n, dtype=float)
+    num_harmonics = min(n - 1, max(2, m))
+    denom = max(n - 1, 1)
+    basis = np.stack([np.cos(np.pi * p * x / denom) for p in range(num_harmonics + 1)], axis=1)
+    coeffs, *_ = np.linalg.lstsq(basis, elevation, rcond=None)
+
+    k = m / n
+    x_new = np.clip(np.arange(m, dtype=float) / k, 0.0, n - 1)
+    new_basis = np.stack([np.cos(np.pi * p * x_new / denom) for p in range(num_harmonics + 1)], axis=1)
+    fitted = new_basis @ coeffs
+
+    amplitude = k**-hurst
+    mean_e = elevation.mean()
+    crumpled = mean_e + amplitude * (fitted - mean_e)
+    # The fit is a smoothing regression, not an exact interpolant, so it can drift slightly
+    # from the original data even at x=0/x=n-1 -- force the two ends back to the real
+    # original values so a crumpled line still butts up exactly against its neighbors'
+    # elevation at the endpoints regularize_line preserves the position of.
+    crumpled[0] = elevation[0]
+    crumpled[-1] = elevation[-1]
+    return crumpled
 
 
 def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> ElevationLine:
@@ -52,7 +113,18 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     n = max(int(round(span / dtheta_target)) + 1, 2)
 
     new_theta = np.linspace(theta_min, theta_max, n)
-    new_elevation = np.interp(new_theta, line.theta, line.elevation)
+    # Fewer new nodes than the line already has -- vulcanism-driven density increases (fresh
+    # volcano nodes inserted mid-line, see volcanism.py) can push points closer together than
+    # target spacing without ever widening a gap, so this is the "too close" direction
+    # needs_regularizing also fires on. Crumple instead of linearly resampling here: a plain
+    # np.interp thin-out can smooth away or altogether skip a narrow peak that happens to fall
+    # between two kept sample points, where crumpling fits the whole n-point shape first and
+    # only then reads fewer values off it, so a peak influences every new sample near it
+    # rather than being invisible to all but its two immediate neighbors.
+    if n < len(line.theta):
+        new_elevation = _crumple_elevation(line.elevation, n)
+    else:
+        new_elevation = np.interp(new_theta, line.theta, line.elevation)
     # channel_depth/channel_width/lake_depth/glacier_depth interpolated the same way -- a
     # plain reset to 0 here would wipe out a river's carved channel (or a glacier) every time
     # this line's spacing drifts enough to trigger regularizing, which runs periodically
