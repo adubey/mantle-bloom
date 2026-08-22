@@ -49,16 +49,20 @@ BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
 # should read as visibly distinct from the open ocean, not just "more blue."
 LAKE_COLOR_RGB = (58, 92, 122)
-# Fixed river overlay color (#4dd8e6); line width is not fixed -- it scales with the node's
-# own channel_width (erosion.py's persistent, grows-with-discharge field), see _draw_rivers
-# -- only *which* segments get drawn varies with flow magnitude directly, via
+# Fixed river overlay color (#4dd8e6); line width is not fixed -- see _draw_rivers, which
+# steps it directly off the segment's own flow_accum: exactly at river_draw_min_flow(world)
+# (the minimum flow a segment can have and still be drawn at all) a river is a single pixel
+# wide, and it only steps up to 2x/3x that width once flow_accum itself reaches 2x/3x the
+# floor. Since flow_accum along an unbranched stretch of channel is constant (it only grows
+# where a tributary's own flow merges in), this keeps a river's drawn width flat until a real
+# confluence, and wider from then on toward the mouth -- never gradually thickening on its own
+# -- only *which* segments get drawn at all varies with flow magnitude directly, via
 # RIVER_FLOW_PERCENTILE below.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
-# Widest a river is ever drawn, reached as channel_width approaches erosion.MAX_CHANNEL_WIDTH_M.
-# _draw_rivers maps channel_width to this range via sqrt (not linear), so a modest stream
-# isn't squeezed to a near-hairline next to a handful of true megariver outliers.
-RIVER_LINE_WIDTH_MAX_PX = 3.0
+# Widest a river is ever drawn (at 3x river_draw_min_flow(world) or beyond) -- see
+# RIVER_LINE_WIDTH_MAX_TIERS.
+RIVER_LINE_WIDTH_MAX_TIERS = 3
 # A second, independent cut on top of hydrology.py's own is_river classification
 # (RIVER_FLOW_PERCENTILE): the main map views only draw a river segment if its own
 # flow_accum also clears this absolute floor, so a large world's merely-top-decile trickles
@@ -1129,24 +1133,24 @@ def _draw_rivers(
     same technique _render_grid_arrays' own corner measurements already rely on. Also cut by
     river_draw_min_flow(world) -- see that function's own docstring for why this view is
     stricter than the River Inspector's own /world/rivers listing, and why the floor itself
-    isn't a single fixed constant. Line width scales per-segment with the
-    node's own channel_width (plates.collect_all_channel_width, erosion.py's persistent
-    grows-with-discharge field, aligned index-for-index with hydro.points -- both are built
-    by the same per-plate/per-line gather over world.plates), so a wide river reads as
-    visibly thicker than a narrow one instead of every segment sharing one fixed width."""
+    isn't a single fixed constant. Line width steps directly off each segment's own
+    flow_accum in whole multiples of that same floor -- exactly at the floor a segment is
+    1 pixel wide, at 2x the floor it's 2 pixels, at 3x (RIVER_LINE_WIDTH_MAX_TIERS) or beyond
+    it's 3 and no wider. flow_accum is constant along any unbranched stretch of channel (it
+    only grows where a tributary's own flow actually merges in), so this widens a river only
+    at real confluences -- never gradually along a single reach -- and only downstream of
+    them, so it reads narrowest at the head and widest toward the mouth."""
     hydro = world.hydrology_cache
     if hydro is None:
         return
-    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= river_draw_min_flow(world)))[0]
+    min_flow = river_draw_min_flow(world)
+    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= min_flow))[0]
     if len(river_idx) == 0:
         return
     target_idx = hydro.flow_target[river_idx]
 
-    channel_width = plates.collect_all_channel_width(world.plates)[river_idx]
-    width_norm = np.sqrt(np.clip(channel_width / erosion.MAX_CHANNEL_WIDTH_M, 0.0, 1.0))
-    width_px = np.maximum(
-        np.round((RIVER_LINE_WIDTH_PX + width_norm * (RIVER_LINE_WIDTH_MAX_PX - RIVER_LINE_WIDTH_PX)) * pixel_scale).astype(int), 1
-    )
+    width_tier = np.clip(np.floor(hydro.flow_accum[river_idx] / min_flow), 1.0, RIVER_LINE_WIDTH_MAX_TIERS)
+    width_px = np.maximum(np.round(width_tier * RIVER_LINE_WIDTH_PX * pixel_scale).astype(int), 1)
 
     from_points = _rotate(hydro.points[river_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
