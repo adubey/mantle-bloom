@@ -275,6 +275,23 @@ def plate_bounding_ellipse(points_world_xyz: np.ndarray) -> BoundingEllipse | No
     )
 
 
+# Below this many query points, spinning up cKDTree.query's workers=-1 thread pool costs
+# more than it saves -- benchmarked against an ~80k-point tree: workers=-1 was ~15x *slower*
+# than workers=1 (the default, serial) at 5 query points, still slightly slower at 500, and
+# only became a clear win (~2x faster) at 5000+. boundary.py's/hydrology.py's/volcanism.py's
+# own per-plate cKDTree queries range from a handful of points (a small or freshly-spawned
+# plate) to tens of thousands (an established one at this simulation's default node_density),
+# so query_workers below decides per call rather than hardcoding one choice for every plate.
+PARALLEL_QUERY_MIN_POINTS = 2000
+
+
+def query_workers(n: int) -> int:
+    """-1 (parallel across every core) if `n` query points is large enough for that to pay
+    for itself, else 1 (serial) -- see PARALLEL_QUERY_MIN_POINTS's own comment for the
+    benchmark behind the cutoff."""
+    return -1 if n >= PARALLEL_QUERY_MIN_POINTS else 1
+
+
 def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[tuple[Plate, int, int, int]]]:
     """Every elevation-line node's current world position, concatenated, alongside
     (plate, line_index, start, end) references into the flat array -- the position-only half

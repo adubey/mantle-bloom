@@ -86,6 +86,7 @@ from .plates import (
     iter_local_lattice,
     line_spacing_rad,
     noise_amplitude,
+    query_workers,
 )
 
 if TYPE_CHECKING:
@@ -177,7 +178,10 @@ def _whole_world_median_spacing(world: "World") -> float:
     points = np.concatenate(points_list, axis=0)
     if len(points) <= 1:
         return 0.0
-    dist, _ = cKDTree(points).query(points, k=2)  # column 0 is always the point itself, at distance 0
+    # Same build-once/query-once tradeoff as boundary.step_boundaries' own per-plate tree
+    # (see its comment) -- this tree is built fresh every call and queried exactly once.
+    tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
+    dist, _ = tree.query(points, k=2, workers=query_workers(len(points)))  # column 0 is always the point itself, at distance 0
     return float(np.median(dist[:, 1]))
 
 
@@ -213,8 +217,11 @@ def _nearest_other_plate_boundary(points: np.ndarray, owner: np.ndarray) -> tupl
         if not np.any(other_mask):
             continue
         other_indices = np.nonzero(other_mask)[0]
-        tree = cKDTree(points[other_mask])
-        dist, idx = tree.query(points[own_mask], k=1)
+        # Same build-once/query-once tradeoff as boundary.step_boundaries' own per-plate
+        # tree (see its comment) -- built fresh per plate_id here too, queried exactly once.
+        own_points = points[own_mask]
+        tree = cKDTree(points[other_mask], balanced_tree=False, compact_nodes=False)
+        dist, idx = tree.query(own_points, k=1, workers=query_workers(len(own_points)))
         own_indices = np.nonzero(own_mask)[0]
         nearest_dist[own_indices] = dist
         nearest_idx[own_indices] = other_indices[idx]
@@ -405,8 +412,10 @@ def _bridge_points(points_a: np.ndarray, points_b: np.ndarray, spacing_rad: floa
     comment."""
     if len(points_a) == 0 or len(points_b) == 0:
         return np.zeros((0, 3))
-    tree_b = cKDTree(points_b)
-    dist, idx = tree_b.query(points_a)
+    # Same build-once/query-once tradeoff as boundary.step_boundaries' own per-plate tree
+    # (see its comment) -- built fresh per call, queried exactly once.
+    tree_b = cKDTree(points_b, balanced_tree=False, compact_nodes=False)
+    dist, idx = tree_b.query(points_a, workers=query_workers(len(points_a)))
     close = dist < max_gap_rad
     if not np.any(close):
         return np.zeros((0, 3))
@@ -618,7 +627,17 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
         other_points_list = [
             other.all_points_and_elevation()[0] for other in world.plates if other.plate_id != plate_id and other.node_count() > 0
         ]
-        other_tree = cKDTree(np.concatenate(other_points_list, axis=0)) if other_points_list else None
+        # Same build-once/query-once tradeoff as boundary.step_boundaries' own per-plate
+        # tree (see its comment) -- built fresh per volcanic-field plate_id here, over
+        # every other plate's full point cloud (unlike step_boundaries, no bounding-sphere
+        # prefilter narrows this first), then queried only twice (high_world/low_world
+        # below, each a handful of line-ends) -- build cost dominates, so favoring a faster
+        # build is worth it even more here than in step_boundaries.
+        other_tree = (
+            cKDTree(np.concatenate(other_points_list, axis=0), balanced_tree=False, compact_nodes=False)
+            if other_points_list
+            else None
+        )
 
         high_phi = np.array([line.phi for line in lines_with_nodes])
         high_theta = np.array([line.theta[-1] for line in lines_with_nodes])
@@ -630,8 +649,8 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
             high_isolated = np.ones(len(lines_with_nodes), dtype=bool)
             low_isolated = np.ones(len(lines_with_nodes), dtype=bool)
         else:
-            high_dist, _ = other_tree.query(high_world)
-            low_dist, _ = other_tree.query(low_world)
+            high_dist, _ = other_tree.query(high_world, workers=query_workers(len(high_world)))
+            low_dist, _ = other_tree.query(low_world, workers=query_workers(len(low_world)))
             high_isolated = high_dist > clearance_rad
             low_isolated = low_dist > clearance_rad
 
