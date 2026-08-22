@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions
+from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -101,7 +101,7 @@ def apply_bathymetry(
         return
 
     land_tree = cKDTree(points[is_land])
-    dist_to_land, _ = land_tree.query(points[submerged_indices])
+    dist_to_land, _ = land_tree.query(points[submerged_indices], workers=query_workers(len(submerged_indices)))
     target = np.where(dist_to_land <= SHELF_RANGE_RAD, SHELF_TARGET_M, DEEP_CONTINENTAL_TARGET_M)
 
     years_myr = years / 1_000_000.0

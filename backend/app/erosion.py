@@ -62,7 +62,7 @@ from scipy.spatial import cKDTree
 
 from . import climate, geometry, hydrology
 from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions
+from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -233,7 +233,7 @@ def compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray
         return np.zeros(n), np.zeros(n)
 
     tree = cKDTree(points)
-    _, neighbor_idx = tree.query(points, k=SLOPE_NEIGHBOR_COUNT + 1)
+    _, neighbor_idx = tree.query(points, k=SLOPE_NEIGHBOR_COUNT + 1, workers=query_workers(n))
     neighbor_idx = neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
 
     neighbor_elevation = elevation[neighbor_idx]

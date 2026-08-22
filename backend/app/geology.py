@@ -58,7 +58,7 @@ from scipy.spatial import cKDTree
 from . import biomes
 from .bathymetry import SHELF_RANGE_RAD
 from .noise import SphereNoise
-from .plates import Plate
+from .plates import Plate, query_workers
 
 if TYPE_CHECKING:
     from .erosion import ErosionResult
@@ -162,7 +162,7 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     # --- Oil & gas (ocean, monotonic), gated to shelf water and boosted near a river mouth ---
     if np.any(is_land):
         land_tree = cKDTree(erosion_result.points[is_land])
-        dist_to_land, _ = land_tree.query(erosion_result.points)
+        dist_to_land, _ = land_tree.query(erosion_result.points, workers=query_workers(n))
     else:
         dist_to_land = np.full(n, np.inf)
     is_shelf = is_ocean & (dist_to_land <= SHELF_RANGE_RAD)

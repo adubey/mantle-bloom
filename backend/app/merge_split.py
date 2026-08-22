@@ -25,7 +25,7 @@ from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, build_lines_from_lattice, line_spacing_rad
+from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, build_lines_from_lattice, line_spacing_rad, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -137,7 +137,7 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
             if not np.any(candidate_mask):
                 continue
             candidate_idx = np.nonzero(candidate_mask)[0]
-            dist, idx = trees[b.plate_id].query(pa[candidate_idx])
+            dist, idx = trees[b.plate_id].query(pa[candidate_idx], workers=query_workers(len(candidate_idx)))
             close = dist < merge_contact_distance_rad
             if np.sum(close) < MERGE_MIN_CONTACT_NODES:
                 continue
