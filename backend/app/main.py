@@ -4,6 +4,8 @@ no persistence, one world at a time, matching the "elevation view only" v1 scope
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +34,13 @@ app.add_middleware(
 )
 
 _state: dict[str, World | None] = {"world": None}
+
+# FastAPI runs sync `def` routes in a thread pool, so two /world/step requests can otherwise
+# race on the same World's mutable numpy arrays. Rather than serializing them (which would
+# make the second request silently hang for as long as the first one takes -- step_world can
+# take seconds on a large world), a step in progress rejects any overlapping step with a 503
+# so the caller can decide how to wait -- see api.ts's stepWorld for the client-side retry.
+_step_lock = threading.Lock()
 
 
 class GenerateRequest(BaseModel):
@@ -356,8 +365,13 @@ def generate(req: GenerateRequest) -> dict:
 @app.post("/world/step")
 def step(req: StepRequest) -> dict:
     world = _require_world()
-    step_world(world, req.years)
-    return _summary(world)
+    if not _step_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="a step is already in progress")
+    try:
+        step_world(world, req.years)
+        return _summary(world)
+    finally:
+        _step_lock.release()
 
 
 @app.get("/world/save")

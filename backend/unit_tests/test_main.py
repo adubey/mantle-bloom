@@ -1,6 +1,7 @@
 import base64
 import io
 import math
+import threading
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -66,6 +67,37 @@ def test_export_hexgrid_before_generate_returns_404(client):
 
 def test_stats_before_generate_returns_404(client):
     assert client.get("/world/stats").status_code == 404
+
+
+def test_overlapping_step_returns_503(client, monkeypatch):
+    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+
+    # Makes the first /world/step's own critical section deterministically overlap the
+    # second's: the blocking replacement only runs (and lets app.main._step_lock be released)
+    # once entered_step_world confirms the first request is already holding the lock, so the
+    # second request's 503 isn't a race on request scheduling order.
+    entered_step_world = threading.Event()
+    release_step_world = threading.Event()
+
+    def blocking_step_world(world, years):
+        entered_step_world.set()
+        release_step_world.wait(timeout=5)
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "step_world", blocking_step_world)
+
+    results: list[int] = []
+    t1 = threading.Thread(target=lambda: results.append(client.post("/world/step", json={"years": 1_000_000}).status_code))
+    t1.start()
+    assert entered_step_world.wait(timeout=5)
+
+    t2_response = client.post("/world/step", json={"years": 1_000_000})
+    release_step_world.set()
+    t1.join()
+
+    assert t2_response.status_code == 503
+    assert results == [200]
 
 
 def test_generate_returns_summary(client):

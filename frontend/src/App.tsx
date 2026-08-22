@@ -85,6 +85,14 @@ export default function App() {
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>("eckert4");
   const [mapView, setMapView] = useState<MapView>("elevation");
+  // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
+  // mode changes while that step is still in flight, its post-step refresh would otherwise
+  // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
+  // whatever the mode change's own refresh (the effect below) just showed. This ref always
+  // holds the current value, so the post-step refresh renders whatever mode is selected by the
+  // time the step actually finishes, not whatever was selected when it started.
+  const mapViewRef = useRef(mapView);
+  mapViewRef.current = mapView;
   // The map's current view orientation (see rotation.ts and
   // docs/simulation-model.md#rotating-the-view) -- lives entirely here, like
   // projection/mapView, sent fresh with every render call rather than stored server-side
@@ -281,14 +289,17 @@ export default function App() {
       setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
       setSelectedBasin(null); // lakes are regrouped fresh every step too -- same reasoning
       setSelectedBasinKind(null);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+      // mapViewRef.current, not mapView -- see the ref's own comment above.
+      await Promise.all([
+        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats(),
+      ]);
     } catch (e) {
       setError(String(e));
       setPlaying(false);
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
+  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
 
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing seaLevelM/solarMultiplier's

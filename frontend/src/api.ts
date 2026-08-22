@@ -263,12 +263,25 @@ export function updateControls(controls: { seaLevelM?: number; solarMultiplier?:
   }).then(asJson<{ sea_level_m: number; solar_multiplier: number }>);
 }
 
-export function stepWorld(years: number): Promise<WorldSummary> {
-  return fetch(`${API_BASE}/world/step`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ years }),
-  }).then(asJson<WorldSummary>);
+// The backend rejects an overlapping /world/step with 503 (see backend app/main.py's
+// _step_lock) rather than queueing it, since a step already in flight can take seconds on a
+// large world. Retry on a short delay until the in-flight step finishes and the lock frees up
+// -- any other error (network failure, 404 for no world, etc.) still propagates immediately.
+const STEP_RETRY_DELAY_MS = 300;
+
+export async function stepWorld(years: number): Promise<WorldSummary> {
+  for (;;) {
+    const resp = await fetch(`${API_BASE}/world/step`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ years }),
+    });
+    if (resp.status === 503) {
+      await new Promise((resolve) => setTimeout(resolve, STEP_RETRY_DELAY_MS));
+      continue;
+    }
+    return asJson<WorldSummary>(resp);
+  }
 }
 
 // width/height are the actual pixel dimensions of the returned image -- pass a higher
