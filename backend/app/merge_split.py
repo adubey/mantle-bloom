@@ -124,12 +124,25 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
 
             if b.plate_id not in trees:
                 trees[b.plate_id] = cKDTree(pb)
-            dist, idx = trees[b.plate_id].query(pa)
+
+            # Same triangle-inequality reasoning as the pair-level bounding-sphere prune
+            # above, just applied per point: a point of `pa` farther than rb +
+            # merge_contact_distance_rad from cb cannot possibly be within contact distance
+            # of any point in pb, so it can't affect the result below. Without this, the
+            # k-d tree query -- the actual cost once a pair survives the prune above -- ran
+            # over a continental plate's *entire* node cloud (thousands of interior nodes
+            # nowhere near the other plate) instead of just the handful of nodes near the
+            # shared edge that could ever come back "close".
+            candidate_mask = geometry.angular_distance(pa, cb) <= rb + merge_contact_distance_rad
+            if not np.any(candidate_mask):
+                continue
+            candidate_idx = np.nonzero(candidate_mask)[0]
+            dist, idx = trees[b.plate_id].query(pa[candidate_idx])
             close = dist < merge_contact_distance_rad
             if np.sum(close) < MERGE_MIN_CONTACT_NODES:
                 continue
 
-            close_points = pa[close]
+            close_points = pa[candidate_idx[close]]
             neighbor_points = pb[idx[close]]
             closing = closing_rate(close_points, a.omega, b.omega, neighbor_points)
             if np.sum(closing > TRANSFORM_RATE_THRESHOLD) >= MERGE_MIN_CONTACT_NODES:
