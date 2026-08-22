@@ -51,6 +51,19 @@ def test_lake_at_before_generate_returns_404(client):
     assert client.get("/world/lake_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
+def test_save_before_generate_returns_404(client):
+    assert client.get("/world/save").status_code == 404
+
+
+def test_animate_before_generate_returns_404(client):
+    resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 2})
+    assert resp.status_code == 404
+
+
+def test_export_hexgrid_before_generate_returns_404(client):
+    assert client.post("/world/export_hexgrid", json={}).status_code == 404
+
+
 def test_stats_before_generate_returns_404(client):
     assert client.get("/world/stats").status_code == 404
 
@@ -285,3 +298,81 @@ def test_stats_returns_expected_shape(client):
     ):
         assert body[key] is not None
     assert body["precipitation_min_mm"] <= body["precipitation_mean_mm"] <= body["precipitation_max_mm"]
+
+
+def test_save_then_load_round_trips_the_exact_world_state(client):
+    client.post("/world/generate", json={"seed": 5, "num_plates": 8, "continental_fraction": 0.5})
+    client.post("/world/step", json={"years": 2_000_000})
+    generated_summary = client.get("/world/plates").json()
+
+    saved = client.get("/world/save")
+    assert saved.status_code == 200
+    assert saved.headers["content-type"] == "application/octet-stream"
+    assert "attachment" in saved.headers["content-disposition"]
+
+    # Advance further so the live world visibly differs from the snapshot just saved.
+    client.post("/world/step", json={"years": 2_000_000})
+    assert client.get("/world/render").json()["elapsed_years"] == 4_000_000.0
+
+    loaded = client.post("/world/load", content=saved.content)
+    assert loaded.status_code == 200
+    body = loaded.json()
+    assert body["seed"] == 5
+    assert body["elapsed_years"] == 2_000_000.0
+    assert client.get("/world/plates").json() == generated_summary
+
+
+def test_load_with_malformed_bytes_returns_400(client):
+    resp = client.post("/world/load", content=b"definitely not a saved world")
+    assert resp.status_code == 400
+
+
+def test_animate_advances_the_world_and_returns_a_multi_frame_gif(client):
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post(
+        "/world/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 200, "height": 110, "years_per_frame": 1_000_000, "num_frames": 3},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["elapsed_years"] == 2_000_000.0  # (num_frames - 1) * years_per_frame
+
+    image = Image.open(io.BytesIO(base64.b64decode(body["image_base64"])))
+    assert image.format == "GIF"
+    frame_count = 0
+    try:
+        while True:
+            image.seek(frame_count)
+            frame_count += 1
+    except EOFError:
+        pass
+    assert frame_count == 3
+
+
+def test_animate_rejects_out_of_range_frame_counts(client):
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 0})
+    assert resp.status_code == 400
+    resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 10_000})
+    assert resp.status_code == 400
+
+
+def test_animate_rejects_unknown_view(client):
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post("/world/animate", json={"view": "not-a-real-view", "years_per_frame": 1_000_000, "num_frames": 2})
+    assert resp.status_code == 400
+
+
+def test_export_hexgrid_returns_the_requested_tile_count(client):
+    client.post("/world/generate", json={"seed": 11, "num_plates": 8})
+    resp = client.post("/world/export_hexgrid", json={"frequency": 8})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["num_tiles"] == 642 == len(body["tiles"])
+    assert sum(1 for t in body["tiles"] if t["is_pentagon"]) == 12
+
+
+def test_export_hexgrid_rejects_unknown_frequency(client):
+    client.post("/world/generate", json={"seed": 11, "num_plates": 8})
+    resp = client.post("/world/export_hexgrid", json={"frequency": 5})
+    assert resp.status_code == 400

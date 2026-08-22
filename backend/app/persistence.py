@@ -1,0 +1,37 @@
+"""Whole-`World` save/load to a single opaque file -- the "File > Save/Load" feature.
+
+Deliberately just `pickle`, not a hand-written interchange format: every field on `World`
+(see world.py) -- plates, mantle centers, the collision-progress dict, the volcanic-field id
+set, the climate/hydrology caches -- is already a plain dataclass or numpy array with no
+open handles or unpicklable state, so pickling the object graph directly round-trips it
+exactly with no bespoke (de)serialization code to keep in sync as `World`'s own fields
+change. This deliberately makes no promise of compatibility across app versions (pickling by
+class identity means a later renamed/restructured field breaks old files) -- an accepted
+trade for "just get me back what I had," not a stable export format (see geodesic.py's
+`export_hexgrid` for that end of the spectrum instead).
+
+Security note: unpickling is equivalent to running arbitrary code from the file's bytes.
+Acceptable here because this server is a single-user localhost dev tool already (see
+main.py's CORS allowlist) -- the same trust boundary every other route already assumes --
+but worth keeping in mind before ever exposing this beyond localhost.
+"""
+
+from __future__ import annotations
+
+import pickle
+
+from .world import World
+
+
+def save_world_bytes(world: World) -> bytes:
+    return pickle.dumps(world)
+
+
+def load_world_bytes(data: bytes) -> World:
+    """Raises whatever pickle itself raises on malformed/foreign input (UnpicklingError,
+    EOFError, AttributeError for an unknown class, etc.) -- the caller (main.py) is
+    responsible for catching broadly and mapping to a 400, not this function."""
+    world = pickle.loads(data)
+    if not isinstance(world, World):
+        raise TypeError(f"expected a World, got {type(world).__name__}")
+    return world

@@ -242,7 +242,13 @@ coastline.py          traces the land/ocean and lake boundary as line segments o
                      GET /world/rivers and GET /world/lakes (see simulation-model.md#coastline)
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
-                     (see simulation-model.md#render-image and simulation-model.md#climate)
+                     (see simulation-model.md#render-image and simulation-model.md#climate),
+                     plus /world/animate's animated-GIF rendering (render_animation_gif)
+persistence.py       whole-World save/load to a single opaque pickle file (File > Save/Load
+                     World -- see api-reference.md's /world/save//world/load)
+geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/biome
+                     sampling for File > Export Hex Grid (see docs/hex-export-format.md),
+                     independent of the plate simulation's own node cloud
 ```
 
 See [simulation-model.md](simulation-model.md) for what each of these actually computes and

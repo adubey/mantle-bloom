@@ -103,6 +103,10 @@ mantle-bloom/
 - **v1 is elevation-only.** No climate, hydrology, erosion, or biomes yet -- see
   [docs/simulation-model.md#known-simplifications](docs/simulation-model.md#known-simplifications)
   for this and the other deliberate scoping decisions.
-- **No persistence, single world.** World state lives in backend memory only, one world at
-  a time; restarting the backend or calling `/world/generate` again loses whatever was
-  there.
+- **Single world, in memory.** World state lives in backend memory only, one world at a
+  time -- calling `/world/generate` again (or restarting the backend without saving first)
+  replaces/loses whatever was there. Use the **File...** button's Save/Load World to
+  persist a world to disk and bring it back later -- see
+  [docs/api-reference.md](docs/api-reference.md)'s `/world/save`/`/world/load` (no
+  cross-version compatibility promise; it's a pickle of the whole in-memory state, not a
+  stable interchange format).

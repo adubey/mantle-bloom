@@ -5,18 +5,22 @@ no persistence, one world at a time, matching the "elevation view only" v1 scope
 from __future__ import annotations
 
 import numpy as np
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
-from . import climate, coastline, geometry, hydrology, lakes, plates, projections, render_image, stats
+from . import climate, coastline, geodesic, geometry, hydrology, lakes, persistence, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
 # client's query string, and PIL will happily try to allocate whatever it's told, so an
 # unbounded value here would let a malformed or malicious request force a huge allocation.
 MAX_RENDER_DIMENSION_PX = 4000
+# Each animation frame costs a full step_world + render, so this bounds worst-case request
+# time for POST /world/animate the same way MAX_RENDER_DIMENSION_PX bounds /world/render's
+# own worst case.
+MAX_ANIMATION_FRAMES = 60
 
 app = FastAPI(title="mantle-bloom")
 
@@ -64,6 +68,29 @@ class GenerateRequest(BaseModel):
 
 class StepRequest(BaseModel):
     years: float
+
+
+class AnimateRequest(BaseModel):
+    # Same shape/defaults as /world/render's own query params (see `render`), plus the two
+    # animation-specific knobs below. `rotation` is a 9-comma-separated-float string, same
+    # convention _parse_view_rotation already expects.
+    projection: str = "behrmann"
+    view: str = "elevation"
+    width: int = 1100
+    height: int = 611
+    rotation: str | None = None
+    # The UI's "years per frame" choice -- the frontend defaults this to 1_000_000, matching
+    # the feature's own framing ("a new frame every million years"), but it's sent explicitly
+    # rather than defaulted here so a future UI change doesn't need a matching backend change.
+    years_per_frame: float
+    # Total frames, including frame 0 (the world's current, unstepped state) -- so this
+    # permanently advances the world by (num_frames - 1) * years_per_frame years (see
+    # render_image.render_animation_gif's own docstring).
+    num_frames: int
+
+
+class ExportHexGridRequest(BaseModel):
+    frequency: int = geodesic.DEFAULT_FREQUENCY
 
 
 class ControlsRequest(BaseModel):
@@ -334,6 +361,36 @@ def step(req: StepRequest) -> dict:
     return _summary(world)
 
 
+@app.get("/world/save")
+def save_world() -> Response:
+    """The "File > Save World" download -- the *entire* current world (every plate/line,
+    mantle field, caches, event log -- see World) pickled as a single opaque file (see
+    persistence.py for why pickle, deliberately with no cross-version compatibility
+    promise). `404` if no world has been generated yet."""
+    world = _require_world()
+    body = persistence.save_world_bytes(world)
+    filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.mbworld"
+    return Response(
+        content=body, media_type="application/octet-stream", headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.post("/world/load")
+async def load_world(request: Request) -> dict:
+    """The "File > Load World" upload -- the raw bytes of a file /world/save previously
+    produced, as the request body (not JSON -- see persistence.py). Replaces whatever world
+    previously existed, same as /world/generate. `400` if the bytes aren't a valid
+    mantle-bloom world file (pickle can raise many different exception types on malformed
+    or foreign input, so this is caught broadly)."""
+    body = await request.body()
+    try:
+        world = persistence.load_world_bytes(body)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
+    _state["world"] = world
+    return _summary(world)
+
+
 @app.get("/world/render")
 def render(
     projection: str = "behrmann", view: str = "elevation", width: int = 1100, height: int = 611, rotation: str | None = None
@@ -358,6 +415,34 @@ def render(
         "elapsed_years": world.elapsed_years,
         "image_base64": render_image.render_png_base64(world, projection, view, width, height, view_rotation),
     }
+
+
+@app.post("/world/animate")
+def animate(req: AnimateRequest) -> dict:
+    """The "File > Make Animation" action: an animated GIF of `view`/`projection`'s
+    progress, one frame for the world's current state plus `req.num_frames - 1` more, each
+    `req.years_per_frame` further along -- see render_image.render_animation_gif for the
+    encoding details. **This permanently advances the world** by
+    `(req.num_frames - 1) * req.years_per_frame` years, the same as calling /world/step that
+    many times -- not a side-effect-free preview. Same validation as /world/render for
+    projection/view/width/height/rotation, plus `num_frames` bounded to
+    `[1, MAX_ANIMATION_FRAMES]` (each frame costs a full step_world + render). `404` if no
+    world has been generated yet."""
+    world = _require_world()
+    if req.projection not in projections.PROJECTIONS:
+        raise HTTPException(status_code=400, detail=f"unknown projection {req.projection!r}")
+    if req.view not in render_image.VIEWS:
+        raise HTTPException(status_code=400, detail=f"unknown view {req.view!r}; choices are {render_image.VIEWS}")
+    if not (1 <= req.width <= MAX_RENDER_DIMENSION_PX and 1 <= req.height <= MAX_RENDER_DIMENSION_PX):
+        raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
+    if not (1 <= req.num_frames <= MAX_ANIMATION_FRAMES):
+        raise HTTPException(status_code=400, detail=f"num_frames must be in [1, {MAX_ANIMATION_FRAMES}]")
+    view_rotation = _parse_view_rotation(req.rotation)
+
+    image_base64 = render_image.render_animation_gif_base64(
+        world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
+    )
+    return {**_summary(world), "image_base64": image_base64}
 
 
 @app.post("/world/controls")
@@ -538,3 +623,18 @@ def lake_at(lat_deg: float, lon_deg: float) -> dict:
 
     basin = _lake_basin_summary(fields, leaf, None, rivers, is_lake=False)
     return {"kind": "basin", "basin": basin}
+
+
+@app.post("/world/export_hexgrid")
+def export_hexgrid(req: ExportHexGridRequest) -> dict:
+    """The "File > Export Hex Grid" action: tiles the sphere into a geodesic-icosahedron
+    hex/pentagon dome (independent of the plate simulation's own node cloud -- see
+    geodesic.py) at `req.frequency`, samples the current world's elevation/ocean/biome onto
+    each tile, and returns the whole tiling as JSON for an external application (see
+    docs/hex-export-format.md for the file format and the neighbor-finding pseudocode its
+    own `neighbor_ids`/`corner_vertex_ids` fields back). `400` if `frequency` isn't one of
+    `geodesic.FREQUENCY_CHOICES`, `404` if no world has been generated yet."""
+    world = _require_world()
+    if req.frequency not in geodesic.FREQUENCY_CHOICES:
+        raise HTTPException(status_code=400, detail=f"unknown frequency {req.frequency!r}; choices are {geodesic.FREQUENCY_CHOICES}")
+    return geodesic.export_hexgrid(world, req.frequency)

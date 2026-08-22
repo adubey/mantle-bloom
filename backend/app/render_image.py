@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 from scipy.spatial import cKDTree
 
 from . import biomes, climate, coastline, geology, geometry, hydrology, mantle, plates, projections, volcanism
-from .world import World
+from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
 # see climate.py's module docstring for why. Handled by a separate code path
@@ -1293,3 +1293,61 @@ def _encode_image(image: Image.Image) -> bytes:
 
 def render_png_base64(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> str:
     return base64.b64encode(render_png(world, projection, view, width, height, view_rotation)).decode("ascii")
+
+
+# How long each animation frame is shown, milliseconds -- matches frontend/src/App.tsx's own
+# PLAY_INTERVAL_MS, so a saved GIF plays back at the same pace clicking Play already does.
+ANIMATION_FRAME_DURATION_MS = 400
+
+
+def render_animation_gif(
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    years_per_frame: float,
+    num_frames: int,
+) -> bytes:
+    """Renders an animated GIF of `world`'s progress in `view`/`projection`: frame 0 is the
+    world's current state, and each of the `num_frames - 1` frames after it is
+    `years_per_frame` further along -- calling step_world for real between frames, so this
+    permanently advances `world` by `(num_frames - 1) * years_per_frame` years total (see
+    main.py's `/world/animate` -- deliberately not a side-effect-free preview, same
+    "the map really did move forward" semantics manually clicking Step that many times
+    would have). Every frame is quantized against the *first* frame's own color palette
+    rather than picking its own adaptive palette independently, which would otherwise make
+    static regions (ocean, unchanged coastline) visibly flicker between playback frames --
+    a well-known GIF-encoding pitfall, not the deliberately-changing regions this animation
+    exists to show."""
+    frames = []
+    for i in range(num_frames):
+        if i > 0:
+            step_world(world, years_per_frame)
+        png_bytes = render_png(world, projection, view, width, height, view_rotation)
+        frames.append(Image.open(io.BytesIO(png_bytes)).convert("RGB"))
+
+    reference_palette = frames[0].convert("P", palette=Image.ADAPTIVE, colors=256)
+    quantized = [f.quantize(palette=reference_palette) for f in frames]
+
+    buf = io.BytesIO()
+    quantized[0].save(
+        buf, format="GIF", save_all=True, append_images=quantized[1:], duration=ANIMATION_FRAME_DURATION_MS, loop=0
+    )
+    return buf.getvalue()
+
+
+def render_animation_gif_base64(
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray,
+    years_per_frame: float,
+    num_frames: int,
+) -> str:
+    return base64.b64encode(
+        render_animation_gif(world, projection, view, width, height, view_rotation, years_per_frame, num_frames)
+    ).decode("ascii")

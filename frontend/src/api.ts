@@ -196,6 +196,14 @@ async function asJson<T>(resp: Response): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+async function asBlob(resp: Response): Promise<Blob> {
+  if (!resp.ok) {
+    const detail = await resp.text();
+    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
+  }
+  return resp.blob();
+}
+
 // `numPlates`: the "Number of plates" slider (see backend app/plates.py's MIN_AUTO_PLATES/
 // MAX_AUTO_PLATES) -- `null`/omitted means "Auto," the world's original behavior of tiling
 // itself into a plausible plate count drawn from the seed alone (see plates.generate_plates).
@@ -309,6 +317,102 @@ export function fetchRiverAt(latDeg: number, lonDeg: number): Promise<{ river_id
 
 export function fetchLakes(): Promise<LakesResponse> {
   return fetch(`${API_BASE}/world/lakes`).then(asJson<LakesResponse>);
+}
+
+// "File > Save World" -- the entire current world state as an opaque binary blob (see
+// backend app/persistence.py -- deliberately pickle, no cross-version compatibility
+// promise). The caller downloads this via the usual SPA blob-download pattern
+// (URL.createObjectURL + a synthetic <a download>), not a plain navigation, so the browser
+// doesn't need a same-origin/CORS-friendly direct link.
+export function saveWorld(): Promise<Blob> {
+  return fetch(`${API_BASE}/world/save`).then(asBlob);
+}
+
+// "File > Load World" -- `file` is the raw bytes of a file saveWorld() previously produced
+// (an <input type="file">'s File object, or any Blob). Replaces whatever world previously
+// existed, same as generateWorld -- the caller should run the same full refresh sequence it
+// runs after generateWorld.
+export function loadWorld(file: Blob): Promise<WorldSummary> {
+  return fetch(`${API_BASE}/world/load`, {
+    method: "POST",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: file,
+  }).then(asJson<WorldSummary>);
+}
+
+export interface AnimateResponse extends WorldSummary {
+  // An animated GIF, base64-encoded -- decode via `data:image/gif;base64,${this}`, same
+  // convention RenderResponse.image_base64 uses for a single PNG frame.
+  image_base64: string;
+}
+
+// "File > Make Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
+// starting from the world's current state (frame 0) and stepping it forward by
+// `yearsPerFrame` real years between each subsequent frame. **This permanently advances the
+// world** by `(numFrames - 1) * yearsPerFrame` years, the same as calling stepWorld that
+// many times -- not a side-effect-free preview (see backend app/main.py's /world/animate).
+// The caller should run the same post-step refresh sequence it runs after stepWorld.
+export function animateWorld(
+  projection: Projection,
+  view: MapView,
+  width: number,
+  height: number,
+  rotation: number[] | undefined,
+  yearsPerFrame: number,
+  numFrames: number,
+): Promise<AnimateResponse> {
+  return fetch(`${API_BASE}/world/animate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      projection,
+      view,
+      width,
+      height,
+      rotation: rotation ? rotation.join(",") : null,
+      years_per_frame: yearsPerFrame,
+      num_frames: numFrames,
+    }),
+  }).then(asJson<AnimateResponse>);
+}
+
+// "File > Export Hex Grid" data -- a geodesic-icosahedron hex/pentagon tiling of the sphere
+// (see backend app/geodesic.py), independent of the plate simulation's own node cloud, with
+// the current world's elevation/biome sampled onto each tile. `vertices` is a shared,
+// globally-indexed corner-point list -- `tiles[i].corner_vertex_ids`/`neighbor_ids` are
+// index-aligned (neighbor_ids[k] is the tile sharing the edge between corner_vertex_ids[k]
+// and corner_vertex_ids[(k+1) % length]) -- see docs/hex-export-format.md for the full
+// shape and neighbor-finding pseudocode for a client application.
+export interface HexTile {
+  id: number;
+  is_pentagon: boolean;
+  center_lat_deg: number;
+  center_lon_deg: number;
+  center_xyz: [number, number, number];
+  corner_vertex_ids: number[];
+  elevation_m: number;
+  is_ocean: boolean;
+  biome: string;
+  neighbor_ids: number[];
+}
+
+export interface HexGridExport {
+  planet_radius_km: number;
+  frequency: number;
+  num_tiles: number;
+  vertices: [number, number, number][];
+  tiles: HexTile[];
+}
+
+// `frequency` is one of a small preset set (see backend app/geodesic.py's
+// FREQUENCY_CHOICES) -- the UI offers it as a size dropdown, not a free-form input, same
+// "discrete choices" pattern as node_density/climate_density in generateWorld.
+export function exportHexGrid(frequency: number): Promise<HexGridExport> {
+  return fetch(`${API_BASE}/world/export_hexgrid`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ frequency }),
+  }).then(asJson<HexGridExport>);
 }
 
 // The Lake Inspector's click hit-test -- same true-frame contract as fetchPlateAt/fetchRiverAt,

@@ -86,6 +86,30 @@ Advances the current world by `years` (see
 summary shape as `/world/generate`, with `events` reflecting anything logged up through this
 step. `404` if no world has been generated yet.
 
+## `GET /world/save`
+
+The "File > Save World" download -- the *entire* current world (every plate/line, mantle
+field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
+pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
+attachment`), not JSON (see `backend/app/persistence.py`). Deliberately makes no promise of
+compatibility across app versions -- pickling by class identity means a later
+renamed/restructured field on `World` breaks old files, an accepted trade for "just get me
+back what I had," not a stable interchange format (contrast with `/world/export_hexgrid`
+below). `404` if no world has been generated yet.
+
+Loading a file back is equivalent to running arbitrary code from its bytes (a standard
+pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
+(see `main.py`'s CORS allowlist), the same trust boundary every other route here assumes.
+
+## `POST /world/load`
+
+The "File > Load World" upload -- the raw bytes of a file `/world/save` previously
+produced, as the request body (`Content-Type: application/octet-stream`, not JSON).
+Replaces whatever world previously existed, same as `/world/generate`. Returns the same
+summary shape `/world/generate` does. `400` if the bytes aren't a valid mantle-bloom world
+file (pickle can raise many different exception types on malformed or foreign input, so
+this is caught broadly).
+
 ## `POST /world/controls`
 
 Request body (both optional, independently settable -- the "Controls" window sends only
@@ -159,6 +183,42 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   higher-resolution request doesn't also make those features look thinner.
 - `image_base64` decodes to a PNG. The frontend builds `data:image/png;base64,<this>` as an
   `<img>` source and draws it onto the canvas with `drawImage` -- see `MapCanvas.tsx`.
+
+## `POST /world/animate`
+
+The "File > Make Animation" action -- an animated GIF of `view`/`projection`'s progress, one
+frame for the world's current state plus more, each `years_per_frame` further along:
+
+```json
+{
+  "projection": "eckert4",
+  "view": "elevation",
+  "width": 1100,
+  "height": 611,
+  "rotation": null,
+  "years_per_frame": 1000000,
+  "num_frames": 20
+}
+```
+
+Same fields/validation as `/world/render`'s own query params (`rotation` is the same
+9-comma-separated-float string, `400` for an unrecognized `projection`/`view` or an
+out-of-range `width`/`height`), plus `num_frames` bounded to `[1,
+main.MAX_ANIMATION_FRAMES]` (60) -- each frame costs a full simulation step and render, so
+this bounds worst-case request time. `404` if no world has been generated yet.
+
+**This permanently advances the world** by `(num_frames - 1) * years_per_frame` years, the
+same as calling `/world/step` that many times in a row -- deliberately not a
+side-effect-free preview (see `render_image.render_animation_gif`'s own docstring). Response
+is the same summary shape `/world/generate`/`/world/step` return, plus:
+
+```json
+{ "image_base64": "R0lGODlhAAA..." }
+```
+
+`image_base64` decodes to an animated GIF (`data:image/gif;base64,<this>`), each frame
+quantized against the first frame's own color palette so static regions don't flicker
+between playback frames.
 
 ## `GET /world/plates`
 
@@ -371,3 +431,26 @@ been generated yet.
   without ever passing through a local minimum first -- an ordinary hillslope, never part of
   any basin. `basin` is `null`.
 - `"ocean"` -- the nearest node is open ocean. `basin` is `null`.
+
+## `POST /world/export_hexgrid`
+
+The "File > Export Hex Grid" action: tiles the sphere into a geodesic-icosahedron
+hex/pentagon dome (independent of the plate simulation's own node cloud -- see
+`backend/app/geodesic.py`), samples the current world's elevation/ocean/biome onto each
+tile, and returns the whole tiling as JSON, for use in another application.
+
+```json
+{ "frequency": 16 }
+```
+
+`frequency` (optional, defaults to `geodesic.DEFAULT_FREQUENCY = 16`) must be one of
+`geodesic.FREQUENCY_CHOICES = (8, 16, 32)` -- 642 / 2,562 / 10,242 tiles respectively (exactly
+`10 * frequency**2 + 2`, the standard geodesic-icosahedron vertex count) -- same "a few sane
+presets, not a free-form input" reasoning `node_density`/`climate_density` already use.
+`400` for any other value, `404` if no world has been generated yet.
+
+Response is the export file directly (not wrapped in base64 -- it's already a small,
+text-safe JSON payload, unlike the PNG/GIF routes above) -- see
+[hex-export-format.md](hex-export-format.md) for the full shape and, since the user-facing
+point of this route is a file another application will parse, pseudocode for how a client
+finds a tile's neighbors from it.

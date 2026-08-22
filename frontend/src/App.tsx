@@ -11,6 +11,7 @@ import LakeInspector from "./LakeInspector";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
+import FileModal from "./FileModal";
 import Legend from "./Legend";
 import { highlightTargetFor } from "./legendData";
 import { IDENTITY_ROTATION } from "./rotation";
@@ -152,6 +153,11 @@ export default function App() {
   const [seaLevelM, setSeaLevelM] = useState(DEFAULT_SEA_LEVEL_M);
   const [solarMultiplier, setSolarMultiplier] = useState(DEFAULT_SOLAR_MULTIPLIER);
   const [showControlsModal, setShowControlsModal] = useState(false);
+  const [showFileModal, setShowFileModal] = useState(false);
+  // The div wrapping whichever map view component is currently mounted -- see
+  // FileModal.tsx's own "Save Image" comment for why it reads the live <canvas> straight
+  // out of this DOM node rather than a ref threaded through four separate components.
+  const mapWrapperRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
@@ -284,6 +290,43 @@ export default function App() {
     }
   }, [summary, stepYears, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
 
+  // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
+  // fresh Generate (see handleGenerate above), plus syncing seaLevelM/solarMultiplier's
+  // local slider state to the *loaded* world's own real values: calling updateControls with
+  // no fields set changes nothing but still returns the current world's current values
+  // (see api.ts's updateControls/backend app/main.py's /world/controls), which is simpler
+  // than adding a new endpoint just to read them back.
+  const handleWorldReplaced = useCallback(async (s: WorldSummary) => {
+    setBusy(true);
+    setError(null);
+    try {
+      setSummary(s);
+      setSelectedPlateId(null);
+      setSelectedRiverId(null);
+      setSelectedBasin(null);
+      setSelectedBasinKind(null);
+      setStatsHistory([]);
+      const controls = await updateControls({});
+      setSeaLevelM(controls.sea_level_m);
+      setSolarMultiplier(controls.solar_multiplier);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
+
+  // FileModal's "Make Animation" -- it already advanced the world for real (see
+  // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
+  const handleWorldAdvanced = useCallback(async (s: WorldSummary) => {
+    setSummary(s);
+    setSelectedRiverId(null);
+    setSelectedBasin(null);
+    setSelectedBasinKind(null);
+    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
+
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
   const handleRecenter = useCallback(() => {
@@ -352,6 +395,10 @@ export default function App() {
 
           <button onClick={() => setShowControlsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
             🎛️ Controls
+          </button>
+
+          <button onClick={() => setShowFileModal(true)} style={{ fontSize: 12 }}>
+            📁 File...
           </button>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
@@ -517,7 +564,7 @@ export default function App() {
         </div>
 
         <div>
-          <div style={{ position: "relative", width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
+          <div ref={mapWrapperRef} style={{ position: "relative", width: DISPLAY_WIDTH, height: DISPLAY_HEIGHT }}>
           {mapView === "plateInspector" ? (
             <PlateInspector
               plates={platesData}
@@ -774,6 +821,23 @@ export default function App() {
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
           onClose={() => setShowControlsModal(false)}
+        />
+      )}
+
+      {showFileModal && (
+        <FileModal
+          hasWorld={!!summary}
+          seed={summary?.seed ?? null}
+          elapsedYears={summary?.elapsed_years ?? null}
+          projection={projection}
+          mapView={mapView}
+          rotation={rotation}
+          renderWidth={RENDER_WIDTH}
+          renderHeight={RENDER_HEIGHT}
+          mapWrapperRef={mapWrapperRef}
+          onClose={() => setShowFileModal(false)}
+          onWorldReplaced={handleWorldReplaced}
+          onWorldAdvanced={handleWorldAdvanced}
         />
       )}
     </div>
