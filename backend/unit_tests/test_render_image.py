@@ -156,12 +156,14 @@ def test_render_png_base64_round_trips():
 def test_draw_rivers_only_draws_segments_above_the_flow_floor():
     # The main map views (unlike the River Inspector, which deliberately shows every
     # is_river-classified network regardless of flow_rate) additionally require flow_accum
-    # to clear RIVER_DRAW_MIN_FLOW -- confirmed here by drawing the exact same is_river/
-    # flow_target topology twice, once with flow_accum below the floor (no river pixels
-    # should appear at all) and once above it (some must). Calls _draw_rivers directly
+    # to clear river_draw_min_flow(world) -- confirmed here by drawing the exact same
+    # is_river/flow_target topology twice, once with flow_accum below the floor (no river
+    # pixels should appear at all) and once above it (some must). Calls _draw_rivers directly
     # (rather than the full render_png) so a legend swatch that happens to reuse
     # RIVER_COLOR_RGB can't make an unconditional pixel show up either way.
     world = _world()
+    world.node_density = 1.0
+    world.climate_density = 1.0
     points = np.array([[1.0, 0.0, 0.0], [0.99, 0.05, 0.0], [0.0, 1.0, 0.0], [0.0, 0.95, 0.05]])
     points = points / np.linalg.norm(points, axis=1, keepdims=True)
     n = len(points)
@@ -188,11 +190,36 @@ def test_draw_rivers_only_draws_segments_above_the_flow_floor():
         pixels = np.asarray(image)
         return int(np.all(pixels == np.array(render_image.RIVER_COLOR_RGB), axis=-1).sum())
 
-    below_floor = river_pixel_count(np.full(n, render_image.RIVER_DRAW_MIN_FLOW * 0.5))
-    above_floor = river_pixel_count(np.full(n, render_image.RIVER_DRAW_MIN_FLOW * 2.0))
+    floor = render_image.river_draw_min_flow(world)
+    below_floor = river_pixel_count(np.full(n, floor * 0.5))
+    above_floor = river_pixel_count(np.full(n, floor * 2.0))
 
     assert below_floor == 0
     assert above_floor > 0
+
+
+def test_river_draw_min_flow_increases_with_generation_resolution():
+    # A world generated at a higher elevation-point density and/or climate & biome resolution
+    # should require a higher flow_accum to draw a river segment at all, since flow_accum is
+    # being swept from a finer-grained network -- see river_draw_min_flow's own docstring.
+    world = _world()
+    world.node_density = 1.0
+    world.climate_density = 1.0
+    lowest = render_image.river_draw_min_flow(world)
+    assert lowest == render_image.RIVER_DRAW_MIN_FLOW
+
+    world.node_density = 4.0
+    higher_node_density = render_image.river_draw_min_flow(world)
+    assert higher_node_density > lowest
+
+    world.node_density = 1.0
+    world.climate_density = 2.0
+    higher_climate_density = render_image.river_draw_min_flow(world)
+    assert higher_climate_density > lowest
+
+    world.node_density = 4.0
+    world.climate_density = 2.0
+    assert render_image.river_draw_min_flow(world) > max(higher_node_density, higher_climate_density)
 
 
 def test_render_png_scales_visual_constants_with_resolution():

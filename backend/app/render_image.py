@@ -65,8 +65,29 @@ RIVER_LINE_WIDTH_MAX_PX = 3.0
 # don't clutter every general-purpose view -- unlike the River Inspector (main.py's
 # /world/rivers, RiverInspector.tsx), which deliberately keeps showing every is_river network
 # regardless of flow_rate, since picking a small tributary out from the full list is exactly
-# what that view is for.
+# what that view is for. This is the floor at the *lowest* generation resolution (node_density
+# == climate_density == 1.0) -- see river_draw_min_flow below for how a world generated at a
+# higher elevation-point density and/or climate & biome resolution scales it up from here, not
+# a value read directly by _draw_rivers.
 RIVER_DRAW_MIN_FLOW = 20_000.0
+
+
+def river_draw_min_flow(world: World) -> float:
+    """The effective RIVER_DRAW_MIN_FLOW floor for `world`'s own generation resolution --
+    higher at a higher elevation-point density (World.node_density) and/or climate & biome
+    resolution (World.climate_density), since both mean flow_accum is being swept from a
+    finer-grained network with more individual nodes/cells each contributing to it, so the
+    same absolute floor would let proportionally more low-magnitude clutter through than it
+    does at the reference (1.0, 1.0) resolution this constant was tuned at. Scales each
+    density the same way its own module already relates it to node/cell *count* -- linearly
+    for node_density (plates.line_spacing_rad's own docstring: node_density itself is the
+    count-scaling factor relative to the reference), squared for climate_density
+    (climate.grid_dimensions scales *both* grid dimensions by climate_density, so cell count
+    scales by climate_density**2) -- rather than inventing a third, unrelated scaling rule
+    here."""
+    return RIVER_DRAW_MIN_FLOW * world.node_density * (world.climate_density ** 2)
+
+
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
 # white/gray stops and LAKE_COLOR_RGB's darker muddy blue, so a glaciated node never reads
 # as "just a tall mountain" or "just a lake" at a glance.
@@ -1106,8 +1127,9 @@ def _draw_rivers(
     two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent
     _project_points calls) keeps it from being wrongly split across the antimeridian seam --
     same technique _render_grid_arrays' own corner measurements already rely on. Also cut by
-    RIVER_DRAW_MIN_FLOW -- see that constant's own comment for why this view is stricter than
-    the River Inspector's own /world/rivers listing. Line width scales per-segment with the
+    river_draw_min_flow(world) -- see that function's own docstring for why this view is
+    stricter than the River Inspector's own /world/rivers listing, and why the floor itself
+    isn't a single fixed constant. Line width scales per-segment with the
     node's own channel_width (plates.collect_all_channel_width, erosion.py's persistent
     grows-with-discharge field, aligned index-for-index with hydro.points -- both are built
     by the same per-plate/per-line gather over world.plates), so a wide river reads as
@@ -1115,7 +1137,7 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return
-    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= RIVER_DRAW_MIN_FLOW))[0]
+    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= river_draw_min_flow(world)))[0]
     if len(river_idx) == 0:
         return
     target_idx = hydro.flow_target[river_idx]
