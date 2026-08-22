@@ -383,9 +383,17 @@ def step_boundaries(world: World, years: float) -> None:
             continue
         other_points = np.concatenate(other_points_list, axis=0)
         other_owner = np.concatenate(other_owner_list, axis=0)
-        tree = cKDTree(other_points)
+        # balanced_tree=False/compact_nodes=False trade a slightly slower query for a much
+        # faster build -- the right tradeoff here since this tree is built fresh per plate,
+        # per step, and queried exactly once (never reused); still an exact nearest-neighbor
+        # search either way, just a different internal tree layout, so results are unchanged
+        # (confirmed via the stress test suite's determinism checks). workers=-1 parallelizes
+        # that one query across cores, which nothing else in this per-plate loop is using at
+        # the same time. Profiled at this simulation's realistic plate-count/node-count scale
+        # (~100k-node trees): roughly half the combined build+query time.
+        tree = cKDTree(other_points, balanced_tree=False, compact_nodes=False)
 
-        dist_all, idx_all = tree.query(own_points)
+        dist_all, idx_all = tree.query(own_points, workers=-1)
         neighbor_owner_all = other_owner[idx_all]
         neighbor_points_all = other_points[idx_all]
         neighbor_omega_all = np.array([plate_by_id[o].omega for o in neighbor_owner_all])
