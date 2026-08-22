@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import bathymetry, boundary, climate, erosion, gaps, geology, geometry, hydrology, line_regrid, mantle, merge_split, reassign, volcanism
-from .plates import DEFAULT_NODE_DENSITY, Plate, generate_plates
+from .plates import DEFAULT_NODE_DENSITY, Plate, gather_node_positions, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
@@ -212,8 +212,15 @@ def step_world(world: World, years: float) -> None:
     for message in merge_split.apply_topology_changes(world, years):
         world.log_event(message)
 
-    erosion_result = erosion.apply_erosion(world, years)
-    bathymetry.apply_bathymetry(world, years)
+    # Gathered once here (rather than independently inside erosion.apply_erosion/
+    # bathymetry.apply_bathymetry) since node positions are fixed for the rest of this step --
+    # nothing between here and the next step's rotation moves a node or changes line topology
+    # (only elevation and other per-node fields still change, which each of climate.py/
+    # erosion.py/hydrology.py/bathymetry.py still reads fresh off world.plates itself) -- see
+    # plates.gather_node_positions's own docstring for why this was worth factoring out.
+    node_cloud = gather_node_positions(world.plates)
+    erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
+    bathymetry.apply_bathymetry(world, years, node_cloud=node_cloud)
     for message in volcanism.apply_volcanic_activity(world, years):
         world.log_event(message)
     if erosion_result is not None:

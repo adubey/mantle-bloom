@@ -275,6 +275,35 @@ def plate_bounding_ellipse(points_world_xyz: np.ndarray) -> BoundingEllipse | No
     )
 
 
+def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[tuple[Plate, int, int, int]]]:
+    """Every elevation-line node's current world position, concatenated, alongside
+    (plate, line_index, start, end) references into the flat array -- the position-only half
+    of the near-identical per-step `_gather_nodes` helpers in erosion.py/hydrology.py/
+    bathymetry.py, and climate.py's own `_sample_elevation_and_crust`. Factored out here so a
+    single step_world call can compute each node's `line.world_xyz(plate.frame)` rotation
+    once and pass the same (points, line_refs) into all of them, rather than each
+    independently re-deriving identical world positions from plate-local data that hasn't
+    moved since the last rotation (see docs/architecture.md's World.climate_cache/
+    hydrology_cache notes for the same "compute once this step, reuse" precedent). Each
+    caller still gathers its own elevation/other per-node fields fresh off `line_refs` --
+    only the rotation itself is shared, since some of those fields (elevation in particular)
+    do change mid-step between callers."""
+    points_list = []
+    line_refs: list[tuple[Plate, int, int, int]] = []
+    offset = 0
+    for plate in plate_list:
+        for line_index, line in enumerate(plate.lines):
+            n = len(line.theta)
+            if n == 0:
+                continue
+            points_list.append(line.world_xyz(plate.frame))
+            line_refs.append((plate, line_index, offset, offset + n))
+            offset += n
+    if not points_list:
+        return np.zeros((0, 3)), []
+    return np.concatenate(points_list, axis=0), line_refs
+
+
 def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Every plate's current elevation-node positions, elevations, and owning plate_id,
     concatenated -- shared by the render grid's nearest-node resample
@@ -361,6 +390,10 @@ def _collect_all(plate_list: list[Plate], attr: str) -> np.ndarray:
     if not chunks:
         return np.zeros(0)
     return np.concatenate(chunks, axis=0)
+
+
+def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "elevation")
 
 
 def collect_all_soil_depth(plate_list: list[Plate]) -> np.ndarray:

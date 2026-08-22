@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .plates import PLANET_RADIUS_KM, Plate
+from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions
 
 if TYPE_CHECKING:
     from .world import World
@@ -48,42 +48,47 @@ MIN_ELEVATION_M = -11000.0
 MAX_ELEVATION_M = 9000.0
 
 
-def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+def _gather_nodes(
+    world: "World",
+    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
     """Every node's world position, elevation, and whether its plate is continental,
     concatenated, alongside (plate, line_index, start, end) references -- same shape as
     erosion.py's own _gather_nodes, for the same reason (slicing a flat per-node result
-    straight back onto each line's own contiguous elevation range)."""
-    points_list, elev_list, continental_list = [], [], []
-    line_refs: list[tuple[Plate, int, int, int]] = []
-    offset = 0
-    for plate in world.plates:
-        is_continental = plate.crust_type == "continental"
-        for line_index, line in enumerate(plate.lines):
-            n = len(line.theta)
-            if n == 0:
-                continue
-            points_list.append(line.world_xyz(plate.frame))
-            elev_list.append(line.elevation)
-            continental_list.append(np.full(n, is_continental))
-            line_refs.append((plate, line_index, offset, offset + n))
-            offset += n
-    if not points_list:
+    straight back onto each line's own contiguous elevation range). `node_cloud`, when passed
+    (see apply_bathymetry), reuses an already-gathered (points, line_refs) pair -- world.py's
+    step_world computes this once per step (right after rotation/boundary evolution, before
+    erosion.apply_erosion) and shares it with both, since node positions don't change again
+    until the next step's rotation -- instead of re-deriving every node's world position from
+    scratch a fourth time this same step (see plates.gather_node_positions's own docstring)."""
+    points, line_refs = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
+    if not line_refs:
         return np.zeros((0, 3)), np.zeros(0), np.zeros(0, dtype=bool), []
+    elev_list, continental_list = [], []
+    for plate, line_index, start, end in line_refs:
+        line = plate.lines[line_index]
+        elev_list.append(line.elevation)
+        continental_list.append(np.full(end - start, plate.crust_type == "continental"))
     return (
-        np.concatenate(points_list, axis=0),
+        points,
         np.concatenate(elev_list, axis=0),
         np.concatenate(continental_list, axis=0),
         line_refs,
     )
 
 
-def apply_bathymetry(world: "World", years: float) -> None:
+def apply_bathymetry(
+    world: "World",
+    years: float,
+    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
+) -> None:
     """Relaxes every submerged (elevation <= world.sea_level_m) continental node toward
     SHELF_TARGET_M if within SHELF_RANGE_RAD of the nearest land node (elevation >
     world.sea_level_m, any plate), or DEEP_CONTINENTAL_TARGET_M otherwise. Mutates
     world.plates' line elevations in place; never touches node positions or line topology,
-    so this can't interact with line regularization or point reassignment at all."""
-    points, elevation, is_continental, line_refs = _gather_nodes(world)
+    so this can't interact with line regularization or point reassignment at all. `node_cloud`
+    is forwarded straight to `_gather_nodes` -- see its own docstring."""
+    points, elevation, is_continental, line_refs = _gather_nodes(world, node_cloud=node_cloud)
     if len(points) == 0:
         return
 

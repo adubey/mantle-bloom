@@ -75,7 +75,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, lakes
-from .plates import PLANET_RADIUS_KM, ElevationLine, Plate
+from .plates import PLANET_RADIUS_KM, ElevationLine, Plate, gather_node_positions
 
 if TYPE_CHECKING:
     from .world import World
@@ -225,6 +225,7 @@ class HydrologyFields:
 
 def _gather_nodes(
     world: "World",
+    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
     """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
     channel_depth, prior silt_depth, and whether it's ocean (elevation <= world.sea_level_m, the
@@ -233,27 +234,21 @@ def _gather_nodes(
     -- same shape as erosion.py's/bathymetry.py's own _gather_nodes.
     channel_depth is read-only here (erosion.py still owns growing it) -- flow direction
     just needs to know where an established channel already is, see
-    _compute_flow_direction."""
-    points_list, elev_list, lake_list, glacier_list, channel_list, silt_list = [], [], [], [], [], []
-    line_refs: list[tuple[Plate, int, int, int]] = []
-    offset = 0
-    for plate in world.plates:
-        for line_index, line in enumerate(plate.lines):
-            n = len(line.theta)
-            if n == 0:
-                continue
-            points_list.append(line.world_xyz(plate.frame))
-            elev_list.append(line.elevation)
-            lake_list.append(line.lake_depth)
-            glacier_list.append(line.glacier_depth)
-            channel_list.append(line.channel_depth)
-            silt_list.append(line.silt_depth)
-            line_refs.append((plate, line_index, offset, offset + n))
-            offset += n
-    if not points_list:
+    _compute_flow_direction. `node_cloud`, when passed (see compute_hydrology), reuses an
+    already-gathered (points, line_refs) pair instead of re-deriving every node's world
+    position from scratch -- see plates.gather_node_positions's own docstring for why."""
+    points, line_refs = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
+    if not line_refs:
         empty = np.zeros(0)
         return np.zeros((0, 3)), empty, empty, empty, empty, empty, np.zeros(0, dtype=bool), []
-    points = np.concatenate(points_list, axis=0)
+    elev_list, lake_list, glacier_list, channel_list, silt_list = [], [], [], [], []
+    for plate, line_index, start, end in line_refs:
+        line = plate.lines[line_index]
+        elev_list.append(line.elevation)
+        lake_list.append(line.lake_depth)
+        glacier_list.append(line.glacier_depth)
+        channel_list.append(line.channel_depth)
+        silt_list.append(line.silt_depth)
     elevation = np.concatenate(elev_list, axis=0)
     prev_lake_depth = np.concatenate(lake_list, axis=0)
     prev_glacier_depth = np.concatenate(glacier_list, axis=0)
@@ -554,7 +549,13 @@ def _update_glaciers(
     return new_depth, melt
 
 
-def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temperature_at_nodes: np.ndarray, years: float) -> HydrologyFields:
+def compute_hydrology(
+    world: "World",
+    precipitation_at_nodes: np.ndarray,
+    temperature_at_nodes: np.ndarray,
+    years: float,
+    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
+) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->
     glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
@@ -568,6 +569,9 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     just the ordinary precip passing through that one node. `precipitation_at_nodes`/
     `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
+    `node_cloud`, likewise, is erosion.py's own already-gathered (points, line_refs) pair (see
+    plates.gather_node_positions), reused here instead of re-deriving every node's world
+    position from scratch a second time this same step.
 
     A node colder than FREEZE_POINT_C never holds liquid water at all: any precipitation
     there is treated as fully frozen (no partial liquid/frozen split -- matching erosion.py's
@@ -582,7 +586,7 @@ def compute_hydrology(world: "World", precipitation_at_nodes: np.ndarray, temper
     is deliberately a *different*, warmer threshold than GLACIER_ACCUMULATION_TEMP_C (see that
     constant's own comment) -- freezing solid for a step doesn't imply building a *permanent*
     glacier."""
-    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, line_refs = _gather_nodes(world)
+    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, line_refs = _gather_nodes(world, node_cloud=node_cloud)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
         empty_i = np.zeros(n, dtype=np.int64)

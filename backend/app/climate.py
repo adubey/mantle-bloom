@@ -166,7 +166,11 @@ def _build_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.nda
     return lat_deg, lon_deg, world_xyz
 
 
-def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _sample_elevation_and_crust(
+    world: World,
+    world_xyz: np.ndarray,
+    node_cloud: tuple[np.ndarray, list] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Nearest-elevation-node resample of the *current* plate state onto the climate grid --
     same cKDTree technique render_image.py's _render_grid_arrays already uses. Returns
     (elevation_m, is_ocean, lake_depth_m, channel_depth_m), all (H, W). `is_ocean` is
@@ -178,24 +182,20 @@ def _sample_elevation_and_crust(world: World, world_xyz: np.ndarray) -> tuple[np
     as any other ocean cell. `lake_depth_m`/`channel_depth_m` are the same persisted per-node
     fields hydrology.py/erosion.py already carry on `plates.ElevationLine`
     (`plates.collect_all_lake_depth`/`collect_all_channel_depth`, index-aligned with
-    `all_points_and_elevation`'s own per-plate/per-line order -- see those functions' own
+    `plates.gather_node_positions`'s own per-plate/per-line order -- see those functions' own
     docstrings), resampled with this same nearest-neighbor `idx` rather than a second query --
-    climate.py's own moisture-recycling humidity source (see compute_humidity)."""
+    climate.py's own moisture-recycling humidity source (see compute_humidity). `node_cloud`,
+    when passed (see compute_climate), reuses an already-gathered (points, line_refs) pair
+    instead of re-deriving every node's world position from scratch -- see
+    plates.gather_node_positions's own docstring for why."""
     height, width, _ = world_xyz.shape
-    points_list, elev_list = [], []
-    for plate in world.plates:
-        pts, elev = plate.all_points_and_elevation()
-        if len(pts) == 0:
-            continue
-        points_list.append(pts)
-        elev_list.append(elev)
+    all_points, line_refs = node_cloud if node_cloud is not None else plates.gather_node_positions(world.plates)
     flat_xyz = world_xyz.reshape(-1, 3)
-    if not points_list:
+    if not line_refs:
         empty = np.zeros((height, width))
         return empty, np.ones((height, width), dtype=bool), empty.copy(), empty.copy()
 
-    all_points = np.concatenate(points_list, axis=0)
-    all_elev = np.concatenate(elev_list, axis=0)
+    all_elev = plates.collect_all_elevation(world.plates)
     all_lake = plates.collect_all_lake_depth(world.plates)
     all_channel = plates.collect_all_channel_depth(world.plates)
     tree = cKDTree(all_points)
@@ -1019,11 +1019,21 @@ def compute_precipitation(humidity: np.ndarray, orographic_dump: np.ndarray) -> 
 # ---------------------------------------------------------------------------------------
 
 
-def compute_climate(world: World, height: int = GRID_HEIGHT, width: int = GRID_WIDTH) -> ClimateFields:
+def compute_climate(
+    world: World,
+    height: int = GRID_HEIGHT,
+    width: int = GRID_WIDTH,
+    node_cloud: tuple[np.ndarray, list] | None = None,
+) -> ClimateFields:
     """Runs the full climate pipeline against the world's *current* plate state. See module
-    docstring for the pipeline order and why it's structured this way."""
+    docstring for the pipeline order and why it's structured this way. `node_cloud`, when
+    passed (an already-gathered (points, line_refs) pair -- see
+    plates.gather_node_positions), is forwarded to `_sample_elevation_and_crust` instead of
+    it re-deriving every node's world position from scratch -- erosion.py's apply_erosion
+    computes this once per step and shares it with this function and
+    hydrology.compute_hydrology, which would otherwise each redo the identical rotation."""
     lat_deg, lon_deg, world_xyz = _build_grid(height, width)
-    elevation_m, is_ocean, lake_depth_m, channel_depth_m = _sample_elevation_and_crust(world, world_xyz)
+    elevation_m, is_ocean, lake_depth_m, channel_depth_m = _sample_elevation_and_crust(world, world_xyz, node_cloud=node_cloud)
     vegetation_source = _vegetation_transpiration_source(world, elevation_m, is_ocean)
 
     insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
