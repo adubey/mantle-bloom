@@ -25,11 +25,10 @@ interface Props {
   // server-side into the PNG and can't update mid-drag (see docs/simulation-model.md#rotating-the-view).
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
-  // Legend-click-to-highlight (Biome and Combined views -- see Legend.tsx/App.tsx): when
-  // set, every decoded pixel that doesn't come within `tolerance` of one of `colors` is
-  // faded toward gray so the selected swatch's cells visibly pop against the rest of the map
-  // (see applyHighlight below). `null`/omitted paints the decoded frame as-is, same as before
-  // this feature existed.
+  // Legend-click-to-highlight (Biome and Combined views -- see Legend.tsx/App.tsx): when set,
+  // every decoded pixel whose nearest color in `palette` isn't `selected` is faded toward gray
+  // so the selected swatch's cells visibly pop against the rest of the map (see applyHighlight
+  // below). `null`/omitted paints the decoded frame as-is, same as before this feature existed.
   highlightTarget?: HighlightTarget | null;
 }
 
@@ -52,22 +51,41 @@ const HIGHLIGHT_DIM_FACTOR = 0.35;
 // needed. The Combined view instead matches within `tolerance` against several candidate
 // colors (see legendData.ts's highlightTargetFor) since a biome's flat color there gets
 // shaded by elevation and, at real peaks, blended toward the elevation gradient.
+//
+// Classification is nearest-neighbor across the *entire* palette, not just a within-tolerance
+// check against the selected label's own colors: two land biomes' shaded variants can land
+// close together in RGB space (e.g. two similarly-hued forests at different elevations), and
+// checking the selected label in isolation would highlight both whenever a pixel merely came
+// within `tolerance` of it, even if some other label was actually the closer match. Picking
+// the closest label first, and only then comparing it to the selection, keeps one biome's
+// highlight from bleeding into another's cells. `tolerance` still bounds how far the *closest*
+// match can be before a pixel counts as belonging to no known label at all (plain ocean,
+// rivers, coastline, graticule, etc.), so those never get swept into whichever label happens
+// to be nearest.
+function classifyPixel(r: number, g: number, b: number, palette: HighlightTarget["palette"], tolerance2: number): string | null {
+  let bestLabel: string | null = null;
+  let bestDist2 = Infinity;
+  for (const entry of palette) {
+    for (const [cr, cg, cb] of entry.colors) {
+      const dr = r - cr, dg = g - cg, db = b - cb;
+      const dist2 = dr * dr + dg * dg + db * db;
+      if (dist2 < bestDist2) {
+        bestDist2 = dist2;
+        bestLabel = entry.label;
+      }
+    }
+  }
+  return bestDist2 <= tolerance2 ? bestLabel : null;
+}
+
 function applyHighlight(ctx: CanvasRenderingContext2D, width: number, height: number, target: HighlightTarget): void {
-  const { colors, tolerance } = target;
+  const { selected, palette, tolerance } = target;
   const tolerance2 = tolerance * tolerance;
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2];
-    let matched = false;
-    for (const [cr, cg, cb] of colors) {
-      const dr = r - cr, dg = g - cg, db = b - cb;
-      if (dr * dr + dg * dg + db * db <= tolerance2) {
-        matched = true;
-        break;
-      }
-    }
-    if (matched) continue;
+    if (classifyPixel(r, g, b, palette, tolerance2) === selected) continue;
     const gray = (0.3 * r + 0.59 * g + 0.11 * b) * HIGHLIGHT_DIM_FACTOR;
     data[i] = gray;
     data[i + 1] = gray;

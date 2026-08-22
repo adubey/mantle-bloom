@@ -237,27 +237,53 @@ function shadedVariants([r, g, b]: [number, number, number]): [number, number, n
 // point of that blend is to visually stop reading as flat forest color up there.
 const COMBINED_MATCH_TOLERANCE = 28;
 
-export interface HighlightTarget {
+export interface PaletteEntry {
+  label: string;
   colors: [number, number, number][];
+}
+
+// `palette` carries every other classifiable label's own colors alongside `selected`'s (not
+// just the clicked one) so MapCanvas.tsx's applyHighlight can pick each pixel's *nearest*
+// label across the whole set rather than merely testing "close enough to the selected one" in
+// isolation -- see that function's own comment for why a nearest-neighbor classification is
+// required to keep one biome's highlight from bleeding into another whose shaded variants
+// happen to land nearby in RGB space.
+export interface HighlightTarget {
+  selected: string;
+  palette: PaletteEntry[];
   tolerance: number;
 }
 
-// Resolves a clicked legend swatch label to the set of actual pixel colors (see MapCanvas.tsx's
-// applyHighlight) that count as a match, for the two views whose legends are clickable (see
-// Legend.tsx). Biome's own pixels are an exact, single fixed color per swatch (tolerance 0);
-// Combined's land swatches can appear as any of several elevation-shaded variants (see
-// shadedVariants above) within COMBINED_MATCH_TOLERANCE, while its Lake/Glacier swatches are
-// still exact fixed colors, same as Biome's.
+// Resolves a clicked legend swatch label to a HighlightTarget (see MapCanvas.tsx's
+// applyHighlight) for the two views whose legends are clickable (see Legend.tsx). Biome's own
+// pixels are an exact, single fixed color per swatch (tolerance 0, and since every pixel is
+// exactly one of these colors to begin with, nearest-neighbor classification never actually
+// has to break a close call). Combined's land swatches can appear as any of several
+// elevation-shaded variants (see shadedVariants above) within COMBINED_MATCH_TOLERANCE, while
+// its Lake/Glacier swatches are still exact fixed colors, same as Biome's. Ocean/Intertidal
+// Zone are excluded from Combined's palette entirely -- both are is_ocean cells that Combined
+// always paints with the elevation gradient instead of any biome color (see backend
+// app/render_image.py's _render_combined_view), so neither ever appears as a distinguishable
+// color a click could highlight; they still appear as swatches in the legend for list parity
+// with Biome (see Legend.tsx), just as non-functional ones.
 export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
   if (view === "biome") {
-    const entry = BIOME_RGB_ENTRIES.find(([l]) => l === label);
-    return entry ? { colors: [entry[1]], tolerance: 0 } : null;
+    if (!BIOME_RGB_ENTRIES.some(([l]) => l === label)) return null;
+    const palette: PaletteEntry[] = BIOME_RGB_ENTRIES.map(([l, rgbTuple]) => ({ label: l, colors: [rgbTuple] }));
+    return { selected: label, palette, tolerance: 0 };
   }
   if (view === "combined") {
-    if (label === "Lake") return { colors: [LAKE_RENDER_RGB], tolerance: 0 };
-    if (label === "Glacier (ice cover)") return { colors: [GLACIER_RENDER_RGB], tolerance: 0 };
-    const entry = BIOME_RGB_ENTRIES.find(([l]) => l === label);
-    return entry ? { colors: shadedVariants(entry[1]), tolerance: COMBINED_MATCH_TOLERANCE } : null;
+    if (label === "Ocean" || label === "Intertidal Zone") return null;
+    const palette: PaletteEntry[] = [
+      { label: "Lake", colors: [LAKE_RENDER_RGB] },
+      { label: "Glacier (ice cover)", colors: [GLACIER_RENDER_RGB] },
+      ...BIOME_RGB_ENTRIES.filter(([l]) => l !== "Ocean" && l !== "Intertidal Zone").map(([l, rgbTuple]) => ({
+        label: l,
+        colors: shadedVariants(rgbTuple),
+      })),
+    ];
+    if (!palette.some((p) => p.label === label)) return null;
+    return { selected: label, palette, tolerance: COMBINED_MATCH_TOLERANCE };
   }
   return null;
 }
@@ -322,22 +348,23 @@ export function legendFor(view: MapView): LegendSpec | null {
     case "combined":
       return {
         // Ocean/land relief both follow the elevation gradient (see backend
-        // app/render_image.py's _render_combined_view); land is additionally tinted by
-        // biome -- see the swatches below, which skip Ocean since that's covered by the
+        // app/render_image.py's _render_combined_view), and land is additionally tinted by
+        // biome -- but unlike the Elevation/Plates Detail views, that gradient isn't shown as
+        // its own bar here: land's per-cell brightness already visibly varies with elevation
+        // (see shadedVariants/highlightTargetFor above, mirroring backend
+        // _land_shade_factor), so the swatches below stay the single reference a click can
+        // target, without a separate scale implying elevation is the primary thing being
+        // shown. The biome list itself matches Biome's legend swatch-for-swatch (see
+        // BIOME_ENTRIES) for consistency between the two views, Ocean and Intertidal Zone
+        // included even though neither's own biome color is ever actually visible in Combined
+        // (see highlightTargetFor's own comment) -- both always render via the elevation
         // gradient instead.
         title: "Combined (true color)",
-        gradient: ELEVATION_GRADIENT,
         symbols: [
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
-          // Ocean and Intertidal Zone are both is_ocean cells, which Combined always paints
-          // with the elevation gradient instead of a biome color (see backend
-          // app/render_image.py's _render_combined_view) -- so neither's own biome color is
-          // ever actually visible here, same reason Ocean was already excluded.
-          ...BIOME_ENTRIES.filter(([label]) => label !== "Ocean" && label !== "Intertidal Zone").map(
-            ([label, color]) => ({ kind: "square", color, label }) as LegendSymbol
-          ),
+          ...BIOME_ENTRIES.map(([label, color]) => ({ kind: "square", color, label }) as LegendSymbol),
         ],
       };
     case "resources":
