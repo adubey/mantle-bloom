@@ -249,6 +249,11 @@ def _grow_or_shrink_line(
     extend_threshold_rad: float = EXTEND_THRESHOLD_RAD,
     merge_threshold_rad: float = MERGE_THRESHOLD_RAD,
     max_extend_nodes: int = MAX_EXTEND_NODES_PER_STEP,
+    # Only matters to a caller exercising multi-node shrink specifically (see below) --
+    # every real caller (step_boundaries) always passes its own actual years, this default
+    # just keeps existing single-node-shrink unit tests (which don't care about this) working
+    # unchanged.
+    years: float = 1_000_000.0,
 ) -> ElevationLine:
     """Grow or shrink a line's two ends based on this step's boundary classification there.
 
@@ -260,6 +265,30 @@ def _grow_or_shrink_line(
     genuinely new, unclosable gap and kept spawning fresh micro-plates at the same busy
     boundary every interval -- fixing the actual growth rate here is what stops that at the
     source, rather than only reacting to its symptom in gaps.py.
+
+    Shrink is the mirror case, and needed the same fix for the same reason: `closing[i] *
+    years` is how far this point's material actually moves toward its cross-plate neighbor
+    this step (both in radians, same units as `dist`/`spacing_rad` -- see closing_rate's own
+    docstring), so a fast enough closing rate, or a large enough `years` step, can consume
+    many spacing units of subducting crust in one step, not just one. Removing only one node
+    per step regardless fell behind exactly the way one-node-per-step growth used to: the
+    un-consumed remainder of that motion is still there next step, i.e. exactly the "nodes of
+    the subducted plate overlap nodes of the remaining plate" case -- consuming the full
+    `closing[i] * years` worth of nodes per step (not just one) is what keeps deletion paced
+    with however fast the convergence actually is, so the overlap this guards against never
+    gets the chance to accumulate in the first place.
+
+    Deliberately *not* also widening the shrink condition itself (`dist[i] < merge_
+    threshold_rad and closing[i] > TRANSFORM_RATE_THRESHOLD`) to fire on raw proximity alone,
+    ignoring `closing[i]`'s sign, as a second line of defense once two nodes are already
+    essentially colocated: measured directly against a freshly generated world (see
+    generate_world), neighboring plates' own nearest cross-plate nodes already start as close
+    as ~0.07 * spacing_rad at generation time purely from plates.py's gapless tiling, well
+    inside any distance tight enough to mean "these are colocated, not just newly touching."
+    A proximity-only override can't tell that freshly-divergent case apart from genuine
+    subduction overlap, so it would delete nodes off a boundary that's actually supposed to
+    grow. `closing[i]`'s sign is the only signal here that can, so the fix stays scoped to
+    sizing *how much* gets removed once it already reads convergent, not to overriding it.
 
     channel_depth/channel_width/lake_depth/glacier_depth/silt_depth/is_volcano/volcano_active_
     years_remaining/soil_depth/soil_mineral_content/soil_organic_content/coal_deposit_m/
@@ -307,9 +336,10 @@ def _grow_or_shrink_line(
             fill = np.zeros(n_new, dtype=values.dtype)
             persistent_fields[name] = np.append(values, fill)
     elif dist[-1] < merge_threshold_rad and closing[-1] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
-        theta = theta[:-1]
-        elevation = elevation[:-1]
-        persistent_fields = {name: values[:-1] for name, values in persistent_fields.items()}
+        n_remove = min(max(int(closing[-1] * years / spacing_rad), 1), max_extend_nodes, len(theta) - 1)
+        theta = theta[:-n_remove]
+        elevation = elevation[:-n_remove]
+        persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
 
     if len(theta) == 0:
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
@@ -323,9 +353,10 @@ def _grow_or_shrink_line(
             fill = np.zeros(n_new, dtype=values.dtype)
             persistent_fields[name] = np.insert(values, 0, fill)
     elif dist[0] < merge_threshold_rad and closing[0] > TRANSFORM_RATE_THRESHOLD and len(theta) > 1:
-        theta = theta[1:]
-        elevation = elevation[1:]
-        persistent_fields = {name: values[1:] for name, values in persistent_fields.items()}
+        n_remove = min(max(int(closing[0] * years / spacing_rad), 1), max_extend_nodes, len(theta) - 1)
+        theta = theta[n_remove:]
+        elevation = elevation[n_remove:]
+        persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
 
     return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
@@ -491,7 +522,15 @@ def step_boundaries(world: World, years: float) -> None:
             # included) from the existing line automatically.
             updated_line = dataclasses.replace(line, elevation=elevation)
             grown_line = _grow_or_shrink_line(
-                updated_line, dist, closing, plate.crust_type, spacing_rad, extend_threshold_rad, merge_threshold_rad, max_extend_nodes
+                updated_line,
+                dist,
+                closing,
+                plate.crust_type,
+                spacing_rad,
+                extend_threshold_rad,
+                merge_threshold_rad,
+                max_extend_nodes,
+                years=years,
             )
             if len(grown_line.theta) > 0:
                 new_lines.append(grown_line)
