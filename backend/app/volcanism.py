@@ -333,36 +333,24 @@ def _plate_volcano_state(plate: PlateWithLines) -> tuple[np.ndarray, np.ndarray]
 
 
 def find_close_volcanic_field_pairs(world: "World") -> list[tuple[int, int]]:
-    """Currently-tracked volcanic-field plate pairs whose nearest points are within
+    """Currently-tracked volcanic-field plate pairs whose outlines are within
     VOLCANIC_FIELD_MERGE_DISTANCE_RAD of each other. Unlike merge_split.
     find_continental_collision_pairs, proximity alone is enough here -- no closing-rate check
     -- because these are already newly-formed rift crust of the same kind, not two mature
     plates that happen to be neighbors purely by plates.py's generation-time tiling (see that
-    function's own docstring for why *it* needs the extra check and this doesn't). Same cheap
-    bounding-sphere prescreen + one k-d tree per candidate plate as
-    find_continental_collision_pairs, since the field count involved is typically small but
-    this still avoids an O(n^2) full point-cloud comparison."""
+    function's own docstring for why *it* needs the extra check and this doesn't). Delegates
+    the actual proximity test to Plate.get_neighbours -- the field count involved is
+    typically small, so its per-pair bounding-sphere prescreen + outline k-d tree query is
+    plenty, without needing find_continental_collision_pairs' own cross-pair tree cache."""
     merge_distance_rad = VOLCANIC_FIELD_MERGE_DISTANCE_RAD * (line_spacing_rad(world.node_density) / TARGET_LINE_SPACING_RAD)
 
     fields = [p for p in world.plates if p.plate_id in world.volcanic_field_plate_ids and p.node_count() > 0]
-    points = {p.plate_id: p.all_points_and_elevation()[0] for p in fields}
-    spheres = {pid: geometry.bounding_sphere(pts) for pid, pts in points.items()}
-    trees: dict[int, cKDTree] = {}
-
-    pairs = []
-    for i, a in enumerate(fields):
-        for b in fields[i + 1 :]:
-            pa, pb = points[a.plate_id], points[b.plate_id]
-            ca, ra = spheres[a.plate_id]
-            cb, rb = spheres[b.plate_id]
-            if float(geometry.angular_distance(ca, cb)) - ra - rb > merge_distance_rad:
-                continue  # no point in either cloud can possibly be within merge distance
-            if b.plate_id not in trees:
-                trees[b.plate_id] = cKDTree(pb)
-            dist, _ = trees[b.plate_id].query(pa)
-            if np.any(dist < merge_distance_rad):
-                pairs.append(tuple(sorted((a.plate_id, b.plate_id))))
-    return pairs
+    pairs = {
+        tuple(sorted((a.plate_id, b.plate_id)))
+        for a in fields
+        for b in a.get_neighbours(fields, threshold_rad=merge_distance_rad)
+    }
+    return sorted(pairs)
 
 
 def _cluster_plate_pairs(pairs: list[tuple[int, int]]) -> list[set[int]]:
@@ -620,15 +608,18 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
         if not lines_with_nodes:
             continue
 
-        other_points_list = [
-            other.all_points_and_elevation()[0] for other in world.plates if other.plate_id != plate_id and other.node_count() > 0
-        ]
+        # Plate.get_neighbours' own bounding-sphere-plus-outline prescreen narrows the tree
+        # down to plates whose territory could plausibly have a point within clearance_rad,
+        # before paying for their full point clouds -- the same prefilter
+        # boundary.step_boundaries uses, just via the shared helper instead of re-derived
+        # here.
+        nearby = plate.get_neighbours(world.plates, threshold_rad=clearance_rad)
+        other_points_list = [other.all_points_and_elevation()[0] for other in nearby if other.node_count() > 0]
         # Same build-once/query-once tradeoff as boundary.step_boundaries' own per-plate
-        # tree (see its comment) -- built fresh per volcanic-field plate_id here, over
-        # every other plate's full point cloud (unlike step_boundaries, no bounding-sphere
-        # prefilter narrows this first), then queried only twice (high_world/low_world
-        # below, each a handful of line-ends) -- build cost dominates, so favoring a faster
-        # build is worth it even more here than in step_boundaries.
+        # tree (see its comment) -- built fresh per volcanic-field plate_id here, then
+        # queried only twice (high_world/low_world below, each a handful of line-ends) --
+        # build cost dominates, so favoring a faster build is worth it even more here than
+        # in step_boundaries.
         other_tree = (
             cKDTree(np.concatenate(other_points_list, axis=0), balanced_tree=False, compact_nodes=False)
             if other_points_list

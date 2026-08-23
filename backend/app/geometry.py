@@ -183,6 +183,26 @@ def azimuthal_equidistant_inverse(pole: np.ndarray, east: np.ndarray, north: np.
     return np.cos(theta)[..., None] * pole + np.sin(theta)[..., None] * tangent_dir
 
 
+def point_in_spherical_polygon(point_xyz: np.ndarray, polygon_xyz: np.ndarray) -> bool:
+    """True if unit vector `point_xyz` lies inside the simple spherical polygon whose
+    ordered (CW or CCW, either works) vertices are `polygon_xyz` (unit vectors) -- the
+    spherical analogue of the planar winding-number point-in-polygon test. Projects each
+    vertex into `point_xyz`'s own local tangent plane (see `local_tangent_basis`) and sums
+    the signed bearing change edge to edge: a point enclosed by a simple polygon
+    accumulates a full +-2*pi turn as the vertices sweep around it, one outside accumulates
+    ~0. Degenerate (numerically singular) for a polygon vertex antipodal to `point_xyz`,
+    not a concern for the compact plate outlines this is actually used on."""
+    polygon_xyz = np.asarray(polygon_xyz, dtype=float)
+    if len(polygon_xyz) < 3:
+        return False
+    east, north = local_tangent_basis(point_xyz)
+    tangent = polygon_xyz - np.outer(polygon_xyz @ point_xyz, point_xyz)
+    bearings = np.arctan2(tangent @ north, tangent @ east)
+    diffs = np.diff(np.concatenate([bearings, bearings[:1]]))
+    diffs = (diffs + np.pi) % (2.0 * np.pi) - np.pi
+    return abs(float(np.sum(diffs))) > np.pi
+
+
 def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:
     """World unit vectors (..., 3) -> plate-local unit vectors, given local frame `frame`."""
     return world_xyz @ frame  # frame.T @ v for each v, vectorized as v @ frame

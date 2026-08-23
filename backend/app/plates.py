@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError, cKDTree
@@ -53,6 +54,54 @@ MIN_OCEANIC_PLATES = 3
 # representative sample, not something visually smooth or physically carried.
 LAND_FRACTION_SAMPLE_SPACING_KM = 150.0
 LAND_FRACTION_SAMPLE_SPACING_RAD = LAND_FRACTION_SAMPLE_SPACING_KM / PLANET_RADIUS_KM
+
+
+class SpherePolygon(Protocol):
+    """A region of the sphere's surface that can answer point-membership queries.
+    `Plate` (below) is the only implementer today, but this is kept representation-agnostic
+    -- structural, not a base class -- so anything shaped like a polygon on a sphere can
+    satisfy it without inheriting from `Plate`."""
+
+    def contains(self, lat: float, lon: float) -> bool:
+        """True if the geographic point (lat, lon, radians) falls inside this polygon."""
+        ...
+
+
+# Two plates count as neighbours once the closest points of their two outlines come within
+# this many multiples of the default line spacing -- generous enough to still catch plates
+# separated by a boundary's own elevation-transition zone (see boundary.py's
+# FAR_THRESHOLD_RAD, a similar multiple of spacing_rad), while not matching plates that
+# merely share the same hemisphere.
+NEIGHBOUR_DISTANCE_RAD = 6.0 * TARGET_LINE_SPACING_RAD
+
+
+def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: float) -> list["Plate"]:
+    """Every other plate in `all_plates` whose outline (`Plate.outline_world`) comes within
+    `threshold_rad` of `plate`'s own -- shared by both PlateWithLines.get_neighbours and
+    PlateWithRTree.get_neighbours, which differ only in what outline_world() itself does for
+    that representation. Same bounding-sphere prefilter as boundary.py's step_boundaries
+    (cheap enough to compute per plate, and enough to rule out most pairs before a real
+    nearest-point query)."""
+    own_points = plate.outline_world()
+    if len(own_points) == 0:
+        return []
+    own_centroid, own_radius = geometry.bounding_sphere(own_points)
+
+    neighbours = []
+    for other in all_plates:
+        if other.plate_id == plate.plate_id:
+            continue
+        other_points = other.outline_world()
+        if len(other_points) == 0:
+            continue
+        other_centroid, other_radius = geometry.bounding_sphere(other_points)
+        centroid_dist = float(geometry.angular_distance(own_centroid, other_centroid))
+        if centroid_dist - own_radius - other_radius > threshold_rad:
+            continue
+        closest_dist = float(cKDTree(other_points).query(own_points)[0].min())
+        if closest_dist <= threshold_rad:
+            neighbours.append(other)
+    return neighbours
 
 
 class Plate(abc.ABC):
@@ -142,6 +191,20 @@ class Plate(abc.ABC):
         (`np.zeros(0)`, or `dtype=bool` for "is_volcano") if this plate has no nodes."""
         ...
 
+    @abc.abstractmethod
+    def contains(self, lat: float, lon: float) -> bool:
+        """True if the geographic point (lat, lon, radians) falls within this plate's
+        current territory -- see `SpherePolygon`, which this satisfies."""
+        ...
+
+    @abc.abstractmethod
+    def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
+        """Every other plate in `all_plates` (this plate need not be excluded by the caller
+        -- it's excluded here) whose outline comes within `threshold_rad` of this plate's
+        own -- defaults to NEIGHBOUR_DISTANCE_RAD, but callers with their own notion of
+        "close enough" (e.g. volcanism.py's merge/isolation distances) can pass their own."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -213,6 +276,13 @@ class PlateWithLines(Plate):
         if not chunks:
             return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
         return np.concatenate(chunks, axis=0)
+
+    def contains(self, lat: float, lon: float) -> bool:
+        point_xyz = geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon))
+        return geometry.point_in_spherical_polygon(point_xyz, self.outline_world())
+
+    def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
+        return _plates_within(self, all_plates, threshold_rad)
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -322,6 +392,13 @@ class PlateWithRTree(Plate):
         if len(self._theta) == 0:
             return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
         return self._elevation if field_name == "elevation" else self._fields[field_name]
+
+    def contains(self, lat: float, lon: float) -> bool:
+        point_xyz = geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon))
+        return geometry.point_in_spherical_polygon(point_xyz, self.outline_world())
+
+    def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
+        return _plates_within(self, all_plates, threshold_rad)
 
     def _typical_spacing(self) -> float:
         """Median nearest-neighbor distance over a bounded sample of this plate's own nodes
