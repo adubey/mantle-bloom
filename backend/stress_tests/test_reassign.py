@@ -28,9 +28,10 @@ def _plate_with_filler(plate_id, seed_xyz, lines):
 def test_reassign_runs_periodically_and_never_on_a_regularize_step():
     from app import line_regrid
 
-    # node_density=2.0 (half the default 4.0, see plates.NODE_DENSITY_CHOICES) -- this test
-    # only checks the two cadence counters, not node positions.
-    world = generate_world(seed=40, num_plates=8, node_density=2.0)
+    # node_density=0.5 (the coarsest choice, an eighth of the default 4.0, see
+    # plates.NODE_DENSITY_CHOICES) -- this test only checks the two cadence counters, not node
+    # positions.
+    world = generate_world(seed=40, num_plates=8, node_density=0.5)
     # This test only checks the two cadence counters, never climate/erosion/hydrology output
     # (see World.simulate_climate_biomes) -- skipping that per-step computation speeds this up
     # without changing what it exercises.

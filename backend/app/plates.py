@@ -43,8 +43,9 @@ TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 # 2.0 (half the default multiplier) is a lower-resolution middle ground -- fewer nodes than the
 # default, so plate-movement-only stepping (World.simulate_plate_movement,
 # World.simulate_climate_biomes off) runs faster, without dropping all the way to 1.0's much
-# coarser boundary geometry.
-NODE_DENSITY_CHOICES = (1.0, 2.0, 4.0)
+# coarser boundary geometry. 0.5 (an eighth of the default) is coarser still -- the fastest,
+# lowest-fidelity option, useful where even 1.0's geometry is more than a given step needs.
+NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)
 DEFAULT_NODE_DENSITY = 4.0
 
 

@@ -216,15 +216,15 @@ async function asBlob(resp: Response): Promise<Blob> {
 // (independent of the first -- see plates.py's _land_noise_threshold for how the two
 // combine). axialTiltDeg is the dialog's fourth slider (degrees) -- doesn't affect plate
 // generation, only climate.py's insolation at render time (see world.py's
-// World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (1, 2, or 4, see
-// plates.NODE_DENSITY_CHOICES) -- how many elevation-line nodes each plate starts with, and
+// World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (0.5, 1, 2, or 4,
+// see plates.NODE_DENSITY_CHOICES) -- how many elevation-line nodes each plate starts with, and
 // stays scaled to for the rest of that world's life (see world.py's World.node_density).
 // initialSoilMaturity is the dialog's fifth slider (0 to 1) -- how much soil the world starts
 // with (0 = fully barren, matching every other persistent field's own zero-start default; see
 // backend app/geology.py's seed_initial_soil), a one-time generation-time seed, not stored on
 // World the way nodeDensity is (see world.generate_world's own docstring for why).
-// climateDensity is the dialog's "climate & biome resolution" choice (0.5, 1, or 2, see backend
-// app/climate.py's CLIMATE_DENSITY_CHOICES) -- how finely climate.py's own grid (and the
+// climateDensity is the dialog's "climate & biome resolution" choice (0.5, 1, 2, or 4, see
+// backend app/climate.py's CLIMATE_DENSITY_CHOICES) -- how finely climate.py's own grid (and the
 // Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
 // temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
 // same reasoning nodeDensity's own storage gives (see world.py's World.climate_density).

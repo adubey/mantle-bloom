@@ -279,7 +279,7 @@ def test_compute_climate_cached_uses_worlds_own_climate_density():
     assert fields.elevation_m.shape == climate.grid_dimensions(2.0)
 
 
-def test_generate_world_stores_climate_density_and_defaults_to_one():
+def test_generate_world_stores_climate_density_and_uses_the_default_when_omitted():
     default_world = generate_world(seed=6, num_plates=6)
     assert default_world.climate_density == climate.DEFAULT_CLIMATE_DENSITY
 

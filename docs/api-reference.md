@@ -18,7 +18,7 @@ Request body:
   "num_mantle_centers": 8,
   "node_density": 4.0,
   "initial_soil_maturity": 0.0,
-  "climate_density": 1.0
+  "climate_density": 4.0
 }
 ```
 
@@ -39,20 +39,22 @@ only `climate.py`'s insolation on future renders (see
 [simulation-model.md#climate](simulation-model.md#climate)), which is why it's stored on
 `World` rather than consumed once here. `num_mantle_centers` defaults to
 `world.DEFAULT_MANTLE_CENTERS = 8`. `node_density` is the UI's "point density" choice
-(`plates.NODE_DENSITY_CHOICES = (1.0, 2.0, 4.0)`, defaults to
-`plates.DEFAULT_NODE_DENSITY = 4.0`) -- `400` if it isn't one of those three values; `2.0` is
-a lower-resolution middle ground (half the default). `initial_soil_maturity` is the UI's
+(`plates.NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, defaults to
+`plates.DEFAULT_NODE_DENSITY = 4.0`) -- `400` if it isn't one of those four values; `2.0` is
+a lower-resolution middle ground (half the default), `0.5` the coarsest, fastest option.
+`initial_soil_maturity` is the UI's
 fifth generation slider (0 to 1, defaults to `0.0` -- a fully barren starting world, no soil
 on any land node) -- a one-time seed for `soil_depth`/`soil_mineral_content`/
 `soil_organic_content` (see
 [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)), not
 stored on `World` afterward. `climate_density` is the UI's "climate & biome resolution"
-choice (`climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0)`, defaults to
-`climate.DEFAULT_CLIMATE_DENSITY = 1.0`) -- `400` if it isn't one of those three values.
+choice (`climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, defaults to
+`climate.DEFAULT_CLIMATE_DENSITY = 4.0`) -- `400` if it isn't one of those four values.
 Scales `climate.py`'s own simulation grid (and, scaled the same way, the Biome/Combined/
-Resources/Soil-Quality views' own finer render grid) in *each* dimension -- `2.0` doubles it,
-for sharper, less pixelated climate/biome maps; `0.5` halves it, for a coarser but faster
-grid -- stored on `World` (unlike `initial_soil_maturity`) since every future step/render
+Resources/Soil-Quality views' own finer render grid) in *each* dimension -- the default `4.0`
+quadruples it (16x the reference cell count), for the sharpest climate/biome maps; `0.5`
+halves it, for a coarser but faster grid -- stored on `World` (unlike `initial_soil_maturity`)
+since every future step/render
 reads it again, same reasoning `node_density`'s own storage gives (see
 [simulation-model.md#climate](simulation-model.md#climate)). Replaces whatever world
 previously existed.

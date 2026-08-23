@@ -139,6 +139,11 @@ def test_generate_with_node_density(client):
     assert resp.status_code == 200
 
 
+def test_generate_with_the_coarsest_node_density(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 0.5})
+    assert resp.status_code == 200
+
+
 def test_generate_with_unknown_node_density_returns_400(client):
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 2.5})
     assert resp.status_code == 400
@@ -146,6 +151,11 @@ def test_generate_with_unknown_node_density_returns_400(client):
 
 def test_generate_with_climate_density(client):
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 2.0})
+    assert resp.status_code == 200
+
+
+def test_generate_with_the_finest_climate_density(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 4.0})
     assert resp.status_code == 200
 
 

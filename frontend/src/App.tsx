@@ -40,16 +40,17 @@ const DEFAULT_AXIAL_TILT_DEG = 23.5;
 const DEFAULT_INITIAL_SOIL_MATURITY_PERCENT = 0;
 // Matching backend app/plates.py's NODE_DENSITY_CHOICES/DEFAULT_NODE_DENSITY -- a discrete
 // set, not a free-form slider, since there's no continuous unit for "how many points," only
-// "how many times as many." 2 is half the default (4) -- a lower-resolution middle ground.
-const NODE_DENSITY_CHOICES = [1, 2, 4];
+// "how many times as many." 0.5 is the coarsest, fastest option; the default (4) is the
+// finest.
+const NODE_DENSITY_CHOICES = [0.5, 1, 2, 4];
 const DEFAULT_NODE_DENSITY = 4;
 // Matching backend app/climate.py's CLIMATE_DENSITY_CHOICES/DEFAULT_CLIMATE_DENSITY -- same
 // "discrete multiplier choice, not a free-form slider" reasoning as NODE_DENSITY_CHOICES,
 // but for climate.py's own simulation grid (and the Biome/Combined/Resources/Soil-Quality
-// views' own render grid, scaled the same way) rather than plate elevation nodes. 0.5 is
-// half the default (1) -- a lower-resolution option.
-const CLIMATE_DENSITY_CHOICES = [0.5, 1, 2];
-const DEFAULT_CLIMATE_DENSITY = 1;
+// views' own render grid, scaled the same way) rather than plate elevation nodes. 0.5 is the
+// coarsest, fastest option; the default (4) is the finest.
+const CLIMATE_DENSITY_CHOICES = [0.5, 1, 2, 4];
+const DEFAULT_CLIMATE_DENSITY = 4;
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
 // always lands somewhere the auto behavior could plausibly have picked too.
@@ -894,6 +895,11 @@ export default function App() {
                   More detail, but simulation steps will run noticeably slower.
                 </div>
               )}
+              {nodeDensity < 1 && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Fewer elevation-line nodes. Simulation steps run faster.
+                </div>
+              )}
             </label>
 
             <label style={{ display: "block", marginBottom: 16 }}>
@@ -909,12 +915,21 @@ export default function App() {
                   </option>
                 ))}
               </select>
-              {climateDensity > 1 && (
+              {climateDensity > 1 && climateDensity < 4 && (
                 <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                   Sharper, less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
                   Biome/Combined/Resources/Soil Quality maps -- doubles resolution in each
                   dimension (4x the grid cells). Those views render noticeably slower (roughly
                   2-3x); simulation steps only slightly slower.
+                </div>
+              )}
+              {climateDensity >= 4 && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  The sharpest, least pixelated Temperature/Wind/Currents/Humidity/
+                  Precipitation/Biome/Combined/Resources/Soil Quality maps -- quadruples
+                  resolution in each dimension (16x the grid cells) over the reference. Those
+                  views render noticeably slower (roughly 6x); simulation steps moderately
+                  slower (roughly 1.5-2x).
                 </div>
               )}
               {climateDensity < 1 && (

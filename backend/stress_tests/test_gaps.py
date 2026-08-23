@@ -14,9 +14,12 @@ def _young_plate(plate_id: int) -> Plate:
 
 
 def test_fill_gaps_leaves_no_large_gaps_after_a_long_simulation():
-    # node_density=2.0 (half the default 4.0, see plates.NODE_DENSITY_CHOICES) -- this test
-    # only checks that no large *gap* remains, a geometric property that doesn't need the
-    # default's full node density to verify.
+    # node_density=2.0 (half the default 4.0, see plates.NODE_DENSITY_CHOICES) -- unlike the
+    # other stress tests in this file, this one can't drop all the way to 0.5: the assertion
+    # below compares against the bare gaps.MIN_GAP_POINTS reference-density constant (not a
+    # node_density-scaled threshold), and at 0.5 a real gap cluster (201 points, confirmed
+    # directly) exceeds even that unscaled 160-point threshold within this test's fixed
+    # step/fill_gaps budget -- gap-healing genuinely doesn't keep up that coarse.
     world = generate_world(seed=55, num_plates=10, node_density=2.0)
     # gaps.py only reacts to plate/node geometry, never to climate/erosion/hydrology output
     # (see World.simulate_climate_biomes) -- skipping that per-step computation cuts this

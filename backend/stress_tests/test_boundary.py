@@ -16,9 +16,10 @@ def _plate(plate_id, crust_type, theta, omega, base_elevation):
 
 
 def test_stepping_with_boundary_evolution_keeps_lines_sorted_and_elevation_bounded():
-    # node_density=2.0 (half the default 4.0, see plates.NODE_DENSITY_CHOICES) -- this test
-    # only checks sortedness/elevation bounds, not exact node positions.
-    world = generate_world(seed=21, num_plates=8, node_density=2.0)
+    # node_density=0.5 (the coarsest choice, an eighth of the default 4.0, see
+    # plates.NODE_DENSITY_CHOICES) -- this test only checks sortedness/elevation bounds, not
+    # exact node positions.
+    world = generate_world(seed=21, num_plates=8, node_density=0.5)
     # This test only checks boundary.py's own output (line sorting, elevation bounds), which
     # doesn't depend on climate/erosion/hydrology at all (see World.simulate_climate_biomes) --
     # skipping that per-step computation cuts this test's runtime substantially without
@@ -35,7 +36,7 @@ def test_stepping_with_boundary_evolution_keeps_lines_sorted_and_elevation_bound
 
 
 def test_boundary_evolution_changes_node_counts_over_time():
-    world = generate_world(seed=22, num_plates=10, node_density=2.0)  # see the test above for why this is safe
+    world = generate_world(seed=22, num_plates=10, node_density=0.5)  # see the test above for why this is safe
     world.simulate_climate_biomes = False  # see the test above for why this is safe here
     before = sum(p.node_count() for p in world.plates)
     for _ in range(20):

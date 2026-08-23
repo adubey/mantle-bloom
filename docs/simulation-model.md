@@ -86,7 +86,7 @@ having to pick a number. That many seed points are scattered uniformly on the un
 Three generation choices *are* user-facing -- the UI's "continental plates" and "initial
 land" sliders, both 0 to 1 (percent in the UI), defaulting to
 `DEFAULT_CONTINENTAL_FRACTION = 0.70` and `DEFAULT_LAND_FRACTION = 0.29`, plus a "point
-density" choice (`NODE_DENSITY_CHOICES = (1.0, 2.0, 4.0)`, see below).
+density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
 
 - `continental_fraction`: when given, `round(continental_fraction * num_plates)` plates
   (`rng.choice`, without replacement) are made continental instead of the usual independent
@@ -129,10 +129,11 @@ The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by p
 (see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
 needed.
 
-**Elevation point density.** The UI's "point density" choice (`node_density`, 1x default or
-4x) scales `TARGET_LINE_SPACING_RAD` down via `plates.line_spacing_rad` (halved at 4x --
-node count for a fixed area scales with the *square* of resolution, so 4x the nodes needs
-half the spacing, not a quarter). Stored on `World.node_density`, set once at generation and
+**Elevation point density.** The UI's "point density" choice (`node_density`, 4x default,
+0.5x/1x/2x also available) scales `TARGET_LINE_SPACING_RAD` down via `plates.line_spacing_rad`
+(halved at 4x -- node count for a fixed area scales with the *square* of resolution, so 4x the
+nodes needs half the spacing, not a quarter; conversely 0.5x, the coarsest option, doubles the
+spacing). Stored on `World.node_density`, set once at generation and
 read for that world's entire life, not just at the moment it's generated: every later module
 that builds new elevation-line nodes or derives a distance/count threshold from
 `TARGET_LINE_SPACING_RAD` -- `line_regrid.py`'s periodic regularization,
@@ -919,15 +920,18 @@ not a grid](#why-not-a-grid)); the render grid ([Render image](#render-image)) i
 lat/lon sweep, immediately flattened to 1D. Neither supports the array tricks climate leans
 on -- `np.roll` wraparound, centered-difference gradients, divergence, land-excluding
 neighbor averaging. So climate gets its own equirectangular array, `lat: (H,)` / `lon: (W,)`,
-every field `(H, W)`, `GRID_HEIGHT = 90` x `GRID_WIDTH = 180` (2 degrees/cell) by default --
-scaled directly in each dimension by a world's own `World.climate_density` (the UI's "climate
-& biome resolution" choice, `climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0)`, see
-`climate.grid_dimensions`) for a sharper, less pixelated climate map at the cost of real
-compute: confirmed directly, `2.0` (4x the cells) costs roughly 2-3x longer to render a
+every field `(H, W)`, `GRID_HEIGHT = 90` x `GRID_WIDTH = 180` (2 degrees/cell) at the
+`climate_density = 1.0` reference -- scaled directly in each dimension by a world's own
+`World.climate_density` (the UI's "climate & biome resolution" choice,
+`climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, `climate.DEFAULT_CLIMATE_DENSITY =
+4.0`, see `climate.grid_dimensions`) for a sharper, less pixelated climate map at the cost of
+real compute: confirmed directly, `2.0` (4x the cells) costs roughly 2-3x longer to render a
 climate/biome-family view and only a modest ~10% longer per simulation step (climate is a
 comparatively small share of a step's total cost next to boundary evolution/erosion/hydrology
-over the plate node cloud); `0.5` (a quarter of the cells) is the corresponding lower-resolution
-option, for a coarser climate map and slightly faster steps. Fixed-*degree* offset distances internal to the wind/current
+over the plate node cloud); the default `4.0` (16x the cells) costs roughly 6x longer to
+render such a view and roughly 1.5-2x longer per simulation step; `0.5` (a quarter of the
+cells) is the corresponding lower-resolution option, for a coarser climate map and slightly
+faster steps. Fixed-*degree* offset distances internal to the wind/current
 mechanics below (mountain/coastal wake lookback, mountain tangent sampling) stay physically
 meaningful at any density via `_REFERENCE_CELL_DEG`, a reference cell size decoupled from the
 grid's own actual width -- one exception, noted where it's defined

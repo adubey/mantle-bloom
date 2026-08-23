@@ -12,13 +12,20 @@ def _world(seed=1, num_plates=12, continental_fraction=0.7, land_fraction=0.29, 
 
 
 def test_compute_climate_produces_finite_fields_for_a_real_world():
-    fields = climate.compute_climate(_world(steps=3))
+    # Threads the world's own climate_density through, same as every production caller
+    # (erosion.py/main.py) -- world.climate_cache (populated by the step_world calls in
+    # _world) is already shaped at the world's own density, so a bare compute_climate(world)
+    # call here (defaulting to the *reference* GRID_HEIGHT/GRID_WIDTH) would mismatch against
+    # it as soon as the world's density differs from the reference.
+    world = _world(steps=3)
+    height, width = climate.grid_dimensions(world.climate_density)
+    fields = climate.compute_climate(world, height, width)
     for name in [
         "elevation_m", "land_temperature_c", "ocean_temperature_c", "air_temperature_c",
         "wind_u", "wind_v", "current_u", "current_v", "humidity", "precipitation_mm",
     ]:
         arr = getattr(fields, name)
-        assert arr.shape == (climate.GRID_HEIGHT, climate.GRID_WIDTH)
+        assert arr.shape == (height, width)
         assert np.all(np.isfinite(arr)), f"{name} has non-finite values"
 
 
