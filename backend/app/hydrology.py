@@ -75,7 +75,8 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, lakes
-from .plates import PLANET_RADIUS_KM, ElevationLine, PlateWithLines, gather_node_positions, query_workers
+from .elevation_lines import PLANET_RADIUS_KM, ElevationLine
+from .plates import PlateWithLines, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World

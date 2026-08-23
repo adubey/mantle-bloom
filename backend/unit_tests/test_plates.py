@@ -6,8 +6,6 @@ from app.plates import (
     MIN_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
     NODE_DENSITY_CHOICES,
-    TARGET_LINE_SPACING_RAD,
-    ElevationLine,
     collect_all_coal_deposit,
     collect_all_mineral_deposit,
     collect_all_oil_gas_deposit,
@@ -16,8 +14,6 @@ from app.plates import (
     collect_all_soil_mineral_content,
     collect_all_soil_organic_content,
     generate_plates,
-    iter_local_lattice,
-    line_spacing_rad,
     nearest_plate_id,
     plate_bounding_ellipse,
 )
@@ -34,32 +30,6 @@ def _measured_continental_area_fraction(plates_list) -> float:
     total = sum(p.node_count() for p in plates_list)
     continental = sum(p.node_count() for p in plates_list if p.crust_type == "continental")
     return continental / total if total else 0.0
-
-
-def test_iter_local_lattice_default_spacing_matches_target():
-    rows = list(iter_local_lattice(np.eye(3)))
-    assert len(rows) > 0
-    phis = [phi for phi, _, _ in rows]
-    assert np.allclose(np.diff(sorted(phis)), TARGET_LINE_SPACING_RAD, atol=1e-9)
-
-
-def test_iter_local_lattice_custom_spacing_changes_row_count():
-    coarse = list(iter_local_lattice(np.eye(3), spacing_rad=TARGET_LINE_SPACING_RAD * 4))
-    fine = list(iter_local_lattice(np.eye(3), spacing_rad=TARGET_LINE_SPACING_RAD / 2))
-    assert len(fine) > len(coarse)
-    total_fine = sum(len(theta) for _, theta, _ in fine)
-    total_coarse = sum(len(theta) for _, theta, _ in coarse)
-    assert total_fine > total_coarse
-
-
-def test_line_spacing_rad_matches_default_at_density_one():
-    assert line_spacing_rad(1.0) == TARGET_LINE_SPACING_RAD
-
-
-def test_line_spacing_rad_halves_at_4x_density():
-    # Node count scales with the square of resolution, so 4x the nodes needs the spacing
-    # *halved*, not quartered.
-    assert np.isclose(line_spacing_rad(4.0), TARGET_LINE_SPACING_RAD / 2)
 
 
 def test_generate_plates_node_density_quadruples_node_count():
@@ -124,7 +94,7 @@ def test_lines_are_evenly_spaced_in_phi():
         diffs = np.diff(phis)
         # All gaps should be an integer multiple of the target spacing (some plates
         # won't own every consecutive row near their boundary).
-        from app.plates import TARGET_LINE_SPACING_RAD
+        from app.elevation_lines import TARGET_LINE_SPACING_RAD
 
         ratios = diffs / TARGET_LINE_SPACING_RAD
         assert np.allclose(ratios, np.round(ratios), atol=1e-6)
@@ -241,7 +211,7 @@ def test_plate_bounding_ellipse_contains_a_clustered_point_cloud():
     # Every input point should fall within the fitted ellipse, measured the same way the
     # ellipse itself was fit (azimuthal-equidistant km-plane around the point cloud's own
     # bounding_sphere centroid).
-    from app.plates import PLANET_RADIUS_KM
+    from app.elevation_lines import PLANET_RADIUS_KM
 
     fit_centroid, _ = geometry.bounding_sphere(points)
     fit_east, fit_north = geometry.local_tangent_basis(fit_centroid)
@@ -301,15 +271,6 @@ def test_nearest_plate_id_finds_the_owning_plate_at_its_own_seed():
         if p.node_count() == 0:
             continue
         assert nearest_plate_id(world_plates, p.seed_world) == p.plate_id
-
-
-def test_elevation_line_soil_and_resource_fields_default_to_zero():
-    theta = np.array([0.0, 0.1, 0.2])
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
-    for field in ("soil_depth", "soil_mineral_content", "soil_organic_content", "coal_deposit_m", "oil_gas_deposit_m", "mineral_deposit_m"):
-        values = getattr(line, field)
-        assert values.shape == theta.shape
-        assert np.all(values == 0.0)
 
 
 def test_collect_all_soil_and_resource_fields_are_index_aligned_with_collect_all_points():

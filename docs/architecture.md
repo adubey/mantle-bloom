@@ -183,16 +183,20 @@ ellipse.py         minimum-volume enclosing ellipse (Khachiyan's algorithm), sph
                    pure 2D math -- see simulation-model.md#plate-inspector
 projections.py     Behrmann and Eckert IV map projections, vectorized
 noise.py           cheap smooth sphere noise (sum of sinusoids) for initial terrain texture
-plates.py          Plate/ElevationLine data structures, the plate-local lattice sweep
-                    shared by generation and merge, initial plate generation (nearest-seed
-                    tiling), the live per-plate outline used by the "Plates" map view, the
-                    Plate Inspector's bounding-ellipse fit and nearest-plate click hit-test
+elevation_lines.py  ElevationLine data structure, node density/spacing (TARGET_LINE_SPACING_RAD,
+                    line_spacing_rad), the plate-local lattice sweep shared by generation and
+                    merge, and periodic line-spacing regularization (formerly line_regrid.py)
+rtree_index.py      minimal bulk-loaded (STR-packed) R-tree over 2D points -- box/nearest-
+                    neighbor queries, used by PlateWithRTree
+plates.py          Plate/PlateWithLines/PlateWithRTree data structures, initial plate
+                    generation (nearest-seed tiling), the live per-plate outline used by the
+                    "Plates" map view, the Plate Inspector's bounding-ellipse fit and
+                    nearest-plate click hit-test
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
 boundary.py         per-step boundary adjacency detection (k-d tree against every other
                      plate's current nodes), convergent/divergent/transform classification,
                      elevation deltas, line growth/shrinkage
-line_regrid.py       periodic line-spacing regularization
 merge_split.py       plate consumption, sustained-collision continental merging (50-100 Myr,
                      at most one per step), mantle-flow-driven splitting, event log messages
 gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering

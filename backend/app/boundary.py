@@ -55,7 +55,15 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle
-from .plates import PLANET_RADIUS_KM, TARGET_LINE_SPACING_RAD, ElevationLine, line_spacing_rad, query_workers
+from .elevation_lines import (
+    MAX_ELEVATION_M,
+    MIN_ELEVATION_M,
+    PLANET_RADIUS_KM,
+    TARGET_LINE_SPACING_RAD,
+    ElevationLine,
+    line_spacing_rad,
+)
+from .plates import query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -144,9 +152,6 @@ MAX_BOUNDARY_EFFECT_RAD = max(
     TRANSFORM_RANGE_RAD,
     RIFT_RANGE_RAD,
 )
-
-MIN_ELEVATION_M = -11000.0
-MAX_ELEVATION_M = 9000.0
 
 # Safety cap on how many nodes a single step can insert at one line end. Not meant to bind
 # in practice -- even at MAX_PLATE_RATE with the largest step size the UI offers, the real

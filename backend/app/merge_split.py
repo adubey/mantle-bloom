@@ -25,14 +25,8 @@ from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .plates import (
-    TARGET_LINE_SPACING_RAD,
-    ElevationLine,
-    PlateWithLines,
-    build_lines_from_lattice,
-    line_spacing_rad,
-    query_workers,
-)
+from .elevation_lines import TARGET_LINE_SPACING_RAD, ElevationLine, build_lines_from_lattice, line_spacing_rad
+from .plates import PlateWithLines, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -90,7 +84,7 @@ SPLIT_MIN_AGE_STEPS = 15
 # straddle genuinely different mantle flow regimes and, mechanically, more likely to run its
 # local (phi, theta) parametrization into trouble the longer it's left uncut (a boundary
 # line that ends up spiraling many times around a plate's own local-frame pole as the plate
-# grows past it is exactly what overwhelmed line_regrid.py's periodic regularization pass
+# grows past it is exactly what overwhelmed elevation_lines.py's periodic regularization pass
 # once). Modeled as linearly relaxing the two split gates (residual-fit and pole-separation)
 # toward zero as the plate's own angular radius (`geometry.bounding_sphere`, centroid to
 # farthest node) approaches SPLIT_SIZE_CERTAIN_RIFT_RAD -- at that size essentially any

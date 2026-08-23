@@ -60,8 +60,8 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import climate, geometry, hydrology
-from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import PLANET_RADIUS_KM, PlateWithLines, gather_node_positions, query_workers
+from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
+from .plates import PlateWithLines, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World

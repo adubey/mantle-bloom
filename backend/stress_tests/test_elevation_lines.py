@@ -1,6 +1,5 @@
 import numpy as np
-from app import line_regrid
-from app.plates import TARGET_LINE_SPACING_RAD, ElevationLine
+from app import elevation_lines
 from app.world import generate_world, step_world
 
 
@@ -14,7 +13,7 @@ def test_regularization_runs_periodically_during_stepping():
     # computation speeds this up without changing what it exercises.
     world.simulate_climate_biomes = False
     assert world.steps_since_regularize == 0
-    for i in range(line_regrid.REGULARIZE_INTERVAL_STEPS - 1):
+    for i in range(elevation_lines.REGULARIZE_INTERVAL_STEPS - 1):
         step_world(world, years=1_000_000)
         assert world.steps_since_regularize == i + 1
     step_world(world, years=1_000_000)

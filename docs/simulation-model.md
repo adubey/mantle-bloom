@@ -136,13 +136,13 @@ nodes needs half the spacing, not a quarter; conversely 0.5x, the coarsest optio
 spacing). Stored on `World.node_density`, set once at generation and
 read for that world's entire life, not just at the moment it's generated: every later module
 that builds new elevation-line nodes or derives a distance/count threshold from
-`TARGET_LINE_SPACING_RAD` -- `line_regrid.py`'s periodic regularization,
+`TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s periodic regularization,
 `boundary.py`'s per-step growth/merge/reach thresholds, `gaps.py`'s coverage-gap detection
 and absorption/spawning, `merge_split.py`'s plate-merge contact distance and split-size
 floor, `volcanism.py`'s volcanic-field clustering/coverage -- calls `line_spacing_rad(world.
 node_density)` (or scales its own reference constant by the same ratio) instead of reading
 the bare module constant. This matters because it's not just a generation-time cosmetic
-choice: `line_regrid.py`'s regularize pass in particular runs unconditionally every
+choice: `elevation_lines.py`'s regularize pass in particular runs unconditionally every
 `REGULARIZE_INTERVAL_STEPS` steps and, before this threading existed, always resampled a
 line back down to the *reference* spacing regardless of what density the world was actually
 generated at -- confirmed directly as a real bug during development, a 4x-density world's
@@ -256,7 +256,7 @@ crust type, and how far the effect reaches (and its shape with distance) differs
   no grid-resampling step that can lose or duplicate it.
 
 <a id="line-regularization"></a>
-## Line regularization (`line_regrid.py`)
+## Line regularization (`elevation_lines.py`)
 
 Per-step boundary evolution only ever touches a line's two ends, so interior spacing stays
 regular on its own during ordinary convergent/divergent motion -- but a *transform* boundary
@@ -362,7 +362,7 @@ can spread sideways along its existing rows, but it never gains a whole new row 
 own local pole, and territory a fully-subducted neighbor vacated isn't automatically
 reclaimed. Both leave literal gaps: sphere regions no plate currently covers.
 
-Every `line_regrid.REGULARIZE_INTERVAL_STEPS` calls (the same cadence as line
+Every `elevation_lines.REGULARIZE_INTERVAL_STEPS` calls (the same cadence as line
 regularization), `gaps.fill_gaps` sweeps a global lattice (`plates.iter_local_lattice` in the
 identity frame, reused as a plain lat/lon sweep purely for this one-off detection query),
 finds every candidate point farther than `COVERAGE_RADIUS_RAD` from any plate's nearest node,
@@ -1307,7 +1307,7 @@ fall, real soil erodes) and `coal_deposit_m`/`oil_gas_deposit_m`/`mineral_deposi
 (monotonically non-decreasing, the same self-reinforcing convention `silt_depth`/
 `channel_depth` already establish -- buried peat/hydrocarbons/ore aren't un-buried by a later
 climate shift). Threaded through every explicit `ElevationLine` reconstruction site the same
-way `channel_depth`/`is_volcano` already are (`boundary.py`'s growth/shrink, `line_regrid.py`'s
+way `channel_depth`/`is_volcano` already are (`boundary.py`'s growth/shrink, `elevation_lines.py`'s
 regularize interpolation, `merge_split.py`'s split, `reassign.py`'s filter/insert) -- every
 other mutation site already uses `dataclasses.replace`, which copies them automatically (see
 `plates.ElevationLine`'s own docstring).
@@ -1427,13 +1427,13 @@ silently reset to `False` every step at exactly these two sites, for several ste
 development, before it was caught), sliced/concatenated to match where nodes are added or
 removed (boundary growth/shrink -- new nodes start at 0, no history to carry; a merge/split's
 boolean-mask slice), interpolated alongside elevation where a line gets resampled onto a
-fresh spacing (`line_regrid.regularize_line`, since that runs periodically throughout the
+fresh spacing (`elevation_lines.regularize_line`, since that runs periodically throughout the
 simulation and a plain reset would erase rivers/glaciers constantly, not rarely). Two call
 sites *do* deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice`
 (generation, gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled
 territory has no history to carry) and a reassigned point in `reassign.py` (a rare,
 small-scale pass touching only a few boundary-adjacent nodes at a time, unlike
-`line_regrid.py`'s near-every-line-every-interval reach).
+`elevation_lines.py`'s near-every-line-every-interval reach).
 
 `flow_target`/`flow_accum`/`river_speed` are deliberately *not* persisted: recomputed fresh
 every step, from that step's real climate -- purely this-step derived quantities, cached on
@@ -1556,7 +1556,7 @@ exact shape shifting from ordinary terrain churn even when nothing physical abou
 changed.
 
 **Lakes accumulate silt.** `silt_depth` (a new persistent per-node array, threaded through
-`boundary.py`/`line_regrid.py`/`reassign.py`/`merge_split.py` exactly like `lake_depth`) is a
+`boundary.py`/`elevation_lines.py`/`reassign.py`/`merge_split.py` exactly like `lake_depth`) is a
 small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
 (monotonically -- silt never erodes back away) on a lake's own bed. `build_lake_hierarchy`
 is given `elevation + silt_depth`, not bare elevation, so a lake's own floor rises as silt

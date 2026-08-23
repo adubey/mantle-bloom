@@ -6,8 +6,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import bathymetry, boundary, climate, erosion, gaps, geology, geometry, hydrology, line_regrid, mantle, merge_split, reassign, volcanism
-from .plates import DEFAULT_NODE_DENSITY, Plate, gather_node_positions, generate_plates
+from . import bathymetry, boundary, climate, elevation_lines, erosion, gaps, geology, geometry, hydrology, mantle, merge_split, reassign, volcanism
+from .elevation_lines import DEFAULT_NODE_DENSITY
+from .plates import Plate, gather_node_positions, generate_plates
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
@@ -35,7 +36,7 @@ class World:
     # Another fixed per-world property, set once at generation (see plates.generate_plates'
     # own node_density parameter) and read for the rest of this world's life by every module
     # that builds new elevation-line nodes or derives a distance/count threshold from
-    # plates.TARGET_LINE_SPACING_RAD (line_regrid.py, boundary.py, gaps.py, merge_split.py,
+    # plates.TARGET_LINE_SPACING_RAD (elevation_lines.py, boundary.py, gaps.py, merge_split.py,
     # volcanism.py -- see plates.line_spacing_rad's own docstring for why each of those needs
     # this rather than reading the bare module constant), so a world generated at a
     # non-default density stays self-consistent through regularizing/gap-filling/merging/
@@ -207,10 +208,10 @@ def step_world(world: World, years: float) -> None:
     colliding continental plates merge (at most one per step, only after a sustained
     50-100 Myr collision -- see merge_split.py), and plates whose flow field no longer fits
     one rigid rotation well can split; any resulting events are logged to world.events for
-    the UI's console. Every `line_regrid.REGULARIZE_INTERVAL_STEPS` calls, also fills any
+    the UI's console. Every `elevation_lines.REGULARIZE_INTERVAL_STEPS` calls, also fills any
     sphere-coverage gaps (a plate growing toward its own pole, or territory a subducted
     plate left unclaimed -- see gaps.py, which now logs each newly spawned plate) and
-    regularizes any line whose interior spacing has drifted (line_regrid.py). On steps that
+    regularizes any line whose interior spacing has drifted (elevation_lines.py). On steps that
     aren't a regularize/gap-fill step, also periodically reassigns any node that's ended up
     geometrically embedded in a neighboring plate's own territory (see reassign.py) --
     deliberately never the same step as the gap-fill pass above, so each one's picture of
@@ -272,7 +273,7 @@ def step_world(world: World, years: float) -> None:
 
     world.steps_since_regularize += 1
     run_regularize_this_step = (
-        world.simulate_plate_movement and world.steps_since_regularize >= line_regrid.REGULARIZE_INTERVAL_STEPS
+        world.simulate_plate_movement and world.steps_since_regularize >= elevation_lines.REGULARIZE_INTERVAL_STEPS
     )
     if run_regularize_this_step:
         for message in volcanism.detect_and_spawn_volcanic_fields(world):
@@ -282,7 +283,7 @@ def step_world(world: World, years: float) -> None:
         volcanism.grow_isolated_volcanic_fields(world)
         for message in gaps.fill_gaps(world):
             world.log_event(message)
-        line_regrid.regularize_world_lines(world)
+        elevation_lines.regularize_world_lines(world)
         world.steps_since_regularize = 0
 
     world.steps_since_reassign += 1

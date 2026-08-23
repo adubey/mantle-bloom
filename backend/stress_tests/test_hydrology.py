@@ -172,7 +172,7 @@ def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_step
 
 def test_silt_depth_persists_across_boundary_and_erosion_steps():
     # Regression check on silt_depth's own field-threading (plates.py/boundary.py/
-    # line_regrid.py/reassign.py/merge_split.py) -- same shape as the channel/lake/glacier
+    # elevation_lines.py/reassign.py/merge_split.py) -- same shape as the channel/lake/glacier
     # persistence test above: confirms boundary.py (which runs every step, before erosion.py
     # sets silt_depth) doesn't silently reset it to 0, and that it's actually accumulating
     # somewhere after several steps of real lake inflow.

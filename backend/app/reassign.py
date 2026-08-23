@@ -159,7 +159,7 @@ def _apply_reassignment(
         # 0/False (with_new_nodes' default) -- this pass only ever touches a small number of
         # boundary-adjacent nodes at a time, so losing a carved channel (or a glacier,
         # volcanic provenance, or accumulated soil/resources) right at the moment its owning
-        # plate changes is an acceptable simplification (unlike line_regrid.py's
+        # plate changes is an acceptable simplification (unlike elevation_lines.py's
         # regularize_line, which runs on nearly every line, every regularize interval --
         # resetting there would erase rivers/glaciers/volcanoes/soil constantly, not rarely).
         grown = line.with_new_nodes(new_theta, new_elevation)

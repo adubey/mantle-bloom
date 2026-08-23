@@ -1,10 +1,12 @@
-"""Plates as spherical polygons carrying their own parallel elevation lines.
+"""Plates as spherical polygons, each carrying its own set of `ElevationLine`s.
 
 Each plate owns a rotation matrix (`frame`) mapping its local (phi, theta) spherical
-coordinates to world unit vectors (see `geometry.plate_frame_from_seed`), and a set of
-`ElevationLine`s at fixed plate-local latitudes `phi`. Rotating a plate rigidly only ever
-updates `frame` -- the (phi, theta) node coordinates themselves never change, so rotation
-never needs resampling. See docs/simulation-model.md for the full design writeup.
+coordinates to world unit vectors (see `geometry.plate_frame_from_seed`). Rotating a plate
+rigidly only ever updates `frame` -- the (phi, theta) node coordinates themselves never
+change, so rotation never needs resampling. See docs/simulation-model.md for the full design
+writeup, and elevation_lines.py for the node representation itself (`ElevationLine`, node
+density/spacing, and periodic line regularization) -- this module is about the plates that
+carry it: identity, motion, territory, and generation.
 """
 
 from __future__ import annotations
@@ -13,56 +15,28 @@ import abc
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from . import ellipse, geometry
+from .elevation_lines import (
+    DEFAULT_NODE_DENSITY,
+    NODE_DENSITY_CHOICES,
+    PLANET_RADIUS_KM,
+    TARGET_LINE_SPACING_KM,
+    TARGET_LINE_SPACING_RAD,
+    ElevationLine,
+    build_lines_from_lattice,
+    iter_local_lattice,
+    line_spacing_rad,
+)
 from .noise import SphereNoise
+from .rtree_index import RTree
 
-PLANET_RADIUS_KM = 6371.0
 CONTINENTAL_FRACTION = 0.4
 BASE_CONTINENTAL_M = 200.0
 BASE_OCEANIC_M = -3800.0
 CONTINENTAL_NOISE_AMPLITUDE_M = 1200.0
 OCEANIC_NOISE_AMPLITUDE_M = 500.0
-
-# Halving this doubles resolution in each dimension (phi rows and theta samples per row),
-# i.e. ~4x the nodes per plate. Several other modules define *absolute node-count*
-# thresholds (not distances, which already scale automatically as multiples of
-# TARGET_LINE_SPACING_RAD) that represent a physical area or distance in terms of the *old*
-# density -- those were rescaled alongside this (merge_split.SPLIT_MIN_NODES,
-# gaps.MIN_GAP_POINTS/MAX_ABSORB_NODES_PER_PLATE_PER_CALL by ~4x for area,
-# boundary.MAX_EXTEND_NODES_PER_STEP by ~2x for a 1D distance) -- see each for the reasoning.
-# This is the reference value for the default node_density=1.0 -- see line_spacing_rad below
-# for how a world's own chosen density (World.node_density, set once at generation and read
-# by every module in this same list for the rest of that world's life) scales it at runtime,
-# now that density is a per-world user choice rather than a hardcoded, one-off code change.
-TARGET_LINE_SPACING_KM = 125.0
-TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
-
-# UI-facing choices for World.node_density -- a discrete set (not a free-form slider) since
-# there's no natural continuous unit for "how many points," only "how many times as many."
-# 2.0 (half the default multiplier) is a lower-resolution middle ground -- fewer nodes than the
-# default, so plate-movement-only stepping (World.simulate_plate_movement,
-# World.simulate_climate_biomes off) runs faster, without dropping all the way to 1.0's much
-# coarser boundary geometry. 0.5 (an eighth of the default) is coarser still -- the fastest,
-# lowest-fidelity option, useful where even 1.0's geometry is more than a given step needs.
-NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)
-DEFAULT_NODE_DENSITY = 4.0
-
-
-def line_spacing_rad(node_density: float) -> float:
-    """The line spacing (radians) that gives a plate ~node_density times as many nodes as
-    the default TARGET_LINE_SPACING_RAD would. Node count for a fixed physical area scales
-    with the *square* of resolution (see TARGET_LINE_SPACING_KM's own comment -- halving
-    spacing quadruples node count), so this divides by sqrt(node_density), not
-    node_density itself. Every module that derives a distance threshold or an absolute
-    node-count cap from TARGET_LINE_SPACING_RAD calls this (with the world's own
-    node_density) instead of reading the bare module constant directly, so that a world
-    generated at a non-default density stays self-consistent for its entire life -- not just
-    at generation, but through every later regularize/gap-fill/merge/split/volcanism pass
-    too (each of those modules' own docstrings/comments explain why its own particular
-    thresholds need this)."""
-    return TARGET_LINE_SPACING_RAD / np.sqrt(node_density)
 
 # Plate count is chosen automatically (see generate_plates) rather than asked of the user --
 # an inclusive range of plausible Earth-like plate counts.
@@ -81,214 +55,13 @@ LAND_FRACTION_SAMPLE_SPACING_KM = 150.0
 LAND_FRACTION_SAMPLE_SPACING_RAD = LAND_FRACTION_SAMPLE_SPACING_KM / PLANET_RADIUS_KM
 
 
-class ElevationLine:
-    """A fixed plate-local latitude `phi` holding elevation (and other persistent, land-only
-    or lake/volcano/soil/resource) samples at plate-local longitude nodes `theta`.
-
-    All fields are read-only -- an existing line is never mutated in place. Instead:
-    - `replace(...)` swaps in a subset of fields, keeping `theta`'s shape/order untouched
-      (the common case -- most steps only ever change `elevation` or one or two persistent
-      fields for the same set of nodes).
-    - `masked(mask)` filters and/or reorders every field together by a boolean mask or
-      fancy index (plate split, node removal, node reassignment reordering).
-    - `with_new_nodes(theta, elevation)` appends brand-new nodes (zero/False for every
-      persistent field -- no history to carry) to the end, unsorted.
-
-    Threading every persistent field through a single generic method here (keyed off
-    `OPTIONAL_FIELDS`, one list) is what earlier avoided a real, previously confirmed bug:
-    erosion.py's and bathymetry.py's own hand-written reconstruction sites were both written
-    before is_volcano/volcano_active_years_remaining existed, so neither passed them through
-    -- silently wiping every node's volcanic status to False every single step. A call site
-    that constructs a new field-by-field `ElevationLine(...)` directly (bypassing these
-    methods) reintroduces exactly that risk."""
-
-    # All persistent, land-only, meters (unless noted), same shape as theta -- see
-    # hydrology.py/lakes.py/volcanism.py/geology.py. Because the grid is plate-local and
-    # rotates with a plate's `frame` rather than sitting fixed in world space, these ride
-    # along for free just by being an ordinary parallel array on this same line, exactly
-    # like elevation itself -- no explicit semi-Lagrangian advection needed every step:
-    # rotating a plate only ever touches `frame`, never these arrays.
-    OPTIONAL_FIELDS = (
-        "channel_depth",  # river channel incision, self-reinforcing
-        "channel_width",  # river channel width, grows with flow -- see erosion.py
-        "lake_depth",  # standing lake water depth
-        "glacier_depth",  # accumulated ice, meters ice-equivalent
-        # Sediment settled on a lake's own bed, monotonically increasing (never erodes back
-        # away, same self-reinforcing character as channel_depth) -- raises the *effective*
-        # floor a lake's own depth is measured against without touching real terrain
-        # `elevation` itself, see lakes.py's own module docstring for why. Always 0 outside
-        # an active lake.
-        "silt_depth",
-        # Two more of the same "rides along for free" persistent fields, see volcanism.py.
-        # is_volcano never reverts to False once set (permanent provenance -- a dormant
-        # volcano is still excluded from being redetected as a fresh rift gap);
-        # volcano_active_years_remaining is a countdown, 0 once dormant (whether or not
-        # is_volcano is set).
-        "is_volcano",  # bool
-        "volcano_active_years_remaining",  # years
-        # Soil, land-only -- see geology.py. Unlike every other field here, these three can
-        # both rise *and* fall (real soil forms and erodes), not just accumulate.
-        "soil_depth",  # meters, regolith/soil thickness
-        "soil_mineral_content",  # [0, 1], weathered/hydrothermal richness
-        "soil_organic_content",  # [0, 1], accumulated organic matter
-        # Resource deposits -- see geology.py/volcanism.py. All monotonically non-decreasing,
-        # the same self-reinforcing "once formed, never erodes back away" convention
-        # silt_depth already uses (buried peat/hydrocarbons/ore aren't un-buried by a later
-        # climate shift).
-        "coal_deposit_m",  # land-only
-        "oil_gas_deposit_m",  # ocean-only
-        "mineral_deposit_m",  # either -- grown by volcanism.py's own eruptions
-    )
-
-    def __init__(
-        self,
-        phi: float,
-        theta: np.ndarray,
-        elevation: np.ndarray,
-        channel_depth: np.ndarray | None = None,
-        channel_width: np.ndarray | None = None,
-        lake_depth: np.ndarray | None = None,
-        glacier_depth: np.ndarray | None = None,
-        silt_depth: np.ndarray | None = None,
-        is_volcano: np.ndarray | None = None,
-        volcano_active_years_remaining: np.ndarray | None = None,
-        soil_depth: np.ndarray | None = None,
-        soil_mineral_content: np.ndarray | None = None,
-        soil_organic_content: np.ndarray | None = None,
-        coal_deposit_m: np.ndarray | None = None,
-        oil_gas_deposit_m: np.ndarray | None = None,
-        mineral_deposit_m: np.ndarray | None = None,
-    ) -> None:
-        self._phi = phi
-        self._theta = theta
-        self._elevation = elevation
-        self._channel_depth = channel_depth if channel_depth is not None else np.zeros_like(theta)
-        self._channel_width = channel_width if channel_width is not None else np.zeros_like(theta)
-        self._lake_depth = lake_depth if lake_depth is not None else np.zeros_like(theta)
-        self._glacier_depth = glacier_depth if glacier_depth is not None else np.zeros_like(theta)
-        self._silt_depth = silt_depth if silt_depth is not None else np.zeros_like(theta)
-        self._is_volcano = is_volcano if is_volcano is not None else np.zeros_like(theta, dtype=bool)
-        self._volcano_active_years_remaining = (
-            volcano_active_years_remaining if volcano_active_years_remaining is not None else np.zeros_like(theta)
-        )
-        self._soil_depth = soil_depth if soil_depth is not None else np.zeros_like(theta)
-        self._soil_mineral_content = soil_mineral_content if soil_mineral_content is not None else np.zeros_like(theta)
-        self._soil_organic_content = soil_organic_content if soil_organic_content is not None else np.zeros_like(theta)
-        self._coal_deposit_m = coal_deposit_m if coal_deposit_m is not None else np.zeros_like(theta)
-        self._oil_gas_deposit_m = oil_gas_deposit_m if oil_gas_deposit_m is not None else np.zeros_like(theta)
-        self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
-
-    @property
-    def phi(self) -> float:
-        return self._phi
-
-    @property
-    def theta(self) -> np.ndarray:
-        return self._theta
-
-    @property
-    def elevation(self) -> np.ndarray:
-        return self._elevation
-
-    @property
-    def channel_depth(self) -> np.ndarray:
-        return self._channel_depth
-
-    @property
-    def channel_width(self) -> np.ndarray:
-        return self._channel_width
-
-    @property
-    def lake_depth(self) -> np.ndarray:
-        return self._lake_depth
-
-    @property
-    def glacier_depth(self) -> np.ndarray:
-        return self._glacier_depth
-
-    @property
-    def silt_depth(self) -> np.ndarray:
-        return self._silt_depth
-
-    @property
-    def is_volcano(self) -> np.ndarray:
-        return self._is_volcano
-
-    @property
-    def volcano_active_years_remaining(self) -> np.ndarray:
-        return self._volcano_active_years_remaining
-
-    @property
-    def soil_depth(self) -> np.ndarray:
-        return self._soil_depth
-
-    @property
-    def soil_mineral_content(self) -> np.ndarray:
-        return self._soil_mineral_content
-
-    @property
-    def soil_organic_content(self) -> np.ndarray:
-        return self._soil_organic_content
-
-    @property
-    def coal_deposit_m(self) -> np.ndarray:
-        return self._coal_deposit_m
-
-    @property
-    def oil_gas_deposit_m(self) -> np.ndarray:
-        return self._oil_gas_deposit_m
-
-    @property
-    def mineral_deposit_m(self) -> np.ndarray:
-        return self._mineral_deposit_m
-
-    def world_xyz(self, frame: np.ndarray) -> np.ndarray:
-        phi_arr = np.full_like(self.theta, self.phi)
-        local = geometry.local_xyz(phi_arr, self.theta)
-        return geometry.to_world(frame, local)
-
-    def replace(self, **overrides: np.ndarray) -> "ElevationLine":
-        """A new line with the given fields (elevation and/or any of OPTIONAL_FIELDS)
-        swapped in and every other field copied from this one unchanged -- `theta`/`phi`
-        are never touched here, so only use this when the node set itself isn't changing."""
-        kwargs: dict[str, np.ndarray] = {name: getattr(self, name) for name in self.OPTIONAL_FIELDS}
-        kwargs["elevation"] = self.elevation
-        kwargs.update(overrides)
-        return ElevationLine(phi=self.phi, theta=self.theta, **kwargs)
-
-    def masked(self, mask) -> "ElevationLine":
-        """A new line with `theta`, `elevation`, and every OPTIONAL_FIELDS array filtered
-        and/or reordered together by a boolean mask or fancy index -- for removing nodes
-        (plate split, node reassignment) or reordering them (after concatenating in new
-        nodes at the end)."""
-        kwargs = {name: getattr(self, name)[mask] for name in self.OPTIONAL_FIELDS}
-        return ElevationLine(phi=self.phi, theta=self.theta[mask], elevation=self.elevation[mask], **kwargs)
-
-    def with_new_nodes(self, theta: np.ndarray, elevation: np.ndarray) -> "ElevationLine":
-        """A new line with `theta`/`elevation` nodes appended at the end -- every
-        OPTIONAL_FIELDS value for the new nodes starts at zero/False, no history to carry.
-        The result is unsorted by theta; follow with `.masked(np.argsort(new_line.theta))`
-        if ascending order matters to the caller."""
-        n = len(theta)
-        kwargs = {
-            name: np.concatenate([getattr(self, name), np.zeros(n, dtype=getattr(self, name).dtype)])
-            for name in self.OPTIONAL_FIELDS
-        }
-        return ElevationLine(
-            phi=self.phi,
-            theta=np.concatenate([self.theta, theta]),
-            elevation=np.concatenate([self.elevation, elevation]),
-            **kwargs,
-        )
-
-
 class Plate(abc.ABC):
     """A plate's shared identity/motion state plus an abstract interface over however it
-    represents its own terrain nodes -- currently only `PlateWithLines` (parallel
-    `ElevationLine`s), with an R-tree-backed representation planned as a future second
-    subclass. Every method below that doesn't depend on node representation (motion,
-    identity) is implemented once here; `node_count`/`all_points_and_elevation`/
-    `outline_world`/`collect` are representation-specific and left abstract."""
+    represents its own terrain nodes -- `PlateWithLines` (parallel `ElevationLine`s, see
+    elevation_lines.py) and `PlateWithRTree` (an R-tree-indexed point cloud, see below).
+    Every method below that doesn't depend on node representation (motion, identity) is
+    implemented once here; `node_count`/`all_points_and_elevation`/`outline_world`/`collect`
+    are representation-specific and left abstract."""
 
     def __init__(
         self,
@@ -440,6 +213,172 @@ class PlateWithLines(Plate):
         if not chunks:
             return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
         return np.concatenate(chunks, axis=0)
+
+
+# outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
+# nodes for "boundary node" to be a meaningful distinct subset of "every node" -- below it,
+# every node is returned as-is rather than running (and likely degenerating) the density
+# check.
+OUTLINE_MIN_NODES_FOR_HULL = 4
+# Bounds the cost of _typical_spacing's own nearest-neighbor sampling for a very large plate
+# -- a plain median over a few hundred samples is already a stable estimate of "how far
+# apart nodes normally sit" without needing to query every single node.
+OUTLINE_SPACING_SAMPLE_SIZE = 200
+# Half-width of each node's own neighborhood box, in multiples of the plate's typical
+# spacing -- wide enough that an interior node's box reliably contains several rings of
+# neighbors (not just its single nearest one, which would be too noisy a density signal).
+OUTLINE_NEIGHBORHOOD_SPACING_FACTOR = 3.0
+# A node counts as "boundary" once its own neighborhood box holds no more than this fraction
+# of the densest node's own count -- relative to the plate's own densest node (not an
+# absolute count) so this works the same whether the plate as a whole is sparse or dense.
+OUTLINE_BOUNDARY_DENSITY_FRACTION = 0.6
+
+
+class PlateWithRTree(Plate):
+    """A plate whose terrain is a flat, unstructured cloud of nodes at plate-local (phi,
+    theta) coordinates, spatially indexed by an `RTree` (see rtree_index.py) rather than
+    organized into `PlateWithLines`' fixed-phi rows. Where `PlateWithLines` gets exact,
+    resampling-free rotation from a grid that never needs reordering, this representation
+    instead gets O(log n) box/nearest-neighbor spatial queries over an arbitrary point set --
+    useful for anything that wants to ask "what's near this point" without caring what row,
+    if any, it's on. The index is a static, bulk-loaded structure (see RTree.build) rebuilt
+    from scratch by `set_nodes` whenever the node set changes, rather than incrementally
+    maintained -- see rtree_index.py's own module docstring for why that's the right
+    tradeoff here.
+
+    Carries the same per-node fields as `ElevationLine` (elevation plus every
+    `ElevationLine.OPTIONAL_FIELDS` name) so it satisfies the same `Plate.collect` contract
+    -- just as flat parallel arrays over every node at once, rather than one line at a time."""
+
+    def __init__(
+        self,
+        plate_id: int,
+        frame: np.ndarray,
+        crust_type: str,
+        theta: np.ndarray | None = None,
+        phi: np.ndarray | None = None,
+        elevation: np.ndarray | None = None,
+        omega: np.ndarray | None = None,
+        age_steps: int = 0,
+        **fields: np.ndarray,
+    ) -> None:
+        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps)
+        self.set_nodes(
+            theta if theta is not None else np.zeros(0),
+            phi if phi is not None else np.zeros(0),
+            elevation if elevation is not None else np.zeros(0),
+            **fields,
+        )
+
+    def set_nodes(self, theta: np.ndarray, phi: np.ndarray, elevation: np.ndarray, **fields: np.ndarray) -> None:
+        """Replace every node at once and rebuild the spatial index -- there's no fixed row
+        structure to preserve here (unlike PlateWithLines.replace_line), so a full swap is
+        the natural granularity for this representation. `fields` accepts any of
+        ElevationLine.OPTIONAL_FIELDS by name; anything not passed defaults the same way
+        ElevationLine itself does (zeros, or False for is_volcano)."""
+        self._theta = theta
+        self._phi = phi
+        self._elevation = elevation
+        self._fields = {
+            name: fields[name] if name in fields else self._default_field(name, theta)
+            for name in ElevationLine.OPTIONAL_FIELDS
+        }
+        local_xy = np.stack([theta, phi], axis=1) if len(theta) else np.zeros((0, 2))
+        self._rtree = RTree.build(local_xy)
+
+    @staticmethod
+    def _default_field(name: str, theta: np.ndarray) -> np.ndarray:
+        return np.zeros_like(theta, dtype=bool) if name == "is_volcano" else np.zeros_like(theta)
+
+    @property
+    def theta(self) -> np.ndarray:
+        return self._theta
+
+    @property
+    def phi(self) -> np.ndarray:
+        return self._phi
+
+    @property
+    def elevation(self) -> np.ndarray:
+        return self._elevation
+
+    @property
+    def rtree(self) -> RTree:
+        """The current spatial index over this plate's own (theta, phi) nodes -- exposed for
+        callers that want their own box/nearest-neighbor queries, beyond just this class's
+        own outline_world use of it below."""
+        return self._rtree
+
+    def node_count(self) -> int:
+        return len(self._theta)
+
+    def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
+        if len(self._theta) == 0:
+            return np.zeros((0, 3)), np.zeros(0)
+        local = geometry.local_xyz(self._phi, self._theta)
+        return geometry.to_world(self._frame, local), self._elevation
+
+    def collect(self, field_name: str) -> np.ndarray:
+        if len(self._theta) == 0:
+            return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
+        return self._elevation if field_name == "elevation" else self._fields[field_name]
+
+    def _typical_spacing(self) -> float:
+        """Median nearest-neighbor distance over a bounded sample of this plate's own nodes
+        -- "how far apart nodes normally sit," the same role TARGET_LINE_SPACING_RAD plays
+        for PlateWithLines, just measured directly from the actual node cloud rather than
+        assumed from a fixed generation-time constant (nothing here guarantees this
+        representation's own nodes came from that same lattice)."""
+        n = len(self._theta)
+        local_xy = np.stack([self._theta, self._phi], axis=1)
+        sample_idx = (
+            np.arange(n)
+            if n <= OUTLINE_SPACING_SAMPLE_SIZE
+            else np.linspace(0, n - 1, OUTLINE_SPACING_SAMPLE_SIZE).astype(int)
+        )
+        dists = [
+            result[1]
+            for i in sample_idx
+            if (result := self._rtree.nearest_one(local_xy[i], exclude_index=int(i))) is not None
+        ]
+        return float(np.median(dists)) if dists else 1.0
+
+    def outline_world(self) -> np.ndarray:
+        """A live approximation of this plate's territory outline, built from the R-tree
+        rather than PlateWithLines' fixed-row scanline: first finds *boundary* nodes (ones
+        whose own local neighborhood -- an axis-aligned box queried via the R-tree -- holds
+        fewer other nodes than an interior node's would, since an edge node's box is partly
+        empty space outside the plate while an interior one's isn't), then returns the 2D
+        convex hull of just those nodes' local (theta, phi) coordinates, mapped to world
+        space. Restricting the hull to boundary nodes rather than every node is the same
+        "hull of a full point set == hull of its own boundary" shortcut
+        plate_bounding_ellipse's own docstring relies on, just applied here to build the
+        outline itself rather than to fit an ellipse around it."""
+        n = len(self._theta)
+        if n == 0:
+            return np.zeros((0, 3))
+        local_xy = np.stack([self._theta, self._phi], axis=1)
+        if n < OUTLINE_MIN_NODES_FOR_HULL:
+            return geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+
+        half_width = OUTLINE_NEIGHBORHOOD_SPACING_FACTOR * self._typical_spacing()
+        counts = np.array(
+            [self._rtree.count_in_box(local_xy[i] - half_width, local_xy[i] + half_width) for i in range(n)]
+        )
+        boundary_mask = counts <= OUTLINE_BOUNDARY_DENSITY_FRACTION * counts.max()
+        boundary_xy = local_xy[boundary_mask]
+        if len(boundary_xy) < 3:
+            boundary_xy = local_xy  # not enough boundary nodes for a hull -- fall back to every node
+
+        try:
+            hull = ConvexHull(boundary_xy)
+        except QhullError:
+            # A degenerate point cloud (collinear, or too few distinct points) has no real
+            # 2D hull -- every node is its own outline, same fallback as the too-few-nodes
+            # case above.
+            return geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        hull_xy = boundary_xy[hull.vertices]
+        return geometry.to_world(self._frame, geometry.local_xyz(hull_xy[:, 1], hull_xy[:, 0]))
 
 
 ELLIPSE_OUTLINE_POINTS = 72
@@ -647,44 +586,6 @@ def base_elevation(crust_type: str) -> float:
 
 def noise_amplitude(crust_type: str) -> float:
     return CONTINENTAL_NOISE_AMPLITUDE_M if crust_type == "continental" else OCEANIC_NOISE_AMPLITUDE_M
-
-
-def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACING_RAD):
-    """Sweep a full plate-local (phi, theta) lattice at `spacing_rad` resolution, yielding
-    (phi, theta_candidates, world_pts) per row. Shared by initial generation and by
-    plate-merge resampling (see merge_split.py), and, at a resolution independent of the
-    physical line spacing, by the render-grid sweep (see render_image.py's
-    _render_grid_arrays) that gives the rendered map full coverage regardless of how sparse
-    the underlying physical data is once projected."""
-    max_abs_phi = np.pi / 2 - spacing_rad / 2
-    phi_values = np.arange(-max_abs_phi, max_abs_phi, spacing_rad)
-    for phi in phi_values:
-        dtheta = spacing_rad / max(np.cos(phi), 1e-3)
-        n_theta = max(int(np.round(2 * np.pi / dtheta)), 1)
-        theta_candidates = np.linspace(-np.pi, np.pi, n_theta, endpoint=False)
-
-        local_pts = geometry.local_xyz(np.full_like(theta_candidates, phi), theta_candidates)
-        world_pts = geometry.to_world(frame, local_pts)
-        yield float(phi), theta_candidates, world_pts
-
-
-def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> list[ElevationLine]:
-    """Build a plate's elevation lines by sweeping its local lattice and keeping whichever
-    nodes `is_owned(world_pts) -> bool array` selects, with elevation from
-    `elevation_at(owned_world_pts) -> array`. `spacing_rad` defaults to the reference
-    density (1.0) -- every caller that has a `World` in hand should instead pass
-    `line_spacing_rad(world.node_density)`, so newly-built lines (initial generation, gap
-    absorption/spawning, plate merges, volcanic fields) match whatever density that world was
-    actually generated at, not silently fall back to the default."""
-    lines: list[ElevationLine] = []
-    for phi, theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
-        owned = is_owned(world_pts)
-        if not np.any(owned):
-            continue
-        theta_owned = theta_candidates[owned]
-        elevation = elevation_at(world_pts[owned])
-        lines.append(ElevationLine(phi=phi, theta=theta_owned, elevation=elevation))
-    return lines
 
 
 def _build_lines_for_plate(

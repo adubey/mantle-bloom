@@ -4,14 +4,14 @@ from app.world import generate_world, step_world
 
 
 def test_node_density_persists_through_regularize_and_gap_fill():
-    # The core correctness concern for a runtime density option: line_regrid.py's own
+    # The core correctness concern for a runtime density option: elevation_lines.py's own
     # regularize pass (and gaps.py's gap-filling, merge_split.py's merging, volcanism.py's
     # field-spawning) previously always rebuilt/resampled nodes at the module's default
     # TARGET_LINE_SPACING_RAD regardless of what density a world was actually generated at,
     # silently reverting a non-default density back to the reference one within a handful of
     # steps. Confirmed directly this stays fixed: total node count should keep tracking
     # node_density's ratio, not decay toward the 1x baseline, across enough steps to trigger
-    # at least one regularize/gap-fill pass (line_regrid.REGULARIZE_INTERVAL_STEPS == 5).
+    # at least one regularize/gap-fill pass (elevation_lines.REGULARIZE_INTERVAL_STEPS == 5).
     reference = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=1.0)
     denser = generate_world(seed=5, num_plates=8, continental_fraction=0.5, node_density=4.0)
     # This test only checks node counts, never climate/erosion/hydrology output (see

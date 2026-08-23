@@ -7,7 +7,7 @@ fully-subducted plate isn't automatically reclaimed by its neighbors (see plates
 docstring and docs/simulation-model.md for the underlying per-line design). Both leave
 literal gaps: sphere area no plate currently covers.
 
-This module finds those gaps periodically (same cadence as line_regrid's line
+This module finds those gaps periodically (same cadence as elevation_lines' own line
 regularization, see world.step_world) and resolves each one of two ways depending on whether
 one plate dominates its border:
 
@@ -41,17 +41,10 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, line_regrid, mantle
+from . import elevation_lines, geometry, mantle
+from .elevation_lines import TARGET_LINE_SPACING_RAD, build_lines_from_lattice, iter_local_lattice, line_spacing_rad
 from .noise import SphereNoise
-from .plates import (
-    TARGET_LINE_SPACING_RAD,
-    PlateWithLines,
-    base_elevation,
-    build_lines_from_lattice,
-    iter_local_lattice,
-    line_spacing_rad,
-    noise_amplitude,
-)
+from .plates import PlateWithLines, base_elevation, noise_amplitude
 
 if TYPE_CHECKING:
     from .world import World
@@ -132,7 +125,7 @@ def _max_absorb_nodes_per_plate_per_call(node_density: float) -> int:
 # Giving a recently-created plate first claim on its own neighborhood (even without an
 # outright majority) breaks that chain: it gets a few passes to consolidate the rift it was
 # born into before being treated as just another equal competitor.
-YOUNG_PLATE_AGE_STEPS = 4 * line_regrid.REGULARIZE_INTERVAL_STEPS
+YOUNG_PLATE_AGE_STEPS = 4 * elevation_lines.REGULARIZE_INTERVAL_STEPS
 YOUNG_PLATE_MIN_BORDER_FRACTION = 0.3
 
 # Sweeping in the identity frame reuses plates.iter_local_lattice as a plain global lat/lon

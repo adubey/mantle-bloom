@@ -1,7 +1,7 @@
 """Volcanic fields: new continental crust forming where plates are separating.
 
 **Detection, run in the clean-up phase (world.py's `steps_since_regularize`-gated block,
-alongside gaps.py/line_regrid.py), not every step**, in two passes:
+alongside gaps.py/elevation_lines.py's own regularization), not every step**, in two passes:
 
 1. Every elevation point's nearest neighbor, whole-world, unrestricted by plate -- the
    median of all these distances is "how far apart elevation points normally sit."
@@ -74,19 +74,17 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import gaps, geometry, mantle
-from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
-from .noise import SphereNoise
-from .plates import (
+from .elevation_lines import (
+    MAX_ELEVATION_M,
+    MIN_ELEVATION_M,
     TARGET_LINE_SPACING_RAD,
     ElevationLine,
-    PlateWithLines,
-    base_elevation,
     build_lines_from_lattice,
     iter_local_lattice,
     line_spacing_rad,
-    noise_amplitude,
-    query_workers,
 )
+from .noise import SphereNoise
+from .plates import PlateWithLines, base_elevation, noise_amplitude, query_workers
 
 if TYPE_CHECKING:
     from .world import World
