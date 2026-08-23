@@ -214,7 +214,7 @@ def test_outline_world_traces_a_loop_covering_every_line():
 def test_outline_world_empty_for_plate_with_no_lines():
     plates = generate_plates(seed=6, num_plates=8)
     p = plates[0]
-    p.lines = []
+    p.set_lines([])
     assert len(p.outline_world()) == 0
 
 
@@ -291,7 +291,7 @@ def test_collect_all_points_concatenates_across_plates():
 def test_collect_all_points_none_when_every_plate_is_empty():
     world_plates = generate_plates(seed=9, num_plates=3)
     for p in world_plates:
-        p.lines = []
+        p.set_lines([])
     assert collect_all_points(world_plates) is None
 
 
@@ -319,13 +319,7 @@ def test_collect_all_soil_and_resource_fields_are_index_aligned_with_collect_all
             n = len(line.theta)
             if n == 0:
                 continue
-            p.lines[i] = ElevationLine(
-                phi=line.phi,
-                theta=line.theta,
-                elevation=line.elevation,
-                soil_depth=np.full(n, 2.5),
-                coal_deposit_m=np.full(n, 1.5),
-            )
+            p.replace_line(i, line.replace(soil_depth=np.full(n, 2.5), coal_deposit_m=np.full(n, 1.5)))
     points, _, _ = collect_all_points(world_plates)
     soil_depth = collect_all_soil_depth(world_plates)
     coal = collect_all_coal_deposit(world_plates)

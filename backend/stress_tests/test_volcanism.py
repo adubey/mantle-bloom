@@ -1,12 +1,12 @@
 import numpy as np
 from app import geometry, volcanism
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
-def _line_plate(plate_id: int, theta: np.ndarray) -> Plate:
+def _line_plate(plate_id: int, theta: np.ndarray) -> PlateWithLines:
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(len(theta), 200.0))
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
 
 
 def _two_plate_world(gap: float, d: float = 0.01, n: int = 10) -> World:

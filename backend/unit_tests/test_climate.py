@@ -1,6 +1,6 @@
 import numpy as np
 from app import climate, geometry
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
@@ -32,7 +32,7 @@ def test_submerged_continental_crust_is_treated_as_ocean():
         ElevationLine(phi=float(phi), theta=np.linspace(-np.pi, np.pi, 30, endpoint=False), elevation=np.full(30, -500.0))
         for phi in np.linspace(-1.4, 1.4, 15)
     ]
-    plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=lines)
+    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=lines)
     world = World(seed=1, plates=[plate])
 
     fields = climate.compute_climate(world, height=30, width=60)

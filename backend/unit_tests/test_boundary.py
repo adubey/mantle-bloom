@@ -1,6 +1,6 @@
 import numpy as np
 from app import boundary, geometry, mantle
-from app.plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate
+from app.plates import TARGET_LINE_SPACING_RAD, ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
@@ -12,7 +12,7 @@ def _plate(plate_id, crust_type, theta, omega, base_elevation):
     frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
     theta = np.asarray(theta, dtype=float)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(len(theta), base_elevation))
-    return Plate(plate_id=plate_id, frame=frame, crust_type=crust_type, omega=np.asarray(omega, dtype=float), lines=[line])
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, omega=np.asarray(omega, dtype=float), lines=[line])
 
 
 def test_closing_rate_positive_when_approaching():

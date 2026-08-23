@@ -49,7 +49,6 @@ convergent cases above.
 
 from __future__ import annotations
 
-import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -298,28 +297,14 @@ def _grow_or_shrink_line(
     already uses for a call site that doesn't pass them at all.
 
     Every persistent field is threaded through the same append/insert/slice as theta/
-    elevation here (not dataclasses.replace -- there's no "unchanged" value to copy when the
-    array itself is being reshaped), keyed in one dict rather than one local variable per
-    field, so a future persistent field only needs to be added to `persistent_fields` below,
-    not duplicated across every branch of this function -- see plates.ElevationLine's own
-    docstring for the bug class this avoids."""
+    elevation here (not line.replace -- there's no "unchanged" value to copy when the
+    array itself is being reshaped), keyed in one dict (via ElevationLine.OPTIONAL_FIELDS)
+    rather than one local variable per field, so a future persistent field only needs to be
+    added there, not duplicated across every branch of this function -- see
+    plates.ElevationLine's own docstring for the bug class this avoids."""
     theta = line.theta.copy()
     elevation = line.elevation.copy()
-    persistent_fields = {
-        "channel_depth": line.channel_depth.copy(),
-        "channel_width": line.channel_width.copy(),
-        "lake_depth": line.lake_depth.copy(),
-        "glacier_depth": line.glacier_depth.copy(),
-        "silt_depth": line.silt_depth.copy(),
-        "is_volcano": line.is_volcano.copy(),
-        "volcano_active_years_remaining": line.volcano_active_years_remaining.copy(),
-        "soil_depth": line.soil_depth.copy(),
-        "soil_mineral_content": line.soil_mineral_content.copy(),
-        "soil_organic_content": line.soil_organic_content.copy(),
-        "coal_deposit_m": line.coal_deposit_m.copy(),
-        "oil_gas_deposit_m": line.oil_gas_deposit_m.copy(),
-        "mineral_deposit_m": line.mineral_deposit_m.copy(),
-    }
+    persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
     if len(theta) == 0:
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
@@ -518,9 +503,9 @@ def step_boundaries(world: World, years: float) -> None:
             elevation[divergent] += (target - elevation[divergent]) * relax_factor * divergent_intensity[divergent]
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
-            # theta unchanged -- dataclasses.replace copies every other field (channel_width
+            # theta unchanged -- line.replace copies every other field (channel_width
             # included) from the existing line automatically.
-            updated_line = dataclasses.replace(line, elevation=elevation)
+            updated_line = line.replace(elevation=elevation)
             grown_line = _grow_or_shrink_line(
                 updated_line,
                 dist,
@@ -535,4 +520,4 @@ def step_boundaries(world: World, years: float) -> None:
             if len(grown_line.theta) > 0:
                 new_lines.append(grown_line)
 
-        plate.lines = new_lines
+        plate.set_lines(new_lines)

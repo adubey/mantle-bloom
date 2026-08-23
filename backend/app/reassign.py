@@ -32,7 +32,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry
-from .plates import ElevationLine, Plate
+from .plates import PlateWithLines
 
 if TYPE_CHECKING:
     from .world import World
@@ -61,7 +61,7 @@ def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, list[tuple[in
     return np.concatenate(points_list, axis=0), np.concatenate(elevation_list, axis=0), owners
 
 
-def _find_target_line(plate: Plate, candidate_line_indices: set[int], point_world: np.ndarray) -> int | None:
+def _find_target_line(plate: PlateWithLines, candidate_line_indices: set[int], point_world: np.ndarray) -> int | None:
     """Which of `plate`'s lines is closest to `point_world` -- searching only
     `candidate_line_indices` when given (see the optimization note in this module's
     docstring), falling back to every line in the plate only if that's empty."""
@@ -146,73 +146,24 @@ def _apply_reassignment(
         line = plate.lines[line_index]
         keep_mask = np.ones(len(line.theta), dtype=bool)
         keep_mask[list(remove_indices)] = False
-        plate.lines[line_index] = ElevationLine(
-            phi=line.phi,
-            theta=line.theta[keep_mask],
-            elevation=line.elevation[keep_mask],
-            channel_depth=line.channel_depth[keep_mask],
-            channel_width=line.channel_width[keep_mask],
-            lake_depth=line.lake_depth[keep_mask],
-            glacier_depth=line.glacier_depth[keep_mask],
-            silt_depth=line.silt_depth[keep_mask],
-            is_volcano=line.is_volcano[keep_mask],
-            volcano_active_years_remaining=line.volcano_active_years_remaining[keep_mask],
-            soil_depth=line.soil_depth[keep_mask],
-            soil_mineral_content=line.soil_mineral_content[keep_mask],
-            soil_organic_content=line.soil_organic_content[keep_mask],
-            coal_deposit_m=line.coal_deposit_m[keep_mask],
-            oil_gas_deposit_m=line.oil_gas_deposit_m[keep_mask],
-            mineral_deposit_m=line.mineral_deposit_m[keep_mask],
-        )
+        plate.replace_line(line_index, line.masked(keep_mask))
 
     for (plate_id, line_index), new_nodes in add_by_target.items():
         plate = plate_by_id[plate_id]
         line = plate.lines[line_index]
         new_theta = np.array([t for t, _ in new_nodes])
         new_elevation = np.array([e for _, e in new_nodes])
-        combined_theta = np.concatenate([line.theta, new_theta])
-        combined_elevation = np.concatenate([line.elevation, new_elevation])
         # A reassigned point's own channel_depth/channel_width/lake_depth/glacier_depth/
         # silt_depth/is_volcano/volcano_active_years_remaining/soil_depth/soil_mineral_content/
         # soil_organic_content/coal_deposit_m/oil_gas_deposit_m/mineral_deposit_m resets to
-        # 0/False -- this pass only ever touches a small number of boundary-adjacent nodes at a
-        # time, so losing a carved channel (or a glacier, volcanic provenance, or accumulated
-        # soil/resources) right at the moment its owning plate changes is an acceptable
-        # simplification (unlike line_regrid.py's regularize_line, which runs on nearly every
-        # line, every regularize interval -- resetting there would erase rivers/glaciers/
-        # volcanoes/soil constantly, not rarely).
-        combined_channel_depth = np.concatenate([line.channel_depth, np.zeros(len(new_nodes))])
-        combined_channel_width = np.concatenate([line.channel_width, np.zeros(len(new_nodes))])
-        combined_lake_depth = np.concatenate([line.lake_depth, np.zeros(len(new_nodes))])
-        combined_glacier_depth = np.concatenate([line.glacier_depth, np.zeros(len(new_nodes))])
-        combined_silt_depth = np.concatenate([line.silt_depth, np.zeros(len(new_nodes))])
-        combined_is_volcano = np.concatenate([line.is_volcano, np.zeros(len(new_nodes), dtype=bool)])
-        combined_volcano_active_years_remaining = np.concatenate([line.volcano_active_years_remaining, np.zeros(len(new_nodes))])
-        combined_soil_depth = np.concatenate([line.soil_depth, np.zeros(len(new_nodes))])
-        combined_soil_mineral_content = np.concatenate([line.soil_mineral_content, np.zeros(len(new_nodes))])
-        combined_soil_organic_content = np.concatenate([line.soil_organic_content, np.zeros(len(new_nodes))])
-        combined_coal_deposit_m = np.concatenate([line.coal_deposit_m, np.zeros(len(new_nodes))])
-        combined_oil_gas_deposit_m = np.concatenate([line.oil_gas_deposit_m, np.zeros(len(new_nodes))])
-        combined_mineral_deposit_m = np.concatenate([line.mineral_deposit_m, np.zeros(len(new_nodes))])
-        order = np.argsort(combined_theta)
-        plate.lines[line_index] = ElevationLine(
-            phi=line.phi,
-            theta=combined_theta[order],
-            elevation=combined_elevation[order],
-            channel_depth=combined_channel_depth[order],
-            channel_width=combined_channel_width[order],
-            lake_depth=combined_lake_depth[order],
-            glacier_depth=combined_glacier_depth[order],
-            silt_depth=combined_silt_depth[order],
-            is_volcano=combined_is_volcano[order],
-            volcano_active_years_remaining=combined_volcano_active_years_remaining[order],
-            soil_depth=combined_soil_depth[order],
-            soil_mineral_content=combined_soil_mineral_content[order],
-            soil_organic_content=combined_soil_organic_content[order],
-            coal_deposit_m=combined_coal_deposit_m[order],
-            oil_gas_deposit_m=combined_oil_gas_deposit_m[order],
-            mineral_deposit_m=combined_mineral_deposit_m[order],
-        )
+        # 0/False (with_new_nodes' default) -- this pass only ever touches a small number of
+        # boundary-adjacent nodes at a time, so losing a carved channel (or a glacier,
+        # volcanic provenance, or accumulated soil/resources) right at the moment its owning
+        # plate changes is an acceptable simplification (unlike line_regrid.py's
+        # regularize_line, which runs on nearly every line, every regularize interval --
+        # resetting there would erase rivers/glaciers/volcanoes/soil constantly, not rarely).
+        grown = line.with_new_nodes(new_theta, new_elevation)
+        plate.replace_line(line_index, grown.masked(np.argsort(grown.theta)))
 
     return True
 

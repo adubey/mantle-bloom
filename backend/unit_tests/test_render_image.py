@@ -338,7 +338,7 @@ def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
     """Two plates at the same seed, rotating at the same rate but in opposite senses,
     should render different (mirror-image) arcs -- confirms the arc's sweep direction is
     actually sensitive to the sign of omega, not just its magnitude."""
-    from app.plates import ElevationLine, Plate
+    from app.plates import ElevationLine, PlateWithLines
 
     def make_plate(plate_id, omega_sign):
         seed_xyz = np.array([1.0, 0.0, 0.0])
@@ -348,7 +348,7 @@ def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
             for phi in np.linspace(-0.3, 0.3, 8)
         ]
         omega = omega_sign * 0.03 * seed_xyz  # pole exactly at the seed either way
-        return Plate(plate_id=plate_id, frame=frame, crust_type="continental", omega=omega, lines=lines)
+        return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", omega=omega, lines=lines)
 
     world_pos = World(seed=1, plates=[make_plate(0, +1.0)])
     world_neg = World(seed=1, plates=[make_plate(0, -1.0)])

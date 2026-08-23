@@ -49,7 +49,6 @@ gather to keep in sync with it.
 
 from __future__ import annotations
 
-import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -58,7 +57,7 @@ from scipy.spatial import cKDTree
 from . import biomes
 from .bathymetry import SHELF_RANGE_RAD
 from .noise import SphereNoise
-from .plates import Plate, query_workers
+from .plates import PlateWithLines, query_workers
 
 if TYPE_CHECKING:
     from .erosion import ErosionResult
@@ -196,17 +195,19 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
 
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        plate.lines[line_index] = dataclasses.replace(
-            line,
-            soil_depth=new_soil_depth[start:end],
-            soil_mineral_content=new_soil_mineral_content[start:end],
-            soil_organic_content=new_soil_organic_content[start:end],
-            coal_deposit_m=new_coal_deposit_m[start:end],
-            oil_gas_deposit_m=new_oil_gas_deposit_m[start:end],
+        plate.replace_line(
+            line_index,
+            line.replace(
+                soil_depth=new_soil_depth[start:end],
+                soil_mineral_content=new_soil_mineral_content[start:end],
+                soil_organic_content=new_soil_organic_content[start:end],
+                coal_deposit_m=new_coal_deposit_m[start:end],
+                oil_gas_deposit_m=new_oil_gas_deposit_m[start:end],
+            ),
         )
 
 
-def seed_initial_soil(plate_list: list[Plate], seed: int, initial_soil_maturity: float) -> None:
+def seed_initial_soil(plate_list: list[PlateWithLines], seed: int, initial_soil_maturity: float) -> None:
     """Seeds soil_depth/soil_organic_content/soil_mineral_content on every land node (elevation
     > 0), scaled by `initial_soil_maturity` (the UI's "initial soil maturity" slider, 0 to 1) --
     called once from world.generate_world, right after plates.generate_plates. At 0 (the
@@ -232,9 +233,11 @@ def seed_initial_soil(plate_list: list[Plate], seed: int, initial_soil_maturity:
             texture = np.clip(1.0 + INITIAL_SOIL_NOISE_AMPLITUDE * noise.sample(world_pts), 0.0, None)
             depth = np.where(is_land, maturity * INITIAL_SOIL_MAX_DEPTH_M * texture, 0.0)
             fraction = np.where(is_land, np.clip(maturity * texture, 0.0, 1.0), 0.0)
-            plate.lines[line_index] = dataclasses.replace(
-                line,
-                soil_depth=depth,
-                soil_organic_content=fraction,
-                soil_mineral_content=fraction,
+            plate.replace_line(
+                line_index,
+                line.replace(
+                    soil_depth=depth,
+                    soil_organic_content=fraction,
+                    soil_mineral_content=fraction,
+                ),
             )

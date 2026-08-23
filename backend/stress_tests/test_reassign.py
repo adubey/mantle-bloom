@@ -1,6 +1,6 @@
 import numpy as np
 from app import geometry, reassign
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
@@ -22,7 +22,7 @@ def _plate_with_filler(plate_id, seed_xyz, lines):
     base_theta = anchor.theta[0] - 1.0
     filler_theta = base_theta + 0.01 * np.arange(6)
     filler = ElevationLine(phi=anchor.phi + 0.15, theta=filler_theta, elevation=np.zeros(6))
-    return Plate(plate_id=plate_id, frame=frame, crust_type="oceanic", lines=[*lines, filler])
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="oceanic", lines=[*lines, filler])
 
 
 def test_reassign_runs_periodically_and_never_on_a_regularize_step():

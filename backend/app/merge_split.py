@@ -25,7 +25,14 @@ from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, build_lines_from_lattice, line_spacing_rad, query_workers
+from .plates import (
+    TARGET_LINE_SPACING_RAD,
+    ElevationLine,
+    PlateWithLines,
+    build_lines_from_lattice,
+    line_spacing_rad,
+    query_workers,
+)
 
 if TYPE_CHECKING:
     from .world import World
@@ -287,9 +294,9 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
         _, idx = tree.query(world_pts)
         return old_elevation[idx]
 
-    keep.lines = build_lines_from_lattice(keep.frame, is_owned, elevation_at, spacing_rad=spacing_rad)
-    keep.omega = mantle.clamp_rate((keep.omega + absorb.omega) / 2.0)
-    keep.age_steps = 0
+    keep.set_lines(build_lines_from_lattice(keep.frame, is_owned, elevation_at, spacing_rad=spacing_rad))
+    keep.set_omega(mantle.clamp_rate((keep.omega + absorb.omega) / 2.0))
+    keep.reset_age()
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
 
     # The merge survivor is the highest-risk plate for the round-robin outlier audit (see
@@ -305,7 +312,7 @@ def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndar
     return float(np.sqrt(np.mean(np.sum((predicted - velocities) ** 2, axis=-1))))
 
 
-def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | None:
+def maybe_split_plate(world: "World", plate: PlateWithLines) -> tuple[PlateWithLines, PlateWithLines] | None:
     """If a single rigid rotation poorly explains the mantle flow across this plate's
     footprint, cluster the flow into two regimes and, if they're genuinely different, cut
     the plate along the great circle separating them."""
@@ -353,61 +360,23 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         world_pts = line.world_xyz(plate.frame)
         side = np.sum(world_pts * cut_normal, axis=-1) > 0
         if np.any(side):
-            lines_a.append(
-                ElevationLine(
-                    phi=line.phi,
-                    theta=line.theta[side],
-                    elevation=line.elevation[side],
-                    channel_depth=line.channel_depth[side],
-                    channel_width=line.channel_width[side],
-                    lake_depth=line.lake_depth[side],
-                    glacier_depth=line.glacier_depth[side],
-                    silt_depth=line.silt_depth[side],
-                    is_volcano=line.is_volcano[side],
-                    volcano_active_years_remaining=line.volcano_active_years_remaining[side],
-                    soil_depth=line.soil_depth[side],
-                    soil_mineral_content=line.soil_mineral_content[side],
-                    soil_organic_content=line.soil_organic_content[side],
-                    coal_deposit_m=line.coal_deposit_m[side],
-                    oil_gas_deposit_m=line.oil_gas_deposit_m[side],
-                    mineral_deposit_m=line.mineral_deposit_m[side],
-                )
-            )
+            lines_a.append(line.masked(side))
         if np.any(~side):
-            lines_b.append(
-                ElevationLine(
-                    phi=line.phi,
-                    theta=line.theta[~side],
-                    elevation=line.elevation[~side],
-                    channel_depth=line.channel_depth[~side],
-                    channel_width=line.channel_width[~side],
-                    lake_depth=line.lake_depth[~side],
-                    glacier_depth=line.glacier_depth[~side],
-                    silt_depth=line.silt_depth[~side],
-                    is_volcano=line.is_volcano[~side],
-                    volcano_active_years_remaining=line.volcano_active_years_remaining[~side],
-                    soil_depth=line.soil_depth[~side],
-                    soil_mineral_content=line.soil_mineral_content[~side],
-                    soil_organic_content=line.soil_organic_content[~side],
-                    coal_deposit_m=line.coal_deposit_m[~side],
-                    oil_gas_deposit_m=line.oil_gas_deposit_m[~side],
-                    mineral_deposit_m=line.mineral_deposit_m[~side],
-                )
-            )
+            lines_b.append(line.masked(~side))
 
     if sum(len(l.theta) for l in lines_a) < min_nodes or sum(len(l.theta) for l in lines_b) < min_nodes:
         return None
 
     new_id = world.next_plate_id
     world.next_plate_id += 1
-    plate_a = Plate(
+    plate_a = PlateWithLines(
         plate_id=plate.plate_id,
         frame=plate.frame.copy(),
         crust_type=plate.crust_type,
         omega=mantle.clamp_rate(pole_a),
         lines=lines_a,
     )
-    plate_b = Plate(
+    plate_b = PlateWithLines(
         plate_id=new_id,
         frame=plate.frame.copy(),
         crust_type=plate.crust_type,
@@ -425,7 +394,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     logged here -- see update_collision_progress."""
     events: list[str] = []
     for plate in world.plates:
-        plate.age_steps += 1
+        plate.age_one_step()
 
     consumed = [p for p in world.plates if p.node_count() == 0]
     for p in consumed:
@@ -453,7 +422,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
             f"after {elapsed_years / 1e6:.0f} million years."
         )
 
-    new_plates: list[Plate] = []
+    new_plates: list[PlateWithLines] = []
     for plate in world.plates:
         split_result = maybe_split_plate(world, plate)
         if split_result is None:

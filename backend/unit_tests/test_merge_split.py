@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from app import geometry, mantle, merge_split
-from app.plates import ElevationLine, Plate, line_spacing_rad
+from app.plates import ElevationLine, PlateWithLines, line_spacing_rad
 from app.world import World, generate_world, step_world
 
 
@@ -15,7 +15,7 @@ def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation):
     frame = geometry.plate_frame_from_seed(seed_xyz)
     line = ElevationLine(phi=0.0, theta=np.asarray(theta, dtype=float), elevation=np.asarray(elevation, dtype=float))
     filler = ElevationLine(phi=1.0, theta=np.array([0.0, 0.1]), elevation=np.zeros(2))
-    return Plate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
 
 
 def _converging_omega_pair(rate_cm_per_yr=5.0):
@@ -35,16 +35,18 @@ def _converging_pair_world(seed=123):
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
     absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
-    keep.omega, absorb.omega = _converging_omega_pair()
+    keep_omega, absorb_omega = _converging_omega_pair()
+    keep.set_omega(keep_omega)
+    absorb.set_omega(absorb_omega)
     return World(seed=seed, plates=[keep, absorb], next_plate_id=2)
 
 
 def test_remove_defunct_plates_drops_empty_and_single_line_plates():
     survives = _test_plate(0, [1.0, 0.0, 0.0], "oceanic", [0.0, 0.1], [1.0, 2.0])
-    empty = Plate(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=[])
+    empty = PlateWithLines(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=[])
     # A single line, however many nodes it carries, counts as "no land left" too -- not just
     # zero lines (see the new condition merge_split.remove_defunct_plates checks for).
-    sliver = Plate(
+    sliver = PlateWithLines(
         plate_id=2,
         frame=np.eye(3),
         crust_type="oceanic",
@@ -72,7 +74,9 @@ def test_find_continental_collision_pairs_detects_close_and_converging_plates():
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
     absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
-    keep.omega, absorb.omega = _converging_omega_pair()
+    keep_omega, absorb_omega = _converging_omega_pair()
+    keep.set_omega(keep_omega)
+    absorb.set_omega(absorb_omega)
 
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
     pairs = merge_split.find_continental_collision_pairs(world)
@@ -103,7 +107,9 @@ def test_find_continental_collision_pairs_ignores_far_plates():
     theta = np.linspace(-0.01, 0.01, 5)
     keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
     far = _test_plate(1, [0.0, 1.0, 0.0], "continental", theta, np.zeros(5))
-    keep.omega, far.omega = _converging_omega_pair()
+    keep_omega, far_omega = _converging_omega_pair()
+    keep.set_omega(keep_omega)
+    far.set_omega(far_omega)
     world = World(seed=0, plates=[keep, far], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
 
@@ -116,7 +122,9 @@ def test_find_continental_collision_pairs_ignores_oceanic():
     )[0]
     keep = _test_plate(0, [1.0, 0.0, 0.0], "oceanic", theta, np.zeros(5))
     absorb = _test_plate(1, seed_absorb, "continental", theta, np.zeros(5))
-    keep.omega, absorb.omega = _converging_omega_pair()
+    keep_omega, absorb_omega = _converging_omega_pair()
+    keep.set_omega(keep_omega)
+    absorb.set_omega(absorb_omega)
     world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
     assert merge_split.find_continental_collision_pairs(world) == []
 
@@ -163,7 +171,7 @@ def test_collision_progress_resets_if_convergence_stops():
 
     # Convergence stops (both plates now motionless) -- progress must be dropped, not paused.
     for p in world.plates:
-        p.omega = np.zeros(3)
+        p.set_omega(np.zeros(3))
     merge_split.apply_topology_changes(world, 10_000_000)
     assert (0, 1) not in world.collision_progress
 
@@ -187,7 +195,7 @@ def test_apply_topology_changes_merges_at_most_one_pair_per_call(monkeypatch):
         _test_plate(i, seeds[i], "continental", theta, np.zeros(6)) for i in range(3)
     ]
     for p, om in zip(plates, omegas):
-        p.omega = om
+        p.set_omega(om)
     world = World(seed=7, plates=plates, next_plate_id=3)
 
     pairs = merge_split.find_continental_collision_pairs(world)
@@ -241,7 +249,8 @@ def test_merge_plates_does_not_claim_another_plates_territory():
     bystander = _test_plate(2, bystander_seed, "continental", theta, np.zeros(5))
     stray_local = geometry.to_local(keep.frame, bystander_seed)
     stray_phi, stray_theta = geometry.xyz_to_latlon(stray_local)
-    keep.lines.append(ElevationLine(phi=float(stray_phi), theta=np.array([float(stray_theta)]), elevation=np.array([0.0])))
+    stray_line = ElevationLine(phi=float(stray_phi), theta=np.array([float(stray_theta)]), elevation=np.array([0.0]))
+    keep.set_lines([*keep.lines, stray_line])
 
     world = World(seed=0, plates=[keep, absorb, bystander], next_plate_id=3)
     bystander_points_before, _ = bystander.all_points_and_elevation()
@@ -316,7 +325,7 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence():
     # Comfortably more than 2 * SPLIT_MIN_NODES, so each half still clears the threshold.
     theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
-    plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
+    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
 
     # Two strong, oppositely-signed convection centers straddling the plate so its two
     # halves get pushed in genuinely different directions -- a single rigid rotation can't
@@ -337,7 +346,7 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence():
 
     points, _ = plate.all_points_and_elevation()
     velocities = mantle.flow_at(points, centers)
-    plate.omega = mantle.fit_euler_pole(points, velocities)
+    plate.set_omega(mantle.fit_euler_pole(points, velocities))
 
     result = merge_split.maybe_split_plate(world, plate)
     assert result is not None

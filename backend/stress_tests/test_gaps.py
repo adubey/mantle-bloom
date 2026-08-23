@@ -1,16 +1,16 @@
 import numpy as np
 from scipy.spatial import cKDTree
 from app import gaps, geometry
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
-def _old_plate(plate_id: int) -> Plate:
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=gaps.YOUNG_PLATE_AGE_STEPS + 1)
+def _old_plate(plate_id: int) -> PlateWithLines:
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=gaps.YOUNG_PLATE_AGE_STEPS + 1)
 
 
-def _young_plate(plate_id: int) -> Plate:
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=0)
+def _young_plate(plate_id: int) -> PlateWithLines:
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=0)
 
 
 def test_fill_gaps_leaves_no_large_gaps_after_a_long_simulation():

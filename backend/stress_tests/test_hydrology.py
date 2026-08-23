@@ -1,6 +1,6 @@
 import numpy as np
 from app import erosion, geometry, hydrology
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
@@ -8,7 +8,7 @@ def _flow_line_plate(plate_id, theta, elevation):
     frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
     theta = np.asarray(theta, dtype=float)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float))
-    return Plate(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
 
 
 def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth):
@@ -17,7 +17,7 @@ def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth):
     line = ElevationLine(
         phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float), lake_depth=np.asarray(lake_depth, dtype=float)
     )
-    return Plate(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
 
 
 def _normalize(v):

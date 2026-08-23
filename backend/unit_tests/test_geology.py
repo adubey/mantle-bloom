@@ -2,7 +2,7 @@ import numpy as np
 from app import biomes, geology, geometry, volcanism
 from app.erosion import ErosionResult
 from app.hydrology import HydrologyFields
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World
 
 
@@ -10,7 +10,7 @@ def _plate(theta, elevation):
     frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
     theta = np.asarray(theta, dtype=float)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float))
-    return Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    return PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line])
 
 
 def _world_with_hydrology(plate, is_ocean, water_deposited):

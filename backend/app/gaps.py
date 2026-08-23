@@ -45,7 +45,7 @@ from . import geometry, line_regrid, mantle
 from .noise import SphereNoise
 from .plates import (
     TARGET_LINE_SPACING_RAD,
-    Plate,
+    PlateWithLines,
     base_elevation,
     build_lines_from_lattice,
     iter_local_lattice,
@@ -191,7 +191,7 @@ def _preferred_border_plate(
     cluster_points: np.ndarray,
     existing_tree: cKDTree,
     existing_owner: np.ndarray,
-    plate_by_id: dict[int, Plate],
+    plate_by_id: dict[int, PlateWithLines],
     border_radius_rad: float = BORDER_RADIUS_RAD,
 ) -> int | None:
     """The plate id this gap cluster should be absorbed into, if any -- otherwise None,
@@ -224,7 +224,7 @@ def _preferred_border_plate(
 
 
 def _absorb_gap_into_plate(
-    plate: Plate,
+    plate: PlateWithLines,
     gap_points: np.ndarray,
     rng: np.random.Generator,
     max_new_points: int,
@@ -270,7 +270,7 @@ def _absorb_gap_into_plate(
         _, idx = tree.query(world_pts)
         return combined_elevation[idx]
 
-    plate.lines = build_lines_from_lattice(plate.frame, is_owned, elevation_at, spacing_rad=spacing_rad)
+    plate.set_lines(build_lines_from_lattice(plate.frame, is_owned, elevation_at, spacing_rad=spacing_rad))
     return len(claimed_points)
 
 
@@ -280,7 +280,7 @@ def _spawn_plate_from_gap(
     rng: np.random.Generator,
     coverage_radius_rad: float = COVERAGE_RADIUS_RAD,
     spacing_rad: float = TARGET_LINE_SPACING_RAD,
-) -> Plate:
+) -> PlateWithLines:
     centroid = geometry.normalize(gap_points.mean(axis=0))
     frame = geometry.plate_frame_from_seed(centroid)
     crust_type = "oceanic"  # new crust between separating plates
@@ -298,13 +298,13 @@ def _spawn_plate_from_gap(
         return base + amp * noise.sample(world_pts)
 
     lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
-    plate = Plate(plate_id=world.next_plate_id, frame=frame, crust_type=crust_type, lines=lines)
+    plate = PlateWithLines(plate_id=world.next_plate_id, frame=frame, crust_type=crust_type, lines=lines)
     world.next_plate_id += 1
 
     points, _ = plate.all_points_and_elevation()
     if len(points) > 0:
         velocities = mantle.flow_at(points, world.mantle_centers)
-        plate.omega = mantle.clamp_rate(mantle.fit_euler_pole(points, velocities))
+        plate.set_omega(mantle.clamp_rate(mantle.fit_euler_pole(points, velocities)))
     return plate
 
 
@@ -337,7 +337,7 @@ def fill_gaps(world: "World") -> list[str]:
 
     plate_by_id = {p.plate_id: p for p in world.plates}
     absorb_budget: dict[int, int] = {}
-    new_plates: list[Plate] = []
+    new_plates: list[PlateWithLines] = []
     for label in np.unique(labels):
         gap_cluster_points = gap_points[labels == label]
         if len(gap_cluster_points) < min_gap_points:

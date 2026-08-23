@@ -9,7 +9,8 @@ never needs resampling. See docs/simulation-model.md for the full design writeup
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import abc
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -80,126 +81,334 @@ LAND_FRACTION_SAMPLE_SPACING_KM = 150.0
 LAND_FRACTION_SAMPLE_SPACING_RAD = LAND_FRACTION_SAMPLE_SPACING_KM / PLANET_RADIUS_KM
 
 
-@dataclass
 class ElevationLine:
-    phi: float  # plate-local latitude, radians, constant along the line
-    theta: np.ndarray  # plate-local longitudes of nodes, radians, ascending
-    elevation: np.ndarray  # meters, same shape as theta
-    # All three persistent, land-only, meters, same shape as theta -- see hydrology.py.
-    # Because the grid is plate-local and rotates with `frame` rather than sitting fixed in
-    # world space, these ride along for free just by being an ordinary parallel array on
-    # this same dataclass, exactly like elevation itself -- no explicit semi-Lagrangian
-    # advection needed every step: rotating a plate only ever touches `frame`, never these
-    # arrays. Optional
-    # (default None, resolved to zeros in __post_init__) so every existing call site that
-    # doesn't know about hydrology/glaciers continues to work unchanged -- a call site that
-    # actually needs to preserve a node's history (see
-    # boundary.py/erosion.py/line_regrid.py/reassign.py) passes it explicitly instead of
-    # letting it reset to zero.
-    #
-    # **This defaulting is a real footgun, confirmed directly**: erosion.py's and
-    # bathymetry.py's own reconstruction sites were both written before is_volcano/
-    # volcano_active_years_remaining existed, so neither passed them through -- silently
-    # wiping every node's volcanic status to False every single step (erosion.py runs
-    # before volcanism.apply_volcanic_activity even gets a chance to read it), long before
-    # this was caught. Any call site that changes *only* a field or two and leaves theta
-    # (and therefore every other parallel array's shape/order) untouched should use
-    # `dataclasses.replace(line, elevation=new_elevation, ...)` instead of reconstructing
-    # explicitly field-by-field -- it copies every field the caller doesn't mention from the
-    # original line, so a future persistent field added here is automatically preserved
-    # there without that call site needing to change at all. Only a site that actually
-    # reshapes theta (grow/shrink, split, boolean-mask filtering) still has to thread every
-    # parallel array explicitly, since there's no "unchanged" value to copy in that case.
-    channel_depth: np.ndarray | None = None  # river channel incision, self-reinforcing
-    channel_width: np.ndarray | None = None  # river channel width, grows with flow -- see erosion.py
-    lake_depth: np.ndarray | None = None  # standing lake water depth
-    glacier_depth: np.ndarray | None = None  # accumulated ice, meters ice-equivalent
-    # Sediment settled on a lake's own bed, monotonically increasing (never erodes back away,
-    # same self-reinforcing character as channel_depth) -- raises the *effective* floor a lake's
-    # own depth is measured against without touching real terrain `elevation` itself, see
-    # lakes.py's own module docstring for why. Always 0 outside an active lake.
-    silt_depth: np.ndarray | None = None
-    # Two more of the same "rides along for free" persistent fields, see volcanism.py.
-    # is_volcano never reverts to False once set (permanent provenance -- a dormant volcano
-    # is still excluded from being redetected as a fresh rift gap); volcano_active_years_
-    # remaining is a countdown, 0 once dormant (whether or not is_volcano is set).
-    is_volcano: np.ndarray | None = None  # bool
-    volcano_active_years_remaining: np.ndarray | None = None  # years
-    # Soil, land-only -- see geology.py. Unlike every other field on this line, these three can
-    # both rise *and* fall (real soil forms and erodes), not just accumulate.
-    soil_depth: np.ndarray | None = None  # meters, regolith/soil thickness
-    soil_mineral_content: np.ndarray | None = None  # [0, 1], weathered/hydrothermal richness
-    soil_organic_content: np.ndarray | None = None  # [0, 1], accumulated organic matter
-    # Resource deposits -- see geology.py/volcanism.py. All monotonically non-decreasing, the
-    # same self-reinforcing "once formed, never erodes back away" convention silt_depth
-    # already uses (buried peat/hydrocarbons/ore aren't un-buried by a later climate shift).
-    coal_deposit_m: np.ndarray | None = None  # land-only
-    oil_gas_deposit_m: np.ndarray | None = None  # ocean-only
-    mineral_deposit_m: np.ndarray | None = None  # either -- grown by volcanism.py's own eruptions
+    """A fixed plate-local latitude `phi` holding elevation (and other persistent, land-only
+    or lake/volcano/soil/resource) samples at plate-local longitude nodes `theta`.
 
-    def __post_init__(self) -> None:
-        if self.channel_depth is None:
-            self.channel_depth = np.zeros_like(self.theta)
-        if self.channel_width is None:
-            self.channel_width = np.zeros_like(self.theta)
-        if self.lake_depth is None:
-            self.lake_depth = np.zeros_like(self.theta)
-        if self.glacier_depth is None:
-            self.glacier_depth = np.zeros_like(self.theta)
-        if self.silt_depth is None:
-            self.silt_depth = np.zeros_like(self.theta)
-        if self.is_volcano is None:
-            self.is_volcano = np.zeros_like(self.theta, dtype=bool)
-        if self.volcano_active_years_remaining is None:
-            self.volcano_active_years_remaining = np.zeros_like(self.theta)
-        if self.soil_depth is None:
-            self.soil_depth = np.zeros_like(self.theta)
-        if self.soil_mineral_content is None:
-            self.soil_mineral_content = np.zeros_like(self.theta)
-        if self.soil_organic_content is None:
-            self.soil_organic_content = np.zeros_like(self.theta)
-        if self.coal_deposit_m is None:
-            self.coal_deposit_m = np.zeros_like(self.theta)
-        if self.oil_gas_deposit_m is None:
-            self.oil_gas_deposit_m = np.zeros_like(self.theta)
-        if self.mineral_deposit_m is None:
-            self.mineral_deposit_m = np.zeros_like(self.theta)
+    All fields are read-only -- an existing line is never mutated in place. Instead:
+    - `replace(...)` swaps in a subset of fields, keeping `theta`'s shape/order untouched
+      (the common case -- most steps only ever change `elevation` or one or two persistent
+      fields for the same set of nodes).
+    - `masked(mask)` filters and/or reorders every field together by a boolean mask or
+      fancy index (plate split, node removal, node reassignment reordering).
+    - `with_new_nodes(theta, elevation)` appends brand-new nodes (zero/False for every
+      persistent field -- no history to carry) to the end, unsorted.
+
+    Threading every persistent field through a single generic method here (keyed off
+    `OPTIONAL_FIELDS`, one list) is what earlier avoided a real, previously confirmed bug:
+    erosion.py's and bathymetry.py's own hand-written reconstruction sites were both written
+    before is_volcano/volcano_active_years_remaining existed, so neither passed them through
+    -- silently wiping every node's volcanic status to False every single step. A call site
+    that constructs a new field-by-field `ElevationLine(...)` directly (bypassing these
+    methods) reintroduces exactly that risk."""
+
+    # All persistent, land-only, meters (unless noted), same shape as theta -- see
+    # hydrology.py/lakes.py/volcanism.py/geology.py. Because the grid is plate-local and
+    # rotates with a plate's `frame` rather than sitting fixed in world space, these ride
+    # along for free just by being an ordinary parallel array on this same line, exactly
+    # like elevation itself -- no explicit semi-Lagrangian advection needed every step:
+    # rotating a plate only ever touches `frame`, never these arrays.
+    OPTIONAL_FIELDS = (
+        "channel_depth",  # river channel incision, self-reinforcing
+        "channel_width",  # river channel width, grows with flow -- see erosion.py
+        "lake_depth",  # standing lake water depth
+        "glacier_depth",  # accumulated ice, meters ice-equivalent
+        # Sediment settled on a lake's own bed, monotonically increasing (never erodes back
+        # away, same self-reinforcing character as channel_depth) -- raises the *effective*
+        # floor a lake's own depth is measured against without touching real terrain
+        # `elevation` itself, see lakes.py's own module docstring for why. Always 0 outside
+        # an active lake.
+        "silt_depth",
+        # Two more of the same "rides along for free" persistent fields, see volcanism.py.
+        # is_volcano never reverts to False once set (permanent provenance -- a dormant
+        # volcano is still excluded from being redetected as a fresh rift gap);
+        # volcano_active_years_remaining is a countdown, 0 once dormant (whether or not
+        # is_volcano is set).
+        "is_volcano",  # bool
+        "volcano_active_years_remaining",  # years
+        # Soil, land-only -- see geology.py. Unlike every other field here, these three can
+        # both rise *and* fall (real soil forms and erodes), not just accumulate.
+        "soil_depth",  # meters, regolith/soil thickness
+        "soil_mineral_content",  # [0, 1], weathered/hydrothermal richness
+        "soil_organic_content",  # [0, 1], accumulated organic matter
+        # Resource deposits -- see geology.py/volcanism.py. All monotonically non-decreasing,
+        # the same self-reinforcing "once formed, never erodes back away" convention
+        # silt_depth already uses (buried peat/hydrocarbons/ore aren't un-buried by a later
+        # climate shift).
+        "coal_deposit_m",  # land-only
+        "oil_gas_deposit_m",  # ocean-only
+        "mineral_deposit_m",  # either -- grown by volcanism.py's own eruptions
+    )
+
+    def __init__(
+        self,
+        phi: float,
+        theta: np.ndarray,
+        elevation: np.ndarray,
+        channel_depth: np.ndarray | None = None,
+        channel_width: np.ndarray | None = None,
+        lake_depth: np.ndarray | None = None,
+        glacier_depth: np.ndarray | None = None,
+        silt_depth: np.ndarray | None = None,
+        is_volcano: np.ndarray | None = None,
+        volcano_active_years_remaining: np.ndarray | None = None,
+        soil_depth: np.ndarray | None = None,
+        soil_mineral_content: np.ndarray | None = None,
+        soil_organic_content: np.ndarray | None = None,
+        coal_deposit_m: np.ndarray | None = None,
+        oil_gas_deposit_m: np.ndarray | None = None,
+        mineral_deposit_m: np.ndarray | None = None,
+    ) -> None:
+        self._phi = phi
+        self._theta = theta
+        self._elevation = elevation
+        self._channel_depth = channel_depth if channel_depth is not None else np.zeros_like(theta)
+        self._channel_width = channel_width if channel_width is not None else np.zeros_like(theta)
+        self._lake_depth = lake_depth if lake_depth is not None else np.zeros_like(theta)
+        self._glacier_depth = glacier_depth if glacier_depth is not None else np.zeros_like(theta)
+        self._silt_depth = silt_depth if silt_depth is not None else np.zeros_like(theta)
+        self._is_volcano = is_volcano if is_volcano is not None else np.zeros_like(theta, dtype=bool)
+        self._volcano_active_years_remaining = (
+            volcano_active_years_remaining if volcano_active_years_remaining is not None else np.zeros_like(theta)
+        )
+        self._soil_depth = soil_depth if soil_depth is not None else np.zeros_like(theta)
+        self._soil_mineral_content = soil_mineral_content if soil_mineral_content is not None else np.zeros_like(theta)
+        self._soil_organic_content = soil_organic_content if soil_organic_content is not None else np.zeros_like(theta)
+        self._coal_deposit_m = coal_deposit_m if coal_deposit_m is not None else np.zeros_like(theta)
+        self._oil_gas_deposit_m = oil_gas_deposit_m if oil_gas_deposit_m is not None else np.zeros_like(theta)
+        self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
+
+    @property
+    def phi(self) -> float:
+        return self._phi
+
+    @property
+    def theta(self) -> np.ndarray:
+        return self._theta
+
+    @property
+    def elevation(self) -> np.ndarray:
+        return self._elevation
+
+    @property
+    def channel_depth(self) -> np.ndarray:
+        return self._channel_depth
+
+    @property
+    def channel_width(self) -> np.ndarray:
+        return self._channel_width
+
+    @property
+    def lake_depth(self) -> np.ndarray:
+        return self._lake_depth
+
+    @property
+    def glacier_depth(self) -> np.ndarray:
+        return self._glacier_depth
+
+    @property
+    def silt_depth(self) -> np.ndarray:
+        return self._silt_depth
+
+    @property
+    def is_volcano(self) -> np.ndarray:
+        return self._is_volcano
+
+    @property
+    def volcano_active_years_remaining(self) -> np.ndarray:
+        return self._volcano_active_years_remaining
+
+    @property
+    def soil_depth(self) -> np.ndarray:
+        return self._soil_depth
+
+    @property
+    def soil_mineral_content(self) -> np.ndarray:
+        return self._soil_mineral_content
+
+    @property
+    def soil_organic_content(self) -> np.ndarray:
+        return self._soil_organic_content
+
+    @property
+    def coal_deposit_m(self) -> np.ndarray:
+        return self._coal_deposit_m
+
+    @property
+    def oil_gas_deposit_m(self) -> np.ndarray:
+        return self._oil_gas_deposit_m
+
+    @property
+    def mineral_deposit_m(self) -> np.ndarray:
+        return self._mineral_deposit_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
         local = geometry.local_xyz(phi_arr, self.theta)
         return geometry.to_world(frame, local)
 
+    def replace(self, **overrides: np.ndarray) -> "ElevationLine":
+        """A new line with the given fields (elevation and/or any of OPTIONAL_FIELDS)
+        swapped in and every other field copied from this one unchanged -- `theta`/`phi`
+        are never touched here, so only use this when the node set itself isn't changing."""
+        kwargs: dict[str, np.ndarray] = {name: getattr(self, name) for name in self.OPTIONAL_FIELDS}
+        kwargs["elevation"] = self.elevation
+        kwargs.update(overrides)
+        return ElevationLine(phi=self.phi, theta=self.theta, **kwargs)
 
-@dataclass
-class Plate:
-    plate_id: int
-    frame: np.ndarray  # 3x3 rotation matrix, local -> world
-    crust_type: str  # "continental" or "oceanic"
-    omega: np.ndarray = field(default_factory=lambda: np.zeros(3))  # angular velocity, world frame
-    lines: list[ElevationLine] = field(default_factory=list)
-    # Steps since this plate was created (by generation, merge, or split). Gates split
-    # eligibility in merge_split.py so a plate can't fragment repeatedly in quick
-    # succession -- see the note there on why that runaway is a real failure mode.
-    age_steps: int = 0
+    def masked(self, mask) -> "ElevationLine":
+        """A new line with `theta`, `elevation`, and every OPTIONAL_FIELDS array filtered
+        and/or reordered together by a boolean mask or fancy index -- for removing nodes
+        (plate split, node reassignment) or reordering them (after concatenating in new
+        nodes at the end)."""
+        kwargs = {name: getattr(self, name)[mask] for name in self.OPTIONAL_FIELDS}
+        return ElevationLine(phi=self.phi, theta=self.theta[mask], elevation=self.elevation[mask], **kwargs)
+
+    def with_new_nodes(self, theta: np.ndarray, elevation: np.ndarray) -> "ElevationLine":
+        """A new line with `theta`/`elevation` nodes appended at the end -- every
+        OPTIONAL_FIELDS value for the new nodes starts at zero/False, no history to carry.
+        The result is unsorted by theta; follow with `.masked(np.argsort(new_line.theta))`
+        if ascending order matters to the caller."""
+        n = len(theta)
+        kwargs = {
+            name: np.concatenate([getattr(self, name), np.zeros(n, dtype=getattr(self, name).dtype)])
+            for name in self.OPTIONAL_FIELDS
+        }
+        return ElevationLine(
+            phi=self.phi,
+            theta=np.concatenate([self.theta, theta]),
+            elevation=np.concatenate([self.elevation, elevation]),
+            **kwargs,
+        )
+
+
+class Plate(abc.ABC):
+    """A plate's shared identity/motion state plus an abstract interface over however it
+    represents its own terrain nodes -- currently only `PlateWithLines` (parallel
+    `ElevationLine`s), with an R-tree-backed representation planned as a future second
+    subclass. Every method below that doesn't depend on node representation (motion,
+    identity) is implemented once here; `node_count`/`all_points_and_elevation`/
+    `outline_world`/`collect` are representation-specific and left abstract."""
+
+    def __init__(
+        self,
+        plate_id: int,
+        frame: np.ndarray,
+        crust_type: str,
+        omega: np.ndarray | None = None,
+        age_steps: int = 0,
+    ) -> None:
+        self._plate_id = plate_id
+        self._frame = frame
+        self._crust_type = crust_type
+        self._omega = omega if omega is not None else np.zeros(3)
+        self._age_steps = age_steps
+
+    @property
+    def plate_id(self) -> int:
+        return self._plate_id
+
+    @property
+    def frame(self) -> np.ndarray:
+        """3x3 rotation matrix, local -> world. Only ever changes via `rotate`."""
+        return self._frame
+
+    @property
+    def crust_type(self) -> str:
+        """\"continental\" or \"oceanic\"."""
+        return self._crust_type
+
+    @property
+    def omega(self) -> np.ndarray:
+        """Angular velocity, world frame. Only ever changes via `set_omega`."""
+        return self._omega
+
+    @property
+    def age_steps(self) -> int:
+        """Steps since this plate was created (by generation, merge, or split). Gates split
+        eligibility in merge_split.py so a plate can't fragment repeatedly in quick
+        succession -- see the note there on why that runaway is a real failure mode."""
+        return self._age_steps
 
     @property
     def seed_world(self) -> np.ndarray:
         """World position of this plate's local (phi=0, theta=0) reference point."""
-        return self.frame[:, 0]
+        return self._frame[:, 0]
+
+    def set_omega(self, omega: np.ndarray) -> None:
+        self._omega = omega
+
+    def rotate(self, increment: np.ndarray) -> None:
+        """Apply an incremental rotation matrix to this plate's frame -- the one place a
+        plate's rigid motion actually advances `frame` each step (see world.py)."""
+        self._frame = increment @ self._frame
+
+    def age_one_step(self) -> None:
+        self._age_steps += 1
+
+    def reset_age(self) -> None:
+        self._age_steps = 0
+
+    @abc.abstractmethod
+    def node_count(self) -> int: ...
+
+    @abc.abstractmethod
+    def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
+        """Every node's world position and elevation, concatenated."""
+        ...
+
+    @abc.abstractmethod
+    def outline_world(self) -> np.ndarray:
+        """A live approximation of this plate's current territory outline."""
+        ...
+
+    @abc.abstractmethod
+    def collect(self, field_name: str) -> np.ndarray:
+        """Every node's current `field_name` value (elevation or any ElevationLine
+        OPTIONAL_FIELDS name), concatenated in this plate's own node order. Empty
+        (`np.zeros(0)`, or `dtype=bool` for "is_volcano") if this plate has no nodes."""
+        ...
+
+
+class PlateWithLines(Plate):
+    """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
+    latitudes -- see the module docstring for why this representation makes rigid rotation
+    exact and resampling-free."""
+
+    def __init__(
+        self,
+        plate_id: int,
+        frame: np.ndarray,
+        crust_type: str,
+        lines: list[ElevationLine] | None = None,
+        omega: np.ndarray | None = None,
+        age_steps: int = 0,
+    ) -> None:
+        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps)
+        self._lines: list[ElevationLine] = list(lines) if lines is not None else []
+
+    @property
+    def lines(self) -> tuple[ElevationLine, ...]:
+        """Read-only -- use `set_lines`/`replace_line` to change this plate's lines."""
+        return tuple(self._lines)
+
+    def set_lines(self, new_lines: list[ElevationLine]) -> None:
+        self._lines = list(new_lines)
+
+    def replace_line(self, index: int, new_line: ElevationLine) -> None:
+        self._lines[index] = new_line
 
     def outline_world(self) -> np.ndarray:
-        """A live approximation of this plate's current territory outline, derived
-        directly from each line's current two endpoints -- the actual edge boundary
-        evolution maintains (see boundary.py) -- rather than a separately-tracked polygon
-        that could drift out of sync with the real data. Traces the high-theta edge across
-        lines in ascending phi, then the low-theta edge back down: a standard scanline-to-
-        polygon conversion, exact for convex-ish plates and a reasonable envelope
-        otherwise. Always non-overlapping with a live-computed neighbor's outline in the
-        same sense the underlying elevation data is (see plates.iter_local_lattice /
+        """Derived directly from each line's current two endpoints -- the actual edge
+        boundary evolution maintains (see boundary.py) -- rather than a separately-tracked
+        polygon that could drift out of sync with the real data. Traces the high-theta edge
+        across lines in ascending phi, then the low-theta edge back down: a standard
+        scanline-to-polygon conversion, exact for convex-ish plates and a reasonable
+        envelope otherwise. Always non-overlapping with a live-computed neighbor's outline in
+        the same sense the underlying elevation data is (see plates.iter_local_lattice /
         boundary.step_boundaries), since it's read from that same data, not duplicated
         state."""
-        lines_with_nodes = [line for line in self.lines if len(line.theta) > 0]
+        lines_with_nodes = [line for line in self._lines if len(line.theta) > 0]
         if not lines_with_nodes:
             return np.zeros((0, 3))
         ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
@@ -213,18 +422,24 @@ class Plate:
             ],
             axis=0,
         )
-        return geometry.to_world(self.frame, loop_local)
+        return geometry.to_world(self._frame, loop_local)
 
     def node_count(self) -> int:
-        return sum(len(line.theta) for line in self.lines)
+        return sum(len(line.theta) for line in self._lines)
 
     def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
         """Every elevation-line node's world position and elevation, concatenated."""
-        if not self.lines:
+        if not self._lines:
             return np.zeros((0, 3)), np.zeros(0)
-        points = np.concatenate([line.world_xyz(self.frame) for line in self.lines], axis=0)
-        elevation = np.concatenate([line.elevation for line in self.lines], axis=0)
+        points = np.concatenate([line.world_xyz(self._frame) for line in self._lines], axis=0)
+        elevation = np.concatenate([line.elevation for line in self._lines], axis=0)
         return points, elevation
+
+    def collect(self, field_name: str) -> np.ndarray:
+        chunks = [getattr(line, field_name) for line in self._lines if len(line.theta) > 0]
+        if not chunks:
+            return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
+        return np.concatenate(chunks, axis=0)
 
 
 ELLIPSE_OUTLINE_POINTS = 72
@@ -297,7 +512,9 @@ def query_workers(n: int) -> int:
     return -1 if n >= PARALLEL_QUERY_MIN_POINTS else 1
 
 
-def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[tuple[Plate, int, int, int]]]:
+def gather_node_positions(
+    plate_list: list[PlateWithLines],
+) -> tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
     """Every elevation-line node's current world position, concatenated, alongside
     (plate, line_index, start, end) references into the flat array -- the position-only half
     of the near-identical per-step `_gather_nodes` helpers in erosion.py/hydrology.py/
@@ -311,7 +528,7 @@ def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[tup
     only the rotation itself is shared, since some of those fields (elevation in particular)
     do change mid-step between callers."""
     points_list = []
-    line_refs: list[tuple[Plate, int, int, int]] = []
+    line_refs: list[tuple[PlateWithLines, int, int, int]] = []
     offset = 0
     for plate in plate_list:
         for line_index, line in enumerate(plate.lines):
@@ -348,70 +565,40 @@ def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray,
     )
 
 
-def collect_all_lake_depth(plate_list: list[Plate]) -> np.ndarray:
-    """Every plate's current lake_depth, concatenated in the exact same per-plate/per-line
-    order collect_all_points uses -- so the two can be indexed together with the same
-    nearest-neighbor result (see render_image._render_grid_arrays), without
-    collect_all_points itself needing a new return value (most of its callers, e.g.
-    nearest_plate_id, don't need lake_depth at all)."""
-    chunks = [line.lake_depth for plate in plate_list for line in plate.lines if len(line.theta) > 0]
+def _collect_all(plate_list: list[Plate], field_name: str) -> np.ndarray:
+    """Every plate's current `field_name` (elevation or an ElevationLine OPTIONAL_FIELDS
+    name), concatenated in the exact same per-plate/per-node order collect_all_points uses --
+    so results from two different `_collect_all` calls can still be indexed together with the
+    same nearest-neighbor result (see render_image._render_grid_arrays). Delegates to each
+    plate's own `collect` -- representation-independent, works against the abstract `Plate`
+    interface, not just PlateWithLines."""
+    chunks = [p.collect(field_name) for p in plate_list if p.node_count() > 0]
     if not chunks:
-        return np.zeros(0)
+        return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
     return np.concatenate(chunks, axis=0)
+
+
+def collect_all_lake_depth(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "lake_depth")
 
 
 def collect_all_glacier_depth(plate_list: list[Plate]) -> np.ndarray:
-    """Every plate's current glacier_depth, concatenated the same way
-    collect_all_lake_depth is -- see its own docstring for why this is a separate function
-    rather than a new collect_all_points return value."""
-    chunks = [line.glacier_depth for plate in plate_list for line in plate.lines if len(line.theta) > 0]
-    if not chunks:
-        return np.zeros(0)
-    return np.concatenate(chunks, axis=0)
+    return _collect_all(plate_list, "glacier_depth")
 
 
 def collect_all_channel_depth(plate_list: list[Plate]) -> np.ndarray:
-    """Every plate's current channel_depth (river-channel incision -- see erosion.py),
-    concatenated the same way collect_all_lake_depth is -- used by climate.py to size a
-    river's own evaporative surface for its moisture-recycling humidity source (see that
-    module)."""
-    chunks = [line.channel_depth for plate in plate_list for line in plate.lines if len(line.theta) > 0]
-    if not chunks:
-        return np.zeros(0)
-    return np.concatenate(chunks, axis=0)
+    """Used by climate.py to size a river's own evaporative surface for its moisture-
+    recycling humidity source (see that module)."""
+    return _collect_all(plate_list, "channel_depth")
 
 
 def collect_all_channel_width(plate_list: list[Plate]) -> np.ndarray:
-    """Every plate's current channel_width (river-channel width, grows with discharge -- see
-    erosion.py), concatenated the same way collect_all_channel_depth is -- used by
-    render_image.py to draw a wide river thicker than a narrow one."""
-    chunks = [line.channel_width for plate in plate_list for line in plate.lines if len(line.theta) > 0]
-    if not chunks:
-        return np.zeros(0)
-    return np.concatenate(chunks, axis=0)
+    """Used by render_image.py to draw a wide river thicker than a narrow one."""
+    return _collect_all(plate_list, "channel_width")
 
 
 def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
-    """Every plate's current is_volcano, concatenated the same way collect_all_lake_depth
-    is -- see its own docstring for why this is a separate function rather than a new
-    collect_all_points return value."""
-    chunks = [line.is_volcano for plate in plate_list for line in plate.lines if len(line.theta) > 0]
-    if not chunks:
-        return np.zeros(0, dtype=bool)
-    return np.concatenate(chunks, axis=0)
-
-
-def _collect_all(plate_list: list[Plate], attr: str) -> np.ndarray:
-    """Every plate's current `attr` (a per-line ElevationLine array), concatenated in the
-    exact same per-plate/per-line order collect_all_points uses -- see
-    collect_all_lake_depth's own docstring for why this is index-aligned with it. Backs the
-    newer soil/resource fields (geology.py/volcanism.py) below; the three older fields
-    (lake_depth/glacier_depth/is_volcano) keep their own hand-written functions rather than
-    being retrofitted onto this helper, since they predate it and already work."""
-    chunks = [getattr(line, attr) for plate in plate_list for line in plate.lines if len(line.theta) > 0]
-    if not chunks:
-        return np.zeros(0)
-    return np.concatenate(chunks, axis=0)
+    return _collect_all(plate_list, "is_volcano")
 
 
 def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:
@@ -628,5 +815,5 @@ def generate_plates(
     for i in range(num_plates):
         frame = geometry.plate_frame_from_seed(seed_xyz[i])
         lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise, land_threshold, spacing_rad=spacing_rad)
-        plates.append(Plate(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
+        plates.append(PlateWithLines(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
     return plates

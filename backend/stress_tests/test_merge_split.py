@@ -1,6 +1,6 @@
 import numpy as np
 from app import geometry, mantle, merge_split
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
@@ -13,7 +13,7 @@ def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation):
     frame = geometry.plate_frame_from_seed(seed_xyz)
     line = ElevationLine(phi=0.0, theta=np.asarray(theta, dtype=float), elevation=np.asarray(elevation, dtype=float))
     filler = ElevationLine(phi=1.0, theta=np.array([0.0, 0.1]), elevation=np.zeros(2))
-    return Plate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
 
 
 def _converging_omega_pair(rate_cm_per_yr=5.0):
@@ -33,7 +33,9 @@ def _converging_pair_world(seed=123):
         np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=d * 0.3
     )[0]
     absorb = _test_plate(1, seed_absorb, "continental", np.linspace(-d * 0.2, d * 0.2, 6), np.full(6, 50.0))
-    keep.omega, absorb.omega = _converging_omega_pair()
+    keep_omega, absorb_omega = _converging_omega_pair()
+    keep.set_omega(keep_omega)
+    absorb.set_omega(absorb_omega)
     return World(seed=seed, plates=[keep, absorb], next_plate_id=2)
 
 

@@ -141,7 +141,7 @@ def _update_plate_omega(
         new_omega = target_omega
     else:
         new_omega = plate.omega + damping * (target_omega - plate.omega)
-    plate.omega = mantle.clamp_rate(new_omega)
+    plate.set_omega(mantle.clamp_rate(new_omega))
 
 
 def generate_world(
@@ -243,7 +243,7 @@ def step_world(world: World, years: float) -> None:
         for plate in world.plates:
             _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
             increment = geometry.rotation_matrix_from_omega(plate.omega, years)
-            plate.frame = increment @ plate.frame
+            plate.rotate(increment)
         boundary.step_boundaries(world, years)
     world.elapsed_years += years
     if world.simulate_plate_movement:

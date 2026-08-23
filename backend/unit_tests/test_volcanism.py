@@ -1,12 +1,12 @@
 import numpy as np
 from app import geometry, volcanism
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
-def _line_plate(plate_id: int, theta: np.ndarray) -> Plate:
+def _line_plate(plate_id: int, theta: np.ndarray) -> PlateWithLines:
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(len(theta), 200.0))
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
 
 
 def _two_plate_world(gap: float, d: float = 0.01, n: int = 10) -> World:
@@ -108,7 +108,7 @@ def test_detect_and_spawn_volcanic_fields_skips_points_already_on_a_tracked_fiel
     assert events == []  # plate 0's boundary points are excluded as source candidates
 
 
-def _volcanic_field_plate(plate_id: int, theta: np.ndarray, phi: float = 0.0) -> Plate:
+def _volcanic_field_plate(plate_id: int, theta: np.ndarray, phi: float = 0.0) -> PlateWithLines:
     line = ElevationLine(
         phi=phi,
         theta=theta,
@@ -116,7 +116,7 @@ def _volcanic_field_plate(plate_id: int, theta: np.ndarray, phi: float = 0.0) ->
         is_volcano=np.ones(len(theta), dtype=bool),
         volcano_active_years_remaining=np.full(len(theta), 500_000.0),
     )
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
 
 
 def test_find_close_volcanic_field_pairs_finds_a_close_pair():
@@ -250,7 +250,7 @@ def test_grow_isolated_volcanic_fields_noop_for_untracked_plates():
 def test_volcano_fraction():
     line_all_volcano = ElevationLine(phi=0.0, theta=np.zeros(4), elevation=np.zeros(4), is_volcano=np.ones(4, dtype=bool))
     line_none = ElevationLine(phi=0.0, theta=np.zeros(4), elevation=np.zeros(4))
-    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line_all_volcano, line_none])
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line_all_volcano, line_none])
     assert volcanism._volcano_fraction(plate) == 0.5
 
 
@@ -261,7 +261,7 @@ def test_apply_volcanic_activity_relabels_a_diluted_field_as_ordinary_continenta
         is_volcano=np.array([True]), volcano_active_years_remaining=np.array([0.0]),
     )
     ordinary_line = ElevationLine(phi=0.1, theta=np.zeros(20), elevation=np.full(20, 200.0))
-    plate = Plate(plate_id=5, frame=np.eye(3), crust_type="continental", lines=[volcano_line, ordinary_line])
+    plate = PlateWithLines(plate_id=5, frame=np.eye(3), crust_type="continental", lines=[volcano_line, ordinary_line])
     world = World(seed=0, plates=[plate], volcanic_field_plate_ids={5})
 
     events = volcanism.apply_volcanic_activity(world, years=1_000_000)
@@ -275,7 +275,7 @@ def test_apply_volcanic_activity_keeps_a_field_tracked_while_still_mostly_volcan
         phi=0.0, theta=np.zeros(4), elevation=np.full(4, 200.0),
         is_volcano=np.ones(4, dtype=bool), volcano_active_years_remaining=np.full(4, 500_000.0),
     )
-    plate = Plate(plate_id=5, frame=np.eye(3), crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=5, frame=np.eye(3), crust_type="continental", lines=[line])
     world = World(seed=0, plates=[plate], volcanic_field_plate_ids={5})
 
     events = volcanism.apply_volcanic_activity(world, years=1_000_000)
@@ -288,7 +288,7 @@ def test_apply_volcanic_activity_decrements_and_floors_remaining_active_years():
         phi=0.0, theta=np.zeros(4), elevation=np.full(4, 200.0),
         is_volcano=np.ones(4, dtype=bool), volcano_active_years_remaining=np.array([100_000.0, 300_000.0, 1_000.0, 0.0]),
     )
-    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
     world = World(seed=0, plates=[plate])
 
     volcanism.apply_volcanic_activity(world, years=200_000)
@@ -304,7 +304,7 @@ def test_apply_volcanic_activity_can_erupt_and_add_elevation():
         phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),
         is_volcano=np.ones(n, dtype=bool), volcano_active_years_remaining=np.full(n, 1_000_000.0),
     )
-    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
     world = World(seed=0, plates=[plate])
 
     original_elevation = world.plates[0].lines[0].elevation.copy()
@@ -328,7 +328,7 @@ def test_apply_volcanic_activity_erupting_grows_mineral_deposit_monotonically():
         phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),
         is_volcano=np.ones(n, dtype=bool), volcano_active_years_remaining=np.full(n, 1_000_000.0),
     )
-    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
     world = World(seed=0, plates=[plate])
 
     prior = world.plates[0].lines[0].mineral_deposit_m.copy()

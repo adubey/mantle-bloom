@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, line_spacing_rad
+from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, PlateWithLines, line_spacing_rad
 
 if TYPE_CHECKING:
     from .world import World
@@ -176,10 +176,10 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     )
 
 
-def regularize_plate_lines(plate: Plate, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> None:
-    plate.lines = [
-        regularize_line(line, spacing_rad) if needs_regularizing(line, spacing_rad) else line for line in plate.lines
-    ]
+def regularize_plate_lines(plate: PlateWithLines, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> None:
+    plate.set_lines(
+        [regularize_line(line, spacing_rad) if needs_regularizing(line, spacing_rad) else line for line in plate.lines]
+    )
 
 
 def regularize_world_lines(world: "World") -> None:

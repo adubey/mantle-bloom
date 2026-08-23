@@ -1,16 +1,16 @@
 import numpy as np
 from scipy.spatial import cKDTree
 from app import gaps, geometry
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
 
-def _old_plate(plate_id: int) -> Plate:
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=gaps.YOUNG_PLATE_AGE_STEPS + 1)
+def _old_plate(plate_id: int) -> PlateWithLines:
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=gaps.YOUNG_PLATE_AGE_STEPS + 1)
 
 
-def _young_plate(plate_id: int) -> Plate:
-    return Plate(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=0)
+def _young_plate(plate_id: int) -> PlateWithLines:
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", age_steps=0)
 
 
 def test_cluster_groups_nearby_and_splits_far_points():
@@ -125,7 +125,7 @@ def test_absorb_gap_into_plate_grows_and_preserves_old_elevation():
     frame = geometry.plate_frame_from_seed(seed_xyz)
     theta = np.linspace(-0.05, 0.05, 5)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(5, 123.0))
-    plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line])
     before_count = plate.node_count()
 
     # New territory just beyond the line's current theta range, at the same phi.
@@ -148,7 +148,7 @@ def test_absorb_gap_into_plate_respects_max_new_points():
     frame = geometry.plate_frame_from_seed(seed_xyz)
     theta = np.linspace(-0.05, 0.05, 5)
     line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(5, 0.0))
-    plate = Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line])
     before_count = plate.node_count()
 
     gap_theta = np.linspace(0.06, 0.2, 20)  # plenty of gap points within GROWTH_RING_RAD
@@ -162,7 +162,7 @@ def test_absorb_gap_into_plate_respects_max_new_points():
     assert grown_capped > before_count
 
     # An uncapped absorb of the same gap should claim (and end up covering) more.
-    plate_uncapped = Plate(plate_id=0, frame=frame, crust_type="continental", lines=[line])
+    plate_uncapped = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line])
     claimed_uncapped = gaps._absorb_gap_into_plate(
         plate_uncapped, gap_points.copy(), rng, max_new_points=len(gap_points)
     )
@@ -184,8 +184,7 @@ def test_fill_gaps_caps_total_absorption_per_plate_per_call():
         center = len(line.theta) // 2
         keep = np.ones(len(line.theta), dtype=bool)
         keep[max(center - 6, 1) : min(center + 7, len(line.theta) - 1)] = False
-        line.theta = line.theta[keep]
-        line.elevation = line.elevation[keep]
+        plate.replace_line(plate.lines.index(line), line.masked(keep))
 
     node_count_before = plate.node_count()
     gaps.fill_gaps(world)
@@ -248,8 +247,7 @@ def test_fill_gaps_absorbs_an_interior_hole_into_its_one_bordering_plate():
         center = len(line.theta) // 2
         keep = np.ones(len(line.theta), dtype=bool)
         keep[max(center - 14, 1) : min(center + 15, len(line.theta) - 1)] = False
-        line.theta = line.theta[keep]
-        line.elevation = line.elevation[keep]
+        plate.replace_line(plate.lines.index(line), line.masked(keep))
 
     plate_count_before = len(world.plates)
     node_count_before = plate.node_count()

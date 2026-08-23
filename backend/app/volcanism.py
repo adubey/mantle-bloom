@@ -66,7 +66,6 @@ actually went dormant.
 
 from __future__ import annotations
 
-import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -80,7 +79,7 @@ from .noise import SphereNoise
 from .plates import (
     TARGET_LINE_SPACING_RAD,
     ElevationLine,
-    Plate,
+    PlateWithLines,
     base_elevation,
     build_lines_from_lattice,
     iter_local_lattice,
@@ -228,7 +227,7 @@ def _nearest_other_plate_boundary(points: np.ndarray, owner: np.ndarray) -> tupl
     return nearest_dist, nearest_idx
 
 
-def _spawn_volcanic_field_plate(world: "World", cluster_points: np.ndarray, rng: np.random.Generator) -> Plate:
+def _spawn_volcanic_field_plate(world: "World", cluster_points: np.ndarray, rng: np.random.Generator) -> PlateWithLines:
     """Builds a brand-new continental Plate covering the lattice around `cluster_points`
     (this pass's own newly-detected volcano points, already clustered by proximity) --
     same `build_lines_from_lattice`-around-a-fresh-seed-frame construction
@@ -256,23 +255,20 @@ def _spawn_volcanic_field_plate(world: "World", cluster_points: np.ndarray, rng:
 
     lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     volcanic_lines = [
-        ElevationLine(
-            phi=line.phi,
-            theta=line.theta,
-            elevation=line.elevation,
+        line.replace(
             is_volcano=np.ones(len(line.theta), dtype=bool),
             volcano_active_years_remaining=rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=len(line.theta)),
         )
         for line in lines
     ]
 
-    plate = Plate(plate_id=world.next_plate_id, frame=frame, crust_type=crust_type, lines=volcanic_lines)
+    plate = PlateWithLines(plate_id=world.next_plate_id, frame=frame, crust_type=crust_type, lines=volcanic_lines)
     world.next_plate_id += 1
 
     points, _ = plate.all_points_and_elevation()
     if len(points) > 0:
         velocities = mantle.flow_at(points, world.mantle_centers)
-        plate.omega = mantle.clamp_rate(mantle.fit_euler_pole(points, velocities))
+        plate.set_omega(mantle.clamp_rate(mantle.fit_euler_pole(points, velocities)))
     return plate
 
 
@@ -326,7 +322,7 @@ def detect_and_spawn_volcanic_fields(world: "World") -> list[str]:
     return events
 
 
-def _plate_volcano_state(plate: Plate) -> tuple[np.ndarray, np.ndarray]:
+def _plate_volcano_state(plate: PlateWithLines) -> tuple[np.ndarray, np.ndarray]:
     """This plate's own is_volcano/volcano_active_years_remaining, concatenated in the exact
     same per-line order Plate.all_points_and_elevation uses -- so the two can be indexed
     together (see merge_close_volcanic_fields)."""
@@ -530,17 +526,19 @@ def merge_close_volcanic_fields(world: "World") -> list[str]:
             volcano_list.append(np.ones(len(bridge_points), dtype=bool))
             remaining_list.append(rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=len(bridge_points)))
 
-        primary.lines = _build_field_lines_with_volcano_state(
-            primary.frame,
-            np.concatenate(points_list, axis=0),
-            np.concatenate(elevation_list, axis=0),
-            np.concatenate(volcano_list, axis=0),
-            np.concatenate(remaining_list, axis=0),
-            coverage_radius_rad,
-            spacing_rad,
+        primary.set_lines(
+            _build_field_lines_with_volcano_state(
+                primary.frame,
+                np.concatenate(points_list, axis=0),
+                np.concatenate(elevation_list, axis=0),
+                np.concatenate(volcano_list, axis=0),
+                np.concatenate(remaining_list, axis=0),
+                coverage_radius_rad,
+                spacing_rad,
+            )
         )
-        primary.omega = mantle.clamp_rate(np.mean(np.stack([p.omega for p in cluster_plates], axis=0), axis=0))
-        primary.age_steps = 0
+        primary.set_omega(mantle.clamp_rate(np.mean(np.stack([p.omega for p in cluster_plates], axis=0), axis=0)))
+        primary.reset_age()
 
         absorbed_ids = [p.plate_id for p in others]
         removed_ids.update(absorbed_ids)
@@ -707,10 +705,10 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
                     **fields,
                 )
             )
-        plate.lines = new_lines
+        plate.set_lines(new_lines)
 
 
-def _volcano_fraction(plate: Plate) -> float:
+def _volcano_fraction(plate: PlateWithLines) -> float:
     total = plate.node_count()
     if total == 0:
         return 0.0
@@ -754,11 +752,14 @@ def apply_volcanic_activity(world: "World", years: float) -> list[str]:
                 line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
             )
 
-            # theta unchanged -- dataclasses.replace copies every other field (including
+            # theta unchanged -- line.replace copies every other field (including
             # channel_width) from the existing line automatically. See plates.ElevationLine's
             # own docstring for why this pattern replaced explicit field-by-field
             # reconstruction here.
-            plate.lines[line_index] = dataclasses.replace(
-                line, elevation=new_elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
+            plate.replace_line(
+                line_index,
+                line.replace(
+                    elevation=new_elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
+                ),
             )
     return events

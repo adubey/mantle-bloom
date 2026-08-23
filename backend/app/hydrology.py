@@ -75,7 +75,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, lakes
-from .plates import PLANET_RADIUS_KM, ElevationLine, Plate, gather_node_positions, query_workers
+from .plates import PLANET_RADIUS_KM, ElevationLine, PlateWithLines, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -195,7 +195,7 @@ class HydrologyFields:
     is_river: np.ndarray  # (N,) bool -- top RIVER_FLOW_PERCENTILE of land flow_accum
     lake_depth: np.ndarray  # (N,) this step's final standing lake depth
     glacier_depth: np.ndarray  # (N,) this step's final accumulated ice depth
-    line_refs: list[tuple[Plate, int, int, int]]
+    line_refs: list[tuple[PlateWithLines, int, int, int]]
     # Human-readable lake merge/split transition messages from lakes.step_lakes, for the
     # caller (erosion.py) to log via World.log_event -- see compute_hydrology. Defaulted
     # (rather than a required positional field) so every existing HydrologyFields call site
@@ -225,8 +225,8 @@ class HydrologyFields:
 
 def _gather_nodes(
     world: "World",
-    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
     """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
     channel_depth, prior silt_depth, and whether it's ocean (elevation <= world.sea_level_m, the
     live-adjustable sea-level convention used everywhere else in this codebase -- see
@@ -559,7 +559,7 @@ def compute_hydrology(
     precipitation_at_nodes: np.ndarray,
     temperature_at_nodes: np.ndarray,
     years: float,
-    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
+    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->

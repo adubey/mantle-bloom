@@ -1,13 +1,13 @@
 import numpy as np
 
 from app import stats
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, PlateWithLines
 from app.world import World
 
 
 def _all_ocean_world() -> World:
     line = ElevationLine(phi=0.0, theta=np.linspace(-np.pi, np.pi, 20, endpoint=False), elevation=np.full(20, -3800.0))
-    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=[line])
     return World(seed=0, plates=[plate])
 
 
@@ -60,7 +60,7 @@ def _land_and_ocean_world() -> World:
     theta = np.linspace(-np.pi, np.pi, 40, endpoint=False)
     elevation = np.where(np.abs(theta) < np.pi / 2, 500.0, -3800.0)  # half land, half ocean
     line = ElevationLine(phi=0.0, theta=theta, elevation=elevation)
-    plate = Plate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
     return World(seed=0, plates=[plate])
 
 

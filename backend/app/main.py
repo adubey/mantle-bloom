@@ -168,7 +168,7 @@ def _round_coords(arr: np.ndarray) -> list:
     return np.round(arr, _COORD_DECIMALS).tolist()
 
 
-def _plate_summary(plate: plates.Plate) -> dict:
+def _plate_summary(plate: plates.PlateWithLines) -> dict:
     outline = plate.outline_world()
     node_points, _ = plate.all_points_and_elevation()
     ellipse = plates.plate_bounding_ellipse(node_points)

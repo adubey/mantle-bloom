@@ -21,13 +21,12 @@ membership is irrelevant to how close it is to *some* coastline.
 
 from __future__ import annotations
 
-import dataclasses
 from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions, query_workers
+from .plates import PLANET_RADIUS_KM, PlateWithLines, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -50,8 +49,8 @@ MAX_ELEVATION_M = 9000.0
 
 def _gather_nodes(
     world: "World",
-    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
     """Every node's world position, elevation, and whether its plate is continental,
     concatenated, alongside (plate, line_index, start, end) references -- same shape as
     erosion.py's own _gather_nodes, for the same reason (slicing a flat per-node result
@@ -80,7 +79,7 @@ def _gather_nodes(
 def apply_bathymetry(
     world: "World",
     years: float,
-    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
+    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
 ) -> None:
     """Relaxes every submerged (elevation <= world.sea_level_m) continental node toward
     SHELF_TARGET_M if within SHELF_RANGE_RAD of the nearest land node (elevation >
@@ -112,7 +111,7 @@ def apply_bathymetry(
     new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
 
     # theta (and therefore every other parallel array's shape) is never touched here -- only
-    # elevation changes -- so dataclasses.replace copies every other field (channel_depth/
+    # elevation changes -- so line.replace copies every other field (channel_depth/
     # channel_width/lake_depth/glacier_depth/is_volcano/volcano_active_years_remaining, and
     # whatever else gets added later) from the existing line automatically, rather than
     # needing to name each one explicitly here. See plates.ElevationLine's own docstring for
@@ -120,4 +119,4 @@ def apply_bathymetry(
     # False every step).
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        plate.lines[line_index] = dataclasses.replace(line, elevation=new_elevation[start:end])
+        plate.replace_line(line_index, line.replace(elevation=new_elevation[start:end]))

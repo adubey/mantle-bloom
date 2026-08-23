@@ -53,7 +53,6 @@ reuses the result for both erosion and the world's cached river/lake fields
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -62,7 +61,7 @@ from scipy.spatial import cKDTree
 
 from . import climate, geometry, hydrology
 from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import PLANET_RADIUS_KM, Plate, gather_node_positions, query_workers
+from .plates import PLANET_RADIUS_KM, PlateWithLines, gather_node_positions, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -187,8 +186,8 @@ class ErosionResult:
 
 def _gather_nodes(
     world: "World",
-    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[Plate, int, int, int]]]:
+    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
     """Every node's world position, elevation, and prior channel_depth/channel_width/
     glacier_depth, concatenated, alongside (plate, line_index, start, end) references --
     unlike reassign.py's own _gather_nodes (which needs per-node plate/line identity, since
@@ -277,7 +276,7 @@ def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: 
 def apply_erosion(
     world: "World",
     years: float,
-    node_cloud: tuple[np.ndarray, list[tuple[Plate, int, int, int]]] | None = None,
+    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
 ) -> ErosionResult | None:
     """Erodes every plate's elevation nodes based on the world's current climate and flow
     routing -- rain/sheet erosion (precipitation x slope), river-channelized erosion
@@ -392,19 +391,21 @@ def apply_erosion(
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
     # theta (and therefore every other parallel array's shape) is never touched here -- see
-    # plates.ElevationLine's own docstring for why dataclasses.replace, not an explicit
+    # plates.ElevationLine's own docstring for why line.replace, not an explicit
     # field-by-field reconstruction, is the pattern that stays correct as more persistent
     # fields get added (this site used to silently wipe is_volcano to False every step).
     for plate, line_index, start, end in line_refs:
         line = plate.lines[line_index]
-        plate.lines[line_index] = dataclasses.replace(
-            line,
-            elevation=new_elevation[start:end],
-            channel_depth=new_channel_depth[start:end],
-            channel_width=new_channel_width[start:end],
-            lake_depth=hydro.lake_depth[start:end],
-            glacier_depth=hydro.glacier_depth[start:end],
-            silt_depth=hydro.silt_depth[start:end],
+        plate.replace_line(
+            line_index,
+            line.replace(
+                elevation=new_elevation[start:end],
+                channel_depth=new_channel_depth[start:end],
+                channel_width=new_channel_width[start:end],
+                lake_depth=hydro.lake_depth[start:end],
+                glacier_depth=hydro.glacier_depth[start:end],
+                silt_depth=hydro.silt_depth[start:end],
+            ),
         )
 
     return ErosionResult(
