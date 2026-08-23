@@ -49,6 +49,14 @@ MERGE_COVERAGE_RADIUS_RAD = 1.2 * TARGET_LINE_SPACING_RAD
 COLLISION_MERGE_MIN_YEARS = 50_000_000
 COLLISION_MERGE_MAX_YEARS = 100_000_000
 
+# Even a pair that's collided long enough shouldn't merge for certain if the result would be
+# a large chunk of the whole world -- real supercontinents form slowly and are the exception,
+# not the norm every sustained collision should produce. Combined *node-count* share of the
+# world is resolution-independent (a fraction, not a raw count) and directly targets what a
+# merge actually produces: how much of the sphere the surviving plate would cover.
+MERGE_SIZE_UNLIKELY_FRACTION = 0.25
+MERGE_PROBABILITY_FLOOR = 0.02  # never impossible -- real supercontinents do form eventually
+
 # A node count, not a distance -- doesn't scale automatically with TARGET_LINE_SPACING_RAD
 # the way the distance-based thresholds elsewhere do. Node count for a given physical plate
 # area scales with the *square* of resolution (more rows and more samples per row), so this
@@ -184,12 +192,32 @@ def _collision_threshold_years(seed: int, pair: tuple[int, int]) -> float:
     return float(rng.uniform(COLLISION_MERGE_MIN_YEARS, COLLISION_MERGE_MAX_YEARS))
 
 
+def _merge_probability(world: "World", pair: tuple[int, int]) -> float:
+    """How likely `pair` is to actually merge this step, given it's already met the sustained-
+    duration requirement -- 1.0 for two small plates, relaxing linearly toward
+    MERGE_PROBABILITY_FLOOR as their combined share of the world's total nodes approaches
+    MERGE_SIZE_UNLIKELY_FRACTION. Duration alone isn't enough for a pair that would produce a
+    large chunk of the whole world; this is an independent, size-only gate on top of it."""
+    total_nodes = sum(p.node_count() for p in world.plates)
+    if total_nodes == 0:
+        return 1.0
+    a = next(p for p in world.plates if p.plate_id == pair[0])
+    b = next(p for p in world.plates if p.plate_id == pair[1])
+    combined_frac = (a.node_count() + b.node_count()) / total_nodes
+    size_frac = min(1.0, combined_frac / MERGE_SIZE_UNLIKELY_FRACTION)
+    return 1.0 - size_frac * (1.0 - MERGE_PROBABILITY_FLOOR)
+
+
 def update_collision_progress(world: "World", years: float) -> list[tuple[int, int]]:
     """Advance sustained-collision tracking by `years` for every pair currently close and
     converging (world.collision_progress: pair -> accumulated convergent years). Returns
-    pairs that have now accumulated enough to merge. A pair that stops being close-and-
-    converging before reaching its threshold has its progress dropped entirely -- the
-    collision didn't sustain, so it doesn't get partial credit toward a future one.
+    pairs that have now accumulated enough to merge *and* cleared this step's size-based
+    probability roll (see _merge_probability) -- a pair that clears the duration threshold but
+    fails the roll keeps its accumulated progress untouched (it's still >= threshold, so it's
+    re-rolled fresh, with a freshly recomputed size, on every subsequent step it stays close-
+    and-converging) rather than losing credit toward a future attempt. A pair that stops being
+    close-and-converging before reaching its threshold has its progress dropped entirely --
+    the collision didn't sustain, so it doesn't get partial credit toward a future one.
 
     A collision *starting* isn't logged to the UI's event console (see
     apply_topology_changes) -- plates.py's tiling has every neighbor pair already touching
@@ -204,7 +232,12 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
         accumulated = world.collision_progress.get(pair, 0.0) + years
         world.collision_progress[pair] = accumulated
         if accumulated >= _collision_threshold_years(world.seed, pair):
-            ready.append(pair)
+            # Keyed by elapsed_years (rounded, since np.random.default_rng's seed tuple only
+            # accepts ints) alongside the pair, so a pair that fails this roll gets an
+            # independent fresh one next step rather than being stuck forever.
+            rng = np.random.default_rng((world.seed, pair[0], pair[1], round(world.elapsed_years)))
+            if rng.random() < _merge_probability(world, pair):
+                ready.append(pair)
 
     for pair in list(world.collision_progress):
         if pair not in current_set:
@@ -216,7 +249,17 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
 def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     """Fuse `id_absorb` into `id_keep`: keep `id_keep`'s frame, resample the union
     footprint from scratch (a one-time nearest-neighbor lookup into the pre-merge combined
-    point cloud), and drop `id_absorb`."""
+    point cloud), and drop `id_absorb`.
+
+    Exclusivity against every *other* live plate is enforced the same way initial generation
+    guarantees it (see plates.generate_plates' nearest-seed Voronoi query): a candidate
+    lattice point is only kept if it's both within coverage_radius_rad of the merged pair's
+    own old points *and* strictly closer to those old points than to any other plate's
+    current nearest node. Without the second half of that check, a candidate near one of the
+    merged pair's own (possibly scattered, if either parent had already been through earlier
+    merges) old points would be claimed even when it sits inside a completely unrelated,
+    still-living plate's own territory -- confirmed directly as the cause of large cross-plate
+    node overlap after chained merges."""
     keep = next(p for p in world.plates if p.plate_id == id_keep)
     absorb = next(p for p in world.plates if p.plate_id == id_absorb)
 
@@ -229,9 +272,16 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     old_elevation = np.concatenate([keep_elev, absorb_elev], axis=0)
     tree = cKDTree(old_points)
 
+    other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p.plate_id not in (id_keep, id_absorb)]
+    other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
+    other_tree = cKDTree(other_points) if len(other_points) else None
+
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
-        dist, _ = tree.query(world_pts)
-        return dist < coverage_radius_rad
+        own_dist, _ = tree.query(world_pts)
+        if other_tree is None:
+            return own_dist < coverage_radius_rad
+        other_dist, _ = other_tree.query(world_pts)
+        return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         _, idx = tree.query(world_pts)
@@ -241,6 +291,13 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     keep.omega = mantle.clamp_rate((keep.omega + absorb.omega) / 2.0)
     keep.age_steps = 0
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
+
+    # The merge survivor is the highest-risk plate for the round-robin outlier audit (see
+    # reassign.run_round_robin_check) -- its whole footprint was just re-resampled, so give it
+    # priority over waiting its normal turn in the queue.
+    if id_keep in world.plate_check_queue:
+        world.plate_check_queue.remove(id_keep)
+    world.plate_check_queue.insert(0, id_keep)
 
 
 def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndarray) -> float:

@@ -1,6 +1,8 @@
 import numpy as np
+from scipy.spatial import cKDTree
+
 from app import geometry, mantle, merge_split
-from app.plates import ElevationLine, Plate
+from app.plates import ElevationLine, Plate, line_spacing_rad
 from app.world import World, generate_world, step_world
 
 
@@ -132,7 +134,11 @@ def test_collision_does_not_merge_before_sustained_threshold():
         assert not any("merged" in e for e in events)
 
 
-def test_collision_merges_once_sustained_threshold_is_crossed():
+def test_collision_merges_once_sustained_threshold_is_crossed(monkeypatch):
+    # This test isolates the sustained-duration mechanism -- neutralize the independent
+    # size-based probability gate (see merge_split._merge_probability), since a synthetic
+    # 2-plate world makes any pair's combined share of total world nodes trivially large.
+    monkeypatch.setattr(merge_split, "MERGE_SIZE_UNLIKELY_FRACTION", 1e9)
     world = _converging_pair_world()
     threshold = merge_split._collision_threshold_years(world.seed, (0, 1))
 
@@ -162,7 +168,11 @@ def test_collision_progress_resets_if_convergence_stops():
     assert (0, 1) not in world.collision_progress
 
 
-def test_apply_topology_changes_merges_at_most_one_pair_per_call():
+def test_apply_topology_changes_merges_at_most_one_pair_per_call(monkeypatch):
+    # This test isolates the "at most one merge per call" cap -- neutralize the independent
+    # size-based probability gate (see merge_split._merge_probability), since a synthetic
+    # 3-plate world makes any pair's combined share of total world nodes trivially large.
+    monkeypatch.setattr(merge_split, "MERGE_SIZE_UNLIKELY_FRACTION", 1e9)
     # Three mutually close, mutually converging continental plates clustered together --
     # every pairwise combination should register as a collision candidate.
     theta = np.linspace(-0.003, 0.003, 6)
@@ -206,6 +216,92 @@ def test_merge_plates_leaves_one_plate_with_nonzero_nodes():
 
     assert [p.plate_id for p in world.plates] == [0]
     assert world.plates[0].node_count() > 0
+
+
+def test_merge_plates_does_not_claim_another_plates_territory():
+    """Old bug: merge_plates' is_owned only checked distance to the merging pair's own old
+    points, so if either parent carried a stray far-flung node (as a plate that's already
+    been through an earlier merge can, see merge_plates' own docstring), the resample would
+    claim lattice cells near that stray point even where a completely unrelated,
+    still-living plate already owns the space -- confirmed directly as the cause of large
+    cross-plate node overlap in a real, long-run save file."""
+    theta = np.linspace(-0.01, 0.01, 5)
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    tiny_angle = merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
+    seed_absorb = geometry.rotate_vectors(
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
+    )[0]
+    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
+
+    # A bystander plate on the opposite side of the sphere, with no relation to keep/absorb's
+    # actual collision. Give `keep` one stray node planted right at the bystander's own seed
+    # -- standing in for a scattered leftover point a plate that's already been through a
+    # prior merge can carry.
+    bystander_seed = np.array([-1.0, 0.0, 0.0])
+    bystander = _test_plate(2, bystander_seed, "continental", theta, np.zeros(5))
+    stray_local = geometry.to_local(keep.frame, bystander_seed)
+    stray_phi, stray_theta = geometry.xyz_to_latlon(stray_local)
+    keep.lines.append(ElevationLine(phi=float(stray_phi), theta=np.array([float(stray_theta)]), elevation=np.array([0.0])))
+
+    world = World(seed=0, plates=[keep, absorb, bystander], next_plate_id=3)
+    bystander_points_before, _ = bystander.all_points_and_elevation()
+
+    merge_split.merge_plates(world, id_keep=0, id_absorb=1)
+
+    merged = next(p for p in world.plates if p.plate_id == 0)
+    merged_points, _ = merged.all_points_and_elevation()
+    bystander_after = next(p for p in world.plates if p.plate_id == 2)
+    bystander_points_after, _ = bystander_after.all_points_and_elevation()
+
+    # bystander is untouched by the merge...
+    assert bystander_points_after.shape == bystander_points_before.shape
+    assert np.allclose(np.sort(bystander_points_after, axis=0), np.sort(bystander_points_before, axis=0))
+
+    # ...and the merged plate didn't claim anything near bystander's territory, even though
+    # the stray node planted right at bystander's seed would have made it do so under the old
+    # (merging-pair-only) exclusivity check.
+    spacing_rad = line_spacing_rad(world.node_density)
+    coverage_radius_rad = merge_split.MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / merge_split.TARGET_LINE_SPACING_RAD)
+    dist, _ = cKDTree(bystander_points_after).query(merged_points)
+    assert dist.min() > coverage_radius_rad
+
+
+def test_merge_probability_decreases_with_combined_size_and_floors():
+    theta = np.linspace(-0.01, 0.01, 5)
+    small_a = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    small_b = _test_plate(1, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    filler = _test_plate(2, [0.0, 1.0, 0.0], "continental", np.linspace(-0.01, 0.01, 500), np.zeros(500))
+    world = World(seed=0, plates=[small_a, small_b, filler], next_plate_id=3)
+
+    small_pair_probability = merge_split._merge_probability(world, (0, 1))
+    assert small_pair_probability > 0.85  # small combined share of a big filler-padded world
+
+    big_a = _test_plate(3, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.01, 5000), np.zeros(5000))
+    big_b = _test_plate(4, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.01, 5000), np.zeros(5000))
+    world_dominant = World(seed=0, plates=[big_a, big_b, filler], next_plate_id=5)
+    big_pair_probability = merge_split._merge_probability(world_dominant, (3, 4))
+    # combined share well past the unlikely threshold, so this bottoms out at the floor
+    assert np.isclose(big_pair_probability, merge_split.MERGE_PROBABILITY_FLOOR)
+
+    assert big_pair_probability < small_pair_probability
+
+
+def test_merge_plates_jumps_survivor_to_front_of_check_queue():
+    theta = np.linspace(-0.01, 0.01, 5)
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    tiny_angle = merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
+    seed_absorb = geometry.rotate_vectors(
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
+    )[0]
+    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
+    # id_keep already queued, part-way back -- the merge should move it to the front, not
+    # just leave it where reconciliation would otherwise find it.
+    world = World(seed=0, plates=[keep, absorb], next_plate_id=2, plate_check_queue=[5, 0, 6])
+
+    merge_split.merge_plates(world, id_keep=0, id_absorb=1)
+
+    assert world.plate_check_queue[0] == 0
+    assert world.plate_check_queue.count(0) == 1
 
 
 def test_maybe_split_plate_returns_none_for_small_plate():

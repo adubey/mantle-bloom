@@ -77,29 +77,20 @@ def _find_target_line(plate: Plate, candidate_line_indices: set[int], point_worl
     return best_index
 
 
-def reassign_misplaced_points(world: "World") -> None:
-    """Find every node whose NEIGHBOR_COUNT nearest neighbors are mostly owned by a
-    different plate and hand it over -- see this module's docstring for the full algorithm.
-    Mutates world.plates' lines in place. Not logged to the UI's event console -- this runs
-    every REASSIGN_INTERVAL_STEPS steps and, on a busy boundary, can touch many plates and
-    hundreds of points per pass, which flooded the console with little useful signal."""
-    points, elevations, owners = _gather_nodes(world)
-    n = len(points)
-    if n <= NEIGHBOR_COUNT:
-        return
-
-    tree = cKDTree(points)
-    _, neighbor_idx = tree.query(points, k=NEIGHBOR_COUNT + 1)
-    neighbor_idx = neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
-
-    owner_plate_ids = np.array([o[0] for o in owners])
-    neighbor_owner_ids = owner_plate_ids[neighbor_idx]  # (n, NEIGHBOR_COUNT)
-    foreign_mask_all = neighbor_owner_ids != owner_plate_ids[:, None]
-    # Cheap vectorized pre-filter: most nodes sit deep in their own plate's interior, with
-    # every neighbor sharing their own owner, so this keeps the more expensive per-node work
-    # below limited to the (usually small) set of actual boundary candidates.
-    candidate_indices = np.nonzero(foreign_mask_all.sum(axis=1) >= MIN_FOREIGN_NEIGHBORS)[0]
-
+def _apply_reassignment(
+    world: "World",
+    points: np.ndarray,
+    elevations: np.ndarray,
+    owners: list[tuple[int, int, int]],
+    neighbor_idx: np.ndarray,
+    foreign_mask_all: np.ndarray,
+    neighbor_owner_ids: np.ndarray,
+    candidate_indices: np.ndarray,
+) -> bool:
+    """Shared body for reassign_misplaced_points/check_plate_for_outliers: given, for each
+    node in `candidate_indices`, its NEIGHBOR_COUNT global nearest neighbors and which of
+    those are foreign, move any node whose foreign neighbors have a majority for one other
+    plate onto that plate's nearest line. Returns whether anything actually moved."""
     plate_by_id = {p.plate_id: p for p in world.plates}
 
     remove_by_source: dict[tuple[int, int], set[int]] = {}
@@ -148,7 +139,7 @@ def reassign_misplaced_points(world: "World") -> None:
         transfer_counts[pair_key] = transfer_counts.get(pair_key, 0) + 1
 
     if not transfer_counts:
-        return
+        return False
 
     for (plate_id, line_index), remove_indices in remove_by_source.items():
         plate = plate_by_id[plate_id]
@@ -222,3 +213,104 @@ def reassign_misplaced_points(world: "World") -> None:
             oil_gas_deposit_m=combined_oil_gas_deposit_m[order],
             mineral_deposit_m=combined_mineral_deposit_m[order],
         )
+
+    return True
+
+
+def reassign_misplaced_points(world: "World") -> None:
+    """Find every node whose NEIGHBOR_COUNT nearest neighbors are mostly owned by a
+    different plate and hand it over -- see this module's docstring for the full algorithm.
+    Mutates world.plates' lines in place. Not logged to the UI's event console -- this runs
+    every REASSIGN_INTERVAL_STEPS steps and, on a busy boundary, can touch many plates and
+    hundreds of points per pass, which flooded the console with little useful signal."""
+    points, elevations, owners = _gather_nodes(world)
+    n = len(points)
+    if n <= NEIGHBOR_COUNT:
+        return
+
+    tree = cKDTree(points)
+    _, neighbor_idx = tree.query(points, k=NEIGHBOR_COUNT + 1)
+    neighbor_idx = neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
+
+    owner_plate_ids = np.array([o[0] for o in owners])
+    neighbor_owner_ids = owner_plate_ids[neighbor_idx]  # (n, NEIGHBOR_COUNT)
+    foreign_mask_all = neighbor_owner_ids != owner_plate_ids[:, None]
+    # Cheap vectorized pre-filter: most nodes sit deep in their own plate's interior, with
+    # every neighbor sharing their own owner, so this keeps the more expensive per-node work
+    # below limited to the (usually small) set of actual boundary candidates.
+    candidate_indices = np.nonzero(foreign_mask_all.sum(axis=1) >= MIN_FOREIGN_NEIGHBORS)[0]
+
+    _apply_reassignment(world, points, elevations, owners, neighbor_idx, foreign_mask_all, neighbor_owner_ids, candidate_indices)
+
+
+def check_plate_for_outliers(world: "World", plate_id: int) -> bool:
+    """Self-audit for one plate: does it still legitimately own every node it's carrying, by
+    the same NEIGHBOR_COUNT/MIN_FOREIGN_NEIGHBORS majority-vote test reassign_misplaced_points
+    uses whole-world? Only ever queries the global tree for `plate_id`'s own points -- cheaper
+    per call than the whole-world pass by construction -- and only ever moves nodes *away*
+    from this plate, never pulls foreign nodes toward it (that pull direction is already
+    covered by the existing bidirectional whole-world pass above; this is meant as a fast,
+    continuous, one-plate-at-a-time check, see reassign.run_round_robin_check, not a
+    replacement for it). Returns whether anything moved.
+
+    Deliberately reuses the same 3-of-4-neighbor majority rule rather than a stricter
+    single-nearest-point test -- a plain nearest-point rule would misfire constantly on
+    completely ordinary shared borders (every plate's boundary nodes sit close to a
+    neighbor's by design), which is exactly why the existing pass already requires a
+    majority, not just one close neighbor."""
+    points, elevations, owners = _gather_nodes(world)
+    n = len(points)
+    if n <= NEIGHBOR_COUNT:
+        return False
+
+    owner_plate_ids = np.array([o[0] for o in owners])
+    own_indices = np.nonzero(owner_plate_ids == plate_id)[0]
+    if len(own_indices) == 0:
+        return False
+
+    tree = cKDTree(points)
+    _, own_neighbor_idx = tree.query(points[own_indices], k=NEIGHBOR_COUNT + 1)
+    own_neighbor_idx = own_neighbor_idx[:, 1:]  # column 0 is always the point itself
+
+    own_neighbor_owner_ids = owner_plate_ids[own_neighbor_idx]  # (len(own_indices), NEIGHBOR_COUNT)
+    foreign_mask = own_neighbor_owner_ids != plate_id
+    candidate_indices = own_indices[np.nonzero(foreign_mask.sum(axis=1) >= MIN_FOREIGN_NEIGHBORS)[0]]
+    if len(candidate_indices) == 0:
+        return False
+
+    # neighbor_idx/foreign_mask_all/neighbor_owner_ids below are indexed by the *candidate's*
+    # position in the full `points` array (see _apply_reassignment's `owners[i]`/`points[i]`
+    # usage), so they're built as full-length arrays with only this plate's own rows filled in
+    # -- the same shape _apply_reassignment already expects from reassign_misplaced_points'
+    # whole-world call, just sparsely populated here since candidate_indices only ever selects
+    # rows for `plate_id`'s own nodes.
+    neighbor_idx = np.zeros((n, NEIGHBOR_COUNT), dtype=own_neighbor_idx.dtype)
+    neighbor_owner_ids = np.zeros((n, NEIGHBOR_COUNT), dtype=owner_plate_ids.dtype)
+    foreign_mask_all = np.zeros((n, NEIGHBOR_COUNT), dtype=bool)
+    neighbor_idx[own_indices] = own_neighbor_idx
+    neighbor_owner_ids[own_indices] = own_neighbor_owner_ids
+    foreign_mask_all[own_indices] = foreign_mask
+
+    return _apply_reassignment(world, points, elevations, owners, neighbor_idx, foreign_mask_all, neighbor_owner_ids, candidate_indices)
+
+
+def run_round_robin_check(world: "World") -> None:
+    """Continuous, one-plate-per-step complement to reassign_misplaced_points' periodic
+    whole-world pass: pop the plate at the front of world.plate_check_queue and audit just its
+    own nodes (see check_plate_for_outliers), then send it to the back. Reconciles the queue
+    against world.plates first -- newly created plates (generation, split, merge, gap-fill,
+    volcanism) are appended, plates removed since the last call are dropped -- so no other
+    module needs its own hook to keep this in sync; merge_split.merge_plates is the one
+    exception, jumping its merge survivor to the front since that's the highest-risk plate for
+    this check (see that function's own comment)."""
+    live_ids = {p.plate_id for p in world.plates}
+    queued = set(world.plate_check_queue)
+    for plate_id in sorted(live_ids - queued):
+        world.plate_check_queue.append(plate_id)
+    world.plate_check_queue = [pid for pid in world.plate_check_queue if pid in live_ids]
+
+    if not world.plate_check_queue:
+        return
+    plate_id = world.plate_check_queue.pop(0)
+    check_plate_for_outliers(world, plate_id)
+    world.plate_check_queue.append(plate_id)

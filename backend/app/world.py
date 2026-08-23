@@ -64,6 +64,14 @@ class World:
     # ordinary continental plate) once fewer than volcanism.VOLCANO_FRACTION_DORMANT_
     # THRESHOLD of the plate's own nodes are still is_volcano. See volcanism.py.
     volcanic_field_plate_ids: set[int] = field(default_factory=set)
+    # FIFO round-robin queue for reassign.run_round_robin_check: one plate's own nodes get
+    # audited for territory outliers per step_world call, cycling continuously rather than in
+    # a periodic whole-world burst (unlike reassign_misplaced_points below, which this
+    # complements, not replaces). Reconciled against world.plates (new ids appended, dead ids
+    # dropped) at the top of every run_round_robin_check call, so nothing else needs to keep
+    # this in sync at every plate-creation/removal site. merge_split.merge_plates jumps the
+    # merge survivor to the front on creation -- see that function's own comment.
+    plate_check_queue: list[int] = field(default_factory=list)
     # Number of times volcanism.detect_and_spawn_volcanic_fields has actually run -- part of
     # the deterministic RNG seed for that pass (see volcanism.py), same role
     # World.gap_fill_calls plays for gaps.py's own new-crust noise texture.
@@ -206,8 +214,12 @@ def step_world(world: World, years: float) -> None:
     aren't a regularize/gap-fill step, also periodically reassigns any node that's ended up
     geometrically embedded in a neighboring plate's own territory (see reassign.py) --
     deliberately never the same step as the gap-fill pass above, so each one's picture of
-    "which plate owns what" stays current when it acts. Every step also erodes elevation
-    based on the world's current climate (see erosion.py) -- rain/sheet erosion and
+    "which plate owns what" stays current when it acts. Every step, regardless of that
+    cadence, also pops one plate off World.plate_check_queue and self-audits just its own
+    nodes for the same kind of territory outlier -- a continuous, one-plate-at-a-time
+    complement to the periodic whole-world reassign pass, giving fast, spread-out coverage
+    rather than a periodic burst (see reassign.run_round_robin_check). Every step also erodes
+    elevation based on the world's current climate (see erosion.py) -- rain/sheet erosion and
     weathering, the other half of the weather<->geology coupling from climate.py's own
     terrain-influences-weather mechanics (lapse rate, mountain wind deflection, orographic
     rain shadow) -- relaxes submerged continental crust toward a shelf-or-deep-water target
@@ -281,3 +293,10 @@ def step_world(world: World, years: float) -> None:
     ):
         reassign.reassign_misplaced_points(world)
         world.steps_since_reassign = 0
+
+    # Continuous, one-plate-per-step complement to the periodic whole-world pass just above --
+    # see reassign.run_round_robin_check's own docstring for why this doesn't need the same
+    # "never the same step as gap-fill" mutual exclusion (it only ever touches one plate
+    # against a fresh snapshot taken at call time, not a whole-world batch).
+    if world.simulate_plate_movement:
+        reassign.run_round_robin_check(world)
