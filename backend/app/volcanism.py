@@ -169,7 +169,7 @@ def _whole_world_median_spacing(world: "World") -> float:
     """Pass 1: every elevation point's own nearest neighbor, whole-world, unrestricted by
     plate -- the median of all these distances, "how far apart elevation points normally
     sit." Returns 0.0 for a world too small to have a meaningful median."""
-    points_list = [line.world_xyz(plate.frame) for plate in world.plates for line in plate.lines if len(line.theta) > 0]
+    points_list = [line.world_xyz(plate.frame) for plate in world.plates for line in plate.lines if len(line) > 0]
     if not points_list:
         return 0.0
     points = np.concatenate(points_list, axis=0)
@@ -254,8 +254,8 @@ def _spawn_volcanic_field_plate(world: "World", cluster_points: np.ndarray, rng:
     lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     volcanic_lines = [
         line.replace(
-            is_volcano=np.ones(len(line.theta), dtype=bool),
-            volcano_active_years_remaining=rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=len(line.theta)),
+            is_volcano=np.ones(len(line), dtype=bool),
+            volcano_active_years_remaining=rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=len(line)),
         )
         for line in lines
     ]
@@ -324,7 +324,7 @@ def _plate_volcano_state(plate: PlateWithLines) -> tuple[np.ndarray, np.ndarray]
     """This plate's own is_volcano/volcano_active_years_remaining, concatenated in the exact
     same per-line order Plate.all_points_and_elevation uses -- so the two can be indexed
     together (see merge_close_volcanic_fields)."""
-    lines_with_nodes = [line for line in plate.lines if len(line.theta) > 0]
+    lines_with_nodes = [line for line in plate.lines if len(line) > 0]
     if not lines_with_nodes:
         return np.zeros(0, dtype=bool), np.zeros(0)
     is_volcano = np.concatenate([line.is_volcano for line in lines_with_nodes], axis=0)
@@ -604,7 +604,7 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
         plate = plate_by_id.get(plate_id)
         if plate is None:
             continue
-        lines_with_nodes = [line for line in plate.lines if len(line.theta) > 0]
+        lines_with_nodes = [line for line in plate.lines if len(line) > 0]
         if not lines_with_nodes:
             continue
 
@@ -627,8 +627,8 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
         )
 
         high_phi = np.array([line.phi for line in lines_with_nodes])
-        high_theta = np.array([line.theta[-1] for line in lines_with_nodes])
-        low_theta = np.array([line.theta[0] for line in lines_with_nodes])
+        high_theta = np.array([line[-1].get_theta() for line in lines_with_nodes])
+        low_theta = np.array([line[0].get_theta() for line in lines_with_nodes])
         high_world = geometry.to_world(plate.frame, geometry.local_xyz(high_phi, high_theta))
         low_world = geometry.to_world(plate.frame, geometry.local_xyz(high_phi, low_theta))
 
@@ -722,7 +722,7 @@ def apply_volcanic_activity(world: "World", years: float) -> list[str]:
 
     for plate in world.plates:
         for line_index, line in enumerate(plate.lines):
-            if len(line.theta) == 0 or not np.any(line.is_volcano):
+            if len(line) == 0 or not np.any(line.is_volcano):
                 continue
             active_mask = line.is_volcano & (line.volcano_active_years_remaining > 0)
             if not np.any(active_mask):
@@ -731,7 +731,7 @@ def apply_volcanic_activity(world: "World", years: float) -> list[str]:
             active_years_this_step = np.minimum(years, line.volcano_active_years_remaining)
             p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1_000_000.0)
             rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, line_index))
-            erupts = active_mask & (rng.random(len(line.theta)) < p_erupt)
+            erupts = active_mask & (rng.random(len(line)) < p_erupt)
 
             new_elevation = line.elevation.copy()
             new_elevation[erupts] += ERUPTION_ELEVATION_M

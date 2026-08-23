@@ -178,7 +178,7 @@ def _plate_summary(plate: plates.PlateWithLines) -> dict:
         # Lines with zero nodes are a real state a plate can be in (see merge_split.py's
         # own "no_land"/consumption checks) -- excluded here to match outline_world()'s own
         # filtering, so this doesn't look inconsistent next to num_points.
-        "num_rows": sum(1 for line in plate.lines if len(line.theta) > 0),
+        "num_rows": sum(1 for line in plate.lines if len(line) > 0),
         "num_points": plate.node_count(),
         "outline": _round_coords(outline),
         # Every node's own position (not just the outline loop) -- lets the client plot each

@@ -226,7 +226,7 @@ def seed_initial_soil(plate_list: list[PlateWithLines], seed: int, initial_soil_
     noise = SphereNoise(rng, octaves=3, base_freq=3.0)
     for plate in plate_list:
         for line_index, line in enumerate(plate.lines):
-            if len(line.theta) == 0:
+            if len(line) == 0:
                 continue
             world_pts = line.world_xyz(plate.frame)
             is_land = line.elevation > 0.0

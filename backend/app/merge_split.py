@@ -358,7 +358,7 @@ def maybe_split_plate(world: "World", plate: PlateWithLines) -> tuple[PlateWithL
         if np.any(~side):
             lines_b.append(line.masked(~side))
 
-    if sum(len(l.theta) for l in lines_a) < min_nodes or sum(len(l.theta) for l in lines_b) < min_nodes:
+    if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
         return None
 
     new_id = world.next_plate_id

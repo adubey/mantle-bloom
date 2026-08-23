@@ -51,11 +51,11 @@ def _gather_nodes(world: "World") -> tuple[np.ndarray, np.ndarray, list[tuple[in
     owners: list[tuple[int, int, int]] = []
     for plate in world.plates:
         for line_index, line in enumerate(plate.lines):
-            if len(line.theta) == 0:
+            if len(line) == 0:
                 continue
             points_list.append(line.world_xyz(plate.frame))
             elevation_list.append(line.elevation)
-            owners.extend((plate.plate_id, line_index, node_index) for node_index in range(len(line.theta)))
+            owners.extend((plate.plate_id, line_index, node_index) for node_index in range(len(line)))
     if not points_list:
         return np.zeros((0, 3)), np.zeros(0), []
     return np.concatenate(points_list, axis=0), np.concatenate(elevation_list, axis=0), owners
@@ -69,7 +69,7 @@ def _find_target_line(plate: PlateWithLines, candidate_line_indices: set[int], p
     best_index, best_dist = None, np.inf
     for line_index in indices:
         line = plate.lines[line_index]
-        if len(line.theta) == 0:
+        if len(line) == 0:
             continue
         dist = float(np.min(geometry.angular_distance(line.world_xyz(plate.frame), point_world)))
         if dist < best_dist:
@@ -129,9 +129,9 @@ def _apply_reassignment(
         new_theta = float(new_theta)
 
         insert_pos = int(np.searchsorted(target_line.theta, new_theta))
-        neighbor_candidates = [c for c in (insert_pos - 1, insert_pos) if 0 <= c < len(target_line.theta)]
-        nearest_on_line = min(neighbor_candidates, key=lambda c: abs(target_line.theta[c] - new_theta))
-        new_elevation = (float(elevations[i]) + float(target_line.elevation[nearest_on_line])) / 2.0
+        neighbor_candidates = [c for c in (insert_pos - 1, insert_pos) if 0 <= c < len(target_line)]
+        nearest_on_line = min(neighbor_candidates, key=lambda c: abs(target_line[c].get_theta() - new_theta))
+        new_elevation = (float(elevations[i]) + target_line[nearest_on_line].get_elevation()) / 2.0
 
         remove_by_source.setdefault((own_plate_id, own_line_index), set()).add(own_node_index)
         add_by_target.setdefault((target_plate_id, target_line_index), []).append((new_theta, new_elevation))
@@ -144,7 +144,7 @@ def _apply_reassignment(
     for (plate_id, line_index), remove_indices in remove_by_source.items():
         plate = plate_by_id[plate_id]
         line = plate.lines[line_index]
-        keep_mask = np.ones(len(line.theta), dtype=bool)
+        keep_mask = np.ones(len(line), dtype=bool)
         keep_mask[list(remove_indices)] = False
         plate.replace_line(line_index, line.masked(keep_mask))
 

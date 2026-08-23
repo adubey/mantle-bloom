@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Iterator, Protocol
 
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError, cKDTree
@@ -26,7 +26,9 @@ from .elevation_lines import (
     TARGET_LINE_SPACING_KM,
     TARGET_LINE_SPACING_RAD,
     ElevationLine,
+    ElevationPoint,
     build_lines_from_lattice,
+    install_point_field_accessors,
     iter_local_lattice,
     line_spacing_rad,
 )
@@ -205,6 +207,16 @@ class Plate(abc.ABC):
         "close enough" (e.g. volcanism.py's merge/isolation distances) can pass their own."""
         ...
 
+    @abc.abstractmethod
+    def __iter__(self) -> Iterator[ElevationPoint]:
+        """Every node this plate owns, as `ElevationPoint`s, in whatever order this plate's
+        own representation stores them -- `PlateWithLines` line-by-line, `PlateWithRTree` in
+        its flat array's own order. Lets code that just wants "every node, read or write"
+        (not a bulk array op) work the same way against either representation instead of
+        reaching into `PlateWithLines.lines`/`ElevationLine`'s arrays or `PlateWithRTree`'s
+        own flat `_theta`/`_phi`/`_elevation`/`_fields`."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -244,13 +256,13 @@ class PlateWithLines(Plate):
         the same sense the underlying elevation data is (see plates.iter_local_lattice /
         boundary.step_boundaries), since it's read from that same data, not duplicated
         state."""
-        lines_with_nodes = [line for line in self._lines if len(line.theta) > 0]
+        lines_with_nodes = [line for line in self._lines if len(line) > 0]
         if not lines_with_nodes:
             return np.zeros((0, 3))
         ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
         high_phi = np.array([line.phi for line in ordered])
-        high_theta = np.array([line.theta[-1] for line in ordered])
-        low_theta = np.array([line.theta[0] for line in ordered])
+        high_theta = np.array([line[-1].get_theta() for line in ordered])
+        low_theta = np.array([line[0].get_theta() for line in ordered])
         loop_local = np.concatenate(
             [
                 geometry.local_xyz(high_phi, high_theta),
@@ -261,7 +273,7 @@ class PlateWithLines(Plate):
         return geometry.to_world(self._frame, loop_local)
 
     def node_count(self) -> int:
-        return sum(len(line.theta) for line in self._lines)
+        return sum(len(line) for line in self._lines)
 
     def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
         """Every elevation-line node's world position and elevation, concatenated."""
@@ -272,7 +284,7 @@ class PlateWithLines(Plate):
         return points, elevation
 
     def collect(self, field_name: str) -> np.ndarray:
-        chunks = [getattr(line, field_name) for line in self._lines if len(line.theta) > 0]
+        chunks = [getattr(line, field_name) for line in self._lines if len(line) > 0]
         if not chunks:
             return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
         return np.concatenate(chunks, axis=0)
@@ -283,6 +295,10 @@ class PlateWithLines(Plate):
 
     def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
         return _plates_within(self, all_plates, threshold_rad)
+
+    def __iter__(self) -> Iterator[ElevationPoint]:
+        for line in self._lines:
+            yield from line
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -302,6 +318,41 @@ OUTLINE_NEIGHBORHOOD_SPACING_FACTOR = 3.0
 # of the densest node's own count -- relative to the plate's own densest node (not an
 # absolute count) so this works the same whether the plate as a whole is sparse or dense.
 OUTLINE_BOUNDARY_DENSITY_FRACTION = 0.6
+
+
+@install_point_field_accessors
+class ElevationPointInCloud:
+    """One node of a `PlateWithRTree`'s flat point cloud: a pointer to the plate plus its
+    index into that plate's own flat `_theta`/`_phi`/`_elevation`/`_fields` arrays -- the
+    `PlateWithRTree` counterpart to `ElevationPointOnLine`, sharing the same field-list-driven
+    `get_*`/`set_*` machinery (see `install_point_field_accessors`) so both `ElevationPoint`
+    implementations expose an identical surface despite backing storage that doesn't otherwise
+    look alike (fixed-phi rows vs. an unstructured cloud). Like `ElevationPointOnLine`, a live
+    view, not a snapshot -- stale once `set_nodes` rebuilds the plate's arrays out from under
+    it."""
+
+    def __init__(self, plate: "PlateWithRTree", index: int) -> None:
+        n = plate.node_count()
+        if not -n <= index < n:
+            raise IndexError(f"PlateWithRTree point index {index} out of range for length {n}")
+        self._plate = plate
+        self._index = index % n
+
+    @property
+    def plate(self) -> "PlateWithRTree":
+        return self._plate
+
+    @property
+    def index(self) -> int:
+        """This point's (always non-negative) index into `plate`'s own flat arrays."""
+        return self._index
+
+    @property
+    def phi(self) -> float:
+        return float(self._plate.phi[self._index])
+
+    def _field_array(self, name: str) -> np.ndarray:
+        return self._plate.field_array(name)
 
 
 class PlateWithRTree(Plate):
@@ -379,6 +430,16 @@ class PlateWithRTree(Plate):
         own outline_world use of it below."""
         return self._rtree
 
+    def field_array(self, name: str) -> np.ndarray:
+        """This plate's own flat array backing `name` ("theta", "elevation", or any
+        `ElevationLine.OPTIONAL_FIELDS` name) -- what `ElevationPointInCloud` indexes into,
+        the flat-array counterpart to `ElevationLine`'s own `_<name>` attributes."""
+        if name == "theta":
+            return self._theta
+        if name == "elevation":
+            return self._elevation
+        return self._fields[name]
+
     def node_count(self) -> int:
         return len(self._theta)
 
@@ -399,6 +460,10 @@ class PlateWithRTree(Plate):
 
     def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
         return _plates_within(self, all_plates, threshold_rad)
+
+    def __iter__(self) -> Iterator[ElevationPoint]:
+        for i in range(len(self._theta)):
+            yield ElevationPointInCloud(self, i)
 
     def _typical_spacing(self) -> float:
         """Median nearest-neighbor distance over a bounded sample of this plate's own nodes
@@ -548,7 +613,7 @@ def gather_node_positions(
     offset = 0
     for plate in plate_list:
         for line_index, line in enumerate(plate.lines):
-            n = len(line.theta)
+            n = len(line)
             if n == 0:
                 continue
             points_list.append(line.world_xyz(plate.frame))

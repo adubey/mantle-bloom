@@ -476,7 +476,7 @@ def step_boundaries(world: World, years: float) -> None:
         new_lines = []
         offset = 0
         for line in plate.lines:
-            n = len(line.theta)
+            n = len(line)
             dist = dist_all[offset : offset + n]
             closing = closing_all[offset : offset + n]
             default_intensity = default_intensity_all[offset : offset + n]
@@ -522,7 +522,7 @@ def step_boundaries(world: World, years: float) -> None:
                 max_extend_nodes,
                 years=years,
             )
-            if len(grown_line.theta) > 0:
+            if len(grown_line) > 0:
                 new_lines.append(grown_line)
 
         plate.set_lines(new_lines)

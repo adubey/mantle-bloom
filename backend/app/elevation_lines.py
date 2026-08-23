@@ -34,7 +34,7 @@ version of a density option pointless within a handful of steps."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator, Protocol
 
 import numpy as np
 
@@ -109,10 +109,15 @@ class ElevationLine:
     """A fixed plate-local latitude `phi` holding elevation (and other persistent, land-only
     or lake/volcano/soil/resource) samples at plate-local longitude nodes `theta`.
 
-    All fields are read-only -- an existing line is never mutated in place. Instead:
+    Iterating a line (`for point in line`, `line[i]`, `len(line)`) yields `ElevationPointOnLine`
+    instances -- one per node, each a live view onto this line's own arrays (see that class
+    below). A point's `set_*` methods mutate this line's data in place; that's the one way an
+    existing line's *data* changes without going through the whole-array methods below. What
+    stays off-limits to per-point mutation is the node set itself (`theta`'s shape/order) --
+    for that, use:
     - `replace(...)` swaps in a subset of fields, keeping `theta`'s shape/order untouched
       (the common case -- most steps only ever change `elevation` or one or two persistent
-      fields for the same set of nodes).
+      fields for the same set of nodes, in bulk).
     - `masked(mask)` filters and/or reorders every field together by a boolean mask or
       fancy index (plate split, node removal, node reassignment reordering).
     - `with_new_nodes(theta, elevation)` appends brand-new nodes (zero/False for every
@@ -271,6 +276,16 @@ class ElevationLine:
         local = geometry.local_xyz(phi_arr, self.theta)
         return geometry.to_world(frame, local)
 
+    def __len__(self) -> int:
+        return len(self._theta)
+
+    def __iter__(self) -> Iterator["ElevationPointOnLine"]:
+        for i in range(len(self._theta)):
+            yield ElevationPointOnLine(self, i)
+
+    def __getitem__(self, index: int) -> "ElevationPointOnLine":
+        return ElevationPointOnLine(self, index)
+
     def replace(self, **overrides: np.ndarray) -> "ElevationLine":
         """A new line with the given fields (elevation and/or any of OPTIONAL_FIELDS)
         swapped in and every other field copied from this one unchanged -- `theta`/`phi`
@@ -304,6 +319,133 @@ class ElevationLine:
             elevation=np.concatenate([self.elevation, elevation]),
             **kwargs,
         )
+
+
+class ElevationPoint(Protocol):
+    """A single node's worth of `ElevationLine` data -- structural (not a base class), so any
+    representation-specific backing (`ElevationPointOnLine`, plates.py's own
+    `ElevationPointInCloud` for `PlateWithRTree`) can satisfy it without sharing a base.
+
+    `phi`/`get_theta()` are this point's fixed position, get-only: no code in this simulation
+    ever moves a single node in place -- position changes always go through a whole-line or
+    whole-plate rebuild (`ElevationLine.replace`/`masked`/`with_new_nodes`, boundary growth,
+    `regularize_line`, `PlateWithRTree.set_nodes`), so a per-point position setter would just
+    invite a caller to silently desync a line's ordering or an R-tree's index instead of going
+    through one of those. `elevation` and every `ElevationLine.OPTIONAL_FIELDS` name get real
+    setters, since per-node *value* mutation (an eroded elevation, a grown channel, a newly lit
+    volcano) is exactly what per-step simulation passes do."""
+
+    @property
+    def phi(self) -> float: ...
+    def get_theta(self) -> float: ...
+
+    def get_elevation(self) -> float: ...
+    def set_elevation(self, value: float) -> None: ...
+
+    def get_channel_depth(self) -> float: ...
+    def set_channel_depth(self, value: float) -> None: ...
+
+    def get_channel_width(self) -> float: ...
+    def set_channel_width(self, value: float) -> None: ...
+
+    def get_lake_depth(self) -> float: ...
+    def set_lake_depth(self, value: float) -> None: ...
+
+    def get_glacier_depth(self) -> float: ...
+    def set_glacier_depth(self, value: float) -> None: ...
+
+    def get_silt_depth(self) -> float: ...
+    def set_silt_depth(self, value: float) -> None: ...
+
+    def get_is_volcano(self) -> bool: ...
+    def set_is_volcano(self, value: bool) -> None: ...
+
+    def get_volcano_active_years_remaining(self) -> float: ...
+    def set_volcano_active_years_remaining(self, value: float) -> None: ...
+
+    def get_soil_depth(self) -> float: ...
+    def set_soil_depth(self, value: float) -> None: ...
+
+    def get_soil_mineral_content(self) -> float: ...
+    def set_soil_mineral_content(self, value: float) -> None: ...
+
+    def get_soil_organic_content(self) -> float: ...
+    def set_soil_organic_content(self, value: float) -> None: ...
+
+    def get_coal_deposit_m(self) -> float: ...
+    def set_coal_deposit_m(self, value: float) -> None: ...
+
+    def get_oil_gas_deposit_m(self) -> float: ...
+    def set_oil_gas_deposit_m(self, value: float) -> None: ...
+
+    def get_mineral_deposit_m(self) -> float: ...
+    def set_mineral_deposit_m(self, value: float) -> None: ...
+
+
+def _point_field_getter(name: str):
+    def getter(self) -> float:
+        return self._field_array(name)[self._index]
+
+    getter.__name__ = f"get_{name}"
+    return getter
+
+
+def _point_field_setter(name: str):
+    def setter(self, value) -> None:
+        self._field_array(name)[self._index] = value
+
+    setter.__name__ = f"set_{name}"
+    return setter
+
+
+def install_point_field_accessors(cls: type) -> type:
+    """Class decorator attaching `get_theta` plus a `get_<name>`/`set_<name>` pair for
+    `elevation` and every `ElevationLine.OPTIONAL_FIELDS` name to `cls`, which need only
+    provide `_field_array(self, name) -> np.ndarray` and an `_index` attribute -- shared by
+    `ElevationPointOnLine` below and plates.py's `ElevationPointInCloud`, so both
+    `ElevationPoint` implementations stay wired to the same one field list `ElevationLine`'s
+    own `replace`/`masked`/`with_new_nodes` are keyed off, rather than each hand-writing (and
+    risking silently forgetting) a method per field -- see `ElevationLine`'s own docstring for
+    the bug class that's avoided by never doing this field-by-field by hand."""
+    setattr(cls, "get_theta", _point_field_getter("theta"))
+    for _name in ("elevation",) + ElevationLine.OPTIONAL_FIELDS:
+        setattr(cls, f"get_{_name}", _point_field_getter(_name))
+        setattr(cls, f"set_{_name}", _point_field_setter(_name))
+    return cls
+
+
+@install_point_field_accessors
+class ElevationPointOnLine:
+    """One node of an `ElevationLine`: a pointer to the line plus its index within it. A live
+    view, not a snapshot -- `get_*` reads the line's own arrays and `set_*` mutates them in
+    place at `index`, so a point handed out by iterating a line (or plate) stays valid and
+    stays wired to that same underlying data for as long as the line's node set itself doesn't
+    change shape (a `replace`/`masked`/`with_new_nodes` call, or `regularize_line`, produces a
+    *new* `ElevationLine` -- any point held from before that call is now stale, the same way a
+    Python list index would be after the list it was taken from got reassigned elsewhere)."""
+
+    def __init__(self, line: ElevationLine, index: int) -> None:
+        n = len(line)
+        if not -n <= index < n:
+            raise IndexError(f"ElevationLine point index {index} out of range for length {n}")
+        self._line = line
+        self._index = index % n
+
+    @property
+    def line(self) -> ElevationLine:
+        return self._line
+
+    @property
+    def index(self) -> int:
+        """This point's (always non-negative) position within `line`."""
+        return self._index
+
+    @property
+    def phi(self) -> float:
+        return self._line.phi
+
+    def _field_array(self, name: str) -> np.ndarray:
+        return getattr(self._line, f"_{name}")
 
 
 def iter_local_lattice(frame: np.ndarray, spacing_rad: float = TARGET_LINE_SPACING_RAD):
@@ -345,7 +487,7 @@ def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at, spacing_
 
 
 def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
-    if len(line.theta) < 3:
+    if len(line) < 3:
         return False
     dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
     gaps = np.diff(line.theta)
@@ -410,7 +552,7 @@ def _crumple_elevation(elevation: np.ndarray, m: int, hurst: float = CRUMPLE_HUR
 
 
 def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> ElevationLine:
-    if len(line.theta) < 3:
+    if len(line) < 3:
         return line
 
     dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
@@ -427,7 +569,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # between two kept sample points, where crumpling fits the whole n-point shape first and
     # only then reads fewer values off it, so a peak influences every new sample near it
     # rather than being invisible to all but its two immediate neighbors.
-    if n < len(line.theta):
+    if n < len(line):
         new_elevation = _crumple_elevation(line.elevation, n)
     else:
         new_elevation = np.interp(new_theta, line.theta, line.elevation)

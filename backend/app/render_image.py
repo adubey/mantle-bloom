@@ -1222,7 +1222,7 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     if view == "platesDetail":
         for plate in world.plates:
             for line in plate.lines:
-                if len(line.theta) == 0:
+                if len(line) == 0:
                     continue
                 xy = _project_points(projection, _rotate(line.world_xyz(plate.frame), view_rotation))
                 detail_lines.append((xy, line.elevation))
