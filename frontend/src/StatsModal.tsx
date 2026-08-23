@@ -56,7 +56,7 @@ const BIOME_NAMES = [
   "Subtropical Desert", "Savanna", "Tropical Seasonal Forest", "Tropical Rainforest",
 ];
 
-const TAB_METRICS: Record<TabKey, Metric[]> = {
+const TAB_METRICS: Record<Exclude<TabKey, "simulation">, Metric[]> = {
   physical: [
     pctMetric("land_fraction", "Land", (s) => s.land_fraction),
     pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction),
