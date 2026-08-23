@@ -70,13 +70,36 @@ SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(6.0)
 # to be dozens of sliver plates, each rotating almost identically to its neighbors).
 SPLIT_MIN_AGE_STEPS = 15
 
+# A plate's own sheer size independently raises its odds of rifting, on top of (not instead
+# of) the mantle-flow-fit criteria above -- a bigger footprint is both more likely to
+# straddle genuinely different mantle flow regimes and, mechanically, more likely to run its
+# local (phi, theta) parametrization into trouble the longer it's left uncut (a boundary
+# line that ends up spiraling many times around a plate's own local-frame pole as the plate
+# grows past it is exactly what overwhelmed line_regrid.py's periodic regularization pass
+# once). Modeled as linearly relaxing the two split gates (residual-fit and pole-separation)
+# toward zero as the plate's own angular radius (`geometry.bounding_sphere`, centroid to
+# farthest node) approaches SPLIT_SIZE_CERTAIN_RIFT_RAD -- at that size essentially any
+# mantle-flow variation at all, however small, is enough to both trigger and pass a split,
+# i.e. rifting probability is effectively 100%. At radius 0 this changes nothing (both gates
+# at their normal full strength); the plate still needs kmeans to find two genuinely
+# separate clusters either way, since there's no sensible cut without one.
+SPLIT_SIZE_CERTAIN_RIFT_RAD = np.pi
+
 
 def remove_defunct_plates(world: "World") -> None:
     """A plate whose every elevation node was deleted (fully subducted, see boundary.py), or
     that's been eroded down to a single line (or none) -- no real remaining territory, just
     a sliver along one latitude -- simply vanishes. No special-cased merge algorithm needed
-    either way; see apply_topology_changes for the distinct log messages for each case."""
-    world.plates = [p for p in world.plates if len(p.lines) > 1]
+    either way; see apply_topology_changes for the distinct log messages for each case.
+
+    `node_count() > 0` is its own check, not implied by `len(p.lines) > 1`: a plate can have
+    two or more lines that have each individually shrunk to zero nodes (see
+    `_grow_or_shrink_line`) without ever dropping below the line-count threshold, which
+    would otherwise leave an empty-but-not-removed plate sitting in world.plates -- e.g.
+    still counted by /world/summary's num_plates, still iterated by every other per-step
+    pass -- indefinitely. Called every step via apply_topology_changes, so this never lingers
+    more than one step."""
+    world.plates = [p for p in world.plates if p.node_count() > 0 and len(p.lines) > 1]
 
 
 def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
@@ -239,7 +262,15 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
 
     points, _ = plate.all_points_and_elevation()
     velocities = mantle.flow_at(points, world.mantle_centers)
-    if _fit_residual_rms(points, velocities, plate.omega) < SPLIT_RMS_RESIDUAL_THRESHOLD:
+
+    # See SPLIT_SIZE_CERTAIN_RIFT_RAD's own comment: the bigger this plate already is, the
+    # less additional mantle-flow evidence it should take to justify cutting it.
+    _, radius_rad = geometry.bounding_sphere(points)
+    size_frac = min(1.0, radius_rad / SPLIT_SIZE_CERTAIN_RIFT_RAD)
+    residual_threshold = SPLIT_RMS_RESIDUAL_THRESHOLD * (1.0 - size_frac)
+    pole_separation_threshold = SPLIT_MIN_POLE_SEPARATION * (1.0 - size_frac)
+
+    if _fit_residual_rms(points, velocities, plate.omega) < residual_threshold:
         return None
 
     _, labels = kmeans2(velocities, k=2, minit="++", seed=plate.plate_id)
@@ -250,7 +281,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     mask_b = labels == 1
     pole_a = mantle.fit_euler_pole(points[mask_a], velocities[mask_a])
     pole_b = mantle.fit_euler_pole(points[mask_b], velocities[mask_b])
-    if np.linalg.norm(pole_a - pole_b) < SPLIT_MIN_POLE_SEPARATION:
+    if np.linalg.norm(pole_a - pole_b) < pole_separation_threshold:
         return None
 
     centroid_a = geometry.normalize(points[mask_a].mean(axis=0))

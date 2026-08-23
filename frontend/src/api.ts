@@ -160,6 +160,10 @@ export interface LakeAtResponse {
 // StatsModal must handle that, not assume every field is always present.
 export interface WorldStats {
   elapsed_years: number;
+  // Single running totals, not a spatial snapshot distribution like every field below --
+  // the Simulation tab is what turns a run of these into a min/max/mean/std-dev over time.
+  plate_count: number;
+  elevation_point_count: number;
   land_fraction: number;
   ocean_fraction: number;
   // Land only (height above the current sea level) -- see stats.py's module docstring.

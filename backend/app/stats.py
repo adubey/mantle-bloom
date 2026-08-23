@@ -28,6 +28,13 @@ here rather than that view's own finer render grid -- an aggregate land fraction
 the extra resolution the way a rendered map's coastlines visibly do --
 the denominator is land cells only (Ocean is always 0% by construction, so it's omitted from
 the dict entirely rather than reported as a permanent zero).
+
+`plate_count`/`elevation_point_count` are the two exceptions to "every stat here is a
+spatial min/max/mean snapshot of the current world": each is a single running total (plate
+count, and the sum of every plate's own `node_count()`), with no per-call distribution to
+take a min/max/mean of. The frontend's Simulation tab is what turns a run of these single
+numbers into a min/max/mean/std-dev over time, the same "backend snapshot, frontend
+accumulates history" split every other stat here already uses.
 """
 
 from __future__ import annotations
@@ -72,6 +79,8 @@ def compute_stats(world: World) -> dict:
 
     return {
         "elapsed_years": world.elapsed_years,
+        "plate_count": len(world.plates),
+        "elevation_point_count": sum(p.node_count() for p in world.plates),
         "land_fraction": float(is_land.sum()) / total,
         "ocean_fraction": float(is_ocean.sum()) / total,
         "elevation_min_m": elevation_min,

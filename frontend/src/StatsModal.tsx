@@ -37,13 +37,14 @@ function numMetric(key: string, label: string, get: (s: WorldStats) => number | 
   };
 }
 
-type TabKey = "physical" | "temperature" | "precipitation" | "biome";
+type TabKey = "physical" | "temperature" | "precipitation" | "biome" | "simulation";
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "physical", label: "Physical" },
   { key: "temperature", label: "Temperature" },
   { key: "precipitation", label: "Precipitation" },
   { key: "biome", label: "Biome" },
+  { key: "simulation", label: "Simulation" },
 ];
 
 // Fixed order (biomes.BIOME_NAMES minus "Ocean") rather than sorted by current fraction --
@@ -86,6 +87,33 @@ const TAB_METRICS: Record<TabKey, Metric[]> = {
     numMetric("precipitation_max_mm", "Precipitation max", (s) => s.precipitation_max_mm, 0, " mm/yr"),
   ],
 };
+
+// Unlike every other tab's metrics (a spatial min/max/mean snapshot of the *current* world,
+// straight off `current`), these two are single running totals with no per-call distribution
+// of their own -- see api.ts's WorldStats docstring. Reused for this tab's Graph mode (the
+// raw series over time, same dropdown+chart pattern as every other tab); Table mode instead
+// runs runHistoryStats over `history` to get an actual min/max/mean/std-dev out of them.
+const SIMULATION_METRICS: Metric[] = [
+  numMetric("elevation_point_count", "Elevation points", (s) => s.elevation_point_count, 0),
+  numMetric("plate_count", "Plates", (s) => s.plate_count, 0),
+];
+
+interface HistoryStats {
+  min: number;
+  max: number;
+  mean: number;
+  stdDev: number;
+}
+
+function historyStats(history: WorldStats[], get: (s: WorldStats) => number): HistoryStats | null {
+  if (history.length === 0) return null;
+  const values = history.map(get);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return { min, max, mean, stdDev: Math.sqrt(variance) };
+}
 
 // Single accent for every series -- only one metric is ever plotted at a time (picked via
 // the dropdown below), so identity comes from the dropdown/heading, not the line color.
@@ -182,6 +210,62 @@ function MetricTab({ metrics, history, current }: { metrics: Metric[]; history: 
   );
 }
 
+// `current` isn't enough on its own here (unlike MetricTab's tabs, "min/max/avg/std dev"
+// for these two metrics means over the *run*, not a snapshot) -- Table mode is a dedicated
+// historyStats summary per metric instead of MetricTab's plain current-value rows; Graph
+// mode reuses MetricTab's own dropdown+chart exactly, since the raw series over time is the
+// same shape for these metrics as for every other tab's.
+function SimulationTab({ history }: { history: WorldStats[] }) {
+  const [viewMode, setViewMode] = useState<"table" | "graph">("table");
+  const [selectedKey, setSelectedKey] = useState(SIMULATION_METRICS[0].key);
+  const selected = SIMULATION_METRICS.find((m) => m.key === selectedKey) ?? SIMULATION_METRICS[0];
+
+  const chartData: ChartPoint[] = useMemo(
+    () => history.map((h) => ({ x: h.elapsed_years, values: { [selected.key]: selected.get(h) } })),
+    [history, selected],
+  );
+  const chartSeries: ChartSeries[] = useMemo(() => [{ key: selected.key, label: selected.label, color: ACCENT_COLOR }], [selected]);
+
+  return (
+    <>
+      <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+      {viewMode === "table" ? (
+        history.length === 0 ? (
+          <div style={{ opacity: 0.6 }}>No history yet -- step the world to start tracking.</div>
+        ) : (
+          SIMULATION_METRICS.map((m) => {
+            const s = historyStats(history, (h) => m.get(h) ?? 0);
+            return (
+              <div key={m.key} style={{ marginBottom: 14 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{m.label}</div>
+                <Row label="Min" value={m.tableFormat(s?.min ?? null)} />
+                <Row label="Max" value={m.tableFormat(s?.max ?? null)} />
+                <Row label="Avg" value={m.tableFormat(s?.mean ?? null)} />
+                <Row label="Std dev" value={m.tableFormat(s?.stdDev ?? null)} />
+              </div>
+            );
+          })
+        )
+      ) : (
+        <>
+          <select
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+            style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
+          >
+            {SIMULATION_METRICS.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={selected.yFormat} />
+        </>
+      )}
+    </>
+  );
+}
+
 export default function StatsModal({ stats, history, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<TabKey>("physical");
 
@@ -238,7 +322,11 @@ export default function StatsModal({ stats, history, onClose }: Props) {
                 *meaning* changed) would carry over from the previous tab, e.g. leaving
                 Graph mode on and an arbitrary fallback metric selected right after
                 switching to a tab whose metrics don't include the old selection. */}
-            <MetricTab key={activeTab} metrics={TAB_METRICS[activeTab]} history={history} current={stats} />
+            {activeTab === "simulation" ? (
+              <SimulationTab history={history} />
+            ) : (
+              <MetricTab key={activeTab} metrics={TAB_METRICS[activeTab]} history={history} current={stats} />
+            )}
           </>
         )}
       </div>
