@@ -217,6 +217,17 @@ class Plate(abc.ABC):
         own flat `_theta`/`_phi`/`_elevation`/`_fields`."""
         ...
 
+    @abc.abstractmethod
+    def map_world_points(self) -> Iterator[tuple[ElevationPoint, np.ndarray]]:
+        """Every node this plate owns, paired with its own world xyz position -- the same
+        nodes/order as `__iter__`, just with each `ElevationPoint` accompanied by the world
+        coordinate a caller would otherwise have had to derive itself (e.g. via
+        `ElevationLine.world_xyz(plate.frame)`). Each `ElevationPoint` is a live view, so a
+        value computed as a function of world position (noise, distance, sampled field) can be
+        written straight back with the point's own `set_*` -- in place, no
+        `replace`/`replace_line`/`set_nodes` round-trip needed."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -299,6 +310,14 @@ class PlateWithLines(Plate):
     def __iter__(self) -> Iterator[ElevationPoint]:
         for line in self._lines:
             yield from line
+
+    def map_world_points(self) -> Iterator[tuple[ElevationPoint, np.ndarray]]:
+        for line in self._lines:
+            if len(line) == 0:
+                continue
+            world_pts = line.world_xyz(self._frame)
+            for point, world_xyz in zip(line, world_pts):
+                yield point, world_xyz
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -464,6 +483,13 @@ class PlateWithRTree(Plate):
     def __iter__(self) -> Iterator[ElevationPoint]:
         for i in range(len(self._theta)):
             yield ElevationPointInCloud(self, i)
+
+    def map_world_points(self) -> Iterator[tuple[ElevationPoint, np.ndarray]]:
+        if len(self._theta) == 0:
+            return
+        world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        for i, world_xyz in enumerate(world_pts):
+            yield ElevationPointInCloud(self, i), world_xyz
 
     def _typical_spacing(self) -> float:
         """Median nearest-neighbor distance over a bounded sample of this plate's own nodes

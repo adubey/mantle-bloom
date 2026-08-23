@@ -225,19 +225,11 @@ def seed_initial_soil(plate_list: list[PlateWithLines], seed: int, initial_soil_
     rng = np.random.default_rng(seed + 2)
     noise = SphereNoise(rng, octaves=3, base_freq=3.0)
     for plate in plate_list:
-        for line_index, line in enumerate(plate.lines):
-            if len(line) == 0:
+        for point, world_xyz in plate.map_world_points():
+            if point.get_elevation() <= 0.0:
                 continue
-            world_pts = line.world_xyz(plate.frame)
-            is_land = line.elevation > 0.0
-            texture = np.clip(1.0 + INITIAL_SOIL_NOISE_AMPLITUDE * noise.sample(world_pts), 0.0, None)
-            depth = np.where(is_land, maturity * INITIAL_SOIL_MAX_DEPTH_M * texture, 0.0)
-            fraction = np.where(is_land, np.clip(maturity * texture, 0.0, 1.0), 0.0)
-            plate.replace_line(
-                line_index,
-                line.replace(
-                    soil_depth=depth,
-                    soil_organic_content=fraction,
-                    soil_mineral_content=fraction,
-                ),
-            )
+            texture = float(np.clip(1.0 + INITIAL_SOIL_NOISE_AMPLITUDE * noise.sample(world_xyz), 0.0, None))
+            fraction = float(np.clip(maturity * texture, 0.0, 1.0))
+            point.set_soil_depth(maturity * INITIAL_SOIL_MAX_DEPTH_M * texture)
+            point.set_soil_organic_content(fraction)
+            point.set_soil_mineral_content(fraction)
