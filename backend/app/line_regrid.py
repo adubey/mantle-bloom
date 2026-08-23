@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from .boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
 from .plates import TARGET_LINE_SPACING_RAD, ElevationLine, Plate, line_spacing_rad
 
 if TYPE_CHECKING:
@@ -94,6 +95,11 @@ def _crumple_elevation(elevation: np.ndarray, m: int, hurst: float = CRUMPLE_HUR
     amplitude = k**-hurst
     mean_e = elevation.mean()
     crumpled = mean_e + amplitude * (fitted - mean_e)
+    # amplitude > 1 (k < 1) means crumpling can push a peak/valley past what the original n
+    # points ever reached -- clamp back into the world's elevation bounds the same way every
+    # other module that modifies elevation does (boundary.py, bathymetry.py, erosion.py,
+    # volcanism.py), since nothing downstream of regularizing re-checks this.
+    crumpled = np.clip(crumpled, MIN_ELEVATION_M, MAX_ELEVATION_M)
     # The fit is a smoothing regression, not an exact interpolant, so it can drift slightly
     # from the original data even at x=0/x=n-1 -- force the two ends back to the real
     # original values so a crumpled line still butts up exactly against its neighbors'
