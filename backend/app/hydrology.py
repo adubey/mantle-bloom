@@ -265,10 +265,10 @@ def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
     n = len(points)
     k = min(FLOW_NEIGHBOR_COUNT, n - 1)
     # balanced_tree=False/compact_nodes=False + query_workers on the query -- same build-
-    # once/query-once tradeoff as boundary.step_boundaries' own per-plate tree (see its
-    # comment): this tree is built fresh every step and queried exactly once (one batched
-    # k-NN query over every node at once). Still an exact k-nearest-neighbor search either
-    # way -- results unchanged.
+    # once/query-once tradeoff plates.PlateWithLines.deform's own per-plate tree uses: this
+    # tree is built fresh every step and queried exactly once (one batched k-NN query over
+    # every node at once). Still an exact k-nearest-neighbor search either way -- results
+    # unchanged.
     tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
     _, neighbor_idx = tree.query(points, k=k + 1, workers=query_workers(n))
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0

@@ -295,24 +295,6 @@ def test_merge_probability_decreases_with_combined_size_and_floors():
     assert big_pair_probability < small_pair_probability
 
 
-def test_merge_plates_jumps_survivor_to_front_of_check_queue():
-    theta = np.linspace(-0.01, 0.01, 5)
-    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
-    tiny_angle = merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
-    seed_absorb = geometry.rotate_vectors(
-        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=tiny_angle
-    )[0]
-    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
-    # id_keep already queued, part-way back -- the merge should move it to the front, not
-    # just leave it where reconciliation would otherwise find it.
-    world = World(seed=0, plates=[keep, absorb], next_plate_id=2, plate_check_queue=[5, 0, 6])
-
-    merge_split.merge_plates(world, id_keep=0, id_absorb=1)
-
-    assert world.plate_check_queue[0] == 0
-    assert world.plate_check_queue.count(0) == 1
-
-
 def test_maybe_split_plate_returns_none_for_small_plate():
     small = _test_plate(0, [1.0, 0.0, 0.0], "continental", [0.0, 0.1], [0.0, 0.0])
     world = World(seed=0, plates=[small], mantle_centers=[], next_plate_id=1)

@@ -1,7 +1,7 @@
 import numpy as np
 
 from app import erosion, geometry, plates
-from app.boundary import MAX_ELEVATION_M, MIN_ELEVATION_M
+from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from app.world import World, generate_world
 
 

@@ -267,13 +267,6 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
 
-    # The merge survivor is the highest-risk plate for the round-robin outlier audit (see
-    # reassign.run_round_robin_check) -- its whole footprint was just re-resampled, so give it
-    # priority over waiting its normal turn in the queue.
-    if id_keep in world.plate_check_queue:
-        world.plate_check_queue.remove(id_keep)
-    world.plate_check_queue.insert(0, id_keep)
-
 
 def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndarray) -> float:
     predicted = np.cross(omega, points)

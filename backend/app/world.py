@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import bathymetry, boundary, climate, elevation_lines, erosion, gaps, geology, geometry, hydrology, mantle, merge_split, reassign, volcanism
+from . import bathymetry, climate, erosion, geology, hydrology, mantle, merge_split, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from .plates import Plate, gather_node_positions, generate_plates, query_workers
 
@@ -24,11 +24,6 @@ class World:
     plates: list[Plate] = field(default_factory=list)
     mantle_centers: list[mantle.ConvectionCenter] = field(default_factory=list)
     elapsed_years: float = 0.0
-    steps_since_regularize: int = 0
-    # Separate from steps_since_regularize (and deliberately never triggered on the same
-    # step -- see step_world) so reassign.py's whole-sphere neighbor query never runs against
-    # a plate layout gaps.fill_gaps just changed out from under it, or vice versa.
-    steps_since_reassign: int = 0
     next_plate_id: int = 0
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
@@ -37,11 +32,11 @@ class World:
     # Another fixed per-world property, set once at generation (see plates.generate_plates'
     # own node_density parameter) and read for the rest of this world's life by every module
     # that builds new elevation-line nodes or derives a distance/count threshold from
-    # plates.TARGET_LINE_SPACING_RAD (elevation_lines.py, boundary.py, gaps.py, merge_split.py,
-    # volcanism.py -- see plates.line_spacing_rad's own docstring for why each of those needs
-    # this rather than reading the bare module constant), so a world generated at a
-    # non-default density stays self-consistent through regularizing/gap-filling/merging/
-    # splitting/volcanism, not just at the moment it's generated.
+    # elevation_lines.TARGET_LINE_SPACING_RAD (elevation_lines.py, plates.py's deform(),
+    # merge_split.py -- see plates.line_spacing_rad's own docstring for why each of those
+    # needs this rather than reading the bare module constant), so a world generated at a
+    # non-default density stays self-consistent through deforming/merging/splitting, not
+    # just at the moment it's generated.
     node_density: float = DEFAULT_NODE_DENSITY
     # Another fixed per-world property, set once at generation (the UI's "climate & biome
     # resolution" choice, see climate.CLIMATE_DENSITY_CHOICES) and read for the rest of this
@@ -56,28 +51,18 @@ class World:
     # choice, not a different climate model, but not entirely inconsequential to physics
     # either the way a pure render-quality setting would be.
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
-    # Number of times gaps.fill_gaps has actually run -- part of the deterministic RNG seed
-    # for gap-fill's new-crust noise texture (see gaps.py), not just a counter.
-    gap_fill_calls: int = 0
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
     # plate_ids currently tracked as an active volcanic field -- removed (and relabeled as an
     # ordinary continental plate) once fewer than volcanism.VOLCANO_FRACTION_DORMANT_
-    # THRESHOLD of the plate's own nodes are still is_volcano. See volcanism.py.
+    # THRESHOLD of the plate's own nodes are still is_volcano. Nothing populates this set any
+    # more (PlateWithLines.deform spawns overstretch volcanoes as new nodes on the same
+    # plate's own existing line, not as a separate tracked plate) -- kept for now since
+    # apply_volcanic_activity's own per-node eruption rolling (which reads `is_volcano`
+    # directly off every plate's lines, independent of this set) still needs somewhere to
+    # report a field "cooling" if that tracking comes back later. See volcanism.py.
     volcanic_field_plate_ids: set[int] = field(default_factory=set)
-    # FIFO round-robin queue for reassign.run_round_robin_check: one plate's own nodes get
-    # audited for territory outliers per step_world call, cycling continuously rather than in
-    # a periodic whole-world burst (unlike reassign_misplaced_points below, which this
-    # complements, not replaces). Reconciled against world.plates (new ids appended, dead ids
-    # dropped) at the top of every run_round_robin_check call, so nothing else needs to keep
-    # this in sync at every plate-creation/removal site. merge_split.merge_plates jumps the
-    # merge survivor to the front on creation -- see that function's own comment.
-    plate_check_queue: list[int] = field(default_factory=list)
-    # Number of times volcanism.detect_and_spawn_volcanic_fields has actually run -- part of
-    # the deterministic RNG seed for that pass (see volcanism.py), same role
-    # World.gap_fill_calls plays for gaps.py's own new-crust noise texture.
-    volcanic_field_calls: int = 0
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
@@ -239,52 +224,62 @@ def generate_world(
 
 
 def step_world(world: World, years: float) -> None:
-    """Advance the world by `years`: refit each plate's Euler pole from the mantle flow
-    field (damped toward the new target), rotate the plate rigidly by that pole for
-    `years` (exact for every carried point, no resampling), then let boundaries evolve --
-    uplift/trench/ridge/rift elevation deltas and line growth/shrinkage where plates are
-    now close to each other. Then topology changes: fully-subducted plates disappear,
-    colliding continental plates merge (at most one per step, only after a sustained
-    50-100 Myr collision -- see merge_split.py), and plates whose flow field no longer fits
-    one rigid rotation well can split; any resulting events are logged to world.events for
-    the UI's console. Every `elevation_lines.REGULARIZE_INTERVAL_STEPS` calls, also fills any
-    sphere-coverage gaps (a plate growing toward its own pole, or territory a subducted
-    plate left unclaimed -- see gaps.py, which now logs each newly spawned plate) and
-    regularizes any line whose interior spacing has drifted (elevation_lines.py). On steps that
-    aren't a regularize/gap-fill step, also periodically reassigns any node that's ended up
-    geometrically embedded in a neighboring plate's own territory (see reassign.py) --
-    deliberately never the same step as the gap-fill pass above, so each one's picture of
-    "which plate owns what" stays current when it acts. Every step, regardless of that
-    cadence, also pops one plate off World.plate_check_queue and self-audits just its own
-    nodes for the same kind of territory outlier -- a continuous, one-plate-at-a-time
-    complement to the periodic whole-world reassign pass, giving fast, spread-out coverage
-    rather than a periodic burst (see reassign.run_round_robin_check). Every step also erodes
-    elevation based on the world's current climate (see erosion.py) -- rain/sheet erosion and
-    weathering, the other half of the weather<->geology coupling from climate.py's own
-    terrain-influences-weather mechanics (lapse rate, mountain wind deflection, orographic
-    rain shadow) -- relaxes submerged continental crust toward a shelf-or-deep-water target
-    based on distance to the nearest land (see bathymetry.py), and rolls each active
-    volcano's own eruption chance, growing mineral_deposit_m wherever one erupts (see
-    volcanism.py). Right after that, grows/relaxes soil and coal/oil-gas deposits from this
-    same step's erosion/flow-routing results (see geology.py). On the same cadence as the
-    gap-fill/regularize pass, also scans for divergent gaps between plates and spawns any new
-    volcanic fields they warrant, fuses any currently-tracked volcanic fields that have ended
-    up close to each other (bridging the gap between them with new interpolated land/
-    volcanoes), and grows any volcanic field whose own edge has no other plate nearby to bound
-    it (see volcanism.py).
+    """Advance the world by `years`.
+
+    Plate movement (skippable via World.simulate_plate_movement) is now two per-plate
+    passes rather than the old rotate-then-classify-by-velocity pipeline:
+
+    1. `Plate.shift(world, years)`, for every plate: refit its Euler pole from the mantle
+       flow field (damped toward the new target), rotate rigidly by `years` (exact, no
+       resampling), and return `D` -- the greatest angular distance any of that plate's own
+       nodes actually moved this step. Order doesn't matter here; rotation only touches the
+       rotating plate's own frame.
+    2. `Plate.deform(world, other_plates, years, D)`, for every plate, in a freshly
+       randomized order each turn: reconcile this plate's actual post-shift footprint
+       against the footprint it's entitled to occupy -- the sphere minus every *other*
+       currently-live plate's own bounding polygon. Territory now overlapping a neighbor is
+       collision/subducted (uplift/trench elevation, then the affected line end shrinks, up
+       to `D` worth of nodes); territory nobody else claims is a rift (grows, or -- if
+       already stretched thin -- spawns a fresh volcano instead); everything else close to a
+       neighbor but not overlapping it is transform. Regularizes any line whose spacing has
+       drifted, and claims any adjacent unclaimed territory a line's own end-growth can't
+       reach (a plate growing toward its own pole, or reclaiming a subducted neighbor's
+       vacated ground), all as part of this same call -- see PlateWithLines.deform's own
+       docstring. Randomizing the processing order each turn is what keeps two neighbors
+       from both claiming the same contested/unclaimed space in the same turn: each plate's
+       "what am I entitled to" check runs against whatever state its neighbors are
+       *currently* in -- already-deformed neighbors reflect this turn's change, not-yet-
+       deformed ones don't -- and average fairness comes from the order changing every turn.
+
+    Then topology changes: fully-subducted plates disappear, colliding continental plates
+    merge (at most one per step, only after a sustained 50-100 Myr collision -- see
+    merge_split.py), and plates whose flow field no longer fits one rigid rotation well can
+    split; any resulting events are logged to world.events for the UI's console. Every step
+    also erodes elevation based on the world's current climate (see erosion.py) --
+    rain/sheet erosion and weathering, the other half of the weather<->geology coupling from
+    climate.py's own terrain-influences-weather mechanics (lapse rate, mountain wind
+    deflection, orographic rain shadow) -- relaxes submerged continental crust toward a
+    shelf-or-deep-water target based on distance to the nearest land (see bathymetry.py),
+    and rolls each active volcano's own eruption chance, growing mineral_deposit_m wherever
+    one erupts (see volcanism.py). Right after that, grows/relaxes soil and coal/oil-gas
+    deposits from this same step's erosion/flow-routing results (see geology.py).
 
     Both halves above are individually skippable, live, via World.simulate_plate_movement/
     World.simulate_climate_biomes (see their own docstrings and main.py's /world/controls) --
-    "plate movement" below means rotation, boundary evolution, topology changes, volcanism,
-    and the periodic gap-fill/regularize/reassign passes; "climate & biomes" means erosion
-    (which itself computes this step's climate.py fields), hydrology, bathymetry, and
-    geology's resource formation. elapsed_years always advances regardless of either flag."""
+    "plate movement" means shift/deform, topology changes, and volcanism; "climate & biomes"
+    means erosion (which itself computes this step's climate.py fields), hydrology,
+    bathymetry, and geology's resource formation. elapsed_years always advances regardless
+    of either flag."""
     if world.simulate_plate_movement:
-        for plate in world.plates:
-            _update_plate_omega(plate, world.mantle_centers, damping=mantle.VELOCITY_DAMPING)
-            increment = geometry.rotation_matrix_from_omega(plate.omega, years)
-            plate.rotate(increment)
-        boundary.step_boundaries(world, years)
+        distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
+        order = list(world.plates)
+        # Deterministic per (seed, elapsed_years) so a replayed session still deforms plates
+        # in the same order -- not the same order every turn, which is the whole point (see
+        # docstring above), but reproducible given the same seed and step history.
+        np.random.default_rng((world.seed, round(world.elapsed_years))).shuffle(order)
+        for plate in order:
+            others = [p for p in world.plates if p.plate_id != plate.plate_id]
+            plate.deform(world, others, years, distances[plate.plate_id])
     world.elapsed_years += years
     if world.simulate_plate_movement:
         for message in merge_split.apply_topology_changes(world, years):
@@ -294,7 +289,7 @@ def step_world(world: World, years: float) -> None:
     if world.simulate_climate_biomes:
         # Gathered once here (rather than independently inside erosion.apply_erosion/
         # bathymetry.apply_bathymetry) since node positions are fixed for the rest of this
-        # step -- nothing between here and the next step's rotation moves a node or changes
+        # step -- nothing between here and the next step's shift() moves a node or changes
         # line topology (only elevation and other per-node fields still change, which each of
         # climate.py/erosion.py/hydrology.py/bathymetry.py still reads fresh off world.plates
         # itself) -- see plates.gather_node_positions's own docstring for why this was worth
@@ -314,34 +309,3 @@ def step_world(world: World, years: float) -> None:
             world.log_event(message)
     if erosion_result is not None:
         geology.apply_resource_formation(world, years, erosion_result)
-
-    world.steps_since_regularize += 1
-    run_regularize_this_step = (
-        world.simulate_plate_movement and world.steps_since_regularize >= elevation_lines.REGULARIZE_INTERVAL_STEPS
-    )
-    if run_regularize_this_step:
-        for message in volcanism.detect_and_spawn_volcanic_fields(world):
-            world.log_event(message)
-        for message in volcanism.merge_close_volcanic_fields(world):
-            world.log_event(message)
-        volcanism.grow_isolated_volcanic_fields(world)
-        for message in gaps.fill_gaps(world):
-            world.log_event(message)
-        elevation_lines.regularize_world_lines(world)
-        world.steps_since_regularize = 0
-
-    world.steps_since_reassign += 1
-    if (
-        world.simulate_plate_movement
-        and not run_regularize_this_step
-        and world.steps_since_reassign >= reassign.REASSIGN_INTERVAL_STEPS
-    ):
-        reassign.reassign_misplaced_points(world)
-        world.steps_since_reassign = 0
-
-    # Continuous, one-plate-per-step complement to the periodic whole-world pass just above --
-    # see reassign.run_round_robin_check's own docstring for why this doesn't need the same
-    # "never the same step as gap-fill" mutual exclusion (it only ever touches one plate
-    # against a fresh snapshot taken at call time, not a whole-world batch).
-    if world.simulate_plate_movement:
-        reassign.run_round_robin_check(world)

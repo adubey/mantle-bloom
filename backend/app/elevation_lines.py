@@ -79,6 +79,18 @@ MAX_ELEVATION_M = 9000.0
 REGULARIZE_INTERVAL_STEPS = 5
 IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
 
+# Shared between volcanism.py (per-step eruption rolling for every existing volcano node)
+# and plates.py (PlateWithLines.deform spawning a brand-new volcano when a rift has
+# stretched too thin to keep filling with plain ridge/rift crust) -- kept here, rather than
+# in volcanism.py, so plates.py can use them without importing volcanism.py (which itself
+# imports from plates.py).
+VOLCANO_ACTIVE_MIN_YEARS = 100_000
+VOLCANO_ACTIVE_MAX_YEARS = 1_000_000
+# A single eruption's land contribution -- comparable order of magnitude to
+# plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR (800 m/Myr) applied over a fraction of a Myr,
+# consistent with "a discrete volcanic event" rather than a smooth continuous uplift rate.
+ERUPTION_ELEVATION_M = 100.0
+
 # Self-affine scaling exponent used by _crumple_elevation below: real terrain roughened by
 # compressing a profile horizontally by k doesn't just get resampled at the new spacing, its
 # vertical amplitude grows by roughly k**-CRUMPLE_HURST_EXPONENT (a Hurst exponent -- 0.5 is

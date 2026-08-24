@@ -6,12 +6,12 @@
 - [Plate-local frames](#plate-local-frames)
 - [Initial plate generation](#initial-plate-generation)
 - [Mantle flow](#mantle-flow)
-- [Boundary evolution](#boundary-evolution)
+- [Plate motion: shift and deform](#boundary-evolution)
 - [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
-- [Whole-sphere coverage (gap-filling)](#gap-filling)
+- [Whole-sphere coverage (subsumed into deform)](#gap-filling)
 - [Volcanism](#volcanism)
-- [Boundary point reassignment](#reassignment)
+- [Boundary point reassignment (subsumed into deform)](#reassignment)
 - [Projections](#projections)
 - [Render image](#render-image)
 - [Rotating the view](#rotating-the-view)
@@ -136,31 +136,31 @@ nodes needs half the spacing, not a quarter; conversely 0.5x, the coarsest optio
 spacing). Stored on `World.node_density`, set once at generation and
 read for that world's entire life, not just at the moment it's generated: every later module
 that builds new elevation-line nodes or derives a distance/count threshold from
-`TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s periodic regularization,
-`boundary.py`'s per-step growth/merge/reach thresholds, `gaps.py`'s coverage-gap detection
-and absorption/spawning, `merge_split.py`'s plate-merge contact distance and split-size
-floor, `volcanism.py`'s volcanic-field clustering/coverage -- calls `line_spacing_rad(world.
-node_density)` (or scales its own reference constant by the same ratio) instead of reading
-the bare module constant. This matters because it's not just a generation-time cosmetic
-choice: `elevation_lines.py`'s regularize pass in particular runs unconditionally every
-`REGULARIZE_INTERVAL_STEPS` steps and, before this threading existed, always resampled a
+`TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s line regularization, `plates.py`'s
+`PlateWithLines.deform` (per-turn growth/shrink/claim thresholds -- see [Plate motion: shift
+and deform](#boundary-evolution)), `merge_split.py`'s plate-merge contact distance and
+split-size floor -- calls `line_spacing_rad(world.node_density)` (or scales its own reference
+constant by the same ratio) instead of reading the bare module constant. This matters because
+it's not just a generation-time cosmetic choice: `elevation_lines.py`'s regularize pass in
+particular runs at the end of every single `deform()` call now (not periodically -- see [Line
+regularization](#line-regularization)) and, before this threading existed, always resampled a
 line back down to the *reference* spacing regardless of what density the world was actually
 generated at -- confirmed directly as a real bug during development, a 4x-density world's
 own node count reverting to the 1x baseline within the first handful of steps. Every
-distance-based threshold derived from `TARGET_LINE_SPACING_RAD` (e.g. `boundary.py`'s
+distance-based threshold derived from `TARGET_LINE_SPACING_RAD` (e.g. `plates.py`'s
 `EXTEND_THRESHOLD_RAD`) scales linearly with the new spacing; every absolute node-*count*
-constant tied to a fixed physical area (`gaps.MIN_GAP_POINTS`, `merge_split.SPLIT_MIN_NODES`,
-etc.) scales with `node_density` directly, not its square root, since it's already an area
--- see each constant's own comment for the exact reasoning, which predates this option (the
-same rescaling used to happen as a one-off hardcoded code change whenever
-`TARGET_LINE_SPACING_KM` itself changed; this option just makes it a per-world runtime
-choice instead). Genuine fixed physical distances unrelated to sampling resolution (e.g.
-`boundary.COLLISION_RANGE_KM`, a real ~400km-wide collision belt) are deliberately *not*
-scaled -- only thresholds explicitly defined as multiples of `TARGET_LINE_SPACING_RAD` are.
-4x density comes with a real, continuous performance cost, not just a one-time generation
-cost -- confirmed directly, roughly a 5x slower per-step time (not just 4x, since flow-
-routing/reassignment passes are `O(n log n)` rather than linear) -- which the UI surfaces as
-a short note when 4x is selected.
+constant tied to a fixed physical area (`merge_split.SPLIT_MIN_NODES`, etc.) scales with
+`node_density` directly, not its square root, since it's already an area -- see each
+constant's own comment for the exact reasoning, which predates this option (the same
+rescaling used to happen as a one-off hardcoded code change whenever `TARGET_LINE_SPACING_KM`
+itself changed; this option just makes it a per-world runtime choice instead). Genuine fixed
+physical distances unrelated to sampling resolution (e.g. `plates.COLLISION_RANGE_KM`, a real
+~400km-wide collision belt) are deliberately *not* scaled -- only thresholds explicitly
+defined as multiples of `TARGET_LINE_SPACING_RAD` are. 4x density comes with a real,
+continuous performance cost, not just a one-time generation cost -- confirmed directly,
+several times slower per-step time (not just 4x, since the polygon-containment classification
+`deform()` runs against every near-boundary node is closer to `O(n log n)` than linear) --
+which the UI surfaces as a short note when 4x is selected.
 
 <a id="mantle-flow"></a>
 ## Mantle flow (`mantle.py`)
@@ -184,23 +184,62 @@ accelerates smoothly rather than snapping) and clamped to a plausible speed rang
 (`MIN/MAX_PLATE_RATE`, equivalent to 0.5-15 cm/yr at `PLANET_RADIUS_KM = 6371`).
 
 <a id="boundary-evolution"></a>
-## Boundary evolution (`boundary.py`)
+## Plate motion: shift and deform (`plates.py`'s `Plate.shift`/`Plate.deform`)
 
-There's no maintained shared-edge structure between plates -- every step, each plate's
-elevation-line nodes are matched against a fresh k-d tree of every other plate's current
-nodes (`scipy.spatial.cKDTree`). This is self-healing every step rather than requiring an
-always-consistent topology, and it's what makes merge/split tractable without a general
-spherical polygon-boolean library.
+Replaces an earlier design (`boundary.py`'s `step_boundaries`) that classified a boundary
+node as convergent/divergent/transform from the *velocity* decomposition described further
+down -- two plates' relative velocity at a point, decomposed against the direction toward
+the neighbor into a signed **closing rate**. That mechanism still exists (`boundary.
+closing_rate`) and is still exactly how `merge_split.py` decides whether two continental
+plates are actively colliding (see [Merge and split](#merge-and-split)) -- it just no longer
+drives ordinary per-step boundary evolution. Classification there is now purely
+*geometric*: did a plate's rotated territory end up overlapping a neighbor's, or did it open
+up space nobody else claims?
 
-For each node within `MAX_BOUNDARY_EFFECT_RAD` (the widest reach any single effect below
-needs -- currently `FAR_FIELD_COLLISION_OUTER_RAD`, 3000km) of some other plate's nearest node, the two
-plates' relative velocity at that point (from their `omega`s) is decomposed against the
-direction toward the neighbor into a **closing rate**: positive means this plate's material
-is moving toward the neighbor's (convergent), negative means moving apart (divergent);
-`TRANSFORM_RATE_THRESHOLD` (~1 cm/yr equivalent) separates both from transform.
+Each plate runs two operations every step, in this order:
 
-**Convergent boundaries aren't a single effect** -- what happens depends on both plates'
-crust type, and how far the effect reaches (and its shape with distance) differs by case:
+1. **`shift(world, years)`** -- refit the plate's Euler pole from the mantle-flow field
+   (damped toward the new target, same fit-then-clamp as generation-time, see [Mantle
+   flow](#mantle-flow)), then rotate rigidly by `years` at that rate: exact for every node
+   the plate carries, no resampling (see [Plate-local frames](#plate-local-frames)). Returns
+   `D`, the greatest angular distance any of the plate's own nodes actually moved this
+   step -- a real, physically grounded bound on how much crust could plausibly have been
+   created, destroyed, or stretched this turn. Runs for every plate; order doesn't matter
+   here, since rotating one plate only ever touches its own `frame`.
+2. **`deform(world, other_plates, years, D)`** -- reconcile the plate's actual post-`shift`
+   footprint against the footprint it's entitled to occupy: the sphere minus every *other*
+   currently-live plate's own bounding polygon (`Plate.get_bounding_polygon()`, a live,
+   cached outline derived directly from the plate's own current line endpoints -- see [Known
+   simplifications](#known-simplifications) for why this is an envelope, not an exact
+   polygon). Runs once per plate, in a **freshly randomized order every turn** -- the reason
+   is explained below.
+
+A node is **contested** if it's now geometrically contained in some other live plate's
+polygon (`geometry.points_in_spherical_polygon`, checked only for nodes a cheap k-d-tree
+distance prefilter can't already rule out -- deep-interior nodes are never near enough to
+matter). Contested nodes are what used to be "convergent"; nodes that are uncontested and
+far from every neighbor are what used to be "divergent" (open, unclaimed territory); nodes
+that are uncontested but still close to a neighbor are "transform." This reframing needs no
+real polygon union/intersection/subtraction machinery at all: "is this point in the union of
+every other plate's territory" is just "is it contained in *any* one of them," a plain
+boolean OR over the same containment test used everywhere else.
+
+**Why randomize the processing order.** Two plates can both border the same unclaimed
+patch of sphere (a polar cap nobody's reached yet, or ground a subducted neighbor just
+vacated) -- if both tried to claim it in the same turn from a shared starting snapshot,
+they'd overlap. Instead, each plate's "what am I entitled to" check runs against whatever
+state its neighbors are *currently* in: a neighbor already deformed earlier this same turn
+reflects this turn's change, one not yet reached doesn't. Whichever plate's turn comes first
+claims the space; by the time a later plate checks, that space is already gone from its own
+entitled footprint. Randomizing the order every turn (seeded by `(world.seed,
+round(world.elapsed_years))`, so a replayed session still reaches the same order given the
+same history) is what keeps this fair on average across many turns, rather than always
+favoring whichever plate happens to be processed first.
+
+**Convergent effects aren't a single shape** -- what happens depends on both plates'
+crust type, and how far the effect reaches (and its shape with distance) differs by case.
+The rates/reaches below are unchanged from the model `step_boundaries` used to run; only the
+trigger (contested, not a positive closing rate) changed:
 
 - **Continent-continent collision** (both plates continental) -> elevation rises
   (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`), scaled by an intensity that fades from 1 at zero
@@ -239,51 +278,104 @@ crust type, and how far the effect reaches (and its shape with distance) differs
   reaches much farther (`RIFT_RANGE_RAD`, 300km) -- stretching and thinning the crust
   subsides land well beyond the fault line itself, not just right at it.
 - **Structural growth/shrink**, applied independently at each line's two ends (the true
-  edge of that line's territory, since lines are contiguous by construction): if divergent
-  and the gap has opened past `EXTEND_THRESHOLD_RAD`, insert new nodes at target spacing --
-  as many as it actually takes to close the gap (`dist / TARGET_LINE_SPACING_RAD`, capped at
-  `MAX_EXTEND_NODES_PER_STEP` as a safety bound, not a normal limit), each given the
-  ridge/rift target elevation directly (it's brand new material, not interpolated from
-  anything). Inserting a fixed one node per step regardless of gap size used to be the rule;
-  at a large `years` step (the UI offers up to 10 Myr) a fast-diverging boundary can open by
-  many spacing units in a single step, and one node per step falls further behind every
-  step -- that perpetually-reopening leftover gap looked to gap-filling (below) like a
-  genuinely new, unclosable gap and kept spawning fresh micro-plates at the same busy
-  boundary. If convergent and the gap has closed below `MERGE_THRESHOLD_RAD`, delete the end
-  node (crust destroyed/folded away) -- but never the plate's last remaining node. This is
-  where mass conservation actually lives: material is only ever created at divergent
-  boundaries and destroyed at convergent ones, as literal point insertion/deletion -- there's
-  no grid-resampling step that can lose or duplicate it.
+  edge of that line's territory): if an end is uncontested and its gap to the nearest
+  neighbor node has opened past `EXTEND_THRESHOLD_RAD`, insert new nodes at target spacing --
+  as many as it actually takes to close the gap, capped by both `D` (this step's own physical
+  bound -- see `shift()` above) and `MAX_EXTEND_NODES_PER_STEP` as a hard safety ceiling, not
+  the normal limit. Each new node gets the ridge/rift target elevation (brand new material,
+  not interpolated from anything), *unless* the growth event rolls "overstretched" (see
+  below), in which case it comes back as a fresh volcano instead. If an end is contested,
+  remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
+  the safety ceiling -- but never the plate's last remaining node in a line. Deliberately
+  end-only, not "remove any contested node anywhere along the line": every line is assumed
+  contiguous (see [Known simplifications](#known-simplifications)), and removing an
+  interior node would puncture a hole this representation has no way to record, since a
+  line's outline contribution is read only from its own first/last theta -- confirmed
+  directly as a real bug during development, where doing this made the "no plate's node
+  should sit inside a neighbor's polygon" check *worse*, not better, since the resulting
+  holes kept over-claiming exactly where they'd just been hollowed out. This is where mass
+  conservation lives: material is only ever created at open ends and destroyed at contested
+  ones, as literal point insertion/deletion -- there's no grid-resampling step that can lose
+  or duplicate it.
+- **Overstretched growth becomes volcanic.** Ordinary ridge/rift fill at a growing end
+  instead spawns a fresh volcano (`is_volcano=True`, a random `volcano_active_years_remaining`
+  draw, and one *guaranteed* immediate eruption -- see [Volcanism](#volcanism)) with a small
+  fixed probability per growth event (`STRETCH_VOLCANO_PROBABILITY`, 0.02), representing "the
+  plate has been stretched too thin to keep filling with plain crust." Deliberately
+  probabilistic rather than a threshold on some per-call quantity: two threshold designs were
+  tried and rejected during development. Checking whether *this line's own existing gap*
+  already exceeds target spacing turned out to be dead code -- line regularization (below)
+  runs at the end of every `deform()` call and resamples every line back to (within
+  tolerance of) exact target spacing, so by the time the *next* call's growth check runs, any
+  such gap has already been smoothed away by the *previous* call's own regularize pass.
+  Checking whether *this call* needs to insert several nodes at once was confirmed
+  empirically unreachable at realistic step sizes and plate rates: sampled 1392 real growth
+  events across a running simulation, and 100% of them inserted exactly one node, since
+  ordinary per-step divergence rarely outruns a single spacing unit's worth of growth in one
+  call regardless of how the threshold was tuned. A small per-event probability sidesteps
+  needing any persistent "how long has this been thinning" state (which would have to survive
+  regularization, split, and merge) while still producing "occasionally, not constantly"
+  volcanic crust at active rifts over a real run.
+- **Claiming adjacent territory** (subsumes the old whole-sphere gap-filling pass described
+  below): after growing/shrinking each existing line's ends, a plate checks for a whole new
+  phi row just beyond its current phi extremes -- the one case ordinary end-growth
+  structurally can't reach, since growth only ever extends an *existing* line's own theta
+  range, never adds a new line. If that row is open (uncontested) territory, it's added
+  directly as a new `ElevationLine` -- not via a full lattice resample (`Plate.grow_into`,
+  used elsewhere for rare, merge-scale events): calling that every turn for every plate was
+  tried and rejected during development, confirmed to balloon a plate's own node count by
+  several times in a single call, since a full resample's own coverage radius around a
+  handful of newly-claimed points reconstructs far more lattice area than just those points.
+  Reclaiming ground a subducted neighbor vacated *within* an existing row's own theta range
+  needs no separate mechanism at all -- the very next time that row's end-growth check runs,
+  the vacated neighbor is simply gone from the distance/contested check, and ordinary
+  end-growth already extends into it.
+
+**Known limitation: overlap isn't exactly zero, but stays bounded.** `Plate.
+get_bounding_polygon()` is an envelope (see [Known simplifications](#known-simplifications)),
+and the randomized-order design above means a plate's own "what am I entitled to" check can
+be up to one turn stale against a neighbor not yet processed this same turn. Both mean a
+node can transiently read as inside a neighbor's polygon without the two plates' actual node
+clouds genuinely interpenetrating. Confirmed directly across many stepped turns: sampled
+overlap stays in the low-teens percent and doesn't grow -- bounded, self-correcting behavior,
+not a runaway. A stricter, exactly-zero invariant would need either a self-intersection-safe
+polygon construction or a supplementary node-cloud distance guard; not pursued for v1.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)
 
-Per-step boundary evolution only ever touches a line's two ends, so interior spacing stays
-regular on its own during ordinary convergent/divergent motion -- but a *transform* boundary
-shears nodes along a line without inserting or deleting anything, which can leave spacing
-uneven. Every `REGULARIZE_INTERVAL_STEPS` calls to `step_world` (default 5), any line whose
-gaps have drifted past `IRREGULARITY_TOLERANCE` (1.5x target spacing, either direction) gets
-a fresh evenly-spaced node set across its *existing* extent -- the two endpoints are
-preserved exactly, since this never changes where a line's physical edge is, only how
-regularly it's sampled -- with elevation re-interpolated onto the new nodes (`np.interp`, 1D
-since it's along a single already-ordered curve, not 2D scattered-data interpolation).
+Per-step `deform()` only ever touches a line's two ends, so interior spacing stays regular
+on its own during ordinary convergent/divergent motion -- but a *transform* boundary shears
+nodes along a line without inserting or deleting anything, which can leave spacing uneven.
+At the end of every single `deform()` call (not periodically -- unlike the earlier
+`REGULARIZE_INTERVAL_STEPS`-gated cadence this replaced, since `deform()` itself now needs
+every line back at (within tolerance of) exact target spacing before the *next* call's
+overstretch check can mean anything -- see [Plate motion: shift and
+deform](#boundary-evolution)), any line whose gaps have drifted past
+`IRREGULARITY_TOLERANCE` (1.5x target spacing, either direction) gets a fresh evenly-spaced
+node set across its *existing* extent -- the two endpoints are preserved exactly, since this
+never changes where a line's physical edge is, only how regularly it's sampled -- with
+elevation re-interpolated onto the new nodes (`np.interp`, 1D since it's along a single
+already-ordered curve, not 2D scattered-data interpolation).
 
 <a id="merge-and-split"></a>
 ## Merge and split (`merge_split.py`)
 
-Unlike rotation and boundary evolution, these are rare, discrete, topology-changing events,
-so a one-time resample is an acceptable cost here -- the exact, no-resampling guarantee only
-matters for routine per-step motion.
+Unlike `shift`/`deform`, these are rare, discrete, topology-changing events, so a one-time
+resample is an acceptable cost here -- the exact, no-resampling guarantee only matters for
+routine per-step motion.
 
 - **Consumption.** A plate whose every elevation node has been deleted (fully subducted), or
   that's been eroded down to a single remaining line -- no real territory left, just a
   sliver along one latitude, regardless of how many nodes are still on that one line -- is
-  simply dropped from `world.plates` (`remove_defunct_plates`). Falls directly out of the
-  boundary-evolution rule above; no special algorithm needed for either case.
+  simply dropped from `world.plates` (`remove_defunct_plates`). Falls directly out of
+  `deform()`'s own grow/shrink rule; no special algorithm needed for either case.
 - **Continental collision merge.** If two continental plates have at least
   `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other
-  *and* a real closing rate at those points (`boundary.closing_rate`, the same check
-  boundary.py uses to classify a convergent boundary), they're fused: keep one plate's
+  *and* a real closing rate at those points (`boundary.closing_rate` -- the one place this
+  velocity-based check still runs; see [Plate motion: shift and
+  deform](#boundary-evolution) for why ordinary per-step evolution no longer uses it), they're
+  fused: keep one plate's
   `frame`, and resample the union footprint from scratch -- a k-d tree over the pre-merge
   combined point cloud, with every candidate lattice node within `MERGE_COVERAGE_RADIUS_RAD`
   of *some* old node kept and given that old node's elevation
@@ -355,184 +447,82 @@ matters for routine per-step motion.
   and `SPLIT_MIN_NODES = 1200` keeps the check off small fragments entirely.
 
 <a id="gap-filling"></a>
-## Whole-sphere coverage (gap-filling) (`gaps.py`)
+## Whole-sphere coverage (subsumed into `deform()`)
 
-Boundary evolution above only ever grows/shrinks a line's *theta*-direction ends -- a plate
-can spread sideways along its existing rows, but it never gains a whole new row toward its
-own local pole, and territory a fully-subducted neighbor vacated isn't automatically
-reclaimed. Both leave literal gaps: sphere regions no plate currently covers.
+This used to be a separate periodic pass (`gaps.py`'s `fill_gaps`, since removed): a
+whole-sphere lattice sweep every `elevation_lines.REGULARIZE_INTERVAL_STEPS` calls, finding
+every point farther than a coverage radius from any plate's nearest node and resolving each
+cluster by absorbing it into a dominant (or young) bordering plate, or spawning a brand new
+plate if no plate dominated.
 
-Every `elevation_lines.REGULARIZE_INTERVAL_STEPS` calls (the same cadence as line
-regularization), `gaps.fill_gaps` sweeps a global lattice (`plates.iter_local_lattice` in the
-identity frame, reused as a plain lat/lon sweep purely for this one-off detection query),
-finds every candidate point farther than `COVERAGE_RADIUS_RAD` from any plate's nearest node,
-and clusters the results (`scipy.sparse.csgraph.connected_components` over a k-d-tree radius
-graph). Clusters smaller than `MIN_GAP_POINTS` are left alone -- ordinary growth lag that
-boundary.py's per-line extension already closes on its own.
+In the polygon-based model, "an uncovered gap" and "unclaimed territory" are the same
+concept `deform()` already computes every turn for every plate (the sphere minus every other
+live plate's own bounding polygon -- see [Plate motion: shift and
+deform](#boundary-evolution)), so there's no separate detection pass left to run: a plate
+growing toward its own pole, or reclaiming ground a subducted neighbor just vacated, is just
+the ordinary "claiming adjacent territory" sub-step of `deform()`, described there.
 
-Each remaining cluster is resolved one of two ways:
-
-- **A plate's border dominates it** (`DOMINANT_BORDER_FRACTION` of nearby existing nodes),
-  **or a young plate has a meaningful share of it** (`age_steps <= YOUNG_PLATE_AGE_STEPS`,
-  `YOUNG_PLATE_MIN_BORDER_FRACTION`): absorbed into that plate. Its line set is rebuilt from
-  its own local lattice (`plates.build_lines_from_lattice`), preserving elevation wherever
-  old data exists (nearest-neighbor lookup, the same technique `merge_split.merge_plates`
-  uses) and giving newly-claimed area fresh ridge/rift elevation. This is what actually lets
-  a plate grow toward its own pole or reclaim vacated territory.
-- **No plate dominates and no young plate qualifies**: the cluster becomes a brand new
-  plate -- new crust genuinely forming in open space between separating plates, not
-  arbitrarily assigned to one side. `fill_gaps` returns one event message per newly spawned
-  plate (`world.step_world` logs each to `World.events`); absorption isn't logged, since it
-  grows a plate that already exists rather than adding or removing one.
-
-**Keeping this gradual.** An absorb only claims the part of a gap within `GROWTH_RING_RAD`
-of the plate's *existing* nodes (one ring per pass, not an entire possibly-huge cluster at
-once -- e.g. an uncovered polar cap nobody's lines reach yet), and only up to
-`MAX_ABSORB_NODES_PER_PLATE_PER_CALL` total per plate per call, across every gap it
-dominates that call. Without these caps, whichever plate already has the longest border
-(i.e. is already the biggest) dominates nearly every nearby gap and can absorb hundreds of
-nodes in one call -- confirmed directly during development, where a large plate visibly
-ballooned in a single step. Every other change in this model happens incrementally; these
-caps keep gap-filling consistent with that instead of being the one place growth can jump.
-
-**Why a young plate gets first claim.** A wide, long-lived, genuinely-shared rift would,
-without this exception, spawn a brand new sliver plate at *every* pass -- a fresh spawn
-never dominates its own border any better than the last one did, since neither side of a
-symmetric spread is "winning." This was also confirmed directly: a busy boundary
-fragmenting into a fan of thin, near-parallel micro-plates over a few hundred Myr, each
-rotating almost identically to its neighbors. Letting a recently-created plate claim a
-meaningful (not necessarily dominant) share of its own neighborhood for a few passes after
-it's created breaks that chain -- it gets a chance to consolidate the rift it was born into
-before being treated as just another equal competitor.
+**One real behavior this doesn't reproduce**: the old pass's "no plate dominates the gap's
+border -> spawn a brand new plate" fallback. `deform()`'s claim step only ever grows an
+*existing* plate into a whole new row adjacent to its own current phi extremes -- it has no
+mechanism to spawn an entirely new plate for a gap that borders no existing plate's reach at
+all. In practice this should be rare (the sphere starts fully tiled with no gaps by
+construction, see [Initial plate generation](#initial-plate-generation), so a gap can only
+open next to whichever plates used to border the space that vacated it), but it's a known,
+not-yet-addressed gap in coverage rather than a deliberately preserved behavior.
 
 <a id="volcanism"></a>
-## Volcanism (`volcanism.py`)
+## Volcanism (`volcanism.py`, plus `plates.py`'s own `PlateWithLines.deform`)
 
-New continental crust forming where plates are separating -- run on the same
-`steps_since_regularize`-gated cadence as gap-filling/line regularization above (detection),
-plus every step (eruption and field-lifecycle bookkeeping, alongside erosion.py/bathymetry.py).
+New continental crust forming where plates are separating. This used to be two halves in one
+module: a periodic whole-sphere *detection* pass that spawned brand-new "volcanic field"
+plates, plus a per-step *eruption* pass. The detection half is gone -- volcano creation is
+now inline in `deform()`'s own overstretched-rift handling (see [Plate motion: shift and
+deform](#boundary-evolution)) -- and `volcanism.py` now holds only the per-step eruption
+lifecycle, which is unchanged.
 
-**Detection, two passes.** First, every elevation point's own nearest neighbor, whole-world,
-unrestricted by plate -- the median of all these distances is "how far apart elevation points
-normally sit." Second, only *boundary* points (each plate's own line endpoints,
-`Plate.outline_world()`'s own definition of a plate's territory, reused directly) get checked
-against each other: for each boundary point, the nearest boundary point on a *different*
-plate. If that's more than `GAP_OUTLIER_FACTOR` (3x) the pass-1 median, it fires.
-
-Restricting pass 2 to boundary points, rather than every point whole-world, turned out to be
-essential, not a stylistic choice. An earlier version checked every point's own k=4 nearest
-neighbors, whole-world, for the *same* point being both the density reference and the outlier
-check -- and never fired, across dozens of seeds and step sizes, even with boundary.py's own
-line-growth completely disabled. The reason: a point sitting right next to a genuinely wide
-inter-plate gap still has plenty of *same-plate* interior neighbors much closer than that gap,
-so an unrestricted whole-world nearest-neighbor query never sees the gap at all -- confirmed
-directly by a separate cross-plate-specific distance measurement, which found real gaps up to
-5x the typical spacing the whole-world query was blind to. Restricting pass 2's search to
-boundary-vs-boundary removes the same-plate interior points that were masking the signal,
-without changing what "normal spacing" means (pass 1 stays whole-world, since that's a stable
-reference regardless of where the boundary happens to be).
-
-Every qualifying pair contributes one new volcano point (the great-circle midpoint between
-the two boundary points -- the actual empty space between the separating plates, not either
-plate's own territory). All of this pass's new volcano points are then clustered by proximity
-(`gaps.cluster_points`, the same connected-components technique gaps.py's own gap-clustering
-already uses) and each cluster becomes one brand-new `Plate` with `crust_type="continental"`
-("volcanic fields ... result in continental plates," per spec -- the rock has continental
-physical properties regardless of whether the two separating plates were themselves oceanic
-or continental). Every node of a freshly-spawned field starts as an active volcano.
-
-`VOLCANIC_FIELD_CLUSTER_RADIUS_RAD` is deliberately much wider than gaps.py's own
-`CLUSTER_RADIUS_RAD` (~1.5x line spacing, ~187km): gap-clustering there groups points from
-one dense, contiguous coverage scan, but pass 2's candidate points here are individual
-boundary-point pairs spread out along a whole divergent boundary's length -- at gaps.py's own
-radius, a single long rift's many independently-qualifying points never merged into one
-cluster at all, each spawning its own tiny field instead (confirmed directly: 11-40+ new
-plates from a single clean-up pass on a 10-plate world, the same "boundary fragmenting into a
-fan of micro-plates" failure shape gap-filling's own `MIN_GAP_POINTS`/young-plate exception
-above were built to prevent). 15x line spacing (~1875km) merges same-rift detections into one
-field while still keeping genuinely separate rifts elsewhere on the sphere apart.
-
-A boundary point belonging to a plate that's *currently* a tracked volcanic field
-(`World.volcanic_field_plate_ids`) is excluded as a pass-2 *source* candidate -- without this,
-a field's own still-forming edge could immediately re-fire against the very neighbor it just
-separated from, spawning another field on top of the last one every single clean-up pass.
-It's still a valid *target* for some other plate's own check, so a genuinely separate rift on
-the field's far side isn't blocked.
+**Creation.** When a divergent line end grows, the new nodes come back as a fresh volcano
+(rather than plain ridge/rift fill) with a small fixed probability per growth event
+(`STRETCH_VOLCANO_PROBABILITY`, 0.02) -- see [Plate motion: shift and
+deform](#boundary-evolution) for why this replaced the old whole-sphere gap-outlier scan
+(`GAP_OUTLIER_FACTOR`, boundary-point median-spacing comparison) and why it's a probability
+roll rather than a deterministic threshold. A volcano node is a node *on the growing plate's
+own existing line* -- not a separately spawned `Plate` the way the old detection pass worked.
+One consequence: `World.volcanic_field_plate_ids` (still a field on `World`, still read by
+the dormancy check below) is never populated any more, since nothing creates a
+separately-tracked field plate -- kept in case that tracking is reintroduced later, not
+actively used today. A fresh volcano gets a random `volcano_active_years_remaining` draw
+(`VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years) and **one guaranteed immediate eruption**
+(`+= ERUPTION_ELEVATION_M`, unconditional -- unlike every later eruption, which is rolled
+probabilistically, see below) -- distinguishing a freshly-created rift volcano from an
+ordinary volcano's own first, merely-probable eruption.
 
 **A plate stops being tracked as a volcanic field once fewer than
 `VOLCANO_FRACTION_DORMANT_THRESHOLD` (5%) of its own nodes are still `is_volcano`** -- not a
-fixed elapsed-time countdown. `is_volcano` never reverts to False once set, so this ratio can
-only ever fall, and only by dilution: as the field's own edges grow via ordinary boundary
-evolution (or absorb gap territory via gaps.py), each newly-added node starts non-volcanic, so
-a field that keeps growing eventually reads as "just an ordinary continental plate that
-happens to have a few old volcanoes embedded in it." Checked every step, alongside the
-eruption roll below, so the transition is caught within one step of crossing the threshold,
-not lagged to the next clean-up interval.
+fixed elapsed-time countdown. `is_volcano` never reverts to `False` once set, so this ratio
+can only ever fall, and only by dilution: as a plate's edges keep growing via ordinary
+`deform()` growth, each newly-added non-volcanic node dilutes the ratio, so a plate that
+keeps growing eventually reads as "just an ordinary continental plate that happens to have a
+few old volcanoes embedded in it." Checked every step, alongside the eruption roll below, so
+the transition is caught within one step of crossing the threshold. In practice this check
+now has little left to *do*, since nothing populates `volcanic_field_plate_ids` for it to
+check against any more (see above) -- kept as-is rather than removed, since it's harmless and
+costs nothing to leave running.
 
-**Eruption, every step.** Each individual volcano point has its own
-`volcano_active_years_remaining` (`VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years, drawn once at
-creation), decremented every step. While active, it rolls a per-step eruption chance
+**Eruption, every step, unchanged.** Each individual volcano point has its own
+`volcano_active_years_remaining` (drawn once at creation, whether by `deform()`'s rift
+handling above or, previously, the old detection pass), decremented every step. While
+active, it rolls a per-step eruption chance
 (`1 - exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1e6)`, the same
 exponential-arrival-rate shape used elsewhere in this codebase, e.g. lake evaporation's own
 retention factor -- expected roughly 0.3 to 3 eruption events over a volcano's own full active
 life, "occasionally," not every step) and, if it erupts, adds `ERUPTION_ELEVATION_M` (100m) of
-new land. Deterministic per `(seed, elapsed_years, plate_id, line_index)`, the same
-reproducibility precedent merge_split.py's own per-pair collision threshold sets.
-`active_years_this_step` is clamped to the volcano's own *remaining* life, not the full step
-size -- a large step (the UI offers up to 10 Myr) shouldn't roll eruption chances for years
-past when a short-lived volcano actually went dormant.
-
-**Merging close fields.** Also run on the clean-up cadence, right after detection/spawning:
-`merge_close_volcanic_fields` finds every pair of *currently-tracked* field plates whose
-nearest points come within `VOLCANIC_FIELD_MERGE_DISTANCE_RAD` (6x line spacing) -- the same
-cheap bounding-sphere-prescreened-then-k-d-tree check `merge_split.
-find_continental_collision_pairs` uses, but without that function's closing-rate requirement:
-these are already newly-formed rift crust of the same kind, not two mature plates that happen
-to be neighbors purely by plates.py's generation-time tiling, so proximity alone is a
-meaningful signal here in a way it isn't there. Pairs are grouped into connected clusters
-(`scipy.sparse.csgraph.connected_components` over the pair graph, the same technique
-gaps.cluster_points already uses for spatial clustering, just over a small plate-id graph
-instead of a point cloud) so a chain of three or more mutually-close fields fuses into one
-plate in a single call, not one pairwise merge per pass. Running this right after spawning
-matters in practice: a freshly-detected field very often lands close to an existing one along
-the same rift, and without this step it would just sit there as a separate plate.
-
-Merging doesn't only resample the union footprint (the way `merge_split.merge_plates` does for
-a continental collision) -- it also **bridges the physical gap** between fields that were close
-but not yet touching, so the merge doesn't leave a hole down the middle. For each pair of
-plates in a cluster, `_bridge_points` finds their closest cross-plate point pairs (up to
-`BRIDGE_MAX_PAIRS`) and spherically interpolates (`_slerp`, great-circle SLERP rather than a
-linear blend, so a bridge point actually sits on the sphere) new nodes at target spacing along
-each pair's own great-circle arc -- real new land/fresh active volcanoes filling the rift
-between them, not an empty strip a plain nearest-point resample would silently skip over
-(`build_lines_from_lattice`-style resampling only ever keeps a lattice node near an *existing*
-point). The whole cluster's original points plus every bridge point are then resampled onto
-whichever plate had the most territory (`_build_field_lines_with_volcano_state` -- like
-`build_lines_from_lattice`, but also carries `is_volcano`/`volcano_active_years_remaining`
-through the same nearest-neighbor lookup elevation already uses, since a plain
-`build_lines_from_lattice` call only threads elevation and would otherwise silently wipe every
-merged node's volcanic status, the exact bug class `plates.ElevationLine`'s own docstring warns
-about). The absorbed plate(s) are dropped from `world.plates` and their ids removed from
-`World.volcanic_field_plate_ids`; the surviving plate keeps its own id and stays tracked.
-
-**Growing into open space.** `boundary.step_boundaries` only ever grows a line relative to a
-*neighbor's* own motion -- a field that has drifted, or was spawned, into open water with no
-other plate within reach never gets a boundary classification there at all (the plate is
-skipped outright once no other plate's bounding sphere is close enough to matter, see
-boundary.py), so without something else acting on it, it would sit frozen at that edge forever
-regardless of how long the world runs. `grow_isolated_volcanic_fields` (same clean-up cadence,
-run after merging) closes that gap: for each tracked field plate, every line's two ends are
-checked against a k-d tree of every *other* plate's current nodes; an end farther than
-`ISOLATED_GROWTH_CLEARANCE_RAD` (6x line spacing -- deliberately much wider than
-`boundary.EXTEND_THRESHOLD_RAD`'s reach, since this is about there being no neighbor at all,
-not about how far an ordinary gap has opened) from every other plate's nearest node counts as
-genuinely isolated and grows outward by `ISOLATED_GROWTH_NODES_PER_END` new nodes (fixed and
-small, not distance-derived -- unlike an ordinary divergent gap, open space has no far edge to
-close against, so there's nothing to measure the growth amount from, and this stays gradual the
-same way `gaps.py`'s own one-ring-per-pass absorption does). New nodes get ordinary continental
-base elevation plus noise texture and start as fresh active volcanoes, the same convention
-`_spawn_volcanic_field_plate` uses for a field's very first nodes. Not logged to `World.events`
--- ordinary incremental growth, the same reasoning gap absorption isn't logged either.
+new land and grows `mineral_deposit_m` (see [Resources and soil](#resources-and-soil)).
+Deterministic per `(seed, elapsed_years, plate_id, line_index)`, the same reproducibility
+precedent merge_split.py's own per-pair collision threshold sets. `active_years_this_step` is
+clamped to the volcano's own *remaining* life, not the full step size -- a large step (the UI
+offers up to 10 Myr) shouldn't roll eruption chances for years past when a short-lived
+volcano actually went dormant.
 
 **Rendering.** Baked directly into the elevation/plates views' raster the same way lakes and
 glaciers are (`VOLCANO_COLOR_RGB`, a hot red-orange distinct from both), drawn after lake but
@@ -540,46 +530,26 @@ before glacier so ice still wins where both would apply (a volcano cold enough t
 should read as ice-covered, not lava-red).
 
 <a id="reassignment"></a>
-## Boundary point reassignment (`reassign.py`)
+## Boundary point reassignment (subsumed into `deform()`)
 
-Boundary evolution only ever grows or shrinks a line's two *ends* -- it never revisits
-whether an *interior* node still actually belongs to the plate carrying it. Enough shearing
-along a transform boundary, or a slow rotational drift, can leave a node geometrically
-embedded in a neighboring plate's own territory while its data still lives on its original
-plate's line. `reassign.reassign_misplaced_points` finds and fixes these.
+This used to be a separate periodic pass (`reassign.py`, since removed): ordinary per-step
+boundary evolution only ever grew or shrunk a line's two *ends*, never revisiting whether an
+*interior* node still actually belonged to the plate carrying it, so a node that drifted
+into a neighboring plate's own territory (enough shearing along a transform boundary, or
+slow rotational drift) could sit there unnoticed until a periodic whole-world scan caught it.
 
-For every node, it finds that node's `NEIGHBOR_COUNT` (4) nearest neighbors across the whole
-world (not just its own plate). If at least `MIN_FOREIGN_NEIGHBORS` (3) of them belong to the
-same other plate, the node is misplaced and gets moved:
-
-- **Which line.** Among the *target* plate's lines, the closest one to the node is picked as
-  the destination -- but instead of searching every line the target plate owns, it checks
-  only the lines its own matching neighbors already sit on. Since those neighbors are, by
-  construction, some of the node's closest points in the whole world, the line they're on is
-  almost always the actual closest one too; this turns an O(lines-in-target-plate) search
-  into an O(1-3) one.
-- **Snapping onto it.** An `ElevationLine` is only ever defined at one fixed `phi`, so "on
-  line A" and "phi equals A's phi" are the same statement. The node's local phi (in the
-  target plate's frame) is overridden to A's phi -- its theta is left as computed, so this is
-  a small shift, not a resample, consistent with the node having already been established as
-  geometrically close to A.
-- **Elevation.** Interpolated as a straight average of the node's own prior elevation and
-  whichever existing node on line A sits nearest it in theta.
-
-Every node's fate is decided from one snapshot (a single global k-d tree built once at the
-start of the pass) and applied in two batched passes afterward -- all removals from source
-lines, then all insertions into destination lines -- rather than mutating plates
-mid-decision, so one node's move can't perturb another node's neighbor query within the same
-pass. Not logged to `World.events` -- on a busy boundary this can touch many plates and
-hundreds of points in a single pass, which flooded the console with little useful signal
-even collapsed into one summary line per pass.
-
-**Cadence.** Runs periodically (`REASSIGN_INTERVAL_STEPS`, default 5, its own counter
-`World.steps_since_reassign`) but deliberately never the same step as `gaps.fill_gaps` (see
-`world.step_world`): both are whole-sphere, cross-plate structural passes, and running them
-together would mean each one's "which plate owns what" picture could already be stale by the
-time it acts, from the other having just spawned, grown, or reassigned territory out from
-under it.
+In the polygon-based model this class of bug can't accumulate unnoticed in the first place:
+every plate's `deform()` call, every single turn, directly tests every one of its own
+near-boundary nodes for containment in a neighbor's current polygon (see [Plate motion:
+shift and deform](#boundary-evolution)) -- a node that's drifted into a neighbor's territory
+reads as contested the very next turn and gets removed by the ordinary shrink rule, not
+waiting for a periodic pass every `REASSIGN_INTERVAL_STEPS` calls. There's no equivalent
+"move this node onto the neighbor's own nearest line" step, since a contested node is
+deleted (and, on the neighbor's own next turn, its territory is either already covered by
+ordinary growth or gets reclaimed via "claiming adjacent territory") rather than transferred
+node-for-node -- a coarser mechanism than the old point-relocation logic, but one that keeps
+the same underlying invariant (every node ends up owned by whichever plate's polygon
+actually contains it) without needing a separate whole-world pass at all.
 
 <a id="projections"></a>
 ## Projections (`projections.py`)
@@ -616,8 +586,9 @@ the way the latitude term does), so a dot sized to look right at the equator lea
 near the poles, and no single fixed dot size closes the gap everywhere without grossly
 overlapping elsewhere. `_render_grid_arrays` fixes this the way the user originally asked:
 sweep a uniform lat/lon grid over the whole sphere
-(`plates.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` -- the same
-identity-frame trick `gaps.py` uses for its coverage sweep), assign every cell its nearest
+(`plates.iter_local_lattice(identity_frame, spacing_rad=GRID_SPACING_RAD)` -- reusing
+`iter_local_lattice` with the identity frame as a plain global lat/lon sweep, rather than any
+one plate's own local frame), assign every cell its nearest
 elevation node via one `cKDTree` query against every plate's current nodes (no distance
 cutoff -- every cell gets *some* value, so there's no gap by construction regardless of how
 far the nearest real data happens to be), and project the whole grid the same way
@@ -1162,14 +1133,15 @@ lattice.
 
 **Slope is the one genuinely new piece of math.** climate.py's grid gets slope for free
 from neighbor-index differences; an irregular node cloud has no such structure. This reuses
-`reassign.py`'s whole-world cKDTree pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
-nearest neighbors per node) instead: for each node, the elevation drop to the *lowest* of
+the same whole-world cKDTree pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
+nearest neighbors per node) `PlateWithLines.deform` uses for its own per-plate distance
+queries: for each node, the elevation drop to the *lowest* of
 its nearest neighbors (0 if the node is already a local minimum -- the "slope to lowest
 neighbor" definition), divided by the real great-circle distance to that
 neighbor. This is a genuine dimensionless rise/run -- elevation drop over real distance, not
 elevation drop per grid step (a grid-step measure isn't a true slope at all, since it
 silently depends on grid resolution) -- which is why `RAIN_EROSION_COEFFICIENT` was picked
-by order-of-magnitude reasoning against `boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
+by order-of-magnitude reasoning against `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
 (800 m/Myr) and checked against real slope/precipitation distributions from an actual run,
 rather than reused from a value tuned against a different scale.
 `WEATHERING_COEFFICIENT` needed no such rescaling, since wind speed already uses a directly
@@ -1264,20 +1236,24 @@ before). Flow routing (`hydrology.compute_hydrology`) is comparatively expensive
 available, so rather than computing it twice per step, this module computes it once and
 reuses the result for both erosion and `World.hydrology_cache` (see
 [Hydrology](#hydrology)). Runs in `world.step_world`
-right after boundary evolution and topology changes, every step (not gated by the periodic
-regularize/gap-fill/reassign cadence).
+right after `shift`/`deform` and topology changes, every step (line regularization now runs
+inline at the end of every `deform()` call rather than on a periodic cadence -- see [Line
+regularization](#line-regularization) -- and the old periodic gap-fill/reassign passes are
+gone entirely, see [Whole-sphere coverage](#gap-filling)/[Boundary point
+reassignment](#reassignment)).
 
 <a id="bathymetry"></a>
 ## Bathymetry (`bathymetry.py`)
 
 Nothing else pulls submerged continental crust toward any particular depth once it goes
 underwater -- generation-time noise can put a continental node a few hundred meters below
-sea level, and rifting (see [Boundary evolution](#boundary-evolution)) can push a node deep
-underwater without any further constraint on where it settles. This module is a slow
-background relaxation (same exponential-toward-a-target style as boundary.py's own divergent
-relaxation) pulling every submerged (`elevation <= 0`) continental node toward one of two
-targets, chosen by distance to the nearest land node (`elevation > 0`, any plate -- this is a
-geographic coastline-proximity question, not a plate-boundary one):
+sea level, and rifting (see [Plate motion: shift and deform](#boundary-evolution)) can push a
+node deep underwater without any further constraint on where it settles. This module is a
+slow background relaxation (same exponential-toward-a-target style as `PlateWithLines.
+deform`'s own divergent relaxation) pulling every submerged (`elevation <= 0`) continental
+node toward one of two targets, chosen by distance to the nearest land node (`elevation >
+0`, any plate -- this is a geographic coastline-proximity question, not a plate-boundary
+one):
 
 - Within `SHELF_RANGE_RAD` (200km): `SHELF_TARGET_M` (-100m) -- the continental shelf.
 - Beyond it: `DEEP_CONTINENTAL_TARGET_M` (-3000m) -- genuinely deep water, though still
@@ -1287,7 +1263,7 @@ Deliberately continental-only: oceanic crust's average depth already comes from 
 generation-time baseline and nothing erodes or otherwise drifts it away on its own
 (erosion.py explicitly excludes ocean nodes from both its sources), so it doesn't need a
 parallel correction. Relaxes at `BATHYMETRY_RELAX_RATE_PER_MYR` (0.3, slower than
-`boundary.DIVERGENT_RELAX_RATE_PER_MYR`'s 0.5 -- a passive equilibration of already-
+`plates.DIVERGENT_RELAX_RATE_PER_MYR`'s 0.5 -- a passive equilibration of already-
 submerged, non-actively-deforming crust, not an active tectonic process). Runs every step,
 right after erosion.
 
@@ -1307,9 +1283,9 @@ fall, real soil erodes) and `coal_deposit_m`/`oil_gas_deposit_m`/`mineral_deposi
 (monotonically non-decreasing, the same self-reinforcing convention `silt_depth`/
 `channel_depth` already establish -- buried peat/hydrocarbons/ore aren't un-buried by a later
 climate shift). Threaded through every explicit `ElevationLine` reconstruction site the same
-way `channel_depth`/`is_volcano` already are (`boundary.py`'s growth/shrink, `elevation_lines.py`'s
-regularize interpolation, `merge_split.py`'s split, `reassign.py`'s filter/insert) -- every
-other mutation site already uses `dataclasses.replace`, which copies them automatically (see
+way `channel_depth`/`is_volcano` already are (`PlateWithLines.deform`'s own growth/shrink,
+`elevation_lines.py`'s regularize interpolation, `merge_split.py`'s split) -- every other
+mutation site already uses `dataclasses.replace`, which copies them automatically (see
 `plates.ElevationLine`'s own docstring).
 
 **Minerals** come from real hydrothermal circulation around volcanic activity (porphyry-copper/
@@ -1405,8 +1381,8 @@ direction, priority-flood basin-spill (lake/depression detection), and elevation
 downstream flow accumulation -- all turn out not to actually need a *grid*, only a *graph*:
 a regular 8-neighbor grid adjacency is just one convenient substrate for them. This module
 builds a graph instead, via a whole-world k-nearest-neighbor query (`FLOW_NEIGHBOR_COUNT =
-8`, the same technique `erosion.py`/`reassign.py` already use for their own whole-world
-passes), then runs the same three algorithms directly on it.
+8`, the same technique `erosion.py` already uses for its own whole-world slope pass), then
+runs the same three algorithms directly on it.
 
 **Persistence comes for free.** A fixed-grid tectonic model has plates moving relative to
 its grid, so a persistent field like `channel_depth` needs deliberate semi-Lagrangian
@@ -1419,21 +1395,19 @@ already rotate exactly with their own plate, so `channel_depth`, `channel_width`
 advection scheme needed, since rotating a plate never touches those arrays at all. Making
 this persistence real required threading every one of these fields through every place an
 `ElevationLine` gets rebuilt: preserved unchanged where a rebuild doesn't change node
-identity (boundary elevation deltas, bathymetry -- via `dataclasses.replace`, not an
+identity (`deform()`'s own elevation deltas, bathymetry -- via `dataclasses.replace`, not an
 explicit field-by-field reconstruction, specifically so a *future* persistent field is
 preserved automatically rather than needing every such call site updated by hand; see
 `plates.ElevationLine`'s own docstring for the concrete bug this replaced -- `is_volcano`
 silently reset to `False` every step at exactly these two sites, for several steps of actual
 development, before it was caught), sliced/concatenated to match where nodes are added or
-removed (boundary growth/shrink -- new nodes start at 0, no history to carry; a merge/split's
-boolean-mask slice), interpolated alongside elevation where a line gets resampled onto a
-fresh spacing (`elevation_lines.regularize_line`, since that runs periodically throughout the
-simulation and a plain reset would erase rivers/glaciers constantly, not rarely). Two call
-sites *do* deliberately reset to 0 rather than preserve: `plates.build_lines_from_lattice`
-(generation, gap-fill spawn/absorb, plate merge -- genuinely new or wholesale-resampled
-territory has no history to carry) and a reassigned point in `reassign.py` (a rare,
-small-scale pass touching only a few boundary-adjacent nodes at a time, unlike
-`elevation_lines.py`'s near-every-line-every-interval reach).
+removed (`deform()`'s own growth/shrink -- new nodes start at 0, no history to carry; a
+merge/split's boolean-mask slice), interpolated alongside elevation where a line gets
+resampled onto a fresh spacing (`elevation_lines.regularize_line`, since that now runs at the
+end of every `deform()` call and a plain reset would erase rivers/glaciers constantly, not
+rarely). One call site *does* deliberately reset to 0 rather than preserve:
+`plates.build_lines_from_lattice` (generation, plate merge -- genuinely new or
+wholesale-resampled territory has no history to carry).
 
 `flow_target`/`flow_accum`/`river_speed` are deliberately *not* persisted: recomputed fresh
 every step, from that step's real climate -- purely this-step derived quantities, cached on
@@ -1556,7 +1530,7 @@ exact shape shifting from ordinary terrain churn even when nothing physical abou
 changed.
 
 **Lakes accumulate silt.** `silt_depth` (a new persistent per-node array, threaded through
-`boundary.py`/`elevation_lines.py`/`reassign.py`/`merge_split.py` exactly like `lake_depth`) is a
+`PlateWithLines.deform`/`elevation_lines.py`/`merge_split.py` exactly like `lake_depth`) is a
 small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
 (monotonically -- silt never erodes back away) on a lake's own bed. `build_lake_hierarchy`
 is given `elevation + silt_depth`, not bare elevation, so a lake's own floor rises as silt
@@ -1917,29 +1891,30 @@ identically to both the server-side PNG stroke and the River Inspector's canvas 
 Deliberate scoping decisions for v1 (elevation only), each an acceptable line to draw rather
 than an oversight:
 
-- **The rendered outline (`Plate.outline_world`) is an envelope, not an exact polygon.**
-  It's traced from each line's two current endpoints (ascending phi along the high-theta
-  edge, descending back down the low-theta edge), so it's always in sync with the real
-  territory -- unlike an earlier version that kept a separate polygon frozen at generation
-  and rotated it rigidly, which drifted out of sync after enough stepping and could visibly
-  overlap a neighboring plate's stale outline even though the underlying elevation data
-  never did. The current approach can't represent a concave notch in a single line's
-  extent (see the next bullet) -- a minor visual smoothing, not a data problem, since
-  nothing other than rendering reads this outline.
-- **Lines are assumed spatially contiguous.** A line's two ends (`theta[0]`, `theta[-1]`)
-  are treated as its true territorial edges. A plate that develops a concave notch (or a
-  split whose cut crosses one line's span twice) could in principle produce a
-  non-contiguous line; this isn't specially detected. In practice a stray gap like that just
-  gets treated as a small extra boundary by the next step's adjacency check and self-heals
-  the same way any other boundary does.
-- **Gap-filling absorption doesn't distinguish "genuinely my own natural growth direction"
-  from "I happen to have the longest border nearby."** `MAX_ABSORB_NODES_PER_PLATE_PER_CALL`
-  bounds the *rate*, but a plate that's already large still tends to keep winning the
-  dominant-border check at its edges over many gap-fill passes, so it can still end up
-  larger than a strict "each plate grows toward its own pole independently" rule would give
-  -- a coarser approximation than the rest of the model, not a bug, and a possible future
-  refinement (e.g. weighting by directional alignment with the plate's own motion rather
-  than raw border presence).
+- **The bounding polygon (`Plate.outline_world`/`get_bounding_polygon`) is an envelope, not
+  an exact polygon -- and now a load-bearing one, not just a rendering convenience.** It's
+  traced as a *staircase* from each line's current endpoints, stepping at the midpoint phi
+  between adjacent rows so a straight diagonal never cuts across a concave notch between two
+  rows with very different theta extents (an earlier, smoother scanline version did exactly
+  that, and -- since `PlateWithLines.deform` now uses this same polygon to decide
+  contested/open territory every turn, see [Plate motion: shift and
+  deform](#boundary-evolution) -- confirmed directly to cause real over-claiming, not just a
+  cosmetic smoothing). The polygon is always in sync with the real territory (read live from
+  the same line data, never a separately-tracked, driftable copy) and self-intersection-safe
+  for the ordinary case of two adjacent rows with differing extents, but not guaranteed
+  self-intersection-safe for an arbitrarily large lateral shift between rows (e.g. heavy
+  transform shearing) -- a residual source of the bounded-but-nonzero overlap noted in [Plate
+  motion: shift and deform](#boundary-evolution).
+- **Lines are deliberately kept spatially contiguous, not just assumed to be.** A line's two
+  ends (`theta[0]`, `theta[-1]`) are its true territorial edges, and `deform()`'s own
+  shrink rule is scoped specifically to preserve this: it only ever removes a *consecutive*
+  run of contested nodes from a line's two ends, never an isolated contested node stranded in
+  the interior, even though the latter would resolve slightly faster. This was a real bug
+  found during development -- removing interior contested nodes punches a hole
+  `outline_world()` has no way to represent (it only reads each line's own first/last theta),
+  so the hole kept reading as still-claimed territory, making the overlap invariant *worse*.
+  An interior-only contested patch (rare) is left for a later turn, once the contesting
+  neighbor's own continued growth reaches this line's nearer end.
 - **Vegetation is a derived climate classification, not a persisted field.** Climate (see
   [Climate](#climate)) feeds erosion, deposition, hydrology, and glaciation (see
   [Erosion](#erosion), [Hydrology](#hydrology), and [Glaciation](#glaciation):

@@ -138,17 +138,19 @@ def test_is_volcano_survives_a_full_step_cycle():
     # Direct regression check for the bug this session found: bathymetry.py's and erosion.py's
     # own line-reconstruction sites didn't know about is_volcano/volcano_active_years_remaining
     # and silently wiped them to False/0 every step, before volcanism.apply_volcanic_activity
-    # ever got a chance to read them.
+    # ever got a chance to read them. Volcano nodes are now created directly by
+    # PlateWithLines.deform's own overstretched-rift handling (not as a separately tracked
+    # field plate -- World.volcanic_field_plate_ids is no longer populated at all, see its
+    # own comment), so this checks for is_volcano nodes appearing anywhere, not that set.
     world = generate_world(seed=34, num_plates=10, continental_fraction=0.4)
-    found_a_field = False
+    found_a_volcano = False
     for _ in range(20):
         step_world(world, years=2_000_000)
-        if world.volcanic_field_plate_ids:
-            found_a_field = True
-            total_volcano_nodes = sum(int(line.is_volcano.sum()) for p in world.plates for line in p.lines)
-            assert total_volcano_nodes > 0
+        total_volcano_nodes = sum(int(line.is_volcano.sum()) for p in world.plates for line in p.lines)
+        if total_volcano_nodes > 0:
+            found_a_volcano = True
             break
-    assert found_a_field  # sanity: this seed/step count should produce at least one field
+    assert found_a_volcano  # sanity: this seed/step count should produce at least one volcano
 
 
 def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_steps():

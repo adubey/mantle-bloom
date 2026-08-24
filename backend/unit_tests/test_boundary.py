@@ -1,18 +1,28 @@
 import numpy as np
 from app import boundary, geometry, mantle
-from app.plates import TARGET_LINE_SPACING_RAD, ElevationLine, PlateWithLines
-from app.world import World, generate_world, step_world
+from app.elevation_lines import ERUPTION_ELEVATION_M, line_spacing_rad
+from app.plates import (
+    DIVERGENT_RIFT_TARGET_M,
+    ElevationLine,
+    PlateWithLines,
+    _band_intensity,
+    _far_field_intensity,
+)
+from app.world import World
 
 
-def _plate(plate_id, crust_type, theta, omega, base_elevation):
-    """A single-line plate at a fixed seed ([1,0,0], identity frame) so a theta offset
-    directly converts to a real distance (theta_rad * PLANET_RADIUS_KM, small-angle exact
-    for the scale these tests use) -- lets a test construct nodes at precise, known
-    distances from a neighboring plate's own cluster."""
-    frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
-    theta = np.asarray(theta, dtype=float)
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(len(theta), base_elevation))
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, omega=np.asarray(omega, dtype=float), lines=[line])
+def _patch(plate_id, crust_type, seed_xyz, phi_offsets, theta_values, base_elevation, omega=(0.0, 0.0, 0.0)):
+    """A small multi-row plate at `seed_xyz`'s own frame -- multiple lines (so it has a real
+    2D bounding polygon, unlike a single-line plate, whose two-point "outline" never has
+    enough vertices for point_in_spherical_polygon to register containment at all). Every
+    row shares the same `theta_values` for simplicity."""
+    frame = geometry.plate_frame_from_seed(np.asarray(seed_xyz, dtype=float))
+    theta = np.asarray(theta_values, dtype=float)
+    lines = [
+        ElevationLine(phi=phi, theta=theta.copy(), elevation=np.full(len(theta), base_elevation))
+        for phi in phi_offsets
+    ]
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, omega=np.asarray(omega, dtype=float), lines=lines)
 
 
 def test_closing_rate_positive_when_approaching():
@@ -23,100 +33,18 @@ def test_closing_rate_positive_when_approaching():
     # self plate spins +z (eastward motion at the equator) -> moves toward neighbor (east of it)
     approaching_omega = np.array([0.0, 0.0, 1.0])
     still_omega = np.zeros(3)
-    closing = boundary.closing_rate(
-        p_self[None, :], approaching_omega, still_omega, p_neighbor[None, :]
-    )
+    closing = boundary.closing_rate(p_self[None, :], approaching_omega, still_omega, p_neighbor[None, :])
     assert closing[0] > 0
 
     # self plate spins -z (westward motion) -> moves away from neighbor
     receding_omega = np.array([0.0, 0.0, -1.0])
-    closing = boundary.closing_rate(
-        p_self[None, :], receding_omega, still_omega, p_neighbor[None, :]
-    )
+    closing = boundary.closing_rate(p_self[None, :], receding_omega, still_omega, p_neighbor[None, :])
     assert closing[0] < 0
-
-
-def test_grow_or_shrink_line_extends_by_one_node_for_a_small_gap():
-    line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([0.0, 0.0, 0.0]))
-    just_over = boundary.EXTEND_THRESHOLD_RAD * 1.05  # under 2x target spacing -> one node
-    dist = np.array([just_over, just_over, just_over])
-    closing = np.array(
-        [-boundary.TRANSFORM_RATE_THRESHOLD * 2] * 3
-    )  # strongly divergent everywhere
-
-    grown = boundary._grow_or_shrink_line(line, dist, closing, "oceanic")
-    assert len(grown.theta) == 5  # one node added at each end
-    assert grown.theta[0] < line.theta[0]
-    assert grown.theta[-1] > line.theta[-1]
-    assert grown.elevation[0] == boundary.DIVERGENT_RIDGE_TARGET_M
-    assert grown.elevation[-1] == boundary.DIVERGENT_RIDGE_TARGET_M
-    assert np.all(np.diff(grown.theta) > 0)
-
-
-def test_grow_or_shrink_line_extends_by_many_nodes_for_a_large_gap():
-    """A large `years` step can open a gap many spacing units wide in a single step --
-    growth must close it fully, not add a fixed one node regardless of gap size (see the
-    comment on _grow_or_shrink_line: under-provisioned growth here is what caused gaps.py's
-    periodic gap-filling to keep spawning fresh micro-plates at the same busy boundary)."""
-    line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([0.0, 0.0, 0.0]))
-    huge_gap = TARGET_LINE_SPACING_RAD * 10.5
-    dist = np.array([huge_gap, huge_gap, huge_gap])
-    closing = np.array([-boundary.TRANSFORM_RATE_THRESHOLD * 2] * 3)
-
-    grown = boundary._grow_or_shrink_line(line, dist, closing, "oceanic")
-    assert len(grown.theta) == 3 + 10 + 10  # 10 new nodes at each end
-    assert np.all(np.diff(grown.theta) > 0)
-    new_nodes = grown.elevation[(grown.theta > line.theta[-1]) | (grown.theta < line.theta[0])]
-    assert np.all(new_nodes == boundary.DIVERGENT_RIDGE_TARGET_M)
-
-
-def test_grow_or_shrink_line_extend_respects_max_nodes_cap():
-    line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1]), elevation=np.array([0.0, 0.0]))
-    absurd_gap = TARGET_LINE_SPACING_RAD * (boundary.MAX_EXTEND_NODES_PER_STEP + 50)
-    dist = np.array([absurd_gap, absurd_gap])
-    closing = np.array([-boundary.TRANSFORM_RATE_THRESHOLD * 2] * 2)
-
-    grown = boundary._grow_or_shrink_line(line, dist, closing, "oceanic")
-    added = len(grown.theta) - 2
-    assert added <= boundary.MAX_EXTEND_NODES_PER_STEP * 2
-
-
-def test_grow_or_shrink_line_shrinks_when_convergent_and_close():
-    line = ElevationLine(
-        phi=0.0, theta=np.array([0.0, 0.1, 0.2, 0.3]), elevation=np.array([1.0, 2.0, 3.0, 4.0])
-    )
-    close = boundary.MERGE_THRESHOLD_RAD / 2
-    dist = np.array([close, close, close, close])
-    closing = np.array([boundary.TRANSFORM_RATE_THRESHOLD * 2] * 4)  # strongly convergent
-
-    shrunk = boundary._grow_or_shrink_line(line, dist, closing, "continental")
-    assert len(shrunk.theta) == 2  # one node dropped from each end
-    assert np.array_equal(shrunk.theta, line.theta[1:-1])
-
-
-def test_grow_or_shrink_line_never_deletes_the_last_node():
-    line = ElevationLine(phi=0.0, theta=np.array([0.0]), elevation=np.array([1.0]))
-    close = boundary.MERGE_THRESHOLD_RAD / 2
-    dist = np.array([close])
-    closing = np.array([boundary.TRANSFORM_RATE_THRESHOLD * 2])
-
-    result = boundary._grow_or_shrink_line(line, dist, closing, "continental")
-    assert len(result.theta) == 1
-
-
-def test_grow_or_shrink_line_untouched_when_transform_or_far_middle():
-    line = ElevationLine(phi=0.0, theta=np.array([0.0, 0.1, 0.2]), elevation=np.array([1.0, 2.0, 3.0]))
-    dist = np.array([boundary.FAR_THRESHOLD_RAD * 10] * 3)  # nowhere near any boundary
-    closing = np.array([0.0, 0.0, 0.0])
-
-    result = boundary._grow_or_shrink_line(line, dist, closing, "continental")
-    assert np.array_equal(result.theta, line.theta)
-    assert np.array_equal(result.elevation, line.elevation)
 
 
 def test_band_intensity_zero_outside_band_peaks_at_midpoint():
     dist = np.array([0.0, 0.1, 0.2, 0.3, 0.4])
-    result = boundary._band_intensity(dist, inner=0.1, outer=0.3)
+    result = _band_intensity(dist, inner=0.1, outer=0.3)
     assert result[0] == 0.0  # below inner edge
     assert np.isclose(result[1], 0.0)  # exactly at inner edge
     assert result[2] == 1.0  # at the band's midpoint
@@ -125,53 +53,9 @@ def test_band_intensity_zero_outside_band_peaks_at_midpoint():
     assert np.all((result >= 0.0) & (result <= 1.0))
 
 
-def test_subduction_creates_a_volcanic_arc_band_offset_from_the_boundary():
-    # A continental plate converging on an oceanic one. Points at ~82/162/224/324/424 km
-    # from the oceanic cluster -- deliberately all past MERGE_THRESHOLD_RAD (~50km) so
-    # _grow_or_shrink_line's own node-deletion at a close, strongly-convergent boundary
-    # doesn't remove any of them out from under this test.
-    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
-    theta_cont = np.array([0.011, 0.0236, 0.0333, 0.049, 0.0647])
-    continental = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, -rate], base_elevation=500.0)
-    oceanic = _plate(1, "oceanic", [-0.002, -0.0021, -0.0019], omega=[0.0, 0.0, rate], base_elevation=-3000.0)
-    world = World(seed=0, plates=[continental, oceanic])
-
-    boundary.step_boundaries(world, years=1_000_000)
-
-    updated = next(p for p in world.plates if p.plate_id == 0).lines[0].elevation
-    delta = updated - 500.0
-    # Near the boundary (82km -- inside the arc's inner edge at 100km) and well past its
-    # outer edge (324km, 424km): no meaningful volcanic-arc uplift.
-    assert delta[0] < 5.0
-    assert delta[3] < 5.0
-    assert delta[4] < 5.0
-    # Inside the 100-300km band (162km, 224km): real uplift, and the point closer to the
-    # band's midpoint (200km) rose more than the one farther from it -- confirms the
-    # non-monotonic "offset inland" shape, not just a wider plain decay.
-    assert delta[1] > 50.0
-    assert delta[2] > delta[1]
-
-
-def test_continental_collision_crumple_zone_reaches_400km():
-    # Two continental plates converging. 324km is well past the *old* ~200km reach
-    # (FAR_THRESHOLD_RAD) but within COLLISION_RANGE_RAD's 400km.
-    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
-    theta_cont = np.array([0.011, 0.0333, 0.049])  # ~82/224/324 km
-    plate_a = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, -rate], base_elevation=500.0)
-    plate_b = _plate(1, "continental", [-0.002, -0.0021, -0.0019], omega=[0.0, 0.0, rate], base_elevation=500.0)
-    world = World(seed=0, plates=[plate_a, plate_b])
-
-    boundary.step_boundaries(world, years=1_000_000)
-
-    updated = next(p for p in world.plates if p.plate_id == 0).lines[0].elevation
-    delta = updated - 500.0
-    assert np.all(delta > 0.0)  # even the farthest point (324km) shows real uplift
-    assert delta[0] > delta[1] > delta[2]  # peaks at the boundary, decays outward
-
-
 def test_far_field_intensity_zero_below_inner_ramps_to_zero_at_outer():
     dist = np.array([0.0, 0.05, 0.1, 0.2, 0.3])
-    result = boundary._far_field_intensity(dist, inner=0.1, outer=0.3)
+    result = _far_field_intensity(dist, inner=0.1, outer=0.3)
     assert result[0] == 0.0  # well below inner
     assert result[1] == 0.0  # still below inner
     assert result[2] == 1.0  # right at inner edge -- full intensity
@@ -180,62 +64,102 @@ def test_far_field_intensity_zero_below_inner_ramps_to_zero_at_outer():
     assert np.all((result >= 0.0) & (result <= 1.0))
 
 
-def test_continental_collision_far_field_reaches_1000_to_3000km():
-    # Two continental plates converging. Points at ~zero, ~near, and ~far within the
-    # far-field band (1000-3000km), plus one point past COLLISION_RANGE_RAD (400km) but
-    # still short of the far-field band's own inner edge (1000km) -- confirms the 400-1000km
-    # gap between the near-field and far-field bands stays untouched.
+def test_shift_rotates_and_reports_max_displacement():
     rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
-    theta_cont = np.array([0.0766, 0.1158, 0.2336, 0.3905])  # ~500/750/1500/2500 km
-    plate_a = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, -rate], base_elevation=500.0)
-    plate_b = _plate(1, "continental", [-0.002, -0.0021, -0.0019], omega=[0.0, 0.0, rate], base_elevation=500.0)
-    world = World(seed=0, plates=[plate_a, plate_b])
+    spacing = line_spacing_rad(1.0)
+    plate = _patch(
+        0, "continental", [1.0, 0.0, 0.0],
+        phi_offsets=[-spacing, 0.0, spacing],
+        theta_values=[-2 * spacing, -spacing, 0.0, spacing, 2 * spacing],
+        base_elevation=500.0,
+        omega=[0.0, 0.0, rate],
+    )
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    old_frame = plate.frame.copy()
 
-    boundary.step_boundaries(world, years=1_000_000)
+    d = plate.shift(world, years=1_000_000)
 
-    updated = next(p for p in world.plates if p.plate_id == 0).lines[0].elevation
-    delta = updated - 500.0
-    assert delta[0] < 1e-6  # ~500km: past the near-field band, short of the far-field one
-    assert delta[1] < 1e-6  # ~750km: same gap
-    assert delta[2] > 0.0  # ~1500km: inside the far-field band
-    assert delta[3] > 0.0  # ~2500km: inside the far-field band
-    # Gentle rather than real mountain-building.
-    assert delta[2] < boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * 0.5
-
-
-def test_transform_boundary_produces_modest_uplift_within_50km():
-    # A near-zero closing rate (well under TRANSFORM_RATE_THRESHOLD) -- neither strongly
-    # convergent nor divergent, the definition of a transform boundary.
-    rate = mantle.cm_per_yr_to_rad_per_yr(0.05)
-    theta_cont = np.array([0.005, 0.010])  # ~30km, ~62km -- inside vs outside the 50km range
-    continental = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, -rate], base_elevation=500.0)
-    oceanic = _plate(1, "oceanic", [-0.001, -0.0012, -0.0009], omega=[0.0, 0.0, rate], base_elevation=-3000.0)
-    world = World(seed=0, plates=[continental, oceanic])
-
-    boundary.step_boundaries(world, years=1_000_000)
-
-    updated = next(p for p in world.plates if p.plate_id == 0).lines[0].elevation
-    delta = updated - 500.0
-    assert delta[0] > 0.0  # within 50km -- new transform uplift applies
-    assert delta[1] < 1e-6  # beyond 50km -- no effect
-    # "The rise isn't as big" -- confirm it stays well under real mountain-building rates.
-    assert delta[0] < boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * 0.5
+    assert not np.allclose(plate.frame, old_frame)  # actually rotated
+    assert d > 0.0
+    # D is the greatest angular distance any node moved -- bounded above by the rotation
+    # angle itself (achieved only by a node exactly 90 degrees from the axis).
+    assert d <= mantle.MAX_PLATE_RATE * 1_000_000 * 1.001
 
 
-def test_continental_rifting_reaches_300km():
-    # Two continental plates diverging (rifting). 274.6km is well past the *old*
-    # FAR_THRESHOLD_RAD (~200km) reach but within RIFT_RANGE_RAD's 300km.
-    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
-    theta_cont = np.array([0.0129, 0.0283, 0.0412])  # ~94/192/275 km
-    plate_a = _plate(0, "continental", theta_cont, omega=[0.0, 0.0, rate], base_elevation=500.0)
-    plate_b = _plate(1, "continental", [-0.002, -0.0021, -0.0019], omega=[0.0, 0.0, -rate], base_elevation=500.0)
-    world = World(seed=0, plates=[plate_a, plate_b])
+def test_deform_shrinks_contested_end_and_uplifts_collision_zone():
+    spacing = line_spacing_rad(1.0)
+    # Same frame (same seed) as plate_b -- so local theta directly overlaps. plate_a spans
+    # theta in [-7*spacing, 0]; plate_b spans [-3*spacing, 4*spacing] -- a genuine overlap
+    # in [-3*spacing, 0], not merely two patches touching at a single shared edge point
+    # (which -- confirmed directly -- point_in_spherical_polygon's winding-number test
+    # doesn't reliably register as "contained" at all).
+    theta_a = np.arange(8) * spacing - 7 * spacing
+    plate_a = _patch(0, "continental", [1.0, 0.0, 0.0], phi_offsets=[-spacing, 0.0, spacing], theta_values=theta_a, base_elevation=500.0)
 
-    boundary.step_boundaries(world, years=1_000_000)
+    theta_b = np.arange(8) * spacing - 3 * spacing
+    plate_b = _patch(1, "continental", [1.0, 0.0, 0.0], phi_offsets=[-spacing, 0.0, spacing], theta_values=theta_b, base_elevation=500.0)
 
-    updated = next(p for p in world.plates if p.plate_id == 0).lines[0]
-    delta = updated.elevation[:3] - 500.0  # first 3 -- any growth-inserted nodes land after
-    # All three points subside (relax toward DIVERGENT_RIFT_TARGET_M, below 500), including
-    # the farthest one -- which the old ~200km reach would have left completely untouched.
-    assert np.all(delta < 0.0)
-    assert delta[0] < delta[1] < delta[2] < 0.0  # subsidence weakens with distance
+    world = World(seed=0, plates=[plate_a, plate_b], mantle_centers=[], node_density=1.0)
+    # A large max_distance so the D-derived cap doesn't limit growth at the far (west,
+    # uncontested) end either -- this test only cares about the contested (east) end's own
+    # behavior, but deform() legitimately grows/claims elsewhere in the same call, so the
+    # assertions below check that end specifically rather than the plate's total node count.
+    plate_a.deform(world, [plate_b], years=1_000_000, max_distance=10 * spacing)
+
+    # Only the three original rows (phi = -spacing, 0, spacing) actually overlapped plate_b
+    # -- deform() also legitimately claims a couple of brand-new rows further out in phi in
+    # this same call (nothing there is contested either), each with its own independently
+    # computed spacing, so this check is scoped to the three rows the overlap was set up on.
+    for line in plate_a.lines[:3]:
+        # The contested end (originally at theta=0, deep inside plate_b's [-3s, 4s] span)
+        # retreated past the overlap entirely, back to plate_b's own low edge.
+        assert line.theta.max() <= -3 * spacing + 1e-9
+        assert np.all(np.diff(line.theta) > 0)  # stays a contiguous, sorted span
+
+    # Every remaining node close to the boundary (but no longer contested) picked up
+    # collision uplift -- continental-continental convergence, not a trench.
+    still_near_boundary = plate_a.lines[1].elevation[plate_a.lines[1].theta > -4 * spacing]
+    assert np.all(still_near_boundary > 500.0)
+
+
+def test_deform_grows_isolated_plate_with_no_neighbours():
+    spacing = line_spacing_rad(1.0)
+    plate = _patch(0, "oceanic", [1.0, 0.0, 0.0], phi_offsets=[0.0], theta_values=[0.0, spacing, 2 * spacing], base_elevation=-3000.0)
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    before = len(plate.lines[0].theta)
+
+    plate.deform(world, [], years=1_000_000, max_distance=10 * spacing)
+
+    grown_line = plate.lines[0]
+    assert len(grown_line.theta) > before  # nothing to contest -> both ends grow
+    assert np.all(np.diff(grown_line.theta) > 0)
+
+
+def test_deform_growth_occasionally_spawns_a_volcano():
+    # Growth coming back volcanic is a per-growth-event probability roll
+    # (STRETCH_VOLCANO_PROBABILITY), not a deterministic threshold on any single call (see
+    # that constant's own comment for why a threshold-based design didn't work: sampled
+    # against a real running simulation, growth essentially always adds exactly 1 node per
+    # call, so no per-call node-count threshold above 1 is ever reachable at realistic step
+    # sizes/plate rates). The RNG is keyed by (seed, elapsed_years, plate_id, line_index,
+    # end_tag), so sweeping plate_id across many otherwise-identical isolated single-node
+    # growth events is a deterministic way to sample many independent rolls -- with
+    # STRETCH_VOLCANO_PROBABILITY == 0.02, at least one hit in 200 trials is a near-certainty
+    # (1 - 0.98**200 ~= 98%), not a flaky assumption.
+    spacing = line_spacing_rad(1.0)
+    found_a_volcano = False
+    for plate_id in range(200):
+        plate = _patch(plate_id, "continental", [1.0, 0.0, 0.0], phi_offsets=[0.0], theta_values=[0.0, spacing], base_elevation=200.0)
+        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
+
+        grown_line = plate.lines[0]
+        new_nodes = grown_line.theta > spacing
+        assert np.count_nonzero(new_nodes) > 0  # ordinary growth always happens
+        if np.any(grown_line.is_volcano[new_nodes]):
+            found_a_volcano = True
+            assert np.all(grown_line.elevation[new_nodes] == DIVERGENT_RIFT_TARGET_M + ERUPTION_ELEVATION_M)
+            assert np.all(grown_line.volcano_active_years_remaining[new_nodes] > 0)
+            break
+    assert found_a_volcano
+    assert np.all(grown_line.volcano_active_years_remaining[new_nodes] > 0)

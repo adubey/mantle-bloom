@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import Iterator, Protocol
+from typing import TYPE_CHECKING, Iterator, Protocol
 
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError, cKDTree
@@ -21,22 +21,30 @@ from scipy.spatial import ConvexHull, QhullError, cKDTree
 from . import ellipse, geometry, mantle
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
+    ERUPTION_ELEVATION_M,
     MAX_ELEVATION_M,
     MIN_ELEVATION_M,
     NODE_DENSITY_CHOICES,
     PLANET_RADIUS_KM,
     TARGET_LINE_SPACING_KM,
     TARGET_LINE_SPACING_RAD,
+    VOLCANO_ACTIVE_MAX_YEARS,
+    VOLCANO_ACTIVE_MIN_YEARS,
     ElevationLine,
     ElevationPoint,
     build_lines_from_lattice,
     install_point_field_accessors,
     iter_local_lattice,
     line_spacing_rad,
+    needs_regularizing,
+    regularize_line,
 )
 from .lat_long_grid import LatLongGrid
 from .noise import SphereNoise
 from .rtree_index import RTree
+
+if TYPE_CHECKING:
+    from .world import World
 
 CONTINENTAL_FRACTION = 0.4
 BASE_CONTINENTAL_M = 200.0
@@ -178,6 +186,141 @@ def _lines_from_resample(
         return elevation[idx]
 
     return build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
+
+
+# --- Deformation constants (PlateWithLines.deform) ---
+#
+# `shift()`/`deform()` replace the old boundary.py `step_boundaries` pipeline: instead of
+# classifying a boundary node as convergent/divergent/transform from the *velocity*
+# decomposition `closing_rate`, deform() classifies it from *geometry* -- did this plate's
+# rotated territory end up overlapping a neighbour's polygon (contested -> convergent), or
+# is it in open space nobody else claims (-> divergent/rift), or is it merely close to a
+# neighbour without overlapping (-> transform)? The elevation-delta rates/reaches below are
+# carried over unchanged from the old model -- only the classification predicate and the
+# grow/shrink node-count cap (now `D`, this step's actual max node displacement, rather than
+# `closing_rate * years`) changed. See docs/simulation-model.md's "Boundary evolution"
+# section for the physical reasoning behind each rate/reach.
+
+CONVERGENT_MOUNTAIN_RATE_M_PER_MYR = 800.0
+CONVERGENT_TRENCH_RATE_M_PER_MYR = 700.0
+DIVERGENT_RIDGE_TARGET_M = -1500.0  # new oceanic crust at a mid-ocean ridge
+DIVERGENT_RIFT_TARGET_M = -200.0  # new continental crust in a rift valley
+DIVERGENT_RELAX_RATE_PER_MYR = 0.5
+
+# Continental rifting stretches and thins the crust over a much wider zone than oceanic
+# ridge spreading (which keeps FAR_THRESHOLD_RAD's narrower reach, below).
+RIFT_RANGE_KM = 300.0
+RIFT_RANGE_RAD = RIFT_RANGE_KM / PLANET_RADIUS_KM
+
+# Continent-continent collision crumples a much broader belt than a plain trench/mountain
+# boundary (e.g. the Himalaya/Tibetan Plateau deformation zone).
+COLLISION_RANGE_KM = 400.0
+COLLISION_RANGE_RAD = COLLISION_RANGE_KM / PLANET_RADIUS_KM
+
+# Collision's second, much weaker and much farther-reaching band -- zero out to
+# FAR_FIELD_COLLISION_INNER_RAD, then ramping down to zero by FAR_FIELD_COLLISION_OUTER_RAD.
+FAR_FIELD_COLLISION_INNER_KM = 1000.0
+FAR_FIELD_COLLISION_OUTER_KM = 3000.0
+FAR_FIELD_COLLISION_INNER_RAD = FAR_FIELD_COLLISION_INNER_KM / PLANET_RADIUS_KM
+FAR_FIELD_COLLISION_OUTER_RAD = FAR_FIELD_COLLISION_OUTER_KM / PLANET_RADIUS_KM
+FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR = 60.0
+
+# Oceanic-under-continental subduction: the volcanic arc forms inland of the trench, not at
+# it -- a band (see _band_intensity), zero at the boundary, peaking at the band's midpoint,
+# zero again past the outer edge.
+SUBDUCTION_ARC_INNER_KM = 100.0
+SUBDUCTION_ARC_OUTER_KM = 300.0
+SUBDUCTION_ARC_INNER_RAD = SUBDUCTION_ARC_INNER_KM / PLANET_RADIUS_KM
+SUBDUCTION_ARC_OUTER_RAD = SUBDUCTION_ARC_OUTER_KM / PLANET_RADIUS_KM
+
+# Transform (strike-slip) boundaries: narrower reach and gentler rate than either
+# convergent case -- real motion here produces at most local pressure-ridge relief.
+TRANSFORM_RANGE_KM = 50.0
+TRANSFORM_RANGE_RAD = TRANSFORM_RANGE_KM / PLANET_RADIUS_KM
+TRANSFORM_UPLIFT_RATE_M_PER_MYR = 200.0
+
+# Reference (World.node_density == 1.0) values for the density-scaled thresholds below.
+FAR_THRESHOLD_RAD = 1.6 * TARGET_LINE_SPACING_RAD
+EXTEND_THRESHOLD_RAD = 1.3 * TARGET_LINE_SPACING_RAD
+MAX_BOUNDARY_EFFECT_RAD = max(
+    FAR_THRESHOLD_RAD,
+    COLLISION_RANGE_RAD,
+    FAR_FIELD_COLLISION_OUTER_RAD,
+    SUBDUCTION_ARC_OUTER_RAD,
+    TRANSFORM_RANGE_RAD,
+    RIFT_RANGE_RAD,
+)
+# Hard safety ceiling only, not the primary cap any more -- D (this step's actual max node
+# displacement, see Plate.shift) is deform()'s real physical bound on how much a line's end
+# can grow/shrink in one call.
+MAX_EXTEND_NODES_PER_STEP = 400
+
+# Growth at a line end -- ordinarily plain ridge/rift fill -- instead comes back as a fresh
+# volcano (guaranteed one immediate eruption, then the ordinary per-step eruption roll in
+# volcanism.py takes over) with this probability per growth *event*, representing "the plate
+# has been stretched too thin to keep filling with plain crust." Deliberately probabilistic
+# rather than a hard threshold on any per-call quantity -- two threshold-based designs were
+# tried and rejected during development:
+#   - "the line's own existing gap already exceeds target spacing": dead code, confirmed
+#     directly -- elevation_lines.regularize_line runs at the end of every deform() call and
+#     resamples every line back to (within tolerance of) exact target spacing, so by the time
+#     the *next* call's growth check runs, any such gap has already been smoothed away by the
+#     *previous* call's own regularize pass.
+#   - "this call is inserting at least N new nodes at once": also confirmed empirically
+#     unreachable at realistic step sizes/plate rates -- sampled 1392 real growth events
+#     across a running simulation and 100% of them inserted exactly 1 node, since ordinary
+#     per-step divergence rarely outruns a single spacing unit's worth of growth in one call
+#     regardless of how the threshold was tuned.
+# A small per-event probability sidesteps needing any persistent "how long has this been
+# thinning" state to track (which line/end bookkeeping would have to survive regularize,
+# split, and merge) while still producing "occasionally, not constantly" volcanic crust at
+# active rifts over the course of a real run -- the same shape volcanism.py's own eruption
+# roll already uses for "occasional" events elsewhere in this codebase.
+STRETCH_VOLCANO_PROBABILITY = 0.02
+
+def _divergent_target(crust_type: str) -> float:
+    return DIVERGENT_RIDGE_TARGET_M if crust_type == "oceanic" else DIVERGENT_RIFT_TARGET_M
+
+
+def _band_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
+    """Triangular profile: 0 at and outside [inner, outer], peaking at 1.0 at the band's
+    midpoint -- for the subduction volcanic arc, strongest *offset* from the boundary."""
+    mid = (inner + outer) / 2.0
+    half_width = (outer - inner) / 2.0
+    return np.clip(1.0 - np.abs(dist - mid) / half_width, 0.0, 1.0)
+
+
+def _far_field_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
+    """One-sided ramp: 0 below `inner`, 1.0 right at `inner`, decaying linearly to 0 by
+    `outer` -- the collision far-field band, offset inland rather than continuous with the
+    boundary itself."""
+    ramp = np.clip(1.0 - (dist - inner) / (outer - inner), 0.0, 1.0)
+    return np.where(dist < inner, 0.0, ramp)
+
+
+def _far_threshold_rad(spacing_rad: float) -> float:
+    return 1.6 * spacing_rad
+
+
+def _extend_threshold_rad(spacing_rad: float) -> float:
+    return 1.3 * spacing_rad
+
+
+def _max_boundary_effect_rad(spacing_rad: float) -> float:
+    return max(
+        _far_threshold_rad(spacing_rad),
+        COLLISION_RANGE_RAD,
+        FAR_FIELD_COLLISION_OUTER_RAD,
+        SUBDUCTION_ARC_OUTER_RAD,
+        TRANSFORM_RANGE_RAD,
+        RIFT_RANGE_RAD,
+    )
+
+
+def _max_extend_nodes_per_step(node_density: float) -> int:
+    # A 1D count, not an area -- scales by sqrt(node_density), same reasoning as
+    # MAX_EXTEND_NODES_PER_STEP's own comment.
+    return max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(node_density)))
 
 
 class Plate(abc.ABC):
@@ -420,13 +563,38 @@ class Plate(abc.ABC):
         """Claim `new_points_xyz` (world-frame unit vectors, each with its own
         `new_elevation`) as new territory, in place -- the same "fold new nodes into an
         existing node set" shape `merge_with` uses for fusing two whole plates, just for a
-        raw batch of new points instead of another `Plate` (gaps.py's gap-fill absorption is
-        the only caller today). `coverage_radius_rad`/`spacing_rad` only matter to a
-        representation that has to resample onto a fresh lattice (`PlateWithLines`); one that
-        doesn't (`PlateWithRTree`) can ignore them and just append the new points directly.
-        Every `ElevationLine.OPTIONAL_FIELDS` value for a newly-claimed node starts at its
-        default (zero/False) -- no history to carry, same convention
-        `ElevationLine.with_new_nodes` already uses."""
+        raw batch of new points instead of another `Plate` (deform()'s own "claim adjacent
+        territory" sub-step is the only caller today). `coverage_radius_rad`/`spacing_rad`
+        only matter to a representation that has to resample onto a fresh lattice
+        (`PlateWithLines`); one that doesn't (`PlateWithRTree`) can ignore them and just
+        append the new points directly. Every `ElevationLine.OPTIONAL_FIELDS` value for a
+        newly-claimed node starts at its default (zero/False) -- no history to carry, same
+        convention `ElevationLine.with_new_nodes` already uses."""
+        ...
+
+    @abc.abstractmethod
+    def shift(self, world: "World", years: float) -> float:
+        """Refit this plate's Euler pole from the mantle-flow field (damped toward the new
+        target -- same fit-then-clamp as generation-time, just exponentially smoothed via
+        `mantle.VELOCITY_DAMPING`), then rotate rigidly by `years` at that rate -- exact for
+        every node this plate carries, no resampling. Returns `D`, the greatest angular
+        distance (radians) any of this plate's own nodes actually moved this step -- the
+        physical bound `deform()` must not stretch, crush, or subduct past."""
+        ...
+
+    @abc.abstractmethod
+    def deform(self, world: "World", other_plates: list["Plate"], years: float, max_distance: float) -> None:
+        """Reconcile this plate's actual post-`shift()` footprint against the footprint it's
+        entitled to occupy -- the sphere minus every other currently-live plate's own
+        bounding polygon (`other_plates`, each plate's `get_bounding_polygon()`). A node now
+        geometrically inside some other plate's polygon is contested (collision/subduction:
+        apply uplift/trench elevation, then shrink the affected end, consuming no more than
+        `max_distance` worth of nodes -- see `shift()`). Territory nobody else claims is open
+        (a rift: grow into it, or -- if already stretched thin -- spawn a fresh volcano
+        instead). Everything else close to a neighbour but not actually overlapping it is
+        transform. `years` sizes the elevation-delta magnitudes (uplift/trench/relax rates
+        are per-Myr); `max_distance` (`D`, from `shift()`) caps how many nodes any single
+        grow/shrink/claim may touch this call."""
         ...
 
 
@@ -462,28 +630,55 @@ class PlateWithLines(Plate):
 
     def outline_world(self) -> np.ndarray:
         """Derived directly from each line's current two endpoints -- the actual edge
-        boundary evolution maintains (see boundary.py) -- rather than a separately-tracked
-        polygon that could drift out of sync with the real data. Traces the high-theta edge
-        across lines in ascending phi, then the low-theta edge back down: a standard
-        scanline-to-polygon conversion, exact for convex-ish plates and a reasonable
-        envelope otherwise. Always non-overlapping with a live-computed neighbor's outline in
-        the same sense the underlying elevation data is (see plates.iter_local_lattice /
-        boundary.step_boundaries), since it's read from that same data, not duplicated
-        state."""
+        deform() maintains -- rather than a separately-tracked polygon that could drift out
+        of sync with the real data. Traces a *staircase*, not a smooth scanline: the
+        high-theta edge across lines in ascending phi, then the low-theta edge back down,
+        stepping at the midpoint phi between each pair of adjacent rows so the loop only
+        ever claims territory out to whichever row's own actual extent applies on its own
+        side of that midpoint.
+
+        A straight diagonal between two rows whose theta extents differ a lot (an ordinary
+        outcome once a plate's shape is no longer convex-ish -- deform() growing/shrinking
+        each row's ends independently means adjacent rows routinely end up at quite
+        different theta bounds) cuts across whatever concave notch sits between them,
+        silently claiming sphere area this plate doesn't actually cover. That's fatal once
+        `deform()` uses this same outline for its own contested/open classification --
+        `PlateWithLines.deform`'s own docstring, and the invariant test in
+        `unit_tests/test_plates.py`/`stress_tests/test_world_stepping.py` checking that no
+        plate's own node ever falls inside a different plate's `get_bounding_polygon()`,
+        both depend on this being a tight fit, not just a "reasonable envelope." Confirmed
+        directly: the smooth-diagonal version this replaced put real nodes 50-120km inside a
+        neighbor's polygon -- well past that neighbor's own actual nearest node -- purely
+        from this concave-notch-filling effect, not genuine territory overlap."""
         lines_with_nodes = [line for line in self._lines if len(line) > 0]
         if not lines_with_nodes:
             return np.zeros((0, 3))
         ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
-        high_phi = np.array([line.phi for line in ordered])
-        high_theta = np.array([line[-1].get_theta() for line in ordered])
-        low_theta = np.array([line[0].get_theta() for line in ordered])
-        loop_local = np.concatenate(
-            [
-                geometry.local_xyz(high_phi, high_theta),
-                geometry.local_xyz(high_phi[::-1], low_theta[::-1]),
-            ],
-            axis=0,
-        )
+        phis = [line.phi for line in ordered]
+        high_thetas = [line[-1].get_theta() for line in ordered]
+        low_thetas = [line[0].get_theta() for line in ordered]
+        n = len(ordered)
+
+        high_side: list[tuple[float, float]] = []
+        for i in range(n):
+            high_side.append((phis[i], high_thetas[i]))
+            if i + 1 < n and high_thetas[i] != high_thetas[i + 1]:
+                boundary_phi = (phis[i] + phis[i + 1]) / 2.0
+                high_side.append((boundary_phi, high_thetas[i]))
+                high_side.append((boundary_phi, high_thetas[i + 1]))
+
+        low_side: list[tuple[float, float]] = []
+        for i in range(n - 1, -1, -1):
+            low_side.append((phis[i], low_thetas[i]))
+            if i - 1 >= 0 and low_thetas[i] != low_thetas[i - 1]:
+                boundary_phi = (phis[i] + phis[i - 1]) / 2.0
+                low_side.append((boundary_phi, low_thetas[i]))
+                low_side.append((boundary_phi, low_thetas[i - 1]))
+
+        loop = high_side + low_side
+        phi_arr = np.array([p for p, _ in loop])
+        theta_arr = np.array([t for _, t in loop])
+        loop_local = geometry.local_xyz(phi_arr, theta_arr)
         return geometry.to_world(self._frame, loop_local)
 
     def node_count(self) -> int:
@@ -608,6 +803,366 @@ class PlateWithLines(Plate):
         plate_a = PlateWithLines(plate_id=self.plate_id, frame=self._frame.copy(), crust_type=self._crust_type, lines=lines_a)
         plate_b = PlateWithLines(plate_id=new_id, frame=self._frame.copy(), crust_type=self._crust_type, lines=lines_b)
         return plate_a, plate_b
+
+    def shift(self, world: "World", years: float) -> float:
+        old_points, _ = self.all_points_and_elevation()
+
+        if len(old_points) > 0:
+            velocities = mantle.flow_at(old_points, world.mantle_centers)
+            target_omega = mantle.fit_euler_pole(old_points, velocities)
+            new_omega = self.omega + mantle.VELOCITY_DAMPING * (target_omega - self.omega)
+            self.set_omega(mantle.clamp_rate(new_omega))
+
+        increment = geometry.rotation_matrix_from_omega(self.omega, years)
+        self.rotate(increment)
+
+        if len(old_points) == 0:
+            return 0.0
+        new_points, _ = self.all_points_and_elevation()
+        return float(geometry.angular_distance(old_points, new_points).max())
+
+    def deform(self, world: "World", other_plates: list["Plate"], years: float, max_distance: float) -> None:
+        spacing_rad = line_spacing_rad(world.node_density)
+        far_threshold_rad = _far_threshold_rad(spacing_rad)
+        extend_threshold_rad = _extend_threshold_rad(spacing_rad)
+        max_boundary_effect_rad = _max_boundary_effect_rad(spacing_rad)
+        max_extend_nodes = _max_extend_nodes_per_step(world.node_density)
+
+        own_points, _ = self.all_points_and_elevation()
+        if not self._lines or len(own_points) == 0:
+            return
+
+        neighbours = self.get_neighbours(other_plates, threshold_rad=max_boundary_effect_rad)
+
+        if neighbours:
+            pieces = [p.all_points_and_elevation()[0] for p in neighbours]
+            owners = [np.full(len(pts), p.plate_id) for p, pts in zip(neighbours, pieces)]
+            neighbour_points = np.concatenate(pieces, axis=0)
+            neighbour_owner = np.concatenate(owners, axis=0)
+        else:
+            neighbour_points = np.zeros((0, 3))
+            neighbour_owner = np.zeros(0, dtype=int)
+
+        if len(neighbour_points) > 0:
+            tree = cKDTree(neighbour_points, balanced_tree=False, compact_nodes=False)
+            dist_all, idx_all = tree.query(own_points, workers=query_workers(len(own_points)))
+            neighbor_owner_all = neighbour_owner[idx_all]
+        else:
+            dist_all = np.full(len(own_points), np.inf)
+            neighbor_owner_all = np.zeros(len(own_points), dtype=int)
+
+        neighbour_by_id = {p.plate_id: p for p in neighbours}
+
+        # Polygon-containment classification -- the one place this replaces the old
+        # velocity-based closing_rate. Cheap prefilter first (near_mask, from the k-d tree
+        # distance already computed above): a node far from every neighbour can never be
+        # contested, so the more expensive per-point polygon test only runs where it could
+        # actually matter. Deliberately far_threshold_rad here, not max_boundary_effect_rad
+        # (which reaches out to FAR_FIELD_COLLISION_OUTER_RAD, 3000km, for the far-field
+        # mountain-uplift *intensity* curve) -- genuine polygon overlap is a boundary-local
+        # phenomenon; a node thousands of km from its own nearest cross-plate node is never
+        # actually going to land inside that neighbour's real territory, so testing it would
+        # only spend the expensive per-point polygon check on nodes that can never come back
+        # contested. Confirmed directly: this was the dominant per-step cost at realistic
+        # node counts (a 10-plate, default-density step_world call went from ~40s to well
+        # under a second after narrowing this).
+        contested_all = np.zeros(len(own_points), dtype=bool)
+        near_mask = dist_all < far_threshold_rad
+        near_points = own_points[near_mask]
+        if len(near_points) > 0:
+            near_contested = np.zeros(len(near_points), dtype=bool)
+            for neighbour in neighbours:
+                near_contested |= geometry.points_in_spherical_polygon(near_points, neighbour.get_bounding_polygon())
+            contested_all[near_mask] = near_contested
+
+        default_intensity_all = np.clip(1.0 - dist_all / far_threshold_rad, 0.0, 1.0)
+        collision_intensity_all = np.clip(1.0 - dist_all / COLLISION_RANGE_RAD, 0.0, 1.0)
+        far_field_intensity_all = _far_field_intensity(dist_all, FAR_FIELD_COLLISION_INNER_RAD, FAR_FIELD_COLLISION_OUTER_RAD)
+        arc_intensity_all = _band_intensity(dist_all, SUBDUCTION_ARC_INNER_RAD, SUBDUCTION_ARC_OUTER_RAD)
+        transform_intensity_all = np.clip(1.0 - dist_all / TRANSFORM_RANGE_RAD, 0.0, 1.0)
+        rift_intensity_all = np.clip(1.0 - dist_all / RIFT_RANGE_RAD, 0.0, 1.0)
+
+        neighbor_is_oceanic_all = np.array(
+            [neighbour_by_id[pid].crust_type == "oceanic" if pid in neighbour_by_id else False for pid in neighbor_owner_all]
+        )
+
+        convergent_all = contested_all
+        # Distance-only partition of the remaining (uncontested) near-boundary nodes: within
+        # TRANSFORM_RANGE_RAD's narrow reach counts as transform, the wider band beyond it
+        # (out to RIFT_RANGE_RAD/FAR_THRESHOLD_RAD) as divergent relaxation. The old model
+        # kept these mutually exclusive via closing_rate's sign; without a continuous
+        # velocity signal, distance is the next-best proxy -- a deliberate simplification,
+        # not a physical claim that transform never grades into divergence.
+        transform_all = ~contested_all & (dist_all < TRANSFORM_RANGE_RAD)
+        wide_reach = RIFT_RANGE_RAD if self.crust_type == "continental" else FAR_THRESHOLD_RAD
+        divergent_all = ~contested_all & ~transform_all & (dist_all < wide_reach)
+        subduction_all = convergent_all & neighbor_is_oceanic_all
+        collision_all = convergent_all & ~neighbor_is_oceanic_all
+
+        target = _divergent_target(self.crust_type)
+        years_myr = years / 1_000_000.0
+        relax_factor = 1.0 - np.exp(-DIVERGENT_RELAX_RATE_PER_MYR * years_myr)
+
+        new_lines: list[ElevationLine] = []
+        offset = 0
+        for line_index, line in enumerate(self._lines):
+            n = len(line)
+            dist = dist_all[offset : offset + n]
+            default_intensity = default_intensity_all[offset : offset + n]
+            collision_intensity = collision_intensity_all[offset : offset + n]
+            far_field_intensity = far_field_intensity_all[offset : offset + n]
+            arc_intensity = arc_intensity_all[offset : offset + n]
+            transform_intensity = transform_intensity_all[offset : offset + n]
+            rift_intensity = rift_intensity_all[offset : offset + n]
+            contested = contested_all[offset : offset + n]
+            transform = transform_all[offset : offset + n]
+            divergent = divergent_all[offset : offset + n]
+            subduction = subduction_all[offset : offset + n]
+            collision = collision_all[offset : offset + n]
+            offset += n
+
+            elevation = line.elevation.copy()
+            if self.crust_type == "continental":
+                elevation[subduction] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * arc_intensity[subduction]
+                elevation[collision] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * collision_intensity[collision]
+                elevation[collision] += FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR * years_myr * far_field_intensity[collision]
+            else:
+                elevation[contested] -= CONVERGENT_TRENCH_RATE_M_PER_MYR * years_myr * default_intensity[contested]
+
+            elevation[transform] += TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * transform_intensity[transform]
+
+            divergent_intensity = rift_intensity if self.crust_type == "continental" else default_intensity
+            elevation[divergent] += (target - elevation[divergent]) * relax_factor * divergent_intensity[divergent]
+
+            elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
+            updated_line = line.replace(elevation=elevation)
+            grown_line = self._grow_or_shrink_line_for_deform(
+                updated_line,
+                dist,
+                contested,
+                spacing_rad,
+                extend_threshold_rad,
+                max_extend_nodes,
+                max_distance,
+                world,
+                line_index,
+                neighbours,
+            )
+            if len(grown_line) > 0:
+                new_lines.append(grown_line)
+
+        self.set_lines(new_lines)
+        self._claim_adjacent_territory(world, neighbours, spacing_rad)
+
+        for line_index, line in enumerate(self._lines):
+            if needs_regularizing(line, spacing_rad):
+                self.replace_line(line_index, regularize_line(line, spacing_rad))
+
+    def _count_open_prefix(self, theta_candidates: np.ndarray, phi: float, neighbours: list["Plate"]) -> int:
+        """How many of `theta_candidates` (in order, starting closest to the existing edge)
+        are NOT contested by any neighbour -- growth stops at the first candidate that
+        would land inside a neighbour's own current territory, rather than blindly
+        inserting every node a plain distance estimate suggested (the nearest neighbour
+        *node* can be much closer or farther than the actual polygon boundary in the
+        specific direction growth is extending)."""
+        if len(theta_candidates) == 0 or not neighbours:
+            return len(theta_candidates)
+        world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full_like(theta_candidates, phi), theta_candidates))
+        contested = np.zeros(len(world_pts), dtype=bool)
+        for neighbour in neighbours:
+            contested |= geometry.points_in_spherical_polygon(world_pts, neighbour.get_bounding_polygon())
+        first_contested = np.argmax(contested) if np.any(contested) else len(contested)
+        return int(first_contested)
+
+    def _grow_or_shrink_line_for_deform(
+        self,
+        line: ElevationLine,
+        dist: np.ndarray,
+        contested: np.ndarray,
+        spacing_rad: float,
+        extend_threshold_rad: float,
+        max_extend_nodes: int,
+        max_distance: float,
+        world: "World",
+        line_index: int,
+        neighbours: list["Plate"],
+    ) -> ElevationLine:
+        """Shrink `line`'s two ends by however many *consecutive* contested nodes sit
+        there, then grow whichever end is left both uncontested and far from any
+        neighbour -- the `deform()` counterpart to the old `boundary._grow_or_shrink_line`.
+
+        Deliberately end-only, not "remove any contested node anywhere in the line": every
+        other piece of this codebase that touches an `ElevationLine` (outline_world's own
+        polygon trace, `elevation_lines.regularize_line`'s endpoint-preserving resample, the
+        old `boundary._grow_or_shrink_line` this replaces) assumes a line's node set is one
+        *contiguous* span of territory at its own phi -- removing a node stranded in the
+        middle would puncture a hole outline_world() has no way to represent (it only reads
+        each line's own first/last theta), so the hole would keep reading as still-claimed
+        territory. Confirmed directly as a real bug during development: removing interior
+        contested nodes made the "no plate's node sits inside a neighbour's polygon"
+        invariant *worse*, not better, since the resulting holes over-claimed exactly where
+        they'd just been hollowed out. An interior-only contested patch (rare -- it needs a
+        neighbour's own growth to have reached past this row's two ends without yet
+        registering at either) is left alone for this call; the neighbour's own continued
+        growth in subsequent turns reaches this row's nearer end before long, at which point
+        the ordinary end-shrink below picks it up.
+
+        Node-count caps: `max_distance` (`D`, this step's actual max node displacement -- see
+        `Plate.shift`) and the hard safety ceiling `max_extend_nodes`."""
+        theta = line.theta.copy()
+        elevation = line.elevation.copy()
+        contested = contested.copy()
+        dist = dist.copy()
+        persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
+        if len(theta) == 0:
+            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+
+        dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)
+        target = _divergent_target(self.crust_type)
+        n_distance_cap = max(1, int(max_distance / spacing_rad))
+
+        def contested_run_from_end(mask: np.ndarray, from_high: bool) -> int:
+            ordered = mask[::-1] if from_high else mask
+            run = 0
+            for value in ordered:
+                if not value:
+                    break
+                run += 1
+            return run
+
+        # High end first so the low-end index (0) is unaffected by any change made here.
+        if contested[-1]:
+            n_remove = min(contested_run_from_end(contested, from_high=True), n_distance_cap, max_extend_nodes, len(theta) - 1)
+            if n_remove > 0:
+                theta = theta[:-n_remove]
+                elevation = elevation[:-n_remove]
+                contested = contested[:-n_remove]
+                dist = dist[:-n_remove]
+                persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
+
+        if len(theta) == 0:
+            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+
+        if contested[0]:
+            n_remove = min(contested_run_from_end(contested, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
+            if n_remove > 0:
+                theta = theta[n_remove:]
+                elevation = elevation[n_remove:]
+                contested = contested[n_remove:]
+                dist = dist[n_remove:]
+                persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
+
+        if len(theta) == 0:
+            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+
+        def grow_end(n_new: int, end_tag: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, line_index, end_tag))
+            overstretched = rng.random() < STRETCH_VOLCANO_PROBABILITY
+            if not overstretched:
+                return np.full(n_new, target), np.zeros(n_new, dtype=bool), np.zeros(n_new)
+            elev = np.full(n_new, target) + ERUPTION_ELEVATION_M  # guaranteed immediate first eruption
+            is_volcano = np.ones(n_new, dtype=bool)
+            remaining = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=n_new)
+            return elev, is_volcano, remaining
+
+        # High end first so the low-end index (0) is unaffected by any change made here.
+        # dist can be +inf (no neighbour anywhere -- e.g. a genuinely isolated plate/field),
+        # so the gap-derived candidate count is computed against a finite stand-in distance
+        # before dividing; the real cap either way is n_distance_cap/max_extend_nodes.
+        if not contested[-1] and dist[-1] > extend_threshold_rad:
+            gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+            candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
+            n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
+            if n_new > 0:
+                new_theta = candidate_theta[:n_new]
+                new_elevation, new_is_volcano, new_remaining = grow_end(n_new, 0)
+                theta = np.append(theta, new_theta)
+                elevation = np.append(elevation, new_elevation)
+                for name, values in persistent_fields.items():
+                    if name == "is_volcano":
+                        fill = new_is_volcano
+                    elif name == "volcano_active_years_remaining":
+                        fill = new_remaining
+                    else:
+                        fill = np.zeros(n_new, dtype=values.dtype)
+                    persistent_fields[name] = np.append(values, fill)
+
+        if not contested[0] and dist[0] > extend_threshold_rad:
+            gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+            candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
+            n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
+            if n_new > 0:
+                new_theta = candidate_theta[:n_new][::-1]
+                new_elevation, new_is_volcano, new_remaining = grow_end(n_new, 1)
+                theta = np.insert(theta, 0, new_theta)
+                elevation = np.insert(elevation, 0, new_elevation)
+                for name, values in persistent_fields.items():
+                    if name == "is_volcano":
+                        fill = new_is_volcano
+                    elif name == "volcano_active_years_remaining":
+                        fill = new_remaining
+                    else:
+                        fill = np.zeros(n_new, dtype=values.dtype)
+                    persistent_fields[name] = np.insert(values, 0, fill)
+
+        return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+
+    def _claim_adjacent_territory(self, world: "World", neighbours: list["Plate"], spacing_rad: float) -> None:
+        """Claim a whole new phi row just beyond this plate's current phi extremes, where
+        that row is open (unclaimed) territory -- the one case ordinary per-line end-growth
+        structurally can't reach, since growth only ever extends an *existing* line's own
+        theta range, never adds a brand new line. This is what actually lets a plate grow
+        toward its own pole (the old gaps.py's other role -- reclaiming ground a
+        subducted neighbour vacated *within* an existing row's own theta range -- doesn't
+        need a separate mechanism at all: the very next time that row's end-growth check
+        runs, the vacated neighbour is simply gone from `dist`/`contested`, and ordinary
+        end-growth already extends into it).
+
+        Deliberately NOT `Plate.grow_into` (a full lattice resample of the *entire* plate,
+        representation-generic but rare-event-priced -- merge/absorb-scale, not "every plate,
+        every turn"): confirmed directly during development that calling it here every turn
+        made a plate balloon by several times its own size in one call, since the resample's
+        own coverage radius around a handful of newly-claimed ring points reconstructs far
+        more lattice area than just those points. Building the new row directly, the same
+        way `_grow_or_shrink_line_for_deform`'s own growth builds new nodes, keeps this the
+        same gradual, bounded-per-turn shape as every other change in this model."""
+        lines_with_nodes = [line for line in self._lines if len(line) > 0]
+        if not lines_with_nodes:
+            return
+        ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
+        max_phi_limit = np.pi / 2 - spacing_rad / 2
+        base = base_elevation(self.crust_type)
+        amp = noise_amplitude(self.crust_type)
+        new_lines: list[ElevationLine] = []
+
+        for reference, direction in ((ordered[0], -1), (ordered[-1], 1)):
+            new_phi = reference.phi + direction * spacing_rad
+            if abs(new_phi) > max_phi_limit:
+                continue
+            dtheta = spacing_rad / max(np.cos(new_phi), 1e-3)
+            span = reference.theta[-1] - reference.theta[0]
+            n_cols = max(int(round(span / dtheta)) + 1, 1)
+            theta_candidates = reference.theta[0] + dtheta * np.arange(n_cols)
+            world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_cols, new_phi), theta_candidates))
+
+            contested = np.zeros(n_cols, dtype=bool)
+            for neighbour in neighbours:
+                contested |= geometry.points_in_spherical_polygon(world_pts, neighbour.get_bounding_polygon())
+            open_mask = ~contested
+            if not np.any(open_mask):
+                continue
+
+            direction_tag = 0 if direction < 0 else 1
+            rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, direction_tag))
+            noise = SphereNoise(rng, octaves=3, base_freq=2.5)
+            theta_open = theta_candidates[open_mask]
+            elevation_open = base + amp * noise.sample(world_pts[open_mask])
+            new_lines.append(ElevationLine(phi=new_phi, theta=theta_open, elevation=elevation_open))
+
+        if new_lines:
+            self.set_lines(list(self._lines) + new_lines)
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -937,6 +1492,52 @@ class PlateWithRTree(Plate):
             np.concatenate([self._elevation, new_elevation]),
             **{name: np.concatenate([self._fields[name], values]) for name, values in new_fields.items()},
         )
+
+    def shift(self, world: "World", years: float) -> float:
+        # TODO(PlateWithRTree.step): identical to PlateWithLines.shift -- refit omega from
+        # mantle.flow_at/fit_euler_pole (damped via mantle.VELOCITY_DAMPING, clamped via
+        # mantle.clamp_rate), rotate via geometry.rotation_matrix_from_omega + self.rotate,
+        # and measure D as geometry.angular_distance(old_points, new_points).max() over
+        # all_points_and_elevation() before/after. Nothing here depends on the flat-cloud
+        # representation, so this could plausibly be pulled up into Plate itself and shared
+        # by both subclasses rather than duplicated -- left as its own override for now so
+        # PlateWithRTree's whole step lands as one self-contained TODO.
+        raise NotImplementedError("PlateWithRTree.shift is not yet implemented")
+
+    def deform(self, world: "World", other_plates: list["Plate"], years: float, max_distance: float) -> None:
+        # TODO(PlateWithRTree.step): PlateWithLines.deform grows/shrinks at each *line's* two
+        # theta-ends; this representation has no row structure, so growth/shrink instead
+        # means inserting/removing individual points directly into/out of the flat
+        # theta/phi/elevation/fields arrays (see set_nodes), then rebuilding the R-tree.
+        # Concretely:
+        #   1. Classification is representation-agnostic and reusable as-is: for each of
+        #      this plate's own nodes, `contested = any(geometry.point_in_spherical_polygon(
+        #      point, n.get_bounding_polygon()) for n in neighbours)`, prefiltered by a
+        #      cheap cKDTree nearest-neighbour-distance query exactly like PlateWithLines
+        #      does (dist_all/near_mask).
+        #   2. Elevation deltas (mountain/trench/transform/rift-relax) apply the same six
+        #      intensity curves over the whole flat node array at once -- no per-line loop
+        #      needed, just boolean-mask indexing into self._elevation directly.
+        #   3. Grow/shrink has no "line end" concept -- the R-tree analogue of "the boundary
+        #      nodes of this plate" is exactly what outline_world()'s own boundary-node
+        #      detection already identifies (the low-density nodes it hands to ConvexHull).
+        #      Shrinking removes contested boundary nodes (and, if the contested region goes
+        #      deeper, whichever of *their* own nearest neighbours are also contested,
+        #      propagating inward via the R-tree rather than via a fixed row) capped by
+        #      max_distance/spacing_rad. Growing inserts new points spaced spacing_rad
+        #      outward from an uncontested, far-from-any-neighbour boundary node, along the
+        #      local outward normal (e.g. away from this plate's own centroid through that
+        #      node) -- there's no single well-defined "theta direction" to extend along the
+        #      way a line has, so the outward direction has to be estimated locally instead
+        #      (e.g. from the boundary node's own two hull neighbours).
+        #   4. The "claim adjacent territory" sub-step becomes: sweep a local lattice (same
+        #      iter_local_lattice usage PlateWithLines uses) restricted to a ring just
+        #      outside this plate's own R-tree box/nearest-neighbour reach, same
+        #      not-contested filter, then Plate.grow_into (already representation-generic --
+        #      PlateWithRTree.grow_into above just appends points, no resample needed).
+        #   5. Regularizing has no analogue here -- there's no fixed-row spacing to drift out
+        #      of alignment, so this step is likely just a no-op for this representation.
+        raise NotImplementedError("PlateWithRTree.deform is not yet implemented")
 
 
 ELLIPSE_OUTLINE_POINTS = 72

@@ -203,6 +203,46 @@ def point_in_spherical_polygon(point_xyz: np.ndarray, polygon_xyz: np.ndarray) -
     return abs(float(np.sum(diffs))) > np.pi
 
 
+def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarray:
+    """Vectorized `point_in_spherical_polygon`: same winding-number algorithm, batched over
+    every point in `points_xyz` at once instead of a Python-level loop calling the scalar
+    version per point. Needed once `PlateWithLines.deform` started calling the containment
+    test for every one of a plate's own near-boundary nodes, every turn -- profiled directly
+    as the dominant per-step cost at realistic node counts (a single step_world call on a
+    10-plate, default-density world went from ~46s to well under a second after switching
+    to this). Returns a bool array, one entry per point in `points_xyz` (empty if either
+    input is empty or the polygon has fewer than 3 vertices)."""
+    points_xyz = np.asarray(points_xyz, dtype=float)
+    polygon_xyz = np.asarray(polygon_xyz, dtype=float)
+    n = len(points_xyz)
+    if len(polygon_xyz) < 3 or n == 0:
+        return np.zeros(n, dtype=bool)
+
+    up = np.array([0.0, 0.0, 1.0])
+    north = up[None, :] - (points_xyz @ up)[:, None] * points_xyz
+    norms = np.linalg.norm(north, axis=-1)
+    degenerate = norms < 1e-6
+    if np.any(degenerate):
+        alt_up = np.array([1.0, 0.0, 0.0])
+        north[degenerate] = alt_up[None, :] - (points_xyz[degenerate] @ alt_up)[:, None] * points_xyz[degenerate]
+        norms = np.linalg.norm(north, axis=-1)
+    north = north / norms[:, None]
+    east = np.cross(north, points_xyz)
+    east = east / np.linalg.norm(east, axis=-1, keepdims=True)
+
+    # tangent: (n_points, n_vertices, 3) -- every polygon vertex projected into each query
+    # point's own local tangent plane, all at once.
+    dot_vp = polygon_xyz @ points_xyz.T  # (n_vertices, n_points)
+    tangent = polygon_xyz[None, :, :] - dot_vp.T[:, :, None] * points_xyz[:, None, :]
+    east_comp = np.einsum("nmc,nc->nm", tangent, east)
+    north_comp = np.einsum("nmc,nc->nm", tangent, north)
+    bearings = np.arctan2(north_comp, east_comp)  # (n_points, n_vertices)
+    closed = np.concatenate([bearings, bearings[:, :1]], axis=1)
+    diffs = np.diff(closed, axis=1)
+    diffs = (diffs + np.pi) % (2.0 * np.pi) - np.pi
+    return np.abs(np.sum(diffs, axis=1)) > np.pi
+
+
 def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:
     """World unit vectors (..., 3) -> plate-local unit vectors, given local frame `frame`."""
     return world_xyz @ frame  # frame.T @ v for each v, vectorized as v @ frame

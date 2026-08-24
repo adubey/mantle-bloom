@@ -135,8 +135,10 @@ level visibly floods the elevation map immediately.
 
 `simulate_plate_movement`/`simulate_climate_biomes` let the user run just one half of
 `world.step_world` -- see that function's own docstring. With `simulate_plate_movement`
-`false`, a step skips plate rotation, boundary evolution, topology changes, volcanism, and
-the periodic gap-fill/regularize/reassign passes. With `simulate_climate_biomes` `false`, a
+`false`, a step skips every plate's `shift`/`deform` (rotation, boundary classification,
+elevation deltas, growth/shrink/claim, inline regularization -- see
+simulation-model.md#boundary-evolution), topology changes, and volcanism. With
+`simulate_climate_biomes` `false`, a
 step skips erosion (and the `climate.compute_climate` call inside it), hydrology,
 bathymetry, and resource formation -- by far the most expensive part of a step. Either can
 be turned off independently to watch (or speed up) just the other half; `elapsed_years`

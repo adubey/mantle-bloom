@@ -47,17 +47,25 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
 
 Time-stepping:
   POST /world/step  { years }
-  → world.step_world(world, years): refit Euler poles, rotate, evolve boundaries, apply
-    topology changes (at most one collision merge per step, only after a sustained 50-100
+  → world.step_world(world, years): every plate refits its Euler pole and rotates
+    (`Plate.shift`), then every plate reconciles its actual footprint against the sphere
+    minus every other live plate's own territory (`Plate.deform`, in a freshly randomized
+    order each turn) -- collision/subduction uplift or trench elevation where a plate's
+    rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh
+    volcano) where it opens unclaimed space, transform uplift where it's merely close --
+    see simulation-model.md#boundary-evolution. Then topology changes (at most one collision
+    merge per step, only after a sustained 50-100
     Myr collision -- see simulation-model.md#merge-and-split), erode elevation and route
     rivers/lakes/glaciers from the world's current climate (every step -- see
     simulation-model.md#erosion, simulation-model.md#hydrology, and
     simulation-model.md#glaciation), relax submerged
     continental crust toward a shelf-or-deep-water target (every step -- see
-    simulation-model.md#bathymetry), roll each active volcano's own eruption chance (every
-    step -- see simulation-model.md#volcanism), and occasionally fill gaps, detect divergent
-    boundaries and spawn any new volcanic fields they warrant, and regularize line spacing,
-    and -- on the steps in between -- reassign misplaced boundary points (see
+    simulation-model.md#bathymetry), and roll each active volcano's own eruption chance (every
+    step -- see simulation-model.md#volcanism). Line regularization and "claim adjacent
+    territory" (a plate growing toward its own pole, or reclaiming ground a subducted
+    neighbor vacated) now happen inline inside every `deform()` call rather than on a
+    periodic cadence -- the old separate gap-filling and boundary-point-reassignment passes
+    are gone entirely (see simulation-model.md#gap-filling and
     simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
@@ -114,17 +122,20 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `mantle_centers` -- the convection-cell flow field (see
   [simulation-model.md#mantle-flow](simulation-model.md#mantle-flow)), fixed for the life of
   the world.
-- `elapsed_years`, `steps_since_regularize`, `steps_since_reassign` (the two periodic-
-  maintenance cadence counters -- see simulation-model.md#line-regularization and
-  simulation-model.md#reassignment, deliberately never both due on the same step),
-  `next_plate_id` (a monotonically increasing counter so a plate created by a split never
-  collides with an existing id, even after other plates have been removed).
+- `elapsed_years`, `next_plate_id` (a monotonically increasing counter so a plate created by
+  a split never collides with an existing id, even after other plates have been removed).
+  Line regularization and gap-filling no longer run on a periodic cadence (both happen
+  inline inside every `Plate.deform()` call now -- see
+  simulation-model.md#boundary-evolution), so the counters that used to gate them
+  (`steps_since_regularize`, `steps_since_reassign`) are gone.
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
-- `volcanic_field_plate_ids: set[int]` -- plate ids currently tracked as an active volcanic
-  field, removed once diluted below volcanism.VOLCANO_FRACTION_DORMANT_THRESHOLD (see
-  [simulation-model.md#volcanism](simulation-model.md#volcanism)).
+- `volcanic_field_plate_ids: set[int]` -- plate ids tracked as an active volcanic field,
+  removed once diluted below volcanism.VOLCANO_FRACTION_DORMANT_THRESHOLD (see
+  [simulation-model.md#volcanism](simulation-model.md#volcanism)). Nothing populates this set
+  any more (volcano creation now happens as new nodes on an existing plate's own line, not as
+  a separately spawned field plate) -- kept in case that tracking is reintroduced later.
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
   [simulation-model.md#climate](simulation-model.md#climate)).
@@ -168,9 +179,10 @@ A plate has no separately-tracked boundary polygon at all -- an earlier version 
 (`boundary_local`, frozen at generation and rotated rigidly thereafter) purely for the
 "Plates" map view's outline overlay, and it visibly drifted out of sync with the real
 territory after enough stepping (looking like plates overlapping, since it was never
-touched by boundary evolution, merge, or split). `Plate.outline_world()` replaces it: every
-render, the outline is traced live from each line's current two endpoints -- the actual
-edge boundary evolution maintains -- so it can never be stale (see
+touched by `deform()`, merge, or split). `Plate.outline_world()` replaces it: every render
+(and, now, every `deform()` call, which uses this same outline to decide what's contested vs.
+open territory), the outline is traced live from each line's current two endpoints -- the
+actual edge `deform()` maintains -- so it can never be stale (see
 [simulation-model.md#boundary-evolution](simulation-model.md#boundary-evolution)).
 
 ## The simulation pipeline, module by module
@@ -190,25 +202,27 @@ rtree_index.py      minimal bulk-loaded (STR-packed) R-tree over 2D points -- bo
                     neighbor queries, used by PlateWithRTree
 plates.py          Plate/PlateWithLines/PlateWithRTree data structures, initial plate
                     generation (nearest-seed tiling), the live per-plate outline used by the
-                    "Plates" map view, the Plate Inspector's bounding-ellipse fit and
-                    nearest-plate click hit-test
+                    "Plates" map view and by `deform()`'s own contested/open classification,
+                    the Plate Inspector's bounding-ellipse fit and nearest-plate click
+                    hit-test, and -- on `PlateWithLines` -- `shift()`/`deform()` themselves:
+                    per-turn Euler-pole refit + rotation, polygon-containment boundary
+                    classification, elevation deltas, line growth/shrinkage (capped by that
+                    turn's own max node displacement, not a periodic cadence), overstretched-
+                    rift volcano spawning, claiming adjacent territory, and inline line
+                    regularization (`PlateWithRTree`'s own versions are still a TODO)
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
-boundary.py         per-step boundary adjacency detection (k-d tree against every other
-                     plate's current nodes), convergent/divergent/transform classification,
-                     elevation deltas, line growth/shrinkage
+boundary.py         `closing_rate` (used only by merge_split.py now, to confirm two
+                     continental plates are actively converging, not just neighbors) and the
+                     couple of threshold constants merge_split.py shares with plates.py's
+                     `deform()`
 merge_split.py       plate consumption, sustained-collision continental merging (50-100 Myr,
                      at most one per step), mantle-flow-driven splitting, event log messages
-gaps.py              periodic whole-sphere coverage sweep: absorbs gaps into a bordering
-                     plate or spawns a new one where no plate dominates, event log messages
-                     for newly spawned plates
-volcanism.py          periodic (same cadence as gaps.py) detection of divergent boundary
-                     gaps and new continental "volcanic field" plate spawning, plus every-
-                     step eruption/field-lifecycle bookkeeping (see
+volcanism.py          every-step eruption lifecycle for existing volcano nodes (active-years
+                     countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
+                     volcanic-field *creation* now happens inline inside `deform()`'s own
+                     overstretched-rift handling, not a separate periodic detection pass (see
                      simulation-model.md#volcanism)
-reassign.py          periodic pass (staggered against gaps.py's cadence) that hands a node
-                     over to a neighboring plate once most of its nearest neighbors belong to
-                     it, event log messages for each reassignment
 world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
