@@ -228,6 +228,18 @@ class Plate(abc.ABC):
         `replace`/`replace_line`/`set_nodes` round-trip needed."""
         ...
 
+    @abc.abstractmethod
+    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
+        """Same as `map_world_points`, with each pair additionally carrying how far across
+        this plate the node sits, normalized to [0, 1] -- 0 and 1 at the plate's own
+        boundary, values in between toward the interior. `PlateWithLines` measures this
+        along the node's own row: 0/1 at its `ElevationLine`'s own low/high theta endpoints,
+        the same two points `outline_world()` already traces as that row's edge.
+        `PlateWithRTree` has no row structure to measure along, so it approximates the same
+        thing against the plate's own overall theta range instead -- cheaper than a true
+        per-node distance-to-outline query, at the cost of not accounting for phi."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -318,6 +330,17 @@ class PlateWithLines(Plate):
             world_pts = line.world_xyz(self._frame)
             for point, world_xyz in zip(line, world_pts):
                 yield point, world_xyz
+
+    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
+        for line in self._lines:
+            if len(line) == 0:
+                continue
+            world_pts = line.world_xyz(self._frame)
+            low_theta = line.theta[0]
+            span = line.theta[-1] - low_theta
+            for point, world_xyz in zip(line, world_pts):
+                fraction = 0.5 if span == 0 else float((point.get_theta() - low_theta) / span)
+                yield point, world_xyz, fraction
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -490,6 +513,21 @@ class PlateWithRTree(Plate):
         world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
         for i, world_xyz in enumerate(world_pts):
             yield ElevationPointInCloud(self, i), world_xyz
+
+    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
+        """No row structure to measure a node's own edge-to-edge position along (unlike
+        PlateWithLines), so this approximates it against the plate's overall theta range --
+        an O(n) min/max reduction, not a per-node spatial query -- rather than something more
+        faithful like distance-to-outline_world(), which would cost a hull/point-in-polygon
+        query per node."""
+        if len(self._theta) == 0:
+            return
+        world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        low_theta = float(self._theta.min())
+        span = float(self._theta.max()) - low_theta
+        for i, world_xyz in enumerate(world_pts):
+            fraction = 0.5 if span == 0 else (float(self._theta[i]) - low_theta) / span
+            yield ElevationPointInCloud(self, i), world_xyz, fraction
 
     def _typical_spacing(self) -> float:
         """Median nearest-neighbor distance over a bounded sample of this plate's own nodes

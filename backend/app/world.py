@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from scipy.spatial import cKDTree
 
 from . import bathymetry, boundary, climate, elevation_lines, erosion, gaps, geology, geometry, hydrology, mantle, merge_split, reassign, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
-from .plates import Plate, gather_node_positions, generate_plates
+from .plates import Plate, gather_node_positions, generate_plates, query_workers
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
@@ -88,6 +89,12 @@ class World:
     # This step's flow-routing snapshot (see hydrology.py), populated by erosion.py
     # alongside climate_cache -- same reuse pattern, same one-step-stale simplification.
     hydrology_cache: hydrology.HydrologyFields | None = None
+    # Nearest-land spatial index backing distance_from_land_approx (below) -- reset to None
+    # once per step (step_world, right where node_cloud is gathered, since land nodes' own
+    # world positions and elevations can both have changed since the last build) and rebuilt
+    # lazily on first use after that. None means "not built yet this step," not "no land" --
+    # distance_from_land_approx itself is what tells those two cases apart.
+    land_kdtree_cache: cKDTree | None = None
     # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
@@ -119,6 +126,40 @@ class World:
         self.events.append((self.elapsed_years, message))
         if len(self.events) > MAX_EVENT_LOG_LENGTH:
             del self.events[: len(self.events) - MAX_EVENT_LOG_LENGTH]
+
+    def distance_from_land_approx(self, points: np.ndarray) -> np.ndarray:
+        """Approximate distance from each given world-xyz point (shape (n, 3)) to the
+        nearest land node (elevation > sea_level_m) anywhere in this world -- lazily builds
+        and reuses land_kdtree_cache (see its own docstring) off every plate's own public
+        Plate.map_world_points()/ElevationPoint.get_elevation() interface, rather than
+        reaching into any one representation's own storage the way gather_node_positions
+        does (PlateWithLines-only). bathymetry.py uses this in place of building its own
+        land-only tree from scratch every call. np.inf for every point if this world has no
+        land anywhere yet."""
+        if self.land_kdtree_cache is None:
+            self.land_kdtree_cache = _build_land_kdtree(self)
+        if self.land_kdtree_cache is None:
+            return np.full(len(points), np.inf)
+        if len(points) == 0:
+            return np.zeros(0)
+        dist, _ = self.land_kdtree_cache.query(points, workers=query_workers(len(points)))
+        return dist
+
+
+def _build_land_kdtree(world: World) -> cKDTree | None:
+    """Every land node's (elevation > world.sea_level_m) world position, across every
+    plate, gathered via Plate's own public map_world_points()/ElevationPoint.get_elevation()
+    -- representation-agnostic, unlike plates.gather_node_positions -- and indexed for
+    World.distance_from_land_approx. None if this world has no land nodes at all."""
+    land_points = [
+        world_xyz
+        for plate in world.plates
+        for point, world_xyz in plate.map_world_points()
+        if point.get_elevation() > world.sea_level_m
+    ]
+    if not land_points:
+        return None
+    return cKDTree(np.array(land_points))
 
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
@@ -263,6 +304,11 @@ def step_world(world: World, years: float) -> None:
         # simulate_climate_biomes is off -- no plate-movement module reads climate/hydrology
         # output (see World.simulate_climate_biomes), so there's nothing here for them to miss.
         node_cloud = gather_node_positions(world.plates)
+        # Same "fixed for the rest of this step" reasoning as node_cloud above applies to
+        # land_kdtree_cache -- reset here, then lazily rebuilt on whichever of erosion (which
+        # can move the coastline) or bathymetry (see World.distance_from_land_approx) reads
+        # it first.
+        world.land_kdtree_cache = None
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         bathymetry.apply_bathymetry(world, years, node_cloud=node_cloud)
     if world.simulate_plate_movement:

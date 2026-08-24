@@ -96,6 +96,34 @@ def test_set_nodes_replaces_every_node_and_rebuilds_the_index():
     assert nearest[0] in (0, 1)  # closest to either theta=0.0 or theta=0.1
 
 
+def test_map_world_points_on_plate_uses_plate_wide_theta_range():
+    theta = np.array([0.0, 0.1, 0.2, 0.3])
+    phi = np.array([0.0, 0.05, -0.05, 0.02])
+    plate = PlateWithRTree(plate_id=9, frame=_FRAME, crust_type="continental", theta=theta, phi=phi, elevation=np.zeros(4))
+
+    results = list(plate.map_world_points_on_plate())
+    assert len(results) == 4
+    fractions = np.array([fraction for _, _, fraction in results])
+    assert np.allclose(fractions, [0.0, 1 / 3, 2 / 3, 1.0])
+
+    expected_world = geometry.to_world(_FRAME, geometry.local_xyz(phi, theta))
+    got_world = np.array([xyz for _, xyz, _ in results])
+    assert np.allclose(got_world, expected_world)
+
+
+def test_map_world_points_on_plate_empty_for_no_nodes():
+    plate = PlateWithRTree(plate_id=10, frame=_FRAME, crust_type="oceanic")
+    assert list(plate.map_world_points_on_plate()) == []
+
+
+def test_map_world_points_on_plate_single_node_gives_midpoint_fraction():
+    plate = PlateWithRTree(
+        plate_id=11, frame=_FRAME, crust_type="oceanic", theta=np.array([0.5]), phi=np.array([0.0]), elevation=np.array([0.0])
+    )
+    ((_, _, fraction),) = list(plate.map_world_points_on_plate())
+    assert fraction == 0.5
+
+
 def test_outline_world_is_a_finite_unit_vector_hull_for_a_disk_cluster():
     rng = np.random.default_rng(1)
     n = 400
