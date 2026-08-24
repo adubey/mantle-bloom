@@ -84,7 +84,7 @@ from .elevation_lines import (
     line_spacing_rad,
 )
 from .noise import SphereNoise
-from .plates import PlateWithLines, base_elevation, noise_amplitude, query_workers
+from .plates import Plate, PlateWithLines, base_elevation, noise_amplitude, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -320,16 +320,11 @@ def detect_and_spawn_volcanic_fields(world: "World") -> list[str]:
     return events
 
 
-def _plate_volcano_state(plate: PlateWithLines) -> tuple[np.ndarray, np.ndarray]:
+def _plate_volcano_state(plate: Plate) -> tuple[np.ndarray, np.ndarray]:
     """This plate's own is_volcano/volcano_active_years_remaining, concatenated in the exact
-    same per-line order Plate.all_points_and_elevation uses -- so the two can be indexed
-    together (see merge_close_volcanic_fields)."""
-    lines_with_nodes = [line for line in plate.lines if len(line) > 0]
-    if not lines_with_nodes:
-        return np.zeros(0, dtype=bool), np.zeros(0)
-    is_volcano = np.concatenate([line.is_volcano for line in lines_with_nodes], axis=0)
-    remaining = np.concatenate([line.volcano_active_years_remaining for line in lines_with_nodes], axis=0)
-    return is_volcano, remaining
+    same order Plate.all_points_and_elevation uses -- so the two can be indexed together
+    (see merge_close_volcanic_fields)."""
+    return plate.collect("is_volcano"), plate.collect("volcano_active_years_remaining")
 
 
 def find_close_volcanic_field_pairs(world: "World") -> list[tuple[int, int]]:
@@ -697,11 +692,11 @@ def grow_isolated_volcanic_fields(world: "World") -> None:
         plate.set_lines(new_lines)
 
 
-def _volcano_fraction(plate: PlateWithLines) -> float:
+def _volcano_fraction(plate: Plate) -> float:
     total = plate.node_count()
     if total == 0:
         return 0.0
-    return sum(int(line.is_volcano.sum()) for line in plate.lines) / total
+    return int(plate.collect("is_volcano").sum()) / total
 
 
 def apply_volcanic_activity(world: "World", years: float) -> list[str]:

@@ -57,7 +57,7 @@ from scipy.spatial import cKDTree
 from . import biomes
 from .bathymetry import SHELF_RANGE_RAD
 from .noise import SphereNoise
-from .plates import PlateWithLines, query_workers
+from .plates import Plate, query_workers
 
 if TYPE_CHECKING:
     from .erosion import ErosionResult
@@ -207,7 +207,7 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
         )
 
 
-def seed_initial_soil(plate_list: list[PlateWithLines], seed: int, initial_soil_maturity: float) -> None:
+def seed_initial_soil(plate_list: list[Plate], seed: int, initial_soil_maturity: float) -> None:
     """Seeds soil_depth/soil_organic_content/soil_mineral_content on every land node (elevation
     > 0), scaled by `initial_soil_maturity` (the UI's "initial soil maturity" slider, 0 to 1) --
     called once from world.generate_world, right after plates.generate_plates. At 0 (the
