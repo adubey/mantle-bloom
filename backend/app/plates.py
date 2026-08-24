@@ -21,6 +21,8 @@ from scipy.spatial import ConvexHull, QhullError, cKDTree
 from . import ellipse, geometry
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
+    MAX_ELEVATION_M,
+    MIN_ELEVATION_M,
     NODE_DENSITY_CHOICES,
     PLANET_RADIUS_KM,
     TARGET_LINE_SPACING_KM,
@@ -32,6 +34,7 @@ from .elevation_lines import (
     iter_local_lattice,
     line_spacing_rad,
 )
+from .lat_long_grid import LatLongGrid
 from .noise import SphereNoise
 from .rtree_index import RTree
 
@@ -108,6 +111,40 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
         if closest_dist <= threshold_rad:
             neighbours.append(other)
     return neighbours
+
+
+def _update_to_lat_long_grid(plate: "Plate", grid: LatLongGrid) -> None:
+    """The plate -> grid half of the `LatLongGrid` round trip (see lat_long_grid.py's own
+    module docstring): resamples this plate's current node elevations onto whichever grid
+    cell each node's world position falls nearest to. Shared by PlateWithLines.
+    update_to_lat_long_grid and PlateWithRTree.update_to_lat_long_grid, which differ only in
+    what all_points_and_elevation() itself gathers -- the same "representation differs, the
+    traversal against the abstract Plate interface doesn't" precedent _plates_within already
+    sets for get_neighbours, above."""
+    points, elevation = plate.all_points_and_elevation()
+    if len(points) == 0:
+        return
+    rows, cols = grid.row_col_for_world_xyz(points)
+    grid.set_elevation(rows, cols, elevation)
+
+
+def _update_deltas_from_lat_long_grid(plate: "Plate", grid: LatLongGrid) -> None:
+    """The grid -> plate half of the round trip: only the *net* elevation change grid-space
+    code made since update_to_lat_long_grid populated the grid (see
+    LatLongGrid.change_elevation) is applied back, added onto each node's own current
+    elevation -- never the grid's absolute value, which is only a coarse nearest-cell resample
+    and would otherwise flatten every node sharing a cell down to the exact same elevation.
+    Clipped the same way every other elevation-modifying pass in this codebase is (boundary.py,
+    erosion.py, volcanism.py), since a node's own elevation plus a grid delta sized for a
+    different, coarser node can otherwise drift past the world's physical bounds."""
+    points, _ = plate.all_points_and_elevation()
+    if len(points) == 0:
+        return
+    rows, cols = grid.row_col_for_world_xyz(points)
+    deltas = grid.delta_at(rows, cols)
+    for (point, _), delta in zip(plate.map_world_points(), deltas):
+        if delta != 0.0:
+            point.set_elevation(float(np.clip(point.get_elevation() + delta, MIN_ELEVATION_M, MAX_ELEVATION_M)))
 
 
 class Plate(abc.ABC):
@@ -269,6 +306,23 @@ class Plate(abc.ABC):
         per-node distance-to-outline query, at the cost of not accounting for phi."""
         ...
 
+    @abc.abstractmethod
+    def update_to_lat_long_grid(self, grid: LatLongGrid) -> None:
+        """Write this plate's current node elevations into `grid`'s nearest cells -- the
+        plate -> grid half of the bidirectional round trip `update_deltas_from_lat_long_grid`
+        (below) completes. See lat_long_grid.py's own module docstring for why the grid keeps
+        this as each cell's *original* elevation rather than folding it into whatever that
+        cell's own value already was."""
+        ...
+
+    @abc.abstractmethod
+    def update_deltas_from_lat_long_grid(self, grid: LatLongGrid) -> None:
+        """Apply `grid`'s accumulated elevation delta (see LatLongGrid.change_elevation) back
+        onto this plate's own nodes -- the grid -> plate half of the round trip
+        `update_to_lat_long_grid` starts. Only the *net change* since that call populated the
+        grid is applied, never the grid's own absolute elevation (see lat_long_grid.py)."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -372,6 +426,12 @@ class PlateWithLines(Plate):
             for point, world_xyz in zip(line, world_pts):
                 fraction = 0.5 if span == 0 else float((point.get_theta() - low_theta) / span)
                 yield point, world_xyz, fraction
+
+    def update_to_lat_long_grid(self, grid: LatLongGrid) -> None:
+        _update_to_lat_long_grid(self, grid)
+
+    def update_deltas_from_lat_long_grid(self, grid: LatLongGrid) -> None:
+        _update_deltas_from_lat_long_grid(self, grid)
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -617,6 +677,12 @@ class PlateWithRTree(Plate):
             return geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
         hull_xy = boundary_xy[hull.vertices]
         return geometry.to_world(self._frame, geometry.local_xyz(hull_xy[:, 1], hull_xy[:, 0]))
+
+    def update_to_lat_long_grid(self, grid: LatLongGrid) -> None:
+        _update_to_lat_long_grid(self, grid)
+
+    def update_deltas_from_lat_long_grid(self, grid: LatLongGrid) -> None:
+        _update_deltas_from_lat_long_grid(self, grid)
 
 
 ELLIPSE_OUTLINE_POINTS = 72
