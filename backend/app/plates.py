@@ -18,7 +18,7 @@ from typing import Iterator, Protocol
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
-from . import ellipse, geometry
+from . import ellipse, geometry, mantle
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
     MAX_ELEVATION_M,
@@ -323,6 +323,59 @@ class Plate(abc.ABC):
         grid is applied, never the grid's own absolute elevation (see lat_long_grid.py)."""
         ...
 
+    def merge_with(
+        self,
+        other: "Plate",
+        spacing_rad: float,
+        coverage_radius_rad: float,
+        other_points_xyz: np.ndarray,
+    ) -> None:
+        """Fuse `other` into this plate in place: keep this plate's own identity/frame, absorb
+        `other`'s territory, and drop `other` (the caller still owns removing `other` from
+        whatever list it lives in -- this only mutates `self`). Blending `omega` and
+        resetting `age_steps` is the same regardless of representation, so it's done once
+        here; folding `other`'s actual nodes into this plate's own node set is representation-
+        specific (a `PlateWithLines` has to resample onto a fresh lattice to keep a fixed-row
+        structure, a `PlateWithRTree` can just union the two point clouds) and left to
+        `_merge_nodes_with` below.
+
+        `spacing_rad` is this world's own lattice density (see elevation_lines.line_spacing_rad),
+        `coverage_radius_rad` how far a candidate node may sit from the merging pair's old
+        points and still be claimed (merge_split.MERGE_COVERAGE_RADIUS_RAD, scaled the same
+        way). `other_points_xyz` is every currently-live node belonging to any *other* plate
+        (not self, not `other`), world-frame xyz -- `np.zeros((0, 3))` if there are none --
+        so a representation that resamples can stay clear of a still-living neighbor's own
+        territory the same way plates.generate_plates' nearest-seed tiling does (see the
+        merge overlap bug `merge_split.merge_plates` used to have without this)."""
+        self._merge_nodes_with(other, spacing_rad, coverage_radius_rad, other_points_xyz)
+        self.set_omega(mantle.clamp_rate((self.omega + other.omega) / 2.0))
+        self.reset_age()
+
+    @abc.abstractmethod
+    def _merge_nodes_with(
+        self,
+        other: "Plate",
+        spacing_rad: float,
+        coverage_radius_rad: float,
+        other_points_xyz: np.ndarray,
+    ) -> None:
+        """The representation-specific half of `merge_with`: fold `other`'s current nodes
+        into this plate's own node set in place. See `merge_with` for what each parameter
+        means."""
+        ...
+
+    @abc.abstractmethod
+    def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["Plate", "Plate"] | None:
+        """Partition this plate's own nodes by which side of the great circle with normal
+        `cut_normal` (world-frame unit vector) each falls on, into two new plates of this same
+        representation/frame/crust_type: the `cut_normal`-positive half keeps this plate's own
+        `plate_id`, the negative half gets `new_id`. `omega`/`age_steps` are left at their
+        defaults on both halves -- the caller (merge_split.maybe_split_plate) fits and sets
+        its own Euler pole per half afterward, from mantle flow computed over this (undivided)
+        plate's own points, not from the geometric partition itself. Returns `None`, changing
+        nothing, if either half would end up with fewer than `min_nodes` nodes."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -432,6 +485,70 @@ class PlateWithLines(Plate):
 
     def update_deltas_from_lat_long_grid(self, grid: LatLongGrid) -> None:
         _update_deltas_from_lat_long_grid(self, grid)
+
+    def _merge_nodes_with(
+        self,
+        other: "Plate",
+        spacing_rad: float,
+        coverage_radius_rad: float,
+        other_points_xyz: np.ndarray,
+    ) -> None:
+        """A one-time resample onto a fresh local lattice, elevation carried over by nearest-
+        neighbor lookup into the pre-merge combined point cloud -- see the module docstring
+        for why that's an acceptable cost for a merge (rare, discrete) versus routine per-step
+        motion. Only `elevation` survives the resample; every `ElevationLine.OPTIONAL_FIELDS`
+        value (rivers, lakes, soil, ...) resets to its default on the newly-built lines, the
+        same tradeoff this had before being made representation-generic.
+
+        Exclusivity against every other *live* plate (`other_points_xyz`) is enforced the same
+        way initial generation guarantees it (see `generate_plates`' nearest-seed Voronoi
+        query): a candidate lattice point is only kept if it's both within
+        `coverage_radius_rad` of the merged pair's own old points *and* strictly closer to
+        those old points than to any other plate's current nearest node -- without the second
+        half of that check, a candidate near one of the merged pair's own (possibly scattered,
+        if either parent had already been through an earlier merge) old points would be
+        claimed even inside a completely unrelated, still-living plate's own territory."""
+        keep_pts, keep_elev = self.all_points_and_elevation()
+        absorb_pts, absorb_elev = other.all_points_and_elevation()
+        old_points = np.concatenate([keep_pts, absorb_pts], axis=0)
+        old_elevation = np.concatenate([keep_elev, absorb_elev], axis=0)
+        tree = cKDTree(old_points)
+        other_tree = cKDTree(other_points_xyz) if len(other_points_xyz) else None
+
+        def is_owned(world_pts: np.ndarray) -> np.ndarray:
+            own_dist, _ = tree.query(world_pts)
+            if other_tree is None:
+                return own_dist < coverage_radius_rad
+            other_dist, _ = other_tree.query(world_pts)
+            return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
+
+        def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+            _, idx = tree.query(world_pts)
+            return old_elevation[idx]
+
+        self.set_lines(build_lines_from_lattice(self.frame, is_owned, elevation_at, spacing_rad=spacing_rad))
+
+    def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["Plate", "Plate"] | None:
+        """Cuts along existing node data rather than resampling -- unlike `merge_with`, a
+        split doesn't need a fresh lattice, just a partition of each line's own nodes by which
+        side of `cut_normal` they fall on (`ElevationLine.masked`), so every
+        `OPTIONAL_FIELDS` value survives exactly, not just `elevation`."""
+        lines_a: list[ElevationLine] = []
+        lines_b: list[ElevationLine] = []
+        for line in self._lines:
+            world_pts = line.world_xyz(self._frame)
+            side = np.sum(world_pts * cut_normal, axis=-1) > 0
+            if np.any(side):
+                lines_a.append(line.masked(side))
+            if np.any(~side):
+                lines_b.append(line.masked(~side))
+
+        if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
+            return None
+
+        plate_a = PlateWithLines(plate_id=self.plate_id, frame=self._frame.copy(), crust_type=self._crust_type, lines=lines_a)
+        plate_b = PlateWithLines(plate_id=new_id, frame=self._frame.copy(), crust_type=self._crust_type, lines=lines_b)
+        return plate_a, plate_b
 
 
 # outline_world's boundary-detection pass (see PlateWithRTree below) needs at least this many
@@ -683,6 +800,60 @@ class PlateWithRTree(Plate):
 
     def update_deltas_from_lat_long_grid(self, grid: LatLongGrid) -> None:
         _update_deltas_from_lat_long_grid(self, grid)
+
+    def _merge_nodes_with(
+        self,
+        other: "Plate",
+        spacing_rad: float,
+        coverage_radius_rad: float,
+        other_points_xyz: np.ndarray,
+    ) -> None:
+        """No fixed row structure to preserve (unlike `PlateWithLines`), so merging is just
+        the union of the two plates' own node clouds -- `other`'s nodes converted into this
+        plate's own local (theta, phi) frame, no lattice resample and no elevation-nearest-
+        neighbor lookup needed. `spacing_rad`/`coverage_radius_rad`/`other_points_xyz` only
+        matter to a representation that has to rebuild a fresh lattice (see
+        `PlateWithLines._merge_nodes_with`); a plain union can't overlap a third plate's
+        territory any more than `self`'s and `other`'s own pre-merge node clouds already
+        didn't, so there's nothing here for them to do."""
+        other_world_pts, other_elevation = other.all_points_and_elevation()
+        other_local = geometry.to_local(self._frame, other_world_pts)
+        other_phi, other_theta = geometry.xyz_to_latlon(other_local)
+        combined_fields = {
+            name: np.concatenate([self._fields[name], other.collect(name)]) for name in ElevationLine.OPTIONAL_FIELDS
+        }
+        self.set_nodes(
+            np.concatenate([self._theta, other_theta]),
+            np.concatenate([self._phi, other_phi]),
+            np.concatenate([self._elevation, other_elevation]),
+            **combined_fields,
+        )
+
+    def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["Plate", "Plate"] | None:
+        """Same partition-by-side-of-`cut_normal` idea as `PlateWithLines.split`, just over
+        the flat node cloud instead of per-line -- a boolean mask on every one of this plate's
+        own flat arrays (theta/phi/elevation/fields), each half becoming a fresh
+        `PlateWithRTree` (rebuilding its own R-tree via `set_nodes`, see `__init__`)."""
+        if len(self._theta) == 0:
+            return None
+        world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        side = np.sum(world_pts * cut_normal, axis=-1) > 0
+        if np.count_nonzero(side) < min_nodes or np.count_nonzero(~side) < min_nodes:
+            return None
+
+        def half(plate_id: int, mask: np.ndarray) -> "PlateWithRTree":
+            fields = {name: self._fields[name][mask] for name in ElevationLine.OPTIONAL_FIELDS}
+            return PlateWithRTree(
+                plate_id=plate_id,
+                frame=self._frame.copy(),
+                crust_type=self._crust_type,
+                theta=self._theta[mask],
+                phi=self._phi[mask],
+                elevation=self._elevation[mask],
+                **fields,
+            )
+
+        return half(self.plate_id, side), half(new_id, ~side)
 
 
 ELLIPSE_OUTLINE_POINTS = 72

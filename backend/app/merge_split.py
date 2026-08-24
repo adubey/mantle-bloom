@@ -25,8 +25,8 @@ from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .elevation_lines import TARGET_LINE_SPACING_RAD, ElevationLine, build_lines_from_lattice, line_spacing_rad
-from .plates import PlateWithLines, query_workers
+from .elevation_lines import TARGET_LINE_SPACING_RAD, line_spacing_rad
+from .plates import Plate, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -248,49 +248,23 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
 
 
 def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
-    """Fuse `id_absorb` into `id_keep`: keep `id_keep`'s frame, resample the union
-    footprint from scratch (a one-time nearest-neighbor lookup into the pre-merge combined
-    point cloud), and drop `id_absorb`.
+    """Fuse `id_absorb` into `id_keep`: keep `id_keep`'s frame, absorb `id_absorb`'s territory
+    (see Plate.merge_with for how each representation actually folds the two node sets
+    together), and drop `id_absorb`.
 
     Exclusivity against every *other* live plate is enforced the same way initial generation
-    guarantees it (see plates.generate_plates' nearest-seed Voronoi query): a candidate
-    lattice point is only kept if it's both within coverage_radius_rad of the merged pair's
-    own old points *and* strictly closer to those old points than to any other plate's
-    current nearest node. Without the second half of that check, a candidate near one of the
-    merged pair's own (possibly scattered, if either parent had already been through earlier
-    merges) old points would be claimed even when it sits inside a completely unrelated,
-    still-living plate's own territory -- confirmed directly as the cause of large cross-plate
-    node overlap after chained merges."""
+    guarantees it (see plates.generate_plates' nearest-seed Voronoi query) -- see
+    Plate.merge_with's own docstring for the cross-plate overlap bug this guards against."""
     keep = next(p for p in world.plates if p.plate_id == id_keep)
     absorb = next(p for p in world.plates if p.plate_id == id_absorb)
 
     spacing_rad = line_spacing_rad(world.node_density)
     coverage_radius_rad = MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / TARGET_LINE_SPACING_RAD)
 
-    keep_pts, keep_elev = keep.all_points_and_elevation()
-    absorb_pts, absorb_elev = absorb.all_points_and_elevation()
-    old_points = np.concatenate([keep_pts, absorb_pts], axis=0)
-    old_elevation = np.concatenate([keep_elev, absorb_elev], axis=0)
-    tree = cKDTree(old_points)
-
     other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p.plate_id not in (id_keep, id_absorb)]
     other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
-    other_tree = cKDTree(other_points) if len(other_points) else None
 
-    def is_owned(world_pts: np.ndarray) -> np.ndarray:
-        own_dist, _ = tree.query(world_pts)
-        if other_tree is None:
-            return own_dist < coverage_radius_rad
-        other_dist, _ = other_tree.query(world_pts)
-        return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
-
-    def elevation_at(world_pts: np.ndarray) -> np.ndarray:
-        _, idx = tree.query(world_pts)
-        return old_elevation[idx]
-
-    keep.set_lines(build_lines_from_lattice(keep.frame, is_owned, elevation_at, spacing_rad=spacing_rad))
-    keep.set_omega(mantle.clamp_rate((keep.omega + absorb.omega) / 2.0))
-    keep.reset_age()
+    keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
 
     # The merge survivor is the highest-risk plate for the round-robin outlier audit (see
@@ -306,10 +280,11 @@ def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndar
     return float(np.sqrt(np.mean(np.sum((predicted - velocities) ** 2, axis=-1))))
 
 
-def maybe_split_plate(world: "World", plate: PlateWithLines) -> tuple[PlateWithLines, PlateWithLines] | None:
+def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | None:
     """If a single rigid rotation poorly explains the mantle flow across this plate's
     footprint, cluster the flow into two regimes and, if they're genuinely different, cut
-    the plate along the great circle separating them."""
+    the plate along the great circle separating them (see Plate.split for the actual
+    representation-specific partition)."""
     # An area-based count -- scales with node_density directly (see SPLIT_MIN_NODES' own
     # comment), not with spacing_rad the way the distance thresholds elsewhere do.
     min_nodes = max(1, round(SPLIT_MIN_NODES * world.node_density))
@@ -348,35 +323,17 @@ def maybe_split_plate(world: "World", plate: PlateWithLines) -> tuple[PlateWithL
     # P.(a-b) == 0.
     cut_normal = geometry.normalize(centroid_a - centroid_b)
 
-    lines_a: list[ElevationLine] = []
-    lines_b: list[ElevationLine] = []
-    for line in plate.lines:
-        world_pts = line.world_xyz(plate.frame)
-        side = np.sum(world_pts * cut_normal, axis=-1) > 0
-        if np.any(side):
-            lines_a.append(line.masked(side))
-        if np.any(~side):
-            lines_b.append(line.masked(~side))
-
-    if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
+    # Peek at next_plate_id without consuming it yet -- plate.split returns None (no id
+    # actually used) if either resulting half would be too small, and a rejected split
+    # shouldn't burn an id.
+    split_result = plate.split(world.next_plate_id, cut_normal, min_nodes)
+    if split_result is None:
         return None
-
-    new_id = world.next_plate_id
     world.next_plate_id += 1
-    plate_a = PlateWithLines(
-        plate_id=plate.plate_id,
-        frame=plate.frame.copy(),
-        crust_type=plate.crust_type,
-        omega=mantle.clamp_rate(pole_a),
-        lines=lines_a,
-    )
-    plate_b = PlateWithLines(
-        plate_id=new_id,
-        frame=plate.frame.copy(),
-        crust_type=plate.crust_type,
-        omega=mantle.clamp_rate(pole_b),
-        lines=lines_b,
-    )
+
+    plate_a, plate_b = split_result
+    plate_a.set_omega(mantle.clamp_rate(pole_a))
+    plate_b.set_omega(mantle.clamp_rate(pole_b))
     return plate_a, plate_b
 
 
@@ -416,7 +373,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
             f"after {elapsed_years / 1e6:.0f} million years."
         )
 
-    new_plates: list[PlateWithLines] = []
+    new_plates: list[Plate] = []
     for plate in world.plates:
         split_result = maybe_split_plate(world, plate)
         if split_result is None:
