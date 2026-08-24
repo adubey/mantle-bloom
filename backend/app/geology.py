@@ -52,12 +52,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from . import biomes
 from .bathymetry import SHELF_RANGE_RAD
 from .noise import SphereNoise
-from .plates import Plate, query_workers
+from .plates import Plate
 
 if TYPE_CHECKING:
     from .erosion import ErosionResult
@@ -159,11 +158,7 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     new_coal_deposit_m = np.clip(prior_coal_deposit_m + coal_rate * dt_myr, 0.0, MAX_COAL_DEPOSIT_M)
 
     # --- Oil & gas (ocean, monotonic), gated to shelf water and boosted near a river mouth ---
-    if np.any(is_land):
-        land_tree = cKDTree(erosion_result.points[is_land])
-        dist_to_land, _ = land_tree.query(erosion_result.points, workers=query_workers(n))
-    else:
-        dist_to_land = np.full(n, np.inf)
+    dist_to_land = world.distance_from_land_approx(erosion_result.points)
     is_shelf = is_ocean & (dist_to_land <= SHELF_RANGE_RAD)
     river_boost = np.clip(hydro.water_deposited / OIL_GAS_RIVER_REFERENCE_M, 0.0, 1.0)
     oil_gas_rate = np.where(is_shelf, OIL_GAS_BASE_RATE_M_PER_MYR + OIL_GAS_RIVER_BOOST_RATE_M_PER_MYR * river_boost, 0.0)
@@ -193,18 +188,16 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     new_soil_organic_content = np.clip(np.where(is_land & has_soil, new_soil_organic_content, 0.0), 0.0, 1.0)
     new_soil_mineral_content = np.clip(np.where(is_land & has_soil, new_soil_mineral_content, 0.0), 0.0, 1.0)
 
-    for plate, line_index, start, end in line_refs:
-        line = plate.lines[line_index]
-        plate.replace_line(
-            line_index,
-            line.replace(
-                soil_depth=new_soil_depth[start:end],
-                soil_mineral_content=new_soil_mineral_content[start:end],
-                soil_organic_content=new_soil_organic_content[start:end],
-                coal_deposit_m=new_coal_deposit_m[start:end],
-                oil_gas_deposit_m=new_oil_gas_deposit_m[start:end],
-            ),
-        )
+    plates_in_order = list(dict.fromkeys(plate for plate, _, _, _ in line_refs))
+    offset = 0
+    for plate in plates_in_order:
+        for point, _, _ in plate.map_world_points_on_plate():
+            point.set_soil_depth(float(new_soil_depth[offset]))
+            point.set_soil_mineral_content(float(new_soil_mineral_content[offset]))
+            point.set_soil_organic_content(float(new_soil_organic_content[offset]))
+            point.set_coal_deposit_m(float(new_coal_deposit_m[offset]))
+            point.set_oil_gas_deposit_m(float(new_oil_gas_deposit_m[offset]))
+            offset += 1
 
 
 def seed_initial_soil(plate_list: list[Plate], seed: int, initial_soil_maturity: float) -> None:

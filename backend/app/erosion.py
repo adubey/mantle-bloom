@@ -390,23 +390,23 @@ def apply_erosion(
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
-    # theta (and therefore every other parallel array's shape) is never touched here -- see
-    # plates.ElevationLine's own docstring for why line.replace, not an explicit
-    # field-by-field reconstruction, is the pattern that stays correct as more persistent
-    # fields get added (this site used to silently wipe is_volcano to False every step).
-    for plate, line_index, start, end in line_refs:
-        line = plate.lines[line_index]
-        plate.replace_line(
-            line_index,
-            line.replace(
-                elevation=new_elevation[start:end],
-                channel_depth=new_channel_depth[start:end],
-                channel_width=new_channel_width[start:end],
-                lake_depth=hydro.lake_depth[start:end],
-                glacier_depth=hydro.glacier_depth[start:end],
-                silt_depth=hydro.silt_depth[start:end],
-            ),
-        )
+    # theta (and therefore every other parallel array's shape) is never touched here --
+    # writing each changed field straight back through the node's own live view
+    # (map_world_points_on_plate) leaves every other persistent field (is_volcano/
+    # volcano_active_years_remaining/soil_*/resource deposits, ...) untouched automatically,
+    # the same "don't silently wipe fields this site doesn't know about" guarantee
+    # line.replace used to provide.
+    plates_in_order = list(dict.fromkeys(plate for plate, _, _, _ in line_refs))
+    offset = 0
+    for plate in plates_in_order:
+        for point, _, _ in plate.map_world_points_on_plate():
+            point.set_elevation(float(new_elevation[offset]))
+            point.set_channel_depth(float(new_channel_depth[offset]))
+            point.set_channel_width(float(new_channel_width[offset]))
+            point.set_lake_depth(float(hydro.lake_depth[offset]))
+            point.set_glacier_depth(float(hydro.glacier_depth[offset]))
+            point.set_silt_depth(float(hydro.silt_depth[offset]))
+            offset += 1
 
     return ErosionResult(
         points=points,

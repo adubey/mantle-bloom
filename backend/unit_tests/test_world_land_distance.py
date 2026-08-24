@@ -66,10 +66,16 @@ def test_distance_from_land_approx_caches_the_kdtree_until_invalidated():
     assert world.land_kdtree_cache is cached
 
 
-def test_step_world_resets_land_kdtree_cache_each_step():
+def test_step_world_rebuilds_land_kdtree_cache_each_step():
     world = generate_world(seed=20, num_plates=8, continental_fraction=0.5, land_fraction=0.35)
     world.distance_from_land_approx(np.zeros((0, 3)))  # force a build this "step"
-    assert world.land_kdtree_cache is not None
+    stale_cache = world.land_kdtree_cache
+    assert stale_cache is not None
 
     step_world(world, years=1_000_000)
-    assert world.land_kdtree_cache is None
+    # bathymetry.py/geology.py both read distance_from_land_approx during the step, so the
+    # cache is rebuilt from scratch rather than carrying over the previous step's now-stale
+    # tree (see World.land_kdtree_cache's own docstring on the reset-then-lazily-rebuild
+    # contract).
+    assert world.land_kdtree_cache is not None
+    assert world.land_kdtree_cache is not stale_cache

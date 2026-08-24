@@ -24,10 +24,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from .elevation_lines import PLANET_RADIUS_KM
-from .plates import PlateWithLines, gather_node_positions, query_workers
+from .plates import PlateWithLines, gather_node_positions
 
 if TYPE_CHECKING:
     from .world import World
@@ -100,8 +99,7 @@ def apply_bathymetry(
     if len(submerged_indices) == 0:
         return
 
-    land_tree = cKDTree(points[is_land])
-    dist_to_land, _ = land_tree.query(points[submerged_indices], workers=query_workers(len(submerged_indices)))
+    dist_to_land = world.distance_from_land_approx(points[submerged_indices])
     target = np.where(dist_to_land <= SHELF_RANGE_RAD, SHELF_TARGET_M, DEEP_CONTINENTAL_TARGET_M)
 
     years_myr = years / 1_000_000.0
@@ -111,13 +109,15 @@ def apply_bathymetry(
     new_elevation[submerged_indices] += (target - elevation[submerged_indices]) * relax_factor
     new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
 
-    # theta (and therefore every other parallel array's shape) is never touched here -- only
-    # elevation changes -- so line.replace copies every other field (channel_depth/
+    # Only elevation changes here -- writing straight back through each node's own live view
+    # (map_world_points_on_plate) touches nothing else, so every other field (channel_depth/
     # channel_width/lake_depth/glacier_depth/is_volcano/volcano_active_years_remaining, and
-    # whatever else gets added later) from the existing line automatically, rather than
-    # needing to name each one explicitly here. See plates.ElevationLine's own docstring for
-    # the bug this exact pattern replaces (this site used to silently wipe is_volcano to
-    # False every step).
-    for plate, line_index, start, end in line_refs:
-        line = plate.lines[line_index]
-        plate.replace_line(line_index, line.replace(elevation=new_elevation[start:end]))
+    # whatever else gets added later) is left exactly as it was without needing to name it
+    # explicitly here. See plates.Plate.map_world_points's own docstring for why this needs
+    # no replace/replace_line round-trip.
+    plates_in_order = list(dict.fromkeys(plate for plate, _, _, _ in line_refs))
+    offset = 0
+    for plate in plates_in_order:
+        for point, _, _ in plate.map_world_points_on_plate():
+            point.set_elevation(float(new_elevation[offset]))
+            offset += 1
