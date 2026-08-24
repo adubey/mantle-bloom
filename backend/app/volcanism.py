@@ -169,7 +169,7 @@ def _whole_world_median_spacing(world: "World") -> float:
     """Pass 1: every elevation point's own nearest neighbor, whole-world, unrestricted by
     plate -- the median of all these distances, "how far apart elevation points normally
     sit." Returns 0.0 for a world too small to have a meaningful median."""
-    points_list = [line.world_xyz(plate.frame) for plate in world.plates for line in plate.lines if len(line) > 0]
+    points_list = [plate.all_points_and_elevation()[0] for plate in world.plates if plate.node_count() > 0]
     if not points_list:
         return 0.0
     points = np.concatenate(points_list, axis=0)

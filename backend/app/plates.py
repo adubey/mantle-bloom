@@ -147,6 +147,39 @@ def _update_deltas_from_lat_long_grid(plate: "Plate", grid: LatLongGrid) -> None
             point.set_elevation(float(np.clip(point.get_elevation() + delta, MIN_ELEVATION_M, MAX_ELEVATION_M)))
 
 
+def _lines_from_resample(
+    frame: np.ndarray,
+    points: np.ndarray,
+    elevation: np.ndarray,
+    coverage_radius_rad: float,
+    spacing_rad: float,
+    exclude_tree: cKDTree | None = None,
+) -> list[ElevationLine]:
+    """Sweep `frame`'s own local lattice and keep whichever candidate nodes fall within
+    `coverage_radius_rad` of `points` -- and, if `exclude_tree` is given, strictly closer to
+    `points` than to whatever `exclude_tree` indexes (every *other* live plate's own current
+    nodes, see `PlateWithLines._merge_nodes_with`) -- each claimed node's elevation coming
+    from its own nearest point in `points`. Shared by `PlateWithLines._merge_nodes_with`
+    (which needs the exclusivity check, since a merging pair's old points can't be trusted to
+    sit clear of a third plate's own territory) and `PlateWithLines.grow_into` (which doesn't:
+    gaps.py's own gap points are already pre-filtered, before this is ever called, to sit far
+    from every existing plate)."""
+    tree = cKDTree(points)
+
+    def is_owned(world_pts: np.ndarray) -> np.ndarray:
+        own_dist, _ = tree.query(world_pts)
+        if exclude_tree is None:
+            return own_dist < coverage_radius_rad
+        other_dist, _ = exclude_tree.query(world_pts)
+        return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
+
+    def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+        _, idx = tree.query(world_pts)
+        return elevation[idx]
+
+    return build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
+
+
 class Plate(abc.ABC):
     """A plate's shared identity/motion state plus an abstract interface over however it
     represents its own terrain nodes -- `PlateWithLines` (parallel `ElevationLine`s, see
@@ -376,6 +409,26 @@ class Plate(abc.ABC):
         nothing, if either half would end up with fewer than `min_nodes` nodes."""
         ...
 
+    @abc.abstractmethod
+    def grow_into(
+        self,
+        new_points_xyz: np.ndarray,
+        new_elevation: np.ndarray,
+        coverage_radius_rad: float,
+        spacing_rad: float,
+    ) -> None:
+        """Claim `new_points_xyz` (world-frame unit vectors, each with its own
+        `new_elevation`) as new territory, in place -- the same "fold new nodes into an
+        existing node set" shape `merge_with` uses for fusing two whole plates, just for a
+        raw batch of new points instead of another `Plate` (gaps.py's gap-fill absorption is
+        the only caller today). `coverage_radius_rad`/`spacing_rad` only matter to a
+        representation that has to resample onto a fresh lattice (`PlateWithLines`); one that
+        doesn't (`PlateWithRTree`) can ignore them and just append the new points directly.
+        Every `ElevationLine.OPTIONAL_FIELDS` value for a newly-claimed node starts at its
+        default (zero/False) -- no history to carry, same convention
+        `ElevationLine.with_new_nodes` already uses."""
+        ...
+
 
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
@@ -512,21 +565,27 @@ class PlateWithLines(Plate):
         absorb_pts, absorb_elev = other.all_points_and_elevation()
         old_points = np.concatenate([keep_pts, absorb_pts], axis=0)
         old_elevation = np.concatenate([keep_elev, absorb_elev], axis=0)
-        tree = cKDTree(old_points)
-        other_tree = cKDTree(other_points_xyz) if len(other_points_xyz) else None
+        exclude_tree = cKDTree(other_points_xyz) if len(other_points_xyz) else None
+        self.set_lines(
+            _lines_from_resample(self.frame, old_points, old_elevation, coverage_radius_rad, spacing_rad, exclude_tree)
+        )
 
-        def is_owned(world_pts: np.ndarray) -> np.ndarray:
-            own_dist, _ = tree.query(world_pts)
-            if other_tree is None:
-                return own_dist < coverage_radius_rad
-            other_dist, _ = other_tree.query(world_pts)
-            return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
-
-        def elevation_at(world_pts: np.ndarray) -> np.ndarray:
-            _, idx = tree.query(world_pts)
-            return old_elevation[idx]
-
-        self.set_lines(build_lines_from_lattice(self.frame, is_owned, elevation_at, spacing_rad=spacing_rad))
+    def grow_into(
+        self,
+        new_points_xyz: np.ndarray,
+        new_elevation: np.ndarray,
+        coverage_radius_rad: float,
+        spacing_rad: float,
+    ) -> None:
+        """A one-time resample onto a fresh local lattice, same shape (and same
+        elevation-only-survives tradeoff) as `_merge_nodes_with`, just folding in a raw batch
+        of new points instead of another plate's -- no exclusivity check against other plates
+        needed here (unlike a merge), since the caller (gaps.py) has already restricted
+        `new_points_xyz` to territory no live plate currently covers."""
+        old_points, old_elevation = self.all_points_and_elevation()
+        combined_points = np.concatenate([old_points, new_points_xyz], axis=0)
+        combined_elevation = np.concatenate([old_elevation, new_elevation], axis=0)
+        self.set_lines(_lines_from_resample(self.frame, combined_points, combined_elevation, coverage_radius_rad, spacing_rad))
 
     def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["Plate", "Plate"] | None:
         """Cuts along existing node data rather than resampling -- unlike `merge_with`, a
@@ -854,6 +913,30 @@ class PlateWithRTree(Plate):
             )
 
         return half(self.plate_id, side), half(new_id, ~side)
+
+    def grow_into(
+        self,
+        new_points_xyz: np.ndarray,
+        new_elevation: np.ndarray,
+        coverage_radius_rad: float,
+        spacing_rad: float,
+    ) -> None:
+        """No lattice to resample (unlike `PlateWithLines`), so this just appends
+        `new_points_xyz` (converted to this plate's own local frame) directly to the node
+        cloud -- same "no resample needed, just union the points" reasoning as
+        `_merge_nodes_with`. `coverage_radius_rad`/`spacing_rad` are unused here for the same
+        reason `_merge_nodes_with` doesn't need them."""
+        new_local = geometry.to_local(self._frame, new_points_xyz)
+        new_phi, new_theta = geometry.xyz_to_latlon(new_local)
+        new_fields = {
+            name: self._default_field(name, new_theta) for name in ElevationLine.OPTIONAL_FIELDS
+        }
+        self.set_nodes(
+            np.concatenate([self._theta, new_theta]),
+            np.concatenate([self._phi, new_phi]),
+            np.concatenate([self._elevation, new_elevation]),
+            **{name: np.concatenate([self._fields[name], values]) for name, values in new_fields.items()},
+        )
 
 
 ELLIPSE_OUTLINE_POINTS = 72

@@ -44,7 +44,7 @@ from scipy.spatial import cKDTree
 from . import elevation_lines, geometry, mantle
 from .elevation_lines import TARGET_LINE_SPACING_RAD, build_lines_from_lattice, iter_local_lattice, line_spacing_rad
 from .noise import SphereNoise
-from .plates import PlateWithLines, base_elevation, noise_amplitude
+from .plates import Plate, PlateWithLines, base_elevation, noise_amplitude
 
 if TYPE_CHECKING:
     from .world import World
@@ -184,7 +184,7 @@ def _preferred_border_plate(
     cluster_points: np.ndarray,
     existing_tree: cKDTree,
     existing_owner: np.ndarray,
-    plate_by_id: dict[int, PlateWithLines],
+    plate_by_id: dict[int, Plate],
     border_radius_rad: float = BORDER_RADIUS_RAD,
 ) -> int | None:
     """The plate id this gap cluster should be absorbed into, if any -- otherwise None,
@@ -217,7 +217,7 @@ def _preferred_border_plate(
 
 
 def _absorb_gap_into_plate(
-    plate: PlateWithLines,
+    plate: Plate,
     gap_points: np.ndarray,
     rng: np.random.Generator,
     max_new_points: int,
@@ -234,7 +234,7 @@ def _absorb_gap_into_plate(
     picked up over subsequent gap-fill passes instead. Returns how many points were
     actually claimed, so the caller can track the per-call budget across multiple gaps the
     same plate dominates."""
-    old_points, old_elevation = plate.all_points_and_elevation()
+    old_points, _ = plate.all_points_and_elevation()
     if len(old_points) == 0:
         claimed_points = gap_points[:max_new_points]
     else:
@@ -251,19 +251,7 @@ def _absorb_gap_into_plate(
     noise = SphereNoise(rng, octaves=3, base_freq=2.5)
     gap_elevation = base + amp * noise.sample(claimed_points)
 
-    combined_points = np.concatenate([old_points, claimed_points], axis=0)
-    combined_elevation = np.concatenate([old_elevation, gap_elevation], axis=0)
-    tree = cKDTree(combined_points)
-
-    def is_owned(world_pts: np.ndarray) -> np.ndarray:
-        dist, _ = tree.query(world_pts)
-        return dist < coverage_radius_rad
-
-    def elevation_at(world_pts: np.ndarray) -> np.ndarray:
-        _, idx = tree.query(world_pts)
-        return combined_elevation[idx]
-
-    plate.set_lines(build_lines_from_lattice(plate.frame, is_owned, elevation_at, spacing_rad=spacing_rad))
+    plate.grow_into(claimed_points, gap_elevation, coverage_radius_rad, spacing_rad)
     return len(claimed_points)
 
 
