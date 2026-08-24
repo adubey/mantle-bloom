@@ -42,9 +42,9 @@ both far more than either alone.
 Runs every step, right after erosion.py/bathymetry.py/volcanism.py in world.step_world, reusing
 World.hydrology_cache (populated by erosion.apply_erosion, called first) and the ErosionResult
 that same call returns -- rather than recomputing climate or flow routing a second time. Its own
-node ordering comes directly from `World.hydrology_cache.line_refs`, the exact (plate,
-line_index, start, end) list that produced hydro's own flat arrays, so there's no separate
-gather to keep in sync with it.
+node ordering comes directly from `World.hydrology_cache.plates_in_order`, the exact plate list
+(each plate's own node order, via Plate.collect) that produced hydro's own flat arrays, so
+there's no separate gather to keep in sync with it.
 """
 
 from __future__ import annotations
@@ -56,7 +56,15 @@ import numpy as np
 from . import biomes
 from .bathymetry import SHELF_RANGE_RAD
 from .noise import SphereNoise
-from .plates import Plate
+from .plates import (
+    Plate,
+    collect_all_coal_deposit,
+    collect_all_mineral_deposit,
+    collect_all_oil_gas_deposit,
+    collect_all_soil_depth,
+    collect_all_soil_mineral_content,
+    collect_all_soil_organic_content,
+)
 
 if TYPE_CHECKING:
     from .erosion import ErosionResult
@@ -125,25 +133,17 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     hydro = world.hydrology_cache
     if hydro is None:
         return
-    line_refs = hydro.line_refs
+    plates_in_order = hydro.plates_in_order
     n = len(erosion_result.points)
     if n == 0:
         return
 
-    prior_soil_depth = np.zeros(n)
-    prior_soil_mineral_content = np.zeros(n)
-    prior_soil_organic_content = np.zeros(n)
-    prior_coal_deposit_m = np.zeros(n)
-    prior_oil_gas_deposit_m = np.zeros(n)
-    prior_mineral_deposit_m = np.zeros(n)
-    for plate, line_index, start, end in line_refs:
-        line = plate.lines[line_index]
-        prior_soil_depth[start:end] = line.soil_depth
-        prior_soil_mineral_content[start:end] = line.soil_mineral_content
-        prior_soil_organic_content[start:end] = line.soil_organic_content
-        prior_coal_deposit_m[start:end] = line.coal_deposit_m
-        prior_oil_gas_deposit_m[start:end] = line.oil_gas_deposit_m
-        prior_mineral_deposit_m[start:end] = line.mineral_deposit_m
+    prior_soil_depth = collect_all_soil_depth(plates_in_order)
+    prior_soil_mineral_content = collect_all_soil_mineral_content(plates_in_order)
+    prior_soil_organic_content = collect_all_soil_organic_content(plates_in_order)
+    prior_coal_deposit_m = collect_all_coal_deposit(plates_in_order)
+    prior_oil_gas_deposit_m = collect_all_oil_gas_deposit(plates_in_order)
+    prior_mineral_deposit_m = collect_all_mineral_deposit(plates_in_order)
 
     is_ocean = hydro.is_ocean
     is_land = ~is_ocean
@@ -188,7 +188,6 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     new_soil_organic_content = np.clip(np.where(is_land & has_soil, new_soil_organic_content, 0.0), 0.0, 1.0)
     new_soil_mineral_content = np.clip(np.where(is_land & has_soil, new_soil_mineral_content, 0.0), 0.0, 1.0)
 
-    plates_in_order = list(dict.fromkeys(plate for plate, _, _, _ in line_refs))
     offset = 0
     for plate in plates_in_order:
         for point, _, _ in plate.map_world_points_on_plate():

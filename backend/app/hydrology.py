@@ -75,8 +75,17 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, lakes
-from .elevation_lines import PLANET_RADIUS_KM, ElevationLine
-from .plates import PlateWithLines, gather_node_positions, query_workers
+from .elevation_lines import PLANET_RADIUS_KM
+from .plates import (
+    Plate,
+    collect_all_channel_depth,
+    collect_all_elevation,
+    collect_all_glacier_depth,
+    collect_all_lake_depth,
+    collect_all_silt_depth,
+    gather_node_positions,
+    query_workers,
+)
 
 if TYPE_CHECKING:
     from .world import World
@@ -178,11 +187,12 @@ RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 class HydrologyFields:
     """Everything derived from one whole-world flow-routing pass, all shape (N,) aligned
     with `points`/`elevation` -- one flat array per field over the irregular node cloud, in
-    place of a grid. `line_refs` is (plate, line_index, start, end) per line, letting a
-    caller slice any of these flat arrays back onto a specific line's own node range.
-    `lake_depth`/`glacier_depth` are already this step's *final* values (state-transition
-    owned by this module, see module docstring) -- a caller doesn't need to call anything
-    else to get the up-to-date depth."""
+    place of a grid. `plates_in_order` is every plate that contributed nodes, in the same
+    order those nodes appear in every array here -- see plates.gather_node_positions --
+    letting a caller (geology.py) bulk-collect/write-back further per-node fields without
+    needing per-node plate/line identity itself. `lake_depth`/`glacier_depth` are already this
+    step's *final* values (state-transition owned by this module, see module docstring) -- a
+    caller doesn't need to call anything else to get the up-to-date depth."""
 
     points: np.ndarray
     elevation: np.ndarray
@@ -196,7 +206,7 @@ class HydrologyFields:
     is_river: np.ndarray  # (N,) bool -- top RIVER_FLOW_PERCENTILE of land flow_accum
     lake_depth: np.ndarray  # (N,) this step's final standing lake depth
     glacier_depth: np.ndarray  # (N,) this step's final accumulated ice depth
-    line_refs: list[tuple[PlateWithLines, int, int, int]]
+    plates_in_order: list[Plate]
     # Human-readable lake merge/split transition messages from lakes.step_lakes, for the
     # caller (erosion.py) to log via World.log_event -- see compute_hydrology. Defaulted
     # (rather than a required positional field) so every existing HydrologyFields call site
@@ -226,37 +236,29 @@ class HydrologyFields:
 
 def _gather_nodes(
     world: "World",
-    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
+    node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[Plate]]:
     """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
     channel_depth, prior silt_depth, and whether it's ocean (elevation <= world.sea_level_m, the
     live-adjustable sea-level convention used everywhere else in this codebase -- see
-    World.sea_level_m), concatenated, alongside (plate, line_index, start, end) references
-    -- same shape as erosion.py's/bathymetry.py's own _gather_nodes.
-    channel_depth is read-only here (erosion.py still owns growing it) -- flow direction
-    just needs to know where an established channel already is, see
-    _compute_flow_direction. `node_cloud`, when passed (see compute_hydrology), reuses an
-    already-gathered (points, line_refs) pair instead of re-deriving every node's world
-    position from scratch -- see plates.gather_node_positions's own docstring for why."""
-    points, line_refs = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
-    if not line_refs:
+    World.sea_level_m), concatenated, alongside the ordered list of plates that contributed
+    them -- same shape as erosion.py's/bathymetry.py's own _gather_nodes. channel_depth is
+    read-only here (erosion.py still owns growing it) -- flow direction just needs to know
+    where an established channel already is, see _compute_flow_direction. `node_cloud`, when
+    passed (see compute_hydrology), reuses an already-gathered (points, plates_in_order) pair
+    instead of re-deriving every node's world position from scratch -- see
+    plates.gather_node_positions's own docstring for why."""
+    points, plates_in_order = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
+    if not plates_in_order:
         empty = np.zeros(0)
         return np.zeros((0, 3)), empty, empty, empty, empty, empty, np.zeros(0, dtype=bool), []
-    elev_list, lake_list, glacier_list, channel_list, silt_list = [], [], [], [], []
-    for plate, line_index, start, end in line_refs:
-        line = plate.lines[line_index]
-        elev_list.append(line.elevation)
-        lake_list.append(line.lake_depth)
-        glacier_list.append(line.glacier_depth)
-        channel_list.append(line.channel_depth)
-        silt_list.append(line.silt_depth)
-    elevation = np.concatenate(elev_list, axis=0)
-    prev_lake_depth = np.concatenate(lake_list, axis=0)
-    prev_glacier_depth = np.concatenate(glacier_list, axis=0)
-    prev_channel_depth = np.concatenate(channel_list, axis=0)
-    prev_silt_depth = np.concatenate(silt_list, axis=0)
+    elevation = collect_all_elevation(plates_in_order)
+    prev_lake_depth = collect_all_lake_depth(plates_in_order)
+    prev_glacier_depth = collect_all_glacier_depth(plates_in_order)
+    prev_channel_depth = collect_all_channel_depth(plates_in_order)
+    prev_silt_depth = collect_all_silt_depth(plates_in_order)
     is_ocean = elevation <= world.sea_level_m
-    return points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, line_refs
+    return points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, plates_in_order
 
 
 def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
@@ -560,7 +562,7 @@ def compute_hydrology(
     precipitation_at_nodes: np.ndarray,
     temperature_at_nodes: np.ndarray,
     years: float,
-    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
+    node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->
@@ -575,7 +577,7 @@ def compute_hydrology(
     just the ordinary precip passing through that one node. `precipitation_at_nodes`/
     `temperature_at_nodes` are precomputed by the caller (erosion.py, which already needs the
     same climate-grid lookups for its own erosion terms) rather than looked up again here.
-    `node_cloud`, likewise, is erosion.py's own already-gathered (points, line_refs) pair (see
+    `node_cloud`, likewise, is erosion.py's own already-gathered (points, plates_in_order) pair (see
     plates.gather_node_positions), reused here instead of re-deriving every node's world
     position from scratch a second time this same step.
 
@@ -592,14 +594,14 @@ def compute_hydrology(
     is deliberately a *different*, warmer threshold than GLACIER_ACCUMULATION_TEMP_C (see that
     constant's own comment) -- freezing solid for a step doesn't imply building a *permanent*
     glacier."""
-    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, line_refs = _gather_nodes(world, node_cloud=node_cloud)
+    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
         empty_i = np.zeros(n, dtype=np.int64)
         empty_f = np.zeros(n)
         return HydrologyFields(
             points, elevation, is_ocean, np.zeros((n, 0), dtype=np.int64), empty_i, empty_f, empty_f, empty_f, empty_i,
-            np.zeros(n, dtype=bool), empty_f, empty_f, line_refs, silt_depth=prev_silt_depth,
+            np.zeros(n, dtype=bool), empty_f, empty_f, plates_in_order, silt_depth=prev_silt_depth,
         )
 
     neighbor_idx = _build_neighbor_graph(points)
@@ -655,7 +657,7 @@ def compute_hydrology(
     # flooded nodes, so fields is built with a placeholder here and finished after.
     fields = HydrologyFields(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
-        np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, line_refs,
+        np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order,
     )
     fields.lake_depth, fields.silt_depth, fields.lake_forest, fields.lake_events = lakes.step_lakes(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, prev_silt_depth, water_deposited, years, is_frozen

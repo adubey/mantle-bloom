@@ -29,7 +29,7 @@ def _world_with_hydrology(plate, is_ocean, water_deposited):
         is_river=np.zeros(n, dtype=bool),
         lake_depth=np.zeros(n),
         glacier_depth=np.zeros(n),
-        line_refs=[(plate, 0, 0, n)],
+        plates_in_order=[plate],
     )
     world = World(seed=0, plates=[plate])
     world.hydrology_cache = hydro

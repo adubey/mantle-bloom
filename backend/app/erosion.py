@@ -61,7 +61,15 @@ from scipy.spatial import cKDTree
 
 from . import climate, geometry, hydrology
 from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
-from .plates import PlateWithLines, gather_node_positions, query_workers
+from .plates import (
+    Plate,
+    collect_all_channel_depth,
+    collect_all_channel_width,
+    collect_all_elevation,
+    collect_all_glacier_depth,
+    gather_node_positions,
+    query_workers,
+)
 
 if TYPE_CHECKING:
     from .world import World
@@ -166,12 +174,12 @@ class ErosionResult:
     function return/argument rather than cached on World, since (unlike climate/hydrology) it
     has exactly one consumer, called from the same step_world function that produced it -- no
     later same-turn caller (rendering, /world/stats) ever needs it. Index-aligned with
-    World.hydrology_cache's own arrays (points/line_refs/is_ocean in particular -- this
+    World.hydrology_cache's own arrays (points/plates_in_order/is_ocean in particular -- this
     dataclass deliberately doesn't repeat those, geology.py reads them off
     World.hydrology_cache directly, including its own sea_level_m-aware is_ocean rather than
     this module's own internal elevation<=0.0 shorthand): both come from an identical
-    per-plate/per-line gather over the same (unreordered) world.plates within the same
-    step_world call."""
+    per-plate gather over the same (unreordered) world.plates within the same step_world
+    call."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -186,33 +194,27 @@ class ErosionResult:
 
 def _gather_nodes(
     world: "World",
-    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
+    node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[Plate]]:
     """Every node's world position, elevation, and prior channel_depth/channel_width/
-    glacier_depth, concatenated, alongside (plate, line_index, start, end) references --
+    glacier_depth, concatenated, alongside the ordered list of plates that contributed them --
     unlike reassign.py's own _gather_nodes (which needs per-node plate/line identity, since
-    nodes there can move between lines), this only needs enough to slice the erosion result
-    straight back onto each line's own contiguous elevation range, since erosion never moves
-    a node or changes line topology. `node_cloud`, when passed (see apply_erosion), reuses an
-    already-gathered (points, line_refs) pair instead of re-deriving every node's world
-    position from scratch -- see plates.gather_node_positions's own docstring for why."""
-    points, line_refs = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
-    if not line_refs:
+    nodes there can move between lines), this only needs each field in the same order
+    `points` and the write-back loop below (`plate.map_world_points_on_plate`) already agree
+    on, since erosion never moves a node or changes line topology. `node_cloud`, when passed
+    (see apply_erosion), reuses an already-gathered (points, plates_in_order) pair instead of
+    re-deriving every node's world position from scratch -- see plates.gather_node_positions's
+    own docstring for why."""
+    points, plates_in_order = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
+    if not plates_in_order:
         return np.zeros((0, 3)), np.zeros(0), np.zeros(0), np.zeros(0), np.zeros(0), []
-    elev_list, channel_list, width_list, glacier_list = [], [], [], []
-    for plate, line_index, start, end in line_refs:
-        line = plate.lines[line_index]
-        elev_list.append(line.elevation)
-        channel_list.append(line.channel_depth)
-        width_list.append(line.channel_width)
-        glacier_list.append(line.glacier_depth)
     return (
         points,
-        np.concatenate(elev_list, axis=0),
-        np.concatenate(channel_list, axis=0),
-        np.concatenate(width_list, axis=0),
-        np.concatenate(glacier_list, axis=0),
-        line_refs,
+        collect_all_elevation(plates_in_order),
+        collect_all_channel_depth(plates_in_order),
+        collect_all_channel_width(plates_in_order),
+        collect_all_glacier_depth(plates_in_order),
+        plates_in_order,
     )
 
 
@@ -276,7 +278,7 @@ def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: 
 def apply_erosion(
     world: "World",
     years: float,
-    node_cloud: tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]] | None = None,
+    node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
 ) -> ErosionResult | None:
     """Erodes every plate's elevation nodes based on the world's current climate and flow
     routing -- rain/sheet erosion (precipitation x slope), river-channelized erosion
@@ -307,7 +309,7 @@ def apply_erosion(
 
     `node_cloud`, when passed (world.py's step_world computes it once, right after this
     step's own rotation/boundary evolution/topology changes settle), is an already-gathered
-    (points, line_refs) pair -- see plates.gather_node_positions -- reused here, in
+    (points, plates_in_order) pair -- see plates.gather_node_positions -- reused here, in
     climate.compute_climate, and in hydrology.compute_hydrology, all three of which would
     otherwise independently redo the identical world_xyz rotation for every node this same
     step (node positions don't move again until the next step's rotation, so one gather
@@ -316,7 +318,7 @@ def apply_erosion(
     fields = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density), node_cloud=node_cloud)
     world.climate_cache = fields
 
-    points, elevation, prior_channel_depth, prior_channel_width, prior_glacier_depth, line_refs = _gather_nodes(world, node_cloud=node_cloud)
+    points, elevation, prior_channel_depth, prior_channel_width, prior_glacier_depth, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
     n = len(points)
     if n == 0:
         world.hydrology_cache = None
@@ -396,7 +398,6 @@ def apply_erosion(
     # volcano_active_years_remaining/soil_*/resource deposits, ...) untouched automatically,
     # the same "don't silently wipe fields this site doesn't know about" guarantee
     # line.replace used to provide.
-    plates_in_order = list(dict.fromkeys(plate for plate, _, _, _ in line_refs))
     offset = 0
     for plate in plates_in_order:
         for point, _, _ in plate.map_world_points_on_plate():

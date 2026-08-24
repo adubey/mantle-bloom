@@ -131,11 +131,9 @@ class World:
         """Approximate distance from each given world-xyz point (shape (n, 3)) to the
         nearest land node (elevation > sea_level_m) anywhere in this world -- lazily builds
         and reuses land_kdtree_cache (see its own docstring) off every plate's own public
-        Plate.map_world_points()/ElevationPoint.get_elevation() interface, rather than
-        reaching into any one representation's own storage the way gather_node_positions
-        does (PlateWithLines-only). bathymetry.py uses this in place of building its own
-        land-only tree from scratch every call. np.inf for every point if this world has no
-        land anywhere yet."""
+        Plate.map_world_points()/ElevationPoint.get_elevation() interface. bathymetry.py uses
+        this in place of building its own land-only tree from scratch every call. np.inf for
+        every point if this world has no land anywhere yet."""
         if self.land_kdtree_cache is None:
             self.land_kdtree_cache = _build_land_kdtree(self)
         if self.land_kdtree_cache is None:
@@ -149,8 +147,8 @@ class World:
 def _build_land_kdtree(world: World) -> cKDTree | None:
     """Every land node's (elevation > world.sea_level_m) world position, across every
     plate, gathered via Plate's own public map_world_points()/ElevationPoint.get_elevation()
-    -- representation-agnostic, unlike plates.gather_node_positions -- and indexed for
-    World.distance_from_land_approx. None if this world has no land nodes at all."""
+    and indexed for World.distance_from_land_approx. None if this world has no land nodes at
+    all."""
     land_points = [
         world_xyz
         for plate in world.plates

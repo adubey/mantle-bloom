@@ -51,7 +51,7 @@ def _hydrology_fields(points: np.ndarray, lake_depth: np.ndarray) -> hydrology.H
         is_river=np.zeros(n, dtype=bool),
         lake_depth=lake_depth,
         glacier_depth=zeros_f,
-        line_refs=[],
+        plates_in_order=[],
     )
 
 

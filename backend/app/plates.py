@@ -926,35 +926,32 @@ def query_workers(n: int) -> int:
     return -1 if n >= PARALLEL_QUERY_MIN_POINTS else 1
 
 
-def gather_node_positions(
-    plate_list: list[PlateWithLines],
-) -> tuple[np.ndarray, list[tuple[PlateWithLines, int, int, int]]]:
-    """Every elevation-line node's current world position, concatenated, alongside
-    (plate, line_index, start, end) references into the flat array -- the position-only half
-    of the near-identical per-step `_gather_nodes` helpers in erosion.py/hydrology.py/
-    bathymetry.py, and climate.py's own `_sample_elevation_and_crust`. Factored out here so a
-    single step_world call can compute each node's `line.world_xyz(plate.frame)` rotation
-    once and pass the same (points, line_refs) into all of them, rather than each
-    independently re-deriving identical world positions from plate-local data that hasn't
-    moved since the last rotation (see docs/architecture.md's World.climate_cache/
-    hydrology_cache notes for the same "compute once this step, reuse" precedent). Each
-    caller still gathers its own elevation/other per-node fields fresh off `line_refs` --
-    only the rotation itself is shared, since some of those fields (elevation in particular)
+def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[Plate]]:
+    """Every elevation-node's current world position, concatenated, alongside the ordered
+    list of contributing plates (every plate in `plate_list` with `node_count() > 0`, in the
+    order their nodes appear in the returned array) -- the position-only half of the
+    near-identical per-step `_gather_nodes` helpers in erosion.py/hydrology.py/bathymetry.py,
+    and climate.py's own `_sample_elevation_and_crust`. Factored out here so a single
+    step_world call can compute every node's current world position once and pass the same
+    (points, plates_in_order) into all of them, rather than each independently re-deriving
+    identical world positions from plate-local data that hasn't moved since the last rotation
+    (see docs/architecture.md's World.climate_cache/hydrology_cache notes for the same
+    "compute once this step, reuse" precedent).
+
+    `plates_in_order` -- not, as an earlier version of this function returned, (plate,
+    line_index, start, end) references into `PlateWithLines`' own `.lines` -- is what makes
+    this representation-agnostic: any bulk per-field gather (`collect_all_elevation` and
+    friends, below) or per-plate write-back loop (`Plate.map_world_points_on_plate`) already
+    visits nodes in this same plate-major order, so a caller never needs to reach into any one
+    representation's own storage just to stay aligned with `points`. Each caller still gathers
+    its own elevation/other per-node fields fresh (via those bulk collectors) -- only the
+    position/plate-order gather itself is shared, since some fields (elevation in particular)
     do change mid-step between callers."""
-    points_list = []
-    line_refs: list[tuple[PlateWithLines, int, int, int]] = []
-    offset = 0
-    for plate in plate_list:
-        for line_index, line in enumerate(plate.lines):
-            n = len(line)
-            if n == 0:
-                continue
-            points_list.append(line.world_xyz(plate.frame))
-            line_refs.append((plate, line_index, offset, offset + n))
-            offset += n
-    if not points_list:
+    plates_in_order = [p for p in plate_list if p.node_count() > 0]
+    if not plates_in_order:
         return np.zeros((0, 3)), []
-    return np.concatenate(points_list, axis=0), line_refs
+    points = np.concatenate([p.all_points_and_elevation()[0] for p in plates_in_order], axis=0)
+    return points, plates_in_order
 
 
 def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
@@ -998,6 +995,10 @@ def collect_all_lake_depth(plate_list: list[Plate]) -> np.ndarray:
 
 def collect_all_glacier_depth(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "glacier_depth")
+
+
+def collect_all_silt_depth(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "silt_depth")
 
 
 def collect_all_channel_depth(plate_list: list[Plate]) -> np.ndarray:

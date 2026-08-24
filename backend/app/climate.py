@@ -174,7 +174,7 @@ def _build_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.nda
 def _sample_elevation_and_crust(
     world: World,
     world_xyz: np.ndarray,
-    node_cloud: tuple[np.ndarray, list] | None = None,
+    node_cloud: tuple[np.ndarray, list[plates.Plate]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Nearest-elevation-node resample of the *current* plate state onto the climate grid --
     same cKDTree technique render_image.py's _render_grid_arrays already uses. Returns
@@ -185,24 +185,24 @@ def _sample_elevation_and_crust(
     render_image.py elevation view's own hypsometric coloring already treats it, and needs the
     same ocean-side climate treatment (evaporation source, current flow, coastal deflection)
     as any other ocean cell. `lake_depth_m`/`channel_depth_m` are the same persisted per-node
-    fields hydrology.py/erosion.py already carry on `plates.ElevationLine`
+    fields hydrology.py/erosion.py already carry on every plate
     (`plates.collect_all_lake_depth`/`collect_all_channel_depth`, index-aligned with
-    `plates.gather_node_positions`'s own per-plate/per-line order -- see those functions' own
+    `plates.gather_node_positions`'s own per-plate node order -- see those functions' own
     docstrings), resampled with this same nearest-neighbor `idx` rather than a second query --
     climate.py's own moisture-recycling humidity source (see compute_humidity). `node_cloud`,
-    when passed (see compute_climate), reuses an already-gathered (points, line_refs) pair
-    instead of re-deriving every node's world position from scratch -- see
+    when passed (see compute_climate), reuses an already-gathered (points, plates_in_order)
+    pair instead of re-deriving every node's world position from scratch -- see
     plates.gather_node_positions's own docstring for why."""
     height, width, _ = world_xyz.shape
-    all_points, line_refs = node_cloud if node_cloud is not None else plates.gather_node_positions(world.plates)
+    all_points, plates_in_order = node_cloud if node_cloud is not None else plates.gather_node_positions(world.plates)
     flat_xyz = world_xyz.reshape(-1, 3)
-    if not line_refs:
+    if not plates_in_order:
         empty = np.zeros((height, width))
         return empty, np.ones((height, width), dtype=bool), empty.copy(), empty.copy()
 
-    all_elev = plates.collect_all_elevation(world.plates)
-    all_lake = plates.collect_all_lake_depth(world.plates)
-    all_channel = plates.collect_all_channel_depth(world.plates)
+    all_elev = plates.collect_all_elevation(plates_in_order)
+    all_lake = plates.collect_all_lake_depth(plates_in_order)
+    all_channel = plates.collect_all_channel_depth(plates_in_order)
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz)
     elevation = all_elev[idx].reshape(height, width)
@@ -1028,11 +1028,11 @@ def compute_climate(
     world: World,
     height: int = GRID_HEIGHT,
     width: int = GRID_WIDTH,
-    node_cloud: tuple[np.ndarray, list] | None = None,
+    node_cloud: tuple[np.ndarray, list[plates.Plate]] | None = None,
 ) -> ClimateFields:
     """Runs the full climate pipeline against the world's *current* plate state. See module
     docstring for the pipeline order and why it's structured this way. `node_cloud`, when
-    passed (an already-gathered (points, line_refs) pair -- see
+    passed (an already-gathered (points, plates_in_order) pair -- see
     plates.gather_node_positions), is forwarded to `_sample_elevation_and_crust` instead of
     it re-deriving every node's world position from scratch -- erosion.py's apply_erosion
     computes this once per step and shares it with this function and

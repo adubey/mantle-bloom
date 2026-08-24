@@ -68,7 +68,7 @@ def _river_inspector_fields():
         is_river=is_river,
         lake_depth=lake_depth,
         glacier_depth=zeros.copy(),
-        line_refs=[],
+        plates_in_order=[],
     )
 
 

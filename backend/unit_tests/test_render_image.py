@@ -179,7 +179,7 @@ def test_draw_rivers_only_draws_segments_above_the_flow_floor():
         flow_target=np.array([1, -1, 3, -1]),
         lake_depth=np.zeros(n),
         glacier_depth=np.zeros(n),
-        line_refs=[],
+        plates_in_order=[],
     )
 
     def river_pixel_count(flow_accum):
