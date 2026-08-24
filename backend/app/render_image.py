@@ -667,7 +667,7 @@ def _plate_tectonics(projection: str, plate, view_rotation: np.ndarray) -> dict:
             "extent_deg": ARC_MIN_EXTENT_DEG + intensity * (ARC_MAX_EXTENT_DEG - ARC_MIN_EXTENT_DEG),
         }
 
-    outline_world = plate.outline_world()
+    outline_world = plate.get_bounding_polygon()
     boundary = _project_points(projection, _rotate(outline_world, view_rotation)) if len(outline_world) > 0 else np.zeros((0, 2))
 
     return {"pole": pole, "rotation_arc": rotation_arc, "boundary": boundary}

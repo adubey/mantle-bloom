@@ -78,13 +78,17 @@ NEIGHBOUR_DISTANCE_RAD = 6.0 * TARGET_LINE_SPACING_RAD
 
 
 def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: float) -> list["Plate"]:
-    """Every other plate in `all_plates` whose outline (`Plate.outline_world`) comes within
-    `threshold_rad` of `plate`'s own -- shared by both PlateWithLines.get_neighbours and
-    PlateWithRTree.get_neighbours, which differ only in what outline_world() itself does for
-    that representation. Same bounding-sphere prefilter as boundary.py's step_boundaries
-    (cheap enough to compute per plate, and enough to rule out most pairs before a real
-    nearest-point query)."""
-    own_points = plate.outline_world()
+    """Every other plate in `all_plates` whose outline (`Plate.get_bounding_polygon`) comes
+    within `threshold_rad` of `plate`'s own -- shared by both PlateWithLines.get_neighbours
+    and PlateWithRTree.get_neighbours, which differ only in what outline_world() itself does
+    for that representation. Uses the cached get_bounding_polygon() rather than outline_world()
+    directly since this runs once per plate per call, each time re-reading every other
+    plate's own outline -- an O(n) set of calls across all_plates that would otherwise
+    recompute the same unchanged outlines from scratch every time (see world.py's callers,
+    e.g. volcanism.merge_close_volcanic_fields' own per-field loop). Same bounding-sphere
+    prefilter as boundary.py's step_boundaries (cheap enough to compute per plate, and enough
+    to rule out most pairs before a real nearest-point query)."""
+    own_points = plate.get_bounding_polygon()
     if len(own_points) == 0:
         return []
     own_centroid, own_radius = geometry.bounding_sphere(own_points)
@@ -93,7 +97,7 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
     for other in all_plates:
         if other.plate_id == plate.plate_id:
             continue
-        other_points = other.outline_world()
+        other_points = other.get_bounding_polygon()
         if len(other_points) == 0:
             continue
         other_centroid, other_radius = geometry.bounding_sphere(other_points)
@@ -127,6 +131,14 @@ class Plate(abc.ABC):
         self._crust_type = crust_type
         self._omega = omega if omega is not None else np.zeros(3)
         self._age_steps = age_steps
+        # Lazily (re)computed by get_bounding_polygon() below -- None means "stale, recompute
+        # on next call," not "empty polygon" (an empty plate's real outline is a valid
+        # np.zeros((0, 3)), which must stay distinguishable from "not computed yet").
+        # Invalidated by rotate() here and by whichever of set_lines/replace_line
+        # (PlateWithLines) or set_nodes (PlateWithRTree) actually changes node positions --
+        # elevation-only mutations (erosion, uplift, ...) don't touch outline_world's inputs
+        # (each line's/point cloud's own theta/phi), so they leave the cache untouched.
+        self._bounding_polygon_cache: np.ndarray | None = None
 
     @property
     def plate_id(self) -> int:
@@ -166,6 +178,7 @@ class Plate(abc.ABC):
         """Apply an incremental rotation matrix to this plate's frame -- the one place a
         plate's rigid motion actually advances `frame` each step (see world.py)."""
         self._frame = increment @ self._frame
+        self._invalidate_bounding_polygon()
 
     def age_one_step(self) -> None:
         self._age_steps += 1
@@ -185,6 +198,22 @@ class Plate(abc.ABC):
     def outline_world(self) -> np.ndarray:
         """A live approximation of this plate's current territory outline."""
         ...
+
+    def get_bounding_polygon(self) -> np.ndarray:
+        """`outline_world()`, cached -- for any caller that doesn't need a guaranteed-fresh
+        recompute (most don't: nothing about a plate's outline changes except by rotate() or
+        a representation's own node-set mutation, both of which invalidate this cache
+        themselves). Prefer this over calling `outline_world()` directly wherever the same
+        plate's outline might reasonably be asked for more than once before its geometry
+        next changes -- e.g. `get_neighbours`, run once per plate per pass, otherwise
+        recomputing every other plate's outline from scratch each time (see
+        `_plates_within`)."""
+        if self._bounding_polygon_cache is None:
+            self._bounding_polygon_cache = self.outline_world()
+        return self._bounding_polygon_cache
+
+    def _invalidate_bounding_polygon(self) -> None:
+        self._bounding_polygon_cache = None
 
     @abc.abstractmethod
     def collect(self, field_name: str) -> np.ndarray:
@@ -265,9 +294,11 @@ class PlateWithLines(Plate):
 
     def set_lines(self, new_lines: list[ElevationLine]) -> None:
         self._lines = list(new_lines)
+        self._invalidate_bounding_polygon()
 
     def replace_line(self, index: int, new_line: ElevationLine) -> None:
         self._lines[index] = new_line
+        self._invalidate_bounding_polygon()
 
     def outline_world(self) -> np.ndarray:
         """Derived directly from each line's current two endpoints -- the actual edge
@@ -314,7 +345,7 @@ class PlateWithLines(Plate):
 
     def contains(self, lat: float, lon: float) -> bool:
         point_xyz = geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon))
-        return geometry.point_in_spherical_polygon(point_xyz, self.outline_world())
+        return geometry.point_in_spherical_polygon(point_xyz, self.get_bounding_polygon())
 
     def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
         return _plates_within(self, all_plates, threshold_rad)
@@ -448,6 +479,7 @@ class PlateWithRTree(Plate):
         }
         local_xy = np.stack([theta, phi], axis=1) if len(theta) else np.zeros((0, 2))
         self._rtree = RTree.build(local_xy)
+        self._invalidate_bounding_polygon()
 
     @staticmethod
     def _default_field(name: str, theta: np.ndarray) -> np.ndarray:
@@ -498,7 +530,7 @@ class PlateWithRTree(Plate):
 
     def contains(self, lat: float, lon: float) -> bool:
         point_xyz = geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon))
-        return geometry.point_in_spherical_polygon(point_xyz, self.outline_world())
+        return geometry.point_in_spherical_polygon(point_xyz, self.get_bounding_polygon())
 
     def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
         return _plates_within(self, all_plates, threshold_rad)

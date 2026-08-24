@@ -190,6 +190,45 @@ def test_outline_world_empty_for_plate_with_no_lines():
     assert len(p.outline_world()) == 0
 
 
+def test_get_bounding_polygon_matches_outline_world():
+    plates = generate_plates(seed=7, num_plates=8)
+    for p in plates:
+        assert np.array_equal(p.get_bounding_polygon(), p.outline_world())
+
+
+def test_get_bounding_polygon_returns_the_same_cached_array_until_invalidated():
+    p = generate_plates(seed=8, num_plates=8)[0]
+    first = p.get_bounding_polygon()
+    second = p.get_bounding_polygon()
+    assert first is second  # same cached object, not recomputed
+
+
+def test_get_bounding_polygon_cache_invalidated_by_rotate():
+    p = generate_plates(seed=9, num_plates=8)[0]
+    cached = p.get_bounding_polygon()
+    p.rotate(geometry.plate_frame_from_seed(np.array([0.0, 1.0, 0.0])))
+    rotated = p.get_bounding_polygon()
+    assert rotated is not cached
+    assert np.array_equal(rotated, p.outline_world())
+
+
+def test_get_bounding_polygon_cache_invalidated_by_set_lines():
+    p = generate_plates(seed=10, num_plates=8)[0]
+    cached = p.get_bounding_polygon()
+    p.set_lines(list(p.lines))
+    refreshed = p.get_bounding_polygon()
+    assert refreshed is not cached
+    assert np.array_equal(refreshed, cached)  # same lines, so same outline -- just recomputed
+
+
+def test_get_bounding_polygon_cache_invalidated_by_replace_line():
+    p = generate_plates(seed=11, num_plates=8)[0]
+    cached = p.get_bounding_polygon()
+    p.replace_line(0, p.lines[0])
+    refreshed = p.get_bounding_polygon()
+    assert refreshed is not cached
+
+
 def test_map_world_points_on_plate_fraction_spans_zero_to_one_along_each_line():
     frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
     theta = np.array([0.0, 0.25, 1.0])

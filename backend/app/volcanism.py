@@ -186,10 +186,13 @@ def _boundary_points(world: "World") -> tuple[np.ndarray, np.ndarray]:
     """Every plate's own boundary points (Plate.outline_world()'s line-endpoint definition of
     a plate's territory) and owning plate_id, concatenated -- pass 2's candidate/search
     population, deliberately much smaller than every node in the world (see module
-    docstring)."""
+    docstring). Reads each plate's own cached get_bounding_polygon() rather than calling
+    outline_world() fresh -- nothing in this clean-up pass rotates or otherwise moves a
+    plate's nodes, so the cache populated by an earlier get_neighbours call this same pass
+    (or the last render) is still exactly right."""
     points_list, owner_list = [], []
     for plate in world.plates:
-        outline = plate.outline_world()
+        outline = plate.get_bounding_polygon()
         if len(outline) == 0:
             continue
         points_list.append(outline)

@@ -169,7 +169,7 @@ def _round_coords(arr: np.ndarray) -> list:
 
 
 def _plate_summary(plate: plates.PlateWithLines) -> dict:
-    outline = plate.outline_world()
+    outline = plate.get_bounding_polygon()
     node_points, _ = plate.all_points_and_elevation()
     ellipse = plates.plate_bounding_ellipse(node_points)
     return {

@@ -154,3 +154,42 @@ def test_outline_world_does_not_crash_on_collinear_nodes():
     outline = plate.outline_world()
     assert np.all(np.isfinite(outline))
     assert np.allclose(np.linalg.norm(outline, axis=-1), 1.0, atol=1e-9)
+
+
+def test_get_bounding_polygon_matches_outline_world():
+    rng = np.random.default_rng(2)
+    theta, phi = _disk_cluster(rng, 100, radius_rad=0.3)
+    plate = PlateWithRTree(plate_id=12, frame=_FRAME, crust_type="continental", theta=theta, phi=phi, elevation=np.zeros(100))
+    assert np.array_equal(plate.get_bounding_polygon(), plate.outline_world())
+
+
+def test_get_bounding_polygon_returns_the_same_cached_array_until_invalidated():
+    rng = np.random.default_rng(3)
+    theta, phi = _disk_cluster(rng, 100, radius_rad=0.3)
+    plate = PlateWithRTree(plate_id=13, frame=_FRAME, crust_type="continental", theta=theta, phi=phi, elevation=np.zeros(100))
+    first = plate.get_bounding_polygon()
+    second = plate.get_bounding_polygon()
+    assert first is second
+
+
+def test_get_bounding_polygon_cache_invalidated_by_set_nodes():
+    rng = np.random.default_rng(4)
+    theta, phi = _disk_cluster(rng, 100, radius_rad=0.3)
+    plate = PlateWithRTree(plate_id=14, frame=_FRAME, crust_type="continental", theta=theta, phi=phi, elevation=np.zeros(100))
+    cached = plate.get_bounding_polygon()
+    new_theta, new_phi = _disk_cluster(rng, 100, radius_rad=0.3)
+    plate.set_nodes(new_theta, new_phi, np.zeros(100))
+    refreshed = plate.get_bounding_polygon()
+    assert refreshed is not cached
+    assert np.array_equal(refreshed, plate.outline_world())
+
+
+def test_get_bounding_polygon_cache_invalidated_by_rotate():
+    plate = PlateWithRTree(
+        plate_id=15, frame=_FRAME, crust_type="oceanic", theta=np.array([0.0]), phi=np.array([0.0]), elevation=np.array([0.0])
+    )
+    cached = plate.get_bounding_polygon()
+    plate.rotate(geometry.plate_frame_from_seed(np.array([0.0, 1.0, 0.0])))
+    refreshed = plate.get_bounding_polygon()
+    assert refreshed is not cached
+    assert np.array_equal(refreshed, plate.outline_world())
