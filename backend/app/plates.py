@@ -483,6 +483,17 @@ class Plate(abc.ABC):
         ...
 
     @abc.abstractmethod
+    def set_fields_on_plate(self, **fields: np.ndarray) -> None:
+        """Bulk in-place write for `elevation` and/or any `ElevationLine.OPTIONAL_FIELDS`
+        name: each keyword's array must be exactly this plate's own node count, in the same
+        order `map_world_points_on_plate`/`collect` already read/traverse it in. The
+        vectorized counterpart to looping `map_world_points_on_plate` and calling each
+        point's own `set_*` -- for a caller that already has a full per-node array computed
+        (erosion/bathymetry/geology's per-step recompute), this writes it back without
+        constructing a `Plate.__iter__`-style point object per node."""
+        ...
+
+    @abc.abstractmethod
     def update_to_lat_long_grid(self, grid: LatLongGrid) -> None:
         """Write this plate's current node elevations into `grid`'s nearest cells -- the
         plate -> grid half of the bidirectional round trip `update_deltas_from_lat_long_grid`
@@ -727,6 +738,15 @@ class PlateWithLines(Plate):
             for point, world_xyz in zip(line, world_pts):
                 fraction = 0.5 if span == 0 else float((point.get_theta() - low_theta) / span)
                 yield point, world_xyz, fraction
+
+    def set_fields_on_plate(self, **fields: np.ndarray) -> None:
+        offset = 0
+        for line in self._lines:
+            n = len(line)
+            if n == 0:
+                continue
+            line.set_fields(**{name: values[offset : offset + n] for name, values in fields.items()})
+            offset += n
 
     def update_to_lat_long_grid(self, grid: LatLongGrid) -> None:
         _update_to_lat_long_grid(self, grid)
@@ -1351,6 +1371,10 @@ class PlateWithRTree(Plate):
         for i, world_xyz in enumerate(world_pts):
             fraction = 0.5 if span == 0 else (float(self._theta[i]) - low_theta) / span
             yield ElevationPointInCloud(self, i), world_xyz, fraction
+
+    def set_fields_on_plate(self, **fields: np.ndarray) -> None:
+        for name, values in fields.items():
+            self.field_array(name)[:] = values
 
     def _typical_spacing(self) -> float:
         """Median nearest-neighbor distance over a bounded sample of this plate's own nodes

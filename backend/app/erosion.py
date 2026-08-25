@@ -393,21 +393,23 @@ def apply_erosion(
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
     # theta (and therefore every other parallel array's shape) is never touched here --
-    # writing each changed field straight back through the node's own live view
-    # (map_world_points_on_plate) leaves every other persistent field (is_volcano/
-    # volcano_active_years_remaining/soil_*/resource deposits, ...) untouched automatically,
-    # the same "don't silently wipe fields this site doesn't know about" guarantee
-    # line.replace used to provide.
+    # writing each changed field straight back via set_fields_on_plate (a vectorized
+    # per-plate slice write, no per-node point object) leaves every other persistent field
+    # (is_volcano/volcano_active_years_remaining/soil_*/resource deposits, ...) untouched
+    # automatically, the same "don't silently wipe fields this site doesn't know about"
+    # guarantee line.replace used to provide.
     offset = 0
     for plate in plates_in_order:
-        for point, _, _ in plate.map_world_points_on_plate():
-            point.set_elevation(float(new_elevation[offset]))
-            point.set_channel_depth(float(new_channel_depth[offset]))
-            point.set_channel_width(float(new_channel_width[offset]))
-            point.set_lake_depth(float(hydro.lake_depth[offset]))
-            point.set_glacier_depth(float(hydro.glacier_depth[offset]))
-            point.set_silt_depth(float(hydro.silt_depth[offset]))
-            offset += 1
+        n = plate.node_count()
+        plate.set_fields_on_plate(
+            elevation=new_elevation[offset : offset + n],
+            channel_depth=new_channel_depth[offset : offset + n],
+            channel_width=new_channel_width[offset : offset + n],
+            lake_depth=hydro.lake_depth[offset : offset + n],
+            glacier_depth=hydro.glacier_depth[offset : offset + n],
+            silt_depth=hydro.silt_depth[offset : offset + n],
+        )
+        offset += n
 
     return ErosionResult(
         points=points,

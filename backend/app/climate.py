@@ -629,8 +629,9 @@ def _land_swirl_current(wind_u: np.ndarray, wind_v: np.ndarray, is_ocean: np.nda
         return np.zeros((height, width)), np.zeros((height, width))
 
     land_xyz = world_xyz.reshape(-1, 3)[is_land.reshape(-1)]
+    query_points = world_xyz.reshape(-1, 3)
     tree = cKDTree(land_xyz)
-    chord_dist, nearest_idx = tree.query(world_xyz.reshape(-1, 3))
+    chord_dist, nearest_idx = tree.query(query_points, workers=plates.query_workers(len(query_points)))
     dist_rad = 2.0 * np.arcsin(np.clip(chord_dist / 2.0, 0.0, 1.0)).reshape(height, width)
     dist_deg = np.degrees(dist_rad)
 

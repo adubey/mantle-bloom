@@ -315,6 +315,15 @@ class ElevationLine:
         kwargs = {name: getattr(self, name)[mask] for name in self.OPTIONAL_FIELDS}
         return ElevationLine(phi=self.phi, theta=self.theta[mask], elevation=self.elevation[mask], **kwargs)
 
+    def set_fields(self, **fields: np.ndarray) -> None:
+        """In-place bulk write for `elevation` and/or any `OPTIONAL_FIELDS` name, straight
+        into this line's own backing arrays -- unlike `replace`, no new `ElevationLine` comes
+        back. For a caller (`Plate.set_fields_on_plate`) writing values already aligned 1:1
+        with this line's existing node order (theta's shape/order unchanged), this is the
+        vectorized counterpart to looping `ElevationPointOnLine.set_*` one node at a time."""
+        for name, values in fields.items():
+            getattr(self, f"_{name}")[:] = values
+
     def with_new_nodes(self, theta: np.ndarray, elevation: np.ndarray) -> "ElevationLine":
         """A new line with `theta`/`elevation` nodes appended at the end -- every
         OPTIONAL_FIELDS value for the new nodes starts at zero/False, no history to carry.

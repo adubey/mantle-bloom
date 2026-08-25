@@ -105,14 +105,14 @@ def apply_bathymetry(
     new_elevation[submerged_indices] += (target - elevation[submerged_indices]) * relax_factor
     new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
 
-    # Only elevation changes here -- writing straight back through each node's own live view
-    # (map_world_points_on_plate) touches nothing else, so every other field (channel_depth/
-    # channel_width/lake_depth/glacier_depth/is_volcano/volcano_active_years_remaining, and
-    # whatever else gets added later) is left exactly as it was without needing to name it
-    # explicitly here. See plates.Plate.map_world_points's own docstring for why this needs
-    # no replace/replace_line round-trip.
+    # Only elevation changes here -- writing straight back via set_fields_on_plate (a
+    # vectorized per-plate slice write) touches nothing else, so every other field
+    # (channel_depth/channel_width/lake_depth/glacier_depth/is_volcano/
+    # volcano_active_years_remaining, and whatever else gets added later) is left exactly as
+    # it was without needing to name it explicitly here. See plates.Plate.map_world_points's
+    # own docstring for why this needs no replace/replace_line round-trip.
     offset = 0
     for plate in plates_in_order:
-        for point, _, _ in plate.map_world_points_on_plate():
-            point.set_elevation(float(new_elevation[offset]))
-            offset += 1
+        n = plate.node_count()
+        plate.set_fields_on_plate(elevation=new_elevation[offset : offset + n])
+        offset += n

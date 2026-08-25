@@ -190,13 +190,15 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
 
     offset = 0
     for plate in plates_in_order:
-        for point, _, _ in plate.map_world_points_on_plate():
-            point.set_soil_depth(float(new_soil_depth[offset]))
-            point.set_soil_mineral_content(float(new_soil_mineral_content[offset]))
-            point.set_soil_organic_content(float(new_soil_organic_content[offset]))
-            point.set_coal_deposit_m(float(new_coal_deposit_m[offset]))
-            point.set_oil_gas_deposit_m(float(new_oil_gas_deposit_m[offset]))
-            offset += 1
+        n = plate.node_count()
+        plate.set_fields_on_plate(
+            soil_depth=new_soil_depth[offset : offset + n],
+            soil_mineral_content=new_soil_mineral_content[offset : offset + n],
+            soil_organic_content=new_soil_organic_content[offset : offset + n],
+            coal_deposit_m=new_coal_deposit_m[offset : offset + n],
+            oil_gas_deposit_m=new_oil_gas_deposit_m[offset : offset + n],
+        )
+        offset += n
 
 
 def seed_initial_soil(plate_list: list[Plate], seed: int, initial_soil_maturity: float) -> None:
