@@ -40,8 +40,13 @@ erosion -- previously out of scope for the same reason ("needs flow routing over
 irregular per-plate lattice, a separate, harder problem") -- are now implemented, see
 hydrology.py for how that flow-routing graph is built and how glacier_depth itself is
 grown/melted/flowed. Glacier-driven **flattening** (broad terrain smoothing under an ice
-sheet, distinct from the directional erosion term) is a mantle-bloom-original addition -- see
-`_flatten` below.
+sheet, distinct from the directional erosion term) and **seismic erosion** (earthquake-
+triggered landsliding, scaled by elevation as a stand-in for how tectonically active a range
+is -- this model has no separate fault/stress field) are both mantle-bloom-original additions
+-- see `_flatten` and SEISMIC_EROSION_* below. Glacially-eroded material that isn't deposited
+as immediate subglacial till also travels along the glacier's own real flow path rather than
+water's, dumping out only once it clears the ice -- a terminal moraine/outwash deposit, see
+the comment above GLACIER_TILL_FRACTION.
 
 **No lag.** This module always erodes against the *current* step's climate and flow routing,
 never a stale previous-step snapshot: climate.py here is fully stateless and cheap enough to
@@ -148,10 +153,16 @@ DEPOSITION_FRACTION = 0.15
 # accumulation bowl still correctly erodes near zero regardless of ice depth.
 # Temperature/precipitation-driven ice depth is a real length in consistent units (unlike the
 # slope-based rain/river coefficients above, which needed re-derivation for a rise/run
-# convention), so this coefficient doesn't need the same treatment.
-GLACIER_EROSION_COEFFICIENT = 0.05
+# convention), so this coefficient doesn't need the same treatment. Coefficient and max factor
+# both raised from an earlier, more timid starting point (0.05/2.0): basal shear stress under
+# real ice scales with the ice's own *weight* (depth), and a thin valley glacier's few hundred
+# meters versus a real continental ice sheet's kilometers is a large enough range that capping
+# the erosive multiplier at 2x was leaving thick ice under-erosive relative to thin ice -- the
+# higher cap lets genuinely deep, heavy ice keep scaling up over a wider depth range before
+# saturating.
+GLACIER_EROSION_COEFFICIENT = 0.09
 GLACIER_EROSION_REFERENCE_DEPTH_M = 100.0
-GLACIER_EROSION_MAX_FACTOR = 2.0
+GLACIER_EROSION_MAX_FACTOR = 4.0
 
 # Glacier flattening is a mantle-bloom-original addition modeling how real continental ice
 # sheets grind down local relief over broad areas (e.g. the Canadian Shield/Fennoscandia read
@@ -161,8 +172,34 @@ GLACIER_EROSION_MAX_FACTOR = 2.0
 # uses -- reuses hydrology's own k=FLOW_NEIGHBOR_COUNT neighbor graph rather than a separate
 # query. GLACIER_FLATTEN_RATE_PER_MYR has no established real-world value to draw on; picked
 # as a starting point, checked against a live run the same way every other from-scratch rate
-# in this codebase was.
-GLACIER_FLATTEN_RATE_PER_MYR = 0.2
+# in this codebase was. Raised alongside the erosion coefficient above, same "heavier ice grinds
+# harder" reasoning.
+GLACIER_FLATTEN_RATE_PER_MYR = 0.3
+
+# Seismic erosion: earthquake-triggered landsliding, a real, well-documented contributor in
+# young, actively-uplifting ranges (the Himalaya, the Andes) that this model didn't have a
+# source for at all. mantle-bloom has no explicit fault/stress field to drive this from
+# directly, so elevation itself stands in for "how much active convergent uplift has piled up
+# here" -- in this model, sustained height above a couple thousand meters *is* the signature of
+# an actively colliding, actively seismic belt (see plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR),
+# there being no other elevation source that reaches these heights. Needs a slope to fail down,
+# same rise/run definition rain/river erosion already use -- an earthquake can't landslide a
+# perfectly flat plateau regardless of how high it sits. The height term is deliberately
+# superlinear (SEISMIC_EROSION_ELEVATION_EXPONENT): real seismicity in young orogens grows
+# faster than linearly with height/ongoing convergence, and this is also this model's main
+# mechanism for capping just how tall an actively colliding range can get before its own
+# erosion catches up with uplift -- a real "geomorphic ceiling" effect, not just cosmetic
+# variation. SEISMIC_EROSION_ELEVATION_REFERENCE_M is picked at real Himalaya/Andes-base scale;
+# SEISMIC_EROSION_COEFFICIENT by the same order-of-magnitude reasoning as
+# RAIN_EROSION_COEFFICIENT (against CONVERGENT_MOUNTAIN_RATE_M_PER_MYR, 800 m/Myr): at a
+# moderately steep mountain slope (~0.05) right at the reference elevation, this gives seismic
+# erosion a meaningful fraction of the uplift rate -- a real but not dominant contributor at
+# ordinary mountain heights, growing sharply toward and past truly extreme (Everest-scale)
+# peaks.
+SEISMIC_EROSION_COEFFICIENT = 6000.0
+SEISMIC_EROSION_ELEVATION_REFERENCE_M = 3000.0
+SEISMIC_EROSION_ELEVATION_EXPONENT = 2.0
+SEISMIC_EROSION_MAX_HEIGHT_FACTOR = 3.0
 
 # Deposition, not just erosion -- eroded material has to go somewhere, and "wherever
 # route_downstream's single water-flow graph happens to carry it" is only right for rain/
@@ -179,10 +216,18 @@ GLACIER_FLATTEN_RATE_PER_MYR = 0.2
 # partial exception, see BEACH_SHELF_DEPTH_M below, and even that falls back to full local
 # deposit rather than vanishing when no shallow water is in range).
 
-# A glacier carries its load only as far as the ice itself moves before melting or shearing
-# it out -- most settles right back near where it was scoured, unlike meltwater-carried fines
-# which do travel with the routed pool (the GLACIER_TILL_FRACTION *complement*, still folded
-# into the ordinary water-routed pool below). Starting point, not a derived constant.
+# A glacier's scoured load splits two ways: GLACIER_TILL_FRACTION settles immediately,
+# subglacial till dropped right where the ice picked it up; the rest travels *with the ice
+# itself* rather than joining the water-routed pool -- apply_erosion reuses hydrology.
+# route_downstream directly (the same "elevation-descending sweep along a flow_target graph,
+# retain_fraction settles material locally" engine the ordinary river-deposition pool already
+# uses below), but along hydrology.HydrologyFields.ice_flow_target (the ice's own real downhill
+# flow path, not water's -- see that field's own comment for the frozen-node routing this
+# depends on) instead of flow_target, retaining in full the moment a hop reaches a node with
+# less than hydrology.GLACIER_VISIBLE_DEPTH_M of its own ice -- genuinely outside the glacier --
+# rather than continuing to travel once there's no more ice there to carry it. A real terminal
+# moraine/outwash deposit built beyond the ice margin, not debris stranded throughout the
+# glacier's interior.
 GLACIER_TILL_FRACTION = 0.5
 
 # Aeolian transport: wind-eroded material moves with the wind, not downhill with water, so it
@@ -225,9 +270,10 @@ class ErosionResult:
     call.
 
     `sediment_deposited` is every deposition pathway's combined total at each node -- ordinary
-    river/runoff floodplain deposit, glacier till, wind-blown resettling, and beach/nearshore
-    spreading all summed together (see apply_erosion's own comment for how they're split and
-    redistributed) -- not just the water-routed share alone."""
+    river/runoff floodplain deposit, glacier till, glacier-transported moraine/outwash material,
+    wind-blown resettling, and beach/nearshore spreading all summed together (see
+    apply_erosion's own comment for how they're split and redistributed) -- not just the
+    water-routed share alone."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -409,13 +455,20 @@ def apply_erosion(
     """Erodes every plate's elevation nodes based on the world's current climate and flow
     routing -- rain/sheet erosion (precipitation x slope), river-channelized erosion
     (accumulated flow x slope, boosted by the node's own established channel), weathering
-    (wind speed x humidity), and glacier erosion (accumulated ice depth x slope) -- then
-    routes the combined eroded material downstream, redepositing part of it wherever a big,
-    slow river drops its load (a floodplain/delta) instead of losing everything to the coast.
-    Separately relaxes elevation under thick ice toward its local neighborhood mean (glacial
-    flattening, see `_flatten`). Also grows channel_depth (from this step's river-erosion
-    term) and channel_width (from discharge alone -- larger flows carve a wider channel);
-    lake_depth/glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
+    (wind speed x humidity), glacier erosion (accumulated ice depth x slope, see
+    GLACIER_EROSION_* for how ice's own weight drives this), and seismic erosion
+    (earthquake-triggered landsliding, scaled by elevation as a stand-in for how tectonically
+    active a range is -- see SEISMIC_EROSION_* constants) -- then routes the combined eroded
+    material downstream, redepositing part of it wherever a big, slow river drops its load (a
+    floodplain/delta) instead of losing everything to the coast. Glacially-eroded material
+    (net of GLACIER_TILL_FRACTION's own immediate local deposit) is routed separately, along
+    the ice's own real flow path rather than water's, settling only once it reaches the
+    glacier's actual melting margin -- a terminal moraine/outwash deposit pushed outside the
+    ice by the glacier's own flow, see the comment above GLACIER_TILL_FRACTION. Separately
+    relaxes elevation under thick ice toward its local neighborhood mean (glacial flattening,
+    see `_flatten`). Also grows channel_depth (from this step's river-erosion term) and
+    channel_width (from discharge alone -- larger flows carve a wider channel); lake_depth/
+    glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
     World.hydrology_cache. All persistent, see plates.ElevationLine. Mutates world.plates'
     line elevations in place; never touches node positions or line topology, so this can't
     interact with line regularization or point reassignment at all (both of those are
@@ -485,12 +538,20 @@ def apply_erosion(
     weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
     glacier = GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr
+    # See SEISMIC_EROSION_* constants' own comment: elevation (clipped/normalized against
+    # SEISMIC_EROSION_ELEVATION_REFERENCE_M, then raised to a superlinear power) stands in for
+    # how tectonically active/seismic a mountain range is, this model having no separate
+    # fault/stress field to drive it from directly. np.clip(elevation, 0, None) first since a
+    # negative elevation would otherwise flip sign under the exponent -- ocean nodes are zeroed
+    # out below regardless, but this keeps the intermediate factor itself well-defined.
+    mountain_height_factor = np.clip(np.clip(elevation, 0.0, None) / SEISMIC_EROSION_ELEVATION_REFERENCE_M, 0.0, SEISMIC_EROSION_MAX_HEIGHT_FACTOR)
+    seismic = SEISMIC_EROSION_COEFFICIENT * slope * np.power(mountain_height_factor, SEISMIC_EROSION_ELEVATION_EXPONENT) * dt_myr
     # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
     # valley floor it drains into. Zeroed over ocean nodes (elevation <= sea level, the same
     # convention climate.py/plates.py use everywhere else): every source here is a subaerial
     # process -- coastal/ocean erosion is a separate source that would touch the seafloor, and
     # that's the one source this module still doesn't implement (see module docstring).
-    raw_erosion_total = rain + river + weathering + glacier
+    raw_erosion_total = rain + river + weathering + glacier + seismic
     erosion_amount = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
     # channel_depth is the terrain's own carved-channel record, so it must never grow past
@@ -502,22 +563,25 @@ def apply_erosion(
     applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
     applied_river = river * applied_scale
 
-    # Split off the two sources with genuinely non-water transport (see module comment above
+    # Split off the sources with genuinely non-water transport (see module comment above
     # GLACIER_TILL_FRACTION/WIND_DEPOSITION_FRACTION): a glacier's own till settles close by
-    # (glacier_till, deposited without transport -- same node), and wind-eroded material rides
-    # the wind rather than water (wind_redeposit_source, carried by _route_wind_deposit below).
-    # Both fractions are taken from the *applied* (post-neighbor-drop-cap) amount, same
-    # applied_scale reasoning as applied_river above, so the split still exactly partitions
-    # erosion_amount. The remainder of each -- what a glacier's meltwater actually carries off,
-    # and what rain washes off a weathered slope -- stays in the ordinary water-routed pool,
-    # unchanged from before this addition.
+    # (glacier_till, deposited without transport -- same node) while the rest travels with the
+    # ice itself (glacier_carried, routed separately below, not through the water pool); wind-
+    # eroded material rides the wind rather than water (wind_redeposit_source, carried by
+    # _route_wind_deposit below). All fractions are taken from the *applied* (post-neighbor-
+    # drop-cap) amount, same applied_scale reasoning as applied_river above, so the split still
+    # exactly partitions erosion_amount. Seismic erosion has no distinct transport mechanism of
+    # its own (landslide debris that reaches a channel behaves like any other eroded material
+    # from here on) -- it joins the ordinary water-routed pool alongside rain, same as
+    # weathering's own water-routed remainder.
     applied_weathering = weathering * applied_scale
     applied_glacier = glacier * applied_scale
+    applied_seismic = seismic * applied_scale
     glacier_till = applied_glacier * GLACIER_TILL_FRACTION
-    glacier_routed = applied_glacier - glacier_till
+    glacier_carried = applied_glacier - glacier_till
     wind_redeposit_source = applied_weathering * WIND_DEPOSITION_FRACTION
     weathering_routed = applied_weathering - wind_redeposit_source
-    water_routed_amount = (rain * applied_scale) + applied_river + weathering_routed + glacier_routed
+    water_routed_amount = (rain * applied_scale) + applied_river + weathering_routed + applied_seismic
 
     # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
     # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
@@ -540,7 +604,21 @@ def apply_erosion(
 
     wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source)
 
-    total_deposited = sediment_deposited + glacier_till + wind_deposit
+    # Glacial transport: glacier_carried travels along the ice's own real flow path
+    # (hydro.ice_flow_target, not water's flow_target -- see GLACIER_TILL_FRACTION's own
+    # comment) and settles the moment it reaches a node that's genuinely outside the ice
+    # (glacier_depth below hydrology.GLACIER_VISIBLE_DEPTH_M) -- a terminal moraine/outwash
+    # deposit at the glacier's melting margin, pushed there by the glacier's own flow rather
+    # than left buried under the ice interior. Reuses hydro.glacier_depth (this step's already-
+    # flowed, *final* ice depth) to find the margin, not the one-step-lagged prior_glacier_depth
+    # ice_factor above is deliberately built from -- this is about where the ice sits *after*
+    # this step's own flow, not about damping the erosion-rate formula.
+    at_glacier_margin = np.where(hydro.glacier_depth < hydrology.GLACIER_VISIBLE_DEPTH_M, 1.0, 0.0)
+    _, glacier_transport_deposit = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried, retain_fraction=at_glacier_margin
+    )
+
+    total_deposited = sediment_deposited + glacier_till + glacier_transport_deposit + wind_deposit
 
     flatten_delta = _flatten(hydro, ice_factor, years)
 

@@ -8,8 +8,13 @@ direction, priority-flood basin-spill, and elevation-ordered downstream accumula
 out not to actually need a *grid*, only a *graph*: this module builds one via a whole-world
 k-nearest-neighbor query (the same
 technique reassign.py/erosion.py already use for their own whole-world passes), then runs
-the same algorithms directly on it. Glacier flow (accumulated ice moving one hop downhill
-per step) reuses the same `flow_target` graph water uses.
+the same algorithms directly on it. Glacier flow (accumulated ice moving one hop downhill per
+step) reuses the same steepest-descent/spill-redirect machinery water's own flow_target does
+(`_compute_flow_direction`), but with its own separate target (`ice_flow_target`, on
+HydrologyFields) rather than literally sharing water's: ice keeps moving downhill under its own
+weight even on a step where the node itself is below freezing (and a glaciated node almost
+always is), whereas liquid water's flow_target is deliberately forced shut there instead
+(rivers freeze over) -- see `_compute_flow_direction`'s `apply_freeze` parameter.
 
 **Persistence.** A grid-based approach where plates move relative to fixed cells would need a
 persistent field like channel_depth to be deliberately advected (semi-Lagrangian, every step)
@@ -232,6 +237,14 @@ class HydrologyFields:
     # the hierarchy that had actually produced that lake's `lake_depth`. Also defaulted, same
     # backward-compatibility reasoning as `lake_events`/`silt_depth` above.
     lake_forest: list["lakes.Lake"] = field(default_factory=list)
+    # Ice's own downhill flow target -- like flow_target, but never zeroed by is_frozen: glacial
+    # ice flows via gravity/internal deformation regardless of whether this particular step is
+    # literally below freezing, unlike liquid water/rivers (see _compute_flow_direction's
+    # apply_freeze parameter). erosion.py routes glacially-eroded till along this, not
+    # flow_target, so it travels with the ice's real flow path out to the glacier's melting
+    # margin (a terminal moraine/outwash deposit) instead of being stranded wherever it was
+    # scoured. Also defaulted, same backward-compatibility reasoning as lake_events above.
+    ice_flow_target: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
 
 
 def _gather_nodes(
@@ -380,6 +393,7 @@ def _compute_flow_direction(
     spill_target: np.ndarray,
     prev_channel_depth: np.ndarray,
     is_frozen: np.ndarray,
+    apply_freeze: bool = True,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Flow target per node, among its k nearest neighbors strictly below its own elevation
     (a downhill candidate) -- preferring whichever candidate already has the deepest
@@ -414,7 +428,18 @@ def _compute_flow_direction(
     downhill neighbor via spill_target -- silently undoing the freeze for most ordinary
     terrain. Applying the override to the final flow_target instead has no such escape hatch;
     `should_spill`'s own returned mask still reflects genuine basin-spill events only, since
-    it's computed before this override runs."""
+    it's computed before this override runs.
+
+    `apply_freeze=False` skips that last override, returning the *un*-frozen-gated target
+    instead -- for glacial ice, which flows downhill under its own weight via internal
+    deformation regardless of whether this particular step happens to be below freezing,
+    unlike liquid water/rivers (which do stop dead at a frozen node). `compute_hydrology` calls
+    this twice, once each way, rather than folding an ice-specific branch into the water path:
+    reusing the exact same steepest-descent/channel-preference/spill-redirect logic for both
+    keeps the two flow directions from silently drifting apart, and callers that only need
+    water's own semantics (every existing caller, including this function's own test suite)
+    see no change at all, since `apply_freeze` defaults to the prior (always-frozen-gated)
+    behavior."""
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]  # (n, k)
     own_elev = elevation[:, None]
@@ -438,7 +463,8 @@ def _compute_flow_direction(
     water_surface = elevation + prev_lake_depth
     should_spill = is_sink & (water_surface >= filled_elevation)
     flow_target = np.where(should_spill, spill_target, flow_target).astype(np.int64)
-    flow_target = np.where(is_frozen & ~is_ocean, -1, flow_target).astype(np.int64)
+    if apply_freeze:
+        flow_target = np.where(is_frozen & ~is_ocean, -1, flow_target).astype(np.int64)
     flow_target = np.where(is_ocean, -1, flow_target).astype(np.int64)
     return flow_target, should_spill
 
@@ -601,7 +627,7 @@ def compute_hydrology(
         empty_f = np.zeros(n)
         return HydrologyFields(
             points, elevation, is_ocean, np.zeros((n, 0), dtype=np.int64), empty_i, empty_f, empty_f, empty_f, empty_i,
-            np.zeros(n, dtype=bool), empty_f, empty_f, plates_in_order, silt_depth=prev_silt_depth,
+            np.zeros(n, dtype=bool), empty_f, empty_f, plates_in_order, silt_depth=prev_silt_depth, ice_flow_target=empty_i,
         )
 
     neighbor_idx = _build_neighbor_graph(points)
@@ -615,13 +641,20 @@ def compute_hydrology(
     flow_target, should_spill = _compute_flow_direction(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen
     )
+    # Ice moves under its own weight regardless of whether this step is literally below
+    # freezing (unlike liquid water, gated above) -- see _compute_flow_direction's own
+    # apply_freeze docstring. Without this, a glaciated node (almost always is_frozen, or it
+    # wouldn't be accumulating ice) could never advance its own ice downhill at all.
+    ice_flow_target, _ = _compute_flow_direction(
+        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
+    )
 
     frozen_precip = np.where(is_frozen, precipitation_at_nodes, 0.0)
     liquid_precip = np.where(is_frozen, 0.0, precipitation_at_nodes)
 
-    slope_to_target = _slope_to_flow_target(points, elevation, flow_target)
+    slope_to_ice_target = _slope_to_flow_target(points, elevation, ice_flow_target)
     new_glacier_depth, melt = _update_glaciers(
-        elevation, is_ocean, flow_target, slope_to_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years
+        elevation, is_ocean, ice_flow_target, slope_to_ice_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years
     )
 
     # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of
@@ -657,7 +690,7 @@ def compute_hydrology(
     # flooded nodes, so fields is built with a placeholder here and finished after.
     fields = HydrologyFields(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
-        np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order,
+        np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
     )
     fields.lake_depth, fields.silt_depth, fields.lake_forest, fields.lake_events = lakes.step_lakes(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, prev_silt_depth, water_deposited, years, is_frozen
@@ -673,7 +706,20 @@ def compute_hydrology(
     if np.any(land) and np.any(flow_accum[land] > 0):
         threshold = np.percentile(flow_accum[land], RIVER_FLOW_PERCENTILE)
         is_river = land & (flow_accum > 0) & (flow_accum >= threshold) & ~is_lake
-    fields.is_river = is_river
+
+    # Rivers commonly begin right where a glacier's meltwater first emerges from the ice --
+    # a fresh headwater has, by definition, no upstream tributaries yet, so it can easily fail
+    # to clear the ordinary top-decile flow_accum threshold above on its own even though it's a
+    # perfectly real river source. A land node not itself under visible ice but with at least
+    # one neighbor that is (GLACIER_VISIBLE_DEPTH_M, the same "real ice, not just a trace"
+    # threshold rendering already uses) sits right at a glacier's edge; if it's actually
+    # carrying real outflow this step (flow_accum > 0, i.e. meltwater genuinely reached here),
+    # it's marked is_river directly, giving that stream a visible source at the ice margin
+    # instead of only appearing once downstream tributaries happen to push it over the
+    # percentile cut.
+    has_glacier_neighbor = np.any(new_glacier_depth[neighbor_idx] >= GLACIER_VISIBLE_DEPTH_M, axis=1)
+    is_glacial_source = land & ~is_lake & (new_glacier_depth < GLACIER_VISIBLE_DEPTH_M) & has_glacier_neighbor & (flow_accum > 0)
+    fields.is_river = is_river | is_glacial_source
     return fields
 
 

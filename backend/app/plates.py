@@ -49,8 +49,14 @@ if TYPE_CHECKING:
 CONTINENTAL_FRACTION = 0.4
 BASE_CONTINENTAL_M = 200.0
 BASE_OCEANIC_M = -3800.0
-CONTINENTAL_NOISE_AMPLITUDE_M = 1200.0
-OCEANIC_NOISE_AMPLITUDE_M = 500.0
+# Widened from the original 1200/500 so a freshly generated world already shows real relief --
+# rolling hills and real ocean-basin variation, not a flat plain/seafloor waiting for tectonics
+# to draw the first contours. Still well inside MIN/MAX_ELEVATION_M (-11000/9000) either way,
+# and continental crust's own land/sea split near sea level is unaffected (BASE_CONTINENTAL_M,
+# or the land_fraction-derived threshold when one is given, is untouched -- only how far the
+# noise texture swings around whichever baseline is already used).
+CONTINENTAL_NOISE_AMPLITUDE_M = 2000.0
+OCEANIC_NOISE_AMPLITUDE_M = 900.0
 
 # Plate count is chosen automatically (see generate_plates) rather than asked of the user --
 # an inclusive range of plausible Earth-like plate counts.
@@ -279,6 +285,23 @@ FAR_FIELD_COLLISION_OUTER_KM = 3000.0
 FAR_FIELD_COLLISION_INNER_RAD = FAR_FIELD_COLLISION_INNER_KM / PLANET_RADIUS_KM
 FAR_FIELD_COLLISION_OUTER_RAD = FAR_FIELD_COLLISION_OUTER_KM / PLANET_RADIUS_KM
 FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR = 60.0
+
+# Reverse faults: real shortening in a collision belt isn't smooth vertical uplift spread
+# evenly across the whole zone -- fold-thrust belts partition it into discrete thrust sheets
+# (fast-rising ridges) separated by footwall synclines/intermontane basins that keep rising far
+# more slowly, a real, well-documented process (the north-south rift valleys cutting straight
+# across the Tibetan Plateau's own overall convergent uplift; Basin-and-Range-style extension
+# nested inside the Anatolian collision zone). Modeled as a smooth, deterministic noise field
+# sampled in the plate's own *local* frame (geometry.local_xyz(line.phi, line.theta), not world
+# xyz -- see PlateWithLines.deform's own use) so a given downthrown block stays attached to the
+# same crust as the plate rotates, the same "attached to the crust, not the world" property
+# every other persistent field in this codebase already has (see docs/simulation-model.md's
+# "Why not a grid"). Seeded from (world.seed, plate_id) only, not elapsed_years, so the fault
+# pattern is a fixed geological feature of this plate rather than reshuffling every step.
+REVERSE_FAULT_SEED_TAG = 9001  # arbitrary, distinguishes this RNG stream from any other keyed by (world.seed, plate_id, ...)
+REVERSE_FAULT_NOISE_FREQ = 9.0
+REVERSE_FAULT_VALLEY_THRESHOLD = -0.15  # noise below this reads as a downthrown fault block
+REVERSE_FAULT_VALLEY_UPLIFT_FACTOR = 0.15  # a valley block still rises, just far slower than a thrust ridge
 
 # Oceanic-under-continental subduction: the volcanic arc forms inland of the trench, not at
 # it -- a band (see _band_intensity), zero at the boundary, peaking at the band's midpoint,
@@ -1192,6 +1215,18 @@ class PlateWithLines(Plate):
         years_myr = years / 1_000_000.0
         relax_factor = 1.0 - np.exp(-DIVERGENT_RELAX_RATE_PER_MYR * years_myr)
 
+        # See REVERSE_FAULT_* constants' own comment. Only continental crust ever takes the
+        # collision/subduction-arc uplift branch below, so there's nothing for an oceanic
+        # plate to modulate here. REVERSE_FAULT_SEED_TAG is a plain int, not elapsed_years or a
+        # string, matching np.random.default_rng's own seed-tuple requirement (integers only --
+        # see e.g. the grow/shrink end_tag/direction_tag precedent below) -- keeping the fault
+        # pattern itself fixed for this plate's whole lifetime rather than reseeded every step.
+        fault_noise = (
+            SphereNoise(np.random.default_rng((world.seed, self.plate_id, REVERSE_FAULT_SEED_TAG)), octaves=3, base_freq=REVERSE_FAULT_NOISE_FREQ)
+            if self.crust_type == "continental"
+            else None
+        )
+
         new_lines: list[ElevationLine] = []
         offset = 0
         for line_index, line in enumerate(self._lines):
@@ -1213,8 +1248,17 @@ class PlateWithLines(Plate):
 
             elevation = line.elevation.copy()
             if self.crust_type == "continental":
-                elevation[subduction] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * arc_intensity[subduction]
-                elevation[collision] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * collision_intensity[collision]
+                # fault_factor is 1.0 (ordinary thrust-ridge uplift) almost everywhere, dropping
+                # to REVERSE_FAULT_VALLEY_UPLIFT_FACTOR on whichever nodes this plate's fixed
+                # local-frame noise field marks as a downthrown block -- those nodes still rise
+                # (this is shortening within an active belt, not literal extension), just far
+                # slower than their neighbours, so a real valley opens up between ranges as the
+                # gap widens step after step. Deliberately not applied to far_field_intensity's
+                # uplift -- that term represents stress transmitted broadly into the continental
+                # interior, not the belt's own discrete thrust-sheet structure.
+                fault_factor = np.where(fault_noise.sample(geometry.local_xyz(np.full(n, line.phi), line.theta)) < REVERSE_FAULT_VALLEY_THRESHOLD, REVERSE_FAULT_VALLEY_UPLIFT_FACTOR, 1.0)
+                elevation[subduction] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * arc_intensity[subduction] * fault_factor[subduction]
+                elevation[collision] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * collision_intensity[collision] * fault_factor[collision]
                 elevation[collision] += FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR * years_myr * far_field_intensity[collision]
             else:
                 elevation[contested] -= CONVERGENT_TRENCH_RATE_M_PER_MYR * years_myr * default_intensity[contested]

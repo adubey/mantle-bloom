@@ -123,7 +123,15 @@ separately verify. Kept nodes get a base elevation by crust type
 (`BASE_CONTINENTAL_M = 200`, `BASE_OCEANIC_M = -3800`, continental overridden by
 `land_fraction`'s threshold when given, see above) plus a smooth noise texture (`noise.py`,
 a small sum of sinusoids with random frequency/phase -- not true gradient noise, just enough
-texture to not look perfectly flat).
+texture to not look perfectly flat), swung by `CONTINENTAL_NOISE_AMPLITUDE_M`/
+`OCEANIC_NOISE_AMPLITUDE_M` (2000/900, widened from an original, more timid 1200/500 so a
+freshly generated world already shows real relief -- rolling hills and real ocean-basin depth
+variation -- rather than a near-flat plain/seafloor waiting for tectonics to draw the first
+contours). Confirmed directly across a couple of seeds: land elevation's own standard deviation
+rose by roughly 50% (e.g. 306m -> 479m at one seed) and the deepest sampled ocean point got
+several hundred meters deeper, without disturbing the land/sea split near sea level itself
+(`BASE_CONTINENTAL_M`, or the `land_fraction`-derived threshold when one is given, is
+untouched -- only how far the noise texture swings around whichever baseline is already used).
 
 The same lattice-sweep helper (`plates.build_lines_from_lattice`) is reused by plate merging
 (see [Merge and split](#merge-and-split)) -- the only other place a full-footprint sweep is
@@ -256,6 +264,30 @@ trigger (contested, not a positive closing rate) changed:
   and the Laramide orogeny's basement-cored uplifts sat ~1000-1500km inland of the margin.
   Unlike the divergent cases below, this doesn't relax toward a target -- it adds every step
   it applies, so it can accumulate into a substantial rise over a long-lived collision.
+
+  **Reverse faults: mountain ranges aren't uniformly smooth.** Real shortening in a collision
+  belt isn't spread evenly across the whole zone -- fold-thrust belts partition it into
+  discrete thrust sheets (fast-rising ridges) separated by footwall synclines/intermontane
+  basins that keep rising far more slowly, a real, documented process (the north-south rift
+  valleys cutting straight across the Tibetan Plateau's own overall convergent uplift;
+  Basin-and-Range-style extension nested inside the Anatolian collision zone). Both the
+  near-field collision uplift and the subduction volcanic-arc uplift above are multiplied by a
+  `fault_factor` -- 1.0 almost everywhere, dropping to `REVERSE_FAULT_VALLEY_UPLIFT_FACTOR`
+  (0.15) on whichever nodes a smooth, deterministic noise field marks as a downthrown block
+  (below `REVERSE_FAULT_VALLEY_THRESHOLD`). Those nodes still rise (this is differential uplift
+  within an active belt, not literal subsidence), just far slower than their neighbours, so a
+  real valley opens up between ranges as the gap widens step after step. The noise is sampled
+  in the plate's own *local* frame (`geometry.local_xyz(line.phi, line.theta)`, not world xyz),
+  seeded from `(world.seed, plate_id)` only -- so a given downthrown block stays attached to
+  the same crust as the plate rotates, a fixed geological feature rather than something that
+  reshuffles every step, the same "attached to the crust, not the world" property every other
+  persistent field in this codebase already has (see [Why not a grid](#why-not-a-grid)).
+  Deliberately not applied to the far-field term, which represents stress transmitted broadly
+  into the continental interior, not the belt's own discrete thrust-sheet structure. Confirmed
+  directly at a real seed run 20 steps (60 Myr): with this and the seismic-erosion addition
+  below, the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped from roughly 9% to
+  under 2% versus the same run without either -- mountain ranges keep growing, but no longer
+  collapse into a flat plateau at the elevation ceiling.
 - **Oceanic-under-continental subduction** (continental plate, oceanic neighbor) -> elevation
   rises on the continental side too, but shaped as a **band** (`_band_intensity`): zero right
   at the boundary, peaking at the midpoint of `SUBDUCTION_ARC_INNER_RAD`..
@@ -1154,16 +1186,17 @@ influencing weather (lapse-rate cooling, mountain wind deflection, orographic ra
 This module is the new direction, weather influencing terrain, implementing an erosion model
 cut down to the sources that don't depend on infrastructure mantle-bloom doesn't have.
 
-**Scope cut to four erosion sources.** Coastal-current erosion is dropped (a
+**Scope cut to five erosion sources.** Coastal-current erosion is dropped (a
 distinct source, never implemented here). Weathering's vegetation boost is dropped (no
 vegetation field, same reasoning as climate.py's own "deliberately not ported" list).
-Rain/sheet erosion, river-channelized erosion, weathering, and glacier erosion all feed into
-a downstream deposition pass (see [Hydrology](#hydrology) for the flow-routing graph all of
-this depends on, and [Glaciation](#glaciation) for how `glacier_depth` itself is
+Rain/sheet erosion, river-channelized erosion, weathering, glacier erosion, and seismic erosion
+all feed into a downstream deposition pass (see [Hydrology](#hydrology) for the flow-routing
+graph all of this depends on, and [Glaciation](#glaciation) for how `glacier_depth` itself is
 grown/melted/flowed), so material isn't purely one-way removed anymore: a slow, big river
 drops part of its sediment load locally instead of carrying every last grain to the coast.
-Glacier-driven **flattening** (broad terrain smoothing under an ice sheet) is a
-mantle-bloom-original addition -- see below.
+Glacier-driven **flattening** (broad terrain smoothing under an ice sheet) and **seismic
+erosion** (earthquake-triggered landsliding) are both mantle-bloom-original additions -- see
+below.
 
 **The mapping problem, and why it's easier in this direction than the reverse.** climate.py
 already solves node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor
@@ -1198,7 +1231,7 @@ such re-derivation either -- `glacier_depth` is driven by temperature and precip
 which already use consistent physical units (unlike slope), so `GLACIER_EROSION_COEFFICIENT`
 needed no rescaling.
 
-**The four formulas**, all computed per-node:
+**The five formulas**, all computed per-node:
 
 - **Rain/sheet erosion** = `RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000) *
   dt_myr`.
@@ -1238,7 +1271,31 @@ needed no rescaling.
   the ice sitting in it is. Uses the *previous* step's `glacier_depth` (same one-step lag
   `channel_boost` above already uses for `channel_depth`), since this step's fresh value
   isn't computed until `hydrology.compute_hydrology` runs, just before this term does.
-- All four summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
+  `GLACIER_EROSION_COEFFICIENT`/`GLACIER_EROSION_MAX_FACTOR` were both raised (0.05 -> 0.09,
+  2.0 -> 4.0) from an earlier, more timid starting point: basal shear stress scales with the
+  ice's own *weight* (depth), and a thin valley glacier's few hundred meters versus a real
+  continental ice sheet's kilometers is wide enough a range that capping the erosive
+  multiplier at 2x left genuinely thick, heavy ice under-erosive relative to thin ice.
+- **Seismic erosion** = `SEISMIC_EROSION_COEFFICIENT * slope * mountain_height_factor^
+  SEISMIC_EROSION_ELEVATION_EXPONENT * dt_myr`, a mantle-bloom-original addition modeling
+  earthquake-triggered landsliding -- a real, well-documented contributor in young,
+  actively-uplifting ranges (the Himalaya, the Andes) this model previously had no source for
+  at all. `mountain_height_factor = clip(elevation / SEISMIC_EROSION_ELEVATION_REFERENCE_M, 0,
+  SEISMIC_EROSION_MAX_HEIGHT_FACTOR)`: this model has no explicit fault/stress field, so
+  sustained elevation itself stands in for "how tectonically active/seismic this range is,"
+  there being no other elevation source that reaches these heights (see
+  `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`). The height term is deliberately superlinear
+  (exponent 2) -- real seismicity in young orogens grows faster than linearly with height/
+  ongoing convergence, and this is also the model's main mechanism for capping how tall an
+  actively colliding range can get before its own erosion catches up with uplift, a real
+  "geomorphic ceiling" effect rather than just cosmetic variation. Still needs a slope to fail
+  down (an earthquake can't landslide a perfectly flat plateau); `SEISMIC_EROSION_COEFFICIENT`
+  was picked the same order-of-magnitude way `RAIN_EROSION_COEFFICIENT` was, against
+  `CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` (800 m/Myr). Confirmed directly at a real seed run 20
+  steps (60 Myr): together with reverse-fault valleys (see [Plate motion: shift and
+  deform](#boundary-evolution)), the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped
+  from roughly 9% to under 2% versus the same run without either addition.
+- All five summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
   everywhere else) -- every source here is a subaerial process. The combined result is
   capped at the node's own drop-to-lowest-neighbor (in meters, not the normalized slope), so
   a single step can't erode a node *past* the valley it drains into and carve a new, lower
@@ -1250,11 +1307,26 @@ Fennoscandia read as glacially smoothed bedrock today, not just eroded lower) --
 local blur, not a directional erosion/deposition term, so it's applied as a separate signed
 elevation delta rather than folded into `erosion_amount`. Each node relaxes toward the mean
 elevation of its own `hydrology.py` flow-graph neighbors (reusing that graph rather than a
-separate query), scaled by `GLACIER_FLATTEN_RATE_PER_MYR` and the same `ice_factor` glacier
-erosion uses -- glacier-free nodes (`ice_factor = 0`) are completely untouched. Confirmed
-directly on a real run: near-zero delta at nodes with little local relief, tens to 100+
-meters at nodes combining real local relief with thick ice, consistent with "smooths sharp
-terrain under ice, leaves already-flat terrain alone."
+separate query), scaled by `GLACIER_FLATTEN_RATE_PER_MYR` (0.3, also raised from 0.2 alongside
+the glacier-erosion coefficients above, same "heavier ice grinds harder" reasoning) and the
+same `ice_factor` glacier erosion uses -- glacier-free nodes (`ice_factor = 0`) are completely
+untouched. Confirmed directly on a real run: near-zero delta at nodes with little local relief,
+tens to 100+ meters at nodes combining real local relief with thick ice, consistent with
+"smooths sharp terrain under ice, leaves already-flat terrain alone."
+
+**Glacial sediment transport pushes material outside the range.** A glacier's scoured load
+splits two ways: `GLACIER_TILL_FRACTION` (0.5) settles immediately as subglacial till, right
+where the ice picked it up; the rest travels *with the ice itself* rather than joining the
+water-routed pool -- `apply_erosion` reuses `hydrology.route_downstream` directly (the same
+engine the ordinary river-deposition pool already uses, see [Hydrology](#hydrology)), but along
+`hydrology.HydrologyFields.ice_flow_target` (the ice's own real downhill flow path, not water's
+-- see [Glaciation](#glaciation) for why those two differ) instead of `flow_target`, retaining
+in full the moment a hop reaches a node with less than `GLACIER_VISIBLE_DEPTH_M` of its own ice
+-- genuinely outside the glacier -- rather than continuing to travel once there's no more ice
+there to carry it. This is a real terminal moraine/outwash deposit built beyond the ice margin,
+not debris stranded throughout the glacier's interior. Confirmed directly on a real run: land
+nodes sitting right at a glacier's edge (ice-free themselves, with at least one glaciated
+neighbor) received roughly 7x the mean sediment deposit of ordinary land elsewhere.
 
 **Deposition.** The capped, combined erosion amount is routed downstream (see
 `hydrology.route_downstream`) with a `retain_fraction` wherever a river qualifies as "big and
@@ -1708,13 +1780,27 @@ this module evaporates, since climate.py runs *before* this module each step).
   `route_downstream` -- real meltwater, feeding real river discharge, not a separate
   accounting bucket.
 - **Flow**: a slope-scaled fraction of each node's ice (`GLACIER_FLOW_RATE_PER_MYR`, capped
-  at `GLACIER_MAX_FLOW_FRACTION`) moves to its own `flow_target` each step -- the same graph
-  water uses, via a direct scatter-add (`np.add.at`) rather than `route_downstream`'s
-  elevation-ordered sweep, since glacier flow is a one-hop-per-step process, not a
-  full-accumulation-to-terminus one. Ice reaching (or accumulating on) an ocean node is
-  discarded rather than piling up -- real sea ice is a different, thinner, seasonal
-  phenomenon this model doesn't represent; the same guard reads as calving where a glacier
-  reaches a coast.
+  at `GLACIER_MAX_FLOW_FRACTION`) moves to its own flow target each step, via a direct
+  scatter-add (`np.add.at`) rather than `route_downstream`'s elevation-ordered sweep, since
+  glacier flow is a one-hop-per-step process, not a full-accumulation-to-terminus one. Ice
+  reaching (or accumulating on) an ocean node is discarded rather than piling up -- real sea
+  ice is a different, thinner, seasonal phenomenon this model doesn't represent; the same
+  guard reads as calving where a glacier reaches a coast.
+
+  **Ice flows on its own target, not water's.** Ice moves downhill under its own weight
+  regardless of whether a given step happens to be below freezing -- a real glacier's flow is
+  driven by gravity/internal ice deformation, not by the day's temperature. Liquid water's own
+  `flow_target` (`_compute_flow_direction`, [Hydrology](#hydrology)) is deliberately forced
+  shut at any frozen node (rivers freeze over); reusing that same target for glacier flow would
+  have meant *no* glacier ever advances, since a genuinely glaciated node (cold enough to be
+  accumulating ice) is almost always frozen. `HydrologyFields.ice_flow_target` is computed by
+  the same steepest-descent/channel-preference/spill-redirect logic as water's own target
+  (`_compute_flow_direction`'s new `apply_freeze=False` call), just without that final freeze
+  override, and it's what glacier flow (and erosion.py's own glacial sediment transport, see
+  [Erosion](#erosion)) actually uses. Confirmed directly this was a real, previously-silent gap
+  rather than a hypothetical one: at a real seed run, ice_flow_target differed from water's own
+  flow_target at roughly 10% of all nodes -- glacier flow was reaching real ground water's own
+  routing never could, exactly the population of nodes this fix was meant to unlock.
 - **Erosion and flattening**: see [Erosion](#erosion) -- both driven by the *previous* step's
   `glacier_depth` (this step's fresh value isn't ready until this module runs, just before
   those terms are computed), the same one-step lag `channel_boost` already uses.
@@ -1724,7 +1810,15 @@ layer beyond the same `LAKE_COLOR_RGB`-style baking treatment lakes get (mantle-
 SNOW biome, so this uses its own `GLACIER_COLOR_RGB`, distinct from both `LAKE_COLOR_RGB` and
 `elevation_colors`' own high-peak white/gray stops, applied the same nearest-neighbor-grid-resample way as lakes via
 `plates.collect_all_glacier_depth`), no glacial eustatic sea-level coupling (glaciation is
-purely local/per-node here), no seasonal accumulation/ablation cycle.
+purely local/per-node here), no seasonal accumulation/ablation cycle. `glacier_depth`'s own
+lack of a cap (see Accumulation above) means a landlocked accumulation center that never
+routes ice all the way to open water can still build up an unrealistically large depth over
+many tens of Myr -- letting ice genuinely flow (this section's fix) makes this somewhat more
+visible than before, since ice that previously sat inert at its own accumulation node can now
+pool at a downstream convergence point instead. Erosion/flattening are unaffected regardless
+(`ice_factor` is clipped at `GLACIER_EROSION_MAX_FACTOR` either way, see [Erosion](#erosion)) --
+this is a known, pre-existing bookkeeping quirk in the reported depth number itself, not a
+correctness issue in the terrain it produces, and not something this pass attempted to fix.
 
 Confirmed live on a real run: glaciers form and grow preferentially at cold (polar)
 latitudes, visually distinct from both lakes and high-elevation terrain on the rendered map;
@@ -1747,7 +1841,15 @@ plus click-to-select and Tab/Shift+Tab to cycle through rivers.
 
 **There is no "a river" concept anywhere else in the codebase before this feature.**
 `hydrology.py`'s `is_river` is (and remains) a flat per-node boolean mask -- the top decile of
-land `flow_accum` -- with no grouping into distinct networks. `hydrology.group_rivers` adds
+land `flow_accum`, plus one addition: a land node not itself under visible ice but with at
+least one neighbor that is (`GLACIER_VISIBLE_DEPTH_M`), and that's actually carrying real
+outflow this step (`flow_accum > 0`), is also marked `is_river` directly. Rivers commonly begin
+right where a glacier's meltwater first emerges from the ice, but a fresh headwater has, by
+definition, no upstream tributaries yet, so it can easily fail to clear the ordinary top-decile
+threshold on its own even though it's a perfectly real river source -- this gives such a stream
+a visible source right at the glacier's edge instead of only appearing once downstream
+tributaries happen to push it over the percentile cut. With no grouping into distinct networks
+otherwise. `hydrology.group_rivers` adds
 exactly that grouping, via union-find over `flow_target` edges restricted to nodes that are
 `is_river` on *both* ends. This is exact,
 not a heuristic: `flow_accum` is monotonically non-decreasing downhill, so once a node clears
