@@ -60,6 +60,15 @@ LAKE_COLOR_RGB = (58, 92, 122)
 # RIVER_FLOW_PERCENTILE below.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
+# A light Gaussian blur of just the river-line mask before compositing the fixed river color
+# in by the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
+# COMBINED_BLUR_RADIUS_PX already uses for cell edges (see that constant's own comment), just
+# applied to a line mask instead of the filled-cell raster. Blurring only the (single-channel)
+# mask and then blending a flat color by it, rather than Gaussian-blurring the drawn RGBA line
+# directly, avoids the dark fringing a naive blur would produce against a transparent
+# backdrop, and leaves whatever was already drawn underneath (coastline, plate boundaries)
+# untouched -- unlike blurring the whole image, which would re-soften those too.
+RIVER_BLUR_RADIUS_PX = 0.6
 # Widest a river is ever drawn (at 3x river_draw_min_flow(world) or beyond) -- see
 # RIVER_LINE_WIDTH_MAX_TIERS.
 RIVER_LINE_WIDTH_MAX_TIERS = 3
@@ -1037,8 +1046,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     _fill_rects(pixels, centers, half_w, half_h, colors)
 
     image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=COMBINED_BLUR_RADIUS_PX * pixel_scale))
-    draw = ImageDraw.Draw(image)
-    _draw_rivers(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     return _encode_image(image)
 
@@ -1119,13 +1127,13 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
 
 
 def _draw_rivers(
-    draw: ImageDraw.ImageDraw, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
-) -> None:
+    image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
+) -> Image.Image:
     """Draws each river node's edge to its own downstream flow target as a short line
     segment (see hydrology.py's is_river/flow_target) -- reads world.hydrology_cache
     directly, populated by erosion.py every step (None before the world has ever been
-    stepped, in which case this draws nothing). Each segment is a real, short 3D hop between
-    two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent
+    stepped, in which case this returns `image` unchanged). Each segment is a real, short 3D
+    hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent
     _project_points calls) keeps it from being wrongly split across the antimeridian seam --
     same technique _render_grid_arrays' own corner measurements already rely on. Also cut by
     river_draw_min_flow(world) -- see that function's own docstring for why this view is
@@ -1136,14 +1144,20 @@ def _draw_rivers(
     it's 3 and no wider. flow_accum is constant along any unbranched stretch of channel (it
     only grows where a tributary's own flow actually merges in), so this widens a river only
     at real confluences -- never gradually along a single reach -- and only downstream of
-    them, so it reads narrowest at the head and widest toward the mouth."""
+    them, so it reads narrowest at the head and widest toward the mouth.
+
+    Takes and returns a plain Image (rather than drawing onto a caller-owned
+    ImageDraw.ImageDraw, like _draw_coastline and the other _draw_* helpers do) because
+    antialiasing the lines here needs the mask-blur-then-composite done in pixel-array space --
+    see RIVER_BLUR_RADIUS_PX. Callers must rebind their own ImageDraw to the returned image
+    before drawing anything else on top."""
     hydro = world.hydrology_cache
     if hydro is None:
-        return
+        return image
     min_flow = river_draw_min_flow(world)
     river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= min_flow))[0]
     if len(river_idx) == 0:
-        return
+        return image
     target_idx = hydro.flow_target[river_idx]
 
     width_tier = np.clip(np.floor(hydro.flow_accum[river_idx] / min_flow), 1.0, RIVER_LINE_WIDTH_MAX_TIERS)
@@ -1157,8 +1171,17 @@ def _draw_rivers(
 
     from_px = _to_pixels(scale, offset_x, offset_y, from_xy)
     to_px = _to_pixels(scale, offset_x, offset_y, to_xy)
+
+    mask = Image.new("L", image.size, 0)
+    mask_draw = ImageDraw.Draw(mask)
     for (x1, y1), (x2, y2), w in zip(from_px, to_px, width_px):
-        draw.line([(x1, y1), (x2, y2)], fill=RIVER_COLOR_RGB, width=int(w))
+        mask_draw.line([(x1, y1), (x2, y2)], fill=255, width=int(w))
+    mask = mask.filter(ImageFilter.GaussianBlur(radius=RIVER_BLUR_RADIUS_PX * pixel_scale))
+
+    alpha = (np.asarray(mask, dtype=np.float32) / 255.0)[:, :, None]
+    base_rgb = np.asarray(image, dtype=np.float32)
+    blended = base_rgb * (1.0 - alpha) + np.array(RIVER_COLOR_RGB, dtype=np.float32) * alpha
+    return Image.fromarray(np.clip(np.round(blended), 0, 255).astype(np.uint8), mode="RGB")
 
 
 def _draw_coastline(
@@ -1291,9 +1314,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             _fill_rects(pixels, centers, dot_radius, dot_radius, colors)
 
     image = Image.fromarray(pixels, mode="RGB")
+    image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
     draw = ImageDraw.Draw(image)
-
-    _draw_rivers(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     if view in ("plates", "platesDetail"):
         for plate in world.plates:

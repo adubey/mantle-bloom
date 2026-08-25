@@ -1,7 +1,7 @@
 import base64
 import io
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 from app import climate, geometry, hydrology, render_image
 from app.world import World, generate_world
 
@@ -159,8 +159,10 @@ def test_draw_rivers_only_draws_segments_above_the_flow_floor():
     # to clear river_draw_min_flow(world) -- confirmed here by drawing the exact same
     # is_river/flow_target topology twice, once with flow_accum below the floor (no river
     # pixels should appear at all) and once above it (some must). Calls _draw_rivers directly
-    # (rather than the full render_png) so a legend swatch that happens to reuse
-    # RIVER_COLOR_RGB can't make an unconditional pixel show up either way.
+    # (rather than the full render_png) against a blank background so any pixel that isn't
+    # BACKGROUND_RGB can only be the river line itself (now antialiased -- see
+    # RIVER_BLUR_RADIUS_PX -- so drawn pixels blend toward RIVER_COLOR_RGB rather than
+    # matching it exactly).
     world = _world()
     world.node_density = 1.0
     world.climate_density = 1.0
@@ -185,10 +187,9 @@ def test_draw_rivers_only_draws_segments_above_the_flow_floor():
     def river_pixel_count(flow_accum):
         world.hydrology_cache = hydrology.HydrologyFields(flow_accum=flow_accum, **base_fields)
         image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
-        draw = ImageDraw.Draw(image)
-        render_image._draw_rivers(draw, world, "behrmann", 50.0, 150.0, 100.0, 1.0, np.eye(3))
+        image = render_image._draw_rivers(image, world, "behrmann", 50.0, 150.0, 100.0, 1.0, np.eye(3))
         pixels = np.asarray(image)
-        return int(np.all(pixels == np.array(render_image.RIVER_COLOR_RGB), axis=-1).sum())
+        return int(np.any(pixels != np.array(render_image.BACKGROUND_RGB), axis=-1).sum())
 
     floor = render_image.river_draw_min_flow(world)
     below_floor = river_pixel_count(np.full(n, floor * 0.5))
