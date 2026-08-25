@@ -229,13 +229,25 @@ export default function App() {
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
+  // in flight fires one from the mode-change effect below (for the pre-step world) and
+  // another from handleStep's own post-step Promise.all (for the post-step world) -- and
+  // nothing guarantees they resolve in the order they were issued (server thread-pool
+  // scheduling, retries, network jitter). Without a guard, whichever response happens to
+  // land last wins even if it's the stale one, which is what let the map mode visibly revert
+  // when a step's own render landed after a mode-change render that was issued earlier but
+  // resolved later. This ref tags every call with a monotonic id and only ever commits the
+  // response from the most recently *issued* call, so a stale response is silently dropped
+  // instead of overwriting a newer one.
+  const renderRequestIdRef = useRef(0);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
     if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector") return; // none of these use renderData -- see below
+    const requestId = ++renderRequestIdRef.current;
     try {
       const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
-      setRenderData(data);
+      if (requestId === renderRequestIdRef.current) setRenderData(data);
     } catch (e) {
-      setError(String(e));
+      if (requestId === renderRequestIdRef.current) setError(String(e));
     }
   }, []);
 
@@ -782,6 +794,10 @@ export default function App() {
               borderRadius: 8,
               padding: 20,
               minWidth: 280,
+              width: 380,
+              maxWidth: "66vw",
+              maxHeight: "85vh",
+              overflowY: "auto",
             }}
           >
             <h2 style={{ fontSize: 16, marginTop: 0 }}>Generate World</h2>

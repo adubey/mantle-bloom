@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { WorldStats } from "./api";
 import TimeSeriesChart from "./TimeSeriesChart";
-import type { ChartPoint, ChartSeries } from "./TimeSeriesChart";
+import type { ChartBand, ChartPoint, ChartSeries } from "./TimeSeriesChart";
 
 interface Props {
   stats: WorldStats | null;
@@ -37,6 +37,65 @@ function numMetric(key: string, label: string, get: (s: WorldStats) => number | 
   };
 }
 
+// A backend-computed min/max/mean/std-dev quadruple for one quantity (e.g. elevation), as
+// opposed to `Metric`'s single current-value snapshot -- see TAB_METRICS below for which
+// stats get this treatment. Table mode lists all four; Graph mode plots avg/min/max as
+// separate lines plus a std-dev band, rather than offering min/max/avg/std-dev as four
+// separate single-line choices the way each used to be (see MetricTab).
+interface StatGroup {
+  key: string;
+  label: string;
+  min: (s: WorldStats) => number | null;
+  mean: (s: WorldStats) => number | null;
+  max: (s: WorldStats) => number | null;
+  std: (s: WorldStats) => number | null;
+  tableFormat: (v: number | null) => string;
+  yFormat: (v: number) => string;
+}
+
+function numGroup(
+  key: string,
+  label: string,
+  min: (s: WorldStats) => number | null,
+  mean: (s: WorldStats) => number | null,
+  max: (s: WorldStats) => number | null,
+  std: (s: WorldStats) => number | null,
+  digits = 1,
+  suffix = "",
+): StatGroup {
+  return {
+    key,
+    label,
+    min,
+    mean,
+    max,
+    std,
+    tableFormat: (v) => (v === null ? "--" : `${v.toFixed(digits)}${suffix}`),
+    yFormat: (v) => `${v.toFixed(digits)}${suffix}`,
+  };
+}
+
+// A tab's row order mixes plain single-value Metrics (e.g. Land/Water fraction) with
+// StatGroups (e.g. Elevation min/avg/max/std-dev) -- this tags each row with which one it is
+// so MetricTab can render/plot them differently without a runtime type check on shape.
+type TabEntry = { kind: "metric"; metric: Metric } | { kind: "group"; group: StatGroup };
+
+function metricEntry(metric: Metric): TabEntry {
+  return { kind: "metric", metric };
+}
+
+function groupEntry(group: StatGroup): TabEntry {
+  return { kind: "group", group };
+}
+
+function entryKey(e: TabEntry): string {
+  return e.kind === "metric" ? e.metric.key : e.group.key;
+}
+
+function entryLabel(e: TabEntry): string {
+  return e.kind === "metric" ? e.metric.label : e.group.label;
+}
+
 type TabKey = "physical" | "temperature" | "precipitation" | "biome" | "simulation";
 
 const TABS: { key: TabKey; label: string }[] = [
@@ -56,35 +115,59 @@ const BIOME_NAMES = [
   "Subtropical Desert", "Savanna", "Tropical Seasonal Forest", "Tropical Rainforest",
 ];
 
-const TAB_METRICS: Record<Exclude<TabKey, "simulation">, Metric[]> = {
+const TAB_METRICS: Record<Exclude<TabKey, "simulation">, TabEntry[]> = {
   physical: [
-    pctMetric("land_fraction", "Land", (s) => s.land_fraction),
-    pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction),
-    numMetric("elevation_min_m", "Elevation min (land)", (s) => s.elevation_min_m, 0, " m"),
-    numMetric("elevation_mean_m", "Elevation avg (land)", (s) => s.elevation_mean_m, 0, " m"),
-    numMetric("elevation_max_m", "Elevation max (land)", (s) => s.elevation_max_m, 0, " m"),
-    numMetric("ocean_depth_min_m", "Ocean depth min", (s) => s.ocean_depth_min_m, 0, " m"),
-    numMetric("ocean_depth_mean_m", "Ocean depth avg", (s) => s.ocean_depth_mean_m, 0, " m"),
-    numMetric("ocean_depth_max_m", "Ocean depth max", (s) => s.ocean_depth_max_m, 0, " m"),
+    metricEntry(pctMetric("land_fraction", "Land", (s) => s.land_fraction)),
+    metricEntry(pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction)),
+    groupEntry(
+      numGroup(
+        "elevation_m", "Elevation (land)",
+        (s) => s.elevation_min_m, (s) => s.elevation_mean_m, (s) => s.elevation_max_m, (s) => s.elevation_std_m,
+        0, " m",
+      ),
+    ),
+    groupEntry(
+      numGroup(
+        "ocean_depth_m", "Ocean depth",
+        (s) => s.ocean_depth_min_m, (s) => s.ocean_depth_mean_m, (s) => s.ocean_depth_max_m, (s) => s.ocean_depth_std_m,
+        0, " m",
+      ),
+    ),
   ],
   biome: BIOME_NAMES.map((name) =>
-    pctMetric(name, name, (s) => (name in s.biome_land_fraction ? s.biome_land_fraction[name] : null)),
+    metricEntry(pctMetric(name, name, (s) => (name in s.biome_land_fraction ? s.biome_land_fraction[name] : null))),
   ),
   temperature: [
-    numMetric("land_temperature_min_c", "Land temp min", (s) => s.land_temperature_min_c, 1, "°C"),
-    numMetric("land_temperature_mean_c", "Land temp avg", (s) => s.land_temperature_mean_c, 1, "°C"),
-    numMetric("land_temperature_max_c", "Land temp max", (s) => s.land_temperature_max_c, 1, "°C"),
-    numMetric("air_temperature_min_c", "Air temp min", (s) => s.air_temperature_min_c, 1, "°C"),
-    numMetric("air_temperature_mean_c", "Air temp avg", (s) => s.air_temperature_mean_c, 1, "°C"),
-    numMetric("air_temperature_max_c", "Air temp max", (s) => s.air_temperature_max_c, 1, "°C"),
-    numMetric("ocean_temperature_min_c", "Ocean temp min", (s) => s.ocean_temperature_min_c, 1, "°C"),
-    numMetric("ocean_temperature_mean_c", "Ocean temp avg", (s) => s.ocean_temperature_mean_c, 1, "°C"),
-    numMetric("ocean_temperature_max_c", "Ocean temp max", (s) => s.ocean_temperature_max_c, 1, "°C"),
+    groupEntry(
+      numGroup(
+        "land_temperature_c", "Land temp",
+        (s) => s.land_temperature_min_c, (s) => s.land_temperature_mean_c, (s) => s.land_temperature_max_c, (s) => s.land_temperature_std_c,
+        1, "°C",
+      ),
+    ),
+    groupEntry(
+      numGroup(
+        "air_temperature_c", "Air temp",
+        (s) => s.air_temperature_min_c, (s) => s.air_temperature_mean_c, (s) => s.air_temperature_max_c, (s) => s.air_temperature_std_c,
+        1, "°C",
+      ),
+    ),
+    groupEntry(
+      numGroup(
+        "ocean_temperature_c", "Ocean temp",
+        (s) => s.ocean_temperature_min_c, (s) => s.ocean_temperature_mean_c, (s) => s.ocean_temperature_max_c, (s) => s.ocean_temperature_std_c,
+        1, "°C",
+      ),
+    ),
   ],
   precipitation: [
-    numMetric("precipitation_min_mm", "Precipitation min", (s) => s.precipitation_min_mm, 0, " mm/yr"),
-    numMetric("precipitation_mean_mm", "Precipitation avg", (s) => s.precipitation_mean_mm, 0, " mm/yr"),
-    numMetric("precipitation_max_mm", "Precipitation max", (s) => s.precipitation_max_mm, 0, " mm/yr"),
+    groupEntry(
+      numGroup(
+        "precipitation_mm", "Precipitation",
+        (s) => s.precipitation_min_mm, (s) => s.precipitation_mean_mm, (s) => s.precipitation_max_mm, (s) => s.precipitation_std_mm,
+        0, " mm/yr",
+      ),
+    ),
   ],
 };
 
@@ -115,9 +198,14 @@ function historyStats(history: WorldStats[], get: (s: WorldStats) => number): Hi
   return { min, max, mean, stdDev: Math.sqrt(variance) };
 }
 
-// Single accent for every series -- only one metric is ever plotted at a time (picked via
-// the dropdown below), so identity comes from the dropdown/heading, not the line color.
-const ACCENT_COLOR = "#4f9dff";
+// One quantity is plotted at a time (picked via the dropdown below), so a plain Metric's
+// single line just uses the accent color -- identity comes from the dropdown/heading, not
+// the line color. A StatGroup instead plots three lines at once (avg/min/max) plus a std-dev
+// band, so those get their own fixed colors so the legend can tell them apart.
+const ACCENT_COLOR = "#4f9dff"; // avg
+const MIN_COLOR = "#4fd68c";
+const MAX_COLOR = "#ff9f4f";
+const BAND_COLOR = "rgba(139, 143, 163, 0.28)"; // translucent AXIS_TEXT_COLOR grey
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -174,22 +262,61 @@ function ViewModeToggle({ viewMode, onChange }: { viewMode: "table" | "graph"; o
   );
 }
 
-function MetricTab({ metrics, history, current }: { metrics: Metric[]; history: WorldStats[]; current: WorldStats }) {
-  const [viewMode, setViewMode] = useState<"table" | "graph">("table");
-  const [selectedKey, setSelectedKey] = useState(metrics[0].key);
-  const selected = metrics.find((m) => m.key === selectedKey) ?? metrics[0];
+function MetricTab({ entries, history, current }: { entries: TabEntry[]; history: WorldStats[]; current: WorldStats }) {
+  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+  const [selectedKey, setSelectedKey] = useState(entryKey(entries[0]));
+  const selected = entries.find((e) => entryKey(e) === selectedKey) ?? entries[0];
 
-  const chartData: ChartPoint[] = useMemo(
-    () => history.map((h) => ({ x: h.elapsed_years, values: { [selected.key]: selected.get(h) } })),
-    [history, selected],
+  const chartData: ChartPoint[] = useMemo(() => {
+    if (selected.kind === "metric") {
+      const m = selected.metric;
+      return history.map((h) => ({ x: h.elapsed_years, values: { [m.key]: m.get(h) } }));
+    }
+    const g = selected.group;
+    return history.map((h) => {
+      const mean = g.mean(h);
+      const std = g.std(h);
+      const bandLow = mean !== null && std !== null ? mean - std : null;
+      const bandHigh = mean !== null && std !== null ? mean + std : null;
+      return { x: h.elapsed_years, values: { min: g.min(h), max: g.max(h), mean, bandLow, bandHigh } };
+    });
+  }, [history, selected]);
+
+  // For a StatGroup, "mean" is listed last so TimeSeriesChart paints the avg line on top of
+  // the min/max lines and the std-dev band (see that component's own z-order comment).
+  const chartSeries: ChartSeries[] = useMemo(() => {
+    if (selected.kind === "metric") return [{ key: selected.metric.key, label: selected.metric.label, color: ACCENT_COLOR }];
+    return [
+      { key: "min", label: "Min", color: MIN_COLOR },
+      { key: "max", label: "Max", color: MAX_COLOR },
+      { key: "mean", label: "Avg", color: ACCENT_COLOR },
+    ];
+  }, [selected]);
+
+  const chartBands: ChartBand[] | undefined = useMemo(
+    () => (selected.kind === "group" ? [{ lowKey: "bandLow", highKey: "bandHigh", color: BAND_COLOR, label: "±1 std dev" }] : undefined),
+    [selected],
   );
-  const chartSeries: ChartSeries[] = useMemo(() => [{ key: selected.key, label: selected.label, color: ACCENT_COLOR }], [selected]);
+
+  const yFormat = selected.kind === "metric" ? selected.metric.yFormat : selected.group.yFormat;
 
   return (
     <>
       <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
       {viewMode === "table" ? (
-        metrics.map((m) => <Row key={m.key} label={m.label} value={m.tableFormat(m.get(current))} />)
+        entries.map((e) =>
+          e.kind === "metric" ? (
+            <Row key={e.metric.key} label={e.metric.label} value={e.metric.tableFormat(e.metric.get(current))} />
+          ) : (
+            <div key={e.group.key} style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.group.label}</div>
+              <Row label="Min" value={e.group.tableFormat(e.group.min(current))} />
+              <Row label="Avg" value={e.group.tableFormat(e.group.mean(current))} />
+              <Row label="Max" value={e.group.tableFormat(e.group.max(current))} />
+              <Row label="Std dev" value={e.group.tableFormat(e.group.std(current))} />
+            </div>
+          ),
+        )
       ) : (
         <>
           <select
@@ -197,13 +324,13 @@ function MetricTab({ metrics, history, current }: { metrics: Metric[]; history: 
             onChange={(e) => setSelectedKey(e.target.value)}
             style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
           >
-            {metrics.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.label}
+            {entries.map((e) => (
+              <option key={entryKey(e)} value={entryKey(e)}>
+                {entryLabel(e)}
               </option>
             ))}
           </select>
-          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={selected.yFormat} />
+          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={yFormat} bands={chartBands} />
         </>
       )}
     </>
@@ -216,7 +343,7 @@ function MetricTab({ metrics, history, current }: { metrics: Metric[]; history: 
 // mode reuses MetricTab's own dropdown+chart exactly, since the raw series over time is the
 // same shape for these metrics as for every other tab's.
 function SimulationTab({ history }: { history: WorldStats[] }) {
-  const [viewMode, setViewMode] = useState<"table" | "graph">("table");
+  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
   const [selectedKey, setSelectedKey] = useState(SIMULATION_METRICS[0].key);
   const selected = SIMULATION_METRICS.find((m) => m.key === selectedKey) ?? SIMULATION_METRICS[0];
 
@@ -325,7 +452,7 @@ export default function StatsModal({ stats, history, onClose }: Props) {
             {activeTab === "simulation" ? (
               <SimulationTab history={history} />
             ) : (
-              <MetricTab key={activeTab} metrics={TAB_METRICS[activeTab]} history={history} current={stats} />
+              <MetricTab key={activeTab} entries={TAB_METRICS[activeTab]} history={history} current={stats} />
             )}
           </>
         )}

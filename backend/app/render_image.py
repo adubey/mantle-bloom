@@ -21,7 +21,7 @@ import base64
 import io
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
 from . import biomes, climate, coastline, erosion, geology, geometry, hydrology, mantle, plates, projections, volcanism
@@ -993,6 +993,17 @@ def _land_shade_factor(elevation_m: np.ndarray, sea_level_m: float) -> np.ndarra
     return np.interp(elevation_m - sea_level_m, _LAND_SHADE_STOP_E, _LAND_SHADE_STOP_FACTOR)
 
 
+# Combined is the only view built from flat per-cell rectangles (_fill_rects) meant to read
+# as a continuous true-color image rather than a legible data mosaic (Biome/Temperature/etc.
+# lean into their own hard cell edges -- a viewer needs to tell one cell's exact color from
+# its neighbor's). A light post-fill Gaussian blur softens those cell-edge jaggies into
+# smooth coastlines/biome boundaries -- cheap anti-aliasing, in the same "approximate cue
+# over an expensive exact one" spirit as _land_shade_factor's relief blend above -- scaled by
+# pixel_scale so it looks the same relative amount of soft at any requested resolution.
+# Applied before rivers are drawn so their own lines stay crisp on top.
+COMBINED_BLUR_RADIUS_PX = 1.0
+
+
 def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """"Combined": biome color for land, hypsometric ocean-depth shading for water (reusing
     elevation_colors, the same gradient the Elevation view itself uses) -- an approximation
@@ -1039,7 +1050,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     )
     _fill_rects(pixels, centers, half_w, half_h, colors)
 
-    image = Image.fromarray(pixels, mode="RGB")
+    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=COMBINED_BLUR_RADIUS_PX * pixel_scale))
     draw = ImageDraw.Draw(image)
     _draw_rivers(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 

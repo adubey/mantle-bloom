@@ -170,22 +170,28 @@ export interface WorldStats {
   elevation_min_m: number | null;
   elevation_max_m: number | null;
   elevation_mean_m: number | null;
+  elevation_std_m: number | null;
   // Ocean only, positive meters below the current sea level.
   ocean_depth_min_m: number | null;
   ocean_depth_max_m: number | null;
   ocean_depth_mean_m: number | null;
+  ocean_depth_std_m: number | null;
   land_temperature_min_c: number | null;
   land_temperature_max_c: number | null;
   land_temperature_mean_c: number | null;
+  land_temperature_std_c: number | null;
   air_temperature_min_c: number | null;
   air_temperature_max_c: number | null;
   air_temperature_mean_c: number | null;
+  air_temperature_std_c: number | null;
   ocean_temperature_min_c: number | null;
   ocean_temperature_max_c: number | null;
   ocean_temperature_mean_c: number | null;
+  ocean_temperature_std_c: number | null;
   precipitation_min_mm: number;
   precipitation_max_mm: number;
   precipitation_mean_mm: number;
+  precipitation_std_mm: number;
   // Percent of *land* cells (0 to 1 each) in each named biome (see backend app/biomes.py) --
   // "Ocean" is never a key here (it's always 0% of land, by construction) and the dict is
   // `{}` entirely when there are no land cells at all.
@@ -389,6 +395,15 @@ export interface AnimateResponse extends WorldSummary {
   image_base64: string;
 }
 
+// Each animation frame is a full step_world + render (see backend app/main.py's
+// /world/animate), and up to MAX_ANIMATION_FRAMES=60 of those run back-to-back server-side
+// before the response comes back -- by far the slowest request the app makes, and one that's
+// only gotten slower as the simulation itself has picked up more per-step work (erosion,
+// sediment redistribution, coastline stabilization, ...). A generous explicit timeout so a
+// real hang surfaces as an error instead of leaving the dialog spinning forever, while still
+// giving a big/slow world's worst case (60 frames) plenty of room.
+const ANIMATE_TIMEOUT_MS = 15 * 60 * 1000;
+
 // "File > Make Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
 // starting from the world's current state (frame 0) and stepping it forward by
 // `yearsPerFrame` real years between each subsequent frame. **This permanently advances the
@@ -416,6 +431,7 @@ export function animateWorld(
       years_per_frame: yearsPerFrame,
       num_frames: numFrames,
     }),
+    signal: AbortSignal.timeout(ANIMATE_TIMEOUT_MS),
   }).then(asJson<AnimateResponse>);
 }
 

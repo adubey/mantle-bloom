@@ -6,10 +6,10 @@ import type { Mat3 } from "./rotation";
 // Matching backend app/main.py's STEP_YEARS_OPTIONS-style framing for /world/step -- the
 // same "a few sane presets, not a free-form input" reasoning App.tsx's own
 // STEP_YEARS_OPTIONS already uses, here for the animation's own "years per frame" choice.
-// 1,000,000 is the feature's own literal framing ("a new frame every million years"), so
-// it's the default even though the other three are also offered.
+// 100,000 (the finest option) is the default so a fresh animation reads as a smooth
+// progression rather than jumping in million-year leaps.
 const YEARS_PER_FRAME_OPTIONS = [100_000, 1_000_000, 10_000_000];
-const DEFAULT_YEARS_PER_FRAME = 1_000_000;
+const DEFAULT_YEARS_PER_FRAME = 100_000;
 const DEFAULT_NUM_FRAMES = 20;
 // Matching backend app/main.py's MAX_ANIMATION_FRAMES.
 const MAX_NUM_FRAMES = 60;

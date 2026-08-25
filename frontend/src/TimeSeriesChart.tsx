@@ -12,10 +12,21 @@ export interface ChartPoint {
   values: Record<string, number | null>;
 }
 
+// A shaded region between two of a point's `values` keys (e.g. mean-std/mean+std), drawn
+// underneath every line series -- used for the "avg with a std-dev band" grouped-stat charts
+// (see StatsModal.tsx) rather than listing min/max/avg/std-dev as separate line choices.
+export interface ChartBand {
+  lowKey: string;
+  highKey: string;
+  color: string;
+  label: string;
+}
+
 interface TimeSeriesChartProps {
   series: ChartSeries[];
   data: ChartPoint[];
   yFormat: (v: number) => string;
+  bands?: ChartBand[];
   height?: number;
 }
 
@@ -68,7 +79,7 @@ function niceTicks(rawMin: number, rawMax: number, count = 4): number[] {
 // hairline gridlines, an always-on crosshair+tooltip, a legend for 2+ series, an 8px
 // surface-ringed end-dot per series. Single-series charts skip the legend -- the caller's
 // own heading/dropdown already names what's plotted.
-export default function TimeSeriesChart({ series, data, yFormat, height = 200 }: TimeSeriesChartProps) {
+export default function TimeSeriesChart({ series, data, yFormat, bands, height = 200 }: TimeSeriesChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -87,6 +98,18 @@ export default function TimeSeriesChart({ series, data, yFormat, height = 200 }:
       if (v !== null && Number.isFinite(v)) {
         if (v < yMin) yMin = v;
         if (v > yMax) yMax = v;
+      }
+    }
+    // A band isn't necessarily bounded by its series' own values (e.g. mean +/- std can
+    // exceed the plotted min/max lines for a skewed distribution), so it needs its own say
+    // in the y-domain rather than assuming the lines already cover it.
+    for (const b of bands ?? []) {
+      for (const key of [b.lowKey, b.highKey]) {
+        const v = point.values[key];
+        if (v !== null && Number.isFinite(v)) {
+          if (v < yMin) yMin = v;
+          if (v > yMax) yMax = v;
+        }
       }
     }
   }
@@ -117,6 +140,40 @@ export default function TimeSeriesChart({ series, data, yFormat, height = 200 }:
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [series, data, xMin, xMax, yLo, yHi]);
+
+  // Filled low/high polygons, one contiguous run at a time (same gap-handling as `paths`
+  // above, just building a closed shape -- forward along the low edge, then back along the
+  // high edge -- instead of an open line).
+  const bandPaths = useMemo(() => {
+    return (bands ?? []).map((b) => {
+      const segments: string[] = [];
+      let lowPts: [number, number][] = [];
+      let highPts: [number, number][] = [];
+      const flush = () => {
+        if (lowPts.length >= 2) {
+          const forward = lowPts.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+          const backward = [...highPts].reverse().map(([x, y]) => `L ${x.toFixed(1)} ${y.toFixed(1)}`).join(" ");
+          segments.push(`${forward} ${backward} Z`);
+        }
+        lowPts = [];
+        highPts = [];
+      };
+      for (const point of data) {
+        const lo = point.values[b.lowKey];
+        const hi = point.values[b.highKey];
+        if (lo === null || hi === null || !Number.isFinite(lo) || !Number.isFinite(hi)) {
+          flush();
+          continue;
+        }
+        const x = xScale(point.x);
+        lowPts.push([x, yScale(lo)]);
+        highPts.push([x, yScale(hi)]);
+      }
+      flush();
+      return { key: `${b.lowKey}-${b.highKey}`, color: b.color, d: segments.join(" ") };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bands, data, xMin, xMax, yLo, yHi]);
 
   const lastValid = (key: string) => {
     for (let i = data.length - 1; i >= 0; i--) {
@@ -170,6 +227,13 @@ export default function TimeSeriesChart({ series, data, yFormat, height = 200 }:
             </g>
           ))}
 
+          {bandPaths.map((b) => (
+            <path key={b.key} d={b.d} fill={b.color} stroke="none" />
+          ))}
+
+          {/* Drawn after the bands, and in `series` order -- the caller lists its "avg" line
+              last precisely so it paints on top of both the std-dev band and the min/max
+              lines, per the panel's own "avg visible atop the band" requirement. */}
           {paths.map((p) => (
             <path key={p.key} d={p.d} fill="none" stroke={p.color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
           ))}
@@ -238,12 +302,18 @@ export default function TimeSeriesChart({ series, data, yFormat, height = 200 }:
         </div>
       )}
 
-      {series.length > 1 && (
+      {(series.length > 1 || (bands?.length ?? 0) > 0) && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 12px", marginTop: 6 }}>
           {series.map((s) => (
             <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
               <span style={{ display: "inline-block", width: 10, height: 2, flexShrink: 0, background: s.color }} />
               <span style={{ opacity: 0.75 }}>{s.label}</span>
+            </div>
+          ))}
+          {(bands ?? []).map((b) => (
+            <div key={`${b.lowKey}-${b.highKey}`} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11 }}>
+              <span style={{ display: "inline-block", width: 10, height: 10, flexShrink: 0, background: b.color }} />
+              <span style={{ opacity: 0.75 }}>{b.label}</span>
             </div>
           ))}
         </div>

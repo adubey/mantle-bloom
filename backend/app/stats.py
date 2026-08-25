@@ -46,10 +46,10 @@ from .render_image import grid_slope
 from .world import World
 
 
-def _min_max_mean(values: np.ndarray) -> tuple[float | None, float | None, float | None]:
+def _min_max_mean_std(values: np.ndarray) -> tuple[float | None, float | None, float | None, float | None]:
     if values.size == 0:
-        return None, None, None
-    return float(values.min()), float(values.max()), float(values.mean())
+        return None, None, None, None
+    return float(values.min()), float(values.max()), float(values.mean()), float(values.std())
 
 
 def compute_stats(world: World) -> dict:
@@ -58,13 +58,13 @@ def compute_stats(world: World) -> dict:
     is_land = ~is_ocean
     total = is_ocean.size
 
-    elevation_min, elevation_max, elevation_mean = _min_max_mean(fields.elevation_m[is_land])
+    elevation_min, elevation_max, elevation_mean, elevation_std = _min_max_mean_std(fields.elevation_m[is_land])
     ocean_depth = world.sea_level_m - fields.elevation_m[is_ocean]
-    ocean_depth_min, ocean_depth_max, ocean_depth_mean = _min_max_mean(ocean_depth)
-    land_temp_min, land_temp_max, land_temp_mean = _min_max_mean(fields.land_temperature_c[is_land])
-    air_temp_min, air_temp_max, air_temp_mean = _min_max_mean(fields.air_temperature_c[is_land])
-    ocean_temp_min, ocean_temp_max, ocean_temp_mean = _min_max_mean(fields.ocean_temperature_c[is_ocean])
-    precip_min, precip_max, precip_mean = _min_max_mean(fields.precipitation_mm)
+    ocean_depth_min, ocean_depth_max, ocean_depth_mean, ocean_depth_std = _min_max_mean_std(ocean_depth)
+    land_temp_min, land_temp_max, land_temp_mean, land_temp_std = _min_max_mean_std(fields.land_temperature_c[is_land])
+    air_temp_min, air_temp_max, air_temp_mean, air_temp_std = _min_max_mean_std(fields.air_temperature_c[is_land])
+    ocean_temp_min, ocean_temp_max, ocean_temp_mean, ocean_temp_std = _min_max_mean_std(fields.ocean_temperature_c[is_ocean])
+    precip_min, precip_max, precip_mean, precip_std = _min_max_mean_std(fields.precipitation_mm)
 
     display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
     slope = grid_slope(fields.elevation_m, fields.lat_deg)
@@ -86,20 +86,26 @@ def compute_stats(world: World) -> dict:
         "elevation_min_m": elevation_min,
         "elevation_max_m": elevation_max,
         "elevation_mean_m": elevation_mean,
+        "elevation_std_m": elevation_std,
         "ocean_depth_min_m": ocean_depth_min,
         "ocean_depth_max_m": ocean_depth_max,
         "ocean_depth_mean_m": ocean_depth_mean,
+        "ocean_depth_std_m": ocean_depth_std,
         "land_temperature_min_c": land_temp_min,
         "land_temperature_max_c": land_temp_max,
         "land_temperature_mean_c": land_temp_mean,
+        "land_temperature_std_c": land_temp_std,
         "air_temperature_min_c": air_temp_min,
         "air_temperature_max_c": air_temp_max,
         "air_temperature_mean_c": air_temp_mean,
+        "air_temperature_std_c": air_temp_std,
         "ocean_temperature_min_c": ocean_temp_min,
         "ocean_temperature_max_c": ocean_temp_max,
         "ocean_temperature_mean_c": ocean_temp_mean,
+        "ocean_temperature_std_c": ocean_temp_std,
         "precipitation_min_mm": precip_min,
         "precipitation_max_mm": precip_max,
         "precipitation_mean_mm": precip_mean,
+        "precipitation_std_mm": precip_std,
         "biome_land_fraction": biome_land_fraction,
     }
