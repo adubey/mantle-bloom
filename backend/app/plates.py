@@ -115,7 +115,16 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
         centroid_dist = float(geometry.angular_distance(own_centroid, other_centroid))
         if centroid_dist - own_radius - other_radius > threshold_rad:
             continue
-        closest_dist = float(cKDTree(other_points).query(own_points)[0].min())
+        other_tree = other.get_bounding_polygon_tree()
+        if other_tree is None:
+            continue
+        # Only the <= threshold_rad decision below is ever used, not the actual distance --
+        # distance_upper_bound lets cKDTree stop descending into a branch as soon as it can
+        # prove that branch can't beat the bound, rather than finding every point's true
+        # global nearest neighbour only to immediately compare it against the same bound.
+        # Points with no neighbour within threshold_rad come back as +inf, which still
+        # correctly fails the comparison below.
+        closest_dist = float(other_tree.query(own_points, distance_upper_bound=threshold_rad)[0].min())
         if closest_dist <= threshold_rad:
             neighbours.append(other)
     return neighbours
@@ -352,6 +361,13 @@ class Plate(abc.ABC):
         # elevation-only mutations (erosion, uplift, ...) don't touch outline_world's inputs
         # (each line's/point cloud's own theta/phi), so they leave the cache untouched.
         self._bounding_polygon_cache: np.ndarray | None = None
+        # A cKDTree over that same cached outline, built lazily by get_bounding_polygon_tree()
+        # below and invalidated in lockstep with it (same _invalidate_bounding_polygon call) --
+        # _plates_within queries this plate's outline once per *other* plate whose own
+        # get_neighbours pass considers it a candidate neighbour, so without this a busy
+        # plate's outline got re-treed from scratch on every one of those incoming checks
+        # this step, not just once.
+        self._bounding_polygon_tree_cache: cKDTree | None = None
 
     @property
     def plate_id(self) -> int:
@@ -425,8 +441,22 @@ class Plate(abc.ABC):
             self._bounding_polygon_cache = self.outline_world()
         return self._bounding_polygon_cache
 
+    def get_bounding_polygon_tree(self) -> cKDTree | None:
+        """A `cKDTree` over `get_bounding_polygon()`, cached the same way -- `None` if this
+        plate currently has no outline (mirrors `get_bounding_polygon()`'s own empty-array
+        case; a cKDTree can't be built over zero points). See `_plates_within`, the one
+        caller: without this, every *other* plate's `get_neighbours` pass that considers this
+        plate a candidate neighbour re-treed the same unchanged outline from scratch."""
+        if self._bounding_polygon_tree_cache is None:
+            polygon = self.get_bounding_polygon()
+            if len(polygon) == 0:
+                return None
+            self._bounding_polygon_tree_cache = cKDTree(polygon)
+        return self._bounding_polygon_tree_cache
+
     def _invalidate_bounding_polygon(self) -> None:
         self._bounding_polygon_cache = None
+        self._bounding_polygon_tree_cache = None
 
     @abc.abstractmethod
     def collect(self, field_name: str) -> np.ndarray:
