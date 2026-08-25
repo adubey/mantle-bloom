@@ -1,10 +1,6 @@
 # mantle-bloom
 
-A sphere-native plate tectonics simulator: plates are spherical polygons (not grid cells)
-carrying their own elevation data, driven by Euler poles fit each step to a simple mantle
-convection model. v1 is elevation-only, built around a sphere-native representation
-specifically to avoid the problems a fixed lat/lon grid runs into once plates carry terrain
-across it: pole topology, latitude distortion, and lossy resampling.
+An Earth-like planet simulator, including plate tectonics, climate and biosphere. The planet can have completely different terrain from Earth but is similar in other ways including size, composition and insolation. 
 
 ## Where to look
 
