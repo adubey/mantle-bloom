@@ -73,7 +73,7 @@ RIVER_LINE_WIDTH_MAX_TIERS = 3
 # == climate_density == 1.0) -- see river_draw_min_flow below for how a world generated at a
 # higher elevation-point density and/or climate & biome resolution scales it up from here, not
 # a value read directly by _draw_rivers.
-RIVER_DRAW_MIN_FLOW = 20_000.0
+RIVER_DRAW_MIN_FLOW = 10_000.0
 
 
 def river_draw_min_flow(world: World) -> float:
@@ -978,29 +978,14 @@ RELIEF_BLEND_MAX = 0.55
 # ELEVATION_GRADIENT's own high-mountain stop, so full blend only kicks in near real peaks.
 RELIEF_ELEVATION_RANGE_M = 6000.0
 
-# A "layer-tint" brightness multiplier applied to each land cell's flat biome color, keyed on
-# elevation above the current sea level -- same hue, several visibly distinct shades. Unlike
-# RELIEF_BLEND_MAX's blend (which shifts hue toward bare rock/snow and only becomes visible
-# within a few hundred meters of its own 6000m peak stop), this covers the much more common
-# few-hundred-to-a-couple-thousand-meter range so ordinary hills and plateaus don't all render
-# as one flat, undifferentiated color for their biome. frontend/src/legendData.ts's
-# shadedVariants mirrors these same stops for its own purposes -- see that function's docstring.
-_LAND_SHADE_STOP_E = np.array([0, 500, 1500, 3000, 6000], dtype=float)
-_LAND_SHADE_STOP_FACTOR = np.array([0.78, 0.92, 1.05, 1.2, 1.38], dtype=float)
-
-
-def _land_shade_factor(elevation_m: np.ndarray, sea_level_m: float) -> np.ndarray:
-    return np.interp(elevation_m - sea_level_m, _LAND_SHADE_STOP_E, _LAND_SHADE_STOP_FACTOR)
-
-
 # Combined is the only view built from flat per-cell rectangles (_fill_rects) meant to read
 # as a continuous true-color image rather than a legible data mosaic (Biome/Temperature/etc.
 # lean into their own hard cell edges -- a viewer needs to tell one cell's exact color from
 # its neighbor's). A light post-fill Gaussian blur softens those cell-edge jaggies into
 # smooth coastlines/biome boundaries -- cheap anti-aliasing, in the same "approximate cue
-# over an expensive exact one" spirit as _land_shade_factor's relief blend above -- scaled by
-# pixel_scale so it looks the same relative amount of soft at any requested resolution.
-# Applied before rivers are drawn so their own lines stay crisp on top.
+# over an expensive exact one" spirit as biomes.biome_relative_shade_factor's own tiling
+# above -- scaled by pixel_scale so it looks the same relative amount of soft at any requested
+# resolution. Applied before rivers are drawn so their own lines stay crisp on top.
 COMBINED_BLUR_RADIUS_PX = 1.0
 
 
@@ -1009,11 +994,12 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     elevation_colors, the same gradient the Elevation view itself uses) -- an approximation
     of what the planet would look like in true color from orbit, on the same fine grid the
     Biome view uses (see BIOME_GRID_HEIGHT/WIDTH and _biome_fields). Land color is first
-    shaded by elevation for a mid-range relief cue (see _land_shade_factor), then blended
-    toward that same hypsometric shade at high elevation for a further cue at real peaks (see
-    RELIEF_BLEND_MAX); lakes/glaciers are overlaid the same way the Elevation view itself
-    draws them, and rivers are drawn on top the same way too (see _draw_rivers), all at this
-    grid's own resolution."""
+    shaded by each cell's elevation *rank among other cells of the same biome* for a relief
+    cue that still shows up even for biomes confined to a narrow absolute elevation band (see
+    biomes.biome_relative_shade_factor), then blended toward that same hypsometric shade at
+    high elevation for a further cue at real peaks (see RELIEF_BLEND_MAX); lakes/glaciers are
+    overlaid the same way the Elevation view itself draws them, and rivers are drawn on top
+    the same way too (see _draw_rivers), all at this grid's own resolution."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1029,7 +1015,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
 
-    shade = _land_shade_factor(elevation_m.reshape(-1), world.sea_level_m)[:, None]
+    shade = biomes.biome_relative_shade_factor(biome_ids, elevation_m.reshape(-1))[:, None]
     shaded_biome_rgb = np.clip(biome_rgb * shade, 0, 255)
 
     relief_t = np.clip((elevation_m.reshape(-1) - world.sea_level_m) / RELIEF_ELEVATION_RANGE_M, 0.0, 1.0)

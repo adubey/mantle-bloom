@@ -211,31 +211,31 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
 const LAKE_RENDER_RGB: [number, number, number] = [58, 92, 122];
 const GLACIER_RENDER_RGB: [number, number, number] = [221, 240, 245];
 
-// Mirrors backend app/render_image.py's _LAND_SHADE_STOP_E/_LAND_SHADE_STOP_FACTOR -- the
-// same elevation-keyed brightness multiplier Combined mode applies to a biome's flat color
-// (see that module's _land_shade_factor). Combined's legend-click-to-highlight (see
-// highlightTargetFor/MapCanvas.tsx) needs the actual range of shaded RGBs a biome's color can
-// appear as on the rendered map, since -- unlike the plain Biome view, whose pixels are each
-// exactly one of BIOME_RGB_ENTRIES with nothing else drawn on top -- Combined never paints a
-// biome's flat, unshaded color for any land cell.
-const LAND_SHADE_FACTORS = [0.78, 0.92, 1.05, 1.2, 1.38];
+// Mirrors backend app/biomes.py's own BIOME_SHADE_FACTORS -- the per-tier brightness
+// multiplier Combined mode applies to a biome's flat color, ranked by elevation *within that
+// biome's own cells* (see biome_relative_shade_factor there for why relative-to-biome rather
+// than a fixed absolute-elevation scale). Combined's legend-click-to-highlight (see
+// highlightTargetFor/MapCanvas.tsx) needs the actual shaded RGBs a biome's color can appear as
+// on the rendered map, since -- unlike the plain Biome view, whose pixels are each exactly one
+// of BIOME_RGB_ENTRIES with nothing else drawn on top -- Combined never paints a biome's flat,
+// unshaded color for any land cell.
+const LAND_SHADE_FACTORS = [0.92, 1.0, 1.08];
 
-function shadedVariants([r, g, b]: [number, number, number]): [number, number, number][] {
-  return LAND_SHADE_FACTORS.map((f) => [
-    Math.min(255, Math.round(r * f)),
-    Math.min(255, Math.round(g * f)),
-    Math.min(255, Math.round(b * f)),
-  ]);
+function shadedVariants([r, g, b]: [number, number, number], factors: number[]): [number, number, number][] {
+  return factors.map((f) => [Math.min(255, Math.round(r * f)), Math.min(255, Math.round(g * f)), Math.min(255, Math.round(b * f))]);
 }
 
 // How close (Euclidean RGB distance) a Combined-view pixel has to be to one of a biome's
-// shaded variants to still count as "that biome" for highlighting -- needs slack because
-// Combined additionally blends land color toward the elevation gradient above
-// RELIEF_ELEVATION_RANGE_M (see render_image.py's RELIEF_BLEND_MAX), which this deliberately
-// doesn't try to reverse: a real mountain peak inside a forest biome reading as "too rocky to
-// highlight" once its blend gets large is an acceptable, even fitting, edge case -- the whole
-// point of that blend is to visually stop reading as flat forest color up there.
-const COMBINED_MATCH_TOLERANCE = 28;
+// shaded variants to still count as "that biome" for highlighting -- needs slack to absorb
+// float-rounding differences (this file's Math.round vs. backend biomes.py's np.round) and the
+// post-fill Gaussian blur render_image.py's COMBINED_BLUR_RADIUS_PX applies (which softens
+// exact tier boundaries at cell edges). It deliberately does *not* try to reach far enough to
+// cover Combined's further blend of land color toward the elevation gradient above
+// RELIEF_ELEVATION_RANGE_M (see render_image.py's RELIEF_BLEND_MAX): a real mountain peak
+// inside a forest biome reading as "too rocky to highlight" once its blend gets large is an
+// acceptable, even fitting, edge case -- the whole point of that blend is to visually stop
+// reading as flat forest color up there.
+const COMBINED_MATCH_TOLERANCE = 18;
 
 export interface PaletteEntry {
   label: string;
@@ -260,7 +260,10 @@ export interface HighlightTarget {
 // exactly one of these colors to begin with, nearest-neighbor classification never actually
 // has to break a close call). Combined's land swatches can appear as any of several
 // elevation-shaded variants (see shadedVariants above) within COMBINED_MATCH_TOLERANCE, while
-// its Lake/Glacier swatches are still exact fixed colors, same as Biome's. Ocean/Intertidal
+// its Lake/Glacier swatches are still exact fixed colors, same as Biome's -- the palette is
+// still built from every classifiable label (not just the clicked one) so applyHighlight's
+// nearest-neighbor classification can tell two biomes' shaded variants apart even where they
+// land close together in RGB space (see HighlightTarget's own docstring). Ocean/Intertidal
 // Zone are excluded from Combined's palette entirely -- both are is_ocean cells that Combined
 // always paints with the elevation gradient instead of any biome color (see backend
 // app/render_image.py's _render_combined_view), so neither ever appears as a distinguishable
@@ -279,7 +282,7 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
       { label: "Glacier (ice cover)", colors: [GLACIER_RENDER_RGB] },
       ...BIOME_RGB_ENTRIES.filter(([l]) => l !== "Ocean" && l !== "Intertidal Zone").map(([l, rgbTuple]) => ({
         label: l,
-        colors: shadedVariants(rgbTuple),
+        colors: shadedVariants(rgbTuple, LAND_SHADE_FACTORS),
       })),
     ];
     if (!palette.some((p) => p.label === label)) return null;

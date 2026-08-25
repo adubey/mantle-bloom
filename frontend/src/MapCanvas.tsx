@@ -50,7 +50,8 @@ const HIGHLIGHT_DIM_FACTOR = 0.35;
 // to pick out that biome's cells, entirely client-side, with no new server render mode
 // needed. The Combined view instead matches within `tolerance` against several candidate
 // colors (see legendData.ts's highlightTargetFor) since a biome's flat color there gets
-// shaded by elevation and, at real peaks, blended toward the elevation gradient.
+// shaded by elevation (see app/biomes.py's biome_relative_shade_factor) and, at real peaks,
+// further blended toward the elevation gradient on top of that.
 //
 // Classification is nearest-neighbor across the *entire* palette, not just a within-tolerance
 // check against the selected label's own colors: two land biomes' shaded variants can land

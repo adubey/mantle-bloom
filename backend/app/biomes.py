@@ -123,6 +123,59 @@ BIOME_COLORS = np.array(
 )
 
 
+# Number of within-biome elevation tiers BIOME_SHADE_FACTORS below splits each biome's flat
+# color into (see biome_relative_shade_factor) -- enough that a biome occupying a sizeable
+# share of the map reads with real relief variation, without so many that individual tiers
+# thin out to a handful of cells and start reading as noise rather than terrain.
+BIOME_SHADE_TIERS = 3
+
+# Per-tier brightness multiplier for a biome's flat BIOME_COLORS entry (see
+# biome_relative_shade_factor), used by render_image.py's _render_combined_view as the "layer
+# tint" its land cells are shaded by before the further hypsometric relief blend near real
+# peaks (see that module's RELIEF_BLEND_MAX). Deliberately keyed to each cell's elevation
+# *rank among other cells of the same biome*, not an absolute elevation scale -- many biomes
+# occupy a much narrower absolute elevation band by definition (Wetland is capped at
+# WETLAND_MAX_ELEVATION_M, Ice is a temperature band that can sit at sea level or on a peak)
+# and would render as one flat, undifferentiated color under a fixed absolute scale even
+# though real terrain still varies within them. The swing is deliberately small (+-8%) so
+# every tier still reads as the same named biome color to a human -- even Ice, this palette's
+# brightest entry and so the one a given +-% swing moves furthest in absolute RGB terms, stays
+# within a few dozen RGB units of its own flat color -- and so
+# frontend/src/legendData.ts's own click-to-highlight palette (BIOME_SHADE_FACTORS there,
+# kept in sync by hand, same precedent as that file's own BIOME_RGB_ENTRIES) can match any
+# tier within a small fixed RGB tolerance.
+BIOME_SHADE_FACTORS = np.array([0.92, 1.0, 1.08])
+
+
+def biome_relative_shade_factor(biome_ids: np.ndarray, elevation_m: np.ndarray) -> np.ndarray:
+    """Per-cell brightness multiplier, same shape as `biome_ids`: BIOME_SHADE_FACTORS[tier],
+    `tier` picked from that cell's elevation *rank among same-biome cells only* (see
+    BIOME_SHADE_FACTORS' own docstring for why relative-to-biome rather than an absolute
+    elevation scale). Rank-based (an equal-count split) rather than a quantile-of-value split,
+    so tier sizes stay roughly even regardless of the biome's actual elevation distribution
+    shape -- a biome with one outlier peak and otherwise dead-flat terrain still gets a real
+    multi-way split instead of nearly every cell landing in the same tier. `biome_ids`/
+    `elevation_m` must be the same shape; multiply this elementwise into a biome's flat
+    BIOME_COLORS entry to shade it (see render_image.py's _render_combined_view)."""
+    biome_ids = np.asarray(biome_ids)
+    elevation_m = np.asarray(elevation_m)
+    flat_ids = biome_ids.reshape(-1)
+    flat_elevation = elevation_m.reshape(-1)
+
+    tier = np.zeros(flat_ids.shape, dtype=np.int64)
+    for biome_id in np.unique(flat_ids):
+        mask = flat_ids == biome_id
+        n = int(mask.sum())
+        if n <= 1:
+            continue
+        order = np.argsort(flat_elevation[mask])
+        ranks = np.empty(n, dtype=np.int64)
+        ranks[order] = np.arange(n)
+        tier[mask] = np.clip(ranks * BIOME_SHADE_TIERS // n, 0, BIOME_SHADE_TIERS - 1)
+
+    return BIOME_SHADE_FACTORS[tier].reshape(biome_ids.shape)
+
+
 def classify_wetland(
     temperature_c: np.ndarray, precipitation_mm: np.ndarray, elevation_m: np.ndarray, slope: np.ndarray, is_ocean: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:

@@ -118,6 +118,64 @@ def test_classify_biomes_wetland_and_carboniferous_forest_reachable():
     assert result[1] == biomes.CARBONIFEROUS_FOREST
 
 
+def test_biome_relative_shade_factor_matches_shape_of_biome_ids():
+    biome_ids = np.array([biomes.TUNDRA, biomes.TUNDRA, biomes.OCEAN])
+    elevation = np.array([100.0, 2000.0, -500.0])
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert result.shape == (3,)
+
+
+def test_biome_relative_shade_factor_only_ever_returns_a_known_factor():
+    biome_ids = np.array([biomes.TUNDRA, biomes.TUNDRA, biomes.OCEAN])
+    elevation = np.array([100.0, 2000.0, -500.0])
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert set(result.tolist()) <= set(biomes.BIOME_SHADE_FACTORS.tolist())
+
+
+def test_biome_relative_shade_factor_splits_a_large_uniform_biome_into_multiple_tiers():
+    # A single biome across many cells with a real elevation spread should use more than one
+    # shade tier -- otherwise a large biome area would still render as one flat color.
+    n = 300
+    biome_ids = np.full(n, biomes.TEMPERATE_GRASSLAND)
+    elevation = np.linspace(0.0, 1000.0, n)
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert len(np.unique(result)) >= biomes.BIOME_SHADE_TIERS
+
+
+def test_biome_relative_shade_factor_shaded_colors_stay_close_to_the_flat_biome_color():
+    # Every shaded variant should still be near BIOME_COLORS' own flat entry -- close enough
+    # that frontend/src/legendData.ts's own click-to-highlight tolerance can match it without
+    # a second legend swatch per biome (see BIOME_SHADE_FACTORS' own docstring).
+    n = 50
+    biome_ids = np.full(n, biomes.SAVANNA)
+    elevation = np.linspace(0.0, 3000.0, n)
+    factor = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    base = biomes.BIOME_COLORS[biomes.SAVANNA].astype(float)
+    shaded = np.clip(base[None, :] * factor[:, None], 0, 255)
+    dist = np.linalg.norm(shaded - base[None, :], axis=1)
+    assert np.all(dist <= 35)
+
+
+def test_biome_relative_shade_factor_ranks_higher_elevation_cells_brighter_within_a_biome():
+    biome_ids = np.array([biomes.BOREAL_FOREST, biomes.BOREAL_FOREST])
+    elevation = np.array([0.0, 5000.0])
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert result[1] > result[0]
+
+
+def test_biome_relative_shade_factor_ranks_are_relative_to_each_biome_separately():
+    # A biome confined to a narrow absolute elevation band should still get real tier spread,
+    # since ranking is relative to that biome's own cells, not a shared absolute scale.
+    n = 60
+    biome_ids = np.concatenate([np.full(n, biomes.WETLAND), np.full(n, biomes.TUNDRA)])
+    elevation = np.concatenate([np.linspace(0.0, 10.0, n), np.linspace(0.0, 3000.0, n)])
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    wetland_tiers = len(np.unique(result[:n]))
+    tundra_tiers = len(np.unique(result[n:]))
+    assert wetland_tiers == biomes.BIOME_SHADE_TIERS
+    assert tundra_tiers == biomes.BIOME_SHADE_TIERS
+
+
 def test_classify_biomes_intertidal_is_shallow_ocean_only():
     is_ocean = np.array([True, True])
     elevation = np.array([-5.0, -5000.0])  # shallow vs. deep
