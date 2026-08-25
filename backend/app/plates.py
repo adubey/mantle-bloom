@@ -890,9 +890,9 @@ class PlateWithLines(Plate):
         near_mask = dist_all < far_threshold_rad
         near_points = own_points[near_mask]
         if len(near_points) > 0:
-            near_contested = np.zeros(len(near_points), dtype=bool)
-            for neighbour in neighbours:
-                near_contested |= geometry.points_in_spherical_polygon(near_points, neighbour.get_bounding_polygon())
+            near_contested = geometry.points_in_any_spherical_polygon(
+                near_points, [neighbour.get_bounding_polygon() for neighbour in neighbours]
+            )
             contested_all[near_mask] = near_contested
 
         default_intensity_all = np.clip(1.0 - dist_all / far_threshold_rad, 0.0, 1.0)
@@ -988,9 +988,7 @@ class PlateWithLines(Plate):
         if len(theta_candidates) == 0 or not neighbours:
             return len(theta_candidates)
         world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full_like(theta_candidates, phi), theta_candidates))
-        contested = np.zeros(len(world_pts), dtype=bool)
-        for neighbour in neighbours:
-            contested |= geometry.points_in_spherical_polygon(world_pts, neighbour.get_bounding_polygon())
+        contested = geometry.points_in_any_spherical_polygon(world_pts, [neighbour.get_bounding_polygon() for neighbour in neighbours])
         first_contested = np.argmax(contested) if np.any(contested) else len(contested)
         return int(first_contested)
 
@@ -1167,9 +1165,7 @@ class PlateWithLines(Plate):
             theta_candidates = reference.theta[0] + dtheta * np.arange(n_cols)
             world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_cols, new_phi), theta_candidates))
 
-            contested = np.zeros(n_cols, dtype=bool)
-            for neighbour in neighbours:
-                contested |= geometry.points_in_spherical_polygon(world_pts, neighbour.get_bounding_polygon())
+            contested = geometry.points_in_any_spherical_polygon(world_pts, [neighbour.get_bounding_polygon() for neighbour in neighbours])
             open_mask = ~contested
             if not np.any(open_mask):
                 continue

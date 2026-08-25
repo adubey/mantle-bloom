@@ -203,21 +203,14 @@ def point_in_spherical_polygon(point_xyz: np.ndarray, polygon_xyz: np.ndarray) -
     return abs(float(np.sum(diffs))) > np.pi
 
 
-def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarray:
-    """Vectorized `point_in_spherical_polygon`: same winding-number algorithm, batched over
-    every point in `points_xyz` at once instead of a Python-level loop calling the scalar
-    version per point. Needed once `PlateWithLines.deform` started calling the containment
-    test for every one of a plate's own near-boundary nodes, every turn -- profiled directly
-    as the dominant per-step cost at realistic node counts (a single step_world call on a
-    10-plate, default-density world went from ~46s to well under a second after switching
-    to this). Returns a bool array, one entry per point in `points_xyz` (empty if either
-    input is empty or the polygon has fewer than 3 vertices)."""
-    points_xyz = np.asarray(points_xyz, dtype=float)
-    polygon_xyz = np.asarray(polygon_xyz, dtype=float)
-    n = len(points_xyz)
-    if len(polygon_xyz) < 3 or n == 0:
-        return np.zeros(n, dtype=bool)
-
+def _local_tangent_frame_batch(points_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Batched `local_tangent_basis`: (east, north) for every point in `points_xyz` at once
+    -- the part of `points_in_spherical_polygon` that depends only on the query points, not
+    on which polygon they're being tested against. Factored out so a caller checking the
+    same points against several polygons in a row (every `deform`-adjacent boundary-growth
+    check in plates.py loops its own near-boundary nodes over each neighbour in turn) can
+    build this once and reuse it, rather than paying for it again on every polygon -- see
+    `points_in_any_spherical_polygon`."""
     up = np.array([0.0, 0.0, 1.0])
     north = up[None, :] - (points_xyz @ up)[:, None] * points_xyz
     norms = np.linalg.norm(north, axis=-1)
@@ -229,7 +222,13 @@ def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray)
     north = north / norms[:, None]
     east = np.cross(north, points_xyz)
     east = east / np.linalg.norm(east, axis=-1, keepdims=True)
+    return east, north
 
+
+def _winding_contains(points_xyz: np.ndarray, polygon_xyz: np.ndarray, east: np.ndarray, north: np.ndarray) -> np.ndarray:
+    """The polygon-specific half of `points_in_spherical_polygon`'s winding-number test,
+    given `points_xyz`'s own local tangent frame (`east`/`north`, see
+    `_local_tangent_frame_batch`) already built."""
     # tangent: (n_points, n_vertices, 3) -- every polygon vertex projected into each query
     # point's own local tangent plane, all at once.
     dot_vp = polygon_xyz @ points_xyz.T  # (n_vertices, n_points)
@@ -241,6 +240,50 @@ def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray)
     diffs = np.diff(closed, axis=1)
     diffs = (diffs + np.pi) % (2.0 * np.pi) - np.pi
     return np.abs(np.sum(diffs, axis=1)) > np.pi
+
+
+def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarray:
+    """Vectorized `point_in_spherical_polygon`: same winding-number algorithm, batched over
+    every point in `points_xyz` at once instead of a Python-level loop calling the scalar
+    version per point. Needed once `PlateWithLines.deform` started calling the containment
+    test for every one of a plate's own near-boundary nodes, every turn -- profiled directly
+    as the dominant per-step cost at realistic node counts (a single step_world call on a
+    10-plate, default-density world went from ~46s to well under a second after switching
+    to this). Returns a bool array, one entry per point in `points_xyz` (empty if either
+    input is empty or the polygon has fewer than 3 vertices). Checking the same points
+    against several polygons in a row (`neighbour in neighbours`, ORed together) should use
+    `points_in_any_spherical_polygon` instead -- this recomputes `points_xyz`'s own tangent
+    frame every call, wasted work when it doesn't change between calls."""
+    points_xyz = np.asarray(points_xyz, dtype=float)
+    polygon_xyz = np.asarray(polygon_xyz, dtype=float)
+    n = len(points_xyz)
+    if len(polygon_xyz) < 3 or n == 0:
+        return np.zeros(n, dtype=bool)
+    east, north = _local_tangent_frame_batch(points_xyz)
+    return _winding_contains(points_xyz, polygon_xyz, east, north)
+
+
+def points_in_any_spherical_polygon(points_xyz: np.ndarray, polygons: list[np.ndarray]) -> np.ndarray:
+    """`points_in_spherical_polygon`, OR-ed across every polygon in `polygons` -- the
+    "contested by any neighbour" check every `deform`-adjacent boundary pass in plates.py
+    needs (one call per neighbour otherwise, each recomputing `points_xyz`'s own tangent
+    frame from scratch). Builds the tangent frame once and stops early once every point is
+    already contested by some earlier polygon, rather than checking the remaining
+    neighbours too. Returns an all-`False` array if `points_xyz` or `polygons` is empty."""
+    points_xyz = np.asarray(points_xyz, dtype=float)
+    n = len(points_xyz)
+    contested = np.zeros(n, dtype=bool)
+    if n == 0 or not polygons:
+        return contested
+    east, north = _local_tangent_frame_batch(points_xyz)
+    for polygon_xyz in polygons:
+        polygon_xyz = np.asarray(polygon_xyz, dtype=float)
+        if len(polygon_xyz) < 3:
+            continue
+        contested |= _winding_contains(points_xyz, polygon_xyz, east, north)
+        if np.all(contested):
+            break
+    return contested
 
 
 def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:

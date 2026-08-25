@@ -131,18 +131,19 @@ class World:
 
 def _build_land_kdtree(world: World) -> cKDTree | None:
     """Every land node's (elevation > world.sea_level_m) world position, across every
-    plate, gathered via Plate's own public map_world_points()/ElevationPoint.get_elevation()
-    and indexed for World.distance_from_land_approx. None if this world has no land nodes at
-    all."""
-    land_points = [
-        world_xyz
-        for plate in world.plates
-        for point, world_xyz in plate.map_world_points()
-        if point.get_elevation() > world.sea_level_m
-    ]
-    if not land_points:
+    plate, gathered via Plate's own public all_points_and_elevation() (a bulk per-plate
+    array read, not a per-node point object) and indexed for World.distance_from_land_approx.
+    None if this world has no land nodes at all."""
+    chunks = []
+    for plate in world.plates:
+        points, elevation = plate.all_points_and_elevation()
+        if len(points) == 0:
+            continue
+        chunks.append(points[elevation > world.sea_level_m])
+    land_points = np.concatenate(chunks, axis=0) if chunks else np.zeros((0, 3))
+    if len(land_points) == 0:
         return None
-    return cKDTree(np.array(land_points))
+    return cKDTree(land_points)
 
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
