@@ -993,6 +993,30 @@ first and closing the loop only for the final consumer-facing fields:
    physically sensible humidity value; confirmed directly during development as a genuine
    runaway (mean land precipitation still climbing after ten simulated steps, land humidity
    exceeding the ocean's own maximum) before this cap was added.
+
+   **Inland decay is a real per-km half-life, not a per-cell constant.** Each sweep step's
+   carried-over moisture is discounted by `climate._retention_factor`, whose flat-land base
+   rate (`_zonal_base_retention`/`_meridional_base_retention`) implements the rule of thumb
+   that rainfall runs about half as much 300km inland as at the shore
+   (`MOISTURE_HALVING_DISTANCE_KM = 300`) -- computed from each step's *actual* physical
+   distance (`plates.PLANET_RADIUS_KM`-scaled degrees, `cos(lat)`-corrected for the zonal
+   pass, since a step's real longitude distance shrinks toward the poles) rather than a fixed
+   per-grid-cell multiplier. This matters because a fixed-per-cell retention silently decays
+   inland moisture at a rate that depends on how much real distance one grid step happens to
+   span -- which varies with `World.climate_density` (a lower-density world's larger cells
+   cover 300km in barely more than one step) and, for the zonal pass, with latitude. An
+   earlier fixed `RETENTION_PER_CELL = 0.96` was confirmed directly as the cause of humidity
+   and precipitation reading *highest in continental interiors* rather than near coasts: at
+   coarser densities a single step barely dented moisture even 300km inland (~95% retained,
+   not the physically-expected ~50%), so land-locked interiors sat near the ocean's own
+   evaporation ceiling indefinitely, before any local land-surface source was even added on
+   top -- unlike real Earth, where roughly 70-80% of precipitation falls over ocean and only
+   20-23% over land, concentrated near coasts and windward mountain slopes rather than spread
+   evenly (or worse, favoring the interior) across a continent. On-terrain wind slowdown
+   (`elevation_factor`, from own-cell elevation and mountain wake) still applies as an
+   *additional* multiplicative discount on top of this distance-based base rate, unchanged
+   from before -- air moving slower through rough terrain loses proportionally more moisture
+   to mixing independent of the distance it covered.
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) -- no zonal
     latitude-climatology baseline (equator/mid-latitude wet bands), cut deliberately.

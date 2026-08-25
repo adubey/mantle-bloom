@@ -35,7 +35,8 @@ latitude-banded meridional wind + Coriolis zonal deflection, mountain deflection
 wake, Ekman-based ocean currents + coastal deflection/smoothing/wake + land swirl +
 circumglobal boost, convergence-based swell detection, semi-Lagrangian temperature
 advection along currents, evaporation-ceiling + land-surface moisture source + wind-driven
-2D humidity advection, and orographic precipitation.
+2D humidity advection (decaying inland at a real per-km rate, see
+MOISTURE_HALVING_DISTANCE_KM), and orographic precipitation.
 
 **Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
 humidity field ocean evaporation does** -- the "rain in a rainforest" effect, where a wet,
@@ -791,7 +792,19 @@ EVAPORATION_REFERENCE_TEMP_C = 20.0
 MIN_EVAPORATION_CEILING = 0.3
 MAX_EVAPORATION_CEILING = 1.4
 MIN_WIND_RETENTION_FACTOR = 0.5
-RETENTION_PER_CELL = 0.96
+# Real-world rule of thumb: over flat land, rainfall runs about half as much 300km inland as
+# it does right at the shore -- an exponential decay of airborne moisture with distance
+# traveled over land. Applied as a genuine per-km half-life (`_zonal/meridional_base_retention`
+# below) rather than a fixed per-*cell* retention constant: a fixed-per-cell factor would decay
+# inland moisture at a rate that silently depends on how much real distance one grid step
+# happens to cover, which varies with `World.climate_density` (see grid_dimensions) and, for
+# the zonal sweep, with latitude itself (`cos(lat)` shrinks a step's real longitude distance
+# toward the poles) -- confirmed directly as the actual cause of humidity/precipitation reading
+# highest deep in continental interiors instead of near coasts: at climate_density=1.0's larger
+# cells, a single fixed-0.96-per-cell step barely dented moisture even 300km inland (about 95%
+# retained, not 50%), so land-locked interiors stayed near the ocean's own evaporation ceiling
+# indefinitely, before any local land-surface source (see below) was even added on top.
+MOISTURE_HALVING_DISTANCE_KM = 300.0
 OROGRAPHIC_LIFT_SCALE_M = 600.0
 OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
 PRECIP_HUMIDITY_COEFFICIENT_MM = 1500.0
@@ -883,9 +896,32 @@ def _land_moisture_source(
     return water_source + vegetation_source
 
 
-def _retention_factor(elevation_factor_cell: np.ndarray) -> np.ndarray:
+def _retention_factor(elevation_factor_cell: np.ndarray, base_retention) -> np.ndarray:
+    """Fraction of a cell's moisture that's still airborne one step later, before any
+    orographic dump. `base_retention` is the flat-land decay for *this step's actual physical
+    distance* (see MOISTURE_HALVING_DISTANCE_KM and the zonal/meridional callers below) --
+    `elevation_factor_cell` layers an *additional* discount from local wind slowdown
+    (terrain/wake) on top, since air moving slower through rough terrain loses proportionally
+    more moisture to mixing/turbulence independent of the distance it covered."""
     wind_factor = MIN_WIND_RETENTION_FACTOR + (1.0 - MIN_WIND_RETENTION_FACTOR) * elevation_factor_cell
-    return RETENTION_PER_CELL * wind_factor
+    return base_retention * wind_factor
+
+
+def _zonal_base_retention(width: int, lat_deg: np.ndarray) -> np.ndarray:
+    """(H,) flat-land retention for one zonal sweep step at each row's own latitude -- a zonal
+    step's real longitude distance shrinks by cos(lat) toward the poles (the same meridian
+    convergence `_sample_at_offset` accounts for elsewhere), so retention has to be computed
+    per-row, not once for the whole grid."""
+    step_km = (2.0 * np.pi / width) * plates.PLANET_RADIUS_KM * np.cos(np.radians(lat_deg))
+    return 0.5 ** (step_km / MOISTURE_HALVING_DISTANCE_KM)
+
+
+def _meridional_base_retention(height: int) -> float:
+    """Flat-land retention for one meridional sweep step -- a single scalar, since a step
+    along a meridian covers the same real latitude distance regardless of row (unlike a zonal
+    step, which needs the cos(lat) correction above)."""
+    step_km = (np.pi / height) * plates.PLANET_RADIUS_KM
+    return 0.5 ** (step_km / MOISTURE_HALVING_DISTANCE_KM)
 
 
 def _orographic_retained_fraction(gain_m: np.ndarray) -> np.ndarray:
@@ -901,6 +937,7 @@ def _humidity_zonal_sweep(
     height, width = is_ocean.shape
     zonal_dir = zonal_direction_for_lat(lat_deg)
     rows = np.arange(height)
+    base_retention = _zonal_base_retention(width, lat_deg)
 
     humidity = np.zeros((height, width))
     orographic = np.zeros((height, width))
@@ -923,7 +960,7 @@ def _humidity_zonal_sweep(
             # physically sensible value (multiples of MAX_EVAPORATION_CEILING) well before a
             # world's vegetation even finishes saturating, since the fixed point of that
             # recurrence is a real cliff, not a gentle diminishing return.
-            land_moisture = np.minimum(moisture * _retention_factor(ef_i) + source_i, MAX_EVAPORATION_CEILING)
+            land_moisture = np.minimum(moisture * _retention_factor(ef_i, base_retention) + source_i, MAX_EVAPORATION_CEILING)
             after_source = np.where(ocean_i, ceiling_i, land_moisture)
             retained = _orographic_retained_fraction(elev_i - prev_elev)
             new_moisture = np.where(ocean_i, after_source, after_source * retained)
@@ -959,6 +996,7 @@ def _humidity_meridional_sweep(
     land_source: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     height, width = is_ocean.shape
+    base_retention = _meridional_base_retention(height)
     humidity = np.zeros((height, width))
     orographic = np.zeros((height, width))
     for band_rows in _meridional_bands(lat_deg):
@@ -973,7 +1011,7 @@ def _humidity_meridional_sweep(
 
             # See the matching cap in _humidity_zonal_sweep for why this can't be left
             # uncapped.
-            land_moisture = np.minimum(moisture * _retention_factor(ef_r) + source_r, MAX_EVAPORATION_CEILING)
+            land_moisture = np.minimum(moisture * _retention_factor(ef_r, base_retention) + source_r, MAX_EVAPORATION_CEILING)
             after_source = np.where(ocean_r, ceiling_r, land_moisture)
             retained = _orographic_retained_fraction(elev_r - prev_elev)
             new_moisture = np.where(ocean_r, after_source, after_source * retained)
