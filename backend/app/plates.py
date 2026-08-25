@@ -1150,6 +1150,16 @@ class PlateWithLines(Plate):
         subduction_all = convergent_all & neighbor_is_oceanic_all
         collision_all = convergent_all & ~neighbor_is_oceanic_all
 
+        # Node *deletion* below should only ever fire for genuine subduction -- the same
+        # crust-type asymmetry the elevation effects above already draw (a continental
+        # self-plate never takes the trench-falls[contested] branch, only uplift). Continental
+        # crust doesn't subduct in reality, so a continental self-plate contested by *either*
+        # a colliding continent or an advancing oceanic neighbour should crumple in place
+        # (uplift only) rather than having its edge nodes erased every step until
+        # merge_split.py's own slow fusion actually resolves the collision. Only an oceanic
+        # self-plate's own contested nodes (the subducting slab's own trench) still shrink.
+        shrinkable_all = convergent_all if self.crust_type != "continental" else np.zeros_like(convergent_all)
+
         target = _divergent_target(self.crust_type)
         years_myr = years / 1_000_000.0
         relax_factor = 1.0 - np.exp(-DIVERGENT_RELAX_RATE_PER_MYR * years_myr)
@@ -1166,6 +1176,7 @@ class PlateWithLines(Plate):
             transform_intensity = transform_intensity_all[offset : offset + n]
             rift_intensity = rift_intensity_all[offset : offset + n]
             contested = contested_all[offset : offset + n]
+            shrinkable = shrinkable_all[offset : offset + n]
             transform = transform_all[offset : offset + n]
             divergent = divergent_all[offset : offset + n]
             subduction = subduction_all[offset : offset + n]
@@ -1191,6 +1202,7 @@ class PlateWithLines(Plate):
                 updated_line,
                 dist,
                 contested,
+                shrinkable,
                 spacing_rad,
                 extend_threshold_rad,
                 max_extend_nodes,
@@ -1228,6 +1240,7 @@ class PlateWithLines(Plate):
         line: ElevationLine,
         dist: np.ndarray,
         contested: np.ndarray,
+        shrinkable: np.ndarray,
         spacing_rad: float,
         extend_threshold_rad: float,
         max_extend_nodes: int,
@@ -1236,8 +1249,12 @@ class PlateWithLines(Plate):
         line_index: int,
         neighbours: list["Plate"],
     ) -> ElevationLine:
-        """Shrink `line`'s two ends by however many *consecutive* contested nodes sit
-        there, then grow whichever end is left both uncontested and far from any
+        """Shrink `line`'s two ends by however many *consecutive* `shrinkable` nodes sit
+        there (a subset of `contested` -- see `deform()`'s own comment: only genuine
+        subduction deletes territory, so this is all-False for a continental self-plate),
+        then grow whichever end is left both uncontested (checked against the full
+        `contested`, not `shrinkable` -- a continental edge crumpling in place via uplift
+        must not also grow into territory a neighbour still occupies) and far from any
         neighbour -- the `deform()` counterpart to the old `boundary._grow_or_shrink_line`.
 
         Deliberately end-only, not "remove any contested node anywhere in the line": every
@@ -1261,6 +1278,7 @@ class PlateWithLines(Plate):
         theta = line.theta.copy()
         elevation = line.elevation.copy()
         contested = contested.copy()
+        shrinkable = shrinkable.copy()
         dist = dist.copy()
         persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
         if len(theta) == 0:
@@ -1280,24 +1298,26 @@ class PlateWithLines(Plate):
             return run
 
         # High end first so the low-end index (0) is unaffected by any change made here.
-        if contested[-1]:
-            n_remove = min(contested_run_from_end(contested, from_high=True), n_distance_cap, max_extend_nodes, len(theta) - 1)
+        if shrinkable[-1]:
+            n_remove = min(contested_run_from_end(shrinkable, from_high=True), n_distance_cap, max_extend_nodes, len(theta) - 1)
             if n_remove > 0:
                 theta = theta[:-n_remove]
                 elevation = elevation[:-n_remove]
                 contested = contested[:-n_remove]
+                shrinkable = shrinkable[:-n_remove]
                 dist = dist[:-n_remove]
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
 
         if len(theta) == 0:
             return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
-        if contested[0]:
-            n_remove = min(contested_run_from_end(contested, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
+        if shrinkable[0]:
+            n_remove = min(contested_run_from_end(shrinkable, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
             if n_remove > 0:
                 theta = theta[n_remove:]
                 elevation = elevation[n_remove:]
                 contested = contested[n_remove:]
+                shrinkable = shrinkable[n_remove:]
                 dist = dist[n_remove:]
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
 

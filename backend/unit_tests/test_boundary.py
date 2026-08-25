@@ -86,7 +86,14 @@ def test_shift_rotates_and_reports_max_displacement():
     assert d <= mantle.MAX_PLATE_RATE * 1_000_000 * 1.001
 
 
-def test_deform_shrinks_contested_end_and_uplifts_collision_zone():
+def test_deform_uplifts_collision_zone_without_shrinking_continental_territory():
+    # Continental crust doesn't subduct in reality -- a colliding continent crumples
+    # (thickens/uplifts) in place rather than having its own territory deleted node by node,
+    # so a continental self-plate's contested nodes must survive a collision untouched aside
+    # from the elevation change (deform()'s own `shrinkable_all` is all-False for a
+    # continental self-plate; only a genuinely subducting oceanic self-plate's own contested
+    # nodes -- see test_deform_shrinks_oceanic_trench_on_subduction below -- still shrink).
+    # merge_split.py's own slow (50-100 Myr) fusion is what actually resolves the overlap.
     spacing = line_spacing_rad(1.0)
     # Same frame (same seed) as plate_b -- so local theta directly overlaps. plate_a spans
     # theta in [-7*spacing, 0]; plate_b spans [-3*spacing, 4*spacing] -- a genuine overlap
@@ -100,26 +107,44 @@ def test_deform_shrinks_contested_end_and_uplifts_collision_zone():
     plate_b = _patch(1, "continental", [1.0, 0.0, 0.0], phi_offsets=[-spacing, 0.0, spacing], theta_values=theta_b, base_elevation=500.0)
 
     world = World(seed=0, plates=[plate_a, plate_b], mantle_centers=[], node_density=1.0)
-    # A large max_distance so the D-derived cap doesn't limit growth at the far (west,
-    # uncontested) end either -- this test only cares about the contested (east) end's own
-    # behavior, but deform() legitimately grows/claims elsewhere in the same call, so the
-    # assertions below check that end specifically rather than the plate's total node count.
+    before_counts = [len(line.theta) for line in plate_a.lines[:3]]
     plate_a.deform(world, [plate_b], years=1_000_000, max_distance=10 * spacing)
 
-    # Only the three original rows (phi = -spacing, 0, spacing) actually overlapped plate_b
-    # -- deform() also legitimately claims a couple of brand-new rows further out in phi in
-    # this same call (nothing there is contested either), each with its own independently
-    # computed spacing, so this check is scoped to the three rows the overlap was set up on.
+    # Only the three original rows (phi = -spacing, 0, spacing) actually overlapped plate_b.
+    # None of plate_a's own contested nodes were deleted -- every original node is still
+    # there (deform() may still append brand-new nodes at each line's *other*, uncontested
+    # end in this same call, so this checks "at least as many," not "exactly as many").
+    for line, before in zip(plate_a.lines[:3], before_counts):
+        assert len(line.theta) >= before
+        assert np.all(np.diff(line.theta) > 0)  # stays a contiguous, sorted span
+
+    # The contested nodes (originally at theta=0, deep inside plate_b's [-3s, 4s] span)
+    # picked up collision uplift -- continental-continental convergence, not a trench --
+    # rather than being removed.
+    contested_node = plate_a.lines[1].elevation[plate_a.lines[1].theta == 0.0]
+    assert len(contested_node) == 1
+    assert contested_node[0] > 500.0
+
+
+def test_deform_shrinks_oceanic_trench_on_subduction():
+    # The crust-type asymmetry from the test above cuts the other way for a genuinely
+    # subducting oceanic self-plate: its own contested end still retreats (the slab's own
+    # trench self-destructing), exactly as before this fix.
+    spacing = line_spacing_rad(1.0)
+    theta_a = np.arange(8) * spacing - 7 * spacing
+    plate_a = _patch(0, "oceanic", [1.0, 0.0, 0.0], phi_offsets=[-spacing, 0.0, spacing], theta_values=theta_a, base_elevation=-3000.0)
+
+    theta_b = np.arange(8) * spacing - 3 * spacing
+    plate_b = _patch(1, "continental", [1.0, 0.0, 0.0], phi_offsets=[-spacing, 0.0, spacing], theta_values=theta_b, base_elevation=500.0)
+
+    world = World(seed=0, plates=[plate_a, plate_b], mantle_centers=[], node_density=1.0)
+    plate_a.deform(world, [plate_b], years=1_000_000, max_distance=10 * spacing)
+
     for line in plate_a.lines[:3]:
         # The contested end (originally at theta=0, deep inside plate_b's [-3s, 4s] span)
         # retreated past the overlap entirely, back to plate_b's own low edge.
         assert line.theta.max() <= -3 * spacing + 1e-9
         assert np.all(np.diff(line.theta) > 0)  # stays a contiguous, sorted span
-
-    # Every remaining node close to the boundary (but no longer contested) picked up
-    # collision uplift -- continental-continental convergence, not a trench.
-    still_near_boundary = plate_a.lines[1].elevation[plate_a.lines[1].theta > -4 * spacing]
-    assert np.all(still_near_boundary > 500.0)
 
 
 def test_deform_grows_isolated_plate_with_no_neighbours():
