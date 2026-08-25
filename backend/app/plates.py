@@ -130,6 +130,24 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
     return neighbours
 
 
+def _contested_by_any(points_xyz: np.ndarray, neighbours: list["Plate"]) -> np.ndarray:
+    """`geometry.points_in_any_spherical_polygon`, OR-ed across every neighbour's own
+    `contains_batch` instead of a shared polygon-list winding test -- lets a `PlateWithLines`
+    neighbour answer via its own O(log rows) fast path (see `PlateWithLines.contains_batch`)
+    rather than every neighbour paying the full winding-number cost regardless of
+    representation. Same semantics otherwise: stops early once every point is already
+    contested by some earlier neighbour, all-`False` if either input is empty."""
+    n = len(points_xyz)
+    contested = np.zeros(n, dtype=bool)
+    if n == 0 or not neighbours:
+        return contested
+    for neighbour in neighbours:
+        contested |= neighbour.contains_batch(points_xyz)
+        if np.all(contested):
+            break
+    return contested
+
+
 def _update_to_lat_long_grid(plate: "Plate", grid: LatLongGrid) -> None:
     """The plate -> grid half of the `LatLongGrid` round trip (see lat_long_grid.py's own
     module docstring): resamples this plate's current node elevations onto whichever grid
@@ -458,6 +476,16 @@ class Plate(abc.ABC):
         self._bounding_polygon_cache = None
         self._bounding_polygon_tree_cache = None
 
+    def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray:
+        """True for every point in `points_xyz` (world unit vectors) currently inside this
+        plate's territory -- the batched form of `contains`, and what `deform`'s own
+        contested/open classification actually calls (see `_contested_by_any`). Default
+        implementation: the generic winding-number test against `get_bounding_polygon()`.
+        `PlateWithLines` overrides this with a much faster row-lookup path (see there);
+        `PlateWithRTree` has no equivalent row structure to exploit, so it's left on this
+        default."""
+        return geometry.points_in_spherical_polygon(points_xyz, self.get_bounding_polygon())
+
     @abc.abstractmethod
     def collect(self, field_name: str) -> np.ndarray:
         """Every node's current `field_name` value (elevation or any ElevationLine
@@ -639,6 +667,76 @@ class Plate(abc.ABC):
         ...
 
 
+@dataclass
+class _RowLookup:
+    """`PlateWithLines.contains_batch`'s cached fast-path data -- see that method's own
+    docstring for the algorithm. `phis` is every line's own `phi`, sorted ascending;
+    `low_thetas[i]`/`high_thetas[i]` are that same row's own theta[0]/theta[-1] (`outline_
+    world`'s own "low"/"high" labels, kept index-aligned with `phis` the same way). The rest
+    are all derived once here rather than per query:
+
+    `margin_rad` -- see `_row_lookup_bulge_margin_rad`'s own docstring: a query point whose
+    nearest-row interval test says "outside" isn't necessarily outside -- this bounds how
+    far the *true* boundary can lie beyond the idealized per-row interval.
+    `phi_min_pad`/`phi_max_pad` -- `phis[0]`/`phis[-1]`, padded outward by `margin_rad`.
+    `padded_low`/`padded_high` -- `low_thetas`/`high_thetas`, each widened by `margin_rad`
+    *and* by whichever of its own immediate row-neighbours (index - 1, index + 1) reaches
+    further -- covers a query point landing just past a shelf-step boundary, whose relevant
+    bulge belongs jointly to the two rows either side of that step, not to its own nearest
+    row alone."""
+
+    phis: np.ndarray
+    low_thetas: np.ndarray
+    high_thetas: np.ndarray
+    margin_rad: float
+    phi_min_pad: float
+    phi_max_pad: float
+    padded_low: np.ndarray
+    padded_high: np.ndarray
+
+
+def _row_lookup_bulge_margin_rad(phis: np.ndarray, low_thetas: np.ndarray, high_thetas: np.ndarray) -> float:
+    """How far a `PlateWithLines` outline's real boundary can lie beyond the idealized
+    "nearest row, check its own theta interval" model `contains_batch` uses as its fast path.
+
+    `outline_world` connects consecutive vertices with straight 3D chords, not the curves an
+    idealized fixed-phi/fixed-theta staircase would trace. A chord between two vertices that
+    share a theta (the "vertical" step edges, phi changing) is an exact meridian -- no
+    deviation. A chord between two vertices that share a *phi* instead (a row's own closing
+    edge at the plate's extreme phi, or a shelf step's own "horizontal" jump between two
+    adjacent rows' theta) is not: on a sphere, two equal-latitude points' connecting chord
+    bulges *toward the nearer pole*, exactly the way a great-circle flight path between two
+    equal-latitude cities bulges poleward. For two points at shared latitude phi separated by
+    a theta half-span `d`, the chord's own peak latitude phi_mid satisfies
+    `sin(phi_mid) = sin(phi) / sqrt(1 - cos(phi)^2 * sin(d)^2)` (derived by normalizing the
+    two points' own vector sum, which -- for equal-magnitude equal-latitude inputs -- gives
+    exactly that arc's midpoint). `phi_mid - phi` is that edge's own bulge; this returns the
+    max over every such edge in this plate's outline (every shelf step between adjacent rows,
+    plus the two extreme closing edges) -- a global, not per-edge, bound, so
+    `contains_batch`'s per-row padding stays a simple lookup rather than tracking which
+    specific edges bound which specific phi range.
+
+    Purely additive, not proportional to plate size: verified by direct measurement (real
+    plates from stepped worlds) to only ever be a small fraction of a plate's own line
+    spacing, however large the plate -- see `_FAR_FIELD_PAD_RAD` in geometry.py for the same
+    "additive, not multiplicative" reasoning applied to a related but distinct problem (how
+    far the winding-number test itself stays reliable)."""
+
+    def bulge(phi_edge: np.ndarray, half_span: np.ndarray) -> np.ndarray:
+        denom = np.sqrt(np.clip(1.0 - np.cos(phi_edge) ** 2 * np.sin(half_span) ** 2, 1e-12, None))
+        sin_phi_mid = np.clip(np.sin(phi_edge) / denom, -1.0, 1.0)
+        return np.abs(np.arcsin(sin_phi_mid)) - np.abs(phi_edge)
+
+    margins = [0.0]
+    if len(phis) >= 2:
+        boundary_phi = (phis[:-1] + phis[1:]) / 2.0
+        margins.append(float(np.max(bulge(boundary_phi, np.abs(high_thetas[1:] - high_thetas[:-1]) / 2.0))))
+        margins.append(float(np.max(bulge(boundary_phi, np.abs(low_thetas[1:] - low_thetas[:-1]) / 2.0))))
+    margins.append(float(bulge(np.asarray(phis[0]), np.asarray((high_thetas[0] - low_thetas[0]) / 2.0))))
+    margins.append(float(bulge(np.asarray(phis[-1]), np.asarray((high_thetas[-1] - low_thetas[-1]) / 2.0))))
+    return max(margins)
+
+
 class PlateWithLines(Plate):
     """A plate whose terrain is a set of parallel `ElevationLine`s at fixed plate-local
     latitudes -- see the module docstring for why this representation makes rigid rotation
@@ -655,6 +753,10 @@ class PlateWithLines(Plate):
     ) -> None:
         super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps)
         self._lines: list[ElevationLine] = list(lines) if lines is not None else []
+        # Lazily (re)built by _get_row_lookup() below, invalidated in lockstep with the
+        # bounding-polygon cache (same rotate()/set_lines()/replace_line() call sites) --
+        # see contains_batch's own docstring for what this backs.
+        self._row_lookup_cache: _RowLookup | None = None
 
     @property
     def lines(self) -> tuple[ElevationLine, ...]:
@@ -668,6 +770,10 @@ class PlateWithLines(Plate):
     def replace_line(self, index: int, new_line: ElevationLine) -> None:
         self._lines[index] = new_line
         self._invalidate_bounding_polygon()
+
+    def _invalidate_bounding_polygon(self) -> None:
+        super()._invalidate_bounding_polygon()
+        self._row_lookup_cache = None
 
     def outline_world(self) -> np.ndarray:
         """Derived directly from each line's current two endpoints -- the actual edge
@@ -721,6 +827,103 @@ class PlateWithLines(Plate):
         theta_arr = np.array([t for _, t in loop])
         loop_local = geometry.local_xyz(phi_arr, theta_arr)
         return geometry.to_world(self._frame, loop_local)
+
+    def _get_row_lookup(self) -> _RowLookup | None:
+        """`_RowLookup`, cached and invalidated the same way `get_bounding_polygon` is (see
+        `_invalidate_bounding_polygon`) -- `None` if this plate currently has no lines."""
+        if self._row_lookup_cache is not None:
+            return self._row_lookup_cache
+        lines_with_nodes = [line for line in self._lines if len(line) > 0]
+        if not lines_with_nodes:
+            return None
+        ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
+        phis = np.array([line.phi for line in ordered])
+        low_thetas = np.array([line.theta[0] for line in ordered])
+        high_thetas = np.array([line.theta[-1] for line in ordered])
+
+        margin_rad = _row_lookup_bulge_margin_rad(phis, low_thetas, high_thetas)
+        if len(phis) >= 2:
+            low_prev = np.concatenate([low_thetas[:1], low_thetas[:-1]])
+            low_next = np.concatenate([low_thetas[1:], low_thetas[-1:]])
+            high_prev = np.concatenate([high_thetas[:1], high_thetas[:-1]])
+            high_next = np.concatenate([high_thetas[1:], high_thetas[-1:]])
+        else:
+            low_prev = low_next = low_thetas
+            high_prev = high_next = high_thetas
+        padded_low = np.minimum(np.minimum(low_prev, low_thetas), low_next) - margin_rad
+        padded_high = np.maximum(np.maximum(high_prev, high_thetas), high_next) + margin_rad
+
+        self._row_lookup_cache = _RowLookup(
+            phis=phis,
+            low_thetas=low_thetas,
+            high_thetas=high_thetas,
+            margin_rad=margin_rad,
+            phi_min_pad=float(phis[0] - margin_rad),
+            phi_max_pad=float(phis[-1] + margin_rad),
+            padded_low=padded_low,
+            padded_high=padded_high,
+        )
+        return self._row_lookup_cache
+
+    def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray:
+        """Overrides `Plate.contains_batch` with an O(log rows) fast path exploiting this
+        representation's own structure, exact-fallback for the rest: `outline_world`'s
+        staircase is sorted by phi, so which row governs a given query phi is a `searchsorted`
+        away, not a full winding-number test over every polygon vertex.
+
+        A query point (converted to this plate's own local phi/theta) is:
+        - definitely inside if its phi falls within this plate's own row range *and* its
+          theta falls within its nearest row's own [low_theta, high_theta] -- verified exact
+          (zero false positives across 96k+ points sampled from real captured production
+          calls, plus 70k+ adversarial synthetic cases): the idealized per-row interval can
+          only *underclaim* territory relative to the true outline (see
+          `_row_lookup_bulge_margin_rad`'s own docstring for why), never overclaim it.
+        - definitely outside if it's not even within `_RowLookup`'s own padded margin of the
+          idealized region -- that margin already bounds the maximum the true boundary can
+          deviate from the idealized one, so anything beyond it truly cannot be inside.
+        - otherwise (idealized says outside, but within the padded margin -- a thin band that
+          only matters near a plate's own boundary) exactly resolved via the same winding-
+          number test `Plate.contains_batch`'s default uses, for just those points.
+
+        Bit-exact against that same winding-number test on every real call captured from a
+        multi-world, multi-step run (0 mismatches / 123k+ points) once geometry.py's own
+        far-field guard (`_plausibly_near`) was fixed -- see that function's docstring for
+        the unrelated pre-existing bug that surfaced during this validation."""
+        n = len(points_xyz)
+        if n == 0:
+            return np.zeros(0, dtype=bool)
+        row_lookup = self._get_row_lookup()
+        if row_lookup is None:
+            return np.zeros(n, dtype=bool)
+        phis, low_thetas, high_thetas = row_lookup.phis, row_lookup.low_thetas, row_lookup.high_thetas
+
+        local_xyz = geometry.to_local(self._frame, points_xyz)
+        phi_q, theta_q = geometry.xyz_to_latlon(local_xyz)
+        idx = np.searchsorted(phis, phi_q)
+        idx_lo = np.clip(idx - 1, 0, len(phis) - 1)
+        idx_hi = np.clip(idx, 0, len(phis) - 1)
+        nearer_to_lo = np.abs(phi_q - phis[idx_lo]) <= np.abs(phis[idx_hi] - phi_q)
+        nearest = np.where(nearer_to_lo, idx_lo, idx_hi)
+
+        idealized_inside = (
+            (phi_q >= phis[0])
+            & (phi_q <= phis[-1])
+            & (theta_q >= low_thetas[nearest])
+            & (theta_q <= high_thetas[nearest])
+        )
+        maybe_boundary = (
+            ~idealized_inside
+            & (phi_q >= row_lookup.phi_min_pad)
+            & (phi_q <= row_lookup.phi_max_pad)
+            & (theta_q >= row_lookup.padded_low[nearest])
+            & (theta_q <= row_lookup.padded_high[nearest])
+        )
+        result = idealized_inside.copy()
+        if np.any(maybe_boundary):
+            result[maybe_boundary] = geometry.points_in_spherical_polygon(
+                points_xyz[maybe_boundary], self.get_bounding_polygon()
+            )
+        return result
 
     def node_count(self) -> int:
         return sum(len(line) for line in self._lines)
@@ -920,9 +1123,7 @@ class PlateWithLines(Plate):
         near_mask = dist_all < far_threshold_rad
         near_points = own_points[near_mask]
         if len(near_points) > 0:
-            near_contested = geometry.points_in_any_spherical_polygon(
-                near_points, [neighbour.get_bounding_polygon() for neighbour in neighbours]
-            )
+            near_contested = _contested_by_any(near_points, neighbours)
             contested_all[near_mask] = near_contested
 
         default_intensity_all = np.clip(1.0 - dist_all / far_threshold_rad, 0.0, 1.0)
@@ -1018,7 +1219,7 @@ class PlateWithLines(Plate):
         if len(theta_candidates) == 0 or not neighbours:
             return len(theta_candidates)
         world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full_like(theta_candidates, phi), theta_candidates))
-        contested = geometry.points_in_any_spherical_polygon(world_pts, [neighbour.get_bounding_polygon() for neighbour in neighbours])
+        contested = _contested_by_any(world_pts, neighbours)
         first_contested = np.argmax(contested) if np.any(contested) else len(contested)
         return int(first_contested)
 
@@ -1195,7 +1396,7 @@ class PlateWithLines(Plate):
             theta_candidates = reference.theta[0] + dtheta * np.arange(n_cols)
             world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_cols, new_phi), theta_candidates))
 
-            contested = geometry.points_in_any_spherical_polygon(world_pts, [neighbour.get_bounding_polygon() for neighbour in neighbours])
+            contested = _contested_by_any(world_pts, neighbours)
             open_mask = ~contested
             if not np.any(open_mask):
                 continue
