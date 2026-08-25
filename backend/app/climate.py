@@ -825,11 +825,31 @@ LAKE_EVAPORATION_REFERENCE_DEPTH_M = 20.0
 RIVER_EVAPORATION_CEILING = 0.15
 RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
 
-# Vegetation transpiration: VEGETATION_TRANSPIRATION_MAX is a Tropical-Rainforest-strength
-# source (see VEGETATION_TRANSPIRATION_BY_BIOME below, index-aligned with
-# biomes.BIOME_NAMES), picked below MAX_EVAPORATION_CEILING's own scale -- transpiration
-# meaningfully thickens local humidity but shouldn't on its own out-evaporate the open ocean.
-VEGETATION_TRANSPIRATION_MAX = 0.6
+# Vegetation transpiration: a *recycling* term, not a manufactured one -- it can only return
+# some fraction of the moisture that actually fell as rain *last step* at that same cell
+# (`prev.precipitation_mm`, converted back to humidity units), scaled by
+# VEGETATION_TRANSPIRATION_BY_BIOME below (index-aligned with biomes.BIOME_NAMES).
+# VEGETATION_RECYCLING_FRACTION (at the strongest biome weight, 1.0, Tropical Rainforest) is
+# the ceiling on that fraction -- real Amazon-basin studies put regional transpiration-recycled
+# rainfall at roughly a quarter to a half; 0.3 sits in that range, tuned down from an initial
+# 0.35 once that value's own long-run equilibrium (confirmed by stepping a world 60 turns) came
+# out to a land precipitation share of ~25%, a bit above the ~20-23% real-Earth target this
+# module's humidity/precipitation split is meant to land near (see compute_precipitation).
+# This anchors transpiration to a real, finite quantity the same way lake/river evaporation is
+# already anchored to
+# lake_depth/channel_depth, rather than the flat per-biome constant this replaced
+# (`VEGETATION_TRANSPIRATION_MAX`, see git history), which had no reservoir behind it at all:
+# more rain reclassified a cell as lusher, which unconditionally added the same fixed source
+# regardless of how much rain actually fell, regardless of how many steps had already elapsed
+# -- confirmed directly as a genuine multi-step runaway, not just the single-step spatial one
+# the MAX_EVAPORATION_CEILING cap below already guards against: mean land precipitation still
+# climbing steadily after 10 stepped turns (about 55mm on step 1, over 1500mm by step 10, with
+# more than half of all land area reclassified "lush" by then), eventually overtaking the
+# ocean's own precipitation total even though ocean humidity itself never grows step to step.
+# Making the source strictly proportional to last step's *own* local rainfall breaks that loop:
+# a cell can amplify what actually fell there, never conjure more out of nothing turn after
+# turn, so the recurrence has a real fixed point instead of an open-ended climb.
+VEGETATION_RECYCLING_FRACTION = 0.3
 VEGETATION_TRANSPIRATION_BY_BIOME = np.array(
     [
         0.0,   # Ocean
@@ -878,7 +898,8 @@ def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is
     prev_temperature_c = np.where(prev.is_ocean, prev.ocean_temperature_c, prev.air_temperature_c)
     flat_slope = np.zeros_like(elevation_m)
     biome_id = biomes.classify_biomes(prev_temperature_c, prev.precipitation_mm, elevation_m, flat_slope, is_ocean, world.sea_level_m)
-    return VEGETATION_TRANSPIRATION_BY_BIOME[biome_id] * VEGETATION_TRANSPIRATION_MAX
+    prev_precip_humidity_equiv = prev.precipitation_mm / PRECIP_HUMIDITY_COEFFICIENT_MM
+    return VEGETATION_TRANSPIRATION_BY_BIOME[biome_id] * VEGETATION_RECYCLING_FRACTION * prev_precip_humidity_equiv
 
 
 def _land_moisture_source(

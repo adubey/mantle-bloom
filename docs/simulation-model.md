@@ -1043,6 +1043,25 @@ first call (`world.climate_cache is None`), self-correcting after one step. A fr
 evaporation -- but not transpiration, already near zero in any biome cold enough to freeze --
 is zeroed there.
 
+**Transpiration recycles last step's own rainfall -- it can't manufacture moisture from
+nothing.** `_vegetation_transpiration_source` scales `VEGETATION_TRANSPIRATION_BY_BIOME`'s
+per-biome weight by `VEGETATION_RECYCLING_FRACTION` (0.3, in line with real Amazon-basin
+transpiration-recycling estimates) *and* by that same cell's own `prev.precipitation_mm` from
+`World.climate_cache` (converted back to humidity units) -- a fraction of what actually fell
+there last turn, not a flat per-biome constant. An earlier version used a fixed
+`VEGETATION_TRANSPIRATION_MAX` source keyed only on biome type, with no real reservoir behind
+it (unlike lake/river evaporation, anchored to the genuinely finite `lake_depth`/
+`channel_depth` below) -- confirmed directly as a real multi-step runaway distinct from the
+single-step spatial one `MAX_EVAPORATION_CEILING` already guards against: stepping a world
+repeatedly, mean land precipitation climbed roughly linearly turn after turn (about 55mm on
+step 1, past 1500mm by step 10, with over half of all land reclassified "lush" by then) with
+no equilibrium, eventually overtaking the ocean's own precipitation total even though ocean
+humidity itself never grows step to step. Tying the source to a fraction of real, already-
+fallen rain gives the land/ocean split a genuine fixed point instead: stepping a world 60-80
+turns past generation now settles at roughly 78-79% of precipitation over ocean and 21-22%
+over land, matching real Earth's own roughly 70-80%/20-23% split, rather than climbing without
+bound toward a land-dominated one.
+
 This also decreases the standing water it comes from, per the same request that asked for the
 recycling effect in the first place: lake evaporation already shrinks `lake_depth` (lakes.py's
 own water balance, a separate, unrelated mechanism computing the same physical process); river
