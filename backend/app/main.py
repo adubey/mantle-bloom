@@ -4,6 +4,7 @@ no persistence, one world at a time, matching the "elevation view only" v1 scope
 
 from __future__ import annotations
 
+import os
 import threading
 
 import numpy as np
@@ -26,9 +27,13 @@ MAX_ANIMATION_FRAMES = 60
 
 app = FastAPI(title="mantle-bloom")
 
+# FRONTEND_PORT lets bin/restart.sh --frontend-port point CORS at a non-default frontend
+# port; 5174 stays allowed alongside it since that's Vite dev's own fallback when its primary
+# port is taken.
+_frontend_port = os.environ.get("FRONTEND_PORT", "5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:5174"],
+    allow_origins=list({f"http://localhost:{_frontend_port}", "http://localhost:5174"}),
     allow_methods=["*"],
     allow_headers=["*"],
 )

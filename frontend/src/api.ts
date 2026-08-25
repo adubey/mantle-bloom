@@ -1,4 +1,6 @@
-export const API_BASE = "http://localhost:8000";
+// Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
+// non-default backend port stays wired up correctly instead of silently pointing at :8000.
+export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
 export type Projection = "behrmann" | "eckert4";
 
