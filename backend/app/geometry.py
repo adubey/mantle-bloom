@@ -203,14 +203,17 @@ def point_in_spherical_polygon(point_xyz: np.ndarray, polygon_xyz: np.ndarray) -
     return abs(float(np.sum(diffs))) > np.pi
 
 
-def _local_tangent_frame_batch(points_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def local_tangent_frame_batch(points_xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Batched `local_tangent_basis`: (east, north) for every point in `points_xyz` at once
     -- the part of `points_in_spherical_polygon` that depends only on the query points, not
     on which polygon they're being tested against. Factored out so a caller checking the
     same points against several polygons in a row (every `deform`-adjacent boundary-growth
     check in plates.py loops its own near-boundary nodes over each neighbour in turn) can
     build this once and reuse it, rather than paying for it again on every polygon -- see
-    `points_in_any_spherical_polygon`."""
+    `points_in_any_spherical_polygon`. Public (not module-private), same reasoning as
+    `climate_grid_indices`'s own docstring: erosion.py's wind-transported deposition also
+    needs a per-node (east, north) tangent basis, to resolve each node's own (wind_u,
+    wind_v) into a real downwind direction on the sphere."""
     up = np.array([0.0, 0.0, 1.0])
     north = up[None, :] - (points_xyz @ up)[:, None] * points_xyz
     norms = np.linalg.norm(north, axis=-1)
@@ -228,12 +231,12 @@ def _local_tangent_frame_batch(points_xyz: np.ndarray) -> tuple[np.ndarray, np.n
 def _winding_contains(points_xyz: np.ndarray, polygon_xyz: np.ndarray, east: np.ndarray, north: np.ndarray) -> np.ndarray:
     """The polygon-specific half of `points_in_spherical_polygon`'s winding-number test,
     given `points_xyz`'s own local tangent frame (`east`/`north`, see
-    `_local_tangent_frame_batch`) already built."""
+    `local_tangent_frame_batch`) already built."""
     # Each polygon vertex only needs its tangent-plane *direction* at every query point,
     # i.e. dot(polygon_vertex - (polygon_vertex . point) * point, east_or_north). The
     # subtracted radial term is a multiple of `point`, and east/north are themselves tangent
     # vectors at `point` (perpendicular to it by construction, see
-    # `_local_tangent_frame_batch`), so that term always dots to zero -- x/y reduce to a
+    # `local_tangent_frame_batch`), so that term always dots to zero -- x/y reduce to a
     # plain (n_points, 3) @ (3, n_vertices) matmul against polygon_xyz directly, skipping the
     # (n_points, n_vertices, 3) intermediate entirely.
     x = east @ polygon_xyz.T  # (n_points, n_vertices)
@@ -312,7 +315,7 @@ def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray)
     candidate = _plausibly_near(points_xyz, polygon_xyz)
     if not np.any(candidate):
         return result
-    east, north = _local_tangent_frame_batch(points_xyz[candidate])
+    east, north = local_tangent_frame_batch(points_xyz[candidate])
     result[candidate] = _winding_contains(points_xyz[candidate], polygon_xyz, east, north)
     return result
 
@@ -329,7 +332,7 @@ def points_in_any_spherical_polygon(points_xyz: np.ndarray, polygons: list[np.nd
     contested = np.zeros(n, dtype=bool)
     if n == 0 or not polygons:
         return contested
-    east, north = _local_tangent_frame_batch(points_xyz)
+    east, north = local_tangent_frame_batch(points_xyz)
     for polygon_xyz in polygons:
         polygon_xyz = np.asarray(polygon_xyz, dtype=float)
         if len(polygon_xyz) < 3:

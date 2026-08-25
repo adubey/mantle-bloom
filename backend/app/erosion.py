@@ -164,6 +164,49 @@ GLACIER_EROSION_MAX_FACTOR = 2.0
 # in this codebase was.
 GLACIER_FLATTEN_RATE_PER_MYR = 0.2
 
+# Deposition, not just erosion -- eroded material has to go somewhere, and "wherever
+# route_downstream's single water-flow graph happens to carry it" is only right for rain/
+# river erosion. Three more pathways, alongside the existing river/runoff floodplain
+# deposition above (DEPOSITION_*, already shared by every source through that one routed
+# pool): a glacier's own debris load mostly drops close to where the ice picked it up
+# (subglacial till), not carried far by meltwater; wind-eroded material mostly resettles a
+# short real distance downwind (dust/sand -- genuinely different physics from water-driven
+# transport, so it needs its own transport step, not the water flow_target graph); and
+# material that reaches the ocean spreads along nearby shallow coast as beach/nearshore
+# sediment instead of piling entirely onto the single river-mouth node route_downstream
+# happened to route it to. All three conserve mass exactly, same as route_downstream's own
+# retain_fraction -- nothing here is lost, only moved (deep-ocean beach spreading is the one
+# partial exception, see BEACH_SHELF_DEPTH_M below, and even that falls back to full local
+# deposit rather than vanishing when no shallow water is in range).
+
+# A glacier carries its load only as far as the ice itself moves before melting or shearing
+# it out -- most settles right back near where it was scoured, unlike meltwater-carried fines
+# which do travel with the routed pool (the GLACIER_TILL_FRACTION *complement*, still folded
+# into the ordinary water-routed pool below). Starting point, not a derived constant.
+GLACIER_TILL_FRACTION = 0.5
+
+# Aeolian transport: wind-eroded material moves with the wind, not downhill with water, so it
+# needs its own single-hop transport rather than joining route_downstream's flow_target graph.
+# WIND_DEPOSITION_FRACTION is how much of weathering's own erosion counts as this genuinely
+# wind-carried fraction (the complement stays in the ordinary water-routed pool -- weathered
+# material that rain then washes downhill); WIND_TRANSPORT_DISTANCE_KM is how far downwind it
+# typically resettles before the next step's wind moves it again. Both starting points.
+WIND_DEPOSITION_FRACTION = 0.4
+WIND_TRANSPORT_DISTANCE_KM = 40.0
+WIND_TRANSPORT_DISTANCE_RAD = WIND_TRANSPORT_DISTANCE_KM / PLANET_RADIUS_KM
+
+# Marine/beach sediment: BEACH_DEPOSITION_LOCAL_FRACTION of whatever reaches the ocean at a
+# given node stays right there (the river mouth/delta itself); the rest spreads across nearby
+# shallow water (elevation above BEACH_SHELF_DEPTH_M -- a real continental-shelf-like depth,
+# not the open abyssal seafloor) within BEACH_DEPOSITION_RANGE_KM, inverse-distance weighted.
+# Deep-water coastlines with no shallow neighbour in range keep the full amount locally rather
+# than losing it -- there's nowhere shallower to spread it to, not a reason to destroy mass.
+BEACH_DEPOSITION_LOCAL_FRACTION = 0.4
+BEACH_DEPOSITION_RANGE_KM = 150.0
+BEACH_DEPOSITION_RANGE_RAD = BEACH_DEPOSITION_RANGE_KM / PLANET_RADIUS_KM
+BEACH_SHELF_DEPTH_M = -200.0
+BEACH_SPREAD_NEIGHBOR_COUNT = 8
+
 
 @dataclass
 class ErosionResult:
@@ -179,7 +222,12 @@ class ErosionResult:
     World.hydrology_cache directly, including its own sea_level_m-aware is_ocean rather than
     this module's own internal elevation<=0.0 shorthand): both come from an identical
     per-plate gather over the same (unreordered) world.plates within the same step_world
-    call."""
+    call.
+
+    `sediment_deposited` is every deposition pathway's combined total at each node -- ordinary
+    river/runoff floodplain deposit, glacier till, wind-blown resettling, and beach/nearshore
+    spreading all summed together (see apply_erosion's own comment for how they're split and
+    redistributed) -- not just the water-routed share alone."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -275,6 +323,84 @@ def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: 
     return (local_mean - hydro.elevation) * relax
 
 
+def _route_wind_deposit(points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, source_amount: np.ndarray) -> np.ndarray:
+    """Single-hop aeolian transport: every node with `source_amount > 0` moves that amount to
+    whichever real node sits nearest a point WIND_TRANSPORT_DISTANCE_RAD further downwind on
+    the sphere (the exact small-circle geodesic step `point*cos(d) + tangent*sin(d)`, `tangent`
+    resolved from (wind_u, wind_v) via `geometry.local_tangent_frame_batch`'s own (east, north)
+    convention -- the same convention climate.py's wind field itself uses). A node with
+    negligible wind (`speed` near 0) has no real direction to carry it, so it just redeposits
+    in place. Exactly conserves `source_amount`'s total -- every unit that leaves a source node
+    lands on exactly one target node, via `np.add.at`."""
+    n = len(points)
+    result = np.zeros(n)
+    active = source_amount > 0
+    if not np.any(active):
+        return result
+
+    east, north = geometry.local_tangent_frame_batch(points)
+    speed = np.hypot(wind_u, wind_v)
+    has_wind = speed > 1e-9
+    safe_speed = np.where(has_wind, speed, 1.0)
+    direction = east * np.where(has_wind, wind_u / safe_speed, 0.0)[:, None] + north * np.where(has_wind, wind_v / safe_speed, 0.0)[:, None]
+
+    target_points = np.where(
+        has_wind[:, None],
+        points * np.cos(WIND_TRANSPORT_DISTANCE_RAD) + direction * np.sin(WIND_TRANSPORT_DISTANCE_RAD),
+        points,
+    )
+
+    tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
+    active_idx = np.nonzero(active)[0]
+    _, nearest = tree.query(target_points[active_idx], k=1, workers=query_workers(len(active_idx)))
+    np.add.at(result, nearest, source_amount[active_idx])
+    return result
+
+
+def _spread_beach_sediment(points: np.ndarray, elevation: np.ndarray, is_ocean: np.ndarray, ocean_terminal_deposit: np.ndarray) -> np.ndarray:
+    """Redistributes whatever `route_downstream` piled onto a single ocean node (the river
+    mouth it happened to route to) across nearby shallow water instead -- BEACH_DEPOSITION_
+    LOCAL_FRACTION stays right at that node (the delta/mouth itself), the rest spreads,
+    inverse-distance weighted, across up to BEACH_SPREAD_NEIGHBOR_COUNT of the nearest shallow
+    (shallower than BEACH_SHELF_DEPTH_M) ocean nodes within BEACH_DEPOSITION_RANGE_RAD. A
+    source node with no shallow neighbour in range (an open, deep-water coastline) keeps its
+    full amount locally rather than losing the difference -- see module comment. Exactly
+    conserves `ocean_terminal_deposit`'s total."""
+    n = len(points)
+    result = np.zeros(n)
+    source_idx = np.nonzero(ocean_terminal_deposit > 0)[0]
+    if len(source_idx) == 0:
+        return result
+
+    shallow_idx = np.nonzero(is_ocean & (elevation > BEACH_SHELF_DEPTH_M))[0]
+    if len(shallow_idx) == 0:
+        result[source_idx] = ocean_terminal_deposit[source_idx]
+        return result
+
+    tree = cKDTree(points[shallow_idx], balanced_tree=False, compact_nodes=False)
+    k = min(BEACH_SPREAD_NEIGHBOR_COUNT, len(shallow_idx))
+    dist, nearby = tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
+    if k == 1:
+        dist = dist[:, None]
+        nearby = nearby[:, None]
+
+    within_range = dist <= BEACH_DEPOSITION_RANGE_RAD
+    weight = np.where(within_range, 1.0 / np.maximum(dist, 1e-9), 0.0)
+    weight_sum = weight.sum(axis=1)
+    has_shallow_neighbour = weight_sum > 0
+
+    total = ocean_terminal_deposit[source_idx]
+    local_share = np.where(has_shallow_neighbour, total * BEACH_DEPOSITION_LOCAL_FRACTION, total)
+    spread_share = total - local_share
+    result[source_idx] += local_share
+
+    normalized_weight = np.divide(weight, weight_sum[:, None], out=np.zeros_like(weight), where=weight_sum[:, None] > 0)
+    contribution = normalized_weight * spread_share[:, None]
+    target_idx = shallow_idx[nearby]
+    np.add.at(result, target_idx.ravel(), contribution.ravel())
+    return result
+
+
 def apply_erosion(
     world: "World",
     years: float,
@@ -327,7 +453,9 @@ def apply_erosion(
     height, width = fields.precipitation_mm.shape
     row, col = climate_grid_indices(points, height, width)
     precipitation_mm = fields.precipitation_mm[row, col]
-    wind_speed = np.hypot(fields.wind_u, fields.wind_v)[row, col]
+    wind_u_at_nodes = fields.wind_u[row, col]
+    wind_v_at_nodes = fields.wind_v[row, col]
+    wind_speed = np.hypot(wind_u_at_nodes, wind_v_at_nodes)
     humidity = fields.humidity[row, col]
     is_ocean_node = elevation <= 0.0
     # The same real temperature a node actually experiences that render_image.py's own
@@ -374,6 +502,23 @@ def apply_erosion(
     applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
     applied_river = river * applied_scale
 
+    # Split off the two sources with genuinely non-water transport (see module comment above
+    # GLACIER_TILL_FRACTION/WIND_DEPOSITION_FRACTION): a glacier's own till settles close by
+    # (glacier_till, deposited without transport -- same node), and wind-eroded material rides
+    # the wind rather than water (wind_redeposit_source, carried by _route_wind_deposit below).
+    # Both fractions are taken from the *applied* (post-neighbor-drop-cap) amount, same
+    # applied_scale reasoning as applied_river above, so the split still exactly partitions
+    # erosion_amount. The remainder of each -- what a glacier's meltwater actually carries off,
+    # and what rain washes off a weathered slope -- stays in the ordinary water-routed pool,
+    # unchanged from before this addition.
+    applied_weathering = weathering * applied_scale
+    applied_glacier = glacier * applied_scale
+    glacier_till = applied_glacier * GLACIER_TILL_FRACTION
+    glacier_routed = applied_glacier - glacier_till
+    wind_redeposit_source = applied_weathering * WIND_DEPOSITION_FRACTION
+    weathering_routed = applied_weathering - wind_redeposit_source
+    water_routed_amount = (rain * applied_scale) + applied_river + weathering_routed + glacier_routed
+
     # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
     # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
     # of the material passing through settles right there instead of continuing downstream
@@ -381,11 +526,25 @@ def apply_erosion(
     river_speed = hydrology.compute_river_speed(slope, hydro.flow_accum)
     is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
     retain_fraction = np.where(is_depositing, DEPOSITION_FRACTION, 0.0)
-    _, sediment_deposited = hydrology.route_downstream(elevation, is_ocean_node, hydro.flow_target, erosion_amount, retain_fraction=retain_fraction)
+    _, water_routed_deposit = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.flow_target, water_routed_amount, retain_fraction=retain_fraction
+    )
+
+    # Marine/beach sediment: whatever water_routed_deposit above piled onto a single ocean
+    # node (wherever that node's flow path happened to terminate) spreads across nearby
+    # shallow coast instead -- see _spread_beach_sediment's own docstring. Land-side deposits
+    # (floodplain retention, dead-end-basin sinks) are untouched.
+    ocean_terminal_deposit = np.where(is_ocean_node, water_routed_deposit, 0.0)
+    beach_deposit = _spread_beach_sediment(points, elevation, is_ocean_node, ocean_terminal_deposit)
+    sediment_deposited = np.where(is_ocean_node, beach_deposit, water_routed_deposit)
+
+    wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source)
+
+    total_deposited = sediment_deposited + glacier_till + wind_deposit
 
     flatten_delta = _flatten(hydro, ice_factor, years)
 
-    new_elevation = np.clip(elevation - erosion_amount + sediment_deposited + flatten_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    new_elevation = np.clip(elevation - erosion_amount + total_deposited + flatten_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
@@ -418,7 +577,7 @@ def apply_erosion(
         rain=rain,
         river=river,
         weathering=weathering,
-        sediment_deposited=sediment_deposited,
+        sediment_deposited=total_deposited,
         temperature_c=temperature,
         precipitation_mm=precipitation_mm,
     )
