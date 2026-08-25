@@ -204,7 +204,7 @@ def _sample_elevation_and_crust(
     all_lake = plates.collect_all_lake_depth(plates_in_order)
     all_channel = plates.collect_all_channel_depth(plates_in_order)
     tree = cKDTree(all_points)
-    _, idx = tree.query(flat_xyz)
+    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     elevation = all_elev[idx].reshape(height, width)
     is_ocean = elevation <= world.sea_level_m
     lake_depth = all_lake[idx].reshape(height, width)
@@ -375,7 +375,8 @@ def _nearest_ocean_gather(is_ocean: np.ndarray, world_xyz: np.ndarray, field: np
     ocean_xyz = world_xyz.reshape(-1, 3)[flat_ocean]
     ocean_values = field.reshape(-1)[flat_ocean]
     tree = cKDTree(ocean_xyz)
-    chord_dist, idx = tree.query(world_xyz.reshape(-1, 3))
+    query_points = world_xyz.reshape(-1, 3)
+    chord_dist, idx = tree.query(query_points, workers=plates.query_workers(len(query_points)))
     # Chord distance -> great-circle angular distance (points are unit vectors).
     angular_dist = 2.0 * np.arcsin(np.clip(chord_dist / 2.0, 0.0, 1.0))
     return angular_dist.reshape(height, width), ocean_values[idx].reshape(height, width)
