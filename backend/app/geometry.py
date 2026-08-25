@@ -229,12 +229,15 @@ def _winding_contains(points_xyz: np.ndarray, polygon_xyz: np.ndarray, east: np.
     """The polygon-specific half of `points_in_spherical_polygon`'s winding-number test,
     given `points_xyz`'s own local tangent frame (`east`/`north`, see
     `_local_tangent_frame_batch`) already built."""
-    # tangent: (n_points, n_vertices, 3) -- every polygon vertex projected into each query
-    # point's own local tangent plane, all at once.
-    dot_vp = polygon_xyz @ points_xyz.T  # (n_vertices, n_points)
-    tangent = polygon_xyz[None, :, :] - dot_vp.T[:, :, None] * points_xyz[:, None, :]
-    east_comp = np.einsum("nmc,nc->nm", tangent, east)
-    north_comp = np.einsum("nmc,nc->nm", tangent, north)
+    # Each bearing only needs polygon_xyz's own tangent-plane *direction* at every query
+    # point, i.e. dot(polygon_vertex - (polygon_vertex . point) * point, east_or_north). The
+    # subtracted radial term is a multiple of `point`, and east/north are themselves tangent
+    # vectors at `point` (perpendicular to it by construction, see
+    # `_local_tangent_frame_batch`), so that term always dots to zero -- east_comp/north_comp
+    # reduce to a plain (n_points, 3) @ (3, n_vertices) matmul against polygon_xyz directly,
+    # skipping the (n_points, n_vertices, 3) intermediate entirely.
+    east_comp = east @ polygon_xyz.T  # (n_points, n_vertices)
+    north_comp = north @ polygon_xyz.T
     bearings = np.arctan2(north_comp, east_comp)  # (n_points, n_vertices)
     closed = np.concatenate([bearings, bearings[:, :1]], axis=1)
     diffs = np.diff(closed, axis=1)
