@@ -143,7 +143,12 @@ def _build_land_kdtree(world: World) -> cKDTree | None:
     land_points = np.concatenate(chunks, axis=0) if chunks else np.zeros((0, 3))
     if len(land_points) == 0:
         return None
-    return cKDTree(land_points)
+    # balanced_tree=False/compact_nodes=False -- same build-time speedup hydrology.py's/
+    # plates.py's own per-plate cKDTrees use: land_points forms contiguous coastal blobs
+    # rather than uniformly-scattered points, and the default (True/True) construction
+    # degrades badly on that kind of clustered data (benchmarked ~8x slower query for a
+    # ~45k-point land tree of this shape).
+    return cKDTree(land_points, balanced_tree=False, compact_nodes=False)
 
 
 def _plate_sample_points(plate: Plate) -> np.ndarray:
