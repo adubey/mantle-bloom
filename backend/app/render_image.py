@@ -73,7 +73,7 @@ RIVER_LINE_WIDTH_MAX_TIERS = 3
 # == climate_density == 1.0) -- see river_draw_min_flow below for how a world generated at a
 # higher elevation-point density and/or climate & biome resolution scales it up from here, not
 # a value read directly by _draw_rivers.
-RIVER_DRAW_MIN_FLOW = 10_000.0
+RIVER_DRAW_MIN_FLOW = 5_000.0
 
 
 def river_draw_min_flow(world: World) -> float:

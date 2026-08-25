@@ -277,10 +277,11 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
   }
   if (view === "combined") {
     if (label === "Ocean" || label === "Intertidal Zone") return null;
+    const iceBiomeRgb = BIOME_RGB_ENTRIES.find(([l]) => l === "Ice")![1];
     const palette: PaletteEntry[] = [
       { label: "Lake", colors: [LAKE_RENDER_RGB] },
-      { label: "Glacier (ice cover)", colors: [GLACIER_RENDER_RGB] },
-      ...BIOME_RGB_ENTRIES.filter(([l]) => l !== "Ocean" && l !== "Intertidal Zone").map(([l, rgbTuple]) => ({
+      { label: "Ice / Glacier", colors: [GLACIER_RENDER_RGB, ...shadedVariants(iceBiomeRgb, LAND_SHADE_FACTORS)] },
+      ...BIOME_RGB_ENTRIES.filter(([l]) => l !== "Ocean" && l !== "Intertidal Zone" && l !== "Ice").map(([l, rgbTuple]) => ({
         label: l,
         colors: shadedVariants(rgbTuple, LAND_SHADE_FACTORS),
       })),
@@ -357,17 +358,22 @@ export function legendFor(view: MapView): LegendSpec | null {
         // (see shadedVariants/highlightTargetFor above, mirroring backend
         // _land_shade_factor), so the swatches below stay the single reference a click can
         // target, without a separate scale implying elevation is the primary thing being
-        // shown. The biome list itself matches Biome's legend swatch-for-swatch (see
+        // shown. The biome list otherwise matches Biome's legend swatch-for-swatch (see
         // BIOME_ENTRIES) for consistency between the two views, Ocean and Intertidal Zone
         // included even though neither's own biome color is ever actually visible in Combined
         // (see highlightTargetFor's own comment) -- both always render via the elevation
-        // gradient instead.
-        title: "Combined (true color)",
+        // gradient instead. The Ice biome swatch is dropped from that list and folded into the
+        // "Ice / Glacier" swatch above instead -- render_image.py's is_glacier overlay paints
+        // over Ice-biome cells with almost the same color (GLACIER_RENDER_RGB vs. the Ice
+        // biome's own shaded rgb), so showing both as separate legend rows read as a
+        // near-duplicate; highlightTargetFor's combined palette merges their color sets under
+        // this one label to match.
+        title: "Combined",
         symbols: [
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
-          { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
-          ...BIOME_ENTRIES.map(([label, color]) => ({ kind: "square", color, label }) as LegendSymbol),
+          { kind: "square", color: GLACIER_COLOR, label: "Ice / Glacier" },
+          ...BIOME_ENTRIES.filter(([label]) => label !== "Ice").map(([label, color]) => ({ kind: "square", color, label }) as LegendSymbol),
         ],
       };
     case "resources":
