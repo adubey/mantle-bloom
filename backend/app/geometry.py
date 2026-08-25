@@ -257,6 +257,40 @@ def _winding_contains(points_xyz: np.ndarray, polygon_xyz: np.ndarray, east: np.
     return winding_number != 0
 
 
+# The winding-number test above is only reliable for a query point plausibly near the
+# polygon: for a point far enough away that the polygon could appear (from that point's own
+# tangent plane) to wrap around the horizon, the bearing-sum accumulation can spuriously read
+# as "inside" -- an antipodal-style ambiguity inherent to any bearing-sum winding test, not a
+# bug specific to this implementation, and not something the cross-product rewrite above
+# changes (it's the same winding number, computed a cheaper way). Confirmed directly:
+# sweeping a query point's theta at a fixed phi around a real ~800-vertex plate outline found
+# spurious INSIDE bands roughly 150 degrees from that plate's own real territory (which only
+# spans about -40 to 49 degrees of theta at that phi). Every real caller already only means
+# to ask about points plausibly close to the polygon (deform's near-boundary nodes, growth
+# candidates hugging a plate's own edge), so points further than this are rejected via the
+# same bounding-sphere prefilter `_plates_within` already uses elsewhere, before the winding
+# test -- unreliable that far out anyway -- ever runs. The pad below is a fixed additive
+# margin on top of the polygon's own bounding-sphere radius, not a multiple of it: measured
+# directly (sampling real plates from several stepped worlds, sweeping angular distance from
+# each plate's own bounding-sphere centroid in random directions until the winding test first
+# went spuriously True), the pathology's onset distance does *not* scale with a plate's own
+# radius -- it clusters in an absolute ~1.9-3.0 rad range regardless of plate size, so a
+# multiple of radius is unsafe for a large plate (a 2x-radius reach was still inside the
+# pathological region for the largest plate sampled) while being needlessly loose for a small
+# one. The smallest observed gap between a real plate's own radius and the pathology's onset,
+# across every plate sampled, was ~0.83 rad; 0.3 rad leaves close to a 3x safety margin below
+# that.
+_FAR_FIELD_PAD_RAD = 0.3
+
+
+def _plausibly_near(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarray:
+    """True for every point close enough to `polygon_xyz`'s own bounding sphere for the
+    winding-number test to be trustworthy -- see `_FAR_FIELD_PAD_RAD`'s own comment."""
+    centroid, radius = bounding_sphere(polygon_xyz)
+    reach = min(radius + _FAR_FIELD_PAD_RAD, np.pi - _FAR_FIELD_PAD_RAD)
+    return angular_distance(points_xyz, centroid) <= reach
+
+
 def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray) -> np.ndarray:
     """Vectorized `point_in_spherical_polygon`: same winding-number algorithm, batched over
     every point in `points_xyz` at once instead of a Python-level loop calling the scalar
@@ -272,10 +306,15 @@ def points_in_spherical_polygon(points_xyz: np.ndarray, polygon_xyz: np.ndarray)
     points_xyz = np.asarray(points_xyz, dtype=float)
     polygon_xyz = np.asarray(polygon_xyz, dtype=float)
     n = len(points_xyz)
+    result = np.zeros(n, dtype=bool)
     if len(polygon_xyz) < 3 or n == 0:
-        return np.zeros(n, dtype=bool)
-    east, north = _local_tangent_frame_batch(points_xyz)
-    return _winding_contains(points_xyz, polygon_xyz, east, north)
+        return result
+    candidate = _plausibly_near(points_xyz, polygon_xyz)
+    if not np.any(candidate):
+        return result
+    east, north = _local_tangent_frame_batch(points_xyz[candidate])
+    result[candidate] = _winding_contains(points_xyz[candidate], polygon_xyz, east, north)
+    return result
 
 
 def points_in_any_spherical_polygon(points_xyz: np.ndarray, polygons: list[np.ndarray]) -> np.ndarray:
@@ -295,7 +334,10 @@ def points_in_any_spherical_polygon(points_xyz: np.ndarray, polygons: list[np.nd
         polygon_xyz = np.asarray(polygon_xyz, dtype=float)
         if len(polygon_xyz) < 3:
             continue
-        contested |= _winding_contains(points_xyz, polygon_xyz, east, north)
+        candidate = _plausibly_near(points_xyz, polygon_xyz)
+        if not np.any(candidate):
+            continue
+        contested[candidate] |= _winding_contains(points_xyz[candidate], polygon_xyz, east[candidate], north[candidate])
         if np.all(contested):
             break
     return contested
