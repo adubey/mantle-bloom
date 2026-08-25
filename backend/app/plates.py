@@ -232,7 +232,35 @@ CONVERGENT_MOUNTAIN_RATE_M_PER_MYR = 800.0
 CONVERGENT_TRENCH_RATE_M_PER_MYR = 700.0
 DIVERGENT_RIDGE_TARGET_M = -1500.0  # new oceanic crust at a mid-ocean ridge
 DIVERGENT_RIFT_TARGET_M = -200.0  # new continental crust in a rift valley
-DIVERGENT_RELAX_RATE_PER_MYR = 0.5
+DIVERGENT_RELAX_RATE_PER_MYR = 0.15  # was 0.5 -- see the comment below
+
+# The "divergent" classification is purely geometric (uncontested and within reach of a
+# neighbour, see deform()'s own comment) -- it can't by itself tell a genuinely active,
+# still-subsiding rift apart from a long-settled passive margin that simply happens to sit
+# near a neighbour (most of a real continent's own coastline, in reality: the Atlantic
+# seaboard hasn't been actively rifting for tens of millions of years, yet still reads as
+# "uncontested and close to an oceanic neighbour" under this same geometric test every
+# turn). Confirmed directly as a real, previously-unnoticed drain -- and confirmed as two
+# separate contributors, needing both constants below to actually fix: at the old rate
+# (0.5, ~78% of the remaining gap closed per 3 Myr step), already-elevated, long-stable
+# coastline got yanked most of the way to DIVERGENT_RIFT_TARGET_M/DIVERGENT_RIDGE_TARGET_M
+# within a step or two of ever qualifying as divergent -- so fast that DIVERGENT_YOUNG_AGE_
+# MYR's own age gate (below) mostly closes the barn door after the horse has left: a plate's
+# own ongoing rotation continuously sweeps *fresh* coastline into the divergent band, so most
+# of the loss was already-done first-time hits, not repeat hits on the same settled land the
+# age gate alone can prevent. Slowing the rate itself (0.5 -> 0.15) shrinks *every* hit,
+# first time included -- the tradeoff being that genuinely active rifting/ridge spreading
+# also settles more gradually now, not just the stale-coastline case, so a fresh rift no
+# longer reaches its target in a step or two the way it used to.
+#
+# DIVERGENT_YOUNG_AGE_MYR still matters on top of the slower rate: deform() only relaxes a
+# node while ElevationLine.divergent_age_myr (Myr spent *continuously* divergent, reset to 0
+# the instant it isn't) stays under this threshold, so a margin that's stayed divergent this
+# long is treated as mature and left alone from then on, no matter how much longer it keeps
+# testing as geometrically divergent -- still needed even at the slower rate, since given
+# enough consecutive divergent steps a node would otherwise keep creeping toward the target
+# forever rather than ever actually settling.
+DIVERGENT_YOUNG_AGE_MYR = 10.0
 
 # Continental rifting stretches and thins the crust over a much wider zone than oceanic
 # ridge spreading (which keeps FAR_THRESHOLD_RAD's narrower reach, below).
@@ -1193,11 +1221,21 @@ class PlateWithLines(Plate):
 
             elevation[transform] += TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * transform_intensity[transform]
 
+            # Only relax while still "young" -- see DIVERGENT_YOUNG_AGE_MYR's own comment.
+            # divergent_age_myr itself still accumulates for every divergent node regardless
+            # (harmless once past the threshold, and it's what lets a node that stops being
+            # divergent and later becomes divergent again -- a genuinely new episode -- reset
+            # to 0 and relax again).
+            prior_age = line.divergent_age_myr
+            still_young = prior_age < DIVERGENT_YOUNG_AGE_MYR
+            relaxing = divergent & still_young
+            new_age = np.where(divergent, prior_age + years_myr, 0.0)
+
             divergent_intensity = rift_intensity if self.crust_type == "continental" else default_intensity
-            elevation[divergent] += (target - elevation[divergent]) * relax_factor * divergent_intensity[divergent]
+            elevation[relaxing] += (target - elevation[relaxing]) * relax_factor * divergent_intensity[relaxing]
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
-            updated_line = line.replace(elevation=elevation)
+            updated_line = line.replace(elevation=elevation, divergent_age_myr=new_age)
             grown_line = self._grow_or_shrink_line_for_deform(
                 updated_line,
                 dist,

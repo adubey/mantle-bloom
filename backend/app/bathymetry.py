@@ -38,10 +38,10 @@ SHELF_RANGE_KM = 200.0
 SHELF_RANGE_RAD = SHELF_RANGE_KM / PLANET_RADIUS_KM
 SHELF_TARGET_M = -100.0
 DEEP_CONTINENTAL_TARGET_M = -3000.0
-# Slower than boundary.DIVERGENT_RELAX_RATE_PER_MYR (0.5) -- this is a passive background
+# Slower than plates.DIVERGENT_RELAX_RATE_PER_MYR (0.15) -- this is a passive background
 # equilibration of already-submerged, non-actively-deforming crust, not an active tectonic
 # process, so it's given a gentler pace. A starting point, not a derived constant.
-BATHYMETRY_RELAX_RATE_PER_MYR = 0.3
+BATHYMETRY_RELAX_RATE_PER_MYR = 0.1
 
 MIN_ELEVATION_M = -11000.0
 MAX_ELEVATION_M = 9000.0

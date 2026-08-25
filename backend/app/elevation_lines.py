@@ -179,6 +179,13 @@ class ElevationLine:
         "coal_deposit_m",  # land-only
         "oil_gas_deposit_m",  # ocean-only
         "mineral_deposit_m",  # either -- grown by volcanism.py's own eruptions
+        # How long (Myr) a node has been *continuously* classified divergent by plates.py's
+        # own deform() -- accumulates while divergent, resets to 0 the moment it isn't. See
+        # plates.DIVERGENT_YOUNG_AGE_MYR: this is what lets deform() tell a genuinely active,
+        # still-subsiding rift apart from land that reached equilibrium long ago and simply
+        # still happens to sit near a neighbour (a real passive margin), so the latter stops
+        # being pulled toward the rift target once it's had its one-time settling period.
+        "divergent_age_myr",
     )
 
     def __init__(
@@ -199,6 +206,7 @@ class ElevationLine:
         coal_deposit_m: np.ndarray | None = None,
         oil_gas_deposit_m: np.ndarray | None = None,
         mineral_deposit_m: np.ndarray | None = None,
+        divergent_age_myr: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -218,6 +226,7 @@ class ElevationLine:
         self._coal_deposit_m = coal_deposit_m if coal_deposit_m is not None else np.zeros_like(theta)
         self._oil_gas_deposit_m = oil_gas_deposit_m if oil_gas_deposit_m is not None else np.zeros_like(theta)
         self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
+        self._divergent_age_myr = divergent_age_myr if divergent_age_myr is not None else np.zeros_like(theta)
 
     @property
     def phi(self) -> float:
@@ -282,6 +291,10 @@ class ElevationLine:
     @property
     def mineral_deposit_m(self) -> np.ndarray:
         return self._mineral_deposit_m
+
+    @property
+    def divergent_age_myr(self) -> np.ndarray:
+        return self._divergent_age_myr
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
