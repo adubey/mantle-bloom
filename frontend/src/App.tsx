@@ -13,6 +13,7 @@ import LakeInspector from "./LakeInspector";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
+import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import Legend from "./Legend";
 import { highlightTargetFor } from "./legendData";
@@ -38,19 +39,20 @@ const DEFAULT_AXIAL_TILT_DEG = 23.5;
 // Percent, matching backend app/geology.py's own default (0, a fully barren starting world --
 // see geology.seed_initial_soil).
 const DEFAULT_INITIAL_SOIL_MATURITY_PERCENT = 0;
-// Matching backend app/plates.py's NODE_DENSITY_CHOICES/DEFAULT_NODE_DENSITY -- a discrete
-// set, not a free-form slider, since there's no continuous unit for "how many points," only
-// "how many times as many." 0.5 is the coarsest, fastest option; the default (4) is the
-// finest.
-const NODE_DENSITY_CHOICES = [0.5, 1, 2, 4];
-const DEFAULT_NODE_DENSITY = 4;
-// Matching backend app/climate.py's CLIMATE_DENSITY_CHOICES/DEFAULT_CLIMATE_DENSITY -- same
-// "discrete multiplier choice, not a free-form slider" reasoning as NODE_DENSITY_CHOICES,
-// but for climate.py's own simulation grid (and the Biome/Combined/Resources/Soil-Quality
-// views' own render grid, scaled the same way) rather than plate elevation nodes. 0.5 is the
-// coarsest, fastest option; the default (4) is the finest.
-const CLIMATE_DENSITY_CHOICES = [0.5, 1, 2, 4];
-const DEFAULT_CLIMATE_DENSITY = 4;
+// The Generate dialog's single "Detail" control, driving both backend app/plates.py's
+// NODE_DENSITY_CHOICES/DEFAULT_NODE_DENSITY (elevation point density) and app/climate.py's
+// CLIMATE_DENSITY_CHOICES/DEFAULT_CLIMATE_DENSITY (climate & biome resolution) together --
+// the two share the same discrete multiplier set, so one dial covers both rather than
+// asking the user to reason about two separately. A discrete set, not a free-form slider,
+// since there's no continuous unit for "how many points/cells," only "how many times as
+// many." "Low" is the coarsest, fastest option; the default ("Very High") is the finest.
+const DETAIL_CHOICES: { value: number; label: string }[] = [
+  { value: 4, label: "Very High" },
+  { value: 2, label: "High" },
+  { value: 1, label: "Medium" },
+  { value: 0.5, label: "Low" },
+];
+const DEFAULT_DETAIL = 4;
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
 // always lands somewhere the auto behavior could plausibly have picked too.
@@ -121,13 +123,13 @@ const initialView = loadViewCookie();
 
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
-  const [nodeDensity, setNodeDensity] = useState(DEFAULT_NODE_DENSITY);
+  const [detail, setDetail] = useState(DEFAULT_DETAIL);
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
-  const [climateDensity, setClimateDensity] = useState(DEFAULT_CLIMATE_DENSITY);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
 
@@ -299,8 +301,8 @@ export default function App() {
     setError(null);
     try {
       const s = await generateWorld(
-        seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, nodeDensity, initialSoilMaturityPercent / 100,
-        climateDensity, autoPlates ? null : numPlates,
+        seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
+        detail, autoPlates ? null : numPlates,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -320,7 +322,7 @@ export default function App() {
       setBusy(false);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, nodeDensity, initialSoilMaturityPercent, climateDensity, autoPlates, numPlates,
+    seed, continentalPercent, landPercent, axialTiltDeg, detail, initialSoilMaturityPercent, autoPlates, numPlates,
     projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
@@ -823,150 +825,61 @@ export default function App() {
             </label>
 
             <label style={{ display: "block", marginBottom: 16 }}>
-              Initial land: {landPercent}%
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={landPercent}
-                onChange={(e) => setLandPercent(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
-
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Continental plates: {continentalPercent}%
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={continentalPercent}
-                onChange={(e) => setContinentalPercent(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
-
-            <label style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, fontSize: 12 }}>
-              <input type="checkbox" checked={autoPlates} onChange={(e) => setAutoPlates(e.target.checked)} />
-              Number of plates: Auto (seed-based)
-            </label>
-            {!autoPlates && (
-              <label style={{ display: "block", marginBottom: 16 }}>
-                Plates: {numPlates}
-                <input
-                  type="range"
-                  min={MIN_PLATES}
-                  max={MAX_PLATES}
-                  value={numPlates}
-                  onChange={(e) => setNumPlates(Number(e.target.value))}
-                  style={{ width: "100%" }}
-                />
-              </label>
-            )}
-
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Axial tilt: {axialTiltDeg}°
-              <input
-                type="range"
-                min={0}
-                max={45}
-                step={0.5}
-                value={axialTiltDeg}
-                onChange={(e) => setAxialTiltDeg(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
-            </label>
-
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Initial soil maturity: {initialSoilMaturityPercent}%
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={initialSoilMaturityPercent}
-                onChange={(e) => setInitialSoilMaturityPercent(Number(e.target.value))}
-                style={{ width: "100%" }}
-              />
+              Detail
+              <select
+                value={detail}
+                onChange={(e) => setDetail(Number(e.target.value))}
+                style={{ width: "100%", marginTop: 4 }}
+              >
+                {DETAIL_CHOICES.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
               <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                0% starts fully barren (bare rock, no soil) -- soil then forms gradually as the
-                world steps forward. Higher values start with some soil already in place.
+                Elevation point density and climate & biome resolution together. Higher is
+                sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
+                Biome/Combined/Resources/Soil Quality maps and more elevation-line nodes -- but
+                simulation steps and rendering both run slower. Lower runs faster but coarser.
               </div>
             </label>
 
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Elevation point density
-              <select
-                value={nodeDensity}
-                onChange={(e) => setNodeDensity(Number(e.target.value))}
-                style={{ width: "100%", marginTop: 4 }}
-              >
-                {NODE_DENSITY_CHOICES.map((d) => (
-                  <option key={d} value={d}>
-                    {d === 1 ? "1x" : `${d}x`}
-                  </option>
-                ))}
-              </select>
-              {nodeDensity > 1 && (
-                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                  More detail, but simulation steps will run noticeably slower.
-                </div>
-              )}
-              {nodeDensity < 1 && (
-                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                  Fewer elevation-line nodes. Simulation steps run faster.
-                </div>
-              )}
-            </label>
-
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Climate & biome resolution
-              <select
-                value={climateDensity}
-                onChange={(e) => setClimateDensity(Number(e.target.value))}
-                style={{ width: "100%", marginTop: 4 }}
-              >
-                {CLIMATE_DENSITY_CHOICES.map((d) => (
-                  <option key={d} value={d}>
-                    {d === 1 ? "1x" : `${d}x`}
-                  </option>
-                ))}
-              </select>
-              {climateDensity > 1 && climateDensity < 4 && (
-                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                  Sharper, less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
-                  Biome/Combined/Resources/Soil Quality maps -- doubles resolution in each
-                  dimension (4x the grid cells). Those views render noticeably slower (roughly
-                  2-3x); simulation steps only slightly slower.
-                </div>
-              )}
-              {climateDensity >= 4 && (
-                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                  The sharpest, least pixelated Temperature/Wind/Currents/Humidity/
-                  Precipitation/Biome/Combined/Resources/Soil Quality maps -- quadruples
-                  resolution in each dimension (16x the grid cells) over the reference. Those
-                  views render noticeably slower (roughly 6x); simulation steps moderately
-                  slower (roughly 1.5-2x).
-                </div>
-              )}
-              {climateDensity < 1 && (
-                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                  Coarser, more pixelated Temperature/Wind/Currents/Humidity/Precipitation/
-                  Biome/Combined/Resources/Soil Quality maps -- quarters the grid cells.
-                  Simulation steps run somewhat faster.
-                </div>
-              )}
-            </label>
-
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setShowGenerateDialog(false)} disabled={busy}>
-                Cancel
+            <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
+              <button type="button" onClick={() => setShowAdvancedSettings(true)} disabled={busy}>
+                Advanced settings
               </button>
-              <button onClick={handleGenerate} disabled={busy}>
-                Generate
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setShowGenerateDialog(false)} disabled={busy}>
+                  Cancel
+                </button>
+                <button onClick={handleGenerate} disabled={busy}>
+                  Generate
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      )}
+
+      {showAdvancedSettings && (
+        <AdvancedSettingsModal
+          landPercent={landPercent}
+          continentalPercent={continentalPercent}
+          autoPlates={autoPlates}
+          numPlates={numPlates}
+          minPlates={MIN_PLATES}
+          maxPlates={MAX_PLATES}
+          axialTiltDeg={axialTiltDeg}
+          initialSoilMaturityPercent={initialSoilMaturityPercent}
+          onLandPercentChange={setLandPercent}
+          onContinentalPercentChange={setContinentalPercent}
+          onAutoPlatesChange={setAutoPlates}
+          onNumPlatesChange={setNumPlates}
+          onAxialTiltDegChange={setAxialTiltDeg}
+          onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
+          onClose={() => setShowAdvancedSettings(false)}
+        />
       )}
 
       {showStatsModal && <StatsModal stats={stats} history={statsHistory} onClose={() => setShowStatsModal(false)} />}
