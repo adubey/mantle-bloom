@@ -54,6 +54,10 @@ export interface WorldSummary {
   // which always starts back at its default on a fresh page load. See App.tsx's restore-on-
   // mount effect for why this needs resyncing explicitly rather than assumed.
   fluid_mode: FluidMode;
+  // Real-time elapsed within the active FD solver (see ocean_cfd.py/atmosphere_cfd.py's own
+  // `elapsed_seconds`, and stepFluid's return type below) -- present only while `fluid_mode`
+  // is "ocean_cfd"/"atmosphere_cfd"; plate tectonics/climate use `elapsed_years` instead.
+  elapsed_seconds?: number;
 }
 
 export interface RenderResponse {

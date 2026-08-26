@@ -42,6 +42,13 @@ const STEP_SECONDS_OPTIONS: { value: number; label: string }[] = [
   { value: 3 * 86400, label: "3 days" },
   { value: 7 * 86400, label: "1 week" },
 ];
+// Ocean CFD alone also offers a coarser "1 month" step -- ocean currents evolve slowly enough
+// (unlike the atmosphere, which needs the finer options above to stay meaningful) that a
+// month-long jump is still a physically reasonable single step.
+const OCEAN_STEP_SECONDS_OPTIONS: { value: number; label: string }[] = [
+  ...STEP_SECONDS_OPTIONS,
+  { value: 30 * 86400, label: "1 month" },
+];
 const PLAY_INTERVAL_MS = 400;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
@@ -91,6 +98,22 @@ function formatLatLon(latDeg: number, lonDeg: number): string {
 
 function isIdentityRotation(rotation: Mat3): boolean {
   return rotation.every((v, i) => v === IDENTITY_ROTATION[i]);
+}
+
+// Formats a Fluid Dynamics mode's real-time elapsed counter (WorldSummary.elapsed_seconds) as
+// months/days/hours -- unlike tectonic years, an FD run's timescale (hours to a few months,
+// see STEP_SECONDS_OPTIONS/OCEAN_STEP_SECONDS_OPTIONS above) is too short for "Myr" to mean
+// anything, so it gets its own breakdown instead of reusing the elapsed_years/Myr readout.
+// "Month" here is a flat 30 days, matching the "1 month" step option -- there's no calendar to
+// anchor a calendar month to in this simulation.
+function formatFluidElapsed(seconds: number): string {
+  const SECONDS_PER_HOUR = 3600;
+  const SECONDS_PER_DAY = 86400;
+  const SECONDS_PER_MONTH = 30 * SECONDS_PER_DAY;
+  const months = Math.floor(seconds / SECONDS_PER_MONTH);
+  const days = Math.floor((seconds % SECONDS_PER_MONTH) / SECONDS_PER_DAY);
+  const hours = Math.floor((seconds % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
+  return `${months}mo ${days}d ${hours}h`;
 }
 
 // The map view to show after switching to `mode` -- keeps the current view if it's already
@@ -386,13 +409,22 @@ export default function App() {
       const nextMapView = mapViewForMode(mode, mapView);
       setFluidMode(mode);
       setMapView(nextMapView);
+      // Entering an FD mode always takes a fresh snapshot (elapsed_seconds starts at 0 --
+      // see /world/mode's own docstring), and leaving one drops the counter entirely.
+      setSummary((s) => (s ? { ...s, fluid_mode: mode, elapsed_seconds: mode === "tectonics_climate" ? undefined : 0 } : s));
+      // "1 month" is only a valid step size in Ocean CFD (see OCEAN_STEP_SECONDS_OPTIONS) --
+      // leaving that mode with it selected would otherwise leave the Time-per-step dropdown
+      // pointed at a value absent from its now-active options list.
+      if (mode !== "ocean_cfd" && stepSeconds === OCEAN_STEP_SECONDS_OPTIONS[OCEAN_STEP_SECONDS_OPTIONS.length - 1].value) {
+        setStepSeconds(STEP_SECONDS_OPTIONS[2].value);
+      }
       await refresh(projection, nextMapView, rotation);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [summary, fluidMode, busy, stepping, mapView, projection, rotation, refresh]);
+  }, [summary, fluidMode, busy, stepping, mapView, projection, rotation, refresh, stepSeconds]);
 
   // Debounced so dragging a Controls slider doesn't fire a network request (and force a
   // climate recompute, see main.py's /world/controls) on every single pixel of movement --
@@ -469,7 +501,8 @@ export default function App() {
     setStepping(true);
     setError(null);
     try {
-      await stepFluid(stepSeconds);
+      const { elapsed_seconds } = await stepFluid(stepSeconds);
+      setSummary((s) => (s ? { ...s, elapsed_seconds } : s));
       // mapViewRef.current, not mapView -- same stale-closure guard handleStep's own comment
       // explains, for a mode/view change that lands mid-step.
       await refresh(projection, mapViewRef.current, rotation);
@@ -647,7 +680,12 @@ export default function App() {
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
             <legend style={{ fontSize: 11 }}>Mode</legend>
-            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <select
+              value={fluidMode}
+              onChange={(e) => handleModeChange(e.target.value as FluidMode)}
+              disabled={busy || stepping || !summary}
+              style={{ width: "100%", fontSize: 12 }}
+            >
               {(
                 [
                   ["tectonics_climate", "Tectonics & Climate"],
@@ -655,20 +693,11 @@ export default function App() {
                   ["atmosphere_cfd", "Atmospheric Fluid Dynamics"],
                 ] as [FluidMode, string][]
               ).map(([mode, label]) => (
-                <button
-                  key={mode}
-                  onClick={() => handleModeChange(mode)}
-                  disabled={busy || stepping || !summary || mode === fluidMode}
-                  style={{
-                    fontSize: 12,
-                    fontWeight: mode === fluidMode ? 700 : 400,
-                    background: mode === fluidMode ? "#2a3358" : undefined,
-                  }}
-                >
+                <option key={mode} value={mode}>
                   {label}
-                </button>
+                </option>
               ))}
-            </div>
+            </select>
             {fluidMode !== "tectonics_climate" && (
               <div style={{ marginTop: 6, fontSize: 11, color: "#999" }}>
                 Plate tectonics and climate/erosion are frozen while a Fluid Dynamics mode is active.
@@ -701,7 +730,7 @@ export default function App() {
                   onChange={(e) => setStepSeconds(Number(e.target.value))}
                   style={{ width: "100%", fontSize: 12 }}
                 >
-                  {STEP_SECONDS_OPTIONS.map((opt) => (
+                  {(fluidMode === "ocean_cfd" ? OCEAN_STEP_SECONDS_OPTIONS : STEP_SECONDS_OPTIONS).map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -864,7 +893,11 @@ export default function App() {
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
-              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
+              {fluidMode === "tectonics_climate" ? (
+                <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
+              ) : (
+                <div>elapsed: {formatFluidElapsed(summary.elapsed_seconds ?? 0)}</div>
+              )}
             </div>
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}

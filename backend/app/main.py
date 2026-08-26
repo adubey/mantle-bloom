@@ -163,7 +163,7 @@ def _require_world() -> World:
 
 
 def _summary(world: World) -> dict:
-    return {
+    summary = {
         "seed": world.seed,
         "elapsed_years": world.elapsed_years,
         "num_plates": len(world.plates),
@@ -179,6 +179,17 @@ def _summary(world: World) -> dict:
         # "tectonics_climate" regardless of what the server-side world is actually doing.
         "fluid_mode": world.fluid_mode,
     }
+    # Same real-time counter POST /world/step_fluid already returns, but included here too --
+    # not just from that one endpoint -- so every path that can hand the frontend a summary
+    # while an FD mode is active (generate/step/restore/render, see this function's callers)
+    # keeps the elapsed-time readout in sync, not just a live step.
+    if world.fluid_mode == "ocean_cfd":
+        assert world.ocean_cfd_state is not None  # invariant: set whenever fluid_mode == "ocean_cfd", see /world/mode
+        summary["elapsed_seconds"] = world.ocean_cfd_state.elapsed_seconds
+    elif world.fluid_mode == "atmosphere_cfd":
+        assert world.atmosphere_cfd_state is not None
+        summary["elapsed_seconds"] = world.atmosphere_cfd_state.elapsed_seconds
+    return summary
 
 
 #  Rounding every coordinate sent to the client to this many decimal places -- plenty for a
