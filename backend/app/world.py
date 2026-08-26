@@ -9,7 +9,7 @@ from scipy.spatial import cKDTree
 
 from . import atmosphere_cfd, bathymetry, climate, erosion, geology, hydrology, mantle, merge_split, ocean_cfd, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
-from .plates import Plate, gather_node_positions, generate_plates, query_workers
+from .plates import DEFAULT_PLATE_REPRESENTATION, Plate, gather_node_positions, generate_plates, query_workers
 
 DEFAULT_MANTLE_CENTERS = 8
 DEFAULT_AXIAL_TILT_DEG = 23.5
@@ -218,6 +218,7 @@ def generate_world(
     node_density: float = DEFAULT_NODE_DENSITY,
     initial_soil_maturity: float | None = None,
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
+    representation: str = DEFAULT_PLATE_REPRESENTATION,
     fluid_density: float = climate.DEFAULT_FLUID_DENSITY,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
@@ -237,13 +238,22 @@ def generate_world(
     climate.CLIMATE_DENSITY_CHOICES) doesn't affect plate generation at all, only how finely
     climate.py's own grid resolves the world's climate every future step/render -- stored on
     World for the same reason node_density is (see World.climate_density's own comment).
+    `representation` (see plates.PLATE_REPRESENTATION_CHOICES) picks which concrete `Plate`
+    subclass this world's plates are built as -- like continental_fraction/land_fraction, not
+    stored on World: it only matters once, at construction, and every later step works
+    through the abstract `Plate` interface regardless of which representation is underneath.
     `fluid_density` (the UI's "Fluid dynamics resolution" Advanced-settings choice) similarly
     doesn't affect the plates/mantle generated above, but *does* immediately seed this world's
     permanent atmosphere_cfd_state/ocean_cfd_state (see below) at its own resolution -- see
     World.fluid_density's own comment for why it's a separate knob from climate_density rather
     than reusing it."""
     plates = generate_plates(
-        seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, node_density=node_density
+        seed,
+        num_plates=num_plates,
+        continental_fraction=continental_fraction,
+        land_fraction=land_fraction,
+        node_density=node_density,
+        representation=representation,
     )
     geology.seed_initial_soil(plates, seed, initial_soil_maturity or 0.0)
     # Separate RNG stream so changing num_mantle_centers doesn't reshuffle plate layout.

@@ -78,6 +78,10 @@ class GenerateRequest(BaseModel):
     # to climate.DEFAULT_CLIMATE_DENSITY. Validated against climate.CLIMATE_DENSITY_CHOICES
     # below, same reasoning node_density's own validation gives.
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
+    # The UI's "Plate representation" choice -- which concrete Plate subclass backs this
+    # world (see plates.PLATE_REPRESENTATION_CHOICES/plates.generate_plates). Validated
+    # below, same reasoning node_density's own validation gives.
+    representation: str = plates.DEFAULT_PLATE_REPRESENTATION
     # The UI's "Fluid dynamics resolution" Advanced-settings choice -- how finely Ocean/
     # Atmospheric Fluid Dynamics resolves currents/wind, independent of climate_density (see
     # World.fluid_density's own comment for why). Validated against
@@ -179,17 +183,20 @@ def _round_coords(arr: np.ndarray) -> list:
     return np.round(arr, _COORD_DECIMALS).tolist()
 
 
-def _plate_summary(plate: plates.PlateWithLines) -> dict:
+def _plate_summary(plate: plates.Plate) -> dict:
     outline = plate.get_bounding_polygon()
     node_points, _ = plate.all_points_and_elevation()
     ellipse = plates.plate_bounding_ellipse(node_points)
     return {
         "plate_id": plate.plate_id,
         "crust_type": plate.crust_type,
-        # Lines with zero nodes are a real state a plate can be in (see merge_split.py's
-        # own "no_land"/consumption checks) -- excluded here to match outline_world()'s own
-        # filtering, so this doesn't look inconsistent next to num_points.
-        "num_rows": sum(1 for line in plate.lines if len(line) > 0),
+        # A PlateWithLines-only concept (how many of its own rows still have at least one
+        # node -- see merge_split.py's own "no_land"/consumption checks, which mirror this
+        # same "zero nodes is a real, filtered-out state" reasoning); None for any other
+        # representation, which has no notion of "rows" at all.
+        "num_rows": (
+            sum(1 for line in plate.lines if len(line) > 0) if isinstance(plate, plates.PlateWithLines) else None
+        ),
         "num_points": plate.node_count(),
         "outline": _round_coords(outline),
         # Every node's own position (not just the outline loop) -- lets the client plot each
@@ -361,6 +368,10 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown climate_density {req.climate_density!r}; choices are {climate.CLIMATE_DENSITY_CHOICES}"
         )
+    if req.representation not in plates.PLATE_REPRESENTATION_CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown representation {req.representation!r}; choices are {plates.PLATE_REPRESENTATION_CHOICES}"
+        )
     if req.fluid_density not in climate.FLUID_DENSITY_CHOICES:
         raise HTTPException(
             status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.FLUID_DENSITY_CHOICES}"
@@ -375,6 +386,7 @@ def generate(req: GenerateRequest) -> dict:
         node_density=req.node_density,
         initial_soil_maturity=req.initial_soil_maturity,
         climate_density=req.climate_density,
+        representation=req.representation,
         fluid_density=req.fluid_density,
     )
     _state["world"] = world
@@ -447,7 +459,20 @@ def render(
     rasterization. `rotation` is the map's current view orientation (see
     _parse_view_rotation), default identity. `400` for an unrecognized projection/view, an
     out-of-range width/height, or a malformed rotation, `404` if no world has been generated
-    yet."""
+    yet.
+
+    Takes `_step_lock` around the actual read, unlike every other `_step_lock` site in this
+    module: those are all *writes* (step/step_fluid/mode), so a busy lock means "reject and
+    let the caller retry" (503). A render is a read, called far more often (every view
+    switch, every post-step refresh, each animation frame) and each mutation-collecting pass
+    it makes (plates.collect_all_points, collect_all_lake_depth, ...) walks world.plates
+    independently -- concurrently with an in-flight step actually mutating those same plates
+    (deform() grows/shrinks nodes), those passes can see different node counts and desync,
+    which crashes with an IndexError rather than just rendering a stale frame. Blocking here
+    (confirmed to actually reproduce that IndexError without it, via a deliberately raced
+    step+render) waits out that brief window instead of failing every render that happens to
+    land during one -- a hard failure on nearly every routine step->refresh overlap would be
+    a far worse trade for a request this frequent and this cheap to just wait a moment for."""
     world = _require_world()
     if projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {projection!r}")
@@ -457,10 +482,12 @@ def render(
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
 
+    with _step_lock:
+        image_base64 = render_image.render_png_base64(world, projection, view, width, height, view_rotation)
     return {
         "projection": projection,
         "elapsed_years": world.elapsed_years,
-        "image_base64": render_image.render_png_base64(world, projection, view, width, height, view_rotation),
+        "image_base64": image_base64,
     }
 
 

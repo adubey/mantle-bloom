@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .elevation_lines import ERUPTION_ELEVATION_M, MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import Plate
+from .plates import Plate, PlateWithLines
 
 if TYPE_CHECKING:
     from .world import World
@@ -78,34 +78,77 @@ def apply_volcanic_activity(world: "World", years: float) -> list[str]:
                 events.append(f"The volcanic field on plate {plate_id} has cooled into ordinary continental crust.")
 
     for plate in world.plates:
-        for line_index, line in enumerate(plate.lines):
-            if len(line) == 0 or not np.any(line.is_volcano):
-                continue
-            active_mask = line.is_volcano & (line.volcano_active_years_remaining > 0)
-            if not np.any(active_mask):
-                continue
-
-            active_years_this_step = np.minimum(years, line.volcano_active_years_remaining)
-            p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1_000_000.0)
-            rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, line_index))
-            erupts = active_mask & (rng.random(len(line)) < p_erupt)
-
-            new_elevation = line.elevation.copy()
-            new_elevation[erupts] += ERUPTION_ELEVATION_M
-            new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
-            new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
-            new_mineral_deposit = np.clip(
-                line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
-            )
-
-            # theta unchanged -- line.replace copies every other field (including
-            # channel_width) from the existing line automatically. See plates.ElevationLine's
-            # own docstring for why this pattern replaced explicit field-by-field
-            # reconstruction here.
-            plate.replace_line(
-                line_index,
-                line.replace(
-                    elevation=new_elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
-                ),
-            )
+        if isinstance(plate, PlateWithLines):
+            _apply_volcanic_activity_to_lines(plate, world, years)
+        else:
+            _apply_volcanic_activity_generic(plate, world, years)
     return events
+
+
+def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", years: float) -> None:
+    """`PlateWithLines`' own per-line eruption roll -- unchanged from before
+    `_apply_volcanic_activity_generic` (below) existed, kept as its own line-indexed path
+    (rather than folded into the generic one) so this representation's RNG stream/determinism
+    stays exactly as it already was for any existing world."""
+    for line_index, line in enumerate(plate.lines):
+        if len(line) == 0 or not np.any(line.is_volcano):
+            continue
+        active_mask = line.is_volcano & (line.volcano_active_years_remaining > 0)
+        if not np.any(active_mask):
+            continue
+
+        active_years_this_step = np.minimum(years, line.volcano_active_years_remaining)
+        p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1_000_000.0)
+        rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, line_index))
+        erupts = active_mask & (rng.random(len(line)) < p_erupt)
+
+        new_elevation = line.elevation.copy()
+        new_elevation[erupts] += ERUPTION_ELEVATION_M
+        new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
+        new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
+        new_mineral_deposit = np.clip(
+            line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
+        )
+
+        # theta unchanged -- line.replace copies every other field (including
+        # channel_width) from the existing line automatically. See plates.ElevationLine's
+        # own docstring for why this pattern replaced explicit field-by-field
+        # reconstruction here.
+        plate.replace_line(
+            line_index,
+            line.replace(
+                elevation=new_elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
+            ),
+        )
+
+
+def _apply_volcanic_activity_generic(plate: Plate, world: "World", years: float) -> None:
+    """The same per-node eruption roll as `_apply_volcanic_activity_to_lines`, built entirely
+    off the abstract `Plate` interface (`collect`/`set_fields_on_plate`/`node_count`) instead
+    of reaching into `.lines`/`.replace_line` -- works for any representation without a row
+    structure of its own (`PlateWithMesh` today). Keyed by `plate.plate_id` alone (no line
+    index -- there are no lines), otherwise identical math/RNG-stream shape."""
+    is_volcano = plate.collect("is_volcano")
+    if not np.any(is_volcano):
+        return
+    remaining = plate.collect("volcano_active_years_remaining")
+    active_mask = is_volcano & (remaining > 0)
+    if not np.any(active_mask):
+        return
+
+    active_years_this_step = np.minimum(years, remaining)
+    p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1_000_000.0)
+    rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id))
+    erupts = active_mask & (rng.random(plate.node_count()) < p_erupt)
+
+    elevation = plate.collect("elevation").copy()
+    elevation[erupts] += ERUPTION_ELEVATION_M
+    elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    new_remaining = np.clip(remaining - years, 0.0, None)
+    mineral_deposit = plate.collect("mineral_deposit_m")
+    new_mineral_deposit = np.clip(
+        mineral_deposit + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
+    )
+    plate.set_fields_on_plate(
+        elevation=elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
+    )

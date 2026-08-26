@@ -89,7 +89,9 @@ export interface BoundingEllipse {
 export interface PlateSummary {
   plate_id: number;
   crust_type: "continental" | "oceanic";
-  num_rows: number;
+  // null for a representation with no row concept (e.g. "mesh" -- see backend
+  // app/main.py's _plate_summary).
+  num_rows: number | null;
   num_points: number;
   outline: [number, number, number][];
   // Every node's own position (not just the outline loop) -- see PlateInspector.tsx, which
@@ -267,8 +269,12 @@ async function asBlob(resp: Response): Promise<Blob> {
 // Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
 // temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
 // same reasoning nodeDensity's own storage gives (see world.py's World.climate_density).
+// representation is the dialog's "Plate representation" choice ("lines" or "mesh", see
+// backend app/plates.py's PLATE_REPRESENTATION_CHOICES) -- which concrete Plate subclass
+// backs the generated world; not stored on World (see world.generate_world's own docstring
+// for why, same reasoning initialSoilMaturity's own non-storage gives).
 // fluidDensity is the Advanced-settings dialog's "Fluid dynamics resolution" choice (same
-// 0.5/1/2/4 set) -- how finely Ocean/Atmospheric Fluid Dynamics mode's own grid resolves
+// 0.5/1/2/4 set) -- how finely the continuous Ocean/Atmospheric CFD's own grid resolves
 // currents/wind, independent of climateDensity (see world.py's World.fluid_density).
 export function generateWorld(
   seed: number,
@@ -280,6 +286,7 @@ export function generateWorld(
   climateDensity: number,
   fluidDensity: number,
   numPlates: number | null,
+  representation: string,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -293,6 +300,7 @@ export function generateWorld(
       node_density: nodeDensity,
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
+      representation,
       fluid_density: fluidDensity,
     }),
   }).then(asJson<WorldSummary>);

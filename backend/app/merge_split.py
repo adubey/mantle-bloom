@@ -101,14 +101,17 @@ def remove_defunct_plates(world: "World") -> None:
     a sliver along one latitude -- simply vanishes. No special-cased merge algorithm needed
     either way; see apply_topology_changes for the distinct log messages for each case.
 
-    `node_count() > 0` is its own check, not implied by `len(p.lines) > 1`: a plate can have
-    two or more lines that have each individually shrunk to zero nodes (see
+    `node_count() > 0` is its own check, not implied by `not p.has_negligible_territory()`: a
+    plate can have two or more lines that have each individually shrunk to zero nodes (see
     `_grow_or_shrink_line`) without ever dropping below the line-count threshold, which
     would otherwise leave an empty-but-not-removed plate sitting in world.plates -- e.g.
     still counted by /world/summary's num_plates, still iterated by every other per-step
     pass -- indefinitely. Called every step via apply_topology_changes, so this never lingers
-    more than one step."""
-    world.plates = [p for p in world.plates if p.node_count() > 0 and len(p.lines) > 1]
+    more than one step. `has_negligible_territory` is representation-generic (`Plate`'s own
+    method, see plates.py) -- `PlateWithLines` still means "at most one line left" by it,
+    just expressed through the abstract interface now instead of reaching into `.lines`
+    directly, so this works for any `Plate` subclass, not just that one."""
+    world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
 
 
 def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
@@ -344,10 +347,10 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     for p in consumed:
         events.append(f"Plate {p.plate_id} ({p.crust_type}) was fully subducted and disappeared.")
 
-    # "No land" here means no real remaining territory -- reduced to a single line (or, if
-    # it also has zero nodes, already counted as consumed above) -- not the crust_type sense
-    # of dry-land-above-sea-level; see remove_defunct_plates.
-    no_land = [p for p in world.plates if p.node_count() > 0 and len(p.lines) <= 1]
+    # "No land" here means no real remaining territory (or, if it also has zero nodes,
+    # already counted as consumed above) -- not the crust_type sense of dry-land-above-sea-
+    # level; see remove_defunct_plates and Plate.has_negligible_territory.
+    no_land = [p for p in world.plates if p.node_count() > 0 and p.has_negligible_territory()]
     for p in no_land:
         events.append(f"Plate {p.plate_id} ({p.crust_type}) had no land left and disappeared.")
 
