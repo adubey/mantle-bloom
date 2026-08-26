@@ -29,71 +29,80 @@ PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 _NUMBA_JIT_KWARGS = {"cache": True, "parallel": True, "fastmath": True}
 
 
-@njit(**_NUMBA_JIT_KWARGS)
-def _ang2pix_nested_kernel(nside: int, order: int, lon_rad: np.ndarray, lat_rad: np.ndarray) -> np.ndarray:
+@njit(cache=True, fastmath=True)
+def ang2pix_nest_scalar(nside: int, order: int, lon_rad: float, lat_rad: float) -> int:
     """Standard z/phi HEALPix nested-scheme pixel lookup (Gorski et al. 2005's own
-    `ang2pix_nest`) -- a hand-rolled reimplementation of what `astropy_healpix`'s compiled
-    `lonlat_to_healpix` already does, taken on despite this module's own prior docstring
-    caution about nested-scheme indexing being "notoriously easy to get subtly wrong at
-    base-pixel boundaries": validated bit-for-bit against `astropy_healpix` across every
-    pixel center at every `NSIDE_CHOICES` value (an exact round-trip -- every pixel's own
-    center must map back to itself) plus 200,000 uniformly-sampled random sphere points per
-    nside, zero mismatches (see unit_tests/v2/test_healpix_grid.py's own regression test).
-    Exists purely for speed: this was `semi_lagrangian_advect`'s single costliest call
-    (profiling showed ~700us/call going through astropy's own Quantity-wrapped, single-
-    threaded path) -- `parallel=True`'s `prange` alone recovers most of the gap by spreading
-    the per-pixel work astropy already does across every core instead of one."""
-    n = lon_rad.shape[0]
-    out = np.empty(n, dtype=np.int64)
+    `ang2pix_nest`) for one point -- a hand-rolled reimplementation of what
+    `astropy_healpix`'s compiled `lonlat_to_healpix` already does, taken on despite this
+    module's own prior docstring caution about nested-scheme indexing being "notoriously easy
+    to get subtly wrong at base-pixel boundaries": validated bit-for-bit against
+    `astropy_healpix` across every pixel center at every `NSIDE_CHOICES` value (an exact
+    round-trip -- every pixel's own center must map back to itself) plus 200,000 uniformly-
+    sampled random sphere points per nside, zero mismatches (see
+    unit_tests/v2/test_healpix_grid.py's own regression test). Exists purely for speed: this
+    was `semi_lagrangian_advect`'s single costliest call (profiling showed ~700us/call going
+    through astropy's own Quantity-wrapped, single-threaded path). A scalar function (not
+    array-in/array-out) so `fluid_dynamics_healpix._semi_lagrangian_advect_kernel` can inline
+    it directly inside its own per-pixel loop -- fusing offset/normalize/lon-lat/pixel-lookup
+    into one pass instead of allocating separate (npix,)/(npix, 3) intermediates and making a
+    second jitted call for this step alone (`_ang2pix_nested_kernel` below still wraps this
+    as a plain array lookup for `HealpixGrid.ang2pix`'s other caller, `resample_to_equirect`)."""
     two_pi = 2.0 * np.pi
     half_pi = np.pi / 2.0
+    z = np.sin(lat_rad)
+    phi = lon_rad % two_pi
+    za = abs(z)
+    tt = phi / half_pi  # in [0, 4)
+
+    if za <= 2.0 / 3.0:  # equatorial belt
+        temp1 = nside * (0.5 + tt)
+        temp2 = nside * z * 0.75
+        jp = int(np.floor(temp1 - temp2))  # ascending edge line index
+        jm = int(np.floor(temp1 + temp2))  # descending edge line index
+        ifp = jp // nside
+        ifm = jm // nside
+        if ifp == ifm:
+            face_num = (ifp % 4) + 4
+        elif ifp < ifm:
+            face_num = ifp % 4
+        else:
+            face_num = (ifm % 4) + 8
+        ix = jm % nside
+        iy = nside - (jp % nside) - 1
+    else:  # polar cap
+        ntt = int(np.floor(tt))
+        if ntt >= 4:
+            ntt = 3
+        tp = tt - ntt
+        tmp = nside * np.sqrt(3.0 * (1.0 - za))
+        jp = int(np.floor(tp * tmp))
+        jm = int(np.floor((1.0 - tp) * tmp))
+        if jp > nside - 1:
+            jp = nside - 1
+        if jm > nside - 1:
+            jm = nside - 1
+        if z >= 0.0:
+            face_num = ntt
+            ix = nside - jm - 1
+            iy = nside - jp - 1
+        else:
+            face_num = ntt + 8
+            ix = jp
+            iy = jm
+
+    ipf = 0  # bit-interleave ix (even bits) and iy (odd bits)
+    for b in range(order):
+        ipf |= ((ix >> b) & 1) << (2 * b)
+        ipf |= ((iy >> b) & 1) << (2 * b + 1)
+    return ipf + face_num * nside * nside
+
+
+@njit(**_NUMBA_JIT_KWARGS)
+def _ang2pix_nested_kernel(nside: int, order: int, lon_rad: np.ndarray, lat_rad: np.ndarray) -> np.ndarray:
+    n = lon_rad.shape[0]
+    out = np.empty(n, dtype=np.int64)
     for idx in prange(n):
-        z = np.sin(lat_rad[idx])
-        phi = lon_rad[idx] % two_pi
-        za = abs(z)
-        tt = phi / half_pi  # in [0, 4)
-
-        if za <= 2.0 / 3.0:  # equatorial belt
-            temp1 = nside * (0.5 + tt)
-            temp2 = nside * z * 0.75
-            jp = int(np.floor(temp1 - temp2))  # ascending edge line index
-            jm = int(np.floor(temp1 + temp2))  # descending edge line index
-            ifp = jp // nside
-            ifm = jm // nside
-            if ifp == ifm:
-                face_num = (ifp % 4) + 4
-            elif ifp < ifm:
-                face_num = ifp % 4
-            else:
-                face_num = (ifm % 4) + 8
-            ix = jm % nside
-            iy = nside - (jp % nside) - 1
-        else:  # polar cap
-            ntt = int(np.floor(tt))
-            if ntt >= 4:
-                ntt = 3
-            tp = tt - ntt
-            tmp = nside * np.sqrt(3.0 * (1.0 - za))
-            jp = int(np.floor(tp * tmp))
-            jm = int(np.floor((1.0 - tp) * tmp))
-            if jp > nside - 1:
-                jp = nside - 1
-            if jm > nside - 1:
-                jm = nside - 1
-            if z >= 0.0:
-                face_num = ntt
-                ix = nside - jm - 1
-                iy = nside - jp - 1
-            else:
-                face_num = ntt + 8
-                ix = jp
-                iy = jm
-
-        ipf = 0  # bit-interleave ix (even bits) and iy (odd bits)
-        for b in range(order):
-            ipf |= ((ix >> b) & 1) << (2 * b)
-            ipf |= ((iy >> b) & 1) << (2 * b + 1)
-        out[idx] = ipf + face_num * nside * nside
+        out[idx] = ang2pix_nest_scalar(nside, order, lon_rad[idx], lat_rad[idx])
     return out
 
 # UI-facing choices for World.fluid_density_v2 -- npix ~= 12*nside^2, so this spans roughly

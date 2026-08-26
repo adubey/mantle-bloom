@@ -33,7 +33,7 @@ from __future__ import annotations
 import numpy as np
 from numba import njit, prange
 
-from .healpix_grid import PLANET_RADIUS_M, HealpixGrid
+from .healpix_grid import PLANET_RADIUS_M, HealpixGrid, ang2pix_nest_scalar
 
 # Same convention as fluid_dynamics.py's own _NUMBA_JIT_KWARGS (see that module's docstring
 # for cache=True/parallel=True/fastmath=True's own rationale) -- kept as a separate constant
@@ -100,6 +100,56 @@ def gradient(field: np.ndarray, grid: HealpixGrid) -> tuple[np.ndarray, np.ndarr
     return _gradient_kernel(field, grid.neighbours, grid.neighbour_valid, grid.neighbour_dx_m, grid.neighbour_dy_m, grid.gradient_inv)
 
 
+@njit(**_NUMBA_JIT_KWARGS)
+def _laplacian_kernel(
+    field: np.ndarray,
+    neighbours: np.ndarray,
+    neighbour_valid: np.ndarray,
+    neighbour_dx_m: np.ndarray,
+    neighbour_dy_m: np.ndarray,
+    gradient_inv: np.ndarray,
+) -> np.ndarray:
+    npix = field.shape[0]
+    n_neighbours = neighbours.shape[1]
+    gx = np.empty(npix, dtype=np.float64)
+    gy = np.empty(npix, dtype=np.float64)
+    for i in prange(npix):
+        fi = field[i]
+        atb_x = 0.0
+        atb_y = 0.0
+        for k in range(n_neighbours):
+            if neighbour_valid[i, k]:
+                d = field[neighbours[i, k]] - fi
+                atb_x += neighbour_dx_m[i, k] * d
+                atb_y += neighbour_dy_m[i, k] * d
+        gx[i] = gradient_inv[i, 0, 0] * atb_x + gradient_inv[i, 0, 1] * atb_y
+        gy[i] = gradient_inv[i, 1, 0] * atb_x + gradient_inv[i, 1, 1] * atb_y
+
+    out = np.empty(npix, dtype=np.float64)
+    for i in prange(npix):
+        gxi = gx[i]
+        gyi = gy[i]
+        atbx_gx = 0.0
+        atby_gx = 0.0
+        atbx_gy = 0.0
+        atby_gy = 0.0
+        for k in range(n_neighbours):
+            if neighbour_valid[i, k]:
+                dx = neighbour_dx_m[i, k]
+                dy = neighbour_dy_m[i, k]
+                nb = neighbours[i, k]
+                dgx = gx[nb] - gxi
+                dgy = gy[nb] - gyi
+                atbx_gx += dx * dgx
+                atby_gx += dy * dgx
+                atbx_gy += dx * dgy
+                atby_gy += dy * dgy
+        d2x = gradient_inv[i, 0, 0] * atbx_gx + gradient_inv[i, 0, 1] * atby_gx
+        d2y = gradient_inv[i, 1, 0] * atbx_gy + gradient_inv[i, 1, 1] * atby_gy
+        out[i] = d2x + d2y
+    return out
+
+
 def laplacian(field: np.ndarray, grid: HealpixGrid) -> np.ndarray:
     """div(grad(field)) -- applying the already-validated least-squares `gradient` operator
     twice, rather than a hand-derived single-pass mesh-Laplacian formula. An earlier version
@@ -107,23 +157,56 @@ def laplacian(field: np.ndarray, grid: HealpixGrid) -> np.ndarray:
     / dist_k^2` directly; confirmed directly that its scaling doesn't match the stability
     assumptions `VISCOSITY_M2_S`/`cfl_substeps` were tuned against (ported unchanged from
     v1's own 5-point-stencil-calibrated equirectangular values) -- ocean_cfd_v2's own
-    diffusion term blew up to >1e6 m/s within one step's substep loop. Composing the gradient
-    operator with itself keeps the two dimensionally and numerically consistent by
-    construction, at the cost of a second least-squares solve per call -- three total jitted
-    `_gradient_kernel` calls, each now a single fused pass rather than several allocating
-    NumPy ops, so this stays cheap even called `VISCOSITY_M2_S`-many times per substep."""
-    gx, gy = gradient(field, grid)
-    d2x, _ = gradient(gx, grid)
-    _, d2y = gradient(gy, grid)
-    return d2x + d2y
+    diffusion term blew up to >1e6 m/s within one step's substep loop. `_laplacian_kernel`
+    keeps the same two-pass structure (`gx`/`gy` fully materialized before the second pass
+    reads their neighbours) as three separate `gradient` calls would, just fused into one
+    jitted function/one parallel-region dispatch instead of three."""
+    return _laplacian_kernel(field, grid.neighbours, grid.neighbour_valid, grid.neighbour_dx_m, grid.neighbour_dy_m, grid.gradient_inv)
+
+
+@njit(**_NUMBA_JIT_KWARGS)
+def _divergence_kernel(
+    u: np.ndarray,
+    v: np.ndarray,
+    neighbours: np.ndarray,
+    neighbour_valid: np.ndarray,
+    neighbour_dx_m: np.ndarray,
+    neighbour_dy_m: np.ndarray,
+    gradient_inv: np.ndarray,
+) -> np.ndarray:
+    npix = u.shape[0]
+    n_neighbours = neighbours.shape[1]
+    out = np.empty(npix, dtype=np.float64)
+    for i in prange(npix):
+        ui = u[i]
+        vi = v[i]
+        atbx_u = 0.0
+        atby_u = 0.0
+        atbx_v = 0.0
+        atby_v = 0.0
+        for k in range(n_neighbours):
+            if neighbour_valid[i, k]:
+                dx = neighbour_dx_m[i, k]
+                dy = neighbour_dy_m[i, k]
+                nb = neighbours[i, k]
+                du = u[nb] - ui
+                dv = v[nb] - vi
+                atbx_u += dx * du
+                atby_u += dy * du
+                atbx_v += dx * dv
+                atby_v += dy * dv
+        du_dx = gradient_inv[i, 0, 0] * atbx_u + gradient_inv[i, 0, 1] * atby_u
+        dv_dy = gradient_inv[i, 1, 0] * atbx_v + gradient_inv[i, 1, 1] * atby_v
+        out[i] = du_dx + dv_dy
+    return out
 
 
 def divergence(u: np.ndarray, v: np.ndarray, grid: HealpixGrid) -> np.ndarray:
     """du/d-east + dv/d-north -- reuses `gradient`'s own least-squares fit for each
-    component, same convention `fluid_dynamics.divergence_m` follows."""
-    du_dx, _ = gradient(u, grid)
-    _, dv_dy = gradient(v, grid)
-    return du_dx + dv_dy
+    component, same convention `fluid_dynamics.divergence_m` follows. Fused into one
+    `_divergence_kernel` pass over both `u` and `v` together (rather than two separate
+    `gradient` calls, one per field, each computing and discarding its own unused component)."""
+    return _divergence_kernel(u, v, grid.neighbours, grid.neighbour_valid, grid.neighbour_dx_m, grid.neighbour_dy_m, grid.gradient_inv)
 
 
 @njit(**_NUMBA_JIT_KWARGS)
@@ -159,15 +242,54 @@ def coastal_ocean_mask(is_ocean: np.ndarray, grid: HealpixGrid) -> np.ndarray:
     return is_ocean & neighbour_is_land.any(axis=1)
 
 
+@njit(**_NUMBA_JIT_KWARGS)
+def _semi_lagrangian_advect_kernel(
+    field: np.ndarray,
+    u: np.ndarray,
+    v: np.ndarray,
+    dt_s: float,
+    world_xyz: np.ndarray,
+    east: np.ndarray,
+    north: np.ndarray,
+    radius_m: float,
+    nside: int,
+    order: int,
+) -> np.ndarray:
+    npix = field.shape[0]
+    out = np.empty_like(field)
+    for i in prange(npix):
+        ox = -u[i] * dt_s
+        oy = -v[i] * dt_s
+        sx = world_xyz[i, 0] + (ox * east[i, 0] + oy * north[i, 0]) / radius_m
+        sy = world_xyz[i, 1] + (ox * east[i, 1] + oy * north[i, 1]) / radius_m
+        sz = world_xyz[i, 2] + (ox * east[i, 2] + oy * north[i, 2]) / radius_m
+        norm = np.sqrt(sx * sx + sy * sy + sz * sz)
+        sx /= norm
+        sy /= norm
+        sz /= norm
+        if sz > 1.0:
+            sz = 1.0
+        elif sz < -1.0:
+            sz = -1.0
+        src_lon = np.arctan2(sy, sx)
+        src_lat = np.arcsin(sz)
+        src_pix = ang2pix_nest_scalar(nside, order, src_lon, src_lat)
+        out[i] = field[src_pix]
+    return out
+
+
 def semi_lagrangian_advect(field: np.ndarray, u: np.ndarray, v: np.ndarray, dt_s: float, grid: HealpixGrid) -> np.ndarray:
     """Backward-trace each pixel along (u, v) by `dt_s` (real velocity in m/s along this
     pixel's own east/north tangent directions) and sample `field` there, nearest-pixel --
     same unconditionally-stable technique `fluid_dynamics.semi_lagrangian_advect` uses, with
-    the row/col closed-form index lookup replaced by a real `ang2pix` query."""
-    offset_m = (-u * dt_s)[:, None] * grid.east + (-v * dt_s)[:, None] * grid.north
-    src_xyz = grid.world_xyz + offset_m / PLANET_RADIUS_M
-    src_xyz = src_xyz / np.linalg.norm(src_xyz, axis=-1, keepdims=True)
-    src_lon = np.arctan2(src_xyz[:, 1], src_xyz[:, 0])
-    src_lat = np.arcsin(np.clip(src_xyz[:, 2], -1.0, 1.0))
-    src_pix = grid.ang2pix(src_lon, src_lat)
-    return field[src_pix]
+    the row/col closed-form index lookup replaced by a real `ang2pix` query. Fused end to end
+    (offset -> normalize -> lon/lat -> pixel lookup -> gather) into one jitted
+    `_semi_lagrangian_advect_kernel` pass -- profiling found this the single costliest call in
+    either solver even after `gradient`/`laplacian`/`divergence`'s own JIT pass, almost
+    entirely plain-NumPy overhead from several full-grid (npix,)/(npix, 3) temporaries
+    (`offset_m`, `src_xyz`, its norm, `src_lon`, `src_lat`) plus a separate call into
+    `grid.ang2pix` -- no different in kind from `gradient`'s own pre-JIT allocate-a-temporary-
+    per-op cost, just spread across more, smaller arrays."""
+    return _semi_lagrangian_advect_kernel(
+        field, u, v, dt_s, grid.world_xyz, grid.east, grid.north, PLANET_RADIUS_M, grid.nside, grid.order
+    )
