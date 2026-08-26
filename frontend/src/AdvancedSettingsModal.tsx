@@ -7,12 +7,18 @@ interface Props {
   maxPlates: number;
   axialTiltDeg: number;
   initialSoilMaturityPercent: number;
+  fluidDensity: number;
+  // Same {value, label} choices App.tsx's own "Detail" dropdown uses (App.tsx's
+  // DETAIL_CHOICES) -- passed down rather than imported here to avoid a circular import
+  // between this file and App.tsx.
+  fluidDensityChoices: { value: number; label: string }[];
   onLandPercentChange: (v: number) => void;
   onContinentalPercentChange: (v: number) => void;
   onAutoPlatesChange: (v: boolean) => void;
   onNumPlatesChange: (v: number) => void;
   onAxialTiltDegChange: (v: number) => void;
   onInitialSoilMaturityPercentChange: (v: number) => void;
+  onFluidDensityChange: (v: number) => void;
   onClose: () => void;
 }
 
@@ -29,12 +35,15 @@ export default function AdvancedSettingsModal({
   maxPlates,
   axialTiltDeg,
   initialSoilMaturityPercent,
+  fluidDensity,
+  fluidDensityChoices,
   onLandPercentChange,
   onContinentalPercentChange,
   onAutoPlatesChange,
   onNumPlatesChange,
   onAxialTiltDegChange,
   onInitialSoilMaturityPercentChange,
+  onFluidDensityChange,
   onClose,
 }: Props) {
   return (
@@ -132,7 +141,7 @@ export default function AdvancedSettingsModal({
           />
         </label>
 
-        <label style={{ display: "block", marginBottom: 0 }}>
+        <label style={{ display: "block", marginBottom: 16 }}>
           Initial soil maturity: {initialSoilMaturityPercent}%
           <input
             type="range"
@@ -145,6 +154,26 @@ export default function AdvancedSettingsModal({
           <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
             0% starts fully barren (bare rock, no soil) -- soil then forms gradually as the
             world steps forward. Higher values start with some soil already in place.
+          </div>
+        </label>
+
+        <label style={{ display: "block", marginBottom: 0 }}>
+          Fluid dynamics resolution
+          <select
+            value={fluidDensity}
+            onChange={(e) => onFluidDensityChange(Number(e.target.value))}
+            style={{ width: "100%", marginTop: 4 }}
+          >
+            {fluidDensityChoices.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+            How finely Ocean/Atmospheric Fluid Dynamics mode resolves currents and wind --
+            independent of Detail above, so you can keep sharp climate/biome maps while running
+            Fluid Dynamics mode at a coarser (faster) resolution. Lower runs faster but coarser.
           </div>
         </label>
       </div>

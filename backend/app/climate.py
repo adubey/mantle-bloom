@@ -11,12 +11,18 @@ difference gradients, and land-excluding neighbor averaging, none of which work 
 lattice or an irregular point cloud. This grid exists *only* here; it is never stored on
 `World` and never touches `world.plates`.
 
-**Fully stateless.** `compute_climate` itself always recomputes everything from scratch, from
-whatever the *current* plate elevation happens to be (sampled via the same `cKDTree`
+**Fully stateless, with one exception.** `compute_climate` recomputes everything from scratch,
+from whatever the *current* plate elevation happens to be (sampled via the same `cKDTree`
 nearest-neighbor technique `_render_grid_arrays` already uses) -- mirroring the render grid's
 own "recompute from scratch every call" philosophy: climate re-derives almost everything
 downstream of elevation from scratch every step, unlike elevation itself, which persists
-incrementally on the plates rather than being rebuilt.
+incrementally on the plates rather than being rebuilt. The exception is `wind_u`/`wind_v`/
+`current_u`/`current_v`: these come from the world's own always-on, genuinely prognostic
+`World.atmosphere_cfd_state`/`ocean_cfd_state` (real shallow-water solves, see
+atmosphere_cfd.py/ocean_cfd.py, resampled onto whichever resolution this call asked for --
+see `fluid_dynamics.resample_to_grid`), not recomputed here -- `compute_wind`/
+`compute_ocean_currents` below still exist, but only as the one-time cold-start bootstrap
+those CFD states are seeded from at `generate_world` time, before they exist yet.
 
 **Computed every step, not just on render.** erosion.py needs a live climate snapshot every
 step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
@@ -33,10 +39,11 @@ simplification, not a bug, since nothing here needs the cache to be exactly curr
 **Mechanism summary**, each described in more detail near its own implementation below:
 latitude-banded meridional wind + Coriolis zonal deflection, mountain deflection/Venturi/
 wake, Ekman-based ocean currents + coastal deflection/smoothing/wake + land swirl +
-circumglobal boost, convergence-based swell detection, semi-Lagrangian temperature
-advection along currents, evaporation-ceiling + land-surface moisture source + wind-driven
-2D humidity advection (decaying inland at a real per-km rate, see
-MOISTURE_HALVING_DISTANCE_KM), and orographic precipitation.
+circumglobal boost (the wind/current *bootstrap* mechanisms -- see "Fully stateless, with one
+exception" above for why an ordinary call doesn't run these at all), convergence-based swell
+detection, semi-Lagrangian temperature advection along currents, evaporation-ceiling +
+land-surface moisture source + wind-driven 2D humidity advection (decaying inland at a real
+per-km rate, see MOISTURE_HALVING_DISTANCE_KM), and orographic precipitation.
 
 **Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
 humidity field ocean evaporation does** -- the "rain in a rainforest" effect, where a wet,
@@ -84,7 +91,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import biomes, geometry, hydrology, plates
+from . import biomes, fluid_dynamics, geometry, hydrology, plates
 
 if TYPE_CHECKING:
     from .world import World
@@ -118,6 +125,15 @@ _REFERENCE_CELL_DEG = 360.0 / _REFERENCE_WIDTH
 # Humidity/Precipitation/Biome/Combined/Resources/Soil-Quality maps, at a real per-step cost.
 CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)
 DEFAULT_CLIMATE_DENSITY = 4.0
+
+# Same idea as CLIMATE_DENSITY_CHOICES, for World.fluid_density (the independent "Fluid
+# dynamics resolution" choice -- see that field's own docstring) -- but capped at "High"
+# (2.0), not "Very High" (4.0): unlike climate_density, this grid's cost is paid every single
+# step now (Ocean/Atmospheric Fluid Dynamics run continuously alongside tectonics, not as an
+# opt-in mode), so there's no "only pay for Very High when you actually switch into FD mode"
+# escape hatch left to justify offering it.
+FLUID_DENSITY_CHOICES = (0.5, 1.0, 2.0)
+DEFAULT_FLUID_DENSITY = 2.0
 
 
 def grid_dimensions(climate_density: float) -> tuple[int, int]:
@@ -891,9 +907,18 @@ def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is
     resulting *transpiration weight*, not an authoritative biome map, so that approximation is
     fine here. Returns zeros everywhere on a world's very first call (`world.climate_cache is
     None`, before any step has run) -- self-correcting after one step, the same tolerance for
-    initial staleness the cache itself already has."""
+    initial staleness the cache itself already has. Also returns zeros if `prev`'s own grid
+    shape doesn't match `elevation_m`'s -- `world.climate_cache` is always sized at
+    `world.climate_density`'s resolution, but this function's caller (`compute_climate`) can
+    be asked for a *different* resolution now (ocean_cfd.py/atmosphere_cfd.py request
+    `world.fluid_density`'s own, independent of climate_density, see World.fluid_density's own
+    docstring); `np.where(prev.is_ocean, ...)` against this call's differently-shaped
+    elevation_m would otherwise raise, and resampling `prev` onto this call's grid just to
+    feed an already-one-step-stale, approximate transpiration weight isn't worth the cost --
+    same "accepted staleness" tolerance as the `prev is None` case above, just triggered by a
+    resolution mismatch instead of a missing cache."""
     prev = world.climate_cache
-    if prev is None:
+    if prev is None or prev.is_ocean.shape != is_ocean.shape:
         return np.zeros_like(elevation_m)
     prev_temperature_c = np.where(prev.is_ocean, prev.ocean_temperature_c, prev.air_temperature_c)
     flat_slope = np.zeros_like(elevation_m)
@@ -1114,15 +1139,40 @@ def compute_climate(
     ocean_baseline_c = compute_ocean_temperature_baseline(insolation_row, height, width)
     surface_temperature_c = np.where(is_ocean, ocean_baseline_c, land_temperature_c)
 
-    wind_u, wind_v, elevation_factor = compute_wind(lat_deg, elevation_m, surface_temperature_c)
+    # wind_u/wind_v come from the world's own always-on atmosphere_cfd_state -- a real,
+    # continuously time-integrated shallow-water solve (see atmosphere_cfd.py) -- rather than
+    # this module's own compute_wind diagnostic, resampled from fluid_density's resolution
+    # onto whatever resolution this call asked for (see fluid_dynamics.resample_to_grid).
+    # compute_wind itself is *not* removed -- it's still the one-time cold-start bootstrap
+    # compute_climate falls back to here, exercised only during generate_world, before
+    # world.atmosphere_cfd_state exists yet (see World.atmosphere_cfd_state's own docstring).
+    # elevation_factor isn't purely a function of elevation (see compute_wind's own body) --
+    # it also depends on the wind field via _mountain_wake_factor, so it's recomputed from
+    # whichever wind source is in play, keeping compute_humidity's "respond to terrain-driven
+    # slowdown" behavior meaningful regardless of source.
+    if world.atmosphere_cfd_state is None:
+        wind_u, wind_v, elevation_factor = compute_wind(lat_deg, elevation_m, surface_temperature_c)
+    else:
+        wind_u, wind_v = world.atmosphere_cfd_state.resample_uv_to_equirect(height, width)
+        elevation_factor = np.clip(
+            _elevation_speed_factor(elevation_m) * _mountain_wake_factor(wind_u, wind_v, elevation_m, lat_deg),
+            MIN_ELEVATION_SPEED_FACTOR, 1.0,
+        )
 
     # A cached-per-world-state noise texture standing in for turbulent current mixing --
     # deterministic in (seed, elapsed_years) so it doesn't flicker between renders of the
-    # same world state, matching every other RNG use in this codebase.
+    # same world state, matching every other RNG use in this codebase. Still needed
+    # unconditionally below: compute_ocean_swells' own `rng` argument, regardless of where
+    # current_u/current_v themselves come from.
     mix_rng = np.random.default_rng((world.seed, round(world.elapsed_years)))
     mixing_noise = mix_rng.random((height, width))
 
-    current_u, current_v = compute_ocean_currents(wind_u, wind_v, is_ocean, lat_deg, world_xyz, mixing_noise)
+    # Same CFD-sourced-instead-of-diagnostic swap as wind_u/wind_v above, from the world's own
+    # always-on ocean_cfd_state -- see that field's own docstring.
+    if world.ocean_cfd_state is None:
+        current_u, current_v = compute_ocean_currents(wind_u, wind_v, is_ocean, lat_deg, world_xyz, mixing_noise)
+    else:
+        current_u, current_v = world.ocean_cfd_state.resample_uv_to_equirect(height, width)
     swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, mix_rng)
 
     ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)

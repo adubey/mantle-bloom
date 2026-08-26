@@ -70,8 +70,103 @@ def test_semi_lagrangian_advect_is_identity_at_zero_velocity():
     lat_deg = 90.0 - (np.arange(10) + 0.5) * (180.0 / 10)
     field = np.arange(10 * 20, dtype=float).reshape(10, 20)
     zero = np.zeros_like(field)
-    advected = fluid_dynamics.semi_lagrangian_advect(field, zero, zero, dt_s=3600.0, lat_deg=lat_deg)
+    geometry = fluid_dynamics.advection_geometry(lat_deg, width=20)
+    advected = fluid_dynamics.semi_lagrangian_advect(field, zero, zero, dt_s=3600.0, geometry=geometry)
     assert np.array_equal(advected, field)
+
+
+def _reference_gradient_m(field, dx_m, dy_m):
+    """The pre-Numba formula, reimplemented independently here (not calling production code)
+    so these tests catch a regression in the jitted rewrite rather than merely re-asserting
+    whatever it currently computes."""
+    gx = (np.roll(field, -1, axis=1) - np.roll(field, 1, axis=1)) / (2.0 * dx_m[:, None])
+    gy = (np.roll(field, 1, axis=0) - np.roll(field, -1, axis=0)) / (2.0 * dy_m)
+    return gx, gy
+
+
+def _reference_laplacian_m(field, dx_m, dy_m):
+    d2x = (np.roll(field, -1, axis=1) + np.roll(field, 1, axis=1) - 2.0 * field) / (dx_m[:, None] ** 2)
+    d2y = (np.roll(field, 1, axis=0) + np.roll(field, -1, axis=0) - 2.0 * field) / (dy_m**2)
+    return d2x + d2y
+
+
+def _reference_divergence_m(u, v, dx_m, dy_m):
+    gx, _ = _reference_gradient_m(u, dx_m, dy_m)
+    _, gy = _reference_gradient_m(v, dx_m, dy_m)
+    return gx + gy
+
+
+def _reference_grid_noise_filter(field, weight):
+    neighbor_avg = 0.25 * (
+        np.roll(field, -1, axis=1) + np.roll(field, 1, axis=1) + np.roll(field, -1, axis=0) + np.roll(field, 1, axis=0)
+    )
+    return field + weight * (neighbor_avg - field)
+
+
+def _random_field_and_spacing(rng, height, width):
+    field = rng.normal(size=(height, width))
+    dx_m = rng.uniform(10_000.0, 100_000.0, size=height)
+    dy_m = 12_000.0
+    return field, dx_m, dy_m
+
+
+def test_gradient_m_matches_reference_formula():
+    rng = np.random.default_rng(1)
+    field, dx_m, dy_m = _random_field_and_spacing(rng, 12, 24)
+    gx, gy = fluid_dynamics.gradient_m(field, dx_m, dy_m)
+    expected_gx, expected_gy = _reference_gradient_m(field, dx_m, dy_m)
+    assert np.allclose(gx, expected_gx)
+    assert np.allclose(gy, expected_gy)
+
+
+def test_laplacian_m_matches_reference_formula():
+    rng = np.random.default_rng(2)
+    field, dx_m, dy_m = _random_field_and_spacing(rng, 12, 24)
+    result = fluid_dynamics.laplacian_m(field, dx_m, dy_m)
+    assert np.allclose(result, _reference_laplacian_m(field, dx_m, dy_m))
+
+
+def test_divergence_m_matches_reference_formula():
+    rng = np.random.default_rng(3)
+    u, dx_m, dy_m = _random_field_and_spacing(rng, 12, 24)
+    v, _, _ = _random_field_and_spacing(rng, 12, 24)
+    result = fluid_dynamics.divergence_m(u, v, dx_m, dy_m)
+    assert np.allclose(result, _reference_divergence_m(u, v, dx_m, dy_m))
+
+
+def test_grid_noise_filter_matches_reference_formula():
+    rng = np.random.default_rng(4)
+    field, _, _ = _random_field_and_spacing(rng, 12, 24)
+    result = fluid_dynamics.grid_noise_filter(field, weight=0.05)
+    assert np.allclose(result, _reference_grid_noise_filter(field, 0.05))
+
+
+def test_semi_lagrangian_advect_matches_reference_formula_at_nonzero_velocity():
+    """test_semi_lagrangian_advect_is_identity_at_zero_velocity above only exercises the
+    zero-velocity path (where every backward-trace lands back on its own cell); this exercises
+    the actual round/clip/mod/gather chain the Numba kernel now performs instead of NumPy."""
+    height, width = 12, 24
+    lat_deg = (90.0 - (np.arange(height) + 0.5) * (180.0 / height)).astype(np.float32)
+    rng = np.random.default_rng(5)
+    field = rng.normal(size=(height, width)).astype(np.float32)
+    u = rng.normal(0.0, 5.0, size=(height, width)).astype(np.float32)
+    v = rng.normal(0.0, 5.0, size=(height, width)).astype(np.float32)
+    dt_s = 3600.0
+
+    radius_m = fluid_dynamics.plates.PLANET_RADIUS_KM * 1000.0
+    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
+    lon_deg_row = -180.0 + (np.arange(width, dtype=np.float32) + 0.5) * (360.0 / width)
+    cos_lat = np.clip(np.cos(np.radians(lat_grid)), 0.15, 1.0)
+    meters_per_deg_lat = (np.pi * radius_m) / 180.0
+    src_lat = lat_grid - (v * dt_s) / meters_per_deg_lat
+    src_lon = lon_deg_row[None, :] - (u * dt_s) / (meters_per_deg_lat * cos_lat)
+    src_row = np.clip(np.round((90.0 - src_lat) / (180.0 / height) - 0.5).astype(np.int64), 0, height - 1)
+    src_col = np.round((src_lon + 180.0) / (360.0 / width) - 0.5).astype(np.int64) % width
+    expected = field[src_row, src_col]
+
+    geometry = fluid_dynamics.advection_geometry(lat_deg, width)
+    result = fluid_dynamics.semi_lagrangian_advect(field, u, v, dt_s, geometry)
+    assert np.array_equal(result, expected)
 
 
 def test_coastal_ocean_mask_excludes_open_ocean_and_all_land():
@@ -87,3 +182,27 @@ def test_coastal_ocean_mask_excludes_open_ocean_and_all_land():
     assert coastal[0, 2] and coastal[0, 0]
     assert not coastal[0, 1]
     assert not np.any(coastal[:, 3])  # land itself is never "coastal ocean"
+
+
+def test_resample_to_grid_preserves_shape_and_maps_within_bounds():
+    field = np.arange(6 * 12, dtype=float).reshape(6, 12)
+    resampled = fluid_dynamics.resample_to_grid(field, 3, 6)
+    assert resampled.shape == (3, 6)
+    # Every resampled value must be one this source grid actually holds -- floor-based
+    # index-ratio nearest neighbor, not necessarily the exact source corner.
+    assert resampled[0, 0] == field[0, 0]
+    assert np.isin(resampled, field).all()
+
+
+def test_resample_to_grid_is_identity_at_matching_resolution():
+    rng = np.random.default_rng(6)
+    field = rng.random((10, 20))
+    resampled = fluid_dynamics.resample_to_grid(field, 10, 20)
+    assert np.array_equal(resampled, field)
+
+
+def test_resample_to_grid_upsampling_only_repeats_source_values():
+    field = np.array([[1.0, 2.0], [3.0, 4.0]])
+    resampled = fluid_dynamics.resample_to_grid(field, 4, 4)
+    assert resampled.shape == (4, 4)
+    assert set(np.unique(resampled)) <= {1.0, 2.0, 3.0, 4.0}

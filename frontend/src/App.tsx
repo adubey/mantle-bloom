@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
+import { apiVersion, setApiVersion } from "./api";
+import type { ApiVersion } from "./api";
 import {
-  fetchLakes, fetchPlates, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld,
-  setFluidMode as postFluidMode, stepFluid, stepWorld, updateControls,
+  fetchLakes, fetchPlates, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
 } from "./api";
 import type {
-  FluidMode, LakeAtResponse, LakeSummary, MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats,
-  WorldSummary,
+  LakeAtResponse, LakeSummary, MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
@@ -32,23 +32,6 @@ const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
-// Ocean/Atmospheric Fluid Dynamics modes step in real seconds, not tectonic years -- see
-// backend app/ocean_cfd.py/atmosphere_cfd.py. A far smaller, differently-shaped set of
-// choices than STEP_YEARS_OPTIONS, since a CFD "Step" covers hours to a week, not millennia.
-const STEP_SECONDS_OPTIONS: { value: number; label: string }[] = [
-  { value: 3600, label: "1 hour" },
-  { value: 6 * 3600, label: "6 hours" },
-  { value: 86400, label: "1 day" },
-  { value: 3 * 86400, label: "3 days" },
-  { value: 7 * 86400, label: "1 week" },
-];
-// Ocean CFD alone also offers a coarser "1 month" step -- ocean currents evolve slowly enough
-// (unlike the atmosphere, which needs the finer options above to stay meaningful) that a
-// month-long jump is still a physically reasonable single step.
-const OCEAN_STEP_SECONDS_OPTIONS: { value: number; label: string }[] = [
-  ...STEP_SECONDS_OPTIONS,
-  { value: 30 * 86400, label: "1 month" },
-];
 const PLAY_INTERVAL_MS = 400;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
@@ -74,14 +57,24 @@ const DETAIL_CHOICES: { value: number; label: string }[] = [
 const DEFAULT_DETAIL = 4;
 // The Generate dialog's "Plate representation" control, driving backend app/plates.py's
 // PLATE_REPRESENTATION_CHOICES/DEFAULT_PLATE_REPRESENTATION -- which concrete Plate subclass
-// backs the generated world. A generation-time choice (like Detail above), not a runtime
-// toggle (unlike the Mode dropdown below, which POSTs immediately) -- it only takes effect
-// on the next Generate.
+// backs the generated world. A generation-time choice (like Detail above) -- it only takes
+// effect on the next Generate.
 const REPRESENTATION_CHOICES: { value: string; label: string }[] = [
   { value: "lines", label: "Lines (fast)" },
   { value: "mesh", label: "Mesh (triangulated)" },
 ];
 const DEFAULT_REPRESENTATION = "lines";
+// The Advanced-settings dialog's own "Fluid dynamics resolution" choice (see backend app/
+// world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at "High": Ocean/
+// Atmospheric Fluid Dynamics now runs every step (see docs/simulation-model.md#ocean-
+// atmospheric-fluid-dynamics), so there's no "only pay for Very High when you opt in" case
+// left to justify offering it, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
+const FLUID_DETAIL_CHOICES: { value: number; label: string }[] = [
+  { value: 2, label: "High" },
+  { value: 1, label: "Medium" },
+  { value: 0.5, label: "Low" },
+];
+const DEFAULT_FLUID_DETAIL = 2;
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
 // always lands somewhere the auto behavior could plausibly have picked too.
@@ -110,34 +103,9 @@ function isIdentityRotation(rotation: Mat3): boolean {
   return rotation.every((v, i) => v === IDENTITY_ROTATION[i]);
 }
 
-// Formats a Fluid Dynamics mode's real-time elapsed counter (WorldSummary.elapsed_seconds) as
-// months/days/hours -- unlike tectonic years, an FD run's timescale (hours to a few months,
-// see STEP_SECONDS_OPTIONS/OCEAN_STEP_SECONDS_OPTIONS above) is too short for "Myr" to mean
-// anything, so it gets its own breakdown instead of reusing the elapsed_years/Myr readout.
-// "Month" here is a flat 30 days, matching the "1 month" step option -- there's no calendar to
-// anchor a calendar month to in this simulation.
-function formatFluidElapsed(seconds: number): string {
-  const SECONDS_PER_HOUR = 3600;
-  const SECONDS_PER_DAY = 86400;
-  const SECONDS_PER_MONTH = 30 * SECONDS_PER_DAY;
-  const months = Math.floor(seconds / SECONDS_PER_MONTH);
-  const days = Math.floor((seconds % SECONDS_PER_MONTH) / SECONDS_PER_DAY);
-  const hours = Math.floor((seconds % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
-  return `${months}mo ${days}d ${hours}h`;
-}
-
 // The map view to show after switching to `mode` -- keeps the current view if it's already
 // valid there (e.g. switching Tectonics & Climate -> Ocean Fluid Dynamics -> back doesn't
 // force "elevation" back on if the user had "temperature" selected), and falls back to that
-// mode's own default otherwise (defined outside the component since it needs no hook state).
-function mapViewForMode(mode: FluidMode, current: MapView): MapView {
-  const validForMode =
-    mode === "ocean_cfd" ? OCEAN_CFD_VIEW_CHOICES.includes(current)
-    : mode === "atmosphere_cfd" ? ATMOSPHERE_CFD_VIEW_CHOICES.includes(current)
-    : !FLUID_VIEW_NAMES.has(current);
-  return validForMode ? current : DEFAULT_MAP_VIEW_FOR_MODE[mode];
-}
-
 // Persists the map's view state (projection/mapView/rotation) across a browser refresh --
 // these three are otherwise pure client-local React state (see the `rotation` field's own
 // comment above), so without this a refresh would silently reset the view to its defaults
@@ -145,21 +113,17 @@ function mapViewForMode(mode: FluidMode, current: MapView): MapView {
 // as its own small cookie rather than folded into anything server-side since it's display
 // state, not simulation state -- same reasoning `rotation` itself already gets.
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
+// Ocean/Atmospheric Fluid Dynamics's own map views (see backend app/ocean_cfd.py/
+// atmosphere_cfd.py) -- always available now, not gated behind a Mode toggle, so they're just
+// two more groups in the Map View dropdown below rather than a mode-conditional list.
 const OCEAN_CFD_VIEW_CHOICES: MapView[] = ["oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition"];
 const ATMOSPHERE_CFD_VIEW_CHOICES: MapView[] = ["atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity"];
-const FLUID_VIEW_NAMES = new Set<MapView>([...OCEAN_CFD_VIEW_CHOICES, ...ATMOSPHERE_CFD_VIEW_CHOICES]);
 const MAP_VIEW_CHOICES = new Set<MapView>([
   "elevation", "plates", "platesDetail", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
   "resources", "soilQuality", "plateInspector", "riverInspector", "lakeInspector",
   ...OCEAN_CFD_VIEW_CHOICES, ...ATMOSPHERE_CFD_VIEW_CHOICES,
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
-// Default map view whenever the user switches into a given mode -- see handleModeChange.
-const DEFAULT_MAP_VIEW_FOR_MODE: Record<FluidMode, MapView> = {
-  tectonics_climate: "elevation",
-  ocean_cfd: "oceanCfdVelocity",
-  atmosphere_cfd: "atmosphereCfdVelocity",
-};
 
 interface ViewCookie {
   projection: Projection;
@@ -197,17 +161,18 @@ export default function App() {
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [detail, setDetail] = useState(DEFAULT_DETAIL);
   const [representation, setRepresentation] = useState(DEFAULT_REPRESENTATION);
+  // The Advanced-settings dialog's own "Fluid dynamics resolution" choice -- same
+  // DETAIL_CHOICES set as `detail` above, but a separate dial: unlike node_density/
+  // climate_density (merged into `detail`), this only affects Ocean/Atmospheric Fluid
+  // Dynamics's own grid (see backend app/world.py's World.fluid_density), not plate/climate
+  // resolution, so it's worth letting the user pick independently rather than folding it into
+  // `detail` too. Defaults to DEFAULT_FLUID_DETAIL ("High"), matching the backend's own
+  // FLUID_DENSITY_CHOICES cap -- see that constant's own comment for why it's lower than
+  // DETAIL_CHOICES' own "Very High".
+  const [fluidDensity, setFluidDensity] = useState(DEFAULT_FLUID_DETAIL);
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
-
-  // The "Mode" toggle (see api.ts's FluidMode) -- simulation state, not view state, so unlike
-  // projection/mapView/rotation it's *not* persisted in VIEW_COOKIE_NAME: it always starts at
-  // the default on a fresh page load, then gets resynced against whatever the server-side
-  // world is actually doing by the restore-on-mount effect below (see WorldSummary.fluid_mode's
-  // own comment for why that resync is needed at all).
-  const [fluidMode, setFluidMode] = useState<FluidMode>("tectonics_climate");
-  const [stepSeconds, setStepSeconds] = useState(STEP_SECONDS_OPTIONS[2].value);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -378,7 +343,7 @@ export default function App() {
     try {
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        detail, autoPlates ? null : numPlates, representation,
+        detail, fluidDensity, autoPlates ? null : numPlates, representation,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -391,51 +356,17 @@ export default function App() {
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
-      // A fresh world always comes back in "tectonics_climate" mode (see World's own
-      // dataclass defaults) -- mapViewForMode is a no-op unless the previous session had left
-      // mapView on an FD-only view, in which case it falls back to "elevation".
-      const nextMapView = mapViewForMode(s.fluid_mode, mapView);
-      setFluidMode(s.fluid_mode);
-      setMapView(nextMapView);
-      await Promise.all([refresh(projection, nextMapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, detail, initialSoilMaturityPercent, autoPlates, numPlates,
+    seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates,
     representation, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
-  // The "Mode" toggle -- switches between Tectonics & Climate and the two Fluid Dynamics
-  // modes (see api.ts's FluidMode/setFluidMode). A no-op if already in `mode`, or if a
-  // generate/step is in flight (same guard every other mode-changing action here uses).
-  const handleModeChange = useCallback(async (mode: FluidMode) => {
-    if (!summary || mode === fluidMode || busy || stepping) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await postFluidMode(mode);
-      const nextMapView = mapViewForMode(mode, mapView);
-      setFluidMode(mode);
-      setMapView(nextMapView);
-      // Entering an FD mode always takes a fresh snapshot (elapsed_seconds starts at 0 --
-      // see /world/mode's own docstring), and leaving one drops the counter entirely.
-      setSummary((s) => (s ? { ...s, fluid_mode: mode, elapsed_seconds: mode === "tectonics_climate" ? undefined : 0 } : s));
-      // "1 month" is only a valid step size in Ocean CFD (see OCEAN_STEP_SECONDS_OPTIONS) --
-      // leaving that mode with it selected would otherwise leave the Time-per-step dropdown
-      // pointed at a value absent from its now-active options list.
-      if (mode !== "ocean_cfd" && stepSeconds === OCEAN_STEP_SECONDS_OPTIONS[OCEAN_STEP_SECONDS_OPTIONS.length - 1].value) {
-        setStepSeconds(STEP_SECONDS_OPTIONS[2].value);
-      }
-      await refresh(projection, nextMapView, rotation);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setBusy(false);
-    }
-  }, [summary, fluidMode, busy, stepping, mapView, projection, rotation, refresh, stepSeconds]);
 
   // Debounced so dragging a Controls slider doesn't fire a network request (and force a
   // climate recompute, see main.py's /world/controls) on every single pixel of movement --
@@ -503,36 +434,6 @@ export default function App() {
     }
   }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
 
-  // The Fluid Dynamics modes' own "Step" -- advances the active CFD solver by `stepSeconds`
-  // real seconds instead of tectonic years (see api.ts's stepFluid). Unlike handleStep, this
-  // never touches world.plates/rivers/lakes (both FD modes freeze tectonics -- see
-  // World.fluid_mode's own docstring), so only the render needs refreshing.
-  const handleStepFluid = useCallback(async () => {
-    if (!summary) return;
-    setStepping(true);
-    setError(null);
-    try {
-      const { elapsed_seconds } = await stepFluid(stepSeconds);
-      setSummary((s) => (s ? { ...s, elapsed_seconds } : s));
-      // mapViewRef.current, not mapView -- same stale-closure guard handleStep's own comment
-      // explains, for a mode/view change that lands mid-step.
-      await refresh(projection, mapViewRef.current, rotation);
-    } catch (e) {
-      setError(String(e));
-      setPlaying(false);
-    } finally {
-      setStepping(false);
-    }
-  }, [summary, stepSeconds, projection, rotation, refresh]);
-
-  // Dispatches to whichever of handleStep/handleStepFluid the current mode needs -- the one
-  // callback both the "Step" button and the Play scheduler (via stepRef below) actually use,
-  // so neither has to know which mode is active.
-  const handleStepAny = useCallback(
-    () => (fluidMode === "tectonics_climate" ? handleStep() : handleStepFluid()),
-    [fluidMode, handleStep, handleStepFluid],
-  );
-
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
   // (seaLevelM/solarMultiplier/simulatePlateMovement/simulateClimateBiomes) to the *loaded*
@@ -555,15 +456,7 @@ export default function App() {
       setSolarMultiplier(controls.solar_multiplier);
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
-      // Unlike handleGenerate, the world here can genuinely already be in an FD mode -- a
-      // page refresh restoring a world left mid-FD-session, or a saved file that was mid-
-      // session when saved (World.fluid_mode/ocean_cfd_state/atmosphere_cfd_state are part
-      // of the same whole-World pickle every other field is -- see backend app/persistence.py)
-      // -- so this resyncs from the summary's own fluid_mode rather than assuming the default.
-      const nextMapView = mapViewForMode(s.fluid_mode, mapView);
-      setFluidMode(s.fluid_mode);
-      setMapView(nextMapView);
-      await Promise.all([refresh(projection, nextMapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -632,8 +525,8 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stepRef = useRef(handleStepAny);
-  stepRef.current = handleStepAny;
+  const stepRef = useRef(handleStep);
+  stepRef.current = handleStep;
 
   // Self-scheduling rather than setInterval: each step must finish before the next is
   // scheduled, so a slow step (larger worlds take longer -- a step that also lands on a
@@ -668,6 +561,36 @@ export default function App() {
             Physical World Builder
           </p>
 
+          {/* V1 (kinematic, polygon-based plates) vs V2 (docs/mantle-bloom-design-v2.pdf --
+              Airy isostasy, Mohr-Coulomb deformation, torque-balanced motion, HEALPix fluid
+              grid) -- the same backend process serves both (see backend/app/main.py's
+              app.mount("/v2", ...)), each holding its own independent in-memory World, so
+              switching is a full reload against whichever prefix api.ts's API_BASE now
+              points at, not a value transform of the current one. */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }} role="radiogroup" aria-label="Simulation engine">
+            {(["v1", "v2"] as ApiVersion[]).map((version) => (
+              <button
+                key={version}
+                onClick={() => {
+                  if (version === apiVersion) return;
+                  setApiVersion(version);
+                  window.location.reload();
+                }}
+                aria-pressed={apiVersion === version}
+                title={version === "v2" ? "V2: Airy isostasy, Mohr-Coulomb deformation, torque-balanced plates, HEALPix fluid grid" : "V1: kinematic, polygon-based plates"}
+                style={{
+                  flex: 1,
+                  fontSize: 11,
+                  padding: "4px 0",
+                  background: apiVersion === version ? "#3a5a8f" : undefined,
+                  fontWeight: apiVersion === version ? 600 : 400,
+                }}
+              >
+                {version.toUpperCase()}
+              </button>
+            ))}
+          </div>
+
           <button onClick={() => setShowGenerateDialog(true)} disabled={busy} style={{ fontSize: 12 }}>
             Generate World
           </button>
@@ -678,8 +601,7 @@ export default function App() {
 
           <button
             onClick={() => setShowControlsModal(true)}
-            disabled={!summary || fluidMode !== "tectonics_climate"}
-            title={fluidMode !== "tectonics_climate" ? "Not available in a Fluid Dynamics mode -- tectonics/climate are frozen" : undefined}
+            disabled={!summary}
             style={{ fontSize: 12 }}
           >
             🎛️ Controls
@@ -690,67 +612,23 @@ export default function App() {
           </button>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
-            <legend style={{ fontSize: 11 }}>Mode</legend>
-            <select
-              value={fluidMode}
-              onChange={(e) => handleModeChange(e.target.value as FluidMode)}
-              disabled={busy || stepping || !summary}
-              style={{ width: "100%", fontSize: 12 }}
-            >
-              {(
-                [
-                  ["tectonics_climate", "Tectonics & Climate"],
-                  ["ocean_cfd", "Ocean Fluid Dynamics"],
-                  ["atmosphere_cfd", "Atmospheric Fluid Dynamics"],
-                ] as [FluidMode, string][]
-              ).map(([mode, label]) => (
-                <option key={mode} value={mode}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            {fluidMode !== "tectonics_climate" && (
-              <div style={{ marginTop: 6, fontSize: 11, color: "#999" }}>
-                Plate tectonics and climate/erosion are frozen while a Fluid Dynamics mode is active.
-              </div>
-            )}
-          </fieldset>
-
-          <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
             <legend style={{ fontSize: 11 }}>Time</legend>
-            {fluidMode === "tectonics_climate" ? (
-              <label style={{ display: "block", marginBottom: 6 }}>
-                Years per step
-                <select
-                  value={stepYears}
-                  onChange={(e) => setStepYears(Number(e.target.value))}
-                  style={{ width: "100%", fontSize: 12 }}
-                >
-                  {STEP_YEARS_OPTIONS.map((y) => (
-                    <option key={y} value={y}>
-                      {y.toLocaleString()}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <label style={{ display: "block", marginBottom: 6 }}>
-                Time per step
-                <select
-                  value={stepSeconds}
-                  onChange={(e) => setStepSeconds(Number(e.target.value))}
-                  style={{ width: "100%", fontSize: 12 }}
-                >
-                  {(fluidMode === "ocean_cfd" ? OCEAN_STEP_SECONDS_OPTIONS : STEP_SECONDS_OPTIONS).map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <label style={{ display: "block", marginBottom: 6 }}>
+              Years per step
+              <select
+                value={stepYears}
+                onChange={(e) => setStepYears(Number(e.target.value))}
+                style={{ width: "100%", fontSize: 12 }}
+              >
+                {STEP_YEARS_OPTIONS.map((y) => (
+                  <option key={y} value={y}>
+                    {y.toLocaleString()}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={handleStepAny} disabled={busy || stepping || !summary} style={{ flex: 1, fontSize: 12 }}>
+              <button onClick={handleStep} disabled={busy || stepping || !summary} style={{ flex: 1, fontSize: 12 }}>
                 Step
               </button>
               <button onClick={() => setPlaying((p) => !p)} disabled={busy || !summary} style={{ flex: 1, fontSize: 12 }}>
@@ -766,38 +644,34 @@ export default function App() {
               onChange={(e) => setMapView(e.target.value as MapView)}
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
-              {fluidMode === "ocean_cfd" ? (
-                <>
-                  <option value="oceanCfdVelocity">Ocean currents</option>
-                  <option value="oceanCfdTemperature">Ocean temperature</option>
-                  <option value="oceanCfdSediment">Suspended sediment</option>
-                  <option value="oceanCfdDeposition">Sediment deposition</option>
-                </>
-              ) : fluidMode === "atmosphere_cfd" ? (
-                <>
-                  <option value="atmosphereCfdVelocity">Wind</option>
-                  <option value="atmosphereCfdTemperature">Air temperature</option>
-                  <option value="atmosphereCfdHumidity">Humidity</option>
-                </>
-              ) : (
-                <>
-                  <option value="plates">Plates</option>
-                  <option value="platesDetail">Plates (details)</option>
-                  <option value="plateInspector">Plate Inspector</option>
-                  <option value="riverInspector">River Inspector</option>
-                  <option value="lakeInspector">Lake Inspector</option>
-                  <option value="elevation">Elevation</option>
-                  <option value="temperature">Temperature</option>
-                  <option value="wind">Wind</option>
-                  <option value="oceanCurrents">Ocean currents</option>
-                  <option value="humidity">Humidity</option>
-                  <option value="precipitation">Precipitation</option>
-                  <option value="biome">Biome</option>
-                  <option value="combined">Combined</option>
-                  <option value="resources">Resources</option>
-                  <option value="soilQuality">Soil Quality</option>
-                </>
-              )}
+              <optgroup label="Tectonics & Climate">
+                <option value="plates">Plates</option>
+                <option value="platesDetail">Plates (details)</option>
+                <option value="plateInspector">Plate Inspector</option>
+                <option value="riverInspector">River Inspector</option>
+                <option value="lakeInspector">Lake Inspector</option>
+                <option value="elevation">Elevation</option>
+                <option value="temperature">Temperature</option>
+                <option value="wind">Wind</option>
+                <option value="oceanCurrents">Ocean currents</option>
+                <option value="humidity">Humidity</option>
+                <option value="precipitation">Precipitation</option>
+                <option value="biome">Biome</option>
+                <option value="combined">Combined</option>
+                <option value="resources">Resources</option>
+                <option value="soilQuality">Soil Quality</option>
+              </optgroup>
+              <optgroup label="Ocean Fluid Dynamics">
+                <option value="oceanCfdVelocity">Ocean currents (detail)</option>
+                <option value="oceanCfdTemperature">Ocean temperature (detail)</option>
+                <option value="oceanCfdSediment">Suspended sediment</option>
+                <option value="oceanCfdDeposition">Sediment deposition</option>
+              </optgroup>
+              <optgroup label="Atmospheric Fluid Dynamics">
+                <option value="atmosphereCfdVelocity">Wind (detail)</option>
+                <option value="atmosphereCfdTemperature">Air temperature (detail)</option>
+                <option value="atmosphereCfdHumidity">Humidity (detail)</option>
+              </optgroup>
             </select>
             <select
               value={projection}
@@ -904,11 +778,7 @@ export default function App() {
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
-              {fluidMode === "tectonics_climate" ? (
-                <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
-              ) : (
-                <div>elapsed: {formatFluidElapsed(summary.elapsed_seconds ?? 0)}</div>
-              )}
+              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
             </div>
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
@@ -1111,12 +981,15 @@ export default function App() {
           maxPlates={MAX_PLATES}
           axialTiltDeg={axialTiltDeg}
           initialSoilMaturityPercent={initialSoilMaturityPercent}
+          fluidDensity={fluidDensity}
+          fluidDensityChoices={FLUID_DETAIL_CHOICES}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
           onAutoPlatesChange={setAutoPlates}
           onNumPlatesChange={setNumPlates}
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
+          onFluidDensityChange={setFluidDensity}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}

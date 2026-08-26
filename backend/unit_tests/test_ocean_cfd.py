@@ -4,7 +4,13 @@ from app.world import generate_world
 
 
 def _world(seed=1, num_plates=8, climate_density=0.5, steps=1, years=5_000_000):
-    world = generate_world(seed, num_plates=num_plates, continental_fraction=0.6, land_fraction=0.35, climate_density=climate_density)
+    # fluid_density=climate_density -- ocean_cfd sizes its own grid off fluid_density (see
+    # World.fluid_density's own docstring), independent of climate_density since
+    # backend/app/world.py's own change; these tests want the same deliberately coarse,
+    # fast-to-run grid climate_density already gives them, not fluid_density's own default.
+    world = generate_world(
+        seed, num_plates=num_plates, continental_fraction=0.6, land_fraction=0.35, climate_density=climate_density, fluid_density=climate_density
+    )
     from app.world import step_world
 
     for _ in range(steps):

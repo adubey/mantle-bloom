@@ -1,6 +1,30 @@
+import { getCookie, setCookie } from "./cookies";
+
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+const API_ROOT = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+
+export type ApiVersion = "v1" | "v2";
+const API_VERSION_COOKIE_NAME = "mantle-bloom-api-version";
+
+// V2 (docs/mantle-bloom-design-v2.pdf) is mounted alongside v1 in the same backend process,
+// at a /v2 path prefix with the exact same route shapes (see backend/app/main.py's own
+// app.mount("/v2", v2_app)) -- so every existing fetch(`${API_BASE}/world/...`) call site in
+// this file keeps working unchanged for either backend; only which prefix they resolve
+// against needs to change. `API_BASE` is a `let`, re-read fresh by every call site each time
+// it builds a request URL (none of them cache it), so flipping `apiVersion` takes effect on
+// the very next API call with no other frontend change needed. Persisted via a cookie (like
+// the map's own view-state cookie, see App.tsx) so a refresh keeps whichever backend was
+// selected, since v1 and v2 each hold their own independent in-memory World -- switching is
+// equivalent to pointing the same client at a different server, not a value transform.
+export let apiVersion: ApiVersion = getCookie(API_VERSION_COOKIE_NAME) === "v2" ? "v2" : "v1";
+export let API_BASE = apiVersion === "v2" ? `${API_ROOT}/v2` : API_ROOT;
+
+export function setApiVersion(version: ApiVersion): void {
+  apiVersion = version;
+  API_BASE = version === "v2" ? `${API_ROOT}/v2` : API_ROOT;
+  setCookie(API_VERSION_COOKIE_NAME, version);
+}
 
 export type Projection = "behrmann" | "eckert4";
 
@@ -32,13 +56,6 @@ export type MapView =
   | "atmosphereCfdTemperature"
   | "atmosphereCfdHumidity";
 
-// The UI's "Mode" toggle -- see backend app/world.py's World.fluid_mode. Mutually exclusive:
-// "tectonics_climate" (the default) is today's simulation, unchanged; the two Fluid Dynamics
-// modes freeze it and hand stepping over to a real time-integrated shallow-water solver (see
-// backend app/ocean_cfd.py/atmosphere_cfd.py and docs/simulation-model.md#ocean-atmospheric-
-// fluid-dynamics).
-export type FluidMode = "tectonics_climate" | "ocean_cfd" | "atmosphere_cfd";
-
 export interface WorldEvent {
   elapsed_years: number;
   message: string;
@@ -49,15 +66,6 @@ export interface WorldSummary {
   elapsed_years: number;
   num_plates: number;
   events: WorldEvent[];
-  // The server-side world's own current mode (see FluidMode) -- outlives a browser refresh
-  // (the world lives in server memory), unlike the frontend's own `fluidMode` React state,
-  // which always starts back at its default on a fresh page load. See App.tsx's restore-on-
-  // mount effect for why this needs resyncing explicitly rather than assumed.
-  fluid_mode: FluidMode;
-  // Real-time elapsed within the active FD solver (see ocean_cfd.py/atmosphere_cfd.py's own
-  // `elapsed_seconds`, and stepFluid's return type below) -- present only while `fluid_mode`
-  // is "ocean_cfd"/"atmosphere_cfd"; plate tectonics/climate use `elapsed_years` instead.
-  elapsed_seconds?: number;
 }
 
 export interface RenderResponse {
@@ -265,6 +273,9 @@ async function asBlob(resp: Response): Promise<Blob> {
 // backend app/plates.py's PLATE_REPRESENTATION_CHOICES) -- which concrete Plate subclass
 // backs the generated world; not stored on World (see world.generate_world's own docstring
 // for why, same reasoning initialSoilMaturity's own non-storage gives).
+// fluidDensity is the Advanced-settings dialog's "Fluid dynamics resolution" choice (same
+// 0.5/1/2/4 set) -- how finely the continuous Ocean/Atmospheric CFD's own grid resolves
+// currents/wind, independent of climateDensity (see world.py's World.fluid_density).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -273,6 +284,7 @@ export function generateWorld(
   nodeDensity: number,
   initialSoilMaturity: number,
   climateDensity: number,
+  fluidDensity: number,
   numPlates: number | null,
   representation: string,
 ): Promise<WorldSummary> {
@@ -289,6 +301,7 @@ export function generateWorld(
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
       representation,
+      fluid_density: fluidDensity,
     }),
   }).then(asJson<WorldSummary>);
 }
@@ -343,39 +356,6 @@ export async function stepWorld(years: number): Promise<WorldSummary> {
       continue;
     }
     return asJson<WorldSummary>(resp);
-  }
-}
-
-// The UI's "Mode" toggle -- switches between "tectonics_climate" and the two Fluid Dynamics
-// modes (see FluidMode). Switching into an FD mode always takes a fresh snapshot of the
-// world's current elevation/climate server-side (discarding any state from a previous visit
-// to that mode); switching back to "tectonics_climate" just resumes ordinary stepping from
-// wherever tectonics/elevation were left (never touched while an FD mode was active). See
-// backend app/main.py's POST /world/mode.
-export function setFluidMode(mode: FluidMode): Promise<{ fluid_mode: FluidMode }> {
-  return fetch(`${API_BASE}/world/mode`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  }).then(asJson<{ fluid_mode: FluidMode }>);
-}
-
-// Advances the active Ocean/Atmospheric Fluid Dynamics simulation by `seconds` of real time
-// -- the FD-mode counterpart to stepWorld (which only ever advances tectonic/climate years).
-// Same 503-retry-on-overlapping-step contract as stepWorld (see backend app/main.py's
-// _step_lock, shared by both /world/step and /world/step_fluid).
-export async function stepFluid(seconds: number): Promise<{ fluid_mode: FluidMode; elapsed_seconds: number }> {
-  for (;;) {
-    const resp = await fetch(`${API_BASE}/world/step_fluid`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seconds }),
-    });
-    if (resp.status === 503) {
-      await new Promise((resolve) => setTimeout(resolve, STEP_RETRY_DELAY_MS));
-      continue;
-    }
-    return asJson<{ fluid_mode: FluidMode; elapsed_seconds: number }>(resp);
   }
 }
 

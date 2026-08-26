@@ -13,13 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, coastline, geodesic, geometry, hydrology, lakes, ocean_cfd, persistence, plates, projections, render_image, stats
+from . import climate, coastline, geodesic, geometry, hydrology, lakes, persistence, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
-
-# The UI's "Mode" toggle -- see World.fluid_mode's own docstring. Kept here (not on World)
-# since main.py already owns every other request-validation set (projections.PROJECTIONS,
-# render_image.VIEWS, ...); World itself only ever reads the one value it was told to hold.
-FLUID_MODES = ("tectonics_climate", "ocean_cfd", "atmosphere_cfd")
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
 # client's query string, and PIL will happily try to allocate whatever it's told, so an
@@ -87,6 +82,12 @@ class GenerateRequest(BaseModel):
     # world (see plates.PLATE_REPRESENTATION_CHOICES/plates.generate_plates). Validated
     # below, same reasoning node_density's own validation gives.
     representation: str = plates.DEFAULT_PLATE_REPRESENTATION
+    # The UI's "Fluid dynamics resolution" Advanced-settings choice -- how finely Ocean/
+    # Atmospheric Fluid Dynamics resolves currents/wind, independent of climate_density (see
+    # World.fluid_density's own comment for why). Validated against
+    # climate.FLUID_DENSITY_CHOICES below -- a smaller, lower-capped set than
+    # climate_density's own, see that constant's own comment for why.
+    fluid_density: float = climate.DEFAULT_FLUID_DENSITY
 
 
 class StepRequest(BaseModel):
@@ -110,14 +111,6 @@ class AnimateRequest(BaseModel):
     # permanently advances the world by (num_frames - 1) * years_per_frame years (see
     # render_image.render_animation_gif's own docstring).
     num_frames: int
-
-
-class ModeRequest(BaseModel):
-    mode: str
-
-
-class StepFluidRequest(BaseModel):
-    seconds: float
 
 
 class ExportHexGridRequest(BaseModel):
@@ -167,7 +160,7 @@ def _require_world() -> World:
 
 
 def _summary(world: World) -> dict:
-    summary = {
+    return {
         "seed": world.seed,
         "elapsed_years": world.elapsed_years,
         "num_plates": len(world.plates),
@@ -175,25 +168,7 @@ def _summary(world: World) -> dict:
         # for the frontend than diffing "new since last call", and small enough not to
         # matter on the wire.
         "events": [{"elapsed_years": e, "message": m} for e, m in world.events],
-        # World.fluid_mode outlives a browser refresh (the World itself lives in server
-        # memory -- see this module's own docstring), but the frontend's own `fluidMode`
-        # state doesn't (a fresh page load always starts it at the default). Included here,
-        # not just in POST /world/mode's own response, so the restore-on-mount flow (see
-        # App.tsx's fetchWorldSummary effect) can resync it correctly instead of assuming
-        # "tectonics_climate" regardless of what the server-side world is actually doing.
-        "fluid_mode": world.fluid_mode,
     }
-    # Same real-time counter POST /world/step_fluid already returns, but included here too --
-    # not just from that one endpoint -- so every path that can hand the frontend a summary
-    # while an FD mode is active (generate/step/restore/render, see this function's callers)
-    # keeps the elapsed-time readout in sync, not just a live step.
-    if world.fluid_mode == "ocean_cfd":
-        assert world.ocean_cfd_state is not None  # invariant: set whenever fluid_mode == "ocean_cfd", see /world/mode
-        summary["elapsed_seconds"] = world.ocean_cfd_state.elapsed_seconds
-    elif world.fluid_mode == "atmosphere_cfd":
-        assert world.atmosphere_cfd_state is not None
-        summary["elapsed_seconds"] = world.atmosphere_cfd_state.elapsed_seconds
-    return summary
 
 
 #  Rounding every coordinate sent to the client to this many decimal places -- plenty for a
@@ -397,6 +372,10 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown representation {req.representation!r}; choices are {plates.PLATE_REPRESENTATION_CHOICES}"
         )
+    if req.fluid_density not in climate.FLUID_DENSITY_CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.FLUID_DENSITY_CHOICES}"
+        )
     world = generate_world(
         req.seed,
         num_plates=req.num_plates,
@@ -408,6 +387,7 @@ def generate(req: GenerateRequest) -> dict:
         initial_soil_maturity=req.initial_soil_maturity,
         climate_density=req.climate_density,
         representation=req.representation,
+        fluid_density=req.fluid_density,
     )
     _state["world"] = world
     return _summary(world)
@@ -426,43 +406,16 @@ def get_summary() -> dict:
 
 @app.post("/world/step")
 def step(req: StepRequest) -> dict:
+    """Advances plate tectonics/climate/erosion by `req.years` (see step_world) -- and, gated
+    on World.simulate_climate_biomes the same way erosion/hydrology already are, Ocean/
+    Atmospheric Fluid Dynamics by their own fixed real-time increment regardless of `req.years`
+    (see world.py's `_advance_fluid_dynamics`)."""
     world = _require_world()
-    if world.fluid_mode != "tectonics_climate":
-        raise HTTPException(status_code=400, detail=f"world is in {world.fluid_mode!r} mode -- use POST /world/step_fluid instead")
     if not _step_lock.acquire(blocking=False):
         raise HTTPException(status_code=503, detail="a step is already in progress")
     try:
         step_world(world, req.years)
         return _summary(world)
-    finally:
-        _step_lock.release()
-
-
-@app.post("/world/step_fluid")
-def step_fluid(req: StepFluidRequest) -> dict:
-    """Advances the active Ocean/Atmospheric Fluid Dynamics simulation by `req.seconds` of
-    real time (see World.fluid_mode and ocean_cfd.py/atmosphere_cfd.py) -- the FD-mode
-    counterpart to `/world/step`, which only ever advances plate tectonics/climate years.
-    `400` if the world is currently in `"tectonics_climate"` mode (use `/world/step` instead)
-    or `req.seconds` isn't positive/finite, `404` if no world has been generated yet. Shares
-    `_step_lock` with `/world/step` since both mutate the same World's arrays."""
-    world = _require_world()
-    if world.fluid_mode == "tectonics_climate":
-        raise HTTPException(status_code=400, detail="world is in tectonics_climate mode -- use POST /world/step instead")
-    if not (np.isfinite(req.seconds) and req.seconds > 0):
-        raise HTTPException(status_code=400, detail="seconds must be a positive, finite number")
-    if not _step_lock.acquire(blocking=False):
-        raise HTTPException(status_code=503, detail="a step is already in progress")
-    try:
-        if world.fluid_mode == "ocean_cfd":
-            assert world.ocean_cfd_state is not None  # invariant: set whenever fluid_mode == "ocean_cfd", see /world/mode
-            ocean_cfd.step_ocean_cfd(world, world.ocean_cfd_state, req.seconds)
-            elapsed_seconds = world.ocean_cfd_state.elapsed_seconds
-        else:
-            assert world.atmosphere_cfd_state is not None
-            atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, req.seconds)
-            elapsed_seconds = world.atmosphere_cfd_state.elapsed_seconds
-        return {"fluid_mode": world.fluid_mode, "elapsed_seconds": elapsed_seconds}
     finally:
         _step_lock.release()
 
@@ -525,10 +478,6 @@ def render(
         raise HTTPException(status_code=400, detail=f"unknown projection {projection!r}")
     if view not in render_image.VIEWS:
         raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {render_image.VIEWS}")
-    if view in render_image.OCEAN_CFD_VIEWS and world.ocean_cfd_state is None:
-        raise HTTPException(status_code=400, detail=f"view {view!r} needs Ocean Fluid Dynamics mode active -- see POST /world/mode")
-    if view in render_image.ATMOSPHERE_CFD_VIEWS and world.atmosphere_cfd_state is None:
-        raise HTTPException(status_code=400, detail=f"view {view!r} needs Atmospheric Fluid Dynamics mode active -- see POST /world/mode")
     if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
@@ -599,34 +548,6 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
     }
-
-
-@app.post("/world/mode")
-def set_mode(req: ModeRequest) -> dict:
-    """The UI's "Mode" toggle (see World.fluid_mode's own docstring) -- switches between
-    "tectonics_climate" (the default) and the two Fluid Dynamics modes. Switching *into*
-    "ocean_cfd"/"atmosphere_cfd" always takes a *fresh* snapshot of the world's current
-    elevation/climate (init_ocean_cfd/init_atmosphere_cfd), discarding any state left over
-    from a previous visit to that same mode -- simplest, most predictable behavior, and
-    matches "freeze at entry": there's no notion of "resuming" a stale FD session against
-    terrain that (if the mode was left via "tectonics_climate" and stepped) may since have
-    moved on. Switching *back* to "tectonics_climate" just flips the flag and drops both FD
-    states to free memory -- plate tectonics/elevation were never touched while an FD mode
-    was active, so it resumes exactly where it left off with no special handling needed.
-    Uses `_step_lock` since it mutates the same World a step would. `400` for an unrecognized
-    mode, `404` if no world has been generated yet."""
-    world = _require_world()
-    if req.mode not in FLUID_MODES:
-        raise HTTPException(status_code=400, detail=f"unknown mode {req.mode!r}; choices are {FLUID_MODES}")
-    if not _step_lock.acquire(blocking=False):
-        raise HTTPException(status_code=503, detail="a step is already in progress")
-    try:
-        world.fluid_mode = req.mode
-        world.ocean_cfd_state = ocean_cfd.init_ocean_cfd(world) if req.mode == "ocean_cfd" else None
-        world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world) if req.mode == "atmosphere_cfd" else None
-        return {"fluid_mode": world.fluid_mode}
-    finally:
-        _step_lock.release()
 
 
 @app.get("/world/plates")
@@ -805,3 +726,15 @@ def export_hexgrid(req: ExportHexGridRequest) -> dict:
     if req.frequency not in geodesic.FREQUENCY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown frequency {req.frequency!r}; choices are {geodesic.FREQUENCY_CHOICES}")
     return geodesic.export_hexgrid(world, req.frequency)
+
+
+# V2 (docs/mantle-bloom-design-v2.pdf): a physically-driven geodynamics/meteorology engine
+# (Airy isostasy, Mohr-Coulomb deformation, torque-balanced plate motion, a HEALPix fluid
+# grid) mounted alongside v1 rather than replacing it -- see v2/main_v2.py's own module
+# docstring. A separate FastAPI app (its own CORS middleware -- app.mount() doesn't propagate
+# a parent app's middleware to a mounted sub-app) with the same route shapes as this module's,
+# reachable at /v2/world/... . The frontend's v1/v2 toggle (see frontend/src/api.ts) is what
+# actually switches which of the two a browser session talks to.
+from .v2.main_v2 import app as v2_app  # noqa: E402
+
+app.mount("/v2", v2_app)

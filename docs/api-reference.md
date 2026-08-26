@@ -18,7 +18,8 @@ Request body:
   "num_mantle_centers": 8,
   "node_density": 4.0,
   "initial_soil_maturity": 0.0,
-  "climate_density": 4.0
+  "climate_density": 4.0,
+  "fluid_density": 4.0
 }
 ```
 
@@ -56,8 +57,23 @@ quadruples it (16x the reference cell count), for the sharpest climate/biome map
 halves it, for a coarser but faster grid -- stored on `World` (unlike `initial_soil_maturity`)
 since every future step/render
 reads it again, same reasoning `node_density`'s own storage gives (see
-[simulation-model.md#climate](simulation-model.md#climate)). Replaces whatever world
-previously existed.
+[simulation-model.md#climate](simulation-model.md#climate)). `fluid_density` is the UI's
+"Fluid dynamics resolution" Advanced-settings choice -- same `climate.CLIMATE_DENSITY_CHOICES`
+set (capped at `2.0`/"High" rather than `4.0`/"Very High", see `climate.FLUID_DENSITY_CHOICES`'s
+own comment for why) and `400` validation as `climate_density`, but independent of it: sizes
+only Ocean/Atmospheric Fluid Dynamics's own grid (`ocean_cfd.init_ocean_cfd`/
+`atmosphere_cfd.init_atmosphere_cfd`, immediately populated by this same call -- see below),
+not the climate/biome render grid or erosion's own climate sampling. Lets a world keep a sharp
+climate/biome grid while running Ocean/Atmospheric Fluid Dynamics at a coarser (faster)
+resolution, or vice versa -- see
+[simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
+Replaces whatever world previously existed.
+
+`generate_world` also immediately seeds this new world's permanent
+`World.atmosphere_cfd_state`/`ocean_cfd_state` (`atmosphere_cfd.init_atmosphere_cfd`, then
+`ocean_cfd.init_ocean_cfd`, which seeds its own wind forcing from the former's result) --
+Ocean/Atmospheric Fluid Dynamics is always on, not a mode entered later, see
+[simulation-model.md#mode-toggle](simulation-model.md#mode-toggle).
 
 Response: a summary --
 
@@ -66,19 +82,9 @@ Response: a summary --
   "seed": 1,
   "elapsed_years": 0.0,
   "num_plates": 13,
-  "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }],
-  "fluid_mode": "tectonics_climate"
+  "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }]
 }
 ```
-
-`fluid_mode` (see `POST /world/mode` below) is included in this and every other endpoint
-that returns a summary (`/world/step`, `/world/summary`, `/world/load`, `/world/animate`) --
-not just so the frontend's own React state can track it, but so a browser refresh (which
-re-fetches `/world/summary` to restore whatever world is already sitting in server memory --
-see `App.tsx`'s restore-on-mount effect) can resync correctly, since the *server-side*
-world's mode outlives the refresh even though the frontend's own mode state doesn't. A fresh
-`/world/generate` always comes back `"tectonics_climate"` (a new `World`'s own dataclass
-default).
 
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
 entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
@@ -97,66 +103,13 @@ Request body:
 ```
 
 Advances the current world by `years` (see
-[simulation-model.md](simulation-model.md) for what a step actually does). Returns the same
-summary shape as `/world/generate`, with `events` reflecting anything logged up through this
-step. `404` if no world has been generated yet.
-
-## `POST /world/mode`
-
-Request body:
-
-```json
-{ "mode": "ocean_cfd" }
-```
-
-The "Mode" toggle -- switches `World.fluid_mode` between `"tectonics_climate"` (the
-default), `"ocean_cfd"`, and `"atmosphere_cfd"` (see
-[simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics)).
-`400` for an unrecognized `mode`, `404` if no world has been generated yet.
-
-Switching *into* `"ocean_cfd"`/`"atmosphere_cfd"` always takes a **fresh** snapshot of the
-world's current elevation/climate (`ocean_cfd.init_ocean_cfd`/`atmosphere_cfd.init_atmosphere_cfd`)
-and discards any state left over from a previous visit to that same mode -- there's no
-"resuming" a stale session. Plate tectonics and the climate/erosion model are frozen for as
-long as an FD mode is active (real ocean/atmosphere fluid dynamics needs steps of hours to
-days; tectonics needs steps of thousands to millions of years -- no single `/world/step`-style
-call can mean both). Switching back to `"tectonics_climate"` just flips the flag and drops
-both FD states to free memory -- tectonics/elevation were never touched while an FD mode was
-active, so it resumes exactly where it left off with no special handling needed.
-
-Response:
-
-```json
-{ "fluid_mode": "ocean_cfd" }
-```
-
-## `POST /world/step_fluid`
-
-Request body:
-
-```json
-{ "seconds": 86400 }
-```
-
-The Fluid Dynamics modes' own counterpart to `/world/step` -- advances the active
-`ocean_cfd`/`atmosphere_cfd` solver by `seconds` of real time (not tectonic years) in as many
-CFL-stable substeps as the current grid resolution and flow speed demand (see
-[simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics)).
-`400` if `World.fluid_mode` is currently `"tectonics_climate"` (use `/world/step` instead) or
-`seconds` isn't a positive, finite number, `404` if no world has been generated yet, `503` if
-a step (of either kind) is already in progress -- shares `main._step_lock` with `/world/step`
-since both mutate the same `World`'s arrays.
-
-Response:
-
-```json
-{ "fluid_mode": "ocean_cfd", "elapsed_seconds": 86400.0 }
-```
-
-`elapsed_seconds` is the active FD state's own running total (`OceanCFDState.elapsed_seconds`/
-`AtmosphereCFDState.elapsed_seconds`), reset to `0.0` every time `/world/mode` (re)enters that
-mode -- unrelated to, and not folded into, `World.elapsed_years` (tectonic time never advances
-while an FD mode is active).
+[simulation-model.md](simulation-model.md) for what a step actually does) -- including, gated
+on `World.simulate_climate_biomes`, advancing `World.atmosphere_cfd_state`/`ocean_cfd_state`
+by their own fixed real-time increment (one simulated day / one simulated week) regardless of
+`years`, see
+[simulation-model.md#mode-toggle](simulation-model.md#mode-toggle). Returns the same summary
+shape as `/world/generate`, with `events` reflecting anything logged up through this step.
+`404` if no world has been generated yet.
 
 ## `GET /world/save`
 
@@ -265,9 +218,14 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   `"atmosphereCfdHumidity"` are heatmaps reusing the same color scales as `"temperature"`/
   `"humidity"`; `"oceanCfdSediment"` (suspended concentration) and `"oceanCfdDeposition"`
   (cumulative tracked settling, informational only -- never mutates world elevation, see
-  `ocean_cfd.py`) have their own scales. Each of the seven `400`s (not merely renders blank)
-  if `World.fluid_mode` isn't the matching mode -- see `POST /world/mode` above -- since
-  their backing state (`World.ocean_cfd_state`/`atmosphere_cfd_state`) only exists then.
+  `ocean_cfd.py`) have their own scales. All seven are always renderable, same as every other
+  view here -- `World.ocean_cfd_state`/`atmosphere_cfd_state` are populated immediately at
+  generation and never `None` again for that world's life (see
+  [simulation-model.md#mode-toggle](simulation-model.md#mode-toggle)), not gated behind a mode
+  to switch into any more. Note that `"wind"`/`"oceanCurrents"`/`"temperature"`/`"humidity"`
+  above now draw the *same* CFD-backed data as their `atmosphereCfd*`/`oceanCfd*`
+  counterparts, just resampled onto `climate_density`'s resolution instead of
+  `fluid_density`'s native one.
 - `rotation` is the map's current view orientation (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world

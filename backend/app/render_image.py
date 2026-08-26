@@ -43,11 +43,18 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-# Ocean/Atmospheric Fluid Dynamics modes' own map views -- see ocean_cfd.py/atmosphere_cfd.py
-# and docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. Only meaningful while
-# World.fluid_mode is the matching mode (main.py's /world/render rejects these otherwise,
-# since there's no ocean_cfd_state/atmosphere_cfd_state to draw from) -- unlike every other
-# view here, which is always renderable regardless of what else the world is doing.
+# Ocean/Atmospheric Fluid Dynamics's own map views -- see ocean_cfd.py/atmosphere_cfd.py and
+# docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. World.ocean_cfd_state/
+# atmosphere_cfd_state are always populated now (see the former's own docstring), so these are
+# always renderable, same as every other view here.
+#
+# TODO: oceanCfdVelocity/oceanCfdTemperature and atmosphereCfdVelocity/atmosphereCfdTemperature
+# are now redundant with CLIMATE_VIEWS' own "wind"/"oceanCurrents"/"temperature" -- climate.py's
+# compute_climate sources wind_u/wind_v/current_u/current_v straight from these same CFD
+# states (see its own module docstring), just resampled onto climate_density's grid instead of
+# fluid_density's. Worth consolidating (drop the duplicates, or make the plain views always use
+# native fluid_density resolution) once it's clear which framing the UI wants long-term.
+# oceanCfdSediment/oceanCfdDeposition stay unique -- nothing else produces sediment data.
 OCEAN_CFD_VIEWS = ("oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition")
 ATMOSPHERE_CFD_VIEWS = ("atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity")
 FLUID_VIEWS = OCEAN_CFD_VIEWS + ATMOSPHERE_CFD_VIEWS
@@ -979,17 +986,16 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
 
 
 def _render_fluid_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS from the active FD mode's own
-    persistent state (World.ocean_cfd_state/atmosphere_cfd_state -- see ocean_cfd.py/
+    """Renders one of OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS from the world's own permanent,
+    always-on CFD state (World.ocean_cfd_state/atmosphere_cfd_state -- see ocean_cfd.py/
     atmosphere_cfd.py), reusing the same _project_climate_grid/_fill_rects/_draw_climate_vectors
     primitives _render_climate_view already uses for climate.py's own grid -- both state
     objects share the same (lat_deg, lon_deg, world_xyz) grid-geometry shape convention as
-    climate.ClimateFields. main.py's /world/render is what guarantees the matching state
-    isn't None before returning a 400 for an actual API caller -- but this function itself
-    still degrades to a plain background-only image if called directly against a world where
-    it isn't (same "always renders *something* standalone" contract every other view in
-    VIEWS already has -- e.g. an elevation/plates render with no plates yet -- rather than
-    raising, so a caller that bypasses main.py's own guard still gets a valid PNG back)."""
+    climate.ClimateFields. Neither state is ever actually None once a world has been generated
+    (see World.ocean_cfd_state's own docstring), but this function still degrades to a plain
+    background-only image if it somehow is (same "always renders *something* standalone"
+    contract every other view in VIEWS already has -- e.g. an elevation/plates render with no
+    plates yet -- rather than raising)."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1461,22 +1467,26 @@ def render_animation_gif(
     view_rotation: np.ndarray,
     years_per_frame: float,
     num_frames: int,
+    step_fn=step_world,
 ) -> bytes:
     """Renders an animated GIF of `world`'s progress in `view`/`projection`: frame 0 is the
     world's current state, and each of the `num_frames - 1` frames after it is
-    `years_per_frame` further along -- calling step_world for real between frames, so this
-    permanently advances `world` by `(num_frames - 1) * years_per_frame` years total (see
-    main.py's `/world/animate` -- deliberately not a side-effect-free preview, same
-    "the map really did move forward" semantics manually clicking Step that many times
-    would have). Every frame is quantized against the *first* frame's own color palette
-    rather than picking its own adaptive palette independently, which would otherwise make
-    static regions (ocean, unchanged coastline) visibly flicker between playback frames --
-    a well-known GIF-encoding pitfall, not the deliberately-changing regions this animation
-    exists to show."""
+    `years_per_frame` further along -- calling `step_fn` (defaulting to v1's own
+    `step_world`) for real between frames, so this permanently advances `world` by
+    `(num_frames - 1) * years_per_frame` years total (see main.py's `/world/animate` --
+    deliberately not a side-effect-free preview, same "the map really did move forward"
+    semantics manually clicking Step that many times would have). `step_fn` is a hook for
+    v2/main_v2.py to pass `world_v2.step_world_v2` instead -- v1's `step_world` calls
+    `atmosphere_cfd.step_atmosphere_cfd`/`bathymetry.apply_bathymetry` directly, which assume
+    v1's own (H, W)-grid CFD state and don't apply to a v2 world. Every frame is quantized
+    against the *first* frame's own color palette rather than picking its own adaptive
+    palette independently, which would otherwise make static regions (ocean, unchanged
+    coastline) visibly flicker between playback frames -- a well-known GIF-encoding pitfall,
+    not the deliberately-changing regions this animation exists to show."""
     frames = []
     for i in range(num_frames):
         if i > 0:
-            step_world(world, years_per_frame)
+            step_fn(world, years_per_frame)
         png_bytes = render_png(world, projection, view, width, height, view_rotation)
         frames.append(Image.open(io.BytesIO(png_bytes)).convert("RGB"))
 
@@ -1499,7 +1509,8 @@ def render_animation_gif_base64(
     view_rotation: np.ndarray,
     years_per_frame: float,
     num_frames: int,
+    step_fn=step_world,
 ) -> str:
     return base64.b64encode(
-        render_animation_gif(world, projection, view, width, height, view_rotation, years_per_frame, num_frames)
+        render_animation_gif(world, projection, view, width, height, view_rotation, years_per_frame, num_frames, step_fn=step_fn)
     ).decode("ascii")

@@ -51,6 +51,20 @@ class World:
     # choice, not a different climate model, but not entirely inconsequential to physics
     # either the way a pure render-quality setting would be.
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
+    # Another fixed per-world property, set once at generation (the UI's "Fluid dynamics
+    # resolution" Advanced-settings choice, climate.FLUID_DENSITY_CHOICES -- capped lower than
+    # climate_density's own choices, see that constant's own comment for why) -- independent
+    # of climate_density, read only by ocean_cfd.init_ocean_cfd/atmosphere_cfd.
+    # init_atmosphere_cfd/world.py's own _advance_fluid_dynamics to size the Ocean/Atmospheric
+    # Fluid Dynamics grid. Unlike climate_density, lowering this doesn't touch the Biome/
+    # Combined/Resources/Soil-Quality render grid or erosion.py's own climate sampling at all
+    # -- it only trades off how finely Ocean/Atmospheric Fluid Dynamics resolves currents/wind
+    # against how long each tectonics step's own fixed-real-time CFD advancement takes, since
+    # CFL substep count scales with grid spacing (see fluid_dynamics.cfl_substeps) and
+    # per-substep cost scales with cell count -- a real per-step cost now, not an opt-in one,
+    # since Ocean/Atmospheric Fluid Dynamics runs continuously alongside tectonics rather than
+    # as a separate mode (see World.ocean_cfd_state's own comment).
+    fluid_density: float = climate.DEFAULT_FLUID_DENSITY
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
@@ -106,22 +120,23 @@ class World:
     # documents) rather than None, so a render/stats call right after toggling this off still
     # shows the last real climate snapshot instead of going blank.
     simulate_climate_biomes: bool = True
-    # Which of the three mutually-exclusive top-level simulation modes is currently active --
-    # the UI's "Mode" toggle (see main.py's POST /world/mode and
-    # docs/simulation-model.md#ocean-atmospheric-fluid-dynamics). "tectonics_climate" (the
-    # default) is everything above: step_world runs exactly as it always has, completely
-    # unaware this field even exists. Switching to "ocean_cfd"/"atmosphere_cfd" freezes plate
-    # tectonics and the climate/erosion model (real ocean/atmosphere fluid dynamics needs
-    # steps of hours-to-days; tectonics needs steps of thousands-to-millions of years -- no
-    # single "Step" can mean both), and hands stepping over to ocean_cfd.step_ocean_cfd/
-    # atmosphere_cfd.step_atmosphere_cfd instead (see main.py's POST /world/step_fluid) against
-    # a frozen snapshot of whatever elevation/climate this world had the moment the mode was
-    # entered -- world.plates itself is never touched while either FD mode is active.
-    fluid_mode: str = "tectonics_climate"
-    # Populated by main.py's POST /world/mode when fluid_mode switches to "ocean_cfd"/
-    # "atmosphere_cfd" (a fresh init_ocean_cfd/init_atmosphere_cfd snapshot every time, never a
-    # resume of a prior session -- see fluid_mode's own docstring), and cleared again when it
-    # switches away. None whenever the matching mode isn't the active one.
+    # Ocean/Atmospheric Fluid Dynamics state -- see docs/simulation-model.md#ocean-atmospheric-
+    # fluid-dynamics. Always on, not a mode: generate_world populates both immediately after
+    # constructing this World (atmosphere_cfd.init_atmosphere_cfd, then ocean_cfd.init_ocean_cfd
+    # -- which seeds its own wind forcing from the former's result, so that order matters), and
+    # neither is ever re-initialized or cleared again for the rest of this world's life --
+    # step_world's own _advance_fluid_dynamics just keeps advancing each by its own fixed
+    # SECONDS_PER_TECTONIC_STEP (atmosphere_cfd's 1 day, ocean_cfd's 1 week) every tectonics
+    # step, gated on simulate_climate_biomes the same way erosion/hydrology already are, real
+    # ocean/atmosphere fluid dynamics needing timesteps of hours-to-days rather than
+    # tectonics' own thousands-to-millions of years notwithstanding -- climate.py's own
+    # compute_climate sources wind_u/wind_v/current_u/current_v from these two states'
+    # continuously-evolving u/v (resampled onto whatever resolution it's asked for, see
+    # fluid_dynamics.resample_to_grid) rather than its own diagnostic heuristics, which now
+    # exist only as the one-time cold-start bootstrap init_atmosphere_cfd/init_ocean_cfd
+    # themselves fall back to before these fields are ever populated. Typed `| None` only
+    # because a dataclass field default can't reference `self`/other fields to construct
+    # these inline -- never actually `None` once generate_world has returned.
     ocean_cfd_state: ocean_cfd.OceanCFDState | None = None
     atmosphere_cfd_state: atmosphere_cfd.AtmosphereCFDState | None = None
 
@@ -204,6 +219,7 @@ def generate_world(
     initial_soil_maturity: float | None = None,
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
     representation: str = DEFAULT_PLATE_REPRESENTATION,
+    fluid_density: float = climate.DEFAULT_FLUID_DENSITY,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
@@ -225,7 +241,12 @@ def generate_world(
     `representation` (see plates.PLATE_REPRESENTATION_CHOICES) picks which concrete `Plate`
     subclass this world's plates are built as -- like continental_fraction/land_fraction, not
     stored on World: it only matters once, at construction, and every later step works
-    through the abstract `Plate` interface regardless of which representation is underneath."""
+    through the abstract `Plate` interface regardless of which representation is underneath.
+    `fluid_density` (the UI's "Fluid dynamics resolution" Advanced-settings choice) similarly
+    doesn't affect the plates/mantle generated above, but *does* immediately seed this world's
+    permanent atmosphere_cfd_state/ocean_cfd_state (see below) at its own resolution -- see
+    World.fluid_density's own comment for why it's a separate knob from climate_density rather
+    than reusing it."""
     plates = generate_plates(
         seed,
         num_plates=num_plates,
@@ -248,9 +269,16 @@ def generate_world(
         axial_tilt_deg=DEFAULT_AXIAL_TILT_DEG if axial_tilt_deg is None else axial_tilt_deg,
         node_density=node_density,
         climate_density=climate_density,
+        fluid_density=fluid_density,
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)
+
+    # atmosphere before ocean -- ocean_cfd.init_ocean_cfd seeds its own wind forcing from
+    # world.atmosphere_cfd_state, so it must already be set. See World.ocean_cfd_state's own
+    # comment for why both are populated here, unconditionally, rather than lazily.
+    world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world)
+    world.ocean_cfd_state = ocean_cfd.init_ocean_cfd(world)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     world.log_event(f"World generated with {len(plates)} plates ({n_continents} continental).")
@@ -302,8 +330,10 @@ def step_world(world: World, years: float) -> None:
     World.simulate_climate_biomes (see their own docstrings and main.py's /world/controls) --
     "plate movement" means shift/deform, topology changes, and volcanism; "climate & biomes"
     means erosion (which itself computes this step's climate.py fields), hydrology,
-    bathymetry, and geology's resource formation. elapsed_years always advances regardless
-    of either flag."""
+    bathymetry, geology's resource formation, and (see _advance_fluid_dynamics) advancing
+    World.atmosphere_cfd_state/ocean_cfd_state by their own fixed real-time increment.
+    elapsed_years always advances regardless of either flag.
+    """
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)
@@ -338,8 +368,30 @@ def step_world(world: World, years: float) -> None:
         world.land_kdtree_cache = None
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         bathymetry.apply_bathymetry(world, years, node_cloud=node_cloud)
+        _advance_fluid_dynamics(world, node_cloud)
     if world.simulate_plate_movement:
         for message in volcanism.apply_volcanic_activity(world, years):
             world.log_event(message)
     if erosion_result is not None:
         geology.apply_resource_formation(world, years, erosion_result)
+
+
+def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
+    """Advances World.atmosphere_cfd_state/ocean_cfd_state by their own fixed
+    SECONDS_PER_TECTONIC_STEP (1 simulated day / 1 simulated week respectively) once per
+    tectonics step -- called only from inside step_world's own `if world.simulate_climate_biomes:`
+    block, so real ocean/atmosphere fluid dynamics advances on the same gate erosion/hydrology
+    already respect, not on every step unconditionally. Atmosphere before ocean, since
+    ocean_cfd.refresh_forcing reads the just-advanced atmosphere_cfd_state as its own wind
+    forcing -- see that function's own docstring."""
+    # Reuses world.climate_cache (just populated by erosion.apply_erosion above, against this
+    # same node_cloud/step) when fluid_density matches climate_density, instead of recomputing
+    # an identical climate.compute_climate call at the same resolution.
+    if world.fluid_density == world.climate_density:
+        terrain = world.climate_cache
+    else:
+        terrain = climate.compute_climate(world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud)
+    atmosphere_cfd.refresh_forcing(world, world.atmosphere_cfd_state, terrain)
+    atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
+    ocean_cfd.refresh_forcing(world, world.ocean_cfd_state, terrain)
+    ocean_cfd.step_ocean_cfd(world, world.ocean_cfd_state, ocean_cfd.SECONDS_PER_TECTONIC_STEP)

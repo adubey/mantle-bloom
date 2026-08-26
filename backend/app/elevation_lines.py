@@ -186,6 +186,13 @@ class ElevationLine:
         # still happens to sit near a neighbour (a real passive margin), so the latter stops
         # being pulled toward the rift target once it's had its one-time settling period.
         "divergent_age_myr",
+        # V2 only (see v2/lithosphere.py) -- the 3D lithospheric column state Airy isostasy
+        # derives `elevation` from (v2/lithosphere.isostatic_elevation). Zero/unused for every
+        # v1 line. Kept here rather than as a v2-only subclass field so a single ElevationLine
+        # implementation serves both engines -- v1 never reads or writes these, v2 treats
+        # `elevation` as a cache it recomputes from these after every mutation.
+        "crustal_thickness_m",  # Hc, meters
+        "mantle_lithosphere_thickness_m",  # Hm, meters
     )
 
     def __init__(
@@ -207,6 +214,8 @@ class ElevationLine:
         oil_gas_deposit_m: np.ndarray | None = None,
         mineral_deposit_m: np.ndarray | None = None,
         divergent_age_myr: np.ndarray | None = None,
+        crustal_thickness_m: np.ndarray | None = None,
+        mantle_lithosphere_thickness_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -227,6 +236,10 @@ class ElevationLine:
         self._oil_gas_deposit_m = oil_gas_deposit_m if oil_gas_deposit_m is not None else np.zeros_like(theta)
         self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
         self._divergent_age_myr = divergent_age_myr if divergent_age_myr is not None else np.zeros_like(theta)
+        self._crustal_thickness_m = crustal_thickness_m if crustal_thickness_m is not None else np.zeros_like(theta)
+        self._mantle_lithosphere_thickness_m = (
+            mantle_lithosphere_thickness_m if mantle_lithosphere_thickness_m is not None else np.zeros_like(theta)
+        )
 
     @property
     def phi(self) -> float:
@@ -295,6 +308,14 @@ class ElevationLine:
     @property
     def divergent_age_myr(self) -> np.ndarray:
         return self._divergent_age_myr
+
+    @property
+    def crustal_thickness_m(self) -> np.ndarray:
+        return self._crustal_thickness_m
+
+    @property
+    def mantle_lithosphere_thickness_m(self) -> np.ndarray:
+        return self._mantle_lithosphere_thickness_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -632,6 +653,12 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     new_coal_deposit_m = np.interp(new_theta, line.theta, line.coal_deposit_m)
     new_oil_gas_deposit_m = np.interp(new_theta, line.theta, line.oil_gas_deposit_m)
     new_mineral_deposit_m = np.interp(new_theta, line.theta, line.mineral_deposit_m)
+    # v2's crustal/mantle-lithosphere thickness columns -- interpolated the same way as every
+    # other persistent field so a regularize pass (which runs every deform() call) doesn't
+    # silently reset a v2 line's isostatic state to zero, the exact bug class this module's
+    # own docstring warns about. A no-op array of zeros for v1 lines.
+    new_crustal_thickness_m = np.interp(new_theta, line.theta, line.crustal_thickness_m)
+    new_mantle_lithosphere_thickness_m = np.interp(new_theta, line.theta, line.mantle_lithosphere_thickness_m)
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,
@@ -649,6 +676,8 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         coal_deposit_m=new_coal_deposit_m,
         oil_gas_deposit_m=new_oil_gas_deposit_m,
         mineral_deposit_m=new_mineral_deposit_m,
+        crustal_thickness_m=new_crustal_thickness_m,
+        mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
     )
 
 

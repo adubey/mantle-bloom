@@ -1196,36 +1196,61 @@ flow -- literally the barotropic mode real ocean/atmosphere GCMs solve, not a si
 hidden from the user.
 
 <a id="mode-toggle"></a>
-### The Mode toggle and freezing tectonics
+### Always-on, not a mode
 
-`World.fluid_mode` (`POST /world/mode`) is a three-way, mutually exclusive switch:
-`"tectonics_climate"` (the default -- everything above, unchanged, `step_world` completely
-unaware this field exists), `"ocean_cfd"`, and `"atmosphere_cfd"`.
+Earlier revisions gated Ocean/Atmospheric Fluid Dynamics behind a three-way `World.fluid_mode`
+toggle (`POST /world/mode`) that froze plate tectonics/climate while either FD mode was
+active, with a separate `POST /world/step_fluid` endpoint for advancing it. That's gone:
+`World.atmosphere_cfd_state`/`ocean_cfd_state` are created once, by `generate_world`
+(`atmosphere_cfd.init_atmosphere_cfd`, then `ocean_cfd.init_ocean_cfd` -- which seeds its own
+wind forcing from the former's result, so that order matters), and never re-initialized again
+for the rest of that world's life.
 
-**Entering an FD mode freezes plate tectonics and the climate/erosion model.** Real ocean/
-atmosphere fluid dynamics needs timesteps of hours to days (a wind-driven surface current's
-own inertial period is under a day); plate tectonics needs timesteps of thousands to millions
-of years. There is no sane way for one `/world/step`-style call to mean both, so `POST
-/world/mode` and `POST /world/step_fluid` are deliberately separate from `POST /world/step`
-(different endpoints, different time units -- `years` vs. `seconds`) rather than one endpoint
-inferring which the caller meant. Switching *into* `"ocean_cfd"`/`"atmosphere_cfd"` always
-takes a **fresh** snapshot of the world's current elevation/climate (`init_ocean_cfd`/
-`init_atmosphere_cfd`, both built on top of `climate.compute_climate`'s own public grid-
-construction/elevation-resampling pipeline, not a re-derivation of it), discarding whatever
-state that mode held from a previous visit -- simplest, most predictable behavior, and there's
-no principled way to "resume" a stale FD session against terrain that may have moved on since.
-Switching back to `"tectonics_climate"` just flips the flag and drops both FD states to free
-memory; tectonics/elevation were never touched while an FD mode was active, so stepping
-resumes exactly where it left off with no special handling needed.
+**Every `POST /world/step` call advances both**, via `step_world`'s own
+`_advance_fluid_dynamics`, right alongside plate tectonics/climate/erosion -- gated on
+`World.simulate_climate_biomes` the same way erosion/hydrology already are (not on
+`simulate_plate_movement`; wind/currents keep evolving even with plate movement paused).
+Real ocean/atmosphere fluid dynamics needs timesteps of hours to days (a wind-driven surface
+current's own inertial period is under a day); plate tectonics needs timesteps of thousands to
+millions of years -- reconciled not by picking one or the other, but by advancing each FD state
+by its own **fixed real-time increment per tectonics step, regardless of the tectonic `years`
+requested**: `atmosphere_cfd.SECONDS_PER_TECTONIC_STEP` (one simulated day) and
+`ocean_cfd.SECONDS_PER_TECTONIC_STEP` (one simulated week, since ocean currents evolve on a
+slower timescale than wind). A single `/world/step` call covering a million tectonic years
+still only advances the atmosphere by one simulated day and the ocean by one simulated week --
+an intentional decoupling, not an attempt to keep the two timescales physically synchronized.
+
+**`refresh_forcing`** (one per module, called right before that state's own `step_*_cfd` each
+tectonics step) keeps each FD state's terrain-derived boundary conditions -- `elevation_m`/
+`is_ocean`/`depth_m` for the ocean, `elevation_m`/`is_ocean`/`equilibrium_temperature_c` for
+the atmosphere, plus the ocean's own wind forcing (resampled from the *just-advanced*
+`atmosphere_cfd_state`, atmosphere stepped first each tectonics step precisely so this reflects
+the current step's wind, not last step's) -- in sync with the world's evolving plate state,
+while leaving every genuinely prognostic field (`u`/`v`/`eta`/`temperature_c`/`humidity`/
+`sediment_*`) untouched, so currents/wind/temperature/humidity/sediment keep evolving
+continuously across tectonics steps rather than resetting. `_advance_fluid_dynamics` reuses
+`World.climate_cache` (just populated by `erosion.apply_erosion` against this same step's own
+`node_cloud`) for this when `World.fluid_density` matches `World.climate_density`, rather than
+recomputing an identical `climate.compute_climate` call at the same resolution.
+
+`climate.py`'s own `compute_wind`/`compute_ocean_currents` diagnostics still exist, but only
+as the one-time cold-start bootstrap `init_atmosphere_cfd`/`init_ocean_cfd` fall back to during
+`generate_world`, before `World.atmosphere_cfd_state`/`ocean_cfd_state` exist yet -- see
+[Climate](#climate)'s own "Fully stateless, with one exception" for how `compute_climate`
+sources `wind_u`/`wind_v`/`current_u`/`current_v` from these CFD states (resampled onto
+whichever resolution it's asked for, `fluid_dynamics.resample_to_grid`) on every later call.
 
 <a id="shallow-water-formulation"></a>
 ### The shallow-water formulation
 
-Both solvers run on the same fixed equirectangular grid `climate.py` already uses (same
-`(lat_deg, lon_deg, world_xyz)` shape convention, same `World.climate_density`-driven
-resolution -- an FD mode's grid always matches whatever Detail the world was generated at,
-even though that means a "Step" can take longer at the finest setting; see
-[Performance and grid resolution](#fd-performance) below), and solve the same two-equation
+Both solvers run on the same fixed equirectangular grid shape `climate.py` already uses (same
+`(lat_deg, lon_deg, world_xyz)` shape convention, built via the same `climate.compute_climate`
+pipeline), but at `World.fluid_density`'s own resolution rather than `World.climate_density`'s
+-- a separate, independently choosable Advanced-settings option (same `climate.
+CLIMATE_DENSITY_CHOICES` set, defaulting to match `climate_density`'s own default so an
+unchanged world behaves exactly as before), letting a world keep a sharp climate/biome render
+grid while running FD mode at a coarser (faster) resolution or vice versa; see
+[Performance and grid resolution](#fd-performance) below. Both solve the same two-equation
 shape (`fluid_dynamics.py` holds every shared numerical primitive):
 
 - **Momentum** (`u`, `v` -- east/north velocity, m/s): `du/dt = f*v - g'*d(eta)/dx + forcing_x - drag*u + nu*laplacian(u)`, symmetric for `dv/dt`. `f` is the *real* Coriolis parameter (`fluid_dynamics.coriolis_parameter`, `2*OMEGA*sin(lat)`, `OMEGA = 7.292e-5 rad/s` -- a genuine physical constant, unlike `climate.py`'s own simplified `sin(lat)` proxy, since this is an actual momentum equation now) and `eta` a surface-height/geopotential anomaly.
@@ -1376,12 +1401,19 @@ into-slope flow, the same stability property ordinary drag already has.
 <a id="fd-performance"></a>
 ### Performance and grid resolution
 
-Per the user's own explicit choice, FD-mode grid resolution **matches whatever
-`World.climate_density` (the world's own Detail setting) it was generated at**, rather than
-being capped independently for responsiveness -- a "Step" can take several seconds at the
-finest Detail setting (many hundreds of CFL-stable substeps over a ~250k-cell grid), an
-accepted trade-off rather than something silently degraded. `World.node_density` (plate/
-elevation-line resolution) is unrelated and has no bearing on either FD mode.
+FD-mode grid resolution is set by **`World.fluid_density`** (the "Fluid dynamics resolution"
+Advanced-settings choice, same `climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)` set
+`climate_density` itself uses) -- independent of `World.climate_density`, so a world can keep
+a sharp climate/biome render grid while running FD mode at a coarser (faster) resolution, or
+the reverse. Defaults to `climate.DEFAULT_CLIMATE_DENSITY = 4.0`, matching `climate_density`'s
+own default, so a world generated without touching this setting behaves exactly as it did
+before this option existed: a "Step" can take several seconds at the finest setting (many
+hundreds of CFL-stable substeps, see `fluid_dynamics.cfl_substeps`, over a ~250k-cell grid),
+an accepted trade-off rather than something silently degraded -- lowering `fluid_density`
+trades that away deliberately, both by shrinking the cell count itself and, since CFL substep
+count scales inversely with grid spacing, by needing fewer substeps to cover the same
+requested `seconds` per step. `World.node_density` (plate/elevation-line resolution) is
+unrelated and has no bearing on either FD mode.
 
 <a id="fd-render-views"></a>
 ### Rendering
