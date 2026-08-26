@@ -891,9 +891,18 @@ def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is
     resulting *transpiration weight*, not an authoritative biome map, so that approximation is
     fine here. Returns zeros everywhere on a world's very first call (`world.climate_cache is
     None`, before any step has run) -- self-correcting after one step, the same tolerance for
-    initial staleness the cache itself already has."""
+    initial staleness the cache itself already has. Also returns zeros if `prev`'s own grid
+    shape doesn't match `elevation_m`'s -- `world.climate_cache` is always sized at
+    `world.climate_density`'s resolution, but this function's caller (`compute_climate`) can
+    be asked for a *different* resolution now (ocean_cfd.py/atmosphere_cfd.py request
+    `world.fluid_density`'s own, independent of climate_density, see World.fluid_density's own
+    docstring); `np.where(prev.is_ocean, ...)` against this call's differently-shaped
+    elevation_m would otherwise raise, and resampling `prev` onto this call's grid just to
+    feed an already-one-step-stale, approximate transpiration weight isn't worth the cost --
+    same "accepted staleness" tolerance as the `prev is None` case above, just triggered by a
+    resolution mismatch instead of a missing cache."""
     prev = world.climate_cache
-    if prev is None:
+    if prev is None or prev.is_ocean.shape != is_ocean.shape:
         return np.zeros_like(elevation_m)
     prev_temperature_c = np.where(prev.is_ocean, prev.ocean_temperature_c, prev.air_temperature_c)
     flat_slope = np.zeros_like(elevation_m)

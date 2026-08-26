@@ -1233,11 +1233,14 @@ needed.
 <a id="shallow-water-formulation"></a>
 ### The shallow-water formulation
 
-Both solvers run on the same fixed equirectangular grid `climate.py` already uses (same
-`(lat_deg, lon_deg, world_xyz)` shape convention, same `World.climate_density`-driven
-resolution -- an FD mode's grid always matches whatever Detail the world was generated at,
-even though that means a "Step" can take longer at the finest setting; see
-[Performance and grid resolution](#fd-performance) below), and solve the same two-equation
+Both solvers run on the same fixed equirectangular grid shape `climate.py` already uses (same
+`(lat_deg, lon_deg, world_xyz)` shape convention, built via the same `climate.compute_climate`
+pipeline), but at `World.fluid_density`'s own resolution rather than `World.climate_density`'s
+-- a separate, independently choosable Advanced-settings option (same `climate.
+CLIMATE_DENSITY_CHOICES` set, defaulting to match `climate_density`'s own default so an
+unchanged world behaves exactly as before), letting a world keep a sharp climate/biome render
+grid while running FD mode at a coarser (faster) resolution or vice versa; see
+[Performance and grid resolution](#fd-performance) below. Both solve the same two-equation
 shape (`fluid_dynamics.py` holds every shared numerical primitive):
 
 - **Momentum** (`u`, `v` -- east/north velocity, m/s): `du/dt = f*v - g'*d(eta)/dx + forcing_x - drag*u + nu*laplacian(u)`, symmetric for `dv/dt`. `f` is the *real* Coriolis parameter (`fluid_dynamics.coriolis_parameter`, `2*OMEGA*sin(lat)`, `OMEGA = 7.292e-5 rad/s` -- a genuine physical constant, unlike `climate.py`'s own simplified `sin(lat)` proxy, since this is an actual momentum equation now) and `eta` a surface-height/geopotential anomaly.
@@ -1388,12 +1391,19 @@ into-slope flow, the same stability property ordinary drag already has.
 <a id="fd-performance"></a>
 ### Performance and grid resolution
 
-Per the user's own explicit choice, FD-mode grid resolution **matches whatever
-`World.climate_density` (the world's own Detail setting) it was generated at**, rather than
-being capped independently for responsiveness -- a "Step" can take several seconds at the
-finest Detail setting (many hundreds of CFL-stable substeps over a ~250k-cell grid), an
-accepted trade-off rather than something silently degraded. `World.node_density` (plate/
-elevation-line resolution) is unrelated and has no bearing on either FD mode.
+FD-mode grid resolution is set by **`World.fluid_density`** (the "Fluid dynamics resolution"
+Advanced-settings choice, same `climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)` set
+`climate_density` itself uses) -- independent of `World.climate_density`, so a world can keep
+a sharp climate/biome render grid while running FD mode at a coarser (faster) resolution, or
+the reverse. Defaults to `climate.DEFAULT_CLIMATE_DENSITY = 4.0`, matching `climate_density`'s
+own default, so a world generated without touching this setting behaves exactly as it did
+before this option existed: a "Step" can take several seconds at the finest setting (many
+hundreds of CFL-stable substeps, see `fluid_dynamics.cfl_substeps`, over a ~250k-cell grid),
+an accepted trade-off rather than something silently degraded -- lowering `fluid_density`
+trades that away deliberately, both by shrinking the cell count itself and, since CFL substep
+count scales inversely with grid spacing, by needing fewer substeps to cover the same
+requested `seconds` per step. `World.node_density` (plate/elevation-line resolution) is
+unrelated and has no bearing on either FD mode.
 
 <a id="fd-render-views"></a>
 ### Rendering

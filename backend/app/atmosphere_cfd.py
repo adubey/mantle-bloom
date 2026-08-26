@@ -118,8 +118,10 @@ def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
     their own docstring) when a prior "atmosphere_cfd" or "ocean_cfd" session left one behind,
     else from that diagnostic snapshot's own wind -- unlike ocean_cfd.py's ocean-at-rest
     start, beginning from a plausible wind field (remembered or diagnostic) avoids a jarring
-    dead-calm-to-storm transient the first few substeps would otherwise show."""
-    height, width = climate.grid_dimensions(world.climate_density)
+    dead-calm-to-storm transient the first few substeps would otherwise show. Sized by
+    World.fluid_density, not World.climate_density -- see the former's own docstring for why
+    this mode gets its own, independently choosable grid resolution."""
+    height, width = climate.grid_dimensions(world.fluid_density)
     fields = climate.compute_climate(world, height, width)
     equilibrium_temperature_c = _equilibrium_temperature(world, fields)
 

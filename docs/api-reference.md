@@ -18,7 +18,8 @@ Request body:
   "num_mantle_centers": 8,
   "node_density": 4.0,
   "initial_soil_maturity": 0.0,
-  "climate_density": 4.0
+  "climate_density": 4.0,
+  "fluid_density": 4.0
 }
 ```
 
@@ -56,8 +57,15 @@ quadruples it (16x the reference cell count), for the sharpest climate/biome map
 halves it, for a coarser but faster grid -- stored on `World` (unlike `initial_soil_maturity`)
 since every future step/render
 reads it again, same reasoning `node_density`'s own storage gives (see
-[simulation-model.md#climate](simulation-model.md#climate)). Replaces whatever world
-previously existed.
+[simulation-model.md#climate](simulation-model.md#climate)). `fluid_density` is the UI's
+"Fluid dynamics resolution" Advanced-settings choice -- same `climate.CLIMATE_DENSITY_CHOICES`
+set and `400` validation as `climate_density`, but independent of it: sizes only Ocean/
+Atmospheric Fluid Dynamics mode's own grid (`ocean_cfd.init_ocean_cfd`/
+`atmosphere_cfd.init_atmosphere_cfd`), not the climate/biome render grid or erosion's own
+climate sampling. Lets a world keep a sharp climate/biome grid while running FD mode at a
+coarser (faster) resolution, or vice versa -- see
+[simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
+Replaces whatever world previously existed.
 
 Response: a summary --
 

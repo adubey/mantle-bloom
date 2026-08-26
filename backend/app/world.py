@@ -51,6 +51,18 @@ class World:
     # choice, not a different climate model, but not entirely inconsequential to physics
     # either the way a pure render-quality setting would be.
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
+    # Another fixed per-world property, set once at generation (the UI's "Fluid dynamics
+    # resolution" Advanced-settings choice, same climate.CLIMATE_DENSITY_CHOICES set
+    # climate_density itself uses) -- independent of climate_density, read only by
+    # ocean_cfd.init_ocean_cfd/atmosphere_cfd.init_atmosphere_cfd to size *their own* grid.
+    # Unlike climate_density, lowering this doesn't touch the Biome/Combined/Resources/
+    # Soil-Quality render grid or erosion.py's own climate sampling at all -- it only trades
+    # off how finely Ocean/Atmospheric Fluid Dynamics mode resolves currents/wind against how
+    # many substeps (and so how long) each step_ocean_cfd/step_atmosphere_cfd call takes,
+    # since CFL substep count scales with grid spacing (see fluid_dynamics.cfl_substeps) and
+    # per-substep cost scales with cell count. Defaults to climate_density's own default so a
+    # world generated without touching this new setting behaves exactly as before.
+    fluid_density: float = climate.DEFAULT_CLIMATE_DENSITY
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
@@ -225,6 +237,7 @@ def generate_world(
     node_density: float = DEFAULT_NODE_DENSITY,
     initial_soil_maturity: float | None = None,
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
+    fluid_density: float = climate.DEFAULT_CLIMATE_DENSITY,
 ) -> World:
     """`num_plates` is optional -- see plates.generate_plates for why: the world tiles
     itself into a plausible number of plates rather than requiring the caller to pick one.
@@ -242,7 +255,11 @@ def generate_world(
     `climate_density` (the UI's "climate & biome resolution" choice, see
     climate.CLIMATE_DENSITY_CHOICES) doesn't affect plate generation at all, only how finely
     climate.py's own grid resolves the world's climate every future step/render -- stored on
-    World for the same reason node_density is (see World.climate_density's own comment)."""
+    World for the same reason node_density is (see World.climate_density's own comment).
+    `fluid_density` (the UI's "Fluid dynamics resolution" Advanced-settings choice) similarly
+    doesn't affect generation, only how finely Ocean/Atmospheric Fluid Dynamics mode's own
+    grid resolves currents/wind -- see World.fluid_density's own comment for why it's a
+    separate knob from climate_density rather than reusing it."""
     plates = generate_plates(
         seed, num_plates=num_plates, continental_fraction=continental_fraction, land_fraction=land_fraction, node_density=node_density
     )
@@ -260,6 +277,7 @@ def generate_world(
         axial_tilt_deg=DEFAULT_AXIAL_TILT_DEG if axial_tilt_deg is None else axial_tilt_deg,
         node_density=node_density,
         climate_density=climate_density,
+        fluid_density=fluid_density,
     )
     for plate in world.plates:
         _update_plate_omega(plate, world.mantle_centers, damping=None)

@@ -83,6 +83,11 @@ class GenerateRequest(BaseModel):
     # to climate.DEFAULT_CLIMATE_DENSITY. Validated against climate.CLIMATE_DENSITY_CHOICES
     # below, same reasoning node_density's own validation gives.
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
+    # The UI's "Fluid dynamics resolution" Advanced-settings choice -- how finely Ocean/
+    # Atmospheric Fluid Dynamics mode's own grid resolves currents/wind, independent of
+    # climate_density (see World.fluid_density's own comment for why). Same
+    # climate.CLIMATE_DENSITY_CHOICES set, same validation below.
+    fluid_density: float = climate.DEFAULT_CLIMATE_DENSITY
 
 
 class StepRequest(BaseModel):
@@ -375,6 +380,10 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown climate_density {req.climate_density!r}; choices are {climate.CLIMATE_DENSITY_CHOICES}"
         )
+    if req.fluid_density not in climate.CLIMATE_DENSITY_CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.CLIMATE_DENSITY_CHOICES}"
+        )
     world = generate_world(
         req.seed,
         num_plates=req.num_plates,
@@ -385,6 +394,7 @@ def generate(req: GenerateRequest) -> dict:
         node_density=req.node_density,
         initial_soil_maturity=req.initial_soil_maturity,
         climate_density=req.climate_density,
+        fluid_density=req.fluid_density,
     )
     _state["world"] = world
     return _summary(world)

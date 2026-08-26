@@ -163,6 +163,14 @@ export default function App() {
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [detail, setDetail] = useState(DEFAULT_DETAIL);
+  // The Advanced-settings dialog's own "Fluid dynamics resolution" choice -- same
+  // DETAIL_CHOICES set as `detail` above, but a separate dial: unlike node_density/
+  // climate_density (merged into `detail`), this only affects Ocean/Atmospheric Fluid
+  // Dynamics mode's own grid, not plate/climate resolution, so it's worth letting the user
+  // pick independently rather than folding it in too (see backend app/world.py's
+  // World.fluid_density). Defaults to DEFAULT_DETAIL, matching climate_density's own default,
+  // so a world generated without opening this dialog behaves exactly as before this existed.
+  const [fluidDensity, setFluidDensity] = useState(DEFAULT_DETAIL);
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
@@ -344,7 +352,7 @@ export default function App() {
     try {
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        detail, autoPlates ? null : numPlates,
+        detail, fluidDensity, autoPlates ? null : numPlates,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -370,7 +378,7 @@ export default function App() {
       setBusy(false);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, detail, initialSoilMaturityPercent, autoPlates, numPlates,
+    seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates,
     projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
@@ -1047,12 +1055,15 @@ export default function App() {
           maxPlates={MAX_PLATES}
           axialTiltDeg={axialTiltDeg}
           initialSoilMaturityPercent={initialSoilMaturityPercent}
+          fluidDensity={fluidDensity}
+          fluidDensityChoices={DETAIL_CHOICES}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
           onAutoPlatesChange={setAutoPlates}
           onNumPlatesChange={setNumPlates}
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
+          onFluidDensityChange={setFluidDensity}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}

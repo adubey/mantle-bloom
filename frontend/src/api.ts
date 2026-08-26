@@ -255,6 +255,9 @@ async function asBlob(resp: Response): Promise<Blob> {
 // Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
 // temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
 // same reasoning nodeDensity's own storage gives (see world.py's World.climate_density).
+// fluidDensity is the Advanced-settings dialog's "Fluid dynamics resolution" choice (same
+// 0.5/1/2/4 set) -- how finely Ocean/Atmospheric Fluid Dynamics mode's own grid resolves
+// currents/wind, independent of climateDensity (see world.py's World.fluid_density).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -263,6 +266,7 @@ export function generateWorld(
   nodeDensity: number,
   initialSoilMaturity: number,
   climateDensity: number,
+  fluidDensity: number,
   numPlates: number | null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
@@ -277,6 +281,7 @@ export function generateWorld(
       node_density: nodeDensity,
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
+      fluid_density: fluidDensity,
     }),
   }).then(asJson<WorldSummary>);
 }

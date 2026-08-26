@@ -122,8 +122,10 @@ def init_ocean_cfd(world: "World") -> OceanCFDState:
     own prior session, which never changes it -- see module docstring), current/eta/
     temperature/sediment from this mode's own prior session -- falling back to climate.py's
     fresh diagnostic wind and an ocean at rest (u = v = eta = 0, no sediment in suspension)
-    for whichever of those has nothing to resume from."""
-    height, width = climate.grid_dimensions(world.climate_density)
+    for whichever of those has nothing to resume from. Sized by World.fluid_density, not
+    World.climate_density -- see the former's own docstring for why this mode gets its own,
+    independently choosable grid resolution."""
+    height, width = climate.grid_dimensions(world.fluid_density)
     fields = climate.compute_climate(world, height, width)
 
     depth_m = np.where(fields.is_ocean, np.clip(-fields.elevation_m, MIN_DEPTH_M, MAX_DEPTH_M), 0.0).astype(np.float32)
