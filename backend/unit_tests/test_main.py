@@ -172,6 +172,25 @@ def test_generate_with_unknown_climate_density_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_generate_with_mesh_representation(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "representation": "mesh"})
+    assert resp.status_code == 200
+    assert resp.json()["num_plates"] == 6
+
+    plates_resp = client.get("/world/plates")
+    assert plates_resp.status_code == 200
+    entries = plates_resp.json()["plates"]
+    assert len(entries) == 6
+    for entry in entries:
+        assert entry["num_rows"] is None  # PlateWithMesh has no row concept
+        assert entry["num_points"] > 0
+
+
+def test_generate_with_unknown_representation_returns_400(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "representation": "voronoi"})
+    assert resp.status_code == 400
+
+
 def test_render_defaults_to_elevation_view_at_1100x611(client):
     client.post("/world/generate", json={"seed": 3, "num_plates": 6})
     resp = client.get("/world/render")

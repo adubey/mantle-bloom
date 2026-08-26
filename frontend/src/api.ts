@@ -81,7 +81,9 @@ export interface BoundingEllipse {
 export interface PlateSummary {
   plate_id: number;
   crust_type: "continental" | "oceanic";
-  num_rows: number;
+  // null for a representation with no row concept (e.g. "mesh" -- see backend
+  // app/main.py's _plate_summary).
+  num_rows: number | null;
   num_points: number;
   outline: [number, number, number][];
   // Every node's own position (not just the outline loop) -- see PlateInspector.tsx, which
@@ -259,6 +261,10 @@ async function asBlob(resp: Response): Promise<Blob> {
 // Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
 // temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
 // same reasoning nodeDensity's own storage gives (see world.py's World.climate_density).
+// representation is the dialog's "Plate representation" choice ("lines" or "mesh", see
+// backend app/plates.py's PLATE_REPRESENTATION_CHOICES) -- which concrete Plate subclass
+// backs the generated world; not stored on World (see world.generate_world's own docstring
+// for why, same reasoning initialSoilMaturity's own non-storage gives).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -268,6 +274,7 @@ export function generateWorld(
   initialSoilMaturity: number,
   climateDensity: number,
   numPlates: number | null,
+  representation: string,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -281,6 +288,7 @@ export function generateWorld(
       node_density: nodeDensity,
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
+      representation,
     }),
   }).then(asJson<WorldSummary>);
 }

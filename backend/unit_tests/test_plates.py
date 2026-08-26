@@ -422,3 +422,25 @@ def test_deform_keeps_plate_overlap_bounded_not_runaway():
     # And it shouldn't have grown much further from where it started -- a real runaway
     # would keep climbing step over step, not plateau.
     assert late < early + 0.15
+
+
+def test_deform_keeps_plate_overlap_bounded_not_runaway_for_mesh_representation():
+    # Same invariant as test_deform_keeps_plate_overlap_bounded_not_runaway, for
+    # PlateWithMesh -- the end-to-end integration check that generate_plates' "mesh" branch,
+    # PlateWithMesh.shift/deform, and the merge_split.py/volcanism.py/render_image.py
+    # cross-module fixes (has_negligible_territory, the generic volcanic-activity branch,
+    # plate.lines no longer being assumed) all actually work together across many real
+    # simulation steps, not just in isolated unit tests.
+    world = generate_world(seed=3, num_plates=8, node_density=0.5, representation="mesh")
+    world.simulate_climate_biomes = False
+    for _ in range(3):
+        step_world(world, years=3_000_000)
+    early = _sampled_overlap_fraction(world.plates)
+    for _ in range(10):
+        step_world(world, years=3_000_000)
+    late = _sampled_overlap_fraction(world.plates)
+
+    # Confirmed empirically (same seed/params as the PlateWithLines version above) to sit
+    # under 5%, comfortably inside the same generous ceiling that test already uses.
+    assert late < 0.35
+    assert late < early + 0.15

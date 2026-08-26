@@ -72,6 +72,16 @@ const DETAIL_CHOICES: { value: number; label: string }[] = [
   { value: 0.5, label: "Low" },
 ];
 const DEFAULT_DETAIL = 4;
+// The Generate dialog's "Plate representation" control, driving backend app/plates.py's
+// PLATE_REPRESENTATION_CHOICES/DEFAULT_PLATE_REPRESENTATION -- which concrete Plate subclass
+// backs the generated world. A generation-time choice (like Detail above), not a runtime
+// toggle (unlike the Mode dropdown below, which POSTs immediately) -- it only takes effect
+// on the next Generate.
+const REPRESENTATION_CHOICES: { value: string; label: string }[] = [
+  { value: "lines", label: "Lines (fast)" },
+  { value: "mesh", label: "Mesh (triangulated)" },
+];
+const DEFAULT_REPRESENTATION = "lines";
 // Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
 // world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
 // always lands somewhere the auto behavior could plausibly have picked too.
@@ -186,6 +196,7 @@ export default function App() {
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [detail, setDetail] = useState(DEFAULT_DETAIL);
+  const [representation, setRepresentation] = useState(DEFAULT_REPRESENTATION);
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
@@ -367,7 +378,7 @@ export default function App() {
     try {
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        detail, autoPlates ? null : numPlates,
+        detail, autoPlates ? null : numPlates, representation,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -394,7 +405,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, initialSoilMaturityPercent, autoPlates, numPlates,
-    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
+    representation, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
   // The "Mode" toggle -- switches between Tectonics & Climate and the two Fluid Dynamics
@@ -815,7 +826,7 @@ export default function App() {
                 <div style={{ opacity: 0.9 }}>
                   <div>id: {selectedPlate.plate_id}</div>
                   <div>crust: {selectedPlate.crust_type}</div>
-                  <div>rows: {selectedPlate.num_rows}</div>
+                  {selectedPlate.num_rows != null && <div>rows: {selectedPlate.num_rows}</div>}
                   <div>points: {selectedPlate.num_points}</div>
                   {selectedPlate.bounding_ellipse && (
                     <>
@@ -1050,6 +1061,26 @@ export default function App() {
                 sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
                 Biome/Combined/Resources/Soil Quality maps and more elevation-line nodes -- but
                 simulation steps and rendering both run slower. Lower runs faster but coarser.
+              </div>
+            </label>
+
+            <label style={{ display: "block", marginBottom: 16 }}>
+              Plate representation
+              <select
+                value={representation}
+                onChange={(e) => setRepresentation(e.target.value)}
+                style={{ width: "100%", marginTop: 4 }}
+              >
+                {REPRESENTATION_CHOICES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                How each plate's terrain is stored internally. Lines is the original,
+                well-tested representation. Mesh triangulates each plate's own nodes, giving
+                an exact boundary/adjacency instead of an approximation -- experimental.
               </div>
             </label>
 

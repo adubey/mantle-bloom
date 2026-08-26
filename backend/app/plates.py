@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Iterator, Protocol
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
-from . import ellipse, geometry, mantle
+from . import ellipse, geometry, mantle, mesh_terrain
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
     ERUPTION_ELEVATION_M,
@@ -186,6 +186,33 @@ def _update_deltas_from_lat_long_grid(plate: "Plate", grid: LatLongGrid) -> None
     for (point, _), delta in zip(plate.map_world_points(), deltas):
         if delta != 0.0:
             point.set_elevation(float(np.clip(point.get_elevation() + delta, MIN_ELEVATION_M, MAX_ELEVATION_M)))
+
+
+def _shift_by_rigid_rotation(plate: "Plate", world: "World", years: float) -> float:
+    """`shift()`'s representation-generic body: refit omega from the mantle-flow field
+    (damped toward the new target, then clamped -- same exponential-smoothing shape as
+    generation-time), rotate rigidly by `years` at that rate, and return `D` (the greatest
+    angular distance, radians, any node actually moved this step -- deform()'s own physical
+    bound on how much a boundary can grow/shrink in one call). Only ever touches the
+    abstract `Plate` interface (`all_points_and_elevation`/`omega`/`set_omega`/`rotate`), so
+    it doesn't depend on how a representation stores its own nodes -- shared by
+    `PlateWithLines.shift` and `PlateWithMesh.shift`. (`PlateWithRTree.shift` still raises
+    `NotImplementedError`, unrelated to this -- see its own docstring.)"""
+    old_points, _ = plate.all_points_and_elevation()
+
+    if len(old_points) > 0:
+        velocities = mantle.flow_at(old_points, world.mantle_centers)
+        target_omega = mantle.fit_euler_pole(old_points, velocities)
+        new_omega = plate.omega + mantle.VELOCITY_DAMPING * (target_omega - plate.omega)
+        plate.set_omega(mantle.clamp_rate(new_omega))
+
+    increment = geometry.rotation_matrix_from_omega(plate.omega, years)
+    plate.rotate(increment)
+
+    if len(old_points) == 0:
+        return 0.0
+    new_points, _ = plate.all_points_and_elevation()
+    return float(geometry.angular_distance(old_points, new_points).max())
 
 
 def _lines_from_resample(
@@ -486,6 +513,17 @@ class Plate(abc.ABC):
 
     @abc.abstractmethod
     def node_count(self) -> int: ...
+
+    def has_negligible_territory(self) -> bool:
+        """True once this plate has been whittled down to no real remaining territory --
+        the "no land left" half of merge_split.remove_defunct_plates/apply_topology_changes'
+        own pruning (the other half, `node_count() == 0`, is checked separately by both
+        callers). Default: fewer nodes than can form a real 2D hull (see
+        `OUTLINE_MIN_NODES_FOR_HULL`) -- a representation-agnostic floor any subclass without
+        its own more specific notion can fall back to. `PlateWithLines` overrides this with
+        its own exact, pre-existing "at most one line left" definition, so that behavior is
+        unchanged for it; `PlateWithMesh`/`PlateWithRTree` use this default."""
+        return self.node_count() < OUTLINE_MIN_NODES_FOR_HULL
 
     @abc.abstractmethod
     def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
@@ -822,6 +860,13 @@ class PlateWithLines(Plate):
         self._lines[index] = new_line
         self._invalidate_bounding_polygon()
 
+    def has_negligible_territory(self) -> bool:
+        """This representation's own exact, pre-existing definition (unchanged from before
+        `Plate.has_negligible_territory` existed) -- "no real remaining territory" means
+        reduced to at most one line, not the generic node-count floor the base class falls
+        back to for a representation without a row structure of its own."""
+        return len(self.lines) <= 1
+
     def _invalidate_bounding_polygon(self) -> None:
         super()._invalidate_bounding_polygon()
         self._row_lookup_cache = None
@@ -1109,21 +1154,7 @@ class PlateWithLines(Plate):
         return plate_a, plate_b
 
     def shift(self, world: "World", years: float) -> float:
-        old_points, _ = self.all_points_and_elevation()
-
-        if len(old_points) > 0:
-            velocities = mantle.flow_at(old_points, world.mantle_centers)
-            target_omega = mantle.fit_euler_pole(old_points, velocities)
-            new_omega = self.omega + mantle.VELOCITY_DAMPING * (target_omega - self.omega)
-            self.set_omega(mantle.clamp_rate(new_omega))
-
-        increment = geometry.rotation_matrix_from_omega(self.omega, years)
-        self.rotate(increment)
-
-        if len(old_points) == 0:
-            return 0.0
-        new_points, _ = self.all_points_and_elevation()
-        return float(geometry.angular_distance(old_points, new_points).max())
+        return _shift_by_rigid_rotation(self, world, years)
 
     def deform(self, world: "World", other_plates: list["Plate"], years: float, max_distance: float) -> None:
         spacing_rad = line_spacing_rad(world.node_density)
@@ -1893,6 +1924,487 @@ class PlateWithRTree(Plate):
         raise NotImplementedError("PlateWithRTree.deform is not yet implemented")
 
 
+# Choice string for PlateWithMesh's own initial-node target spacing/density -- reuses
+# elevation_lines.line_spacing_rad/NODE_DENSITY_CHOICES directly (see plates.generate_plates),
+# same as every other representation; nothing mesh-specific needed here.
+PLATE_REPRESENTATION_CHOICES = ("lines", "mesh")
+DEFAULT_PLATE_REPRESENTATION = "lines"  # preserves today's behavior exactly
+
+
+class PlateWithMesh(Plate):
+    """A plate whose terrain is a Delaunay triangle mesh over its own flat, unstructured
+    (theta, phi, elevation, ...) node arrays -- same flat-array node storage as
+    `PlateWithRTree`, but with a real, exact triangle-adjacency structure (see
+    `mesh_terrain.py`) standing in for that class's R-tree, instead of nothing at all.
+    `PlateWithRTree` approximates its own outline/neighbor structure (a density heuristic +
+    convex hull, no adjacency); this class instead builds a genuine mesh, private to this one
+    plate, rebuilt from scratch (`mesh_terrain.build_mesh_triangulation`) whenever this
+    plate's own node set changes (`set_nodes`) -- exact boundary tracing (a real edge loop,
+    not a convex-hull over-approximation) and exact per-vertex adjacency for `deform()`'s own
+    boundary growth/shrink, at the cost of an O(N log N) `scipy.spatial.ConvexHull` rebuild
+    each time.
+
+    Deliberately does NOT rebuild the triangulation on `rotate()` (unlike the world-space
+    bounding-polygon cache `Plate.rotate` already invalidates): the triangulation is built
+    from *local* theta/phi (unit-sphere) positions, which never change under a plate's own
+    rigid rotation (only `frame` does, see the module docstring) -- so it's frame-invariant,
+    and rebuilding it every single step (via `shift()`'s own `rotate()` call) for no
+    structural reason would be pure waste. Only `set_nodes` (topology genuinely changed)
+    clears `_triangulation_cache`."""
+
+    def __init__(
+        self,
+        plate_id: int,
+        frame: np.ndarray,
+        crust_type: str,
+        theta: np.ndarray | None = None,
+        phi: np.ndarray | None = None,
+        elevation: np.ndarray | None = None,
+        omega: np.ndarray | None = None,
+        age_steps: int = 0,
+        **fields: np.ndarray,
+    ) -> None:
+        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps)
+        self.set_nodes(
+            theta if theta is not None else np.zeros(0),
+            phi if phi is not None else np.zeros(0),
+            elevation if elevation is not None else np.zeros(0),
+            **fields,
+        )
+
+    def set_nodes(self, theta: np.ndarray, phi: np.ndarray, elevation: np.ndarray, **fields: np.ndarray) -> None:
+        """Replace every node at once and drop the cached triangulation -- see class
+        docstring for why this (not `rotate()`) is the one place it's invalidated. `fields`
+        accepts any of `ElevationLine.OPTIONAL_FIELDS` by name; anything not passed defaults
+        the same way `ElevationLine`/`PlateWithRTree` themselves do (zeros, or `False` for
+        `is_volcano`)."""
+        self._theta = theta
+        self._phi = phi
+        self._elevation = elevation
+        self._fields = {
+            name: fields[name] if name in fields else self._default_field(name, theta)
+            for name in ElevationLine.OPTIONAL_FIELDS
+        }
+        self._triangulation_cache: mesh_terrain.MeshTriangulation | None = None
+        self._invalidate_bounding_polygon()
+
+    @staticmethod
+    def _default_field(name: str, theta: np.ndarray) -> np.ndarray:
+        return np.zeros_like(theta, dtype=bool) if name == "is_volcano" else np.zeros_like(theta)
+
+    @property
+    def theta(self) -> np.ndarray:
+        return self._theta
+
+    @property
+    def phi(self) -> np.ndarray:
+        return self._phi
+
+    @property
+    def elevation(self) -> np.ndarray:
+        return self._elevation
+
+    def field_array(self, name: str) -> np.ndarray:
+        if name == "theta":
+            return self._theta
+        if name == "elevation":
+            return self._elevation
+        return self._fields[name]
+
+    def node_count(self) -> int:
+        return len(self._theta)
+
+    def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
+        if len(self._theta) == 0:
+            return np.zeros((0, 3)), np.zeros(0)
+        local = geometry.local_xyz(self._phi, self._theta)
+        return geometry.to_world(self._frame, local), self._elevation
+
+    def collect(self, field_name: str) -> np.ndarray:
+        if len(self._theta) == 0:
+            return np.zeros(0, dtype=bool) if field_name == "is_volcano" else np.zeros(0)
+        return self._elevation if field_name == "elevation" else self._fields[field_name]
+
+    def contains(self, lat: float, lon: float) -> bool:
+        point_xyz = geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon))
+        return geometry.point_in_spherical_polygon(point_xyz, self.get_bounding_polygon())
+
+    def get_neighbours(self, all_plates: list["Plate"], threshold_rad: float = NEIGHBOUR_DISTANCE_RAD) -> list["Plate"]:
+        return _plates_within(self, all_plates, threshold_rad)
+
+    def __iter__(self) -> Iterator[ElevationPoint]:
+        for i in range(len(self._theta)):
+            yield ElevationPointInCloud(self, i)
+
+    def map_world_points(self) -> Iterator[tuple[ElevationPoint, np.ndarray]]:
+        if len(self._theta) == 0:
+            return
+        world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        for i, world_xyz in enumerate(world_pts):
+            yield ElevationPointInCloud(self, i), world_xyz
+
+    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
+        """Same theta-range normalization `PlateWithRTree.map_world_points_on_plate` uses,
+        not an adjacency/hop-distance-based measure: the interface contract needs "0 at one
+        edge of the plate, 1 at the opposite edge" (a sweep across the plate), and a
+        distance-to-nearest-boundary-vertex measure would instead be (wrongly) 0 at *both*
+        edges."""
+        if len(self._theta) == 0:
+            return
+        world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        low_theta = float(self._theta.min())
+        span = float(self._theta.max()) - low_theta
+        for i, world_xyz in enumerate(world_pts):
+            fraction = 0.5 if span == 0 else (float(self._theta[i]) - low_theta) / span
+            yield ElevationPointInCloud(self, i), world_xyz, fraction
+
+    def set_fields_on_plate(self, **fields: np.ndarray) -> None:
+        for name, values in fields.items():
+            self.field_array(name)[:] = values
+
+    def _get_triangulation(self) -> mesh_terrain.MeshTriangulation:
+        """This plate's own current mesh, lazily built and cached (see `set_nodes` for
+        invalidation) -- mirrors `PlateWithLines._get_row_lookup`'s lazy-cache shape."""
+        if self._triangulation_cache is None:
+            local_xyz = geometry.local_xyz(self._phi, self._theta)
+            self._triangulation_cache = mesh_terrain.build_mesh_triangulation(local_xyz, min_nodes=OUTLINE_MIN_NODES_FOR_HULL)
+        return self._triangulation_cache
+
+    def outline_world(self) -> np.ndarray:
+        """The triangulation's own boundary edge loop, mapped to world space -- an exact
+        trace of this plate's current territory (unlike `PlateWithRTree.outline_world`'s
+        density-heuristic + convex-hull over-approximation), including real concave notches.
+        Falls back to a 2D convex hull of every boundary vertex's local (theta, phi) -- the
+        same accepted "envelope, not a guaranteed exact concave fit" tradeoff
+        `PlateWithRTree.outline_world` already documents for a concave plate -- when the
+        triangulation is degenerate, has no boundary at all (a plate covering the entire
+        sphere), or has more than one disjoint boundary loop (a pinched-off peninsula, a
+        disconnected `grow_into` claim)."""
+        n = len(self._theta)
+        if n == 0:
+            return np.zeros((0, 3))
+        local_xyz = geometry.local_xyz(self._phi, self._theta)
+        tri = self._get_triangulation()
+        if tri.degenerate:
+            return geometry.to_world(self._frame, local_xyz)
+
+        loops = mesh_terrain.trace_boundary_loops(tri.boundary_edges)
+        if len(loops) == 1:
+            return geometry.to_world(self._frame, local_xyz[loops[0]])
+
+        boundary_idx = tri.boundary_vertices if len(loops) > 1 else np.arange(n)
+        local_xy = np.stack([self._theta[boundary_idx], self._phi[boundary_idx]], axis=1)
+        if len(local_xy) < 3:
+            return geometry.to_world(self._frame, local_xyz)
+        try:
+            hull = ConvexHull(local_xy)
+        except QhullError:
+            return geometry.to_world(self._frame, local_xyz)
+        hull_xy = local_xy[hull.vertices]
+        return geometry.to_world(self._frame, geometry.local_xyz(hull_xy[:, 1], hull_xy[:, 0]))
+
+    def update_to_lat_long_grid(self, grid: LatLongGrid) -> None:
+        _update_to_lat_long_grid(self, grid)
+
+    def update_deltas_from_lat_long_grid(self, grid: LatLongGrid) -> None:
+        _update_deltas_from_lat_long_grid(self, grid)
+
+    def _merge_nodes_with(
+        self,
+        other: "Plate",
+        spacing_rad: float,
+        coverage_radius_rad: float,
+        other_points_xyz: np.ndarray,
+    ) -> None:
+        """No fixed lattice to conform to (unlike `PlateWithLines`), so merging is just the
+        union of the two plates' own node clouds -- same reasoning and shape as
+        `PlateWithRTree._merge_nodes_with`, just re-triangulating (via `set_nodes`) instead
+        of rebuilding an R-tree. Every `OPTIONAL_FIELDS` value survives exactly for both
+        plates' pre-merge nodes -- unlike `PlateWithLines.merge_with`'s lattice resample,
+        which resets them all to default."""
+        other_world_pts, other_elevation = other.all_points_and_elevation()
+        other_local = geometry.to_local(self._frame, other_world_pts)
+        other_phi, other_theta = geometry.xyz_to_latlon(other_local)
+        combined_fields = {
+            name: np.concatenate([self._fields[name], other.collect(name)]) for name in ElevationLine.OPTIONAL_FIELDS
+        }
+        self.set_nodes(
+            np.concatenate([self._theta, other_theta]),
+            np.concatenate([self._phi, other_phi]),
+            np.concatenate([self._elevation, other_elevation]),
+            **combined_fields,
+        )
+
+    def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["Plate", "Plate"] | None:
+        """Same partition-by-side-of-`cut_normal` idea as `PlateWithRTree.split`: a boolean
+        mask on every one of this plate's own flat arrays, each half becoming a fresh
+        `PlateWithMesh` (rebuilding its own triangulation from scratch via `set_nodes`, see
+        `__init__`) -- no attempt to surgically repair the triangulation along the cut."""
+        if len(self._theta) == 0:
+            return None
+        world_pts = geometry.to_world(self._frame, geometry.local_xyz(self._phi, self._theta))
+        side = np.sum(world_pts * cut_normal, axis=-1) > 0
+        if np.count_nonzero(side) < min_nodes or np.count_nonzero(~side) < min_nodes:
+            return None
+
+        def half(plate_id: int, mask: np.ndarray) -> "PlateWithMesh":
+            fields = {name: self._fields[name][mask] for name in ElevationLine.OPTIONAL_FIELDS}
+            return PlateWithMesh(
+                plate_id=plate_id,
+                frame=self._frame.copy(),
+                crust_type=self._crust_type,
+                theta=self._theta[mask],
+                phi=self._phi[mask],
+                elevation=self._elevation[mask],
+                **fields,
+            )
+
+        return half(self.plate_id, side), half(new_id, ~side)
+
+    def grow_into(
+        self,
+        new_points_xyz: np.ndarray,
+        new_elevation: np.ndarray,
+        coverage_radius_rad: float,
+        spacing_rad: float,
+    ) -> None:
+        """No lattice to resample (unlike `PlateWithLines`), so this just appends
+        `new_points_xyz` directly to the node cloud and re-triangulates -- same shape as
+        `PlateWithRTree.grow_into`. `coverage_radius_rad`/`spacing_rad` are unused for the
+        same reason they're unused there."""
+        new_local = geometry.to_local(self._frame, new_points_xyz)
+        new_phi, new_theta = geometry.xyz_to_latlon(new_local)
+        new_fields = {name: self._default_field(name, new_theta) for name in ElevationLine.OPTIONAL_FIELDS}
+        self.set_nodes(
+            np.concatenate([self._theta, new_theta]),
+            np.concatenate([self._phi, new_phi]),
+            np.concatenate([self._elevation, new_elevation]),
+            **{name: np.concatenate([self._fields[name], values]) for name, values in new_fields.items()},
+        )
+
+    def shift(self, world: "World", years: float) -> float:
+        return _shift_by_rigid_rotation(self, world, years)
+
+    def deform(self, world: "World", other_plates: list["Plate"], years: float, max_distance: float) -> None:
+        """Full mesh-native implementation -- see `mesh_terrain.py` and
+        `docs/simulation-model.md`. Reuses `PlateWithLines.deform`'s own classification
+        (contested/transform/divergent/subduction/collision, purely per-node point-in-polygon
+        + nearest-neighbor-distance tests -- already representation-agnostic) and elevation-
+        delta math verbatim, as flat array operations with no per-row loop needed. The two
+        genuinely new, mesh-native pieces: growth/shrink acts on the triangulation's own
+        boundary vertices (exact adjacency) rather than a line's two theta-ends, and a
+        remesh pass (`mesh_terrain.needs_remeshing`/`remesh_nodes`) stands in for
+        `elevation_lines.regularize_line`. There is no analogue of
+        `PlateWithLines._claim_adjacent_territory`: that exists only because per-line
+        end-growth can't add a whole new phi row, and ordinary boundary growth here already
+        reaches every direction (poleward included) a plate's boundary can expand into."""
+        spacing_rad = line_spacing_rad(world.node_density)
+        far_threshold_rad = _far_threshold_rad(spacing_rad)
+        extend_threshold_rad = _extend_threshold_rad(spacing_rad)
+        max_boundary_effect_rad = _max_boundary_effect_rad(spacing_rad)
+        max_extend_nodes = _max_extend_nodes_per_step(world.node_density)
+
+        own_points, _ = self.all_points_and_elevation()
+        n = len(own_points)
+        if n == 0:
+            return
+
+        neighbours = self.get_neighbours(other_plates, threshold_rad=max_boundary_effect_rad)
+
+        if neighbours:
+            pieces = [p.all_points_and_elevation()[0] for p in neighbours]
+            owners = [np.full(len(pts), p.plate_id) for p, pts in zip(neighbours, pieces)]
+            neighbour_points = np.concatenate(pieces, axis=0)
+            neighbour_owner = np.concatenate(owners, axis=0)
+        else:
+            neighbour_points = np.zeros((0, 3))
+            neighbour_owner = np.zeros(0, dtype=int)
+
+        if len(neighbour_points) > 0:
+            tree = cKDTree(neighbour_points, balanced_tree=False, compact_nodes=False)
+            dist_all, idx_all = tree.query(own_points, workers=query_workers(n))
+            neighbor_owner_all = neighbour_owner[idx_all]
+        else:
+            dist_all = np.full(n, np.inf)
+            neighbor_owner_all = np.zeros(n, dtype=int)
+
+        neighbour_by_id = {p.plate_id: p for p in neighbours}
+
+        # Classification -- see PlateWithLines.deform's own comment for the full reasoning;
+        # this block is copied essentially verbatim (it was already flat-array/row-
+        # independent, only ever indexed by node, never by line).
+        contested_all = np.zeros(n, dtype=bool)
+        near_mask = dist_all < far_threshold_rad
+        near_points = own_points[near_mask]
+        if len(near_points) > 0:
+            contested_all[near_mask] = _contested_by_any(near_points, neighbours)
+
+        default_intensity_all = np.clip(1.0 - dist_all / far_threshold_rad, 0.0, 1.0)
+        collision_intensity_all = np.clip(1.0 - dist_all / COLLISION_RANGE_RAD, 0.0, 1.0)
+        far_field_intensity_all = _far_field_intensity(dist_all, FAR_FIELD_COLLISION_INNER_RAD, FAR_FIELD_COLLISION_OUTER_RAD)
+        arc_intensity_all = _band_intensity(dist_all, SUBDUCTION_ARC_INNER_RAD, SUBDUCTION_ARC_OUTER_RAD)
+        transform_intensity_all = np.clip(1.0 - dist_all / TRANSFORM_RANGE_RAD, 0.0, 1.0)
+        rift_intensity_all = np.clip(1.0 - dist_all / RIFT_RANGE_RAD, 0.0, 1.0)
+
+        neighbor_is_oceanic_all = np.array(
+            [neighbour_by_id[pid].crust_type == "oceanic" if pid in neighbour_by_id else False for pid in neighbor_owner_all]
+        )
+
+        convergent_all = contested_all
+        transform_all = ~contested_all & (dist_all < TRANSFORM_RANGE_RAD)
+        wide_reach = RIFT_RANGE_RAD if self.crust_type == "continental" else FAR_THRESHOLD_RAD
+        divergent_all = ~contested_all & ~transform_all & (dist_all < wide_reach)
+        subduction_all = convergent_all & neighbor_is_oceanic_all
+        collision_all = convergent_all & ~neighbor_is_oceanic_all
+        shrinkable_all = convergent_all if self.crust_type != "continental" else np.zeros_like(convergent_all)
+
+        target = _divergent_target(self.crust_type)
+        years_myr = years / 1_000_000.0
+        relax_factor = 1.0 - np.exp(-DIVERGENT_RELAX_RATE_PER_MYR * years_myr)
+
+        local_xyz_all = geometry.local_xyz(self._phi, self._theta)
+
+        fault_noise = (
+            SphereNoise(np.random.default_rng((world.seed, self.plate_id, REVERSE_FAULT_SEED_TAG)), octaves=3, base_freq=REVERSE_FAULT_NOISE_FREQ)
+            if self.crust_type == "continental"
+            else None
+        )
+
+        # Elevation deltas -- also copied verbatim from PlateWithLines.deform, minus the
+        # per-line loop: no fixed-row structure here to slice into, so this is one
+        # vectorized pass over the whole flat node array instead.
+        elevation = self._elevation.copy()
+        if self.crust_type == "continental":
+            fault_factor = np.where(
+                fault_noise.sample(local_xyz_all) < REVERSE_FAULT_VALLEY_THRESHOLD,
+                REVERSE_FAULT_VALLEY_UPLIFT_FACTOR,
+                1.0,
+            )
+            elevation[subduction_all] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * arc_intensity_all[subduction_all] * fault_factor[subduction_all]
+            elevation[collision_all] += CONVERGENT_MOUNTAIN_RATE_M_PER_MYR * years_myr * collision_intensity_all[collision_all] * fault_factor[collision_all]
+            elevation[collision_all] += FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR * years_myr * far_field_intensity_all[collision_all]
+        else:
+            elevation[contested_all] -= CONVERGENT_TRENCH_RATE_M_PER_MYR * years_myr * default_intensity_all[contested_all]
+
+        elevation[transform_all] += TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * transform_intensity_all[transform_all]
+
+        prior_age = self._fields["divergent_age_myr"]
+        still_young = prior_age < DIVERGENT_YOUNG_AGE_MYR
+        relaxing = divergent_all & still_young
+        new_age = np.where(divergent_all, prior_age + years_myr, 0.0)
+        divergent_intensity = rift_intensity_all if self.crust_type == "continental" else default_intensity_all
+        elevation[relaxing] += (target - elevation[relaxing]) * relax_factor * divergent_intensity[relaxing]
+
+        elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
+        self.set_fields_on_plate(elevation=elevation, divergent_age_myr=new_age)
+
+        # --- Mesh-native boundary growth/shrink (replaces _grow_or_shrink_line_for_deform's
+        # row-end slicing; _claim_adjacent_territory has no analogue here, see docstring). ---
+        tri = self._get_triangulation()
+        boundary_idx = tri.boundary_vertices if not tri.degenerate else np.arange(n)
+        n_distance_cap = max(1, int(max_distance / spacing_rad))
+
+        shrink_candidates = boundary_idx[shrinkable_all[boundary_idx]]
+        remove_idx: set[int] = set()
+        if len(shrink_candidates) > 0:
+            order = np.argsort(dist_all[shrink_candidates])
+            cap = min(len(shrink_candidates), n_distance_cap, max_extend_nodes)
+            remove_idx = {int(i) for i in shrink_candidates[order[:cap]]}
+
+        new_theta: list[float] = []
+        new_phi: list[float] = []
+        new_elevation: list[float] = []
+        new_world_points: list[np.ndarray] = []
+        new_fields: dict[str, list] = {name: [] for name in ElevationLine.OPTIONAL_FIELDS}
+
+        for v in boundary_idx:
+            v = int(v)
+            if v in remove_idx or contested_all[v] or dist_all[v] <= extend_threshold_rad:
+                continue
+
+            direction = mesh_terrain.estimate_outward_direction(v, tri, local_xyz_all)
+            if direction is None:
+                # Fully isolated vertex (no adjacency at all): fall back to away-from-the-
+                # whole-plate's-own-centroid, the same last-resort PlateWithRTree.outline_world
+                # itself falls back to.
+                centroid = geometry.normalize(local_xyz_all.mean(axis=0))
+                direction = local_xyz_all[v] - centroid
+                direction = direction - np.dot(direction, local_xyz_all[v]) * local_xyz_all[v]
+                direction_norm = float(np.linalg.norm(direction))
+                if direction_norm < 1e-9:
+                    continue
+                direction = direction / direction_norm
+
+            # Same candidate-distance math as PlateWithLines._grow_or_shrink_line_for_deform:
+            # dist can be +inf (no neighbour anywhere), so the gap-derived candidate count is
+            # computed against a finite stand-in before dividing.
+            gap_estimate = min(dist_all[v], (n_distance_cap + 1) * spacing_rad)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+
+            # One RNG roll per growth event (per boundary vertex, per call) -- same
+            # STRETCH_VOLCANO_PROBABILITY convention as _grow_or_shrink_line_for_deform's own
+            # grow_end, keyed by this vertex's own node index rather than a line index/end tag.
+            rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, v))
+            overstretched = rng.random() < STRETCH_VOLCANO_PROBABILITY
+
+            for k in range(1, n_candidates + 1):
+                cand_local = geometry.normalize(local_xyz_all[v] + k * spacing_rad * direction)
+                cand_world = geometry.to_world(self._frame, cand_local[None, :])[0]
+                if _contested_by_any(cand_world[None, :], neighbours)[0]:
+                    break  # same "stop at the first contested candidate" rule as _count_open_prefix
+                cand_phi, cand_theta = geometry.xyz_to_latlon(cand_local[None, :])
+                new_theta.append(float(cand_theta[0]))
+                new_phi.append(float(cand_phi[0]))
+                new_elevation.append(target + (ERUPTION_ELEVATION_M if overstretched else 0.0))
+                new_world_points.append(cand_world)
+                for name in ElevationLine.OPTIONAL_FIELDS:
+                    if name == "is_volcano":
+                        new_fields[name].append(overstretched)
+                    elif name == "volcano_active_years_remaining":
+                        new_fields[name].append(
+                            float(rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS)) if overstretched else 0.0
+                        )
+                    else:
+                        new_fields[name].append(0.0)
+
+        if new_world_points:
+            # Several boundary vertices grow "in parallel" this call (unlike one row's own
+            # collinear end-growth), so their outward rays can converge on the same spot --
+            # dedupe against both this plate's own pre-existing nodes and each other.
+            candidates_xyz = np.array(new_world_points)
+            keep = mesh_terrain.dedupe_growth_candidates(candidates_xyz, own_points, min_sep_rad=0.5 * spacing_rad)
+            keep_idx = np.nonzero(keep)[0]
+            new_theta = [new_theta[i] for i in keep_idx]
+            new_phi = [new_phi[i] for i in keep_idx]
+            new_elevation = [new_elevation[i] for i in keep_idx]
+            new_fields = {name: [values[i] for i in keep_idx] for name, values in new_fields.items()}
+
+        keep_mask = np.ones(n, dtype=bool)
+        for i in remove_idx:
+            keep_mask[i] = False
+
+        final_theta = np.concatenate([self._theta[keep_mask], np.array(new_theta)])
+        final_phi = np.concatenate([self._phi[keep_mask], np.array(new_phi)])
+        final_elevation = np.concatenate([self._elevation[keep_mask], np.array(new_elevation)])
+        final_fields = {
+            name: np.concatenate([self._fields[name][keep_mask], np.array(new_fields[name], dtype=self._fields[name].dtype)])
+            for name in ElevationLine.OPTIONAL_FIELDS
+        }
+        self.set_nodes(final_theta, final_phi, final_elevation, **final_fields)
+
+        # Remesh quality pass -- the regularize_line equivalent, same "inline, every call,
+        # gated by an irregularity check" trigger PlateWithLines.deform itself actually uses
+        # (not a periodic cadence -- see mesh_terrain.needs_remeshing's own docstring).
+        if self.node_count() > 0:
+            tri = self._get_triangulation()
+            local_xyz_all = geometry.local_xyz(self._phi, self._theta)
+            if mesh_terrain.needs_remeshing(tri, local_xyz_all, spacing_rad):
+                remeshed_theta, remeshed_phi, remeshed_elevation, remeshed_fields = mesh_terrain.remesh_nodes(
+                    self._theta, self._phi, self._elevation, self._fields, tri, local_xyz_all, spacing_rad
+                )
+                self.set_nodes(remeshed_theta, remeshed_phi, remeshed_elevation, **remeshed_fields)
+
+
 ELLIPSE_OUTLINE_POINTS = 72
 
 
@@ -2135,6 +2647,48 @@ def _build_lines_for_plate(
     return build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
 
 
+def _build_mesh_nodes_for_plate(
+    plate_index: int,
+    frame: np.ndarray,
+    crust_type: str,
+    owner_tree: cKDTree,
+    noise: SphereNoise,
+    land_threshold: float | None = None,
+    spacing_rad: float = TARGET_LINE_SPACING_RAD,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`PlateWithMesh`'s counterpart to `_build_lines_for_plate`: the same lattice sweep,
+    same nearest-seed ownership test, same noise-based elevation formula -- only the
+    packaging differs (flat `(theta, phi, elevation)` arrays instead of a list of
+    `ElevationLine`s), since initial node seeding is representation-agnostic and only how
+    those nodes get bundled into a `Plate` differs."""
+    amp = noise_amplitude(crust_type)
+    if crust_type == "continental" and land_threshold is not None:
+
+        def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+            return amp * (noise.sample(world_pts) - land_threshold)
+    else:
+        base = base_elevation(crust_type)
+
+        def elevation_at(world_pts: np.ndarray) -> np.ndarray:
+            return base + amp * noise.sample(world_pts)
+
+    theta_chunks: list[np.ndarray] = []
+    phi_chunks: list[np.ndarray] = []
+    elevation_chunks: list[np.ndarray] = []
+    for phi, theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
+        _, nearest_idx = owner_tree.query(world_pts)
+        owned = nearest_idx == plate_index
+        if not np.any(owned):
+            continue
+        theta_chunks.append(theta_candidates[owned])
+        phi_chunks.append(np.full(int(np.count_nonzero(owned)), phi))
+        elevation_chunks.append(elevation_at(world_pts[owned]))
+
+    if not theta_chunks:
+        return np.zeros(0), np.zeros(0), np.zeros(0)
+    return np.concatenate(theta_chunks), np.concatenate(phi_chunks), np.concatenate(elevation_chunks)
+
+
 def _land_noise_threshold(
     owner_tree: cKDTree, crust_types: list[str], noise: SphereNoise, land_fraction: float
 ) -> float | None:
@@ -2176,6 +2730,7 @@ def generate_plates(
     continental_fraction: float | None = None,
     land_fraction: float | None = None,
     node_density: float = DEFAULT_NODE_DENSITY,
+    representation: str = DEFAULT_PLATE_REPRESENTATION,
 ) -> list[Plate]:
     """Tile the whole sphere into plates. `num_plates` is optional -- when omitted, a
     plausible Earth-like count is drawn from the seed's own RNG stream (so it's still fully
@@ -2188,7 +2743,11 @@ def generate_plates(
     -- not just of continental crust -- starts above sea level; see
     _land_noise_threshold for how that target is actually hit. `node_density` (the UI's
     "point density" choice, see NODE_DENSITY_CHOICES) scales how many elevation-line nodes
-    each plate starts with -- see line_spacing_rad.
+    each plate starts with -- see line_spacing_rad. `representation` (see
+    PLATE_REPRESENTATION_CHOICES) picks which concrete `Plate` subclass every plate in the
+    returned list is built as -- the initial node seeding itself (lattice sweep, ownership
+    test, elevation formula) is identical either way, only the packaging differs (see
+    `_build_lines_for_plate`/`_build_mesh_nodes_for_plate`).
 
     Every plate's territory comes from the same nearest-seed test (`owner_tree.query`
     below): each lattice node is claimed by exactly one plate, so the tiling has no gaps
@@ -2228,6 +2787,12 @@ def generate_plates(
     plates: list[Plate] = []
     for i in range(num_plates):
         frame = geometry.plate_frame_from_seed(seed_xyz[i])
-        lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise, land_threshold, spacing_rad=spacing_rad)
-        plates.append(PlateWithLines(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
+        if representation == "mesh":
+            theta, phi, elevation = _build_mesh_nodes_for_plate(
+                i, frame, crust_types[i], owner_tree, noise, land_threshold, spacing_rad=spacing_rad
+            )
+            plates.append(PlateWithMesh(plate_id=i, frame=frame, crust_type=crust_types[i], theta=theta, phi=phi, elevation=elevation))
+        else:
+            lines = _build_lines_for_plate(i, frame, crust_types[i], owner_tree, noise, land_threshold, spacing_rad=spacing_rad)
+            plates.append(PlateWithLines(plate_id=i, frame=frame, crust_type=crust_types[i], lines=lines))
     return plates

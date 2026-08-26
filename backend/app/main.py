@@ -83,6 +83,10 @@ class GenerateRequest(BaseModel):
     # to climate.DEFAULT_CLIMATE_DENSITY. Validated against climate.CLIMATE_DENSITY_CHOICES
     # below, same reasoning node_density's own validation gives.
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY
+    # The UI's "Plate representation" choice -- which concrete Plate subclass backs this
+    # world (see plates.PLATE_REPRESENTATION_CHOICES/plates.generate_plates). Validated
+    # below, same reasoning node_density's own validation gives.
+    representation: str = plates.DEFAULT_PLATE_REPRESENTATION
 
 
 class StepRequest(BaseModel):
@@ -204,17 +208,20 @@ def _round_coords(arr: np.ndarray) -> list:
     return np.round(arr, _COORD_DECIMALS).tolist()
 
 
-def _plate_summary(plate: plates.PlateWithLines) -> dict:
+def _plate_summary(plate: plates.Plate) -> dict:
     outline = plate.get_bounding_polygon()
     node_points, _ = plate.all_points_and_elevation()
     ellipse = plates.plate_bounding_ellipse(node_points)
     return {
         "plate_id": plate.plate_id,
         "crust_type": plate.crust_type,
-        # Lines with zero nodes are a real state a plate can be in (see merge_split.py's
-        # own "no_land"/consumption checks) -- excluded here to match outline_world()'s own
-        # filtering, so this doesn't look inconsistent next to num_points.
-        "num_rows": sum(1 for line in plate.lines if len(line) > 0),
+        # A PlateWithLines-only concept (how many of its own rows still have at least one
+        # node -- see merge_split.py's own "no_land"/consumption checks, which mirror this
+        # same "zero nodes is a real, filtered-out state" reasoning); None for any other
+        # representation, which has no notion of "rows" at all.
+        "num_rows": (
+            sum(1 for line in plate.lines if len(line) > 0) if isinstance(plate, plates.PlateWithLines) else None
+        ),
         "num_points": plate.node_count(),
         "outline": _round_coords(outline),
         # Every node's own position (not just the outline loop) -- lets the client plot each
@@ -386,6 +393,10 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown climate_density {req.climate_density!r}; choices are {climate.CLIMATE_DENSITY_CHOICES}"
         )
+    if req.representation not in plates.PLATE_REPRESENTATION_CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown representation {req.representation!r}; choices are {plates.PLATE_REPRESENTATION_CHOICES}"
+        )
     world = generate_world(
         req.seed,
         num_plates=req.num_plates,
@@ -396,6 +407,7 @@ def generate(req: GenerateRequest) -> dict:
         node_density=req.node_density,
         initial_soil_maturity=req.initial_soil_maturity,
         climate_density=req.climate_density,
+        representation=req.representation,
     )
     _state["world"] = world
     return _summary(world)

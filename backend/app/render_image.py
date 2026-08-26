@@ -1328,14 +1328,17 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     grid = _render_grid_arrays(world, projection, view_rotation) if view in ("elevation", "plates") else None
     tectonics = {p.plate_id: _plate_tectonics(projection, p, view_rotation) for p in world.plates}
 
-    detail_lines = []  # (projected_xy, elevation) per non-empty line, "platesDetail" only
+    detail_lines = []  # (projected_xy, elevation) per non-empty plate, "platesDetail" only --
+    # one chunk per plate rather than per PlateWithLines line: each chunk is independently
+    # projected/colored/filled with no line-connecting drawing, so per-line grouping was
+    # never load-bearing here, and this way it works for any Plate representation.
     if view == "platesDetail":
         for plate in world.plates:
-            for line in plate.lines:
-                if len(line) == 0:
-                    continue
-                xy = _project_points(projection, _rotate(line.world_xyz(plate.frame), view_rotation))
-                detail_lines.append((xy, line.elevation))
+            points, elevation = plate.all_points_and_elevation()
+            if len(points) == 0:
+                continue
+            xy = _project_points(projection, _rotate(points, view_rotation))
+            detail_lines.append((xy, elevation))
 
     # Bounding box over every coordinate this view will draw (matches the old client-side
     # computation) so switching views never rescales or re-centers the map.
