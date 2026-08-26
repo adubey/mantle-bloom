@@ -1,30 +1,12 @@
-import { getCookie, setCookie } from "./cookies";
-
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
 const API_ROOT = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
-export type ApiVersion = "v1" | "v2";
-const API_VERSION_COOKIE_NAME = "mantle-bloom-api-version";
-
-// V2 (docs/mantle-bloom-design-v2.pdf) is mounted alongside v1 in the same backend process,
-// at a /v2 path prefix with the exact same route shapes (see backend/app/main.py's own
-// app.mount("/v2", v2_app)) -- so every existing fetch(`${API_BASE}/world/...`) call site in
-// this file keeps working unchanged for either backend; only which prefix they resolve
-// against needs to change. `API_BASE` is a `let`, re-read fresh by every call site each time
-// it builds a request URL (none of them cache it), so flipping `apiVersion` takes effect on
-// the very next API call with no other frontend change needed. Persisted via a cookie (like
-// the map's own view-state cookie, see App.tsx) so a refresh keeps whichever backend was
-// selected, since v1 and v2 each hold their own independent in-memory World -- switching is
-// equivalent to pointing the same client at a different server, not a value transform.
-export let apiVersion: ApiVersion = getCookie(API_VERSION_COOKIE_NAME) === "v2" ? "v2" : "v1";
-export let API_BASE = apiVersion === "v2" ? `${API_ROOT}/v2` : API_ROOT;
-
-export function setApiVersion(version: ApiVersion): void {
-  apiVersion = version;
-  API_BASE = version === "v2" ? `${API_ROOT}/v2` : API_ROOT;
-  setCookie(API_VERSION_COOKIE_NAME, version);
-}
+// V2 (docs/mantle-bloom-design-v2.pdf) is mounted in the same backend process at a /v2 path
+// prefix with the exact same route shapes (see backend/app/main.py's own
+// app.mount("/v2", v2_app)) -- every fetch(`${API_BASE}/world/...`) call site in this file
+// resolves against that prefix.
+export const API_BASE = `${API_ROOT}/v2`;
 
 export type Projection = "behrmann" | "eckert4";
 
