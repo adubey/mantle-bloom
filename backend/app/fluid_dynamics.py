@@ -305,6 +305,24 @@ def cfl_substeps(seconds: float, min_spacing_m: float, wave_speed_m_s: float, ma
     return n_substeps, seconds / n_substeps
 
 
+def diffusion_stable_dt(min_spacing_m: float, max_diffusivity_m2_s: float, safety: float = 1.0) -> float:
+    """The explicit-diffusion stability bound (`dx^2 / (4 * diffusivity)`, the standard 2D
+    FTCS limit) for the *slowest*-changing terms a solver's substep loop advances --
+    viscosity and tracer diffusion, never the gravity-wave term `cfl_substeps` itself bounds.
+    `safety` defaults to 1.0 (the bound itself, no extra margin) rather than `cfl_substeps`'
+    own 0.4 `cfl_safety` -- unlike that constant (tuned empirically against the co-located
+    grid's computational noise mode), this is a hard mathematical stability criterion with
+    nothing else to tune around; stress-testing the v2 ocean solver at `safety` up to 20x this
+    value over 80 real tectonic steps never produced instability at production settings, so
+    1.0 is not cutting it close. Callers pass the max of every diffusivity constant their
+    kernel uses (viscosity, temperature diffusivity, sediment/humidity diffusivity, ...):
+    whichever is largest sets the tightest bound, so every other term is automatically
+    satisfied too. Used to size the "slow" outer-block cadence in the ocean/atmosphere v2
+    solvers' subcycled fast/slow split -- see those modules' own docstrings -- never to
+    replace `cfl_substeps`' own fast-dt computation, which stays exactly as it was."""
+    return safety * min_spacing_m * min_spacing_m / (4.0 * max(max_diffusivity_m2_s, 1e-9))
+
+
 @njit(**_NUMBA_JIT_KWARGS)
 def _grid_noise_filter_kernel(field: np.ndarray, weight: float) -> np.ndarray:
     height, width = field.shape

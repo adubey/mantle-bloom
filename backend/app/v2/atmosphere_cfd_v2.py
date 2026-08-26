@@ -173,6 +173,7 @@ def _atmosphere_substep_loop_kernel(
     order,
     dt_s,
     n_substeps,
+    fast_substeps_per_block,
     reduced_gravity,
     trop_depth,
     eta_temp_coupling,
@@ -190,26 +191,25 @@ def _atmosphere_substep_loop_kernel(
     humidity_diffusivity,
     precip_conversion,
 ):
-    """`step_atmosphere_cfd`'s entire per-substep body (and the `n_substeps` loop itself)
-    fused into one compiled function -- the atmosphere-solver twin of
-    `ocean_cfd_v2._ocean_substep_loop_kernel`; see that function's own docstring for why this
-    exists and what it fuses. Structural differences from the ocean kernel: no `is_ocean`
-    masking on `u`/`v`/`eta` (wind exists over land too, unlike ocean currents), a per-pixel
+    """Subcycled fast/slow split of `step_atmosphere_cfd`'s substep loop -- the atmosphere
+    twin of `ocean_cfd_v2._ocean_substep_loop_kernel`; see that function's own docstring for
+    the fast/slow rationale (unchanged here: the gravity-wave system alone needs `dt_s`,
+    viscosity and temperature/humidity advection-diffusion are stable at the much larger
+    `dt_outer`) and `step_atmosphere_cfd` for how `fast_substeps_per_block` is sized.
+    Structural differences from the ocean kernel, carried over from the pre-split version:
+    no `is_ocean` masking on `u`/`v`/`eta` (wind exists over land too), a per-pixel
     `orographic_drag` array instead of ocean's scalar bottom drag, the mountain-deflection
-    tendency (purely local given `u`/`v` and the once-per-step `mountain_geom` arrays) riding
-    along in the same pass as the viscosity/Coriolis momentum update, one extra whole-grid
-    reduction (`temperature_c`'s own mean, needed for `eta_target`) folded into the
-    first-derivative gather pass since that's already a full traversal, and humidity/
-    evaporation/condensation/precipitation in place of ocean's sediment pickup/settling."""
+    tendency riding along in the fast momentum pass (purely local, like wind stress in the
+    ocean kernel), and humidity/evaporation/condensation/precipitation in the slow block in
+    place of ocean's sediment pickup/settling. One further consequence of the split:
+    `eta_target` depends only on `temperature_c` (frozen for the whole block, since
+    temperature only updates in the slow step now) via `temp_mean`, so both are computed once
+    per block instead of once per fast substep."""
     npix = u.shape[0]
     n_neighbours = neighbours.shape[1]
 
     gx_eta = np.empty(npix, dtype=np.float32)
     gy_eta = np.empty(npix, dtype=np.float32)
-    gx_u = np.empty(npix, dtype=np.float32)
-    gy_u = np.empty(npix, dtype=np.float32)
-    gx_v = np.empty(npix, dtype=np.float32)
-    gy_v = np.empty(npix, dtype=np.float32)
     u_raw = np.empty(npix, dtype=np.float32)
     v_raw = np.empty(npix, dtype=np.float32)
     filt_u = np.empty(npix, dtype=np.float32)
@@ -217,6 +217,11 @@ def _atmosphere_substep_loop_kernel(
     flux_u = np.empty(npix, dtype=np.float32)
     flux_v = np.empty(npix, dtype=np.float32)
     eta_raw = np.empty(npix, dtype=np.float32)
+    eta_target = np.empty(npix, dtype=np.float32)
+    gx_u = np.empty(npix, dtype=np.float32)
+    gy_u = np.empty(npix, dtype=np.float32)
+    gx_v = np.empty(npix, dtype=np.float32)
+    gy_v = np.empty(npix, dtype=np.float32)
     advected_temp = np.empty(npix, dtype=np.float32)
     advected_hum = np.empty(npix, dtype=np.float32)
     gx_temp = np.empty(npix, dtype=np.float32)
@@ -224,17 +229,134 @@ def _atmosphere_substep_loop_kernel(
     gx_hum = np.empty(npix, dtype=np.float32)
     gy_hum = np.empty(npix, dtype=np.float32)
 
-    for _substep in range(n_substeps):
-        # Pass A: first-derivative gather of eta, u, v together, plus temperature_c's own
-        # mean (needed for eta_target below) -- folded into this pass since it's already a
-        # full traversal over npix.
+    substeps_done = 0
+    while substeps_done < n_substeps:
+        block_count = n_substeps - substeps_done
+        if block_count > fast_substeps_per_block:
+            block_count = fast_substeps_per_block
+        dt_outer = dt_s * block_count
+
+        # Block setup: temperature_c is frozen until this block's slow update, so
+        # eta_target (and the temp_mean it's built from) is constant across every fast
+        # substep in this block -- computed once here instead of every fast substep.
         temp_sum = 0.0
         for i in range(npix):
-            ei = eta[i]
+            temp_sum += temperature_c[i]
+        temp_mean = temp_sum / npix
+        for i in range(npix):
+            eta_target[i] = eta_temp_coupling * (temperature_c[i] - temp_mean)
+
+        for _fast in range(block_count):
+            # Fast Pass 1: gradient of eta only, fused with the local momentum update
+            # (Coriolis + pressure-gradient + mountain-deflection + orographic drag, all
+            # purely local given gx_eta/gy_eta) -- viscosity is not here any more, it moved
+            # to the slow block below.
+            for i in range(npix):
+                ei = eta[i]
+                atb_x = 0.0
+                atb_y = 0.0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        nb = neighbours[i, k]
+                        dx = neighbour_dx_m[i, k]
+                        dy = neighbour_dy_m[i, k]
+                        de = eta[nb] - ei
+                        atb_x += dx * de
+                        atb_y += dy * de
+                g00 = gradient_inv[i, 0, 0]
+                g01 = gradient_inv[i, 0, 1]
+                g10 = gradient_inv[i, 1, 0]
+                g11 = gradient_inv[i, 1, 1]
+                gxe_i = g00 * atb_x + g01 * atb_y
+                gye_i = g10 * atb_x + g11 * atb_y
+
+                ui = u[i]
+                vi = v[i]
+                into_slope = -(ui * normal_x[i] + vi * normal_y[i])
+                if into_slope < 0.0:
+                    into_slope = 0.0
+                rate = mountain_deflection_rate * ramp[i] * into_slope
+                deflect_ax = rate * (normal_x[i] + tangent_x[i])
+                deflect_ay = rate * (normal_y[i] + tangent_y[i])
+
+                du_dt = f[i] * vi - reduced_gravity * gxe_i + deflect_ax
+                dv_dt = -f[i] * ui - reduced_gravity * gye_i + deflect_ay
+
+                u_raw[i] = (ui + dt_s * du_dt) / (1.0 + dt_s * orographic_drag[i])
+                v_raw[i] = (vi + dt_s * dv_dt) / (1.0 + dt_s * orographic_drag[i])
+
+            # Fast Pass 2: grid_noise_filter of u_raw/v_raw, fused with the tropospheric
+            # mass-flux prep.
+            for i in range(npix):
+                total_u = 0.0
+                total_v = 0.0
+                count = 0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        nb = neighbours[i, k]
+                        total_u += u_raw[nb]
+                        total_v += v_raw[nb]
+                        count += 1
+                if count == 0:
+                    count = 1
+                avg_u = total_u / count
+                avg_v = total_v / count
+                fu = u_raw[i] + 0.05 * (avg_u - u_raw[i])
+                fv = v_raw[i] + 0.05 * (avg_v - v_raw[i])
+                filt_u[i] = fu
+                filt_v[i] = fv
+                flux_u[i] = trop_depth * fu
+                flux_v[i] = trop_depth * fv
+
+            # Fast Pass 3: divergence of the tropospheric mass flux, fused with the
+            # continuity/eta update (using this block's frozen eta_target) and writing this
+            # substep's final u/v.
+            for i in range(npix):
+                fui = flux_u[i]
+                fvi = flux_v[i]
+                atbx_fu = 0.0
+                atby_fu = 0.0
+                atbx_fv = 0.0
+                atby_fv = 0.0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        nb = neighbours[i, k]
+                        dx = neighbour_dx_m[i, k]
+                        dy = neighbour_dy_m[i, k]
+                        dfu = flux_u[nb] - fui
+                        dfv = flux_v[nb] - fvi
+                        atbx_fu += dx * dfu
+                        atby_fu += dy * dfu
+                        atbx_fv += dx * dfv
+                        atby_fv += dy * dfv
+                g00 = gradient_inv[i, 0, 0]
+                g01 = gradient_inv[i, 0, 1]
+                g10 = gradient_inv[i, 1, 0]
+                g11 = gradient_inv[i, 1, 1]
+                du_dx = g00 * atbx_fu + g01 * atby_fu
+                dv_dy = g10 * atbx_fv + g11 * atby_fv
+                flux_divergence = du_dx + dv_dy
+                eta_raw[i] = eta[i] - dt_s * flux_divergence + dt_s * eta_thermal_relaxation * (eta_target[i] - eta[i])
+                u[i] = filt_u[i]
+                v[i] = filt_v[i]
+
+            # Fast Pass 4: grid_noise_filter(eta_raw) -> this substep's final eta.
+            for i in range(npix):
+                total = 0.0
+                count = 0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        total += eta_raw[neighbours[i, k]]
+                        count += 1
+                if count == 0:
+                    count = 1
+                avg = total / count
+                eta[i] = eta_raw[i] + 0.05 * (avg - eta_raw[i])
+
+        # Slow Pass 1: first-derivative gather of u, v (post fast-sub-cycle).
+        for i in range(npix):
             ui = u[i]
             vi = v[i]
-            atb_x_eta = 0.0
-            atb_y_eta = 0.0
             atb_x_u = 0.0
             atb_y_u = 0.0
             atb_x_v = 0.0
@@ -244,11 +366,8 @@ def _atmosphere_substep_loop_kernel(
                     nb = neighbours[i, k]
                     dx = neighbour_dx_m[i, k]
                     dy = neighbour_dy_m[i, k]
-                    de = eta[nb] - ei
                     du = u[nb] - ui
                     dv = v[nb] - vi
-                    atb_x_eta += dx * de
-                    atb_y_eta += dy * de
                     atb_x_u += dx * du
                     atb_y_u += dy * du
                     atb_x_v += dx * dv
@@ -257,17 +376,13 @@ def _atmosphere_substep_loop_kernel(
             g01 = gradient_inv[i, 0, 1]
             g10 = gradient_inv[i, 1, 0]
             g11 = gradient_inv[i, 1, 1]
-            gx_eta[i] = g00 * atb_x_eta + g01 * atb_y_eta
-            gy_eta[i] = g10 * atb_x_eta + g11 * atb_y_eta
             gx_u[i] = g00 * atb_x_u + g01 * atb_y_u
             gy_u[i] = g10 * atb_x_u + g11 * atb_y_u
             gx_v[i] = g00 * atb_x_v + g01 * atb_y_v
             gy_v[i] = g10 * atb_x_v + g11 * atb_y_v
-            temp_sum += temperature_c[i]
-        temp_mean = temp_sum / npix
 
-        # Pass B: second derivative (laplacian) of u and v, fused with the momentum update
-        # (Coriolis/pressure-gradient/viscosity/mountain-deflection, all purely local).
+        # Slow Pass 2: second derivative (laplacian) of u/v -> explicit viscosity increment
+        # over dt_outer.
         for i in range(npix):
             gxu_i = gx_u[i]
             gyu_i = gy_u[i]
@@ -304,93 +419,14 @@ def _atmosphere_substep_loop_kernel(
             g11 = gradient_inv[i, 1, 1]
             lap_u_i = (g00 * a_u + g01 * b_u) + (g10 * c_u + g11 * d_u)
             lap_v_i = (g00 * a_v + g01 * b_v) + (g10 * c_v + g11 * d_v)
+            u[i] = u[i] + dt_outer * viscosity * lap_u_i
+            v[i] = v[i] + dt_outer * viscosity * lap_v_i
 
-            ui = u[i]
-            vi = v[i]
-            into_slope = -(ui * normal_x[i] + vi * normal_y[i])
-            if into_slope < 0.0:
-                into_slope = 0.0
-            rate = mountain_deflection_rate * ramp[i] * into_slope
-            deflect_ax = rate * (normal_x[i] + tangent_x[i])
-            deflect_ay = rate * (normal_y[i] + tangent_y[i])
-
-            du_dt = f[i] * vi - reduced_gravity * gx_eta[i] + viscosity * lap_u_i + deflect_ax
-            dv_dt = -f[i] * ui - reduced_gravity * gy_eta[i] + viscosity * lap_v_i + deflect_ay
-
-            u_raw[i] = (ui + dt_s * du_dt) / (1.0 + dt_s * orographic_drag[i])
-            v_raw[i] = (vi + dt_s * dv_dt) / (1.0 + dt_s * orographic_drag[i])
-
-        # Pass C: grid_noise_filter of u_raw/v_raw (no is_ocean masking -- wind exists over
-        # land too), fused with the tropospheric mass-flux prep.
+        # Slow Pass 3: semi_lagrangian_advect of temperature_c and humidity together, over
+        # dt_outer, using this block's final u/v (unconditionally stable regardless of dt).
         for i in range(npix):
-            total_u = 0.0
-            total_v = 0.0
-            count = 0
-            for k in range(n_neighbours):
-                if neighbour_valid[i, k]:
-                    nb = neighbours[i, k]
-                    total_u += u_raw[nb]
-                    total_v += v_raw[nb]
-                    count += 1
-            if count == 0:
-                count = 1
-            avg_u = total_u / count
-            avg_v = total_v / count
-            fu = u_raw[i] + 0.05 * (avg_u - u_raw[i])
-            fv = v_raw[i] + 0.05 * (avg_v - v_raw[i])
-            filt_u[i] = fu
-            filt_v[i] = fv
-            flux_u[i] = trop_depth * fu
-            flux_v[i] = trop_depth * fv
-
-        # Pass D: divergence of the tropospheric mass flux, fused with the continuity/eta
-        # update (eta_target uses temperature_c's OLD value and Pass A's temp_mean).
-        for i in range(npix):
-            fui = flux_u[i]
-            fvi = flux_v[i]
-            atbx_fu = 0.0
-            atby_fu = 0.0
-            atbx_fv = 0.0
-            atby_fv = 0.0
-            for k in range(n_neighbours):
-                if neighbour_valid[i, k]:
-                    nb = neighbours[i, k]
-                    dx = neighbour_dx_m[i, k]
-                    dy = neighbour_dy_m[i, k]
-                    dfu = flux_u[nb] - fui
-                    dfv = flux_v[nb] - fvi
-                    atbx_fu += dx * dfu
-                    atby_fu += dy * dfu
-                    atbx_fv += dx * dfv
-                    atby_fv += dy * dfv
-            g00 = gradient_inv[i, 0, 0]
-            g01 = gradient_inv[i, 0, 1]
-            g10 = gradient_inv[i, 1, 0]
-            g11 = gradient_inv[i, 1, 1]
-            du_dx = g00 * atbx_fu + g01 * atby_fu
-            dv_dy = g10 * atbx_fv + g11 * atby_fv
-            flux_divergence = du_dx + dv_dy
-
-            eta_target = eta_temp_coupling * (temperature_c[i] - temp_mean)
-            eta_raw[i] = eta[i] - dt_s * flux_divergence + dt_s * eta_thermal_relaxation * (eta_target - eta[i])
-
-        # Pass E: grid_noise_filter(eta_raw) -> this substep's final eta.
-        for i in range(npix):
-            total = 0.0
-            count = 0
-            for k in range(n_neighbours):
-                if neighbour_valid[i, k]:
-                    total += eta_raw[neighbours[i, k]]
-                    count += 1
-            if count == 0:
-                count = 1
-            avg = total / count
-            eta[i] = eta_raw[i] + 0.05 * (avg - eta_raw[i])
-
-        # Pass F: semi_lagrangian_advect of temperature_c and humidity together.
-        for i in range(npix):
-            ox = -filt_u[i] * dt_s
-            oy = -filt_v[i] * dt_s
+            ox = -u[i] * dt_outer
+            oy = -v[i] * dt_outer
             sx = world_xyz[i, 0] + (ox * east[i, 0] + oy * north[i, 0]) / radius_m
             sy = world_xyz[i, 1] + (ox * east[i, 1] + oy * north[i, 1]) / radius_m
             sz = world_xyz[i, 2] + (ox * east[i, 2] + oy * north[i, 2]) / radius_m
@@ -408,7 +444,7 @@ def _atmosphere_substep_loop_kernel(
             advected_temp[i] = temperature_c[src_pix]
             advected_hum[i] = humidity[src_pix]
 
-        # Pass G: first-derivative gather of advected_temp and advected_hum together.
+        # Slow Pass 4: first-derivative gather of advected_temp and advected_hum together.
         for i in range(npix):
             ti = advected_temp[i]
             hi = advected_hum[i]
@@ -436,11 +472,11 @@ def _atmosphere_substep_loop_kernel(
             gx_hum[i] = g00 * atbx_h + g01 * atby_h
             gy_hum[i] = g10 * atbx_h + g11 * atby_h
 
-        # Pass H: second derivative (laplacian) of advected_temp/advected_hum, fused with
-        # radiative relaxation, evaporation/condensation, and precipitation -- this
-        # substep's final write. `humidity[i]` here is still the pre-advection value
+        # Slow Pass 5: second derivative (laplacian) of advected_temp/advected_hum, fused with
+        # radiative relaxation, evaporation/condensation, and precipitation -- this block's
+        # final write, all over dt_outer. `humidity[i]` here is still the pre-advection value
         # (matches the original loop, which computes excess/condensed before overwriting
-        # `humidity` via advection).
+        # `humidity`).
         for i in range(npix):
             gxt_i = gx_temp[i]
             gyt_i = gy_temp[i]
@@ -478,8 +514,8 @@ def _atmosphere_substep_loop_kernel(
             lap_t = (g00 * a_t + g01 * b_t) + (g10 * c_t + g11 * d_t)
             lap_h = (g00 * a_h + g01 * b_h) + (g10 * c_h + g11 * d_h)
 
-            diffused_temp = advected_temp[i] + dt_s * temp_diffusivity * lap_t
-            final_temp = diffused_temp + dt_s * radiative_relaxation * (equilibrium_temperature_c[i] - diffused_temp)
+            diffused_temp = advected_temp[i] + dt_outer * temp_diffusivity * lap_t
+            final_temp = diffused_temp + dt_outer * radiative_relaxation * (equilibrium_temperature_c[i] - diffused_temp)
 
             evap_source = ocean_evap_source if is_ocean[i] else land_evap_source
             saturation_ceiling = final_temp / evap_reference_temp
@@ -492,16 +528,16 @@ def _atmosphere_substep_loop_kernel(
                 excess = 0.0
             condensed = condensation_rate * excess
 
-            diffused_hum = advected_hum[i] + dt_s * humidity_diffusivity * lap_h
-            final_hum = diffused_hum + dt_s * (evap_source - condensed)
+            diffused_hum = advected_hum[i] + dt_outer * humidity_diffusivity * lap_h
+            final_hum = diffused_hum + dt_outer * (evap_source - condensed)
             if final_hum < 0.0:
                 final_hum = 0.0
 
             temperature_c[i] = final_temp
             humidity[i] = final_hum
             precipitation_mm[i] = condensed * precip_conversion
-            u[i] = filt_u[i]
-            v[i] = filt_v[i]
+
+        substeps_done += block_count
 
     return u, v, eta, temperature_c, humidity, precipitation_mm
 
@@ -512,6 +548,10 @@ def step_atmosphere_cfd(world: "WorldV2", state: AtmosphereCFDStateV2, seconds: 
     wave_speed = float(np.sqrt(REDUCED_GRAVITY_M_S2 * EFFECTIVE_TROPOSPHERE_DEPTH_M))
     current_speed = float(np.hypot(state.u, state.v).max(initial=0.0))
     n_substeps, dt_s = fluid_dynamics.cfl_substeps(seconds, fdh.min_spacing_m(grid), wave_speed, current_speed, MAX_SUBSTEPS_PER_STEP)
+
+    max_diffusivity = max(VISCOSITY_M2_S, TEMPERATURE_DIFFUSIVITY_M2_S, HUMIDITY_DIFFUSIVITY_M2_S)
+    dt_outer_limit = fluid_dynamics.diffusion_stable_dt(fdh.min_spacing_m(grid), max_diffusivity)
+    fast_substeps_per_block = max(1, int(dt_outer_limit // dt_s))
 
     orographic_drag = SURFACE_DRAG_BASE_PER_S + SURFACE_DRAG_OROGRAPHIC_PER_S * np.clip(state.elevation_m / MOUNTAIN_OBSTACLE_ELEVATION_M, 0.0, 1.0)
     normal_x, normal_y, tangent_x, tangent_y, ramp = _mountain_deflection_geometry(state.elevation_m, grid)
@@ -546,6 +586,7 @@ def step_atmosphere_cfd(world: "WorldV2", state: AtmosphereCFDStateV2, seconds: 
         grid.order,
         dt_s,
         n_substeps,
+        fast_substeps_per_block,
         REDUCED_GRAVITY_M_S2,
         EFFECTIVE_TROPOSPHERE_DEPTH_M,
         ETA_TEMPERATURE_COUPLING_M_PER_C,

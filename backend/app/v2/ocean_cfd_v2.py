@@ -132,6 +132,7 @@ def _ocean_substep_loop_kernel(
     order,
     dt_s,
     n_substeps,
+    fast_substeps_per_block,
     drag,
     reduced_gravity,
     wind_stress_coeff,
@@ -145,29 +146,32 @@ def _ocean_substep_loop_kernel(
     sediment_settle_rate,
     sediment_deposit_coeff,
 ):
-    """The entire per-substep body of `step_ocean_cfd`'s old Python loop, fused into one
-    compiled function that also owns the `n_substeps` loop itself -- not just the individual
-    gradient/laplacian/divergence/grid_noise_filter/semi_lagrangian_advect stencils (see
-    fluid_dynamics_healpix.py's own fused kernels), but every plain-NumPy elementwise op that
-    used to sit *between* those calls (`wind_speed`, `tau_u`/`tau_v`, the momentum/continuity
-    updates, `speed`/`pickup`/`settling_factor`/`settle`, every `np.where`/`np.clip` masking
-    step) -- each of those was its own small vectorized NumPy call paying its own dispatch and
-    temporary-allocation cost, `n_substeps` times per step (up to 742 at production density).
-    Reproduces the exact same sequence of dependencies as the original loop (each pass here
-    only reads arrays a strictly earlier pass finished writing -- gx/gy of eta/u/v before
-    their second derivatives, the post-noise-filter u/v before flux divergence and advection,
-    the pre-advection sediment_concentration for pickup/settle), just organized as sequential
-    `for i in range(npix)` passes inside one JIT boundary instead of ~9 separate top-level
-    calls plus ~15 bare NumPy vector ops per substep."""
+    """Subcycled fast/slow split of `step_ocean_cfd`'s substep loop, fused into one compiled
+    function that also owns the outer-block/fast-substep looping itself.
+
+    The gravity-wave system (pressure-gradient + Coriolis + continuity) is the only thing
+    that actually needs `dt_s` (the wave-speed CFL dt `cfl_substeps` already computes) --
+    viscosity and the temperature/sediment advection-diffusion are stable at a dt up to
+    `fast_substeps_per_block`x larger (`fluid_dynamics.diffusion_stable_dt`, sized from this
+    solver's own diffusivity constants; see `step_ocean_cfd`). So each of the
+    `ceil(n_substeps / fast_substeps_per_block)` outer blocks below runs:
+      - a FAST sub-cycle, `dt_s` at a time, of exactly the terms the wave CFL bounds
+        (eta/u/v's own numbers are therefore identical to the pre-split kernel's -- the
+        part of the scheme that needs to be numerically careful is untouched);
+      - one SLOW update -- viscosity, then advection, then diffusion/relaxation/pickup-settle
+        of temperature_c/sediment_concentration -- at `dt_outer` (that block's actual fast-
+        substep count times `dt_s`, so the last, possibly-short, block still lands on exactly
+        `n_substeps * dt_s` total), using the fast sub-cycle's freshly-updated u/v (slow-
+        after-fast operator splitting, so tracer advection reads the current velocity, not a
+        stale one).
+    Every per-pixel expression below is unchanged from the original single-cadence kernel --
+    only which cadence (`dt_s` vs `dt_outer`) each term is evaluated at, and how the momentum
+    equation's viscosity term separates from its (still-fast) drag term, changed."""
     npix = u.shape[0]
     n_neighbours = neighbours.shape[1]
 
     gx_eta = np.empty(npix, dtype=np.float32)
     gy_eta = np.empty(npix, dtype=np.float32)
-    gx_u = np.empty(npix, dtype=np.float32)
-    gy_u = np.empty(npix, dtype=np.float32)
-    gx_v = np.empty(npix, dtype=np.float32)
-    gy_v = np.empty(npix, dtype=np.float32)
     u_raw = np.empty(npix, dtype=np.float32)
     v_raw = np.empty(npix, dtype=np.float32)
     filt_u = np.empty(npix, dtype=np.float32)
@@ -175,6 +179,10 @@ def _ocean_substep_loop_kernel(
     flux_u = np.empty(npix, dtype=np.float32)
     flux_v = np.empty(npix, dtype=np.float32)
     eta_raw = np.empty(npix, dtype=np.float32)
+    gx_u = np.empty(npix, dtype=np.float32)
+    gy_u = np.empty(npix, dtype=np.float32)
+    gx_v = np.empty(npix, dtype=np.float32)
+    gy_v = np.empty(npix, dtype=np.float32)
     pickup = np.empty(npix, dtype=np.float32)
     settle = np.empty(npix, dtype=np.float32)
     advected_temp = np.empty(npix, dtype=np.float32)
@@ -184,15 +192,121 @@ def _ocean_substep_loop_kernel(
     gx_sed = np.empty(npix, dtype=np.float32)
     gy_sed = np.empty(npix, dtype=np.float32)
 
-    for _substep in range(n_substeps):
-        # Pass A: first-derivative gather of eta, u, v together (same neighbour indices/
-        # weights reused for all three, one traversal instead of three).
+    substeps_done = 0
+    while substeps_done < n_substeps:
+        block_count = n_substeps - substeps_done
+        if block_count > fast_substeps_per_block:
+            block_count = fast_substeps_per_block
+        dt_outer = dt_s * block_count
+
+        for _fast in range(block_count):
+            # Fast Pass 1: gradient of eta only, fused with the local momentum update
+            # (Coriolis + pressure-gradient + wind stress + drag -- all purely local given
+            # gx_eta/gy_eta, no extra neighbour access) -- viscosity is *not* here any more,
+            # it moved to the slow block below.
+            for i in range(npix):
+                ei = eta[i]
+                atb_x = 0.0
+                atb_y = 0.0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        nb = neighbours[i, k]
+                        dx = neighbour_dx_m[i, k]
+                        dy = neighbour_dy_m[i, k]
+                        de = eta[nb] - ei
+                        atb_x += dx * de
+                        atb_y += dy * de
+                g00 = gradient_inv[i, 0, 0]
+                g01 = gradient_inv[i, 0, 1]
+                g10 = gradient_inv[i, 1, 0]
+                g11 = gradient_inv[i, 1, 1]
+                gxe_i = g00 * atb_x + g01 * atb_y
+                gye_i = g10 * atb_x + g11 * atb_y
+
+                wind_speed_i = math.sqrt(wind_u[i] * wind_u[i] + wind_v[i] * wind_v[i])
+                tau_u_i = (wind_stress_coeff * wind_speed_i * wind_u[i]) / mixed_layer_depth
+                tau_v_i = (wind_stress_coeff * wind_speed_i * wind_v[i]) / mixed_layer_depth
+
+                du_dt = f[i] * v[i] - reduced_gravity * gxe_i + tau_u_i
+                dv_dt = -f[i] * u[i] - reduced_gravity * gye_i + tau_v_i
+
+                u_raw[i] = (u[i] + dt_s * du_dt) / (1.0 + dt_s * drag)
+                v_raw[i] = (v[i] + dt_s * dv_dt) / (1.0 + dt_s * drag)
+
+            # Fast Pass 2: grid_noise_filter of u_raw/v_raw (masked by is_ocean) -> this
+            # substep's final u/v, fused with flux_u/flux_v prep for the continuity update.
+            for i in range(npix):
+                total_u = 0.0
+                total_v = 0.0
+                count = 0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        nb = neighbours[i, k]
+                        total_u += u_raw[nb]
+                        total_v += v_raw[nb]
+                        count += 1
+                if count == 0:
+                    count = 1
+                avg_u = total_u / count
+                avg_v = total_v / count
+                fu = u_raw[i] + 0.05 * (avg_u - u_raw[i])
+                fv = v_raw[i] + 0.05 * (avg_v - v_raw[i])
+                if not is_ocean[i]:
+                    fu = 0.0
+                    fv = 0.0
+                filt_u[i] = fu
+                filt_v[i] = fv
+                flux_u[i] = depth_m[i] * fu
+                flux_v[i] = depth_m[i] * fv
+
+            # Fast Pass 3: divergence of (depth_m * u, depth_m * v), fused with the
+            # continuity update and writing this substep's final u/v.
+            for i in range(npix):
+                fui = flux_u[i]
+                fvi = flux_v[i]
+                atbx_fu = 0.0
+                atby_fu = 0.0
+                atbx_fv = 0.0
+                atby_fv = 0.0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        nb = neighbours[i, k]
+                        dx = neighbour_dx_m[i, k]
+                        dy = neighbour_dy_m[i, k]
+                        dfu = flux_u[nb] - fui
+                        dfv = flux_v[nb] - fvi
+                        atbx_fu += dx * dfu
+                        atby_fu += dy * dfu
+                        atbx_fv += dx * dfv
+                        atby_fv += dy * dfv
+                g00 = gradient_inv[i, 0, 0]
+                g01 = gradient_inv[i, 0, 1]
+                g10 = gradient_inv[i, 1, 0]
+                g11 = gradient_inv[i, 1, 1]
+                du_dx = g00 * atbx_fu + g01 * atby_fu
+                dv_dy = g10 * atbx_fv + g11 * atby_fv
+                eta_raw[i] = eta[i] - dt_s * (du_dx + dv_dy)
+                u[i] = filt_u[i]
+                v[i] = filt_v[i]
+
+            # Fast Pass 4: grid_noise_filter(eta_raw), masked -> this substep's final eta.
+            for i in range(npix):
+                total = 0.0
+                count = 0
+                for k in range(n_neighbours):
+                    if neighbour_valid[i, k]:
+                        total += eta_raw[neighbours[i, k]]
+                        count += 1
+                if count == 0:
+                    count = 1
+                avg = total / count
+                e = eta_raw[i] + 0.05 * (avg - eta_raw[i])
+                eta[i] = e if is_ocean[i] else 0.0
+
+        # Slow Pass 1: first-derivative gather of u, v (post fast-sub-cycle).
         for i in range(npix):
-            ei = eta[i]
             ui = u[i]
             vi = v[i]
-            atb_x_eta = 0.0
-            atb_y_eta = 0.0
             atb_x_u = 0.0
             atb_y_u = 0.0
             atb_x_v = 0.0
@@ -202,11 +316,8 @@ def _ocean_substep_loop_kernel(
                     nb = neighbours[i, k]
                     dx = neighbour_dx_m[i, k]
                     dy = neighbour_dy_m[i, k]
-                    de = eta[nb] - ei
                     du = u[nb] - ui
                     dv = v[nb] - vi
-                    atb_x_eta += dx * de
-                    atb_y_eta += dy * de
                     atb_x_u += dx * du
                     atb_y_u += dy * du
                     atb_x_v += dx * dv
@@ -215,16 +326,14 @@ def _ocean_substep_loop_kernel(
             g01 = gradient_inv[i, 0, 1]
             g10 = gradient_inv[i, 1, 0]
             g11 = gradient_inv[i, 1, 1]
-            gx_eta[i] = g00 * atb_x_eta + g01 * atb_y_eta
-            gy_eta[i] = g10 * atb_x_eta + g11 * atb_y_eta
             gx_u[i] = g00 * atb_x_u + g01 * atb_y_u
             gy_u[i] = g10 * atb_x_u + g11 * atb_y_u
             gx_v[i] = g00 * atb_x_v + g01 * atb_y_v
             gy_v[i] = g10 * atb_x_v + g11 * atb_y_v
 
-        # Pass B: second derivative (laplacian) of u and v from Pass A's gx/gy, fused with
-        # the momentum update -- wind stress and Coriolis/pressure-gradient/viscosity terms
-        # are all purely local (no neighbour access), so they ride along in this same pass.
+        # Slow Pass 2: second derivative (laplacian) of u/v -> explicit viscosity increment
+        # over dt_outer, fused with the sediment pickup/settle terms (purely local given the
+        # now-final u/v for this block and the pre-advection sediment_concentration).
         for i in range(npix):
             gxu_i = gx_u[i]
             gyu_i = gy_u[i]
@@ -262,45 +371,15 @@ def _ocean_substep_loop_kernel(
             lap_u_i = (g00 * a_u + g01 * b_u) + (g10 * c_u + g11 * d_u)
             lap_v_i = (g00 * a_v + g01 * b_v) + (g10 * c_v + g11 * d_v)
 
-            wind_speed_i = math.sqrt(wind_u[i] * wind_u[i] + wind_v[i] * wind_v[i])
-            tau_u_i = (wind_stress_coeff * wind_speed_i * wind_u[i]) / mixed_layer_depth
-            tau_v_i = (wind_stress_coeff * wind_speed_i * wind_v[i]) / mixed_layer_depth
-
-            du_dt = f[i] * v[i] - reduced_gravity * gx_eta[i] + tau_u_i + viscosity * lap_u_i
-            dv_dt = -f[i] * u[i] - reduced_gravity * gy_eta[i] + tau_v_i + viscosity * lap_v_i
-
-            u_raw[i] = (u[i] + dt_s * du_dt) / (1.0 + dt_s * drag)
-            v_raw[i] = (v[i] + dt_s * dv_dt) / (1.0 + dt_s * drag)
-
-        # Pass C: grid_noise_filter of u_raw/v_raw (masked by is_ocean) -> this substep's
-        # final u/v, fused with flux_u/flux_v prep and the sediment pickup/settle terms
-        # (both purely local given the just-computed new speed and the pre-advection
-        # sediment_concentration still untouched at this point).
-        for i in range(npix):
-            total_u = 0.0
-            total_v = 0.0
-            count = 0
-            for k in range(n_neighbours):
-                if neighbour_valid[i, k]:
-                    nb = neighbours[i, k]
-                    total_u += u_raw[nb]
-                    total_v += v_raw[nb]
-                    count += 1
-            if count == 0:
-                count = 1
-            avg_u = total_u / count
-            avg_v = total_v / count
-            fu = u_raw[i] + 0.05 * (avg_u - u_raw[i])
-            fv = v_raw[i] + 0.05 * (avg_v - v_raw[i])
+            new_u = u[i] + dt_outer * viscosity * lap_u_i
+            new_v = v[i] + dt_outer * viscosity * lap_v_i
             if not is_ocean[i]:
-                fu = 0.0
-                fv = 0.0
-            filt_u[i] = fu
-            filt_v[i] = fv
-            flux_u[i] = depth_m[i] * fu
-            flux_v[i] = depth_m[i] * fv
+                new_u = 0.0
+                new_v = 0.0
+            u[i] = new_u
+            v[i] = new_v
 
-            speed_i = math.sqrt(fu * fu + fv * fv)
+            speed_i = math.sqrt(new_u * new_u + new_v * new_v)
             pickup[i] = sediment_pickup_coeff * speed_i if coastal[i] else 0.0
             settling_factor = 1.0 - speed_i / sediment_settle_speed_thresh
             if settling_factor < 0.0:
@@ -309,52 +388,13 @@ def _ocean_substep_loop_kernel(
                 settling_factor = 1.0
             settle[i] = sediment_settle_rate * sediment_concentration[i] * settling_factor
 
-        # Pass D: divergence of (depth_m * u, depth_m * v), fused with the continuity update.
+        # Slow Pass 3: semi_lagrangian_advect of temperature_c and sediment_concentration
+        # together, over dt_outer, using this block's final u/v (unconditionally stable
+        # regardless of dt -- it's a backward trace via ang2pix, not a stencil, so coarsening
+        # its cadence to dt_outer costs nothing it needed).
         for i in range(npix):
-            fui = flux_u[i]
-            fvi = flux_v[i]
-            atbx_fu = 0.0
-            atby_fu = 0.0
-            atbx_fv = 0.0
-            atby_fv = 0.0
-            for k in range(n_neighbours):
-                if neighbour_valid[i, k]:
-                    nb = neighbours[i, k]
-                    dx = neighbour_dx_m[i, k]
-                    dy = neighbour_dy_m[i, k]
-                    dfu = flux_u[nb] - fui
-                    dfv = flux_v[nb] - fvi
-                    atbx_fu += dx * dfu
-                    atby_fu += dy * dfu
-                    atbx_fv += dx * dfv
-                    atby_fv += dy * dfv
-            g00 = gradient_inv[i, 0, 0]
-            g01 = gradient_inv[i, 0, 1]
-            g10 = gradient_inv[i, 1, 0]
-            g11 = gradient_inv[i, 1, 1]
-            du_dx = g00 * atbx_fu + g01 * atby_fu
-            dv_dy = g10 * atbx_fv + g11 * atby_fv
-            eta_raw[i] = eta[i] - dt_s * (du_dx + dv_dy)
-
-        # Pass E: grid_noise_filter(eta_raw), masked -> this substep's final eta.
-        for i in range(npix):
-            total = 0.0
-            count = 0
-            for k in range(n_neighbours):
-                if neighbour_valid[i, k]:
-                    total += eta_raw[neighbours[i, k]]
-                    count += 1
-            if count == 0:
-                count = 1
-            avg = total / count
-            e = eta_raw[i] + 0.05 * (avg - eta_raw[i])
-            eta[i] = e if is_ocean[i] else 0.0
-
-        # Pass F: semi_lagrangian_advect of temperature_c and sediment_concentration together
-        # (same backward-traced source pixel for both, since both use the same new u/v).
-        for i in range(npix):
-            ox = -filt_u[i] * dt_s
-            oy = -filt_v[i] * dt_s
+            ox = -u[i] * dt_outer
+            oy = -v[i] * dt_outer
             sx = world_xyz[i, 0] + (ox * east[i, 0] + oy * north[i, 0]) / radius_m
             sy = world_xyz[i, 1] + (ox * east[i, 1] + oy * north[i, 1]) / radius_m
             sz = world_xyz[i, 2] + (ox * east[i, 2] + oy * north[i, 2]) / radius_m
@@ -372,7 +412,7 @@ def _ocean_substep_loop_kernel(
             advected_temp[i] = temperature_c[src_pix]
             advected_sed[i] = sediment_concentration[src_pix]
 
-        # Pass G: first-derivative gather of advected_temp and advected_sed together.
+        # Slow Pass 4: first-derivative gather of advected_temp and advected_sed together.
         for i in range(npix):
             ti = advected_temp[i]
             si = advected_sed[i]
@@ -400,9 +440,10 @@ def _ocean_substep_loop_kernel(
             gx_sed[i] = g00 * atbx_s + g01 * atby_s
             gy_sed[i] = g10 * atbx_s + g11 * atby_s
 
-        # Pass H: second derivative (laplacian) of advected_temp/advected_sed, fused with
+        # Slow Pass 5: second derivative (laplacian) of advected_temp/advected_sed, fused with
         # every remaining local term (diffusion, radiative relaxation, pickup/settle, the
-        # is_ocean mask, and sediment deposit accumulation) -- this substep's final write.
+        # is_ocean mask, and sediment deposit accumulation) -- this block's final write, all
+        # over dt_outer.
         for i in range(npix):
             gxt_i = gx_temp[i]
             gyt_i = gy_temp[i]
@@ -440,19 +481,18 @@ def _ocean_substep_loop_kernel(
             lap_t = (g00 * a_t + g01 * b_t) + (g10 * c_t + g11 * d_t)
             lap_s = (g00 * a_s + g01 * b_s) + (g10 * c_s + g11 * d_s)
 
-            diffused_temp = advected_temp[i] + dt_s * temp_diffusivity * lap_t
-            temperature_c[i] = diffused_temp + dt_s * temp_relaxation * (baseline_temperature_c[i] - diffused_temp)
+            diffused_temp = advected_temp[i] + dt_outer * temp_diffusivity * lap_t
+            temperature_c[i] = diffused_temp + dt_outer * temp_relaxation * (baseline_temperature_c[i] - diffused_temp)
 
-            diffused_sed = advected_sed[i] + dt_s * sediment_diffusivity * lap_s
-            final_sed = diffused_sed + dt_s * (pickup[i] - settle[i])
+            diffused_sed = advected_sed[i] + dt_outer * sediment_diffusivity * lap_s
+            final_sed = diffused_sed + dt_outer * (pickup[i] - settle[i])
             if final_sed < 0.0:
                 final_sed = 0.0
             sediment_concentration[i] = final_sed if is_ocean[i] else 0.0
 
-            sediment_deposited_m[i] += dt_s * settle[i] * sediment_deposit_coeff
+            sediment_deposited_m[i] += dt_outer * settle[i] * sediment_deposit_coeff
 
-            u[i] = filt_u[i]
-            v[i] = filt_v[i]
+        substeps_done += block_count
 
     return u, v, eta, temperature_c, sediment_concentration, sediment_deposited_m
 
@@ -466,6 +506,10 @@ def step_ocean_cfd(world: "WorldV2", state: OceanCFDStateV2, seconds: float) -> 
     current_speed = float(np.hypot(state.u, state.v).max(initial=0.0))
     n_substeps, dt_s = fluid_dynamics.cfl_substeps(seconds, fdh.min_spacing_m(grid), wave_speed, current_speed, MAX_SUBSTEPS_PER_STEP)
     f = fluid_dynamics.coriolis_parameter(np.degrees(grid.lat_rad))
+
+    max_diffusivity = max(VISCOSITY_M2_S, TEMPERATURE_DIFFUSIVITY_M2_S, SEDIMENT_DIFFUSIVITY_M2_S)
+    dt_outer_limit = fluid_dynamics.diffusion_stable_dt(fdh.min_spacing_m(grid), max_diffusivity)
+    fast_substeps_per_block = max(1, int(dt_outer_limit // dt_s))
 
     u, v, eta, temperature_c, sediment_concentration, sediment_deposited_m = _ocean_substep_loop_kernel(
         state.u.copy(),
@@ -494,6 +538,7 @@ def step_ocean_cfd(world: "WorldV2", state: OceanCFDStateV2, seconds: float) -> 
         grid.order,
         dt_s,
         n_substeps,
+        fast_substeps_per_block,
         BOTTOM_DRAG_PER_S,
         REDUCED_GRAVITY_M_S2,
         WIND_STRESS_COEFFICIENT,

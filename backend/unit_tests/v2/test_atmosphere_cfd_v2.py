@@ -1,0 +1,76 @@
+import numpy as np
+
+from app.v2 import atmosphere_cfd_v2
+from app.v2.world_v2 import generate_world_v2
+
+# Coarse settings throughout -- same rationale as test_world_v2_smoke.py's own
+# _COARSE_KWARGS: these are regression/boundedness checks, not physics-precision tests, so
+# a small fast-to-run grid is preferable.
+_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6)
+
+
+def _world(seed=1):
+    return generate_world_v2(seed=seed, **_COARSE_KWARGS)
+
+
+def test_init_atmosphere_cfd_v2_produces_correctly_shaped_finite_state():
+    world = _world()
+    state = world.atmosphere_cfd_state
+    npix = state.grid.npix
+    assert state.u.shape == (npix,)
+    assert state.v.shape == (npix,)
+    for field in (state.u, state.v, state.eta, state.temperature_c, state.equilibrium_temperature_c, state.humidity):
+        assert np.all(np.isfinite(field))
+    assert np.all(state.eta == 0.0)  # geopotential anomaly starts flat
+
+
+def test_step_atmosphere_cfd_v2_produces_no_nan_or_inf():
+    world = _world()
+    state = world.atmosphere_cfd_state
+    for _ in range(3):
+        atmosphere_cfd_v2.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
+        for field in (state.u, state.v, state.eta, state.temperature_c, state.humidity, state.precipitation_mm):
+            assert np.all(np.isfinite(field))
+
+
+def test_step_atmosphere_cfd_v2_advances_elapsed_seconds_by_exactly_the_requested_amount():
+    world = _world()
+    state = world.atmosphere_cfd_state
+    atmosphere_cfd_v2.step_atmosphere_cfd(world, state, seconds=3600.0)
+    assert state.elapsed_seconds == 3600.0
+    atmosphere_cfd_v2.step_atmosphere_cfd(world, state, seconds=1800.0)
+    assert state.elapsed_seconds == 5400.0
+
+
+def test_humidity_never_goes_negative():
+    world = _world()
+    state = world.atmosphere_cfd_state
+    for _ in range(5):
+        atmosphere_cfd_v2.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
+        assert np.all(state.humidity >= 0.0)
+        assert np.all(state.precipitation_mm >= 0.0)
+
+
+def test_atmosphere_cfd_v2_never_mutates_world_plates():
+    world = _world()
+    elevations_before = [line.elevation.copy() for plate in world.plates for line in plate.lines]
+    state = world.atmosphere_cfd_state
+    for _ in range(3):
+        atmosphere_cfd_v2.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
+    elevations_after = [line.elevation for plate in world.plates for line in plate.lines]
+    assert len(elevations_before) == len(elevations_after)
+    for before, after in zip(elevations_before, elevations_after):
+        assert np.array_equal(before, after)
+
+
+def test_step_atmosphere_cfd_v2_stays_bounded_over_many_steps():
+    # Same "doesn't blow up" regression guard as ocean_cfd_v2's own version -- guards against
+    # the fast/slow subcycled split (atmosphere_cfd_v2's own docstring) diverging, not an
+    # exact physical value.
+    world = generate_world_v2(seed=1, node_density=1.0, climate_density=1.0, fluid_density=1.0, num_plates=6)
+    state = world.atmosphere_cfd_state
+    for _ in range(10):
+        atmosphere_cfd_v2.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
+    speed = np.hypot(state.u, state.v)
+    assert np.all(np.isfinite(speed))
+    assert speed.max() < 200.0  # a real, if strong, large-scale wind speed ceiling
