@@ -1,8 +1,21 @@
-"""Atmospheric Fluid Dynamics mode: a genuine time-integrated shallow-water simulation of
-wind, replacing climate.py's own diagnostic latitude-banded wind heuristic with real
-prognostic state that persists and evolves step to step -- see
+"""Atmospheric Fluid Dynamics: a genuine time-integrated shallow-water simulation of wind,
+replacing climate.py's own diagnostic latitude-banded wind heuristic with real prognostic
+state that persists and evolves continuously -- see
 docs/simulation-model.md#ocean-atmospheric-fluid-dynamics for the shared design rationale
-(reduced gravity, freeze-on-entry, substepping) with ocean_cfd.py.
+(reduced gravity, substepping) with ocean_cfd.py.
+
+**Always-on, not a mode.** `World.atmosphere_cfd_state` is created once, by `init_atmosphere_
+cfd`, during `generate_world`, and never re-initialized after that -- every `/world/step` call
+advances it by a fixed `SECONDS_PER_TECTONIC_STEP` (1 simulated day) via `step_atmosphere_cfd`,
+regardless of how many tectonic years that step covers (see world.py's `step_world`), gated on
+`World.simulate_climate_biomes` the same way erosion/hydrology already are. `refresh_forcing`
+re-samples the terrain this state reacts to (`elevation_m`/`is_ocean`/
+`equilibrium_temperature_c`) from the world's *current* plate state once per tectonics step,
+right before that step's `step_atmosphere_cfd` call -- terrain changes slowly relative to one
+tectonics step, but not never, so this keeps the CFD grid's boundary conditions in sync with
+plate tectonics over geological time while leaving every genuinely prognostic field
+(u/v/eta/temperature_c/humidity/precipitation_mm) untouched, so wind keeps evolving
+continuously rather than resetting.
 
 **Inputs, matching the user's own spec.** Coriolis force and elevation (both baked directly
 into the momentum equation -- Coriolis in the usual way, elevation via orographic deflection
@@ -82,30 +95,36 @@ PRECIP_CONDENSATION_TO_MM = 4.0e6
 
 MAX_SUBSTEPS_PER_STEP = 2000
 
+# The fixed real-time increment step_world's own _advance_fluid_dynamics advances this state
+# by every tectonics step, regardless of how many tectonic years that step covers (see module
+# docstring's "Always-on, not a mode") -- one simulated day.
+SECONDS_PER_TECTONIC_STEP = 86400.0
+
 
 @dataclass
 class AtmosphereCFDState:
     lat_deg: np.ndarray  # (H,)
     lon_deg: np.ndarray  # (W,)
     world_xyz: np.ndarray  # (H, W, 3)
-    is_ocean: np.ndarray  # (H, W) bool -- frozen at mode entry, drives evaporation source only
-    elevation_m: np.ndarray  # (H, W) -- frozen at mode entry
+    is_ocean: np.ndarray  # (H, W) bool -- refreshed once per tectonics step, see refresh_forcing
+    elevation_m: np.ndarray  # (H, W) -- refreshed once per tectonics step, see refresh_forcing
     u: np.ndarray  # (H, W) eastward wind, m/s
     v: np.ndarray  # (H, W) northward wind, m/s
     eta: np.ndarray  # (H, W) geopotential-height anomaly, m
     temperature_c: np.ndarray  # (H, W)
-    equilibrium_temperature_c: np.ndarray  # (H, W) -- fixed radiative-equilibrium target, see module docstring
+    equilibrium_temperature_c: np.ndarray  # (H, W) -- refreshed once per tectonics step, see refresh_forcing
     humidity: np.ndarray  # (H, W), roughly [0, climate.MAX_EVAPORATION_CEILING]
     precipitation_mm: np.ndarray  # (H, W) -- latest substep's condensation rate, a display field
     elapsed_seconds: float = 0.0
 
 
 def _equilibrium_temperature(world: "World", fields: climate.ClimateFields) -> np.ndarray:
-    """The radiative-equilibrium temperature this mode's own temperature field relaxes
+    """The radiative-equilibrium temperature this state's own temperature field relaxes
     toward every substep (see RADIATIVE_RELAXATION_PER_S) -- land's solar-heating-plus-lapse-
     rate baseline over land, the zonal water baseline over ocean, reusing climate.py's own
-    public formulas directly (same insolation/elevation this world already has, frozen at
-    mode entry) rather than re-deriving them."""
+    public formulas directly (same insolation/elevation `fields` already has) rather than
+    re-deriving them. Called both by init_atmosphere_cfd (once, at generation) and
+    refresh_forcing (once per tectonics step, against that step's own current terrain)."""
     insolation_row = climate.compute_insolation(fields.lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land = climate.compute_land_temperature(insolation_row, fields.elevation_m)
     ocean = climate.compute_ocean_temperature_baseline(insolation_row, *fields.elevation_m.shape)
@@ -113,14 +132,14 @@ def _equilibrium_temperature(world: "World", fields: climate.ClimateFields) -> n
 
 
 def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
-    """Snapshots the world's current elevation/temperature/humidity (via climate.py's own
-    public pipeline) and starts the atmosphere's wind from World.remembered_wind_u/v (see
-    their own docstring) when a prior "atmosphere_cfd" or "ocean_cfd" session left one behind,
-    else from that diagnostic snapshot's own wind -- unlike ocean_cfd.py's ocean-at-rest
-    start, beginning from a plausible wind field (remembered or diagnostic) avoids a jarring
-    dead-calm-to-storm transient the first few substeps would otherwise show. Sized by
+    """Called exactly once, by generate_world, to seed this world's permanent
+    World.atmosphere_cfd_state. Snapshots the world's current elevation/temperature/humidity
+    (via climate.py's own public pipeline) and starts wind from that same snapshot's own
+    compute_wind-diagnostic bootstrap (climate.compute_climate falls back to it here, since
+    world.atmosphere_cfd_state is still None at this exact call -- see that module's own
+    docstring) -- there's nothing to inherit wind from yet at generation time. Sized by
     World.fluid_density, not World.climate_density -- see the former's own docstring for why
-    this mode gets its own, independently choosable grid resolution."""
+    this gets its own, independently choosable grid resolution."""
     height, width = climate.grid_dimensions(world.fluid_density)
     fields = climate.compute_climate(world, height, width)
     equilibrium_temperature_c = _equilibrium_temperature(world, fields)
@@ -135,8 +154,8 @@ def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
         world_xyz=fields.world_xyz,
         is_ocean=fields.is_ocean,
         elevation_m=fields.elevation_m.astype(np.float32),
-        u=(fields.wind_u if world.remembered_wind_u is None else world.remembered_wind_u).astype(np.float32),
-        v=(fields.wind_v if world.remembered_wind_v is None else world.remembered_wind_v).astype(np.float32),
+        u=fields.wind_u.astype(np.float32),
+        v=fields.wind_v.astype(np.float32),
         eta=np.zeros((height, width), dtype=np.float32),
         temperature_c=np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c).astype(np.float32),
         equilibrium_temperature_c=equilibrium_temperature_c.astype(np.float32),
@@ -145,12 +164,18 @@ def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
     )
 
 
-def remember_atmosphere_state(world: "World", state: AtmosphereCFDState) -> None:
-    """Snapshots this session's final wind onto `world.remembered_wind_u/v` (see their own
-    docstring) so a later switch into "ocean_cfd" or back into "atmosphere_cfd" can resume
-    from it instead of a fresh climate.py diagnostic."""
-    world.remembered_wind_u = state.u.copy()
-    world.remembered_wind_v = state.v.copy()
+def refresh_forcing(world: "World", state: AtmosphereCFDState, terrain: climate.ClimateFields) -> None:
+    """Re-samples the terrain-derived fields this state's substep loop reads every substep
+    (`is_ocean`, `elevation_m` -- via `_mountain_deflection_geometry`/`orographic_drag`, both
+    recomputed fresh each step_atmosphere_cfd call already) plus `equilibrium_temperature_c`
+    (the radiative target `temperature_c` relaxes toward) from `terrain` -- this tectonics
+    step's own current climate.compute_climate snapshot, see world.py's
+    `_advance_fluid_dynamics` -- while leaving every genuinely prognostic field
+    (u/v/eta/temperature_c/humidity/precipitation_mm) untouched, so wind/temperature/humidity
+    keep evolving continuously across tectonics steps rather than resetting."""
+    state.elevation_m = terrain.elevation_m.astype(np.float32)
+    state.is_ocean = terrain.is_ocean
+    state.equilibrium_temperature_c = _equilibrium_temperature(world, terrain).astype(np.float32)
 
 
 def _mountain_deflection_geometry(elevation_m: np.ndarray, dx_m: np.ndarray, dy_m: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -196,9 +221,11 @@ def _mountain_deflection_tendency(
 
 def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: float) -> None:
     """Advances `state` by `seconds` of real time, in as many CFL-stable substeps as the
-    current grid/reduced-gravity wave speed demand (see fluid_dynamics.cfl_substeps). `world`
-    is accepted (unused directly) to match ocean_cfd.step_ocean_cfd's own `(world, ...)`
-    calling convention -- see that function's docstring for why."""
+    current grid/reduced-gravity wave speed demand (see fluid_dynamics.cfl_substeps). Called
+    by world.py's `_advance_fluid_dynamics` with `seconds=SECONDS_PER_TECTONIC_STEP`, right
+    after `refresh_forcing`. `world` is accepted (unused directly) to match
+    ocean_cfd.step_ocean_cfd's own `(world, ...)` calling convention -- see that function's
+    docstring for why."""
     del world
     height, width = state.elevation_m.shape
     dx_m, dy_m = fluid_dynamics.grid_spacing_m(state.lat_deg, height, width)

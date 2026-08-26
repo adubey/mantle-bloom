@@ -182,3 +182,27 @@ def test_coastal_ocean_mask_excludes_open_ocean_and_all_land():
     assert coastal[0, 2] and coastal[0, 0]
     assert not coastal[0, 1]
     assert not np.any(coastal[:, 3])  # land itself is never "coastal ocean"
+
+
+def test_resample_to_grid_preserves_shape_and_maps_within_bounds():
+    field = np.arange(6 * 12, dtype=float).reshape(6, 12)
+    resampled = fluid_dynamics.resample_to_grid(field, 3, 6)
+    assert resampled.shape == (3, 6)
+    # Every resampled value must be one this source grid actually holds -- floor-based
+    # index-ratio nearest neighbor, not necessarily the exact source corner.
+    assert resampled[0, 0] == field[0, 0]
+    assert np.isin(resampled, field).all()
+
+
+def test_resample_to_grid_is_identity_at_matching_resolution():
+    rng = np.random.default_rng(6)
+    field = rng.random((10, 20))
+    resampled = fluid_dynamics.resample_to_grid(field, 10, 20)
+    assert np.array_equal(resampled, field)
+
+
+def test_resample_to_grid_upsampling_only_repeats_source_values():
+    field = np.array([[1.0, 2.0], [3.0, 4.0]])
+    resampled = fluid_dynamics.resample_to_grid(field, 4, 4)
+    assert resampled.shape == (4, 4)
+    assert set(np.unique(resampled)) <= {1.0, 2.0, 3.0, 4.0}

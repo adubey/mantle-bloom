@@ -1,15 +1,27 @@
-"""Ocean Fluid Dynamics mode: a genuine time-integrated shallow-water simulation of ocean
-currents, replacing climate.py's own diagnostic (recomputed-from-scratch-every-call) Ekman-
-current heuristic with real prognostic state that persists and evolves step to step -- see
+"""Ocean Fluid Dynamics: a genuine time-integrated shallow-water simulation of ocean currents,
+replacing climate.py's own diagnostic (recomputed-from-scratch-every-call) Ekman-current
+heuristic with real prognostic state that persists and evolves continuously -- see
 docs/simulation-model.md#ocean-atmospheric-fluid-dynamics for the full design rationale
-(reduced gravity, freeze-on-entry, substepping) shared with atmosphere_cfd.py.
+(reduced gravity, substepping) shared with atmosphere_cfd.py.
+
+**Always-on, not a mode.** `World.ocean_cfd_state` is created once, by `init_ocean_cfd`,
+during `generate_world` (after `World.atmosphere_cfd_state`, which it seeds its own wind
+forcing from), and never re-initialized after that -- every `/world/step` call advances it by
+a fixed `SECONDS_PER_TECTONIC_STEP` (1 simulated week) via `step_ocean_cfd`, regardless of how
+many tectonic years that step covers (see world.py's `step_world`), gated on
+`World.simulate_climate_biomes` the same way erosion/hydrology already are. `refresh_forcing`
+re-samples the terrain/wind this state reacts to (`elevation_m`/`is_ocean`/`depth_m`/
+`wind_u`/`wind_v`) once per tectonics step, right before that step's `step_ocean_cfd` call --
+terrain changes slowly relative to one tectonics step, but not never, and wind now comes from
+the world's own continuously-evolving atmosphere_cfd_state rather than a value frozen forever
+-- while leaving every genuinely prognostic field (u/v/eta/temperature_c/sediment_*) untouched,
+so currents keep evolving continuously rather than resetting.
 
 **Inputs, matching the user's own spec.** Coriolis force and land (both baked into the
-momentum equation itself -- see step_ocean_cfd), wind (sampled once from the world's current
-climate at mode-entry and held fixed for the session -- the atmosphere isn't independently
-simulated in this mode, so there's no other source for it), and temperature (both an input,
-via the wind-driven baseline this mode starts from, and an output the currents themselves
-advect).
+momentum equation itself -- see step_ocean_cfd), wind (see `refresh_forcing` above -- the
+world's own continuously-evolving atmosphere_cfd_state, not an independent simulation of its
+own), and temperature (both an input, via the wind-driven baseline this state starts from, and
+an output the currents themselves advect).
 
 **Currents move water along with temperature and sediment.** Every substep advects
 `temperature_c` and `sediment_concentration` along the same velocity field that's just been
@@ -92,15 +104,21 @@ SEDIMENT_DEPOSIT_DEPTH_COEFFICIENT = 0.5
 
 MAX_SUBSTEPS_PER_STEP = 2000
 
+# The fixed real-time increment step_world's own _advance_fluid_dynamics advances this state
+# by every tectonics step, regardless of how many tectonic years that step covers (see module
+# docstring's "Always-on, not a mode") -- one simulated week (longer than atmosphere_cfd's own
+# SECONDS_PER_TECTONIC_STEP -- ocean currents evolve on a slower timescale than wind).
+SECONDS_PER_TECTONIC_STEP = 7 * 86400.0
+
 
 @dataclass
 class OceanCFDState:
     lat_deg: np.ndarray  # (H,)
     lon_deg: np.ndarray  # (W,)
     world_xyz: np.ndarray  # (H, W, 3)
-    is_ocean: np.ndarray  # (H, W) bool
-    elevation_m: np.ndarray  # (H, W) -- frozen at mode entry
-    depth_m: np.ndarray  # (H, W) -- effective shallow-water layer depth, zero on land
+    is_ocean: np.ndarray  # (H, W) bool -- refreshed once per tectonics step, see refresh_forcing
+    elevation_m: np.ndarray  # (H, W) -- refreshed once per tectonics step, see refresh_forcing
+    depth_m: np.ndarray  # (H, W) -- effective shallow-water layer depth, zero on land, refreshed once per tectonics step
     u: np.ndarray  # (H, W) eastward current, m/s
     v: np.ndarray  # (H, W) northward current, m/s
     eta: np.ndarray  # (H, W) sea-surface-height anomaly, m
@@ -108,29 +126,26 @@ class OceanCFDState:
     baseline_temperature_c: np.ndarray  # (H, W) -- fixed relaxation target, see module docstring
     sediment_concentration: np.ndarray  # (H, W), arbitrary units >= 0
     sediment_deposited_m: np.ndarray  # (H, W), cumulative, tracking-only -- never touches world.plates
-    wind_u: np.ndarray  # (H, W) eastward, fixed for the session
-    wind_v: np.ndarray  # (H, W) northward, fixed for the session
+    wind_u: np.ndarray  # (H, W) eastward, refreshed once per tectonics step from World.atmosphere_cfd_state, see refresh_forcing
+    wind_v: np.ndarray  # (H, W) northward, refreshed once per tectonics step from World.atmosphere_cfd_state, see refresh_forcing
     elapsed_seconds: float = 0.0
 
 
 def init_ocean_cfd(world: "World") -> OceanCFDState:
-    """Snapshots the world's current elevation/wind/temperature (via climate.py's own public
-    pipeline -- reusing its grid construction and elevation resampling rather than
-    duplicating them). Wind and the starting current/sea-surface state each independently
-    resume from World.remembered_wind_u/World.remembered_ocean_u (etc., see their own
-    docstrings) when set -- wind from a prior "atmosphere_cfd" session (or this same mode's
-    own prior session, which never changes it -- see module docstring), current/eta/
-    temperature/sediment from this mode's own prior session -- falling back to climate.py's
-    fresh diagnostic wind and an ocean at rest (u = v = eta = 0, no sediment in suspension)
-    for whichever of those has nothing to resume from. Sized by World.fluid_density, not
-    World.climate_density -- see the former's own docstring for why this mode gets its own,
-    independently choosable grid resolution."""
+    """Called exactly once, by generate_world (after atmosphere_cfd.init_atmosphere_cfd, whose
+    result this seeds its own wind forcing from), to seed this world's permanent
+    World.ocean_cfd_state. Snapshots the world's current elevation/temperature (via climate.py's
+    own public pipeline -- reusing its grid construction and elevation resampling rather than
+    duplicating them); starts the ocean at rest (u = v = eta = 0, no sediment in suspension) --
+    there's no real ocean-current analog to atmosphere_cfd's own diagnostic-wind bootstrap to
+    start from instead. Sized by World.fluid_density, not World.climate_density -- see the
+    former's own docstring for why this gets its own, independently choosable grid
+    resolution."""
     height, width = climate.grid_dimensions(world.fluid_density)
     fields = climate.compute_climate(world, height, width)
 
     depth_m = np.where(fields.is_ocean, np.clip(-fields.elevation_m, MIN_DEPTH_M, MAX_DEPTH_M), 0.0).astype(np.float32)
     zeros = np.zeros((height, width), dtype=np.float32)
-    has_remembered_current = world.remembered_ocean_u is not None
 
     # Every substep-loop field below is float32 (not the rest of this codebase's usual
     # float64) -- these are the same memory-bandwidth-bound elementwise array ops
@@ -150,44 +165,43 @@ def init_ocean_cfd(world: "World") -> OceanCFDState:
         is_ocean=fields.is_ocean,
         elevation_m=fields.elevation_m,
         depth_m=depth_m,
-        u=world.remembered_ocean_u.astype(np.float32) if has_remembered_current else zeros.copy(),
-        v=world.remembered_ocean_v.astype(np.float32) if has_remembered_current else zeros.copy(),
-        eta=world.remembered_ocean_eta.astype(np.float32) if has_remembered_current else zeros.copy(),
-        temperature_c=(
-            world.remembered_ocean_temperature_c.astype(np.float32) if has_remembered_current else fields.ocean_temperature_c.astype(np.float32)
-        ),
+        u=zeros.copy(),
+        v=zeros.copy(),
+        eta=zeros.copy(),
+        temperature_c=fields.ocean_temperature_c.astype(np.float32),
         baseline_temperature_c=fields.ocean_temperature_c.astype(np.float32),
-        sediment_concentration=(
-            world.remembered_ocean_sediment_concentration.astype(np.float32) if has_remembered_current else zeros.copy()
-        ),
-        sediment_deposited_m=(
-            world.remembered_ocean_sediment_deposited_m.astype(np.float32) if has_remembered_current else zeros.copy()
-        ),
-        wind_u=fields.wind_u.astype(np.float32) if world.remembered_wind_u is None else world.remembered_wind_u.astype(np.float32),
-        wind_v=fields.wind_v.astype(np.float32) if world.remembered_wind_v is None else world.remembered_wind_v.astype(np.float32),
+        sediment_concentration=zeros.copy(),
+        sediment_deposited_m=zeros.copy(),
+        wind_u=world.atmosphere_cfd_state.u.copy(),
+        wind_v=world.atmosphere_cfd_state.v.copy(),
     )
 
 
-def remember_ocean_state(world: "World", state: OceanCFDState) -> None:
-    """Snapshots this session's final current/sea-surface state onto `world`'s
-    remembered_ocean_* fields (see World.remembered_ocean_u's own docstring) so a later
-    switch back into "ocean_cfd" can resume from it instead of starting the ocean at rest
-    again. Leaves world.remembered_wind_u/v untouched -- this mode never changes wind (see
-    module docstring), so there's nothing new to remember there."""
-    world.remembered_ocean_u = state.u.copy()
-    world.remembered_ocean_v = state.v.copy()
-    world.remembered_ocean_eta = state.eta.copy()
-    world.remembered_ocean_temperature_c = state.temperature_c.copy()
-    world.remembered_ocean_sediment_concentration = state.sediment_concentration.copy()
-    world.remembered_ocean_sediment_deposited_m = state.sediment_deposited_m.copy()
+def refresh_forcing(world: "World", state: OceanCFDState, terrain: climate.ClimateFields) -> None:
+    """Re-samples the terrain (`elevation_m`/`is_ocean`/`depth_m`) and wind forcing
+    (`wind_u`/`wind_v`, from the world's own continuously-evolving
+    `World.atmosphere_cfd_state` -- both already at the same `World.fluid_density` grid, no
+    resample needed) this state's substep loop reads every substep, from `terrain` -- this
+    tectonics step's own current climate.compute_climate snapshot, see world.py's
+    `_advance_fluid_dynamics` -- while leaving every genuinely prognostic field
+    (u/v/eta/temperature_c/sediment_*) untouched, so currents/temperature/sediment keep
+    evolving continuously across tectonics steps rather than resetting. Must be called after
+    `atmosphere_cfd.step_atmosphere_cfd` has already advanced this step's wind (see
+    `_advance_fluid_dynamics`'s own call order), so `wind_u`/`wind_v` here reflect *this*
+    step's wind, not last step's."""
+    state.elevation_m = terrain.elevation_m
+    state.is_ocean = terrain.is_ocean
+    state.depth_m = np.where(terrain.is_ocean, np.clip(-terrain.elevation_m, MIN_DEPTH_M, MAX_DEPTH_M), 0.0).astype(np.float32)
+    state.wind_u = world.atmosphere_cfd_state.u.copy()
+    state.wind_v = world.atmosphere_cfd_state.v.copy()
 
 
 def step_ocean_cfd(world: "World", state: OceanCFDState, seconds: float) -> None:
     """Advances `state` by `seconds` of real time, in as many CFL-stable substeps as the
-    current grid/reduced-gravity wave speed demand (see fluid_dynamics.cfl_substeps). `world`
-    is accepted (unused directly) to match step_world's own `(world, ...)` calling
-    convention -- main.py dispatches on `world.fluid_mode` without needing to know which
-    signature each mode's step function has."""
+    current grid/reduced-gravity wave speed demand (see fluid_dynamics.cfl_substeps). Called
+    by world.py's `_advance_fluid_dynamics` with `seconds=SECONDS_PER_TECTONIC_STEP`, right
+    after `refresh_forcing`. `world` is accepted (unused directly) to match
+    atmosphere_cfd.step_atmosphere_cfd's own `(world, ...)` calling convention."""
     del world  # not otherwise needed -- state is fully self-contained once initialized
     height, width = state.is_ocean.shape
     dx_m, dy_m = fluid_dynamics.grid_spacing_m(state.lat_deg, height, width)

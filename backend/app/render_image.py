@@ -43,11 +43,18 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-# Ocean/Atmospheric Fluid Dynamics modes' own map views -- see ocean_cfd.py/atmosphere_cfd.py
-# and docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. Only meaningful while
-# World.fluid_mode is the matching mode (main.py's /world/render rejects these otherwise,
-# since there's no ocean_cfd_state/atmosphere_cfd_state to draw from) -- unlike every other
-# view here, which is always renderable regardless of what else the world is doing.
+# Ocean/Atmospheric Fluid Dynamics's own map views -- see ocean_cfd.py/atmosphere_cfd.py and
+# docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. World.ocean_cfd_state/
+# atmosphere_cfd_state are always populated now (see the former's own docstring), so these are
+# always renderable, same as every other view here.
+#
+# TODO: oceanCfdVelocity/oceanCfdTemperature and atmosphereCfdVelocity/atmosphereCfdTemperature
+# are now redundant with CLIMATE_VIEWS' own "wind"/"oceanCurrents"/"temperature" -- climate.py's
+# compute_climate sources wind_u/wind_v/current_u/current_v straight from these same CFD
+# states (see its own module docstring), just resampled onto climate_density's grid instead of
+# fluid_density's. Worth consolidating (drop the duplicates, or make the plain views always use
+# native fluid_density resolution) once it's clear which framing the UI wants long-term.
+# oceanCfdSediment/oceanCfdDeposition stay unique -- nothing else produces sediment data.
 OCEAN_CFD_VIEWS = ("oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition")
 ATMOSPHERE_CFD_VIEWS = ("atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity")
 FLUID_VIEWS = OCEAN_CFD_VIEWS + ATMOSPHERE_CFD_VIEWS
@@ -979,17 +986,16 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
 
 
 def _render_fluid_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS from the active FD mode's own
-    persistent state (World.ocean_cfd_state/atmosphere_cfd_state -- see ocean_cfd.py/
+    """Renders one of OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS from the world's own permanent,
+    always-on CFD state (World.ocean_cfd_state/atmosphere_cfd_state -- see ocean_cfd.py/
     atmosphere_cfd.py), reusing the same _project_climate_grid/_fill_rects/_draw_climate_vectors
     primitives _render_climate_view already uses for climate.py's own grid -- both state
     objects share the same (lat_deg, lon_deg, world_xyz) grid-geometry shape convention as
-    climate.ClimateFields. main.py's /world/render is what guarantees the matching state
-    isn't None before returning a 400 for an actual API caller -- but this function itself
-    still degrades to a plain background-only image if called directly against a world where
-    it isn't (same "always renders *something* standalone" contract every other view in
-    VIEWS already has -- e.g. an elevation/plates render with no plates yet -- rather than
-    raising, so a caller that bypasses main.py's own guard still gets a valid PNG back)."""
+    climate.ClimateFields. Neither state is ever actually None once a world has been generated
+    (see World.ocean_cfd_state's own docstring), but this function still degrades to a plain
+    background-only image if it somehow is (same "always renders *something* standalone"
+    contract every other view in VIEWS already has -- e.g. an elevation/plates render with no
+    plates yet -- rather than raising)."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)

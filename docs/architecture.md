@@ -69,25 +69,21 @@ Time-stepping:
     simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
-When World.fluid_mode is "ocean_cfd"/"atmosphere_cfd" (see POST /world/mode below) instead of
-the default "tectonics_climate", stepping goes through a different endpoint entirely:
-  POST /world/step_fluid  { seconds }
-  → ocean_cfd.step_ocean_cfd/atmosphere_cfd.step_atmosphere_cfd(world, state, seconds): a
+Every POST /world/step call also advances Ocean/Atmospheric Fluid Dynamics -- not a separate
+mode/endpoint any more (see simulation-model.md#mode-toggle for why that changed):
+  → world.py's step_world → _advance_fluid_dynamics(world, node_cloud), gated on
+    World.simulate_climate_biomes the same way erosion/hydrology already are:
+    atmosphere_cfd.step_atmosphere_cfd/ocean_cfd.step_ocean_cfd(world, state, seconds): a
     genuine time-integrated shallow-water solve (real Coriolis/pressure-gradient physics,
-    CFL-stable substepping -- see simulation-model.md#ocean-atmospheric-fluid-dynamics)
-    against a snapshot of elevation/climate frozen the moment the mode was entered. Plate
-    tectonics and the ordinary climate/erosion model don't run at all while this is active --
-    `years` and `seconds` are deliberately different endpoints/units, since the two
-    timescales (Myr vs. hours-to-days) have nothing in common
-  → browser re-fetches /world/render (one of the mode's own oceanCfd*/atmosphereCfd* views)
-
-Mode switching itself is its own endpoint, separate from either stepping call:
-  POST /world/mode  { mode }
-  → world.fluid_mode = mode; entering "ocean_cfd"/"atmosphere_cfd" (re)initializes that
-    mode's own state fresh from the world's current elevation/climate (discarding whatever
-    that mode's state held from a previous visit); leaving it back to "tectonics_climate"
-    just resumes ordinary stepping, since tectonics/elevation were never touched while it was
-    frozen
+    CFL-stable substepping -- see simulation-model.md#ocean-atmospheric-fluid-dynamics),
+    each state's own fixed real-time increment per tectonics step (one simulated day for the
+    atmosphere, one simulated week for the ocean) regardless of the tectonic `years`
+    requested, against terrain refreshed from the world's *current* elevation/climate each
+    step (refresh_forcing) rather than a one-time frozen snapshot
+  → browser re-fetches /world/render as usual (wind/oceanCurrents/temperature/humidity draw
+    from this CFD state now, resampled onto climate_density's grid -- see climate.py's own
+    module docstring -- alongside the oceanCfd*/atmosphereCfd* views' own native-resolution
+    detail)
 
 When the "Plate Inspector" map view is active, the browser instead (also on every
 generate/step, but never on a projection/rotation-only change) fetches:
@@ -173,13 +169,12 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   `/world/stats`, a climate map render, and river/lake rendering so they don't each trigger
   their own recomputation the same turn (see simulation-model.md#climate and
   simulation-model.md#hydrology). Up to one step stale by design, not a bug.
-- `fluid_mode` -- the UI's "Mode" toggle (`"tectonics_climate"`, `"ocean_cfd"`, or
-  `"atmosphere_cfd"`), live-adjustable via `POST /world/mode`. `ocean_cfd_state`/
-  `atmosphere_cfd_state` hold the matching mode's own persistent, time-integrated state
-  (`ocean_cfd.OceanCFDState`/`atmosphere_cfd.AtmosphereCFDState`) when that mode is active,
-  `None` otherwise -- see simulation-model.md#ocean-atmospheric-fluid-dynamics for what they
-  hold and why they're genuinely prognostic (evolving step to step) rather than recomputed
-  fresh like `climate_cache` above.
+- `ocean_cfd_state`/`atmosphere_cfd_state` -- always-on Ocean/Atmospheric Fluid Dynamics
+  state (`ocean_cfd.OceanCFDState`/`atmosphere_cfd.AtmosphereCFDState`), populated once by
+  `generate_world` and never `None` again for the rest of that world's life -- not a mode to
+  switch into any more (see simulation-model.md#mode-toggle for why that changed). Genuinely
+  prognostic (evolving continuously, step to step) rather than recomputed fresh like
+  `climate_cache` above -- see simulation-model.md#ocean-atmospheric-fluid-dynamics.
 
 Each `Plate` (`backend/app/plates.py`) is:
 

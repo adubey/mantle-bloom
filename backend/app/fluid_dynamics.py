@@ -344,3 +344,20 @@ def coastal_ocean_mask(is_ocean: np.ndarray) -> np.ndarray:
         np.roll(is_land, 1, axis=0) | np.roll(is_land, -1, axis=0) | np.roll(is_land, 1, axis=1) | np.roll(is_land, -1, axis=1)
     )
     return is_ocean & has_land_neighbor
+
+
+def resample_to_grid(field: np.ndarray, target_height: int, target_width: int) -> np.ndarray:
+    """Nearest-neighbor resample of an equirectangular (Hs, Ws) field onto a differently-sized
+    (target_height, target_width) grid of the same lat/lon convention (row 0 = north pole,
+    longitude wrapping the same way around every row) -- moves a field between
+    World.climate_density's and World.fluid_density's independently chosen resolutions (see
+    the latter's own docstring for why they're separate knobs). Index-ratio based rather than
+    lat/lon-degree based since both grids already share the same overall span by construction
+    (climate.grid_dimensions scales GRID_HEIGHT/GRID_WIDTH directly by a density multiplier in
+    each dimension), so no trig or explicit degree math is needed here, unlike
+    semi_lagrangian_advect's own (genuinely velocity-offset, not just resolution-offset)
+    backward trace."""
+    source_height, source_width = field.shape
+    row_idx = np.clip((np.arange(target_height) * source_height) // target_height, 0, source_height - 1)
+    col_idx = np.clip((np.arange(target_width) * source_width) // target_width, 0, source_width - 1)
+    return field[row_idx[:, None], col_idx[None, :]]
