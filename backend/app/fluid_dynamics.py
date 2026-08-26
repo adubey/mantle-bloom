@@ -47,7 +47,12 @@ def grid_spacing_m(lat_deg: np.ndarray, height: int, width: int) -> tuple[np.nda
     protects."""
     radius_m = plates.PLANET_RADIUS_KM * 1000.0
     dx_m = (2.0 * np.pi * radius_m / width) * np.cos(np.radians(lat_deg))
-    dx_at_filter_start = (2.0 * np.pi * radius_m / width) * np.cos(np.radians(POLAR_FILTER_START_LAT_DEG))
+    # float(...) -- a genuine (dtype-"weak") Python float, not the strong np.float64 scalar
+    # np.cos/np.radians would otherwise hand back. lat_deg (and so dx_m) is float32 in both
+    # solvers (see ocean_cfd.init_ocean_cfd's own comment); np.maximum against a *strong*
+    # float64 scalar here would silently promote dx_m -- and everything downstream of it in
+    # gradient_m/laplacian_m/divergence_m -- back to float64 for the whole grid.
+    dx_at_filter_start = float((2.0 * np.pi * radius_m / width) * np.cos(np.radians(POLAR_FILTER_START_LAT_DEG)))
     dx_m = np.maximum(dx_m, dx_at_filter_start)
     dy_m = (np.pi * radius_m) / height
     return dx_m, dy_m
@@ -136,7 +141,11 @@ def advection_geometry(lat_deg: np.ndarray, width: int) -> tuple[np.ndarray, np.
     rebuilding the same arrays from scratch."""
     radius_m = plates.PLANET_RADIUS_KM * 1000.0
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
-    lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
+    # dtype=lat_deg.dtype (not a bare np.arange, which defaults to int64 and would promote
+    # the float32 arithmetic below back to float64 -- both solvers pass a float32 lat_deg,
+    # see ocean_cfd.init_ocean_cfd's own comment on why that matters here) so lon_deg lands
+    # in the same dtype as everything else this feeds into semi_lagrangian_advect.
+    lon_deg = -180.0 + (np.arange(width, dtype=lat_deg.dtype) + 0.5) * (360.0 / width)
     cos_lat = np.clip(np.cos(np.radians(lat_grid)), 0.15, 1.0)
     # meters -> degrees: a meridian degree is (pi*R/180) meters; a zonal degree shrinks by
     # cos(lat) the same way grid_spacing_m's own dx_m does.

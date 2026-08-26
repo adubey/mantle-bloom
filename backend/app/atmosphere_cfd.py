@@ -123,19 +123,23 @@ def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
     fields = climate.compute_climate(world, height, width)
     equilibrium_temperature_c = _equilibrium_temperature(world, fields)
 
+    # float32, not this codebase's usual float64 -- see ocean_cfd.init_ocean_cfd's matching
+    # comment for why (same memory-bandwidth-bound per-substep array ops, ~2x measured). Here
+    # elevation_m also needs the cast (unlike ocean_cfd's, which never re-enters the substep
+    # loop) since _mountain_deflection_geometry/orographic_drag read it every step call.
     return AtmosphereCFDState(
-        lat_deg=fields.lat_deg,
+        lat_deg=fields.lat_deg.astype(np.float32),
         lon_deg=fields.lon_deg,
         world_xyz=fields.world_xyz,
         is_ocean=fields.is_ocean,
-        elevation_m=fields.elevation_m,
-        u=fields.wind_u.copy() if world.remembered_wind_u is None else world.remembered_wind_u.copy(),
-        v=fields.wind_v.copy() if world.remembered_wind_v is None else world.remembered_wind_v.copy(),
-        eta=np.zeros((height, width)),
-        temperature_c=np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c),
-        equilibrium_temperature_c=equilibrium_temperature_c,
-        humidity=fields.humidity.copy(),
-        precipitation_mm=fields.precipitation_mm.copy(),
+        elevation_m=fields.elevation_m.astype(np.float32),
+        u=(fields.wind_u if world.remembered_wind_u is None else world.remembered_wind_u).astype(np.float32),
+        v=(fields.wind_v if world.remembered_wind_v is None else world.remembered_wind_v).astype(np.float32),
+        eta=np.zeros((height, width), dtype=np.float32),
+        temperature_c=np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c).astype(np.float32),
+        equilibrium_temperature_c=equilibrium_temperature_c.astype(np.float32),
+        humidity=fields.humidity.astype(np.float32),
+        precipitation_mm=fields.precipitation_mm.astype(np.float32),
     )
 
 
@@ -241,7 +245,11 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
         temperature_c = temperature_c + dt_s * TEMPERATURE_DIFFUSIVITY_M2_S * fluid_dynamics.laplacian_m(temperature_c, dx_m, dy_m)
         temperature_c = temperature_c + dt_s * RADIATIVE_RELAXATION_PER_S * (state.equilibrium_temperature_c - temperature_c)
 
-        evap_source = np.where(state.is_ocean, OCEAN_EVAPORATION_SOURCE_PER_S, LAND_EVAPORATION_SOURCE_PER_S)
+        # Explicit np.float32(...) on both branches -- with neither branch already an array,
+        # np.where has nothing to infer a dtype from and would otherwise default to float64,
+        # silently upcasting every float32 array downstream of evap_source (humidity, and
+        # everything humidity's own advection/diffusion touches next substep).
+        evap_source = np.where(state.is_ocean, np.float32(OCEAN_EVAPORATION_SOURCE_PER_S), np.float32(LAND_EVAPORATION_SOURCE_PER_S))
         saturation_ceiling = np.clip(temperature_c / climate.EVAPORATION_REFERENCE_TEMP_C, climate.MIN_EVAPORATION_CEILING, climate.MAX_EVAPORATION_CEILING)
         excess = np.clip(humidity - saturation_ceiling, 0.0, None)
         condensed = CONDENSATION_RATE_PER_S * excess

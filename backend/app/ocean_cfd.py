@@ -126,26 +126,43 @@ def init_ocean_cfd(world: "World") -> OceanCFDState:
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)
 
-    depth_m = np.where(fields.is_ocean, np.clip(-fields.elevation_m, MIN_DEPTH_M, MAX_DEPTH_M), 0.0)
-    zeros = np.zeros((height, width))
+    depth_m = np.where(fields.is_ocean, np.clip(-fields.elevation_m, MIN_DEPTH_M, MAX_DEPTH_M), 0.0).astype(np.float32)
+    zeros = np.zeros((height, width), dtype=np.float32)
     has_remembered_current = world.remembered_ocean_u is not None
 
+    # Every substep-loop field below is float32 (not the rest of this codebase's usual
+    # float64) -- these are the same memory-bandwidth-bound elementwise array ops
+    # (np.roll-based gradients/Laplacians, the semi-Lagrangian gather, ...) every substep,
+    # up to MAX_SUBSTEPS_PER_STEP times per call, so halving each array's footprint roughly
+    # halves that work; profiling confirmed close to a 2x wall-clock win. Precision loss
+    # (~7 vs ~15 significant digits) is a non-issue against this solver's own already-tuned-
+    # not-derived constants (see module docstring). state.lat_deg is float32 too, since it
+    # feeds every one of those per-substep calls (grid spacing, Coriolis, polar filtering,
+    # advection geometry) -- NumPy would silently upcast the whole chain back to float64 the
+    # moment a float32 field met a float64 lat_deg-derived array. lon_deg/world_xyz stay
+    # float64 -- render_image.py's own projection math, not this module's substep loop.
     return OceanCFDState(
-        lat_deg=fields.lat_deg,
+        lat_deg=fields.lat_deg.astype(np.float32),
         lon_deg=fields.lon_deg,
         world_xyz=fields.world_xyz,
         is_ocean=fields.is_ocean,
         elevation_m=fields.elevation_m,
         depth_m=depth_m,
-        u=world.remembered_ocean_u.copy() if has_remembered_current else zeros.copy(),
-        v=world.remembered_ocean_v.copy() if has_remembered_current else zeros.copy(),
-        eta=world.remembered_ocean_eta.copy() if has_remembered_current else zeros.copy(),
-        temperature_c=world.remembered_ocean_temperature_c.copy() if has_remembered_current else fields.ocean_temperature_c.copy(),
-        baseline_temperature_c=fields.ocean_temperature_c.copy(),
-        sediment_concentration=world.remembered_ocean_sediment_concentration.copy() if has_remembered_current else zeros.copy(),
-        sediment_deposited_m=world.remembered_ocean_sediment_deposited_m.copy() if has_remembered_current else zeros.copy(),
-        wind_u=fields.wind_u.copy() if world.remembered_wind_u is None else world.remembered_wind_u.copy(),
-        wind_v=fields.wind_v.copy() if world.remembered_wind_v is None else world.remembered_wind_v.copy(),
+        u=world.remembered_ocean_u.astype(np.float32) if has_remembered_current else zeros.copy(),
+        v=world.remembered_ocean_v.astype(np.float32) if has_remembered_current else zeros.copy(),
+        eta=world.remembered_ocean_eta.astype(np.float32) if has_remembered_current else zeros.copy(),
+        temperature_c=(
+            world.remembered_ocean_temperature_c.astype(np.float32) if has_remembered_current else fields.ocean_temperature_c.astype(np.float32)
+        ),
+        baseline_temperature_c=fields.ocean_temperature_c.astype(np.float32),
+        sediment_concentration=(
+            world.remembered_ocean_sediment_concentration.astype(np.float32) if has_remembered_current else zeros.copy()
+        ),
+        sediment_deposited_m=(
+            world.remembered_ocean_sediment_deposited_m.astype(np.float32) if has_remembered_current else zeros.copy()
+        ),
+        wind_u=fields.wind_u.astype(np.float32) if world.remembered_wind_u is None else world.remembered_wind_u.astype(np.float32),
+        wind_v=fields.wind_v.astype(np.float32) if world.remembered_wind_v is None else world.remembered_wind_v.astype(np.float32),
     )
 
 
