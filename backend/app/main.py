@@ -506,7 +506,20 @@ def render(
     rasterization. `rotation` is the map's current view orientation (see
     _parse_view_rotation), default identity. `400` for an unrecognized projection/view, an
     out-of-range width/height, or a malformed rotation, `404` if no world has been generated
-    yet."""
+    yet.
+
+    Takes `_step_lock` around the actual read, unlike every other `_step_lock` site in this
+    module: those are all *writes* (step/step_fluid/mode), so a busy lock means "reject and
+    let the caller retry" (503). A render is a read, called far more often (every view
+    switch, every post-step refresh, each animation frame) and each mutation-collecting pass
+    it makes (plates.collect_all_points, collect_all_lake_depth, ...) walks world.plates
+    independently -- concurrently with an in-flight step actually mutating those same plates
+    (deform() grows/shrinks nodes), those passes can see different node counts and desync,
+    which crashes with an IndexError rather than just rendering a stale frame. Blocking here
+    (confirmed to actually reproduce that IndexError without it, via a deliberately raced
+    step+render) waits out that brief window instead of failing every render that happens to
+    land during one -- a hard failure on nearly every routine step->refresh overlap would be
+    a far worse trade for a request this frequent and this cheap to just wait a moment for."""
     world = _require_world()
     if projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {projection!r}")
@@ -520,10 +533,12 @@ def render(
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
 
+    with _step_lock:
+        image_base64 = render_image.render_png_base64(world, projection, view, width, height, view_rotation)
     return {
         "projection": projection,
         "elapsed_years": world.elapsed_years,
-        "image_base64": render_image.render_png_base64(world, projection, view, width, height, view_rotation),
+        "image_base64": image_base64,
     }
 
 

@@ -108,6 +108,52 @@ def test_overlapping_step_returns_503(client, monkeypatch):
     assert results == [200]
 
 
+def test_render_waits_for_an_in_progress_step_instead_of_racing_it(client, monkeypatch):
+    # Regression test: GET /world/render used to run with no lock at all, so it could read
+    # plates.collect_all_points/collect_all_lake_depth/etc. (each independently walking
+    # world.plates) while an in-progress step's own deform() was mid-mutation, desyncing
+    # those separately-gathered arrays and crashing with an IndexError -- confirmed directly
+    # by deliberately racing a step against repeated renders before this fix existed. Same
+    # blocking_step_world technique as test_overlapping_step_returns_503 above, but this
+    # time proving render *waits out* the lock (and then succeeds) rather than either racing
+    # past it or being rejected with a 503 the way the write endpoints are -- a render is a
+    # read, called far more often, so it should wait a moment, not fail.
+    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+
+    entered_step_world = threading.Event()
+    release_step_world = threading.Event()
+
+    def blocking_step_world(world, years):
+        entered_step_world.set()
+        release_step_world.wait(timeout=5)
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "step_world", blocking_step_world)
+
+    step_results: list[int] = []
+    t1 = threading.Thread(target=lambda: step_results.append(client.post("/world/step", json={"years": 1_000_000}).status_code))
+    t1.start()
+    assert entered_step_world.wait(timeout=5)
+
+    render_results: list[int] = []
+    t2 = threading.Thread(target=lambda: render_results.append(client.get("/world/render").status_code))
+    t2.start()
+    # The render thread must actually be blocked on _step_lock right now, not racing through
+    # -- confirmed by it still not having finished shortly after starting, while the step
+    # still holds the lock.
+    t2.join(timeout=0.5)
+    assert t2.is_alive()
+    assert render_results == []
+
+    release_step_world.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert step_results == [200]
+    assert render_results == [200]
+
+
 def test_generate_returns_summary(client):
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6})
     assert resp.status_code == 200
