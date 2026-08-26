@@ -426,36 +426,14 @@ export function legendFor(view: MapView): LegendSpec | null {
       };
     case "soilQuality":
       return { title: "Soil Quality", gradient: SOIL_QUALITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
-    // Ocean/Atmospheric Fluid Dynamics modes' own views (see backend app/ocean_cfd.py/
-    // atmosphere_cfd.py and render_image.py's OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS).
-    case "oceanCfdVelocity":
-      return {
-        title: "Ocean currents (CFD)",
-        symbols: [
-          { kind: "arrow", color: CURRENT_ARROW_COLOR, label: "Speed (arrow length)" },
-          { kind: "square", color: OCEAN_BACKDROP_COLOR, label: "Ocean" },
-          { kind: "square", color: LAND_BACKDROP_COLOR, label: "Land" },
-        ],
-      };
-    case "oceanCfdTemperature":
-      return { title: "Ocean temperature (CFD, °C)", gradient: TEMPERATURE_GRADIENT, symbols: [COASTLINE_SYMBOL] };
+    // Ocean Fluid Dynamics's own sediment views (see backend app/ocean_cfd.py and
+    // render_image.py's OCEAN_CFD_VIEWS) -- the matching velocity/temperature/humidity CFD
+    // views (ocean and atmosphere both) were removed once "wind"/"oceanCurrents"/
+    // "temperature"/"humidity" above became genuinely CFD-sourced, making them duplicates.
     case "oceanCfdSediment":
       return { title: "Suspended sediment", gradient: SEDIMENT_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     case "oceanCfdDeposition":
       return { title: "Sediment deposition (tracked only)", gradient: SEDIMENT_DEPOSITION_GRADIENT, symbols: [COASTLINE_SYMBOL] };
-    case "atmosphereCfdVelocity":
-      return {
-        title: "Wind (CFD)",
-        symbols: [
-          { kind: "arrow", color: WIND_ARROW_COLOR, label: "Speed (arrow length)" },
-          { kind: "square", color: OCEAN_BACKDROP_COLOR, label: "Ocean" },
-          { kind: "square", color: LAND_BACKDROP_COLOR, label: "Land" },
-        ],
-      };
-    case "atmosphereCfdTemperature":
-      return { title: "Air temperature (CFD, °C)", gradient: TEMPERATURE_GRADIENT, symbols: [COASTLINE_SYMBOL] };
-    case "atmosphereCfdHumidity":
-      return { title: "Humidity (CFD)", gradient: HUMIDITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }

@@ -117,13 +117,21 @@ class AtmosphereCFDState:
     precipitation_mm: np.ndarray  # (H, W) -- latest substep's condensation rate, a display field
     elapsed_seconds: float = 0.0
 
+    def resample_scalar_to_equirect(self, field: np.ndarray, height: int, width: int) -> np.ndarray:
+        """`climate.compute_climate`'s own CFD-state seam: lets it read temperature/humidity/
+        precipitation off either this (already-equirectangular) state or a v2 HEALPix-backed
+        equivalent (see v2/atmosphere_cfd_v2.py's own matching method) without needing to know
+        which grid actually produced the field. Same seam `resample_uv_to_equirect` below uses,
+        just for a scalar field instead of a (u, v) pair."""
+        return fluid_dynamics.resample_to_grid(field, height, width)
+
     def resample_uv_to_equirect(self, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
         """`climate.compute_climate`'s own CFD-state seam (see its two call sites): lets it
         read wind off either this (already-equirectangular) state or a v2 HEALPix-backed
         equivalent (see v2/atmosphere_cfd_v2.py's own matching method) without needing to
         know which grid actually produced the field."""
-        u = fluid_dynamics.resample_to_grid(self.u, height, width)
-        v = fluid_dynamics.resample_to_grid(self.v, height, width)
+        u = self.resample_scalar_to_equirect(self.u, height, width)
+        v = self.resample_scalar_to_equirect(self.v, height, width)
         return u, v
 
 

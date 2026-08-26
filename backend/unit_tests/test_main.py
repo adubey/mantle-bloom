@@ -497,14 +497,16 @@ def test_generate_with_the_finest_allowed_fluid_density(client):
     assert resp.status_code == 200
 
 
-def test_ocean_and_atmosphere_cfd_views_are_always_renderable(client):
-    # No more Mode toggle to gate these behind -- World.ocean_cfd_state/atmosphere_cfd_state
-    # are populated immediately at generation (see World.ocean_cfd_state's own docstring), so
-    # every one of these views should render right away, with no step needed first.
+def test_ocean_cfd_sediment_views_are_always_renderable(client):
+    # No more Mode toggle to gate these behind -- World.ocean_cfd_state is populated
+    # immediately at generation (see its own docstring), so both of these should render right
+    # away, with no step needed first. The matching velocity/temperature/humidity CFD-native
+    # views (ocean and atmosphere both) were removed once the plain wind/oceanCurrents/
+    # temperature/humidity views became genuinely CFD-sourced (see
+    # test_wind_and_ocean_currents_views_are_also_always_renderable below) -- sediment
+    # concentration/deposition stay unique, since nothing else produces sediment data.
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
-    for view in ["oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition"]:
-        assert client.get("/world/render", params={"view": view}).status_code == 200
-    for view in ["atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity"]:
+    for view in ["oceanCfdSediment", "oceanCfdDeposition"]:
         assert client.get("/world/render", params={"view": view}).status_code == 200
 
 

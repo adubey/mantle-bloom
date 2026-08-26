@@ -11,18 +11,21 @@ difference gradients, and land-excluding neighbor averaging, none of which work 
 lattice or an irregular point cloud. This grid exists *only* here; it is never stored on
 `World` and never touches `world.plates`.
 
-**Fully stateless, with one exception.** `compute_climate` recomputes everything from scratch,
-from whatever the *current* plate elevation happens to be (sampled via the same `cKDTree`
-nearest-neighbor technique `_render_grid_arrays` already uses) -- mirroring the render grid's
-own "recompute from scratch every call" philosophy: climate re-derives almost everything
-downstream of elevation from scratch every step, unlike elevation itself, which persists
-incrementally on the plates rather than being rebuilt. The exception is `wind_u`/`wind_v`/
-`current_u`/`current_v`: these come from the world's own always-on, genuinely prognostic
-`World.atmosphere_cfd_state`/`ocean_cfd_state` (real shallow-water solves, see
-atmosphere_cfd.py/ocean_cfd.py, resampled onto whichever resolution this call asked for --
-see `fluid_dynamics.resample_to_grid`), not recomputed here -- `compute_wind`/
-`compute_ocean_currents` below still exist, but only as the one-time cold-start bootstrap
-those CFD states are seeded from at `generate_world` time, before they exist yet.
+**Terrain-derived, with everything dynamic sourced from the model's own CFD state.**
+`compute_climate` resamples elevation/is_ocean fresh every call, from whatever the *current*
+plate elevation happens to be (sampled via the same `cKDTree` nearest-neighbor technique
+`_render_grid_arrays` already uses) -- there's no persistent terrain field of climate's own to
+keep in sync, since terrain itself already persists incrementally on the plates. But every
+field that's actually a *simulated quantity* -- `wind_u`/`wind_v`, `current_u`/`current_v`,
+`air_temperature_c`/`ocean_temperature_c`, `humidity`, `precipitation_mm` -- comes from the
+world's own always-on, genuinely prognostic `World.atmosphere_cfd_state`/`ocean_cfd_state`
+(real shallow-water solves with their own advection/diffusion/relaxation-toward-equilibrium,
+see atmosphere_cfd.py/ocean_cfd.py), resampled onto whichever resolution this call asked for
+(each CFD state's own `resample_uv_to_equirect`/`resample_scalar_to_equirect`) rather than
+reconstructed here. `compute_wind`/`compute_ocean_currents`/`compute_air_temperature`/
+`advect_ocean_temperature`/`compute_humidity`/`compute_precipitation` below all still exist,
+but only as the one-time cold-start bootstrap those CFD states are seeded from at
+`generate_world` time, before they exist yet.
 
 **Computed every step, not just on render.** erosion.py needs a live climate snapshot every
 step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
@@ -39,32 +42,36 @@ simplification, not a bug, since nothing here needs the cache to be exactly curr
 **Mechanism summary**, each described in more detail near its own implementation below:
 latitude-banded meridional wind + Coriolis zonal deflection, mountain deflection/Venturi/
 wake, Ekman-based ocean currents + coastal deflection/smoothing/wake + land swirl +
-circumglobal boost (the wind/current *bootstrap* mechanisms -- see "Fully stateless, with one
-exception" above for why an ordinary call doesn't run these at all), convergence-based swell
-detection, semi-Lagrangian temperature advection along currents, evaporation-ceiling +
-land-surface moisture source + wind-driven 2D humidity advection (decaying inland at a real
-per-km rate, see MOISTURE_HALVING_DISTANCE_KM), and orographic precipitation.
+circumglobal boost, semi-Lagrangian temperature advection along currents, evaporation-ceiling
++ land-surface moisture source + wind-driven 2D humidity advection (decaying inland at a real
+per-km rate, see MOISTURE_HALVING_DISTANCE_KM), and orographic precipitation -- all of this is
+the wind/current/temperature/humidity/precipitation *bootstrap* pipeline (see above for why an
+ordinary call reads the CFD state instead of running any of it), plus convergence-based swell
+detection, which has no CFD-state analog and always runs.
 
 **Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
-humidity field ocean evaporation does** -- the "rain in a rainforest" effect, where a wet,
-densely-vegetated region partly sustains its own precipitation. `compute_humidity`'s land
-cells get an extra local source alongside ocean cells' own evaporation ceiling: lake surface
-and river-channel evaporation (sized from the *persisted*, already-known `lake_depth`/
-`channel_depth` fields on `plates.ElevationLine`, resampled onto this grid exactly like
-elevation itself -- see `_sample_elevation_and_crust`) plus vegetation transpiration (sized
-from a biome classification, `biomes.classify_biomes`, of *last* step's climate snapshot --
-this step's own precipitation isn't known yet at the point transpiration needs to be decided,
-so, like every other circular coupling in this module, this one is broken with a one-step lag
-rather than solved simultaneously -- see `_vegetation_transpiration_source`). A frozen surface
+humidity field ocean evaporation does -- bootstrap-only for now, not yet in the CFD model.**
+The "rain in a rainforest" effect, where a wet, densely-vegetated region partly sustains its
+own precipitation: `compute_humidity`'s land cells get an extra local source alongside ocean
+cells' own evaporation ceiling -- lake surface and river-channel evaporation (sized from the
+*persisted*, already-known `lake_depth`/`channel_depth` fields on `plates.ElevationLine`,
+resampled onto this grid exactly like elevation itself -- see `_sample_elevation_and_crust`)
+plus vegetation transpiration (sized from a biome classification, `biomes.classify_biomes`, of
+*last* step's climate snapshot -- see `_vegetation_transpiration_source`). A frozen surface
 (`air_temperature_c` below `hydrology.FREEZE_POINT_C`) can't evaporate, so lake/river
 evaporation -- but not vegetation transpiration, already near zero in any biome cold enough to
-freeze -- is zeroed there. This also decreases the standing water it comes from: lake
-evaporation already shrinks `lake_depth` (lakes.py's own water balance, unrelated bookkeeping,
-same physical process); river evaporation is a genuinely new loss along `route_downstream`,
-see hydrology.py's own `RIVER_EVAPORATION_*` constants -- climate.py's source term here can't
-be sized from that same-step loss directly (hydrology.py runs *after* this module each step,
-consuming its precipitation/temperature output), so it's a same-step stand-in sized from the
-persisted channel_depth instead.
+freeze -- is zeroed there.
+
+**This mechanism only runs during the one-time bootstrap now.** `atmosphere_cfd.py`'s own
+prognostic `humidity` field (what an ordinary call actually reports) has a flat, is-ocean-
+conditioned evaporation source (`OCEAN_EVAPORATION_SOURCE_PER_S`/`LAND_EVAPORATION_SOURCE_PER_S`)
+with no lake/river/vegetation term at all -- so once a world's CFD states exist, this whole
+moisture-recycling mechanism stops affecting the humidity/precipitation the rest of the
+simulation (and every map view) actually sees. It's left in place, still exercised at
+`generate_world` time, as a real feature gap to close by porting an equivalent source term into
+the CFD solver's own substep (would need `refresh_forcing` to also resample `lake_depth_m`/
+`channel_depth_m`/a vegetation weight onto the CFD grid each tectonics step), not a decision to
+quietly drop the mechanism.
 
 **Out of scope** (mantle-bloom has no lakes/rivers/vegetation *state of its own* to persist
 here -- this module borrows plates.py's/biomes.py's already-persisted state above rather than
@@ -73,14 +80,16 @@ with the user): river outflow into currents, deep currents, and precipitation's 
 latitude-climatology baseline (equator/mid-latitude wet bands) -- precipitation here is purely
 a function of humidity and orographic lift.
 
-**Pipeline order** (breaks what would otherwise be a circular dependency -- wind needs
-temperature, but the *final* ocean temperature needs currents, which need wind): insolation
--> pre-advection land/ocean baseline temperatures -> wind (from the *baseline* combined
-surface temperature) -> ocean currents (from wind) -> ocean swells (from final currents) ->
-final ocean temperature (baseline advected along final currents) -> air temperature (baseline
-moderated toward the *final* nearest-ocean temperature) -> humidity (evaporation from *final*
-ocean temperature, advected by wind) -> precipitation (from humidity + wind-over-mountains).
-See `compute_climate` for the concrete call order.
+**Pipeline order** -- this is the one-time bootstrap chain (breaks what would otherwise be a
+circular dependency -- wind needs temperature, but the *final* ocean temperature needs
+currents, which need wind); an ordinary call skips straight from insolation/baseline
+temperatures to resampling the CFD state's own wind/current/temperature/humidity/
+precipitation fields instead: insolation -> pre-advection land/ocean baseline temperatures ->
+wind (from the *baseline* combined surface temperature) -> ocean currents (from wind) -> ocean
+swells (from final currents) -> final ocean temperature (baseline advected along final
+currents) -> air temperature (baseline moderated toward the *final* nearest-ocean temperature)
+-> humidity (evaporation from *final* ocean temperature, advected by wind) -> precipitation
+(from humidity + wind-over-mountains). See `compute_climate` for the concrete call order.
 """
 
 from __future__ import annotations
@@ -168,6 +177,7 @@ class ClimateFields:
     current_v: np.ndarray  # (H, W) northward, zero over land
     humidity: np.ndarray  # (H, W), roughly [0, MAX_EVAPORATION_CEILING]
     precipitation_mm: np.ndarray  # (H, W)
+    biome_ids: np.ndarray  # (H, W) int, index into biomes.BIOME_NAMES/BIOME_COLORS
     swell_rows: np.ndarray  # (K,) int, sampled convergence points
     swell_cols: np.ndarray  # (K,) int
 
@@ -298,10 +308,11 @@ def _cancel_and_redirect(
     return u2, v2
 
 
-def _weighted_sample_without_replacement(rng: np.random.Generator, weights: np.ndarray, k: int) -> np.ndarray:
+def weighted_sample_without_replacement(rng: np.random.Generator, weights: np.ndarray, k: int) -> np.ndarray:
     """Indices of up to `k` points sampled without replacement, probability proportional to
     `weights` (zero-weight points never selected). Used by `compute_ocean_swells` below for
-    weighted swell placement."""
+    weighted swell placement, and (public, not module-private, for exactly this reason) by
+    render_image.py's HEALPix-native swell placement for V2 worlds."""
     positive = weights > 0
     n_positive = int(np.sum(positive))
     if n_positive == 0:
@@ -763,7 +774,7 @@ def compute_ocean_swells(current_u: np.ndarray, current_v: np.ndarray, is_ocean:
     convergence = np.clip(convergence / OCEAN_SWELL_CONVERGENCE_REFERENCE, 0.0, 1.0)
 
     flat = convergence.reshape(-1)
-    picked = _weighted_sample_without_replacement(rng, flat, MAX_OCEAN_SWELLS)
+    picked = weighted_sample_without_replacement(rng, flat, MAX_OCEAN_SWELLS)
     rows, cols = np.unravel_index(picked, convergence.shape)
     return rows, cols
 
@@ -1132,7 +1143,6 @@ def compute_climate(
     hydrology.compute_hydrology, which would otherwise each redo the identical rotation."""
     lat_deg, lon_deg, world_xyz = _build_grid(height, width)
     elevation_m, is_ocean, lake_depth_m, channel_depth_m = _sample_elevation_and_crust(world, world_xyz, node_cloud=node_cloud)
-    vegetation_source = _vegetation_transpiration_source(world, elevation_m, is_ocean)
 
     insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_temperature_c = compute_land_temperature(insolation_row, elevation_m)
@@ -1175,14 +1185,37 @@ def compute_climate(
         current_u, current_v = world.ocean_cfd_state.resample_uv_to_equirect(height, width)
     swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, mix_rng)
 
-    ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
-    air_temperature_c = compute_air_temperature(land_temperature_c, ocean_temperature_c, is_ocean, world_xyz)
+    # Same CFD-sourced-instead-of-diagnostic swap as wind_u/wind_v and current_u/current_v
+    # above: temperature/humidity/precipitation come from the world's own always-on,
+    # genuinely prognostic CFD states (real advection + diffusion + relaxation toward an
+    # equilibrium/baseline target, see atmosphere_cfd.py/ocean_cfd.py) rather than this
+    # module's own from-scratch diagnostic reconstruction. advect_ocean_temperature/
+    # compute_air_temperature/compute_humidity/compute_precipitation below still exist, but
+    # only as the one-time cold-start bootstrap those CFD states are seeded from at
+    # generate_world time, before they exist yet -- same status compute_wind/
+    # compute_ocean_currents already have.
+    if world.ocean_cfd_state is None:
+        ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
+    else:
+        ocean_temperature_c = world.ocean_cfd_state.resample_scalar_to_equirect(world.ocean_cfd_state.temperature_c, height, width)
 
-    humidity, orographic_dump = compute_humidity(
-        is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
-        lake_depth_m, channel_depth_m, vegetation_source,
-    )
-    precipitation_mm = compute_precipitation(humidity, orographic_dump)
+    if world.atmosphere_cfd_state is None:
+        air_temperature_c = compute_air_temperature(land_temperature_c, ocean_temperature_c, is_ocean, world_xyz)
+        vegetation_source = _vegetation_transpiration_source(world, elevation_m, is_ocean)
+        humidity, orographic_dump = compute_humidity(
+            is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
+            lake_depth_m, channel_depth_m, vegetation_source,
+        )
+        precipitation_mm = compute_precipitation(humidity, orographic_dump)
+    else:
+        state = world.atmosphere_cfd_state
+        air_temperature_c = state.resample_scalar_to_equirect(state.temperature_c, height, width)
+        humidity = state.resample_scalar_to_equirect(state.humidity, height, width)
+        precipitation_mm = state.resample_scalar_to_equirect(state.precipitation_mm, height, width)
+
+    display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    biome_ids = biomes.classify_biomes(display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m)
 
     return ClimateFields(
         lat_deg=lat_deg,
@@ -1199,6 +1232,7 @@ def compute_climate(
         current_v=current_v,
         humidity=humidity,
         precipitation_mm=precipitation_mm,
+        biome_ids=biome_ids,
         swell_rows=swell_rows,
         swell_cols=swell_cols,
     )

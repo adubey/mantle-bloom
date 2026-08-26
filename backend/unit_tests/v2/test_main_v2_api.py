@@ -31,10 +31,30 @@ def test_v2_render_elevation_view():
     assert len(r.json()["image_base64"]) > 0
 
 
-def test_v2_render_rejects_cfd_native_views():
+def test_v2_render_rejects_sediment_views():
+    # Sediment has no HEALPix port yet -- the only two FLUID_VIEWS entries left after the
+    # rest (oceanCfdVelocity/oceanCfdTemperature/atmosphereCfdVelocity/
+    # atmosphereCfdTemperature/atmosphereCfdHumidity) were removed as duplicates of
+    # CLIMATE_VIEWS (see test_v2_climate_views_render_natively_below).
     client.post("/v2/world/generate", json=_GENERATE_BODY)
-    r = client.get("/v2/world/render", params={"view": "oceanCfdVelocity"})
+    r = client.get("/v2/world/render", params={"view": "oceanCfdSediment"})
     assert r.status_code == 400
+
+
+def test_v2_climate_views_render_natively():
+    # Once climate.py started sourcing temperature/humidity/precipitation straight from the
+    # CFD state, every CLIMATE_VIEWS member renders directly off the world's own HEALPix grid
+    # for a v2 world (see render_image._render_climate_view_healpix) instead of resampling
+    # down to an equirectangular grid first -- still succeeds via the same endpoint/view names
+    # v1 uses, just a different render path server-side.
+    from app import render_image
+
+    client.post("/v2/world/generate", json=_GENERATE_BODY)
+    client.post("/v2/world/step", json={"years": 2_000_000})
+    for view in render_image.CLIMATE_VIEWS:
+        r = client.get("/v2/world/render", params={"view": view, "width": 100, "height": 50})
+        assert r.status_code == 200
+        assert len(r.json()["image_base64"]) > 0
 
 
 def test_v2_and_v1_worlds_are_independent():

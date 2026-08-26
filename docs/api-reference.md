@@ -176,7 +176,7 @@ Response echoes back the world's current values for all four:
 { "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|oceanCfdVelocity|oceanCfdTemperature|oceanCfdSediment|oceanCfdDeposition|atmosphereCfdVelocity|atmosphereCfdTemperature|atmosphereCfdHumidity&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -205,27 +205,24 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   current coastline -- see [simulation-model.md#coastline](simulation-model.md#coastline) --
   since a color-scale view carries no land/ocean cue on its own); `"wind"` and
   `"oceanCurrents"` draw subsampled direction/magnitude arrows, and `"oceanCurrents"`
-  additionally marks detected ocean swells with small circles. `"resources"` and
-  `"soilQuality"` (see
+  additionally marks detected ocean swells with small circles. All five draw genuinely
+  CFD-sourced data straight off `World.atmosphere_cfd_state`/`ocean_cfd_state` (real,
+  continuously time-integrated shallow-water solves, see
+  [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics))
+  -- for a v2 (HEALPix) world they render natively off that HEALPix grid, at its own
+  resolution; for a v1 world they're resampled onto `climate_density`'s equirectangular grid.
+  `"resources"` and `"soilQuality"` (see
   [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)) are
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
-  continuous fertility heatmap (barren to rich) plus the coastline overlay. The seven
-  `oceanCfd*`/`atmosphereCfd*` views are the Ocean/Atmospheric Fluid Dynamics modes' own (see
-  [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics)):
-  `"oceanCfdVelocity"`/`"atmosphereCfdVelocity"` draw current/wind arrows the same way
-  `"oceanCurrents"`/`"wind"` do; `"oceanCfdTemperature"`/`"atmosphereCfdTemperature"` and
-  `"atmosphereCfdHumidity"` are heatmaps reusing the same color scales as `"temperature"`/
-  `"humidity"`; `"oceanCfdSediment"` (suspended concentration) and `"oceanCfdDeposition"`
-  (cumulative tracked settling, informational only -- never mutates world elevation, see
-  `ocean_cfd.py`) have their own scales. All seven are always renderable, same as every other
-  view here -- `World.ocean_cfd_state`/`atmosphere_cfd_state` are populated immediately at
-  generation and never `None` again for that world's life (see
-  [simulation-model.md#mode-toggle](simulation-model.md#mode-toggle)), not gated behind a mode
-  to switch into any more. Note that `"wind"`/`"oceanCurrents"`/`"temperature"`/`"humidity"`
-  above now draw the *same* CFD-backed data as their `atmosphereCfd*`/`oceanCfd*`
-  counterparts, just resampled onto `climate_density`'s resolution instead of
-  `fluid_density`'s native one.
+  continuous fertility heatmap (barren to rich) plus the coastline overlay. `"oceanCfdSediment"`
+  (suspended concentration) and `"oceanCfdDeposition"` (cumulative tracked settling,
+  informational only -- never mutates world elevation, see `ocean_cfd.py`) are the only
+  remaining CFD-native-only views -- nothing else produces sediment data, and sediment has no
+  HEALPix port yet, so these two are v1-only (a v2 world's `/world/render` rejects them with
+  `400`). Both are always renderable, same as every other view here -- `World.ocean_cfd_state`
+  is populated immediately at generation and never `None` again for that world's life, not
+  gated behind a mode to switch into any more.
 - `rotation` is the map's current view orientation (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world

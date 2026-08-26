@@ -185,3 +185,24 @@ def test_classify_biomes_intertidal_is_shallow_ocean_only():
     result = biomes.classify_biomes(temp, precip, elevation, slope, is_ocean, sea_level_m=0.0)
     assert result[0] == biomes.INTERTIDAL
     assert result[1] == biomes.OCEAN
+
+
+def test_grid_slope_is_zero_on_a_flat_grid():
+    lat_deg = np.array([30.0, 0.0, -30.0])
+    elevation_m = np.full((3, 4), 500.0)
+    assert np.all(biomes.grid_slope(elevation_m, lat_deg) == 0.0)
+
+
+def test_grid_slope_matches_a_known_north_south_step():
+    # A single elevation step between two rows, everything else flat: the rise/run slope at
+    # the step should equal that rise divided by the real great-circle spacing between rows
+    # (dlat_km, in meters) -- np.roll compares each row to the row above it (axis=0), so row 1
+    # (the step) reads a nonzero d_ns against row 0, and (via wraparound) row 0 reads that same
+    # step against the last row.
+    lat_deg = np.array([30.0, 0.0, -30.0])
+    elevation_m = np.zeros((3, 4))
+    elevation_m[1, :] = 1000.0
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    dlat_km = (np.pi / 3) * biomes.PLANET_RADIUS_KM
+    expected = 1000.0 / (dlat_km * 1000.0)
+    assert np.allclose(slope[1, :], expected)

@@ -21,13 +21,13 @@ kept as two separate stats rather than one combined min/max/mean the way it used
 since lumping a -11000m trench and a 9000m peak into the same range made neither number
 very informative on its own.
 
-`biome_land_fraction` reuses biomes.classify_biomes the same way the "biome" map view itself
-does (see render_image.py's `_render_biome_view`: land cells use air_temperature_c, ocean
-cells are forced to Ocean regardless), though against climate.py's native (coarser) grid
-here rather than that view's own finer render grid -- an aggregate land fraction doesn't need
-the extra resolution the way a rendered map's coastlines visibly do --
-the denominator is land cells only (Ocean is always 0% by construction, so it's omitted from
-the dict entirely rather than reported as a permanent zero).
+`biome_land_fraction` reads `ClimateFields.biome_ids` -- the same stored classification
+`compute_climate` computes once and every other biome-consuming caller now shares, at
+climate.py's native (coarser) grid rather than the "biome" map view's own finer render grid
+(render_image.py's `_render_biome_view`) -- an aggregate land fraction doesn't need the extra
+resolution the way a rendered map's coastlines visibly do. The denominator is land cells only
+(Ocean is always 0% by construction, so it's omitted from the dict entirely rather than
+reported as a permanent zero).
 
 `plate_count`/`elevation_point_count` are the two exceptions to "every stat here is a
 spatial min/max/mean snapshot of the current world": each is a single running total (plate
@@ -42,7 +42,6 @@ from __future__ import annotations
 import numpy as np
 
 from . import biomes, climate
-from .render_image import grid_slope
 from .world import World
 
 
@@ -66,10 +65,7 @@ def compute_stats(world: World) -> dict:
     ocean_temp_min, ocean_temp_max, ocean_temp_mean, ocean_temp_std = _min_max_mean_std(fields.ocean_temperature_c[is_ocean])
     precip_min, precip_max, precip_mean, precip_std = _min_max_mean_std(fields.precipitation_mm)
 
-    display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
-    slope = grid_slope(fields.elevation_m, fields.lat_deg)
-    biome_ids = biomes.classify_biomes(display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m)
-    land_biome_ids = biome_ids[is_land]
+    land_biome_ids = fields.biome_ids[is_land]
     n_land = int(is_land.sum())
     biome_land_fraction = {
         name: float(np.count_nonzero(land_biome_ids == i)) / n_land

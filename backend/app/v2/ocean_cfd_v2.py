@@ -59,9 +59,13 @@ class OceanCFDStateV2:
     wind_v: np.ndarray
     elapsed_seconds: float = 0.0
 
+    def resample_scalar_to_equirect(self, field: np.ndarray, height: int, width: int) -> np.ndarray:
+        """See atmosphere_cfd_v2.AtmosphereCFDStateV2's own matching method."""
+        return healpix_grid.resample_to_equirect(self.grid, field, height, width)
+
     def resample_uv_to_equirect(self, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
-        u = healpix_grid.resample_to_equirect(self.grid, self.u, height, width)
-        v = healpix_grid.resample_to_equirect(self.grid, self.v, height, width)
+        u = self.resample_scalar_to_equirect(self.u, height, width)
+        v = self.resample_scalar_to_equirect(self.v, height, width)
         return u, v
 
 

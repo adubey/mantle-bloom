@@ -914,10 +914,20 @@ center stays under pi, the same scope boundary as the antipodal-singularity limi
 Seven fields -- land temperature, ocean surface temperature, air temperature, wind, ocean
 currents, humidity, and precipitation -- computed for five map views (temperature, wind,
 ocean currents with swells marked, humidity, precipitation), implementing a climate model
-whose mechanisms are richer than a first-principles description would suggest. Rivers, lakes,
-and vegetation *do* feed back into humidity here (see step 9 below and "Moisture recycling")
--- the one place this module reaches outside its own fixed grid, into the persisted node
-fields hydrology.py/erosion.py/biomes.py already maintain.
+whose mechanisms are richer than a first-principles description would suggest. Of those
+seven, five (ocean/air temperature, wind, ocean currents, humidity, precipitation) are now
+read straight off `World.atmosphere_cfd_state`/`ocean_cfd_state` -- real, continuously
+time-integrated shallow-water solves (see [Ocean/Atmospheric Fluid
+Dynamics](#ocean-atmospheric-fluid-dynamics)) -- rather than reconstructed by this module's
+own formulas on every call; only land temperature stays a genuine per-call diagnostic (it's
+also the CFD states' own equilibrium/baseline relaxation target, computed the same way).
+Rivers, lakes, and vegetation *do* feed back into humidity in the diagnostic formulas below
+(see step 9 and "Moisture recycling") -- the one place this module reaches outside its own
+fixed grid, into the persisted node fields hydrology.py/erosion.py/biomes.py already maintain
+-- but that mechanism is currently bootstrap-only (exercised only once, seeding the CFD
+states at `generate_world` time): the CFD solver's own humidity source has no equivalent term
+yet, a known gap, not a decision to drop the mechanism (see `climate.py`'s own module
+docstring).
 
 **A third, genuinely fixed-shape grid, used only here.** Elevation is Lagrangian (see [Why
 not a grid](#why-not-a-grid)); the render grid ([Render image](#render-image)) is a *ragged*
@@ -945,15 +955,19 @@ real-world smoothing radius shrinks proportionally at a higher density -- a deli
 smaller-scope simplification, not rescaled. This grid is never stored on `World` and never
 touches `world.plates`.
 
-**Fully stateless.** Every field is recomputed from scratch on every call, from whatever the
-*current* plate elevation/crust_type happens to be (the same `cKDTree` nearest-neighbor
-sampling `_render_grid_arrays` already uses) -- climate is genuinely recomputed every step
+**Terrain-derived, with every dynamic field CFD-sourced.** Elevation/is_ocean are resampled
+from scratch on every call, from whatever the *current* plate elevation/crust_type happens to
+be (the same `cKDTree` nearest-neighbor sampling `_render_grid_arrays` already uses) -- there's
+no persistent terrain field of climate's own to keep in sync, since terrain itself already
+persists incrementally on the plates. But temperature/wind/currents/humidity/precipitation
+are read off the world's own always-on, genuinely prognostic CFD states (see above), resampled
+onto whichever resolution the call asked for -- climate is genuinely recomputed every step
 regardless of whether a climate view is currently being rendered (see [Erosion](#erosion),
 which needs a live climate snapshot for rain/wind/humidity every step), not just on render.
-Two exceptions: `World.axial_tilt_deg` and `World.climate_density`, both fixed generation-time
-properties like `seed` (set once by `generate_world`, read again on every future step/render),
-since insolation needs the former and the grid's own shape needs the latter long after
-generation, neither being something to recompute per call.
+Two more generation-time-fixed exceptions: `World.axial_tilt_deg` and `World.climate_density`,
+both set once by `generate_world` and read again on every future step/render, since insolation
+needs the former and the grid's own shape needs the latter long after generation, neither
+being something to recompute per call.
 
 **Pipeline order.** Wind needs a temperature field, but the *final* (current-advected) ocean
 temperature needs currents, which need wind -- resolved by computing a pre-advection baseline
@@ -1114,18 +1128,22 @@ implemented in full, not simplified down. Dropped outright: river outflow feedin
 the one river/lake/vegetation-climate coupling still not modeled.
 
 **Rendering.** `render_image.py`'s `CLIMATE_VIEWS` (`temperature`, `wind`, `oceanCurrents`,
-`humidity`, `precipitation`, `biome`) route to `_render_climate_view`, a separate path from
-the plate-tectonics views since the data source (a real `(H, W)` array, always covering the
-whole sphere) is structurally different from the render grid's ragged lattice. Heatmap views
-(temperature/humidity/precipitation) reuse the elevation view's color-stop-interpolation
-technique with their own stop tables; wind/ocean-currents draw subsampled arrows (numpy-
-vectorized projection/direction math, looped only for the unavoidable per-arrow PIL draw
-calls), and ocean currents additionally marks each sampled swell point with a small circle.
-Temperature/humidity/precipitation additionally draw the current coastline (see
-[Coastline](#coastline)) -- a color-scale view carries no land/ocean information on its own,
-unlike elevation's own hypsometric coloring. `biome` is categorical, not a heatmap -- see
-[Biomes](#biomes) below -- and (like wind/oceanCurrents) skips the separate coastline stroke,
-since its own flat Ocean color already reads as a land/ocean boundary on its own.
+`humidity`, `precipitation`, `biome`) route to `_render_climate_view` for a v1 world -- a
+separate path from the plate-tectonics views since the data source (a real `(H, W)` array,
+always covering the whole sphere) is structurally different from the render grid's ragged
+lattice -- or to `_render_climate_view_healpix` for a v2 (HEALPix) world, which draws the
+same views directly off the native `(npix,)` CFD state arrays instead of resampling them onto
+an `(H, W)` grid first, so a v2 world's climate views render at their own native resolution.
+Heatmap views (temperature/humidity/precipitation) reuse the elevation view's
+color-stop-interpolation technique with their own stop tables; wind/ocean-currents draw
+subsampled arrows (numpy-vectorized projection/direction math, looped only for the
+unavoidable per-arrow PIL draw calls), and ocean currents additionally marks each sampled
+swell point with a small circle. Temperature/humidity/precipitation additionally draw the
+current coastline (see [Coastline](#coastline)) -- a color-scale view carries no land/ocean
+information on its own, unlike elevation's own hypsometric coloring. `biome` is categorical,
+not a heatmap -- see [Biomes](#biomes) below -- and (like wind/oceanCurrents) skips the
+separate coastline stroke, since its own flat Ocean color already reads as a land/ocean
+boundary on its own.
 
 <a id="biomes"></a>
 ### Biomes (`biomes.py`)
@@ -1146,6 +1164,16 @@ for the ordinary land bands, since those are land-surface concepts and `is_ocean
 settles the question for a water cell -- Intertidal Zone is purely a further elevation-band
 split *within* the ocean category (`(sea_level_m - elevation_m) <= INTERTIDAL_MAX_DEPTH_M`,
 real tides not being modeled), not an exception to that rule.
+
+The function itself stays a pure, input-in/output-out classification with nothing cached
+inside it, but its result is no longer recomputed independently at every call site: `climate.
+compute_climate` now calls it once per computation and stores the result as `ClimateFields.
+biome_ids`, riding along on `World.climate_cache`'s existing "computed once per step, reused
+by every caller that turn" contract (see [Climate](#climate)). `stats.py`'s
+`biome_land_fraction` reads that stored field directly; the map-view/hex-export/vegetation-
+transpiration call sites still call `classify_biomes` themselves, since each needs a genuinely
+different input (a finer render-only grid, a hex-tile sampling, or last step's lagged
+snapshot -- see `climate.py`'s own module docstring for the last one).
 
 **Wetland and Carboniferous Forest** (`classify_wetland`, shared with `geology.py`'s own
 per-node coal formation -- see [Resources and soil](#resources-and-soil)) need flat, low-lying
@@ -1418,16 +1446,24 @@ unrelated and has no bearing on either FD mode.
 <a id="fd-render-views"></a>
 ### Rendering
 
-Seven new `GET /world/render` views (`render_image.OCEAN_CFD_VIEWS`/`ATMOSPHERE_CFD_VIEWS`,
-dispatched from `_render_fluid_view`, parallel to `_render_climate_view`): velocity (arrows,
-reusing `_draw_climate_vectors` unchanged -- it's already generic over any `(u, v)` field),
-temperature (reusing `temperature_colors`), sediment concentration/cumulative deposition (new
-color ramps, `sediment_colors`/`sediment_deposition_colors`), and humidity (reusing
-`humidity_colors`). Each 400s if requested while its own mode isn't active (`World.
-ocean_cfd_state`/`atmosphere_cfd_state` is `None`) via `main.py`'s own validation, but
-degrades to a plain background-only image if `render_image.render_png` is called directly
-against such a world -- the same "always renders *something* standalone" contract every
-other view in `VIEWS` already has (e.g. an elevation/plates render with no plates yet).
+Ordinary climate views (`"temperature"`/`"wind"`/`"oceanCurrents"`/`"humidity"`) draw this
+CFD state's own data directly (see [Climate](#climate) -- `climate.compute_climate` reads
+`temperature_c`/`humidity`/`precipitation_mm`/`u`/`v` straight off `World.
+atmosphere_cfd_state`/`ocean_cfd_state` rather than a separately-recomputed diagnostic), so
+there's no separate CFD-native velocity/temperature/humidity view any more -- those were
+removed as pure duplicates once the plain views became genuinely CFD-sourced. Only
+`render_image.OCEAN_CFD_VIEWS` (`"oceanCfdSediment"`/`"oceanCfdDeposition"`, dispatched from
+`_render_fluid_view`, parallel to `_render_climate_view`) remain CFD-native-only, since
+nothing else produces sediment concentration/cumulative deposition data (new color ramps,
+`sediment_colors`/`sediment_deposition_colors`). Both are always renderable --
+`World.ocean_cfd_state` is populated immediately at generation and never `None` again for
+that world's life -- but `render_image.render_png` still degrades to a plain background-only
+image if it somehow is, the same "always renders *something* standalone" contract every other
+view in `VIEWS` already has (e.g. an elevation/plates render with no plates yet). Sediment has
+no HEALPix port yet, so these two stay v1-only; a v2 world's `/world/render` rejects them with
+`400` via `main_v2.py`'s own validation, while `"temperature"`/`"wind"`/`"oceanCurrents"`/
+`"humidity"`/`"precipitation"`/`"biome"` render natively off the HEALPix grid instead (see
+`render_image._render_climate_view_healpix`).
 
 <a id="erosion"></a>
 ## Erosion (`erosion.py`)

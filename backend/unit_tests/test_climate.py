@@ -1,5 +1,5 @@
 import numpy as np
-from app import climate, geometry
+from app import biomes, climate, geometry
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
@@ -285,3 +285,58 @@ def test_generate_world_stores_climate_density_and_uses_the_default_when_omitted
 
     doubled = generate_world(seed=6, num_plates=6, climate_density=2.0)
     assert doubled.climate_density == 2.0
+
+
+def test_compute_climate_sources_temperature_humidity_precipitation_from_cfd_state():
+    # Once a world's CFD states exist, compute_climate reads temperature/humidity/
+    # precipitation straight off them (resampled to whatever resolution was asked for) rather
+    # than recomputing a diagnostic snapshot from scratch -- see climate.py's own module
+    # docstring. Mirrors the same contract wind_u/wind_v/current_u/current_v already had.
+    world = _world(seed=7, num_plates=8, steps=1)
+    height, width = climate.grid_dimensions(world.climate_density)
+    fields = climate.compute_climate(world, height, width)
+
+    ocean_state, atmosphere_state = world.ocean_cfd_state, world.atmosphere_cfd_state
+    expected_ocean_temp = ocean_state.resample_scalar_to_equirect(ocean_state.temperature_c, height, width)
+    expected_air_temp = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.temperature_c, height, width)
+    expected_humidity = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.humidity, height, width)
+    expected_precip = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.precipitation_mm, height, width)
+
+    assert np.array_equal(fields.ocean_temperature_c, expected_ocean_temp)
+    assert np.array_equal(fields.air_temperature_c, expected_air_temp)
+    assert np.array_equal(fields.humidity, expected_humidity)
+    assert np.array_equal(fields.precipitation_mm, expected_precip)
+
+
+def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():
+    # Before a world's CFD states exist (the one-time cold-start bootstrap -- see
+    # climate.py's own module docstring), compute_climate must still produce finite
+    # temperature/humidity/precipitation via its own diagnostic formulas rather than crashing
+    # on a missing state. Same bare-World construction test_submerged_continental_crust_is_
+    # treated_as_ocean above already uses, which has no atmosphere_cfd_state/ocean_cfd_state.
+    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
+    lines = [
+        ElevationLine(phi=float(phi), theta=np.linspace(-np.pi, np.pi, 30, endpoint=False), elevation=np.full(30, 200.0))
+        for phi in np.linspace(-1.4, 1.4, 15)
+    ]
+    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=lines)
+    world = World(seed=1, plates=[plate])
+    assert world.atmosphere_cfd_state is None
+    assert world.ocean_cfd_state is None
+
+    fields = climate.compute_climate(world, height=30, width=60)
+    assert np.all(np.isfinite(fields.ocean_temperature_c))
+    assert np.all(np.isfinite(fields.air_temperature_c))
+    assert np.all(np.isfinite(fields.humidity))
+    assert np.all(np.isfinite(fields.precipitation_mm))
+
+
+def test_compute_climate_biome_ids_matches_a_direct_classify_biomes_call():
+    world = _world(seed=8, num_plates=8, steps=1)
+    height, width = climate.grid_dimensions(world.climate_density)
+    fields = climate.compute_climate(world, height, width)
+
+    display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
+    slope = biomes.grid_slope(fields.elevation_m, fields.lat_deg)
+    expected = biomes.classify_biomes(display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m)
+    assert np.array_equal(fields.biome_ids, expected)

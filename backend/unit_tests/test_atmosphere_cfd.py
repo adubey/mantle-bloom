@@ -27,6 +27,18 @@ def test_init_atmosphere_cfd_produces_correctly_shaped_finite_state():
     assert np.all(state.eta == 0.0)  # geopotential anomaly starts flat
 
 
+def test_resample_scalar_to_equirect_matches_resample_uv_to_equirect_for_a_component():
+    # resample_uv_to_equirect is defined in terms of resample_scalar_to_equirect (see its own
+    # docstring) -- calling the scalar seam directly on `state.u` should give exactly the same
+    # result as the first element of the (u, v) pair.
+    world = _world()
+    state = atmosphere_cfd.init_atmosphere_cfd(world)
+    height, width = state.elevation_m.shape
+    u_only = state.resample_scalar_to_equirect(state.u, height, width)
+    u_from_pair, _ = state.resample_uv_to_equirect(height, width)
+    assert np.array_equal(u_only, u_from_pair)
+
+
 def test_step_atmosphere_cfd_produces_no_nan_or_inf():
     world = _world()
     state = atmosphere_cfd.init_atmosphere_cfd(world)

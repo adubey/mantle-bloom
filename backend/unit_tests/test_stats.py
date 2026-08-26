@@ -70,3 +70,26 @@ def test_compute_stats_biome_land_fraction_sums_to_one_with_land():
     assert result["biome_land_fraction"] != {}
     assert np.isclose(sum(result["biome_land_fraction"].values()), 1.0)
     assert "Ocean" not in result["biome_land_fraction"]
+
+
+def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_ids():
+    # stats.py no longer runs its own classify_biomes -- it reads ClimateFields.biome_ids,
+    # the same stored field compute_climate now computes once and every other biome-consuming
+    # caller shares (see climate.py). Recomputing the expected fractions directly from
+    # world.climate_cache.biome_ids (populated as a side effect of compute_stats calling
+    # compute_climate_cached) should match stats.py's own result exactly.
+    from app import biomes
+
+    world = _land_and_ocean_world()
+    result = stats.compute_stats(world)
+
+    biome_ids = world.climate_cache.biome_ids
+    is_land = ~world.climate_cache.is_ocean
+    land_biome_ids = biome_ids[is_land]
+    n_land = int(is_land.sum())
+    expected = {
+        name: float(np.count_nonzero(land_biome_ids == i)) / n_land
+        for i, name in enumerate(biomes.BIOME_NAMES)
+        if i != biomes.OCEAN and n_land > 0
+    }
+    assert result["biome_land_fraction"] == expected

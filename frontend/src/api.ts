@@ -30,13 +30,8 @@ export type MapView =
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector"
-  | "oceanCfdVelocity"
-  | "oceanCfdTemperature"
   | "oceanCfdSediment"
-  | "oceanCfdDeposition"
-  | "atmosphereCfdVelocity"
-  | "atmosphereCfdTemperature"
-  | "atmosphereCfdHumidity";
+  | "oceanCfdDeposition";
 
 export interface WorldEvent {
   elapsed_years: number;

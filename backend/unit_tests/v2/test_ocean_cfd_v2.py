@@ -41,6 +41,20 @@ def test_step_ocean_cfd_v2_keeps_land_cells_at_zero_velocity():
     assert np.all(state.eta[~state.is_ocean] == 0.0)
 
 
+def test_resample_scalar_to_equirect_matches_resample_uv_to_equirect_for_a_component():
+    # resample_uv_to_equirect is defined in terms of resample_scalar_to_equirect (see its own
+    # docstring) -- calling the scalar seam directly on `state.u` should give exactly the same
+    # result as the first element of the (u, v) pair. Stepped first so u isn't trivially all
+    # zero (see test_init_ocean_cfd_v2_produces_correctly_shaped_state_at_rest).
+    world = _world()
+    state = world.ocean_cfd_state
+    ocean_cfd_v2.step_ocean_cfd(world, state, seconds=3600.0)
+    height, width = 30, 60
+    u_only = state.resample_scalar_to_equirect(state.u, height, width)
+    u_from_pair, _ = state.resample_uv_to_equirect(height, width)
+    assert np.array_equal(u_only, u_from_pair)
+
+
 def test_step_ocean_cfd_v2_produces_no_nan_or_inf():
     world = _world()
     state = world.ocean_cfd_state

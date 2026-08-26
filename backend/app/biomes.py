@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .elevation_lines import PLANET_RADIUS_KM
 from .hydrology import GLACIER_ACCUMULATION_TEMP_C
 
 # Same threshold hydrology.py's own glacier accumulation logic already uses for "cold enough
@@ -33,7 +34,7 @@ HUMID_MM = 2000.0
 # elevation (a wetland sits right near sea level -- a floodplain, delta, or coastal marsh, not
 # an upland bog) and slope (flat enough for water to pool/waterlog rather than drain away).
 # Both are real quantities this codebase already computes elsewhere (erosion.py's own
-# node-cloud slope, or render_image._grid_slope's grid analogue for the map view) -- not new
+# node-cloud slope, or grid_slope below's grid analogue for the map view) -- not new
 # simulation state. WETLAND_MAX_SLOPE is a dimensionless rise/run, the same convention
 # erosion.py's own slope uses, picked (like every other cutoff in this module) for a visually
 # sensible result rather than fit against a dataset.
@@ -174,6 +175,25 @@ def biome_relative_shade_factor(biome_ids: np.ndarray, elevation_m: np.ndarray) 
         tier[mask] = np.clip(ranks * BIOME_SHADE_TIERS // n, 0, BIOME_SHADE_TIERS - 1)
 
     return BIOME_SHADE_FACTORS[tier].reshape(biome_ids.shape)
+
+
+def grid_slope(elevation_m: np.ndarray, lat_deg: np.ndarray) -> np.ndarray:
+    """Dimensionless rise/run slope on a fixed (H, W) lat/lon grid -- real elevation difference
+    to each cell's north/south or east/west neighbor (whichever is steeper), divided by that
+    neighbor's real great-circle spacing in meters (longitude narrowed by cos(lat), same
+    convention as everywhere else in this codebase -- see plates.iter_local_lattice). Feeds
+    classify_wetland's own WETLAND_MAX_SLOPE cutoff -- the same threshold erosion.compute_slope's
+    own node-cloud slope (a different, finer discretization) is tuned against; see this module's
+    own docstring for why an approximate, visually-tuned cutoff, not fit to any dataset, is this
+    codebase's norm. np.roll wraps at the poles too (a minor, visually inconsequential artifact
+    right at the map's own poles), the same "not worth special-casing" tradeoff this codebase
+    already accepts elsewhere (e.g. the Plate Inspector's antipodal-projection limitation)."""
+    grid_h, grid_w = elevation_m.shape
+    dlat_km = (np.pi / grid_h) * PLANET_RADIUS_KM
+    dlon_km = np.maximum((2 * np.pi / grid_w) * PLANET_RADIUS_KM * np.cos(np.radians(lat_deg))[:, None], 1.0)
+    d_ns = np.abs(elevation_m - np.roll(elevation_m, 1, axis=0)) / (dlat_km * 1000.0)
+    d_ew = np.abs(elevation_m - np.roll(elevation_m, 1, axis=1)) / (dlon_km * 1000.0)
+    return np.maximum(d_ns, d_ew)
 
 
 def classify_wetland(

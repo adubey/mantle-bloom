@@ -25,6 +25,7 @@ from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
 from . import biomes, climate, coastline, erosion, geology, geometry, hydrology, mantle, plates, projections, volcanism
+from .v2 import atmosphere_cfd_v2, fluid_dynamics_healpix, healpix_grid
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -43,21 +44,18 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-# Ocean/Atmospheric Fluid Dynamics's own map views -- see ocean_cfd.py/atmosphere_cfd.py and
-# docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. World.ocean_cfd_state/
-# atmosphere_cfd_state are always populated now (see the former's own docstring), so these are
-# always renderable, same as every other view here.
-#
-# TODO: oceanCfdVelocity/oceanCfdTemperature and atmosphereCfdVelocity/atmosphereCfdTemperature
-# are now redundant with CLIMATE_VIEWS' own "wind"/"oceanCurrents"/"temperature" -- climate.py's
-# compute_climate sources wind_u/wind_v/current_u/current_v straight from these same CFD
-# states (see its own module docstring), just resampled onto climate_density's grid instead of
-# fluid_density's. Worth consolidating (drop the duplicates, or make the plain views always use
-# native fluid_density resolution) once it's clear which framing the UI wants long-term.
+# Ocean Fluid Dynamics's own sediment map views -- see ocean_cfd.py and
+# docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. World.ocean_cfd_state is always
+# populated now (see its own docstring), so these are always renderable, same as every other
+# view here. There used to be a matching set of CFD-native velocity/temperature/humidity
+# views too (oceanCfdVelocity/oceanCfdTemperature/atmosphereCfdVelocity/
+# atmosphereCfdTemperature/atmosphereCfdHumidity) -- removed once CLIMATE_VIEWS' own
+# "wind"/"oceanCurrents"/"temperature"/"humidity" became genuinely CFD-sourced (see
+# climate.py's module docstring) and, for V2 worlds, natively HEALPix-rendered (see
+# _render_climate_view_healpix), making the separate CFD-native versions pure duplicates.
 # oceanCfdSediment/oceanCfdDeposition stay unique -- nothing else produces sediment data.
-OCEAN_CFD_VIEWS = ("oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition")
-ATMOSPHERE_CFD_VIEWS = ("atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity")
-FLUID_VIEWS = OCEAN_CFD_VIEWS + ATMOSPHERE_CFD_VIEWS
+OCEAN_CFD_VIEWS = ("oceanCfdSediment", "oceanCfdDeposition")
+FLUID_VIEWS = OCEAN_CFD_VIEWS
 VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS + FLUID_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -613,42 +611,16 @@ def _resource_fields(world: World, grid_h: int, grid_w: int):
     return lat_deg, lon_deg, world_xyz, is_ocean, soil_depth, soil_mineral, soil_organic, coal, oil_gas, mineral
 
 
-def grid_slope(elevation_m: np.ndarray, lat_deg: np.ndarray) -> np.ndarray:
-    """Dimensionless rise/run slope on the fine Biome/Combined grid (see _biome_fields) --
-    real elevation difference to each cell's north/south or east/west neighbor (whichever is
-    steeper), divided by that neighbor's real great-circle spacing in meters (longitude
-    narrowed by cos(lat), same convention as everywhere else in this codebase -- see
-    plates.iter_local_lattice). Feeds biomes.classify_wetland's own WETLAND_MAX_SLOPE cutoff --
-    the same threshold erosion.compute_slope's own node-cloud slope (a different, finer
-    discretization) is tuned against; see biomes.py's own module docstring for why an
-    approximate, visually-tuned cutoff, not fit to any dataset, is this codebase's norm.
-    np.roll wraps at the poles too (a minor, visually inconsequential artifact right at the
-    map's own poles), the same "not worth special-casing" tradeoff this codebase already
-    accepts elsewhere (e.g. the Plate Inspector's antipodal-projection limitation)."""
-    grid_h, grid_w = elevation_m.shape
-    dlat_km = (np.pi / grid_h) * plates.PLANET_RADIUS_KM
-    dlon_km = np.maximum((2 * np.pi / grid_w) * plates.PLANET_RADIUS_KM * np.cos(np.radians(lat_deg))[:, None], 1.0)
-    d_ns = np.abs(elevation_m - np.roll(elevation_m, 1, axis=0)) / (dlat_km * 1000.0)
-    d_ew = np.abs(elevation_m - np.roll(elevation_m, 1, axis=1)) / (dlon_km * 1000.0)
-    return np.maximum(d_ns, d_ew)
-
-
-def _project_climate_grid(
-    lat_deg: np.ndarray, lon_deg: np.ndarray, world_xyz: np.ndarray,
-    projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float]:
-    """Projects a full-sphere equirectangular (H, W, 3) grid to pixel space: fits the view's
-    scale/offset to the whole sphere's projected extent (identical regardless of rotation --
-    rotation only permutes which physical points land at which lat/lon, never changes the set
-    of lat/lon values a full sphere covers), then returns each cell's pixel center and its
-    per-cell axis-aligned half-extent in pixels (corner-based, not edge-midpoint-based --
-    see _render_grid_arrays' own docstring for why that's required once the view can rotate).
-    Shared by every CLIMATE_VIEWS renderer and the Biome/Combined views' own finer grid (see
-    BIOME_GRID_HEIGHT/WIDTH) so they all place the sphere identically and never rescale or
-    re-center relative to one another when the user switches views."""
-    grid_h, grid_w = world_xyz.shape[:2]
-    flat_xyz = world_xyz.reshape(-1, 3)
-
+def _fit_and_project_sphere(
+    flat_xyz: np.ndarray, projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
+) -> tuple[np.ndarray, np.ndarray, float, float, float]:
+    """Fits the view's scale/offset to a full sphere's projected extent (identical regardless
+    of rotation -- rotation only permutes which physical points land at which lat/lon, never
+    changes the set of lat/lon values a full sphere covers) and projects `flat_xyz` (N, 3) to
+    pixel-space `centers` (N, 2). Shared by `_project_climate_grid`'s (H, W) equirectangular
+    grid and `_project_healpix_grid`'s flat (npix,) HEALPix point cloud, so every view places
+    the sphere identically and never rescales or re-centers relative to one another when the
+    user switches views."""
     bbox_xy = _project_points(projection, flat_xyz)
     flat_xy = _project_points(projection, _rotate(flat_xyz, view_rotation))
 
@@ -661,6 +633,27 @@ def _project_climate_grid(
     offset_y = height / 2 + scale * (min_y + max_y) / 2
 
     centers = _to_pixels(scale, offset_x, offset_y, flat_xy)
+    return centers, flat_xy, scale, offset_x, offset_y
+
+
+def _project_climate_grid(
+    lat_deg: np.ndarray, lon_deg: np.ndarray, world_xyz: np.ndarray,
+    projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float]:
+    """Projects a full-sphere equirectangular (H, W, 3) grid to pixel space: fits the view's
+    scale/offset to the whole sphere's projected extent via `_fit_and_project_sphere`, then
+    returns each cell's pixel center and its per-cell axis-aligned half-extent in pixels
+    (corner-based, not edge-midpoint-based -- see _render_grid_arrays' own docstring for why
+    that's required once the view can rotate). Shared by every CLIMATE_VIEWS renderer and the
+    Biome/Combined views' own finer grid (see BIOME_GRID_HEIGHT/WIDTH) so they all place the
+    sphere identically and never rescale or re-center relative to one another when the user
+    switches views."""
+    grid_h, grid_w = world_xyz.shape[:2]
+    flat_xyz = world_xyz.reshape(-1, 3)
+
+    centers, flat_xy, scale, offset_x, offset_y = _fit_and_project_sphere(
+        flat_xyz, projection, view_rotation, width, height, padding_px
+    )
 
     xy_grid = flat_xy.reshape(grid_h, grid_w, 2)
     _, center_lon_grid = geometry.xyz_to_latlon(_rotate(flat_xyz, view_rotation))
@@ -685,6 +678,27 @@ def _project_climate_grid(
     half_h = np.max([np.abs(s[..., 1]) for s in corner_steps], axis=0).reshape(-1) * scale * CELL_OVERLAP_FACTOR
 
     return centers, half_w, half_h, scale, offset_x, offset_y
+
+
+def _project_healpix_grid(
+    grid: "healpix_grid.HealpixGrid", projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
+) -> tuple[np.ndarray, np.ndarray, float, float, float]:
+    """HEALPix analogue of `_project_climate_grid`, for V2 worlds' native (npix,) grid. HEALPix
+    pixels are equal-area but not axis-aligned rectangles, so there's no true per-cell rect the
+    way the equirectangular grid's corner math produces -- draws each pixel as a fixed-size
+    square instead (the same "approximate cue over an expensive exact one" tradeoff this module
+    already makes elsewhere), sized from the grid's own known (equal, by construction)
+    `pixel_area_m2` -> an equal-area circle-equivalent angular radius -> a pixel-space
+    half-width via the already-fitted `scale`. Returns (centers, half_px, scale, offset_x,
+    offset_y) -- `half_px` is a scalar, not a per-point array, since every HEALPix pixel is the
+    same size; `_fill_rects` already broadcasts a scalar half_w/half_h."""
+    centers, _, scale, offset_x, offset_y = _fit_and_project_sphere(
+        grid.world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    pixel_area_sr = grid.pixel_area_m2 / healpix_grid.PLANET_RADIUS_M**2
+    angular_radius_rad = np.sqrt(pixel_area_sr / np.pi)
+    half_px = float(scale * angular_radius_rad * CELL_OVERLAP_FACTOR)
+    return centers, half_px, scale, offset_x, offset_y
 
 
 def _plate_tectonics(projection: str, plate, view_rotation: np.ndarray) -> dict:
@@ -851,11 +865,20 @@ CLIMATE_OCEAN_BACKDROP_RGB = np.array([18, 28, 55], dtype=np.uint8)
 CLIMATE_LAND_BACKDROP_RGB = np.array([40, 46, 34], dtype=np.uint8)
 
 
-def _draw_climate_vectors(
+# HEALPix-equivalent of ARROW_GRID_STRIDE: a (H, W) grid subsamples every 6th row *and* 6th
+# column (a 36x areal thinning), so a flat (npix,) HEALPix grid uses one stride covering the
+# same areal thinning rather than two per-axis strides (there are no separate "rows"/"columns"
+# to stride over independently).
+HEALPIX_ARROW_STRIDE = ARROW_GRID_STRIDE**2
+
+
+def _draw_vector_arrows(
     draw: ImageDraw.ImageDraw,
-    fields: "climate.ClimateFields",
-    u: np.ndarray,
-    v: np.ndarray,
+    base_xyz: np.ndarray,
+    u_pts: np.ndarray,
+    v_pts: np.ndarray,
+    east: np.ndarray,
+    north: np.ndarray,
     projection: str,
     scale: float,
     offset_x: float,
@@ -864,31 +887,20 @@ def _draw_climate_vectors(
     color: tuple[int, int, int],
     view_rotation: np.ndarray,
 ) -> None:
-    """Draws one arrow per subsampled grid cell, length scaled by speed relative to the max
-    speed present. Direction is found the same way as the plate rotation arc's tangent: a
-    small offset along the local (east, north) vector, projected, rather than assuming the
-    projection preserves on-screen angles."""
-    grid_h, grid_w = u.shape
-    rows = np.arange(0, grid_h, ARROW_GRID_STRIDE)
-    cols = np.arange(0, grid_w, ARROW_GRID_STRIDE)
-    rr, cc = np.meshgrid(rows, cols, indexing="ij")
-    rr, cc = rr.reshape(-1), cc.reshape(-1)
-
-    base_xyz = fields.world_xyz[rr, cc]
-    u_pts, v_pts = u[rr, cc], v[rr, cc]
+    """Shared arrow-drawing core for `_draw_climate_vectors` (regular (H, W) grid) and
+    `_draw_climate_vectors_healpix` (HEALPix grid): given a set of sample points with their own
+    world-space position, local (east, north) tangent basis, and (u, v) vector components,
+    draws one direction-and-speed-scaled arrow per point (length scaled by speed relative to
+    the max speed present). Direction is found the same way as the plate rotation arc's
+    tangent: a small offset along the local (east, north) vector, projected, rather than
+    assuming the projection preserves on-screen angles."""
     speed = np.hypot(u_pts, v_pts)
     keep = speed > 1e-6
     if not np.any(keep):
         return
-    base_xyz, u_pts, v_pts, speed = base_xyz[keep], u_pts[keep], v_pts[keep], speed[keep]
+    base_xyz, u_pts, v_pts, east, north, speed = base_xyz[keep], u_pts[keep], v_pts[keep], east[keep], north[keep], speed[keep]
     max_speed = float(speed.max())
 
-    # Direction is computed from the *true* (un-rotated) local east/north basis, matching
-    # how u/v were computed -- both the base and offset point are rotated together right
-    # before projecting, same as everywhere else in this module.
-    lon = np.arctan2(base_xyz[:, 1], base_xyz[:, 0])
-    east = np.stack([-np.sin(lon), np.cos(lon), np.zeros_like(lon)], axis=-1)
-    north = np.cross(base_xyz, east)
     direction = geometry.normalize(u_pts[:, None] * east + v_pts[:, None] * north)
     offset_xyz = geometry.normalize(base_xyz + 0.02 * direction)
 
@@ -910,18 +922,96 @@ def _draw_climate_vectors(
         _draw_arrow_head(draw, tip, dir_i, color, head_len)
 
 
-def _draw_swell_markers(
-    draw: ImageDraw.ImageDraw, fields: "climate.ClimateFields", projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float,
+def _draw_climate_vectors(
+    draw: ImageDraw.ImageDraw,
+    fields: "climate.ClimateFields",
+    u: np.ndarray,
+    v: np.ndarray,
+    projection: str,
+    scale: float,
+    offset_x: float,
+    offset_y: float,
+    pixel_scale: float,
+    color: tuple[int, int, int],
     view_rotation: np.ndarray,
 ) -> None:
-    if len(fields.swell_rows) == 0:
+    """Draws one arrow per subsampled grid cell -- see `_draw_vector_arrows` for the shared
+    drawing core. Direction's local (east, north) basis is derived from each sampled point's
+    own longitude (matching how u/v were computed), since a regular (H, W) grid has no
+    precomputed tangent basis of its own the way a HEALPix grid does."""
+    grid_h, grid_w = u.shape
+    rows = np.arange(0, grid_h, ARROW_GRID_STRIDE)
+    cols = np.arange(0, grid_w, ARROW_GRID_STRIDE)
+    rr, cc = np.meshgrid(rows, cols, indexing="ij")
+    rr, cc = rr.reshape(-1), cc.reshape(-1)
+
+    base_xyz = fields.world_xyz[rr, cc]
+    u_pts, v_pts = u[rr, cc], v[rr, cc]
+
+    # Direction is computed from the *true* (un-rotated) local east/north basis, matching
+    # how u/v were computed -- both the base and offset point are rotated together right
+    # before projecting, same as everywhere else in this module.
+    lon = np.arctan2(base_xyz[:, 1], base_xyz[:, 0])
+    east = np.stack([-np.sin(lon), np.cos(lon), np.zeros_like(lon)], axis=-1)
+    north = np.cross(base_xyz, east)
+    _draw_vector_arrows(draw, base_xyz, u_pts, v_pts, east, north, projection, scale, offset_x, offset_y, pixel_scale, color, view_rotation)
+
+
+def _draw_climate_vectors_healpix(
+    draw: ImageDraw.ImageDraw,
+    grid: "healpix_grid.HealpixGrid",
+    u: np.ndarray,
+    v: np.ndarray,
+    projection: str,
+    scale: float,
+    offset_x: float,
+    offset_y: float,
+    pixel_scale: float,
+    color: tuple[int, int, int],
+    view_rotation: np.ndarray,
+) -> None:
+    """HEALPix analogue of `_draw_climate_vectors`: same subsample-and-draw approach, but reads
+    each sampled pixel's precomputed local (east, north) tangent basis straight off the grid
+    (v2/healpix_grid.py) instead of re-deriving it from longitude."""
+    idx = np.arange(0, grid.npix, HEALPIX_ARROW_STRIDE)
+    base_xyz = grid.world_xyz[idx]
+    u_pts, v_pts = u[idx], v[idx]
+    east, north = grid.east[idx], grid.north[idx]
+    _draw_vector_arrows(draw, base_xyz, u_pts, v_pts, east, north, projection, scale, offset_x, offset_y, pixel_scale, color, view_rotation)
+
+
+def _draw_swell_markers(
+    draw: ImageDraw.ImageDraw, swell_xyz: np.ndarray, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float,
+    view_rotation: np.ndarray,
+) -> None:
+    if len(swell_xyz) == 0:
         return
-    xyz = fields.world_xyz[fields.swell_rows, fields.swell_cols]
-    centers = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(xyz, view_rotation)))
+    centers = _to_pixels(scale, offset_x, offset_y, _project_points(projection, _rotate(swell_xyz, view_rotation)))
     r = SWELL_MARKER_RADIUS_PX * pixel_scale
     width_px = max(int(round(pixel_scale)), 1)
     for px, py in centers:
         draw.ellipse([px - r, py - r, px + r, py + r], outline=(255, 255, 255), width=width_px)
+
+
+def _compute_ocean_swells_healpix(
+    u: np.ndarray, v: np.ndarray, is_ocean: np.ndarray, grid: "healpix_grid.HealpixGrid", rng: np.random.Generator,
+) -> np.ndarray:
+    """HEALPix analogue of `climate.compute_ocean_swells`: convergence (negative divergence) of
+    the current field, weighted-sampled at up to `climate.MAX_OCEAN_SWELLS` points -- returns
+    world_xyz positions directly rather than (row, col) indices, since there's no 2D grid to
+    index into. Normalized by its own max rather than `climate.OCEAN_SWELL_CONVERGENCE_REFERENCE`
+    -- that constant is tuned for `compute_ocean_swells`'s raw neighbor-difference divergence
+    (same units as current_u/v, no distance normalization), not `fluid_dynamics_healpix.divergence`'s
+    properly distance-normalized (1/s) result, so a self-normalizing reference is used here
+    instead of guessing a new absolute one those two functions don't share."""
+    divergence = fluid_dynamics_healpix.divergence(u, v, grid)
+    convergence = np.clip(-divergence, 0.0, None)
+    convergence = np.where(is_ocean, convergence, 0.0)
+    max_convergence = float(convergence.max())
+    if max_convergence <= 0.0:
+        return np.zeros((0, 3))
+    picked = climate.weighted_sample_without_replacement(rng, convergence / max_convergence, climate.MAX_OCEAN_SWELLS)
+    return grid.world_xyz[picked]
 
 
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -929,7 +1019,17 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     see _render_biome_view) from climate.py's own fixed grid -- a separate path from the
     plate-tectonics views below since the data source (a real (H, W) array, always covering
     the whole sphere) is structurally different from the render grid's ragged lattice, so
-    there's little to share beyond the pixel-space primitives."""
+    there's little to share beyond the pixel-space primitives.
+
+    For a V2 (HEALPix) world, every CLIMATE_VIEWS member -- "biome" included -- is instead
+    rendered natively off the HEALPix grid (see _render_climate_view_healpix): after climate.py
+    started sourcing temperature/humidity/precipitation straight from the CFD state, resampling
+    that state down onto this function's own (H, W) equirectangular grid just to draw it back
+    out again would throw away HEALPix's native resolution and equal-area cells for no reason,
+    so V2 worlds skip this function's own (H, W) path entirely."""
+    if isinstance(world.atmosphere_cfd_state, atmosphere_cfd_v2.AtmosphereCFDStateV2):
+        return _render_climate_view_healpix(world, projection, view, width, height, view_rotation)
+
     if view == "biome":
         return _render_biome_view(world, projection, width, height, view_rotation)
 
@@ -973,7 +1073,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
     elif view == "oceanCurrents":
         _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
-        _draw_swell_markers(draw, fields, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+        _draw_swell_markers(draw, fields.world_xyz[fields.swell_rows, fields.swell_cols], projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     # No server-side legend here -- see frontend/src/legendData.ts/Legend.tsx, which renders
     # it as a client-side HTML overlay instead (keyed purely on `view`, since none of this
@@ -985,23 +1085,85 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     return _encode_image(image)
 
 
-def _render_fluid_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS from the world's own permanent,
-    always-on CFD state (World.ocean_cfd_state/atmosphere_cfd_state -- see ocean_cfd.py/
-    atmosphere_cfd.py), reusing the same _project_climate_grid/_fill_rects/_draw_climate_vectors
-    primitives _render_climate_view already uses for climate.py's own grid -- both state
-    objects share the same (lat_deg, lon_deg, world_xyz) grid-geometry shape convention as
-    climate.ClimateFields. Neither state is ever actually None once a world has been generated
-    (see World.ocean_cfd_state's own docstring), but this function still degrades to a plain
-    background-only image if it somehow is (same "always renders *something* standalone"
-    contract every other view in VIEWS already has -- e.g. an elevation/plates render with no
-    plates yet -- rather than raising)."""
+def _render_climate_view_healpix(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """V2 (HEALPix) counterpart to `_render_climate_view`: every CLIMATE_VIEWS member reads
+    directly off `world.atmosphere_cfd_state`/`ocean_cfd_state`'s own native `(npix,)` arrays
+    -- no resampling in either direction, since (after climate.py's own CFD-sourcing change)
+    those *are* the real temperature/humidity/precipitation/wind/current fields, just not yet
+    projected to pixel space. Only "biome" needs an actual computation (classify_biomes on the
+    native arrays, with a HEALPix-native slope from fluid_dynamics_healpix.gradient), mirroring
+    what climate.py's own compute_climate now does for the equirectangular path."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    is_ocean_view = view in OCEAN_CFD_VIEWS
-    state = world.ocean_cfd_state if is_ocean_view else world.atmosphere_cfd_state
+    atmosphere, ocean = world.atmosphere_cfd_state, world.ocean_cfd_state
+    if atmosphere is None or ocean is None:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+
+    grid = atmosphere.grid
+    centers, half_px, scale, offset_x, offset_y = _project_healpix_grid(grid, projection, view_rotation, width, height, padding_px)
+
+    if view == "biome":
+        dx, dy = fluid_dynamics_healpix.gradient(atmosphere.elevation_m, grid)
+        slope = np.hypot(dx, dy)
+        display_temp = np.where(atmosphere.is_ocean, ocean.temperature_c, atmosphere.temperature_c)
+        biome_ids = biomes.classify_biomes(
+            display_temp, atmosphere.precipitation_mm, atmosphere.elevation_m, slope, atmosphere.is_ocean, world.sea_level_m
+        )
+        _fill_rects(pixels, centers, half_px, half_px, biomes.BIOME_COLORS[biome_ids])
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+
+    if view == "temperature":
+        display_temp = np.where(atmosphere.is_ocean, ocean.temperature_c, atmosphere.temperature_c)
+        colors = temperature_colors(display_temp)
+        _fill_rects(pixels, centers, half_px, half_px, colors)
+    elif view == "humidity":
+        colors = humidity_colors(atmosphere.humidity)
+        _fill_rects(pixels, centers, half_px, half_px, colors)
+    elif view == "precipitation":
+        colors = precipitation_colors(atmosphere.precipitation_mm)
+        _fill_rects(pixels, centers, half_px, half_px, colors)
+    elif view in ("wind", "oceanCurrents"):
+        backdrop = np.where(atmosphere.is_ocean[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
+        _fill_rects(pixels, centers, half_px, half_px, backdrop)
+
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+
+    if view in ("temperature", "humidity", "precipitation"):
+        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+
+    if view == "wind":
+        _draw_climate_vectors_healpix(draw, grid, atmosphere.u, atmosphere.v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
+    elif view == "oceanCurrents":
+        _draw_climate_vectors_healpix(draw, grid, ocean.u, ocean.v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
+        # Deterministic per-world-state RNG, same convention climate.py's own mixing_noise uses.
+        swell_rng = np.random.default_rng((world.seed, round(world.elapsed_years)))
+        swell_xyz = _compute_ocean_swells_healpix(ocean.u, ocean.v, ocean.is_ocean, grid, swell_rng)
+        _draw_swell_markers(draw, swell_xyz, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+
+    return _encode_image(image)
+
+
+def _render_fluid_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders one of OCEAN_CFD_VIEWS (sediment concentration/deposition) from the world's own
+    permanent, always-on `World.ocean_cfd_state` (see ocean_cfd.py), reusing the same
+    _project_climate_grid/_fill_rects primitives _render_climate_view already uses for
+    climate.py's own grid -- the state object shares the same (lat_deg, lon_deg, world_xyz)
+    grid-geometry shape convention as climate.ClimateFields. `ocean_cfd_state` is never
+    actually None once a world has been generated (see its own docstring), but this function
+    still degrades to a plain background-only image if it somehow is (same "always renders
+    *something* standalone" contract every other view in VIEWS already has -- e.g. an
+    elevation/plates render with no plates yet -- rather than raising). V1-only: sediment has
+    no V2/HEALPix port yet, so a V2 world's ocean_cfd_state (an OceanCFDStateV2, lacking
+    lat_deg/lon_deg) would fail `_project_climate_grid`'s (H, W) assumptions here -- V2's
+    main_v2.py rejects FLUID_VIEWS entirely, so this is never reached for a V2 world."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    state = world.ocean_cfd_state
     if state is None:
         return _encode_image(Image.fromarray(pixels, mode="RGB"))
 
@@ -1009,33 +1171,14 @@ def _render_fluid_view(world: World, projection: str, view: str, width: int, hei
         state.lat_deg, state.lon_deg, state.world_xyz, projection, view_rotation, width, height, padding_px
     )
 
-    if view == "oceanCfdVelocity":
-        backdrop = np.where(state.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
-        _fill_rects(pixels, centers, half_w, half_h, backdrop)
-    elif view == "oceanCfdTemperature":
-        _fill_rects(pixels, centers, half_w, half_h, temperature_colors(state.temperature_c.reshape(-1)))
-    elif view == "oceanCfdSediment":
+    if view == "oceanCfdSediment":
         _fill_rects(pixels, centers, half_w, half_h, sediment_colors(state.sediment_concentration.reshape(-1)))
     elif view == "oceanCfdDeposition":
         _fill_rects(pixels, centers, half_w, half_h, sediment_deposition_colors(state.sediment_deposited_m.reshape(-1)))
-    elif view == "atmosphereCfdVelocity":
-        backdrop = np.where(state.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
-        _fill_rects(pixels, centers, half_w, half_h, backdrop)
-    elif view == "atmosphereCfdTemperature":
-        _fill_rects(pixels, centers, half_w, half_h, temperature_colors(state.temperature_c.reshape(-1)))
-    elif view == "atmosphereCfdHumidity":
-        _fill_rects(pixels, centers, half_w, half_h, humidity_colors(state.humidity.reshape(-1)))
 
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
-
-    if view in ("oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition", "atmosphereCfdTemperature", "atmosphereCfdHumidity"):
-        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-
-    if view == "oceanCfdVelocity":
-        _draw_climate_vectors(draw, state, state.u, state.v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
-    elif view == "atmosphereCfdVelocity":
-        _draw_climate_vectors(draw, state, state.u, state.v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
+    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     # No server-side legend here -- same reasoning as _render_climate_view's own trailing
     # comment (see frontend/src/legendData.ts/Legend.tsx).
@@ -1054,7 +1197,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    slope = grid_slope(elevation_m, lat_deg)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
     biome_ids = biomes.classify_biomes(
         display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
     )
@@ -1111,7 +1254,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    slope = grid_slope(elevation_m, lat_deg)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
     biome_ids = biomes.classify_biomes(
         display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
     )

@@ -63,11 +63,17 @@ class AtmosphereCFDStateV2:
     precipitation_mm: np.ndarray
     elapsed_seconds: float = 0.0
 
+    def resample_scalar_to_equirect(self, field: np.ndarray, height: int, width: int) -> np.ndarray:
+        """The seam `climate.py`'s `compute_climate` calls polymorphically against either a
+        v1 (equirectangular) or v2 (HEALPix) CFD state -- see climate.py's own small edit.
+        Same seam `resample_uv_to_equirect` below uses, just for a scalar field."""
+        return healpix_grid.resample_to_equirect(self.grid, field, height, width)
+
     def resample_uv_to_equirect(self, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
         """The seam `climate.py`'s `compute_climate` calls polymorphically against either a
         v1 (equirectangular) or v2 (HEALPix) CFD state -- see climate.py's own small edit."""
-        u = healpix_grid.resample_to_equirect(self.grid, self.u, height, width)
-        v = healpix_grid.resample_to_equirect(self.grid, self.v, height, width)
+        u = self.resample_scalar_to_equirect(self.u, height, width)
+        v = self.resample_scalar_to_equirect(self.v, height, width)
         return u, v
 
 

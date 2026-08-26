@@ -111,15 +111,18 @@ function isIdentityRotation(rotation: Mat3): boolean {
 // as its own small cookie rather than folded into anything server-side since it's display
 // state, not simulation state -- same reasoning `rotation` itself already gets.
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
-// Ocean/Atmospheric Fluid Dynamics's own map views (see backend app/ocean_cfd.py/
-// atmosphere_cfd.py) -- always available now, not gated behind a Mode toggle, so they're just
-// two more groups in the Map View dropdown below rather than a mode-conditional list.
-const OCEAN_CFD_VIEW_CHOICES: MapView[] = ["oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition"];
-const ATMOSPHERE_CFD_VIEW_CHOICES: MapView[] = ["atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity"];
+// Ocean Fluid Dynamics's own sediment map views (see backend app/ocean_cfd.py) -- always
+// available now, not gated behind a Mode toggle. The matching velocity/temperature/humidity
+// CFD-native views (ocean and atmosphere both) were removed once the plain "wind"/
+// "oceanCurrents"/"temperature"/"humidity" views became genuinely CFD-sourced (see backend
+// app/climate.py's module docstring), making the separate CFD-native versions pure
+// duplicates -- sediment concentration/deposition stay unique, so they're still their own
+// group in the Map View dropdown below.
+const OCEAN_CFD_VIEW_CHOICES: MapView[] = ["oceanCfdSediment", "oceanCfdDeposition"];
 const MAP_VIEW_CHOICES = new Set<MapView>([
   "elevation", "plates", "platesDetail", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
   "resources", "soilQuality", "plateInspector", "riverInspector", "lakeInspector",
-  ...OCEAN_CFD_VIEW_CHOICES, ...ATMOSPHERE_CFD_VIEW_CHOICES,
+  ...OCEAN_CFD_VIEW_CHOICES,
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -629,16 +632,9 @@ export default function App() {
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
               </optgroup>
-              <optgroup label="Ocean Fluid Dynamics">
-                <option value="oceanCfdVelocity">Ocean currents (detail)</option>
-                <option value="oceanCfdTemperature">Ocean temperature (detail)</option>
+              <optgroup label="Sediment">
                 <option value="oceanCfdSediment">Suspended sediment</option>
                 <option value="oceanCfdDeposition">Sediment deposition</option>
-              </optgroup>
-              <optgroup label="Atmospheric Fluid Dynamics">
-                <option value="atmosphereCfdVelocity">Wind (detail)</option>
-                <option value="atmosphereCfdTemperature">Air temperature (detail)</option>
-                <option value="atmosphereCfdHumidity">Humidity (detail)</option>
               </optgroup>
             </select>
             <select

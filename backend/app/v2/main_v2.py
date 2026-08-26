@@ -7,11 +7,15 @@ generic over `World`/`Plate` -- see world_v2.py's own docstring for why v2 popul
 independent of whatever v1 world is loaded in the same process (see the plan's frontend
 toggle section).
 
-Not supported here: the seven CFD-native map views (`render_image.FLUID_VIEWS`) -- v2's CFD
-state is a flat `(npix,)` HEALPix array, not the `(H, W)` grid those views' rendering code
-assumes. Every other view (elevation/plates/platesDetail/biome/combined/climate/resources/
-soilQuality) works unchanged, since `climate.compute_climate`'s own wind/current fields are
-already grid-agnostic via the `resample_uv_to_equirect` seam (see atmosphere_cfd_v2.py).
+Not supported here: the two ocean-sediment map views (`render_image.FLUID_VIEWS` --
+oceanCfdSediment/oceanCfdDeposition) -- v2's CFD state is a flat `(npix,)` HEALPix array, not
+the `(H, W)` grid that pair's rendering code assumes, and sediment has no HEALPix port yet.
+Every other view (elevation/plates/platesDetail/biome/combined/climate/resources/soilQuality)
+works unchanged; `CLIMATE_VIEWS` (temperature/wind/oceanCurrents/humidity/precipitation/biome)
+in particular render natively off the HEALPix grid for a v2 world (see
+render_image._render_climate_view_healpix), not through `resample_uv_to_equirect`'s (H, W)
+bridge -- that seam still exists (see atmosphere_cfd_v2.py) but is now only used by other,
+still-equirectangular callers (e.g. erosion.py/hydrology.py's own grids).
 """
 
 from __future__ import annotations
