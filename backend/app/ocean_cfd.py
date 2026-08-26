@@ -116,14 +116,19 @@ class OceanCFDState:
 def init_ocean_cfd(world: "World") -> OceanCFDState:
     """Snapshots the world's current elevation/wind/temperature (via climate.py's own public
     pipeline -- reusing its grid construction and elevation resampling rather than
-    duplicating them) and starts the ocean at rest (u = v = eta = 0, no sediment in
-    suspension yet) -- see World.fluid_mode's own docstring for why this is always a fresh
-    snapshot, never a resume of a previous session's state."""
+    duplicating them). Wind and the starting current/sea-surface state each independently
+    resume from World.remembered_wind_u/World.remembered_ocean_u (etc., see their own
+    docstrings) when set -- wind from a prior "atmosphere_cfd" session (or this same mode's
+    own prior session, which never changes it -- see module docstring), current/eta/
+    temperature/sediment from this mode's own prior session -- falling back to climate.py's
+    fresh diagnostic wind and an ocean at rest (u = v = eta = 0, no sediment in suspension)
+    for whichever of those has nothing to resume from."""
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)
 
     depth_m = np.where(fields.is_ocean, np.clip(-fields.elevation_m, MIN_DEPTH_M, MAX_DEPTH_M), 0.0)
     zeros = np.zeros((height, width))
+    has_remembered_current = world.remembered_ocean_u is not None
 
     return OceanCFDState(
         lat_deg=fields.lat_deg,
@@ -132,16 +137,30 @@ def init_ocean_cfd(world: "World") -> OceanCFDState:
         is_ocean=fields.is_ocean,
         elevation_m=fields.elevation_m,
         depth_m=depth_m,
-        u=zeros.copy(),
-        v=zeros.copy(),
-        eta=zeros.copy(),
-        temperature_c=fields.ocean_temperature_c.copy(),
+        u=world.remembered_ocean_u.copy() if has_remembered_current else zeros.copy(),
+        v=world.remembered_ocean_v.copy() if has_remembered_current else zeros.copy(),
+        eta=world.remembered_ocean_eta.copy() if has_remembered_current else zeros.copy(),
+        temperature_c=world.remembered_ocean_temperature_c.copy() if has_remembered_current else fields.ocean_temperature_c.copy(),
         baseline_temperature_c=fields.ocean_temperature_c.copy(),
-        sediment_concentration=zeros.copy(),
-        sediment_deposited_m=zeros.copy(),
-        wind_u=fields.wind_u.copy(),
-        wind_v=fields.wind_v.copy(),
+        sediment_concentration=world.remembered_ocean_sediment_concentration.copy() if has_remembered_current else zeros.copy(),
+        sediment_deposited_m=world.remembered_ocean_sediment_deposited_m.copy() if has_remembered_current else zeros.copy(),
+        wind_u=fields.wind_u.copy() if world.remembered_wind_u is None else world.remembered_wind_u.copy(),
+        wind_v=fields.wind_v.copy() if world.remembered_wind_v is None else world.remembered_wind_v.copy(),
     )
+
+
+def remember_ocean_state(world: "World", state: OceanCFDState) -> None:
+    """Snapshots this session's final current/sea-surface state onto `world`'s
+    remembered_ocean_* fields (see World.remembered_ocean_u's own docstring) so a later
+    switch back into "ocean_cfd" can resume from it instead of starting the ocean at rest
+    again. Leaves world.remembered_wind_u/v untouched -- this mode never changes wind (see
+    module docstring), so there's nothing new to remember there."""
+    world.remembered_ocean_u = state.u.copy()
+    world.remembered_ocean_v = state.v.copy()
+    world.remembered_ocean_eta = state.eta.copy()
+    world.remembered_ocean_temperature_c = state.temperature_c.copy()
+    world.remembered_ocean_sediment_concentration = state.sediment_concentration.copy()
+    world.remembered_ocean_sediment_deposited_m = state.sediment_deposited_m.copy()
 
 
 def step_ocean_cfd(world: "World", state: OceanCFDState, seconds: float) -> None:

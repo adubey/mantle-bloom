@@ -119,11 +119,33 @@ class World:
     # entered -- world.plates itself is never touched while either FD mode is active.
     fluid_mode: str = "tectonics_climate"
     # Populated by main.py's POST /world/mode when fluid_mode switches to "ocean_cfd"/
-    # "atmosphere_cfd" (a fresh init_ocean_cfd/init_atmosphere_cfd snapshot every time, never a
-    # resume of a prior session -- see fluid_mode's own docstring), and cleared again when it
-    # switches away. None whenever the matching mode isn't the active one.
+    # "atmosphere_cfd" (init_ocean_cfd/init_atmosphere_cfd -- a fresh climate/elevation
+    # snapshot every time, but seeded with whatever wind/ocean-current state
+    # remembered_wind_u/remembered_ocean_u (etc., above) still hold from an earlier FD
+    # session, if any -- see those fields' own docstrings), and cleared again when it switches
+    # away. None whenever the matching mode isn't the active one.
     ocean_cfd_state: ocean_cfd.OceanCFDState | None = None
     atmosphere_cfd_state: atmosphere_cfd.AtmosphereCFDState | None = None
+    # Wind (eastward/northward, m/s) carried across a fluid-dynamics mode switch -- written
+    # by atmosphere_cfd.remember_atmosphere_state whenever "atmosphere_cfd" (the only mode
+    # that actually evolves wind) is left, read by ocean_cfd.init_ocean_cfd/
+    # atmosphere_cfd.init_atmosphere_cfd as their own starting wind instead of a fresh
+    # climate.compute_climate diagnostic. Cleared by step_world (see its own docstring)
+    # whenever a "tectonics_climate" step actually moves plates or recomputes climate, since
+    # a wind baseline from before that step no longer matches the terrain it came from. None
+    # means there's nothing to resume yet.
+    remembered_wind_u: np.ndarray | None = None
+    remembered_wind_v: np.ndarray | None = None
+    # Ocean current/sea-surface state carried the same way -- written by
+    # ocean_cfd.remember_ocean_state whenever "ocean_cfd" is left, read by
+    # ocean_cfd.init_ocean_cfd as its own starting current instead of starting at rest.
+    # Cleared alongside remembered_wind_u/v above.
+    remembered_ocean_u: np.ndarray | None = None
+    remembered_ocean_v: np.ndarray | None = None
+    remembered_ocean_eta: np.ndarray | None = None
+    remembered_ocean_temperature_c: np.ndarray | None = None
+    remembered_ocean_sediment_concentration: np.ndarray | None = None
+    remembered_ocean_sediment_deposited_m: np.ndarray | None = None
 
     def log_event(self, message: str) -> None:
         self.events.append((self.elapsed_years, message))
@@ -293,7 +315,24 @@ def step_world(world: World, years: float) -> None:
     "plate movement" means shift/deform, topology changes, and volcanism; "climate & biomes"
     means erosion (which itself computes this step's climate.py fields), hydrology,
     bathymetry, and geology's resource formation. elapsed_years always advances regardless
-    of either flag."""
+    of either flag.
+
+    Only ever called while world.fluid_mode == "tectonics_climate" (see main.py's /world/
+    step), so a call reaching here is itself "the tectonics & climate mode" acting -- if
+    either half above is live, plates and/or climate are about to change, which invalidates
+    any wind/ocean-current baseline an earlier Ocean/Atmospheric FD session left behind (see
+    World.remembered_wind_u's own docstring), so both are dropped up front rather than left
+    to seed a future FD session against terrain they no longer match.
+    """
+    if world.simulate_plate_movement or world.simulate_climate_biomes:
+        world.remembered_wind_u = None
+        world.remembered_wind_v = None
+        world.remembered_ocean_u = None
+        world.remembered_ocean_v = None
+        world.remembered_ocean_eta = None
+        world.remembered_ocean_temperature_c = None
+        world.remembered_ocean_sediment_concentration = None
+        world.remembered_ocean_sediment_deposited_m = None
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)

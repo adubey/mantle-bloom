@@ -1208,15 +1208,27 @@ own inertial period is under a day); plate tectonics needs timesteps of thousand
 of years. There is no sane way for one `/world/step`-style call to mean both, so `POST
 /world/mode` and `POST /world/step_fluid` are deliberately separate from `POST /world/step`
 (different endpoints, different time units -- `years` vs. `seconds`) rather than one endpoint
-inferring which the caller meant. Switching *into* `"ocean_cfd"`/`"atmosphere_cfd"` always
-takes a **fresh** snapshot of the world's current elevation/climate (`init_ocean_cfd`/
+inferring which the caller meant. Switching *into* `"ocean_cfd"`/`"atmosphere_cfd"` takes a
+fresh snapshot of the world's current elevation/climate (`init_ocean_cfd`/
 `init_atmosphere_cfd`, both built on top of `climate.compute_climate`'s own public grid-
-construction/elevation-resampling pipeline, not a re-derivation of it), discarding whatever
-state that mode held from a previous visit -- simplest, most predictable behavior, and there's
-no principled way to "resume" a stale FD session against terrain that may have moved on since.
-Switching back to `"tectonics_climate"` just flips the flag and drops both FD states to free
-memory; tectonics/elevation were never touched while an FD mode was active, so stepping
-resumes exactly where it left off with no special handling needed.
+construction/elevation-resampling pipeline, not a re-derivation of it), but seeds its wind
+and (for `"ocean_cfd"`) its starting current/eta/temperature/sediment from whatever an
+earlier FD session left **remembered** on `World` (`World.remembered_wind_u`/
+`remembered_ocean_u`, etc. -- written by `atmosphere_cfd.remember_atmosphere_state`/
+`ocean_cfd.remember_ocean_state` whenever `POST /world/mode` leaves that mode), falling back
+to a fresh diagnostic wind or an ocean at rest for whichever of those has nothing to resume
+from. Concretely: leaving `"atmosphere_cfd"` and entering `"ocean_cfd"` hands that session's
+final wind straight to the ocean solver as its own (fixed-for-the-session) wind forcing,
+since `"ocean_cfd"` never itself changes wind; re-entering either FD mode later resumes its
+own prior wind/current the same way. That remembered baseline is only ever valid against the
+terrain it was computed from, so it's dropped -- by `step_world`, see its own docstring --
+the moment a real `"tectonics_climate"` step actually moves plates or recomputes climate;
+from that point on, `"tectonics_climate"` has effectively overwritten it, and the next FD
+entry falls back to a fresh diagnostic snapshot again. Switching back to
+`"tectonics_climate"` itself just flips the flag and drops both FD states to free memory
+(after remembering their final state first); tectonics/elevation were never touched while an
+FD mode was active, so stepping resumes exactly where it left off with no special handling
+needed.
 
 <a id="shallow-water-formulation"></a>
 ### The shallow-water formulation

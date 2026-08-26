@@ -114,10 +114,11 @@ def _equilibrium_temperature(world: "World", fields: climate.ClimateFields) -> n
 
 def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
     """Snapshots the world's current elevation/temperature/humidity (via climate.py's own
-    public pipeline) and starts the atmosphere from that diagnostic snapshot's own wind/
-    humidity -- unlike ocean_cfd.py's ocean-at-rest start, beginning from climate.py's already
-    -plausible wind field avoids a jarring dead-calm-to-storm transient the first few
-    substeps would otherwise show."""
+    public pipeline) and starts the atmosphere's wind from World.remembered_wind_u/v (see
+    their own docstring) when a prior "atmosphere_cfd" or "ocean_cfd" session left one behind,
+    else from that diagnostic snapshot's own wind -- unlike ocean_cfd.py's ocean-at-rest
+    start, beginning from a plausible wind field (remembered or diagnostic) avoids a jarring
+    dead-calm-to-storm transient the first few substeps would otherwise show."""
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)
     equilibrium_temperature_c = _equilibrium_temperature(world, fields)
@@ -128,14 +129,22 @@ def init_atmosphere_cfd(world: "World") -> AtmosphereCFDState:
         world_xyz=fields.world_xyz,
         is_ocean=fields.is_ocean,
         elevation_m=fields.elevation_m,
-        u=fields.wind_u.copy(),
-        v=fields.wind_v.copy(),
+        u=fields.wind_u.copy() if world.remembered_wind_u is None else world.remembered_wind_u.copy(),
+        v=fields.wind_v.copy() if world.remembered_wind_v is None else world.remembered_wind_v.copy(),
         eta=np.zeros((height, width)),
         temperature_c=np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c),
         equilibrium_temperature_c=equilibrium_temperature_c,
         humidity=fields.humidity.copy(),
         precipitation_mm=fields.precipitation_mm.copy(),
     )
+
+
+def remember_atmosphere_state(world: "World", state: AtmosphereCFDState) -> None:
+    """Snapshots this session's final wind onto `world.remembered_wind_u/v` (see their own
+    docstring) so a later switch into "ocean_cfd" or back into "atmosphere_cfd" can resume
+    from it instead of a fresh climate.py diagnostic."""
+    world.remembered_wind_u = state.u.copy()
+    world.remembered_wind_v = state.v.copy()
 
 
 def _mountain_deflection_tendency(u: np.ndarray, v: np.ndarray, elevation_m: np.ndarray, dx_m: np.ndarray, dy_m: float) -> tuple[np.ndarray, np.ndarray]:

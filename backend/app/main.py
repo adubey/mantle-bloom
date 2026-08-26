@@ -566,23 +566,32 @@ def set_controls(req: ControlsRequest) -> dict:
 @app.post("/world/mode")
 def set_mode(req: ModeRequest) -> dict:
     """The UI's "Mode" toggle (see World.fluid_mode's own docstring) -- switches between
-    "tectonics_climate" (the default) and the two Fluid Dynamics modes. Switching *into*
-    "ocean_cfd"/"atmosphere_cfd" always takes a *fresh* snapshot of the world's current
-    elevation/climate (init_ocean_cfd/init_atmosphere_cfd), discarding any state left over
-    from a previous visit to that same mode -- simplest, most predictable behavior, and
-    matches "freeze at entry": there's no notion of "resuming" a stale FD session against
-    terrain that (if the mode was left via "tectonics_climate" and stepped) may since have
-    moved on. Switching *back* to "tectonics_climate" just flips the flag and drops both FD
-    states to free memory -- plate tectonics/elevation were never touched while an FD mode
-    was active, so it resumes exactly where it left off with no special handling needed.
-    Uses `_step_lock` since it mutates the same World a step would. `400` for an unrecognized
-    mode, `404` if no world has been generated yet."""
+    "tectonics_climate" (the default) and the two Fluid Dynamics modes. Whichever FD mode is
+    currently active (if any) has its final wind/ocean-current state remembered onto `world`
+    first (see ocean_cfd.remember_ocean_state/atmosphere_cfd.remember_atmosphere_state and
+    World.remembered_wind_u's own docstring) before its state is replaced. Switching *into*
+    "ocean_cfd"/"atmosphere_cfd" takes a fresh snapshot of the world's current elevation/
+    climate (init_ocean_cfd/init_atmosphere_cfd) but seeds it with whatever wind/current an
+    earlier FD session left remembered, if any -- so entering "ocean_cfd" right after
+    "atmosphere_cfd" resumes that wind rather than recomputing a diagnostic one, and
+    re-entering either FD mode later resumes its own prior current/wind too, as long as no
+    "tectonics_climate" step has since moved the terrain that baseline was valid against (see
+    step_world's own docstring for where that gets invalidated). Switching *back* to
+    "tectonics_climate" just flips the flag and drops both FD states to free memory -- plate
+    tectonics/elevation were never touched while an FD mode was active, so it resumes exactly
+    where it left off with no special handling needed. Uses `_step_lock` since it mutates the
+    same World a step would. `400` for an unrecognized mode, `404` if no world has been
+    generated yet."""
     world = _require_world()
     if req.mode not in FLUID_MODES:
         raise HTTPException(status_code=400, detail=f"unknown mode {req.mode!r}; choices are {FLUID_MODES}")
     if not _step_lock.acquire(blocking=False):
         raise HTTPException(status_code=503, detail="a step is already in progress")
     try:
+        if world.ocean_cfd_state is not None:
+            ocean_cfd.remember_ocean_state(world, world.ocean_cfd_state)
+        if world.atmosphere_cfd_state is not None:
+            atmosphere_cfd.remember_atmosphere_state(world, world.atmosphere_cfd_state)
         world.fluid_mode = req.mode
         world.ocean_cfd_state = ocean_cfd.init_ocean_cfd(world) if req.mode == "ocean_cfd" else None
         world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world) if req.mode == "atmosphere_cfd" else None
