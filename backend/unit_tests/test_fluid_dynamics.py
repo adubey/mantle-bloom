@@ -75,6 +75,100 @@ def test_semi_lagrangian_advect_is_identity_at_zero_velocity():
     assert np.array_equal(advected, field)
 
 
+def _reference_gradient_m(field, dx_m, dy_m):
+    """The pre-Numba formula, reimplemented independently here (not calling production code)
+    so these tests catch a regression in the jitted rewrite rather than merely re-asserting
+    whatever it currently computes."""
+    gx = (np.roll(field, -1, axis=1) - np.roll(field, 1, axis=1)) / (2.0 * dx_m[:, None])
+    gy = (np.roll(field, 1, axis=0) - np.roll(field, -1, axis=0)) / (2.0 * dy_m)
+    return gx, gy
+
+
+def _reference_laplacian_m(field, dx_m, dy_m):
+    d2x = (np.roll(field, -1, axis=1) + np.roll(field, 1, axis=1) - 2.0 * field) / (dx_m[:, None] ** 2)
+    d2y = (np.roll(field, 1, axis=0) + np.roll(field, -1, axis=0) - 2.0 * field) / (dy_m**2)
+    return d2x + d2y
+
+
+def _reference_divergence_m(u, v, dx_m, dy_m):
+    gx, _ = _reference_gradient_m(u, dx_m, dy_m)
+    _, gy = _reference_gradient_m(v, dx_m, dy_m)
+    return gx + gy
+
+
+def _reference_grid_noise_filter(field, weight):
+    neighbor_avg = 0.25 * (
+        np.roll(field, -1, axis=1) + np.roll(field, 1, axis=1) + np.roll(field, -1, axis=0) + np.roll(field, 1, axis=0)
+    )
+    return field + weight * (neighbor_avg - field)
+
+
+def _random_field_and_spacing(rng, height, width):
+    field = rng.normal(size=(height, width))
+    dx_m = rng.uniform(10_000.0, 100_000.0, size=height)
+    dy_m = 12_000.0
+    return field, dx_m, dy_m
+
+
+def test_gradient_m_matches_reference_formula():
+    rng = np.random.default_rng(1)
+    field, dx_m, dy_m = _random_field_and_spacing(rng, 12, 24)
+    gx, gy = fluid_dynamics.gradient_m(field, dx_m, dy_m)
+    expected_gx, expected_gy = _reference_gradient_m(field, dx_m, dy_m)
+    assert np.allclose(gx, expected_gx)
+    assert np.allclose(gy, expected_gy)
+
+
+def test_laplacian_m_matches_reference_formula():
+    rng = np.random.default_rng(2)
+    field, dx_m, dy_m = _random_field_and_spacing(rng, 12, 24)
+    result = fluid_dynamics.laplacian_m(field, dx_m, dy_m)
+    assert np.allclose(result, _reference_laplacian_m(field, dx_m, dy_m))
+
+
+def test_divergence_m_matches_reference_formula():
+    rng = np.random.default_rng(3)
+    u, dx_m, dy_m = _random_field_and_spacing(rng, 12, 24)
+    v, _, _ = _random_field_and_spacing(rng, 12, 24)
+    result = fluid_dynamics.divergence_m(u, v, dx_m, dy_m)
+    assert np.allclose(result, _reference_divergence_m(u, v, dx_m, dy_m))
+
+
+def test_grid_noise_filter_matches_reference_formula():
+    rng = np.random.default_rng(4)
+    field, _, _ = _random_field_and_spacing(rng, 12, 24)
+    result = fluid_dynamics.grid_noise_filter(field, weight=0.05)
+    assert np.allclose(result, _reference_grid_noise_filter(field, 0.05))
+
+
+def test_semi_lagrangian_advect_matches_reference_formula_at_nonzero_velocity():
+    """test_semi_lagrangian_advect_is_identity_at_zero_velocity above only exercises the
+    zero-velocity path (where every backward-trace lands back on its own cell); this exercises
+    the actual round/clip/mod/gather chain the Numba kernel now performs instead of NumPy."""
+    height, width = 12, 24
+    lat_deg = (90.0 - (np.arange(height) + 0.5) * (180.0 / height)).astype(np.float32)
+    rng = np.random.default_rng(5)
+    field = rng.normal(size=(height, width)).astype(np.float32)
+    u = rng.normal(0.0, 5.0, size=(height, width)).astype(np.float32)
+    v = rng.normal(0.0, 5.0, size=(height, width)).astype(np.float32)
+    dt_s = 3600.0
+
+    radius_m = fluid_dynamics.plates.PLANET_RADIUS_KM * 1000.0
+    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
+    lon_deg_row = -180.0 + (np.arange(width, dtype=np.float32) + 0.5) * (360.0 / width)
+    cos_lat = np.clip(np.cos(np.radians(lat_grid)), 0.15, 1.0)
+    meters_per_deg_lat = (np.pi * radius_m) / 180.0
+    src_lat = lat_grid - (v * dt_s) / meters_per_deg_lat
+    src_lon = lon_deg_row[None, :] - (u * dt_s) / (meters_per_deg_lat * cos_lat)
+    src_row = np.clip(np.round((90.0 - src_lat) / (180.0 / height) - 0.5).astype(np.int64), 0, height - 1)
+    src_col = np.round((src_lon + 180.0) / (360.0 / width) - 0.5).astype(np.int64) % width
+    expected = field[src_row, src_col]
+
+    geometry = fluid_dynamics.advection_geometry(lat_deg, width)
+    result = fluid_dynamics.semi_lagrangian_advect(field, u, v, dt_s, geometry)
+    assert np.array_equal(result, expected)
+
+
 def test_coastal_ocean_mask_excludes_open_ocean_and_all_land():
     is_ocean = np.array(
         [
