@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import bathymetry, climate, erosion, geology, hydrology, mantle, merge_split, volcanism
+from . import atmosphere_cfd, bathymetry, climate, erosion, geology, hydrology, mantle, merge_split, ocean_cfd, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from .plates import Plate, gather_node_positions, generate_plates, query_workers
 
@@ -106,6 +106,24 @@ class World:
     # documents) rather than None, so a render/stats call right after toggling this off still
     # shows the last real climate snapshot instead of going blank.
     simulate_climate_biomes: bool = True
+    # Which of the three mutually-exclusive top-level simulation modes is currently active --
+    # the UI's "Mode" toggle (see main.py's POST /world/mode and
+    # docs/simulation-model.md#ocean-atmospheric-fluid-dynamics). "tectonics_climate" (the
+    # default) is everything above: step_world runs exactly as it always has, completely
+    # unaware this field even exists. Switching to "ocean_cfd"/"atmosphere_cfd" freezes plate
+    # tectonics and the climate/erosion model (real ocean/atmosphere fluid dynamics needs
+    # steps of hours-to-days; tectonics needs steps of thousands-to-millions of years -- no
+    # single "Step" can mean both), and hands stepping over to ocean_cfd.step_ocean_cfd/
+    # atmosphere_cfd.step_atmosphere_cfd instead (see main.py's POST /world/step_fluid) against
+    # a frozen snapshot of whatever elevation/climate this world had the moment the mode was
+    # entered -- world.plates itself is never touched while either FD mode is active.
+    fluid_mode: str = "tectonics_climate"
+    # Populated by main.py's POST /world/mode when fluid_mode switches to "ocean_cfd"/
+    # "atmosphere_cfd" (a fresh init_ocean_cfd/init_atmosphere_cfd snapshot every time, never a
+    # resume of a prior session -- see fluid_mode's own docstring), and cleared again when it
+    # switches away. None whenever the matching mode isn't the active one.
+    ocean_cfd_state: ocean_cfd.OceanCFDState | None = None
+    atmosphere_cfd_state: atmosphere_cfd.AtmosphereCFDState | None = None
 
     def log_event(self, message: str) -> None:
         self.events.append((self.elapsed_years, message))

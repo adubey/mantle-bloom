@@ -69,6 +69,14 @@ def test_stats_before_generate_returns_404(client):
     assert client.get("/world/stats").status_code == 404
 
 
+def test_mode_before_generate_returns_404(client):
+    assert client.post("/world/mode", json={"mode": "ocean_cfd"}).status_code == 404
+
+
+def test_step_fluid_before_generate_returns_404(client):
+    assert client.post("/world/step_fluid", json={"seconds": 3600}).status_code == 404
+
+
 def test_overlapping_step_returns_503(client, monkeypatch):
     client.post("/world/generate", json={"seed": 1, "num_plates": 6})
 
@@ -417,4 +425,71 @@ def test_export_hexgrid_returns_the_requested_tile_count(client):
 def test_export_hexgrid_rejects_unknown_frequency(client):
     client.post("/world/generate", json={"seed": 11, "num_plates": 8})
     resp = client.post("/world/export_hexgrid", json={"frequency": 5})
+    assert resp.status_code == 400
+
+
+def test_mode_rejects_unknown_mode(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    resp = client.post("/world/mode", json={"mode": "not-a-real-mode"})
+    assert resp.status_code == 400
+
+
+def test_step_fluid_rejects_outside_fluid_mode(client):
+    # A fresh world always starts in tectonics_climate -- /world/step_fluid has nothing to do
+    # there (use /world/step instead, see main.py's own error message).
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    resp = client.post("/world/step_fluid", json={"seconds": 3600})
+    assert resp.status_code == 400
+
+
+def test_step_rejects_inside_fluid_mode(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5})
+    client.post("/world/mode", json={"mode": "ocean_cfd"})
+    resp = client.post("/world/step", json={"years": 1_000_000})
+    assert resp.status_code == 400
+
+
+def test_mode_switch_to_ocean_cfd_then_step_fluid_advances_elapsed_seconds(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5})
+    mode_resp = client.post("/world/mode", json={"mode": "ocean_cfd"})
+    assert mode_resp.status_code == 200
+    assert mode_resp.json()["fluid_mode"] == "ocean_cfd"
+
+    step_resp = client.post("/world/step_fluid", json={"seconds": 3600})
+    assert step_resp.status_code == 200
+    body = step_resp.json()
+    assert body["fluid_mode"] == "ocean_cfd"
+    assert body["elapsed_seconds"] == pytest.approx(3600, rel=0.05)
+
+
+def test_mode_switch_back_to_tectonics_resumes_ordinary_stepping(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5})
+    client.post("/world/mode", json={"mode": "atmosphere_cfd"})
+    client.post("/world/step_fluid", json={"seconds": 3600})
+
+    back_resp = client.post("/world/mode", json={"mode": "tectonics_climate"})
+    assert back_resp.status_code == 200
+    assert back_resp.json()["fluid_mode"] == "tectonics_climate"
+
+    step_resp = client.post("/world/step", json={"years": 1_000_000})
+    assert step_resp.status_code == 200
+
+
+def test_mode_summary_reports_fluid_mode(client):
+    gen_resp = client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    assert gen_resp.json()["fluid_mode"] == "tectonics_climate"
+    client.post("/world/mode", json={"mode": "ocean_cfd"})
+    assert client.get("/world/summary").json()["fluid_mode"] == "ocean_cfd"
+
+
+def test_render_fluid_view_rejects_outside_matching_mode(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5})
+    resp = client.get("/world/render", params={"view": "oceanCfdVelocity"})
+    assert resp.status_code == 400
+
+    client.post("/world/mode", json={"mode": "ocean_cfd"})
+    resp = client.get("/world/render", params={"view": "oceanCfdVelocity"})
+    assert resp.status_code == 200
+    # Still the wrong mode's own views -- atmosphere_cfd_state is None while in ocean_cfd.
+    resp = client.get("/world/render", params={"view": "atmosphereCfdVelocity"})
     assert resp.status_code == 400

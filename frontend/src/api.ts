@@ -23,7 +23,21 @@ export type MapView =
   | "soilQuality"
   | "plateInspector"
   | "riverInspector"
-  | "lakeInspector";
+  | "lakeInspector"
+  | "oceanCfdVelocity"
+  | "oceanCfdTemperature"
+  | "oceanCfdSediment"
+  | "oceanCfdDeposition"
+  | "atmosphereCfdVelocity"
+  | "atmosphereCfdTemperature"
+  | "atmosphereCfdHumidity";
+
+// The UI's "Mode" toggle -- see backend app/world.py's World.fluid_mode. Mutually exclusive:
+// "tectonics_climate" (the default) is today's simulation, unchanged; the two Fluid Dynamics
+// modes freeze it and hand stepping over to a real time-integrated shallow-water solver (see
+// backend app/ocean_cfd.py/atmosphere_cfd.py and docs/simulation-model.md#ocean-atmospheric-
+// fluid-dynamics).
+export type FluidMode = "tectonics_climate" | "ocean_cfd" | "atmosphere_cfd";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -35,6 +49,11 @@ export interface WorldSummary {
   elapsed_years: number;
   num_plates: number;
   events: WorldEvent[];
+  // The server-side world's own current mode (see FluidMode) -- outlives a browser refresh
+  // (the world lives in server memory), unlike the frontend's own `fluidMode` React state,
+  // which always starts back at its default on a fresh page load. See App.tsx's restore-on-
+  // mount effect for why this needs resyncing explicitly rather than assumed.
+  fluid_mode: FluidMode;
 }
 
 export interface RenderResponse {
@@ -312,6 +331,39 @@ export async function stepWorld(years: number): Promise<WorldSummary> {
       continue;
     }
     return asJson<WorldSummary>(resp);
+  }
+}
+
+// The UI's "Mode" toggle -- switches between "tectonics_climate" and the two Fluid Dynamics
+// modes (see FluidMode). Switching into an FD mode always takes a fresh snapshot of the
+// world's current elevation/climate server-side (discarding any state from a previous visit
+// to that mode); switching back to "tectonics_climate" just resumes ordinary stepping from
+// wherever tectonics/elevation were left (never touched while an FD mode was active). See
+// backend app/main.py's POST /world/mode.
+export function setFluidMode(mode: FluidMode): Promise<{ fluid_mode: FluidMode }> {
+  return fetch(`${API_BASE}/world/mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  }).then(asJson<{ fluid_mode: FluidMode }>);
+}
+
+// Advances the active Ocean/Atmospheric Fluid Dynamics simulation by `seconds` of real time
+// -- the FD-mode counterpart to stepWorld (which only ever advances tectonic/climate years).
+// Same 503-retry-on-overlapping-step contract as stepWorld (see backend app/main.py's
+// _step_lock, shared by both /world/step and /world/step_fluid).
+export async function stepFluid(seconds: number): Promise<{ fluid_mode: FluidMode; elapsed_seconds: number }> {
+  for (;;) {
+    const resp = await fetch(`${API_BASE}/world/step_fluid`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seconds }),
+    });
+    if (resp.status === 503) {
+      await new Promise((resolve) => setTimeout(resolve, STEP_RETRY_DELAY_MS));
+      continue;
+    }
+    return asJson<{ fluid_mode: FluidMode; elapsed_seconds: number }>(resp);
   }
 }
 
