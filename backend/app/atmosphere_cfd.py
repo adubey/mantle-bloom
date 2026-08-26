@@ -147,12 +147,13 @@ def remember_atmosphere_state(world: "World", state: AtmosphereCFDState) -> None
     world.remembered_wind_v = state.v.copy()
 
 
-def _mountain_deflection_tendency(u: np.ndarray, v: np.ndarray, elevation_m: np.ndarray, dx_m: np.ndarray, dy_m: float) -> tuple[np.ndarray, np.ndarray]:
-    """An acceleration (m/s^2) damping wind's into-slope component near high terrain and
-    redirecting a matching amount tangentially -- same "cancel and redirect" *shape* as
-    climate.py's own `_mountain_deflection`, but expressed here as a per-second rate applied
-    to du_dt/dv_dt (see MOUNTAIN_DEFLECTION_RATE_PER_S's own docstring for why a tendency,
-    not a direct state overwrite, is required for stability under repeated substepping)."""
+def _mountain_deflection_geometry(elevation_m: np.ndarray, dx_m: np.ndarray, dy_m: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The terrain-derived part of _mountain_deflection_tendency's own math -- the slope
+    normal/tangent directions and the obstacle ramp -- which depends only on elevation_m, not
+    on wind (u, v). elevation_m is frozen at mode entry (see module docstring) and never
+    changes across a step_atmosphere_cfd call's substeps, so callers compute this once per
+    step call rather than _mountain_deflection_tendency redundantly rebuilding it (a
+    gradient_m call plus several full-grid ops) every single substep."""
     gx, gy = fluid_dynamics.gradient_m(elevation_m, dx_m, dy_m)
     magnitude = np.hypot(gx, gy)
     uphill_x = np.divide(gx, magnitude, out=np.zeros_like(gx), where=magnitude > 1e-12)
@@ -162,9 +163,22 @@ def _mountain_deflection_tendency(u: np.ndarray, v: np.ndarray, elevation_m: np.
     # side, so either tangent is an equally valid simplification here).
     normal_x, normal_y = -uphill_x, -uphill_y
     tangent_x, tangent_y = -normal_y, normal_x
-
-    into_slope = np.clip(-(u * normal_x + v * normal_y), 0.0, None)
     ramp = np.clip((elevation_m - (MOUNTAIN_OBSTACLE_ELEVATION_M - MOUNTAIN_OBSTACLE_RAMP_M)) / (2.0 * MOUNTAIN_OBSTACLE_RAMP_M), 0.0, 1.0)
+    return normal_x, normal_y, tangent_x, tangent_y, ramp
+
+
+def _mountain_deflection_tendency(
+    u: np.ndarray, v: np.ndarray, geometry: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+) -> tuple[np.ndarray, np.ndarray]:
+    """An acceleration (m/s^2) damping wind's into-slope component near high terrain and
+    redirecting a matching amount tangentially -- same "cancel and redirect" *shape* as
+    climate.py's own `_mountain_deflection`, but expressed here as a per-second rate applied
+    to du_dt/dv_dt (see MOUNTAIN_DEFLECTION_RATE_PER_S's own docstring for why a tendency,
+    not a direct state overwrite, is required for stability under repeated substepping).
+    `geometry` is this step's own _mountain_deflection_geometry(elevation_m, dx_m, dy_m) --
+    see its docstring for why callers precompute it once rather than every substep."""
+    normal_x, normal_y, tangent_x, tangent_y, ramp = geometry
+    into_slope = np.clip(-(u * normal_x + v * normal_y), 0.0, None)
     rate = MOUNTAIN_DEFLECTION_RATE_PER_S * ramp * into_slope
     # Redirects exactly the damped magnitude into the tangent direction (no speedup factor >
     # 1) -- energy-neutral by construction, not a net source, unlike an earlier version (see
@@ -193,6 +207,11 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
         + SURFACE_DRAG_OROGRAPHIC_PER_S * np.clip(state.elevation_m / MOUNTAIN_OBSTACLE_ELEVATION_M, 0.0, 1.0)
         + fluid_dynamics.polar_sponge_drag_per_s(state.lat_deg, POLAR_SPONGE_MAX_DRAG_PER_S)
     )
+    # elevation_m/lat_deg/width are all fixed for the whole step call, so both of these
+    # (unlike u/v/dt_s below) are the same every substep -- see their own docstrings.
+    mountain_geom = _mountain_deflection_geometry(state.elevation_m, dx_m, dy_m)
+    advect_geom = fluid_dynamics.advection_geometry(state.lat_deg, width)
+    f = fluid_dynamics.coriolis_parameter(state.lat_deg)[:, None]
 
     u, v, eta = state.u, state.v, state.eta
     temperature_c = state.temperature_c
@@ -200,13 +219,12 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
     precipitation_mm = state.precipitation_mm
 
     for _ in range(n_substeps):
-        f = fluid_dynamics.coriolis_parameter(state.lat_deg)[:, None]
         deta_dx, deta_dy = fluid_dynamics.gradient_m(eta, dx_m, dy_m)
 
         # Drag (surface/orographic + the polar sponge) is applied semi-implicitly, same
         # unconditionally-stable-regardless-of-dt*drag reasoning as ocean_cfd.step_ocean_cfd's
         # own matching comment.
-        deflect_ax, deflect_ay = _mountain_deflection_tendency(u, v, state.elevation_m, dx_m, dy_m)
+        deflect_ax, deflect_ay = _mountain_deflection_tendency(u, v, mountain_geom)
         du_dt = f * v - REDUCED_GRAVITY_M_S2 * deta_dx + VISCOSITY_M2_S * fluid_dynamics.laplacian_m(u, dx_m, dy_m) + deflect_ax
         dv_dt = -f * u - REDUCED_GRAVITY_M_S2 * deta_dy + VISCOSITY_M2_S * fluid_dynamics.laplacian_m(v, dx_m, dy_m) + deflect_ay
         u = (u + dt_s * du_dt) / (1.0 + dt_s * orographic_drag)
@@ -219,7 +237,7 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
         eta = eta - dt_s * flux_divergence + dt_s * ETA_THERMAL_RELAXATION_PER_S * (eta_target - eta)
         eta = fluid_dynamics.polar_zonal_filter(fluid_dynamics.grid_noise_filter(eta), state.lat_deg)
 
-        temperature_c = fluid_dynamics.semi_lagrangian_advect(temperature_c, u, v, dt_s, state.lat_deg)
+        temperature_c = fluid_dynamics.semi_lagrangian_advect(temperature_c, u, v, dt_s, advect_geom)
         temperature_c = temperature_c + dt_s * TEMPERATURE_DIFFUSIVITY_M2_S * fluid_dynamics.laplacian_m(temperature_c, dx_m, dy_m)
         temperature_c = temperature_c + dt_s * RADIATIVE_RELAXATION_PER_S * (state.equilibrium_temperature_c - temperature_c)
 
@@ -228,7 +246,7 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
         excess = np.clip(humidity - saturation_ceiling, 0.0, None)
         condensed = CONDENSATION_RATE_PER_S * excess
 
-        humidity = fluid_dynamics.semi_lagrangian_advect(humidity, u, v, dt_s, state.lat_deg)
+        humidity = fluid_dynamics.semi_lagrangian_advect(humidity, u, v, dt_s, advect_geom)
         humidity = humidity + dt_s * HUMIDITY_DIFFUSIVITY_M2_S * fluid_dynamics.laplacian_m(humidity, dx_m, dy_m)
         humidity = np.clip(humidity + dt_s * (evap_source - condensed), 0.0, None)
         precipitation_mm = condensed * PRECIP_CONDENSATION_TO_MM

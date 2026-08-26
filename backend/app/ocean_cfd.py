@@ -180,6 +180,10 @@ def step_ocean_cfd(world: "World", state: OceanCFDState, seconds: float) -> None
     current_speed = float(np.hypot(state.u, state.v).max(initial=0.0))
     n_substeps, dt_s = fluid_dynamics.cfl_substeps(seconds, min_spacing_m, wave_speed, current_speed, MAX_SUBSTEPS_PER_STEP)
     drag = BOTTOM_DRAG_PER_S + fluid_dynamics.polar_sponge_drag_per_s(state.lat_deg, POLAR_SPONGE_MAX_DRAG_PER_S)
+    # state.lat_deg/width are fixed for the whole session, so this (unlike u/v/dt_s below) is
+    # the same every substep -- see fluid_dynamics.advection_geometry's own docstring.
+    advect_geom = fluid_dynamics.advection_geometry(state.lat_deg, width)
+    f = fluid_dynamics.coriolis_parameter(state.lat_deg)[:, None]
 
     u, v, eta = state.u, state.v, state.eta
     temperature_c = state.temperature_c
@@ -187,7 +191,6 @@ def step_ocean_cfd(world: "World", state: OceanCFDState, seconds: float) -> None
     sediment_deposited_m = state.sediment_deposited_m
 
     for _ in range(n_substeps):
-        f = fluid_dynamics.coriolis_parameter(state.lat_deg)[:, None]
         deta_dx, deta_dy = fluid_dynamics.gradient_m(eta, dx_m, dy_m)
 
         wind_speed = np.hypot(state.wind_u, state.wind_v)
@@ -218,7 +221,7 @@ def step_ocean_cfd(world: "World", state: OceanCFDState, seconds: float) -> None
         eta = eta - dt_s * flux_divergence
         eta = np.where(state.is_ocean, fluid_dynamics.polar_zonal_filter(fluid_dynamics.grid_noise_filter(eta), state.lat_deg), 0.0)
 
-        temperature_c = fluid_dynamics.semi_lagrangian_advect(temperature_c, u, v, dt_s, state.lat_deg)
+        temperature_c = fluid_dynamics.semi_lagrangian_advect(temperature_c, u, v, dt_s, advect_geom)
         temperature_c = temperature_c + dt_s * TEMPERATURE_DIFFUSIVITY_M2_S * fluid_dynamics.laplacian_m(temperature_c, dx_m, dy_m)
         temperature_c = temperature_c + dt_s * TEMPERATURE_RELAXATION_PER_S * (state.baseline_temperature_c - temperature_c)
 
@@ -227,7 +230,7 @@ def step_ocean_cfd(world: "World", state: OceanCFDState, seconds: float) -> None
         settling_factor = np.clip(1.0 - speed / SEDIMENT_SETTLING_SPEED_THRESHOLD_M_S, 0.0, 1.0)
         settle = SEDIMENT_SETTLING_RATE_PER_S * sediment_concentration * settling_factor
 
-        sediment_concentration = fluid_dynamics.semi_lagrangian_advect(sediment_concentration, u, v, dt_s, state.lat_deg)
+        sediment_concentration = fluid_dynamics.semi_lagrangian_advect(sediment_concentration, u, v, dt_s, advect_geom)
         sediment_concentration = sediment_concentration + dt_s * SEDIMENT_DIFFUSIVITY_M2_S * fluid_dynamics.laplacian_m(sediment_concentration, dx_m, dy_m)
         sediment_concentration = np.clip(sediment_concentration + dt_s * (pickup - settle), 0.0, None)
         sediment_concentration = np.where(state.is_ocean, sediment_concentration, 0.0)

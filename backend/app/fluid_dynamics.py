@@ -117,27 +117,45 @@ def laplacian_m(field: np.ndarray, dx_m: np.ndarray, dy_m: float) -> np.ndarray:
 
 def divergence_m(u: np.ndarray, v: np.ndarray, dx_m: np.ndarray, dy_m: float) -> np.ndarray:
     """du/dx + dv/dy in real per-second units (given u, v in m/s), same gradient convention
-    as gradient_m -- used for the shallow-water continuity equation's flux divergence."""
-    gx, _ = gradient_m(u, dx_m, dy_m)
-    _, gy = gradient_m(v, dx_m, dy_m)
-    return gx + gy
+    as gradient_m -- used for the shallow-water continuity equation's flux divergence. Inlines
+    just the two needed components (du/dx, dv/dy) rather than calling gradient_m(u)/
+    gradient_m(v) and discarding half of each -- gradient_m always computes both axes, so
+    calling it twice here would do 4 np.roll calls for the 2 this actually needs."""
+    dudx = (np.roll(u, -1, axis=1) - np.roll(u, 1, axis=1)) / (2.0 * dx_m[:, None])
+    dvdy = (np.roll(v, 1, axis=0) - np.roll(v, -1, axis=0)) / (2.0 * dy_m)
+    return dudx + dvdy
 
 
-def semi_lagrangian_advect(field: np.ndarray, u: np.ndarray, v: np.ndarray, dt_s: float, lat_deg: np.ndarray) -> np.ndarray:
-    """Backward-trace each cell along (u, v) by dt_s and sample the field there, nearest-cell
-    -- the same technique climate.py's own `advect_ocean_temperature`/`_sample_at_offset` use,
-    chosen for the same reason: unconditionally stable regardless of how large `dt_s * speed`
-    gets relative to one cell, so this never adds a second, stricter CFL constraint on top of
-    the shallow-water gravity-wave one substep sizing is already built around."""
-    height, width = field.shape
+def advection_geometry(lat_deg: np.ndarray, width: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Precomputes the part of semi_lagrangian_advect's own backward-trace math that depends
+    only on the grid (lat_deg, width) and never on the field/velocity being advected --
+    lat_grid, lon_deg, cos_lat, meters_per_deg_lat, see that function's docstring. Both
+    solvers' `state.lat_deg` is fixed for a whole session, so callers compute this once (e.g.
+    per step_*_cfd call) and pass it into every semi_lagrangian_advect call that step takes,
+    instead of each of those calls (temperature, sediment/humidity, ...) redundantly
+    rebuilding the same arrays from scratch."""
     radius_m = plates.PLANET_RADIUS_KM * 1000.0
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
     lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
     cos_lat = np.clip(np.cos(np.radians(lat_grid)), 0.15, 1.0)
-
     # meters -> degrees: a meridian degree is (pi*R/180) meters; a zonal degree shrinks by
     # cos(lat) the same way grid_spacing_m's own dx_m does.
     meters_per_deg_lat = (np.pi * radius_m) / 180.0
+    return lat_grid, lon_deg, cos_lat, meters_per_deg_lat
+
+
+def semi_lagrangian_advect(
+    field: np.ndarray, u: np.ndarray, v: np.ndarray, dt_s: float, geometry: tuple[np.ndarray, np.ndarray, np.ndarray, float]
+) -> np.ndarray:
+    """Backward-trace each cell along (u, v) by dt_s and sample the field there, nearest-cell
+    -- the same technique climate.py's own `advect_ocean_temperature`/`_sample_at_offset` use,
+    chosen for the same reason: unconditionally stable regardless of how large `dt_s * speed`
+    gets relative to one cell, so this never adds a second, stricter CFL constraint on top of
+    the shallow-water gravity-wave one substep sizing is already built around. `geometry` is
+    this grid's own advection_geometry(lat_deg, width) -- see its docstring for why callers
+    precompute it once rather than this function rebuilding it every call."""
+    height, width = field.shape
+    lat_grid, lon_deg, cos_lat, meters_per_deg_lat = geometry
     src_lat = lat_grid - (v * dt_s) / meters_per_deg_lat
     src_lon = lon_deg[None, :] - (u * dt_s) / (meters_per_deg_lat * cos_lat)
 

@@ -70,7 +70,8 @@ def test_semi_lagrangian_advect_is_identity_at_zero_velocity():
     lat_deg = 90.0 - (np.arange(10) + 0.5) * (180.0 / 10)
     field = np.arange(10 * 20, dtype=float).reshape(10, 20)
     zero = np.zeros_like(field)
-    advected = fluid_dynamics.semi_lagrangian_advect(field, zero, zero, dt_s=3600.0, lat_deg=lat_deg)
+    geometry = fluid_dynamics.advection_geometry(lat_deg, width=20)
+    advected = fluid_dynamics.semi_lagrangian_advect(field, zero, zero, dt_s=3600.0, geometry=geometry)
     assert np.array_equal(advected, field)
 
 
