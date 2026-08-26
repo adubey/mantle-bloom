@@ -3,6 +3,7 @@ uvicorn[standard]
 numpy
 scipy
 numba
+astropy-healpix
 Pillow
 pytest
 pytest-xdist

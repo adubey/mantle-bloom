@@ -699,3 +699,15 @@ def export_hexgrid(req: ExportHexGridRequest) -> dict:
     if req.frequency not in geodesic.FREQUENCY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown frequency {req.frequency!r}; choices are {geodesic.FREQUENCY_CHOICES}")
     return geodesic.export_hexgrid(world, req.frequency)
+
+
+# V2 (docs/mantle-bloom-design-v2.pdf): a physically-driven geodynamics/meteorology engine
+# (Airy isostasy, Mohr-Coulomb deformation, torque-balanced plate motion, a HEALPix fluid
+# grid) mounted alongside v1 rather than replacing it -- see v2/main_v2.py's own module
+# docstring. A separate FastAPI app (its own CORS middleware -- app.mount() doesn't propagate
+# a parent app's middleware to a mounted sub-app) with the same route shapes as this module's,
+# reachable at /v2/world/... . The frontend's v1/v2 toggle (see frontend/src/api.ts) is what
+# actually switches which of the two a browser session talks to.
+from .v2.main_v2 import app as v2_app  # noqa: E402
+
+app.mount("/v2", v2_app)

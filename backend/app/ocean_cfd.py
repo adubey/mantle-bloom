@@ -130,6 +130,13 @@ class OceanCFDState:
     wind_v: np.ndarray  # (H, W) northward, refreshed once per tectonics step from World.atmosphere_cfd_state, see refresh_forcing
     elapsed_seconds: float = 0.0
 
+    def resample_uv_to_equirect(self, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
+        """See atmosphere_cfd.AtmosphereCFDState's own matching method -- the same
+        grid-agnostic seam `climate.compute_climate` reads currents through."""
+        u = fluid_dynamics.resample_to_grid(self.u, height, width)
+        v = fluid_dynamics.resample_to_grid(self.v, height, width)
+        return u, v
+
 
 def init_ocean_cfd(world: "World") -> OceanCFDState:
     """Called exactly once, by generate_world (after atmosphere_cfd.init_atmosphere_cfd, whose

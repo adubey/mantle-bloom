@@ -1153,8 +1153,7 @@ def compute_climate(
     if world.atmosphere_cfd_state is None:
         wind_u, wind_v, elevation_factor = compute_wind(lat_deg, elevation_m, surface_temperature_c)
     else:
-        wind_u = fluid_dynamics.resample_to_grid(world.atmosphere_cfd_state.u, height, width)
-        wind_v = fluid_dynamics.resample_to_grid(world.atmosphere_cfd_state.v, height, width)
+        wind_u, wind_v = world.atmosphere_cfd_state.resample_uv_to_equirect(height, width)
         elevation_factor = np.clip(
             _elevation_speed_factor(elevation_m) * _mountain_wake_factor(wind_u, wind_v, elevation_m, lat_deg),
             MIN_ELEVATION_SPEED_FACTOR, 1.0,
@@ -1173,8 +1172,7 @@ def compute_climate(
     if world.ocean_cfd_state is None:
         current_u, current_v = compute_ocean_currents(wind_u, wind_v, is_ocean, lat_deg, world_xyz, mixing_noise)
     else:
-        current_u = fluid_dynamics.resample_to_grid(world.ocean_cfd_state.u, height, width)
-        current_v = fluid_dynamics.resample_to_grid(world.ocean_cfd_state.v, height, width)
+        current_u, current_v = world.ocean_cfd_state.resample_uv_to_equirect(height, width)
     swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, mix_rng)
 
     ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)

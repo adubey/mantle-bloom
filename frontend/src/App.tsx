@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
+import { apiVersion, setApiVersion } from "./api";
+import type { ApiVersion } from "./api";
 import {
   fetchLakes, fetchPlates, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
 } from "./api";
@@ -547,6 +549,36 @@ export default function App() {
           <p style={{ opacity: 0.7, marginTop: 0, marginBottom: 16 }}>
             Physical World Builder
           </p>
+
+          {/* V1 (kinematic, polygon-based plates) vs V2 (docs/mantle-bloom-design-v2.pdf --
+              Airy isostasy, Mohr-Coulomb deformation, torque-balanced motion, HEALPix fluid
+              grid) -- the same backend process serves both (see backend/app/main.py's
+              app.mount("/v2", ...)), each holding its own independent in-memory World, so
+              switching is a full reload against whichever prefix api.ts's API_BASE now
+              points at, not a value transform of the current one. */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }} role="radiogroup" aria-label="Simulation engine">
+            {(["v1", "v2"] as ApiVersion[]).map((version) => (
+              <button
+                key={version}
+                onClick={() => {
+                  if (version === apiVersion) return;
+                  setApiVersion(version);
+                  window.location.reload();
+                }}
+                aria-pressed={apiVersion === version}
+                title={version === "v2" ? "V2: Airy isostasy, Mohr-Coulomb deformation, torque-balanced plates, HEALPix fluid grid" : "V1: kinematic, polygon-based plates"}
+                style={{
+                  flex: 1,
+                  fontSize: 11,
+                  padding: "4px 0",
+                  background: apiVersion === version ? "#3a5a8f" : undefined,
+                  fontWeight: apiVersion === version ? 600 : 400,
+                }}
+              >
+                {version.toUpperCase()}
+              </button>
+            ))}
+          </div>
 
           <button onClick={() => setShowGenerateDialog(true)} disabled={busy} style={{ fontSize: 12 }}>
             Generate World
