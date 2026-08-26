@@ -69,6 +69,26 @@ Time-stepping:
     simulation-model.md#reassignment)
   → browser re-fetches /world/render, and appends any new `events` to the console
 
+When World.fluid_mode is "ocean_cfd"/"atmosphere_cfd" (see POST /world/mode below) instead of
+the default "tectonics_climate", stepping goes through a different endpoint entirely:
+  POST /world/step_fluid  { seconds }
+  → ocean_cfd.step_ocean_cfd/atmosphere_cfd.step_atmosphere_cfd(world, state, seconds): a
+    genuine time-integrated shallow-water solve (real Coriolis/pressure-gradient physics,
+    CFL-stable substepping -- see simulation-model.md#ocean-atmospheric-fluid-dynamics)
+    against a snapshot of elevation/climate frozen the moment the mode was entered. Plate
+    tectonics and the ordinary climate/erosion model don't run at all while this is active --
+    `years` and `seconds` are deliberately different endpoints/units, since the two
+    timescales (Myr vs. hours-to-days) have nothing in common
+  → browser re-fetches /world/render (one of the mode's own oceanCfd*/atmosphereCfd* views)
+
+Mode switching itself is its own endpoint, separate from either stepping call:
+  POST /world/mode  { mode }
+  → world.fluid_mode = mode; entering "ocean_cfd"/"atmosphere_cfd" (re)initializes that
+    mode's own state fresh from the world's current elevation/climate (discarding whatever
+    that mode's state held from a previous visit); leaving it back to "tectonics_climate"
+    just resumes ordinary stepping, since tectonics/elevation were never touched while it was
+    frozen
+
 When the "Plate Inspector" map view is active, the browser instead (also on every
 generate/step, but never on a projection/rotation-only change) fetches:
   GET /world/plates
@@ -153,6 +173,13 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   `/world/stats`, a climate map render, and river/lake rendering so they don't each trigger
   their own recomputation the same turn (see simulation-model.md#climate and
   simulation-model.md#hydrology). Up to one step stale by design, not a bug.
+- `fluid_mode` -- the UI's "Mode" toggle (`"tectonics_climate"`, `"ocean_cfd"`, or
+  `"atmosphere_cfd"`), live-adjustable via `POST /world/mode`. `ocean_cfd_state`/
+  `atmosphere_cfd_state` hold the matching mode's own persistent, time-integrated state
+  (`ocean_cfd.OceanCFDState`/`atmosphere_cfd.AtmosphereCFDState`) when that mode is active,
+  `None` otherwise -- see simulation-model.md#ocean-atmospheric-fluid-dynamics for what they
+  hold and why they're genuinely prognostic (evolving step to step) rather than recomputed
+  fresh like `climate_cache` above.
 
 Each `Plate` (`backend/app/plates.py`) is:
 
@@ -258,6 +285,19 @@ coastline.py          traces the land/ocean and lake boundary as line segments o
                      climate.py's own grid, on demand (not every step) -- drawn into the
                      temperature/humidity/precipitation renders and sent as JSON alongside
                      GET /world/rivers and GET /world/lakes (see simulation-model.md#coastline)
+fluid_dynamics.py      shared numerical primitives for ocean_cfd.py/atmosphere_cfd.py: real
+                     physical-unit gradients/Laplacians/divergence, real Coriolis parameter,
+                     CFL-stable substep sizing, semi-Lagrangian advection, and the polar-cap
+                     zonal filter/sponge-damping pair both solvers need (see
+                     simulation-model.md#ocean-atmospheric-fluid-dynamics)
+ocean_cfd.py           Ocean Fluid Dynamics mode: a genuine time-integrated (not diagnostic)
+                     shallow-water simulation of currents -- prognostic state
+                     (World.ocean_cfd_state) that persists and evolves step to step, unlike
+                     climate.py's own recomputed-from-scratch-every-call model (see
+                     simulation-model.md#ocean-atmospheric-fluid-dynamics)
+atmosphere_cfd.py      Atmospheric Fluid Dynamics mode: the same shallow-water approach as
+                     ocean_cfd.py, for wind/humidity/temperature instead of currents (see
+                     simulation-model.md#ocean-atmospheric-fluid-dynamics)
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate),

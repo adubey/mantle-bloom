@@ -43,7 +43,15 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS
+# Ocean/Atmospheric Fluid Dynamics modes' own map views -- see ocean_cfd.py/atmosphere_cfd.py
+# and docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. Only meaningful while
+# World.fluid_mode is the matching mode (main.py's /world/render rejects these otherwise,
+# since there's no ocean_cfd_state/atmosphere_cfd_state to draw from) -- unlike every other
+# view here, which is always renderable regardless of what else the world is doing.
+OCEAN_CFD_VIEWS = ("oceanCfdVelocity", "oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition")
+ATMOSPHERE_CFD_VIEWS = ("atmosphereCfdVelocity", "atmosphereCfdTemperature", "atmosphereCfdHumidity")
+FLUID_VIEWS = OCEAN_CFD_VIEWS + ATMOSPHERE_CFD_VIEWS
+VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS + FLUID_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -317,6 +325,28 @@ def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
 
 def soil_fertility_colors(fertility: np.ndarray) -> np.ndarray:
     return _interp_colors(fertility, _SOIL_STOP_V, _SOIL_STOP_RGB)
+
+
+# Clear (tan) -> silt-laden (murky brown), arbitrary concentration units (see ocean_cfd.py's
+# own docstring -- sediment_concentration isn't calibrated against a real sediment density,
+# only tuned so the pickup/settling balance produces a plausible-looking, slowly-varying
+# field). Stops chosen empirically to keep a typical multi-step session's range legible.
+_SEDIMENT_STOP_V = np.array([0.0, 0.5, 1.5, 3.0, 5.0], dtype=float)
+_SEDIMENT_STOP_RGB = np.array([(150, 170, 160), (170, 150, 110), (150, 115, 70), (120, 85, 50), (90, 60, 35)], dtype=float)
+
+# Bare seafloor (grey-teal) -> heavily deposited (dark ochre), meters -- ocean_cfd.py's
+# sediment_deposited_m is a tracking-only field (see its own docstring: never mutates
+# world.plates), so this is purely informational, not a hypsometric elevation scale.
+_DEPOSITION_STOP_M = np.array([0.0, 0.1, 0.4, 1.0, 2.0], dtype=float)
+_DEPOSITION_STOP_RGB = np.array([(60, 90, 95), (110, 95, 60), (140, 105, 45), (150, 90, 30), (120, 65, 20)], dtype=float)
+
+
+def sediment_colors(concentration: np.ndarray) -> np.ndarray:
+    return _interp_colors(concentration, _SEDIMENT_STOP_V, _SEDIMENT_STOP_RGB)
+
+
+def sediment_deposition_colors(deposited_m: np.ndarray) -> np.ndarray:
+    return _interp_colors(deposited_m, _DEPOSITION_STOP_M, _DEPOSITION_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -948,6 +978,64 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     return _encode_image(image)
 
 
+def _render_fluid_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders one of OCEAN_CFD_VIEWS/ATMOSPHERE_CFD_VIEWS from the active FD mode's own
+    persistent state (World.ocean_cfd_state/atmosphere_cfd_state -- see ocean_cfd.py/
+    atmosphere_cfd.py), reusing the same _project_climate_grid/_fill_rects/_draw_climate_vectors
+    primitives _render_climate_view already uses for climate.py's own grid -- both state
+    objects share the same (lat_deg, lon_deg, world_xyz) grid-geometry shape convention as
+    climate.ClimateFields. main.py's /world/render is what guarantees the matching state
+    isn't None before returning a 400 for an actual API caller -- but this function itself
+    still degrades to a plain background-only image if called directly against a world where
+    it isn't (same "always renders *something* standalone" contract every other view in
+    VIEWS already has -- e.g. an elevation/plates render with no plates yet -- rather than
+    raising, so a caller that bypasses main.py's own guard still gets a valid PNG back)."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    is_ocean_view = view in OCEAN_CFD_VIEWS
+    state = world.ocean_cfd_state if is_ocean_view else world.atmosphere_cfd_state
+    if state is None:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        state.lat_deg, state.lon_deg, state.world_xyz, projection, view_rotation, width, height, padding_px
+    )
+
+    if view == "oceanCfdVelocity":
+        backdrop = np.where(state.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
+        _fill_rects(pixels, centers, half_w, half_h, backdrop)
+    elif view == "oceanCfdTemperature":
+        _fill_rects(pixels, centers, half_w, half_h, temperature_colors(state.temperature_c.reshape(-1)))
+    elif view == "oceanCfdSediment":
+        _fill_rects(pixels, centers, half_w, half_h, sediment_colors(state.sediment_concentration.reshape(-1)))
+    elif view == "oceanCfdDeposition":
+        _fill_rects(pixels, centers, half_w, half_h, sediment_deposition_colors(state.sediment_deposited_m.reshape(-1)))
+    elif view == "atmosphereCfdVelocity":
+        backdrop = np.where(state.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
+        _fill_rects(pixels, centers, half_w, half_h, backdrop)
+    elif view == "atmosphereCfdTemperature":
+        _fill_rects(pixels, centers, half_w, half_h, temperature_colors(state.temperature_c.reshape(-1)))
+    elif view == "atmosphereCfdHumidity":
+        _fill_rects(pixels, centers, half_w, half_h, humidity_colors(state.humidity.reshape(-1)))
+
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+
+    if view in ("oceanCfdTemperature", "oceanCfdSediment", "oceanCfdDeposition", "atmosphereCfdTemperature", "atmosphereCfdHumidity"):
+        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+
+    if view == "oceanCfdVelocity":
+        _draw_climate_vectors(draw, state, state.u, state.v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
+    elif view == "atmosphereCfdVelocity":
+        _draw_climate_vectors(draw, state, state.u, state.v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
+
+    # No server-side legend here -- same reasoning as _render_climate_view's own trailing
+    # comment (see frontend/src/legendData.ts/Legend.tsx).
+    return _encode_image(image)
+
+
 def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Biome, unlike the rest of CLIMATE_VIEWS, is rendered on its own much finer grid (see
     BIOME_GRID_HEIGHT/WIDTH and _biome_fields) rather than climate.py's native 90x180
@@ -1227,6 +1315,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
 
     if view in CLIMATE_VIEWS:
         return _render_climate_view(world, projection, view, width, height, view_rotation)
+    if view in FLUID_VIEWS:
+        return _render_fluid_view(world, projection, view, width, height, view_rotation)
     if view == "combined":
         return _render_combined_view(world, projection, width, height, view_rotation)
     if view in RESOURCE_VIEWS:
