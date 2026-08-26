@@ -1,4 +1,6 @@
+import astropy.units as u
 import numpy as np
+from astropy_healpix import HEALPix
 
 from app.v2 import fluid_dynamics_healpix as fdh
 from app.v2 import healpix_grid
@@ -64,6 +66,36 @@ def test_semi_lagrangian_advect_zero_velocity_is_identity():
     zero = np.zeros(grid.npix)
     advected = fdh.semi_lagrangian_advect(field, zero, zero, 100.0, grid)
     assert np.array_equal(advected, field)
+
+
+def test_ang2pix_matches_astropy_reference_at_pixel_centers():
+    """`HealpixGrid.ang2pix` is now a hand-rolled Numba nested-scheme lookup (replacing
+    astropy_healpix's own, for speed -- see fluid_dynamics_healpix.py's module docstring on
+    why that call was worth taking on despite nested-scheme indexing's own reputation for
+    subtle bugs at base-pixel boundaries). Every pixel's own center must map back to its own
+    index -- exercises every face, including the low-nside corner pixels with fewer than 8
+    neighbours."""
+    for nside in healpix_grid.NSIDE_CHOICES.values():
+        grid = healpix_grid.build(nside)
+        recovered = grid.ang2pix(grid.lon_rad, grid.lat_rad)
+        assert np.array_equal(recovered, np.arange(grid.npix))
+
+
+def test_ang2pix_matches_astropy_reference_at_random_points():
+    """Cross-checked against astropy_healpix's own (independently-implemented) nested lookup
+    at 50,000 uniformly-sampled sphere points per nside -- not just pixel centers, so this
+    also exercises points that land near a face/pixel boundary, where a subtly wrong
+    bit-interleave or face-numbering formula would first show a mismatch."""
+    rng = np.random.default_rng(0)
+    n = 50_000
+    lon_rad = rng.uniform(0, 2 * np.pi, n)
+    lat_rad = np.arcsin(rng.uniform(-1.0, 1.0, n))
+    for nside in healpix_grid.NSIDE_CHOICES.values():
+        grid = healpix_grid.build(nside)
+        ours = grid.ang2pix(lon_rad, lat_rad)
+        hp = HEALPix(nside=nside, order="nested")
+        theirs = np.asarray(hp.lonlat_to_healpix(lon_rad * u.rad, lat_rad * u.rad))
+        assert np.array_equal(ours, theirs)
 
 
 def test_resample_round_trip_preserves_smooth_field():

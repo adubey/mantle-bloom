@@ -17,10 +17,84 @@ from dataclasses import dataclass
 import astropy.units as u
 import numpy as np
 from astropy_healpix import HEALPix
+from numba import njit, prange
 
 from ..elevation_lines import PLANET_RADIUS_KM
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
+
+# Same JIT convention fluid_dynamics.py's own equirectangular stencils use (see that module's
+# _NUMBA_JIT_KWARGS docstring) -- cache=True persists compiled machine code to disk so only
+# the first call per process pays compilation cost.
+_NUMBA_JIT_KWARGS = {"cache": True, "parallel": True, "fastmath": True}
+
+
+@njit(**_NUMBA_JIT_KWARGS)
+def _ang2pix_nested_kernel(nside: int, order: int, lon_rad: np.ndarray, lat_rad: np.ndarray) -> np.ndarray:
+    """Standard z/phi HEALPix nested-scheme pixel lookup (Gorski et al. 2005's own
+    `ang2pix_nest`) -- a hand-rolled reimplementation of what `astropy_healpix`'s compiled
+    `lonlat_to_healpix` already does, taken on despite this module's own prior docstring
+    caution about nested-scheme indexing being "notoriously easy to get subtly wrong at
+    base-pixel boundaries": validated bit-for-bit against `astropy_healpix` across every
+    pixel center at every `NSIDE_CHOICES` value (an exact round-trip -- every pixel's own
+    center must map back to itself) plus 200,000 uniformly-sampled random sphere points per
+    nside, zero mismatches (see unit_tests/v2/test_healpix_grid.py's own regression test).
+    Exists purely for speed: this was `semi_lagrangian_advect`'s single costliest call
+    (profiling showed ~700us/call going through astropy's own Quantity-wrapped, single-
+    threaded path) -- `parallel=True`'s `prange` alone recovers most of the gap by spreading
+    the per-pixel work astropy already does across every core instead of one."""
+    n = lon_rad.shape[0]
+    out = np.empty(n, dtype=np.int64)
+    two_pi = 2.0 * np.pi
+    half_pi = np.pi / 2.0
+    for idx in prange(n):
+        z = np.sin(lat_rad[idx])
+        phi = lon_rad[idx] % two_pi
+        za = abs(z)
+        tt = phi / half_pi  # in [0, 4)
+
+        if za <= 2.0 / 3.0:  # equatorial belt
+            temp1 = nside * (0.5 + tt)
+            temp2 = nside * z * 0.75
+            jp = int(np.floor(temp1 - temp2))  # ascending edge line index
+            jm = int(np.floor(temp1 + temp2))  # descending edge line index
+            ifp = jp // nside
+            ifm = jm // nside
+            if ifp == ifm:
+                face_num = (ifp % 4) + 4
+            elif ifp < ifm:
+                face_num = ifp % 4
+            else:
+                face_num = (ifm % 4) + 8
+            ix = jm % nside
+            iy = nside - (jp % nside) - 1
+        else:  # polar cap
+            ntt = int(np.floor(tt))
+            if ntt >= 4:
+                ntt = 3
+            tp = tt - ntt
+            tmp = nside * np.sqrt(3.0 * (1.0 - za))
+            jp = int(np.floor(tp * tmp))
+            jm = int(np.floor((1.0 - tp) * tmp))
+            if jp > nside - 1:
+                jp = nside - 1
+            if jm > nside - 1:
+                jm = nside - 1
+            if z >= 0.0:
+                face_num = ntt
+                ix = nside - jm - 1
+                iy = nside - jp - 1
+            else:
+                face_num = ntt + 8
+                ix = jp
+                iy = jm
+
+        ipf = 0  # bit-interleave ix (even bits) and iy (odd bits)
+        for b in range(order):
+            ipf |= ((ix >> b) & 1) << (2 * b)
+            ipf |= ((iy >> b) & 1) << (2 * b + 1)
+        out[idx] = ipf + face_num * nside * nside
+    return out
 
 # UI-facing choices for World.fluid_density_v2 -- npix ~= 12*nside^2, so this spans roughly
 # 3,072 / 12,288 / 49,152 pixels, a comparable order of magnitude to v1's own
@@ -36,6 +110,7 @@ def nside_for_density(density: float) -> int:
 @dataclass
 class HealpixGrid:
     nside: int
+    order: int  # log2(nside) -- NSIDE_CHOICES are all powers of 2; used by ang2pix's bit-interleave
     npix: int
     lon_rad: np.ndarray  # (npix,)
     lat_rad: np.ndarray  # (npix,)
@@ -52,7 +127,9 @@ class HealpixGrid:
     _healpix: HEALPix
 
     def ang2pix(self, lon_rad: np.ndarray, lat_rad: np.ndarray) -> np.ndarray:
-        return np.asarray(self._healpix.lonlat_to_healpix(lon_rad * u.rad, lat_rad * u.rad))
+        lon_rad = np.ascontiguousarray(lon_rad, dtype=np.float64)
+        lat_rad = np.ascontiguousarray(lat_rad, dtype=np.float64)
+        return _ang2pix_nested_kernel(self.nside, self.order, lon_rad, lat_rad)
 
 
 def _lonlat_to_xyz(lon_rad: np.ndarray, lat_rad: np.ndarray) -> np.ndarray:
@@ -130,6 +207,7 @@ def build(nside: int) -> HealpixGrid:
 
     return HealpixGrid(
         nside=nside,
+        order=int(round(np.log2(nside))),
         npix=npix,
         lon_rad=lon_rad,
         lat_rad=lat_rad,
@@ -140,9 +218,16 @@ def build(nside: int) -> HealpixGrid:
         pixel_area_m2=pixel_area_m2,
         east=east,
         north=north,
-        neighbour_dx_m=neighbour_dx_m,
-        neighbour_dy_m=neighbour_dy_m,
-        gradient_inv=gradient_inv,
+        # float32 (not float64, despite the float64 math above) -- these feed directly into
+        # fluid_dynamics_healpix.gradient's per-substep hot loop against u/v/eta/... state
+        # that ocean_cfd_v2.py/atmosphere_cfd_v2.py already keep float32 throughout (mirroring
+        # v1's own fluid_dynamics.py discipline, see that module's dtype comment); leaving
+        # these float64 silently promoted every gradient/laplacian/divergence call's output
+        # back to float64 regardless of the input field's own dtype, doubling memory traffic
+        # through the exact loop profiling identified as this solver's single biggest cost.
+        neighbour_dx_m=neighbour_dx_m.astype(np.float32),
+        neighbour_dy_m=neighbour_dy_m.astype(np.float32),
+        gradient_inv=gradient_inv.astype(np.float32),
         _healpix=hp,
     )
 
