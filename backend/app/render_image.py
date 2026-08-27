@@ -980,15 +980,15 @@ def _compute_ocean_swells_healpix(
 
 
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of CLIMATE_VIEWS directly off `world.atmosphere_cfd_state`/
-    `ocean_cfd_state`'s own native HEALPix `(npix,)` arrays -- no resampling in either
-    direction, since those *are* the real temperature/humidity/precipitation/wind/current
-    fields, just not yet projected to pixel space. Only "biome" needs an actual computation
-    (classify_biomes on the native arrays, with a HEALPix-native slope from
-    fluid_dynamics_healpix.gradient) -- a separate path from the plate-tectonics views below
-    since the data source (native per-cell arrays, always covering the whole sphere) is
-    structurally different from the render grid's ragged lattice, so there's little to share
-    beyond the pixel-space primitives."""
+    """Renders one of CLIMATE_VIEWS. `temperature`/`wind`/`oceanCurrents` draw
+    `world.atmosphere_cfd_state`/`ocean_cfd_state`'s own native HEALPix `(npix,)` arrays
+    directly -- no resampling, since those *are* the real fields, just not yet projected to
+    pixel space. `humidity`/`precipitation`/`biome` are diagnostic fields
+    `climate.compute_climate` owns (not the CFD state -- see climate.py's module docstring):
+    they're computed on climate's own equirectangular grid and resampled nearest-cell onto
+    this HEALPix grid's cells here. A separate path from the plate-tectonics views below since
+    both data sources cover the whole sphere per-cell, structurally unlike the render grid's
+    ragged lattice."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1000,25 +1000,25 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     grid = atmosphere.grid
     centers, half_px, scale, offset_x, offset_y = _project_healpix_grid(grid, projection, view_rotation, width, height, padding_px)
 
-    if view == "biome":
-        dx, dy = fluid_dynamics_healpix.gradient(atmosphere.elevation_m, grid)
-        slope = np.hypot(dx, dy)
-        display_temp = np.where(atmosphere.is_ocean, ocean.temperature_c, atmosphere.temperature_c)
-        biome_ids = biomes.classify_biomes(
-            display_temp, atmosphere.precipitation_mm, atmosphere.elevation_m, slope, atmosphere.is_ocean, world.sea_level_m
-        )
-        _fill_rects(pixels, centers, half_px, half_px, biomes.BIOME_COLORS[biome_ids])
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    # humidity/precipitation/biome are diagnostic fields climate.compute_climate owns (not
+    # the CFD state -- see climate.py's module docstring), computed on its own equirectangular
+    # grid; resample nearest-cell onto this HEALPix grid's cells for drawing. temperature/
+    # wind/oceanCurrents stay CFD-native below.
+    if view in ("humidity", "precipitation", "biome"):
+        cfields = climate.compute_climate_cached(world)
+        if view == "biome":
+            biome_ids = healpix_grid.resample_from_equirect(grid, cfields.biome_ids.astype(np.float64), cfields.lat_deg).astype(int)
+            _fill_rects(pixels, centers, half_px, half_px, biomes.BIOME_COLORS[biome_ids])
+            return _encode_image(Image.fromarray(pixels, mode="RGB"))
+        if view == "humidity":
+            colors = humidity_colors(healpix_grid.resample_from_equirect(grid, cfields.humidity, cfields.lat_deg))
+        else:
+            colors = precipitation_colors(healpix_grid.resample_from_equirect(grid, cfields.precipitation_mm, cfields.lat_deg))
+        _fill_rects(pixels, centers, half_px, half_px, colors)
 
     if view == "temperature":
         display_temp = np.where(atmosphere.is_ocean, ocean.temperature_c, atmosphere.temperature_c)
         colors = temperature_colors(display_temp)
-        _fill_rects(pixels, centers, half_px, half_px, colors)
-    elif view == "humidity":
-        colors = humidity_colors(atmosphere.humidity)
-        _fill_rects(pixels, centers, half_px, half_px, colors)
-    elif view == "precipitation":
-        colors = precipitation_colors(atmosphere.precipitation_mm)
         _fill_rects(pixels, centers, half_px, half_px, colors)
     elif view in ("wind", "oceanCurrents"):
         backdrop = np.where(atmosphere.is_ocean[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)

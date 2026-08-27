@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from app import erosion, geometry, hydrology
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
@@ -308,9 +309,16 @@ def test_compute_flow_direction_ignores_a_barely_established_channel():
     assert result[0] == 1
 
 
+def _expected_basal_melt(depth: float, years_myr: float = 1.0) -> float:
+    ratio = depth / hydrology.GLACIER_BASAL_MELT_REFERENCE_DEPTH_M
+    return hydrology.GLACIER_BASAL_MELT_M_PER_MYR * ratio * ratio * years_myr
+
+
 def test_update_glaciers_accumulates_when_cold_and_precipitating():
-    # A single isolated node (no flow target) -- glacier_depth should grow by exactly
-    # GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, nothing more.
+    # A single isolated node (no flow target) -- glacier_depth grows by
+    # GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, less the always-on depth-squared
+    # basal melt (negligible at this depth, but no longer exactly zero -- see
+    # GLACIER_BASAL_MELT_M_PER_MYR).
     elevation = np.array([500.0])
     is_ocean = np.array([False])
     flow_target = np.array([-1])
@@ -324,9 +332,10 @@ def test_update_glaciers_accumulates_when_cold_and_precipitating():
     new_depth, melt = hydrology._update_glaciers(
         elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
     )
-    expected = hydrology.GLACIER_ACCUMULATION_RATE * 50.0 * 1.0
-    assert np.isclose(new_depth[0], expected)
-    assert melt[0] == 0.0  # far too cold to melt anything
+    accumulated = hydrology.GLACIER_ACCUMULATION_RATE * 50.0 * 1.0
+    assert np.isclose(melt[0], _expected_basal_melt(accumulated))  # only basal melt, no surface melt
+    assert np.isclose(new_depth[0], accumulated - melt[0])
+    assert new_depth[0] == pytest.approx(accumulated, rel=1e-3)  # basal melt is a rounding-error share here
 
 
 def test_update_glaciers_melts_when_warm_capped_at_available_depth():
@@ -344,10 +353,12 @@ def test_update_glaciers_melts_when_warm_capped_at_available_depth():
     new_depth, melt = hydrology._update_glaciers(
         elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
     )
-    # Node 0 has plenty of ice -- melts at the full, uncapped rate (max melt factor).
-    expected_uncapped_melt = hydrology.GLACIER_MELT_RATE_M_PER_MYR * hydrology.GLACIER_MELT_MAX_FACTOR * 1.0
-    assert np.isclose(melt[0], expected_uncapped_melt)
-    assert np.isclose(new_depth[0], 5000.0 - expected_uncapped_melt)
+    # Node 0 has plenty of ice -- melts at the full, uncapped surface rate (max melt factor)
+    # plus the depth-squared basal melt for its 5000 m.
+    expected_surface_melt = hydrology.GLACIER_MELT_RATE_M_PER_MYR * hydrology.GLACIER_MELT_MAX_FACTOR * 1.0
+    expected_melt = expected_surface_melt + _expected_basal_melt(5000.0)
+    assert np.isclose(melt[0], expected_melt)
+    assert np.isclose(new_depth[0], 5000.0 - expected_melt)
     # Node 1 barely has any ice -- melt can't remove more than what's actually there, so it
     # melts away completely rather than going negative.
     assert melt[1] == 1.0
@@ -370,11 +381,14 @@ def test_update_glaciers_flows_downhill_via_flow_target():
     new_depth, melt = hydrology._update_glaciers(
         elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake, is_accumulating, temperature, years=1_000_000
     )
-    assert melt[0] == 0.0  # temperature at the threshold, not above it -- melt_factor is 0
+    # Temperature at the threshold -> no surface melt; only the small depth-squared basal
+    # melt on node 0's 200 m.
+    assert np.isclose(melt[0], _expected_basal_melt(200.0))
+    assert melt[1] == 0.0
     assert new_depth[0] < 200.0  # some ice flowed out
     assert new_depth[1] > 0.0  # and arrived downstream
-    # Conservation: nothing lost besides melt (0 here) and nothing gained besides inflow.
-    assert np.isclose(new_depth[0] + new_depth[1], 200.0)
+    # Conservation: nothing lost besides basal melt, nothing gained besides inflow.
+    assert np.isclose(new_depth[0] + new_depth[1], 200.0 - melt[0])
 
 
 def test_update_glaciers_discards_ice_reaching_an_ocean_node():

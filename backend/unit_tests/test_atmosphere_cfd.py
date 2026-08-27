@@ -19,7 +19,7 @@ def test_init_atmosphere_cfd_produces_correctly_shaped_finite_state():
     npix = state.grid.npix
     assert state.u.shape == (npix,)
     assert state.v.shape == (npix,)
-    for field in (state.u, state.v, state.eta, state.temperature_c, state.equilibrium_temperature_c, state.humidity):
+    for field in (state.u, state.v, state.eta, state.temperature_c, state.equilibrium_temperature_c):
         assert np.all(np.isfinite(field))
     assert np.all(state.eta == 0.0)  # geopotential anomaly starts flat
 
@@ -29,7 +29,7 @@ def test_step_atmosphere_cfd_produces_no_nan_or_inf():
     state = world.atmosphere_cfd_state
     for _ in range(3):
         atmosphere_cfd.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
-        for field in (state.u, state.v, state.eta, state.temperature_c, state.humidity, state.precipitation_mm):
+        for field in (state.u, state.v, state.eta, state.temperature_c):
             assert np.all(np.isfinite(field))
 
 
@@ -56,13 +56,22 @@ def test_step_atmosphere_cfd_advances_elapsed_seconds_by_exactly_the_requested_a
     assert state.elapsed_seconds == 5400.0
 
 
-def test_humidity_never_goes_negative():
-    world = _world()
+def test_prevailing_wind_is_sustained_over_many_steps():
+    # The latitude-banded wind-forcing relaxation (WIND_FORCING_RELAXATION_PER_S) exists
+    # precisely so the bootstrap circulation doesn't spin down to a near-still thermal-
+    # gradient balance within a few tectonic steps (which is what happened, and took the
+    # Ekman-forced ocean currents down with it). After many one-day tectonic steps the
+    # planetary wind should still be a real, multi-m/s flow, not a whisper.
+    world = generate_world(seed=1, node_density=1.0, climate_density=1.0, fluid_density=1.0, num_plates=6)
     state = world.atmosphere_cfd_state
-    for _ in range(5):
-        atmosphere_cfd.step_atmosphere_cfd(world, state, seconds=3600.0 * 6)
-        assert np.all(state.humidity >= 0.0)
-        assert np.all(state.precipitation_mm >= 0.0)
+    for _ in range(12):
+        atmosphere_cfd.step_atmosphere_cfd(world, state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
+    speed = np.hypot(state.u, state.v)
+    assert speed.max() > 3.0
+    # ...and the mid-latitude band specifically should be moving, not just an isolated jet.
+    lat_deg = np.degrees(state.grid.lat_rad)
+    midlat = (np.abs(lat_deg) > 15.0) & (np.abs(lat_deg) < 55.0)
+    assert speed[midlat].mean() > 1.0
 
 
 def test_atmosphere_cfd_never_mutates_world_plates():

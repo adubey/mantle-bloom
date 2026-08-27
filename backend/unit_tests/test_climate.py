@@ -287,11 +287,12 @@ def test_generate_world_stores_climate_density_and_uses_the_default_when_omitted
     assert doubled.climate_density == 2.0
 
 
-def test_compute_climate_sources_temperature_humidity_precipitation_from_cfd_state():
-    # Once a world's CFD states exist, compute_climate reads temperature/humidity/
-    # precipitation straight off them (resampled to whatever resolution was asked for) rather
-    # than recomputing a diagnostic snapshot from scratch -- see climate.py's own module
-    # docstring. Mirrors the same contract wind_u/wind_v/current_u/current_v already had.
+def test_compute_climate_sources_temperature_from_cfd_but_computes_precipitation_diagnostically():
+    # Once a world's CFD states exist, compute_climate reads wind and temperature straight off
+    # them (resampled to whatever resolution was asked for). Humidity and precipitation are
+    # NOT on the CFD state any more -- they're the diagnostic compute_humidity/
+    # compute_precipitation sweep every step, fed by that CFD-sourced wind/ocean temperature
+    # (see climate.py's own module docstring).
     world = _world(seed=7, num_plates=8, steps=1)
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)
@@ -299,13 +300,24 @@ def test_compute_climate_sources_temperature_humidity_precipitation_from_cfd_sta
     ocean_state, atmosphere_state = world.ocean_cfd_state, world.atmosphere_cfd_state
     expected_ocean_temp = ocean_state.resample_scalar_to_equirect(ocean_state.temperature_c, height, width)
     expected_air_temp = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.temperature_c, height, width)
-    expected_humidity = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.humidity, height, width)
-    expected_precip = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.precipitation_mm, height, width)
 
     assert np.array_equal(fields.ocean_temperature_c, expected_ocean_temp)
     assert np.array_equal(fields.air_temperature_c, expected_air_temp)
-    assert np.array_equal(fields.humidity, expected_humidity)
-    assert np.array_equal(fields.precipitation_mm, expected_precip)
+    assert not hasattr(atmosphere_state, "humidity")
+    # A real world one step past generation gets real rain over land somewhere.
+    assert np.all(np.isfinite(fields.precipitation_mm))
+    assert fields.precipitation_mm[~fields.is_ocean].max() > 50.0
+
+
+def test_compute_climate_skip_moisture_zeros_humidity_and_precipitation():
+    # world._advance_fluid_dynamics passes skip_moisture=True -- the CFD forcing it builds
+    # only consumes is_ocean/elevation/temperature baselines, so it shouldn't pay for the
+    # humidity/precipitation sweep.
+    world = _world(seed=7, num_plates=8, steps=1)
+    height, width = climate.grid_dimensions(world.climate_density)
+    fields = climate.compute_climate(world, height, width, skip_moisture=True)
+    assert np.all(fields.humidity == 0.0)
+    assert np.all(fields.precipitation_mm == 0.0)
 
 
 def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():

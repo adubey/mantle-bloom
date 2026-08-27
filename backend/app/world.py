@@ -257,10 +257,14 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     this point, so a fresh climate snapshot is always computed here regardless of whether
     fluid_density matches climate_density; erosion.apply_erosion computes its own snapshot
     right after this returns (on the same, still-unchanged post-tectonics world.plates), so
-    this is one redundant compute_climate call per step in exchange for correct fluid forcing.
+    this is one extra compute_climate call per step in exchange for correct fluid forcing --
+    passed skip_moisture=True since refresh_forcing consumes only elevation/is_ocean/the
+    temperature baselines, so this call doesn't pay for the humidity/precipitation sweep.
     Atmosphere before ocean, since ocean_cfd.refresh_forcing reads the just-advanced
     atmosphere_cfd_state as its own wind forcing -- see that function's own docstring."""
-    terrain = climate.compute_climate(world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud)
+    terrain = climate.compute_climate(
+        world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud, skip_moisture=True
+    )
     atmosphere_cfd.refresh_forcing(world, world.atmosphere_cfd_state, terrain)
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
     ocean_cfd.refresh_forcing(world, world.ocean_cfd_state, terrain)

@@ -48,3 +48,9 @@ def test_stats_and_render_reuse_the_same_step_cache():
 
     render_image.render_png(world, "eckert4", "temperature", 200, 120)
     assert world.climate_cache is cached  # neither did rendering a climate view
+
+    # precipitation/humidity/biome renders now pull the diagnostic fields via
+    # compute_climate_cached (not the CFD state) -- still a same-turn cache reuse, not a
+    # recompute.
+    render_image.render_png(world, "eckert4", "precipitation", 200, 120)
+    assert world.climate_cache is cached

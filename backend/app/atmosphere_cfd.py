@@ -1,6 +1,17 @@
 """Shallow-water wind solver over the world's HEALPix grid -- `(npix,)` flat arrays via
 `fluid_dynamics_healpix` primitives, no polar zonal filter/sponge drag needed (nothing to
-compensate for on an equal-area grid, unlike an equirectangular one)."""
+compensate for on an equal-area grid, unlike an equirectangular one).
+
+Owns wind (`u`/`v`/`eta`) and air temperature (`temperature_c`) only. Humidity and
+precipitation are *not* prognostic here any more -- `climate.compute_climate` derives them
+diagnostically every step from this state's wind plus terrain/ocean temperature (see
+climate.py's own module docstring). The shallow-water momentum equation has drag, viscosity,
+and orographic damping but nothing that would sustain a planetary circulation on its own, so
+`(u, v)` is additionally relaxed toward a latitude-banded target (the same trade-wind/
+westerly/polar-easterly structure `climate.compute_wind` bootstraps from, minus the mountain/
+temperature-gradient terms this solver produces itself) at `WIND_FORCING_RELAXATION_PER_S` --
+without it, the bootstrap winds spin down to a near-still thermal-gradient balance within a
+few tectonic steps, taking the Ekman-forced ocean currents down with them."""
 
 from __future__ import annotations
 
@@ -28,18 +39,21 @@ SURFACE_DRAG_BASE_PER_S = 1.0e-5
 SURFACE_DRAG_OROGRAPHIC_PER_S = 8.0e-6
 VISCOSITY_M2_S = 6.0e4
 
+# Relaxation of (u, v) toward the latitude-banded target wind (see module docstring). Well
+# above SURFACE_DRAG_BASE_PER_S so the forcing wins against drag/viscosity/orographic damping
+# at steady state (settling planetary wind speed near the target's own ~MERIDIONAL_BASE_SPEED
+# scale, which the downstream humidity-advection tuning in climate.py assumes) while still
+# leaving Coriolis, the pressure-gradient/thermal term, and orographic deflection free to
+# reshape the flow away from a pure zonal band -- tuned against a 60-step run (see
+# docs/simulation-model.md#atmosphere-cfd).
+WIND_FORCING_RELAXATION_PER_S = 1.0e-4
+
 MOUNTAIN_OBSTACLE_ELEVATION_M = 2000.0
 MOUNTAIN_OBSTACLE_RAMP_M = 800.0
 MOUNTAIN_DEFLECTION_RATE_PER_S = 3.0e-4
 
 TEMPERATURE_DIFFUSIVITY_M2_S = 3.0e4
 RADIATIVE_RELAXATION_PER_S = 3.0e-6
-
-HUMIDITY_DIFFUSIVITY_M2_S = 2.0e4
-OCEAN_EVAPORATION_SOURCE_PER_S = 4.0e-7
-LAND_EVAPORATION_SOURCE_PER_S = 0.6e-7
-CONDENSATION_RATE_PER_S = 2.0e-6
-PRECIP_CONDENSATION_TO_MM = 4.0e6
 
 MAX_SUBSTEPS_PER_STEP = 2000
 SECONDS_PER_TECTONIC_STEP = 86400.0  # one simulated day, same as v1
@@ -55,8 +69,6 @@ class AtmosphereCFDState:
     eta: np.ndarray  # (npix,) geopotential-height anomaly, m
     temperature_c: np.ndarray
     equilibrium_temperature_c: np.ndarray  # refreshed once per tectonics step
-    humidity: np.ndarray
-    precipitation_mm: np.ndarray
     elapsed_seconds: float = 0.0
 
     def resample_scalar_to_equirect(self, field: np.ndarray, height: int, width: int) -> np.ndarray:
@@ -88,6 +100,22 @@ def _equilibrium_temperature(world: "World", grid: healpix_grid.HealpixGrid, is_
     return np.where(is_ocean, ocean, land)
 
 
+def _target_wind(grid: healpix_grid.HealpixGrid) -> tuple[np.ndarray, np.ndarray]:
+    """Latitude-banded target the solver's wind is relaxed toward -- the near-surface branch
+    of the three-cell circulation `climate.compute_wind` bootstraps from (`meridional_dir *
+    MERIDIONAL_BASE_SPEED`, Coriolis-deflected into `u`), evaluated on this HEALPix grid's
+    own per-pixel latitude. Deliberately *without* compute_wind's mountain-deflection/wake
+    and temperature-gradient terms: this solver produces those itself (orographic deflection
+    in the momentum pass, the pressure-gradient/thermal term via `eta`), so the target is
+    only the planetary-scale banded structure they modify."""
+    lat_deg = np.degrees(grid.lat_rad)
+    meridional_dir = climate.meridional_direction_for_lat(lat_deg)
+    f = climate.coriolis_parameter(lat_deg)
+    v_target = meridional_dir * climate.MERIDIONAL_BASE_SPEED
+    u_target = climate.CORIOLIS_DEFLECTION_GAIN * f * v_target
+    return u_target.astype(np.float32), v_target.astype(np.float32)
+
+
 def init_atmosphere_cfd(world: "World", terrain: climate.ClimateFields) -> AtmosphereCFDState:
     """Bootstraps this world's permanent `World.atmosphere_cfd_state` from `terrain` (a
     `climate.compute_climate` diagnostic snapshot, on the equirectangular render/erosion
@@ -100,8 +128,6 @@ def init_atmosphere_cfd(world: "World", terrain: climate.ClimateFields) -> Atmos
     u0 = healpix_grid.resample_from_equirect(grid, terrain.wind_u, lat_rows)
     v0 = healpix_grid.resample_from_equirect(grid, terrain.wind_v, lat_rows)
     temperature0 = healpix_grid.resample_from_equirect(grid, np.where(terrain.is_ocean, terrain.ocean_temperature_c, terrain.air_temperature_c), lat_rows)
-    humidity0 = healpix_grid.resample_from_equirect(grid, terrain.humidity, lat_rows)
-    precip0 = healpix_grid.resample_from_equirect(grid, terrain.precipitation_mm, lat_rows)
     equilibrium_temperature_c = _equilibrium_temperature(world, grid, is_ocean, elevation_m)
 
     return AtmosphereCFDState(
@@ -113,8 +139,6 @@ def init_atmosphere_cfd(world: "World", terrain: climate.ClimateFields) -> Atmos
         eta=np.zeros(grid.npix, dtype=np.float32),
         temperature_c=temperature0.astype(np.float32),
         equilibrium_temperature_c=equilibrium_temperature_c.astype(np.float32),
-        humidity=humidity0.astype(np.float32),
-        precipitation_mm=precip0.astype(np.float32),
     )
 
 
@@ -151,10 +175,9 @@ def _atmosphere_substep_loop_kernel(
     v,
     eta,
     temperature_c,
-    humidity,
-    precipitation_mm,
-    is_ocean,
     equilibrium_temperature_c,
+    u_target,
+    v_target,
     orographic_drag,
     normal_x,
     normal_y,
@@ -182,16 +205,9 @@ def _atmosphere_substep_loop_kernel(
     eta_thermal_relaxation,
     viscosity,
     mountain_deflection_rate,
+    wind_forcing_relaxation,
     temp_diffusivity,
     radiative_relaxation,
-    ocean_evap_source,
-    land_evap_source,
-    evap_reference_temp,
-    min_evap_ceiling,
-    max_evap_ceiling,
-    condensation_rate,
-    humidity_diffusivity,
-    precip_conversion,
 ):
     """Subcycled fast/slow split of `step_atmosphere_cfd`'s substep loop -- the atmosphere
     twin of `ocean_cfd._ocean_substep_loop_kernel`; see that function's own docstring for
@@ -201,12 +217,14 @@ def _atmosphere_substep_loop_kernel(
     Structural differences from the ocean kernel, carried over from the pre-split version:
     no `is_ocean` masking on `u`/`v`/`eta` (wind exists over land too), a per-pixel
     `orographic_drag` array instead of ocean's scalar bottom drag, the mountain-deflection
-    tendency riding along in the fast momentum pass (purely local, like wind stress in the
-    ocean kernel), and humidity/evaporation/condensation/precipitation in the slow block in
-    place of ocean's sediment pickup/settling. One further consequence of the split:
-    `eta_target` depends only on `temperature_c` (frozen for the whole block, since
-    temperature only updates in the slow step now) via `temp_mean`, so both are computed once
-    per block instead of once per fast substep."""
+    tendency and the latitude-banded wind-forcing relaxation (`wind_forcing_relaxation *
+    (u_target - u)`, see module docstring) both riding along in the fast momentum pass
+    (purely local), and only temperature advection/diffusion/radiative-relaxation in the slow
+    block (humidity/precipitation are diagnostic in climate.py now, not solved here) in place
+    of ocean's sediment pickup/settling. One further consequence of the split: `eta_target`
+    depends only on `temperature_c` (frozen for the whole block, since temperature only
+    updates in the slow step now) via `temp_mean`, so both are computed once per block
+    instead of once per fast substep."""
     npix = u.shape[0]
     n_neighbours = neighbours.shape[1]
 
@@ -225,11 +243,8 @@ def _atmosphere_substep_loop_kernel(
     gx_v = np.empty(npix, dtype=np.float32)
     gy_v = np.empty(npix, dtype=np.float32)
     advected_temp = np.empty(npix, dtype=np.float32)
-    advected_hum = np.empty(npix, dtype=np.float32)
     gx_temp = np.empty(npix, dtype=np.float32)
     gy_temp = np.empty(npix, dtype=np.float32)
-    gx_hum = np.empty(npix, dtype=np.float32)
-    gy_hum = np.empty(npix, dtype=np.float32)
 
     substeps_done = 0
     while substeps_done < n_substeps:
@@ -250,9 +265,9 @@ def _atmosphere_substep_loop_kernel(
 
         for _fast in range(block_count):
             # Fast Pass 1: gradient of eta only, fused with the local momentum update
-            # (Coriolis + pressure-gradient + mountain-deflection + orographic drag, all
-            # purely local given gx_eta/gy_eta) -- viscosity is not here any more, it moved
-            # to the slow block below.
+            # (Coriolis + pressure-gradient + mountain-deflection + latitude-banded wind
+            # forcing + orographic drag, all purely local given gx_eta/gy_eta) -- viscosity is
+            # not here any more, it moved to the slow block below.
             for i in range(npix):
                 ei = eta[i]
                 atb_x = 0.0
@@ -281,8 +296,8 @@ def _atmosphere_substep_loop_kernel(
                 deflect_ax = rate * (normal_x[i] + tangent_x[i])
                 deflect_ay = rate * (normal_y[i] + tangent_y[i])
 
-                du_dt = f[i] * vi - reduced_gravity * gxe_i + deflect_ax
-                dv_dt = -f[i] * ui - reduced_gravity * gye_i + deflect_ay
+                du_dt = f[i] * vi - reduced_gravity * gxe_i + deflect_ax + wind_forcing_relaxation * (u_target[i] - ui)
+                dv_dt = -f[i] * ui - reduced_gravity * gye_i + deflect_ay + wind_forcing_relaxation * (v_target[i] - vi)
 
                 u_raw[i] = (ui + dt_s * du_dt) / (1.0 + dt_s * orographic_drag[i])
                 v_raw[i] = (vi + dt_s * dv_dt) / (1.0 + dt_s * orographic_drag[i])
@@ -424,8 +439,8 @@ def _atmosphere_substep_loop_kernel(
             u[i] = u[i] + dt_outer * viscosity * lap_u_i
             v[i] = v[i] + dt_outer * viscosity * lap_v_i
 
-        # Slow Pass 3: semi_lagrangian_advect of temperature_c and humidity together, over
-        # dt_outer, using this block's final u/v (unconditionally stable regardless of dt).
+        # Slow Pass 3: semi_lagrangian_advect of temperature_c over dt_outer, using this
+        # block's final u/v (unconditionally stable regardless of dt).
         for i in range(npix):
             ox = -u[i] * dt_outer
             oy = -v[i] * dt_outer
@@ -444,54 +459,36 @@ def _atmosphere_substep_loop_kernel(
             src_lat = math.asin(sz)
             src_pix = ang2pix_nest_scalar(nside, order, src_lon, src_lat)
             advected_temp[i] = temperature_c[src_pix]
-            advected_hum[i] = humidity[src_pix]
 
-        # Slow Pass 4: first-derivative gather of advected_temp and advected_hum together.
+        # Slow Pass 4: first-derivative gather of advected_temp.
         for i in range(npix):
             ti = advected_temp[i]
-            hi = advected_hum[i]
             atbx_t = 0.0
             atby_t = 0.0
-            atbx_h = 0.0
-            atby_h = 0.0
             for k in range(n_neighbours):
                 if neighbour_valid[i, k]:
                     nb = neighbours[i, k]
                     dx = neighbour_dx_m[i, k]
                     dy = neighbour_dy_m[i, k]
                     dt_ = advected_temp[nb] - ti
-                    dh_ = advected_hum[nb] - hi
                     atbx_t += dx * dt_
                     atby_t += dy * dt_
-                    atbx_h += dx * dh_
-                    atby_h += dy * dh_
             g00 = gradient_inv[i, 0, 0]
             g01 = gradient_inv[i, 0, 1]
             g10 = gradient_inv[i, 1, 0]
             g11 = gradient_inv[i, 1, 1]
             gx_temp[i] = g00 * atbx_t + g01 * atby_t
             gy_temp[i] = g10 * atbx_t + g11 * atby_t
-            gx_hum[i] = g00 * atbx_h + g01 * atby_h
-            gy_hum[i] = g10 * atbx_h + g11 * atby_h
 
-        # Slow Pass 5: second derivative (laplacian) of advected_temp/advected_hum, fused with
-        # radiative relaxation, evaporation/condensation, and precipitation -- this block's
-        # final write, all over dt_outer. `humidity[i]` here is still the pre-advection value
-        # (matches the original loop, which computes excess/condensed before overwriting
-        # `humidity`).
+        # Slow Pass 5: second derivative (laplacian) of advected_temp, fused with radiative
+        # relaxation -- this block's final temperature write, all over dt_outer.
         for i in range(npix):
             gxt_i = gx_temp[i]
             gyt_i = gy_temp[i]
-            gxh_i = gx_hum[i]
-            gyh_i = gy_hum[i]
             a_t = 0.0
             b_t = 0.0
             c_t = 0.0
             d_t = 0.0
-            a_h = 0.0
-            b_h = 0.0
-            c_h = 0.0
-            d_h = 0.0
             for k in range(n_neighbours):
                 if neighbour_valid[i, k]:
                     nb = neighbours[i, k]
@@ -499,49 +496,23 @@ def _atmosphere_substep_loop_kernel(
                     dy = neighbour_dy_m[i, k]
                     dgxt = gx_temp[nb] - gxt_i
                     dgyt = gy_temp[nb] - gyt_i
-                    dgxh = gx_hum[nb] - gxh_i
-                    dgyh = gy_hum[nb] - gyh_i
                     a_t += dx * dgxt
                     b_t += dy * dgxt
                     c_t += dx * dgyt
                     d_t += dy * dgyt
-                    a_h += dx * dgxh
-                    b_h += dy * dgxh
-                    c_h += dx * dgyh
-                    d_h += dy * dgyh
             g00 = gradient_inv[i, 0, 0]
             g01 = gradient_inv[i, 0, 1]
             g10 = gradient_inv[i, 1, 0]
             g11 = gradient_inv[i, 1, 1]
             lap_t = (g00 * a_t + g01 * b_t) + (g10 * c_t + g11 * d_t)
-            lap_h = (g00 * a_h + g01 * b_h) + (g10 * c_h + g11 * d_h)
 
             diffused_temp = advected_temp[i] + dt_outer * temp_diffusivity * lap_t
             final_temp = diffused_temp + dt_outer * radiative_relaxation * (equilibrium_temperature_c[i] - diffused_temp)
-
-            evap_source = ocean_evap_source if is_ocean[i] else land_evap_source
-            saturation_ceiling = final_temp / evap_reference_temp
-            if saturation_ceiling < min_evap_ceiling:
-                saturation_ceiling = min_evap_ceiling
-            elif saturation_ceiling > max_evap_ceiling:
-                saturation_ceiling = max_evap_ceiling
-            excess = humidity[i] - saturation_ceiling
-            if excess < 0.0:
-                excess = 0.0
-            condensed = condensation_rate * excess
-
-            diffused_hum = advected_hum[i] + dt_outer * humidity_diffusivity * lap_h
-            final_hum = diffused_hum + dt_outer * (evap_source - condensed)
-            if final_hum < 0.0:
-                final_hum = 0.0
-
             temperature_c[i] = final_temp
-            humidity[i] = final_hum
-            precipitation_mm[i] = condensed * precip_conversion
 
         substeps_done += block_count
 
-    return u, v, eta, temperature_c, humidity, precipitation_mm
+    return u, v, eta, temperature_c
 
 
 def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: float) -> None:
@@ -551,23 +522,23 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
     current_speed = float(np.hypot(state.u, state.v).max(initial=0.0))
     n_substeps, dt_s = fluid_dynamics.cfl_substeps(seconds, fdh.min_spacing_m(grid), wave_speed, current_speed, MAX_SUBSTEPS_PER_STEP)
 
-    max_diffusivity = max(VISCOSITY_M2_S, TEMPERATURE_DIFFUSIVITY_M2_S, HUMIDITY_DIFFUSIVITY_M2_S)
+    max_diffusivity = max(VISCOSITY_M2_S, TEMPERATURE_DIFFUSIVITY_M2_S)
     dt_outer_limit = fluid_dynamics.diffusion_stable_dt(fdh.min_spacing_m(grid), max_diffusivity)
     fast_substeps_per_block = max(1, int(dt_outer_limit // dt_s))
 
     orographic_drag = SURFACE_DRAG_BASE_PER_S + SURFACE_DRAG_OROGRAPHIC_PER_S * np.clip(state.elevation_m / MOUNTAIN_OBSTACLE_ELEVATION_M, 0.0, 1.0)
     normal_x, normal_y, tangent_x, tangent_y, ramp = _mountain_deflection_geometry(state.elevation_m, grid)
     f = fluid_dynamics.coriolis_parameter(np.degrees(grid.lat_rad))
+    u_target, v_target = _target_wind(grid)
 
-    u, v, eta, temperature_c, humidity, precipitation_mm = _atmosphere_substep_loop_kernel(
+    u, v, eta, temperature_c = _atmosphere_substep_loop_kernel(
         state.u.copy(),
         state.v.copy(),
         state.eta.copy(),
         state.temperature_c.copy(),
-        state.humidity.copy(),
-        state.precipitation_mm.copy(),
-        state.is_ocean,
         state.equilibrium_temperature_c,
+        u_target,
+        v_target,
         orographic_drag.astype(np.float32),
         normal_x,
         normal_y,
@@ -595,19 +566,10 @@ def step_atmosphere_cfd(world: "World", state: AtmosphereCFDState, seconds: floa
         ETA_THERMAL_RELAXATION_PER_S,
         VISCOSITY_M2_S,
         MOUNTAIN_DEFLECTION_RATE_PER_S,
+        WIND_FORCING_RELAXATION_PER_S,
         TEMPERATURE_DIFFUSIVITY_M2_S,
         RADIATIVE_RELAXATION_PER_S,
-        OCEAN_EVAPORATION_SOURCE_PER_S,
-        LAND_EVAPORATION_SOURCE_PER_S,
-        climate.EVAPORATION_REFERENCE_TEMP_C,
-        climate.MIN_EVAPORATION_CEILING,
-        climate.MAX_EVAPORATION_CEILING,
-        CONDENSATION_RATE_PER_S,
-        HUMIDITY_DIFFUSIVITY_M2_S,
-        PRECIP_CONDENSATION_TO_MM,
     )
     state.u, state.v, state.eta = u, v, eta
     state.temperature_c = temperature_c
-    state.humidity = humidity
-    state.precipitation_mm = precipitation_mm
     state.elapsed_seconds += dt_s * n_substeps

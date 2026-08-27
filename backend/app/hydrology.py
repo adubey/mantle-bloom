@@ -163,6 +163,34 @@ GLACIER_FLOW_RATE_PER_MYR = 0.15
 GLACIER_MAX_FLOW_FRACTION = 0.5
 GLACIER_VISIBLE_DEPTH_M = 10.0
 
+# Basal melt / sublimation loss that applies to *all* ice every step, independent of the
+# surface-temperature-driven melt_factor above (which bottoms out at zero below
+# GLACIER_ACCUMULATION_TEMP_C -- see that constant's comment). Without an always-on sink,
+# ice that flows into a closed interior basin with no route to the ocean -- and ice from a
+# whole catchment converging on one flat-floored downstream node it can't drain off of
+# (glacier flow scales with bed slope, ~0 there) -- accumulates without bound (the no-cap
+# behavior docs/simulation-model.md#glaciation already flags), which real precipitation
+# turned from a slow cosmetic quirk into runaway multi-hundred-km ice columns. The loss rate
+# grows with the *square* of ice depth (`(depth / GLACIER_BASAL_MELT_REFERENCE_DEPTH_M) ** 2`):
+# a real effect in direction -- thicker ice insulates its bed toward the pressure-melting
+# point -- exaggerated in degree so the equilibrium depth is stiff. Thin valley/plateau
+# glaciers (a few hundred m) lose a fraction of a m/Myr, utterly negligible next to their
+# accumulation; a normal continental sheet (~2-4 km) loses tens to low hundreds of m/Myr,
+# reaching a finite equilibrium; a pathological convergence column is cut back hard. The lost
+# ice joins the step's meltwater like surface melt does.
+GLACIER_BASAL_MELT_M_PER_MYR = 60.0
+GLACIER_BASAL_MELT_REFERENCE_DEPTH_M = 2500.0
+
+# A hard ceiling on per-node ice depth, a backstop beneath the depth-squared basal melt
+# above. The basal-melt term sets a soft equilibrium in the low-thousands of metres for an
+# ordinary accumulation/convergence node, but a rare pathological sink -- a whole cold
+# catchment's ice converging on one flat-floored node in a single step -- can still deliver a
+# one-step pile far past anything physical before the next step's basal melt trims it. Real
+# ice that thick spreads laterally under its own weight within a step; here the excess is
+# shed into that step's meltwater (mass-conserving into the river system, not deleted).
+# ~1.5x the thickest ice sheet on real Earth.
+GLACIER_MAX_DEPTH_M = 5000.0
+
 # River evaporation: a fraction of a river's own downstream flux evaporates at every node it
 # passes through this step -- warmer nodes lose a bigger fraction, up to
 # RIVER_EVAPORATION_MAX_FRACTION (capped well short of 1.0 so a single very large step can't
@@ -566,6 +594,15 @@ def _update_glaciers(
         (temperature - GLACIER_ACCUMULATION_TEMP_C) / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
     )
     melt = np.minimum(GLACIER_MELT_RATE_M_PER_MYR * melt_factor * years_myr, depth_before_flow)
+    # Depth-squared basal melt/sublimation, applied even where melt_factor is zero -- see
+    # GLACIER_BASAL_MELT_M_PER_MYR's comment for why an always-on, steeply thickness-scaled
+    # sink is what keeps convergence/closed-basin ice from growing without bound.
+    depth_ratio = depth_before_flow / GLACIER_BASAL_MELT_REFERENCE_DEPTH_M
+    basal_melt = np.minimum(
+        GLACIER_BASAL_MELT_M_PER_MYR * depth_ratio * depth_ratio * years_myr,
+        depth_before_flow - melt,
+    )
+    melt = melt + basal_melt
     depth_after_melt = depth_before_flow - melt
 
     flow_fraction = np.clip(GLACIER_FLOW_RATE_PER_MYR * slope_to_target * years_myr, 0.0, GLACIER_MAX_FLOW_FRACTION)
@@ -579,8 +616,11 @@ def _update_glaciers(
     # Ice reaching (or accumulating on) an ocean node is discarded, not piled up -- real sea
     # ice is a different, thinner, seasonal phenomenon this model doesn't represent; this
     # same guard reads as calving where a glacier reaches a coast.
-    new_depth = np.where(is_ocean, 0.0, np.clip(remaining + inflow, 0.0, None))
-    return new_depth, melt
+    piled = np.where(is_ocean, 0.0, np.clip(remaining + inflow, 0.0, None))
+    # Shed anything past GLACIER_MAX_DEPTH_M (see its comment) into this step's meltwater.
+    overflow = np.clip(piled - GLACIER_MAX_DEPTH_M, 0.0, None)
+    new_depth = piled - overflow
+    return new_depth, melt + overflow
 
 
 def compute_hydrology(
@@ -645,8 +685,16 @@ def compute_hydrology(
     # freezing (unlike liquid water, gated above) -- see _compute_flow_direction's own
     # apply_freeze docstring. Without this, a glaciated node (almost always is_frozen, or it
     # wouldn't be accumulating ice) could never advance its own ice downhill at all.
+    #
+    # The "water surface" the spill-redirect test uses is elevation + prev lake depth + prev
+    # ice depth: a deep enough ice mass in a closed interior basin overtops its confining rim
+    # and drains toward the ocean via spill_target, exactly as a filled lake does (real ice
+    # sheets overflow basins -- that is what outlet glaciers and ice streams are). Without the
+    # ice term here, a topological sink accumulates every upstream node's converging ice with
+    # no release, and realistic frozen precipitation piles it into physically absurd
+    # multi-hundred-km columns (see also GLACIER_BASAL_MELT_M_PER_MYR).
     ice_flow_target, _ = _compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
+        elevation, is_ocean, neighbor_idx, lake_depth_adjusted + prev_glacier_depth, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
     )
 
     frozen_precip = np.where(is_frozen, precipitation_at_nodes, 0.0)
@@ -678,13 +726,24 @@ def compute_hydrology(
 
     # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right
     # where it froze (route_downstream already deposited it there, since a frozen node's
-    # flow_target was forced to -1 above), joining this step's glacier_depth the same way a
-    # frozen lake's own water already does via frozen_from_lake. Added after _update_glaciers
-    # (which ran before this routing pass could know water_deposited) rather than folded into
-    # its own accumulation term -- this newly-frozen river ice simply starts flowing/melting
-    # from next step onward, an accepted one-step lag matching this codebase's general
-    # tolerance for that (see e.g. climate_cache/hydrology_cache's own docstrings on World).
-    new_glacier_depth = np.where(is_frozen & ~is_ocean, new_glacier_depth + water_deposited, new_glacier_depth)
+    # flow_target was forced to -1 above), joining this step's glacier_depth. Added after
+    # _update_glaciers (which ran before this routing pass could know water_deposited) rather
+    # than folded into its own accumulation term -- this newly-frozen river ice simply starts
+    # flowing/melting from next step onward, an accepted one-step lag matching this codebase's
+    # general tolerance for that (see e.g. climate_cache/hydrology_cache's own docstrings).
+    # `water_deposited` is an accumulated *flux* (mm/yr-equivalent, and at a should_spill sink
+    # it also carries the LAKE_BREACH_EROSION_COEFFICIENT-scaled synthetic surge), so it's
+    # converted to an ice *depth* by the same GLACIER_ACCUMULATION_RATE * (·) * years_myr the
+    # frozen-precipitation term uses -- not added 1:1 the way a standing frozen lake's own
+    # lake_depth (already a depth) is -- and then re-clipped to GLACIER_MAX_DEPTH_M so a large
+    # river (or a lake breach) freezing into a cold sink can't create a physically absurd
+    # ice column in a single step.
+    frozen_river_ice = GLACIER_ACCUMULATION_RATE * water_deposited * (years / 1_000_000.0)
+    new_glacier_depth = np.where(
+        is_frozen & ~is_ocean,
+        np.minimum(new_glacier_depth + frozen_river_ice, GLACIER_MAX_DEPTH_M),
+        new_glacier_depth,
+    )
 
     # is_river isn't known yet -- it needs this step's *final* lake_depth (below) to exclude
     # flooded nodes, so fields is built with a placeholder here and finished after.
