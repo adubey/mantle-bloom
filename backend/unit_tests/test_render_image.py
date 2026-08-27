@@ -257,14 +257,13 @@ def test_climate_views_render_as_distinct_images():
 
 
 def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
-    # The world's oceanCurrents view reads directly off ocean_cfd_state's own native HEALPix
-    # arrays now (see render_image._render_climate_view), not through climate.compute_climate
-    # -- so rather than injecting a synthetic climate.ClimateFields, this monkeypatches the
-    # swell-position computation itself to a known point and confirms render_png actually
-    # draws a marker there, the same "does the drawing step work" contract the old synthetic-
-    # convergence setup tested.
-    synthetic_swell_xyz = np.array([geometry.latlon_to_xyz(0.0, 0.0)])
-    monkeypatch.setattr(render_image, "_compute_ocean_swells_healpix", lambda *args, **kwargs: synthetic_swell_xyz)
+    # The oceanCurrents view draws swells at climate.ClimateFields' own swell_rows/swell_cols
+    # (climate.compute_ocean_swells' picked convergence cells) resampled to xyz. Monkeypatch
+    # that pick to a known grid cell and confirm render_png actually draws a white marker
+    # there -- the same "does the drawing step work" contract as before.
+    from app import climate
+
+    monkeypatch.setattr(climate, "compute_ocean_swells", lambda *a, **k: (np.array([20]), np.array([40])))
 
     png = render_image.render_png(_world(), "behrmann", "oceanCurrents", 320, 180)
     image = Image.open(io.BytesIO(png)).convert("RGB")

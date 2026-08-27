@@ -87,8 +87,8 @@ def test_atmosphere_cfd_never_mutates_world_plates():
 
 
 def test_step_atmosphere_cfd_stays_bounded_over_many_steps():
-    # Same "doesn't blow up" regression guard as ocean_cfd's own version -- guards against
-    # the fast/slow subcycled split (atmosphere_cfd's own docstring) diverging, not an
+    # A "doesn't blow up" regression guard -- guards against the fast/slow subcycled split
+    # (atmosphere_cfd's own docstring) or the wind-forcing relaxation diverging, not an
     # exact physical value.
     world = generate_world(seed=1, node_density=1.0, climate_density=1.0, fluid_density=1.0, num_plates=6)
     state = world.atmosphere_cfd_state

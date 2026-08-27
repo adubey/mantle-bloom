@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, ocean_cfd, volcanism
+from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from .lithosphere_plate import generate_plates
 from .plates import Plate, gather_node_positions, query_workers
@@ -55,16 +55,14 @@ class World:
     # Another fixed per-world property, set once at generation (the UI's "Fluid dynamics
     # resolution" Advanced-settings choice, climate.FLUID_DENSITY_CHOICES -- capped lower than
     # climate_density's own choices, see that constant's own comment for why) -- independent
-    # of climate_density, read only by ocean_cfd.init_ocean_cfd/atmosphere_cfd.
-    # init_atmosphere_cfd/world.py's own _advance_fluid_dynamics to size the Ocean/Atmospheric
-    # Fluid Dynamics grid. Unlike climate_density, lowering this doesn't touch the Biome/
-    # Combined/Resources/Soil-Quality render grid or erosion.py's own climate sampling at all
-    # -- it only trades off how finely Ocean/Atmospheric Fluid Dynamics resolves currents/wind
-    # against how long each tectonics step's own fixed-real-time CFD advancement takes, since
-    # CFL substep count scales with grid spacing (see fluid_dynamics.cfl_substeps) and
-    # per-substep cost scales with cell count -- a real per-step cost now, not an opt-in one,
-    # since Ocean/Atmospheric Fluid Dynamics runs continuously alongside tectonics rather than
-    # as a separate mode (see World.ocean_cfd_state's own comment).
+    # of climate_density, read only by atmosphere_cfd.init_atmosphere_cfd and world.py's own
+    # _advance_fluid_dynamics to size the atmospheric wind-solver grid. Unlike climate_density,
+    # lowering this doesn't touch the Biome/Combined/Resources/Soil-Quality render grid or
+    # erosion.py's own climate sampling at all -- it only trades off how finely the wind solve
+    # resolves the flow against how long each tectonics step's own fixed-real-time CFD
+    # advancement takes, since CFL substep count scales with grid spacing (see
+    # fluid_dynamics.cfl_substeps) and per-substep cost scales with cell count -- a real
+    # per-step cost, since the wind solve runs continuously alongside tectonics.
     fluid_density: float = climate.DEFAULT_FLUID_DENSITY
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
@@ -121,24 +119,20 @@ class World:
     # documents) rather than None, so a render/stats call right after toggling this off still
     # shows the last real climate snapshot instead of going blank.
     simulate_climate_biomes: bool = True
-    # Ocean/Atmospheric Fluid Dynamics state -- see docs/simulation-model.md#ocean-atmospheric-
-    # fluid-dynamics. Always on, not a mode: generate_world populates both immediately after
-    # constructing this World (atmosphere_cfd.init_atmosphere_cfd, then ocean_cfd.init_ocean_cfd
-    # -- which seeds its own wind forcing from the former's result, so that order matters), and
-    # neither is ever re-initialized or cleared again for the rest of this world's life --
-    # step_world's own _advance_fluid_dynamics just keeps advancing each by its own fixed
-    # SECONDS_PER_TECTONIC_STEP (atmosphere_cfd's 1 day, ocean_cfd's 1 week) every tectonics
-    # step, gated on simulate_climate_biomes the same way erosion/hydrology already are, real
-    # ocean/atmosphere fluid dynamics needing timesteps of hours-to-days rather than
-    # tectonics' own thousands-to-millions of years notwithstanding -- climate.py's own
-    # compute_climate sources wind_u/wind_v/current_u/current_v from these two states'
-    # continuously-evolving u/v (resampled onto whatever resolution it's asked for, see
-    # fluid_dynamics.resample_to_grid) rather than its own diagnostic heuristics, which now
-    # exist only as the one-time cold-start bootstrap init_atmosphere_cfd/init_ocean_cfd
-    # themselves fall back to before these fields are ever populated. Typed `| None` only
-    # because a dataclass field default can't reference `self`/other fields to construct
-    # these inline -- never actually `None` once generate_world has returned.
-    ocean_cfd_state: ocean_cfd.OceanCFDState | None = None
+    # Atmospheric wind-solver state -- see docs/simulation-model.md#atmospheric-fluid-dynamics.
+    # Always on, not a mode: generate_world populates it immediately after constructing this
+    # World (atmosphere_cfd.init_atmosphere_cfd) and it's never re-initialized or cleared again
+    # for the rest of this world's life -- step_world's own _advance_fluid_dynamics just keeps
+    # advancing it by a fixed SECONDS_PER_TECTONIC_STEP (one simulated day) every tectonics
+    # step, gated on simulate_climate_biomes the same way erosion/hydrology already are.
+    # climate.py's compute_climate sources wind_u/wind_v (and air_temperature_c) from this
+    # state's continuously-evolving fields rather than its own diagnostic compute_wind, which
+    # now exists only as the one-time cold-start bootstrap init_atmosphere_cfd falls back to
+    # before this field is ever populated. Ocean currents and precipitation are *not* CFD-
+    # solved -- they're diagnostic in climate.py every step (the ocean shallow-water solver was
+    # retired for lack of a stable operating point; see climate.py's module docstring). Typed
+    # `| None` only because a dataclass field default can't construct it inline -- never
+    # actually `None` once generate_world has returned.
     atmosphere_cfd_state: atmosphere_cfd.AtmosphereCFDState | None = None
 
     def log_event(self, message: str) -> None:
@@ -216,9 +210,8 @@ def generate_world(
     World for the same reason node_density is (see World.climate_density's own comment).
     `fluid_density` (the UI's "Fluid dynamics resolution" Advanced-settings choice) similarly
     doesn't affect the plates/mantle generated above, but *does* immediately seed this world's
-    permanent atmosphere_cfd_state/ocean_cfd_state (see below) at its own resolution -- see
-    World.fluid_density's own comment for why it's a separate knob from climate_density rather
-    than reusing it."""
+    permanent atmosphere_cfd_state (see below) at its own resolution -- see World.fluid_density's
+    own comment for why it's a separate knob from climate_density rather than reusing it."""
     plates = generate_plates(seed, num_plates, continental_fraction, land_fraction, node_density)
     rng = np.random.default_rng(seed)
     mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)
@@ -236,13 +229,13 @@ def generate_world(
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
 
-    # atmosphere before ocean -- ocean_cfd.init_ocean_cfd seeds its own wind forcing from
-    # world.atmosphere_cfd_state, so it must already be set. See World.ocean_cfd_state's own
-    # comment for why both are populated here, unconditionally, rather than lazily.
+    # See World.atmosphere_cfd_state's own comment for why it's populated here,
+    # unconditionally, rather than lazily. `terrain` is the diagnostic bootstrap snapshot the
+    # wind solver is seeded from (compute_wind's own latitude-banded field), before the state
+    # it will read from every step after exists.
     height, width = climate.grid_dimensions(world.climate_density)
     terrain = climate.compute_climate(world, height, width)
     world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, terrain)
-    world.ocean_cfd_state = ocean_cfd.init_ocean_cfd(world, terrain, world.atmosphere_cfd_state)
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     world.log_event(f"World generated with {len(plates)} plates ({n_continents} continental).")
@@ -250,25 +243,21 @@ def generate_world(
 
 
 def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
-    """Advances World.atmosphere_cfd_state/ocean_cfd_state by their own fixed
-    SECONDS_PER_TECTONIC_STEP once per tectonics step, *before* erosion/hydrology each step
-    (unlike a naive post-erosion ordering) -- so erosion/hydrology read post-substep, not
-    pre-substep, wind/precipitation. `world.climate_cache` still holds last step's snapshot at
-    this point, so a fresh climate snapshot is always computed here regardless of whether
-    fluid_density matches climate_density; erosion.apply_erosion computes its own snapshot
-    right after this returns (on the same, still-unchanged post-tectonics world.plates), so
-    this is one extra compute_climate call per step in exchange for correct fluid forcing --
-    passed skip_moisture=True since refresh_forcing consumes only elevation/is_ocean/the
-    temperature baselines, so this call doesn't pay for the humidity/precipitation sweep.
-    Atmosphere before ocean, since ocean_cfd.refresh_forcing reads the just-advanced
-    atmosphere_cfd_state as its own wind forcing -- see that function's own docstring."""
+    """Advances World.atmosphere_cfd_state by its fixed SECONDS_PER_TECTONIC_STEP (one
+    simulated day) once per tectonics step, *before* erosion/hydrology each step (unlike a
+    naive post-erosion ordering) -- so erosion/hydrology read post-substep, not pre-substep,
+    wind. `world.climate_cache` still holds last step's snapshot at this point, so a fresh
+    climate snapshot is always computed here regardless of whether fluid_density matches
+    climate_density; erosion.apply_erosion computes its own snapshot right after this returns
+    (on the same, still-unchanged post-tectonics world.plates), so this is one extra
+    compute_climate call per step in exchange for correct wind forcing -- passed
+    skip_moisture=True since refresh_forcing consumes only elevation/is_ocean/the temperature
+    baseline, so this call doesn't pay for the humidity/precipitation sweep."""
     terrain = climate.compute_climate(
         world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud, skip_moisture=True
     )
     atmosphere_cfd.refresh_forcing(world, world.atmosphere_cfd_state, terrain)
     atmosphere_cfd.step_atmosphere_cfd(world, world.atmosphere_cfd_state, atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
-    ocean_cfd.refresh_forcing(world, world.ocean_cfd_state, terrain)
-    ocean_cfd.step_ocean_cfd(world, world.ocean_cfd_state, ocean_cfd.SECONDS_PER_TECTONIC_STEP)
 
 
 def step_world(world: World, years: float) -> None:
@@ -285,8 +274,8 @@ def step_world(world: World, years: float) -> None:
     merge, and plates whose flow field no longer fits one rigid rotation well can split; any
     resulting events are logged to world.events for the UI's console (see merge_split.py).
 
-    Fluid dynamics (see _advance_fluid_dynamics) advances *before* erosion/hydrology each
-    step, so erosion/hydrology read post-substep wind/precipitation/currents. Every step also
+    The atmospheric wind solve (see _advance_fluid_dynamics) advances *before* erosion/
+    hydrology each step, so erosion/hydrology read post-substep wind. Every step also
     erodes elevation based on the world's current climate (see erosion.py), and rolls each
     active volcano's own eruption chance (see volcanism.py). Right after that, grows/relaxes
     soil and coal/oil-gas deposits from this same step's erosion/flow-routing results (see

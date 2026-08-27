@@ -61,19 +61,18 @@ reads it again, same reasoning `node_density`'s own storage gives (see
 "Fluid dynamics resolution" Advanced-settings choice -- same `climate.CLIMATE_DENSITY_CHOICES`
 set (capped at `2.0`/"High" rather than `4.0`/"Very High", see `climate.FLUID_DENSITY_CHOICES`'s
 own comment for why) and `400` validation as `climate_density`, but independent of it: sizes
-only Ocean/Atmospheric Fluid Dynamics's own grid (`ocean_cfd.init_ocean_cfd`/
-`atmosphere_cfd.init_atmosphere_cfd`, immediately populated by this same call -- see below),
-not the climate/biome render grid or erosion's own climate sampling. Lets a world keep a sharp
-climate/biome grid while running Ocean/Atmospheric Fluid Dynamics at a coarser (faster)
-resolution, or vice versa -- see
+only the atmospheric wind-solver grid (`atmosphere_cfd.init_atmosphere_cfd`, immediately
+populated by this same call -- see below), not the climate/biome render grid or erosion's own
+climate sampling. Lets a world keep a sharp climate/biome grid while running the wind solve at
+a coarser (faster) resolution, or vice versa -- see
 [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
 Replaces whatever world previously existed.
 
 `generate_world` also immediately seeds this new world's permanent
-`World.atmosphere_cfd_state`/`ocean_cfd_state` (`atmosphere_cfd.init_atmosphere_cfd`, then
-`ocean_cfd.init_ocean_cfd`, which seeds its own wind forcing from the former's result) --
-Ocean/Atmospheric Fluid Dynamics is always on, not a mode entered later, see
-[simulation-model.md#mode-toggle](simulation-model.md#mode-toggle).
+`World.atmosphere_cfd_state` (`atmosphere_cfd.init_atmosphere_cfd`) -- the atmospheric wind
+solve is always on, not a mode entered later, see
+[simulation-model.md#mode-toggle](simulation-model.md#mode-toggle). Ocean currents and
+precipitation are diagnostic in `climate.py`, not CFD-solved.
 
 Response: a summary --
 
@@ -104,9 +103,8 @@ Request body:
 
 Advances the current world by `years` (see
 [simulation-model.md](simulation-model.md) for what a step actually does) -- including, gated
-on `World.simulate_climate_biomes`, advancing `World.atmosphere_cfd_state`/`ocean_cfd_state`
-by their own fixed real-time increment (one simulated day / one simulated week) regardless of
-`years`, see
+on `World.simulate_climate_biomes`, advancing `World.atmosphere_cfd_state` by a fixed
+real-time increment (one simulated day) regardless of `years`, see
 [simulation-model.md#mode-toggle](simulation-model.md#mode-toggle). Returns the same summary
 shape as `/world/generate`, with `events` reflecting anything logged up through this step.
 `404` if no world has been generated yet.
@@ -205,20 +203,18 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   current coastline -- see [simulation-model.md#coastline](simulation-model.md#coastline) --
   since a color-scale view carries no land/ocean cue on its own); `"wind"` and
   `"oceanCurrents"` draw subsampled direction/magnitude arrows, and `"oceanCurrents"`
-  additionally marks detected ocean swells with small circles. All five draw genuinely
-  CFD-sourced data straight off `World.atmosphere_cfd_state`/`ocean_cfd_state` (real,
-  continuously time-integrated shallow-water solves, see
-  [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics))
-  -- rendered natively off the world's own HEALPix grid, at its own resolution.
-  `"resources"` and `"soilQuality"` (see
+  additionally marks detected ocean swells with small circles. `"wind"` and the land side of
+  `"temperature"` draw off `World.atmosphere_cfd_state` (a real, continuously time-integrated
+  shallow-water wind solve, see
+  [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics));
+  everything else is a `climate.py` diagnostic (the shallow-water ocean solver was retired)
+  resampled nearest-cell onto the world's HEALPix grid. `"resources"` and `"soilQuality"` (see
   [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)) are
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
-  continuous fertility heatmap (barren to rich) plus the coastline overlay. Suspended sediment/
-  sediment deposition are tracked internally (see `ocean_cfd.py`) but have no rendered view --
-  sediment has no HEALPix port yet, so `"oceanCfdSediment"`/`"oceanCfdDeposition"` are not
-  valid `view` values (`/world/render` rejects them with `400`, same as any other unrecognized
-  view name).
+  continuous fertility heatmap (barren to rich) plus the coastline overlay. `"oceanCfdSediment"`/
+  `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
+  (`/world/render` rejects them with `400`, same as any other unrecognized view name).
 - `rotation` is the map's current view orientation (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world

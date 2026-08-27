@@ -915,18 +915,18 @@ Seven fields -- land temperature, ocean surface temperature, air temperature, wi
 currents, humidity, and precipitation -- computed for five map views (temperature, wind,
 ocean currents with swells marked, humidity, precipitation), implementing a climate model
 whose mechanisms are richer than a first-principles description would suggest. Of those
-seven, four (ocean/air temperature, wind, ocean currents) are read straight off
-`World.atmosphere_cfd_state`/`ocean_cfd_state` -- real, continuously time-integrated
-shallow-water solves (see [Ocean/Atmospheric Fluid
-Dynamics](#ocean-atmospheric-fluid-dynamics)) -- rather than reconstructed by this module's
-own formulas on every call. Land temperature stays a genuine per-call diagnostic (it's also
-the CFD states' own equilibrium/baseline relaxation target, computed the same way). **Humidity
-and precipitation are also per-call diagnostics** -- the orographic-lift + moisture-recycling
-sweep at steps 9-10 below, fed by the CFD-sourced wind and ocean temperature. The CFD
-atmosphere carries no orographic condensation or lake/river/vegetation moisture source of its
-own; its flat evaporation-minus-super-saturation scheme produced a near-zero, uncalibrated
-precipitation field that starved erosion and hydrology, so those two fields were moved back
-out of the CFD state entirely. Rivers, lakes, and vegetation feed back into humidity here (see
+seven, only **wind and air temperature** are read straight off `World.atmosphere_cfd_state` --
+a real, continuously time-integrated shallow-water solve (see [Atmospheric wind
+solver](#ocean-atmospheric-fluid-dynamics)) -- rather than reconstructed by this module's own
+formulas on every call. Land temperature stays a genuine per-call diagnostic (it's also the
+CFD state's own equilibrium relaxation target, computed the same way). Ocean currents, ocean
+surface temperature, humidity, and precipitation are all per-call diagnostics too: the
+shallow-water *ocean* solver had no stable operating point on this grid and was retired
+(`compute_ocean_currents` + `advect_ocean_temperature` run here every step instead, fed by the
+CFD wind), and the CFD atmosphere's own humidity/precipitation had no orographic-lift or
+lake/river/vegetation term and produced a near-zero, uncalibrated rainfall field that starved
+erosion and hydrology. The precipitation sweep is at steps 9-10 below. Rivers, lakes, and
+vegetation feed back into humidity here (see
 step 9 and "Moisture recycling") -- the one place this module reaches outside its own fixed
 grid, into the persisted node fields hydrology.py/erosion.py/biomes.py already maintain. The
 precipitation field is a steady-state advective sweep, so it already reads as long-term
@@ -980,16 +980,20 @@ being something to recompute per call.
 temperature needs currents, which need wind -- resolved by computing a pre-advection baseline
 first and closing the loop only for the final consumer-facing fields:
 
-1. **Insolation** -- `cos(lat)` zenith-angle law (clipped floor), plus axial tilt: with tilt
-   0 it's the flat law; otherwise the mean of that same law over
-   `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between `-tilt` and `+tilt` (the
+1. **Insolation** -- `cos(lat)` zenith-angle law (clipped floor) at full sun (`SUNLIGHT =
+   1.0`), plus axial tilt: with tilt 0 it's the flat law; otherwise the mean of that same law
+   over `AXIAL_TILT_DECLINATION_SAMPLES` declinations swept between `-tilt` and `+tilt` (the
    sub-solar latitude's annual sweep -- this model has no calendar, so it's an annual mean,
-   not a season cycle).
-2. **Land temperature** = f(insolation) plus elevation-based lapse-rate cooling, kept as part
-   of the same base-heating formula rather than a separate causal channel (mountains being
-   cold is a consequence of solar heating at altitude).
-3. **Ocean temperature baseline** = f(insolation) only, a narrower range plus a freezing
-   floor (water's greater thermal inertia) -- pre-advection.
+   not a season cycle). `World.solar_multiplier` scales it live.
+2. **Land temperature** = `LAND_TEMP_MIN_C + LAND_TEMP_RANGE_C * insolation` (`-28 + 55*(·)`,
+   calibrated so the equator-to-pole profile lands near `25 / 10 / -1 / -22 C` at lat
+   `0 / 45 / 60 / 90` -- an earlier `-60 + 95*(·)` at a dimmed sun put the equator at ~18C
+   and everything poleward of ~40 degrees below freezing) minus elevation-based lapse-rate
+   cooling, kept as part of the same base-heating formula rather than a separate causal
+   channel (mountains being cold is a consequence of solar heating at altitude).
+3. **Ocean temperature baseline** = `WATER_TEMP_MIN_C + WATER_TEMP_RANGE_C * insolation`
+   (`-2 + 30*(·)`), a narrower range plus a freezing floor (water's greater thermal inertia)
+   -- pre-advection.
 4. **Wind** -- latitude-banded meridional flow (trade winds/westerlies/polar easterlies,
    empirical lookup, the near-surface branch of the real three-cell circulation) plus
    Coriolis zonal deflection (`u = GAIN * sin(lat) * v`), plus an additive term from the real
@@ -1051,8 +1055,10 @@ first and closing the loop only for the final consumer-facing fields:
    **Inland decay is a real per-km half-life, not a per-cell constant.** Each sweep step's
    carried-over moisture is discounted by `climate._retention_factor`, whose flat-land base
    rate (`_zonal_base_retention`/`_meridional_base_retention`) implements the rule of thumb
-   that rainfall runs about half as much 300km inland as at the shore
-   (`MOISTURE_HALVING_DISTANCE_KM = 300`) -- computed from each step's *actual* physical
+   that rainfall roughly halves a few hundred km inland (`MOISTURE_HALVING_DISTANCE_KM = 380`
+   -- a little longer than the ~300 rule-of-thumb, since the CFD-sourced wind carries moisture
+   inland less efficiently than the old diagnostic trade-wind field did, and a strict 300 dried
+   continental interiors to near-total desert on the now-warmer planet) -- computed from each step's *actual* physical
    distance (`plates.PLANET_RADIUS_KM`-scaled degrees, `cos(lat)`-corrected for the zonal
    pass, since a step's real longitude distance shrinks toward the poles) rather than a fixed
    per-grid-cell multiplier. This matters because a fixed-per-cell retention silently decays
@@ -1099,22 +1105,17 @@ is zeroed there.
 
 **Transpiration recycles last step's own rainfall -- it can't manufacture moisture from
 nothing.** `_vegetation_transpiration_source` scales `VEGETATION_TRANSPIRATION_BY_BIOME`'s
-per-biome weight by `VEGETATION_RECYCLING_FRACTION` (0.3, in line with real Amazon-basin
-transpiration-recycling estimates) *and* by that same cell's own `prev.precipitation_mm` from
-`World.climate_cache` (converted back to humidity units) -- a fraction of what actually fell
-there last turn, not a flat per-biome constant. An earlier version used a fixed
-`VEGETATION_TRANSPIRATION_MAX` source keyed only on biome type, with no real reservoir behind
-it (unlike lake/river evaporation, anchored to the genuinely finite `lake_depth`/
-`channel_depth` below) -- confirmed directly as a real multi-step runaway distinct from the
-single-step spatial one `MAX_EVAPORATION_CEILING` already guards against: stepping a world
-repeatedly, mean land precipitation climbed roughly linearly turn after turn (about 55mm on
-step 1, past 1500mm by step 10, with over half of all land reclassified "lush" by then) with
-no equilibrium, eventually overtaking the ocean's own precipitation total even though ocean
-humidity itself never grows step to step. Tying the source to a fraction of real, already-
-fallen rain gives the land/ocean split a genuine fixed point instead: stepping a world 60-80
-turns past generation now settles at roughly 78-79% of precipitation over ocean and 21-22%
-over land, matching real Earth's own roughly 70-80%/20-23% split, rather than climbing without
-bound toward a land-dominated one.
+per-biome weight by `VEGETATION_RECYCLING_FRACTION` (0.16 -- below the real Amazon-basin
+quarter-to-half range, tuned down as the climate model got warmer, see the constant's own
+comment) *and* by that same cell's own `prev.precipitation_mm` from `World.climate_cache`
+(converted back to humidity units) -- a fraction of what actually fell there last turn, not a
+flat per-biome constant. An earlier version used a fixed `VEGETATION_TRANSPIRATION_MAX` source
+keyed only on biome type, with no real reservoir behind it -- confirmed directly as a real
+multi-step runaway: mean land precipitation climbed turn after turn with no equilibrium,
+eventually overtaking the ocean's own total. Tying the source to a fraction of real, already-
+fallen rain gives the land/ocean split a genuine fixed point instead: stepping two seeds 65-80
+turns past generation settles the land precipitation share near ~24% (real Earth is ~20-24%),
+rather than climbing without bound toward a land-dominated one.
 
 This also decreases the standing water it comes from, per the same request that asked for the
 recycling effect in the first place: lake evaporation already shrinks `lake_depth` (lakes.py's
@@ -1214,65 +1215,55 @@ rather than chained `np.where` overwrites, so each band's cutoffs stay a self-co
 independently checkable list instead of depending on write order to get boundary cells right.
 
 <a id="ocean-atmospheric-fluid-dynamics"></a>
-## Ocean/Atmospheric Fluid Dynamics (`fluid_dynamics.py`, `ocean_cfd.py`, `atmosphere_cfd.py`)
+## Atmospheric wind solver (`fluid_dynamics.py`, `atmosphere_cfd.py`)
 
-[Climate](#climate) is deliberately *diagnostic* -- every field (wind, currents, humidity,
-...) is recomputed from scratch on every call from whatever the world's current elevation
-happens to be, via latitude-banded heuristics (Ekman currents, coastal deflection, mountain
-deflection), not a real fluid solve (its own module docstring explicitly lists "deep
-currents" and "river outflow into currents" as deliberately cut). The two Fluid Dynamics
-modes are the opposite: genuine, time-integrated **shallow-water equation** solvers -- real
-Coriolis/pressure-gradient momentum physics, explicit numerical time-stepping, and real
-*prognostic* state (`World.ocean_cfd_state`/`atmosphere_cfd_state`) that persists and evolves
-step to step, rather than being thrown away and rebuilt every call the way `climate_cache` is.
-Shallow water is the standard, tractable form of "full CFD" for planet-scale ocean/atmosphere
-flow -- literally the barotropic mode real ocean/atmosphere GCMs solve, not a simplification
-hidden from the user.
+Most of [Climate](#climate) is *diagnostic* -- recomputed from scratch every call via
+latitude-banded heuristics (Ekman currents, coastal deflection, mountain deflection),
+not a real fluid solve. **Wind is the exception**: `World.atmosphere_cfd_state` is a genuine,
+time-integrated **shallow-water** solve -- real Coriolis/pressure-gradient momentum physics,
+explicit numerical time-stepping, real *prognostic* `u`/`v`/`eta`/`temperature_c` that persist
+and evolve step to step (rather than being rebuilt every call the way `climate_cache` is), plus
+a sustained latitude-banded forcing so the planetary circulation doesn't spin down.
+
+**A shallow-water *ocean* solver (`ocean_cfd.py`) also existed** -- prognostic currents,
+surface temperature, and a sediment tracer. It was **retired**: on this HEALPix grid it had no
+stable operating point that produced realistic circulation (either an over-damped near-still
+interior or a coastal grid-scale instability), and its sediment views had already been dropped.
+Ocean currents and the current-advected surface temperature are diagnostic in `climate.py`
+every step now (`compute_ocean_currents` + `advect_ocean_temperature`, see below), fed by the
+CFD-solved wind.
 
 <a id="mode-toggle"></a>
 ### Always-on, not a mode
 
-Earlier revisions gated Ocean/Atmospheric Fluid Dynamics behind a three-way `World.fluid_mode`
-toggle (`POST /world/mode`) that froze plate tectonics/climate while either FD mode was
-active, with a separate `POST /world/step_fluid` endpoint for advancing it. That's gone:
-`World.atmosphere_cfd_state`/`ocean_cfd_state` are created once, by `generate_world`
-(`atmosphere_cfd.init_atmosphere_cfd`, then `ocean_cfd.init_ocean_cfd` -- which seeds its own
-wind forcing from the former's result, so that order matters), and never re-initialized again
-for the rest of that world's life.
+Earlier revisions gated Fluid Dynamics behind a three-way `World.fluid_mode` toggle
+(`POST /world/mode`) that froze plate tectonics/climate while it was active. That's gone:
+`World.atmosphere_cfd_state` is created once, by `generate_world`
+(`atmosphere_cfd.init_atmosphere_cfd`, seeded from the diagnostic `compute_wind` bootstrap),
+and never re-initialized again for the rest of that world's life.
 
-**Every `POST /world/step` call advances both**, via `step_world`'s own
+**Every `POST /world/step` call advances it**, via `step_world`'s own
 `_advance_fluid_dynamics`, right alongside plate tectonics/climate/erosion -- gated on
 `World.simulate_climate_biomes` the same way erosion/hydrology already are (not on
-`simulate_plate_movement`; wind/currents keep evolving even with plate movement paused).
-Real ocean/atmosphere fluid dynamics needs timesteps of hours to days (a wind-driven surface
-current's own inertial period is under a day); plate tectonics needs timesteps of thousands to
-millions of years -- reconciled not by picking one or the other, but by advancing each FD state
-by its own **fixed real-time increment per tectonics step, regardless of the tectonic `years`
-requested**: `atmosphere_cfd.SECONDS_PER_TECTONIC_STEP` (one simulated day) and
-`ocean_cfd.SECONDS_PER_TECTONIC_STEP` (one simulated week, since ocean currents evolve on a
-slower timescale than wind). A single `/world/step` call covering a million tectonic years
-still only advances the atmosphere by one simulated day and the ocean by one simulated week --
-an intentional decoupling, not an attempt to keep the two timescales physically synchronized.
+`simulate_plate_movement`; wind keeps evolving even with plate movement paused).
+Real atmospheric fluid dynamics needs timesteps of hours to days; plate tectonics needs
+timesteps of thousands to millions of years -- reconciled by advancing the wind state by a
+**fixed real-time increment per tectonics step, regardless of the tectonic `years`
+requested**: `atmosphere_cfd.SECONDS_PER_TECTONIC_STEP` (one simulated day). A single
+`/world/step` call covering a million tectonic years still only advances the atmosphere by one
+simulated day -- an intentional decoupling.
 
-**`refresh_forcing`** (one per module, called right before that state's own `step_*_cfd` each
-tectonics step) keeps each FD state's terrain-derived boundary conditions -- `elevation_m`/
-`is_ocean`/`depth_m` for the ocean, `elevation_m`/`is_ocean`/`equilibrium_temperature_c` for
-the atmosphere, plus the ocean's own wind forcing (resampled from the *just-advanced*
-`atmosphere_cfd_state`, atmosphere stepped first each tectonics step precisely so this reflects
-the current step's wind, not last step's) -- in sync with the world's evolving plate state,
-while leaving every genuinely prognostic field (`u`/`v`/`eta`/`temperature_c`/`sediment_*`)
-untouched, so currents/wind/temperature/sediment keep evolving continuously across tectonics
-steps rather than resetting. `_advance_fluid_dynamics` reuses
-`World.climate_cache` (just populated by `erosion.apply_erosion` against this same step's own
-`node_cloud`) for this when `World.fluid_density` matches `World.climate_density`, rather than
-recomputing an identical `climate.compute_climate` call at the same resolution.
+**`refresh_forcing`** (called right before `step_atmosphere_cfd` each tectonics step) keeps the
+state's terrain-derived boundary conditions -- `elevation_m`/`is_ocean`/
+`equilibrium_temperature_c` -- in sync with the world's evolving plate state, while leaving the
+genuinely prognostic `u`/`v`/`eta`/`temperature_c` untouched, so they keep evolving
+continuously across tectonics steps rather than resetting. It's fed a `skip_moisture=True`
+`compute_climate` snapshot at `World.fluid_density`'s resolution (the humidity/precipitation
+sweep is dead weight for forcing that consumes only elevation/is_ocean/temperature baseline).
 
-`climate.py`'s own `compute_wind`/`compute_ocean_currents` diagnostics still exist, but only
-as the one-time cold-start bootstrap `init_atmosphere_cfd`/`init_ocean_cfd` fall back to during
-`generate_world`, before `World.atmosphere_cfd_state`/`ocean_cfd_state` exist yet -- see
-[Climate](#climate)'s own "Fully stateless, with one exception" for how `compute_climate`
-sources `wind_u`/`wind_v`/`current_u`/`current_v` from these CFD states (resampled onto
-whichever resolution it's asked for, `fluid_dynamics.resample_to_grid`) on every later call.
+`climate.py`'s own `compute_wind` diagnostic still exists, but only as the one-time cold-start
+bootstrap `init_atmosphere_cfd` falls back to during `generate_world`, before
+`World.atmosphere_cfd_state` exists yet.
 
 <a id="shallow-water-formulation"></a>
 ### The shallow-water formulation
@@ -1284,23 +1275,19 @@ pipeline), but at `World.fluid_density`'s own resolution rather than `World.clim
 CLIMATE_DENSITY_CHOICES` set, defaulting to match `climate_density`'s own default so an
 unchanged world behaves exactly as before), letting a world keep a sharp climate/biome render
 grid while running FD mode at a coarser (faster) resolution or vice versa; see
-[Performance and grid resolution](#fd-performance) below. Both solve the same two-equation
-shape (`fluid_dynamics.py` holds every shared numerical primitive):
+[Performance and grid resolution](#fd-performance) below. The solve is a two-equation shape
+(`fluid_dynamics.py` holds every numerical primitive; the retired ocean solver shared them):
 
-- **Momentum** (`u`, `v` -- east/north velocity, m/s): `du/dt = f*v - g'*d(eta)/dx + forcing_x - drag*u + nu*laplacian(u)`, symmetric for `dv/dt`. `f` is the *real* Coriolis parameter (`fluid_dynamics.coriolis_parameter`, `2*OMEGA*sin(lat)`, `OMEGA = 7.292e-5 rad/s` -- a genuine physical constant, unlike `climate.py`'s own simplified `sin(lat)` proxy, since this is an actual momentum equation now) and `eta` a surface-height/geopotential anomaly. For the atmosphere `forcing_x` also carries the latitude-banded wind-forcing relaxation `WIND_FORCING_RELAXATION_PER_S * (u_target - u)` (see [Atmospheric Fluid Dynamics](#atmosphere-cfd)).
-- **Continuity** (`eta`): `d(eta)/dt = -div(H*(u, v))` (plus, for the atmosphere, a thermal-relaxation term -- see [Atmospheric Fluid Dynamics](#atmosphere-cfd) below), `H` an effective fluid-layer depth (bathymetry-derived for the ocean, a fixed troposphere-depth constant for the atmosphere).
-- **Advection-diffusion** of every other prognostic field (temperature in both modes; sediment concentration for the ocean), via `fluid_dynamics.semi_lagrangian_advect` -- the same backward-trace-and-sample technique `climate.py`'s own `advect_ocean_temperature`/`_sample_at_offset` already use, chosen for the same reason: unconditionally stable regardless of how far `dt * speed` reaches relative to one grid cell, so advection never adds a second, stricter stability constraint on top of the gravity-wave one substep sizing is already built around.
+- **Momentum** (`u`, `v` -- east/north velocity, m/s): `du/dt = f*v - g'*d(eta)/dx + forcing_x - drag*u + nu*laplacian(u)`, symmetric for `dv/dt`. `f` is the *real* Coriolis parameter (`fluid_dynamics.coriolis_parameter`, `2*OMEGA*sin(lat)`, `OMEGA = 7.292e-5 rad/s` -- a genuine physical constant, unlike `climate.py`'s own simplified `sin(lat)` proxy, since this is an actual momentum equation) and `eta` a geopotential-height anomaly. `forcing_x` also carries the latitude-banded wind-forcing relaxation `WIND_FORCING_RELAXATION_PER_S * (u_target - u)` (see [Atmospheric Fluid Dynamics](#atmosphere-cfd)).
+- **Continuity** (`eta`): `d(eta)/dt = -div(H*(u, v))` plus a thermal-relaxation term (see [Atmospheric Fluid Dynamics](#atmosphere-cfd) below), `H` a fixed troposphere-depth constant.
+- **Advection-diffusion** of `temperature_c`, via `fluid_dynamics.semi_lagrangian_advect` -- the same backward-trace-and-sample technique `climate.py`'s own `advect_ocean_temperature`/`_sample_at_offset` already use: unconditionally stable regardless of how far `dt * speed` reaches relative to one grid cell, so advection never adds a second, stricter stability constraint on top of the gravity-wave one substep sizing is already built around.
 
-**Reduced gravity.** Real ocean depth (~4000m) and `g = 9.8` give a gravity-wave speed near
-200 m/s, which at planet-grid resolution forces the CFL-stable substep down near 100 seconds
--- correct, but far more substeps than the barotropic circulation patterns these modes
-actually display (gyres, boundary currents, large-scale wind) need to look right. **Reduced
-gravity** (a small effective `g'` -- `ocean_cfd.REDUCED_GRAVITY_M_S2 = 0.03`,
-`atmosphere_cfd.REDUCED_GRAVITY_M_S2 = 0.5`, the atmosphere's own larger value reflecting its
-genuinely faster circulation) is the standard technique basin-circulation barotropic models
-use to keep wave speed -- and thus substep count -- tractable while the solver still
-*genuinely* integrates Coriolis/forcing/topography every substep, not a physics shortcut
-being hidden.
+**Reduced gravity.** Real values of `g` and layer depth give a gravity-wave speed near 200
+m/s, which at planet-grid resolution forces the CFL-stable substep down near 100 seconds --
+correct, but far more substeps than the large-scale wind pattern actually displayed needs to
+look right. **Reduced gravity** (`atmosphere_cfd.REDUCED_GRAVITY_M_S2 = 0.5`) is the standard
+technique barotropic models use to keep wave speed -- and thus substep count -- tractable
+while the solver still *genuinely* integrates Coriolis/forcing/topography every substep.
 
 **Substepping.** A UI "Step" (real seconds -- no relation to tectonic `years`) is subdivided
 into as many CFL-stable substeps as the current grid spacing and reduced-gravity wave speed
@@ -1354,9 +1341,9 @@ here: an explicit update needs `dt*drag` comfortably under 1, and confirmed dire
 up outright (not merely stay too energetic) once the sponge was strong enough to actually fix
 the polar over-acceleration it exists to prevent.
 
-**A related, non-polar tuning note.** Both solvers' own *ordinary* (non-polar) drag
-(`ocean_cfd.BOTTOM_DRAG_PER_S`, `atmosphere_cfd.SURFACE_DRAG_BASE_PER_S`) had to be tuned
-noticeably stronger than an initial physically-naive guess: at high latitude generally (not
+**A related, non-polar tuning note.** The solver's own *ordinary* (non-polar) drag
+(`atmosphere_cfd.SURFACE_DRAG_BASE_PER_S`) had to be tuned noticeably stronger than an initial
+physically-naive guess: at high latitude generally (not
 just inside the polar cap), the real Coriolis parameter is largest, which leaves a
 weakly-damped system in a lightly-damped, Coriolis-dominated regime -- a persistent
 near-inertial oscillation that, at too-weak a drag, hadn't decayed to a physically plausible
@@ -1365,43 +1352,31 @@ never a stability risk, only a "how energetic does the flow look" tuning choice 
 directly by sweeping drag strength until sustained speeds settled into a realistic range.
 
 <a id="ocean-cfd"></a>
-### Ocean Fluid Dynamics (`ocean_cfd.py`)
+### Ocean currents (retired CFD; now diagnostic in `climate.py`)
 
-Inputs, matching the user's own spec: **Coriolis force** and **land** (both baked into the
-momentum equation -- Coriolis directly, land via a no-slip mask that pins `u = v = eta = 0`
-on every land cell every substep, plus `depth_m = 0` there so no shallow-water layer exists to
-move), **wind** (sampled once from the world's current climate at mode entry via
-`climate.compute_climate`, and held *fixed* for the whole session -- the atmosphere isn't
-independently simulated in this mode, so there's no other source for it, and a bulk stress
-formula `tau = Cd * |W| * W / MIXED_LAYER_DEPTH_M` converts it into a real surface-water
-acceleration, spread over a real near-surface mixed-layer depth rather than the whole water
-column), and **temperature** (both an input, via the baseline this mode starts from, and an
-output the currents themselves advect).
+`ocean_cfd.py` was a shallow-water current solver (Coriolis + pressure-gradient momentum, a
+`tau = Cd * |W| * W / MIXED_LAYER_DEPTH_M` wind stress over a near-surface mixed layer, a
+temperature tracer the currents advected, and a suspended-sediment dye). On the HEALPix grid
+it had no stable operating point: every drag/reduced-gravity/integration-time setting either
+over-damped the interior to a near-still ~0.02 m/s or went grid-unstable at coastlines
+(rogue cells, surface-height anomalies past 600 m). Fixing that properly means real
+numerical-methods work (staggered C-grid, upwind advection, boundary-layer treatment).
 
-**Currents move water along with temperature and sediment.** Every substep advects
-`temperature_c` and `sediment_concentration` along the *same*, just-updated velocity field --
-literally carried along, not two separately-evolving fields that merely share a grid.
-Temperature also relaxes weakly toward its own starting baseline (a stand-in for a real heat-
-flux/radiation model this mode doesn't have, the same "accepted simplification" framing
-`climate.py` itself already uses for its own comparable gaps).
-
-**Sediment is a visual tracer only.** Per the user's own explicit direction, suspended
-sediment (`sediment_concentration`) is advected/diffused like a dye -- picked up near
-erodible coastal cells scaled by local current speed, settling out again once the local
-current drops below a threshold (a classic transport-capacity model) -- and **never mutates
-`world.plates`' persistent elevation**, keeping this mode self-contained and reversible.
-`sediment_deposited_m` separately **tracks** cumulative settling per cell (monotonically
-non-decreasing, informational only, its own map layer) -- "where sediment would be
-deposited," per the user's own ask, without actually depositing it onto the permanent
-terrain the Tectonics & Climate mode's own `erosion.py` maintains.
+It was removed. `climate.py`'s own `compute_ocean_currents` (Ekman base + coastal deflection +
+land swirl + circumglobal boost + wake -- a stable, closed-gyre *diagnostic*, the same one that
+used to be the CFD's cold-start bootstrap) runs every step now, and
+`advect_ocean_temperature` carries the zonal baseline poleward along it. Current *speed* here
+is a stylized, unitless quantity (wind-magnitude scale, meaningful only relative to other
+cells -- direction and relative magnitude are what the map arrows and the temperature
+advection use), not a physical m/s -- unchanged from how the diagnostic model always worked.
 
 <a id="atmosphere-cfd"></a>
 ### Atmospheric Fluid Dynamics (`atmosphere_cfd.py`)
 
-Same shallow-water shape as the ocean solver, for wind and air temperature. Inputs, matching
-the user's own spec: **Coriolis force** and **elevation** (both baked into the momentum
-equation -- Coriolis directly, elevation via orographic deflection around high terrain and a
-lapse-rate-cooled radiative-equilibrium temperature target, see below).
+A shallow-water solve for wind and air temperature. Inputs: **Coriolis force** and
+**elevation** (both baked into the momentum equation -- Coriolis directly, elevation via
+orographic deflection around high terrain and a lapse-rate-cooled radiative-equilibrium
+temperature target, see below).
 
 **Humidity and precipitation are not solved here.** An earlier version carried humidity as a
 prognostic wind-advected field with a flat evaporation source and a super-saturation
@@ -1453,11 +1428,11 @@ into-slope flow, the same stability property ordinary drag already has.
 <a id="fd-performance"></a>
 ### Performance and grid resolution
 
-FD-mode grid resolution is set by **`World.fluid_density`** (the "Fluid dynamics resolution"
-Advanced-settings choice, same `climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)` set
-`climate_density` itself uses) -- independent of `World.climate_density`, so a world can keep
-a sharp climate/biome render grid while running FD mode at a coarser (faster) resolution, or
-the reverse. Defaults to `climate.DEFAULT_CLIMATE_DENSITY = 4.0`, matching `climate_density`'s
+The wind-solver grid resolution is set by **`World.fluid_density`** (the "Fluid dynamics
+resolution" Advanced-settings choice, same `climate.CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0,
+4.0)` set `climate_density` itself uses) -- independent of `World.climate_density`, so a world
+can keep a sharp climate/biome render grid while running the wind solve at a coarser (faster)
+resolution, or the reverse. Defaults to `climate.DEFAULT_CLIMATE_DENSITY = 4.0`, matching `climate_density`'s
 own default, so a world generated without touching this setting behaves exactly as it did
 before this option existed: a "Step" can take several seconds at the finest setting (many
 hundreds of CFL-stable substeps, see `fluid_dynamics.cfl_substeps`, over a ~250k-cell grid),
@@ -1470,25 +1445,14 @@ unrelated and has no bearing on either FD mode.
 <a id="fd-render-views"></a>
 ### Rendering
 
-The `"temperature"`/`"wind"`/`"oceanCurrents"` views draw this CFD state's own data directly
-(`_render_climate_view` reads `temperature_c`/`u`/`v` straight off `World.atmosphere_cfd_state`/
-`ocean_cfd_state`), so there's no separate CFD-native velocity/temperature view any more --
-those were removed as pure duplicates once the plain views became genuinely CFD-sourced. The
-`"humidity"`/`"precipitation"`/`"biome"` views instead pull `climate.compute_climate_cached`'s
-diagnostic `humidity`/`precipitation_mm`/`biome_ids` (see [Climate](#climate)) and resample
-them nearest-cell onto the HEALPix grid for drawing -- those three are not CFD-state fields. Only
-`render_image.OCEAN_CFD_VIEWS` (`"oceanCfdSediment"`/`"oceanCfdDeposition"`, dispatched from
-`_render_fluid_view`, parallel to `_render_climate_view`) remain CFD-native-only, since
-nothing else produces sediment concentration/cumulative deposition data (new color ramps,
-`sediment_colors`/`sediment_deposition_colors`). Both are always renderable --
-`World.ocean_cfd_state` is populated immediately at generation and never `None` again for
-that world's life -- but `render_image.render_png` still degrades to a plain background-only
-image if it somehow is, the same "always renders *something* standalone" contract every other
-view in `VIEWS` already has (e.g. an elevation/plates render with no plates yet). Sediment has
-no HEALPix port yet, so these two stay v1-only; a v2 world's `/world/render` rejects them with
-`400` via `main_v2.py`'s own validation, while `"temperature"`/`"wind"`/`"oceanCurrents"`/
-`"humidity"`/`"precipitation"`/`"biome"` render off the HEALPix grid instead (see
-`render_image._render_climate_view`).
+`_render_climate_view` draws `"wind"` and the land side of `"temperature"` straight off
+`World.atmosphere_cfd_state`'s own HEALPix `u`/`v`/`temperature_c`. Every other field -- the
+ocean side of `"temperature"`, `"oceanCurrents"` (arrows + swell markers), `"humidity"`,
+`"precipitation"`, `"biome"` -- is a `climate.compute_climate_cached` diagnostic (see
+[Climate](#climate)) resampled nearest-cell onto the HEALPix cells. `render_image.render_png`
+degrades to a plain background-only image if the state is somehow `None`, the same "always
+renders *something* standalone" contract every other view in `VIEWS` has. The former
+`"oceanCfdSediment"`/`"oceanCfdDeposition"` sediment views were removed with the ocean solver.
 
 <a id="erosion"></a>
 ## Erosion (`erosion.py`)

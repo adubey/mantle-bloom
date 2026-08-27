@@ -479,9 +479,8 @@ def test_generate_with_the_finest_allowed_fluid_density(client):
     assert resp.status_code == 200
 
 
-def test_ocean_cfd_sediment_views_are_no_longer_available(client):
-    # Sediment concentration/deposition have no HEALPix port yet (the world's CFD state is a
-    # flat (npix,) array, not the (H, W) grid that pair's old rendering code assumed) -- see
+def test_retired_cfd_sediment_views_are_not_available(client):
+    # The ocean CFD (and its sediment concentration/deposition views) was retired -- see
     # render_image.py's VIEWS, which no longer lists them at all.
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
     for view in ["oceanCfdSediment", "oceanCfdDeposition"]:
@@ -503,31 +502,28 @@ def test_climate_views_render_natively_off_the_healpix_grid(client):
 
 
 def test_wind_and_ocean_currents_views_are_also_always_renderable(client):
-    # The ordinary climate views now draw CFD-sourced wind/currents (see climate.py's own
-    # module docstring) rather than a diagnostic recomputed every call -- still always
-    # renderable regardless of what else the world is doing, same as before.
+    # `wind` draws the CFD-sourced wind; `oceanCurrents` draws climate.py's diagnostic
+    # currents (see climate.py's own module docstring) -- both always renderable regardless of
+    # what else the world is doing.
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
     assert client.get("/world/render", params={"view": "wind"}).status_code == 200
     assert client.get("/world/render", params={"view": "oceanCurrents"}).status_code == 200
 
 
-def test_step_advances_atmosphere_and_ocean_cfd_by_their_own_fixed_seconds(client):
-    # Regardless of the tectonic `years` requested, Ocean/Atmospheric Fluid Dynamics always
-    # advances by its own fixed real-time increment per step (see atmosphere_cfd.py/
-    # ocean_cfd.py's own SECONDS_PER_TECTONIC_STEP) -- reaches into main.py's internal
-    # `_state` since this is no longer surfaced through any HTTP response (see World.
-    # ocean_cfd_state's own docstring for why it's not a mode to switch into/report any more).
-    from app import atmosphere_cfd, main, ocean_cfd
+def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
+    # Regardless of the tectonic `years` requested, the atmospheric wind solve always advances
+    # by its own fixed real-time increment per step (atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
+    # -- reaches into main.py's internal `_state` since this is not surfaced through any HTTP
+    # response.
+    from app import atmosphere_cfd, main
 
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
-    assert world.ocean_cfd_state.elapsed_seconds == 0.0
 
     resp = client.post("/world/step", json={"years": 1_000_000})
     assert resp.status_code == 200
     assert world.atmosphere_cfd_state.elapsed_seconds == pytest.approx(atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
-    assert world.ocean_cfd_state.elapsed_seconds == pytest.approx(ocean_cfd.SECONDS_PER_TECTONIC_STEP)
 
 
 def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client):
@@ -540,4 +536,3 @@ def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client)
     resp = client.post("/world/step", json={"years": 1_000_000})
     assert resp.status_code == 200
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
-    assert world.ocean_cfd_state.elapsed_seconds == 0.0

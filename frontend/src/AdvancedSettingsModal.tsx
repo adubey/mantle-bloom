@@ -171,9 +171,9 @@ export default function AdvancedSettingsModal({
             ))}
           </select>
           <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-            How finely Ocean/Atmospheric Fluid Dynamics mode resolves currents and wind --
-            independent of Detail above, so you can keep sharp climate/biome maps while running
-            Fluid Dynamics mode at a coarser (faster) resolution. Lower runs faster but coarser.
+            How finely the atmospheric wind solver resolves the flow -- independent of Detail
+            above, so you can keep sharp climate/biome maps while running the wind solve at a
+            coarser (faster) resolution. Lower runs faster but coarser.
           </div>
         </label>
       </div>

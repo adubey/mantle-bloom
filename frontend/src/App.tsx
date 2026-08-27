@@ -54,10 +54,10 @@ const DETAIL_CHOICES: { value: number; label: string }[] = [
 ];
 const DEFAULT_DETAIL = 4;
 // The Advanced-settings dialog's own "Fluid dynamics resolution" choice (see backend app/
-// world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at "High": Ocean/
-// Atmospheric Fluid Dynamics now runs every step (see docs/simulation-model.md#ocean-
-// atmospheric-fluid-dynamics), so there's no "only pay for Very High when you opt in" case
-// left to justify offering it, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
+// world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at "High": the
+// atmospheric wind solver runs every step (see docs/simulation-model.md#ocean-atmospheric-
+// fluid-dynamics), so there's no "only pay for Very High when you opt in" case left to justify
+// offering it, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
 const FLUID_DETAIL_CHOICES: { value: number; label: string }[] = [
   { value: 2, label: "High" },
   { value: 1, label: "Medium" },

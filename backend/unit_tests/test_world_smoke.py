@@ -24,7 +24,6 @@ def test_generate_world_produces_plates_with_finite_elevation():
     assert len(all_elevation) > 0
     assert np.all(np.isfinite(all_elevation))
     assert world.atmosphere_cfd_state is not None
-    assert world.ocean_cfd_state is not None
 
 
 def test_step_world_advances_time_and_stays_finite(stepped_world):
@@ -40,12 +39,9 @@ def test_step_world_keeps_fluid_state_bounded(stepped_world):
     world = stepped_world
     assert np.all(np.isfinite(world.atmosphere_cfd_state.u))
     assert np.all(np.isfinite(world.atmosphere_cfd_state.v))
-    assert np.all(np.isfinite(world.ocean_cfd_state.u))
-    assert np.all(np.isfinite(world.ocean_cfd_state.eta))
-    # A real stability check, not just finiteness -- current/wind speeds should stay in a
-    # physically plausible range, not have blown up (see fluid_dynamics_healpix.py's own
+    # A real stability check, not just finiteness -- wind speed should stay in a physically
+    # plausible range, not have blown up (see fluid_dynamics_healpix.py's own
     # CFL_STENCIL_SAFETY_DIVISOR note for the instability this guards against regressing).
-    assert np.abs(world.ocean_cfd_state.u).max() < 50.0
     assert np.abs(world.atmosphere_cfd_state.u).max() < 300.0
 
 

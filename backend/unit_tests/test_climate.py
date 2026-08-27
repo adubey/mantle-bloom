@@ -287,23 +287,28 @@ def test_generate_world_stores_climate_density_and_uses_the_default_when_omitted
     assert doubled.climate_density == 2.0
 
 
-def test_compute_climate_sources_temperature_from_cfd_but_computes_precipitation_diagnostically():
-    # Once a world's CFD states exist, compute_climate reads wind and temperature straight off
-    # them (resampled to whatever resolution was asked for). Humidity and precipitation are
-    # NOT on the CFD state any more -- they're the diagnostic compute_humidity/
-    # compute_precipitation sweep every step, fed by that CFD-sourced wind/ocean temperature
-    # (see climate.py's own module docstring).
+def test_compute_climate_sources_wind_air_temp_from_cfd_everything_else_diagnostic():
+    # Once the atmosphere CFD state exists, compute_climate reads wind and air temperature
+    # straight off it (resampled to whatever resolution was asked for). Ocean currents, ocean
+    # temperature, humidity, and precipitation are all the diagnostic sweep every step, fed by
+    # that CFD-sourced wind -- there is no ocean CFD state any more (see climate.py's module
+    # docstring).
     world = _world(seed=7, num_plates=8, steps=1)
+    assert not hasattr(world, "ocean_cfd_state") or world.ocean_cfd_state is None
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)
 
-    ocean_state, atmosphere_state = world.ocean_cfd_state, world.atmosphere_cfd_state
-    expected_ocean_temp = ocean_state.resample_scalar_to_equirect(ocean_state.temperature_c, height, width)
+    atmosphere_state = world.atmosphere_cfd_state
     expected_air_temp = atmosphere_state.resample_scalar_to_equirect(atmosphere_state.temperature_c, height, width)
-
-    assert np.array_equal(fields.ocean_temperature_c, expected_ocean_temp)
     assert np.array_equal(fields.air_temperature_c, expected_air_temp)
     assert not hasattr(atmosphere_state, "humidity")
+
+    # Currents / ocean temp / precip come from the diagnostic formulas -- match a direct call.
+    expected_currents = climate.compute_ocean_currents(
+        fields.wind_u, fields.wind_v, fields.is_ocean, fields.lat_deg, fields.world_xyz,
+        np.random.default_rng((world.seed, round(world.elapsed_years))).random((height, width)),
+    )
+    assert np.allclose(fields.current_u, expected_currents[0]) and np.allclose(fields.current_v, expected_currents[1])
     # A real world one step past generation gets real rain over land somewhere.
     assert np.all(np.isfinite(fields.precipitation_mm))
     assert fields.precipitation_mm[~fields.is_ocean].max() > 50.0
@@ -321,11 +326,11 @@ def test_compute_climate_skip_moisture_zeros_humidity_and_precipitation():
 
 
 def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():
-    # Before a world's CFD states exist (the one-time cold-start bootstrap -- see
+    # Before the atmosphere CFD state exists (the one-time cold-start bootstrap -- see
     # climate.py's own module docstring), compute_climate must still produce finite
     # temperature/humidity/precipitation via its own diagnostic formulas rather than crashing
     # on a missing state. Same bare-World construction test_submerged_continental_crust_is_
-    # treated_as_ocean above already uses, which has no atmosphere_cfd_state/ocean_cfd_state.
+    # treated_as_ocean above already uses, which has no atmosphere_cfd_state.
     frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
     lines = [
         ElevationLine(phi=float(phi), theta=np.linspace(-np.pi, np.pi, 30, endpoint=False), elevation=np.full(30, 200.0))
@@ -334,7 +339,6 @@ def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():
     plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=lines)
     world = World(seed=1, plates=[plate])
     assert world.atmosphere_cfd_state is None
-    assert world.ocean_cfd_state is None
 
     fields = climate.compute_climate(world, height=30, width=60)
     assert np.all(np.isfinite(fields.ocean_temperature_c))

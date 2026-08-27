@@ -16,23 +16,23 @@ lattice or an irregular point cloud. This grid exists *only* here; it is never s
 plate elevation happens to be (sampled via the same `cKDTree` nearest-neighbor technique
 `_render_grid_arrays` already uses) -- there's no persistent terrain field of climate's own to
 keep in sync, since terrain itself already persists incrementally on the plates. `wind_u`/
-`wind_v`, `current_u`/`current_v`, and `air_temperature_c`/`ocean_temperature_c` come from the
-world's own always-on, genuinely prognostic `World.atmosphere_cfd_state`/`ocean_cfd_state`
-(real shallow-water solves with their own advection/diffusion/relaxation-toward-equilibrium,
-see atmosphere_cfd.py/ocean_cfd.py), resampled onto whichever resolution this call asked for
-(each CFD state's own `resample_uv_to_equirect`/`resample_scalar_to_equirect`) rather than
-reconstructed here. `humidity` and `precipitation_mm`, by contrast, are recomputed **every
-call** by this module's own `compute_humidity`/`compute_precipitation` (the orographic-lift +
-moisture-recycling pipeline below), fed by that CFD-sourced wind and ocean temperature: the
-CFD atmosphere has no equivalent orographic condensation or lake/river/vegetation source of
-its own, and its flat evaporation-minus-super-saturation scheme produced a near-zero,
-uncalibrated precipitation field that starved erosion/hydrology (see git history). The
-resulting field is a steady-state advective sweep, i.e. it already reads as long-term average
-rainfall rather than an instantaneous rate. `compute_wind`/`compute_ocean_currents`/
-`compute_air_temperature`/`advect_ocean_temperature` below still exist but only as the
-one-time cold-start bootstrap the CFD states are seeded from at `generate_world` time, before
-they exist yet; `compute_humidity`/`compute_precipitation` run on that bootstrap path *and*
-on every ordinary call.
+`wind_v` and `air_temperature_c` come from the world's own always-on, genuinely prognostic
+`World.atmosphere_cfd_state` (a real shallow-water wind solve with its own advection/diffusion/
+relaxation-toward-equilibrium plus a sustained latitude-banded forcing, see atmosphere_cfd.py),
+resampled onto whichever resolution this call asked for (`resample_uv_to_equirect`/
+`resample_scalar_to_equirect`) rather than reconstructed here. Everything else --
+`current_u`/`current_v`, `ocean_temperature_c`, `humidity`, `precipitation_mm` -- is recomputed
+**every call** by this module's own diagnostic formulas (`compute_ocean_currents`,
+`advect_ocean_temperature`, `compute_humidity`, `compute_precipitation`), fed by that
+CFD-sourced wind. Two reasons this isn't all CFD-sourced: the shallow-water *ocean* solver had
+no stable operating point that produced realistic circulation on this grid (it was retired),
+and the CFD atmosphere's own humidity/precipitation had no orographic-lift or lake/river/
+vegetation term and produced a near-zero, uncalibrated rainfall field that starved erosion/
+hydrology (see git history). The diagnostic precipitation is a steady-state advective sweep,
+so it reads as long-term average rainfall rather than an instantaneous rate. `compute_wind`/
+`compute_air_temperature` below still exist but only as the one-time cold-start bootstrap the
+atmosphere CFD state is seeded from at `generate_world` time, before it exists yet; the other
+four run on that bootstrap path *and* on every ordinary call.
 
 **Computed every step, not just on render.** erosion.py needs a live climate snapshot every
 step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
@@ -47,14 +47,13 @@ fields can be up to one step stale relative to the world's very latest mutation 
 simplification, not a bug, since nothing here needs the cache to be exactly current.
 
 **Mechanism summary**, each described in more detail near its own implementation below:
-latitude-banded meridional wind + Coriolis zonal deflection, mountain deflection/Venturi/
-wake, Ekman-based ocean currents + coastal deflection/smoothing/wake + land swirl +
-circumglobal boost, semi-Lagrangian temperature advection along currents (all of that is the
-wind/current/temperature *bootstrap* pipeline -- see above for why an ordinary call reads the
-CFD state instead of running it), plus convergence-based swell detection (no CFD-state analog,
-always runs), plus -- on every call, not just the bootstrap -- evaporation-ceiling +
-land-surface moisture source + wind-driven 2D humidity advection (decaying inland at a real
-per-km rate, see MOISTURE_HALVING_DISTANCE_KM) and orographic precipitation.
+latitude-banded meridional wind + Coriolis zonal deflection + mountain deflection/Venturi/wake
+(the *bootstrap*-only wind pipeline -- an ordinary call reads the atmosphere CFD state
+instead), plus -- on every call -- Ekman-based ocean currents + coastal deflection/smoothing/
+wake + land swirl + circumglobal boost, convergence-based swell detection, semi-Lagrangian
+ocean-temperature advection along those currents, and evaporation-ceiling + land-surface
+moisture source + wind-driven 2D humidity advection (decaying inland at a real per-km rate,
+see MOISTURE_HALVING_DISTANCE_KM) + orographic precipitation.
 
 **Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
 humidity field ocean evaporation does.** The "rain in a rainforest" effect, where a wet,
@@ -75,17 +74,15 @@ with the user): river outflow into currents, deep currents, and precipitation's 
 latitude-climatology baseline (equator/mid-latitude wet bands) -- precipitation here is purely
 a function of humidity and orographic lift.
 
-**Pipeline order** -- the wind/current/temperature portion below is the one-time bootstrap
-chain (breaks what would otherwise be a circular dependency -- wind needs temperature, but the
-*final* ocean temperature needs currents, which need wind); an ordinary call skips straight
-from insolation/baseline temperatures to resampling the CFD state's own wind/current/
-temperature fields, then runs the humidity/precipitation sweep on top of those:
+**Pipeline order.** `wind` below is the one-time bootstrap step (an ordinary call resamples
+the atmosphere CFD state instead); everything downstream of it runs every call:
 insolation -> pre-advection land/ocean baseline temperatures ->
-wind (from the *baseline* combined surface temperature) -> ocean currents (from wind) -> ocean
-swells (from final currents) -> final ocean temperature (baseline advected along final
-currents) -> air temperature (baseline moderated toward the *final* nearest-ocean temperature)
--> humidity (evaporation from *final* ocean temperature, advected by wind) -> precipitation
-(from humidity + wind-over-mountains). See `compute_climate` for the concrete call order.
+wind (bootstrap: from the *baseline* combined surface temperature; ordinary: CFD state) ->
+ocean currents (from wind) -> ocean swells (from currents) -> final ocean temperature
+(baseline advected along currents) -> air temperature (bootstrap: baseline moderated toward
+the nearest-ocean temperature; ordinary: CFD state) -> humidity (evaporation from final ocean
+temperature, advected by wind) -> precipitation (from humidity + wind-over-mountains). See
+`compute_climate` for the concrete call order.
 """
 
 from __future__ import annotations
@@ -134,9 +131,9 @@ DEFAULT_CLIMATE_DENSITY = 4.0
 # Same idea as CLIMATE_DENSITY_CHOICES, for World.fluid_density (the independent "Fluid
 # dynamics resolution" choice -- see that field's own docstring) -- but capped at "High"
 # (2.0), not "Very High" (4.0): unlike climate_density, this grid's cost is paid every single
-# step now (Ocean/Atmospheric Fluid Dynamics run continuously alongside tectonics, not as an
-# opt-in mode), so there's no "only pay for Very High when you actually switch into FD mode"
-# escape hatch left to justify offering it.
+# step now (the atmosphere CFD wind solve runs continuously alongside tectonics), so there's
+# no "only pay for Very High when you actually switch into FD mode" escape hatch left to
+# justify offering it.
 FLUID_DENSITY_CHOICES = (0.5, 1.0, 2.0)
 DEFAULT_FLUID_DENSITY = 2.0
 
@@ -324,16 +321,17 @@ def weighted_sample_without_replacement(rng: np.random.Generator, weights: np.nd
 # Insolation
 # ---------------------------------------------------------------------------------------
 
-# Below 1.0 -- worlds at the full-sun value ran noticeably hot (median displayed temperature
-# ~18C, equatorial highs near 30C, with humidity pegged at its ceiling across a wide swath of
-# ocean) and correspondingly over-wet, since humidity's evaporation ceiling is driven
-# directly by ocean temperature (see compute_humidity). 0.85 was chosen by direct comparison
-# across a sweep of values: it brings the median down to a more Earth-like ~15C and pulls
-# humidity/precipitation down with it as a natural consequence, without needing a separate
-# knob for wetness. `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's
-# "Controls" window, see main.py's /world/controls) scales this same baseline live, rather
-# than replacing it, so the default-multiplier case reproduces today's SUNLIGHT exactly.
-SUNLIGHT = 0.85
+# Full insolation. An earlier value of 0.85 dimmed the sun to pull the *displayed median*
+# temperature toward a target (and humidity/precipitation down with it, since the evaporation
+# ceiling is ocean-temperature-driven -- see compute_humidity). That coupled two things that
+# shouldn't be coupled: it also crushed the equator-to-pole *land* temperature profile down to
+# a near-glacial one (equatorial land ~18C, mid-latitude land already below freezing). The
+# insolation->temperature mapping (LAND_TEMP_MIN_C/RANGE, WATER_TEMP_MIN_C/RANGE) is now
+# calibrated directly against a realistic latitudinal profile instead, at full sun, and any
+# residual over-wetness is a knob on the precipitation side (PRECIP_HUMIDITY_COEFFICIENT_MM).
+# `solar_multiplier` (World.solar_multiplier, default 1.0 -- the UI's "Controls" window, see
+# main.py's /world/controls) still scales this live.
+SUNLIGHT = 1.0
 INSOLATION_FLOOR = 0.03
 AXIAL_TILT_DECLINATION_SAMPLES = 24
 
@@ -357,11 +355,18 @@ def compute_insolation(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multipl
 # Temperature: land (solar heating + lapse rate), ocean baseline, air (moderated)
 # ---------------------------------------------------------------------------------------
 
-LAND_TEMP_MIN_C = -60.0
-LAND_TEMP_RANGE_C = 95.0
+# insolation -> temperature. Calibrated at full sun (SUNLIGHT = 1.0) against a realistic
+# annual-mean latitudinal profile: with axial tilt 23.5 the tilt-averaged insolation runs
+# ~0.97 at the equator down to ~0.11 at the poles, so `MIN + RANGE * insol` gives land
+# ~25C / ~10C / ~-1C / ~-22C at lat 0 / 45 / 60 / 90 and ocean ~27C / ~19C / ~1C over the
+# same span (narrower range + a freezing floor for water's far greater thermal inertia). The
+# old -60/95 land mapping put the equator at ~18C and everything poleward of ~40 degrees
+# below freezing -- see SUNLIGHT's comment.
+LAND_TEMP_MIN_C = -28.0
+LAND_TEMP_RANGE_C = 55.0
 LAPSE_RATE_C_PER_KM = 6.5
 WATER_TEMP_MIN_C = -2.0
-WATER_TEMP_RANGE_C = 32.0
+WATER_TEMP_RANGE_C = 30.0
 # How far (degrees, great-circle) the ocean's moderating influence reaches onto land --
 # an e-folding distance, not a hard cutoff.
 MARITIME_INFLUENCE_DIST_DEG = 15.0
@@ -827,7 +832,12 @@ MIN_WIND_RETENTION_FACTOR = 0.5
 # cells, a single fixed-0.96-per-cell step barely dented moisture even 300km inland (about 95%
 # retained, not 50%), so land-locked interiors stayed near the ocean's own evaporation ceiling
 # indefinitely, before any local land-surface source (see below) was even added on top.
-MOISTURE_HALVING_DISTANCE_KM = 300.0
+# 380 rather than the ~300 rule-of-thumb: the CFD-sourced wind field carries moisture inland
+# less efficiently than the old diagnostic trade-wind field did (it isn't uniformly onshore),
+# so a strict 300 dried continental interiors to near-total desert on a now-warmer planet;
+# 380 keeps the coast-to-interior gradient real without every large continent being a sand
+# sea. Still well inside the range real onshore-flow climatologies span.
+MOISTURE_HALVING_DISTANCE_KM = 380.0
 OROGRAPHIC_LIFT_SCALE_M = 600.0
 OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
 PRECIP_HUMIDITY_COEFFICIENT_MM = 1500.0
@@ -854,10 +864,13 @@ RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
 # VEGETATION_TRANSPIRATION_BY_BIOME below (index-aligned with biomes.BIOME_NAMES).
 # VEGETATION_RECYCLING_FRACTION (at the strongest biome weight, 1.0, Tropical Rainforest) is
 # the ceiling on that fraction -- real Amazon-basin studies put regional transpiration-recycled
-# rainfall at roughly a quarter to a half; 0.3 sits in that range, tuned down from an initial
-# 0.35 once that value's own long-run equilibrium (confirmed by stepping a world 60 turns) came
-# out to a land precipitation share of ~25%, a bit above the ~20-23% real-Earth target this
-# module's humidity/precipitation split is meant to land near (see compute_precipitation).
+# rainfall at roughly a quarter to a half. 0.16 is well below that ceiling, tuned by stepping
+# two seeds 65-80 turns: it lands the long-run land precipitation share near ~24% (real Earth
+# is ~20-24%) and keeps a diverse biome mix rather than a continent of desert. It's this low
+# (down from an earlier 0.3) because the model got warmer -- once SUNLIGHT went back to 1.0
+# and the land-temperature mapping was recalibrated (see SUNLIGHT's comment), more cells cross
+# into lush, high-transpiration biomes, so the same fraction recycles more moisture over land
+# and pushes the share up; a lower fraction restores the target split.
 # This anchors transpiration to a real, finite quantity the same way lake/river evaporation is
 # already anchored to
 # lake_depth/channel_depth, rather than the flat per-biome constant this replaced
@@ -872,7 +885,7 @@ RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
 # Making the source strictly proportional to last step's *own* local rainfall breaks that loop:
 # a cell can amplify what actually fell there, never conjure more out of nothing turn after
 # turn, so the recurrence has a real fixed point instead of an open-ended climb.
-VEGETATION_RECYCLING_FRACTION = 0.2
+VEGETATION_RECYCLING_FRACTION = 0.16
 VEGETATION_TRANSPIRATION_BY_BIOME = np.array(
     [
         0.0,   # Ocean
@@ -917,7 +930,7 @@ def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is
     initial staleness the cache itself already has. Also returns zeros if `prev`'s own grid
     shape doesn't match `elevation_m`'s -- `world.climate_cache` is always sized at
     `world.climate_density`'s resolution, but this function's caller (`compute_climate`) can
-    be asked for a *different* resolution now (ocean_cfd.py/atmosphere_cfd.py request
+    be asked for a *different* resolution now (atmosphere_cfd.py's forcing call requests
     `world.fluid_density`'s own, independent of climate_density, see World.fluid_density's own
     docstring); `np.where(prev.is_ocean, ...)` against this call's differently-shaped
     elevation_m would otherwise raise, and resampling `prev` onto this call's grid just to
@@ -1156,14 +1169,14 @@ def compute_climate(
     # wind_u/wind_v come from the world's own always-on atmosphere_cfd_state -- a real,
     # continuously time-integrated shallow-water solve (see atmosphere_cfd.py) -- rather than
     # this module's own compute_wind diagnostic, resampled from fluid_density's resolution
-    # onto whatever resolution this call asked for (see fluid_dynamics.resample_to_grid).
-    # compute_wind itself is *not* removed -- it's still the one-time cold-start bootstrap
-    # compute_climate falls back to here, exercised only during generate_world, before
-    # world.atmosphere_cfd_state exists yet (see World.atmosphere_cfd_state's own docstring).
-    # elevation_factor isn't purely a function of elevation (see compute_wind's own body) --
-    # it also depends on the wind field via _mountain_wake_factor, so it's recomputed from
-    # whichever wind source is in play, keeping compute_humidity's "respond to terrain-driven
-    # slowdown" behavior meaningful regardless of source.
+    # onto whatever resolution this call asked for. compute_wind itself is *not* removed --
+    # it's still the one-time cold-start bootstrap compute_climate falls back to here,
+    # exercised only during generate_world, before world.atmosphere_cfd_state exists yet (see
+    # World.atmosphere_cfd_state's own docstring). elevation_factor isn't purely a function of
+    # elevation (see compute_wind's own body) -- it also depends on the wind field via
+    # _mountain_wake_factor, so it's recomputed from whichever wind source is in play, keeping
+    # compute_humidity's "respond to terrain-driven slowdown" behavior meaningful regardless
+    # of source.
     if world.atmosphere_cfd_state is None:
         wind_u, wind_v, elevation_factor = compute_wind(lat_deg, elevation_m, surface_temperature_c)
     else:
@@ -1175,38 +1188,22 @@ def compute_climate(
 
     # A cached-per-world-state noise texture standing in for turbulent current mixing --
     # deterministic in (seed, elapsed_years) so it doesn't flicker between renders of the
-    # same world state, matching every other RNG use in this codebase. Still needed
-    # unconditionally below: compute_ocean_swells' own `rng` argument, regardless of where
-    # current_u/current_v themselves come from.
+    # same world state, matching every other RNG use in this codebase.
     mix_rng = np.random.default_rng((world.seed, round(world.elapsed_years)))
     mixing_noise = mix_rng.random((height, width))
 
-    # Same CFD-sourced-instead-of-diagnostic swap as wind_u/wind_v above, from the world's own
-    # always-on ocean_cfd_state -- see that field's own docstring.
-    if world.ocean_cfd_state is None:
-        current_u, current_v = compute_ocean_currents(wind_u, wind_v, is_ocean, lat_deg, world_xyz, mixing_noise)
-    else:
-        current_u, current_v = world.ocean_cfd_state.resample_uv_to_equirect(height, width)
+    # Ocean currents and the current-advected surface temperature are diagnostic every call
+    # (see module docstring): the shallow-water ocean CFD solver had no stable operating point
+    # that produced realistic circulation on this grid, so it was retired -- compute_ocean_
+    # currents (Ekman + land swirl + coastal deflection + circumglobal boost + wake) and
+    # advect_ocean_temperature run here instead, fed by the CFD-sourced wind.
+    current_u, current_v = compute_ocean_currents(wind_u, wind_v, is_ocean, lat_deg, world_xyz, mixing_noise)
     swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, mix_rng)
-
-    # Same CFD-sourced-instead-of-diagnostic swap as wind_u/wind_v and current_u/current_v
-    # above: temperature/humidity/precipitation come from the world's own always-on,
-    # genuinely prognostic CFD states (real advection + diffusion + relaxation toward an
-    # equilibrium/baseline target, see atmosphere_cfd.py/ocean_cfd.py) rather than this
-    # module's own from-scratch diagnostic reconstruction. advect_ocean_temperature/
-    # compute_air_temperature/compute_humidity/compute_precipitation below still exist, but
-    # only as the one-time cold-start bootstrap those CFD states are seeded from at
-    # generate_world time, before they exist yet -- same status compute_wind/
-    # compute_ocean_currents already have.
-    if world.ocean_cfd_state is None:
-        ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
-    else:
-        ocean_temperature_c = world.ocean_cfd_state.resample_scalar_to_equirect(world.ocean_cfd_state.temperature_c, height, width)
+    ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
 
     # Air temperature is the one atmospheric field still read off the CFD state (alongside
-    # wind and ocean temperature above) -- humidity and precipitation are always the
-    # diagnostic sweep below now (see module docstring), fed by the CFD-sourced wind/ocean
-    # temperature rather than the CFD's own humidity field.
+    # wind) -- humidity, precipitation, currents, and ocean temperature are all the diagnostic
+    # sweep now (see module docstring), fed by the CFD-sourced wind.
     if world.atmosphere_cfd_state is None:
         air_temperature_c = compute_air_temperature(land_temperature_c, ocean_temperature_c, is_ocean, world_xyz)
     else:

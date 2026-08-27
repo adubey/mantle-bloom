@@ -24,7 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, erosion, fluid_dynamics_healpix, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
+from . import biomes, climate, coastline, erosion, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -958,34 +958,12 @@ def _draw_swell_markers(
         draw.ellipse([px - r, py - r, px + r, py + r], outline=(255, 255, 255), width=width_px)
 
 
-def _compute_ocean_swells_healpix(
-    u: np.ndarray, v: np.ndarray, is_ocean: np.ndarray, grid: "healpix_grid.HealpixGrid", rng: np.random.Generator,
-) -> np.ndarray:
-    """HEALPix analogue of `climate.compute_ocean_swells`: convergence (negative divergence) of
-    the current field, weighted-sampled at up to `climate.MAX_OCEAN_SWELLS` points -- returns
-    world_xyz positions directly rather than (row, col) indices, since there's no 2D grid to
-    index into. Normalized by its own max rather than `climate.OCEAN_SWELL_CONVERGENCE_REFERENCE`
-    -- that constant is tuned for `compute_ocean_swells`'s raw neighbor-difference divergence
-    (same units as current_u/v, no distance normalization), not `fluid_dynamics_healpix.divergence`'s
-    properly distance-normalized (1/s) result, so a self-normalizing reference is used here
-    instead of guessing a new absolute one those two functions don't share."""
-    divergence = fluid_dynamics_healpix.divergence(u, v, grid)
-    convergence = np.clip(-divergence, 0.0, None)
-    convergence = np.where(is_ocean, convergence, 0.0)
-    max_convergence = float(convergence.max())
-    if max_convergence <= 0.0:
-        return np.zeros((0, 3))
-    picked = climate.weighted_sample_without_replacement(rng, convergence / max_convergence, climate.MAX_OCEAN_SWELLS)
-    return grid.world_xyz[picked]
-
-
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of CLIMATE_VIEWS. `temperature`/`wind`/`oceanCurrents` draw
-    `world.atmosphere_cfd_state`/`ocean_cfd_state`'s own native HEALPix `(npix,)` arrays
-    directly -- no resampling, since those *are* the real fields, just not yet projected to
-    pixel space. `humidity`/`precipitation`/`biome` are diagnostic fields
-    `climate.compute_climate` owns (not the CFD state -- see climate.py's module docstring):
-    they're computed on climate's own equirectangular grid and resampled nearest-cell onto
+    """Renders one of CLIMATE_VIEWS. `temperature`/`wind` draw `world.atmosphere_cfd_state`'s
+    own native HEALPix `(npix,)` wind/air-temperature arrays directly. Every other field --
+    the ocean side of `temperature`, `oceanCurrents`, `humidity`, `precipitation`, `biome` --
+    is a diagnostic `climate.compute_climate` owns (not a CFD state; see climate.py's module
+    docstring), computed on climate's own equirectangular grid and resampled nearest-cell onto
     this HEALPix grid's cells here. A separate path from the plate-tectonics views below since
     both data sources cover the whole sphere per-cell, structurally unlike the render grid's
     ragged lattice."""
@@ -993,33 +971,31 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    atmosphere, ocean = world.atmosphere_cfd_state, world.ocean_cfd_state
-    if atmosphere is None or ocean is None:
+    atmosphere = world.atmosphere_cfd_state
+    if atmosphere is None:
         return _encode_image(Image.fromarray(pixels, mode="RGB"))
 
     grid = atmosphere.grid
     centers, half_px, scale, offset_x, offset_y = _project_healpix_grid(grid, projection, view_rotation, width, height, padding_px)
+    cfields = climate.compute_climate_cached(world)
 
-    # humidity/precipitation/biome are diagnostic fields climate.compute_climate owns (not
-    # the CFD state -- see climate.py's module docstring), computed on its own equirectangular
-    # grid; resample nearest-cell onto this HEALPix grid's cells for drawing. temperature/
-    # wind/oceanCurrents stay CFD-native below.
-    if view in ("humidity", "precipitation", "biome"):
-        cfields = climate.compute_climate_cached(world)
-        if view == "biome":
-            biome_ids = healpix_grid.resample_from_equirect(grid, cfields.biome_ids.astype(np.float64), cfields.lat_deg).astype(int)
-            _fill_rects(pixels, centers, half_px, half_px, biomes.BIOME_COLORS[biome_ids])
-            return _encode_image(Image.fromarray(pixels, mode="RGB"))
-        if view == "humidity":
-            colors = humidity_colors(healpix_grid.resample_from_equirect(grid, cfields.humidity, cfields.lat_deg))
-        else:
-            colors = precipitation_colors(healpix_grid.resample_from_equirect(grid, cfields.precipitation_mm, cfields.lat_deg))
-        _fill_rects(pixels, centers, half_px, half_px, colors)
+    def _to_healpix(field_hw: np.ndarray) -> np.ndarray:
+        return healpix_grid.resample_from_equirect(grid, field_hw, cfields.lat_deg)
 
-    if view == "temperature":
-        display_temp = np.where(atmosphere.is_ocean, ocean.temperature_c, atmosphere.temperature_c)
-        colors = temperature_colors(display_temp)
-        _fill_rects(pixels, centers, half_px, half_px, colors)
+    if view == "biome":
+        biome_ids = _to_healpix(cfields.biome_ids.astype(np.float64)).astype(int)
+        _fill_rects(pixels, centers, half_px, half_px, biomes.BIOME_COLORS[biome_ids])
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    if view == "humidity":
+        _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity)))
+    elif view == "precipitation":
+        _fill_rects(pixels, centers, half_px, half_px, precipitation_colors(_to_healpix(cfields.precipitation_mm)))
+    elif view == "temperature":
+        # Air temperature over land is CFD-native; ocean surface temperature is the diagnostic
+        # current-advected field.
+        ocean_temp = _to_healpix(cfields.ocean_temperature_c)
+        display_temp = np.where(atmosphere.is_ocean, ocean_temp, atmosphere.temperature_c)
+        _fill_rects(pixels, centers, half_px, half_px, temperature_colors(display_temp))
     elif view in ("wind", "oceanCurrents"):
         backdrop = np.where(atmosphere.is_ocean[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
         _fill_rects(pixels, centers, half_px, half_px, backdrop)
@@ -1033,10 +1009,10 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     if view == "wind":
         _draw_climate_vectors_healpix(draw, grid, atmosphere.u, atmosphere.v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
     elif view == "oceanCurrents":
-        _draw_climate_vectors_healpix(draw, grid, ocean.u, ocean.v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
-        # Deterministic per-world-state RNG, same convention climate.py's own mixing_noise uses.
-        swell_rng = np.random.default_rng((world.seed, round(world.elapsed_years)))
-        swell_xyz = _compute_ocean_swells_healpix(ocean.u, ocean.v, ocean.is_ocean, grid, swell_rng)
+        current_u = _to_healpix(cfields.current_u)
+        current_v = _to_healpix(cfields.current_v)
+        _draw_climate_vectors_healpix(draw, grid, current_u, current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
+        swell_xyz = cfields.world_xyz[cfields.swell_rows, cfields.swell_cols]
         _draw_swell_markers(draw, swell_xyz, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     return _encode_image(image)
