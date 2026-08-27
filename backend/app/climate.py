@@ -440,7 +440,7 @@ def compute_air_temperature(land_temperature_c: np.ndarray, ocean_temperature_c:
 # Diffusion applied to the radiative-equilibrium surface temperature by
 # `compute_air_temperature_diagnostic` below -- weighted Jacobi passes (each cell moved a
 # fraction of the way toward its 4-neighbour mean), longitude-wrapping. Tuned (6 passes at
-# weight 0.5, benchmarked against a 15-step CFD run across three seeds -- see TODO.md) to a
+# weight 0.5, benchmarked against a 15-step CFD run across three seeds -- see docs/TODO.md) to a
 # gentle smear: it lifts land-biome agreement with the CFD from ~90% (raw equilibrium) to
 # ~91%, and heavier smoothing doesn't help. Deliberately *not* the aggressive full-strength
 # `_smooth_field` (no self term) the mountain-gradient pipeline uses.
@@ -462,7 +462,7 @@ def compute_air_temperature_diagnostic(
     horizontal mixing. It is *not* `compute_air_temperature`: that function's strong
     pull toward the nearest ocean's temperature is a maritime-moderation model the CFD does
     not reproduce (benchmarks it at ~41% land-biome agreement vs the CFD, against this
-    function's ~91%). See TODO.md for the remaining gap to the CFD."""
+    function's ~91%). See docs/TODO.md for the remaining gap to the CFD."""
     equilibrium = np.where(is_ocean, ocean_temperature_c, land_temperature_c).astype(float)
     smoothed = equilibrium
     for _ in range(AIR_TEMP_DIFFUSION_ITERATIONS):

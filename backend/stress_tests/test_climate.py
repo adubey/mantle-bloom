@@ -59,7 +59,7 @@ def test_stats_and_render_reuse_the_same_step_cache():
 def test_diagnostic_wind_model_tracks_the_cfd_biome_map():
     # The "ABL" wind model (World.wind_model == "diagnostic") is meant to reproduce *most* of
     # the shallow-water CFD's downstream climate for a fraction of the cost -- see
-    # docs/simulation-model.md#wind-model and TODO.md. This locks in that it stays a decent
+    # docs/simulation-model.md#wind-model and docs/TODO.md. This locks in that it stays a decent
     # approximation, not a regression guard on an exact value: two copies of the same world
     # stepped the same number of times, one CFD, one diagnostic, should agree on the large
     # majority of the land biome map and keep precipitation close. A drop here most likely
