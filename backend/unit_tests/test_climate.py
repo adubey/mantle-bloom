@@ -216,6 +216,34 @@ def test_moisture_flux_convergence_positive_where_wind_converges_negative_where_
     assert mfc[2].mean() < 0.0 and mfc[-3].mean() < 0.0  # diverging at the poleward edges
 
 
+def test_moisture_flux_convergence_noise_breaks_zonal_banding_without_moving_row_means():
+    # Same reversing-wind setup as above. Without an rng the zonal-coherence blend leaves
+    # each latitude row very nearly flat (the horizontal banding); passing an rng adds a
+    # spatially-coherent perturbation that gives every row real along-row variation, while
+    # the per-row means -- the wind-derived belt structure -- stay put.
+    height, width = 40, 80
+    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
+    humidity = np.ones((height, width))
+    wind_u = np.zeros((height, width))
+    rows = np.arange(height)[:, None]
+    wind_v = np.where(rows < height // 2, -5.0, 5.0) * np.ones((1, width))
+
+    plain = climate.compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg)
+    noised = climate.compute_moisture_flux_convergence(
+        humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0)
+    )
+
+    assert plain.std(axis=1).mean() < 1e-6  # essentially banded
+    assert noised.std(axis=1).mean() > 10 * plain.std(axis=1).mean()  # along-row variation restored
+    np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.MFC_NOISE_Q_STD)
+
+    # Deterministic in the rng seed.
+    again = climate.compute_moisture_flux_convergence(
+        humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0)
+    )
+    np.testing.assert_array_equal(noised, again)
+
+
 def test_precipitation_convergence_adds_rain_and_divergence_suppresses_it():
     humidity = np.full((1, 1), 0.6)
     orographic = np.zeros((1, 1))
