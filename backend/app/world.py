@@ -128,7 +128,7 @@ class World:
     # formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same way it
     # already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
     # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model.md#wind-model and TODO.md. atmosphere_cfd_state is still kept in
+    # docs/simulation-model.md#wind-model and docs/TODO.md. atmosphere_cfd_state is still kept in
     # sync (init'd at generation, never cleared) so switching back to "cfd" mid-session
     # resumes from a real, if now-stale, state rather than a cold start.
     wind_model: str = "cfd"
