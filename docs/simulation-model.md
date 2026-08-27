@@ -80,9 +80,19 @@ to the plate.
 Total plate count isn't asked of the caller: `num_plates`, if not given, is drawn from the
 seed's own RNG stream (`plates.MIN_AUTO_PLATES = 8` to `plates.MAX_AUTO_PLATES = 20`), so the
 world still tiles itself the same deterministic way for a given seed without the caller
-having to pick a number. That many seed points are scattered uniformly on the unit sphere
-(normalized Gaussian samples), and each gets a plate-local frame built from its own seed
-(`geometry.plate_frame_from_seed`).
+having to pick a number. That many *primary* seed points are scattered uniformly on the unit
+sphere (normalized Gaussian samples), and each gets a plate-local frame built from its own
+seed (`geometry.plate_frame_from_seed`).
+
+A plate is not a single Voronoi cell, though: alongside the primaries,
+`lithosphere_plate.build_plate_tiling` scatters `EXTRA_SITES_PER_PLATE = 2` extra sites per
+plate and hands each one to a plate by Prim-style region growing (the still-unassigned site
+angularly closest to any already-assigned site joins that site's plate). A plate's territory
+is then the *union* of its own sites' Voronoi cells -- still a nearest-site lookup, so still
+gap/overlap-free by construction, but the merged cells give lumpier, less convex outlines
+than one-cell-per-plate did. `extra_sites_per_plate = 0` recovers the original tiling. Kept
+modest deliberately: the more cells a plate fuses, the more concave its outline gets, and
+`PlateWithLines`' per-row outline is only an envelope for a genuinely non-convex shape.
 
 Three generation choices *are* user-facing -- the UI's "continental plates" and "initial
 land" sliders, both 0 to 1 (percent in the UI), defaulting to
@@ -114,9 +124,9 @@ density" choice (`NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)`, see below).
 
 Each plate's elevation lines are populated by `plates.iter_local_lattice`: sweep a full
 plate-local `(phi, theta)` lattice at `TARGET_LINE_SPACING_KM` resolution (or a finer one --
-see "Elevation point density" below), and for every candidate node, keep it only if this
-plate's seed is the *nearest* seed to it (`cKDTree` against all seeds) -- the defining
-property of a spherical [Voronoi
+see "Elevation point density" below), and for every candidate node, keep it only if the
+*nearest* site to it (`cKDTree` against all sites, primary and extra) is one this plate owns
+-- the defining property of a spherical [Voronoi
 diagram](https://en.wikipedia.org/wiki/Voronoi_diagram), computed directly rather than via
 an explicit polygon-construction step. Every node ends up owned by exactly one plate, so the
 initial tiling has no gaps and no overlaps *by construction* -- there's nothing to

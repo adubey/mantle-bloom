@@ -1,7 +1,7 @@
 import numpy as np
 from app import geometry
 from app.elevation_lines import ElevationLine
-from app.lithosphere_plate import generate_plates
+from app.lithosphere_plate import build_plate_tiling, generate_plates
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
     MAX_AUTO_PLATES,
@@ -68,18 +68,37 @@ def test_frames_are_proper_rotations():
         assert np.isclose(np.linalg.det(p.frame), 1.0)
 
 
-def test_every_node_is_closest_to_its_own_plate_seed():
-    """A node kept by a plate must actually be in that plate's Voronoi cell -- i.e. no
-    other plate's seed is angularly closer to it."""
-    plates = generate_plates(seed=3, num_plates=8)
-    seeds = np.array([p.seed_world for p in plates])
+def test_every_node_is_closest_to_a_site_of_its_own_plate():
+    """A node kept by a plate must fall in one of that plate's own merged Voronoi cells --
+    i.e. its angularly-nearest *site* is owned by that plate, no other plate's site is
+    closer. Reconstructs the tiling the same way generate_plates does: default_rng(seed),
+    then build_plate_tiling as its first draw (num_plates given, continental_fraction None)."""
+    seed, num_plates = 3, 8
+    tiling = build_plate_tiling(np.random.default_rng(seed), num_plates)
+    plates = generate_plates(seed=seed, num_plates=num_plates)
 
     for p in plates:
         for line in p.lines:
             world_pts = line.world_xyz(p.frame)
-            dists = geometry.angular_distance(world_pts[:, None, :], seeds[None, :, :])
-            nearest = np.argmin(dists, axis=1)
-            assert np.all(nearest == p.plate_id)
+            dists = geometry.angular_distance(world_pts[:, None, :], tiling.site_xyz[None, :, :])
+            nearest_site = np.argmin(dists, axis=1)
+            assert np.all(tiling.site_plate[nearest_site] == p.plate_id)
+
+
+def test_build_plate_tiling_is_deterministic_and_covers_every_plate():
+    a = build_plate_tiling(np.random.default_rng(11), num_plates=7)
+    b = build_plate_tiling(np.random.default_rng(11), num_plates=7)
+    assert np.array_equal(a.site_xyz, b.site_xyz)
+    assert np.array_equal(a.site_plate, b.site_plate)
+    # every plate owns at least its own primary cell
+    assert set(a.site_plate.tolist()) == set(range(7))
+    assert np.array_equal(a.site_plate[:7], np.arange(7))
+
+
+def test_build_plate_tiling_extra_sites_zero_recovers_one_cell_per_plate():
+    tiling = build_plate_tiling(np.random.default_rng(1), num_plates=6, extra_sites_per_plate=0)
+    assert len(tiling.site_xyz) == 6
+    assert np.array_equal(tiling.site_plate, np.arange(6))
 
 
 def test_lines_are_evenly_spaced_in_phi():

@@ -14,6 +14,8 @@ Hc/Hm through the representation's own resample/partition operations, which
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 from scipy.spatial import cKDTree
 
@@ -467,20 +469,75 @@ _HC_NOISE_AMPLITUDE_OCEANIC_M = 900.0 / (
 )
 
 
+# Each plate is seeded with one "primary" site plus this many "extra" sites, and the plate's
+# territory is the *union* of its own sites' Voronoi cells rather than a single cell. Merging
+# a handful of adjacent cells per plate is what turns the old one-cell-per-plate tiling (every
+# plate a convex-ish blob) into lumpier, more continent-like outlines. 0 recovers the exact
+# old behaviour. Kept modest on purpose: the more cells a plate fuses, the more concave its
+# outline can get, and `PlateWithLines`' per-row outline is only an envelope for a genuinely
+# non-convex shape (see `PlateWithLines.outline_world`).
+EXTRA_SITES_PER_PLATE = 2
+
+
+@dataclass
+class PlateTiling:
+    """A merged-Voronoi partition of the sphere into `num_plates` plates. `site_xyz` is every
+    Voronoi site (unit vectors); `site_plate[s]` is which plate owns site `s`'s cell. The
+    first `num_plates` sites are the per-plate "primary" sites (`site_plate[:num_plates] ==
+    arange(num_plates)`), the rest are extras merged into an existing plate. A world point
+    belongs to whichever plate owns its nearest site."""
+
+    site_xyz: np.ndarray
+    site_plate: np.ndarray
+    num_plates: int
+
+    def primary_site(self, plate_id: int) -> np.ndarray:
+        return self.site_xyz[plate_id]
+
+
+def build_plate_tiling(rng: np.random.Generator, num_plates: int, extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE) -> PlateTiling:
+    """Place `num_plates` primary sites plus `num_plates * extra_sites_per_plate` extra sites
+    uniformly on the sphere, then hand every extra site to a plate by region-growing: each
+    round, the still-unassigned site closest (angularly) to any already-assigned site joins
+    that site's plate. Prim-style growth keeps each plate's set of sites a compact cluster,
+    so the union of their Voronoi cells stays a single lumpy blob rather than scattering
+    disconnected islands across the sphere. Deterministic in `rng`."""
+    num_extra = max(0, num_plates * extra_sites_per_plate)
+    site_xyz = rng.normal(size=(num_plates + num_extra, 3))
+    site_xyz /= np.linalg.norm(site_xyz, axis=-1, keepdims=True)
+
+    site_plate = np.full(len(site_xyz), -1, dtype=int)
+    site_plate[:num_plates] = np.arange(num_plates)
+
+    if num_extra > 0:
+        angular = np.arccos(np.clip(site_xyz @ site_xyz.T, -1.0, 1.0))
+        for _ in range(num_extra):
+            unassigned = np.flatnonzero(site_plate < 0)
+            assigned = np.flatnonzero(site_plate >= 0)
+            block = angular[np.ix_(unassigned, assigned)]
+            u, a = np.unravel_index(int(np.argmin(block)), block.shape)
+            site_plate[unassigned[u]] = site_plate[assigned[a]]
+
+    return PlateTiling(site_xyz=site_xyz, site_plate=site_plate, num_plates=num_plates)
+
+
 def generate_plates(
     seed: int,
     num_plates: int | None = None,
     continental_fraction: float | None = None,
     land_fraction: float | None = None,
     node_density: float = 1.0,
+    extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE,
 ) -> list[LithospherePlate]:
-    """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, reused
-    directly (deterministic per `seed`, same nearest-seed-owns-the-node rule so the initial
-    tiling has no gaps/overlaps by construction) -- only the per-plate line-building step
-    differs: instead of a base elevation + noise texture, each node gets a reference Hc/Hm
-    plus noise on Hc (see `_HC_NOISE_AMPLITUDE_*` above for how that noise amplitude is
-    chosen to land on the *same* elevation swing v1's own generation produces), with
-    `elevation` itself computed once via isostasy at the end."""
+    """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
+    each plate owns the union of several adjacent Voronoi cells (see `build_plate_tiling` and
+    `EXTRA_SITES_PER_PLATE`) rather than a single cell -- still deterministic per `seed`, still
+    nearest-site-owns-the-node so the tiling has no gaps/overlaps by construction, just with
+    lumpier, less convex plate outlines. Only the per-plate line-building step differs from
+    v1: instead of a base elevation + noise texture, each node gets a reference Hc/Hm plus
+    noise on Hc (see `_HC_NOISE_AMPLITUDE_*` above for how that noise amplitude is chosen to
+    land on the *same* elevation swing v1's own generation produces), with `elevation` itself
+    computed once via isostasy at the end."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -491,8 +548,8 @@ def generate_plates(
         num_continents = round(continental_fraction * num_plates)
         num_plates = max(num_plates, num_continents + MIN_OCEANIC_PLATES)
 
-    seed_xyz = rng.normal(size=(num_plates, 3))
-    seed_xyz /= np.linalg.norm(seed_xyz, axis=-1, keepdims=True)
+    tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate)
+    seed_xyz = tiling.site_xyz
 
     if num_continents is None:
         crust_types = ["continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)]
@@ -500,25 +557,29 @@ def generate_plates(
         continental_indices = set(rng.choice(num_plates, size=num_continents, replace=False).tolist())
         crust_types = ["continental" if i in continental_indices else "oceanic" for i in range(num_plates)]
 
+    # Per-site crust type (each site inherits its owning plate's) -- `_land_noise_threshold`
+    # and the `is_owned` test below both index by nearest *site*, not nearest plate.
+    site_crust_types = [crust_types[tiling.site_plate[s]] for s in range(len(seed_xyz))]
+
     owner_tree = cKDTree(seed_xyz)
     noise = SphereNoise(rng, octaves=4, base_freq=2.5)
 
     land_threshold = None
     if land_fraction is not None:
         land_fraction = max(0.0, min(land_fraction, 1.0))
-        land_threshold = _land_noise_threshold(owner_tree, crust_types, noise, land_fraction)
+        land_threshold = _land_noise_threshold(owner_tree, site_crust_types, noise, land_fraction)
 
     spacing_rad = line_spacing_rad(node_density)
     plates: list[LithospherePlate] = []
     for i in range(num_plates):
-        frame = geometry.plate_frame_from_seed(seed_xyz[i])
+        frame = geometry.plate_frame_from_seed(tiling.primary_site(i))
         crust_type = crust_types[i]
         hc0, hm0 = lithosphere.reference_thickness(crust_type)
         hc_amp = _HC_NOISE_AMPLITUDE_CONTINENTAL_M if crust_type == "continental" else _HC_NOISE_AMPLITUDE_OCEANIC_M
 
         def is_owned(world_pts: np.ndarray, _i: int = i) -> np.ndarray:
             _, nearest_idx = owner_tree.query(world_pts)
-            return nearest_idx == _i
+            return tiling.site_plate[nearest_idx] == _i
 
         if crust_type == "continental" and land_threshold is not None:
 
