@@ -954,18 +954,24 @@ MFC_SMOOTHING_REFERENCE_PASSES = 3
 # own mean, which is what makes the wet/dry belts read as continuous bands -- but it also
 # leaves the field nearly constant along a row, so the belt edges land on sharp, unbroken
 # parallels and the precipitation map shows visible horizontal banding wherever a row's mean
-# steps between neighbours. A spatially-coherent gaussian perturbation added after the blend
+# steps between neighbours. A fractal gaussian perturbation added after the blend
 # (`_coherent_noise`) breaks that up: it undulates the belt boundaries and stipples their
 # interiors the way real convergence zones meander, without disturbing the row means the
 # wind field actually derived. MFC_NOISE_Q_STD is its standard deviation in the same
 # humidity-equivalent q units as the convergence field (~0.05 -> a few-hundred-mm swing at a
 # belt edge, comparable to the monsoon-scale departures MFC_ZONAL_COHERENCE already permits).
-# The pass count holds a fixed real-world blob radius the same way _mfc_smoothing_passes does
-# -- deliberately coarser than the ITCZ width so the noise bends the band rather than
-# speckling it. Seeded per world state (seed, elapsed_years) like every other RNG use here,
-# so it doesn't flicker between renders of the same world.
+# The noise is synthesized in the spectral domain (see `_coherent_noise`): a repeated box
+# blur has one dominant bump size and plus-shaped kernel artifacts, both of which read as a
+# regular, man-made texture; a 1/k**MFC_NOISE_SPECTRAL_BETA power spectrum instead is
+# isotropic and scale-free, so no single length stands out. MFC_NOISE_CORRELATION_DEG is the
+# largest wavelength (in degrees of latitude) still at full amplitude -- longer than that is
+# damped so the noise stays a perturbation on the belts rather than a rival climatology of
+# its own; it's coarser than the ITCZ so the noise bends a band rather than just speckling
+# it. Seeded per world state (seed, elapsed_years) like every other RNG use here, so it
+# doesn't flicker between renders of the same world.
 MFC_NOISE_Q_STD = 0.05
-MFC_NOISE_SMOOTHING_REFERENCE_PASSES = 14
+MFC_NOISE_CORRELATION_DEG = 18.0
+MFC_NOISE_SPECTRAL_BETA = 2.6
 
 # Moisture recycling: lake/river evaporation and vegetation transpiration, all added as a
 # local land-surface source alongside ocean cells' own evap_ceiling -- see module docstring.
@@ -1256,24 +1262,34 @@ def _mfc_smoothing_passes(width: int) -> int:
     return max(2, round(MFC_SMOOTHING_REFERENCE_PASSES * (width / _REFERENCE_WIDTH) ** 2))
 
 
-def _mfc_noise_smoothing_passes(width: int) -> int:
-    """As `_mfc_smoothing_passes`, for the coherent-noise blob radius. See
-    MFC_NOISE_SMOOTHING_REFERENCE_PASSES."""
-    return max(2, round(MFC_NOISE_SMOOTHING_REFERENCE_PASSES * (width / _REFERENCE_WIDTH) ** 2))
+def _coherent_noise(
+    rng: np.random.Generator, shape: tuple[int, int], target_std: float,
+    correlation_cells: float, beta: float,
+) -> np.ndarray:
+    """A zero-mean fractal gaussian field, synthesized in the spectral domain: white gaussian
+    noise shaped by a `1 / (1 + (k/k0)**2) ** (beta/2)` power spectrum -- flat below the
+    `correlation_cells` wavelength, rolling off as `k**-beta` above it -- then transformed
+    back to a real field and renormalized to `target_std`.
 
-
-def _coherent_noise(rng: np.random.Generator, shape: tuple[int, int], target_std: float, smoothing_passes: int) -> np.ndarray:
-    """A zero-mean, spatially-coherent gaussian field: white gaussian noise run through the
-    same longitude-wrapping box blur (`_smooth_field`) the rest of this module uses, then
-    renormalized back up to `target_std` (the blur otherwise crushes the point variance).
-    The blur is what gives it a real spatial scale -- neighbouring cells move together, so
-    added onto a banded field it warps the bands rather than adding salt-and-pepper."""
-    blurred = _smooth_field(rng.standard_normal(shape), smoothing_passes)
-    blurred -= blurred.mean()
-    std = float(blurred.std())
+    This replaces a repeated box blur (the module's usual `_smooth_field`), which was visibly
+    too regular here: iterated 4-neighbour averaging has one dominant length scale and leaves
+    faint plus-shaped kernel artifacts, so the perturbation read as a man-made texture. A
+    power-law spectrum is isotropic and scale-free -- energy spread smoothly across a decade
+    of scales, no single bump size -- which is what makes a natural field look natural. The
+    FFT is periodic on both axes, so the longitude wrap is exact (the latitude wrap across
+    the poles is harmless at this amplitude where precipitation is already near zero)."""
+    height, width = shape
+    ky = np.fft.fftfreq(height)[:, None]
+    kx = np.fft.fftfreq(width)[None, :]
+    k = np.hypot(ky, kx)
+    k0 = 1.0 / max(correlation_cells, 2.0)
+    amplitude = 1.0 / (1.0 + (k / k0) ** 2) ** (beta / 2.0)
+    amplitude[0, 0] = 0.0  # drop the DC term -> exactly zero mean
+    field = np.fft.ifft2(np.fft.fft2(rng.standard_normal(shape)) * amplitude).real
+    std = float(field.std())
     if std < 1e-9:
-        return blurred
-    return blurred * (target_std / std)
+        return field
+    return field * (target_std / std)
 
 
 def compute_moisture_flux_convergence(
@@ -1297,12 +1313,13 @@ def compute_moisture_flux_convergence(
     (`MFC_ZONAL_COHERENCE`) so the wet/dry belts read as continuous bands rather than a string
     of blobs -- while a partial local weight keeps monsoon-scale departures visible.
 
-    `rng`, when given, adds a spatially-coherent gaussian perturbation (`_coherent_noise`,
-    std `MFC_NOISE_Q_STD`) on top of the blended field. The zonal-coherence blend leaves each
-    row nearly flat, which lands the belt edges on hard parallels and shows as horizontal
-    banding in the precipitation map; the noise warps and stipples those edges the way real
-    convergence zones meander. `rng=None` reproduces the earlier deterministic field -- for
-    tests exercising the divergence pattern in isolation."""
+    `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
+    `MFC_NOISE_Q_STD`, correlation length `MFC_NOISE_CORRELATION_DEG`) on top of the blended
+    field. The zonal-coherence blend leaves each row nearly flat, which lands the belt edges
+    on hard parallels and shows as horizontal banding in the precipitation map; the noise
+    warps and stipples those edges the way real convergence zones meander. `rng=None`
+    reproduces the earlier deterministic field -- for tests exercising the divergence pattern
+    in isolation."""
     height, width = humidity.shape
     lat_grid = np.radians(np.repeat(lat_deg[:, None], width, axis=1))
     cos_lat = np.clip(np.cos(lat_grid), 0.15, 1.0)
@@ -1320,7 +1337,9 @@ def compute_moisture_flux_convergence(
     blended = (1.0 - MFC_ZONAL_COHERENCE) * convergence_q + MFC_ZONAL_COHERENCE * zonal_mean
     if rng is None:
         return blended
-    return blended + _coherent_noise(rng, (height, width), MFC_NOISE_Q_STD, _mfc_noise_smoothing_passes(width))
+    correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
+    noise = _coherent_noise(rng, (height, width), MFC_NOISE_Q_STD, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
+    return blended + noise
 
 
 def compute_precipitation(
