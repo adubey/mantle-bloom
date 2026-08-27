@@ -219,8 +219,8 @@ def test_moisture_flux_convergence_positive_where_wind_converges_negative_where_
 def test_moisture_flux_convergence_noise_breaks_zonal_banding_without_moving_row_means():
     # Same reversing-wind setup as above. Without an rng the zonal-coherence blend leaves
     # each latitude row very nearly flat (the horizontal banding); passing an rng adds a
-    # spatially-coherent perturbation that gives every row real along-row variation, while
-    # the per-row means -- the wind-derived belt structure -- stay put.
+    # fractal perturbation that gives every row real along-row variation, while the per-row
+    # means -- the wind-derived belt structure -- stay put.
     height, width = 40, 80
     lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
     humidity = np.ones((height, width))
@@ -242,6 +242,28 @@ def test_moisture_flux_convergence_noise_breaks_zonal_banding_without_moving_row
         humidity, wind_u, wind_v, lat_deg, np.random.default_rng(0)
     )
     np.testing.assert_array_equal(noised, again)
+
+
+def test_coherent_noise_is_broadband_zero_mean_and_normalized():
+    # The fractal field should spread its energy across a range of scales rather than sitting
+    # at one dominant bump size (what made a repeated box blur read as a regular texture).
+    field = climate._coherent_noise(
+        np.random.default_rng(0), (180, 360), target_std=0.05,
+        correlation_cells=18.0, beta=climate.MFC_NOISE_SPECTRAL_BETA,
+    )
+    assert abs(field.mean()) < 1e-9
+    assert abs(field.std() - 0.05) < 1e-6
+
+    power = np.abs(np.fft.fft2(field)) ** 2
+    ky = np.fft.fftfreq(180)[:, None]
+    kx = np.fft.fftfreq(360)[None, :]
+    k = np.hypot(ky, kx)
+    # Three broad radial bands from large to small scale -- each must carry a real share of
+    # the total, i.e. no single scale dominates and none is empty.
+    total = power.sum()
+    for lo, hi in ((0.01, 0.03), (0.03, 0.08), (0.08, 0.2)):
+        share = power[(k >= lo) & (k < hi)].sum() / total
+        assert share > 0.05
 
 
 def test_precipitation_convergence_adds_rain_and_divergence_suppresses_it():

@@ -1094,10 +1094,13 @@ first and closing the loop only for the final consumer-facing fields:
     `MAX_EVAPORATION_CEILING`: to keep the precipitation -> rainforest -> transpiration ->
     humidity recycling loop from running away along an equatorial forest belt.
     Because the row-mean blend leaves each latitude nearly flat, the belt edges would
-    otherwise fall on hard parallels and show as horizontal banding in the map; a
-    spatially-coherent gaussian perturbation (`_coherent_noise`, std `MFC_NOISE_Q_STD`,
-    seeded per world state) added after the blend warps and stipples those edges the way
-    real convergence zones meander, without moving the wind-derived per-row means.
+    otherwise fall on hard parallels and show as horizontal banding in the map; a fractal
+    gaussian perturbation (`_coherent_noise` -- white noise shaped by a
+    `1/k**MFC_NOISE_SPECTRAL_BETA` power spectrum in the spectral domain, so it's isotropic
+    and scale-free rather than one dominant bump size, std `MFC_NOISE_Q_STD`, correlation
+    length `MFC_NOISE_CORRELATION_DEG`, seeded per world state) added after the blend warps
+    and stipples those edges the way real convergence zones meander, without moving the
+    wind-derived per-row means.
     Feeds erosion and hydrology (see [Erosion](#erosion) and [Hydrology](#hydrology)), and
     -- one step later, via the moisture-recycling source above -- itself.
 
