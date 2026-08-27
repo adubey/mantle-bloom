@@ -1093,6 +1093,11 @@ first and closing the loop only for the final consumer-facing fields:
     capped (`MFC_CONVERGENCE_MAX_Q`) for the same reason the humidity sweep is capped at
     `MAX_EVAPORATION_CEILING`: to keep the precipitation -> rainforest -> transpiration ->
     humidity recycling loop from running away along an equatorial forest belt.
+    Because the row-mean blend leaves each latitude nearly flat, the belt edges would
+    otherwise fall on hard parallels and show as horizontal banding in the map; a
+    spatially-coherent gaussian perturbation (`_coherent_noise`, std `MFC_NOISE_Q_STD`,
+    seeded per world state) added after the blend warps and stipples those edges the way
+    real convergence zones meander, without moving the wind-derived per-row means.
     Feeds erosion and hydrology (see [Erosion](#erosion) and [Hydrology](#hydrology)), and
     -- one step later, via the moisture-recycling source above -- itself.
 

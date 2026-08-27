@@ -950,6 +950,22 @@ MFC_SUBSIDENCE_MAX_SUPPRESSION = 0.72
 # resolution -> a ~5 deg-wide ITCZ at any World.climate_density, for ~30-70 ms of extra
 # per-call cost at the finer densities.
 MFC_SMOOTHING_REFERENCE_PASSES = 3
+# The zonal-coherence blend above (MFC_ZONAL_COHERENCE) pulls each latitude row toward its
+# own mean, which is what makes the wet/dry belts read as continuous bands -- but it also
+# leaves the field nearly constant along a row, so the belt edges land on sharp, unbroken
+# parallels and the precipitation map shows visible horizontal banding wherever a row's mean
+# steps between neighbours. A spatially-coherent gaussian perturbation added after the blend
+# (`_coherent_noise`) breaks that up: it undulates the belt boundaries and stipples their
+# interiors the way real convergence zones meander, without disturbing the row means the
+# wind field actually derived. MFC_NOISE_Q_STD is its standard deviation in the same
+# humidity-equivalent q units as the convergence field (~0.05 -> a few-hundred-mm swing at a
+# belt edge, comparable to the monsoon-scale departures MFC_ZONAL_COHERENCE already permits).
+# The pass count holds a fixed real-world blob radius the same way _mfc_smoothing_passes does
+# -- deliberately coarser than the ITCZ width so the noise bends the band rather than
+# speckling it. Seeded per world state (seed, elapsed_years) like every other RNG use here,
+# so it doesn't flicker between renders of the same world.
+MFC_NOISE_Q_STD = 0.05
+MFC_NOISE_SMOOTHING_REFERENCE_PASSES = 14
 
 # Moisture recycling: lake/river evaporation and vegetation transpiration, all added as a
 # local land-surface source alongside ocean cells' own evap_ceiling -- see module docstring.
@@ -1240,8 +1256,29 @@ def _mfc_smoothing_passes(width: int) -> int:
     return max(2, round(MFC_SMOOTHING_REFERENCE_PASSES * (width / _REFERENCE_WIDTH) ** 2))
 
 
+def _mfc_noise_smoothing_passes(width: int) -> int:
+    """As `_mfc_smoothing_passes`, for the coherent-noise blob radius. See
+    MFC_NOISE_SMOOTHING_REFERENCE_PASSES."""
+    return max(2, round(MFC_NOISE_SMOOTHING_REFERENCE_PASSES * (width / _REFERENCE_WIDTH) ** 2))
+
+
+def _coherent_noise(rng: np.random.Generator, shape: tuple[int, int], target_std: float, smoothing_passes: int) -> np.ndarray:
+    """A zero-mean, spatially-coherent gaussian field: white gaussian noise run through the
+    same longitude-wrapping box blur (`_smooth_field`) the rest of this module uses, then
+    renormalized back up to `target_std` (the blur otherwise crushes the point variance).
+    The blur is what gives it a real spatial scale -- neighbouring cells move together, so
+    added onto a banded field it warps the bands rather than adding salt-and-pepper."""
+    blurred = _smooth_field(rng.standard_normal(shape), smoothing_passes)
+    blurred -= blurred.mean()
+    std = float(blurred.std())
+    if std < 1e-9:
+        return blurred
+    return blurred * (target_std / std)
+
+
 def compute_moisture_flux_convergence(
-    humidity: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, lat_deg: np.ndarray
+    humidity: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, lat_deg: np.ndarray,
+    rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     """`-div(humidity * wind)` as a dimensionless, humidity-equivalent field: positive where
     the moisture-bearing wind converges (air and its moisture pile up, rise, and rain out --
@@ -1258,7 +1295,14 @@ def compute_moisture_flux_convergence(
     to shed the CFD wind's mesoscale speckle and widen the near-discontinuous equatorial
     convergence into a ~5 deg belt, then blended toward its own per-latitude-row mean
     (`MFC_ZONAL_COHERENCE`) so the wet/dry belts read as continuous bands rather than a string
-    of blobs -- while a partial local weight keeps monsoon-scale departures visible."""
+    of blobs -- while a partial local weight keeps monsoon-scale departures visible.
+
+    `rng`, when given, adds a spatially-coherent gaussian perturbation (`_coherent_noise`,
+    std `MFC_NOISE_Q_STD`) on top of the blended field. The zonal-coherence blend leaves each
+    row nearly flat, which lands the belt edges on hard parallels and shows as horizontal
+    banding in the precipitation map; the noise warps and stipples those edges the way real
+    convergence zones meander. `rng=None` reproduces the earlier deterministic field -- for
+    tests exercising the divergence pattern in isolation."""
     height, width = humidity.shape
     lat_grid = np.radians(np.repeat(lat_deg[:, None], width, axis=1))
     cos_lat = np.clip(np.cos(lat_grid), 0.15, 1.0)
@@ -1273,7 +1317,10 @@ def compute_moisture_flux_convergence(
     divergence_per_km = (dqu_dlon / dlon + dqvcos_dlat / dlat) / (cos_lat * plates.PLANET_RADIUS_KM)
     convergence_q = _smooth_field(-divergence_per_km * MFC_COLLECTION_LENGTH_KM / MERIDIONAL_BASE_SPEED, _mfc_smoothing_passes(width))
     zonal_mean = convergence_q.mean(axis=1, keepdims=True)
-    return (1.0 - MFC_ZONAL_COHERENCE) * convergence_q + MFC_ZONAL_COHERENCE * zonal_mean
+    blended = (1.0 - MFC_ZONAL_COHERENCE) * convergence_q + MFC_ZONAL_COHERENCE * zonal_mean
+    if rng is None:
+        return blended
+    return blended + _coherent_noise(rng, (height, width), MFC_NOISE_Q_STD, _mfc_noise_smoothing_passes(width))
 
 
 def compute_precipitation(
@@ -1392,7 +1439,11 @@ def compute_climate(
             is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
             lake_depth_m, channel_depth_m, vegetation_source,
         )
-        moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg)
+        # A dedicated stream (not mix_rng, whose draw count feeds the ocean-current texture)
+        # so the precipitation noise is deterministic in the same (seed, elapsed_years) the
+        # rest of this module keys its RNG on -- steady between renders of one world state.
+        mfc_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 811))
+        moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg, mfc_rng)
         precipitation_mm = compute_precipitation(humidity, orographic_dump, moisture_flux_convergence)
 
     display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
