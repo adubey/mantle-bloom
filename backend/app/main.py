@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import contextmanager
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -38,12 +39,35 @@ app.add_middleware(
 
 _state: dict[str, World | None] = {"world": None}
 
-# FastAPI runs sync `def` routes in a thread pool, so two /world/step requests can otherwise
-# race on the same World's mutable numpy arrays. Rather than serializing them (which would
-# make the second request silently hang for as long as the first one takes -- step_world can
-# take seconds on a large world), a step in progress rejects any overlapping step with a 503
-# so the caller can decide how to wait -- see api.ts's stepWorld for the client-side retry.
-_step_lock = threading.Lock()
+# FastAPI runs sync `def` routes in a thread pool, so two requests can otherwise race on the
+# same World's mutable numpy arrays -- and, worse, launch Numba's `parallel=True` kernels
+# (fluid_dynamics.py, fluid_dynamics_healpix.py, healpix_grid.py) concurrently from two
+# threads, which the default `workqueue` threading layer is not safe against and crashes the
+# interpreter outright. So every route that runs the simulation compute path or mutates
+# shared World state holds this one lock: step / animate / generate / controls / stats /
+# render. The read-mostly inspector routes (plates, rivers, lakes, *_at) touch neither a
+# Numba kernel nor a shared-array write and are left lock-free.
+#
+# Long-running writes where an overlap means a genuine conflict (step, animate) reject with a
+# 503 rather than blocking -- the second request would otherwise silently hang for as long as
+# the first takes (seconds on a large world); see api.ts's stepWorld for the client-side
+# retry. The quick or read-side holders (generate, controls, stats, render) just block and
+# wait the brief window out -- a render especially is called far too often, and is far too
+# cheap, to fail every time it lands during a step (see the render route's own docstring).
+_world_lock = threading.Lock()
+
+
+@contextmanager
+def _reject_if_busy(detail: str):
+    """Hold `_world_lock` for the block, or 503 immediately if another request already has it
+    -- for the long-running writes (step, animate) where an overlap is a real conflict the
+    caller should retry, not something to silently queue behind."""
+    if not _world_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail=detail)
+    try:
+        yield
+    finally:
+        _world_lock.release()
 
 
 class GenerateRequest(BaseModel):
@@ -370,19 +394,20 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.FLUID_DENSITY_CHOICES}"
         )
-    world = generate_world(
-        req.seed,
-        num_plates=req.num_plates,
-        continental_fraction=req.continental_fraction,
-        land_fraction=req.land_fraction,
-        num_mantle_centers=req.num_mantle_centers,
-        axial_tilt_deg=req.axial_tilt_deg,
-        node_density=req.node_density,
-        initial_soil_maturity=req.initial_soil_maturity,
-        climate_density=req.climate_density,
-        fluid_density=req.fluid_density,
-    )
-    _state["world"] = world
+    with _world_lock:
+        world = generate_world(
+            req.seed,
+            num_plates=req.num_plates,
+            continental_fraction=req.continental_fraction,
+            land_fraction=req.land_fraction,
+            num_mantle_centers=req.num_mantle_centers,
+            axial_tilt_deg=req.axial_tilt_deg,
+            node_density=req.node_density,
+            initial_soil_maturity=req.initial_soil_maturity,
+            climate_density=req.climate_density,
+            fluid_density=req.fluid_density,
+        )
+        _state["world"] = world
     return _summary(world)
 
 
@@ -404,13 +429,9 @@ def step(req: StepRequest) -> dict:
     Atmospheric Fluid Dynamics by their own fixed real-time increment regardless of `req.years`
     (see world.py's `_advance_fluid_dynamics`)."""
     world = _require_world()
-    if not _step_lock.acquire(blocking=False):
-        raise HTTPException(status_code=503, detail="a step is already in progress")
-    try:
+    with _reject_if_busy("a step is already in progress"):
         step_world(world, req.years)
         return _summary(world)
-    finally:
-        _step_lock.release()
 
 
 @app.get("/world/save")
@@ -454,9 +475,8 @@ def render(
     out-of-range width/height, or a malformed rotation, `404` if no world has been generated
     yet.
 
-    Takes `_step_lock` around the actual read, unlike every other `_step_lock` site in this
-    module: those are all *writes* (step/step_fluid/mode), so a busy lock means "reject and
-    let the caller retry" (503). A render is a read, called far more often (every view
+    Takes `_world_lock` (blocking) around the actual read, unlike step/animate which 503 on a
+    busy lock and let the caller retry. A render is a read, called far more often (every view
     switch, every post-step refresh, each animation frame) and each mutation-collecting pass
     it makes (plates.collect_all_points, collect_all_lake_depth, ...) walks world.plates
     independently -- concurrently with an in-flight step actually mutating those same plates
@@ -475,7 +495,7 @@ def render(
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
 
-    with _step_lock:
+    with _world_lock:
         image_base64 = render_image.render_png_base64(world, projection, view, width, height, view_rotation)
     return {
         "projection": projection,
@@ -506,10 +526,11 @@ def animate(req: AnimateRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"num_frames must be in [1, {MAX_ANIMATION_FRAMES}]")
     view_rotation = _parse_view_rotation(req.rotation)
 
-    image_base64 = render_image.render_animation_gif_base64(
-        world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
-    )
-    return {**_summary(world), "image_base64": image_base64}
+    with _reject_if_busy("a step or animation is already in progress"):
+        image_base64 = render_image.render_animation_gif_base64(
+            world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
+        )
+        return {**_summary(world), "image_base64": image_base64}
 
 
 @app.post("/world/controls")
@@ -530,17 +551,18 @@ def set_controls(req: ControlsRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
         )
-    if req.sea_level_m is not None:
-        world.sea_level_m = req.sea_level_m
-    if req.solar_multiplier is not None:
-        world.solar_multiplier = req.solar_multiplier
-    if req.simulate_plate_movement is not None:
-        world.simulate_plate_movement = req.simulate_plate_movement
-    if req.simulate_climate_biomes is not None:
-        world.simulate_climate_biomes = req.simulate_climate_biomes
-    if req.wind_model is not None:
-        world.wind_model = req.wind_model
-    world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
+    with _world_lock:
+        if req.sea_level_m is not None:
+            world.sea_level_m = req.sea_level_m
+        if req.solar_multiplier is not None:
+            world.solar_multiplier = req.solar_multiplier
+        if req.simulate_plate_movement is not None:
+            world.simulate_plate_movement = req.simulate_plate_movement
+        if req.simulate_climate_biomes is not None:
+            world.simulate_climate_biomes = req.simulate_climate_biomes
+        if req.wind_model is not None:
+            world.wind_model = req.wind_model
+        world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
@@ -570,7 +592,8 @@ def get_stats() -> dict:
     generate/step, same as it already does for /world/render). `404` if no world has been
     generated yet."""
     world = _require_world()
-    return stats.compute_stats(world)
+    with _world_lock:
+        return stats.compute_stats(world)
 
 
 @app.get("/world/plate_at")

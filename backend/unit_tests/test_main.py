@@ -74,7 +74,7 @@ def test_overlapping_step_returns_503(client, monkeypatch):
     client.post("/world/generate", json={"seed": 1, "num_plates": 6})
 
     # Makes the first /world/step's own critical section deterministically overlap the
-    # second's: the blocking replacement only runs (and lets app.main._step_lock be released)
+    # second's: the blocking replacement only runs (and lets app.main._world_lock be released)
     # once entered_step_world confirms the first request is already holding the lock, so the
     # second request's 503 isn't a race on request scheduling order.
     entered_step_world = threading.Event()
@@ -132,7 +132,7 @@ def test_render_waits_for_an_in_progress_step_instead_of_racing_it(client, monke
     render_results: list[int] = []
     t2 = threading.Thread(target=lambda: render_results.append(client.get("/world/render").status_code))
     t2.start()
-    # The render thread must actually be blocked on _step_lock right now, not racing through
+    # The render thread must actually be blocked on _world_lock right now, not racing through
     # -- confirmed by it still not having finished shortly after starting, while the step
     # still holds the lock.
     t2.join(timeout=0.5)
@@ -145,6 +145,51 @@ def test_render_waits_for_an_in_progress_step_instead_of_racing_it(client, monke
 
     assert step_results == [200]
     assert render_results == [200]
+
+
+def test_step_compute_routes_do_not_race_an_in_progress_step(client, monkeypatch):
+    # Regression test: /world/animate, /world/controls, /world/stats and /world/generate all
+    # ran with no lock, so each could launch a Numba parallel=True kernel (fluid_dynamics.py
+    # etc.) concurrently with an in-flight step's own kernel -- the default `workqueue`
+    # threading layer is not safe against that and crashes the interpreter. They now share
+    # `_world_lock` with step/render: the long writes (animate) 503 like an overlapping step,
+    # the quick/read holders (controls, stats, generate) block and wait it out.
+    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+
+    entered_step_world = threading.Event()
+    release_step_world = threading.Event()
+
+    def blocking_step_world(world, years):
+        entered_step_world.set()
+        release_step_world.wait(timeout=5)
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "step_world", blocking_step_world)
+
+    step_results: list[int] = []
+    t1 = threading.Thread(target=lambda: step_results.append(client.post("/world/step", json={"years": 1_000_000}).status_code))
+    t1.start()
+    assert entered_step_world.wait(timeout=5)
+
+    # animate is a long-running write -- rejected outright while the step holds the lock.
+    animate_resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 2})
+    assert animate_resp.status_code == 503
+
+    # stats is a read -- it must block, not race straight through into a climate recompute.
+    stats_results: list[int] = []
+    t2 = threading.Thread(target=lambda: stats_results.append(client.get("/world/stats").status_code))
+    t2.start()
+    t2.join(timeout=0.5)
+    assert t2.is_alive()
+    assert stats_results == []
+
+    release_step_world.set()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert step_results == [200]
+    assert stats_results == [200]
 
 
 def test_generate_returns_summary(client):
