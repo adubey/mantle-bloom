@@ -21,8 +21,8 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .. import geometry, mantle
-from ..elevation_lines import line_spacing_rad
+from . import geometry, mantle
+from .elevation_lines import line_spacing_rad
 from . import lithosphere
 
 SECONDS_PER_YEAR = 365.25 * 86400.0

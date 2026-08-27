@@ -2,8 +2,8 @@ import astropy.units as u
 import numpy as np
 from astropy_healpix import HEALPix
 
-from app.v2 import fluid_dynamics_healpix as fdh
-from app.v2 import healpix_grid
+from app import fluid_dynamics_healpix as fdh
+from app import healpix_grid
 
 
 def test_pixel_area_is_uniform_and_covers_the_sphere():

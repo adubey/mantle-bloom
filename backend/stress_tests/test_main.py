@@ -5,7 +5,6 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.main import app
-from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, generate_plates
 
 
 @pytest.fixture

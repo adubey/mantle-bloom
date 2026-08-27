@@ -10,31 +10,6 @@ def _world(seed=1, num_plates=10, continental_fraction=0.4):
     return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction)
 
 
-def _synthetic_converging_currents_fields(height=20, width=40) -> "climate.ClimateFields":
-    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
-    lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
-    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
-    lon_grid = np.repeat(lon_deg[None, :], height, axis=0)
-    world_xyz = geometry.latlon_to_xyz(np.radians(lat_grid), np.radians(lon_grid))
-
-    is_ocean = np.ones((height, width), dtype=bool)
-    current_u = np.zeros((height, width))
-    current_u[:, : width // 2] = 3.0
-    current_u[:, width // 2 :] = -3.0  # converges on the seam at width // 2
-    current_v = np.zeros((height, width))
-
-    rows, cols = climate.compute_ocean_swells(current_u, current_v, is_ocean, np.random.default_rng(0))
-    zeros = np.zeros((height, width))
-    return climate.ClimateFields(
-        lat_deg=lat_deg, lon_deg=lon_deg, world_xyz=world_xyz,
-        elevation_m=zeros, is_ocean=is_ocean,
-        land_temperature_c=zeros, ocean_temperature_c=zeros, air_temperature_c=zeros,
-        wind_u=zeros, wind_v=zeros, current_u=current_u, current_v=current_v,
-        humidity=zeros, precipitation_mm=zeros, biome_ids=np.zeros((height, width), dtype=int),
-        swell_rows=rows, swell_cols=cols,
-    )
-
-
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
     world = _world()
     xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
@@ -282,9 +257,14 @@ def test_climate_views_render_as_distinct_images():
 
 
 def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
-    fields = _synthetic_converging_currents_fields()
-    assert len(fields.swell_rows) > 0  # sanity: the synthetic setup actually produces swells
-    monkeypatch.setattr(render_image.climate, "compute_climate", lambda world, *args, **kwargs: fields)
+    # The world's oceanCurrents view reads directly off ocean_cfd_state's own native HEALPix
+    # arrays now (see render_image._render_climate_view), not through climate.compute_climate
+    # -- so rather than injecting a synthetic climate.ClimateFields, this monkeypatches the
+    # swell-position computation itself to a known point and confirms render_png actually
+    # draws a marker there, the same "does the drawing step work" contract the old synthetic-
+    # convergence setup tested.
+    synthetic_swell_xyz = np.array([geometry.latlon_to_xyz(0.0, 0.0)])
+    monkeypatch.setattr(render_image, "_compute_ocean_swells_healpix", lambda *args, **kwargs: synthetic_swell_xyz)
 
     png = render_image.render_png(_world(), "behrmann", "oceanCurrents", 320, 180)
     image = Image.open(io.BytesIO(png)).convert("RGB")

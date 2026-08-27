@@ -19,7 +19,7 @@ import numpy as np
 from astropy_healpix import HEALPix
 from numba import njit, prange
 
-from ..elevation_lines import PLANET_RADIUS_KM
+from .elevation_lines import PLANET_RADIUS_KM
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 
@@ -105,7 +105,7 @@ def _ang2pix_nested_kernel(nside: int, order: int, lon_rad: np.ndarray, lat_rad:
         out[idx] = ang2pix_nest_scalar(nside, order, lon_rad[idx], lat_rad[idx])
     return out
 
-# UI-facing choices for World.fluid_density_v2 -- npix ~= 12*nside^2, so this spans roughly
+# UI-facing choices for World.fluid_density -- npix ~= 12*nside^2, so this spans roughly
 # 3,072 / 12,288 / 49,152 pixels, a comparable order of magnitude to v1's own
 # climate.FLUID_DENSITY_CHOICES equirectangular grid sizes at the same density labels.
 NSIDE_CHOICES = {0.5: 16, 1.0: 32, 2.0: 64}
@@ -229,7 +229,7 @@ def build(nside: int) -> HealpixGrid:
         north=north,
         # float32 (not float64, despite the float64 math above) -- these feed directly into
         # fluid_dynamics_healpix.gradient's per-substep hot loop against u/v/eta/... state
-        # that ocean_cfd_v2.py/atmosphere_cfd_v2.py already keep float32 throughout (mirroring
+        # that ocean_cfd.py/atmosphere_cfd.py already keep float32 throughout (mirroring
         # v1's own fluid_dynamics.py discipline, see that module's dtype comment); leaving
         # these float64 silently promoted every gradient/laplacian/divergence call's output
         # back to float64 regardless of the input field's own dtype, doubling memory traffic

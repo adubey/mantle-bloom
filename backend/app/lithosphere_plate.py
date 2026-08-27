@@ -1,4 +1,4 @@
-"""`LithospherePlate`: the v2 plate representation. Subclasses `PlateWithLines` (see
+"""`LithospherePlate`: the plate representation. Subclasses `PlateWithLines` (see
 plates.py) rather than reinventing its plumbing -- everything not about *how a plate moves or
 deforms* (outline tracing, containment, neighbour search, node iteration, the whole render/
 erosion/hydrology/stats/persistence surface) is inherited unchanged, since every one of those
@@ -17,16 +17,16 @@ from __future__ import annotations
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .. import geometry
-from ..elevation_lines import (
+from . import geometry
+from .elevation_lines import (
     ElevationLine,
     build_lines_from_lattice,
     line_spacing_rad,
     needs_regularizing,
     regularize_line,
 )
-from ..noise import SphereNoise
-from ..plates import (
+from .noise import SphereNoise
+from .plates import (
     CONTINENTAL_FRACTION,
     MIN_AUTO_PLATES,
     MAX_AUTO_PLATES,
@@ -104,7 +104,7 @@ class LithospherePlate(PlateWithLines):
             hm = line.mantle_lithosphere_thickness_m.copy()
             # Isostasy-driven elevation change is applied as a *delta* on top of whatever
             # elevation already holds (elevation_before -> below), not a wholesale overwrite
-            # -- erosion.py (run later this same step_world_v2 call, and every step
+            # -- erosion.py (run later this same step_world call, and every step
             # thereafter until the next deform()) mutates `elevation` directly, with no
             # notion of Hc/Hm at all. An unconditional overwrite here would silently erase
             # every step's worth of erosion the instant the *next* deform() call ran,
@@ -148,7 +148,7 @@ class LithospherePlate(PlateWithLines):
                 # Decompression melting (spec 2.3): a rift that just thinned past the
                 # critical threshold erupts fresh oceanic crust in place -- same one-
                 # guaranteed-eruption convention v1's stretch-volcano growth used.
-                from ..elevation_lines import ERUPTION_ELEVATION_M, VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
+                from .elevation_lines import ERUPTION_ELEVATION_M, VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
 
                 hc[melting] = lithosphere.REFERENCE_HC_OCEANIC_M
                 hm[melting] = lithosphere.YOUNG_RIDGE_HM_M
@@ -184,7 +184,7 @@ class LithospherePlate(PlateWithLines):
                 new_lines.append(grown_line)
 
         self.set_lines(new_lines)
-        self._claim_adjacent_territory_v2(world, neighbours, spacing_rad)
+        self._claim_adjacent_territory(world, neighbours, spacing_rad)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):
@@ -307,7 +307,7 @@ class LithospherePlate(PlateWithLines):
 
         return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
 
-    def _claim_adjacent_territory_v2(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
+    def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
         """Same shape as `PlateWithLines._claim_adjacent_territory` -- a brand-new phi row
         just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm by
         crust type (plus texture noise on Hc, replacing v1's noise-on-elevation) rather than
@@ -379,7 +379,7 @@ class LithospherePlate(PlateWithLines):
         old_hc = np.concatenate([self.collect("crustal_thickness_m"), other.collect("crustal_thickness_m")])
         old_hm = np.concatenate([self.collect("mantle_lithosphere_thickness_m"), other.collect("mantle_lithosphere_thickness_m")])
         exclude_tree = cKDTree(other_points_xyz) if len(other_points_xyz) else None
-        self.set_lines(_lines_from_resample_v2(self.frame, old_points, old_hc, old_hm, coverage_radius_rad, spacing_rad, exclude_tree))
+        self.set_lines(_lines_from_resample(self.frame, old_points, old_hc, old_hm, coverage_radius_rad, spacing_rad, exclude_tree))
         lithosphere.sync_plate_elevation(self)
 
     def grow_into(self, new_points_xyz: np.ndarray, new_elevation: np.ndarray, coverage_radius_rad: float, spacing_rad: float) -> None:
@@ -390,7 +390,7 @@ class LithospherePlate(PlateWithLines):
         combined_points = np.concatenate([old_points, new_points_xyz], axis=0)
         combined_hc = np.concatenate([old_hc, np.full(len(new_points_xyz), hc0)])
         combined_hm = np.concatenate([old_hm, np.full(len(new_points_xyz), hm0)])
-        self.set_lines(_lines_from_resample_v2(self.frame, combined_points, combined_hc, combined_hm, coverage_radius_rad, spacing_rad))
+        self.set_lines(_lines_from_resample(self.frame, combined_points, combined_hc, combined_hm, coverage_radius_rad, spacing_rad))
         lithosphere.sync_plate_elevation(self)
 
     def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["LithospherePlate", "LithospherePlate"] | None:
@@ -412,7 +412,7 @@ class LithospherePlate(PlateWithLines):
         return plate_a, plate_b
 
 
-def _lines_from_resample_v2(
+def _lines_from_resample(
     frame: np.ndarray,
     points: np.ndarray,
     hc: np.ndarray,
@@ -435,7 +435,7 @@ def _lines_from_resample_v2(
         return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
 
     lines: list[ElevationLine] = []
-    from ..elevation_lines import iter_local_lattice
+    from .elevation_lines import iter_local_lattice
 
     for phi, theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
         owned = is_owned(world_pts)
@@ -467,7 +467,7 @@ _HC_NOISE_AMPLITUDE_OCEANIC_M = 900.0 / (
 )
 
 
-def generate_plates_v2(
+def generate_plates(
     seed: int,
     num_plates: int | None = None,
     continental_fraction: float | None = None,

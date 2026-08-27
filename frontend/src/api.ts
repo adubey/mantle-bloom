@@ -2,11 +2,7 @@
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
 const API_ROOT = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
 
-// V2 (docs/mantle-bloom-design-v2.pdf) is mounted in the same backend process at a /v2 path
-// prefix with the exact same route shapes (see backend/app/main.py's own
-// app.mount("/v2", v2_app)) -- every fetch(`${API_BASE}/world/...`) call site in this file
-// resolves against that prefix.
-export const API_BASE = `${API_ROOT}/v2`;
+export const API_BASE = API_ROOT;
 
 export type Projection = "behrmann" | "eckert4";
 
@@ -29,9 +25,7 @@ export type MapView =
   | "soilQuality"
   | "plateInspector"
   | "riverInspector"
-  | "lakeInspector"
-  | "oceanCfdSediment"
-  | "oceanCfdDeposition";
+  | "lakeInspector";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -66,8 +60,8 @@ export interface BoundingEllipse {
 export interface PlateSummary {
   plate_id: number;
   crust_type: "continental" | "oceanic";
-  // null for a representation with no row concept (e.g. "mesh" -- see backend
-  // app/main.py's _plate_summary).
+  // null for a Plate representation with no row concept (see backend app/main.py's
+  // _plate_summary).
   num_rows: number | null;
   num_points: number;
   outline: [number, number, number][];
@@ -246,10 +240,6 @@ async function asBlob(resp: Response): Promise<Blob> {
 // Biome/Combined/Resources/Soil-Quality views' own render grid, scaled the same way) resolves
 // temperature/wind/humidity/precipitation; stored on World for the rest of that world's life,
 // same reasoning nodeDensity's own storage gives (see world.py's World.climate_density).
-// representation is the dialog's "Plate representation" choice ("lines" or "mesh", see
-// backend app/plates.py's PLATE_REPRESENTATION_CHOICES) -- which concrete Plate subclass
-// backs the generated world; not stored on World (see world.generate_world's own docstring
-// for why, same reasoning initialSoilMaturity's own non-storage gives).
 // fluidDensity is the Advanced-settings dialog's "Fluid dynamics resolution" choice (same
 // 0.5/1/2/4 set) -- how finely the continuous Ocean/Atmospheric CFD's own grid resolves
 // currents/wind, independent of climateDensity (see world.py's World.fluid_density).
@@ -263,7 +253,6 @@ export function generateWorld(
   climateDensity: number,
   fluidDensity: number,
   numPlates: number | null,
-  representation: string,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -277,7 +266,6 @@ export function generateWorld(
       node_density: nodeDensity,
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
-      representation,
       fluid_density: fluidDensity,
     }),
   }).then(asJson<WorldSummary>);

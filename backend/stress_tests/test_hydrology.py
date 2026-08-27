@@ -135,22 +135,26 @@ def test_channel_width_grows_with_flow_and_persists_across_steps():
 
 
 def test_is_volcano_survives_a_full_step_cycle():
-    # Direct regression check for the bug this session found: bathymetry.py's and erosion.py's
-    # own line-reconstruction sites didn't know about is_volcano/volcano_active_years_remaining
-    # and silently wiped them to False/0 every step, before volcanism.apply_volcanic_activity
-    # ever got a chance to read them. Volcano nodes are now created directly by
-    # PlateWithLines.deform's own overstretched-rift handling (not as a separately tracked
-    # field plate -- World.volcanic_field_plate_ids is no longer populated at all, see its
-    # own comment), so this checks for is_volcano nodes appearing anywhere, not that set.
+    # Regression check: erosion.py's own line-reconstruction site must not silently wipe
+    # is_volcano/volcano_active_years_remaining to False/0 before volcanism.apply_volcanic_
+    # activity ever gets a chance to read them. Directly seeds a volcano on one line rather
+    # than waiting for one to occur organically -- decompression melting (see rheology.py's
+    # RIFT_CRITICAL_THICKNESS_M) is a real, comparatively rare rift event under the isostasy-
+    # driven engine, not v1's own flat per-step probability roll, so it isn't guaranteed (or
+    # even likely) within any fixed step budget.
     world = generate_world(seed=34, num_plates=10, continental_fraction=0.4)
-    found_a_volcano = False
-    for _ in range(20):
-        step_world(world, years=2_000_000)
-        total_volcano_nodes = sum(int(line.is_volcano.sum()) for p in world.plates for line in p.lines)
-        if total_volcano_nodes > 0:
-            found_a_volcano = True
-            break
-    assert found_a_volcano  # sanity: this seed/step count should produce at least one volcano
+    plate = next(p for p in world.plates if any(len(line) > 0 for line in p.lines))
+    line_index, line = next((i, line) for i, line in enumerate(plate.lines) if len(line) > 0)
+    is_volcano = np.zeros(len(line), dtype=bool)
+    is_volcano[0] = True
+    volcano_active_years_remaining = np.zeros(len(line))
+    volcano_active_years_remaining[0] = 5_000_000.0
+    plate.replace_line(line_index, line.replace(is_volcano=is_volcano, volcano_active_years_remaining=volcano_active_years_remaining))
+
+    step_world(world, years=2_000_000)
+
+    total_volcano_nodes = sum(int(line.is_volcano.sum()) for p in world.plates for line in p.lines)
+    assert total_volcano_nodes > 0
 
 
 def test_channel_lake_and_glacier_depth_persist_across_boundary_and_erosion_steps():

@@ -15,7 +15,7 @@ gradient technique) is the appropriate generalization, not an approximation of c
 **Now `@njit`-compiled, not plain vectorized NumPy.** This module's own prior docstring
 reasoned that HEALPix grids here (a few thousand to ~50k pixels, `NSIDE_CHOICES`) stay
 "comfortably within NumPy's own vectorized performance envelope" -- true of any *one* call,
-but profiling `step_world_v2` at production density (12 plates, node/climate/fluid density
+but profiling `step_world` at production density (12 plates, node/climate/fluid density
 1.0) found `gradient` alone consuming ~66% of total step time, because it's called thousands
 of times per tectonic step (several times per fluid substep, `MAX_SUBSTEPS_PER_STEP` up to
 2000 substeps per solver per step). Exactly the call-count-not-array-size mismatch
@@ -46,7 +46,7 @@ _NUMBA_JIT_KWARGS = {"cache": True, "parallel": True, "fastmath": True}
 # confirmed directly: the shallow-water gravity-wave mode was still exponentially unstable at
 # a CFL-computed dt with an extra safety factor of 2 (u/eta both diverging within ~50
 # substeps), stable at an extra factor of 4, used here with headroom. Every `cfl_substeps`
-# call in this module's callers (atmosphere_cfd_v2.py/ocean_cfd_v2.py) divides its own
+# call in this module's callers (atmosphere_cfd.py/ocean_cfd.py) divides its own
 # min-spacing input by this before passing it in, rather than each re-deriving/re-confirming
 # the same factor independently.
 CFL_STENCIL_SAFETY_DIVISOR = 6.0
@@ -156,7 +156,7 @@ def laplacian(field: np.ndarray, grid: HealpixGrid) -> np.ndarray:
     used the standard graph/mesh ("umbrella") formula `(2/n) * sum_k (field_k - field_center)
     / dist_k^2` directly; confirmed directly that its scaling doesn't match the stability
     assumptions `VISCOSITY_M2_S`/`cfl_substeps` were tuned against (ported unchanged from
-    v1's own 5-point-stencil-calibrated equirectangular values) -- ocean_cfd_v2's own
+    the equirectangular solver's own 5-point-stencil-calibrated values) -- ocean_cfd's own
     diffusion term blew up to >1e6 m/s within one step's substep loop. `_laplacian_kernel`
     keeps the same two-pass structure (`gx`/`gy` fully materialized before the second pass
     reads their neighbours) as three separate `gradient` calls would, just fused into one

@@ -203,43 +203,6 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
   ],
 };
 
-// render_image.py's _SEDIMENT_STOP_V / _SEDIMENT_STOP_RGB (Ocean Fluid Dynamics mode's own
-// suspended-sediment tracer -- see backend app/ocean_cfd.py).
-const SEDIMENT_GRADIENT: LegendGradient = {
-  min: 0,
-  max: 5,
-  stops: [
-    { value: 0, color: rgb(150, 170, 160) },
-    { value: 0.5, color: rgb(170, 150, 110) },
-    { value: 1.5, color: rgb(150, 115, 70) },
-    { value: 3.0, color: rgb(120, 85, 50) },
-    { value: 5.0, color: rgb(90, 60, 35) },
-  ],
-  ticks: [
-    { value: 0, label: "Clear" },
-    { value: 5, label: "Silt-laden" },
-  ],
-};
-
-// render_image.py's _DEPOSITION_STOP_M / _DEPOSITION_STOP_RGB -- Ocean Fluid Dynamics mode's
-// cumulative "where sediment would settle" tracking field (see backend app/ocean_cfd.py's own
-// docstring: informational only, never mutates world elevation).
-const SEDIMENT_DEPOSITION_GRADIENT: LegendGradient = {
-  min: 0,
-  max: 2,
-  stops: [
-    { value: 0.0, color: rgb(60, 90, 95) },
-    { value: 0.1, color: rgb(110, 95, 60) },
-    { value: 0.4, color: rgb(140, 105, 45) },
-    { value: 1.0, color: rgb(150, 90, 30) },
-    { value: 2.0, color: rgb(120, 65, 20) },
-  ],
-  ticks: [
-    { value: 0, label: "0 m" },
-    { value: 2, label: "2 m" },
-  ],
-};
-
 // The actual fixed pixel colors Combined mode paints for these two overlays (see backend
 // app/render_image.py's LAKE_COLOR_RGB/GLACIER_COLOR_RGB) -- kept separate from the
 // LAKE_COLOR/GLACIER_COLOR swatch colors above since Glacier's swatch is a deliberately pure
@@ -426,14 +389,6 @@ export function legendFor(view: MapView): LegendSpec | null {
       };
     case "soilQuality":
       return { title: "Soil Quality", gradient: SOIL_QUALITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
-    // Ocean Fluid Dynamics's own sediment views (see backend app/ocean_cfd.py and
-    // render_image.py's OCEAN_CFD_VIEWS) -- the matching velocity/temperature/humidity CFD
-    // views (ocean and atmosphere both) were removed once "wind"/"oceanCurrents"/
-    // "temperature"/"humidity" above became genuinely CFD-sourced, making them duplicates.
-    case "oceanCfdSediment":
-      return { title: "Suspended sediment", gradient: SEDIMENT_GRADIENT, symbols: [COASTLINE_SYMBOL] };
-    case "oceanCfdDeposition":
-      return { title: "Sediment deposition (tracked only)", gradient: SEDIMENT_DEPOSITION_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }

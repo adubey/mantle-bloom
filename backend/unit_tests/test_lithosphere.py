@@ -1,6 +1,6 @@
 import numpy as np
 
-from app.v2 import lithosphere
+from app import lithosphere
 
 
 def test_isostatic_elevation_reference_columns_land_near_v1_baselines():

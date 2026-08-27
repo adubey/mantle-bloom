@@ -1,7 +1,7 @@
 import numpy as np
 
 from app import geometry
-from app.v2 import lithosphere, torque
+from app import lithosphere, torque
 
 
 def test_basal_drag_vanishes_when_plate_matches_mantle_flow():

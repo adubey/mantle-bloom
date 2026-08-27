@@ -1,7 +1,7 @@
 import numpy as np
 
 from app import geometry
-from app.v2 import bvh
+from app import bvh
 
 
 def _random_unit_points(rng, n):

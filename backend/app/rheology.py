@@ -2,7 +2,7 @@
 per-Myr rate tables (`plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` and friends) with a strain-
 rate-driven update to the crustal/mantle-lithosphere thickness columns (`Hc`/`Hm`), gated by
 a real yield check. Elevation itself is never touched directly here -- see `lithosphere.py`'s
-`sync_plate_elevation`, called by `plates_v2.py` after every deform() pass, which derives it
+`sync_plate_elevation`, called by `lithosphere_plate.py` after every deform() pass, which derives it
 from Hc/Hm via isostasy.
 
 Scope: a per-node scalar-stress proxy at boundary-classified nodes, not a full 2D
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
+from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from . import lithosphere
 
 # Mohr-Coulomb yield criterion Y = C + sigma_n * tan(phi), Eq. 4 -- typical crustal values.
@@ -114,7 +114,7 @@ def apply_divergent_deformation(hc_m: np.ndarray, hm_m: np.ndarray, closing_rate
     """Uncontested, extensional (opening) boundary nodes: crust thins under tension. Returns
     (new_hc, new_hm, decompression_melting_mask) -- the mask marks nodes whose Hc just
     crossed below `RIFT_CRITICAL_THICKNESS_M`, the spec's own decompression-melting trigger
-    (Section 2.3), for the caller to spawn fresh oceanic crust there (see plates_v2.py)."""
+    (Section 2.3), for the caller to spawn fresh oceanic crust there (see lithosphere_plate.py)."""
     rate = plastic_strain_rate_per_myr(closing_rate_m_per_s)
     rate = np.clip(rate, None, 0.0)  # divergent branch only ever thins
     fractional_change = rate * years_myr

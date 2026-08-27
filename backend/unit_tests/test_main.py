@@ -5,8 +5,9 @@ import threading
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from app.lithosphere_plate import generate_plates
 from app.main import app
-from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES, generate_plates
+from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 
 
 @pytest.fixture
@@ -207,25 +208,6 @@ def test_generate_with_the_finest_climate_density(client):
 
 def test_generate_with_unknown_climate_density_returns_400(client):
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 3.0})
-    assert resp.status_code == 400
-
-
-def test_generate_with_mesh_representation(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "representation": "mesh"})
-    assert resp.status_code == 200
-    assert resp.json()["num_plates"] == 6
-
-    plates_resp = client.get("/world/plates")
-    assert plates_resp.status_code == 200
-    entries = plates_resp.json()["plates"]
-    assert len(entries) == 6
-    for entry in entries:
-        assert entry["num_rows"] is None  # PlateWithMesh has no row concept
-        assert entry["num_points"] > 0
-
-
-def test_generate_with_unknown_representation_returns_400(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "representation": "voronoi"})
     assert resp.status_code == 400
 
 
@@ -497,17 +479,27 @@ def test_generate_with_the_finest_allowed_fluid_density(client):
     assert resp.status_code == 200
 
 
-def test_ocean_cfd_sediment_views_are_always_renderable(client):
-    # No more Mode toggle to gate these behind -- World.ocean_cfd_state is populated
-    # immediately at generation (see its own docstring), so both of these should render right
-    # away, with no step needed first. The matching velocity/temperature/humidity CFD-native
-    # views (ocean and atmosphere both) were removed once the plain wind/oceanCurrents/
-    # temperature/humidity views became genuinely CFD-sourced (see
-    # test_wind_and_ocean_currents_views_are_also_always_renderable below) -- sediment
-    # concentration/deposition stay unique, since nothing else produces sediment data.
+def test_ocean_cfd_sediment_views_are_no_longer_available(client):
+    # Sediment concentration/deposition have no HEALPix port yet (the world's CFD state is a
+    # flat (npix,) array, not the (H, W) grid that pair's old rendering code assumed) -- see
+    # render_image.py's VIEWS, which no longer lists them at all.
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
     for view in ["oceanCfdSediment", "oceanCfdDeposition"]:
-        assert client.get("/world/render", params={"view": view}).status_code == 200
+        assert client.get("/world/render", params={"view": view}).status_code == 400
+
+
+def test_climate_views_render_natively_off_the_healpix_grid(client):
+    # Every CLIMATE_VIEWS member renders directly off the world's own HEALPix grid (see
+    # render_image._render_climate_view) rather than resampling down to an equirectangular
+    # grid first.
+    from app import render_image
+
+    client.post("/world/generate", json={"seed": 21, "num_plates": 6, "node_density": 0.5, "climate_density": 0.5, "fluid_density": 0.5})
+    client.post("/world/step", json={"years": 2_000_000})
+    for view in render_image.CLIMATE_VIEWS:
+        resp = client.get("/world/render", params={"view": view, "width": 100, "height": 50})
+        assert resp.status_code == 200
+        assert len(resp.json()["image_base64"]) > 0
 
 
 def test_wind_and_ocean_currents_views_are_also_always_renderable(client):

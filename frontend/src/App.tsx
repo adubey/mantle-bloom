@@ -53,15 +53,6 @@ const DETAIL_CHOICES: { value: number; label: string }[] = [
   { value: 0.5, label: "Low" },
 ];
 const DEFAULT_DETAIL = 4;
-// The Generate dialog's "Plate representation" control, driving backend app/plates.py's
-// PLATE_REPRESENTATION_CHOICES/DEFAULT_PLATE_REPRESENTATION -- which concrete Plate subclass
-// backs the generated world. A generation-time choice (like Detail above) -- it only takes
-// effect on the next Generate.
-const REPRESENTATION_CHOICES: { value: string; label: string }[] = [
-  { value: "lines", label: "Lines (fast)" },
-  { value: "mesh", label: "Mesh (triangulated)" },
-];
-const DEFAULT_REPRESENTATION = "lines";
 // The Advanced-settings dialog's own "Fluid dynamics resolution" choice (see backend app/
 // world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at "High": Ocean/
 // Atmospheric Fluid Dynamics now runs every step (see docs/simulation-model.md#ocean-
@@ -111,18 +102,9 @@ function isIdentityRotation(rotation: Mat3): boolean {
 // as its own small cookie rather than folded into anything server-side since it's display
 // state, not simulation state -- same reasoning `rotation` itself already gets.
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
-// Ocean Fluid Dynamics's own sediment map views (see backend app/ocean_cfd.py) -- always
-// available now, not gated behind a Mode toggle. The matching velocity/temperature/humidity
-// CFD-native views (ocean and atmosphere both) were removed once the plain "wind"/
-// "oceanCurrents"/"temperature"/"humidity" views became genuinely CFD-sourced (see backend
-// app/climate.py's module docstring), making the separate CFD-native versions pure
-// duplicates -- sediment concentration/deposition stay unique, so they're still their own
-// group in the Map View dropdown below.
-const OCEAN_CFD_VIEW_CHOICES: MapView[] = ["oceanCfdSediment", "oceanCfdDeposition"];
 const MAP_VIEW_CHOICES = new Set<MapView>([
   "elevation", "plates", "platesDetail", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
   "resources", "soilQuality", "plateInspector", "riverInspector", "lakeInspector",
-  ...OCEAN_CFD_VIEW_CHOICES,
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -161,7 +143,6 @@ export default function App() {
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [detail, setDetail] = useState(DEFAULT_DETAIL);
-  const [representation, setRepresentation] = useState(DEFAULT_REPRESENTATION);
   // The Advanced-settings dialog's own "Fluid dynamics resolution" choice -- same
   // DETAIL_CHOICES set as `detail` above, but a separate dial: unlike node_density/
   // climate_density (merged into `detail`), this only affects Ocean/Atmospheric Fluid
@@ -344,7 +325,7 @@ export default function App() {
     try {
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        detail, fluidDensity, autoPlates ? null : numPlates, representation,
+        detail, fluidDensity, autoPlates ? null : numPlates,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -365,7 +346,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates,
-    representation, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
+    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
   ]);
 
 
@@ -632,10 +613,6 @@ export default function App() {
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
               </optgroup>
-              <optgroup label="Sediment">
-                <option value="oceanCfdSediment">Suspended sediment</option>
-                <option value="oceanCfdDeposition">Sediment deposition</option>
-              </optgroup>
             </select>
             <select
               value={projection}
@@ -895,26 +872,6 @@ export default function App() {
                 sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
                 Biome/Combined/Resources/Soil Quality maps and more elevation-line nodes -- but
                 simulation steps and rendering both run slower. Lower runs faster but coarser.
-              </div>
-            </label>
-
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Plate representation
-              <select
-                value={representation}
-                onChange={(e) => setRepresentation(e.target.value)}
-                style={{ width: "100%", marginTop: 4 }}
-              >
-                {REPRESENTATION_CHOICES.map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                How each plate's terrain is stored internally. Lines is the original,
-                well-tested representation. Mesh triangulates each plate's own nodes, giving
-                an exact boundary/adjacency instead of an approximation -- experimental.
               </div>
             </label>
 

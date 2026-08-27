@@ -12,7 +12,7 @@ traversal between two plates' own node clouds (`torque.py`'s boundary-force gath
 distant subtree at once, rather than -- as v1's `cKDTree`-over-concatenated-neighbour-points
 approach does -- visiting a single flat index built from every neighbour's points with no
 per-neighbour subtree structure to skip early. `contains_batch`/point-in-polygon containment
-is untouched, inherited as-is from `PlateWithLines` (see plates_v2.py).
+is untouched, inherited as-is from `PlateWithLines` (see lithosphere_plate.py).
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .. import geometry
+from . import geometry
 
 LEAF_SIZE = 16
 

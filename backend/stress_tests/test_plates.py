@@ -1,5 +1,6 @@
 import numpy as np
 from app import geometry
+from app.lithosphere_plate import generate_plates
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
     MAX_AUTO_PLATES,
@@ -8,7 +9,6 @@ from app.plates import (
     NODE_DENSITY_CHOICES,
     TARGET_LINE_SPACING_RAD,
     collect_all_points,
-    generate_plates,
     iter_local_lattice,
     line_spacing_rad,
     nearest_plate_id,

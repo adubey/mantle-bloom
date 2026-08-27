@@ -24,8 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, erosion, geology, geometry, hydrology, mantle, plates, projections, volcanism
-from .v2 import atmosphere_cfd_v2, fluid_dynamics_healpix, healpix_grid
+from . import biomes, climate, coastline, erosion, fluid_dynamics_healpix, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -44,19 +43,7 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-# Ocean Fluid Dynamics's own sediment map views -- see ocean_cfd.py and
-# docs/simulation-model.md#ocean-atmospheric-fluid-dynamics. World.ocean_cfd_state is always
-# populated now (see its own docstring), so these are always renderable, same as every other
-# view here. There used to be a matching set of CFD-native velocity/temperature/humidity
-# views too (oceanCfdVelocity/oceanCfdTemperature/atmosphereCfdVelocity/
-# atmosphereCfdTemperature/atmosphereCfdHumidity) -- removed once CLIMATE_VIEWS' own
-# "wind"/"oceanCurrents"/"temperature"/"humidity" became genuinely CFD-sourced (see
-# climate.py's module docstring) and, for V2 worlds, natively HEALPix-rendered (see
-# _render_climate_view_healpix), making the separate CFD-native versions pure duplicates.
-# oceanCfdSediment/oceanCfdDeposition stay unique -- nothing else produces sediment data.
-OCEAN_CFD_VIEWS = ("oceanCfdSediment", "oceanCfdDeposition")
-FLUID_VIEWS = OCEAN_CFD_VIEWS
-VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS + FLUID_VIEWS
+VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -330,28 +317,6 @@ def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
 
 def soil_fertility_colors(fertility: np.ndarray) -> np.ndarray:
     return _interp_colors(fertility, _SOIL_STOP_V, _SOIL_STOP_RGB)
-
-
-# Clear (tan) -> silt-laden (murky brown), arbitrary concentration units (see ocean_cfd.py's
-# own docstring -- sediment_concentration isn't calibrated against a real sediment density,
-# only tuned so the pickup/settling balance produces a plausible-looking, slowly-varying
-# field). Stops chosen empirically to keep a typical multi-step session's range legible.
-_SEDIMENT_STOP_V = np.array([0.0, 0.5, 1.5, 3.0, 5.0], dtype=float)
-_SEDIMENT_STOP_RGB = np.array([(150, 170, 160), (170, 150, 110), (150, 115, 70), (120, 85, 50), (90, 60, 35)], dtype=float)
-
-# Bare seafloor (grey-teal) -> heavily deposited (dark ochre), meters -- ocean_cfd.py's
-# sediment_deposited_m is a tracking-only field (see its own docstring: never mutates
-# world.plates), so this is purely informational, not a hypsometric elevation scale.
-_DEPOSITION_STOP_M = np.array([0.0, 0.1, 0.4, 1.0, 2.0], dtype=float)
-_DEPOSITION_STOP_RGB = np.array([(60, 90, 95), (110, 95, 60), (140, 105, 45), (150, 90, 30), (120, 65, 20)], dtype=float)
-
-
-def sediment_colors(concentration: np.ndarray) -> np.ndarray:
-    return _interp_colors(concentration, _SEDIMENT_STOP_V, _SEDIMENT_STOP_RGB)
-
-
-def sediment_deposition_colors(deposited_m: np.ndarray) -> np.ndarray:
-    return _interp_colors(deposited_m, _DEPOSITION_STOP_M, _DEPOSITION_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -683,7 +648,7 @@ def _project_climate_grid(
 def _project_healpix_grid(
     grid: "healpix_grid.HealpixGrid", projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
 ) -> tuple[np.ndarray, np.ndarray, float, float, float]:
-    """HEALPix analogue of `_project_climate_grid`, for V2 worlds' native (npix,) grid. HEALPix
+    """HEALPix analogue of `_project_climate_grid`, for the world's native (npix,) grid. HEALPix
     pixels are equal-area but not axis-aligned rectangles, so there's no true per-cell rect the
     way the equirectangular grid's corner math produces -- draws each pixel as a fixed-size
     square instead (the same "approximate cue over an expensive exact one" tradeoff this module
@@ -1015,84 +980,15 @@ def _compute_ocean_swells_healpix(
 
 
 def _render_climate_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of CLIMATE_VIEWS (besides "biome", which has its own finer-grid path --
-    see _render_biome_view) from climate.py's own fixed grid -- a separate path from the
-    plate-tectonics views below since the data source (a real (H, W) array, always covering
-    the whole sphere) is structurally different from the render grid's ragged lattice, so
-    there's little to share beyond the pixel-space primitives.
-
-    For a V2 (HEALPix) world, every CLIMATE_VIEWS member -- "biome" included -- is instead
-    rendered natively off the HEALPix grid (see _render_climate_view_healpix): after climate.py
-    started sourcing temperature/humidity/precipitation straight from the CFD state, resampling
-    that state down onto this function's own (H, W) equirectangular grid just to draw it back
-    out again would throw away HEALPix's native resolution and equal-area cells for no reason,
-    so V2 worlds skip this function's own (H, W) path entirely."""
-    if isinstance(world.atmosphere_cfd_state, atmosphere_cfd_v2.AtmosphereCFDStateV2):
-        return _render_climate_view_healpix(world, projection, view, width, height, view_rotation)
-
-    if view == "biome":
-        return _render_biome_view(world, projection, width, height, view_rotation)
-
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
-    # Reuses whatever erosion.py already computed this step (see World.climate_cache)
-    # instead of triggering a second ~50ms recomputation, rather than calling
-    # climate.compute_climate directly.
-    fields = climate.compute_climate_cached(world)
-
-    pixels = blank.copy()
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        fields.lat_deg, fields.lon_deg, fields.world_xyz, projection, view_rotation, width, height, padding_px
-    )
-
-    if view == "temperature":
-        # Whichever temperature is physically meaningful at that cell: ocean surface where
-        # there's ocean, air temperature (already moderated toward nearby ocean) over land.
-        display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
-        colors = temperature_colors(display_temp.reshape(-1))
-        _fill_rects(pixels, centers, half_w, half_h, colors)
-    elif view == "humidity":
-        colors = humidity_colors(fields.humidity.reshape(-1))
-        _fill_rects(pixels, centers, half_w, half_h, colors)
-    elif view == "precipitation":
-        colors = precipitation_colors(fields.precipitation_mm.reshape(-1))
-        _fill_rects(pixels, centers, half_w, half_h, colors)
-    elif view in ("wind", "oceanCurrents"):
-        backdrop = np.where(fields.is_ocean.reshape(-1)[:, None], CLIMATE_OCEAN_BACKDROP_RGB, CLIMATE_LAND_BACKDROP_RGB)
-        _fill_rects(pixels, centers, half_w, half_h, backdrop)
-
-    image = Image.fromarray(pixels, mode="RGB")
-    draw = ImageDraw.Draw(image)
-
-    if view in ("temperature", "humidity", "precipitation"):
-        _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-
-    if view == "wind":
-        _draw_climate_vectors(draw, fields, fields.wind_u, fields.wind_v, projection, scale, offset_x, offset_y, pixel_scale, WIND_ARROW_COLOR, view_rotation)
-    elif view == "oceanCurrents":
-        _draw_climate_vectors(draw, fields, fields.current_u, fields.current_v, projection, scale, offset_x, offset_y, pixel_scale, CURRENT_ARROW_COLOR, view_rotation)
-        _draw_swell_markers(draw, fields.world_xyz[fields.swell_rows, fields.swell_cols], projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-
-    # No server-side legend here -- see frontend/src/legendData.ts/Legend.tsx, which renders
-    # it as a client-side HTML overlay instead (keyed purely on `view`, since none of this
-    # module's legend content is actually data-dependent). Baking it into the PNG meant it
-    # couldn't update mid-drag (the live-rotation preview draws a cheap client-side
-    # graticule over the *last* rendered frame -- see MapCanvas.tsx) and meant every view's
-    # legend text/gradient had to be hand-duplicated in Pillow drawing calls instead of
-    # ordinary CSS/SVG.
-    return _encode_image(image)
-
-
-def _render_climate_view_healpix(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """V2 (HEALPix) counterpart to `_render_climate_view`: every CLIMATE_VIEWS member reads
-    directly off `world.atmosphere_cfd_state`/`ocean_cfd_state`'s own native `(npix,)` arrays
-    -- no resampling in either direction, since (after climate.py's own CFD-sourcing change)
-    those *are* the real temperature/humidity/precipitation/wind/current fields, just not yet
-    projected to pixel space. Only "biome" needs an actual computation (classify_biomes on the
-    native arrays, with a HEALPix-native slope from fluid_dynamics_healpix.gradient), mirroring
-    what climate.py's own compute_climate now does for the equirectangular path."""
+    """Renders one of CLIMATE_VIEWS directly off `world.atmosphere_cfd_state`/
+    `ocean_cfd_state`'s own native HEALPix `(npix,)` arrays -- no resampling in either
+    direction, since those *are* the real temperature/humidity/precipitation/wind/current
+    fields, just not yet projected to pixel space. Only "biome" needs an actual computation
+    (classify_biomes on the native arrays, with a HEALPix-native slope from
+    fluid_dynamics_healpix.gradient) -- a separate path from the plate-tectonics views below
+    since the data source (native per-cell arrays, always covering the whole sphere) is
+    structurally different from the render grid's ragged lattice, so there's little to share
+    beyond the pixel-space primitives."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1144,75 +1040,6 @@ def _render_climate_view_healpix(world: World, projection: str, view: str, width
         _draw_swell_markers(draw, swell_xyz, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
 
     return _encode_image(image)
-
-
-def _render_fluid_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Renders one of OCEAN_CFD_VIEWS (sediment concentration/deposition) from the world's own
-    permanent, always-on `World.ocean_cfd_state` (see ocean_cfd.py), reusing the same
-    _project_climate_grid/_fill_rects primitives _render_climate_view already uses for
-    climate.py's own grid -- the state object shares the same (lat_deg, lon_deg, world_xyz)
-    grid-geometry shape convention as climate.ClimateFields. `ocean_cfd_state` is never
-    actually None once a world has been generated (see its own docstring), but this function
-    still degrades to a plain background-only image if it somehow is (same "always renders
-    *something* standalone" contract every other view in VIEWS already has -- e.g. an
-    elevation/plates render with no plates yet -- rather than raising). V1-only: sediment has
-    no V2/HEALPix port yet, so a V2 world's ocean_cfd_state (an OceanCFDStateV2, lacking
-    lat_deg/lon_deg) would fail `_project_climate_grid`'s (H, W) assumptions here -- V2's
-    main_v2.py rejects FLUID_VIEWS entirely, so this is never reached for a V2 world."""
-    pixel_scale = width / REFERENCE_WIDTH_PX
-    padding_px = PADDING_PX * pixel_scale
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
-    state = world.ocean_cfd_state
-    if state is None:
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
-
-    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
-        state.lat_deg, state.lon_deg, state.world_xyz, projection, view_rotation, width, height, padding_px
-    )
-
-    if view == "oceanCfdSediment":
-        _fill_rects(pixels, centers, half_w, half_h, sediment_colors(state.sediment_concentration.reshape(-1)))
-    elif view == "oceanCfdDeposition":
-        _fill_rects(pixels, centers, half_w, half_h, sediment_deposition_colors(state.sediment_deposited_m.reshape(-1)))
-
-    image = Image.fromarray(pixels, mode="RGB")
-    draw = ImageDraw.Draw(image)
-    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
-
-    # No server-side legend here -- same reasoning as _render_climate_view's own trailing
-    # comment (see frontend/src/legendData.ts/Legend.tsx).
-    return _encode_image(image)
-
-
-def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """Biome, unlike the rest of CLIMATE_VIEWS, is rendered on its own much finer grid (see
-    BIOME_GRID_HEIGHT/WIDTH and _biome_fields) rather than climate.py's native 90x180
-    simulation grid directly, so its coastlines and color boundaries read at roughly
-    Elevation-view resolution instead of climate's coarser simulation grid."""
-    padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
-    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
-
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _, _ = _biome_fields(
-        world, *biome_grid_dimensions(world.climate_density)
-    )
-    display_temp = np.where(is_ocean, ocean_temp, air_temp)
-    slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.classify_biomes(
-        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
-    )
-    colors = biomes.BIOME_COLORS[biome_ids]
-
-    centers, half_w, half_h, _, _, _ = _project_climate_grid(
-        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
-    )
-    _fill_rects(pixels, centers, half_w, half_h, colors)
-
-    # No server-side legend/coastline overlay here -- same reasoning as _render_climate_view's
-    # own trailing comment (see there); biome's colors already carry a land/ocean cue on
-    # their own (Ocean is always the same fixed color), unlike temperature/humidity/
-    # precipitation's scales.
-    return _encode_image(Image.fromarray(pixels, mode="RGB"))
 
 
 # Land colors blend toward the elevation-hypsometric shade by up to this fraction at the
@@ -1332,8 +1159,8 @@ def _render_soil_view(is_ocean: np.ndarray, soil_depth: np.ndarray, soil_mineral
 
 def _render_resource_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "resources" or "soilQuality" (see RESOURCE_VIEWS) from the fine node-cloud
-    resample _resource_fields provides -- structurally like _render_biome_view/
-    _render_combined_view (same _biome_grid/_project_climate_grid machinery), but on data that
+    resample _resource_fields provides -- structurally like _render_combined_view (same
+    _biome_grid/_project_climate_grid machinery), but on data that
     exists independently of climate.py entirely, so (unlike Biome) this renders sensibly even
     before the first step has ever run."""
     padding_px = PADDING_PX * (width / REFERENCE_WIDTH_PX)
@@ -1464,8 +1291,6 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
 
     if view in CLIMATE_VIEWS:
         return _render_climate_view(world, projection, view, width, height, view_rotation)
-    if view in FLUID_VIEWS:
-        return _render_fluid_view(world, projection, view, width, height, view_rotation)
     if view == "combined":
         return _render_combined_view(world, projection, width, height, view_rotation)
     if view in RESOURCE_VIEWS:
@@ -1614,14 +1439,11 @@ def render_animation_gif(
 ) -> bytes:
     """Renders an animated GIF of `world`'s progress in `view`/`projection`: frame 0 is the
     world's current state, and each of the `num_frames - 1` frames after it is
-    `years_per_frame` further along -- calling `step_fn` (defaulting to v1's own
-    `step_world`) for real between frames, so this permanently advances `world` by
+    `years_per_frame` further along -- calling `step_fn` (defaulting to `step_world`) for real
+    between frames, so this permanently advances `world` by
     `(num_frames - 1) * years_per_frame` years total (see main.py's `/world/animate` --
     deliberately not a side-effect-free preview, same "the map really did move forward"
-    semantics manually clicking Step that many times would have). `step_fn` is a hook for
-    v2/main_v2.py to pass `world_v2.step_world_v2` instead -- v1's `step_world` calls
-    `atmosphere_cfd.step_atmosphere_cfd`/`bathymetry.apply_bathymetry` directly, which assume
-    v1's own (H, W)-grid CFD state and don't apply to a v2 world. Every frame is quantized
+    semantics manually clicking Step that many times would have). Every frame is quantized
     against the *first* frame's own color palette rather than picking its own adaptive
     palette independently, which would otherwise make static regions (ocean, unchanged
     coastline) visibly flicker between playback frames -- a well-known GIF-encoding pitfall,

@@ -1,13 +1,13 @@
-"""V2's lithospheric column state: Airy isostasy (spec section 2), and the mass/moment-of-
+"""The lithospheric column state: Airy isostasy (spec section 2), and the mass/moment-of-
 inertia integrals `torque.py` needs to solve for plate motion (spec section 3.1, Eq 6).
 
 Every `ElevationLine` node carries two new fields (`crustal_thickness_m`/
 `mantle_lithosphere_thickness_m`, see elevation_lines.py) instead of an independently-set
 `elevation`. `elevation` becomes a *cache*: after any mutation to Hc/Hm,
 `sync_line_elevation`/`sync_plate_elevation` below recompute it via `isostatic_elevation` and
-write it back onto the line, so every v1 module downstream (render_image.py, erosion.py,
+write it back onto the line, so every module downstream (render_image.py, erosion.py,
 hydrology.py, stats.py, ...) keeps reading `line.elevation` exactly as before, unaware it's
-now derived rather than primary state.
+derived rather than primary state.
 """
 
 from __future__ import annotations
@@ -16,10 +16,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from ..elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
+from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
 
 if TYPE_CHECKING:
-    from .plates_v2 import LithospherePlate
+    from .lithosphere_plate import LithospherePlate
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 GRAVITY_M_S2 = 9.81

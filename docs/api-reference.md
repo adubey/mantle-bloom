@@ -209,20 +209,16 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   CFD-sourced data straight off `World.atmosphere_cfd_state`/`ocean_cfd_state` (real,
   continuously time-integrated shallow-water solves, see
   [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics))
-  -- for a v2 (HEALPix) world they render natively off that HEALPix grid, at its own
-  resolution; for a v1 world they're resampled onto `climate_density`'s equirectangular grid.
+  -- rendered natively off the world's own HEALPix grid, at its own resolution.
   `"resources"` and `"soilQuality"` (see
   [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)) are
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
-  continuous fertility heatmap (barren to rich) plus the coastline overlay. `"oceanCfdSediment"`
-  (suspended concentration) and `"oceanCfdDeposition"` (cumulative tracked settling,
-  informational only -- never mutates world elevation, see `ocean_cfd.py`) are the only
-  remaining CFD-native-only views -- nothing else produces sediment data, and sediment has no
-  HEALPix port yet, so these two are v1-only (a v2 world's `/world/render` rejects them with
-  `400`). Both are always renderable, same as every other view here -- `World.ocean_cfd_state`
-  is populated immediately at generation and never `None` again for that world's life, not
-  gated behind a mode to switch into any more.
+  continuous fertility heatmap (barren to rich) plus the coastline overlay. Suspended sediment/
+  sediment deposition are tracked internally (see `ocean_cfd.py`) but have no rendered view --
+  sediment has no HEALPix port yet, so `"oceanCfdSediment"`/`"oceanCfdDeposition"` are not
+  valid `view` values (`/world/render` rejects them with `400`, same as any other unrecognized
+  view name).
 - `rotation` is the map's current view orientation (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world

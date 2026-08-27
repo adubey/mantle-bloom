@@ -1,31 +1,26 @@
 import numpy as np
+
 from app import ocean_cfd
 from app.world import generate_world
 
+# Coarse settings throughout -- same rationale as test_world_smoke.py's own
+# _COARSE_KWARGS: these are regression/boundedness checks, not physics-precision tests, so
+# a small fast-to-run grid is preferable.
+_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6)
 
-def _world(seed=1, num_plates=8, climate_density=0.5, steps=1, years=5_000_000):
-    # fluid_density=climate_density -- ocean_cfd sizes its own grid off fluid_density (see
-    # World.fluid_density's own docstring), independent of climate_density since
-    # backend/app/world.py's own change; these tests want the same deliberately coarse,
-    # fast-to-run grid climate_density already gives them, not fluid_density's own default.
-    world = generate_world(
-        seed, num_plates=num_plates, continental_fraction=0.6, land_fraction=0.35, climate_density=climate_density, fluid_density=climate_density
-    )
-    from app.world import step_world
 
-    for _ in range(steps):
-        step_world(world, years)
-    return world
+def _world(seed=1):
+    return generate_world(seed=seed, **_COARSE_KWARGS)
 
 
 def test_init_ocean_cfd_produces_correctly_shaped_state_at_rest():
     world = _world()
-    state = ocean_cfd.init_ocean_cfd(world)
-    height, width = state.is_ocean.shape
-    assert state.u.shape == (height, width)
-    assert state.v.shape == (height, width)
-    assert state.eta.shape == (height, width)
-    # At rest -- nothing has been forced yet.
+    state = world.ocean_cfd_state
+    npix = state.grid.npix
+    assert state.u.shape == (npix,)
+    assert state.v.shape == (npix,)
+    assert state.eta.shape == (npix,)
+    # At rest -- nothing has stepped yet.
     assert np.all(state.u == 0.0)
     assert np.all(state.v == 0.0)
     assert np.all(state.eta == 0.0)
@@ -39,20 +34,11 @@ def test_init_ocean_cfd_produces_correctly_shaped_state_at_rest():
 
 def test_step_ocean_cfd_keeps_land_cells_at_zero_velocity():
     world = _world()
-    state = ocean_cfd.init_ocean_cfd(world)
+    state = world.ocean_cfd_state
     ocean_cfd.step_ocean_cfd(world, state, seconds=3600.0)
     assert np.all(state.u[~state.is_ocean] == 0.0)
     assert np.all(state.v[~state.is_ocean] == 0.0)
     assert np.all(state.eta[~state.is_ocean] == 0.0)
-
-
-def test_step_ocean_cfd_produces_no_nan_or_inf():
-    world = _world()
-    state = ocean_cfd.init_ocean_cfd(world)
-    for _ in range(3):
-        ocean_cfd.step_ocean_cfd(world, state, seconds=3600.0)
-        for field in (state.u, state.v, state.eta, state.temperature_c, state.sediment_concentration, state.sediment_deposited_m):
-            assert np.all(np.isfinite(field))
 
 
 def test_resample_scalar_to_equirect_matches_resample_uv_to_equirect_for_a_component():
@@ -61,17 +47,26 @@ def test_resample_scalar_to_equirect_matches_resample_uv_to_equirect_for_a_compo
     # result as the first element of the (u, v) pair. Stepped first so u isn't trivially all
     # zero (see test_init_ocean_cfd_produces_correctly_shaped_state_at_rest).
     world = _world()
-    state = ocean_cfd.init_ocean_cfd(world)
+    state = world.ocean_cfd_state
     ocean_cfd.step_ocean_cfd(world, state, seconds=3600.0)
-    height, width = state.is_ocean.shape
+    height, width = 30, 60
     u_only = state.resample_scalar_to_equirect(state.u, height, width)
     u_from_pair, _ = state.resample_uv_to_equirect(height, width)
     assert np.array_equal(u_only, u_from_pair)
 
 
+def test_step_ocean_cfd_produces_no_nan_or_inf():
+    world = _world()
+    state = world.ocean_cfd_state
+    for _ in range(3):
+        ocean_cfd.step_ocean_cfd(world, state, seconds=3600.0)
+        for field in (state.u, state.v, state.eta, state.temperature_c, state.sediment_concentration, state.sediment_deposited_m):
+            assert np.all(np.isfinite(field))
+
+
 def test_step_ocean_cfd_advances_elapsed_seconds_by_exactly_the_requested_amount():
     world = _world()
-    state = ocean_cfd.init_ocean_cfd(world)
+    state = world.ocean_cfd_state
     ocean_cfd.step_ocean_cfd(world, state, seconds=7200.0)
     assert state.elapsed_seconds == 7200.0
     ocean_cfd.step_ocean_cfd(world, state, seconds=3600.0)
@@ -80,7 +75,7 @@ def test_step_ocean_cfd_advances_elapsed_seconds_by_exactly_the_requested_amount
 
 def test_sediment_deposited_m_only_grows_and_stays_nonnegative():
     world = _world()
-    state = ocean_cfd.init_ocean_cfd(world)
+    state = world.ocean_cfd_state
     previous = state.sediment_deposited_m.copy()
     for _ in range(5):
         ocean_cfd.step_ocean_cfd(world, state, seconds=86400.0)
@@ -94,7 +89,7 @@ def test_sediment_deposited_m_only_grows_and_stays_nonnegative():
 def test_ocean_cfd_never_mutates_world_plates():
     world = _world()
     elevations_before = [line.elevation.copy() for plate in world.plates for line in plate.lines]
-    state = ocean_cfd.init_ocean_cfd(world)
+    state = world.ocean_cfd_state
     for _ in range(3):
         ocean_cfd.step_ocean_cfd(world, state, seconds=86400.0)
     elevations_after = [line.elevation for plate in world.plates for line in plate.lines]
@@ -104,12 +99,10 @@ def test_ocean_cfd_never_mutates_world_plates():
 
 
 def test_step_ocean_cfd_stays_bounded_over_many_steps():
-    # A coarse "doesn't blow up" check -- confirmed directly during development that an
-    # earlier build's numerics diverged to absurd speeds within the first simulated day at
-    # this same (finer) grid; this guards against that class of regression, not an exact
-    # physical value.
-    world = _world(climate_density=1.0)
-    state = ocean_cfd.init_ocean_cfd(world)
+    # A coarse "doesn't blow up" check -- guards against the fast/slow subcycled split
+    # (ocean_cfd's own docstring) diverging, not an exact physical value.
+    world = generate_world(seed=1, node_density=1.0, climate_density=1.0, fluid_density=1.0, num_plates=6)
+    state = world.ocean_cfd_state
     for _ in range(10):
         ocean_cfd.step_ocean_cfd(world, state, seconds=86400.0)
     speed = np.hypot(state.u, state.v)

@@ -1,118 +1,17 @@
-"""Submerged continental crust: continental shelf vs deep water.
+"""Continental shelf range: how far from a coastline "shallow shelf water" extends.
 
-Newly generated continental crust, and continental crust pulled underwater by rifting (see
-boundary.py) or born underwater by generation-time noise, has nothing else in this codebase
-pulling it toward any particular depth once it's submerged. In reality, submerged continental
-crust close to a coastline sits on the continental shelf (shallow), while farther out it's
-genuinely deep water -- distinct from, though shallower than, oceanic crust's own abyssal
-depth. This module is a slow background relaxation (the same exponential-toward-a-target
-style boundary.py's divergent relaxation already uses) pulling every submerged continental
-node toward whichever of those two targets its distance to the nearest land node implies.
-
-Deliberately continental-only: oceanic crust's own average depth already comes from its
-generation-time baseline (plates.BASE_OCEANIC_M = -3800) and nothing erodes or otherwise
-drifts it away from that on its own (erosion.py explicitly excludes ocean nodes from both its
-sources), so it doesn't need a parallel correction here.
-
-"Land" is computed globally (elevation > 0, any plate) -- this is a geographic
-distance-to-coastline question, not a plate-boundary one, so a submerged node's own plate
-membership is irrelevant to how close it is to *some* coastline.
+Isostasy (see lithosphere.py) determines submerged continental crust's own depth directly, so
+nothing here relaxes elevation toward a shelf/deep-water target any more -- this module now
+just holds the shared shelf-range constant geology.py's own oil & gas deposit formation uses
+to tell shelf water (shallow, oil/gas-favorable) from open ocean.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import numpy as np
-
 from .elevation_lines import PLANET_RADIUS_KM
-from .plates import Plate, collect_all_elevation, gather_node_positions
-
-if TYPE_CHECKING:
-    from .world import World
 
 # Real continental shelves are shallow and comparatively narrow before the "shelf break"
-# drops off toward deep water -- SHELF_TARGET_M has no exact figure to port (none was
-# given), picked as a reasonable shelf-like depth, clearly shallower than open ocean.
+# drops off toward deep water -- SHELF_RANGE_KM has no exact figure to port (none was given),
+# picked as a reasonable shelf width.
 SHELF_RANGE_KM = 200.0
 SHELF_RANGE_RAD = SHELF_RANGE_KM / PLANET_RADIUS_KM
-SHELF_TARGET_M = -100.0
-DEEP_CONTINENTAL_TARGET_M = -3000.0
-# Slower than plates.DIVERGENT_RELAX_RATE_PER_MYR (0.15) -- this is a passive background
-# equilibration of already-submerged, non-actively-deforming crust, not an active tectonic
-# process, so it's given a gentler pace. A starting point, not a derived constant.
-BATHYMETRY_RELAX_RATE_PER_MYR = 0.1
-
-MIN_ELEVATION_M = -11000.0
-MAX_ELEVATION_M = 9000.0
-
-
-def _gather_nodes(
-    world: "World",
-    node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[Plate]]:
-    """Every node's world position, elevation, and whether its plate is continental,
-    concatenated, alongside the ordered list of plates that contributed them -- same shape as
-    erosion.py's own _gather_nodes. `node_cloud`, when passed (see apply_bathymetry), reuses
-    an already-gathered (points, plates_in_order) pair -- world.py's step_world computes this
-    once per step (right after rotation/boundary evolution, before erosion.apply_erosion) and
-    shares it with both, since node positions don't change again until the next step's
-    rotation -- instead of re-deriving every node's world position from scratch a fourth time
-    this same step (see plates.gather_node_positions's own docstring). Elevation is gathered
-    fresh either way (via `collect_all_elevation`, representation-agnostic), since it can
-    change between callers even within the same step; `is_continental` isn't a per-node
-    ElevationLine field, just each contributing plate's own `crust_type` broadcast across its
-    own node count, so it's built directly off `plates_in_order` rather than any bulk
-    collector."""
-    points, plates_in_order = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
-    if not plates_in_order:
-        return np.zeros((0, 3)), np.zeros(0), np.zeros(0, dtype=bool), []
-    elevation = collect_all_elevation(plates_in_order)
-    is_continental = np.concatenate([np.full(p.node_count(), p.crust_type == "continental") for p in plates_in_order])
-    return points, elevation, is_continental, plates_in_order
-
-
-def apply_bathymetry(
-    world: "World",
-    years: float,
-    node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
-) -> None:
-    """Relaxes every submerged (elevation <= world.sea_level_m) continental node toward
-    SHELF_TARGET_M if within SHELF_RANGE_RAD of the nearest land node (elevation >
-    world.sea_level_m, any plate), or DEEP_CONTINENTAL_TARGET_M otherwise. Mutates
-    world.plates' node elevations in place; never touches node positions or line topology,
-    so this can't interact with line regularization or point reassignment at all. `node_cloud`
-    is forwarded straight to `_gather_nodes` -- see its own docstring."""
-    points, elevation, is_continental, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
-    if len(points) == 0:
-        return
-
-    is_land = elevation > world.sea_level_m
-    if not np.any(is_land):
-        return  # no coastline anywhere to measure distance from
-
-    submerged_indices = np.nonzero(is_continental & ~is_land)[0]
-    if len(submerged_indices) == 0:
-        return
-
-    dist_to_land = world.distance_from_land_approx(points[submerged_indices])
-    target = np.where(dist_to_land <= SHELF_RANGE_RAD, SHELF_TARGET_M, DEEP_CONTINENTAL_TARGET_M)
-
-    years_myr = years / 1_000_000.0
-    relax_factor = 1.0 - np.exp(-BATHYMETRY_RELAX_RATE_PER_MYR * years_myr)
-
-    new_elevation = elevation.copy()
-    new_elevation[submerged_indices] += (target - elevation[submerged_indices]) * relax_factor
-    new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
-
-    # Only elevation changes here -- writing straight back via set_fields_on_plate (a
-    # vectorized per-plate slice write) touches nothing else, so every other field
-    # (channel_depth/channel_width/lake_depth/glacier_depth/is_volcano/
-    # volcano_active_years_remaining, and whatever else gets added later) is left exactly as
-    # it was without needing to name it explicitly here. See plates.Plate.map_world_points's
-    # own docstring for why this needs no replace/replace_line round-trip.
-    offset = 0
-    for plate in plates_in_order:
-        n = plate.node_count()
-        plate.set_fields_on_plate(elevation=new_elevation[offset : offset + n])
-        offset += n
