@@ -536,3 +536,26 @@ def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client)
     resp = client.post("/world/step", json={"years": 1_000_000})
     assert resp.status_code == 200
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
+
+
+def test_controls_wind_model_toggle_and_validation(client):
+    from app import main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+    assert world.wind_model == "cfd"
+
+    resp = client.post("/world/controls", json={"wind_model": "diagnostic"})
+    assert resp.status_code == 200
+    assert resp.json()["wind_model"] == "diagnostic"
+    assert world.wind_model == "diagnostic"
+
+    # Diagnostic mode leaves the CFD solve unrun on a step.
+    client.post("/world/step", json={"years": 1_000_000})
+    assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
+
+    # A climate render still succeeds against the diagnostic fields.
+    assert client.get("/world/render", params={"view": "wind"}).status_code == 200
+    assert client.get("/world/render", params={"view": "temperature"}).status_code == 200
+
+    assert client.post("/world/controls", json={"wind_model": "nonsense"}).status_code == 400

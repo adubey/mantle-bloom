@@ -54,3 +54,39 @@ def test_stats_and_render_reuse_the_same_step_cache():
     # recompute.
     render_image.render_png(world, "eckert4", "precipitation", 200, 120)
     assert world.climate_cache is cached
+
+
+def test_diagnostic_wind_model_tracks_the_cfd_biome_map():
+    # The "ABL" wind model (World.wind_model == "diagnostic") is meant to reproduce *most* of
+    # the shallow-water CFD's downstream climate for a fraction of the cost -- see
+    # docs/simulation-model.md#wind-model and TODO.md. This locks in that it stays a decent
+    # approximation, not a regression guard on an exact value: two copies of the same world
+    # stepped the same number of times, one CFD, one diagnostic, should agree on the large
+    # majority of the land biome map and keep precipitation close. A drop here most likely
+    # means compute_wind, compute_air_temperature_diagnostic, or the biome thresholds moved.
+    # Characterised at climate_density/fluid_density 2.0 (see the "~84-89%" figure in
+    # docs/simulation-model.md#wind-model); the agreement is somewhat config-sensitive, so
+    # the floor here is deliberately loose.
+    kw = dict(num_plates=10, continental_fraction=0.7, land_fraction=0.29, climate_density=2.0, fluid_density=2.0)
+    cfd_world = generate_world(7, **kw)
+    abl_world = generate_world(7, **kw)
+    abl_world.wind_model = "diagnostic"
+    for _ in range(10):
+        step_world(cfd_world, years=2_000_000)
+        step_world(abl_world, years=2_000_000)
+
+    cfd = climate.compute_climate_cached(cfd_world)
+    abl = climate.compute_climate_cached(abl_world)
+    land = ~cfd.is_ocean
+
+    land_biome_agreement = np.mean(cfd.biome_ids[land] == abl.biome_ids[land])
+    assert land_biome_agreement > 0.78, land_biome_agreement
+
+    precip_rel_rms = np.sqrt(np.mean((cfd.precipitation_mm - abl.precipitation_mm) ** 2)) / np.sqrt(
+        np.mean(cfd.precipitation_mm ** 2)
+    )
+    assert precip_rel_rms < 0.25, precip_rel_rms
+
+    # The CFD state on the diagnostic world never advanced -- _advance_fluid_dynamics is a
+    # no-op in that mode.
+    assert abl_world.atmosphere_cfd_state.elapsed_seconds == 0.0

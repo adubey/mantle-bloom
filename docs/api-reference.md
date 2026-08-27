@@ -135,17 +135,18 @@ this is caught broadly).
 
 ## `POST /world/controls`
 
-Request body (all four optional, independently settable -- the "Controls" window sends only
-whichever control the user touched):
+Request body (all fields optional, independently settable -- the "Controls" window sends
+only whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
-scales `climate.SUNLIGHT`), `World.simulate_plate_movement`, and/or
-`World.simulate_climate_biomes` (both default `true`) on the *current* world -- no
-regenerate needed. Unlike `axial_tilt_deg`/`node_density`, these are meant to be tweaked
+scales `climate.SUNLIGHT`), `World.simulate_plate_movement`,
+`World.simulate_climate_biomes` (both default `true`), and/or `World.wind_model`
+(`"cfd"` default, or `"diagnostic"` -- a `400` for any other value) on the *current* world
+-- no regenerate needed. Unlike `axial_tilt_deg`/`node_density`, these are meant to be tweaked
 mid-simulation: every `is_ocean` check in the codebase (`climate.py`, `hydrology.py`,
 `bathymetry.py`) keys off `sea_level_m` instead of a bare `elevation <= 0.0`, and
 `render_image.py`'s elevation-view hypsometric coloring shifts by it too, so raising sea
@@ -162,16 +163,21 @@ bathymetry, and resource formation -- by far the most expensive part of a step. 
 be turned off independently to watch (or speed up) just the other half; `elapsed_years`
 always advances regardless of both.
 
+`wind_model` picks the wind field feeding `climate.py`: `"cfd"` runs the shallow-water
+solve every step (`_advance_fluid_dynamics`), `"diagnostic"` skips it and rebuilds wind /
+air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps for
+~85-90% of the CFD biome map. See simulation-model.md#wind-model.
+
 Forces an immediate `climate.compute_climate` recompute (stored back onto
 `world.climate_cache`) so the very next `/world/render` or `/world/stats` call reflects the
 change without waiting for a step -- `climate_cache` is otherwise only refreshed once per
 step by `erosion.py`, and not at all while `simulate_climate_biomes` is `false`. `404` if no
 world has been generated yet.
 
-Response echoes back the world's current values for all four:
+Response echoes back the world's current values for all five:
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
 ```
 
 ## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
@@ -206,9 +212,11 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   additionally marks detected ocean swells with small circles. `"wind"` and the land side of
   `"temperature"` draw off `World.atmosphere_cfd_state` (a real, continuously time-integrated
   shallow-water wind solve, see
-  [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics));
-  everything else is a `climate.py` diagnostic (the shallow-water ocean solver was retired)
-  resampled nearest-cell onto the world's HEALPix grid. `"resources"` and `"soilQuality"` (see
+  [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics))
+  -- or, under `wind_model == "diagnostic"` (see
+  [simulation-model.md#wind-model](simulation-model.md#wind-model)), off `climate.py`'s own
+  closed-form wind/air-temperature instead; everything else is a `climate.py` diagnostic (the
+  shallow-water ocean solver was retired) resampled nearest-cell onto the world's HEALPix grid. `"resources"` and `"soilQuality"` (see
   [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)) are
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a

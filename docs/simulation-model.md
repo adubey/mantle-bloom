@@ -1245,7 +1245,9 @@ and never re-initialized again for the rest of that world's life.
 **Every `POST /world/step` call advances it**, via `step_world`'s own
 `_advance_fluid_dynamics`, right alongside plate tectonics/climate/erosion -- gated on
 `World.simulate_climate_biomes` the same way erosion/hydrology already are (not on
-`simulate_plate_movement`; wind keeps evolving even with plate movement paused).
+`simulate_plate_movement`; wind keeps evolving even with plate movement paused), *and* on
+`World.wind_model == "cfd"` -- the diagnostic wind model (see [Wind model](#wind-model)
+below) turns `_advance_fluid_dynamics` into a no-op.
 Real atmospheric fluid dynamics needs timesteps of hours to days; plate tectonics needs
 timesteps of thousands to millions of years -- reconciled by advancing the wind state by a
 **fixed real-time increment per tectonics step, regardless of the tectonic `years`
@@ -1261,9 +1263,47 @@ continuously across tectonics steps rather than resetting. It's fed a `skip_mois
 `compute_climate` snapshot at `World.fluid_density`'s resolution (the humidity/precipitation
 sweep is dead weight for forcing that consumes only elevation/is_ocean/temperature baseline).
 
-`climate.py`'s own `compute_wind` diagnostic still exists, but only as the one-time cold-start
-bootstrap `init_atmosphere_cfd` falls back to during `generate_world`, before
-`World.atmosphere_cfd_state` exists yet.
+`climate.py`'s own `compute_wind` diagnostic still exists as the one-time cold-start
+bootstrap `init_atmosphere_cfd` falls back to during `generate_world` (before
+`World.atmosphere_cfd_state` exists yet) -- *and* as the full wind source whenever the
+diagnostic wind model is selected, below.
+
+<a id="wind-model"></a>
+### Wind model: `"cfd"` (default) vs `"diagnostic"`
+
+`World.wind_model` (live-adjustable via the Controls window / `POST /world/controls`) picks
+which wind field feeds `climate.py`:
+
+- **`"cfd"`** (default) -- the genuine shallow-water solve described above. At the default
+  `fluid_density` this is the single most expensive piece of a `/world/step` (hundreds to
+  a thousand+ CFL-stable substeps; see [Performance](#fd-performance)).
+- **`"diagnostic"`** -- skip that solve entirely. `_advance_fluid_dynamics` becomes a no-op
+  (the CFD state is *kept*, just frozen, so switching back resumes from it rather than a
+  cold start), and `climate.compute_climate` rebuilds wind from `compute_wind` and air
+  temperature from `compute_air_temperature_diagnostic` every call -- the same closed-form
+  "ABL" path the cold-start bootstrap uses, but for the whole run. `compute_air_temperature`
+  (the maritime-moderation cold-start air temp) is *not* reused here: it's a poor match for
+  the CFD's near-radiative-equilibrium temperature field (benchmarks at ~41% land-biome
+  agreement vs the CFD, against `compute_air_temperature_diagnostic`'s ~90%).
+
+**Why it's a reasonable trade.** The CFD wind is relaxed hard toward the same
+latitude-banded target `compute_wind` builds, and only integrates ~one simulated day per
+step, so downstream (ocean currents, humidity advection, precipitation) barely distinguishes
+the two wind fields -- keeping the *CFD* air temperature while swapping to diagnostic wind
+holds land-biome agreement near 95%. Measured against a ~12-step CFD reference at
+`fluid_density=2.0` across three seeds, the fully-diagnostic model reproduces **~84-89% of
+the land biome map** and precipitation/temperature **within ~8-11%**, while cutting a
+12-step run from ~42 s to ~7 s (**~6x**) at that resolution -- the CFD substep loop itself
+is ~15x, diluted by the rest of a step's fixed cost, and the multiple grows with
+`fluid_density` (closer to ~1.5x at `0.5`). The residual gap is almost entirely the
+air-temperature field's missing advective/diffusive structure -- see `TODO.md` for the
+options to close it.
+
+**Rendering.** The `"wind"` and `"temperature"` map views normally draw
+`World.atmosphere_cfd_state`'s native HEALPix arrays; under `"diagnostic"` they fall back to
+`compute_climate`'s own wind/air-temperature (resampled onto the HEALPix cells like every
+other climate field) so the maps reflect the model that's actually driving the sim rather
+than a frozen CFD snapshot.
 
 <a id="shallow-water-formulation"></a>
 ### The shallow-water formulation

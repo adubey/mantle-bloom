@@ -119,6 +119,19 @@ class World:
     # documents) rather than None, so a render/stats call right after toggling this off still
     # shows the last real climate snapshot instead of going blank.
     simulate_climate_biomes: bool = True
+    # Which wind field feeds climate.py (live-adjustable via POST /world/controls, the
+    # "Controls" window). "cfd" (default): the genuine time-integrated shallow-water solve in
+    # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most
+    # expensive single piece of a step at the default fluid_density (see
+    # docs/simulation-model.md#fd-performance). "diagnostic": skip that solve entirely and let
+    # climate.compute_climate rebuild wind/air-temperature from its own closed-form ABL-style
+    # formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same way it
+    # already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
+    # biome map and precipitation within ~10% for a fraction of the cost -- see
+    # docs/simulation-model.md#wind-model and TODO.md. atmosphere_cfd_state is still kept in
+    # sync (init'd at generation, never cleared) so switching back to "cfd" mid-session
+    # resumes from a real, if now-stale, state rather than a cold start.
+    wind_model: str = "cfd"
     # Atmospheric wind-solver state -- see docs/simulation-model.md#atmospheric-fluid-dynamics.
     # Always on, not a mode: generate_world populates it immediately after constructing this
     # World (atmosphere_cfd.init_atmosphere_cfd) and it's never re-initialized or cleared again
@@ -246,13 +259,18 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
     """Advances World.atmosphere_cfd_state by its fixed SECONDS_PER_TECTONIC_STEP (one
     simulated day) once per tectonics step, *before* erosion/hydrology each step (unlike a
     naive post-erosion ordering) -- so erosion/hydrology read post-substep, not pre-substep,
-    wind. `world.climate_cache` still holds last step's snapshot at this point, so a fresh
+    wind. No-op when `world.wind_model != "cfd"` (see World.wind_model): the diagnostic wind
+    model rebuilds wind from climate.py's own formulas every call and never reads the CFD
+    state, so advancing it would be wasted work -- the single biggest saving of that mode.
+    `world.climate_cache` still holds last step's snapshot at this point, so a fresh
     climate snapshot is always computed here regardless of whether fluid_density matches
     climate_density; erosion.apply_erosion computes its own snapshot right after this returns
     (on the same, still-unchanged post-tectonics world.plates), so this is one extra
     compute_climate call per step in exchange for correct wind forcing -- passed
     skip_moisture=True since refresh_forcing consumes only elevation/is_ocean/the temperature
     baseline, so this call doesn't pay for the humidity/precipitation sweep."""
+    if world.wind_model != "cfd":
+        return
     terrain = climate.compute_climate(
         world, *climate.grid_dimensions(world.fluid_density), node_cloud=node_cloud, skip_moisture=True
     )

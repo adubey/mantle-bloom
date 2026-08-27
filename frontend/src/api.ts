@@ -283,6 +283,7 @@ export interface ControlsState {
   solar_multiplier: number;
   simulate_plate_movement: boolean;
   simulate_climate_biomes: boolean;
+  wind_model: string;
 }
 
 export function updateControls(controls: {
@@ -290,6 +291,7 @@ export function updateControls(controls: {
   solarMultiplier?: number;
   simulatePlateMovement?: boolean;
   simulateClimateBiomes?: boolean;
+  windModel?: string;
 }): Promise<ControlsState> {
   return fetch(`${API_BASE}/world/controls`, {
     method: "POST",
@@ -299,6 +301,7 @@ export function updateControls(controls: {
       solar_multiplier: controls.solarMultiplier,
       simulate_plate_movement: controls.simulatePlateMovement,
       simulate_climate_biomes: controls.simulateClimateBiomes,
+      wind_model: controls.windModel,
     }),
   }).then(asJson<ControlsState>);
 }

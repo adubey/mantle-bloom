@@ -77,6 +77,8 @@ const DEFAULT_SOLAR_MULTIPLIER = 1;
 // defaults -- both on, i.e. a normal full simulation.
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
 const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
+// Matching backend app/world.py's World.wind_model default -- the shallow-water CFD solve.
+const DEFAULT_WIND_MODEL = "cfd";
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -243,6 +245,9 @@ export default function App() {
   // backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes.
   const [simulatePlateMovement, setSimulatePlateMovement] = useState(DEFAULT_SIMULATE_PLATE_MOVEMENT);
   const [simulateClimateBiomes, setSimulateClimateBiomes] = useState(DEFAULT_SIMULATE_CLIMATE_BIOMES);
+  // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
+  // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
+  const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
   const [showControlsModal, setShowControlsModal] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
   // The div wrapping whichever map view component is currently mounted -- see
@@ -338,6 +343,7 @@ export default function App() {
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
+      setWindModel(DEFAULT_WIND_MODEL);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
@@ -360,6 +366,7 @@ export default function App() {
     solarMultiplier?: number;
     simulatePlateMovement?: boolean;
     simulateClimateBiomes?: boolean;
+    windModel?: string;
   }) => {
     if (controlsDebounceRef.current) clearTimeout(controlsDebounceRef.current);
     controlsDebounceRef.current = setTimeout(async () => {
@@ -392,6 +399,11 @@ export default function App() {
   const handleSolarMultiplierChange = useCallback((v: number) => {
     setSolarMultiplier(v);
     pushControls({ solarMultiplier: v });
+  }, [pushControls]);
+
+  const handleWindModelChange = useCallback((v: string) => {
+    setWindModel(v);
+    pushControls({ windModel: v });
   }, [pushControls]);
 
   const handleStep = useCallback(async () => {
@@ -438,6 +450,7 @@ export default function App() {
       setSolarMultiplier(controls.solar_multiplier);
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
+      setWindModel(controls.wind_model);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
@@ -923,10 +936,12 @@ export default function App() {
           solarMultiplier={solarMultiplier}
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
+          windModel={windModel}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
+          onWindModelChange={handleWindModelChange}
           onClose={() => setShowControlsModal(false)}
         />
       )}

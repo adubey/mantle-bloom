@@ -314,6 +314,51 @@ def test_compute_climate_sources_wind_air_temp_from_cfd_everything_else_diagnost
     assert fields.precipitation_mm[~fields.is_ocean].max() > 50.0
 
 
+def test_wind_model_diagnostic_bypasses_the_cfd_state():
+    # World.wind_model == "diagnostic" makes compute_climate rebuild wind/air-temperature from
+    # its own closed-form formulas every call, ignoring the (still-present) CFD state -- the
+    # ABL wind model. compute_wind's output and compute_air_temperature_diagnostic should be
+    # what lands in the fields, not the CFD state's resampled u/v/temperature_c.
+    world = _world(seed=7, num_plates=8, steps=1)
+    height, width = climate.grid_dimensions(world.climate_density)
+
+    world.wind_model = "diagnostic"
+    fields = climate.compute_climate(world, height, width)
+
+    lat_deg, _, world_xyz = climate._build_grid(height, width)
+    elevation_m, is_ocean, _, _ = climate._sample_elevation_and_crust(world, world_xyz)
+    insol = climate.compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
+    land_t = climate.compute_land_temperature(insol, elevation_m)
+    ocean_b = climate.compute_ocean_temperature_baseline(insol, height, width)
+    surface_t = np.where(is_ocean, ocean_b, land_t)
+    expected_u, expected_v, _ = climate.compute_wind(lat_deg, elevation_m, surface_t)
+    assert np.array_equal(fields.wind_u, expected_u)
+    assert np.array_equal(fields.wind_v, expected_v)
+
+    cfd_air_temp = world.atmosphere_cfd_state.resample_scalar_to_equirect(
+        world.atmosphere_cfd_state.temperature_c, height, width
+    )
+    assert not np.array_equal(fields.air_temperature_c, cfd_air_temp)
+    # Air temp is compute_air_temperature_diagnostic fed the fields' own land/ocean
+    # temperatures (the current-advected ocean temp, matching compute_climate's call).
+    assert np.array_equal(
+        fields.air_temperature_c,
+        climate.compute_air_temperature_diagnostic(
+            fields.land_temperature_c, fields.ocean_temperature_c, fields.is_ocean
+        ),
+    )
+    assert np.all(np.isfinite(fields.precipitation_mm))
+
+
+def test_step_world_skips_the_cfd_solve_under_the_diagnostic_wind_model():
+    world = _world(seed=9, num_plates=8, steps=1)
+    world.wind_model = "diagnostic"
+    elapsed_before = world.atmosphere_cfd_state.elapsed_seconds
+    step_world(world, years=1_000_000)
+    # The CFD state is left frozen -- _advance_fluid_dynamics is a no-op in this mode.
+    assert world.atmosphere_cfd_state.elapsed_seconds == elapsed_before
+
+
 def test_compute_climate_skip_moisture_zeros_humidity_and_precipitation():
     # world._advance_fluid_dynamics passes skip_moisture=True -- the CFD forcing it builds
     # only consumes is_ocean/elevation/temperature baselines, so it shouldn't pay for the

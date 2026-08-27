@@ -112,15 +112,19 @@ class ExportHexGridRequest(BaseModel):
 
 
 class ControlsRequest(BaseModel):
-    # All four optional and independently settable -- the UI's "Controls" window (see
+    # All optional and independently settable -- the UI's "Controls" window (see
     # StatsModal.tsx's "Controls" button) sends only whichever control the user actually
     # touched. Omitted fields leave that World attribute untouched. See World.sea_level_m/
-    # World.solar_multiplier/World.simulate_plate_movement/World.simulate_climate_biomes for
-    # what each one does physically.
+    # World.solar_multiplier/World.simulate_plate_movement/World.simulate_climate_biomes/
+    # World.wind_model for what each one does physically.
     sea_level_m: float | None = None
     solar_multiplier: float | None = None
     simulate_plate_movement: bool | None = None
     simulate_climate_biomes: bool | None = None
+    wind_model: str | None = None
+
+
+WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
@@ -510,10 +514,10 @@ def animate(req: AnimateRequest) -> dict:
 
 @app.post("/world/controls")
 def set_controls(req: ControlsRequest) -> dict:
-    """Live-adjusts sea level, solar heat, and/or the plate-movement/climate-biomes step
-    toggles on the current world (the "Controls" window -- see World.sea_level_m/
-    World.solar_multiplier/World.simulate_plate_movement/World.simulate_climate_biomes) and
-    immediately recomputes world.climate_cache so the very next /world/render or
+    """Live-adjusts sea level, solar heat, the plate-movement/climate-biomes step toggles,
+    and/or the wind model on the current world (the "Controls" window -- see World.sea_level_m/
+    World.solar_multiplier/World.simulate_plate_movement/World.simulate_climate_biomes/
+    World.wind_model) and immediately recomputes world.climate_cache so the very next /world/render or
     /world/stats call reflects the change without waiting for a step -- climate_cache is
     otherwise only refreshed by erosion.py once per step (see World.climate_cache), which
     would make a real-time control feel laggy or unresponsive between steps. This one-time
@@ -522,6 +526,10 @@ def set_controls(req: ControlsRequest) -> dict:
     user has turned off per-step climate computation to speed up stepping. `404` if no world
     has been generated yet."""
     world = _require_world()
+    if req.wind_model is not None and req.wind_model not in WIND_MODEL_CHOICES:
+        raise HTTPException(
+            status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
+        )
     if req.sea_level_m is not None:
         world.sea_level_m = req.sea_level_m
     if req.solar_multiplier is not None:
@@ -530,12 +538,15 @@ def set_controls(req: ControlsRequest) -> dict:
         world.simulate_plate_movement = req.simulate_plate_movement
     if req.simulate_climate_biomes is not None:
         world.simulate_climate_biomes = req.simulate_climate_biomes
+    if req.wind_model is not None:
+        world.wind_model = req.wind_model
     world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
+        "wind_model": world.wind_model,
     }
 
 

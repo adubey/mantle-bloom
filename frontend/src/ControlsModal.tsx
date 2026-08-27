@@ -3,10 +3,12 @@ interface Props {
   solarMultiplier: number;
   simulatePlateMovement: boolean;
   simulateClimateBiomes: boolean;
+  windModel: string;
   onSeaLevelChange: (v: number) => void;
   onSolarMultiplierChange: (v: number) => void;
   onSimulatePlateMovementChange: (v: boolean) => void;
   onSimulateClimateBiomesChange: (v: boolean) => void;
+  onWindModelChange: (v: string) => void;
   onClose: () => void;
 }
 
@@ -21,10 +23,12 @@ export default function ControlsModal({
   solarMultiplier,
   simulatePlateMovement,
   simulateClimateBiomes,
+  windModel,
   onSeaLevelChange,
   onSolarMultiplierChange,
   onSimulatePlateMovementChange,
   onSimulateClimateBiomesChange,
+  onWindModelChange,
   onClose,
 }: Props) {
   return (
@@ -112,6 +116,31 @@ export default function ControlsModal({
               Both are off -- stepping will only advance elapsed years, nothing else changes.
             </div>
           )}
+        </div>
+
+        <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
+          <label style={{ display: "block", marginBottom: 6 }}>Wind model</label>
+          <select
+            value={windModel}
+            onChange={(e) => onWindModelChange(e.target.value)}
+            style={{
+              width: "100%",
+              background: "#0f1424",
+              color: "#e6e8ef",
+              border: "1px solid #333",
+              borderRadius: 4,
+              padding: "4px 6px",
+              fontSize: 13,
+            }}
+          >
+            <option value="cfd">Shallow-water CFD (accurate)</option>
+            <option value="diagnostic">Diagnostic / ABL (fast)</option>
+          </select>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+            {windModel === "diagnostic"
+              ? "Skips the shallow-water solve -- much faster steps, ~85-90% of the CFD biome map. Wind/temperature maps show the closed-form field."
+              : "Genuine time-integrated shallow-water solve -- the largest single cost of a step at high fluid-dynamics resolution."}
+          </div>
         </div>
       </div>
     </div>

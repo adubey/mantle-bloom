@@ -30,9 +30,17 @@ and the CFD atmosphere's own humidity/precipitation had no orographic-lift or la
 vegetation term and produced a near-zero, uncalibrated rainfall field that starved erosion/
 hydrology (see git history). The diagnostic precipitation is a steady-state advective sweep,
 so it reads as long-term average rainfall rather than an instantaneous rate. `compute_wind`/
-`compute_air_temperature` below still exist but only as the one-time cold-start bootstrap the
+`compute_air_temperature` below still exist as the one-time cold-start bootstrap the
 atmosphere CFD state is seeded from at `generate_world` time, before it exists yet; the other
 four run on that bootstrap path *and* on every ordinary call.
+
+**`World.wind_model == "diagnostic"`** flips wind and air temperature back to closed-form
+too: `compute_wind` for `wind_u`/`wind_v` and `compute_air_temperature_diagnostic` (a much
+closer match to the CFD's near-radiative-equilibrium temperature than the maritime-moderation
+`compute_air_temperature` used at bootstrap) for `air_temperature_c`, every call, ignoring
+the frozen CFD state. The user-facing "ABL wind model" -- see `World.wind_model` and
+docs/simulation-model.md#wind-model. Everything downstream is unchanged; it just runs on the
+diagnostic wind instead of the solved one.
 
 **Computed every step, not just on render.** erosion.py needs a live climate snapshot every
 step (see docs/simulation-model.md#erosion) and always calls `compute_climate` directly, so
@@ -423,6 +431,47 @@ def compute_air_temperature(land_temperature_c: np.ndarray, ocean_temperature_c:
     dist_deg = np.degrees(dist_rad)
     influence = np.exp(-dist_deg / MARITIME_INFLUENCE_DIST_DEG)
     return land_temperature_c * (1.0 - influence) + nearest_ocean_temp * influence
+
+
+# Diffusion applied to the radiative-equilibrium surface temperature by
+# `compute_air_temperature_diagnostic` below -- weighted Jacobi passes (each cell moved a
+# fraction of the way toward its 4-neighbour mean), longitude-wrapping. Tuned (6 passes at
+# weight 0.5, benchmarked against a 15-step CFD run across three seeds -- see TODO.md) to a
+# gentle smear: it lifts land-biome agreement with the CFD from ~90% (raw equilibrium) to
+# ~91%, and heavier smoothing doesn't help. Deliberately *not* the aggressive full-strength
+# `_smooth_field` (no self term) the mountain-gradient pipeline uses.
+AIR_TEMP_DIFFUSION_ITERATIONS = 6
+AIR_TEMP_DIFFUSION_WEIGHT = 0.5
+
+
+def compute_air_temperature_diagnostic(
+    land_temperature_c: np.ndarray, ocean_temperature_c: np.ndarray, is_ocean: np.ndarray,
+) -> np.ndarray:
+    """Closed-form stand-in for the CFD's prognostic `temperature_c`, for
+    `World.wind_model == "diagnostic"` (see that field and compute_climate's own branch).
+    The shallow-water solver's air temperature, integrating only ~one simulated day per
+    tectonics step, never strays far from its own radiative-equilibrium target (corr ~0.995
+    against it) -- insolation + lapse-rate cooling, i.e. exactly `compute_land_temperature`/
+    `compute_ocean_temperature_baseline`, which the caller has already built as
+    `land_temperature_c`/`ocean_temperature_c` here. This returns that equilibrium field with
+    a few gentle diffusion passes (`AIR_TEMP_DIFFUSION_*`) standing in for the solver's
+    horizontal mixing. It is *not* `compute_air_temperature`: that function's strong
+    pull toward the nearest ocean's temperature is a maritime-moderation model the CFD does
+    not reproduce (benchmarks it at ~41% land-biome agreement vs the CFD, against this
+    function's ~91%). See TODO.md for the remaining gap to the CFD."""
+    equilibrium = np.where(is_ocean, ocean_temperature_c, land_temperature_c).astype(float)
+    smoothed = equilibrium
+    for _ in range(AIR_TEMP_DIFFUSION_ITERATIONS):
+        neighbour_mean = 0.25 * (
+            np.roll(smoothed, -1, axis=1) + np.roll(smoothed, 1, axis=1)
+            + np.roll(smoothed, -1, axis=0) + np.roll(smoothed, 1, axis=0)
+        )
+        smoothed = smoothed + AIR_TEMP_DIFFUSION_WEIGHT * (neighbour_mean - smoothed)
+    # Ocean cells stay exactly on their own baseline -- `compute_climate` shows
+    # ocean_temperature_c (the current-advected diagnostic) over water anyway, but keeping the
+    # returned field self-consistent avoids a diffused seam bleeding across coastlines into
+    # the land values that *are* displayed.
+    return np.where(is_ocean, equilibrium, smoothed)
 
 
 # ---------------------------------------------------------------------------------------
@@ -1166,18 +1215,20 @@ def compute_climate(
     ocean_baseline_c = compute_ocean_temperature_baseline(insolation_row, height, width)
     surface_temperature_c = np.where(is_ocean, ocean_baseline_c, land_temperature_c)
 
-    # wind_u/wind_v come from the world's own always-on atmosphere_cfd_state -- a real,
-    # continuously time-integrated shallow-water solve (see atmosphere_cfd.py) -- rather than
-    # this module's own compute_wind diagnostic, resampled from fluid_density's resolution
-    # onto whatever resolution this call asked for. compute_wind itself is *not* removed --
-    # it's still the one-time cold-start bootstrap compute_climate falls back to here,
-    # exercised only during generate_world, before world.atmosphere_cfd_state exists yet (see
-    # World.atmosphere_cfd_state's own docstring). elevation_factor isn't purely a function of
-    # elevation (see compute_wind's own body) -- it also depends on the wind field via
-    # _mountain_wake_factor, so it's recomputed from whichever wind source is in play, keeping
-    # compute_humidity's "respond to terrain-driven slowdown" behavior meaningful regardless
-    # of source.
-    if world.atmosphere_cfd_state is None:
+    # wind_u/wind_v normally come from the world's own always-on atmosphere_cfd_state -- a
+    # real, continuously time-integrated shallow-water solve (see atmosphere_cfd.py) --
+    # resampled from fluid_density's resolution onto whatever resolution this call asked for.
+    # Two cases take this module's own closed-form compute_wind diagnostic instead: the
+    # one-time cold-start bootstrap during generate_world, before atmosphere_cfd_state exists
+    # yet (see World.atmosphere_cfd_state's docstring), and World.wind_model == "diagnostic",
+    # the user-selectable ABL wind model that skips the CFD solve entirely for a large speedup
+    # (see World.wind_model and docs/simulation-model.md#wind-model). elevation_factor isn't
+    # purely a function of elevation (see compute_wind's own body) -- it also depends on the
+    # wind field via _mountain_wake_factor, so it's recomputed from whichever wind source is
+    # in play, keeping compute_humidity's "respond to terrain-driven slowdown" behavior
+    # meaningful regardless of source.
+    use_diagnostic_wind = world.atmosphere_cfd_state is None or world.wind_model != "cfd"
+    if use_diagnostic_wind:
         wind_u, wind_v, elevation_factor = compute_wind(lat_deg, elevation_m, surface_temperature_c)
     else:
         wind_u, wind_v = world.atmosphere_cfd_state.resample_uv_to_equirect(height, width)
@@ -1201,11 +1252,18 @@ def compute_climate(
     swell_rows, swell_cols = compute_ocean_swells(current_u, current_v, is_ocean, mix_rng)
     ocean_temperature_c = advect_ocean_temperature(ocean_baseline_c, current_u, current_v, is_ocean, lat_deg)
 
-    # Air temperature is the one atmospheric field still read off the CFD state (alongside
-    # wind) -- humidity, precipitation, currents, and ocean temperature are all the diagnostic
-    # sweep now (see module docstring), fed by the CFD-sourced wind.
+    # Air temperature: read off the CFD state's own temperature_c when the CFD is the wind
+    # source, otherwise a closed-form stand-in matched to it. The cold-start bootstrap (no
+    # state yet) keeps the maritime-moderation compute_air_temperature it always used --
+    # changing what seeds init_atmosphere_cfd would perturb ordinary "cfd" runs. The
+    # user-selected diagnostic wind model uses compute_air_temperature_diagnostic instead (a
+    # much closer match to the CFD's near-radiative-equilibrium temperature -- see that
+    # function's docstring). Humidity, precipitation, currents, and ocean temperature are all
+    # the diagnostic sweep regardless (see module docstring), fed by whichever wind is in play.
     if world.atmosphere_cfd_state is None:
         air_temperature_c = compute_air_temperature(land_temperature_c, ocean_temperature_c, is_ocean, world_xyz)
+    elif world.wind_model != "cfd":
+        air_temperature_c = compute_air_temperature_diagnostic(land_temperature_c, ocean_temperature_c, is_ocean)
     else:
         state = world.atmosphere_cfd_state
         air_temperature_c = state.resample_scalar_to_equirect(state.temperature_c, height, width)
