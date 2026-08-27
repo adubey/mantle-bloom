@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Iterator, Protocol
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from . import ellipse, geometry, mantle
@@ -427,6 +429,24 @@ def _max_extend_nodes_per_step(node_density: float) -> int:
     return max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(node_density)))
 
 
+def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.ndarray:
+    """Label each of `points_xyz` (world unit vectors) with a connected-component id, where
+    two nodes are connected if they sit within `connect_radius_rad` of each other. Used by
+    `Plate.defragment` to tell a plate that's been physically severed into two landmasses
+    (still carried as one `Plate`) from one that's merely shed a few stranded nodes -- see
+    that method. Component ids are contiguous from 0 but otherwise arbitrary (not size-
+    ordered)."""
+    n = len(points_xyz)
+    if n == 0:
+        return np.zeros(0, dtype=int)
+    pairs = cKDTree(points_xyz).query_pairs(connect_radius_rad, output_type="ndarray")
+    if len(pairs) == 0:
+        return np.arange(n)
+    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+    return labels
+
+
 class Plate(abc.ABC):
     """A plate's shared identity/motion state plus an abstract interface over however it
     represents its own terrain nodes -- `PlateWithLines` (parallel `ElevationLine`s, see
@@ -523,6 +543,67 @@ class Plate(abc.ABC):
         its own exact, pre-existing "at most one line left" definition, so that behavior is
         unchanged for it; `PlateWithMesh`/`PlateWithRTree` use this default."""
         return self.node_count() < OUTLINE_MIN_NODES_FOR_HULL
+
+    def defragment(
+        self, next_id: int, connect_radius_rad: float, min_fragment_nodes: int
+    ) -> tuple[list["Plate"], int] | None:
+        """Reconcile "one `Plate` object" with "one contiguous patch of crust."
+
+        Ordinary per-step `deform()` only ever grows/shrinks a line's *ends*, and its shrink
+        rule deliberately never deletes a line's last node (see
+        `_grow_or_shrink_line_for_deform`) -- so subduction/transform can carve a plate's
+        node cloud into two disconnected landmasses, or strand a comb of one-node rows far
+        from the plate body, and nothing notices: `maybe_split_plate` only cuts on mantle-
+        flow *disagreement*, not geometry, and two co-moving lobes never trip it.
+
+        This finds those cases directly. Connected components of this plate's nodes at
+        `connect_radius_rad` (see `node_components`); each component with at least
+        `min_fragment_nodes` nodes becomes its own plate (the largest keeps this plate's own
+        id/frame/omega/age -- see `_plates_from_node_masks`), everything smaller is dropped
+        as stranded crust.
+
+        Returns `None` -- nothing to do -- when the plate is already a single contiguous
+        patch (the overwhelmingly common case), when it has exactly one component big
+        enough to anchor a plate and no stranded nodes to shed, or when it's debris with no
+        component large enough to anchor a plate at all (left for `has_negligible_territory`
+        / `remove_defunct_plates` to prune). Otherwise returns
+        `(replacement_plates, n_new_ids_consumed)`, where `replacement_plates[0]` reuses
+        this plate's own id and `next_id, next_id + 1, ...` are consumed for the rest, in
+        descending component-size order. `next_id` is `World.next_plate_id`."""
+        points, _ = self.all_points_and_elevation()
+        if len(points) < 2:
+            return None
+
+        labels = node_components(points, connect_radius_rad)
+        component_ids, counts = np.unique(labels, return_counts=True)
+        if len(component_ids) == 1:
+            return None
+
+        # Largest component first, so it's the one that keeps this plate's identity.
+        order = np.argsort(counts)[::-1]
+        kept = [int(component_ids[i]) for i in order if counts[i] >= min_fragment_nodes]
+        dropped_nodes = len(points) - int(counts[np.isin(component_ids, kept)].sum())
+        # No component big enough to anchor a plate -- the whole thing is debris. Leave it
+        # for merge_split.remove_defunct_plates / has_negligible_territory to prune; defrag
+        # never deletes a whole plate itself (that path is fragile against small synthetic
+        # plates and adds nothing the negligible-territory check doesn't already do).
+        if not kept:
+            return None
+        if len(kept) == 1 and dropped_nodes == 0:
+            return None
+
+        n_new_ids = len(kept) - 1
+        masks = [labels == cid for cid in kept]
+        ids = [self.plate_id, *range(next_id, next_id + n_new_ids)]
+        return self._plates_from_node_masks(masks, ids), n_new_ids
+
+    def _plates_from_node_masks(self, masks: list[np.ndarray], ids: list[int]) -> list["Plate"]:
+        """Build one plate per mask in `masks` (each a boolean array over this plate's nodes
+        in `all_points_and_elevation` order), assigning `ids[k]` to `masks[k]`'s plate --
+        `ids[0]` is always this plate's own id, so the first mask should be the one that
+        keeps this plate's identity. Representation-specific; only `PlateWithLines`
+        implements it (the one representation `defragment` is wired up for)."""
+        raise NotImplementedError
 
     @abc.abstractmethod
     def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
@@ -860,11 +941,23 @@ class PlateWithLines(Plate):
         self._invalidate_bounding_polygon()
 
     def has_negligible_territory(self) -> bool:
-        """This representation's own exact, pre-existing definition (unchanged from before
-        `Plate.has_negligible_territory` existed) -- "no real remaining territory" means
-        reduced to at most one line, not the generic node-count floor the base class falls
-        back to for a representation without a row structure of its own."""
-        return len(self.lines) <= 1
+        """"No real remaining territory" for this representation. Two cases:
+
+        - At most one non-empty line (the original definition -- a sliver along one
+          latitude).
+        - A *comb of stubs*: many lines but barely more than one node each on average
+          (< 2). Ordinary `deform()` shrinks a line only from its ends and never deletes a
+          line's last node, so a heavily-subducted oceanic plate decays into 100+ rows of
+          one stranded node apiece -- a high line count masking that there's no 2D patch
+          left. The original `len(self.lines) <= 1` never caught this; the ratio test is
+          scale-free (same at any node_density) and sits far below any legitimate plate
+          (whose rows carry tens of nodes -- `maybe_split_plate`/defrag both floor a real
+          plate well above this). The base-class node-count floor still covers
+          `PlateWithMesh`/`PlateWithRTree`."""
+        nonempty = [line for line in self._lines if len(line) > 0]
+        if len(nonempty) <= 1:
+            return True
+        return sum(len(line) for line in nonempty) < 2.0 * len(nonempty)
 
     def _invalidate_bounding_polygon(self) -> None:
         super()._invalidate_bounding_polygon()
@@ -1151,6 +1244,37 @@ class PlateWithLines(Plate):
         plate_a = PlateWithLines(plate_id=self.plate_id, frame=self._frame.copy(), crust_type=self._crust_type, lines=lines_a)
         plate_b = PlateWithLines(plate_id=new_id, frame=self._frame.copy(), crust_type=self._crust_type, lines=lines_b)
         return plate_a, plate_b
+
+    def _plates_from_node_masks(self, masks: list[np.ndarray], ids: list[int]) -> list["Plate"]:
+        """Partition this plate's lines by per-node membership (same `ElevationLine.masked`
+        machinery as `split`, so every `OPTIONAL_FIELDS` value survives exactly -- no
+        resample). `ids[0]` keeps this plate's own id, omega, and age; the rest are fresh
+        fragments carrying a copy of this plate's omega (they were co-moving with it, which
+        is exactly why `maybe_split_plate` never separated them) and age 0. `type(self)` so a
+        `LithospherePlate` stays a `LithospherePlate`."""
+        plates: list["Plate"] = []
+        for k, (mask, pid) in enumerate(zip(masks, ids)):
+            offset = 0
+            lines: list[ElevationLine] = []
+            for line in self._lines:
+                n = len(line)
+                sub = mask[offset : offset + n]
+                offset += n
+                if np.any(sub):
+                    lines.append(line.masked(sub))
+            if not lines:
+                continue
+            plates.append(
+                type(self)(
+                    plate_id=pid,
+                    frame=self._frame.copy(),
+                    crust_type=self._crust_type,
+                    lines=lines,
+                    omega=self._omega.copy(),
+                    age_steps=self._age_steps if k == 0 else 0,
+                )
+            )
+        return plates
 
     def shift(self, world: "World", years: float) -> float:
         return _shift_by_rigid_rotation(self, world, years)

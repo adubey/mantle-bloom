@@ -2,7 +2,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from app import geometry, mantle, merge_split
-from app.plates import ElevationLine, PlateWithLines, line_spacing_rad
+from app.plates import ElevationLine, PlateWithLines, line_spacing_rad, node_components
 from app.world import World, generate_world, step_world
 
 
@@ -340,3 +340,125 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence():
     total_before = sum(len(l.theta) for l in plate.lines)
     total_after = plate_a.node_count() + plate_b.node_count()
     assert total_after == total_before
+
+
+# -- Geometric defragmentation --------------------------------------------------------
+#
+# defragment_plates / Plate.defragment: subduction/transform can sever one Plate's node
+# cloud into two disconnected landmasses, or strand a comb of one-node rows, and neither
+# deform() nor maybe_split_plate (which only cuts on mantle-flow disagreement) notices.
+# See test_plates.py for the plate-level mechanics; these cover the whole-world pass and
+# how apply_topology_changes wires it in.
+
+_FRAG_SPACING_RAD = line_spacing_rad(1.0)
+_FRAG_CONNECT_RAD = merge_split.DEFRAG_CONNECT_RADIUS_MULT * _FRAG_SPACING_RAD
+
+
+def _lobed_plate(lobes, plate_id, rows=12, per_row=8, **plate_kwargs):
+    """A `PlateWithLines` (identity frame) whose nodes form one connected blob per entry in
+    `lobes` -- each a theta centre (rad) or `(centre, nodes_per_row)` tuple, spaced far
+    enough apart to read as separate components at `_FRAG_CONNECT_RAD`. See test_plates.py's
+    identically-named helper."""
+    lines = []
+    for r in range(rows):
+        chunks = []
+        for lobe in lobes:
+            centre, count = lobe if isinstance(lobe, tuple) else (lobe, per_row)
+            chunks.append(centre + np.arange(count) * _FRAG_SPACING_RAD)
+        theta = np.concatenate(chunks)
+        lines.append(ElevationLine(phi=r * _FRAG_SPACING_RAD, theta=theta, elevation=np.zeros(len(theta))))
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", lines=lines, **plate_kwargs)
+
+
+def _single_component(plate):
+    points, _ = plate.all_points_and_elevation()
+    return len(np.unique(node_components(points, _FRAG_CONNECT_RAD))) == 1
+
+
+def test_defragment_plates_splits_a_severed_plate_and_consumes_a_fresh_id():
+    severed = _lobed_plate([(0.0, 10), (0.6, 6)], plate_id=0)
+    intact = _lobed_plate([2.0], plate_id=1)
+    world = World(seed=0, plates=[severed, intact], next_plate_id=2, node_density=1.0)
+
+    events = merge_split.defragment_plates(world)
+
+    assert world.next_plate_id == 3
+    assert sorted(p.plate_id for p in world.plates) == [0, 1, 2]
+    assert all(_single_component(p) for p in world.plates)
+    assert any("fragmented into disconnected landmasses" in e and "plate(s) 2" in e for e in events)
+
+
+def test_defragment_plates_sheds_stranded_nodes_and_logs_it():
+    plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=0)  # 12 stranded nodes, below the floor
+    before = plate.node_count()
+    world = World(seed=0, plates=[plate], next_plate_id=1, node_density=1.0)
+
+    events = merge_split.defragment_plates(world)
+
+    assert world.next_plate_id == 1  # nothing promoted to a new plate
+    assert [p.plate_id for p in world.plates] == [0]
+    assert world.plates[0].node_count() == before - 12
+    assert events == ["Plate 0 shed 12 stranded nodes."]
+
+
+def test_defragment_plates_leaves_a_contiguous_world_untouched():
+    world = World(
+        seed=0,
+        plates=[_lobed_plate([0.0], plate_id=0), _lobed_plate([2.0], plate_id=1)],
+        next_plate_id=2,
+        node_density=1.0,
+    )
+    originals = list(world.plates)
+
+    assert merge_split.defragment_plates(world) == []
+    assert world.plates == originals  # same objects, not rebuilt
+    assert world.next_plate_id == 2
+
+
+def test_defragment_plates_clears_collision_progress_touching_a_vanished_plate():
+    # plate 5 is shed down to one lobe (no split, keeps its id); plate 7 is all debris and
+    # untouched here. A stale key that names a plate id no longer in world.plates is dropped.
+    shed = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=5)
+    world = World(seed=0, plates=[shed], next_plate_id=6, node_density=1.0)
+    world.collision_progress = {(5, 7): 3.0e6, (2, 5): 1.0e6}  # 7 and 2 aren't live
+
+    merge_split.defragment_plates(world)
+
+    assert world.collision_progress == {}
+
+
+def test_apply_topology_changes_runs_defragment_only_on_cadence():
+    def severed_world(steps_taken):
+        w = World(seed=0, plates=[_lobed_plate([(0.0, 10), (0.6, 6)], plate_id=0)], next_plate_id=1, node_density=1.0)
+        w.steps_taken = steps_taken
+        return w
+
+    off_cadence = severed_world(steps_taken=merge_split.DEFRAG_INTERVAL_STEPS + 1)
+    merge_split.apply_topology_changes(off_cadence, years=1.0e6)
+    assert [p.plate_id for p in off_cadence.plates] == [0]  # still one severed plate
+
+    on_cadence = severed_world(steps_taken=merge_split.DEFRAG_INTERVAL_STEPS * 3)
+    merge_split.apply_topology_changes(on_cadence, years=1.0e6)
+    assert [p.plate_id for p in on_cadence.plates] == [0, 1]
+    assert all(_single_component(p) for p in on_cadence.plates)
+
+
+def test_apply_topology_changes_drops_a_defrag_debris_plate_via_the_territory_check():
+    # A comb of one-node rows in three disconnected clusters: no component is big enough to
+    # anchor a plate, so defragment_plates declines -- then the comb-of-stubs branch of
+    # has_negligible_territory removes the whole thing.
+    stub_lines = []
+    for cluster, centre in enumerate((0.0, 0.6, 1.2)):
+        for r in range(10):
+            phi = (cluster * 20 + r) * _FRAG_SPACING_RAD
+            stub_lines.append(ElevationLine(phi=phi, theta=np.array([centre]), elevation=np.zeros(1)))
+    debris = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=stub_lines)
+    assert debris.has_negligible_territory()
+    healthy = _lobed_plate([2.0], plate_id=1)
+    world = World(seed=0, plates=[debris, healthy], next_plate_id=2, node_density=1.0)
+    world.steps_taken = merge_split.DEFRAG_INTERVAL_STEPS
+
+    events = merge_split.apply_topology_changes(world, years=1.0e6)
+
+    assert [p.plate_id for p in world.plates] == [1]
+    assert any("no land left" in e for e in events)

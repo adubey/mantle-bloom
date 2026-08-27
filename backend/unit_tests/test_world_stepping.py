@@ -37,6 +37,17 @@ def test_generate_world_logs_a_generation_event():
     assert "8 plates" in message and "3 continental" in message
 
 
+def test_step_world_advances_the_step_counter():
+    # steps_taken drives merge_split.py's defragmentation cadence (see DEFRAG_INTERVAL_STEPS)
+    # -- one increment per step_world call regardless of years, since that pass tracks
+    # accumulated topology drift, not elapsed time.
+    world = generate_world(seed=10, num_plates=8)
+    assert world.steps_taken == 0
+    step_world(world, years=1_000_000)
+    step_world(world, years=50_000)
+    assert world.steps_taken == 2
+
+
 def test_step_world_at_doubled_climate_density_does_not_crash_and_uses_the_finer_grid():
     # End-to-end: erosion.py (every step) and main.py's controls route both compute climate
     # against world.climate_density -- this confirms that actually happens, not just that

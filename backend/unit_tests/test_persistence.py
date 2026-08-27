@@ -36,6 +36,7 @@ def test_round_trip_preserves_state_only_a_step_would_populate():
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
 
     assert loaded.elapsed_years == world.elapsed_years
+    assert loaded.steps_taken == world.steps_taken == 2
     assert loaded.collision_progress == world.collision_progress
     assert loaded.volcanic_field_plate_ids == world.volcanic_field_plate_ids
     assert loaded.events == world.events
@@ -45,6 +46,17 @@ def test_round_trip_preserves_state_only_a_step_would_populate():
         assert np.allclose(loaded.climate_cache.elevation_m, world.climate_cache.elevation_m)
     if world.hydrology_cache is not None:
         assert np.allclose(loaded.hydrology_cache.elevation, world.hydrology_cache.elevation)
+
+
+def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
+    # World.steps_taken is a new field; a pickle from before it existed carries no such key.
+    # A plain-int dataclass default is a class attribute, so the load still succeeds and
+    # reads 0 -- see World.steps_taken's own comment.
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["steps_taken"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.steps_taken == 0
 
 
 def test_loading_garbage_bytes_raises():
