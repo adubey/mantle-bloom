@@ -286,7 +286,8 @@ _HUMIDITY_STOP_RGB = np.array(
     dtype=float,
 )
 
-# Dry (tan) -> wet (dark blue), mm/year. climate.py's precipitation_mm typically runs 0-2000+.
+# Dry (tan) -> wet (dark blue), mm/year. climate.py's precipitation_mm typically runs 0-2000
+# over most land, up to ~3400 in the ITCZ convergence belt (see compute_moisture_flux_convergence).
 # Stops scaled 2x from an earlier 0-3000 range so the legend's max reads 6000, keeping the
 # same relative color distribution rather than just extending the darkest stop's clamp range.
 _PRECIPITATION_STOP_MM = np.array([0, 500, 1200, 2400, 4000, 6000], dtype=float)
