@@ -198,6 +198,38 @@ def test_precipitation_increases_with_humidity_and_orographic_lift():
     assert with_lift[0] > no_lift[0]
 
 
+def test_moisture_flux_convergence_positive_where_wind_converges_negative_where_it_diverges():
+    # A meridional wind that reverses sign across the middle row -- northerly (v < 0) in the
+    # north, southerly (v > 0) in the south -- piles moisture up along the seam (convergence)
+    # and drains it away from the poleward edges (divergence), the ITCZ / subtropical-high
+    # pattern the real Hadley cells produce.
+    height, width = 40, 80
+    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
+    humidity = np.ones((height, width))
+    wind_u = np.zeros((height, width))
+    rows = np.arange(height)[:, None]
+    wind_v = np.where(rows < height // 2, -5.0, 5.0) * np.ones((1, width))
+
+    mfc = climate.compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg)
+    mid = height // 2
+    assert mfc[mid].mean() > 0.0  # converging along the reversal seam
+    assert mfc[2].mean() < 0.0 and mfc[-3].mean() < 0.0  # diverging at the poleward edges
+
+
+def test_precipitation_convergence_adds_rain_and_divergence_suppresses_it():
+    humidity = np.full((1, 1), 0.6)
+    orographic = np.zeros((1, 1))
+    baseline = climate.compute_precipitation(humidity, orographic)
+
+    converging = climate.compute_precipitation(humidity, orographic, np.full((1, 1), 0.4))
+    diverging = climate.compute_precipitation(humidity, orographic, np.full((1, 1), -0.4))
+    assert converging[0, 0] > baseline[0, 0]
+    assert diverging[0, 0] < baseline[0, 0]
+    # The divergence term only scales the humidity baseline down -- it can't drive rainfall
+    # negative however strong the subsidence.
+    assert climate.compute_precipitation(humidity, orographic, np.full((1, 1), -100.0))[0, 0] >= 0.0
+
+
 def test_air_temperature_pulled_toward_nearby_ocean_over_far_inland():
     from app import geometry
 

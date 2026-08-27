@@ -923,9 +923,10 @@ CFD state's own equilibrium relaxation target, computed the same way). Ocean cur
 surface temperature, humidity, and precipitation are all per-call diagnostics too: the
 shallow-water *ocean* solver had no stable operating point on this grid and was retired
 (`compute_ocean_currents` + `advect_ocean_temperature` run here every step instead, fed by the
-CFD wind), and the CFD atmosphere's own humidity/precipitation had no orographic-lift or
-lake/river/vegetation term and produced a near-zero, uncalibrated rainfall field that starved
-erosion and hydrology. The precipitation sweep is at steps 9-10 below. Rivers, lakes, and
+CFD wind), and the CFD atmosphere's own humidity/precipitation had no orographic-lift,
+moisture-convergence, or lake/river/vegetation term and produced a near-zero, uncalibrated
+rainfall field that starved erosion and hydrology. The precipitation sweep is at steps 9-10
+below. Rivers, lakes, and
 vegetation feed back into humidity here (see
 step 9 and "Moisture recycling") -- the one place this module reaches outside its own fixed
 grid, into the persisted node fields hydrology.py/erosion.py/biomes.py already maintain. The
@@ -1078,8 +1079,20 @@ first and closing the loop only for the final consumer-facing fields:
    from before -- air moving slower through rough terrain loses proportionally more moisture
    to mixing independent of the distance it covered.
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
-    windward-slope moisture dump, from wind blowing up-elevation) -- no zonal
-    latitude-climatology baseline (equator/mid-latitude wet bands), cut deliberately.
+    windward-slope moisture dump, from wind blowing up-elevation) + a **Hadley/Ferrel
+    moisture-flux convergence** term (`compute_moisture_flux_convergence`): the
+    metric-correct spherical divergence `-div(humidity * wind)` of the CFD wind field,
+    smoothed and blended toward its own per-latitude-row mean (`MFC_ZONAL_COHERENCE`) so the
+    wet/dry belts read as continuous bands. Converging moisture-bearing wind adds rainfall
+    (the ITCZ where the two hemispheres' trades meet, the ~50-65 deg sub-polar front);
+    diverging wind multiplies the humidity baseline *down* (the subtropical highs at ~15-35
+    deg, the poles under the polar cells). This is the model's zonal precipitation
+    climatology -- but emergent from the winds, not a hardcoded function of latitude, so the
+    bands shift and distort with the circulation (a supercontinent, an off-centre landmass, a
+    monsoon dragging the ITCZ poleward over a summer continent). The convergence bonus is
+    capped (`MFC_CONVERGENCE_MAX_Q`) for the same reason the humidity sweep is capped at
+    `MAX_EVAPORATION_CEILING`: to keep the precipitation -> rainforest -> transpiration ->
+    humidity recycling loop from running away along an equatorial forest belt.
     Feeds erosion and hydrology (see [Erosion](#erosion) and [Hydrology](#hydrology)), and
     -- one step later, via the moisture-recycling source above -- itself.
 
@@ -1127,13 +1140,14 @@ step (consuming its precipitation/temperature output) -- climate.py's land-surfa
 necessarily a same-step stand-in sized from the persisted channel_depth instead, not the
 literal amount hydrology.py evaporates this same step.
 
-**Scope, explicitly decided.** Kept out: river outflow feeding currents, deep currents,
-precipitation's zonal climatology baseline. Included, even though richer than a one-line
-causal description: axial tilt, wind's mountain deflection/Venturi/wake, ocean currents'
-coastal deflection/land swirl/circumglobal boost/wake, and (as of the moisture-recycling
-addition above) humidity's evapotranspiration term and lake/river climate influence --
-implemented in full, not simplified down. Dropped outright: river outflow feeding currents,
-the one river/lake/vegetation-climate coupling still not modeled.
+**Scope, explicitly decided.** Kept out: river outflow feeding currents, deep currents.
+Included, even though richer than a one-line causal description: axial tilt, wind's mountain
+deflection/Venturi/wake, ocean currents' coastal deflection/land swirl/circumglobal
+boost/wake, humidity's evapotranspiration term and lake/river climate influence, and
+precipitation's zonal wet/dry banding -- the last modelled as the moisture-flux convergence
+of the CFD wind field (step 10 above), not the hardcoded latitude climatology an earlier
+design had ruled out. All implemented in full, not simplified down. Dropped outright: river
+outflow feeding currents, the one river/lake/vegetation-climate coupling still not modeled.
 
 **Rendering.** `render_image.py`'s `CLIMATE_VIEWS` (`temperature`, `wind`, `oceanCurrents`,
 `humidity`, `precipitation`, `biome`) route to `_render_climate_view`, a separate path from

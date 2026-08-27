@@ -53,7 +53,10 @@ instead), plus -- on every call -- Ekman-based ocean currents + coastal deflecti
 wake + land swirl + circumglobal boost, convergence-based swell detection, semi-Lagrangian
 ocean-temperature advection along those currents, and evaporation-ceiling + land-surface
 moisture source + wind-driven 2D humidity advection (decaying inland at a real per-km rate,
-see MOISTURE_HALVING_DISTANCE_KM) + orographic precipitation.
+see MOISTURE_HALVING_DISTANCE_KM) + orographic precipitation + Hadley/Ferrel moisture-flux
+convergence (the ITCZ / subtropical-desert / sub-polar zonal rainfall banding, emergent from
+the CFD wind field rather than a hardcoded latitude curve -- see
+compute_moisture_flux_convergence).
 
 **Moisture recycling: rivers, lakes, and vegetation release moisture too, feeding the same
 humidity field ocean evaporation does.** The "rain in a rainforest" effect, where a wet,
@@ -70,9 +73,10 @@ transpiration, already near zero in any biome cold enough to freeze -- is zeroed
 **Out of scope** (mantle-bloom has no lakes/rivers/vegetation *state of its own* to persist
 here -- this module borrows plates.py's/biomes.py's already-persisted state above rather than
 maintaining a parallel copy): river outflow feeding currents. **Deliberately cut** (confirmed
-with the user): river outflow into currents, deep currents, and precipitation's zonal
-latitude-climatology baseline (equator/mid-latitude wet bands) -- precipitation here is purely
-a function of humidity and orographic lift.
+with the user): river outflow into currents, and deep currents. Precipitation's zonal wet/dry
+banding (ITCZ, subtropical deserts, sub-polar fronts) *is* modelled -- as the moisture-flux
+convergence of the CFD wind field (`compute_moisture_flux_convergence`), so the bands move
+with the winds, rather than as a hardcoded function of latitude.
 
 **Pipeline order.** `wind` below is the one-time bootstrap step (an ordinary call resamples
 the atmosphere CFD state instead); everything downstream of it runs every call:
@@ -81,8 +85,8 @@ wind (bootstrap: from the *baseline* combined surface temperature; ordinary: CFD
 ocean currents (from wind) -> ocean swells (from currents) -> final ocean temperature
 (baseline advected along currents) -> air temperature (bootstrap: baseline moderated toward
 the nearest-ocean temperature; ordinary: CFD state) -> humidity (evaporation from final ocean
-temperature, advected by wind) -> precipitation (from humidity + wind-over-mountains). See
-`compute_climate` for the concrete call order.
+temperature, advected by wind) -> precipitation (from humidity + wind-over-mountains +
+moisture-flux convergence). See `compute_climate` for the concrete call order.
 """
 
 from __future__ import annotations
@@ -843,6 +847,61 @@ OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
 PRECIP_HUMIDITY_COEFFICIENT_MM = 1500.0
 OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 
+# --- Hadley/Ferrel moisture-flux convergence: the zonal wet/dry banding of the general
+# circulation, applied on top of the humidity baseline + orographic lift above.
+#
+# This is the model's zonal precipitation climatology -- the ITCZ wet belt where the two
+# hemispheres' trade winds meet and rise, the subtropical dry belts (~15-35 deg) under the
+# descending branch of the Hadley cells, the damp sub-polar belt (~50-65 deg) along the
+# Ferrel/polar-easterly convergence, and the dry poles under the polar cells. Unlike the
+# hardcoded latitude curve an earlier design rejected, it is *derived from the CFD wind
+# field's own moisture-flux divergence* (`compute_moisture_flux_convergence`), so the bands
+# move and distort with the winds: a supercontinent, an off-centre landmass, a different
+# axial tilt, or monsoon-scale convergence all pull the wet/dry belts around the way they do
+# on a real planet, rather than staying pinned to fixed parallels.
+#
+# MFC_COLLECTION_LENGTH_KM: the horizontal scale over which a column's converging moisture
+# flux is gathered before it precipitates -- turns the per-km divergence into a
+# humidity-equivalent quantity (then non-dimensionalized by MERIDIONAL_BASE_SPEED, the
+# planetary wind scale the rest of this module is tuned against). A few hundred km, same
+# order as MOISTURE_HALVING_DISTANCE_KM.
+MFC_COLLECTION_LENGTH_KM = 320.0
+# The instantaneous divergence of the CFD wind is patchy -- real rainfall climatology is far
+# more zonally coherent (the ITCZ is a continuous belt, not a string of blobs). Blend each
+# cell's local convergence with its own latitude row's mean by this weight: 0 = purely local,
+# 1 = a pure function of latitude. Kept below 1 so monsoon-scale departures (converging flow
+# dragged poleward over a summer continent, a dry slot in a rain shadow) still register --
+# the row mean itself also shifts when a continent distorts the circulation, so even the
+# coherent part stays wind-derived, not a fixed parallel.
+MFC_ZONAL_COHERENCE = 0.65
+# Converging moisture flux adds rainfall on top of the humidity baseline, in the same
+# humidity-equivalent units (x PRECIP_HUMIDITY_COEFFICIENT_MM for mm). The cap is the load-
+# bearing one: it bounds how much the ITCZ can pile on top of the baseline, keeping the
+# precipitation -> rainforest -> transpiration -> humidity recycling loop (see
+# VEGETATION_RECYCLING_FRACTION) from running away along a continent-spanning equatorial
+# forest belt -- the same failure mode the MAX_EVAPORATION_CEILING cap on the humidity sweep
+# itself guards against.
+MFC_CONVERGENCE_GAIN = 2.2
+MFC_CONVERGENCE_MAX_Q = 0.85
+# Diverging (subsiding) air instead suppresses the humidity-baseline rainfall -- sinking air
+# retains its moisture rather than raining it out. A multiplicative factor, bounded so even
+# the core of a subtropical high keeps some rain (real subtropical deserts are dry, not
+# rainless). Orographic lift is deliberately *not* suppressed here: a forced ascent up a
+# windward slope rains out regardless of the large-scale subsidence around it.
+MFC_SUBSIDENCE_GAIN = 4.0
+MFC_SUBSIDENCE_MAX_SUPPRESSION = 0.72
+# Jacobi smoothing on the divergence field before use -- the CFD wind carries mesoscale
+# noise (mountain deflection, the eta/thermal term) that a raw divergence turns into
+# salt-and-pepper speckle, and the trade-wind reversal at the equator is near-discontinuous,
+# so an unsmoothed convergence is a one-cell spike rather than a ~5 deg belt. Unlike
+# MOUNTAIN_GRADIENT_SMOOTHING_ITERATIONS (a fixed pass count, whose real radius shrinks at
+# higher density), this holds a fixed *real-world* smoothing radius: a box blur's radius
+# grows as sqrt(passes) * cell_size, so the pass count scales with the square of the grid's
+# cell count relative to the reference (`_mfc_smoothing_passes`). ~3 passes at the reference
+# resolution -> a ~5 deg-wide ITCZ at any World.climate_density, for ~30-70 ms of extra
+# per-call cost at the finer densities.
+MFC_SMOOTHING_REFERENCE_PASSES = 3
+
 # Moisture recycling: lake/river evaporation and vegetation transpiration, all added as a
 # local land-surface source alongside ocean cells' own evap_ceiling -- see module docstring.
 # Reference depths pick the point at which a lake/river reads as "big enough to evaporate at
@@ -1125,11 +1184,67 @@ def compute_humidity(
     return humidity, orographic
 
 
-def compute_precipitation(humidity: np.ndarray, orographic_dump: np.ndarray) -> np.ndarray:
-    """Purely a function of humidity and orographic lift (wind carrying damp air over
-    mountains) -- no zonal latitude-climatology baseline, cut per the user's own
-    description."""
-    return PRECIP_HUMIDITY_COEFFICIENT_MM * humidity + OROGRAPHIC_PRECIPITATION_COEFFICIENT * PRECIP_HUMIDITY_COEFFICIENT_MM * orographic_dump
+def _mfc_smoothing_passes(width: int) -> int:
+    """Box-blur pass count that holds a fixed real-world smoothing radius across resolutions
+    -- blur radius grows as sqrt(passes) * cell_size, so passes scale with (cells)^2. See
+    MFC_SMOOTHING_REFERENCE_PASSES."""
+    return max(2, round(MFC_SMOOTHING_REFERENCE_PASSES * (width / _REFERENCE_WIDTH) ** 2))
+
+
+def compute_moisture_flux_convergence(
+    humidity: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, lat_deg: np.ndarray
+) -> np.ndarray:
+    """`-div(humidity * wind)` as a dimensionless, humidity-equivalent field: positive where
+    the moisture-bearing wind converges (air and its moisture pile up, rise, and rain out --
+    the ITCZ, the sub-polar front), negative where it diverges (the subtropical highs, the
+    poles). See the `MFC_*` constants for how this feeds `compute_precipitation`.
+
+    A metric-correct spherical divergence, `1/(a cos phi) * [d(qu)/dlambda + d(qv cos phi)/
+    dphi]`, evaluated with this module's usual longitude-wrapping centered differences and
+    normalized to per-km by the real cell spacing -- so it's resolution-invariant (a raw
+    per-cell difference would not be), and the meridian-convergence term (`d cos phi / dphi`)
+    alone supplies the right dry-pole signal even where the zonal wind profile is flat.
+    Non-dimensionalized by `MERIDIONAL_BASE_SPEED` (the planetary wind scale) and scaled by
+    `MFC_COLLECTION_LENGTH_KM`, smoothed (`_mfc_smoothing_passes`, a fixed real-world radius)
+    to shed the CFD wind's mesoscale speckle and widen the near-discontinuous equatorial
+    convergence into a ~5 deg belt, then blended toward its own per-latitude-row mean
+    (`MFC_ZONAL_COHERENCE`) so the wet/dry belts read as continuous bands rather than a string
+    of blobs -- while a partial local weight keeps monsoon-scale departures visible."""
+    height, width = humidity.shape
+    lat_grid = np.radians(np.repeat(lat_deg[:, None], width, axis=1))
+    cos_lat = np.clip(np.cos(lat_grid), 0.15, 1.0)
+
+    qu = humidity * wind_u
+    qv = humidity * wind_v
+    dqu_dlon, _ = _centered_gradient(qu)
+    _, dqvcos_dlat = _centered_gradient(qv * cos_lat)  # northward-positive, per row-step
+
+    dlon = 2.0 * np.pi / width
+    dlat = np.pi / height
+    divergence_per_km = (dqu_dlon / dlon + dqvcos_dlat / dlat) / (cos_lat * plates.PLANET_RADIUS_KM)
+    convergence_q = _smooth_field(-divergence_per_km * MFC_COLLECTION_LENGTH_KM / MERIDIONAL_BASE_SPEED, _mfc_smoothing_passes(width))
+    zonal_mean = convergence_q.mean(axis=1, keepdims=True)
+    return (1.0 - MFC_ZONAL_COHERENCE) * convergence_q + MFC_ZONAL_COHERENCE * zonal_mean
+
+
+def compute_precipitation(
+    humidity: np.ndarray, orographic_dump: np.ndarray, moisture_flux_convergence: np.ndarray | None = None
+) -> np.ndarray:
+    """Humidity baseline + orographic lift (wind carrying damp air over mountains) + the
+    Hadley/Ferrel moisture-flux convergence term (`moisture_flux_convergence`, from
+    `compute_moisture_flux_convergence`): converging moisture-bearing wind adds rainfall (the
+    ITCZ, the sub-polar belt), diverging wind suppresses the humidity baseline (subtropical
+    highs, the poles). `moisture_flux_convergence=None` reproduces the earlier
+    humidity+orographic-only field -- for callers/tests exercising this in isolation."""
+    baseline = PRECIP_HUMIDITY_COEFFICIENT_MM * humidity
+    orographic = OROGRAPHIC_PRECIPITATION_COEFFICIENT * PRECIP_HUMIDITY_COEFFICIENT_MM * orographic_dump
+    if moisture_flux_convergence is None:
+        return baseline + orographic
+    converging = np.clip(moisture_flux_convergence, 0.0, None)
+    diverging = np.clip(-moisture_flux_convergence, 0.0, None)
+    convergence_rain = PRECIP_HUMIDITY_COEFFICIENT_MM * np.minimum(MFC_CONVERGENCE_GAIN * converging, MFC_CONVERGENCE_MAX_Q)
+    subsidence = 1.0 - np.minimum(MFC_SUBSIDENCE_GAIN * diverging, MFC_SUBSIDENCE_MAX_SUPPRESSION)
+    return baseline * subsidence + orographic + convergence_rain
 
 
 # ---------------------------------------------------------------------------------------
@@ -1219,7 +1334,8 @@ def compute_climate(
             is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
             lake_depth_m, channel_depth_m, vegetation_source,
         )
-        precipitation_mm = compute_precipitation(humidity, orographic_dump)
+        moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg)
+        precipitation_mm = compute_precipitation(humidity, orographic_dump, moisture_flux_convergence)
 
     display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
     slope = biomes.grid_slope(elevation_m, lat_deg)
