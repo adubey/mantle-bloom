@@ -1048,11 +1048,25 @@ RELIEF_ELEVATION_RANGE_M = 6000.0
 # as a continuous true-color image rather than a legible data mosaic (Biome/Temperature/etc.
 # lean into their own hard cell edges -- a viewer needs to tell one cell's exact color from
 # its neighbor's). A light post-fill Gaussian blur softens those cell-edge jaggies into
-# smooth coastlines/biome boundaries -- cheap anti-aliasing, in the same "approximate cue
-# over an expensive exact one" spirit as biomes.biome_relative_shade_factor's own tiling
-# above -- scaled by pixel_scale so it looks the same relative amount of soft at any requested
-# resolution. Applied before rivers are drawn so their own lines stay crisp on top.
+# smooth coastlines/biome boundaries -- cheap anti-aliasing, scaled by pixel_scale so it looks
+# the same relative amount of soft at any requested resolution. Applied before rivers are drawn
+# so their own lines stay crisp on top, and only ever to the RGB channels -- the alpha id
+# buffer (see COMBINED_LAKE_ID_CODE below) is left un-blurred so biome ids stay exact.
 COMBINED_BLUR_RADIUS_PX = 1.0
+
+# Combined's land shading now spans a wide brightness range (see biomes.BIOME_SHADE_AMPLITUDE)
+# and, near peaks, blends toward the elevation gradient on top of that -- far too much color
+# spread for the frontend to still tell which biome a land pixel is from its RGB alone. So the
+# per-pixel biome id rides in the render's *alpha* channel instead: alpha = 255 - code, where
+# code is 0 for ocean / unclassified, biome_id + 1 (1..len(BIOME_NAMES)) for a land biome
+# cell, or one of the two overlay codes below for lake / glacier cover. frontend/src/
+# legendData.ts mirrors this mapping by hand (same precedent as its BIOME_RGB_ENTRIES) and
+# MapCanvas.tsx reads the id straight from alpha -- exact, no RGB tolerance match -- then
+# resets alpha to opaque before display (the small 237..255 spread is a data channel, never
+# meant to actually composite). The alpha buffer is filled at cell resolution and left
+# un-blurred (unlike the RGB image) so ids stay crisp at biome boundaries.
+COMBINED_LAKE_ID_CODE = len(biomes.BIOME_NAMES) + 1
+COMBINED_GLACIER_ID_CODE = len(biomes.BIOME_NAMES) + 2
 
 
 def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -1060,12 +1074,18 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     elevation_colors, the same gradient the Elevation view itself uses) -- an approximation
     of what the planet would look like in true color from orbit, on the same fine grid the
     Biome view uses (see BIOME_GRID_HEIGHT/WIDTH and _biome_fields). Land color is first
-    shaded by each cell's elevation *rank among other cells of the same biome* for a relief
-    cue that still shows up even for biomes confined to a narrow absolute elevation band (see
-    biomes.biome_relative_shade_factor), then blended toward that same hypsometric shade at
-    high elevation for a further cue at real peaks (see RELIEF_BLEND_MAX); lakes/glaciers are
-    overlaid the same way the Elevation view itself draws them, and rivers are drawn on top
-    the same way too (see _draw_rivers), all at this grid's own resolution."""
+    shaded by a continuous ramp over each cell's elevation *rank among other cells of the same
+    biome* -- a wide shaded-relief swing that still shows up even for biomes confined to a
+    narrow absolute elevation band (see biomes.biome_relative_shade_factor) -- then blended
+    toward that same hypsometric shade at high elevation for a further cue at real peaks (see
+    RELIEF_BLEND_MAX); lakes/glaciers are overlaid the same way the Elevation view itself
+    draws them, and rivers are drawn on top the same way too (see _draw_rivers), all at this
+    grid's own resolution.
+
+    Output is RGBA: the alpha channel carries a per-pixel biome/lake/glacier id (see
+    COMBINED_LAKE_ID_CODE) so the frontend's click-to-highlight can identify a land cell
+    despite the wide shaded-relief color spread. Alpha is a data channel, not real
+    transparency -- the client resets it to opaque before display."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1088,7 +1108,8 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     blend = (relief_t * RELIEF_BLEND_MAX)[:, None]
     land_rgb = shaded_biome_rgb * (1 - blend) + terrain_rgb * blend
 
-    colors = np.where(is_ocean.reshape(-1)[:, None], terrain_rgb, land_rgb)
+    flat_ocean = is_ocean.reshape(-1)
+    colors = np.where(flat_ocean[:, None], terrain_rgb, land_rgb)
     is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
     if np.any(is_lake):
         colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=float), colors)
@@ -1097,13 +1118,26 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
+    # Per-cell biome id -> alpha (see COMBINED_LAKE_ID_CODE's comment). Ocean/Intertidal both
+    # render via the elevation gradient, not a biome color, so they carry no id.
+    id_code = np.where(flat_ocean, 0, biome_ids + 1)
+    id_code = np.where(is_lake, COMBINED_LAKE_ID_CODE, id_code)
+    id_code = np.where(is_glacier, COMBINED_GLACIER_ID_CODE, id_code)
+    cell_alpha = (255 - id_code).astype(np.uint8)
+
     centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
         lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
     )
     _fill_rects(pixels, centers, half_w, half_h, colors)
 
+    # Filled at cell resolution and left un-blurred so biome ids stay crisp at boundaries;
+    # gaps between cells keep alpha 255 (code 0), same as ocean.
+    alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
+    _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
+
     image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=COMBINED_BLUR_RADIUS_PX * pixel_scale))
     image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
 
     return _encode_image(image)
 
