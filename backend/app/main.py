@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
-from . import climate, coastline, geodesic, geometry, hydrology, lakes, persistence, plates, projections, render_image, stats
+from . import biomes, climate, coastline, geodesic, geometry, hydrology, lakes, persistence, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -608,6 +608,53 @@ def plate_at(lat_deg: float, lon_deg: float) -> dict:
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
     query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
     return {"plate_id": plates.nearest_plate_id(world.plates, query_xyz)}
+
+
+@app.get("/world/sample_at")
+def sample_at(lat_deg: float, lon_deg: float) -> dict:
+    """Everything the "Elevation & Biome" view's click-to-inspect popup shows for one point
+    (also offered on the Elevation and Biome views): elevation, biome, precipitation,
+    temperature, and which plate owns it. Elevation/biome/precipitation/temperature are read
+    from the same climate grid `/world/render` and `/world/stats` already use
+    (`climate.compute_climate_cached` -- the world's own `climate_density` resolution),
+    picked by nearest grid cell; `temperature_c` is the same land-air / ocean-surface
+    composite the temperature view and biome classification use (see
+    `climate.compute_climate`). `biome` may differ from the rendered pixel right at a
+    coastline -- the Combined/Biome *renders* reclassify on a finer grid (see
+    `render_image._biome_fields`) -- but this is the canonical per-cell field every other
+    consumer reads. `plate_id` is the same nearest-node hit-test as `/world/plate_at`. The
+    client unprojects its click through the active view rotation to a true lat/lon first,
+    same as `/world/plate_at`, so this endpoint never needs to know about rotation. `400`
+    for non-finite input, `404` if no world has been generated yet."""
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    with _world_lock:
+        fields = climate.compute_climate_cached(world)
+        query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+        plate_id = plates.nearest_plate_id(world.plates, query_xyz)
+    height = fields.lat_deg.shape[0]
+    width = fields.lon_deg.shape[0]
+    # Invert climate._build_grid's cell centering: row 0 spans the north pole, column 0 the
+    # antimeridian, columns wrap.
+    row = int(np.clip(round((90.0 - lat_deg) * height / 180.0 - 0.5), 0, height - 1))
+    col = int(round((lon_deg + 180.0) * width / 360.0 - 0.5)) % width
+    biome_id = int(fields.biome_ids[row, col])
+    is_ocean = bool(fields.is_ocean[row, col])
+    temperature_c = float(
+        fields.ocean_temperature_c[row, col] if is_ocean else fields.air_temperature_c[row, col]
+    )
+    return {
+        "lat_deg": lat_deg,
+        "lon_deg": lon_deg,
+        "elevation_m": float(fields.elevation_m[row, col]),
+        "is_ocean": is_ocean,
+        "biome_id": biome_id,
+        "biome": biomes.BIOME_NAMES[biome_id],
+        "temperature_c": temperature_c,
+        "precipitation_mm": float(fields.precipitation_mm[row, col]),
+        "plate_id": plate_id,
+    }
 
 
 @app.get("/world/rivers")
