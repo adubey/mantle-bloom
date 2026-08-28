@@ -77,6 +77,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import geometry, lakes
@@ -246,25 +248,28 @@ class HydrologyFields:
     # (rather than a required positional field) so every existing HydrologyFields call site
     # that predates lakes.py, including hand-built test fixtures, keeps working unchanged.
     lake_events: list[str] = field(default_factory=list)
-    # This step's final silt depth (lakes.step_lakes's own state transition, same "already the
-    # final value" character as lake_depth/glacier_depth above) -- also defaulted, see
-    # lake_events' own comment for why.
+    # Cumulative silt thickness laid down under standing water, end of this step
+    # (`prev_silt_depth + silt_deposited`). Monotonic, persisted on plates like channel_depth --
+    # now purely an informational record (a future "sediment thickness" view): lake floors are
+    # no longer measured against it, because `silt_deposited` below is folded straight into real
+    # `elevation` by erosion.py. Also defaulted, see lake_events' own comment for why.
     silt_depth: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # This step's per-node silt *increment* (lakes.step_lakes) -- erosion.py adds it directly
+    # into terrain `elevation`, so a lake/endorheic basin genuinely fills in over time. Always
+    # >= 0, nonzero only under standing water this step. Defaulted, same reasoning as above.
+    silt_deposited: np.ndarray = field(default_factory=lambda: np.zeros(0))
     # This step's fully-resolved depression hierarchy (lakes.step_lakes's own internal
-    # `lakes.build_lake_hierarchy` result, built from `elevation + prev_silt_depth` and
-    # already reconciled against last step's lake_depth -- see step_lakes's own docstring),
-    # exposed here rather than discarded so a caller needing basin floor/outlet/current-water
-    # info (main.py's Lake Inspector) can read it straight off these already-resolved `Lake`
-    # objects instead of rebuilding its own hierarchy from a *different* elevation+silt
-    # snapshot. Rebuilding separately is more than a wasted computation: `elevation +
-    # fields.silt_depth` (this step's own *final*, already-grown silt) is a different array
-    # than the `elevation + prev_silt_depth` this module actually resolved lake_depth against,
-    # and depression-hierarchy topology is sensitive enough to small elevation shifts that the
-    # two rebuilds can genuinely disagree on which basin merged with which -- confirmed
-    # directly as a real bug this way: a lake whose reported `outlet_elevation_m` sat *below*
-    # its own `floor_elevation_m`, from a rebuild-with-newer-silt hierarchy disagreeing with
-    # the hierarchy that had actually produced that lake's `lake_depth`. Also defaulted, same
-    # backward-compatibility reasoning as `lake_events`/`silt_depth` above.
+    # `lakes.build_lake_hierarchy` result, built from this step's `elevation` and already
+    # reconciled against last step's lake_depth -- see step_lakes's own docstring), exposed
+    # here rather than discarded so a caller needing basin floor/outlet/current-water info
+    # (main.py's Lake Inspector) can read it straight off these already-resolved `Lake` objects
+    # instead of rebuilding its own hierarchy -- which is more than a wasted computation:
+    # depression-hierarchy topology is sensitive enough to small elevation shifts (e.g.
+    # rebuilding *after* erosion has folded in this step's silt/deposition) that the two
+    # rebuilds can genuinely disagree on which basin merged with which -- confirmed directly as
+    # a real bug this way: a lake whose reported `outlet_elevation_m` sat *below* its own
+    # `floor_elevation_m`. Also defaulted, same backward-compatibility reasoning as
+    # `lake_events`/`silt_depth` above.
     lake_forest: list["lakes.Lake"] = field(default_factory=list)
     # Ice's own downhill flow target -- like flow_target, but never zeroed by is_frozen: glacial
     # ice flows via gravity/internal deformation regardless of whether this particular step is
@@ -281,9 +286,10 @@ def _gather_nodes(
     node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[Plate]]:
     """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
-    channel_depth, prior silt_depth, and whether it's ocean (elevation <= world.sea_level_m, the
-    live-adjustable sea-level convention used everywhere else in this codebase -- see
-    World.sea_level_m), concatenated, alongside the ordered list of plates that contributed
+    channel_depth, prior silt_depth, and whether it's ocean (the bare `elevation <=
+    world.sea_level_m` test -- `compute_hydrology` refines this to a connectivity-aware mask
+    once the k-NN graph exists, see `connected_ocean_mask`), concatenated, alongside the
+    ordered list of plates that contributed
     them -- same shape as erosion.py's/bathymetry.py's own _gather_nodes. channel_depth is
     read-only here (erosion.py still owns growing it) -- flow direction just needs to know
     where an established channel already is, see _compute_flow_direction. `node_cloud`, when
@@ -314,6 +320,69 @@ def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
     tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
     _, neighbor_idx = tree.query(points, k=k + 1, workers=query_workers(n))
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
+
+
+def connected_ocean_mask(
+    points: np.ndarray,
+    elevation: np.ndarray,
+    sea_level_m: float,
+    neighbor_idx: np.ndarray | None = None,
+) -> np.ndarray:
+    """Per-node bool, True only where a node is both below sea level *and* part of the world
+    ocean -- the single largest connected below-sea-level body. Found by a connected-components
+    pass (`scipy.sparse.csgraph`, same tool `plates.node_components` uses) over the k-NN graph
+    restricted to below-sea-level nodes. Every *other* below-sea-level region -- an enclosed
+    interior depression that erosion or plate deformation dropped beneath sea level without
+    ever connecting it to open water -- comes back False, so hydrology treats it as an ordinary
+    endorheic basin (rivers pool there and silt it in, see lakes.py) and biome/climate code
+    stops painting it as shallow ocean.
+
+    `neighbor_idx` (this module's own FLOW_NEIGHBOR_COUNT graph) is reused when passed, else a
+    fresh graph is built from `points`. Returns the bare `elevation <= sea_level_m` mask
+    unchanged when there are too few nodes to build a graph, or when every below-sea-level node
+    is already one connected body -- the ordinary single-ocean world, the common case.
+
+    Known limitation: a world with two genuinely separate large oceans would see the smaller
+    demoted to a giant lake. A future knob could keep every component within some fraction of
+    the largest, not only the largest itself."""
+    below = elevation <= sea_level_m
+    n = len(elevation)
+    if n == 0 or not below.any() or below.all():
+        return below
+    if neighbor_idx is None:
+        if n <= FLOW_NEIGHBOR_COUNT:
+            return below
+        neighbor_idx = _build_neighbor_graph(points)
+
+    k = neighbor_idx.shape[1]
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    keep = below[rows] & below[cols]
+    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+
+    below_idx = np.nonzero(below)[0]
+    below_labels = labels[below_idx]
+    if np.unique(below_labels).size <= 1:
+        return below  # every below-sea-level node is one connected ocean already
+    ocean_label = np.bincount(below_labels).argmax()
+    return below & (labels == ocean_label)
+
+
+def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np.ndarray) -> np.ndarray:
+    """Connectivity-aware `is_ocean` (see `connected_ocean_mask`) resampled onto arbitrary
+    `query_xyz` (any shape, trailing axis 3) from last step's `world.hydrology_cache` --
+    nearest-node, the same self-contained cKDTree resample `coastline._lake_mask_on_grid` does
+    for lake_depth (a fresh query here, not the caller's own `idx`, so it stays correct even
+    when plate topology changed between that cache and this call). `fallback_is_ocean` (a bare
+    `elevation <= sea_level_m` mask the caller already has) is returned unchanged before the
+    first step, when no hydrology cache exists yet; the result otherwise has
+    `fallback_is_ocean`'s shape."""
+    hydro = getattr(world, "hydrology_cache", None)
+    if hydro is None or len(hydro.points) == 0 or len(hydro.is_ocean) != len(hydro.points):
+        return fallback_is_ocean
+    _, idx = cKDTree(hydro.points).query(np.asarray(query_xyz).reshape(-1, 3))
+    return hydro.is_ocean[idx].reshape(fallback_is_ocean.shape)
 
 
 def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -668,10 +737,16 @@ def compute_hydrology(
         empty_f = np.zeros(n)
         return HydrologyFields(
             points, elevation, is_ocean, np.zeros((n, 0), dtype=np.int64), empty_i, empty_f, empty_f, empty_f, empty_i,
-            np.zeros(n, dtype=bool), empty_f, empty_f, plates_in_order, silt_depth=prev_silt_depth, ice_flow_target=empty_i,
+            np.zeros(n, dtype=bool), empty_f, empty_f, plates_in_order,
+            silt_depth=prev_silt_depth, silt_deposited=np.zeros(n), ice_flow_target=empty_i,
         )
 
     neighbor_idx = _build_neighbor_graph(points)
+    # `is_ocean` from _gather_nodes is the bare `elevation <= sea_level` test; refine it to
+    # "below sea level *and* connected to the world ocean" now that the k-NN graph exists, so an
+    # enclosed interior depression that dipped below sea level is routed/pooled/silted as an
+    # endorheic basin (see connected_ocean_mask) rather than treated as a vanishing ocean sink.
+    is_ocean = connected_ocean_mask(points, elevation, world.sea_level_m, neighbor_idx)
     filled_elevation, spill_target = _compute_basin_spill(elevation, is_ocean, neighbor_idx)
 
     is_frozen = temperature_at_nodes < FREEZE_POINT_C
@@ -752,9 +827,12 @@ def compute_hydrology(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
     )
-    fields.lake_depth, fields.silt_depth, fields.lake_forest, fields.lake_events = lakes.step_lakes(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, prev_silt_depth, water_deposited, years, is_frozen
+    fields.lake_depth, fields.silt_deposited, fields.lake_forest, fields.lake_events = lakes.step_lakes(
+        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, water_deposited, years, is_frozen
     )
+    # Cumulative record only (erosion.py folds `silt_deposited` into real `elevation`); kept so
+    # the persisted per-node silt_depth field stays a running total.
+    fields.silt_depth = prev_silt_depth + fields.silt_deposited
 
     # A lake, however wide it's flooded, is never itself "a river" -- excluding it (not just
     # its own former sink node, every flooded node) is what makes a river actually end at a

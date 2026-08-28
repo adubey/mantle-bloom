@@ -91,13 +91,18 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 
 # How much of a lake's own inflow settles as silt on its bed each step, in the same "spread
 # over member count" units LAKE_FILL_RATE uses for water depth -- deliberately ~100x smaller:
-# siltation is a slow, permanent process (silt_depth never erodes back away, see
-# plates.ElevationLine's own comment) compared to a lake's water level, which rises and falls
-# with ordinary season-to-season-equivalent inflow/evaporation swings every step. At this rate a
-# small, low-inflow lake plausibly silts in entirely over the tens-of-Myr span a real small lake
-# actually survives; a large, actively-flowing lake's own inflow is spread over far more
-# members, so its own silt accumulates correspondingly slower per node, matching the real-world
-# intuition that big lakes take far longer to fill in than small ones.
+# siltation is a slow, permanent process compared to a lake's water level, which rises and
+# falls with ordinary season-to-season-equivalent inflow/evaporation swings every step. At this
+# rate a small, low-inflow lake plausibly silts in entirely over the tens-of-Myr span a real
+# small lake actually survives; a large, actively-flowing lake's own inflow is spread over far
+# more members, so its own silt accumulates correspondingly slower per node, matching the
+# real-world intuition that big lakes take far longer to fill in than small ones.
+#
+# `step_lakes` returns this step's per-node silt increment (`silt_deposited`); erosion.py folds
+# it straight into real terrain `elevation` (like every other deposition pathway), so a basin
+# genuinely fills in and stays filled even if it later drains or is reclassified. This module
+# therefore builds every hierarchy from bare `elevation` -- last step's fill is already baked
+# into it -- rather than an `elevation + prev_silt_depth` effective floor.
 SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
 
 # Sentinel `_catchment_roots` result: this node's own pure-steepest-descent chain reaches the
@@ -117,22 +122,21 @@ class Lake:
     only ever consulted by `step_lakes`'s split check when `children` is non-empty.
     `max_depth`/`outlet_node_idx` start unset (`None`/`-1`) and are filled in the moment this
     lake first participates in a merge -- see this module's own docstring for why that's exactly
-    equivalent to "reaching the top of the basin." `current_water_elevation`/`is_spilling`/
-    `silt_depth` are continuity-only fields: `build_lake_hierarchy` itself always initializes
-    them to a dry, unspilled, silt-free default (`current_water_elevation = floor_elevation`);
+    equivalent to "reaching the top of the basin." `current_water_elevation`/`is_spilling`
+    are continuity-only fields: `build_lake_hierarchy` itself always initializes
+    them to a dry, unspilled default (`current_water_elevation = floor_elevation`);
     `step_lakes`'s reconciliation pass is what actually carries real values forward from the
     previous step."""
 
     lake_id: int
     members: np.ndarray  # (M,) int64 node indices: this lake's own catchment plus every descendant's
-    floor_elevation: float  # lowest elevation among members (silt-adjusted once accumulated)
+    floor_elevation: float  # lowest bare `elevation` among members (already reflects past silt fill)
     min_depth: float  # saddle elevation where `children` split apart; == floor_elevation if no children
     max_depth: float | None  # this lake's own rim -- elevation of the next merge event; None if unresolved
     children: list["Lake"] = field(default_factory=list)
     outlet_node_idx: int = -1  # member node where max_depth's merge happens; -1 while unresolved
     current_water_elevation: float = 0.0  # this lake's water surface; == floor_elevation means dry
     is_spilling: bool = False  # hysteresis: was this lake actively spilling last step
-    silt_depth: float = 0.0  # accumulated silt depth at this lake's own floor
 
 
 def _make_leaf(lake_id: int, members: list[int], elevation_list: list[float]) -> Lake:
@@ -322,7 +326,13 @@ def iter_all_lakes(roots: list[Lake]):
 
 
 def _water_balance(
-    lake: Lake, prev_level: float, water_deposited: np.ndarray, years_myr: float, is_frozen: bool, out_silt_depth: np.ndarray
+    lake: Lake,
+    prev_level: float,
+    elevation: np.ndarray,
+    water_deposited: np.ndarray,
+    years_myr: float,
+    is_frozen: bool,
+    out_silt_deposited: np.ndarray,
 ) -> float:
     """This lake's new water elevation, generalizing the old per-node `update_lakes` formula
     (hydrology.py) to a single scalar shared by every member: evaporate `prev_level`'s depth
@@ -332,19 +342,23 @@ def _water_balance(
     separate basins are merged into one lake -- spread as a level rise over the lake's own area
     (member count, the same area proxy used elsewhere in this codebase). Clipped to
     `[floor_elevation, max_depth]` (unbounded above for a closed/endorheic basin, `max_depth is
-    None`) -- note `floor_elevation`/`max_depth` are themselves already silt-adjusted by the time
-    they reach here (`step_lakes` builds the hierarchy from `elevation + prev_silt_depth`, not
-    bare elevation), so nothing here needs to know about silt except to also grow it: the same
-    inflow that grows standing water also deposits a small amount of silt on this lake's own bed
-    (`SILT_ACCUMULATION_COEFFICIENT`, ~100x smaller -- see that constant's own comment),
-    written directly into `out_silt_depth` for every member. A lake with any member currently
-    below freezing (`hydrology.FREEZE_POINT_C` -- the real 0C freezing point, colder than
-    nothing else in this codebase; deliberately *not* the much colder
-    `hydrology.GLACIER_ACCUMULATION_TEMP_C` reserved for permanent glacier accumulation, see
-    that constant's own comment) freezes solid this step -- forced to its own dry floor with no
-    silt growth either (no liquid water to carry suspended sediment), matching the old system's
-    same all-or-nothing freeze simplification generalized from one node to a lake's whole
-    connected surface."""
+    None`).
+
+    The same inflow that grows standing water also drops a small amount of sediment
+    (`SILT_ACCUMULATION_COEFFICIENT`, ~100x smaller -- see that constant's own comment) onto the
+    lake bed: written into `out_silt_deposited` as *this step's* per-node increment (erosion.py
+    folds it straight into real terrain `elevation`, see that constant's comment), spread only
+    over the members actually underwater this step (`elevation < new_level`) so a leaf's dry
+    higher catchment nodes -- which are `members` too, see the module docstring -- never get
+    raised. Clamped so one step's fill can't lift the bed past the basin rim (`max_depth`).
+
+    A lake with any member currently below freezing (`hydrology.FREEZE_POINT_C` -- the real 0C
+    freezing point, colder than nothing else in this codebase; deliberately *not* the much
+    colder `hydrology.GLACIER_ACCUMULATION_TEMP_C` reserved for permanent glacier accumulation,
+    see that constant's own comment) freezes solid this step -- forced to its own dry floor with
+    no silt growth either (no liquid water to carry suspended sediment), matching the old
+    system's same all-or-nothing freeze simplification generalized from one node to a lake's
+    whole connected surface."""
     if is_frozen:
         return lake.floor_elevation
 
@@ -356,13 +370,23 @@ def _water_balance(
     inflow = float(water_deposited[lake.members].sum())
     member_count = max(len(lake.members), 1)
     growth_depth = LAKE_FILL_RATE * inflow * years_myr / member_count
-    out_silt_depth[lake.members] += SILT_ACCUMULATION_COEFFICIENT * inflow * years_myr / member_count
 
     cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
     new_depth = carried_depth + growth_depth
     if cap_depth is not None:
         new_depth = min(new_depth, cap_depth)
-    return lake.floor_elevation + new_depth
+    new_level = lake.floor_elevation + new_depth
+
+    members = lake.members
+    wet = members[elevation[members] < new_level]
+    if len(wet) > 0:
+        silt_rise = SILT_ACCUMULATION_COEFFICIENT * inflow * years_myr / len(wet)
+        # Never lift a node's bed above this step's own water surface (sediment settles under
+        # water, it doesn't pile into the air) -- which also keeps the fill at or below the
+        # basin rim, since `new_level` is already clipped to `max_depth`.
+        room = np.clip(new_level - elevation[wet], 0.0, None)
+        out_silt_deposited[wet] += np.minimum(silt_rise, room)
+    return new_level
 
 
 def _prev_level(lake: Lake, elevation: np.ndarray, prev_lake_depth: np.ndarray) -> float:
@@ -394,7 +418,7 @@ def _resolve(
     years_myr: float,
     is_frozen: np.ndarray,
     out_lake_depth: np.ndarray,
-    out_silt_depth: np.ndarray,
+    out_silt_deposited: np.ndarray,
     events: list[str],
 ) -> float:
     """Resolves one lake (and, for a parent, implicitly its whole subtree) into this step's
@@ -429,7 +453,7 @@ def _resolve(
 
     if lake.children and not already_merged:
         child_levels = [
-            _resolve(child, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, out_lake_depth, out_silt_depth, events)
+            _resolve(child, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, out_lake_depth, out_silt_deposited, events)
             for child in lake.children
         ]
         if max(child_levels) >= lake.min_depth:
@@ -441,7 +465,7 @@ def _resolve(
         lake.current_water_elevation = max(child_levels)
         return lake.current_water_elevation
 
-    new_level = _water_balance(lake, prev_level, water_deposited, years_myr, lake_is_frozen, out_silt_depth)
+    new_level = _water_balance(lake, prev_level, elevation, water_deposited, years_myr, lake_is_frozen, out_silt_deposited)
     if lake.children and new_level < lake.min_depth:
         events.append(f"A {len(lake.members)}-node lake split back into {len(lake.children)} separate basins at elevation {lake.min_depth:.0f}m.")
         for child in lake.children:
@@ -462,39 +486,37 @@ def step_lakes(
     is_ocean: np.ndarray,
     neighbor_idx: np.ndarray,
     prev_lake_depth: np.ndarray,
-    prev_silt_depth: np.ndarray,
     water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, list[Lake], list[str]]:
     """The full per-step lake update: rebuild this step's depression hierarchy from current
-    terrain (`build_lake_hierarchy`) -- using `elevation + prev_silt_depth`, not bare
-    `elevation`, so a lake's own floor/rim already reflects everything silted in through the end
-    of last step (see `plates.ElevationLine.silt_depth`'s own comment and `_water_balance`'s) --
-    then resolve every top-level lake's own water balance (growth/evaporation/merge/split, and
-    this step's own silt growth -- see `_resolve`/`_water_balance`). Returns `(lake_depth,
-    silt_depth, forest, events)`: `lake_depth` an (N,) array aligned with `elevation` (0
-    wherever no lake reaches, exactly the same shape/meaning hydrology.py's old `update_lakes`
-    produced, for every other consumer -- render_image.py, coastline.py, erosion.py,
-    group_rivers -- to keep reading unchanged); `silt_depth` this step's updated silt array
-    (monotonically >= `prev_silt_depth` -- silt never erodes back away); `forest` this step's
-    fully-resolved `Lake` tree (each lake's own `current_water_elevation`/`is_spilling` set to
-    its outcome this step -- informational only, e.g. for a future per-lake stats view; nothing
-    in this module reads it back next step, see the module docstring for why no persistent
-    registry is needed); and `events` human-readable merge/split transition strings for the
-    caller to log (mirroring merge_split.apply_topology_changes's own pattern -- this module
-    never calls `world.log_event` directly, keeping it testable without a `World`)."""
+    terrain (`build_lake_hierarchy`, bare `elevation` -- everything silted in through the end of
+    last step is already folded into real `elevation` by erosion.py, so there's no separate
+    effective-floor offset to add), then resolve every top-level lake's own water balance
+    (growth/evaporation/merge/split, and this step's own silt drop -- see
+    `_resolve`/`_water_balance`). Returns `(lake_depth, silt_deposited, forest, events)`:
+    `lake_depth` an (N,) array aligned with `elevation` (0 wherever no lake reaches, exactly the
+    same shape/meaning hydrology.py's old `update_lakes` produced, for every other consumer --
+    render_image.py, coastline.py, erosion.py, group_rivers -- to keep reading unchanged);
+    `silt_deposited` *this step's* per-node sediment increment for erosion.py to add straight
+    into `elevation` (always >= 0, nonzero only under standing water this step); `forest` this
+    step's fully-resolved `Lake` tree (each lake's own `current_water_elevation`/`is_spilling`
+    set to its outcome this step -- informational only, e.g. for a future per-lake stats view;
+    nothing in this module reads it back next step, see the module docstring for why no
+    persistent registry is needed); and `events` human-readable merge/split transition strings
+    for the caller to log (mirroring merge_split.apply_topology_changes's own pattern -- this
+    module never calls `world.log_event` directly, keeping it testable without a `World`)."""
     n = len(elevation)
     lake_depth = np.zeros(n)
+    silt_deposited = np.zeros(n)
     if n == 0:
-        return lake_depth, np.zeros(n), [], []
+        return lake_depth, silt_deposited, [], []
 
-    effective_elevation = elevation + prev_silt_depth
-    forest = build_lake_hierarchy(effective_elevation, is_ocean, neighbor_idx)
+    forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     years_myr = years / 1_000_000.0
-    silt_depth = np.array(prev_silt_depth, dtype=float, copy=True)
 
     events: list[str] = []
     for root in forest:
-        _resolve(root, effective_elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, lake_depth, silt_depth, events)
-    return lake_depth, silt_depth, forest, events
+        _resolve(root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, lake_depth, silt_deposited, events)
+    return lake_depth, silt_deposited, forest, events

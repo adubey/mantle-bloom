@@ -198,6 +198,51 @@ def test_route_downstream_loss_fraction_evaporates_without_depositing():
     assert np.isclose(deposited.sum(), source.sum() - 1.0)
 
 
+def test_connected_ocean_mask_excludes_an_enclosed_interior_pit():
+    # 40 nodes along an arc: a wide ocean (0-14), a thick land ridge (15-27), a small
+    # sub-sea-level pocket (28-30), then more land. The ridge is far wider than the k-NN
+    # neighbour count, so no below-sea-level edge ever bridges it.
+    theta = 0.05 * np.arange(40)
+    xyz = np.stack([np.cos(theta), np.sin(theta), np.zeros_like(theta)], axis=1)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0   # the world ocean
+    elevation[28:31] = -60.0   # an enclosed interior depression
+
+    mask = hydrology.connected_ocean_mask(xyz, elevation, sea_level_m=0.0)
+
+    assert mask[0:15].all()          # the ocean is ocean
+    assert not mask[28:31].any()     # the enclosed pit is not
+    assert not mask[15:28].any() and not mask[31:].any()  # dry land never is
+
+
+def test_connected_ocean_mask_leaves_a_single_connected_ocean_untouched():
+    theta = 0.05 * np.arange(20)
+    xyz = np.stack([np.cos(theta), np.sin(theta), np.zeros_like(theta)], axis=1)
+    elevation = np.full(20, 100.0)
+    elevation[0:12] = -200.0  # one contiguous below-sea-level body
+
+    mask = hydrology.connected_ocean_mask(xyz, elevation, sea_level_m=0.0)
+    assert mask.tolist() == [True] * 12 + [False] * 8
+
+
+def test_compute_hydrology_treats_an_interior_pit_as_an_endorheic_basin_that_silts_in():
+    d = 0.05
+    theta = d * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+
+    fields = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=1_000_000)
+
+    assert fields.is_ocean[0:15].all()
+    assert not fields.is_ocean[28:31].any()  # classified land, not a vanishing ocean sink
+    # Rain routed into the closed pit pools there and drops sediment onto the wet floor.
+    assert fields.lake_depth[28:31].max() > 0.0
+    assert fields.silt_deposited[28:31].max() > 0.0
+
+
 def test_compute_hydrology_end_to_end_on_a_small_synthetic_world():
     # 12 points along a monotonically descending line, the last three underwater --
     # exercises the whole pipeline (basin-spill, flow direction, accumulation, river

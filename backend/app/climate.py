@@ -211,12 +211,14 @@ def _sample_elevation_and_crust(
     """Nearest-elevation-node resample of the *current* plate state onto the climate grid --
     same cKDTree technique render_image.py's _render_grid_arrays already uses. Returns
     (elevation_m, is_ocean, lake_depth_m, channel_depth_m), all (H, W). `is_ocean` is
-    elevation-derived (elevation <= world.sea_level_m, live-adjustable via POST
-    /world/controls -- see World.sea_level_m), *not* crust_type -- a submerged part of a
-    continental plate (anything past its shelf) is physically ocean, same as the
-    render_image.py elevation view's own hypsometric coloring already treats it, and needs the
-    same ocean-side climate treatment (evaporation source, current flow, coastal deflection)
-    as any other ocean cell. `lake_depth_m`/`channel_depth_m` are the same persisted per-node
+    elevation-derived (below world.sea_level_m, live-adjustable via POST /world/controls -- see
+    World.sea_level_m) *and* connectivity-filtered to the world ocean
+    (hydrology.connected_ocean_mask, resampled from last step's hydrology cache): an enclosed
+    interior depression below sea level is a lake/endorheic basin, not ocean. Not crust_type --
+    a submerged part of a continental plate (anything past its shelf) is physically ocean, same
+    as the render_image.py elevation view's own hypsometric coloring already treats it, and
+    needs the same ocean-side climate treatment (evaporation source, current flow, coastal
+    deflection) as any other ocean cell. `lake_depth_m`/`channel_depth_m` are the same persisted per-node
     fields hydrology.py/erosion.py already carry on every plate
     (`plates.collect_all_lake_depth`/`collect_all_channel_depth`, index-aligned with
     `plates.gather_node_positions`'s own per-plate node order -- see those functions' own
@@ -238,7 +240,11 @@ def _sample_elevation_and_crust(
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     elevation = all_elev[idx].reshape(height, width)
-    is_ocean = elevation <= world.sea_level_m
+    # Connectivity-aware: an enclosed interior depression below sea level is *not* ocean (see
+    # hydrology.connected_ocean_mask). Resampled from last step's hydrology cache -- the same
+    # up-to-one-step-stale tolerance climate already accepts for every other resampled field;
+    # falls back to the bare elevation test before the world's first step.
+    is_ocean = hydrology.sample_is_ocean(world, world_xyz, elevation <= world.sea_level_m)
     lake_depth = all_lake[idx].reshape(height, width)
     channel_depth = all_channel[idx].reshape(height, width)
     return elevation, is_ocean, lake_depth, channel_depth
