@@ -27,6 +27,12 @@ class World:
     mantle_centers: list[mantle.ConvectionCenter] = field(default_factory=list)
     elapsed_years: float = 0.0
     next_plate_id: int = 0
+    # Count of step_world calls on this world. Drives the cadence of merge_split.py's
+    # geometric defragmentation pass (see DEFRAG_INTERVAL_STEPS) -- a step counter, not a
+    # year counter, since that pass is about accumulated topology drift, not elapsed time,
+    # and step sizes vary. A plain-int default is a class attribute, so worlds pickled
+    # before this field existed still load (reading 0) -- see persistence.py.
+    steps_taken: int = 0
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
@@ -311,6 +317,7 @@ def step_world(world: World, years: float) -> None:
     World.simulate_plate_movement/World.simulate_climate_biomes (see their own docstrings and
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
+    world.steps_taken += 1
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)

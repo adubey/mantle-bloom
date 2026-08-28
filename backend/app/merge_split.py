@@ -94,6 +94,26 @@ SPLIT_MIN_AGE_STEPS = 15
 # separate clusters either way, since there's no sensible cut without one.
 SPLIT_SIZE_CERTAIN_RIFT_RAD = np.pi
 
+# Defragmentation (see defragment_plates / Plate.defragment). Ordinary deform() never
+# deletes a line's last node and only ever shrinks a line's ends, so subduction/transform
+# can sever a plate's node cloud into two disconnected landmasses (still carried as one
+# Plate) or leave a comb of stranded one-node rows behind; maybe_split_plate only cuts on
+# mantle-flow disagreement, not geometry, so neither case is caught. This pass finds them.
+#
+# Two nodes count as connected if they're within this multiple of the world's own line
+# spacing -- one row-step is ~1x spacing in phi and >= 1x in theta, a diagonal neighbour
+# ~1.4x, so 2.5x comfortably links a genuinely contiguous patch while still separating two
+# lobes across a real (>~300km) subduction gap. Validated against real saved worlds: every
+# healthy plate comes back as a single component at this radius.
+DEFRAG_CONNECT_RADIUS_MULT = 2.5
+# A component smaller than this becomes stranded crust and is dropped rather than promoted
+# to its own plate. A node count, not a distance -- scales with node_density directly (an
+# area), same reasoning as SPLIT_MIN_NODES.
+DEFRAG_FRAGMENT_MIN_NODES = 50
+# Cadence: this is a whole-world O(nodes) k-d-tree pass, cheap but not free, and plate
+# topology doesn't fragment fast. cf. the removed reassign.py's REASSIGN_INTERVAL_STEPS = 5.
+DEFRAG_INTERVAL_STEPS = 4
+
 
 def remove_defunct_plates(world: "World") -> None:
     """A plate whose every elevation node was deleted (fully subducted, see boundary.py), or
@@ -333,6 +353,48 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     return plate_a, plate_b
 
 
+def defragment_plates(world: "World") -> list[str]:
+    """Split any plate whose nodes form more than one disconnected landmass into that many
+    plates, and drop stranded sub-fragments -- the geometric cleanup ordinary deform()/
+    maybe_split_plate structurally can't do (see Plate.defragment). Mutates world.plates and
+    world.next_plate_id in place; returns event strings for whatever actually changed."""
+    connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * line_spacing_rad(world.node_density)
+    min_fragment_nodes = max(1, round(DEFRAG_FRAGMENT_MIN_NODES * world.node_density))
+
+    events: list[str] = []
+    new_plates: list[Plate] = []
+    for plate in world.plates:
+        before = plate.node_count()
+        result = plate.defragment(world.next_plate_id, connect_radius_rad, min_fragment_nodes)
+        if result is None:
+            new_plates.append(plate)
+            continue
+
+        replacements, ids_consumed = result
+        world.next_plate_id += ids_consumed
+        new_plates.extend(replacements)
+
+        shed = before - sum(p.node_count() for p in replacements)
+        if len(replacements) > 1:
+            spawned = ", ".join(str(p.plate_id) for p in replacements[1:])
+            events.append(
+                f"Plate {plate.plate_id} fragmented into disconnected landmasses; spawned plate(s) {spawned}."
+            )
+        if shed > 0:
+            events.append(f"Plate {plate.plate_id} shed {shed} stranded nodes.")
+
+    world.plates = new_plates
+
+    # A fragmented/removed plate can leave stale collision-progress keys behind -- same
+    # cleanup update_collision_progress does for pairs that stop being close-and-converging.
+    live_ids = {p.plate_id for p in world.plates}
+    for pair in list(world.collision_progress):
+        if pair[0] not in live_ids or pair[1] not in live_ids:
+            del world.collision_progress[pair]
+
+    return events
+
+
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate
@@ -355,6 +417,13 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
         events.append(f"Plate {p.plate_id} ({p.crust_type}) had no land left and disappeared.")
 
     remove_defunct_plates(world)
+
+    # Geometric cleanup before collision/split so a severed lobe or a ghost comb of stranded
+    # nodes stops polluting neighbour polygons and collision detection. Gated to every
+    # DEFRAG_INTERVAL_STEPS steps -- it's a whole-world pass and topology doesn't fragment
+    # fast (see the constant's own comment).
+    if world.steps_taken % DEFRAG_INTERVAL_STEPS == 0:
+        events.extend(defragment_plates(world))
 
     ready_pairs = update_collision_progress(world, years)
     if ready_pairs:

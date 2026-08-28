@@ -1,6 +1,6 @@
 import numpy as np
 from app import geometry
-from app.elevation_lines import ElevationLine
+from app.elevation_lines import ElevationLine, line_spacing_rad
 from app.lithosphere_plate import build_plate_tiling, generate_plates
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
@@ -17,6 +17,7 @@ from app.plates import (
     collect_all_soil_mineral_content,
     collect_all_soil_organic_content,
     nearest_plate_id,
+    node_components,
     plate_bounding_ellipse,
 )
 from app.world import generate_world, step_world
@@ -447,3 +448,133 @@ def test_deform_keeps_plate_overlap_bounded_not_runaway():
     # And it shouldn't have grown much further from where it started -- a real runaway
     # would keep climbing step over step, not plateau.
     assert late < early + 0.15
+
+
+# -- node_components / Plate.defragment / _plates_from_node_masks -----------------------
+#
+# Geometric plate cleanup -- see merge_split.defragment_plates and Plate.defragment.
+# Ordinary deform() only shrinks a line from its ends and never deletes its last node, so
+# subduction/transform can sever one Plate's node cloud into two disconnected landmasses or
+# strand a comb of one-node rows; maybe_split_plate only cuts on mantle-flow disagreement,
+# not geometry, so it never catches either. These exercise the pass that does.
+
+_DEFRAG_SPACING_RAD = line_spacing_rad(1.0)
+_DEFRAG_CONNECT_RAD = 2.5 * _DEFRAG_SPACING_RAD
+
+
+def _lobed_plate(lobes, plate_id=0, rows=12, per_row=8, **plate_kwargs):
+    """A `PlateWithLines` (frame = identity, so plate-local phi/theta are world lat/lon)
+    whose nodes form one connected blob per entry in `lobes`. Each entry is either a theta
+    centre (radians) or a `(centre, nodes_per_row)` tuple; centres must sit far enough apart
+    to read as separate connected components at `_DEFRAG_CONNECT_RAD`. `rows` lines are
+    stacked one spacing apart in phi, so a lobe contributes `rows * nodes_per_row` nodes."""
+    lines = []
+    for r in range(rows):
+        chunks = []
+        for lobe in lobes:
+            centre, count = lobe if isinstance(lobe, tuple) else (lobe, per_row)
+            chunks.append(centre + np.arange(count) * _DEFRAG_SPACING_RAD)
+        theta = np.concatenate(chunks)
+        lines.append(ElevationLine(phi=r * _DEFRAG_SPACING_RAD, theta=theta, elevation=np.zeros(len(theta))))
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", lines=lines, **plate_kwargs)
+
+
+def test_node_components_labels_isolated_clusters_separately():
+    points, _ = _lobed_plate([0.0, 0.6]).all_points_and_elevation()
+    labels = node_components(points, _DEFRAG_CONNECT_RAD)
+    _, counts = np.unique(labels, return_counts=True)
+    assert sorted(counts.tolist()) == [96, 96]  # two equal lobes, 12 rows x 8 nodes each
+
+
+def test_node_components_one_label_for_a_contiguous_blob():
+    points, _ = _lobed_plate([0.0]).all_points_and_elevation()
+    assert set(node_components(points, _DEFRAG_CONNECT_RAD).tolist()) == {0}
+
+
+def test_node_components_empty_input():
+    assert node_components(np.zeros((0, 3)), 0.1).shape == (0,)
+
+
+def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
+    plate = _lobed_plate([(0.0, 10), (0.6, 6)], plate_id=7, omega=np.array([0.1, 0.2, 0.3]), age_steps=9)
+    before = plate.node_count()
+
+    result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50)
+    assert result is not None
+    replacements, consumed = result
+
+    assert consumed == 1
+    assert [p.plate_id for p in replacements] == [7, 20]
+    assert sum(p.node_count() for p in replacements) == before
+    assert replacements[0].node_count() > replacements[1].node_count()  # largest keeps the id
+    # The identity-keeper carries this plate's own omega and age; the fresh fragment shares
+    # the omega (it was co-moving, which is why nothing split it off) but resets age to 0.
+    assert np.allclose(replacements[0].omega, [0.1, 0.2, 0.3])
+    assert replacements[0].age_steps == 9
+    assert np.allclose(replacements[1].omega, [0.1, 0.2, 0.3])
+    assert replacements[1].age_steps == 0
+    for p in replacements:
+        pts, _ = p.all_points_and_elevation()
+        assert len(np.unique(node_components(pts, _DEFRAG_CONNECT_RAD))) == 1
+
+
+def test_defragment_sheds_stranded_nodes_without_splitting():
+    # second lobe is 12 nodes (1 per row), well below min_fragment_nodes -- dropped, not
+    # promoted to its own plate, and no new id is consumed.
+    plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=3)
+    before = plate.node_count()
+
+    result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50)
+    assert result is not None
+    replacements, consumed = result
+
+    assert consumed == 0
+    assert [p.plate_id for p in replacements] == [3]
+    assert replacements[0].node_count() == before - 12
+
+
+def test_defragment_leaves_a_contiguous_plate_alone():
+    plate = _lobed_plate([0.0])
+    assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50) is None
+
+
+def test_defragment_leaves_an_all_debris_plate_for_the_territory_check():
+    # three lobes, none reaching min_fragment_nodes: defrag declines (returns None) rather
+    # than deleting a whole plate itself -- has_negligible_territory / remove_defunct_plates
+    # own that call.
+    plate = _lobed_plate([(0.0, 2), (0.6, 2), (1.2, 2)], rows=10)
+    assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50) is None
+
+
+def test_defragment_partition_carries_each_nodes_own_fields_to_the_right_fragment():
+    plate = _lobed_plate([0.0, 0.6], plate_id=4)
+    points, _ = plate.all_points_and_elevation()
+    marker = np.arange(len(points), dtype=float)  # a distinct value per node
+    offset = 0
+    for i, line in enumerate(plate.lines):
+        k = len(line)
+        plate.replace_line(i, line.replace(channel_depth=marker[offset : offset + k]))
+        offset += k
+
+    replacements, _ = plate.defragment(
+        next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50
+    )
+    recombined = np.concatenate([p.collect("channel_depth") for p in replacements])
+    assert sorted(recombined.tolist()) == sorted(marker.tolist())
+
+
+def test_has_negligible_territory_flags_a_comb_of_one_node_stubs():
+    # Many lines but ~1 node each: deform() decayed a heavily-subducted plate into stranded
+    # rows. High line count masks that there's no 2D patch left -- the original
+    # len(lines) <= 1 test missed this.
+    comb = PlateWithLines(
+        plate_id=0,
+        frame=np.eye(3),
+        crust_type="oceanic",
+        lines=[ElevationLine(phi=i * _DEFRAG_SPACING_RAD, theta=np.array([0.0]), elevation=np.zeros(1)) for i in range(40)],
+    )
+    assert comb.has_negligible_territory()
+
+
+def test_has_negligible_territory_false_for_a_plate_with_real_rows():
+    assert not _lobed_plate([0.0]).has_negligible_territory()

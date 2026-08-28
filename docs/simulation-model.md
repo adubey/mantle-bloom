@@ -157,9 +157,10 @@ read for that world's entire life, not just at the moment it's generated: every 
 that builds new elevation-line nodes or derives a distance/count threshold from
 `TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s line regularization, `plates.py`'s
 `PlateWithLines.deform` (per-turn growth/shrink/claim thresholds -- see [Plate motion: shift
-and deform](#boundary-evolution)), `merge_split.py`'s plate-merge contact distance and
-split-size floor -- calls `line_spacing_rad(world.node_density)` (or scales its own reference
-constant by the same ratio) instead of reading the bare module constant. This matters because
+and deform](#boundary-evolution)), `merge_split.py`'s plate-merge contact distance,
+split-size floor, and defragmentation connect-radius / fragment-size floor -- calls
+`line_spacing_rad(world.node_density)` (or scales its own reference constant by the same
+ratio) instead of reading the bare module constant. This matters because
 it's not just a generation-time cosmetic choice: `elevation_lines.py`'s regularize pass in
 particular runs at the end of every single `deform()` call now (not periodically -- see [Line
 regularization](#line-regularization)) and, before this threading existed, always resampled a
@@ -408,11 +409,19 @@ Unlike `shift`/`deform`, these are rare, discrete, topology-changing events, so 
 resample is an acceptable cost here -- the exact, no-resampling guarantee only matters for
 routine per-step motion.
 
-- **Consumption.** A plate whose every elevation node has been deleted (fully subducted), or
-  that's been eroded down to a single remaining line -- no real territory left, just a
-  sliver along one latitude, regardless of how many nodes are still on that one line -- is
-  simply dropped from `world.plates` (`remove_defunct_plates`). Falls directly out of
-  `deform()`'s own grow/shrink rule; no special algorithm needed for either case.
+- **Consumption.** A plate with no real remaining territory is simply dropped from
+  `world.plates` (`remove_defunct_plates`, run every step). Three shapes count, all falling
+  directly out of `deform()`'s own grow/shrink rule -- no special algorithm needed:
+  - every elevation node deleted (fully subducted);
+  - eroded/subducted down to a single remaining line -- a sliver along one latitude,
+    regardless of how many nodes are still on it;
+  - a *comb of stubs*: many lines but fewer than two nodes each on average. `deform()`
+    shrinks a line only from its ends and never deletes its last node, so a heavily
+    subducted oceanic plate decays into a hundred-plus rows of one stranded node apiece --
+    a high line count masking that there's no 2D patch left. `has_negligible_territory`'s
+    node-to-nonempty-line ratio test catches this; the old "at most one line" check didn't.
+    The ratio is scale-free (same at any `node_density`) and sits far below any legitimate
+    plate, whose rows carry tens of nodes.
 - **Continental collision merge.** If two continental plates have at least
   `MERGE_MIN_CONTACT_NODES` node pairs within `MERGE_CONTACT_DISTANCE_RAD` of each other
   *and* a real closing rate at those points (`boundary.closing_rate` -- the one place this
@@ -457,8 +466,9 @@ routine per-step motion.
 
   **Event log.** `apply_topology_changes` returns a list of human-readable strings for
   outcomes that actually changed the world this step -- a merge completing (with how many
-  million years it took), a plate disappearing (consumption, in either sense above), or a
-  split creating a new plate -- which `world.step_world` timestamps with the *post-step*
+  million years it took), a plate disappearing (consumption, in any of the senses above), a
+  split creating a new plate, or a plate fragmenting into disconnected landmasses / shedding
+  stranded nodes (see Defragmentation below) -- which `world.step_world` timestamps with the *post-step*
   `elapsed_years` and appends to `World.events` (capped at `world.MAX_EVENT_LOG_LENGTH`
   entries). `generate_world` logs an initial "world generated" event the same way. A
   collision merely *starting* is deliberately not logged: plates.py's tiling has every
@@ -488,6 +498,34 @@ routine per-step motion.
   `SPLIT_MIN_AGE_STEPS` (a per-plate step counter, reset to 0 on creation by generation,
   split, or merge) requires a plate to exist for a while before it's split-eligible again,
   and `SPLIT_MIN_NODES = 1200` keeps the check off small fragments entirely.
+- **Defragmentation.** `deform()` only ever grows or shrinks a line's *ends*, and never
+  deletes its last node -- so subduction or transform shear can carve one plate's node
+  cloud into two (or more) fully disconnected landmasses, still carried as a single
+  `Plate`, or leave a comb of stranded one-node rows trailing behind it. The split check
+  above doesn't catch this: it cuts on mantle-flow *disagreement*, and two lobes of one
+  plate are co-moving by definition, so their flow samples never diverge. `deform()`
+  doesn't catch it either -- an interior node only reads as contested if it's inside a
+  *neighbour's* polygon, and a gap between two lobes of the same plate belongs to nobody.
+
+  So `defragment_plates` (`merge_split.py`, every `DEFRAG_INTERVAL_STEPS` steps -- a
+  whole-world k-d-tree pass, cheap but not free, and topology doesn't fragment fast) checks
+  it directly. Each plate's nodes are grouped into connected components at
+  `DEFRAG_CONNECT_RADIUS_MULT * line_spacing_rad` (`plates.node_components`, via
+  `scipy.sparse.csgraph.connected_components` over a k-d-tree radius graph -- ~2.5x the
+  world's own line spacing links a genuinely contiguous patch while still separating two
+  lobes across a real subduction gap). Every component with at least
+  `DEFRAG_FRAGMENT_MIN_NODES` nodes (an area, so it scales with `node_density` directly,
+  same as `SPLIT_MIN_NODES`) becomes its own plate; the largest keeps the original plate's
+  id, `frame`, `omega`, and age, and the rest are fresh plates carrying a *copy* of that
+  `omega` (they were co-moving) and age 0, drawing ids from `World.next_plate_id`. Anything
+  smaller is dropped as stranded crust. Nodes are repartitioned by boolean mask through the
+  same `ElevationLine.masked` machinery `split` uses, so every persistent per-node field
+  survives exactly with no resample.
+
+  A plate that's *all* small components -- no lobe big enough to anchor a plate -- is left
+  alone here, not deleted; the comb-of-stubs branch of consumption (above) prunes it on the
+  same step. This runs before the collision and split passes so a severed lobe or a ghost
+  comb stops polluting neighbour polygons and collision detection first.
 
 <a id="gap-filling"></a>
 ## Whole-sphere coverage (subsumed into `deform()`)

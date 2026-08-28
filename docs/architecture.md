@@ -3,9 +3,10 @@
 ## Stack
 
 - **Backend:** Python, FastAPI + uvicorn, numpy (rotation/vector math), scipy (`cKDTree`
-  for initial plate assignment, boundary-adjacency, and merge-detection queries,
-  `scipy.cluster.vq.kmeans2` for split clustering), Pillow (server-side map rendering, see
-  `render_image.py`), pytest.
+  for initial plate assignment, boundary-adjacency, merge-detection, and plate-defragment
+  queries, `scipy.cluster.vq.kmeans2` for split clustering,
+  `scipy.sparse.csgraph.connected_components` for plate defragmentation), Pillow
+  (server-side map rendering, see `render_image.py`), pytest.
 - **Frontend:** React + TypeScript via Vite, plain HTML `<canvas>` — no mapping/charting
   library: the frontend's whole job is decoding a PNG the backend already rendered and
   drawing it (`ctx.drawImage`), which a library would be more ceremony than the problem
@@ -141,6 +142,13 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   inline inside every `Plate.deform()` call now -- see
   simulation-model.md#boundary-evolution), so the counters that used to gate them
   (`steps_since_regularize`, `steps_since_reassign`) are gone.
+- `steps_taken` -- a plain `step_world` call count (not a year count -- step sizes vary and
+  the thing it gates is about accumulated topology drift, not elapsed time). Drives the
+  cadence of `merge_split.py`'s geometric plate defragmentation pass
+  (`DEFRAG_INTERVAL_STEPS`, see
+  [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)). A plain-int
+  dataclass default is a class attribute, so worlds pickled before this field existed still
+  load, reading 0.
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
@@ -237,7 +245,9 @@ boundary.py         `closing_rate` (used only by merge_split.py now, to confirm 
                      couple of threshold constants merge_split.py shares with plates.py's
                      `deform()`
 merge_split.py       plate consumption, sustained-collision continental merging (50-100 Myr,
-                     at most one per step), mantle-flow-driven splitting, event log messages
+                     at most one per step), mantle-flow-driven splitting, periodic geometric
+                     defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
+                     event log messages
 volcanism.py          every-step eruption lifecycle for existing volcano nodes (active-years
                      countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
                      volcanic-field *creation* now happens inline inside `deform()`'s own
