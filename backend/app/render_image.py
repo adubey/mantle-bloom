@@ -1077,10 +1077,11 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     as the Elevation/Points views resolve terrain -- unlike the CLIMATE_VIEWS renderer this
     used to share, which resampled onto the atmosphere-CFD HEALPix grid (capped at
     World.fluid_density == "High", visibly coarser than everything else). Biomes are
-    re-classified fresh on this grid (biomes.classify_biomes), matching _render_combined_view,
-    rather than upsampling climate.py's own coarser biome_ids. Left un-blurred: a viewer needs
-    to read each cell's exact color, and MapCanvas.tsx's legend highlight does an exact RGB
-    match against it."""
+    classified fresh on this grid (biomes.smooth_biome_field -- classify_biomes plus the
+    stateless boundary-cleanup pass, so cell-scale flicker along a band cutoff doesn't read
+    as a dithered smear here), matching _render_combined_view, rather than upsampling
+    climate.py's own coarser biome_ids. Left un-blurred: a viewer needs to read each cell's
+    exact color, and MapCanvas.tsx's legend highlight does an exact RGB match against it."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1090,14 +1091,12 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.classify_biomes(
-        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
-    )
+    biome_ids = biomes.smooth_biome_field(display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m)
 
     centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
         lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
     )
-    _fill_rects(pixels, centers, half_w, half_h, biomes.BIOME_COLORS[biome_ids])
+    _fill_rects(pixels, centers, half_w, half_h, biomes.BIOME_COLORS[biome_ids].reshape(-1, 3))
 
     return _encode_image(Image.fromarray(pixels, mode="RGB"))
 
@@ -1113,7 +1112,8 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     toward that same hypsometric shade at high elevation for a further cue at real peaks (see
     RELIEF_BLEND_MAX); lakes/glaciers are overlaid the same way the Elevation view itself
     draws them, and rivers are drawn on top the same way too (see _draw_rivers), all at this
-    grid's own resolution.
+    grid's own resolution. Biomes come from biomes.smooth_biome_field (classification plus
+    the stateless boundary-cleanup pass, same as the Biome view).
 
     Output is RGBA: the alpha channel carries a per-pixel biome/lake/glacier id (see
     COMBINED_LAKE_ID_CODE) so the frontend's click-to-highlight can identify a land cell
@@ -1128,9 +1128,9 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.classify_biomes(
-        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
-    )
+    biome_ids = biomes.smooth_biome_field(
+        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m
+    ).reshape(-1)
     biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
 

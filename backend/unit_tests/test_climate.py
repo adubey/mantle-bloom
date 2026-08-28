@@ -505,12 +505,14 @@ def test_compute_climate_falls_back_to_diagnostics_when_cfd_state_is_none():
     assert np.all(np.isfinite(fields.precipitation_mm))
 
 
-def test_compute_climate_biome_ids_matches_a_direct_classify_biomes_call():
+def test_compute_climate_biome_ids_matches_a_direct_smooth_biome_field_call():
     world = _world(seed=8, num_plates=8, steps=1)
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)
 
     display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
     slope = biomes.grid_slope(fields.elevation_m, fields.lat_deg)
-    expected = biomes.classify_biomes(display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m)
+    expected = biomes.smooth_biome_field(
+        display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m
+    )
     assert np.array_equal(fields.biome_ids, expected)

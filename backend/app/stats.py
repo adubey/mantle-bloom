@@ -24,8 +24,9 @@ since lumping a -11000m trench and a 9000m peak into the same range made neither
 very informative on its own.
 
 `biome_land_fraction` reads `ClimateFields.biome_ids` -- the same stored classification
-`compute_climate` computes once and every other biome-consuming caller now shares, at
-climate.py's native (coarser) grid rather than the "biome" map view's own finer render grid
+`compute_climate` computes once (via `biomes.smooth_biome_field`, so the boundary-cleanup
+pass is already baked in) and every other biome-consuming caller now shares, at climate.py's
+native (coarser) grid rather than the "biome" map view's own finer render grid
 (render_image.py's `_render_biome_view`) -- an aggregate land fraction doesn't need the extra
 resolution the way a rendered map's coastlines visibly do. The denominator is land cells only
 (Ocean is always 0% by construction, so it's omitted from the dict entirely rather than

@@ -211,3 +211,95 @@ def test_grid_slope_matches_a_known_north_south_step():
     dlat_km = (np.pi / 3) * biomes.PLANET_RADIUS_KM
     expected = 1000.0 / (dlat_km * 1000.0)
     assert np.allclose(slope[1, :], expected)
+
+
+# --- smooth_biome_field: the stateless boundary-cleanup pass -----------------------------
+
+# Temperate, sub-humid, upland: WOODLAND_SHRUBLAND, comfortably away from every band edge.
+_WOODLAND_TEMP_C = 10.0
+_WOODLAND_PRECIP_MM = 750.0
+
+
+def _uniform(shape, temp, precip, elevation=1000.0, slope=0.01, is_ocean=False):
+    return (
+        np.full(shape, float(temp)),
+        np.full(shape, float(precip)),
+        np.full(shape, float(elevation)),
+        np.full(shape, float(slope)),
+        np.full(shape, bool(is_ocean)),
+    )
+
+
+def test_smooth_biome_field_rejects_a_flat_array():
+    temp, precip, elevation, slope, is_ocean = (a.reshape(-1) for a in _uniform((4, 4), 10.0, 750.0))
+    with pytest.raises(ValueError):
+        biomes.smooth_biome_field(temp, precip, elevation, slope, is_ocean)
+
+
+def test_smooth_biome_field_preserves_shape():
+    args = _uniform((5, 8), _WOODLAND_TEMP_C, _WOODLAND_PRECIP_MM)
+    assert biomes.smooth_biome_field(*args).shape == (5, 8)
+
+
+def test_smooth_biome_field_is_a_noop_on_a_spatially_uniform_climate():
+    # Nothing sits near a band edge and every cell agrees with its neighbours, so the cleanup
+    # pass has nothing to do -- the result is exactly classify_biomes.
+    args = _uniform((6, 9), _WOODLAND_TEMP_C, _WOODLAND_PRECIP_MM)
+    raw = biomes.classify_biomes(*args)
+    assert np.array_equal(biomes.smooth_biome_field(*args), raw)
+
+
+def test_smooth_biome_field_outvotes_a_lone_cusp_speckle():
+    # One cell nudged just across the humid band edge (within BIOME_CUSP_MARGIN_PRECIP_MM of
+    # it) in an otherwise uniform WOODLAND_SHRUBLAND field -> reverts to its neighbours' biome.
+    temp, precip, elevation, slope, is_ocean = _uniform((7, 7), _WOODLAND_TEMP_C, _WOODLAND_PRECIP_MM)
+    precip[3, 3] = biomes.SUB_HUMID_MM + 40.0  # -> TEMPERATE_SEASONAL_FOREST, 40 mm over the edge
+    raw = biomes.classify_biomes(temp, precip, elevation, slope, is_ocean)
+    assert raw[3, 3] == biomes.TEMPERATE_SEASONAL_FOREST
+
+    smoothed = biomes.smooth_biome_field(temp, precip, elevation, slope, is_ocean)
+    assert smoothed[3, 3] == biomes.WOODLAND_SHRUBLAND
+
+
+def test_smooth_biome_field_leaves_a_clean_two_biome_interface_in_place():
+    # A straight interface: each side's cells see only ~5/8 same-biome neighbours, below the
+    # BIOME_VOTE_MIN_NEIGHBOUR_FRACTION supermajority, so neither side is eroded.
+    temp, precip, elevation, slope, is_ocean = _uniform((8, 8), _WOODLAND_TEMP_C, _WOODLAND_PRECIP_MM)
+    precip[:, 4:] = biomes.SUB_HUMID_MM + 40.0  # right half just over the humid edge
+    raw = biomes.classify_biomes(temp, precip, elevation, slope, is_ocean)
+    assert np.array_equal(biomes.smooth_biome_field(temp, precip, elevation, slope, is_ocean), raw)
+
+
+def test_smooth_biome_field_keeps_a_small_solid_region_far_from_any_cutoff():
+    # A 3x3 block of a different biome, its climate nowhere near a band edge: no cell is a
+    # cusp cell and no cell is outnumbered enough to be "speckle", so the block is untouched.
+    temp, precip, elevation, slope, is_ocean = _uniform((7, 7), _WOODLAND_TEMP_C, _WOODLAND_PRECIP_MM)
+    precip[2:5, 2:5] = 1600.0  # deep in the TEMPERATE_SEASONAL_FOREST band (edges at 1000 / 2000)
+    smoothed = biomes.smooth_biome_field(temp, precip, elevation, slope, is_ocean)
+    assert np.all(smoothed[2:5, 2:5] == biomes.TEMPERATE_SEASONAL_FOREST)
+    assert np.all(smoothed[0, :] == biomes.WOODLAND_SHRUBLAND)
+
+
+def test_smooth_biome_field_revotes_a_single_cell_spike_inside_a_wetland():
+    # A lone elevation spike disqualifies one cell from Wetland (elevation > WETLAND_MAX_
+    # ELEVATION_M) inside an otherwise solid flat/low/wet region; the neighbour vote, which
+    # always reconsiders a fully-outnumbered land cell, puts it back.
+    shape = (7, 7)
+    temp, precip, elevation, slope, is_ocean = _uniform(
+        shape, 12.0, 1200.0, elevation=20.0, slope=0.0005, is_ocean=False
+    )
+    elevation[3, 3] = 200.0
+    raw = biomes.classify_biomes(temp, precip, elevation, slope, is_ocean)
+    assert raw[3, 3] != biomes.WETLAND and np.all(raw[0, :] == biomes.WETLAND)
+
+    smoothed = biomes.smooth_biome_field(temp, precip, elevation, slope, is_ocean)
+    assert smoothed[3, 3] == biomes.WETLAND
+
+
+def test_smooth_for_bands_attenuates_a_spike_and_spreads_it():
+    field = np.zeros((40, 40))
+    field[20, 20] = 100.0
+    out = biomes._smooth_for_bands(field, cell_km=30.0)  # 30 km cells -> a multi-cell window
+    assert out[20, 20] < 20.0  # spike knocked down
+    assert out[20, 21] > 0.0 and out[19, 20] > 0.0  # mass spread to neighbours
+    assert out.max() <= field.max() + 1e-9

@@ -1510,7 +1510,7 @@ def compute_climate(
 
     display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.classify_biomes(display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m)
+    biome_ids = biomes.smooth_biome_field(display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m)
 
     return ClimateFields(
         lat_deg=lat_deg,
