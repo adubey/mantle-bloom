@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  fetchLakes, fetchPlates, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+  fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
 } from "./api";
 import type {
-  LakeAtResponse, LakeSummary, MapView, PlateSummary, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary,
+  LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
@@ -226,6 +226,45 @@ export default function App() {
   const [lakesData, setLakesData] = useState<LakeSummary[]>([]);
   const [selectedBasin, setSelectedBasin] = useState<LakeSummary | null>(null);
   const [selectedBasinKind, setSelectedBasinKind] = useState<LakeAtResponse["kind"] | null>(null);
+  // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see
+  // MapCanvas.tsx's onProbe and the popup JSX below). `displayX`/`displayY` place it over the
+  // map in CSS pixels; `sample` fills in once GET /world/sample_at resolves. Cleared on any
+  // view/projection/rotation change and on every render refresh (a step moves everything
+  // that was under it), so a stale popup never lingers over ground it no longer describes.
+  const [probe, setProbe] = useState<
+    | { displayX: number; displayY: number; latDeg: number; lonDeg: number; status: "loading" | "ok" | "error"; sample: PointSample | null }
+    | null
+  >(null);
+  // Tags each sample_at request so a slow earlier response (or a dismissal) can't overwrite a
+  // newer click's -- same monotonic-id guard as renderRequestIdRef below.
+  const probeRequestIdRef = useRef(0);
+  const handleProbe = useCallback(
+    (next: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => {
+      const requestId = ++probeRequestIdRef.current;
+      if (!next) {
+        setProbe(null);
+        return;
+      }
+      setProbe({ ...next, status: "loading", sample: null });
+      fetchPointSample(next.latDeg, next.lonDeg)
+        .then((sample) => {
+          if (requestId === probeRequestIdRef.current) setProbe({ ...next, status: "ok", sample });
+        })
+        .catch(() => {
+          // A click that races a generate/step (no world yet), or a dropped request -- show
+          // the failure in place rather than a silently empty popup.
+          if (requestId === probeRequestIdRef.current) setProbe({ ...next, status: "error", sample: null });
+        });
+    },
+    [],
+  );
+  // Any of these means the popup's anchor no longer maps to the same ground -- rotation/
+  // projection/view change moves the map under it, and a new renderData means a step or a
+  // Controls edit just changed what's there -- so drop it rather than leave it floating.
+  useEffect(() => {
+    probeRequestIdRef.current++;
+    setProbe(null);
+  }, [mapView, projection, rotation, renderData]);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs, built entirely client-side since the backend endpoint itself is stateless (see
@@ -803,7 +842,56 @@ export default function App() {
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
               highlightTarget={highlightTarget}
+              onProbe={mapView === "combined" || mapView === "elevation" || mapView === "biome" ? handleProbe : undefined}
             />
+          )}
+          {probe && (
+            <div
+              style={{
+                position: "absolute",
+                left: Math.max(4, Math.min(probe.displayX + 12, DISPLAY_WIDTH - 186)),
+                top: Math.max(4, Math.min(probe.displayY + 12, DISPLAY_HEIGHT - 150)),
+                width: 174,
+                background: "#151a2e",
+                border: "1px solid #333",
+                borderRadius: 6,
+                padding: "8px 10px",
+                fontSize: 11,
+                lineHeight: 1.6,
+                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
+                zIndex: 10,
+              }}
+            >
+              <button
+                type="button"
+                title="Close"
+                onClick={() => handleProbe(null)}
+                style={{
+                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
+                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
+                  fontSize: 14, lineHeight: "18px",
+                }}
+              >
+                ×
+              </button>
+              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(probe.latDeg, probe.lonDeg)}</div>
+              {probe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
+              {probe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
+              {probe.status === "ok" && probe.sample && (
+                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
+                  <span style={{ opacity: 0.55 }}>Elevation</span>
+                  <span>{Math.round(probe.sample.elevation_m).toLocaleString()} m</span>
+                  <span style={{ opacity: 0.55 }}>Biome</span>
+                  <span>{probe.sample.biome}</span>
+                  <span style={{ opacity: 0.55 }}>Precip.</span>
+                  <span>{Math.round(probe.sample.precipitation_mm).toLocaleString()} mm</span>
+                  <span style={{ opacity: 0.55 }}>Temp.</span>
+                  <span>{probe.sample.temperature_c.toFixed(1)} °C</span>
+                  <span style={{ opacity: 0.55 }}>Plate</span>
+                  <span>{probe.sample.plate_id ?? "—"}</span>
+                </div>
+              )}
+            </div>
           )}
           </div>
           <Legend
@@ -818,7 +906,9 @@ export default function App() {
                 ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
                 : mapView === "lakeInspector"
                   ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
-                  : "Press and hold, then drag the map to rotate it."}
+                  : mapView === "combined" || mapView === "elevation" || mapView === "biome"
+                    ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
+                    : "Press and hold, then drag the map to rotate it."}
           </p>
         </div>
       </div>

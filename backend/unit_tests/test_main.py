@@ -45,6 +45,10 @@ def test_river_at_before_generate_returns_404(client):
     assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
+def test_sample_at_before_generate_returns_404(client):
+    assert client.get("/world/sample_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
+
+
 def test_lakes_before_generate_returns_404(client):
     assert client.get("/world/lakes").status_code == 404
 
@@ -376,6 +380,34 @@ def test_plate_at_rejects_non_finite_query(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 8})
     assert client.get("/world/plate_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_sample_at_returns_a_full_point_report(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    plates = client.get("/world/plates").json()["plates"]
+    target = next(p for p in plates if p["num_points"] > 0)
+    x, y, z = target["outline"][0]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+
+    resp = client.get("/world/sample_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {
+        "lat_deg", "lon_deg", "elevation_m", "is_ocean", "biome_id", "biome",
+        "temperature_c", "precipitation_mm", "plate_id",
+    }
+    assert body["plate_id"] == target["plate_id"]
+    assert isinstance(body["biome"], str) and body["biome"]
+    assert math.isfinite(body["elevation_m"])
+    assert math.isfinite(body["temperature_c"])
+    assert body["precipitation_mm"] >= 0
+
+
+def test_sample_at_rejects_non_finite_query(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    assert client.get("/world/sample_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
+    assert client.get("/world/sample_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
 def test_rivers_and_river_at_are_empty_before_the_first_step(client):

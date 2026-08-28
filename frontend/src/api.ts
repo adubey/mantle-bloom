@@ -357,6 +357,26 @@ export function fetchPlateAt(latDeg: number, lonDeg: number): Promise<{ plate_id
   return fetch(`${API_BASE}/world/plate_at?${params}`).then(asJson<{ plate_id: number | null }>);
 }
 
+export interface PointSample {
+  lat_deg: number;
+  lon_deg: number;
+  elevation_m: number;
+  is_ocean: boolean;
+  biome_id: number;
+  biome: string;
+  temperature_c: number;
+  precipitation_mm: number;
+  plate_id: number | null;
+}
+
+// The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see App.tsx) --
+// like fetchPlateAt, (latDeg, lonDeg) must already be in the *true* (un-rotated) frame; the
+// caller unprojects the click through the active view rotation first.
+export function fetchPointSample(latDeg: number, lonDeg: number): Promise<PointSample> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/sample_at?${params}`).then(asJson<PointSample>);
+}
+
 export function fetchStats(): Promise<WorldStats> {
   return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
 }

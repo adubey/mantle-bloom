@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef } from "react";
 import type { Projection } from "./api";
 import type { HighlightTarget } from "./legendData";
 import type { Mat3 } from "./rotation";
-import { getGraticule, getRenderTransform, matApply, project, toPixels } from "./rotation";
+import {
+  getGraticule, getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, xyzToLatLon,
+} from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
 
 interface Props {
@@ -30,6 +32,12 @@ interface Props {
   // so the selected swatch's cells visibly pop against the rest of the map (see applyHighlight
   // below). `null`/omitted paints the decoded frame as-is, same as before this feature existed.
   highlightTarget?: HighlightTarget | null;
+  // Elevation & Biome / Elevation / Biome views only (App.tsx passes it just for those): a
+  // plain click -- not a drag -- reports the clicked point's true-frame lat/lon plus its
+  // position in display (CSS) pixels, for the click-to-inspect popup App renders over the
+  // map. A click outside the projected globe silhouette reports null (dismiss the popup).
+  // Omitted on every other view, which leaves a click doing nothing, exactly as before.
+  onProbe?: (probe: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => void;
 }
 
 const BACKGROUND = "#0b1020";
@@ -103,7 +111,7 @@ function applyHighlight(ctx: CanvasRenderingContext2D, width: number, height: nu
 // re-requesting the real, much more expensive, detailed render on every mouse move.
 export default function MapCanvas({
   imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
-  onRotationPreview, onRotationCommitted, highlightTarget,
+  onRotationPreview, onRotationCommitted, highlightTarget, onProbe,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
@@ -213,12 +221,38 @@ export default function MapCanvas({
     }
   };
 
+  // A plain click (routed through useRotationDrag so a completed rotate-drag's terminating
+  // mouseup is never mistaken for one -- same as the inspector views): unproject it through
+  // the current view rotation to a true lat/lon and hand it up for the inspect popup. Same
+  // math as LakeInspector.handleClick.
+  const handleProbeClick = useCallback((backingX: number, backingY: number) => {
+    if (!onProbe) return;
+    const transform = getRenderTransform(projection, width, height);
+    const x = (backingX - transform.offsetX) / transform.scale;
+    const y = -(backingY - transform.offsetY) / transform.scale;
+    const latLon = unproject(projection, x, y);
+    if (!latLon) {
+      onProbe(null); // clicked off the globe -- dismiss any open popup
+      return;
+    }
+    const displayXyz = latLonToXyz(latLon[0], latLon[1]); // display (rotated) frame
+    const trueXyz = matApply(matTranspose(rotation), displayXyz); // transpose == inverse for a rotation matrix
+    const [trueLat, trueLon] = xyzToLatLon(trueXyz);
+    onProbe({
+      displayX: (backingX / width) * displayWidth,
+      displayY: (backingY / height) * displayHeight,
+      latDeg: (trueLat * 180) / Math.PI,
+      lonDeg: (trueLon * 180) / Math.PI,
+    });
+  }, [onProbe, projection, width, height, displayWidth, displayHeight, rotation]);
+
   useRotationDrag({
     elementRef: canvasRef,
     width, height, displayWidth, displayHeight, projection, rotation,
     onFrame: drawGraticule,
     onRotationPreview,
     onRotationCommitted,
+    onClick: onProbe ? handleProbeClick : undefined,
   });
 
   return (
