@@ -3,16 +3,17 @@ import type { AnimateResponse, MapView, Projection, WorldSummary } from "./api";
 import { animateWorld, exportHexGrid, loadWorld, saveWorld } from "./api";
 import type { Mat3 } from "./rotation";
 
-// Matching backend app/main.py's STEP_YEARS_OPTIONS-style framing for /world/step -- the
-// same "a few sane presets, not a free-form input" reasoning App.tsx's own
-// STEP_YEARS_OPTIONS already uses, here for the animation's own "years per frame" choice.
-// 100,000 (the finest option) is the default so a fresh animation reads as a smooth
-// progression rather than jumping in million-year leaps.
-const YEARS_PER_FRAME_OPTIONS = [100_000, 1_000_000, 10_000_000];
-const DEFAULT_YEARS_PER_FRAME = 100_000;
+// How many simulation steps each animation frame advances the world -- the real years each
+// frame covers is this times the app's current "Years per step" (see App.tsx's
+// STEP_YEARS_OPTIONS), so the animation and the Step button move the world in the same unit.
+// A few sane presets, not a free-form input, same reasoning App.tsx's own STEP_YEARS_OPTIONS
+// uses. 1 (one step per frame) is the default so a fresh animation reads as a smooth
+// progression rather than jumping many steps at a time.
+const STEPS_PER_FRAME_OPTIONS = [1, 10, 100];
+const DEFAULT_STEPS_PER_FRAME = 1;
 const DEFAULT_NUM_FRAMES = 20;
 // Matching backend app/main.py's MAX_ANIMATION_FRAMES.
-const MAX_NUM_FRAMES = 60;
+const MAX_NUM_FRAMES = 240;
 
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
 const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
@@ -28,6 +29,9 @@ interface Props {
   hasWorld: boolean;
   seed: number | null;
   elapsedYears: number | null;
+  // The app's current "Years per step" (see App.tsx's STEP_YEARS_OPTIONS) -- one animation
+  // frame advances the world by `stepsPerFrame * stepYears` real years.
+  stepYears: number;
   projection: Projection;
   mapView: MapView;
   rotation: Mat3;
@@ -56,17 +60,21 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 function fmtMyr(years: number): string {
+  // Steps per frame can be as fine as one 10,000-year step, so a plain "0.0 Myr" is possible
+  // -- fall back to kyr below a million years so the number stays readable.
+  if (years < 1e6) return `${Math.round(years / 1e3).toLocaleString()} kyr`;
   return `${(years / 1e6).toFixed(1)} Myr`;
 }
 
 export default function FileModal({
-  hasWorld, seed, elapsedYears, projection, mapView, rotation, renderWidth, renderHeight, mapWrapperRef,
+  hasWorld, seed, elapsedYears, stepYears, projection, mapView, rotation, renderWidth, renderHeight, mapWrapperRef,
   onClose, onWorldReplaced, onWorldAdvanced,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [numFrames, setNumFrames] = useState(DEFAULT_NUM_FRAMES);
-  const [yearsPerFrame, setYearsPerFrame] = useState(DEFAULT_YEARS_PER_FRAME);
+  const [stepsPerFrame, setStepsPerFrame] = useState(DEFAULT_STEPS_PER_FRAME);
+  const yearsPerFrame = stepsPerFrame * stepYears;
   const [animation, setAnimation] = useState<AnimateResponse | null>(null);
   const [hexFrequency, setHexFrequency] = useState(DEFAULT_HEX_FREQUENCY);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -94,7 +102,8 @@ export default function FileModal({
     const summary = await loadWorld(file);
     setAnimation(null);
     await onWorldReplaced(summary);
-  }), [runAction, onWorldReplaced]);
+    onClose();
+  }), [runAction, onWorldReplaced, onClose]);
 
   const handleSaveImage = useCallback(() => runAction("image", async () => {
     const canvas = mapWrapperRef.current?.querySelector("canvas");
@@ -198,20 +207,21 @@ export default function FileModal({
                 />
               </label>
               <label style={{ display: "block", marginBottom: 6 }}>
-                Years per frame
+                Steps per frame
                 <select
-                  value={yearsPerFrame}
-                  onChange={(e) => setYearsPerFrame(Number(e.target.value))}
+                  value={stepsPerFrame}
+                  onChange={(e) => setStepsPerFrame(Number(e.target.value))}
                   style={{ width: "100%", fontSize: 12 }}
                 >
-                  {YEARS_PER_FRAME_OPTIONS.map((y) => (
-                    <option key={y} value={y}>{y.toLocaleString()}</option>
+                  {STEPS_PER_FRAME_OPTIONS.map((s) => (
+                    <option key={s} value={s}>{s.toLocaleString()}</option>
                   ))}
                 </select>
               </label>
               <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>
+                {fmtMyr(yearsPerFrame)} per frame ({stepsPerFrame.toLocaleString()} × {stepYears.toLocaleString()} yr/step).
                 Permanently advances the world by {fmtMyr((numFrames - 1) * yearsPerFrame)}, same
-                as clicking Step that many times -- not a preview.
+                as clicking Step {((numFrames - 1) * stepsPerFrame).toLocaleString()} times -- not a preview.
               </div>
               <button onClick={handleMakeAnimation} disabled={!hasWorld || busy !== null} style={{ width: "100%", fontSize: 12, marginBottom: 6 }}>
                 {busy === "animate" ? "Simulating..." : "Make Animation"}

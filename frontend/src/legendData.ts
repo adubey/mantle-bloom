@@ -368,7 +368,7 @@ export function legendFor(view: MapView): LegendSpec | null {
         // biome's own shaded rgb), so showing both as separate legend rows read as a
         // near-duplicate; highlightTargetFor's combined palette merges their color sets under
         // this one label to match.
-        title: "Combined",
+        title: "Elevation & Biome",
         symbols: [
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
