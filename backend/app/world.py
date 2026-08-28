@@ -127,18 +127,19 @@ class World:
     # shows the last real climate snapshot instead of going blank.
     simulate_climate_biomes: bool = True
     # Which wind field feeds climate.py (live-adjustable via POST /world/controls, the
-    # "Controls" window). "cfd" (default): the genuine time-integrated shallow-water solve in
+    # "Controls" window). "cfd": the genuine time-integrated shallow-water solve in
     # atmosphere_cfd.py, advanced once per step by _advance_fluid_dynamics -- the most
     # expensive single piece of a step at the default fluid_density (see
-    # docs/simulation-model.md#fd-performance). "diagnostic": skip that solve entirely and let
-    # climate.compute_climate rebuild wind/air-temperature from its own closed-form ABL-style
-    # formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same way it
-    # already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
+    # docs/simulation-model.md#fd-performance). "diagnostic" (default): skip that solve entirely
+    # and let climate.compute_climate rebuild wind/air-temperature from its own closed-form
+    # ABL-style formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same
+    # way it already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
     # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model.md#wind-model and docs/TODO.md. atmosphere_cfd_state is still kept in
-    # sync (init'd at generation, never cleared) so switching back to "cfd" mid-session
-    # resumes from a real, if now-stale, state rather than a cold start.
-    wind_model: str = "cfd"
+    # docs/simulation-model.md#wind-model and docs/TODO.md -- so it's the default; opt into "cfd"
+    # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
+    # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
+    # now-stale, state rather than a cold start.
+    wind_model: str = "diagnostic"
     # Atmospheric wind-solver state -- see docs/simulation-model.md#atmospheric-fluid-dynamics.
     # Always on, not a mode: generate_world populates it immediately after constructing this
     # World (atmosphere_cfd.init_atmosphere_cfd) and it's never re-initialized or cleared again

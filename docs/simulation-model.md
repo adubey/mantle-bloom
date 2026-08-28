@@ -1366,15 +1366,15 @@ bootstrap `init_atmosphere_cfd` falls back to during `generate_world` (before
 diagnostic wind model is selected, below.
 
 <a id="wind-model"></a>
-### Wind model: `"cfd"` (default) vs `"diagnostic"`
+### Wind model: `"diagnostic"` (default) vs `"cfd"`
 
 `World.wind_model` (live-adjustable via the Controls window / `POST /world/controls`) picks
 which wind field feeds `climate.py`:
 
-- **`"cfd"`** (default) -- the genuine shallow-water solve described above. At the default
+- **`"cfd"`** -- the genuine shallow-water solve described above. At the default
   `fluid_density` this is the single most expensive piece of a `/world/step` (hundreds to
   a thousand+ CFL-stable substeps; see [Performance](#fd-performance)).
-- **`"diagnostic"`** -- skip that solve entirely. `_advance_fluid_dynamics` becomes a no-op
+- **`"diagnostic"`** (default) -- skip that solve entirely. `_advance_fluid_dynamics` becomes a no-op
   (the CFD state is *kept*, just frozen, so switching back resumes from it rather than a
   cold start), and `climate.compute_climate` rebuilds wind from `compute_wind` and air
   temperature from `compute_air_temperature_diagnostic` every call -- the same closed-form

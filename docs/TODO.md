@@ -7,8 +7,8 @@ point that picking it up doesn't need a fresh investigation.
 
 ## Diagnostic ("ABL") wind model: close the last ~5-10% gap to the CFD
 
-**Status:** shipped behind `World.wind_model` (Controls window; `"cfd"` default,
-`"diagnostic"` opt-in). See `docs/simulation-model.md#wind-model`.
+**Status:** shipped behind `World.wind_model` (Controls window; `"diagnostic"` default,
+`"cfd"` opt-in for the full shallow-water solve). See `docs/simulation-model.md#wind-model`.
 
 **Where it stands.** `"diagnostic"` skips the shallow-water solve entirely and rebuilds
 wind from `climate.compute_wind` plus air temperature from
