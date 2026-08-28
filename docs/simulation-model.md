@@ -1584,17 +1584,22 @@ influencing weather (lapse-rate cooling, mountain wind deflection, orographic ra
 This module is the new direction, weather influencing terrain, implementing an erosion model
 cut down to the sources that don't depend on infrastructure mantle-bloom doesn't have.
 
-**Scope cut to five erosion sources.** Coastal-current erosion is dropped (a
-distinct source, never implemented here). Weathering's vegetation boost is dropped (no
-vegetation field, same reasoning as climate.py's own "deliberately not ported" list).
-Rain/sheet erosion, river-channelized erosion, weathering, glacier erosion, and seismic erosion
-all feed into a downstream deposition pass (see [Hydrology](#hydrology) for the flow-routing
-graph all of this depends on, and [Glaciation](#glaciation) for how `glacier_depth` itself is
-grown/melted/flowed), so material isn't purely one-way removed anymore: a slow, big river
-drops part of its sediment load locally instead of carrying every last grain to the coast.
-Glacier-driven **flattening** (broad terrain smoothing under an ice sheet) and **seismic
-erosion** (earthquake-triggered landsliding) are both mantle-bloom-original additions -- see
-below.
+**Seven erosion sources: five subaerial, two sea-side.** Weathering's vegetation boost is
+dropped (no vegetation field, same reasoning as climate.py's own "deliberately not ported"
+list). Rain/sheet erosion, river-channelized erosion, weathering, glacier erosion, and seismic
+erosion are the five subaerial sources; they feed into a downstream deposition pass (see
+[Hydrology](#hydrology) for the flow-routing graph all of this depends on, and
+[Glaciation](#glaciation) for how `glacier_depth` itself is grown/melted/flowed), so material
+isn't purely one-way removed anymore: a slow, big river drops part of its sediment load locally
+instead of carrying every last grain to the coast. **Submarine erosion** and **coastal
+erosion** -- both mantle-bloom-original additions, previously listed as out-of-scope
+"coastal-current erosion" -- are the sea floor's and the shoreline's counterparts: they erode
+where the five subaerial sources are zeroed, and their debris sheds seaward onto the
+surrounding sea floor as marine sediment rather than into any river's flow graph. Submarine
+erosion is also what keeps a range built by two *submerged* plates colliding growing far more
+slowly than a subaerial one. Glacier-driven **flattening** (broad terrain smoothing under an
+ice sheet) and **seismic erosion** (earthquake-triggered landsliding) are also
+mantle-bloom-original additions -- see below.
 
 **The mapping problem, and why it's easier in this direction than the reverse.** climate.py
 already solves node-cloud -> grid (`_sample_elevation_and_crust`'s cKDTree nearest-neighbor
@@ -1629,7 +1634,7 @@ such re-derivation either -- `glacier_depth` is driven by temperature and precip
 which already use consistent physical units (unlike slope), so `GLACIER_EROSION_COEFFICIENT`
 needed no rescaling.
 
-**The five formulas**, all computed per-node:
+**The formulas**, all computed per-node:
 
 - **Rain/sheet erosion** = `RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000) *
   dt_myr`.
@@ -1694,10 +1699,43 @@ needed no rescaling.
   deform](#boundary-evolution)), the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped
   from roughly 9% to under 2% versus the same run without either addition.
 - All five summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
-  everywhere else) -- every source here is a subaerial process. The combined result is
+  everywhere else) -- every source above is a subaerial process. The combined result is
   capped at the node's own drop-to-lowest-neighbor (in meters, not the normalized slope), so
   a single step can't erode a node *past* the valley it drains into and carve a new, lower
   pit.
+- **Submarine erosion** = `(SUBMARINE_EROSION_COEFFICIENT + SUBMARINE_PRESSURE_COEFFICIENT *
+  clip(depth_below_sea_m / SUBMARINE_PRESSURE_REFERENCE_M, 0, 1)) * slope * dt_myr`, applied
+  only to ocean nodes. A current-driven baseline (slope alone) plus a term that grows with how
+  deep the node still sits (bottom water pressure, gravity-driven slumping of an unbuttressed
+  scarp), the whole thing `* slope` so a flat abyssal plain still erodes near zero. Because the
+  pressure term fades as a crest climbs toward the surface, the brake on a submerged colliding
+  range is strongest while it is deep and eases continuously as it approaches sea level, handing
+  off to the subaerial sources the moment it breaches. Coefficients picked the same
+  order-of-magnitude way `RAIN_EROSION_COEFFICIENT` was, against
+  `CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` (800 m/Myr): at a moderate submarine-ridge slope
+  (~0.02) and mid-depth the two terms sum to roughly half the uplift rate -- a sustained drag
+  on submarine orogeny, not a hard ceiling.
+- **Coastal erosion** = `(COASTAL_EROSION_WAVE_RATE_M_PER_MYR + COASTAL_FROST_MAX_RATE_M_PER_MYR
+  * frost_factor) * coastal_proximity * dt_myr`, applied in the near-sea-level band on *both*
+  sides of the shoreline (`coastal_proximity = clip(1 - |elevation| / COASTAL_EROSION_BAND_M,
+  0, 1)`, so it tapers to zero at ±`COASTAL_EROSION_BAND_M` and also gnaws the crest of a
+  mid-ocean range that rises into the band). Wave attack is a flat rate across the band (swell
+  energy doesn't depend on the node's own relief -- deliberately *not* relief-gated the way
+  weathering is); `frost_factor = exp(-((temperature_c - COASTAL_FROST_PEAK_C) /
+  COASTAL_FROST_WIDTH_C)^2)` is a Gaussian peaked just below freezing, since freeze-thaw
+  wedging needs the climate to actually cycle through 0 °C -- it falls off toward both
+  permanently-frozen and never-freezing climates. Integrated every year like every other rate
+  here.
+- Submarine + coastal erosion are summed and capped against whatever drop-to-lowest-neighbor
+  the subaerial sum didn't already claim (so the joint per-step erosion still can't carve
+  below the sea floor a node drains into), then their eroded rock is handed to
+  `_spread_marine_sediment`: a submerged source keeps `MARINE_SEDIMENT_LOCAL_FRACTION`
+  locally, a subaerial sea-cliff source sheds it all seaward, and the remainder spreads
+  inverse-distance-weighted onto the nearest *lower* ocean nodes within `MARINE_SPREAD_RANGE_KM`
+  (sediment runs downhill into basins; a source with no lower ocean node in range keeps the
+  full amount). Mass is conserved exactly. This marine sediment is folded into the same
+  `sediment_deposited` total the `ErosionResult` carries, so [Resources and soil](#resources-and-soil)'s
+  shelf oil-and-gas and soil terms see it alongside every other deposition pathway.
 
 **Glacier flattening** (`_flatten`, mantle-bloom-original): real
 continental ice sheets grind down local relief over broad areas (the Canadian Shield and

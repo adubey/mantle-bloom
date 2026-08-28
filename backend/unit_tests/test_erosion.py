@@ -72,20 +72,39 @@ def test_weathering_relief_factor_suppresses_flat_terrain_and_saturates_on_steep
     assert np.allclose(steep_relief_factor[1:], 1.0)
 
 
-def test_apply_erosion_never_erodes_ocean_nodes_directly():
-    # Erosion itself (rain/river/weathering) is still zeroed over ocean nodes -- but unlike
-    # before river deposition existed, an ocean node's elevation *can* now rise, when a
-    # river empties sediment at its mouth (a delta) -- see test_deposition_can_raise_a
-    # downstream node below for a synthetic case proving that actually happens.
+def test_submarine_erosion_scales_with_slope_and_depth_only_over_ocean():
+    # Flat sea floor (slope 0) erodes nothing; a steeper, deeper submerged scarp erodes more
+    # than a steeper, shallower one; subaerial nodes are untouched by this term.
+    is_ocean = np.array([True, True, True, False])
+    elevation = np.array([-100.0, -100.0, -5000.0, 500.0])
+    slope = np.array([0.0, 0.03, 0.03, 0.03])
+    amt = erosion.submarine_erosion_amount(elevation, slope, is_ocean, dt_myr=5.0)
+    assert amt[0] == 0.0  # flat
+    assert amt[2] > amt[1] > 0.0  # deeper (more pressure) erodes faster at the same slope
+    assert amt[3] == 0.0  # subaerial
+
+
+def test_coastal_erosion_confined_to_band_and_peaks_near_freezing():
+    elevation = np.array([0.0, 0.0, 150.0, 5000.0, -5000.0])
+    freezing = np.full(5, erosion.COASTAL_FROST_PEAK_C)
+    warm = np.full(5, 30.0)
+    at_freezing = erosion.coastal_erosion_amount(elevation, freezing, dt_myr=1.0)
+    when_warm = erosion.coastal_erosion_amount(elevation, warm, dt_myr=1.0)
+    assert at_freezing[0] > when_warm[0] > 0.0  # frost adds on top of wave attack at the shore
+    assert at_freezing[2] > 0.0 and at_freezing[2] < at_freezing[0]  # in-band but tapering
+    assert at_freezing[3] == 0.0 and at_freezing[4] == 0.0  # far above / far below sea level
+
+
+def test_apply_erosion_can_lower_a_submerged_range():
+    # End to end: over a generated world, some ocean node loses net elevation once submarine +
+    # coastal erosion are in play (they were entirely erosion-exempt before).
     world = generate_world(seed=20, num_plates=8)
     _, elevation_before, _, _, _, _ = erosion._gather_nodes(world)
     is_ocean = elevation_before <= 0.0
-
     erosion.apply_erosion(world, years=5_000_000)
-
     _, elevation_after, _, _, _, _ = erosion._gather_nodes(world)
     assert len(elevation_after) == len(elevation_before)
-    assert np.all(elevation_after[is_ocean] >= elevation_before[is_ocean] - 1e-6)
+    assert np.any(elevation_after[is_ocean] < elevation_before[is_ocean] - 1e-6)
 
 
 def test_apply_erosion_keeps_elevation_finite_and_changing():
