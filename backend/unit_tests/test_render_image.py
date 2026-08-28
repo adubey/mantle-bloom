@@ -83,6 +83,27 @@ def test_render_png_is_decodable_at_requested_size():
         assert image.size == (320, 180)
 
 
+def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
+    # Combined's per-pixel biome id rides in alpha (see render_image.COMBINED_LAKE_ID_CODE's
+    # comment): alpha = 255 - code, code 0 for ocean/unclassified, biome_id + 1 for land.
+    world = _world()
+    png = render_image.render_png(world, "behrmann", "combined", 320, 180)
+    image = Image.open(io.BytesIO(png))
+    assert image.mode == "RGBA"
+
+    alpha = np.asarray(image.convert("RGBA"))[:, :, 3]
+    codes = 255 - alpha.astype(int)
+    # Background/ocean stays code 0; land carries real biome codes within the encodable range.
+    assert codes.min() == 0
+    assert codes.max() > 0
+    assert codes.max() <= render_image.COMBINED_GLACIER_ID_CODE
+    assert np.count_nonzero(codes) > 0
+
+    # Other views stay plain RGB -- alpha is a Combined-only channel.
+    elev = Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "elevation", 320, 180)))
+    assert elev.mode == "RGB"
+
+
 def test_biome_grid_dimensions_matches_reference_at_density_one():
     assert render_image.biome_grid_dimensions(1.0) == (render_image.BIOME_GRID_HEIGHT, render_image.BIOME_GRID_WIDTH)
 

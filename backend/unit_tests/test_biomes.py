@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from app import biomes, hydrology
 
@@ -125,35 +126,40 @@ def test_biome_relative_shade_factor_matches_shape_of_biome_ids():
     assert result.shape == (3,)
 
 
-def test_biome_relative_shade_factor_only_ever_returns_a_known_factor():
-    biome_ids = np.array([biomes.TUNDRA, biomes.TUNDRA, biomes.OCEAN])
-    elevation = np.array([100.0, 2000.0, -500.0])
+def test_biome_relative_shade_factor_stays_within_the_amplitude_bounds():
+    biome_ids = np.array([biomes.TUNDRA, biomes.TUNDRA, biomes.TUNDRA, biomes.OCEAN])
+    elevation = np.array([100.0, 2000.0, 900.0, -500.0])
     result = biomes.biome_relative_shade_factor(biome_ids, elevation)
-    assert set(result.tolist()) <= set(biomes.BIOME_SHADE_FACTORS.tolist())
+    assert np.all(result >= biomes.BIOME_SHADE_MIN - 1e-9)
+    assert np.all(result <= biomes.BIOME_SHADE_MAX + 1e-9)
 
 
-def test_biome_relative_shade_factor_splits_a_large_uniform_biome_into_multiple_tiers():
-    # A single biome across many cells with a real elevation spread should use more than one
-    # shade tier -- otherwise a large biome area would still render as one flat color.
+def test_biome_relative_shade_factor_spans_the_full_range_end_to_end():
+    # A biome's lowest cell hits BIOME_SHADE_MIN and its highest hits BIOME_SHADE_MAX.
+    n = 200
+    biome_ids = np.full(n, biomes.TEMPERATE_GRASSLAND)
+    elevation = np.linspace(0.0, 1000.0, n)
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert result.min() == pytest.approx(biomes.BIOME_SHADE_MIN)
+    assert result.max() == pytest.approx(biomes.BIOME_SHADE_MAX)
+
+
+def test_biome_relative_shade_factor_is_continuous_not_a_few_discrete_tiers():
+    # The whole point of the rewrite: a large biome varies smoothly, so within-biome relief
+    # doesn't read as visible bands. Many distinct factor values, not ~3.
     n = 300
     biome_ids = np.full(n, biomes.TEMPERATE_GRASSLAND)
     elevation = np.linspace(0.0, 1000.0, n)
     result = biomes.biome_relative_shade_factor(biome_ids, elevation)
-    assert len(np.unique(result)) >= biomes.BIOME_SHADE_TIERS
+    assert len(np.unique(result)) == n
 
 
-def test_biome_relative_shade_factor_shaded_colors_stay_close_to_the_flat_biome_color():
-    # Every shaded variant should still be near BIOME_COLORS' own flat entry -- close enough
-    # that frontend/src/legendData.ts's own click-to-highlight tolerance can match it without
-    # a second legend swatch per biome (see BIOME_SHADE_FACTORS' own docstring).
+def test_biome_relative_shade_factor_increases_monotonically_with_elevation_rank():
     n = 50
     biome_ids = np.full(n, biomes.SAVANNA)
     elevation = np.linspace(0.0, 3000.0, n)
-    factor = biomes.biome_relative_shade_factor(biome_ids, elevation)
-    base = biomes.BIOME_COLORS[biomes.SAVANNA].astype(float)
-    shaded = np.clip(base[None, :] * factor[:, None], 0, 255)
-    dist = np.linalg.norm(shaded - base[None, :], axis=1)
-    assert np.all(dist <= 35)
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert np.all(np.diff(result) > 0)
 
 
 def test_biome_relative_shade_factor_ranks_higher_elevation_cells_brighter_within_a_biome():
@@ -164,16 +170,15 @@ def test_biome_relative_shade_factor_ranks_higher_elevation_cells_brighter_withi
 
 
 def test_biome_relative_shade_factor_ranks_are_relative_to_each_biome_separately():
-    # A biome confined to a narrow absolute elevation band should still get real tier spread,
-    # since ranking is relative to that biome's own cells, not a shared absolute scale.
+    # A biome confined to a narrow absolute elevation band still spans the full brightness
+    # range, since ranking is relative to that biome's own cells, not a shared absolute scale.
     n = 60
     biome_ids = np.concatenate([np.full(n, biomes.WETLAND), np.full(n, biomes.TUNDRA)])
     elevation = np.concatenate([np.linspace(0.0, 10.0, n), np.linspace(0.0, 3000.0, n)])
     result = biomes.biome_relative_shade_factor(biome_ids, elevation)
-    wetland_tiers = len(np.unique(result[:n]))
-    tundra_tiers = len(np.unique(result[n:]))
-    assert wetland_tiers == biomes.BIOME_SHADE_TIERS
-    assert tundra_tiers == biomes.BIOME_SHADE_TIERS
+    for segment in (result[:n], result[n:]):
+        assert segment.min() == pytest.approx(biomes.BIOME_SHADE_MIN)
+        assert segment.max() == pytest.approx(biomes.BIOME_SHADE_MAX)
 
 
 def test_classify_biomes_intertidal_is_shallow_ocean_only():

@@ -801,6 +801,7 @@ export default function App() {
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
               highlightTarget={highlightTarget}
+              alphaEncodedIds={mapView === "combined"}
             />
           )}
           </div>

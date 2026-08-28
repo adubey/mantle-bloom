@@ -1284,6 +1284,21 @@ for "Combined", though Ocean/Intertidal Zone's own biome color is never actually
 rather than chained `np.where` overwrites, so each band's cutoffs stay a self-contained,
 independently checkable list instead of depending on write order to get boundary cells right.
 
+**Combined-view shading.** `_render_combined_view` multiplies each land cell's flat biome
+color by `biomes.biome_relative_shade_factor` -- a *continuous* brightness ramp from
+`1 - BIOME_SHADE_AMPLITUDE` at a biome's lowest-elevation cell to `1 + BIOME_SHADE_AMPLITUDE`
+(±25%) at its highest, linear in that cell's elevation *rank among its own biome's cells only*
+(so a biome pinned to a narrow absolute elevation band still spans the full range). Ranking
+relative to the biome, and ramping continuously rather than in a few discrete steps, is what
+keeps within-biome relief from reading as visible bands/contour lines. Near real peaks the
+result is further blended toward the elevation gradient (`RELIEF_BLEND_MAX`). Because that
+wide color spread means a land pixel's *color* no longer identifies its biome, the render is
+**RGBA** and the per-pixel biome/lake/glacier id is carried in the alpha byte
+(`alpha = 255 - code`; see `render_image.COMBINED_LAKE_ID_CODE`). `frontend/src/legendData.ts`
+mirrors that id mapping by hand and `MapCanvas.tsx` reads it straight off alpha for
+legend-click-to-highlight -- exact, no RGB tolerance match -- then resets alpha to opaque
+before display.
+
 <a id="ocean-atmospheric-fluid-dynamics"></a>
 ## Atmospheric wind solver (`fluid_dynamics.py`, `atmosphere_cfd.py`)
 

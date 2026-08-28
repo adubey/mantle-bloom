@@ -203,72 +203,44 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
   ],
 };
 
-// The actual fixed pixel colors Combined mode paints for these two overlays (see backend
-// app/render_image.py's LAKE_COLOR_RGB/GLACIER_COLOR_RGB) -- kept separate from the
-// LAKE_COLOR/GLACIER_COLOR swatch colors above since Glacier's swatch is a deliberately pure
-// white for legend legibility and doesn't match the actual rendered pixel color; matching
-// (see highlightTargetFor below) needs the real one.
-const LAKE_RENDER_RGB: [number, number, number] = [58, 92, 122];
-const GLACIER_RENDER_RGB: [number, number, number] = [221, 240, 245];
+// Combined mode's per-pixel biome id, carried in the render's alpha channel (see backend
+// app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 - code, where code is a
+// land biome's index in BIOME_RGB_ENTRIES + 1 (that order matches backend biomes.BIOME_NAMES,
+// same hand-sync precedent as BIOME_RGB_ENTRIES itself), or one of the two overlay codes
+// below, or 0 for ocean / unclassified. MapCanvas.tsx reads this straight off each pixel's
+// alpha byte -- exact, no RGB match -- so Combined's land colors are free to span a wide
+// shaded-relief range without any risk of two biomes colliding.
+const COMBINED_LAKE_ID_CODE = BIOME_RGB_ENTRIES.length + 1;
+const COMBINED_GLACIER_ID_CODE = BIOME_RGB_ENTRIES.length + 2;
 
-// Mirrors backend app/biomes.py's own BIOME_SHADE_FACTORS -- the per-tier brightness
-// multiplier Combined mode applies to a biome's flat color, ranked by elevation *within that
-// biome's own cells* (see biome_relative_shade_factor there for why relative-to-biome rather
-// than a fixed absolute-elevation scale). Combined's legend-click-to-highlight (see
-// highlightTargetFor/MapCanvas.tsx) needs the actual shaded RGBs a biome's color can appear as
-// on the rendered map, since -- unlike the plain Biome view, whose pixels are each exactly one
-// of BIOME_RGB_ENTRIES with nothing else drawn on top -- Combined never paints a biome's flat,
-// unshaded color for any land cell.
-const LAND_SHADE_FACTORS = [0.92, 1.0, 1.08];
-
-function shadedVariants([r, g, b]: [number, number, number], factors: number[]): [number, number, number][] {
-  return factors.map((f) => [Math.min(255, Math.round(r * f)), Math.min(255, Math.round(g * f)), Math.min(255, Math.round(b * f))]);
+function combinedIdCode(label: string): number | null {
+  const idx = BIOME_RGB_ENTRIES.findIndex(([l]) => l === label);
+  return idx < 0 ? null : idx + 1;
 }
-
-// How close (Euclidean RGB distance) a Combined-view pixel has to be to one of a biome's
-// shaded variants to still count as "that biome" for highlighting -- needs slack to absorb
-// float-rounding differences (this file's Math.round vs. backend biomes.py's np.round) and the
-// post-fill Gaussian blur render_image.py's COMBINED_BLUR_RADIUS_PX applies (which softens
-// exact tier boundaries at cell edges). It deliberately does *not* try to reach far enough to
-// cover Combined's further blend of land color toward the elevation gradient above
-// RELIEF_ELEVATION_RANGE_M (see render_image.py's RELIEF_BLEND_MAX): a real mountain peak
-// inside a forest biome reading as "too rocky to highlight" once its blend gets large is an
-// acceptable, even fitting, edge case -- the whole point of that blend is to visually stop
-// reading as flat forest color up there.
-const COMBINED_MATCH_TOLERANCE = 18;
 
 export interface PaletteEntry {
   label: string;
   colors: [number, number, number][];
 }
 
-// `palette` carries every other classifiable label's own colors alongside `selected`'s (not
-// just the clicked one) so MapCanvas.tsx's applyHighlight can pick each pixel's *nearest*
-// label across the whole set rather than merely testing "close enough to the selected one" in
-// isolation -- see that function's own comment for why a nearest-neighbor classification is
-// required to keep one biome's highlight from bleeding into another whose shaded variants
-// happen to land nearby in RGB space.
+// Two ways to pick out a clicked swatch's pixels (see MapCanvas.tsx's applyHighlight):
+//   - `palette` + `tolerance`: nearest-neighbor RGB match across every classifiable label
+//     (Biome view -- every pixel is exactly one of BIOME_RGB_ENTRIES, tolerance 0).
+//   - `idCodes`: exact match on the per-pixel id carried in the alpha channel (Combined view
+//     -- see combinedIdCode above). When set, `palette`/`tolerance` are unused.
 export interface HighlightTarget {
   selected: string;
   palette: PaletteEntry[];
   tolerance: number;
+  idCodes?: number[];
 }
 
-// Resolves a clicked legend swatch label to a HighlightTarget (see MapCanvas.tsx's
-// applyHighlight) for the two views whose legends are clickable (see Legend.tsx). Biome's own
-// pixels are an exact, single fixed color per swatch (tolerance 0, and since every pixel is
-// exactly one of these colors to begin with, nearest-neighbor classification never actually
-// has to break a close call). Combined's land swatches can appear as any of several
-// elevation-shaded variants (see shadedVariants above) within COMBINED_MATCH_TOLERANCE, while
-// its Lake/Glacier swatches are still exact fixed colors, same as Biome's -- the palette is
-// still built from every classifiable label (not just the clicked one) so applyHighlight's
-// nearest-neighbor classification can tell two biomes' shaded variants apart even where they
-// land close together in RGB space (see HighlightTarget's own docstring). Ocean/Intertidal
-// Zone are excluded from Combined's palette entirely -- both are is_ocean cells that Combined
-// always paints with the elevation gradient instead of any biome color (see backend
-// app/render_image.py's _render_combined_view), so neither ever appears as a distinguishable
-// color a click could highlight; they still appear as swatches in the legend for list parity
-// with Biome (see Legend.tsx), just as non-functional ones.
+// Resolves a clicked legend swatch label to a HighlightTarget for the two views whose legends
+// are clickable (see Legend.tsx). Biome matches on exact fixed pixel colors; Combined matches
+// on the alpha-channel id code. Ocean/Intertidal Zone are excluded from Combined -- both are
+// is_ocean cells Combined always paints with the elevation gradient rather than a biome color
+// (id code 0), so neither is ever a distinguishable pixel a click could highlight; they still
+// appear as legend swatches for list parity with Biome (see Legend.tsx), just non-functional.
 export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
   if (view === "biome") {
     if (!BIOME_RGB_ENTRIES.some(([l]) => l === label)) return null;
@@ -277,17 +249,17 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
   }
   if (view === "combined") {
     if (label === "Ocean" || label === "Intertidal Zone") return null;
-    const iceBiomeRgb = BIOME_RGB_ENTRIES.find(([l]) => l === "Ice")![1];
-    const palette: PaletteEntry[] = [
-      { label: "Lake", colors: [LAKE_RENDER_RGB] },
-      { label: "Ice / Glacier", colors: [GLACIER_RENDER_RGB, ...shadedVariants(iceBiomeRgb, LAND_SHADE_FACTORS)] },
-      ...BIOME_RGB_ENTRIES.filter(([l]) => l !== "Ocean" && l !== "Intertidal Zone" && l !== "Ice").map(([l, rgbTuple]) => ({
-        label: l,
-        colors: shadedVariants(rgbTuple, LAND_SHADE_FACTORS),
-      })),
-    ];
-    if (!palette.some((p) => p.label === label)) return null;
-    return { selected: label, palette, tolerance: COMBINED_MATCH_TOLERANCE };
+    let idCodes: number[] | null = null;
+    if (label === "Lake") idCodes = [COMBINED_LAKE_ID_CODE];
+    // Ice-biome land with no ice cover keeps its own biome code; glaciated cells (which paint
+    // over Ice-biome cells with almost the same color -- see Legend.tsx) get the overlay code.
+    else if (label === "Ice / Glacier") idCodes = [combinedIdCode("Ice")!, COMBINED_GLACIER_ID_CODE];
+    else {
+      const code = combinedIdCode(label);
+      if (code !== null) idCodes = [code];
+    }
+    if (!idCodes) return null;
+    return { selected: label, palette: [], tolerance: 0, idCodes };
   }
   return null;
 }
@@ -353,21 +325,20 @@ export function legendFor(view: MapView): LegendSpec | null {
       return {
         // Ocean/land relief both follow the elevation gradient (see backend
         // app/render_image.py's _render_combined_view), and land is additionally tinted by
-        // biome -- but unlike the Elevation/Plates Detail views, that gradient isn't shown as
-        // its own bar here: land's per-cell brightness already visibly varies with elevation
-        // (see shadedVariants/highlightTargetFor above, mirroring backend
-        // _land_shade_factor), so the swatches below stay the single reference a click can
-        // target, without a separate scale implying elevation is the primary thing being
-        // shown. The biome list otherwise matches Biome's legend swatch-for-swatch (see
-        // BIOME_ENTRIES) for consistency between the two views, Ocean and Intertidal Zone
-        // included even though neither's own biome color is ever actually visible in Combined
-        // (see highlightTargetFor's own comment) -- both always render via the elevation
-        // gradient instead. The Ice biome swatch is dropped from that list and folded into the
-        // "Ice / Glacier" swatch above instead -- render_image.py's is_glacier overlay paints
-        // over Ice-biome cells with almost the same color (GLACIER_RENDER_RGB vs. the Ice
-        // biome's own shaded rgb), so showing both as separate legend rows read as a
-        // near-duplicate; highlightTargetFor's combined palette merges their color sets under
-        // this one label to match.
+        // biome and shaded across a wide brightness range by within-biome elevation -- but
+        // unlike the Elevation/Plates Detail views, that gradient isn't shown as its own bar
+        // here: land's per-cell brightness already visibly varies with elevation, so the
+        // swatches below stay the single reference a click can target, without a separate
+        // scale implying elevation is the primary thing being shown. The biome list otherwise
+        // matches Biome's legend swatch-for-swatch (see BIOME_ENTRIES) for consistency between
+        // the two views, Ocean and Intertidal Zone included even though neither's own biome
+        // color is ever actually visible in Combined (see highlightTargetFor's own comment) --
+        // both always render via the elevation gradient instead. The Ice biome swatch is
+        // dropped from that list and folded into the "Ice / Glacier" swatch above instead --
+        // render_image.py's is_glacier overlay paints over Ice-biome cells with almost the
+        // same color, so showing both as separate legend rows read as a near-duplicate;
+        // highlightTargetFor merges the Ice biome id and the glacier overlay id under this one
+        // label to match.
         title: "Combined",
         symbols: [
           { kind: "line", color: RIVER_COLOR, label: "River" },

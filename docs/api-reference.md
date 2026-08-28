@@ -204,7 +204,11 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   plus boundary outlines) -- the frontend's Map View dropdown picks this directly. `"biome"`
   and `"combined"` (biome-colored land, hypsometric ocean, lakes/glaciers/rivers overlaid) are
   a categorical classification (see
-  [simulation-model.md#biomes](simulation-model.md#biomes)). Five more views come from
+  [simulation-model.md#biomes](simulation-model.md#biomes)). `"combined"` alone returns an
+  **RGBA** PNG whose alpha channel encodes a per-pixel biome id for the client's
+  click-to-identify feature: `code = 255 - alpha`, where `code` is `0` for ocean/unclassified,
+  `biome_index + 1` (`1`..`16`) for a land biome cell, `17` for a lake, or `18` for glacier
+  cover. Alpha is a data channel, not real transparency (the range is only `237`..`255`). Five more views come from
   `climate.py` (see [simulation-model.md#climate](simulation-model.md#climate)):
   `"temperature"`, `"humidity"`, and `"precipitation"` are heatmaps (each also drawing the
   current coastline -- see [simulation-model.md#coastline](simulation-model.md#coastline) --
