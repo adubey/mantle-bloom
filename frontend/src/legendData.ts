@@ -325,21 +325,22 @@ export function legendFor(view: MapView): LegendSpec | null {
       return {
         // Ocean/land relief both follow the elevation gradient (see backend
         // app/render_image.py's _render_combined_view), and land is additionally tinted by
-        // biome and shaded across a wide brightness range by within-biome elevation -- but
-        // unlike the Elevation/Plates Detail views, that gradient isn't shown as its own bar
-        // here: land's per-cell brightness already visibly varies with elevation, so the
-        // swatches below stay the single reference a click can target, without a separate
-        // scale implying elevation is the primary thing being shown. The biome list otherwise
-        // matches Biome's legend swatch-for-swatch (see BIOME_ENTRIES) for consistency between
-        // the two views, Ocean and Intertidal Zone included even though neither's own biome
-        // color is ever actually visible in Combined (see highlightTargetFor's own comment) --
-        // both always render via the elevation gradient instead. The Ice biome swatch is
-        // dropped from that list and folded into the "Ice / Glacier" swatch above instead --
-        // render_image.py's is_glacier overlay paints over Ice-biome cells with almost the
-        // same color, so showing both as separate legend rows read as a near-duplicate;
-        // highlightTargetFor merges the Ice biome id and the glacier overlay id under this one
-        // label to match.
-        title: "Combined",
+        // biome -- but unlike the Elevation/Plates Detail views, that gradient isn't shown as
+        // its own bar here: land's per-cell brightness already visibly varies with elevation
+        // (see shadedVariants/highlightTargetFor above, mirroring backend
+        // _land_shade_factor), so the swatches below stay the single reference a click can
+        // target, without a separate scale implying elevation is the primary thing being
+        // shown. The biome list otherwise matches Biome's legend swatch-for-swatch (see
+        // BIOME_ENTRIES) for consistency between the two views, Ocean and Intertidal Zone
+        // included even though neither's own biome color is ever actually visible in Combined
+        // (see highlightTargetFor's own comment) -- both always render via the elevation
+        // gradient instead. The Ice biome swatch is dropped from that list and folded into the
+        // "Ice / Glacier" swatch above instead -- render_image.py's is_glacier overlay paints
+        // over Ice-biome cells with almost the same color (GLACIER_RENDER_RGB vs. the Ice
+        // biome's own shaded rgb), so showing both as separate legend rows read as a
+        // near-duplicate; highlightTargetFor's combined palette merges their color sets under
+        // this one label to match.
+        title: "Elevation & Biome",
         symbols: [
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },

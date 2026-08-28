@@ -160,7 +160,7 @@ export default function App() {
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
-  const [mapView, setMapView] = useState<MapView>(initialView?.mapView ?? "elevation");
+  const [mapView, setMapView] = useState<MapView>(initialView?.mapView ?? "combined");
   // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
   // mode changes while that step is still in flight, its post-step refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
@@ -609,12 +609,8 @@ export default function App() {
               onChange={(e) => setMapView(e.target.value as MapView)}
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
-              <optgroup label="Tectonics & Climate">
-                <option value="plates">Plates</option>
-                <option value="platesDetail">Plates (details)</option>
-                <option value="plateInspector">Plate Inspector</option>
-                <option value="riverInspector">River Inspector</option>
-                <option value="lakeInspector">Lake Inspector</option>
+              <optgroup label="Maps">
+                <option value="combined">Elevation &amp; Biome</option>
                 <option value="elevation">Elevation</option>
                 <option value="temperature">Temperature</option>
                 <option value="wind">Wind</option>
@@ -622,9 +618,15 @@ export default function App() {
                 <option value="humidity">Humidity</option>
                 <option value="precipitation">Precipitation</option>
                 <option value="biome">Biome</option>
-                <option value="combined">Combined</option>
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
+              </optgroup>
+              <optgroup label="Debug &gt;">
+                <option value="platesDetail">Points</option>
+                <option value="plates">Plates</option>
+                <option value="plateInspector">Plate Inspector</option>
+                <option value="riverInspector">Rivers</option>
+                <option value="lakeInspector">Lakes</option>
               </optgroup>
             </select>
             <select
@@ -884,7 +886,7 @@ export default function App() {
               <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                 Elevation point density and climate & biome resolution together. Higher is
                 sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
-                Biome/Combined/Resources/Soil Quality maps and more elevation-line nodes -- but
+                Biome/Elevation &amp; Biome/Resources/Soil Quality maps and more elevation-line nodes -- but
                 simulation steps and rendering both run slower. Lower runs faster but coarser.
               </div>
             </label>
@@ -952,6 +954,7 @@ export default function App() {
           hasWorld={!!summary}
           seed={summary?.seed ?? null}
           elapsedYears={summary?.elapsed_years ?? null}
+          stepYears={stepYears}
           projection={projection}
           mapView={mapView}
           rotation={rotation}

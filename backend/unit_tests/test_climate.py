@@ -188,6 +188,36 @@ def test_humidity_is_higher_near_warm_ocean_and_decays_inland():
     assert humidity[row, coast_col] > humidity[row, inland_col]
 
 
+def test_humidity_noise_breaks_zonal_banding_without_moving_row_means():
+    # All-ocean grid with a latitude-banded ocean temperature: without an rng every row of
+    # the humidity field is flat (the evaporation ceiling is a near-pure function of
+    # latitude), which is the horizontal banding. Passing an rng adds a spatially-coherent
+    # perturbation that gives each row real along-row variation, while the per-row means --
+    # the insolation-derived belt structure -- stay put.
+    height, width = 40, 80
+    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
+    is_ocean = np.ones((height, width), dtype=bool)
+    elevation = np.zeros((height, width))
+    ocean_temperature = np.repeat(np.linspace(5.0, 26.0, height)[:, None], width, axis=1)
+    air_temperature = ocean_temperature.copy()
+    wind_u = np.full((height, width), 3.0)
+    wind_v = np.zeros((height, width))
+    elevation_factor = np.ones((height, width))
+
+    args = (is_ocean, elevation, ocean_temperature, air_temperature, wind_u, wind_v, elevation_factor, lat_deg)
+    plain, _ = climate.compute_humidity(*args)
+    noised, _ = climate.compute_humidity(*args, rng=np.random.default_rng(0))
+
+    assert plain.std(axis=1).mean() < 1e-9  # essentially banded
+    assert noised.std(axis=1).mean() > 100 * plain.std(axis=1).mean()  # along-row variation restored
+    np.testing.assert_allclose(noised.mean(axis=1), plain.mean(axis=1), atol=2 * climate.HUMIDITY_NOISE_STD)
+    assert noised.min() >= 0.0 and noised.max() <= climate.MAX_EVAPORATION_CEILING
+
+    # Deterministic in the rng seed.
+    again, _ = climate.compute_humidity(*args, rng=np.random.default_rng(0))
+    np.testing.assert_array_equal(noised, again)
+
+
 def test_precipitation_increases_with_humidity_and_orographic_lift():
     low_humidity = climate.compute_precipitation(np.array([0.1]), np.array([0.0]))
     high_humidity = climate.compute_precipitation(np.array([1.0]), np.array([0.0]))

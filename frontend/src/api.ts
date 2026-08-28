@@ -410,12 +410,12 @@ export interface AnimateResponse extends WorldSummary {
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
-// /world/animate), and up to MAX_ANIMATION_FRAMES=60 of those run back-to-back server-side
+// /world/animate), and up to MAX_ANIMATION_FRAMES=240 of those run back-to-back server-side
 // before the response comes back -- by far the slowest request the app makes, and one that's
 // only gotten slower as the simulation itself has picked up more per-step work (erosion,
 // sediment redistribution, coastline stabilization, ...). A generous explicit timeout so a
 // real hang surfaces as an error instead of leaving the dialog spinning forever, while still
-// giving a big/slow world's worst case (60 frames) plenty of room.
+// giving a big/slow world's worst case (240 frames) plenty of room.
 const ANIMATE_TIMEOUT_MS = 15 * 60 * 1000;
 
 // "File > Make Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
