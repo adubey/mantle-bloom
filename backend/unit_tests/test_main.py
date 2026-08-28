@@ -563,6 +563,7 @@ def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
     from app import atmosphere_cfd, main
 
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    client.post("/world/controls", json={"wind_model": "cfd"})  # the CFD solve only advances under "cfd" (default is "diagnostic")
     world = main._state["world"]
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
@@ -588,6 +589,11 @@ def test_controls_wind_model_toggle_and_validation(client):
 
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
+    assert world.wind_model == "diagnostic"
+
+    resp = client.post("/world/controls", json={"wind_model": "cfd"})
+    assert resp.status_code == 200
+    assert resp.json()["wind_model"] == "cfd"
     assert world.wind_model == "cfd"
 
     resp = client.post("/world/controls", json={"wind_model": "diagnostic"})

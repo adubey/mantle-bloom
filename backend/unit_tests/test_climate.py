@@ -406,6 +406,7 @@ def test_compute_climate_sources_wind_air_temp_from_cfd_everything_else_diagnost
     # that CFD-sourced wind -- there is no ocean CFD state any more (see climate.py's module
     # docstring).
     world = _world(seed=7, num_plates=8, steps=1)
+    world.wind_model = "cfd"  # exercise the CFD-sourced path explicitly (default is "diagnostic")
     assert not hasattr(world, "ocean_cfd_state") or world.ocean_cfd_state is None
     height, width = climate.grid_dimensions(world.climate_density)
     fields = climate.compute_climate(world, height, width)

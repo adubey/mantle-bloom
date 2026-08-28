@@ -30,20 +30,22 @@ from .world import World, step_world
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
 # see climate.py's module docstring for why. Handled by a separate code path
 # (_render_climate_view) rather than threading a third data source through render_png's
-# existing elevation/plates machinery. "biome" belongs here too, even though it isn't one of
-# climate.py's own raw fields -- it's a pure classification (biomes.classify_biomes) derived
-# entirely from two fields (temperature, precipitation) that path already has in hand.
-CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome")
-# "combined" isn't a CLIMATE_VIEWS member (see _render_combined_view): it draws from the same
-# fine per-node elevation data the elevation/plates views use, not climate.py's own grid, so
-# it belongs with them structurally even though its coloring leans on biome classification.
+# existing elevation/plates machinery.
+CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitation")
+# Neither "combined" nor "biome" is a CLIMATE_VIEWS member: both render on the fine
+# _biome_fields grid (see biome_grid_dimensions, scaled by World.climate_density -- the same
+# "Very High" detail the Elevation/Points views get from World.node_density), not on
+# climate.py's own coarser simulation grid or the even coarser atmosphere-CFD HEALPix grid the
+# CLIMATE_VIEWS renderers resample onto. "combined" leans on biome classification for its
+# land coloring; "biome" is that classification shown directly as a legible mosaic. Both are
+# dispatched to their own renderers (_render_combined_view / _render_biome_view) in render_png.
 # Resources/Soil Quality (see geology.py/volcanism.py) are node-cloud-derived like elevation/
 # plates, not climate-grid-derived -- see _resource_fields -- but get their own tuple/dispatch
 # branch (_render_resource_view) rather than folding into VIEWS' first group directly, since
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-VIEWS = ("elevation", "plates", "platesDetail", "combined") + CLIMATE_VIEWS + RESOURCE_VIEWS
+VIEWS = ("elevation", "plates", "platesDetail", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -966,7 +968,7 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
     frozen and stale, so those two views fall back to `climate.compute_climate`'s own wind_u/
     wind_v/air_temperature_c instead, resampled onto this grid like every other field. Every
     other field -- the ocean side of `temperature`, `oceanCurrents`, `humidity`,
-    `precipitation`, `biome` -- is always a diagnostic `climate.compute_climate` owns (not a
+    `precipitation` -- is always a diagnostic `climate.compute_climate` owns (not a
     CFD state; see climate.py's module docstring), computed on climate's own equirectangular
     grid and resampled nearest-cell onto this HEALPix grid's cells here. A separate path from
     the plate-tectonics views below since both data sources cover the whole sphere per-cell,
@@ -999,10 +1001,6 @@ def _render_climate_view(world: World, projection: str, view: str, width: int, h
         land_air_temp_hp = atmosphere.temperature_c
         is_ocean_hp = atmosphere.is_ocean
 
-    if view == "biome":
-        biome_ids = _to_healpix(cfields.biome_ids.astype(np.float64)).astype(int)
-        _fill_rects(pixels, centers, half_px, half_px, biomes.BIOME_COLORS[biome_ids])
-        return _encode_image(Image.fromarray(pixels, mode="RGB"))
     if view == "humidity":
         _fill_rects(pixels, centers, half_px, half_px, humidity_colors(_to_healpix(cfields.humidity)))
     elif view == "precipitation":
@@ -1067,6 +1065,39 @@ COMBINED_BLUR_RADIUS_PX = 1.0
 # un-blurred (unlike the RGB image) so ids stay crisp at biome boundaries.
 COMBINED_LAKE_ID_CODE = len(biomes.BIOME_NAMES) + 1
 COMBINED_GLACIER_ID_CODE = len(biomes.BIOME_NAMES) + 2
+
+
+def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """"Biome": each cell's biome classification shown directly as a flat color mosaic (no
+    relief shading or ocean hypsometry -- that's the Combined view). Rendered on the same fine
+    _biome_fields grid the Combined view uses (biome_grid_dimensions, scaled by
+    World.climate_density), so at "Very High" detail it resolves biome boundaries as sharply
+    as the Elevation/Points views resolve terrain -- unlike the CLIMATE_VIEWS renderer this
+    used to share, which resampled onto the atmosphere-CFD HEALPix grid (capped at
+    World.fluid_density == "High", visibly coarser than everything else). Biomes are
+    re-classified fresh on this grid (biomes.classify_biomes), matching _render_combined_view,
+    rather than upsampling climate.py's own coarser biome_ids. Left un-blurred: a viewer needs
+    to read each cell's exact color, and MapCanvas.tsx's legend highlight does an exact RGB
+    match against it."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth = _biome_fields(
+        world, *biome_grid_dimensions(world.climate_density)
+    )
+    display_temp = np.where(is_ocean, ocean_temp, air_temp)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    biome_ids = biomes.classify_biomes(
+        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
+    )
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, biomes.BIOME_COLORS[biome_ids])
+
+    return _encode_image(Image.fromarray(pixels, mode="RGB"))
 
 
 def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -1318,6 +1349,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
 
     if view in CLIMATE_VIEWS:
         return _render_climate_view(world, projection, view, width, height, view_rotation)
+    if view == "biome":
+        return _render_biome_view(world, projection, width, height, view_rotation)
     if view == "combined":
         return _render_combined_view(world, projection, width, height, view_rotation)
     if view in RESOURCE_VIEWS:

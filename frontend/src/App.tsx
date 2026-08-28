@@ -77,8 +77,10 @@ const DEFAULT_SOLAR_MULTIPLIER = 1;
 // defaults -- both on, i.e. a normal full simulation.
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
 const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
-// Matching backend app/world.py's World.wind_model default -- the shallow-water CFD solve.
-const DEFAULT_WIND_MODEL = "cfd";
+// Matching backend app/world.py's World.wind_model default -- the fast closed-form diagnostic
+// (ABL) wind: it reproduces ~85-90% of the CFD biome map for a fraction of the per-step cost,
+// so it's the better starting point; switch to "cfd" in Controls for the full shallow-water solve.
+const DEFAULT_WIND_MODEL = "diagnostic";
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);

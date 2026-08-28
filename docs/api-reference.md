@@ -146,7 +146,7 @@ only whichever control the user touched):
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
 scales `climate.SUNLIGHT`), `World.simulate_plate_movement`,
 `World.simulate_climate_biomes` (both default `true`), and/or `World.wind_model`
-(`"cfd"` default, or `"diagnostic"` -- a `400` for any other value) on the *current* world
+(`"diagnostic"` default, or `"cfd"` -- a `400` for any other value) on the *current* world
 -- no regenerate needed. Unlike `axial_tilt_deg`/`node_density`, these are meant to be tweaked
 mid-simulation: every `is_ocean` check in the codebase (`climate.py`, `hydrology.py`,
 `bathymetry.py`) keys off `sea_level_m` instead of a bare `elevation <= 0.0`, and
