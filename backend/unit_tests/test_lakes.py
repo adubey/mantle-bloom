@@ -186,36 +186,35 @@ _MERGE_NEIGHBORS = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 4]])
 
 def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
     prev_lake_depth = np.zeros(3)
-    prev_silt_depth = np.zeros(3)
     water_deposited = np.array([50.0, 0.0, 0.0])
     is_accumulating = np.zeros(3, dtype=bool)
 
-    depth, silt, forest, events = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
+    depth, silt_deposited, forest, events = lakes.step_lakes(
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth[0] > 0.0  # grew from inflow
     assert depth[0] <= 25.0 - 10.0  # never exceeds the basin's true spill depth (its own max_depth)
     assert depth[1] == 0.0 and depth[2] == 0.0  # rim and ocean never hold water
     assert events == []
     assert len(forest) == 1 and forest[0].max_depth == 25.0
-    assert silt[0] > 0.0  # some inflow settled as silt too
+    assert silt_deposited[0] > 0.0  # some inflow settled as silt on the wet floor this step
+    assert silt_deposited[1] == 0.0 and silt_deposited[2] == 0.0  # only the underwater node
 
     # A lake already sitting at its cap should stay pinned there, not evaporate back down.
     at_cap = np.array([15.0, 0.0, 0.0])
     depth_at_cap, _, _, _ = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, at_cap, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, at_cap, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth_at_cap[0] == 15.0
 
 
 def test_step_lakes_evaporates_a_dry_spell_to_nothing():
     prev_lake_depth = np.array([5.0, 0.0, 0.0])
-    prev_silt_depth = np.zeros(3)
     water_deposited = np.zeros(3)
     is_accumulating = np.zeros(3, dtype=bool)
 
     depth, _, _, events = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=100_000_000, is_frozen=is_accumulating
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=100_000_000, is_frozen=is_accumulating
     )
     assert depth[0] == 0.0
     assert events == []
@@ -223,15 +222,14 @@ def test_step_lakes_evaporates_a_dry_spell_to_nothing():
 
 def test_step_lakes_freezes_a_lake_to_its_dry_floor_regardless_of_inflow():
     prev_lake_depth = np.array([5.0, 0.0, 0.0])
-    prev_silt_depth = np.zeros(3)
     water_deposited = np.array([500.0, 0.0, 0.0])  # would otherwise grow it a lot
     is_accumulating = np.array([True, False, False])
 
-    depth, silt, _, _ = lakes.step_lakes(
-        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
+    depth, silt_deposited, _, _ = lakes.step_lakes(
+        _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth[0] == 0.0
-    assert silt[0] == 0.0  # frozen -- no liquid water to carry sediment either
+    assert silt_deposited[0] == 0.0  # frozen -- no liquid water to carry sediment either
 
 
 def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
@@ -240,12 +238,11 @@ def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
     # (12.0, the saddle height) -- at that point it must merge with node 3's basin rather than
     # spilling past its own cap, since 12.0 is a real internal saddle, not the true rim (30.0).
     prev_lake_depth = np.array([9.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    prev_silt_depth = np.zeros(6)
     water_deposited = np.array([100.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     is_accumulating = np.zeros(6, dtype=bool)
 
     depth, _, forest, events = lakes.step_lakes(
-        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
+        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert len(events) == 1 and "merged" in events[0]
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor)
@@ -264,12 +261,11 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     # evaporation to drop well below the saddle. It must split back into two independent
     # basins, both starting exactly at the saddle height (continuity), not something lower.
     prev_lake_depth = np.array([10.0, 0.0, 3.0, 8.0, 0.0, 0.0])
-    prev_silt_depth = np.zeros(6)
     water_deposited = np.zeros(6)
     is_accumulating = np.zeros(6, dtype=bool)
 
     depth, _, forest, events = lakes.step_lakes(
-        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=5_000_000, is_frozen=is_accumulating
+        _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, water_deposited, years=5_000_000, is_frozen=is_accumulating
     )
     assert len(events) == 1 and "split" in events[0]
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor) -- both children land exactly there
@@ -282,27 +278,30 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     assert forest[0].children[1].current_water_elevation == 12.0
 
 
-def test_step_lakes_silt_accumulates_and_eventually_fills_a_small_lake_in():
+def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in():
     # A small, low-capacity lake (max_depth - floor = 15.0) with heavy, sustained sediment
-    # inflow every step -- repeated over many steps, silt should build up at its own floor and
-    # the reported water depth should shrink even though nothing about the terrain's real
-    # elevation or the inflow itself ever changes, eventually reaching 0 once the lake has
-    # silted all the way up to its own rim.
+    # inflow every step. `step_lakes` returns a per-step silt increment that erosion.py folds
+    # straight into real terrain elevation (mimicked here by adding it back into `elevation`).
+    # Over many steps the floor should rise monotonically and the reported water depth shrink,
+    # eventually to 0 once the floor has silted all the way up to the original rim (25.0).
+    elevation = _SINK_ELEVATION.astype(float).copy()
     prev_lake_depth = np.zeros(3)
-    prev_silt_depth = np.zeros(3)
     water_deposited = np.array([500.0, 0.0, 0.0])
     is_accumulating = np.zeros(3, dtype=bool)
 
+    floor_over_time = []
     depths_over_time = []
     for _ in range(400):
-        depth, prev_silt_depth, _, _ = lakes.step_lakes(
-            _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, prev_silt_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
+        depth, silt_deposited, _, _ = lakes.step_lakes(
+            elevation, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
         )
+        elevation = elevation + silt_deposited  # erosion.py: new_elevation += hydro.silt_deposited
         prev_lake_depth = depth
+        floor_over_time.append(elevation[0])
         depths_over_time.append(depth[0])
 
-    assert prev_silt_depth[0] > 0.0
-    # Once the floor has silted up to the original rim (25.0), the lake is gone even though
-    # water_deposited never stopped arriving.
-    assert depths_over_time[-1] == 0.0
-    assert prev_silt_depth[0] >= 25.0 - 10.0
+    assert elevation[0] > _SINK_ELEVATION[0]  # the floor silted upward
+    assert floor_over_time == sorted(floor_over_time)  # monotonic rise, never erodes back
+    assert elevation[0] <= 25.0 + 1e-6  # never silts past the basin rim
+    assert depths_over_time[-1] == 0.0  # lake fully silted in despite inflow never stopping
+    assert depths_over_time[0] > 0.0

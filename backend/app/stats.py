@@ -9,9 +9,11 @@ that function's own docstring for what "cached" means here (same-turn reuse, up 
 stale, not a correctness mechanism). History across time is a frontend concern (see
 App.tsx) -- the backend has no per-step storage of its own, only a snapshot endpoint.
 
-Land vs ocean, and land/ocean fractions, use climate.py's own `is_ocean` mask (elevation <=
-world.sea_level_m, live-adjustable -- see World.sea_level_m) rather than crust_type, for the
-same reason climate.py itself does: a submerged continental shelf is physically ocean.
+Land vs ocean, and land/ocean fractions, use climate.py's own `is_ocean` mask (below
+world.sea_level_m, live-adjustable -- see World.sea_level_m -- and connected to the world
+ocean, see hydrology.connected_ocean_mask) rather than crust_type, for the same reason
+climate.py itself does: a submerged continental shelf is physically ocean, an enclosed
+interior depression is not.
 Fractions are a plain count over grid cells, not cos(lat)-weighted -- the climate grid is a
 plain equirectangular lattice, not an equal-area projection, so this is an approximation.
 

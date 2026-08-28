@@ -656,7 +656,11 @@ def apply_erosion(
     wind_v_at_nodes = fields.wind_v[row, col]
     wind_speed = np.hypot(wind_u_at_nodes, wind_v_at_nodes)
     humidity = fields.humidity[row, col]
-    is_ocean_node = elevation <= 0.0
+    # Preliminary, elevation-only ocean test -- just for the ocean-vs-air temperature pick
+    # feeding the flow solve below. The authoritative, connectivity-aware mask
+    # (`hydro.is_ocean`, which also excludes an enclosed interior sub-sea-level pit) is only
+    # available after compute_hydrology; `is_ocean_node` is rebound to it right after.
+    is_ocean_node = elevation <= world.sea_level_m
     # The same real temperature a node actually experiences that render_image.py's own
     # temperature view displays -- ocean surface over water, moderated air over land.
     temperature = np.where(is_ocean_node, fields.ocean_temperature_c[row, col], fields.air_temperature_c[row, col])
@@ -666,6 +670,10 @@ def apply_erosion(
 
     hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years, node_cloud=node_cloud)
     world.hydrology_cache = hydro
+    # From here on use hydrology's connectivity-aware mask: an interior pit that dipped below
+    # sea level without connecting to open ocean now gets the *subaerial* erosion/deposition
+    # pathways (and its lake silt, folded into elevation below), not the marine ones.
+    is_ocean_node = hydro.is_ocean
     for message in hydro.lake_events:
         world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
@@ -788,7 +796,15 @@ def apply_erosion(
 
     flatten_delta = _flatten(hydro, ice_factor, years)
 
-    new_elevation = np.clip(elevation - erosion_amount + total_deposited + flatten_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    # Lake / endorheic-basin siltation raises real terrain: the sediment that settled out of
+    # standing water this step (hydrology.step_lakes -> silt_deposited) is folded straight into
+    # elevation, so a still-water basin genuinely fills in and stays filled. A small
+    # non-conservative source, same character as flatten_delta -- the amounts are tiny per step.
+    new_elevation = np.clip(
+        elevation - erosion_amount + total_deposited + flatten_delta + hydro.silt_deposited,
+        MIN_ELEVATION_M,
+        MAX_ELEVATION_M,
+    )
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.

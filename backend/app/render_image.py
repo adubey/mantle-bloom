@@ -533,7 +533,9 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
         glacier_depth = all_glacier_depth[idx].reshape(shape)
-        is_ocean = elevation_m <= world.sea_level_m
+        # Connectivity-aware: an enclosed interior pit below sea level renders as lake/land, not
+        # as ocean (and so no longer as an Intertidal Zone). See hydrology.connected_ocean_mask.
+        is_ocean = hydrology.sample_is_ocean(world, world_xyz, elevation_m <= world.sea_level_m)
 
     fields = climate.compute_climate_cached(world)
     air_temp = _bilinear_resample(fields.air_temperature_c, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
@@ -565,7 +567,7 @@ def _resource_fields(world: World, grid_h: int, grid_w: int):
     all_points, all_elevation, _ = collected
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz)
-    is_ocean = (all_elevation[idx].reshape(shape)) <= world.sea_level_m
+    is_ocean = hydrology.sample_is_ocean(world, world_xyz, (all_elevation[idx].reshape(shape)) <= world.sea_level_m)
 
     def resample(collector) -> np.ndarray:
         return collector(world.plates)[idx].reshape(shape)
