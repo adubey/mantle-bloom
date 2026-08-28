@@ -33,11 +33,19 @@ downstream-accumulated *precipitation* (not a raw grid-cell count, which would i
 scale with resolution) -- RIVER_EROSION_COEFFICIENT is derived the same order-of-magnitude
 way RAIN_EROSION_COEFFICIENT is.
 
-**Erosion sources implemented here, and what's still out of scope.** Ocean/coastal erosion is
-out of scope (a distinct source never implemented here). Weathering's vegetation boost is out
-of scope (no vegetation field). River-channelized erosion, downstream deposition, and glacier
-erosion -- previously out of scope for the same reason ("needs flow routing over a rotating,
-irregular per-plate lattice, a separate, harder problem") -- are now implemented, see
+**Erosion sources implemented here, and what's still out of scope.** Submarine erosion (deep
+bottom currents plus pressure-driven mass wasting slumping a freshly-uplifted submerged range
+back down -- see SUBMARINE_EROSION_* below) and coastal erosion (wave attack plus freeze-thaw
+frost shattering wherever the climate cycles through freezing -- see COASTAL_EROSION_* below)
+were both previously out of scope ("a distinct source never implemented here") and are now
+implemented: they are the sea floor's and the shoreline's counterparts to the subaerial
+sources, and their eroded rock sheds onto the surrounding sea floor as marine sediment
+(_spread_marine_sediment) rather than into any river's flow graph. Together they are also what
+keeps a range built by two *submerged* plates colliding growing far more slowly than a
+subaerial one -- the sea floor has denudation the dry interior doesn't. Weathering's vegetation
+boost is out of scope (no vegetation field). River-channelized erosion, downstream deposition,
+and glacier erosion -- previously out of scope for the same reason ("needs flow routing over a
+rotating, irregular per-plate lattice, a separate, harder problem") -- are now implemented, see
 hydrology.py for how that flow-routing graph is built and how glacier_depth itself is
 grown/melted/flowed. Glacier-driven **flattening** (broad terrain smoothing under an ice
 sheet, distinct from the directional erosion term) and **seismic erosion** (earthquake-
@@ -201,6 +209,61 @@ SEISMIC_EROSION_ELEVATION_REFERENCE_M = 3000.0
 SEISMIC_EROSION_ELEVATION_EXPONENT = 2.0
 SEISMIC_EROSION_MAX_HEIGHT_FACTOR = 3.0
 
+# Submarine erosion (mantle-bloom-original): plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR uplifts a
+# colliding node regardless of whether it sits above or below sea level, so two *submerged*
+# plates colliding will, unchecked, raise a range to the surface at the same rate a subaerial
+# collision does. Real submerged relief grows much more slowly, because the sea floor has its
+# own denudation the land lacks: deep bottom currents sweeping the flanks, and gravity-driven
+# slope failure that the surrounding water does nothing to buttress (a steep, freshly-uplifted
+# submarine scarp slumps under its own weight and the water pressure on it). Modeled as two
+# slope-driven terms -- a current-driven baseline (SUBMARINE_EROSION_COEFFICIENT, slope alone)
+# plus a pressure/depth term (SUBMARINE_PRESSURE_COEFFICIENT, slope x how deep the node still
+# sits, saturating at SUBMARINE_PRESSURE_REFERENCE_M) -- so the brake is hardest on a deep
+# abyssal range and eases continuously as a crest climbs toward the surface, handing off to
+# ordinary subaerial erosion the moment it breaches. Slope-driven (same dimensionless rise/run
+# as rain/river erosion) so a flat abyssal plain still erodes near zero; capped at the drop to
+# the lowest neighbor like every other term here. Coefficients picked by the same
+# order-of-magnitude reasoning as RAIN_EROSION_COEFFICIENT against
+# CONVERGENT_MOUNTAIN_RATE_M_PER_MYR (800 m/Myr): at a moderate submarine-ridge slope (~0.02)
+# and mid-depth (~half the reference), the two terms sum to roughly half the uplift rate -- a
+# real, sustained drag on submarine orogeny that still lets a persistent collision eventually
+# breach, not a hard ceiling.
+SUBMARINE_EROSION_COEFFICIENT = 8000.0
+SUBMARINE_PRESSURE_COEFFICIENT = 24000.0
+SUBMARINE_PRESSURE_REFERENCE_M = 4000.0
+
+# Coastal erosion (mantle-bloom-original): the shoreline itself -- and the crest of a mid-ocean
+# range that rises into the same near-surface zone -- takes erosion both the open sea floor and
+# the dry interior escape. Two mechanisms, both integrated per year (dt-scaled like every rate
+# here): wave attack (COASTAL_EROSION_WAVE_RATE_M_PER_MYR, a flat rate across the band -- swell
+# energy reaching the coast doesn't depend on the node's own relief), and frost shattering --
+# water seeping into rock, freezing, expanding, prying it apart, then melting -- which needs the
+# climate to actually *cycle* through freezing: it peaks at COASTAL_FROST_PEAK_C (just below 0C,
+# where a seasonal/diurnal climate crosses the freezing point most often) and falls off both
+# toward permanently-frozen and toward never-freezing climates, a Gaussian of width
+# COASTAL_FROST_WIDTH_C in the node's mean temperature. COASTAL_EROSION_BAND_M is how far above
+# and below sea level still counts as "coast" (a real wave-cut platform plus intertidal/spray
+# zone is tens to low hundreds of meters of vertical reach); the rate tapers linearly to zero at
+# the band edge. Eroded rock sheds seaward as marine sediment, same as submarine erosion.
+COASTAL_EROSION_BAND_M = 200.0
+COASTAL_EROSION_WAVE_RATE_M_PER_MYR = 400.0
+COASTAL_FROST_MAX_RATE_M_PER_MYR = 500.0
+COASTAL_FROST_PEAK_C = -2.0
+COASTAL_FROST_WIDTH_C = 6.0
+
+# Marine sediment spreading: submarine + coastal erosion both shed rock onto the surrounding sea
+# floor (underwater slumping / longshore drift move it a short distance downslope, not along
+# route_downstream's precipitation-fed river graph). A submerged source keeps
+# MARINE_SEDIMENT_LOCAL_FRACTION where it eroded; a subaerial sea-cliff source sheds all of it
+# into the water. The rest spreads, inverse-distance weighted, across up to
+# MARINE_SPREAD_NEIGHBOR_COUNT of the nearest *lower* ocean nodes within MARINE_SPREAD_RANGE_KM
+# (sediment runs downhill and settles into basins). A source with no lower ocean node in range
+# keeps the full amount locally rather than losing it. Exactly conserves the eroded total.
+MARINE_SEDIMENT_LOCAL_FRACTION = 0.35
+MARINE_SPREAD_RANGE_KM = 120.0
+MARINE_SPREAD_RANGE_RAD = MARINE_SPREAD_RANGE_KM / PLANET_RADIUS_KM
+MARINE_SPREAD_NEIGHBOR_COUNT = 8
+
 # Deposition, not just erosion -- eroded material has to go somewhere, and "wherever
 # route_downstream's single water-flow graph happens to carry it" is only right for rain/
 # river erosion. Three more pathways, alongside the existing river/runoff floodplain
@@ -271,9 +334,9 @@ class ErosionResult:
 
     `sediment_deposited` is every deposition pathway's combined total at each node -- ordinary
     river/runoff floodplain deposit, glacier till, glacier-transported moraine/outwash material,
-    wind-blown resettling, and beach/nearshore spreading all summed together (see
-    apply_erosion's own comment for how they're split and redistributed) -- not just the
-    water-routed share alone."""
+    wind-blown resettling, beach/nearshore spreading, and marine sediment shed onto the sea
+    floor by submarine and coastal erosion, all summed together (see apply_erosion's own comment
+    for how they're split and redistributed) -- not just the water-routed share alone."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -341,6 +404,37 @@ def compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray
     run_m = geometry.angular_distance(points, points[lowest_idx]) * PLANET_RADIUS_KM * 1000.0
     run_m = np.maximum(run_m, 1.0)  # avoid a divide-by-zero for (near-)coincident points
     return drop_m / run_m, drop_m
+
+
+def submarine_erosion_amount(elevation: np.ndarray, slope: np.ndarray, is_ocean: np.ndarray, dt_myr: float) -> np.ndarray:
+    """Meters eroded this step from submerged terrain by bottom currents and pressure-driven
+    slope failure -- see SUBMARINE_EROSION_* constants for the reasoning. A current-driven
+    baseline (slope alone) plus a term that scales with how deep the node still sits (water
+    pressure / column height above it, saturating at SUBMARINE_PRESSURE_REFERENCE_M), the whole
+    thing multiplied by `slope` so a flat abyssal plain erodes near zero and a steep,
+    freshly-uplifted submarine scarp erodes fast. Zero on subaerial nodes (they get the ordinary
+    subaerial sources instead). Not yet capped at the drop to the lowest neighbor -- apply_erosion
+    does that, jointly with coastal erosion, against whatever drop subaerial erosion left."""
+    depth_below_sea_m = np.clip(-elevation, 0.0, None)
+    rate = SUBMARINE_EROSION_COEFFICIENT + SUBMARINE_PRESSURE_COEFFICIENT * np.clip(
+        depth_below_sea_m / SUBMARINE_PRESSURE_REFERENCE_M, 0.0, 1.0
+    )
+    return np.where(is_ocean, rate * slope * dt_myr, 0.0)
+
+
+def coastal_erosion_amount(elevation: np.ndarray, temperature_c: np.ndarray, dt_myr: float) -> np.ndarray:
+    """Meters eroded this step from the near-sea-level band (|elevation| within
+    COASTAL_EROSION_BAND_M, tapering linearly to zero at the band edge) by wave attack and
+    freeze-thaw frost shattering -- see COASTAL_EROSION_* constants. Wave attack is a flat rate
+    across the band; the frost term is a Gaussian in temperature peaked at COASTAL_FROST_PEAK_C
+    (a climate has to cycle through freezing for frost wedging to do anything). Applies on both
+    sides of the shoreline, so it also gnaws at the crest of a mid-ocean range that rises into
+    the band. Not relief-gated (unlike weathering) -- a flat wave-cut bench erodes as readily as
+    a cliff. Not yet capped -- apply_erosion caps it jointly with submarine erosion."""
+    proximity = np.clip(1.0 - np.abs(elevation) / COASTAL_EROSION_BAND_M, 0.0, 1.0)
+    frost = np.exp(-(((temperature_c - COASTAL_FROST_PEAK_C) / COASTAL_FROST_WIDTH_C) ** 2))
+    rate = COASTAL_EROSION_WAVE_RATE_M_PER_MYR + COASTAL_FROST_MAX_RATE_M_PER_MYR * frost
+    return rate * proximity * dt_myr
 
 
 def climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tuple[np.ndarray, np.ndarray]:
@@ -447,6 +541,58 @@ def _spread_beach_sediment(points: np.ndarray, elevation: np.ndarray, is_ocean: 
     return result
 
 
+def _spread_marine_sediment(
+    points: np.ndarray, elevation: np.ndarray, is_ocean: np.ndarray, source_amount: np.ndarray
+) -> np.ndarray:
+    """Redistributes submarine + coastal erosion (see SUBMARINE_EROSION_* / COASTAL_EROSION_*)
+    onto the sea floor around each source node -- underwater currents and slope failure carry it
+    a short distance downslope, not along the water-flow graph the river-routed pool uses. A
+    submerged source keeps MARINE_SEDIMENT_LOCAL_FRACTION locally; a subaerial sea-cliff source
+    (is_ocean False) sheds the whole amount seaward. The remainder spreads, inverse-distance
+    weighted, across up to MARINE_SPREAD_NEIGHBOR_COUNT of the nearest ocean nodes *lower* than
+    the source within MARINE_SPREAD_RANGE_RAD (sediment runs downhill, it doesn't climb the far
+    flank of the range it came off). A source with no lower ocean node in range keeps its full
+    amount locally rather than losing it. Exactly conserves source_amount's total, via
+    np.add.at -- same shape as _spread_beach_sediment."""
+    n = len(points)
+    result = np.zeros(n)
+    source_idx = np.nonzero(source_amount > 0)[0]
+    if len(source_idx) == 0:
+        return result
+
+    ocean_idx = np.nonzero(is_ocean)[0]
+    if len(ocean_idx) == 0:
+        result[source_idx] = source_amount[source_idx]
+        return result
+
+    tree = cKDTree(points[ocean_idx], balanced_tree=False, compact_nodes=False)
+    k = min(MARINE_SPREAD_NEIGHBOR_COUNT, len(ocean_idx))
+    dist, nearby = tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
+    if k == 1:
+        dist = dist[:, None]
+        nearby = nearby[:, None]
+
+    target_idx = ocean_idx[nearby]
+    is_lower = elevation[target_idx] < elevation[source_idx][:, None]
+    within_range = dist <= MARINE_SPREAD_RANGE_RAD
+    weight = np.where(is_lower & within_range, 1.0 / np.maximum(dist, 1e-9), 0.0)
+    weight_sum = weight.sum(axis=1)
+    has_target = weight_sum > 0
+
+    source_is_ocean = is_ocean[source_idx]
+    total = source_amount[source_idx]
+    local_share = np.where(
+        has_target, np.where(source_is_ocean, total * MARINE_SEDIMENT_LOCAL_FRACTION, 0.0), total
+    )
+    spread_share = total - local_share
+    result[source_idx] += local_share
+
+    normalized_weight = np.divide(weight, weight_sum[:, None], out=np.zeros_like(weight), where=weight_sum[:, None] > 0)
+    contribution = normalized_weight * spread_share[:, None]
+    np.add.at(result, target_idx.ravel(), contribution.ravel())
+    return result
+
+
 def apply_erosion(
     world: "World",
     years: float,
@@ -549,8 +695,8 @@ def apply_erosion(
     # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
     # valley floor it drains into. Zeroed over ocean nodes (elevation <= sea level, the same
     # convention climate.py/plates.py use everywhere else): every source here is a subaerial
-    # process -- coastal/ocean erosion is a separate source that would touch the seafloor, and
-    # that's the one source this module still doesn't implement (see module docstring).
+    # process. The sea floor and the shoreline get their own erosion separately, below
+    # (submarine + coastal erosion -- see SUBMARINE_EROSION_* / COASTAL_EROSION_*).
     raw_erosion_total = rain + river + weathering + glacier + seismic
     erosion_amount = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
@@ -619,6 +765,26 @@ def apply_erosion(
     )
 
     total_deposited = sediment_deposited + glacier_till + glacier_transport_deposit + wind_deposit
+
+    # Submarine + coastal erosion: the sea floor's and the shoreline's counterparts to the
+    # subaerial sources above (all of which were just zeroed over ocean nodes). Submarine
+    # erosion slumps a freshly-uplifted submerged range back down (bottom currents +
+    # pressure-driven mass wasting), which is what keeps a range built by two submerged plates
+    # colliding growing far slower than a subaerial one; coastal erosion gnaws at the
+    # near-sea-level band on both sides of the shoreline (wave attack + frost shattering),
+    # including the crest of a mid-ocean range that rises into that band. See the
+    # SUBMARINE_EROSION_* / COASTAL_EROSION_* constants and their helper functions. Both draw
+    # against whatever drop to the lowest neighbor subaerial erosion didn't already claim, so a
+    # single step still can't carve a node below the sea floor / valley it drains into. Their
+    # rock sheds seaward onto the surrounding sea floor as marine sediment (_spread_marine_
+    # sediment) -- underwater currents and slope failure, not any river's flow graph.
+    submarine = submarine_erosion_amount(elevation, slope, is_ocean_node, dt_myr)
+    coastal = coastal_erosion_amount(elevation, temperature, dt_myr)
+    remaining_drop_m = np.clip(drop_to_lowest_neighbor_m - erosion_amount, 0.0, None)
+    sea_side_erosion = np.minimum(np.clip(submarine + coastal, 0.0, None), remaining_drop_m)
+    marine_deposit = _spread_marine_sediment(points, elevation, is_ocean_node, sea_side_erosion)
+    erosion_amount = erosion_amount + sea_side_erosion
+    total_deposited = total_deposited + marine_deposit
 
     flatten_delta = _flatten(hydro, ice_factor, years)
 
