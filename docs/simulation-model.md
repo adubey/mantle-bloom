@@ -1126,6 +1126,18 @@ first and closing the loop only for the final consumer-facing fields:
    *additional* multiplicative discount on top of this distance-based base rate, unchanged
    from before -- air moving slower through rough terrain loses proportionally more moisture
    to mixing independent of the distance it covered.
+
+   **Coherent noise breaks the zonal banding.** The ocean evaporation ceiling is a clip of
+   the insolation-driven ocean-temperature baseline, so it's very nearly a pure function of
+   latitude, and both sweeps inherit those flat parallels -- visible as horizontal banding on
+   the humidity map and in the precipitation baseline it scales. The same fractal gaussian
+   perturbation the moisture-flux convergence uses (`_coherent_noise` -- a scale-free
+   `1/k**MFC_NOISE_SPECTRAL_BETA` spectral field, correlation length
+   `MFC_NOISE_CORRELATION_DEG`, seeded per world state on its own RNG stream) is added to the
+   blended humidity field at std `HUMIDITY_NOISE_STD` (smaller than `MFC_NOISE_Q_STD` -- it
+   perturbs the baseline everywhere, not just a belt edge), re-clipped to
+   `[0, MAX_EVAPORATION_CEILING]`. The orographic dump, a separate rain-shadow channel, is
+   left untouched.
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) + a **Hadley/Ferrel
     moisture-flux convergence** term (`compute_moisture_flux_convergence`): the

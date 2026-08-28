@@ -896,6 +896,23 @@ OROGRAPHIC_RAIN_SHADOW_FACTOR = 0.6
 PRECIP_HUMIDITY_COEFFICIENT_MM = 1500.0
 OROGRAPHIC_PRECIPITATION_COEFFICIENT = 1.0
 
+# Humidity carries the same zonal banding the moisture-flux convergence does, for a related
+# reason: the ocean evaporation ceiling is a clip of the insolation-driven ocean-temperature
+# baseline (`_evaporation_ceiling`), so it's very nearly a pure function of latitude, and the
+# wind-driven sweeps that carry it onto land inherit those flat parallels. On the humidity
+# map -- and in the precipitation baseline it scales (`PRECIP_HUMIDITY_COEFFICIENT_MM *
+# humidity`) -- that reads as horizontal banding. The same fractal gaussian perturbation
+# `compute_moisture_flux_convergence` uses against its own banding (`_coherent_noise`, a
+# scale-free 1/k**beta spectral field -- see the MFC_NOISE_* block) is added to the blended
+# humidity field to undulate and stipple those bands. HUMIDITY_NOISE_STD is in humidity units
+# (the same q the evaporation ceiling is in, ~0.3-1.4) -- smaller than MFC_NOISE_Q_STD since
+# this perturbs the baseline everywhere, not just a belt edge. The correlation length and
+# spectral roll-off are shared with the MFC noise (MFC_NOISE_CORRELATION_DEG /
+# MFC_NOISE_SPECTRAL_BETA): it's the same meandering-band texture at the same scale. Seeded
+# per world state, on its own RNG stream (see compute_climate). The noised field is re-clipped
+# to [0, MAX_EVAPORATION_CEILING] so it keeps the same bounds the sweep itself guarantees.
+HUMIDITY_NOISE_STD = 0.035
+
 # --- Hadley/Ferrel moisture-flux convergence: the zonal wet/dry banding of the general
 # circulation, applied on top of the humidity baseline + orographic lift above.
 #
@@ -1224,6 +1241,7 @@ def compute_humidity(
     is_ocean: np.ndarray, elevation_m: np.ndarray, ocean_temperature_c: np.ndarray, air_temperature_c: np.ndarray,
     wind_u: np.ndarray, wind_v: np.ndarray, elevation_factor: np.ndarray, lat_deg: np.ndarray,
     lake_depth_m: np.ndarray | None = None, channel_depth_m: np.ndarray | None = None, vegetation_source: np.ndarray | None = None,
+    rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Evaporation ceiling over ocean (from local ocean temperature), plus a local
     lake/river-evaporation-and-vegetation-transpiration source over land (see module
@@ -1232,8 +1250,18 @@ def compute_humidity(
     wind magnitude (a cell whose wind is mostly north-south gets its humidity mostly from the
     meridional pass, and vice versa). `lake_depth_m`/`channel_depth_m`/`vegetation_source`
     default to zero (no land moisture source at all) so existing callers -- most usefully,
-    test fixtures exercising this function in isolation -- keep working unchanged. Returns
-    (humidity, orographic_dump)."""
+    test fixtures exercising this function in isolation -- keep working unchanged.
+
+    `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
+    `HUMIDITY_NOISE_STD`) to the blended humidity field, re-clipped to
+    `[0, MAX_EVAPORATION_CEILING]`. The evaporation ceiling is nearly a pure function of
+    latitude, so both sweeps inherit flat parallels that read as horizontal banding on the
+    humidity map (and the precipitation baseline it scales); the noise undulates and stipples
+    those bands the same way it does for the moisture-flux convergence (see
+    `HUMIDITY_NOISE_STD` and `compute_moisture_flux_convergence`). `rng=None` reproduces the
+    earlier deterministic field -- for callers/tests exercising the sweep in isolation.
+    Returns (humidity, orographic_dump); the orographic dump, a separate rain-shadow channel,
+    is not perturbed."""
     evap_ceiling = _evaporation_ceiling(ocean_temperature_c)
     zero_land = np.zeros_like(elevation_m)
     land_source = _land_moisture_source(
@@ -1252,6 +1280,12 @@ def compute_humidity(
 
     humidity = w_u * humidity_zonal + w_v * humidity_meridional
     orographic = w_u * oro_zonal + w_v * oro_meridional
+
+    if rng is not None:
+        height, width = is_ocean.shape
+        correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
+        noise = _coherent_noise(rng, (height, width), HUMIDITY_NOISE_STD, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
+        humidity = np.clip(humidity + noise, 0.0, MAX_EVAPORATION_CEILING)
     return humidity, orographic
 
 
@@ -1454,14 +1488,17 @@ def compute_climate(
         precipitation_mm = np.zeros((height, width))
     else:
         vegetation_source = _vegetation_transpiration_source(world, elevation_m, is_ocean)
+        # Dedicated per-(seed, elapsed_years) streams -- distinct salts, and distinct from
+        # mix_rng (whose draw count feeds the ocean-current texture) -- so the humidity and
+        # moisture-flux-convergence banding noise are each steady between renders of one world
+        # state without perturbing each other's draws. Both break the same insolation-driven
+        # zonal banding (see HUMIDITY_NOISE_STD / the MFC_NOISE_* block).
+        humidity_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 947))
+        mfc_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 811))
         humidity, orographic_dump = compute_humidity(
             is_ocean, elevation_m, ocean_temperature_c, air_temperature_c, wind_u, wind_v, elevation_factor, lat_deg,
-            lake_depth_m, channel_depth_m, vegetation_source,
+            lake_depth_m, channel_depth_m, vegetation_source, humidity_rng,
         )
-        # A dedicated stream (not mix_rng, whose draw count feeds the ocean-current texture)
-        # so the precipitation noise is deterministic in the same (seed, elapsed_years) the
-        # rest of this module keys its RNG on -- steady between renders of one world state.
-        mfc_rng = np.random.default_rng((world.seed, round(world.elapsed_years), 811))
         moisture_flux_convergence = compute_moisture_flux_convergence(humidity, wind_u, wind_v, lat_deg, mfc_rng)
         precipitation_mm = compute_precipitation(humidity, orographic_dump, moisture_flux_convergence)
 
