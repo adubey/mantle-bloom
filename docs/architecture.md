@@ -58,10 +58,10 @@ Time-stepping:
     Myr collision -- see simulation-model.md#merge-and-split), erode elevation and route
     rivers/lakes/glaciers from the world's current climate (every step -- see
     simulation-model.md#erosion, simulation-model.md#hydrology, and
-    simulation-model.md#glaciation), relax submerged
-    continental crust toward a shelf-or-deep-water target (every step -- see
-    simulation-model.md#bathymetry), and roll each active volcano's own eruption chance (every
-    step -- see simulation-model.md#volcanism). Line regularization and "claim adjacent
+    simulation-model.md#glaciation), and roll each active volcano's own eruption chance (every
+    step -- see simulation-model.md#volcanism). (Submerged crust's depth is set directly by
+    isostasy, not a per-step relaxation; `bathymetry.py` now only grades continent/ocean
+    margins once, at generation -- see simulation-model.md#bathymetry.) Line regularization and "claim adjacent
     territory" (a plate growing toward its own pole, or reclaiming ground a subducted
     neighbor vacated) now happen inline inside every `deform()` call rather than on a
     periodic cadence -- the old separate gap-filling and boundary-point-reassignment passes
@@ -271,8 +271,11 @@ lakes.py              every-step lake growth/evaporation/merge/split/silt, an ex
                      also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
                      GET /world/lakes and GET /world/lake_at (see
                      simulation-model.md#lake-inspector)
-bathymetry.py        every-step relaxation of submerged continental crust toward a shelf
-                     (near land) or deep-water (far from land) target elevation (see
+bathymetry.py        the shelf-width constant geology.py keys off, plus a one-off
+                     generation-time pass (shape_initial_bathymetry) that drowns submerged
+                     continental interiors toward abyssal depth by distance from land and
+                     grades every continent/ocean plate margin into a slope, so the seabed
+                     reads as real relief rather than a bright shelf and hard cliffs (see
                      simulation-model.md#bathymetry)
 coastline.py          traces the land/ocean and lake boundary as line segments over
                      climate.py's own grid, on demand (not every step) -- drawn into the

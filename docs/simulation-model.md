@@ -1708,33 +1708,50 @@ reassignment](#reassignment)).
 <a id="bathymetry"></a>
 ## Bathymetry (`bathymetry.py`)
 
-Nothing else pulls submerged continental crust toward any particular depth once it goes
-underwater -- generation-time noise can put a continental node a few hundred meters below
-sea level, and rifting (see [Plate motion: shift and deform](#boundary-evolution)) can push a
-node deep underwater without any further constraint on where it settles. This module is a
-slow background relaxation (same exponential-toward-a-target style as `PlateWithLines.
-deform`'s own divergent relaxation) pulling every submerged (`elevation <= 0`) continental
-node toward one of two targets, chosen by distance to the nearest land node (`elevation >
-0`, any plate -- this is a geographic coastline-proximity question, not a plate-boundary
-one):
+Submerged crust's own depth is set directly by Airy isostasy on its lithospheric column
+(`lithosphere.isostatic_elevation`, see [Isostasy](#isostasy)) -- thin oceanic crust floats
+low (abyssal plain), thick continental crust floats near sea level, and rifting that thins a
+column subsides it. Nothing relaxes elevation toward a separate shelf/deep-water target
+during the simulation any more (an earlier v1 module did; isostasy superseded it).
+`SHELF_RANGE_KM`/`SHELF_RANGE_RAD` (200km) -- the shelf width `geology.py` uses to tell
+shallow, oil/gas-favorable shelf water from open ocean -- lives here.
 
-- Within `SHELF_RANGE_RAD` (200km): `SHELF_TARGET_M` (-100m) -- the continental shelf.
-- Beyond it: `DEEP_CONTINENTAL_TARGET_M` (-3000m) -- genuinely deep water, though still
-  shallower than oceanic crust's own abyssal depth (`plates.BASE_OCEANIC_M = -3800`).
+Per-plate generation seeds every column purely from its plate's crust type, which leaves
+two things a real sea floor doesn't have. **`shape_initial_bathymetry(plates)`** fixes both
+**once, at generation** (nothing here touches the ongoing simulation), by thinning `Hc`
+(and, in the margin pass, `Hm`) -- via `lithosphere.crustal_thickness_for_submerged_elevation`
+where it needs an exact target depth -- so `elevation` stays a faithful isostatic readout:
 
-Deliberately continental-only: oceanic crust's average depth already comes from its
-generation-time baseline and nothing erodes or otherwise drifts it away on its own
-(erosion.py explicitly excludes ocean nodes from both its sources), so it doesn't need a
-parallel correction. Relaxes at `BATHYMETRY_RELAX_RATE_PER_MYR` (0.3, slower than
-`plates.DIVERGENT_RELAX_RATE_PER_MYR`'s 0.5 -- a passive equilibration of already-
-submerged, non-actively-deforming crust, not an active tectonic process). Runs every step,
-right after erosion.
+1. **`_subside_offshore_continental_crust`** -- submerged continental crust otherwise reads
+   as one uniform bright shelf however far from land it sits. This drowns it toward the
+   abyssal reference depth (`ABYSSAL_REFERENCE_DEPTH_M` ~= -5.2km, the same depth an aged
+   oceanic column floats at) by distance to the nearest coastline: shelf within
+   `OFFSHORE_SHELF_KM` (200km), full basin depth past `OFFSHORE_ABYSSAL_KM` (1400km),
+   smoothstep between. Submerged *continental* nodes only, *downward* only (it never lifts
+   crust the generation noise already put deep), and weighted in with depth so coastlines
+   hold. Physically: hyper-extended / attenuated continental crust, exactly what real
+   drowned continental interiors (Zealandia, submerged plateaus) are.
 
-Confirmed directly on a 60 Myr run: submerged continental nodes within 200km of land
-averaged -400m (still relaxing toward -100m -- shoreline nodes keep moving as coastlines
-shift, so they rarely reach full equilibrium), nodes beyond 200km averaged -2869m (close to
-the -3000m target, since deep-water nodes are disturbed far less often); rendered, this
-shows up as a visibly lighter shelf band hugging every coastline.
+2. **`_smooth_continental_margins`** -- every continent/ocean plate boundary otherwise
+   starts as a vertical cliff. This grades the `Hc`/`Hm` columns across it with an iterated,
+   restricted neighbour-average (a Jacobi relaxation of the heat equation) so the seabed
+   ramps shelf -> slope -> abyssal over `MARGIN_TRANSITION_KM` (400km):
+
+   - Only *submerged* nodes within that range of opposite-type crust take part; grading
+     weight ramps in with depth (`COAST_GUARD_DEPTH_M` -> `MARGIN_FULL_DEPTH_M`) and,
+     smoothstepped, with proximity to the contact -- so land, deep-ocean interiors, and
+     oceanic/oceanic boundaries (where a ridge or trench genuinely *is* a sharp step) are
+     left untouched.
+   - Weight-0 nodes are the fixed boundary values the relaxation ramps between. At the
+     contact the same-crust and opposite-crust neighbour groups are weighted *equally*
+     regardless of node count, so the smoothed field is continuous across the thin seam
+     where the two plate lattices meet.
+
+Later tectonics re-sharpen boundaries on their own terms (fresh ocean floor at a rift, old
+floor bending into a trench), which is correct. Confirmed directly at the default density:
+submerged continental crust now runs from ~-50m on the shelf to ~-5.2km in a large drowned
+interior (was a near-flat ~-500m everywhere), and the median elevation step between adjacent
+nodes straddling a continent/ocean boundary drops from ~4km to ~2km.
 
 <a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)

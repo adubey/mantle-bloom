@@ -37,7 +37,7 @@ from .plates import (
     _contested_by_any,
     _land_noise_threshold,
 )
-from . import lithosphere, rheology, torque
+from . import bathymetry, lithosphere, rheology, torque
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -604,6 +604,12 @@ def generate_plates(
         plate = LithospherePlate(plate_id=i, frame=frame, crust_type=crust_type, lines=hc_lines)
         lithosphere.sync_plate_elevation(plate)
         plates.append(plate)
+
+    # Each plate above was seeded purely from its own crust type: submerged continental crust
+    # is a uniform bright shelf however far from land it sits, and every continent/ocean
+    # boundary is a vertical cliff. Drown the offshore continental interiors and grade the
+    # boundary steps into slopes -- see bathymetry.shape_initial_bathymetry.
+    bathymetry.shape_initial_bathymetry(plates)
     return plates
 
 

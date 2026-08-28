@@ -35,12 +35,23 @@ RHO_WATER = 1000.0
 # worked examples ("Hc ~= 7km" oceanic, "Hc >= 50km" orogens) anchor the oceanic/continental
 # crustal values directly; Hm (not given numerically in the spec) uses typical real
 # lithospheric-mantle thicknesses away from any thermal/age gradient we don't model (see
-# below). ~7+60=67km total oceanic lithosphere and ~35+100=135km total continental
+# below). ~11+40=51km total oceanic lithosphere and ~35+100=135km total continental
 # lithosphere are both realistic real-Earth orders of magnitude.
 REFERENCE_HC_CONTINENTAL_M = 35_000.0
 REFERENCE_HM_CONTINENTAL_M = 100_000.0
-REFERENCE_HC_OCEANIC_M = 7_000.0
-REFERENCE_HM_OCEANIC_M = 60_000.0
+# An *effective* oceanic column, not the spec's bare "~7km" basaltic crust: real abyssal-plain
+# isostasy also floats on a pervasive pelagic-sediment blanket (~0.5-2km) and a
+# lower-density uppermost-basalt layer that a single-density Hc term can't represent
+# separately. Folding those into the crustal term (and trimming the equilibrium mantle lid
+# below) lands old ocean floor near ~-5.2km and freshly-generated ocean floor near ~-4.5km,
+# instead of the too-deep ~-6.3km a bare 7km/60km column gives -- a ~1km gentler
+# continent/ocean contrast, still unmistakably a deep ocean against a continent.
+REFERENCE_HC_OCEANIC_M = 11_000.0
+# The value young ridge Hm relaxes *toward* as sea floor ages (see rheology.
+# relax_young_oceanic_mantle_lithosphere / YOUNG_RIDGE_HM_M below). Trimmed from an initial
+# 60km: this is already a stand-in for real open-ended sqrt(age) thickening (see below), and
+# a thinner equilibrium lid keeps mature abyssal plains from isostatically over-deepening.
+REFERENCE_HM_OCEANIC_M = 40_000.0
 # Freshly-formed ridge crust starts thin (both crust and underlying mantle lid) and thickens
 # as it ages/cools -- see rheology.py's divergent-branch relaxation of Hm toward
 # REFERENCE_HM_OCEANIC_M keyed off the same `divergent_age_myr` field v1 already tracks.
@@ -68,18 +79,19 @@ def crust_density(crust_type: str) -> float:
 
 #  Eq. 1/2, taken completely literally (elevation measured from the asthenosphere's own
 # natural buoyancy level, zero offset), puts realistic reference columns wildly above sea
-# level: Hc=35km/Hm=100km continental crust computes to +4.4km, and Hc=7km/Hm=60km oceanic
-# crust to only -0.24km (barely-submerged shelf, not deep ocean). This isn't a bug in Eq.
+# level: Hc=35km/Hm=100km continental crust computes to +4.4km, and Hc=11km/Hm=40km oceanic
+# crust to about +0.6km (above water, not deep ocean). This isn't a bug in Eq.
 # 1/2 -- it's the standard, expected property of a single-column isostasy formula with no
 # reference datum: real geodynamic models always calibrate elevation against a reference
 # column (e.g. a mid-ocean-ridge or standard continental column), never read it off as an
 # absolute value the way Eq. 1/2 alone implies. ISOSTATIC_REFERENCE_OFFSET_M is exactly that
 # calibration: a single constant shift chosen so the *continental* reference column
 # (REFERENCE_HC/HM_CONTINENTAL_M) lands at v1's own BASE_CONTINENTAL_M-equivalent (exactly
-# 200m). The *oceanic* reference column then lands around -6289m -- deeper than v1's own
-# BASE_OCEANIC_M (-3800m), but still a realistic abyssal-plain-to-trench depth, and (more
-# importantly for how this actually plays) a continent-to-ocean contrast of ~6.5km, the same
-# order of magnitude as real Earth's own ~4.6km average continent/ocean elevation difference.
+# 200m). The *oceanic* reference column then lands around -5.2km with the aged
+# REFERENCE_HM_OCEANIC_M, and around -4.5km for freshly-generated ocean floor (still on the
+# thin YOUNG_RIDGE_HM_M) -- both realistic abyssal-plain depths, giving a continent-to-ocean
+# contrast of ~4.7-5.4km, the same order of magnitude as real Earth's own ~4.6km average
+# continent/ocean elevation difference.
 ISOSTATIC_REFERENCE_OFFSET_M = -4184.615384615388
 
 
@@ -102,6 +114,18 @@ def isostatic_elevation(hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float) -> np.
     water_loaded = shifted_bracket * (RHO_ASTHENOSPHERE / (RHO_ASTHENOSPHERE - RHO_WATER))
     z = np.where(shifted_bracket <= 0.0, water_loaded, shifted_bracket)
     return np.clip(z, MIN_ELEVATION_M, MAX_ELEVATION_M)
+
+
+def crustal_thickness_for_submerged_elevation(z_m: np.ndarray, hm_m: np.ndarray, rho_c: float) -> np.ndarray:
+    """Inverse of `isostatic_elevation`'s water-loaded branch: the `Hc` that, with the given
+    `Hm`, floats a *submerged* column at target depth `z_m` (z_m < 0). Used only by
+    generation-time bathymetry shaping (bathymetry.py) to thin drowned continental crust to a
+    chosen depth while keeping `elevation` a faithful readout of the column. Not valid above
+    sea level (that's the un-rescaled branch -- callers here only ever pass negative z)."""
+    shifted_bracket = z_m / (RHO_ASTHENOSPHERE / (RHO_ASTHENOSPHERE - RHO_WATER))
+    bracket = shifted_bracket - ISOSTATIC_REFERENCE_OFFSET_M
+    hm_term = hm_m * (1.0 - RHO_LITHOSPHERE_MANTLE / RHO_ASTHENOSPHERE)
+    return (bracket - hm_term) / (1.0 - rho_c / RHO_ASTHENOSPHERE)
 
 
 def sync_line_elevation(line, rho_c: float):
