@@ -22,7 +22,7 @@ function EventList({ events, maxHeight }: { events: WorldEvent[]; maxHeight: num
 }
 
 export default function EventConsole({ events }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   // The popped-out view is a separate, larger in-page overlay reusing the same fixed-scrim
   // pattern as the Generate World / Stats dialogs -- not a real separate OS window (this app
   // has never used window.open, so a true detached window would be a new, untested

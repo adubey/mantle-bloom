@@ -22,7 +22,7 @@ MAX_RENDER_DIMENSION_PX = 4000
 # Each animation frame costs a full step_world + render, so this bounds worst-case request
 # time for POST /world/animate the same way MAX_RENDER_DIMENSION_PX bounds /world/render's
 # own worst case.
-MAX_ANIMATION_FRAMES = 60
+MAX_ANIMATION_FRAMES = 240
 
 app = FastAPI(title="mantle-bloom")
 

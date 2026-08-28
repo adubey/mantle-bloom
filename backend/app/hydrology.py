@@ -99,9 +99,10 @@ if TYPE_CHECKING:
 # below runs on.
 FLOW_NEIGHBOR_COUNT = 8
 
-# Top decile of land flow_accum counts as "a river" -- used for both rendering and the
-# major_river_fraction stat.
-RIVER_FLOW_PERCENTILE = 90.0
+# Top ~12% of land flow_accum counts as "a river" -- used for both rendering and the
+# major_river_fraction stat. Slightly below a strict top-decile cut so modest channels still
+# register as rivers rather than falling just short of the threshold.
+RIVER_FLOW_PERCENTILE = 88.0
 
 # How established a downhill neighbor's own channel needs to be before flow direction
 # prefers it over the literal steepest candidate -- see _compute_flow_direction. Deliberately
