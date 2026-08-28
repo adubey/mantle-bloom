@@ -843,6 +843,7 @@ export default function App() {
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
               highlightTarget={highlightTarget}
               onProbe={mapView === "combined" || mapView === "elevation" || mapView === "biome" ? handleProbe : undefined}
+              alphaEncodedIds={mapView === "combined"}
             />
           )}
           {probe && (

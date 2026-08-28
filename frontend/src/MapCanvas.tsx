@@ -28,8 +28,8 @@ interface Props {
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
   // Legend-click-to-highlight (Biome and Combined views -- see Legend.tsx/App.tsx): when set,
-  // every decoded pixel whose nearest color in `palette` isn't `selected` is faded toward gray
-  // so the selected swatch's cells visibly pop against the rest of the map (see applyHighlight
+  // every decoded pixel that isn't classified as `selected` is faded toward gray so the
+  // selected swatch's cells visibly pop against the rest of the map (see applyHighlight
   // below). `null`/omitted paints the decoded frame as-is, same as before this feature existed.
   highlightTarget?: HighlightTarget | null;
   // Elevation & Biome / Elevation / Biome views only (App.tsx passes it just for those): a
@@ -38,6 +38,11 @@ interface Props {
   // map. A click outside the projected globe silhouette reports null (dismiss the popup).
   // Omitted on every other view, which leaves a click doing nothing, exactly as before.
   onProbe?: (probe: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => void;
+  // Combined mode encodes a per-pixel biome id in the PNG's alpha channel (see backend
+  // render_image.py's COMBINED_LAKE_ID_CODE comment / legendData.ts). When true, every painted
+  // frame gets a full-canvas pass that reads those ids and then resets alpha to fully opaque --
+  // the 237..255 alpha spread is a data channel, not meant to actually composite.
+  alphaEncodedIds?: boolean;
 }
 
 const BACKGROUND = "#0b1020";
@@ -56,21 +61,18 @@ const HIGHLIGHT_DIM_FACTOR = 0.35;
 // exactly one of biomes.BIOME_COLORS' fixed palette -- no coastline/graticule overlay on top
 // -- so an exact RGB match (tolerance 0) against the clicked legend swatch's color is enough
 // to pick out that biome's cells, entirely client-side, with no new server render mode
-// needed. The Combined view instead matches within `tolerance` against several candidate
-// colors (see legendData.ts's highlightTargetFor) since a biome's flat color there gets
-// shaded by elevation (see app/biomes.py's biome_relative_shade_factor) and, at real peaks,
-// further blended toward the elevation gradient on top of that.
+// needed.
 //
 // Classification is nearest-neighbor across the *entire* palette, not just a within-tolerance
-// check against the selected label's own colors: two land biomes' shaded variants can land
-// close together in RGB space (e.g. two similarly-hued forests at different elevations), and
-// checking the selected label in isolation would highlight both whenever a pixel merely came
-// within `tolerance` of it, even if some other label was actually the closer match. Picking
-// the closest label first, and only then comparing it to the selection, keeps one biome's
-// highlight from bleeding into another's cells. `tolerance` still bounds how far the *closest*
-// match can be before a pixel counts as belonging to no known label at all (plain ocean,
-// rivers, coastline, graticule, etc.), so those never get swept into whichever label happens
-// to be nearest.
+// check against the selected label's own colors: picking the closest label first, and only
+// then comparing it to the selection, keeps one label's highlight from bleeding into another
+// whose color lands nearby in RGB space. `tolerance` still bounds how far the *closest* match
+// can be before a pixel counts as belonging to no known label at all (plain ocean, rivers,
+// coastline, graticule, etc.), so those never get swept into whichever label is nearest.
+//
+// The Combined view doesn't match on color at all -- its per-pixel biome id rides in the
+// alpha channel (see legendData.ts's highlightTargetFor / the `idCodes` branch below), which
+// lets its land colors span a wide shaded-relief range with no risk of two biomes colliding.
 function classifyPixel(r: number, g: number, b: number, palette: HighlightTarget["palette"], tolerance2: number): string | null {
   let bestLabel: string | null = null;
   let bestDist2 = Infinity;
@@ -87,18 +89,36 @@ function classifyPixel(r: number, g: number, b: number, palette: HighlightTarget
   return bestDist2 <= tolerance2 ? bestLabel : null;
 }
 
-function applyHighlight(ctx: CanvasRenderingContext2D, width: number, height: number, target: HighlightTarget): void {
-  const { selected, palette, tolerance } = target;
-  const tolerance2 = tolerance * tolerance;
+// Paints the highlight dim-filter and/or (for alpha-encoded-id frames) resets alpha to
+// opaque, in a single full-canvas pixel pass. Called on every frame when `alphaEncodedIds`
+// so the encoded 237..255 alpha never actually composites; called only while a highlight is
+// active otherwise. A no-op combination (no highlight, no alpha reset) skips the pass.
+function applyHighlight(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  target: HighlightTarget | null,
+  resetAlpha: boolean,
+): void {
+  if (!target && !resetAlpha) return;
+  const tolerance2 = target ? target.tolerance * target.tolerance : 0;
+  const idCodes = target?.idCodes ?? null;
   const imageData = ctx.getImageData(0, 0, width, height);
   const data = imageData.data;
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2];
-    if (classifyPixel(r, g, b, palette, tolerance2) === selected) continue;
-    const gray = (0.3 * r + 0.59 * g + 0.11 * b) * HIGHLIGHT_DIM_FACTOR;
-    data[i] = gray;
-    data[i + 1] = gray;
-    data[i + 2] = gray;
+    const matches = target
+      ? idCodes
+        ? idCodes.includes(255 - data[i + 3])
+        : classifyPixel(r, g, b, target.palette, tolerance2) === target.selected
+      : true;
+    if (!matches) {
+      const gray = (0.3 * r + 0.59 * g + 0.11 * b) * HIGHLIGHT_DIM_FACTOR;
+      data[i] = gray;
+      data[i + 1] = gray;
+      data[i + 2] = gray;
+    }
+    if (resetAlpha) data[i + 3] = 255;
   }
   ctx.putImageData(imageData, 0, 0);
 }
@@ -109,9 +129,14 @@ function applyHighlight(ctx: CanvasRenderingContext2D, width: number, height: nu
 // the long-press-and-drag "rotate the planet" gesture (see rotationDrag.ts): while dragging,
 // it draws a cheap wireframe graticule preview client-side (see rotation.ts) instead of
 // re-requesting the real, much more expensive, detailed render on every mouse move.
+// Every getContext("2d") call must pass the same options or the browser returns null on a
+// mismatched re-request. willReadFrequently: the highlight / alpha-reset passes call
+// getImageData on most frames.
+const CTX_OPTIONS: CanvasRenderingContext2DSettings = { willReadFrequently: true };
+
 export default function MapCanvas({
   imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
-  onRotationPreview, onRotationCommitted, highlightTarget, onProbe,
+  onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
@@ -125,26 +150,33 @@ export default function MapCanvas({
   // paint effect re-run just because the highlight selection changed.
   const highlightTargetRef = useRef(highlightTarget);
   highlightTargetRef.current = highlightTarget;
+  const alphaEncodedIdsRef = useRef(alphaEncodedIds);
+  alphaEncodedIdsRef.current = alphaEncodedIds;
 
-  // Draws the already-decoded frame plus, if a legend highlight is active, the filter on top
-  // of it -- shared by both the initial decode (below) and the highlight-toggle effect, so
+  // Draws the already-decoded frame plus, if a legend highlight is active, the dim-filter on
+  // top of it -- shared by both the initial decode (below) and the highlight-toggle effect, so
   // toggling a legend swatch doesn't need a fresh server render to update the map. Reads
   // highlightTarget via a ref (not a direct closure) so its identity only changes with
   // width/height, not with the highlight selection -- see that effect's own comment for why.
   const paintDecodedFrame = useCallback(() => {
     const canvas = canvasRef.current;
     const img = imgRef.current;
-    const ctx = canvas?.getContext("2d");
+    const ctx = canvas?.getContext("2d", CTX_OPTIONS);
     if (!canvas || !img || !ctx) return;
+    // "copy" (not the default "source-over") so the source's alpha replaces the destination
+    // rather than compositing over the retained previous frame -- keeps the flicker fix (still
+    // one full-canvas paint) while leaving Combined's alpha-encoded ids intact to read back.
+    ctx.globalCompositeOperation = "copy";
     ctx.drawImage(img, 0, 0, width, height);
-    if (highlightTargetRef.current) applyHighlight(ctx, width, height, highlightTargetRef.current);
+    ctx.globalCompositeOperation = "source-over";
+    applyHighlight(ctx, width, height, highlightTargetRef.current ?? null, alphaEncodedIdsRef.current ?? false);
   }, [width, height]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     const img = imgRef.current;
     if (!canvas || !img) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", CTX_OPTIONS);
     if (!ctx) return;
 
     if (!imageBase64) {
@@ -177,11 +209,18 @@ export default function MapCanvas({
 
   const drawGraticule = (previewRotation: Mat3) => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
+    const ctx = canvas?.getContext("2d", CTX_OPTIONS);
     const img = imgRef.current;
     if (!canvas || !ctx || !img) return;
-    if (imageBase64) ctx.drawImage(img, 0, 0, width, height);
-    else {
+    if (imageBase64) {
+      // Fill first so a Combined frame's sub-255 alpha (see alphaEncodedIds) blends onto solid
+      // background rather than showing the page through, then draws effectively opaque.
+      if (alphaEncodedIds) {
+        ctx.fillStyle = BACKGROUND;
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+    } else {
       ctx.fillStyle = BACKGROUND;
       ctx.fillRect(0, 0, width, height);
     }
