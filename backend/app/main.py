@@ -620,9 +620,9 @@ def sample_at(lat_deg: float, lon_deg: float) -> dict:
     picked by nearest grid cell; `temperature_c` is the same land-air / ocean-surface
     composite the temperature view and biome classification use (see
     `climate.compute_climate`). `biome` may differ from the rendered pixel right at a
-    coastline -- the Combined/Biome *renders* reclassify on a finer grid (see
-    `render_image._biome_fields`) -- but this is the canonical per-cell field every other
-    consumer reads. `plate_id` is the same nearest-node hit-test as `/world/plate_at`. The
+    coastline -- the Combined/Biome *renders* re-run `biomes.smooth_biome_field` on a finer
+    grid (see `render_image._biome_fields`) -- but this is the canonical per-cell field every
+    other consumer reads, and it carries the same boundary-cleanup pass. `plate_id` is the same nearest-node hit-test as `/world/plate_at`. The
     client unprojects its click through the active view rotation to a true lat/lon first,
     same as `/world/plate_at`, so this endpoint never needs to know about rotation. `400`
     for non-finite input, `404` if no world has been generated yet."""

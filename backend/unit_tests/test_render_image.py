@@ -104,6 +104,33 @@ def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
     assert elev.mode == "RGB"
 
 
+def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_rest():
+    # smooth_biome_field is a cleanup pass, not a reclassification: on the real biome render
+    # grid it should change only a small slice of land and never erase a biome that has a
+    # genuine regional presence.
+    from app import biomes
+
+    world = _world(seed=7, num_plates=12, continental_fraction=0.6)
+    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, _gl = render_image._biome_fields(
+        world, *render_image.biome_grid_dimensions(world.climate_density)
+    )
+    display_temp = np.where(is_ocean, ocean_temp, air_temp)
+    slope = biomes.grid_slope(elevation_m, lat_deg)
+    raw = biomes.classify_biomes(
+        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
+    ).reshape(elevation_m.shape)
+    smoothed = biomes.smooth_biome_field(display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m)
+
+    land = ~is_ocean
+    n_land = int(land.sum())
+    assert int(np.count_nonzero(raw[land] != smoothed[land])) < 0.06 * n_land
+
+    for biome_id in np.unique(raw[land]):
+        raw_share = np.count_nonzero(raw[land] == biome_id) / n_land
+        if raw_share >= 0.02:
+            assert np.count_nonzero(smoothed[land] == biome_id) / n_land >= 0.01
+
+
 def test_biome_grid_dimensions_matches_reference_at_density_one():
     assert render_image.biome_grid_dimensions(1.0) == (render_image.BIOME_GRID_HEIGHT, render_image.BIOME_GRID_WIDTH)
 

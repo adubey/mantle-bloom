@@ -13,6 +13,7 @@ regions on a generated world, not fit against any specific real-world dataset.
 from __future__ import annotations
 
 import numpy as np
+from scipy.ndimage import uniform_filter1d
 
 from .elevation_lines import PLANET_RADIUS_KM
 from .hydrology import GLACIER_ACCUMULATION_TEMP_C
@@ -292,3 +293,166 @@ def classify_biomes(
         TROPICAL_RAINFOREST,
     ]
     return np.select(condlist, choicelist, default=OCEAN).astype(np.int64)
+
+
+# ---------------------------------------------------------------------------------------
+# Boundary cleanup: smooth_biome_field
+# ---------------------------------------------------------------------------------------
+# classify_biomes buckets continuous (temp, precip, elevation, slope) into hard-edged bands.
+# Wherever the underlying field runs nearly parallel to a band cutoff -- or the nearest-node
+# resample of elevation feeding the Wetland/Carboniferous/Intertidal tests carries
+# stair-stepping -- adjacent render cells flip back and forth across the cutoff, and the
+# Biome view (un-blurred by design, unlike Combined) reads as a dithered smear along every
+# biome interface plus scattered single-cell speckle. `smooth_biome_field` is a *stateless*
+# cleanup pass the render/stats callers apply on top of classify_biomes; classify_biomes
+# itself stays a pure, any-shape band lookup (its unit tests and geology.py's own
+# classify_wetland call both depend on that). Two mechanisms, both keyed to "this cell is
+# only marginally its biome":
+#   1. the Wetland/Carboniferous/Intertidal elevation tests (the `<= WETLAND_MAX_ELEVATION_M`
+#      band and the Intertidal depth split) run against a lightly box-blurred copy of
+#      `elevation` -- never the elevation used for relief shading -- so a nearest-node
+#      stair-step near a coast or a 50 m contour doesn't dither. `slope` is left raw: it
+#      already gates hard (WETLAND_MAX_SLOPE is 1 m/km), and blurring a noisy positive
+#      magnitude only biases it upward and erases these biomes wholesale;
+#   2. a cell that is either within a small margin of the nearest temp/precip band edge --
+#      the band the coherent climate noise alone (see climate.HUMIDITY_NOISE_STD / the
+#      MFC_NOISE_* block) can shove it across -- or already surrounded by mostly other biomes
+#      (an edge or speckle cell, regardless of which cutoff put it there) can be out-voted by
+#      a strong majority of its 8 neighbours. A cell comfortably inside a biome, with mostly
+#      same-biome neighbours, is never touched -- so genuine regions keep their shape (bar a
+#      one-cell edge shave) and only outnumbered speckle / single ragged steps straighten.
+#
+# All picked (like every other cutoff in this module) for a visually sensible result on a
+# generated world, not fit against a dataset.
+
+# A cell within this of the nearest temperature/precipitation band edge is "on the cusp" and
+# eligible to be out-voted; further than this it is solidly its biome and is left alone.
+BIOME_CUSP_MARGIN_TEMP_C = 1.5
+BIOME_CUSP_MARGIN_PRECIP_MM = 150.0
+
+# Adopt the most common non-ocean neighbour biome only if at least this fraction of a cell's
+# valid (non-ocean) neighbours agree on it -- 0.65 means 6+ of 8. Kept well above 0.5 so a
+# genuine two-biome interface (roughly half and half) is left in place.
+BIOME_VOTE_MIN_NEIGHBOUR_FRACTION = 0.65
+BIOME_VOTE_ITERATIONS = 2
+
+# A land cell that already disagrees with at least this many of its 8 non-ocean neighbours is
+# treated as a cusp cell too, regardless of the temp/precip margin -- catches speckle driven
+# by the elevation/slope resample rather than a climate band. Deliberately high (a genuinely
+# outnumbered cell, not just a boundary cell -- a clean straight interface has ~3/8
+# disagreeing, a diagonal ~2) so region edges and necks are left intact.
+BIOME_RAGGED_MIN_DISAGREEING_NEIGHBOURS = 6
+
+# Real-world radius of the box blur applied to the `elevation` copy used by the
+# Wetland/Carboniferous/Intertidal elevation/depth predicates -- about one default node
+# spacing (elevation_lines.TARGET_LINE_SPACING_KM / DEFAULT_NODE_DENSITY ~= 62 km), enough to
+# bridge the nearest-node stair-stepping the resample introduces without moving a real
+# coastline or floodplain edge appreciably. Expressed in km, converted to a cell count from
+# the grid's own resolution, so it covers the same distance regardless of World.climate_density.
+ELEVATION_BAND_SMOOTH_RADIUS_KM = 75.0
+
+
+def _smooth_for_bands(field: np.ndarray, cell_km: float) -> np.ndarray:
+    """Separable box blur at ELEVATION_BAND_SMOOTH_RADIUS_KM, longitude-wrapping (axis 1) and
+    edge-replicating at the poles (axis 0). One uniform_filter1d per axis -- O(n) in the
+    window size, unlike an iterated Jacobi sweep."""
+    size = max(1, int(round(2.0 * ELEVATION_BAND_SMOOTH_RADIUS_KM / cell_km)))
+    out = uniform_filter1d(np.asarray(field, dtype=float), size, axis=1, mode="wrap")
+    return uniform_filter1d(out, size, axis=0, mode="nearest")
+
+
+_NEIGHBOUR_OFFSETS = tuple((dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1) if (dy, dx) != (0, 0))
+
+
+def _band_cusp_mask(temperature_c: np.ndarray, precipitation_mm: np.ndarray) -> np.ndarray:
+    """Boolean, same shape as the inputs: True where the cell sits within
+    BIOME_CUSP_MARGIN_TEMP_C / _PRECIP_MM of the nearest temperature or precipitation band
+    edge classify_biomes splits on."""
+    temp_edges = np.array([ICE_TEMP_C, COLD_TEMP_C, TROPICAL_TEMP_C])
+    precip_edges = np.array([ARID_MM, SEMI_ARID_MM, SUB_HUMID_MM, HUMID_MM])
+    temp = np.asarray(temperature_c)[..., None]
+    precip = np.asarray(precipitation_mm)[..., None]
+    near_temp = np.min(np.abs(temp - temp_edges), axis=-1) <= BIOME_CUSP_MARGIN_TEMP_C
+    near_precip = np.min(np.abs(precip - precip_edges), axis=-1) <= BIOME_CUSP_MARGIN_PRECIP_MM
+    return near_temp | near_precip
+
+
+def _disagreeing_neighbour_count(biome_ids: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
+    """Per-cell count of the 8 neighbours that are land and a different biome."""
+    count = np.zeros(biome_ids.shape, dtype=np.int16)
+    for dy, dx in _NEIGHBOUR_OFFSETS:
+        nb = np.roll(np.roll(biome_ids, dy, axis=0), dx, axis=1)
+        nb_ocean = np.roll(np.roll(is_ocean, dy, axis=0), dx, axis=1)
+        count += ((nb != biome_ids) & ~nb_ocean).astype(np.int16)
+    return count
+
+
+def _neighbour_vote(biome_ids: np.ndarray, eligible: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
+    """One majority-vote pass: each `eligible` land cell adopts the most common land biome
+    among its 8 neighbours when at least BIOME_VOTE_MIN_NEIGHBOUR_FRACTION of its valid
+    (non-ocean) neighbours agree on it and it differs from the cell's current biome. The
+    modal neighbour is found by sorting the 8 neighbour ids per cell and taking the longest
+    equal run -- O(1) array ops in the biome count, not a per-biome loop."""
+    stack = np.stack([np.roll(np.roll(biome_ids, dy, axis=0), dx, axis=1) for dy, dx in _NEIGHBOUR_OFFSETS])
+    ocean_stack = np.stack([np.roll(np.roll(is_ocean, dy, axis=0), dx, axis=1) for dy, dx in _NEIGHBOUR_OFFSETS])
+    # Ocean neighbours -> -1 so they sort to the front and can never form the winning run.
+    stack = np.where(ocean_stack, np.int16(-1), stack.astype(np.int16))
+    valid = (~ocean_stack).sum(axis=0).astype(np.int16)
+
+    stack.sort(axis=0)
+    best_count = np.zeros(biome_ids.shape, dtype=np.int16)
+    best_biome = np.full(biome_ids.shape, -1, dtype=np.int16)
+    run = np.zeros(biome_ids.shape, dtype=np.int16)
+    prev = np.full(biome_ids.shape, -2, dtype=np.int16)
+    for k in range(stack.shape[0]):
+        cur = stack[k]
+        run = np.where(cur == prev, run + 1, 1)
+        better = (cur >= 0) & (run > best_count)
+        best_count = np.where(better, run, best_count)
+        best_biome = np.where(better, cur, best_biome)
+        prev = cur
+
+    threshold = np.ceil(BIOME_VOTE_MIN_NEIGHBOUR_FRACTION * valid).astype(np.int16)
+    take = eligible & ~is_ocean & (valid > 0) & (best_count >= threshold) & (best_biome != biome_ids)
+    return np.where(take, best_biome.astype(biome_ids.dtype), biome_ids)
+
+
+def smooth_biome_field(
+    temperature_c: np.ndarray,
+    precipitation_mm: np.ndarray,
+    elevation_m: np.ndarray,
+    slope: np.ndarray,
+    is_ocean: np.ndarray,
+    sea_level_m: float = 0.0,
+) -> np.ndarray:
+    """classify_biomes plus the stateless boundary-cleanup pass described in the block above
+    -- this is the classification the Biome/Combined map views and /world/stats use, while
+    `classify_biomes` stays the raw per-cell primitive. Inputs must all be the same 2D
+    (H, W) grid (the vote needs spatial neighbours); the result is that same shape."""
+    temperature_c = np.asarray(temperature_c)
+    precipitation_mm = np.asarray(precipitation_mm)
+    elevation_m = np.asarray(elevation_m)
+    slope = np.asarray(slope)
+    is_ocean = np.asarray(is_ocean)
+    if elevation_m.ndim != 2:
+        raise ValueError("smooth_biome_field needs 2D grid inputs; use classify_biomes for a flat array")
+
+    equator_cell_km = 2.0 * np.pi * PLANET_RADIUS_KM / elevation_m.shape[1]
+    elev_smoothed = _smooth_for_bands(elevation_m, equator_cell_km)
+
+    # Substituting the blurred elevation for the elevation-band / Intertidal-depth tests is
+    # safe: inside classify_biomes elevation feeds only those -- every ordinary
+    # temperature/precipitation band ignores it. `slope` stays raw (see mechanism 1 above).
+    biome_ids = classify_biomes(temperature_c, precipitation_mm, elev_smoothed, slope, is_ocean, sea_level_m)
+
+    # Eligibility is fixed from the initial classification, not recomputed each iteration --
+    # the band-cusp part can't change (temp/precip don't move) and freezing the ragged part
+    # keeps a second pass from chasing its own tail across a wide boundary.
+    land = ~is_ocean
+    eligible = land & (
+        _band_cusp_mask(temperature_c, precipitation_mm)
+        | (_disagreeing_neighbour_count(biome_ids, is_ocean) >= BIOME_RAGGED_MIN_DISAGREEING_NEIGHBOURS)
+    )
+    for _ in range(BIOME_VOTE_ITERATIONS):
+        biome_ids = _neighbour_vote(biome_ids, eligible, is_ocean)
+    return biome_ids
