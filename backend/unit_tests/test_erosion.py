@@ -134,7 +134,7 @@ def test_apply_erosion_noop_for_empty_world():
     assert world.plates == []
 
 
-# --- Coastal planation + infill feedback (docs/TODO.md "Speckled low-relief coastlines") ---
+# --- Symmetric coastal-leveling feedback (docs/TODO.md "Speckled low-relief coastlines") ---
 
 
 def _equator_lattice(half_span_deg: float, step_deg: float) -> np.ndarray:
@@ -166,60 +166,97 @@ def test_coastal_openness_zero_when_no_open_ocean():
     assert np.all(erosion._coastal_openness(points, np.zeros(len(points), dtype=bool)) == 0.0)
 
 
-def test_coastal_planation_only_near_sea_level_land_and_scales_with_exposure():
-    elevation = np.array([10.0, 25.0, 100.0, -50.0])
-    openness = np.full(4, 0.5)  # well above PLANATION_EXPOSURE_REF -> full exposure
-    amt = erosion.coastal_planation_amount(elevation, sea_level_m=0.0, openness=openness, dt_myr=0.05)
-    assert amt[0] > amt[1] > 0.0  # both in-band, shallower planes faster (bigger proximity)
+def test_leveling_datum_is_a_continuous_function_of_exposure():
+    # Exposure pulls the datum below the waterline (wave-cut platform); shelter lifts it above
+    # (marsh crest); a straight open coast lands near sea level.
+    openness = np.array([0.6, 0.0, 0.3])  # exposed / fully enclosed / straight coast
+    dist_to_land = np.full(3, 1.0)  # nowhere near a barrier
+    datum = erosion.leveling_datum_m(0.0, openness, dist_to_land)
+    assert np.isclose(datum[0], -erosion.LEVELING_PLATFORM_UNDERCUT_M)  # exposed -> undercut
+    assert np.isclose(datum[1], erosion.LEVELING_MARSH_CREST_M)  # enclosed -> marsh crest
+    assert datum[0] < datum[2] < datum[1]  # monotone decreasing in openness
+
+    # A barrier candidate (hugs land, still faces open water) instead targets a bar crest.
+    barrier = erosion.leveling_datum_m(
+        0.0, np.array([0.4]), np.array([erosion.BARRIER_LANDWARD_RAD * 0.5])
+    )
+    assert np.isclose(barrier[0], erosion.BARRIER_CREST_M)
+
+
+def test_coastal_leveling_grind_planes_anything_above_its_datum_including_submerged():
+    # Per-node datum; nodes straddle sea level. Only the ones standing above their datum grind
+    # -- a just-submerged shoal included (the old planation gate ignored everything below 0).
+    elevation = np.array([10.0, 30.0, 100.0, -8.0, -30.0])
+    datum = np.array([0.0, 0.0, 0.0, -20.0, 0.0])
+    openness = np.full(5, 0.5)  # well above LEVELING_EXPOSURE_REF -> full "coastal" factor
+    amt = erosion.coastal_leveling_grind(elevation, 0.0, openness, datum, dt_myr=0.05)
+    assert amt[0] > amt[1] > 0.0  # both in band, the one closer to sea level planes faster
     assert amt[2] == 0.0  # above the band
-    assert amt[3] == 0.0  # underwater -- infill's job, not planation's
+    assert amt[3] > 0.0  # submerged shoal standing 12 m above its own datum still grinds
+    assert amt[4] == 0.0  # below datum -- fill's job, not grind's
 
-    sheltered = erosion.coastal_planation_amount(elevation, 0.0, np.full(4, 0.15), dt_myr=0.05)
-    assert sheltered[0] < amt[0]  # half the exposure -> half the planation (0.15 / 0.3)
+    landlocked = erosion.coastal_leveling_grind(elevation, 0.0, np.zeros(5), datum, dt_myr=0.05)
+    assert np.all(landlocked == 0.0)  # openness 0 -> untouched
 
-    # Never past the wave-cut platform (sea level minus PLANATION_UNDERCUT_M at full
-    # exposure), however long the step -- here 12 m above + 6 m undercut = 18 m.
-    huge = erosion.coastal_planation_amount(np.array([12.0]), 0.0, np.array([1.0]), dt_myr=99.0)
-    assert huge[0] == 12.0 + erosion.PLANATION_UNDERCUT_M
+    # Never past its datum, however long the step.
+    huge = erosion.coastal_leveling_grind(np.array([12.0]), 0.0, np.array([1.0]), np.array([0.0]), dt_myr=99.0)
+    assert huge[0] == 12.0
 
 
-def test_spread_coastal_infill_conserves_mass_including_fallback():
+def test_spread_coastal_leveling_conserves_mass_including_fallback():
     rng = np.random.default_rng(0)
     points = _equator_lattice(half_span_deg=3.0, step_deg=0.5)
     n = len(points)
     elevation = rng.uniform(-500.0, 200.0, n)
-    is_ocean = elevation <= 0.0
     openness = rng.uniform(0.0, 1.0, n)
     dist_to_land = rng.uniform(0.0, 0.02, n)
+    datum = erosion.leveling_datum_m(0.0, openness, dist_to_land)
     source = np.zeros(n)
     source[rng.choice(n, 5, replace=False)] = rng.uniform(1.0, 10.0, 5)
 
-    out = erosion._spread_coastal_infill(points, elevation, is_ocean, openness, dist_to_land, 0.0, source)
+    out = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
     assert np.isclose(out.sum(), source.sum())
 
-    # No ocean at all -> every source keeps its own amount in place.
-    land_only = erosion._spread_coastal_infill(
-        points, np.full(n, 100.0), np.zeros(n, dtype=bool), openness, dist_to_land, 0.0, source
+    # No band node below its datum anywhere -> every source keeps its own amount in place.
+    no_sink = erosion._spread_coastal_leveling(
+        points, elevation, openness, dist_to_land, 0.0, elevation - 100.0, source, dt_myr=5.0
     )
-    assert np.allclose(land_only, source)
+    assert np.allclose(no_sink, source)
 
 
-def test_spread_coastal_infill_prefers_sheltered_shallow_and_barrier_nodes():
-    # Three ocean sinks in a row just west of a land source; only geometry/openness differ.
+def test_spread_coastal_leveling_prefers_sheltered_hollow_and_barrier_sinks():
+    # A land source just east of three candidate sinks; only geometry/openness/depth differ.
     lat = np.radians(np.array([0.0, 0.0, 0.0, 0.0]))
-    lon = np.radians(np.array([0.30, 0.10, -0.10, -0.30]))  # source, sheltered, exposed-deep, barrier
+    lon = np.radians(np.array([0.30, 0.10, -0.10, -0.30]))  # source, sheltered, deep-out-of-band, barrier
     points = geometry.latlon_to_xyz(lat, lon)
     elevation = np.array([20.0, -10.0, -2000.0, -1.0])
-    is_ocean = np.array([False, True, True, True])
     openness = np.array([0.0, 0.1, 0.9, 0.4])  # sheltered bay / open abyss / barrier edge
-    dist_to_land = np.array([0.0, 0.05, 0.05, 0.001])  # barrier node hugs the coast
+    dist_to_land = np.array([1.0, 0.05, 0.05, 0.001])  # barrier node hugs the coast
+    datum = erosion.leveling_datum_m(0.0, openness, dist_to_land)
     source = np.array([100.0, 0.0, 0.0, 0.0])
 
-    out = erosion._spread_coastal_infill(points, elevation, is_ocean, openness, dist_to_land, 0.0, source)
+    out = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
     assert out[1] > 0.0  # sheltered shallow water silts up
     assert out[3] > 0.0  # barrier candidate accretes despite facing open water
-    assert out[2] < out[1] and out[2] < out[3]  # exposed deep abyss gets far less
+    assert out[2] < out[1] and out[2] < out[3]  # deep node is out of band -> gets ~nothing
     assert np.isclose(out.sum(), 100.0)
+
+
+def test_spread_coastal_leveling_declumps_a_single_source_across_neighbours():
+    # The whole point of the pass: one lump on one band node ends up spread across many.
+    points = _equator_lattice(half_span_deg=2.0, step_deg=0.3)
+    n = len(points)
+    elevation = np.full(n, -5.0)  # a flat, uniformly just-submerged shelf
+    openness = np.full(n, 0.2)
+    dist_to_land = np.full(n, 1.0)
+    datum = np.zeros(n)  # every node sits 5 m below its datum -> every node is a sink
+    source = np.zeros(n)
+    source[n // 2] = 500.0
+
+    out = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
+    assert np.isclose(out.sum(), 500.0)
+    assert np.count_nonzero(out > 1.0) >= 6  # the lump reached many neighbours
+    assert out[n // 2] < 500.0  # and did not all stay on the source node
 
 
 def test_apply_erosion_coastal_feedback_keeps_a_generated_world_sane():
