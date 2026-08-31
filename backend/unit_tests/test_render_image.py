@@ -384,3 +384,53 @@ def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
     png_pos = render_image.render_png(world_pos, "eckert4", "plates", 400, 400)
     png_neg = render_image.render_png(world_neg, "eckert4", "plates", 400, 400)
     assert png_pos != png_neg
+
+
+# --- Interim coastal-speckle mitigation (_despeckle_coastal_elevation) --------------------
+# TODO: delete this block together with render_image._despeckle_coastal_elevation once the
+# real coastal planation/infill feedback lands -- see docs/TODO.md "Speckled low-relief
+# coastlines".
+
+def _latlon_patch_points(lat0, lat1, lon0, lon1, n):
+    lat = np.radians(np.linspace(lat0, lat1, n))
+    lon = np.radians(np.linspace(lon0, lon1, n))
+    lat_grid, lon_grid = np.meshgrid(lat, lon, indexing="ij")
+    return geometry.latlon_to_xyz(lat_grid.ravel(), lon_grid.ravel())
+
+
+def test_despeckle_flips_isolated_specks_on_a_flat_shelf():
+    n = 15
+    points = _latlon_patch_points(8.0, 13.0, 6.0, 11.0, n)
+    elevation = np.full(n * n, 8.0)  # a flat shelf just above sea level
+    # Punch three isolated single-node ocean pits into the interior.
+    for r, c in [(4, 4), (7, 9), (10, 5)]:
+        elevation[r * n + c] = -12.0
+
+    out = render_image._despeckle_coastal_elevation(points, elevation, sea_level_m=0.0)
+
+    for r, c in [(4, 4), (7, 9), (10, 5)]:
+        assert out[r * n + c] > 0.0  # pit filled back to shelf level
+    # Every genuinely-land node is untouched.
+    land = elevation > 0.0
+    assert np.array_equal(out[land], elevation[land])
+
+
+def test_despeckle_leaves_a_clean_coastline_alone():
+    n = 16
+    points = _latlon_patch_points(8.0, 13.0, 6.0, 11.0, n)
+    lat = np.linspace(8.0, 13.0, n)
+    # Solid land north of 10.5 deg, solid ocean south of it -- a clean, straight coast, every
+    # node near sea level so it all sits in the despeckle band.
+    elevation = np.where(lat[:, None] > 10.5, 40.0, -40.0).repeat(n, axis=1).ravel().astype(float)
+
+    out = render_image._despeckle_coastal_elevation(points, elevation, sea_level_m=0.0)
+
+    assert np.array_equal(out, elevation)
+
+
+def test_despeckle_no_op_when_nothing_is_near_sea_level():
+    n = 8
+    points = _latlon_patch_points(8.0, 13.0, 6.0, 11.0, n)
+    elevation = np.full(n * n, 3000.0)  # a plateau, nowhere near the waterline
+    out = render_image._despeckle_coastal_elevation(points, elevation, sea_level_m=0.0)
+    assert out is elevation  # returned unchanged, not even copied
