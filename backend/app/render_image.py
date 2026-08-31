@@ -367,53 +367,6 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
     return world_pts @ view_rotation.T
 
 
-# --- Interim coastal-speckle mitigation (render-only) ------------------------------------
-# A drowned, near-flat continental shelf can sit within tens of meters of sea level while
-# per-node elevation noise flips neighbouring nodes land<->ocean; the nearest-node resample
-# every render path below does then turns that dither into a single-pixel checkerboard coast
-# rather than a line. This pass snaps an isolated near-sea-level node to its neighbour-median
-# elevation so it renders as part of the surrounding land or ocean. Purely cosmetic: it runs
-# on the elevation array a render path just gathered, immediately before that path resamples
-# it, and never touches world.plates -- the simulation still holds the dithering shelf.
-#
-# TODO: remove this -- the function, its three constants, and its three call sites
-# (_render_grid_arrays / _biome_fields / _resource_fields), plus
-# test_despeckle_* in unit_tests/test_render_image.py -- once erosion.py grows a real coastal
-# planation / infill feedback. See docs/TODO.md "Speckled low-relief coastlines".
-_DESPECKLE_BAND_M = 150.0      # only nodes this close to sea level are eligible to flip
-_DESPECKLE_NEIGHBORS = 8       # nearest near-sea-level neighbours polled per candidate node
-_DESPECKLE_MAJORITY = 0.75     # flip when >= this fraction of them are on the opposite side
-
-
-def _despeckle_coastal_elevation(points: np.ndarray, elevation: np.ndarray, sea_level_m: float) -> np.ndarray:
-    """Returns `elevation` with isolated near-sea-level specks flipped to match their
-    surroundings -- see this section's comment. Restricted to the near-sea-level node
-    subset (`|elevation - sea_level_m| <= _DESPECKLE_BAND_M`): a genuine steep coast's land
-    nodes climb out of that band within a node or two, so only a genuinely flat, waterline-
-    straddling shelf ever has enough in-band neighbours of the opposite class to reach the
-    majority threshold. Returns the input array unchanged (not a copy) when nothing flips."""
-    near = np.abs(elevation - sea_level_m) <= _DESPECKLE_BAND_M
-    if int(near.sum()) <= _DESPECKLE_NEIGHBORS + 1:
-        return elevation
-    near_idx = np.nonzero(near)[0]
-    tree = cKDTree(points[near_idx])
-    _, nbr = tree.query(points[near_idx], k=_DESPECKLE_NEIGHBORS + 1)
-    nbr = nbr[:, 1:]  # column 0 is always the point itself
-    sub_elevation = elevation[near_idx]
-    sub_is_ocean = sub_elevation <= sea_level_m
-    neighbour_ocean_fraction = sub_is_ocean[nbr].mean(axis=1)
-    flip = np.where(
-        sub_is_ocean,
-        neighbour_ocean_fraction <= 1.0 - _DESPECKLE_MAJORITY,
-        neighbour_ocean_fraction >= _DESPECKLE_MAJORITY,
-    )
-    if not flip.any():
-        return elevation
-    out = elevation.copy()
-    out[near_idx[flip]] = np.median(sub_elevation[nbr], axis=1)[flip]
-    return out
-
-
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
@@ -449,7 +402,6 @@ def _render_grid_arrays(
     if collected is None:
         return None
     all_points, all_elevation, all_owner = collected
-    all_elevation = _despeckle_coastal_elevation(all_points, all_elevation, world.sea_level_m)
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
@@ -578,7 +530,6 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         glacier_depth = np.zeros(shape)
     else:
         all_points, all_elevation, _ = collected
-        all_elevation = _despeckle_coastal_elevation(all_points, all_elevation, world.sea_level_m)
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
         tree = cKDTree(all_points)
@@ -618,7 +569,6 @@ def _resource_fields(world: World, grid_h: int, grid_w: int):
         return lat_deg, lon_deg, world_xyz, np.ones(shape, dtype=bool), z, z, z, z, z, z
 
     all_points, all_elevation, _ = collected
-    all_elevation = _despeckle_coastal_elevation(all_points, all_elevation, world.sea_level_m)
     tree = cKDTree(all_points)
     _, idx = tree.query(flat_xyz)
     is_ocean = hydrology.sample_is_ocean(world, world_xyz, (all_elevation[idx].reshape(shape)) <= world.sea_level_m)

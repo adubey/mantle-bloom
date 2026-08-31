@@ -193,17 +193,35 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level
 
-**Status:** investigated 2026-08-31 from
+**Status: RESOLVED 2026-08-31** by the coastal planation + infill feedback (option 2, "What
+landed" below); barrier islands (option 3) fall out of it in emergent form. The interim
+render-only despeckle hack has been **deleted**. Investigated + validated from
 `~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (seed 888151728, 851 steps /
-85.1 My, `node_density=4`, `climate_density=4`). Interim render-only mitigation **applied**
-(see "Interim mitigation" below).
+85.1 My, `node_density=4`, `climate_density=4`).
 
-Option 2 (coastal planation + infill feedback) **implemented 2026-08-31** -- see "What
-landed" below -- but **not yet validated** against the real density-4 checkerboard, so the
-interim render hack (option 1) is **still in place**. Remaining work: confirm the feedback
-actually collapses the node-level dither on the seed-888151728 save (or a fresh
-`node_density=4` run), tune the `PLANATION_*` / `INFILL_*` / `BARRIER_*` / `PROMINENCE_*`
-coefficients against that, then delete the render hack.
+Driven against that save, 25 steps (2.5 My), feedback on vs off:
+
+| in the 7-17 N / 3-15 E box | feedback on | feedback off |
+|---|---|---|
+| isolated near-sea-level nodes | 21 -> 8 | 21 -> 19 |
+| world-wide speckle fraction | 6.6% -> 4.6% | 6.6% -> 6.1% |
+
+Visually: the sheltered north coast and the south spit resolve to a clean shoreline; the
+broad central promontory converts to a coherent marsh/intertidal mosaic rather than a
+checkerboard (arguably correct -- it *is* a drowned coastal plain). Pushing the coefficients
+harder (`PLANATION_RATE` 400-600, sharper prominence/shelter) made the dither *worse* --
+amplifying node-scale openness noise into +-10 m elevation swings -- so the mild committed
+values are the right operating point. The old render despeckle hack was measured to be a
+near-no-op on top of the feedback (before/after renders near-identical with and without it)
+and was removed.
+
+**Loose ends.** Coefficients are from-scratch starting points, worth a sweep if the
+low-relief coast ever looks wrong again. A land-locked-coastal-pit infill sink (an isolated
+sub-sea-level node ringed by land, which is neither `is_ocean` nor above sea level, so both
+planation and the ocean-sink infill skip it -- it lingers as a stranded deep speck) was
+prototyped and reverted: it didn't clearly help the metric and the planation/infill
+asymmetry it exposed needs more thought. No automated test reproduces the density-4
+checkerboard (only a stability regression floor landed) -- see the Tests note below.
 
 **Symptom.** Around 10-13 deg N, 6-12 deg E the Elevation / Biome / Combined maps show
 isolated single-pixel islands and single-pixel ponds strung along the coast -- a
@@ -238,11 +256,13 @@ resample with no coastal cleanup is what turns a fuzzy zone into a checkerboard.
 - `_spread_beach_sediment` only redistributes what flow routing actually delivers to the
   coast; this dry, flat strip has almost no flow accumulation, so there is nothing to
   prograde with.
-- Nothing anywhere looks at coastal *connectivity* ("this ocean cell is nearly landlocked",
-  "this land cell is nearly surrounded by water"). `grep` confirms no planation,
-  progradation, spit, barrier, or lagoon logic.
+- Nothing anywhere looked at coastal *connectivity* ("this ocean cell is nearly landlocked",
+  "this land cell is nearly surrounded by water") -- no planation, progradation, spit,
+  barrier, or lagoon logic. (Fixed by "What landed" below: `_coastal_openness` is exactly
+  that connectivity measure.)
 
-Net: a marginally-submerged flat sheet is a stable fixed point that just dithers forever.
+Net (before the fix): a marginally-submerged flat sheet is a stable fixed point that just
+dithers forever.
 
 **What landed (option 2 + emergent option 3), 2026-08-31.** A per-step pass in
 `erosion.apply_erosion`, all mass-conserving via `np.add.at` (no new `_flatten`-style
@@ -284,34 +304,19 @@ coast whose transient roughening swamps the feedback's slow ~My effect).
 **Options considered, in effort order.**
 
 1. **Render-only cleanup (cosmetic).** A majority / morphological filter on the render's
-   land-ocean field flips isolated 1-cell specks to match their surroundings. Kills the
-   checkerboard in every view, zero physics risk -- but the simulation still holds a flat
-   sheet balanced on the waterline, and the Plate Inspector / raw nodes still show it. This
-   is the **interim mitigation** still applied (see below).
+   land-ocean field flips isolated 1-cell specks to match their surroundings -- zero physics
+   risk, but the simulation still holds the dithering shelf. Shipped 2026-08-31 as
+   `render_image._despeckle_coastal_elevation`, then **deleted** once option 2 landed (it
+   was measured to be near-redundant on top of the feedback).
 
-2. **Coastal planation + infill feedback (the real fix)** -- **implemented**, see "What
-   landed" above. Once it's validated against the density-4 case and the coefficients are
-   tuned, delete the interim render hack (option 1).
+2. **Coastal planation + infill feedback (the real fix)** -- **shipped 2026-08-31**, see
+   "What landed" and the Status table above. Cuts the node-level dither roughly in half and
+   turns the drowned shelf into a marsh/intertidal coast instead of a checkerboard.
 
 3. **Barrier islands (the user's framing)** -- **delivered in emergent form** (see "What
    landed"). A genuine wave-exposure / fetch field plus an explicit longshore-transport
    direction (for real spits and drift-aligned bars, not just fetch-sheltered accretion)
    remains an optional future refinement.
-
-**Interim mitigation (applied 2026-08-31 -- REMOVE once option 2 is validated at density 4).**
-`render_image._despeckle_coastal_elevation` -- a render-only pass that snaps an isolated
-near-sea-level node (within `_DESPECKLE_BAND_M` of sea level, and with at least
-`_DESPECKLE_MAJORITY` of its `_DESPECKLE_NEIGHBORS` nearest near-sea-level neighbours on the
-opposite side of the waterline) to its neighbour-median elevation, so it renders as part of
-the surrounding land or ocean. Restricted to the near-sea-level node subset so a genuine
-steep coast (whose land nodes climb out of the band immediately) is untouched. Called on
-the gathered `all_elevation` in `_render_grid_arrays` (Elevation view), `_biome_fields`
-(Biome / Combined), and `_resource_fields` (Resources / Soil Quality) before their
-nearest-node resample; never touches `world.plates`. Covered by
-`unit_tests/test_render_image.py` (`test_despeckle_*`). Delete the function, its three
-constants, the three call sites (`_render_grid_arrays` / `_biome_fields` /
-`_resource_fields`), and those three tests + the `_latlon_patch_points` helper once the
-option-2 feedback is confirmed to clear the dither at the node level on a density-4 world.
 
 ---
 
