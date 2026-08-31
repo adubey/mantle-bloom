@@ -198,12 +198,29 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 85.1 My, `node_density=4`, `climate_density=4`). Interim render-only mitigation **applied**
 (see "Interim mitigation" below).
 
-Option 2 (coastal planation + infill feedback) **implemented 2026-08-31** -- see "What
-landed" below -- but **not yet validated** against the real density-4 checkerboard, so the
-interim render hack (option 1) is **still in place**. Remaining work: confirm the feedback
-actually collapses the node-level dither on the seed-888151728 save (or a fresh
-`node_density=4` run), tune the `PLANATION_*` / `INFILL_*` / `BARRIER_*` / `PROMINENCE_*`
-coefficients against that, then delete the render hack.
+Option 2 (coastal planation + infill feedback) **implemented + validated 2026-08-31** -- see
+"What landed" below. Driven against the seed-888151728 save, 25 steps (2.5 My):
+
+| in the 7-17 N / 3-15 E box | feedback on | feedback off |
+|---|---|---|
+| isolated near-sea-level nodes | 21 -> 8 | 21 -> 19 |
+| world-wide speckle fraction | 6.6% -> 4.6% | 6.6% -> 6.1% |
+
+Visually: the sheltered north coast and the south spit resolve to a clean shoreline; the
+broad central promontory converts to a coherent marsh/intertidal mosaic rather than a
+checkerboard (arguably correct -- it *is* a drowned coastal plain). Pushing the coefficients
+harder (`PLANATION_RATE` 400-600, sharper prominence/shelter) made the dither *worse* --
+amplifying node-scale openness noise into +-10 m elevation swings -- so the mild committed
+values are the right operating point.
+
+The interim render hack (option 1) is **still in place** but is now nearly a no-op after the
+feedback runs (isolated specks it targets are mostly gone; the residual is contiguous marsh
+fringe it can't grab). Deciding whether to delete it, keep it as belt-and-braces for the
+first few steps after loading an old save, or replace it with a milder pass, is the only
+open thread. A land-locked-coastal-pit infill sink (an isolated sub-sea-level node ringed by
+land, which is neither `is_ocean` nor above sea level, so both planation and the ocean-sink
+infill skip it) was prototyped and reverted -- it didn't clearly help the metric and the
+planation/infill asymmetry it exposed needs more thought.
 
 **Symptom.** Around 10-13 deg N, 6-12 deg E the Elevation / Biome / Combined maps show
 isolated single-pixel islands and single-pixel ponds strung along the coast -- a
@@ -289,16 +306,17 @@ coast whose transient roughening swamps the feedback's slow ~My effect).
    sheet balanced on the waterline, and the Plate Inspector / raw nodes still show it. This
    is the **interim mitigation** still applied (see below).
 
-2. **Coastal planation + infill feedback (the real fix)** -- **implemented**, see "What
-   landed" above. Once it's validated against the density-4 case and the coefficients are
-   tuned, delete the interim render hack (option 1).
+2. **Coastal planation + infill feedback (the real fix)** -- **implemented + validated at
+   density 4**, see "What landed" and the Status table above. Cuts the node-level dither
+   roughly in half; the render hack (option 1) is now nearly redundant on top of it.
 
 3. **Barrier islands (the user's framing)** -- **delivered in emergent form** (see "What
    landed"). A genuine wave-exposure / fetch field plus an explicit longshore-transport
    direction (for real spits and drift-aligned bars, not just fetch-sheltered accretion)
    remains an optional future refinement.
 
-**Interim mitigation (applied 2026-08-31 -- REMOVE once option 2 is validated at density 4).**
+**Interim mitigation (applied 2026-08-31 -- now nearly a no-op on top of option 2; decide
+whether to keep, drop, or soften it).**
 `render_image._despeckle_coastal_elevation` -- a render-only pass that snaps an isolated
 near-sea-level node (within `_DESPECKLE_BAND_M` of sea level, and with at least
 `_DESPECKLE_MAJORITY` of its `_DESPECKLE_NEIGHBORS` nearest near-sea-level neighbours on the
@@ -308,10 +326,11 @@ steep coast (whose land nodes climb out of the band immediately) is untouched. C
 the gathered `all_elevation` in `_render_grid_arrays` (Elevation view), `_biome_fields`
 (Biome / Combined), and `_resource_fields` (Resources / Soil Quality) before their
 nearest-node resample; never touches `world.plates`. Covered by
-`unit_tests/test_render_image.py` (`test_despeckle_*`). Delete the function, its three
-constants, the three call sites (`_render_grid_arrays` / `_biome_fields` /
-`_resource_fields`), and those three tests + the `_latlon_patch_points` helper once the
-option-2 feedback is confirmed to clear the dither at the node level on a density-4 world.
+`unit_tests/test_render_image.py` (`test_despeckle_*`). If it goes: delete the function, its
+three constants, the three call sites (`_render_grid_arrays` / `_biome_fields` /
+`_resource_fields`), and those three tests + the `_latlon_patch_points` helper. Post-option-2
+its effect is marginal (before/after renders of the density-4 save are near-identical with
+and without it), so this is now a judgement call, not a blocked task.
 
 ---
 
