@@ -312,7 +312,8 @@ atmosphere_cfd.py      the atmospheric wind solver: a genuine time-integrated (n
 main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate),
-                     plus /world/animate's animated-GIF rendering (render_animation_gif)
+                     plus /world/animate's animated-GIF rendering (render_animation_gif) and
+                     the "speckle" coastal-dither debug overlay (see docs/debugging.md)
 persistence.py       whole-World save/load to a single opaque pickle file (File > Save/Load
                      World -- see api-reference.md's /world/save//world/load)
 geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/biome

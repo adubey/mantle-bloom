@@ -181,7 +181,7 @@ Response echoes back the world's current values for all five:
 { "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -201,7 +201,13 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 - `view` selects what gets drawn: `"elevation"` (colored by height/depth), `"plates"`
   (colored by owning plate, plus boundary outlines/pole markers/rotation arcs), or
   `"platesDetail"` (each plate's raw elevation-line nodes as dots, colored by elevation,
-  plus boundary outlines) -- the frontend's Map View dropdown picks this directly. `"biome"`
+  plus boundary outlines) -- the frontend's Map View dropdown picks this directly.
+  `"speckle"` is a debug overlay for diagnosing dithered coastlines (see
+  [debugging.md#speckle-coastal-dither-overlay](debugging.md#speckle-coastal-dither-overlay)):
+  a muted land/ocean backdrop with every node within 120 m of sea level drawn as a dot
+  colored by its *coastal-dither fraction* -- the share of its nearest neighbours on the
+  opposite side of the waterline -- and an oversized magenta marker on nodes at/above `0.75`
+  (a near-isolated land speck or pond). `"biome"`
   and `"combined"` (biome-colored land, hypsometric ocean, lakes/glaciers/rivers overlaid) are
   a categorical classification (see
   [simulation-model.md#biomes](simulation-model.md#biomes)). `"combined"` alone returns an

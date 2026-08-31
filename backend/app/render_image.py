@@ -45,11 +45,14 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
+# "speckle" is a debug-only diagnostic overlay (see docs/debugging.md#speckle-coastal-dither-overlay
+# and _render_speckle_view): a node-cloud view like "platesDetail", not a climate- or
+# biome-grid view, so it sits with the plate/elevation group here.
 # "geomorph" is also node-cloud-derived, but from last step's erosion breakdown
 # (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
 # invisible in every other view (see docs/TODO.md / docs/debugging.md).
-VIEWS = ("elevation", "plates", "platesDetail", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + ("geomorph",)
+VIEWS = ("elevation", "plates", "platesDetail", "specle", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + ("geomorph",)
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -1284,6 +1287,118 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
     return _encode_image(image)
 
 
+# --- Speckle / coastal-dither overlay (debug view; see docs/debugging.md) -------------------
+# Every elevation node within SPECKLE_NEAR_BAND_M of sea level is drawn as a dot colored by
+# how "checkerboarded" its immediate neighbourhood is: the fraction of its k nearest
+# neighbours that sit on the *opposite* side of the waterline (land vs. ocean by raw
+# elevation, no connectivity filter -- deliberately the same crude test the plate-geometry /
+# coastal-speckle investigation scripts used, so a render matches what those printed). A
+# clean shoreline reads as a calm-coloured thread one node wide; a drowned shelf that dithers
+# land<->ocean pixel-by-pixel lights up hot and, past SPECKLE_FLAG_FRACTION, gets an oversized
+# magenta marker. Everything else is just a muted land/ocean backdrop.
+#
+# Note the metric's natural scale: k nearest neighbours on an (irregular) 2D node cloud, so a
+# perfect land/ocean checkerboard averages ~0.5 (the orthogonal neighbours flip, the diagonal
+# ones don't), random dither also ~0.5, and a coherent shoreline stays well under ~0.35. Only
+# a genuinely isolated node -- one land speck ringed entirely by ocean, or vice versa --
+# approaches 1.0. SPECKLE_FLAG_FRACTION targets those; the colour ramp puts the ~0.5
+# checkerboard zone firmly in "hot" territory below it.
+SPECKLE_NEAR_BAND_M = 120.0
+SPECKLE_NEIGHBOR_K = 8
+SPECKLE_FLAG_FRACTION = 0.75
+SPECKLE_LAND_BACKDROP_RGB = np.array([54, 58, 46], dtype=np.uint8)
+SPECKLE_OCEAN_BACKDROP_RGB = np.array([24, 34, 52], dtype=np.uint8)
+SPECKLE_FLAG_RGB = (255, 0, 200)
+_SPECKLE_STOP_F = np.array([0.0, 0.2, 0.35, 0.5, 1.0], dtype=float)
+_SPECKLE_STOP_RGB = np.array(
+    [
+        (60, 130, 90),   # calm -- the whole neighbourhood agrees, a clean coastline
+        (150, 180, 70),
+        (240, 205, 70),  # some disagreement
+        (240, 140, 50),  # ~checkerboard / random dither
+        (230, 50, 50),   # approaching a fully isolated speck
+    ],
+    dtype=float,
+)
+
+
+def speckle_colors(fraction: np.ndarray) -> np.ndarray:
+    return _interp_colors(np.asarray(fraction, dtype=float), _SPECKLE_STOP_F, _SPECKLE_STOP_RGB)
+
+
+def coastal_dither_fraction(
+    points: np.ndarray, elevation: np.ndarray, sea_level_m: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-node coastal-dither metric, both arrays shape (N,): `fraction[i]` is the share of
+    node i's SPECKLE_NEIGHBOR_K nearest neighbours (excluding itself) that lie on the opposite
+    side of `sea_level_m` from node i, and `near[i]` flags nodes within SPECKLE_NEAR_BAND_M of
+    sea level (the band the overlay actually draws). `fraction` is 0 for every node outside
+    that band -- it's only computed where `near`. A node whose `fraction` reaches
+    SPECKLE_FLAG_FRACTION sits in a genuine land/ocean checkerboard rather than on a coherent
+    shoreline."""
+    elevation = np.asarray(elevation, dtype=float)
+    points = np.asarray(points, dtype=float)
+    is_land = elevation > sea_level_m
+    near = np.abs(elevation - sea_level_m) < SPECKLE_NEAR_BAND_M
+    fraction = np.zeros(len(points), dtype=float)
+
+    k = min(SPECKLE_NEIGHBOR_K + 1, len(points))  # +1: query returns the node itself first
+    if k < 2 or not np.any(near):
+        return fraction, near
+
+    _, idx = cKDTree(points).query(points[near], k=k)
+    idx = np.atleast_2d(idx)[:, 1:]  # drop the self column
+    fraction[near] = np.mean(is_land[idx] != is_land[near][:, None], axis=1)
+    return fraction, near
+
+
+def _render_speckle_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders the "speckle" debug view -- see coastal_dither_fraction and the constants above.
+    Uses the same full-sphere render grid as the Elevation view for a muted land/ocean
+    backdrop, then overlays one dot per near-sea-level node from the raw plate node cloud
+    (like "platesDetail"), coloured by that node's coastal-dither fraction."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
+    collected = plates.collect_all_points(world.plates) if world.plates else None
+    if grid is None or collected is None:
+        return _encode_image(Image.fromarray(blank, mode="RGB"))
+
+    xy, elev, _owner, _lake, _glacier, _volcano, half_w, half_h = grid
+    all_points, all_elevation, _ = collected
+    node_xy = _project_points(projection, _rotate(all_points, view_rotation))
+
+    all_xy = np.concatenate([xy, node_xy], axis=0)
+    min_x, min_y = all_xy.min(axis=0)
+    max_x, max_y = all_xy.max(axis=0)
+    data_w = max(max_x - min_x, 1e-9)
+    data_h = max(max_y - min_y, 1e-9)
+    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
+    offset_x = width / 2 - scale * (min_x + max_x) / 2
+    offset_y = height / 2 + scale * (min_y + max_y) / 2
+
+    pixels = blank.copy()
+    centers = _to_pixels(scale, offset_x, offset_y, xy)
+    backdrop = np.where(
+        (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
+    )
+    _fill_rects(pixels, centers, half_w * scale * CELL_OVERLAP_FACTOR, half_h * scale * CELL_OVERLAP_FACTOR, backdrop)
+
+    fraction, near = coastal_dither_fraction(all_points, all_elevation, world.sea_level_m)
+    if np.any(near):
+        near_centers = _to_pixels(scale, offset_x, offset_y, node_xy[near])
+        near_frac = fraction[near]
+        flagged = near_frac >= SPECKLE_FLAG_FRACTION
+        base_r = NODE_DOT_RADIUS_PX * pixel_scale
+        colors = speckle_colors(near_frac)
+        _fill_rects(pixels, near_centers[~flagged], base_r, base_r, colors[~flagged])
+        if np.any(flagged):
+            flag_colors = np.tile(np.array(SPECKLE_FLAG_RGB, dtype=np.uint8), (int(flagged.sum()), 1))
+            _fill_rects(pixels, near_centers[flagged], base_r * 2.0, base_r * 2.0, flag_colors)
+
+    return _encode_image(Image.fromarray(pixels, mode="RGB"))
 def _render_geomorph_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "geomorph" (see VIEWS): every node coloured by its net elevation change over
     the last step -- erosion.ErosionResult.net_elevation_change_m off World.erosion_cache,
@@ -1433,6 +1548,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         return _render_combined_view(world, projection, width, height, view_rotation)
     if view in RESOURCE_VIEWS:
         return _render_resource_view(world, projection, view, width, height, view_rotation)
+    if view == "speckle":
+        return _render_speckle_view(world, projection, width, height, view_rotation)
     if view == "geomorph":
         return _render_geomorph_view(world, projection, width, height, view_rotation)
 

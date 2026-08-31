@@ -14,6 +14,7 @@ export type MapView =
   | "elevation"
   | "plates"
   | "platesDetail"
+  | "speckle"
   | "temperature"
   | "wind"
   | "oceanCurrents"
