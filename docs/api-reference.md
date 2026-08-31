@@ -297,6 +297,14 @@ has been generated yet.
       "crust_type": "continental",
       "num_rows": 85,
       "num_points": 3437,
+      "speed_cm_per_yr": 4.12,
+      "at_max_rate": false,
+      "euler_pole": { "lat_deg": 22.0, "lon_deg": -138.0 },
+      "age_steps": 43,
+      "median_elevation_m": 210.0,
+      "submerged_fraction": 0.22,
+      "overlaps": [{ "plate_id": 6, "fraction": 0.058 }],
+      "collisions": [{ "plate_id": 6, "years": 30700000.0 }],
       "outline": [[0.98, 0.12, -0.05], ["..."]],
       "points": [[0.981423, 0.117582, -0.052207], ["..."]],
       "bounding_ellipse": {
@@ -327,6 +335,21 @@ has been generated yet.
   [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector) for the fitting
   method) -- `diameter_a_km`/`diameter_b_km` are the major/minor diameters in real km,
   `outline` is ~72 sampled world-space points around its perimeter for drawing.
+- `speed_cm_per_yr` is `|Plate.omega|` as a surface speed at the planet's radius;
+  `at_max_rate` is `true` when the plate is pinned at `mantle.MAX_PLATE_RATE` (15 cm/yr).
+  `euler_pole` is the rotation axis in lat/lon degrees (`null` for a stationary plate).
+  `age_steps` is how many `step_world` calls since the plate was created (generation, split,
+  or merge). These come straight from the dynamic torque solve (`torque.py`).
+- `median_elevation_m` / `submerged_fraction` summarise the plate's own node elevations
+  against `world.sea_level_m`. A continental plate reading mostly submerged is a red flag for
+  over-stretching (see `docs/TODO.md`).
+- `overlaps` lists the other plates this plate's territory currently sits on top of --
+  `fraction` is the share of *this* plate's nodes within half a target node spacing of a
+  node owned by `plate_id` (ordinary shared boundaries sit ~one full spacing apart, so this
+  only fires on genuine territory overlap). `collisions` surfaces
+  `merge_split.update_collision_progress`'s sustained-collision timers (accumulated
+  convergent years) for pairs involving this plate. Both are diagnostics for the long-run
+  plate-geometry degradation tracked in `docs/TODO.md`.
 
 ## `GET /world/plate_at?lat_deg=0&lon_deg=0`
 

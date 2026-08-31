@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, geodesic, geometry, hydrology, lakes, persistence, plates, projections, render_image, stats
+from . import biomes, climate, coastline, geodesic, geometry, hydrology, lakes, mantle, persistence, plates, projections, render_image, stats
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -205,13 +205,88 @@ def _round_coords(arr: np.ndarray) -> list:
     return np.round(arr, _COORD_DECIMALS).tolist()
 
 
-def _plate_summary(plate: plates.Plate) -> dict:
+#  Two plates' node clouds are "co-located" -- overlapping the same patch of sphere rather
+# than merely adjacent -- when nodes land within half a target spacing of each other. Ordinary
+# shared boundaries sit ~one full spacing apart, so this only fires on genuine territory
+# overlap (a stalled collision, a bad split partition, a plate drifting over a neighbour it
+# can't merge with). See docs/TODO.md "Plate geometry degrades on long runs".
+_OVERLAP_TOLERANCE_MULT = 0.5
+
+
+def _plate_overlaps(world: World) -> dict[int, list[dict]]:
+    """For every plate, which other plates its territory currently overlaps and by how much
+    (`fraction` = share of *this* plate's own nodes that sit on top of that other plate).
+    One global cKDTree pair query over every node, so the whole thing is O(N log N) once per
+    /world/plates call rather than a per-pair envelope test."""
+    active = [p for p in world.plates if p.node_count() > 0]
+    if len(active) < 2:
+        return {}
+    clouds = [p.all_points_and_elevation()[0] for p in active]
+    counts = [len(c) for c in clouds]
+    offsets = np.cumsum([0, *counts])
+    owner = np.concatenate([np.full(n, i) for i, n in enumerate(counts)])
+    tol = _OVERLAP_TOLERANCE_MULT * plates.line_spacing_rad(world.node_density)
+    pairs = cKDTree(np.concatenate(clouds)).query_pairs(tol, output_type="ndarray")
+    result: dict[int, list[dict]] = {p.plate_id: [] for p in active}
+    if len(pairs) == 0:
+        return result
+    owners_lo, owners_hi = owner[pairs[:, 0]], owner[pairs[:, 1]]
+    cross = owners_lo != owners_hi
+    pairs, owners_lo, owners_hi = pairs[cross], owners_lo[cross], owners_hi[cross]
+    for glob, src, dst in ((pairs[:, 0], owners_lo, owners_hi), (pairs[:, 1], owners_hi, owners_lo)):
+        for i, src_plate in enumerate(active):
+            here = src == i
+            if not here.any():
+                continue
+            local = glob[here] - offsets[i]
+            dst_here = dst[here]
+            for j, dst_plate in enumerate(active):
+                on_j = dst_here == j
+                if not on_j.any():
+                    continue
+                fraction = len(np.unique(local[on_j])) / counts[i]
+                result[src_plate.plate_id].append({"plate_id": dst_plate.plate_id, "fraction": round(float(fraction), 4)})
+    for plate_id in result:
+        result[plate_id].sort(key=lambda entry: -entry["fraction"])
+    return result
+
+
+def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[dict]]) -> dict:
     outline = plate.get_bounding_polygon()
-    node_points, _ = plate.all_points_and_elevation()
+    node_points, node_elevation = plate.all_points_and_elevation()
     ellipse = plates.plate_bounding_ellipse(node_points)
+    omega = np.asarray(plate.omega, dtype=float)
+    rate_rad = float(np.linalg.norm(omega))
+    euler_pole = None
+    if rate_rad > 0.0:
+        pole_lat, pole_lon = geometry.xyz_to_latlon((omega / rate_rad)[None, :])
+        euler_pole = {"lat_deg": round(float(np.degrees(pole_lat[0])), 2), "lon_deg": round(float(np.degrees(pole_lon[0])), 2)}
+    submerged = (
+        float(np.mean(node_elevation <= world.sea_level_m)) if len(node_elevation) else 0.0
+    )
+    collisions = [
+        {"plate_id": other, "years": years}
+        for (a, b), years in world.collision_progress.items()
+        for other in ((b,) if a == plate.plate_id else (a,) if b == plate.plate_id else ())
+    ]
     return {
         "plate_id": plate.plate_id,
         "crust_type": plate.crust_type,
+        # Plate motion (torque.py's dynamic omega): surface speed at the planet's radius, the
+        # Euler-rotation pole, and whether the plate is pinned at mantle.MAX_PLATE_RATE (a
+        # long-run pathology when it's true for most plates -- see docs/TODO.md).
+        "speed_cm_per_yr": round(mantle.rad_per_yr_to_cm_per_yr(rate_rad), 3),
+        "at_max_rate": bool(rate_rad >= mantle.MAX_PLATE_RATE - 1e-12),
+        "euler_pole": euler_pole,
+        "age_steps": plate.age_steps,
+        # Median height of the plate's own nodes and the share of them at/below sea level --
+        # a continental plate reading mostly-submerged is a red flag for over-stretching.
+        "median_elevation_m": round(float(np.median(node_elevation)), 1) if len(node_elevation) else None,
+        "submerged_fraction": round(submerged, 3),
+        # Other plates this plate's territory currently sits on top of (see _plate_overlaps),
+        # and any sustained-collision timers involving it (merge_split.update_collision_progress).
+        "overlaps": overlaps.get(plate.plate_id, []),
+        "collisions": collisions,
         # A PlateWithLines-only concept (how many of its own rows still have at least one
         # node -- see merge_split.py's own "no_land"/consumption checks, which mirror this
         # same "zero nodes is a real, filtered-out state" reasoning); None for any other
@@ -581,7 +656,8 @@ def list_plates() -> dict:
     philosophy as climate/render-grid geometry (see docs/simulation-model.md#rotating-the-view).
     `404` if no world has been generated yet."""
     world = _require_world()
-    return {"elapsed_years": world.elapsed_years, "plates": [_plate_summary(p) for p in world.plates]}
+    overlaps = _plate_overlaps(world)
+    return {"elapsed_years": world.elapsed_years, "plates": [_plate_summary(p, world, overlaps) for p in world.plates]}
 
 
 @app.get("/world/stats")

@@ -699,11 +699,50 @@ export default function App() {
                   <div>crust: {selectedPlate.crust_type}</div>
                   {selectedPlate.num_rows != null && <div>rows: {selectedPlate.num_rows}</div>}
                   <div>points: {selectedPlate.num_points}</div>
+                  <div>age: {selectedPlate.age_steps} steps</div>
+                  <div style={{ color: selectedPlate.at_max_rate ? "#e06c4b" : undefined }}>
+                    speed: {selectedPlate.speed_cm_per_yr.toFixed(2)} cm/yr{selectedPlate.at_max_rate ? " (railed at MAX)" : ""}
+                  </div>
+                  {selectedPlate.euler_pole && (
+                    <div>
+                      euler pole: {selectedPlate.euler_pole.lat_deg.toFixed(0)}&deg;, {selectedPlate.euler_pole.lon_deg.toFixed(0)}&deg;
+                    </div>
+                  )}
+                  {selectedPlate.median_elevation_m != null && (
+                    <div
+                      style={{
+                        color:
+                          selectedPlate.crust_type === "continental" && selectedPlate.submerged_fraction > 0.5
+                            ? "#e06c4b"
+                            : undefined,
+                      }}
+                    >
+                      median elev: {selectedPlate.median_elevation_m.toFixed(0)} m &middot;{" "}
+                      {(selectedPlate.submerged_fraction * 100).toFixed(0)}% submerged
+                    </div>
+                  )}
                   {selectedPlate.bounding_ellipse && (
                     <>
                       <div>diameter A: {selectedPlate.bounding_ellipse.diameter_a_km.toFixed(0)} km</div>
                       <div>diameter B: {selectedPlate.bounding_ellipse.diameter_b_km.toFixed(0)} km</div>
                     </>
+                  )}
+                  {selectedPlate.overlaps.length > 0 && (
+                    <div style={{ marginTop: 4 }}>
+                      overlaps:{" "}
+                      {selectedPlate.overlaps
+                        .filter((o) => o.fraction >= 0.01)
+                        .map((o) => `#${o.plate_id} (${(o.fraction * 100).toFixed(0)}%)`)
+                        .join(", ") || "<1% only"}
+                    </div>
+                  )}
+                  {selectedPlate.collisions.length > 0 && (
+                    <div>
+                      colliding:{" "}
+                      {selectedPlate.collisions
+                        .map((c) => `#${c.plate_id} (${(c.years / 1e6).toFixed(1)} My)`)
+                        .join(", ")}
+                    </div>
                   )}
                 </div>
               ) : (

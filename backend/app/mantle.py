@@ -22,6 +22,12 @@ def cm_per_yr_to_rad_per_yr(cm_per_yr: float) -> float:
     return (cm_per_yr * KM_PER_CM) / PLANET_RADIUS_KM
 
 
+def rad_per_yr_to_cm_per_yr(rad_per_yr: float) -> float:
+    """Inverse of `cm_per_yr_to_rad_per_yr` -- a plate's `|omega|` as a surface speed at the
+    planet's radius, for human-readable diagnostics (the Plate Inspector, /world/plates)."""
+    return (rad_per_yr * PLANET_RADIUS_KM) / KM_PER_CM
+
+
 MANTLE_FLOW_REFERENCE_RATE = cm_per_yr_to_rad_per_yr(4.0)
 MIN_PLATE_RATE = cm_per_yr_to_rad_per_yr(0.5)
 MAX_PLATE_RATE = cm_per_yr_to_rad_per_yr(15.0)
