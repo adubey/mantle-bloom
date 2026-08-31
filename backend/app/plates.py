@@ -37,6 +37,7 @@ from .elevation_lines import (
     build_lines_from_lattice,
     install_point_field_accessors,
     iter_local_lattice,
+    largest_contiguous_run,
     line_spacing_rad,
     needs_regularizing,
     regularize_line,
@@ -445,6 +446,17 @@ def _max_extend_nodes_per_step(node_density: float) -> int:
     # A 1D count, not an area -- scales by sqrt(node_density), same reasoning as
     # MAX_EXTEND_NODES_PER_STEP's own comment.
     return max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(node_density)))
+
+
+def _row_median_step(line: ElevationLine) -> float | None:
+    """The typical theta step of `line` before it's masked by a partition -- passed to
+    `largest_contiguous_run` as its reference spacing so it can still recognise a
+    partition-stranded two-node row (too short to estimate a spacing from what survives). A
+    pre-partition row is contiguous and regularized, so its median step is a clean estimate;
+    `None` for a row with fewer than two nodes."""
+    if len(line) < 2:
+        return None
+    return float(np.median(np.diff(line.theta)))
 
 
 def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.ndarray:
@@ -1245,16 +1257,26 @@ class PlateWithLines(Plate):
         """Cuts along existing node data rather than resampling -- unlike `merge_with`, a
         split doesn't need a fresh lattice, just a partition of each line's own nodes by which
         side of `cut_normal` they fall on (`ElevationLine.masked`), so every
-        `OPTIONAL_FIELDS` value survives exactly, not just `elevation`."""
+        `OPTIONAL_FIELDS` value survives exactly, not just `elevation`.
+
+        A great circle can cut a row (one small circle of local latitude) so that one side's
+        nodes land in the row's *interior*, leaving the other side holding two arcs with a
+        gap between them. That row can't be carried as-is -- `outline_world` / `contains_batch`
+        would then have this daughter's envelope claim the gap, i.e. the sibling's own
+        territory (the historical "split produces overlapping siblings" degradation). Each
+        masked row is reduced to its largest contiguous arc (`largest_contiguous_run`); the
+        dropped sliver, a thin strip along the cut, is re-grown by ordinary gap-fill/deform if
+        it is really this daughter's ground."""
         lines_a: list[ElevationLine] = []
         lines_b: list[ElevationLine] = []
         for line in self._lines:
             world_pts = line.world_xyz(self._frame)
             side = np.sum(world_pts * cut_normal, axis=-1) > 0
+            ref = _row_median_step(line)
             if np.any(side):
-                lines_a.append(line.masked(side))
+                lines_a.append(largest_contiguous_run(line.masked(side), ref))
             if np.any(~side):
-                lines_b.append(line.masked(~side))
+                lines_b.append(largest_contiguous_run(line.masked(~side), ref))
 
         if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
             return None
@@ -1279,7 +1301,12 @@ class PlateWithLines(Plate):
                 sub = mask[offset : offset + n]
                 offset += n
                 if np.any(sub):
-                    lines.append(line.masked(sub))
+                    # A single connected component can still wrap a row into two arcs (a
+                    # U-shape closed through other rows) -- keep each row a single contiguous
+                    # arc so this fragment's envelope can't claim the gap. See
+                    # `largest_contiguous_run`; anything it drops is reported as shed nodes by
+                    # `defragment_plates`.
+                    lines.append(largest_contiguous_run(line.masked(sub), _row_median_step(line)))
             if not lines:
                 continue
             plates.append(

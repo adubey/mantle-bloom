@@ -23,6 +23,7 @@ from . import geometry
 from .elevation_lines import (
     ElevationLine,
     build_lines_from_lattice,
+    largest_contiguous_run,
     line_spacing_rad,
     needs_regularizing,
     regularize_line,
@@ -36,6 +37,7 @@ from .plates import (
     PlateWithLines,
     _contested_by_any,
     _land_noise_threshold,
+    _row_median_step,
 )
 from . import bathymetry, lithosphere, rheology, torque
 
@@ -401,10 +403,14 @@ class LithospherePlate(PlateWithLines):
         for line in self.lines:
             world_pts = line.world_xyz(self.frame)
             side = np.sum(world_pts * cut_normal, axis=-1) > 0
+            # Largest contiguous arc per row -- see PlateWithLines.split's own docstring for
+            # why a great-circle cut can otherwise strand a row as two arcs, and why carrying
+            # that as-is makes the two daughters' envelopes overlap.
+            ref = _row_median_step(line)
             if np.any(side):
-                lines_a.append(line.masked(side))
+                lines_a.append(largest_contiguous_run(line.masked(side), ref))
             if np.any(~side):
-                lines_b.append(line.masked(~side))
+                lines_b.append(largest_contiguous_run(line.masked(~side), ref))
 
         if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
             return None

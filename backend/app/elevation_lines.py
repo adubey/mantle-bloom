@@ -541,6 +541,47 @@ def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at, spacing_
     return lines
 
 
+# A row is one small circle of constant plate-local latitude, and every consumer of an
+# ElevationLine treats it as a single contiguous arc from theta[0] to theta[-1]:
+# PlateWithLines.outline_world()'s polygon trace and contains_batch()'s row-lookup fast path
+# both read only each line's own two endpoints, and regularize_line() resamples evenly
+# between them. A plate-partition op (split's great-circle cut, defragment's per-component
+# mask) can mask a row down to two arcs with the *other* daughter's territory sitting in the
+# gap between them -- keeping the whole masked row would then make this plate's envelope
+# claim that gap and every sibling node inside it (the "split/defragmentation produces
+# overlapping siblings" degradation). A genuinely contiguous, regularized row's largest
+# interior gap sits within IRREGULARITY_TOLERANCE of its own node spacing; this multiple is
+# well clear of that and orders of magnitude below a real partition gap.
+CONTIGUOUS_RUN_GAP_MULT = 4.0
+
+
+def largest_contiguous_run(line: ElevationLine, ref_spacing_rad: float | None = None) -> ElevationLine:
+    """`line` restricted to its single longest run of nodes with no interior theta gap wider
+    than `CONTIGUOUS_RUN_GAP_MULT` times a reference node spacing -- see that constant for
+    why the one-arc-per-row invariant matters. `ref_spacing_rad` is that reference (the
+    caller's own `dtheta_target`, or the pre-partition row's own median step); without it the
+    surviving line's median step is used, which needs `len >= 3` to be meaningful (a shorter
+    line is then returned unchanged). A line already contiguous -- the overwhelming common
+    case -- is returned unchanged. Node order is assumed ascending in theta, as every
+    construction path in this module produces."""
+    if len(line) < 2:
+        return line
+    gaps = np.diff(line.theta)
+    if ref_spacing_rad is None:
+        if len(line) < 3:
+            return line
+        ref_spacing_rad = float(np.median(gaps))
+    break_after = np.nonzero(gaps > CONTIGUOUS_RUN_GAP_MULT * ref_spacing_rad)[0]
+    if len(break_after) == 0:
+        return line
+    # A break "after index k" starts a new run at k + 1; bracket the runs with 0 and len.
+    bounds = [0, *(int(k) + 1 for k in break_after), len(line)]
+    lo, hi = max(zip(bounds[:-1], bounds[1:]), key=lambda run: run[1] - run[0])
+    keep = np.zeros(len(line), dtype=bool)
+    keep[lo:hi] = True
+    return line.masked(keep)
+
+
 def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
     if len(line) < 3:
         return False
@@ -625,6 +666,14 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         line = line.masked(keep)
         if len(line) < 3:
             return line
+
+    # A row masked into two arcs by an earlier partition (a plate split / defragment on a
+    # world saved before those paths kept every row contiguous) -- resampling evenly across
+    # theta_min..theta_max below would refill the gap, which is another plate's territory,
+    # with fresh nodes. Keep only the largest arc; see largest_contiguous_run.
+    line = largest_contiguous_run(line)
+    if len(line) < 3:
+        return line
 
     theta_min, theta_max = line.theta[0], line.theta[-1]
     span = theta_max - theta_min

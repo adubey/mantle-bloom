@@ -4,6 +4,7 @@ from app.elevation_lines import (
     ElevationLine,
     _crumple_elevation,
     iter_local_lattice,
+    largest_contiguous_run,
     line_spacing_rad,
     needs_regularizing,
     regularize_line,
@@ -122,6 +123,45 @@ def test_crumple_elevation_preserves_endpoints_exactly():
     crumpled = _crumple_elevation(elevation, 4)
     assert crumpled[0] == elevation[0]
     assert crumpled[-1] == elevation[-1]
+
+
+def test_largest_contiguous_run_leaves_a_contiguous_line_alone():
+    spacing = line_spacing_rad(1.0)
+    theta = np.arange(20) * spacing
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.linspace(-1.0, 1.0, 20))
+    result = largest_contiguous_run(line)
+    assert np.array_equal(result.theta, line.theta)
+
+
+def test_largest_contiguous_run_keeps_only_the_longer_arc_of_a_gapped_row():
+    spacing = line_spacing_rad(1.0)
+    # 6 nodes, then a wide gap (another plate's territory), then 14 nodes.
+    left = np.arange(6) * spacing
+    right = 6 * spacing + 3.0 + np.arange(14) * spacing
+    theta = np.concatenate([left, right])
+    fields = {"channel_depth": np.arange(20, dtype=float)}
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(20), **fields)
+
+    result = largest_contiguous_run(line)
+
+    assert np.array_equal(result.theta, right)
+    assert np.array_equal(result.channel_depth, np.arange(6, 20, dtype=float))
+    assert np.all(np.diff(result.theta) < 2.0 * spacing)
+
+
+def test_regularize_line_collapses_a_partition_gap_instead_of_filling_it():
+    spacing = line_spacing_rad(1.0)
+    left = np.arange(5) * spacing
+    right = 5 * spacing + 2.5 + np.arange(15) * spacing
+    theta = np.concatenate([left, right])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(20))
+
+    fixed = regularize_line(line, spacing)
+
+    # Resampled across only the surviving (larger) arc -- never the gap.
+    assert fixed.theta[0] >= right[0] - 1e-9
+    assert fixed.theta[-1] <= right[-1] + 1e-9
+    assert np.all(np.diff(fixed.theta) < 2.0 * spacing)
 
 
 def _wound_ring(phi: float, revolutions: float, spacing_rad: float) -> ElevationLine:

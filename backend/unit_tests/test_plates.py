@@ -643,3 +643,54 @@ def test_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
         plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
 
     assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
+
+
+# -- split / defragment keep every row one contiguous arc -----------------------------
+#
+# A great circle can cut a row so one side's nodes land in its interior, leaving the other
+# side holding two arcs with a gap. Carrying that row whole makes outline_world / the
+# row-lookup fast path claim the gap -- i.e. the sibling's own territory -- which is the
+# "split/defragmentation produces overlapping siblings" long-run degradation.
+
+
+def _round_plate() -> PlateWithLines:
+    spacing = line_spacing_rad(1.0)
+    lines = []
+    for r in range(-40, 41):
+        phi = r * spacing
+        if abs(phi) > 0.85:
+            continue
+        half_width = np.sqrt(max(0.85**2 - phi**2, 0.0))
+        dtheta = spacing / max(np.cos(phi), 1e-3)
+        theta = np.arange(-half_width, half_width, dtheta)
+        if len(theta) < 3:
+            continue
+        lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.zeros(len(theta))))
+    return PlateWithLines(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=lines)
+
+
+def test_split_yields_disjoint_daughters_when_a_cut_strands_a_row():
+    plate = _round_plate()
+    spacing = line_spacing_rad(1.0)
+    # A cut plane tilted just off this plate's own pole: the mid rows keep both their ends on
+    # the positive side with the negative side biting a lens out of their interior, so the
+    # positive daughter is left holding two arcs per stranded row.
+    cut_normal = geometry.normalize(np.array([-0.2, 0.0, 1.0]))
+
+    result = plate.split(new_id=2, cut_normal=cut_normal, min_nodes=1)
+    assert result is not None
+    a, b = result
+
+    # No row of either daughter carries an interior gap wider than a couple of node steps.
+    for daughter in (a, b):
+        for line in daughter.lines:
+            if len(line) < 2:
+                continue
+            dtheta = spacing / max(np.cos(line.phi), 1e-3)
+            assert np.all(np.diff(line.theta) < 4.0 * dtheta)
+
+    # And neither daughter's envelope claims any of the other's nodes.
+    pa, _ = a.all_points_and_elevation()
+    pb, _ = b.all_points_and_elevation()
+    assert not np.any(a.contains_batch(pb))
+    assert not np.any(b.contains_batch(pa))

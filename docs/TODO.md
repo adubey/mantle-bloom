@@ -81,9 +81,25 @@ cheapest remaining CFD-path saving if that mode's per-step cost is ever revisite
 `plates._grow_or_shrink_line_for_deform` + pole-cap margin in `_claim_adjacent_territory` +
 `elevation_lines.regularize_line` unwinding already-wound rows on load. Verified against the
 158.6 My save: 191 over-wound rows -> 0 after one step, `theta` max span 10,489 deg -> 360
-deg, ~229k nodes -> ~223k. Bugs 2 (split/defrag siblings) and 3 (every plate at
-`MAX_PLATE_RATE`) are **not started** -- node count still creeps back up over ~12 steps as
-those two keep operating.
+deg, ~229k nodes -> ~223k.
+
+Bug 2 (split/defrag siblings) **fixed** 2026-08-30 -- the partition, not the re-growth, was
+the fault: a great-circle cut can slice a row (one small circle of local latitude) so that
+one daughter is left holding *two* arcs with the other daughter's territory in the gap
+between them, and `outline_world` / the `contains_batch` row-lookup fast path / `regularize_line`
+all assume each line is a single contiguous arc from `theta[0]` to `theta[-1]` -- so that
+daughter's envelope claimed the gap (every sibling node in it read as contested), and the
+next `regularize_line` pass resampled straight across the gap, growing fresh nodes through
+the sibling. Fix: `elevation_lines.largest_contiguous_run` reduces every masked row to its
+longest gap-free arc; wired into `PlateWithLines.split` / `LithospherePlate.split` /
+`_plates_from_node_masks` (partition time) and `regularize_line` (so worlds saved before this
+self-heal instead of getting worse each pass). Dropped slivers along the cut are re-grown by
+ordinary gap-fill/deform. Not addressed: the quality of the velocity-space k-means clusters
+`maybe_split_plate` cuts on (poles fit from spatially-intermingled clusters can still send
+two disjoint daughters drifting back over each other) -- that overlaps bug 3.
+
+Bug 3 (every plate at `MAX_PLATE_RATE`) is **not started** -- node count may still creep up
+over a long run while that keeps the bounded-overlap mechanism running hot.
 
 Diagnosed 2026-08-30 from two save files of seed 936513024
 (`~/Downloads/mantle-bloom-seed936513024-90000000y.mbworld` and `...-158600000y.mbworld`,
@@ -130,15 +146,12 @@ randomized-order effect). Nearly all the damage happens in the 90 -> 159 My wind
      pulling *generation*'s lattice back from the pole too (left as-is -- a plate that owns
      its pole at generation keeps its small rings; only growth toward the pole is capped).
 
-2. **Split/defragmentation produces overlapping siblings.** Plates 33/38, 36/39, 22/35
-   overlap 46-93% by node count (33's cloud is 93% coincident with 38's -- effectively the
-   same plate twice). 33/36/38/39 all have `age_steps = 6`: born together from one ancestor
-   ~6 steps before the save. A clean partition (split cuts on a great circle; defrag masks
-   by connected component) must yield disjoint plates. Either the partition is duplicating
-   nodes, or the siblings immediately re-grow through each other because each one's
-   `deform()` sees the other's stale envelope as not-yet-covering the shared region. Audit
-   `merge_split.split` / `defragment_plates` partitioning for this case; check plate count
-   history in `world.events` for the 90 -> 159 My window.
+2. **Split/defragmentation produces overlapping siblings.** ~~Plates 33/38, 36/39, 22/35
+   overlap 46-93% by node count.~~ **Fixed 2026-08-30** -- see the Status block above. The
+   partition itself was leaving a row as two arcs across the sibling's territory, which every
+   consumer of an `ElevationLine` (all of which assume one contiguous arc per row) then read
+   as claimed. `largest_contiguous_run` in `elevation_lines.py` keeps every partitioned row a
+   single arc.
 
 3. **Every plate railed at `MAX_PLATE_RATE` (15 cm/yr).** True at *both* epochs, all plates.
    The damped Euler-pole fit (`plates.py` L206-208, `mantle.clamp_rate`) never settles below
