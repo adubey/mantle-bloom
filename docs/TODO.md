@@ -191,6 +191,95 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ---
 
+## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level
+
+**Status:** investigated 2026-08-31 from
+`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (seed 888151728, 851 steps /
+85.1 My, `node_density=4`, `climate_density=4`). Interim render-only mitigation **applied**
+(see "Interim mitigation" below); the real fix (a coastal planation/infill feedback) is
+still open.
+
+**Symptom.** Around 10-13 deg N, 6-12 deg E the Elevation / Biome / Combined maps show
+isolated single-pixel islands and single-pixel ponds strung along the coast -- a
+checkerboard, not a coastline.
+
+**What's actually there.** That whole strip is one continental plate (id 17) -- a drowned
+continental shelf / coastal plain, *not* an ocean-continent boundary. In the transition
+band the node elevations sit right on the waterline: median -4 m, ~55% of nodes within
++-25 m of sea level, ~86% within +-50 m, full range about -57..+111 m. The per-node
+elevation *noise* (deform deltas, erosion/deposition, isostasy relaxation, generation
+noise) is larger than the surface's height above/below sea level, so neighbouring nodes
+flip land<->ocean. At render resolution (~0.56 deg/cell, `min(GRID_SPACING_RAD,
+line_spacing_rad(node_density))`) each ~62 km node becomes a 1-2 px cell, so the dither
+renders as literal single pixels. In a 5-13 deg E / 9-15 deg N sample box, 8 of 92 land
+cells and 9 of 73 ocean cells were (near-)isolated. It is genuine node-cloud data (the
+Plate Inspector shows the same dither), not purely a render artefact -- but the nearest-node
+resample with no coastal cleanup is what turns a fuzzy zone into a checkerboard.
+
+**Why the model makes it and never heals it.**
+
+- `bathymetry.shape_initial_bathymetry` (the margin-grading pass) runs **once at
+  generation** and is explicitly coast-guarded (`COAST_GUARD_DEPTH_M = 60 m`), so it leaves
+  the shallow shelf hovering at 0 and never revisits it.
+- Weathering is relief-gated (`WEATHERING_RELIEF_REFERENCE_SLOPE`, `erosion.py`) -- nearly
+  zero on flat terrain, by design, to stop coastal plains drowning -- so the small positive
+  land bumps are stable.
+- `erosion.coastal_erosion_amount` is symmetric across the shoreline and *not* relief-gated:
+  it eats the shallow-ocean nodes about as fast as the low-land nodes, and
+  `_spread_marine_sediment` carries the spoil to *lower / deeper* ocean nodes. In a
+  low-energy, low-relief embayment this *deepens* the gaps and moves the fill offshore --
+  the opposite of what should happen.
+- `_spread_beach_sediment` only redistributes what flow routing actually delivers to the
+  coast; this dry, flat strip has almost no flow accumulation, so there is nothing to
+  prograde with.
+- Nothing anywhere looks at coastal *connectivity* ("this ocean cell is nearly landlocked",
+  "this land cell is nearly surrounded by water"). `grep` confirms no planation,
+  progradation, spit, barrier, or lagoon logic.
+
+Net: a marginally-submerged flat sheet is a stable fixed point that just dithers forever.
+
+**Options, in effort order.**
+
+1. **Render-only cleanup (cosmetic).** A majority / morphological filter on the render's
+   land-ocean field flips isolated 1-cell specks to match their surroundings. Kills the
+   checkerboard in every view, zero physics risk -- but the simulation still holds a flat
+   sheet balanced on the waterline, and the Plate Inspector / raw nodes still show it. This
+   is the **interim mitigation** applied now (see below).
+
+2. **Coastal planation + infill feedback (the real fix).** A per-step pass in `erosion.py`
+   over near-sea-level nodes that (a) pulls *land* nodes within a few tens of m of sea level
+   *down* toward sea level (wave-cut planation), rate scaled by wave exposure, and (b)
+   pushes *sheltered* shallow-ocean nodes *up* toward sea level, fed from the marine-sediment
+   pool submarine+coastal erosion already generate -- today that pool only runs downslope to
+   deep water, so it needs a "shallow + sheltered" sink term with priority. Mass stays
+   conserved by sourcing the infill from the existing erosion pool. Coasts then converge to
+   a clean line, embayments silt up, headlands plane down. Once this lands, delete the
+   interim render hack (option 1).
+
+3. **Barrier islands (the user's framing; a flourish on top of 2).** Where a shore-parallel
+   band of near-sea-level shallow nodes has open water seaward, let longshore sediment flux
+   build a shore-parallel ridge just above sea level, then flag the water behind it as
+   low-energy (coastal erosion -> ~0, infill sink boosted -> lagoon fills to marsh / coastal
+   plain). Needs a wave-exposure / fetch field that does not exist yet (could be derived
+   from `World.distance_from_land_approx` or a neighbourhood land-fraction off the slope
+   k-d tree) plus a longshore-transport direction, so it is meaningfully more model to
+   build. Do it after option 2, if at all.
+
+**Interim mitigation (applied 2026-08-31 -- REMOVE when option 2 lands).**
+`render_image._despeckle_coastal_elevation` -- a render-only pass that snaps an isolated
+near-sea-level node (within `_DESPECKLE_BAND_M` of sea level, and with at least
+`_DESPECKLE_MAJORITY` of its `_DESPECKLE_NEIGHBORS` nearest near-sea-level neighbours on the
+opposite side of the waterline) to its neighbour-median elevation, so it renders as part of
+the surrounding land or ocean. Restricted to the near-sea-level node subset so a genuine
+steep coast (whose land nodes climb out of the band immediately) is untouched. Called on
+the gathered `all_elevation` in `_render_grid_arrays` (Elevation view), `_biome_fields`
+(Biome / Combined), and `_resource_fields` (Resources / Soil Quality) before their
+nearest-node resample; never touches `world.plates`. Covered by
+`unit_tests/test_render_image.py`. Delete the function, its constants, the three call
+sites, and that test together with option 2.
+
+---
+
 ## Deferred work found in code/doc comments
 
 A sweep of every source file (2026-08-27) turned up **no `TODO`/`FIXME` comments** -- this
