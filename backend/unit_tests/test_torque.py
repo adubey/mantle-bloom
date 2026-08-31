@@ -1,7 +1,8 @@
 import numpy as np
+import pytest
 
 from app import geometry
-from app import lithosphere, torque
+from app import lithosphere, mantle, torque
 
 
 def test_basal_drag_vanishes_when_plate_matches_mantle_flow():
@@ -88,6 +89,85 @@ def test_slab_pull_points_toward_subduction_direction():
     force_direction = direction[0]
     expected_direction = geometry.normalize(np.cross(r, force_direction)[None, :])[0]
     assert np.dot(geometry.normalize(tau[None, :])[0], expected_direction) > 0.99
+
+
+def test_basal_drag_coefficients_reproduce_the_plain_torque():
+    """`basal_drag_torque(omega) == b - K @ omega` exactly, for arbitrary omega -- the affine
+    split `integrate_omega` integrates implicitly must be the same physics as the direct
+    evaluation, not an approximation."""
+
+    class FakePlate:
+        crust_type = "oceanic"
+
+        def __init__(self, omega, points):
+            self.omega = omega
+            self._points = points
+
+        def all_points_and_elevation(self):
+            return self._points, np.zeros(len(self._points))
+
+    class FakeWorld:
+        mantle_centers = mantle.generate_convection_centers(np.random.default_rng(1), n_centers=8)
+
+    rng = np.random.default_rng(0)
+    points = geometry.normalize(rng.normal(size=(200, 3)))
+    world = FakeWorld()
+    b, k = torque.basal_drag_coefficients(FakePlate(np.zeros(3), points), world, spacing_rad=0.02)
+
+    for omega in [np.zeros(3), np.array([2e-8, -1e-8, 3e-9]), rng.normal(size=3) * 1e-8]:
+        direct = torque.basal_drag_torque(FakePlate(omega, points), world, spacing_rad=0.02)
+        assert np.allclose(direct, b - k @ omega, rtol=1e-9, atol=1e-6 * np.linalg.norm(b))
+
+
+def test_integrate_omega_relaxes_to_the_mantle_rate_instead_of_railing():
+    """The historical bug: an explicit Euler step on the (very stiff) basal-drag term
+    overshoots by many orders of magnitude, so `clamp_rate` pins every plate at
+    `MAX_PLATE_RATE` on the first step and forever after. With drag integrated implicitly a
+    drag-only plate settles at its local mantle-flow rate -- well below the clamp -- and
+    stays put across many steps regardless of step size."""
+
+    class FakePlate:
+        crust_type = "oceanic"
+
+        def __init__(self, omega, points):
+            self.omega = omega
+            self._points = points
+
+        def all_points_and_elevation(self):
+            return self._points, np.zeros(len(self._points))
+
+    class FakeWorld:
+        mantle_centers = mantle.generate_convection_centers(np.random.default_rng(936513024), n_centers=8)
+
+    rng = np.random.default_rng(0)
+    # A compact cap, not a whole-sphere scatter, so the mantle flow across it is coherent
+    # and the fitted rate is a meaningful single number.
+    center = geometry.normalize(np.array([1.0, 0.3, 0.2]))
+    tangent = geometry.normalize(np.cross(center, np.array([0.0, 0.0, 1.0])))
+    bitangent = np.cross(center, tangent)
+    ang = rng.uniform(0.0, 0.5, size=400) ** 0.5 * 0.5
+    azi = rng.uniform(0.0, 2 * np.pi, size=400)
+    points = geometry.normalize(
+        np.cos(ang)[:, None] * center
+        + (np.sin(ang) * np.cos(azi))[:, None] * tangent
+        + (np.sin(ang) * np.sin(azi))[:, None] * bitangent
+    )
+    world = FakeWorld()
+
+    hc = np.full(len(points), lithosphere.REFERENCE_HC_OCEANIC_M)
+    hm = np.full(len(points), lithosphere.REFERENCE_HM_OCEANIC_M)
+    inertia = lithosphere.moment_of_inertia_tensor(points, hc, hm, lithosphere.RHO_OCEANIC_CRUST, 0.02)
+
+    fitted_rate = np.linalg.norm(mantle.fit_euler_pole(points, mantle.flow_at(points, world.mantle_centers)))
+    assert fitted_rate < mantle.MAX_PLATE_RATE  # the field itself does not demand a railed plate
+
+    plate = FakePlate(np.zeros(3), points)
+    for years in (10_000.0, 100_000.0, 3_000_000.0):
+        for _ in range(50):
+            b, k = torque.basal_drag_coefficients(plate, world, spacing_rad=0.02)
+            plate.omega = torque.integrate_omega(plate, np.zeros(3), b, k, inertia, years)
+        assert np.linalg.norm(plate.omega) == pytest.approx(fitted_rate, rel=1e-3)
+        assert np.linalg.norm(plate.omega) < 0.5 * mantle.MAX_PLATE_RATE
 
 
 def test_merge_omega_conserves_angular_momentum():

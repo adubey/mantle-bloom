@@ -77,7 +77,12 @@ cheapest remaining CFD-path saving if that mode's per-step cost is ever revisite
 
 ## Plate geometry degrades on long runs: pole winding, unbounded overlap, bad split siblings
 
-**Status:** bug 1 (pole winding) **fixed** 2026-08-30 -- wrap guard in
+**Status:** all three sub-bugs **fixed** 2026-08-30 (details below); a long-run re-verify
+against a fresh >150 My save is still worth doing to confirm the node-count blowup is
+actually gone rather than just slower, and the k-means split-cluster quality noted under
+bug 2 / bug 3 is still open.
+
+Bug 1 (pole winding) **fixed** 2026-08-30 -- wrap guard in
 `plates._grow_or_shrink_line_for_deform` + pole-cap margin in `_claim_adjacent_territory` +
 `elevation_lines.regularize_line` unwinding already-wound rows on load. Verified against the
 158.6 My save: 191 over-wound rows -> 0 after one step, `theta` max span 10,489 deg -> 360
@@ -98,8 +103,23 @@ ordinary gap-fill/deform. Not addressed: the quality of the velocity-space k-mea
 `maybe_split_plate` cuts on (poles fit from spatially-intermingled clusters can still send
 two disjoint daughters drifting back over each other) -- that overlaps bug 3.
 
-Bug 3 (every plate at `MAX_PLATE_RATE`) is **not started** -- node count may still creep up
-over a long run while that keeps the bounded-overlap mechanism running hot.
+Bug 3 (every plate at `MAX_PLATE_RATE`) **fixed** 2026-08-30 -- the TODO's original guess
+(v1 `fit_euler_pole` over-fitting) was stale: the running engine is the v2 torque balance,
+and `torque.integrate_omega` was doing a plain *explicit* Euler step on the basal-drag term,
+which is stiff enough (the asthenosphere coupling relaxes a plate toward the local
+mantle-flow rate in far less than one 100-ky step) that the step overshoots the true
+solution by ~19 orders of magnitude every call -- `mantle.clamp_rate` then pins the result
+at `MAX_PLATE_RATE` on step 1 and forever after, for every plate, from fresh gen on. Fix:
+`torque.basal_drag_coefficients` returns Eq. 10's drag as its exact affine-in-omega split
+`tau(omega) = b - K @ omega` (`b`/`K` are cheap 3-vector / 3x3 sums over the plate's nodes),
+and `integrate_omega` now solves the backward-Euler system `(I + g K) omega_new = I omega_old
++ g (tau_explicit + b)` -- unconditionally stable, drag implicit, every other (bounded,
+geometry-driven) torque still explicit. Drag-only plates now settle at their local
+mantle-flow rate (~1-5 cm/yr for seed 936513024); plates still rail at `MAX` only when slab
+pull etc. genuinely demand it (~0-2 of 8 across sample seeds, vs 8/8 before). Not addressed:
+the v1-era plate-motion section of `docs/simulation-model.md` still describes the retired
+`fit_euler_pole`/`VELOCITY_DAMPING` model and needs a full rewrite for the torque engine
+(bigger than this bug).
 
 Diagnosed 2026-08-30 from two save files of seed 936513024
 (`~/Downloads/mantle-bloom-seed936513024-90000000y.mbworld` and `...-158600000y.mbworld`,
@@ -115,7 +135,7 @@ circles (33, 36, 38), plates whose points overlap a neighbour's (14/22, and far 
 | total nodes (4x density; clean tiling ~130k) | 32,651 @ 1x | ~149k (~15% over) | ~229k (~75% over) |
 | plates whose territory reaches a local pole (\|phi\| > 88 deg) | 0 | 0 | 3 |
 | elevation-lines winding past 360 deg of theta | 0 | 0 | 191 (one row spans ~10,500 deg) |
-| plates pinned at exactly `MAX_PLATE_RATE` | 16/16 | 16/16 | 26/26 |
+| plates pinned at exactly `MAX_PLATE_RATE` (bug 3, now fixed) | 16/16 | 16/16 | 26/26 |
 
 The world is healthy at 90 My (the ~15% overlap is the documented bounded envelope/
 randomized-order effect). Nearly all the damage happens in the 90 -> 159 My window.
@@ -153,13 +173,14 @@ randomized-order effect). Nearly all the damage happens in the 90 -> 159 My wind
    as claimed. `largest_contiguous_run` in `elevation_lines.py` keeps every partitioned row a
    single arc.
 
-3. **Every plate railed at `MAX_PLATE_RATE` (15 cm/yr).** True at *both* epochs, all plates.
-   The damped Euler-pole fit (`plates.py` L206-208, `mantle.clamp_rate`) never settles below
-   the clamp for any plate. Unrealistic, and it's what makes the bounded-overlap mechanism
-   run hot enough to stop self-correcting once (1) and (2) inject extra crust. Investigate
-   whether `fit_euler_pole` is over-fitting large/wound footprints (near-pole node clusters
-   dominating the least-squares system), or whether `MANTLE_FLOW_REFERENCE_RATE` / cell
-   strengths just make saturation the normal case for this seed.
+3. **Every plate railed at `MAX_PLATE_RATE` (15 cm/yr).** ~~True at *both* epochs, all
+   plates.~~ **Fixed 2026-08-30** -- see the Status block above. Not `fit_euler_pole`
+   (v1, retired): `torque.integrate_omega` was stepping the stiff basal-drag term with plain
+   explicit Euler, overshooting by ~19 orders of magnitude every call so `clamp_rate` pinned
+   every plate at the ceiling from step 1. `basal_drag_coefficients` + a backward-Euler solve
+   for the drag term in `integrate_omega` fixes it; plates now spread across a realistic
+   1-15 cm/yr and only genuinely slab-pull-driven ones reach `MAX`. This also takes the heat
+   off the bounded-overlap mechanism that (1) and (2) were overwhelming.
 
 **Not bugs:** plate 23's "two blobs" is a single connected node cloud (1 component even at
 2.5x spacing) -- a crescent plate whose min-area enclosing ellipse balloons in the Inspector.

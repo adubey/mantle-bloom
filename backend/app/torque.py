@@ -163,17 +163,47 @@ def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.nda
     return np.cross(r, force).sum(axis=0)
 
 
-def basal_drag_torque(plate, world, spacing_rad: float) -> np.ndarray:
-    """Eq. 10, over *every* node this plate owns (a body force, not a boundary integral)."""
+def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarray, np.ndarray]:
+    """Eq. 10's basal drag written as its exact affine-in-`omega` form, `tau(omega) = b - K @ omega`,
+    over *every* node this plate owns (a body force, not a boundary integral).
+
+    Each node's drag force is `F_i = (mu / d_s) * (v_mantle_i - v_plate_i) * A_i` with
+    `v_plate_i = _real_velocity_m_per_s(omega x p_i)`, so the whole-plate drag torque
+    `sum_i (R p_i) x F_i` is affine in `omega`:
+
+        K = c * sum_i (I3 - p_i p_i^T)      -- symmetric, positive-semidefinite
+        b = c * sum_i p_i x flow_i          -- `flow_i` = mantle.flow_at, this codebase's rad/yr units
+        c = (mu / d_s) * A * R^2 / SECONDS_PER_YEAR
+
+    (`c`'s `R^2 / SECONDS_PER_YEAR` folds in the two `_real_velocity_m_per_s` conversions plus
+    the `R` lever arm; `sum_i p_i x (omega x p_i) == (sum_i I3 - p_i p_i^T) @ omega`.)
+
+    Split out from the plain torque so `integrate_omega` can treat this term *implicitly*: it
+    is by far the stiffest in the balance -- the asthenosphere coupling relaxes a plate toward
+    the local mantle-flow rate in a small fraction of one tectonic step, so an explicit Euler
+    step on it overshoots by ~19 orders of magnitude and `clamp_rate` then pins every plate at
+    `MAX_PLATE_RATE` on step one, forever (the historical "every plate railed at MAX" bug)."""
     own_points, _ = plate.all_points_and_elevation()
     if len(own_points) == 0:
-        return np.zeros(3)
-    v_mantle = _real_velocity_m_per_s(mantle.flow_at(own_points, world.mantle_centers))
-    v_plate = _real_velocity_m_per_s(np.cross(plate.omega, own_points))
-    stress = (ASTHENOSPHERE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M) * (v_mantle - v_plate)
-    force = stress * lithosphere.node_area_m2(spacing_rad)
-    r = own_points * lithosphere.PLANET_RADIUS_M
-    return np.cross(r, force).sum(axis=0)
+        return np.zeros(3), np.zeros((3, 3))
+    c = (
+        (ASTHENOSPHERE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M)
+        * lithosphere.node_area_m2(spacing_rad)
+        * lithosphere.PLANET_RADIUS_M**2
+        / SECONDS_PER_YEAR
+    )
+    flow = mantle.flow_at(own_points, world.mantle_centers)
+    b = c * np.cross(own_points, flow).sum(axis=0)
+    k = c * (len(own_points) * np.eye(3) - np.einsum("ni,nj->nij", own_points, own_points).sum(axis=0))
+    return b, k
+
+
+def basal_drag_torque(plate, world, spacing_rad: float) -> np.ndarray:
+    """Eq. 10's basal drag evaluated at the plate's current `omega` -- `b - K @ omega` from
+    `basal_drag_coefficients`. A standalone entry point for tests / callers that just want the
+    torque; `shift_plate` itself uses the split `(b, K)` form for implicit integration."""
+    b, k = basal_drag_coefficients(plate, world, spacing_rad)
+    return b - k @ plate.omega
 
 
 def collision_friction_torque(plate, inputs: BoundaryForceInputs, collision_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -197,15 +227,37 @@ def collision_friction_torque(plate, inputs: BoundaryForceInputs, collision_mask
     return np.cross(r, force).sum(axis=0)
 
 
-def integrate_omega(plate, torque_total: np.ndarray, inertia_tensor: np.ndarray, years: float) -> np.ndarray:
-    """Semi-implicit Euler: alpha = I^-1 tau (rad/s^2), omega_new = omega_old + alpha * dt,
-    then `mantle.clamp_rate` -- same physical speed bounds v1 already enforces, now applied
-    to an integrated rather than fitted omega."""
-    alpha = lithosphere.omega_from_angular_momentum(inertia_tensor, torque_total)  # I^-1 @ tau, reusing the same linear solve
-    dt_seconds = years * SECONDS_PER_YEAR
-    delta_omega_rad_per_s = alpha * dt_seconds
-    delta_omega = delta_omega_rad_per_s * SECONDS_PER_YEAR  # rad/s -> rad/yr, this codebase's own omega convention
-    new_omega = plate.omega + delta_omega
+def integrate_omega(
+    plate,
+    explicit_torque: np.ndarray,
+    drag_b: np.ndarray,
+    drag_k: np.ndarray,
+    inertia_tensor: np.ndarray,
+    years: float,
+) -> np.ndarray:
+    """One angular-velocity step, implicit in the stiff basal-drag term and explicit in the
+    rest:
+
+        (I + g K) omega_new = I omega_old + g (tau_explicit + b)        g = years * SECONDS_PER_YEAR**2
+
+    `(drag_b, drag_k)` is `basal_drag_coefficients`' affine split of Eq. 10's drag,
+    `tau(omega) = b - K @ omega`; `explicit_torque` is every other (bounded, geometry-driven)
+    torque. Backward Euler on the drag term is unconditionally stable for any `years` -- an
+    explicit step on it does not converge at any step size this simulation uses (see
+    `basal_drag_coefficients`), and the implicit drag term also dominates the system strongly
+    enough to damp the explicit collision-friction term riding along in `explicit_torque`.
+    Reduces to the old explicit `omega_old + g I^-1 tau` when `K = 0, b = 0`. The final
+    `mantle.clamp_rate` (same physical speed bounds v1 enforced) is unchanged."""
+    g = years * SECONDS_PER_YEAR**2
+    lhs = inertia_tensor + g * drag_k
+    rhs = inertia_tensor @ plate.omega + g * (explicit_torque + drag_b)
+    try:
+        new_omega = np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        # Near-empty / degenerate-footprint plate -> singular system; same damped fallback
+        # `lithosphere.omega_from_angular_momentum` uses rather than crash the whole step.
+        lhs_reg = lhs + 1e-6 * np.trace(lhs) * np.eye(3)
+        new_omega = np.linalg.solve(lhs_reg, rhs)
     return mantle.clamp_rate(new_omega)
 
 
@@ -254,13 +306,13 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     rho_c = lithosphere.crust_density(plate.crust_type)
     inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad)
 
-    torque_total = (
+    explicit_torque = (
         slab_pull_torque(plate, inputs, spacing_rad, reach_rad)
         + ridge_push_torque(plate, inputs, divergent, spacing_rad)
-        + basal_drag_torque(plate, world, spacing_rad)
         + collision_friction_torque(plate, inputs, collision_mask, spacing_rad)
     )
-    new_omega = integrate_omega(plate, torque_total, inertia, years)
+    drag_b, drag_k = basal_drag_coefficients(plate, world, spacing_rad)
+    new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
     plate.set_omega(new_omega)
 
     increment = geometry.rotation_matrix_from_omega(plate.omega, years)
