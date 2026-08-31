@@ -363,6 +363,31 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
             assert entry["bounding_ellipse"] is None
 
 
+def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
+    from app import mantle
+
+    client.post("/world/generate", json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
+    plates = client.get("/world/plates").json()["plates"]
+
+    for entry in plates:
+        assert entry["speed_cm_per_yr"] >= 0.0
+        # A freshly generated world is clamped into [MIN, MAX]; `at_max_rate` must agree with
+        # the reported speed.
+        assert entry["at_max_rate"] == (entry["speed_cm_per_yr"] >= mantle.rad_per_yr_to_cm_per_yr(mantle.MAX_PLATE_RATE) - 1e-9)
+        assert 0.0 <= entry["submerged_fraction"] <= 1.0
+        assert entry["age_steps"] >= 0
+        # Overlap is symmetric in *existence* (if A sits on B, B sits on A), even though the
+        # fractions differ; and a plate never overlaps itself.
+        for over in entry["overlaps"]:
+            assert over["plate_id"] != entry["plate_id"]
+            assert 0.0 < over["fraction"] <= 1.0
+
+    by_id = {p["plate_id"]: p for p in plates}
+    for entry in plates:
+        for over in entry["overlaps"]:
+            assert entry["plate_id"] in {o["plate_id"] for o in by_id[over["plate_id"]]["overlaps"]}
+
+
 def test_plate_at_returns_the_owning_plate_id(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]

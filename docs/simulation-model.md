@@ -968,6 +968,17 @@ trigger it. Not solving general spherical-MVEE for v1; flagged in code and cover
 deliberately-adversarial test documenting current (imperfect but non-crashing) behavior
 rather than leaving it silently untested.
 
+**The selected-plate panel also reports motion and shape-health diagnostics** (added
+2026-08-31, from the long-run plate-geometry investigation in `docs/TODO.md`): the plate's
+surface speed in cm/yr and whether it is railed at `mantle.MAX_PLATE_RATE`, its Euler pole,
+its age in steps, its median node elevation and submerged fraction (flagged when a
+continental plate is mostly under water), the other plates its territory currently overlaps
+(and by what share of its own nodes -- one global `cKDTree` pair query in
+`main._plate_overlaps`), and any `world.collision_progress` sustained-collision timers it is
+part of. These are pure read-outs of existing state (`torque.py`'s `Plate.omega`,
+`world.collision_progress`), surfaced because "the plates look wrong on a long run" was
+otherwise only diagnosable with an ad-hoc script. See `docs/api-reference.md#get-worldplates`.
+
 **Click-to-select is a server round trip, not client-side point-in-polygon.** The client
 unprojects the click (through whatever view rotation is currently active --
 `rotation.ts`'s `unproject`, plus a `matTranspose` since a rotation matrix's inverse is its

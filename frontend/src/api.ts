@@ -57,6 +57,11 @@ export interface BoundingEllipse {
   outline: [number, number, number][];
 }
 
+export interface PlateOverlap {
+  plate_id: number;
+  fraction: number; // share of THIS plate's nodes sitting on top of plate_id
+}
+
 export interface PlateSummary {
   plate_id: number;
   crust_type: "continental" | "oceanic";
@@ -64,6 +69,17 @@ export interface PlateSummary {
   // _plate_summary).
   num_rows: number | null;
   num_points: number;
+  // Plate motion + shape health (see _plate_summary). `at_max_rate` true for most plates at
+  // once is a long-run pathology; a continental plate with a high `submerged_fraction` is
+  // over-stretched. `overlaps`/`collisions` expose stalled territory conflicts.
+  speed_cm_per_yr: number;
+  at_max_rate: boolean;
+  euler_pole: { lat_deg: number; lon_deg: number } | null;
+  age_steps: number;
+  median_elevation_m: number | null;
+  submerged_fraction: number;
+  overlaps: PlateOverlap[];
+  collisions: { plate_id: number; years: number }[];
   outline: [number, number, number][];
   // Every node's own position (not just the outline loop) -- see PlateInspector.tsx, which
   // plots these individually, bright for the selected plate and dim for every other one.

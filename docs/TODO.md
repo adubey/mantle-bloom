@@ -77,10 +77,70 @@ cheapest remaining CFD-path saving if that mode's per-step cost is ever revisite
 
 ## Plate geometry degrades on long runs: pole winding, unbounded overlap, bad split siblings
 
-**Status:** all three sub-bugs **fixed** 2026-08-30 (details below); a long-run re-verify
-against a fresh >150 My save is still worth doing to confirm the node-count blowup is
-actually gone rather than just slower, and the k-means split-cluster quality noted under
-bug 2 / bug 3 is still open.
+**Status:** the three named sub-bugs are **fixed** 2026-08-30 (details below), but a
+long-run re-verify (2026-08-31, `~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld`,
+851 steps / 85.1 My, `node_density=4`) shows the *degradation is not gone* -- it has just
+shifted from "pole winding + winding-driven node blowup" to a cluster of related failures
+below. This save is the same seed the coastal-speckle work used, stepped far longer, and its
+geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactful first:**
+
+1. **Every oceanic plate rails at `MAX_PLATE_RATE` (15 cm/yr).** 6 of 7 oceanic plates sit
+   at *exactly* `mantle.MAX_PLATE_RATE` at 85 My (the 7th at 11.7); all 6 continental plates
+   are a healthy 0.7-3.9 cm/yr. Stepping the loaded save 4 more times with current `main`
+   does **not** relax them -- so this is not just a stale pre-fix save. Bug 3's backward-Euler
+   basal-drag fix genuinely settled the *continental* plates but the *oceanic* ones are still
+   pinned: `torque`'s explicit slab-pull (+ ridge-push + collision) alone exceeds the clamp
+   ceiling for them, every step. Either slab-pull's scale (`SUBDUCTION_LSINK_M`,
+   `slab_pull_torque`) is hot, or a mostly-ocean world genuinely subducts oceanic crust on
+   nearly every margin and 15 cm/yr is simply the cap it deserves -- but 6/7 at the *exact*
+   ceiling forever, driving fast oceanic plates into every continent, is the upstream cause
+   of most of what follows. Check `integrate_omega`'s output against the clamp for an
+   oceanic plate on this seed and see how far over it lands.
+
+2. **Over-stretched continental plates that have mostly drowned.** Plate 3 (id 3):
+   continental, 22,936 nodes, **71% of its own nodes at/below sea level**, median elevation
+   **-3113 m**, bounding ellipse ~20,500 x 9,800 km (half the planet), spanning lon -92..+95
+   / lat -67..+18. Its interior is pinned at *exactly* `ABYSSAL_REFERENCE_DEPTH_M`
+   (-5222.22 m) -- `bathymetry._subside_offshore_continental_crust` correctly draws crust
+   >1400 km from its own land down to abyssal depth, so once a continental plate is stretched
+   to ~2x its natural size the model *correctly* oceanises the middle and you get a giant
+   "continental" plate that is 80% deep ocean. Plate 17 (its age-43 split sibling) is the
+   same story at 63% submerged / -87 m median. The stretch itself is the bug: `_grow_or_
+   shrink_line_for_deform` keeps extending row ends into every newly-opened gap as the plate
+   shears (euler pole for plate 3 sits at 24 N, 139 W -- far from the plate, so its rotation
+   is nearly pure shear across the plate body), and nothing caps a plate's total area
+   against its crustal volume.
+
+3. **The "streaking" in the Plate Inspector / platesDetail view** is plate 3's (and a
+   neighbour's) territorial boundary running as a long, straight, regular-sawtooth diagonal
+   chord across ~140 deg of open ocean -- the staircase edge of a plate whose rows each end
+   one `dtheta` step further than the row below (a thin triangular tongue grown by repeated
+   row-end extension). In the raw `elevation` view the same feature is only a faint
+   shallower-ocean smear; it is mostly a boundary-polyline artifact of an over-extended
+   lattice, not a separate elevation bug. Node *spacing* within plate 3 is a clean 1.00x target both
+   along-row and across-row -- the lattice is regular, just far too large.
+
+4. **Stalled continental-continental overlaps that never heal.** Plate 4 has **17% of its
+   nodes sitting on top of plate 2** (fresh, age-9, 29,778-node plate 2 -- likely a bad
+   split/merge partition), and this overlap is *stable* across 4 stepped My. It is not even
+   in `world.collision_progress` (the closing-rate test doesn't see it as converging), so
+   the sustained-collision -> merge path will never fire; continental crust never retreats
+   (`shrinkable_all` is all-False for a continental self-plate). Plates 3/6 overlap 6% and
+   *are* tracked -- but `collision_progress[(3,6)]` is only 30.7 My against a 50-100 My merge
+   threshold, so they will keep overlapping for ~20 My more. `_merge_probability` also drops
+   toward `MERGE_PROBABILITY_FLOOR` (0.02) once a pair's combined node share passes
+   `MERGE_SIZE_UNLIKELY_FRACTION` (0.25) -- plate 3 alone is ~16% of the world's nodes, so
+   most of its collision pairs are effectively unmergeable and just overlap indefinitely.
+
+5. **Node-count blowup persists** (the original headline symptom): ~140k nodes at 85 My for
+   `node_density=4` vs a clean-tiling estimate of ~130k *at 1x* -- consistent with the
+   ~15-75%-over range the 2026-08-30 table recorded, i.e. not fixed, just no longer
+   dominated by the winding rows.
+
+The **k-means split-cluster quality** noted under bug 2 / bug 3 (velocity-space clusters cut
+from spatially-intermingled points -> disjoint daughters that drift back over each other,
+with euler poles fit far from the daughter body) is the common root of (2), (3) and (4) and
+is still entirely open.
 
 Bug 1 (pole winding) **fixed** 2026-08-30 -- wrap guard in
 `plates._grow_or_shrink_line_for_deform` + pole-cap margin in `_claim_adjacent_territory` +
@@ -193,11 +253,66 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level
 
-**Status: RESOLVED 2026-08-31** by the coastal planation + infill feedback (option 2, "What
-landed" below); barrier islands (option 3) fall out of it in emergent form. The interim
-render-only despeckle hack has been **deleted**. Investigated + validated from
-`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (seed 888151728, 851 steps /
-85.1 My, `node_density=4`, `climate_density=4`).
+**Status: PARTIALLY RESOLVED.** The coastal planation + infill feedback (option 2, "What
+landed" below) cut the density-1 dither roughly in half; barrier islands (option 3) fall out
+of it in emergent form. But a fresh look at
+`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (2026-08-31, seed 888151728,
+851 steps / 85.1 My, `node_density=4`) shows the coast is **still visibly speckled** -- a
+broad checkerboard fringe along the south and east coasts of the plate-3 land mass around
+5 N / -10 E. New diagnosis below; the feedback is running but is being *swamped*.
+
+**Why it's still speckled at 85 My (measured, per 100-ky step, in an ~8x30 deg box over the
+worst stretch).** The user's hypothesis was right that this should be a coastal plain -- but
+the problem is *not* a sediment shortage:
+
+- Sediment supply is **abundant**: `sediment_deposited` median **11.8 m/step**, p90 53 m,
+  max **256 m**. Rain 1967 mm, flow_accum up to ~96,000.
+- It is deposited **in lumps**: the top 10% of near-sea-level nodes in the box receive
+  **51%** of all deposition; 82 of 768 band nodes get >50 m in a *single* step while the
+  median node in the same band gets ~0. `route_downstream` drops `DEPOSITION_FRACTION` of
+  everything passing through onto whichever discretised flow-graph nodes it routes through
+  (`DEPOSITION_MIN_FLOW_M` is only 0.05, so ~half the band counts as a "slow depositing
+  river"), and `_spread_beach_sediment` / `_spread_coastal_infill` concentrate on a few
+  weight-favoured nodes rather than spreading evenly across the shelf.
+- Net elevation change is then **+-50 m per step** (p10/p90 -46 / +51 m, max +237) around a
+  ~0 m mean -- right where the surface sits within +-25 m of sea level. **315 of 768 band
+  nodes flip land<->ocean every single step.** That is the checkerboard, in motion.
+- Nothing removes the lumps: the ground is flat, so `river`/`rain` erosion is ~0 by design
+  (relief-gated).
+- `coastal_planation_amount` **is not firing** where it's needed: median planation in the
+  band is **0.0 m** (only 31% of band nodes nonzero) even though `coastal_openness` there
+  (median 0.44) is well above `PLANATION_EXPOSURE_REF`. Planation only touches land within
+  `PLANATION_BAND_M` (60 m) *above* sea level and is then gated hard by the prominence
+  reweight, so it ignores everything that is already a hair below the waterline (that's
+  infill's job) and everything that isn't standing proud of its neighbours.
+
+**Fix direction (not yet done).** The deposition needs to be *rate-limited or diffused* in
+the near-sea-level band -- cap per-node per-step deposition at some fraction of local relief,
+or spread each routed lump across its k nearest coastal neighbours (mass-conserving) instead
+of dropping it on one node -- and planation + infill should engage as **one symmetric pass**
+across a band that straddles sea level (grind the +30 m bumps and fill the -30 m ponds
+together toward a common local datum) rather than two separately-gated passes that each miss
+half the checkerboard. The transient-lake log spam and the stranded deep basins (below) are
+both downstream symptoms of the same dithering shelf.
+
+**Related symptom -- event-log flooding.** The world's event log is almost entirely
+"N-node lake formed/split ... at elevation ~0 m" -- hundreds of these per My, one pair per
+dithering puddle every step. `world.log_event` / `hydrology.lake_events` should either
+dedupe/aggregate near-sea-level transient lakes ("~40 coastal ponds churned this step")
+or suppress lakes whose floor is within a few metres of sea level and whose lifetime is one
+step. As-is the log is unusable for spotting real basin events (there are genuine ones
+buried in it: a persistent ~435-node lake oscillating around -1770 m).
+
+**Related symptom -- stranded sub-sea-level basins.** The log also shows persistent
+endorheic depressions well below sea level (a 435-node basin at ~-1770 m, another cluster at
+~-4560 m) that merge/split every step and never drain or fill. These are the "land-locked
+coastal pit" the loose-ends note already flags -- an isolated sub-sea-level node ringed by
+land is neither `hydro.is_ocean` nor above sea level, so planation, the ocean sink, *and*
+infill all skip it. Worth a dedicated "interior basin below sea level" infill/relaxation
+term (or letting lake siltation actually keep up with them).
+
+**Original resolution (density-1) retained below.** Investigated + validated from the same
+save at the time.
 
 Driven against that save, 25 steps (2.5 My), feedback on vs off:
 
@@ -317,6 +432,60 @@ coast whose transient roughening swamps the feedback's slow ~My effect).
    landed"). A genuine wave-exposure / fetch field plus an explicit longshore-transport
    direction (for real spits and drift-aligned bars, not just fetch-sheltered accretion)
    remains an optional future refinement.
+
+---
+
+## Diagnostic views & debug output (from the 2026-08-31 seed-888151728 investigation)
+
+Working through the plate-geometry and coastal-speckle degradation above needed several
+numbers the program didn't surface. What landed, and what's still worth building:
+
+**Landed 2026-08-31 -- Plate Inspector motion / shape / overlap fields.** `GET /world/plates`
+(`main._plate_summary`) and the Plate Inspector panel (`App.tsx`) now report, per plate:
+`speed_cm_per_yr` + `at_max_rate` (railed-at-`MAX_PLATE_RATE` flag, shown in red),
+`euler_pole` (lat/lon), `age_steps`, `median_elevation_m` + `submerged_fraction` (red when a
+continental plate is >50% submerged), `overlaps` (which other plates this one's territory
+sits on top of, and by what fraction of its own nodes -- `main._plate_overlaps`, one global
+cKDTree pair query), and `collisions` (`world.collision_progress` timers involving the
+plate). `mantle.rad_per_yr_to_cm_per_yr` is the new unit helper. Test:
+`test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics`. These three numbers --
+"every oceanic plate is at 15.0 cm/yr", "plate 3 is 71% submerged", "plate 4 is 17% inside
+plate 2" -- are what turned a vague "the plates look wrong" into the specific follow-ups in
+the plate-geometry section.
+
+**Still worth building:**
+
+1. **A speckle / coastal-dither overlay render mode.** Colour every node whose elevation is
+   within a threshold of sea level by the fraction of its k nearest neighbours on the
+   *opposite* side of the waterline (the exact metric the investigation scripts compute:
+   `near = |elev - sea_level| < 120 m`; `frac = mean(neighbour is opposite class)`; flag
+   `>= 0.75`). Instantly shows where the coast is a checkerboard vs a clean shoreline, and
+   makes a before/after for any coastal-feedback change legible without an ad-hoc script.
+   Natural home: a `render_image.py` view alongside `platesDetail`, or a boolean overlay on
+   the `elevation` / `biome` views.
+
+2. **A per-node geomorph-rate view.** Render `ErosionResult.sediment_deposited` (and/or net
+   `dElev` this step) as a diverging map. The lumpiness of deposition in the near-sea-level
+   band -- 256 m on one node, ~0 on its neighbour -- is invisible in every current view but
+   is the whole coastal-speckle mechanism. `ErosionResult` already carries the arrays;
+   this is a render path plus maybe a `/world/sample_at` field.
+
+3. **Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
+   endorheic basins whose floor is below sea level and that are not connected to the ocean:
+   node count, floor elevation, centroid, how long they've persisted. The event log has this
+   information today but drowned in transient-coastal-pond spam (see the coastal section).
+
+4. **Event-log dedup / severity for lake churn.** `world.log_event` should collapse the
+   hundreds of per-step "N-node lake formed/split at ~0 m" messages into one aggregate line,
+   or drop one-step lakes with a near-sea-level floor entirely, so the log is usable for
+   real basin/tectonic events again.
+
+5. **A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.** The
+   investigation used a throwaway script (scratchpad `probe*.py`) to load a `.mbworld` and
+   print the per-plate table, overlap matrix, `collision_progress`, and node-count vs
+   clean-tiling estimate. A checked-in version -- reusing `main._plate_overlaps` and
+   `_plate_summary` -- would make the "is this save's geometry healthy?" check a one-liner
+   for the long-run re-verify the plate-geometry section keeps asking for.
 
 ---
 
