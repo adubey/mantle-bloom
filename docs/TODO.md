@@ -453,6 +453,16 @@ plate). `mantle.rad_per_yr_to_cm_per_yr` is the new unit helper. Test:
 plate 2" -- are what turned a vague "the plates look wrong" into the specific follow-ups in
 the plate-geometry section.
 
+**Landed 2026-08-31 -- standalone plate-diagnostics dump.**
+`python -m app.plate_diagnostics <save.mbworld>` (`backend/app/plate_diagnostics.py`, was
+item 5 below) loads a `.mbworld` offline -- no server, no port -- and prints the per-plate
+motion/shape table, the territory-overlap list, the `collision_progress` timers, and the
+total node count against a clean-tiling estimate (`4*pi / line_spacing_rad(node_density)**2`,
+~130k at density 4). `--json` for the structured form. Reuses `main._plate_summary` /
+`main._plate_overlaps` so it can't drift from `GET /world/plates`. Documented in
+`docs/debugging.md`; test `unit_tests/test_plate_diagnostics.py`. Makes the "is this save's
+geometry healthy?" check for the plate-geometry re-verify a one-liner.
+
 **Still worth building:**
 
 1. **A speckle / coastal-dither overlay render mode.** Colour every node whose elevation is
@@ -480,12 +490,8 @@ the plate-geometry section.
    or drop one-step lakes with a near-sea-level floor entirely, so the log is usable for
    real basin/tectonic events again.
 
-5. **A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.** The
-   investigation used a throwaway script (scratchpad `probe*.py`) to load a `.mbworld` and
-   print the per-plate table, overlap matrix, `collision_progress`, and node-count vs
-   clean-tiling estimate. A checked-in version -- reusing `main._plate_overlaps` and
-   `_plate_summary` -- would make the "is this save's geometry healthy?" check a one-liner
-   for the long-run re-verify the plate-geometry section keeps asking for.
+5. ~~**A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.**~~
+   **Landed 2026-08-31** as `python -m app.plate_diagnostics` -- see the "Landed" note above.
 
 ---
 
