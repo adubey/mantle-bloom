@@ -136,6 +136,69 @@ endorheic basins show up -- see
 
 ---
 
+## Stranded-basin report -- `GET /world/stranded_basins` + `python -m app.stranded_basins`
+
+A "stranded basin" is the **land-locked coastal pit** from TODO.md's coastal-speckle
+section: an endorheic depression whose floor sits *below sea level* and that has **no
+drainage path to the ocean at all**. Such a node is neither hydrology's connectivity-aware
+`is_ocean` nor above sea level, so the marine sink, coastal planation, and lake infill all
+skip it -- it churns (merge/split) in the event log every step and never drains or fills.
+The event log has this today but drowns it in near-sea-level transient-pond spam (see below);
+this surfaces the same thing as one clean list.
+
+The criterion is read straight off this step's already-resolved depression hierarchy
+(`hydrology.HydrologyFields.lake_forest`, `lakes.build_lake_hierarchy`): a **top-level** basin
+whose `max_depth is None` (lakes.py's own "no known spill to the ocean" state) *and* whose
+`floor_elevation` is below `world.sea_level_m`. Roots only -- an endorheic root is the maximal
+"no drainage" unit and its floor is the min over every descendant, so a deep sub-basin is
+already covered.
+
+Both the endpoint and the offline dump go through `stranded_basins.find_stranded_basins` /
+`enrich_with_persistence`, so they can't disagree. Persistence -- *how long* each pit has
+been there -- comes from `world.stranded_basin_tracks`, a small cross-step tracker
+`world.step_world` reconciles each hydrology step by matching this step's basins to last
+step's by centroid proximity (the same lightweight first-seen-per-key idea
+`world.collision_progress` uses for plate pairs; diagnostic only, nothing in the physics
+reads it back). It's persisted in the save, so the offline dump reports real persistence
+numbers as of save time.
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m app.stranded_basins ~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld
+python -m app.stranded_basins <save.mbworld> --json
+```
+
+```
+mantle-bloom stranded-basin diagnostics
+  seed:          888151728
+  elapsed:       85,100,000 yr  (~851 steps @ 100 ky)
+  node_density:  4.0
+  sea level:     0.0 m
+  stranded basins: 2   (endorheic, floor below sea level, no ocean drainage)
+
+     floor  depth<SL   catch  flooded    water   centroid lat,lon         persisted
+  ------------------------------------------------------------------------------------
+     -4560      4560     512      480    -4400     -31.4,   +88.7   18.2 My (182 steps)
+     -1771      1771     435      412    -1750     -12.3,   +45.6   12.4 My (124 steps)
+```
+
+- **`floor` / `depth<SL`** -- basin floor elevation and how far below sea level that is.
+- **`catch` / `flooded`** -- the full geometric catchment node count vs. how many members
+  currently hold visible standing water.
+- **`water`** -- current standing-water surface elevation (`--` if bone dry).
+- **`persisted`** -- elapsed years (and approx 100-ky steps) since a basin first appeared at
+  this centroid. A large number here is the signal: a pit that's been stranded for tens of My
+  is a real drainage/infill gap, not a one-step transient.
+
+An empty list is the healthy case -- most seeds never strand a basin. The report needs a
+hydrology snapshot in the save (a world stepped at least once with climate on); a
+never-stepped world reports nothing.
+
+Test: [`unit_tests/test_stranded_basins.py`](../backend/unit_tests/test_stranded_basins.py).
+
+---
+
 ## Event log
 
 The `events` list on `GET /world/summary` (the UI's event console) logs lake
@@ -180,9 +243,8 @@ From TODO.md's "Diagnostic views & debug output" section, not yet implemented:
 2. **Per-node geomorph-rate view** -- render `ErosionResult.sediment_deposited` (or net
    `dElev`/step) as a diverging map. The lumpiness of near-sea-level deposition is invisible
    in every current view but is the whole coastal-speckle mechanism.
-3. **Stranded-basin report** -- a `/world/lakes`-style listing of endorheic basins whose
-   floor is below sea level and that aren't ocean-connected: node count, floor elevation,
-   centroid, persistence.
+
+The **stranded-basin report** (was item 3) landed -- see the section above.
 
 (Event-log dedup for lake churn -- formerly item 4 -- landed 2026-08-31; see the
 Lake-churn aggregation section above.)

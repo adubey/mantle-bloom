@@ -453,6 +453,21 @@ plate). `mantle.rad_per_yr_to_cm_per_yr` is the new unit helper. Test:
 plate 2" -- are what turned a vague "the plates look wrong" into the specific follow-ups in
 the plate-geometry section.
 
+**Landed 2026-08-31 -- stranded-basin report** (was item 3 below).
+`GET /world/stranded_basins` and `python -m app.stranded_basins <save.mbworld>`
+(`backend/app/stranded_basins.py`) list every **endorheic** basin (`lakes.Lake.max_depth is
+None` -- no spill path to the ocean at any fill level) whose floor is **below sea level** --
+the "land-locked coastal pit" the coastal-speckle section flags. Read straight off
+`world.hydrology_cache.lake_forest`, so it can't drift from the Lake Inspector. Persistence
+("how long has this pit been stranded") comes from `world.stranded_basin_tracks`, a small
+cross-step centroid-matched first-seen tracker `world.step_world` maintains the same way
+`collision_progress` tracks plate pairs (new `default_factory` field, backfilled on load by
+`persistence._backfill_added_fields`). Deepest-first; reports node count (catchment +
+flooded), floor elevation, centroid lat/lon, current water level, and persisted years/steps.
+Documented in `docs/debugging.md` + `docs/api-reference.md`; tests
+`unit_tests/test_stranded_basins.py` + `test_main.py`. Most seeds strand nothing (empty list
+= healthy); reproduces the -1770 m / -4560 m basins the seed-888151728 investigation found.
+
 **Landed 2026-08-31 -- standalone plate-diagnostics dump.**
 `python -m app.plate_diagnostics <save.mbworld>` (`backend/app/plate_diagnostics.py`, was
 item 5 below) loads a `.mbworld` offline -- no server, no port -- and prints the per-plate
@@ -493,10 +508,13 @@ checkerboard shelf contributes at most one aggregate line per step. Tests:
    is the whole coastal-speckle mechanism. `ErosionResult` already carries the arrays;
    this is a render path plus maybe a `/world/sample_at` field.
 
-3. **Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
+3. ~~**Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
    endorheic basins whose floor is below sea level and that are not connected to the ocean:
-   node count, floor elevation, centroid, how long they've persisted. The event log has this
-   information today but drowned in transient-coastal-pond spam (see the coastal section).
+   node count, floor elevation, centroid, how long they've persisted.~~ **Landed 2026-08-31**
+   as `GET /world/stranded_basins` + `python -m app.stranded_basins` -- see the "Landed" note
+   above. Not done: no map-view render of it (the endpoint returns `centroid_xyz`/`floor_xyz`
+   ready for one); persistence resets on a `simulate_climate_biomes=False` stretch (only
+   hydrology steps are counted, by design).
 
 4. ~~**Event-log dedup / severity for lake churn.**~~ **Landed 2026-08-31** as
    `lakes.summarize_lake_events` -- see the "Landed" note above. Went with the aggregate-line

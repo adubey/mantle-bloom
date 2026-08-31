@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, volcanism
+from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -83,6 +83,15 @@ class World:
     # directly off every plate's lines, independent of this set) still needs somewhere to
     # report a field "cooling" if that tracking comes back later. See volcanism.py.
     volcanic_field_plate_ids: set[int] = field(default_factory=set)
+    # Cross-step memory for the stranded-basin diagnostic (docs/debugging.md): one
+    # `stranded_basins.StrandedBasinTrack` per endorheic, below-sea-level, ocean-disconnected
+    # basin currently present, reconciled by centroid proximity every hydrology step (see
+    # stranded_basins.reconcile_world_tracks) so the report can say how long each pit has
+    # persisted. Same "lightweight per-key first-seen tracker" role `collision_progress` plays
+    # for plate pairs -- diagnostic only, nothing in the physics reads it back. A
+    # `default_factory` field, so an older save without it is backfilled on load (see
+    # persistence._backfill_added_fields).
+    stranded_basin_tracks: list = field(default_factory=list)
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
@@ -354,5 +363,9 @@ def step_world(world: World, years: float) -> None:
             world.log_event(message)
     if erosion_result is not None:
         geology.apply_resource_formation(world, years, erosion_result)
+        # Reconcile the stranded-basin tracker against this step's freshly-rebuilt depression
+        # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
+        # actually recomputed hydrology, so persistence timers count simulated hydrology steps.
+        stranded_basins.reconcile_world_tracks(world)
 
 

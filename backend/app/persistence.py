@@ -34,8 +34,19 @@ def load_world_bytes(data: bytes) -> World:
     world = pickle.loads(data)
     if not isinstance(world, World):
         raise TypeError(f"expected a World, got {type(world).__name__}")
+    _backfill_added_fields(world)
     _drop_derived_caches(world)
     return world
+
+
+def _backfill_added_fields(world: World) -> None:
+    """Give a `default_factory` field added to `World` after this save was written its empty
+    default. Unlike a plain-default field (`steps_taken: int = 0`, a class attribute an old
+    pickle falls through to), a `field(default_factory=...)` sets no class attribute, so an
+    old save's `__dict__` simply won't have the key and the first access `AttributeError`s.
+    Only mutable-default fields need listing here."""
+    if not hasattr(world, "stranded_basin_tracks"):
+        world.stranded_basin_tracks = []
 
 
 def _drop_derived_caches(world: World) -> None:
