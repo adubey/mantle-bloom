@@ -244,7 +244,7 @@ def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
     depth, _, forest, events = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
-    assert len(events) == 1 and "merged" in events[0]
+    assert len(events) == 1 and events[0].kind == "merge" and "merged" in events[0].message
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor)
     assert depth[1] == 0.0  # 12.0 - 12.0 (node 1 sits exactly at the saddle)
     assert depth[2] == 3.0  # 12.0 - 9.0
@@ -267,7 +267,7 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     depth, _, forest, events = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, water_deposited, years=5_000_000, is_frozen=is_accumulating
     )
-    assert len(events) == 1 and "split" in events[0]
+    assert len(events) == 1 and events[0].kind == "split" and "split" in events[0].message
     assert depth[0] == 10.0  # 12.0 (the saddle) - 2.0 (floor) -- both children land exactly there
     assert depth[1] == 0.0
     assert depth[2] == 3.0  # 12.0 - 9.0
@@ -305,3 +305,39 @@ def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in()
     assert elevation[0] <= 25.0 + 1e-6  # never silts past the basin rim
     assert depths_over_time[-1] == 0.0  # lake fully silted in despite inflow never stopping
     assert depths_over_time[0] > 0.0
+
+
+def _ev(kind, elevation_m, node_count=10, basin_count=2):
+    return lakes.LakeEvent(kind=kind, node_count=node_count, elevation_m=elevation_m, basin_count=basin_count)
+
+
+def test_summarize_lake_events_passes_real_basin_events_through_individually():
+    events = [_ev("merge", -1770.0), _ev("split", -4560.0, node_count=435)]
+    lines = lakes.summarize_lake_events(events, sea_level_m=0.0)
+    assert lines == [events[0].message, events[1].message]
+
+
+def test_summarize_lake_events_passes_a_lone_near_sea_level_event_through_verbatim():
+    events = [_ev("merge", 3.0)]
+    lines = lakes.summarize_lake_events(events, sea_level_m=0.0)
+    assert lines == [events[0].message]
+
+
+def test_summarize_lake_events_collapses_a_flood_of_near_sea_level_churn():
+    events = [_ev("merge", 2.0) for _ in range(22)] + [_ev("split", -4.0) for _ in range(16)]
+    lines = lakes.summarize_lake_events(events, sea_level_m=0.0)
+    assert lines == ["38 transient coastal ponds churned near sea level this step (22 merged, 16 split)."]
+
+
+def test_summarize_lake_events_keeps_real_events_when_it_also_aggregates_coastal_churn():
+    events = [_ev("merge", -1770.0)] + [_ev("split", 5.0) for _ in range(4)]
+    lines = lakes.summarize_lake_events(events, sea_level_m=0.0)
+    assert lines[0] == events[0].message
+    assert lines[1] == "4 transient coastal ponds churned near sea level this step (0 merged, 4 split)."
+
+
+def test_summarize_lake_events_band_is_relative_to_the_current_sea_level():
+    # Same +8 m surface reads as "coastal churn" only when sea level is near it.
+    events = [_ev("merge", 108.0) for _ in range(5)]
+    assert len(lakes.summarize_lake_events(events, sea_level_m=100.0)) == 1  # aggregated
+    assert len(lakes.summarize_lake_events(events, sea_level_m=0.0)) == 5    # all "real"

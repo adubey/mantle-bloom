@@ -139,10 +139,34 @@ endorheic basins show up -- see
 ## Event log
 
 The `events` list on `GET /world/summary` (the UI's event console) logs lake
-formation/splits and other discrete events. **Known limitation:** on a long run over a
-dithering low-relief coast it floods with hundreds of near-sea-level transient
-"N-node lake formed/split at ~0 m" lines per My, which buries real basin/tectonic events.
-Dedup/severity for this is TODO.md's "Diagnostic views & debug output" item 4.
+formation/splits and other discrete events.
+
+### Lake-churn aggregation -- `lakes.summarize_lake_events`
+
+On a long run over a dithering low-relief coast the lake solver produces hundreds of
+near-sea-level transient merge/split transitions per My -- one pair per puddle per step (see
+[TODO.md](TODO.md) "Speckled low-relief coastlines"). Left raw, these flood the console and
+bury real basin/tectonic events.
+
+`lakes.step_lakes` now returns structured `lakes.LakeEvent`s
+(`kind` / `node_count` / `elevation_m` / `basin_count`, plus a `.message` property with the
+same wording as before) instead of pre-formatted strings.
+[`erosion.py`](../backend/app/erosion.py) runs a step's events through
+`lakes.summarize_lake_events(events, world.sea_level_m)` before logging:
+
+- A transition whose water surface is more than `lakes.NEAR_SEA_LEVEL_EVENT_BAND_M`
+  (**15 m**) from the current sea level is a genuine basin event -- logged individually,
+  unchanged.
+- Transitions **within** that band are the coastal-pond churn. A lone one still logs
+  verbatim; **two or more in one step collapse to a single line** --
+  `"38 transient coastal ponds churned near sea level this step (22 merged, 16 split)."`
+
+So a persistent deep endorheic basin (e.g. the real ~435-node lake oscillating near
+-1770 m) stays visible in the console while the checkerboard shelf contributes at most one
+aggregate line per step. The band is measured against `world.sea_level_m`, so it tracks a
+sea-level control change. Tests:
+[`unit_tests/test_lakes.py`](../backend/unit_tests/test_lakes.py)
+(`test_summarize_lake_events_*`).
 
 ---
 
@@ -159,5 +183,8 @@ From TODO.md's "Diagnostic views & debug output" section, not yet implemented:
 3. **Stranded-basin report** -- a `/world/lakes`-style listing of endorheic basins whose
    floor is below sea level and that aren't ocean-connected: node count, floor elevation,
    centroid, persistence.
+
+(Event-log dedup for lake churn -- formerly item 4 -- landed 2026-08-31; see the
+Lake-churn aggregation section above.)
 
 See [TODO.md](TODO.md) for the full rationale on each.

@@ -243,11 +243,13 @@ class HydrologyFields:
     lake_depth: np.ndarray  # (N,) this step's final standing lake depth
     glacier_depth: np.ndarray  # (N,) this step's final accumulated ice depth
     plates_in_order: list[Plate]
-    # Human-readable lake merge/split transition messages from lakes.step_lakes, for the
-    # caller (erosion.py) to log via World.log_event -- see compute_hydrology. Defaulted
+    # This step's lake merge/split transitions from lakes.step_lakes, as structured
+    # `lakes.LakeEvent`s. erosion.py runs them through `lakes.summarize_lake_events` (which
+    # collapses the near-sea-level coastal-pond churn a dithering low-relief shelf produces)
+    # and logs the resulting lines via World.log_event -- see compute_hydrology. Defaulted
     # (rather than a required positional field) so every existing HydrologyFields call site
     # that predates lakes.py, including hand-built test fixtures, keeps working unchanged.
-    lake_events: list[str] = field(default_factory=list)
+    lake_events: list["lakes.LakeEvent"] = field(default_factory=list)
     # Cumulative silt thickness laid down under standing water, end of this step
     # (`prev_silt_depth + silt_deposited`). Monotonic, persisted on plates like channel_depth --
     # now purely an informational record (a future "sediment thickness" view): lake floors are
