@@ -52,7 +52,8 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
 # invisible in every other view (see docs/TODO.md / docs/debugging.md).
-VIEWS = ("elevation", "plates", "platesDetail", "specle", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + ("geomorph",)
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph")
+VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
