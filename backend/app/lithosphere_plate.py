@@ -23,10 +23,10 @@ from . import geometry
 from .elevation_lines import (
     ElevationLine,
     build_lines_from_lattice,
-    largest_contiguous_run,
     line_spacing_rad,
     needs_regularizing,
     regularize_line,
+    split_into_contiguous_runs,
 )
 from .noise import SphereNoise
 from .plates import (
@@ -35,6 +35,7 @@ from .plates import (
     MAX_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
     PlateWithLines,
+    _INTERIOR_SUBDUCTION_MIN_RUN,
     _contested_by_any,
     _land_noise_threshold,
     _row_median_step,
@@ -171,7 +172,7 @@ class LithospherePlate(PlateWithLines):
                 is_volcano=is_volcano,
                 volcano_active_years_remaining=volcano_remaining,
             )
-            grown_line = self._grow_or_shrink_line_for_deform(
+            grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
                 inputs.dist_to_neighbor[sl],
                 contested,
@@ -184,8 +185,7 @@ class LithospherePlate(PlateWithLines):
                 line_index,
                 neighbours,
             )
-            if len(grown_line) > 0:
-                new_lines.append(grown_line)
+            new_lines.extend(gl for gl in grown_lines if len(gl) > 0)
 
         self.set_lines(new_lines)
         self._claim_adjacent_territory(world, neighbours, spacing_rad)
@@ -215,14 +215,15 @@ class LithospherePlate(PlateWithLines):
         world: "World",  # noqa: F821
         line_index: int,
         neighbours: list,
-    ) -> ElevationLine:
-        """Same end-only grow/shrink shape as `PlateWithLines._grow_or_shrink_line_for_deform`
-        (see that method's own docstring for why growth/shrink is end-only, not interior) --
-        reimplemented rather than inherited only because `grow_end` below needs to seed fresh
-        Hc/Hm columns instead of a flat elevation target. Shrinking is generic over every
-        `ElevationLine.OPTIONAL_FIELDS` name already (Hc/Hm included, since they're threaded
-        through `OPTIONAL_FIELDS` -- see elevation_lines.py), so only growth needed a new
-        Hc/Hm-aware body."""
+    ) -> list[ElevationLine]:
+        """Same grow/shrink shape as `PlateWithLines._grow_or_shrink_line_for_deform` (see
+        that method's own docstring -- end-only growth/shrink, plus the oceanic-only
+        interior-subduction carve-out that can return a row as two contiguous
+        `ElevationLine`s) -- reimplemented rather than inherited only because `grow_end`
+        below needs to seed fresh Hc/Hm columns instead of a flat elevation target.
+        Shrinking (end and interior) is generic over every `ElevationLine.OPTIONAL_FIELDS`
+        name already (Hc/Hm included, since they're threaded through `OPTIONAL_FIELDS` --
+        see elevation_lines.py), so only growth needed a new Hc/Hm-aware body."""
         theta = line.theta.copy()
         elevation = line.elevation.copy()
         contested = contested.copy()
@@ -230,7 +231,7 @@ class LithospherePlate(PlateWithLines):
         dist = dist.copy()
         persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
         if len(theta) == 0:
-            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+            return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
 
         dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)
         n_distance_cap = max(1, int(max_distance / spacing_rad))
@@ -252,7 +253,7 @@ class LithospherePlate(PlateWithLines):
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
 
         if len(theta) == 0:
-            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+            return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
 
         if shrinkable[0]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
@@ -262,7 +263,31 @@ class LithospherePlate(PlateWithLines):
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
 
         if len(theta) == 0:
-            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+            return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
+
+        # Interior subduction: carve out each substantial mid-row `shrinkable` run the two
+        # end-shrinks can't reach, splitting the row into separate arcs -- see
+        # `PlateWithLines._grow_or_shrink_line_for_deform` for the full rationale.
+        if len(shrinkable) >= _INTERIOR_SUBDUCTION_MIN_RUN + 2 and shrinkable[1:-1].any():
+            prev_shrink = np.concatenate([[False], shrinkable[:-1]])
+            run_starts = np.nonzero(shrinkable & ~prev_shrink)[0]
+            keep = np.ones(len(theta), dtype=bool)
+            budget = max_extend_nodes
+            for start in run_starts:
+                end = start
+                while end < len(shrinkable) and shrinkable[end]:
+                    end += 1
+                if start == 0 or end >= len(shrinkable):
+                    continue
+                if end - start < _INTERIOR_SUBDUCTION_MIN_RUN or budget <= 0:
+                    continue
+                take = min(end - start, budget)
+                keep[start : start + take] = False
+                budget -= take
+            if not keep.all():
+                theta, elevation = theta[keep], elevation[keep]
+                contested, shrinkable, dist = contested[keep], shrinkable[keep], dist[keep]
+                persistent_fields = {name: values[keep] for name, values in persistent_fields.items()}
 
         hc0, hm0 = lithosphere.reference_thickness(self.crust_type)
         rho_c = self.crust_density()
@@ -309,7 +334,8 @@ class LithospherePlate(PlateWithLines):
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.insert(values, 0, fill)
 
-        return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+        result = ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+        return split_into_contiguous_runs(result, dtheta)
 
     def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
         """Same shape as `PlateWithLines._claim_adjacent_territory` -- a brand-new phi row
@@ -403,14 +429,14 @@ class LithospherePlate(PlateWithLines):
         for line in self.lines:
             world_pts = line.world_xyz(self.frame)
             side = np.sum(world_pts * cut_normal, axis=-1) > 0
-            # Largest contiguous arc per row -- see PlateWithLines.split's own docstring for
-            # why a great-circle cut can otherwise strand a row as two arcs, and why carrying
-            # that as-is makes the two daughters' envelopes overlap.
+            # One contiguous ElevationLine per arc -- see PlateWithLines.split's own docstring
+            # for why a great-circle cut can otherwise strand a row as two arcs, and why
+            # carrying that whole makes the two daughters' envelopes overlap.
             ref = _row_median_step(line)
             if np.any(side):
-                lines_a.append(largest_contiguous_run(line.masked(side), ref))
+                lines_a.extend(split_into_contiguous_runs(line.masked(side), ref))
             if np.any(~side):
-                lines_b.append(largest_contiguous_run(line.masked(~side), ref))
+                lines_b.extend(split_into_contiguous_runs(line.masked(~side), ref))
 
         if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
             return None
