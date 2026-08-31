@@ -181,7 +181,7 @@ Response echoes back the world's current values for all five:
 { "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -231,7 +231,13 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   [simulation-model.md#resources-and-soil](simulation-model.md#resources-and-soil)) are
   node-cloud-derived like elevation/plates, not climate-grid-derived -- `"resources"` overlays
   coal/oil & gas/mineral deposit richness on a muted land/ocean backdrop, `"soilQuality"` is a
-  continuous fertility heatmap (barren to rich) plus the coastline overlay. `"oceanCfdSediment"`/
+  continuous fertility heatmap (barren to rich) plus the coastline overlay. `"geomorph"` (a
+  debug view, see [debugging.md](debugging.md)) colours every node by its net elevation change
+  over the last step (`erosion.ErosionResult.net_elevation_change_m` off `World.erosion_cache`
+  -- erosion minus every deposition pathway, no tectonics) on a diverging warm/cool scale plus
+  the coastline overlay, so the per-step lumpiness of near-sea-level deposition is legible; a
+  flat neutral field before the world has been stepped (or on a freshly loaded save, which
+  doesn't persist the cache). `"oceanCfdSediment"`/
   `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
   (`/world/render` rejects them with `400`, same as any other unrecognized view name).
 - `rotation` is the map's current view orientation (see
@@ -519,6 +525,50 @@ been generated yet.
   without ever passing through a local minimum first -- an ordinary hillslope, never part of
   any basin. `basin` is `null`.
 - `"ocean"` -- the nearest node is open ocean. `basin` is `null`.
+
+## `GET /world/stranded_basins`
+
+Endorheic depressions whose floor sits below sea level and that have **no drainage path to
+the ocean at all** -- the "land-locked coastal pit" pathology from
+[TODO.md](TODO.md)'s coastal-speckle section, which the event log records but drowns in
+near-sea-level transient-pond churn. Read straight off this step's already-resolved
+depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin with no known
+spill (`lakes.Lake.max_depth is None`) whose floor is below `world.sea_level_m`. `stranded_basins`
+is `[]` before the first step (or when no basin is stranded -- the healthy case). `404` if no
+world has been generated yet. See [debugging.md](debugging.md) for how to read this and the
+matching offline dump (`python -m app.stranded_basins`).
+
+```json
+{
+  "elapsed_years": 85100000,
+  "sea_level_m": 0.0,
+  "stranded_basins": [
+    {
+      "floor_elevation_m": -1771.0,
+      "depth_below_sea_level_m": 1771.0,
+      "catchment_node_count": 435,
+      "flooded_node_count": 412,
+      "water_elevation_m": -1750.3,
+      "centroid_xyz": [0.62, 0.55, -0.21],
+      "centroid_lat_deg": -12.3,
+      "centroid_lon_deg": 45.6,
+      "floor_xyz": [0.61, 0.56, -0.22],
+      "first_seen_years": 72700000,
+      "persisted_years": 12400000,
+      "steps_seen": 124
+    }
+  ]
+}
+```
+
+- entries are sorted deepest-first (`depth_below_sea_level_m` descending).
+- `catchment_node_count` is the full geometric catchment (every node draining into the pit);
+  `flooded_node_count` is how many of those currently hold visible standing water.
+- `water_elevation_m` is the current standing-water surface, or `null` if the basin is dry.
+- `first_seen_years`/`persisted_years`/`steps_seen` come from `world.stranded_basin_tracks`,
+  a cross-step tracker `world.step_world` reconciles by centroid proximity every hydrology
+  step (at most one step stale, same tolerance as `hydrology_cache` itself). A basin new this
+  step reports `persisted_years: 0`, `steps_seen: 1`.
 
 ## `POST /world/export_hexgrid`
 

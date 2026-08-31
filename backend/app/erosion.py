@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, hydrology
+from . import climate, geometry, hydrology, lakes
 from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
 from .plates import (
     Plate,
@@ -429,7 +429,17 @@ class ErosionResult:
     river/runoff floodplain deposit, glacier till, glacier-transported moraine/outwash material,
     wind-blown resettling, beach/nearshore spreading, and marine sediment shed onto the sea
     floor by submarine and coastal erosion, all summed together (see apply_erosion's own comment
-    for how they're split and redistributed) -- not just the water-routed share alone."""
+    for how they're split and redistributed) -- not just the water-routed share alone.
+
+    `net_elevation_change_m` is this step's total geomorphic elevation delta per node
+    (post-erosion `new_elevation` minus the pre-erosion `elevation` above): erosion removed,
+    every deposition pathway added, plus the small non-conservative flatten/lake-siltation
+    terms -- but *not* tectonic deform, isostasy, or volcanism, which move elevation outside
+    this module. Signed (negative where the step net-lowered a node, positive where it
+    net-raised it). Retained on `World.erosion_cache` for the Geomorph Rate debug view
+    (`render_image._render_geomorph_view`) -- the lumpiness of near-sea-level deposition (a
+    +200 m spike on one node, ~0 on its neighbour) is invisible in every other view but is
+    the whole coastal-speckle mechanism (see docs/TODO.md)."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -438,6 +448,7 @@ class ErosionResult:
     river: np.ndarray
     weathering: np.ndarray
     sediment_deposited: np.ndarray
+    net_elevation_change_m: np.ndarray
     temperature_c: np.ndarray
     precipitation_mm: np.ndarray
 
@@ -899,7 +910,7 @@ def apply_erosion(
     # sea level without connecting to open ocean now gets the *subaerial* erosion/deposition
     # pathways (and its lake silt, folded into elevation below), not the marine ones.
     is_ocean_node = hydro.is_ocean
-    for message in hydro.lake_events:
+    for message in lakes.summarize_lake_events(hydro.lake_events, world.sea_level_m):
         world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
 
@@ -1088,6 +1099,7 @@ def apply_erosion(
         river=river,
         weathering=weathering,
         sediment_deposited=total_deposited,
+        net_elevation_change_m=new_elevation - elevation,
         temperature_c=temperature,
         precipitation_mm=precipitation_mm,
     )

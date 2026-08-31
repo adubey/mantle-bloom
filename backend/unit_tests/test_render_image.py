@@ -3,7 +3,7 @@ import io
 import numpy as np
 from PIL import Image
 from app import climate, geometry, hydrology, render_image
-from app.world import World, generate_world
+from app.world import World, generate_world, step_world
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
@@ -81,6 +81,35 @@ def test_render_png_is_decodable_at_requested_size():
         image = Image.open(io.BytesIO(png))
         assert image.format == "PNG"
         assert image.size == (320, 180)
+
+
+def test_geomorph_colors_diverge_around_zero():
+    # Neutral grey at no net change, warm where the step net-lowered a node, cool where it
+    # net-raised one -- and clamped to the end stops past the +-60 m band.
+    neutral, erosion, deposition = render_image.geomorph_colors(np.array([0.0, -50.0, 50.0]))
+    assert tuple(neutral) == (232, 232, 232)
+    assert erosion[0] > erosion[2]  # more red than blue
+    assert deposition[2] > deposition[0]  # more blue than red
+    lo, hi = render_image.geomorph_colors(np.array([-9999.0, 9999.0]))
+    assert tuple(lo) == tuple(render_image._GEOMORPH_STOP_RGB[0].astype(int))
+    assert tuple(hi) == tuple(render_image._GEOMORPH_STOP_RGB[-1].astype(int))
+
+
+def test_geomorph_view_renders_neutral_before_a_step_then_varies_after():
+    world = _world(seed=7, num_plates=8)
+    # erosion_cache is None until the first climate/erosion step -- the view falls back to a
+    # flat neutral field (plus the coastline) rather than erroring.
+    before = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "geomorph", 320, 180))).convert("RGB"))
+    assert world.erosion_cache is None
+
+    step_world(world, years=1_000_000)
+    assert world.erosion_cache is not None
+    assert world.erosion_cache.net_elevation_change_m.shape == world.erosion_cache.points.shape[:1]
+
+    after = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "geomorph", 320, 180))).convert("RGB"))
+    # A real geomorph field has erosion and deposition both -- more than one distinct color
+    # away from the background, unlike the pre-step neutral fill.
+    assert len(np.unique(after.reshape(-1, 3), axis=0)) > len(np.unique(before.reshape(-1, 3), axis=0))
 
 
 def test_combined_view_encodes_biome_ids_in_the_alpha_channel():

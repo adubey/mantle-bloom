@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, volcanism
+from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -83,6 +83,15 @@ class World:
     # directly off every plate's lines, independent of this set) still needs somewhere to
     # report a field "cooling" if that tracking comes back later. See volcanism.py.
     volcanic_field_plate_ids: set[int] = field(default_factory=set)
+    # Cross-step memory for the stranded-basin diagnostic (docs/debugging.md): one
+    # `stranded_basins.StrandedBasinTrack` per endorheic, below-sea-level, ocean-disconnected
+    # basin currently present, reconciled by centroid proximity every hydrology step (see
+    # stranded_basins.reconcile_world_tracks) so the report can say how long each pit has
+    # persisted. Same "lightweight per-key first-seen tracker" role `collision_progress` plays
+    # for plate pairs -- diagnostic only, nothing in the physics reads it back. A
+    # `default_factory` field, so an older save without it is backfilled on load (see
+    # persistence._backfill_added_fields).
+    stranded_basin_tracks: list = field(default_factory=list)
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
@@ -94,6 +103,14 @@ class World:
     # This step's flow-routing snapshot (see hydrology.py), populated by erosion.py
     # alongside climate_cache -- same reuse pattern, same one-step-stale simplification.
     hydrology_cache: hydrology.HydrologyFields | None = None
+    # Last step's erosion breakdown (see erosion.ErosionResult), retained here purely so the
+    # Geomorph Rate debug view (render_image._render_geomorph_view) can colour every node by
+    # its net elevation change this step -- geology.py still receives its own copy as a direct
+    # step_world argument (that's its only same-turn consumer; see ErosionResult's docstring).
+    # None until the first climate/erosion step runs, and left at last-good (never reset to
+    # None) if simulate_climate_biomes is later toggled off, same tolerance as the two caches
+    # above. Not persisted -- a freshly loaded save shows the neutral field until it's stepped.
+    erosion_cache: erosion.ErosionResult | None = None
     # Nearest-land spatial index backing distance_from_land_approx (below) -- reset to None
     # once per step (step_world, right where node_cloud is gathered, since land nodes' own
     # world positions and elevations can both have changed since the last build) and rebuilt
@@ -349,10 +366,15 @@ def step_world(world: World, years: float) -> None:
         world.land_kdtree_cache = None
         _advance_fluid_dynamics(world, node_cloud)
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
+        world.erosion_cache = erosion_result
     if world.simulate_plate_movement:
         for message in volcanism.apply_volcanic_activity(world, years):
             world.log_event(message)
     if erosion_result is not None:
         geology.apply_resource_formation(world, years, erosion_result)
+        # Reconcile the stranded-basin tracker against this step's freshly-rebuilt depression
+        # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
+        # actually recomputed hydrology, so persistence timers count simulated hydrology steps.
+        stranded_basins.reconcile_world_tracks(world)
 
 

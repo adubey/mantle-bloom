@@ -12,7 +12,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, geodesic, geometry, hydrology, lakes, mantle, persistence, plates, projections, render_image, stats
+from . import (
+    biomes,
+    climate,
+    coastline,
+    geodesic,
+    geometry,
+    hydrology,
+    lakes,
+    mantle,
+    persistence,
+    plates,
+    projections,
+    render_image,
+    stats,
+    stranded_basins,
+)
 from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
@@ -857,6 +872,50 @@ def lake_at(lat_deg: float, lon_deg: float) -> dict:
 
     basin = _lake_basin_summary(fields, leaf, None, rivers, is_lake=False)
     return {"kind": "basin", "basin": basin}
+
+
+@app.get("/world/stranded_basins")
+def list_stranded_basins() -> dict:
+    """Endorheic depressions whose floor sits below sea level and that have no drainage path
+    to the ocean at all -- the "land-locked coastal pit" pathology from docs/TODO.md's
+    coastal-speckle section, which the event log records but drowns in near-sea-level
+    transient-pond churn (see docs/debugging.md). Read straight off this step's already-
+    resolved depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin
+    with no known spill (`Lake.max_depth is None`) whose floor is below `world.sea_level_m`.
+    `persisted_years`/`steps_seen` come from `world.stranded_basin_tracks`, the cross-step
+    centroid-matched tracker `world.step_world` maintains (at most one step stale, same as
+    `hydrology_cache` itself). `stranded_basins` is `[]` before the first step. `404` if no
+    world has been generated yet."""
+    world = _require_world()
+    fields = world.hydrology_cache
+    if fields is None or len(fields.points) == 0:
+        return {"elapsed_years": world.elapsed_years, "sea_level_m": world.sea_level_m, "stranded_basins": []}
+    basins = stranded_basins.find_stranded_basins(
+        fields.lake_forest, fields.elevation, fields.points, fields.lake_depth, world.sea_level_m
+    )
+    stranded_basins.enrich_with_persistence(basins, world.stranded_basin_tracks, world.elapsed_years)
+    return {
+        "elapsed_years": world.elapsed_years,
+        "sea_level_m": world.sea_level_m,
+        "stranded_basins": [_stranded_basin_summary(b) for b in basins],
+    }
+
+
+def _stranded_basin_summary(basin: stranded_basins.StrandedBasin) -> dict:
+    return {
+        "floor_elevation_m": round(basin.floor_elevation_m, 1),
+        "depth_below_sea_level_m": round(basin.depth_below_sea_level_m, 1),
+        "catchment_node_count": basin.catchment_node_count,
+        "flooded_node_count": basin.flooded_node_count,
+        "water_elevation_m": None if basin.water_elevation_m is None else round(basin.water_elevation_m, 1),
+        "centroid_xyz": [round(c, _COORD_DECIMALS) for c in basin.centroid_xyz],
+        "centroid_lat_deg": basin.centroid_lat_deg,
+        "centroid_lon_deg": basin.centroid_lon_deg,
+        "floor_xyz": [round(c, _COORD_DECIMALS) for c in basin.floor_xyz],
+        "first_seen_years": basin.first_seen_years,
+        "persisted_years": basin.persisted_years,
+        "steps_seen": basin.steps_seen,
+    }
 
 
 @app.post("/world/export_hexgrid")

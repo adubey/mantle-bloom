@@ -227,6 +227,28 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
   ],
 };
 
+// render_image.py's geomorph_colors stops (_GEOMORPH_STOP_M / _GEOMORPH_STOP_RGB) -- this
+// step's net per-node elevation change in metres, a diverging scale centred on 0 (warm =
+// the step net-lowered a node, cool = it net-raised one), clamped past +-60 m/step.
+const GEOMORPH_GRADIENT: LegendGradient = {
+  min: -60,
+  max: 60,
+  stops: [
+    { value: -60, color: rgb(120, 42, 20) },
+    { value: -20, color: rgb(206, 96, 44) },
+    { value: -4, color: rgb(224, 200, 170) },
+    { value: 0, color: rgb(232, 232, 232) },
+    { value: 4, color: rgb(168, 206, 214) },
+    { value: 20, color: rgb(52, 132, 184) },
+    { value: 60, color: rgb(18, 52, 112) },
+  ],
+  ticks: [
+    { value: -60, label: "-60 m" },
+    { value: 0, label: "0" },
+    { value: 60, label: "+60 m" },
+  ],
+};
+
 // Combined mode's per-pixel biome id, carried in the render's alpha channel (see backend
 // app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 - code, where code is a
 // land biome's index in BIOME_RGB_ENTRIES + 1 (that order matches backend biomes.BIOME_NAMES,
@@ -395,6 +417,8 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },
         ],
       };
+    case "geomorph":
+      return { title: "Elevation change / step", gradient: GEOMORPH_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }
