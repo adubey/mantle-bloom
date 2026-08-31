@@ -196,8 +196,14 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 **Status:** investigated 2026-08-31 from
 `~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (seed 888151728, 851 steps /
 85.1 My, `node_density=4`, `climate_density=4`). Interim render-only mitigation **applied**
-(see "Interim mitigation" below); the real fix (a coastal planation/infill feedback) is
-still open.
+(see "Interim mitigation" below).
+
+Option 2 (coastal planation + infill feedback) **implemented 2026-08-31** -- see "What
+landed" below -- but **not yet validated** against the real density-4 checkerboard, so the
+interim render hack (option 1) is **still in place**. Remaining work: confirm the feedback
+actually collapses the node-level dither on the seed-888151728 save (or a fresh
+`node_density=4` run), tune the `PLANATION_*` / `INFILL_*` / `BARRIER_*` / `PROMINENCE_*`
+coefficients against that, then delete the render hack.
 
 **Symptom.** Around 10-13 deg N, 6-12 deg E the Elevation / Biome / Combined maps show
 isolated single-pixel islands and single-pixel ponds strung along the coast -- a
@@ -238,34 +244,61 @@ resample with no coastal cleanup is what turns a fuzzy zone into a checkerboard.
 
 Net: a marginally-submerged flat sheet is a stable fixed point that just dithers forever.
 
-**Options, in effort order.**
+**What landed (option 2 + emergent option 3), 2026-08-31.** A per-step pass in
+`erosion.apply_erosion`, all mass-conserving via `np.add.at` (no new `_flatten`-style
+term):
+
+- `_coastal_openness(points, is_ocean)` -- a "wave exposure" proxy in [0, 1]: the fraction
+  of nodes within `COASTAL_OPENNESS_RANGE_KM` (~150 km fetch scale) that are open ocean
+  (hydrology's connectivity-aware `is_ocean`, so inland-lake shores read as fully enclosed).
+  Two `cKDTree.query_ball_point(..., return_length=True)` radius counts, density-independent.
+- `coastal_planation_amount(...)` -- land within `PLANATION_BAND_M` of sea level is ground
+  down toward a wave-cut platform sitting `PLANATION_UNDERCUT_M * exposure` *below* sea
+  level (so a genuinely exposed low sheet is cut into open water, not left dithering on the
+  waterline), rate `PLANATION_RATE_M_PER_MYR * exposure * proximity * prominence`.
+- `_spread_coastal_infill(...)` -- the "shallow + sheltered sink with priority" the plan
+  called for: planed rock + `COASTAL_INFILL_MARINE_FRACTION` of the submarine/coastal pool
+  (the rest still goes to `_spread_marine_sediment`'s downhill-to-deep spread) is spread
+  onto sheltered shallow ocean, weighted by `shelter * proximity * hollow * headroom`, and
+  a sheltered sink fills to `INFILL_MARSH_CREST_M * shelter` *above* sea level -- a silted
+  embayment emerges as marsh (`biomes.classify_wetland`).
+- **Barrier islands** are emergent: a shallow sink with land within `BARRIER_LANDWARD_KM`
+  that still faces open water (`openness >= BARRIER_MIN_OPENNESS`) gets a `BARRIER_PRIORITY`
+  weight boost and a cap raised `BARRIER_CREST_M` above sea level, so a shore-parallel bar
+  breaches; the water it then encloses loses open-ocean neighbours, so next step its own
+  openness falls and the back-barrier lagoon silts up. No explicit lagoon flag, no
+  longshore-direction field.
+- **Prominence** (`PROMINENCE_REF_M` / `PROMINENCE_MAX`, from each node's height above its
+  flow-graph neighbourhood mean): waves plane protrusions and fill hollows. Only reweights
+  planation/infill; the openness field alone, at a ~150 km fetch scale, is too smooth to
+  resolve a land/ocean call at ~60 km node spacing.
+
+Tests: `unit_tests/test_erosion.py` (`_coastal_openness`, `coastal_planation_amount`,
+`_spread_coastal_infill` -- direction + exact mass conservation), and
+`stress_tests/test_world_stepping.py::test_coastal_feedback_stays_stable_over_many_steps`
+(a regression floor only -- a fast, faithful reproduction of the density-4 checkerboard for
+a stress test proved infeasible: injecting a `+-40 m` node checkerboard triggers unrelated
+elevation instability, and a sea-level jump on a density-1 world just makes a rough newborn
+coast whose transient roughening swamps the feedback's slow ~My effect).
+
+**Options considered, in effort order.**
 
 1. **Render-only cleanup (cosmetic).** A majority / morphological filter on the render's
    land-ocean field flips isolated 1-cell specks to match their surroundings. Kills the
    checkerboard in every view, zero physics risk -- but the simulation still holds a flat
    sheet balanced on the waterline, and the Plate Inspector / raw nodes still show it. This
-   is the **interim mitigation** applied now (see below).
+   is the **interim mitigation** still applied (see below).
 
-2. **Coastal planation + infill feedback (the real fix).** A per-step pass in `erosion.py`
-   over near-sea-level nodes that (a) pulls *land* nodes within a few tens of m of sea level
-   *down* toward sea level (wave-cut planation), rate scaled by wave exposure, and (b)
-   pushes *sheltered* shallow-ocean nodes *up* toward sea level, fed from the marine-sediment
-   pool submarine+coastal erosion already generate -- today that pool only runs downslope to
-   deep water, so it needs a "shallow + sheltered" sink term with priority. Mass stays
-   conserved by sourcing the infill from the existing erosion pool. Coasts then converge to
-   a clean line, embayments silt up, headlands plane down. Once this lands, delete the
-   interim render hack (option 1).
+2. **Coastal planation + infill feedback (the real fix)** -- **implemented**, see "What
+   landed" above. Once it's validated against the density-4 case and the coefficients are
+   tuned, delete the interim render hack (option 1).
 
-3. **Barrier islands (the user's framing; a flourish on top of 2).** Where a shore-parallel
-   band of near-sea-level shallow nodes has open water seaward, let longshore sediment flux
-   build a shore-parallel ridge just above sea level, then flag the water behind it as
-   low-energy (coastal erosion -> ~0, infill sink boosted -> lagoon fills to marsh / coastal
-   plain). Needs a wave-exposure / fetch field that does not exist yet (could be derived
-   from `World.distance_from_land_approx` or a neighbourhood land-fraction off the slope
-   k-d tree) plus a longshore-transport direction, so it is meaningfully more model to
-   build. Do it after option 2, if at all.
+3. **Barrier islands (the user's framing)** -- **delivered in emergent form** (see "What
+   landed"). A genuine wave-exposure / fetch field plus an explicit longshore-transport
+   direction (for real spits and drift-aligned bars, not just fetch-sheltered accretion)
+   remains an optional future refinement.
 
-**Interim mitigation (applied 2026-08-31 -- REMOVE when option 2 lands).**
+**Interim mitigation (applied 2026-08-31 -- REMOVE once option 2 is validated at density 4).**
 `render_image._despeckle_coastal_elevation` -- a render-only pass that snaps an isolated
 near-sea-level node (within `_DESPECKLE_BAND_M` of sea level, and with at least
 `_DESPECKLE_MAJORITY` of its `_DESPECKLE_NEIGHBORS` nearest near-sea-level neighbours on the
@@ -275,8 +308,10 @@ steep coast (whose land nodes climb out of the band immediately) is untouched. C
 the gathered `all_elevation` in `_render_grid_arrays` (Elevation view), `_biome_fields`
 (Biome / Combined), and `_resource_fields` (Resources / Soil Quality) before their
 nearest-node resample; never touches `world.plates`. Covered by
-`unit_tests/test_render_image.py`. Delete the function, its constants, the three call
-sites, and that test together with option 2.
+`unit_tests/test_render_image.py` (`test_despeckle_*`). Delete the function, its three
+constants, the three call sites (`_render_grid_arrays` / `_biome_fields` /
+`_resource_fields`), and those three tests + the `_latlon_patch_points` helper once the
+option-2 feedback is confirmed to clear the dither at the node level on a density-4 world.
 
 ---
 

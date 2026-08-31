@@ -1786,6 +1786,47 @@ needed no rescaling.
   `sediment_deposited` total the `ErosionResult` carries, so [Resources and soil](#resources-and-soil)'s
   shelf oil-and-gas and soil terms see it alongside every other deposition pathway.
 
+**Coastal planation + infill feedback** (`_coastal_openness` / `coastal_planation_amount` /
+`_spread_coastal_infill`, mantle-bloom-original): every source above is either purely
+subaerial or purely submarine, and none look at coastal *connectivity*, so a
+marginally-submerged flat continental shelf sitting right on the waterline is a stable fixed
+point that just dithers land↔ocean node-by-node forever (the per-node elevation noise
+exceeds the surface's own height above/below sea level). This pass makes a coherent
+coastline the stable state instead:
+
+- **Wave exposure.** `_coastal_openness` is a per-node proxy in [0, 1] -- the fraction of
+  nodes within `COASTAL_OPENNESS_RANGE_KM` (~150 km, a coarse fetch scale) that are open
+  ocean (`hydrology`'s connectivity-aware `is_ocean`, so an inland-lake or enclosed-pit
+  shore reads as fully sheltered). Two radius counts
+  (`cKDTree.query_ball_point(..., return_length=True)`), density-independent.
+- **Planation.** Land within `PLANATION_BAND_M` of sea level is ground down toward a wave-cut
+  platform sitting `PLANATION_UNDERCUT_M * exposure` *below* sea level (so a genuinely
+  wave-exposed low sheet is cut into open water rather than balanced on the waterline still
+  dithering), at `PLANATION_RATE_M_PER_MYR * exposure * proximity * prominence * dt_myr`.
+- **Infill.** The planed rock, plus `COASTAL_INFILL_MARINE_FRACTION` of that step's
+  submarine + coastal erosion (redirected from `_spread_marine_sediment`'s downhill-to-deep
+  spread, which is counterproductive in a shallow embayment), is spread by
+  `_spread_coastal_infill` onto shallow ocean within `INFILL_DEPTH_M` of sea level, weighted
+  toward the most sheltered (`shelter = 1 - openness / INFILL_SHELTER_REF`), shallowest, and
+  most hollow nodes, and toward whatever headroom each still has below its fill cap (so a
+  sink stops accreting as it fills -- no per-step overshoot, no iteration). A sheltered sink
+  caps `INFILL_MARSH_CREST_M * shelter` *above* sea level, so a silted-up embayment emerges
+  as marsh ([Biomes](#biomes)' `classify_wetland`). Exactly mass-conserving via `np.add.at`,
+  same as `_spread_marine_sediment`; a source with no sheltered-shallow sink in range keeps
+  its full amount locally.
+- **Barrier islands** are emergent, not explicitly detected: a shallow sink with land within
+  `BARRIER_LANDWARD_KM` that still faces open water (`openness >= BARRIER_MIN_OPENNESS`) gets
+  a `BARRIER_PRIORITY` weight boost and a cap raised `BARRIER_CREST_M` above sea level, so a
+  shore-parallel bar breaches; the water it then shelters loses open-ocean neighbours, so on
+  later steps its own openness falls, its `shelter` rises, and the back-barrier lagoon silts
+  up to marsh.
+- **Prominence** (`PROMINENCE_REF_M` / `PROMINENCE_MAX`, from each node's height above its
+  flow-graph neighbourhood mean) reweights planation up on protrusions and infill up in
+  hollows -- what actually collapses a pixel-scale checkerboard, since `openness` measured at
+  a ~150 km fetch scale is far too smooth to make a land/ocean call at ~60 km node spacing.
+  It only reweights; the rock a prominence-boosted node loses still flows through the
+  conservative infill pool.
+
 **Glacier flattening** (`_flatten`, mantle-bloom-original): real
 continental ice sheets grind down local relief over broad areas (the Canadian Shield and
 Fennoscandia read as glacially smoothed bedrock today, not just eroded lower) -- a genuine
