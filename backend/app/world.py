@@ -94,6 +94,14 @@ class World:
     # This step's flow-routing snapshot (see hydrology.py), populated by erosion.py
     # alongside climate_cache -- same reuse pattern, same one-step-stale simplification.
     hydrology_cache: hydrology.HydrologyFields | None = None
+    # Last step's erosion breakdown (see erosion.ErosionResult), retained here purely so the
+    # Geomorph Rate debug view (render_image._render_geomorph_view) can colour every node by
+    # its net elevation change this step -- geology.py still receives its own copy as a direct
+    # step_world argument (that's its only same-turn consumer; see ErosionResult's docstring).
+    # None until the first climate/erosion step runs, and left at last-good (never reset to
+    # None) if simulate_climate_biomes is later toggled off, same tolerance as the two caches
+    # above. Not persisted -- a freshly loaded save shows the neutral field until it's stepped.
+    erosion_cache: erosion.ErosionResult | None = None
     # Nearest-land spatial index backing distance_from_land_approx (below) -- reset to None
     # once per step (step_world, right where node_cloud is gathered, since land nodes' own
     # world positions and elevations can both have changed since the last build) and rebuilt
@@ -349,6 +357,7 @@ def step_world(world: World, years: float) -> None:
         world.land_kdtree_cache = None
         _advance_fluid_dynamics(world, node_cloud)
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
+        world.erosion_cache = erosion_result
     if world.simulate_plate_movement:
         for message in volcanism.apply_volcanic_activity(world, years):
             world.log_event(message)

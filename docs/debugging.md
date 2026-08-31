@@ -125,6 +125,31 @@ staircase plate edge -- against the actual elevation field. See
 
 ---
 
+## `geomorph` render view (erosion & deposition rate)
+
+`GET /world/render?view=geomorph` (Map View dropdown: **Debug > Erosion & Deposition**)
+colours every node by its net elevation change over the last step --
+`erosion.ErosionResult.net_elevation_change_m` (post-erosion elevation minus pre-erosion, so
+erosion minus every deposition pathway plus the small flatten/lake-siltation terms; *not*
+tectonic deform, isostasy, or volcanism), retained on `World.erosion_cache` purely for this
+view. A diverging scale: warm brown/orange where the step net-lowered a node, cool blue where
+it net-raised one, a flat neutral grey in the +-few-metre band so only the lumps stand out,
+clamped past +-60 m/step. The coastline is overlaid for orientation.
+
+What it's for: the per-step deposition in the near-sea-level band is wildly lumpy -- a
++200 m spike on one node, ~0 on its neighbour -- which is the mechanism behind the coastal
+checkerboard (see [TODO.md](TODO.md), "Speckled low-relief coastlines"), but is invisible in
+every other view. Step the world once with climate & biomes on, then switch to this view and
+look along a drowned shelf: a clean coastal plain deposits smoothly (uniform pale colour), a
+dithering one shows a salt-and-pepper mix of saturated warm and cool cells. Use it as a
+before/after for any coastal-feedback change instead of an ad-hoc script.
+
+`erosion_cache` is `None` until the first climate/erosion step (and on a freshly loaded save
+-- it isn't persisted), where the view falls back to a flat neutral field plus the coastline
+rather than erroring.
+
+---
+
 ## River & Lake Inspectors
 
 `GET /world/rivers` / `GET /world/lakes` and their map views
