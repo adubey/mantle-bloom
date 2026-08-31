@@ -253,13 +253,16 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level
 
-**Status: PARTIALLY RESOLVED.** The coastal planation + infill feedback (option 2, "What
-landed" below) cut the density-1 dither roughly in half; barrier islands (option 3) fall out
-of it in emergent form. But a fresh look at
-`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (2026-08-31, seed 888151728,
-851 steps / 85.1 My, `node_density=4`) shows the coast is **still visibly speckled** -- a
-broad checkerboard fringe along the south and east coasts of the plate-3 land mass around
-5 N / -10 E. New diagnosis below; the feedback is running but is being *swamped*.
+**Status: PARTIALLY RESOLVED (round 2).** Round 1 -- the coastal planation + infill feedback
+(option 2) -- cut the density-1 dither roughly in half; barrier islands (option 3) fall out
+of it in emergent form. A fresh density-4 look
+(`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld`, 2026-08-31, seed 888151728,
+851 steps / 85.1 My) then showed the coast **still visibly speckled** along the south/east
+coasts of the plate-3 land mass around 5 N / -10 E -- the feedback was running but *swamped*
+by lumpy river deposition (diagnosis below). Round 2 (2026-08-31, "What landed (round 2)")
+de-clumps that deposition with a distributary spread and merges planation + infill into one
+symmetric leveling pass across a band straddling sea level. Still needs a fresh density-4
+measurement pass to confirm the checkerboard is gone (see Verification in the round-2 notes).
 
 **Why it's still speckled at 85 My (measured, per 100-ky step, in an ~8x30 deg box over the
 worst stretch).** The user's hypothesis was right that this should be a coastal plain -- but
@@ -286,14 +289,72 @@ the problem is *not* a sediment shortage:
   reweight, so it ignores everything that is already a hair below the waterline (that's
   infill's job) and everything that isn't standing proud of its neighbours.
 
-**Fix direction (not yet done).** The deposition needs to be *rate-limited or diffused* in
-the near-sea-level band -- cap per-node per-step deposition at some fraction of local relief,
-or spread each routed lump across its k nearest coastal neighbours (mass-conserving) instead
-of dropping it on one node -- and planation + infill should engage as **one symmetric pass**
-across a band that straddles sea level (grind the +30 m bumps and fill the -30 m ponds
-together toward a common local datum) rather than two separately-gated passes that each miss
-half the checkerboard. The transient-lake log spam and the stranded deep basins (below) are
-both downstream symptoms of the same dithering shelf.
+**What landed (round 2), 2026-08-31.** All in `erosion.py`, all mass-conserving via
+`np.add.at`, stateless per-step (same idiom as the other `_spread_*` helpers), no new
+persistent fields:
+
+- **Distributary redirect.** In `apply_erosion`, after the beach spread: a near-sea-level
+  land node (`|elev - sea_level| <= COASTAL_LEVELING_BAND_M`, 45 m) flagged `is_depositing`
+  (the existing slow-big-river `DEPOSITION_*` test) has `DELTA_REDIRECT_FRACTION` (0.8) of the
+  lump `route_downstream` piled on it pulled back out and fed to the leveling fill spread,
+  which scatters it across the band's below-datum hollows -- the emergent distributary fan.
+  The rest stays put as the active channel bar / natural levee.
+- **`coastal_planation_amount` + `_spread_coastal_infill` -> `coastal_leveling_grind` +
+  `_spread_coastal_leveling`**, one symmetric pass over a band straddling sea level. Every
+  band node has a local target datum (`leveling_datum_m`: a single continuous function of
+  wave exposure -- `sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure + LEVELING_MARSH_CREST_M
+  * shelter`, or `sea_level + BARRIER_CREST_M` for a barrier candidate). The grind half planes
+  down every node standing above its datum (a just-submerged shoal included -- the old
+  planation gate ignored everything below sea level); the fill half silts up every node below
+  its datum, land or ocean alike (a dry interdistributary low fills as readily as sheltered
+  shallow water). `prominence` / `hollow` still reweight both at node scale.
+- The fill side is a **capped iterative water-fill**: each below-datum sink has a hard
+  per-step capacity (its metres of room to the datum, bounded by one `LEVELING_RATE` step),
+  and `LEVELING_FILL_ITERS` passes distribute each source's remaining load across its
+  still-open sinks (`LEVELING_SPREAD_NEIGHBOR_COUNT`), capping and carrying the overflow. That
+  is what makes a 200 m lump genuinely spread across the flat plain instead of piling onto the
+  single most-weighted node -- the failure mode round-1's `_spread_coastal_infill` still had.
+- The fill pool is the ground-off rock + `COASTAL_INFILL_MARINE_FRACTION` (0.5) of the
+  submarine/coastal erosion pool + the distributary redirect; the rest of the sea-side pool
+  still spreads to deep water via `_spread_marine_sediment`. `LEVELING_LOCAL_FRACTION` (0.25)
+  of a spread stays put only when the source is itself a below-datum node; a pure source
+  spreads in full, and never back onto itself; whatever no sink had room for bounces back.
+
+Renamed constants: `PLANATION_RATE_M_PER_MYR -> LEVELING_RATE_M_PER_MYR` (**250 -> 60**;
+round-1's 250 over-planed the drowned shelf), `PLANATION_EXPOSURE_REF -> LEVELING_EXPOSURE_REF`,
+`PLANATION_UNDERCUT_M -> LEVELING_PLATFORM_UNDERCUT_M`, `INFILL_MARSH_CREST_M ->
+LEVELING_MARSH_CREST_M`; `PLANATION_BAND_M` + `INFILL_DEPTH_M` collapsed into
+`COASTAL_LEVELING_BAND_M` (45 m); `COASTAL_INFILL_MARINE_FRACTION` kept 0.5. New:
+`DELTA_REDIRECT_FRACTION`, `LEVELING_LOCAL_FRACTION`, `LEVELING_MIN_OPENNESS`,
+`LEVELING_SPREAD_NEIGHBOR_COUNT`, `LEVELING_FILL_ITERS`.
+
+Tests: `unit_tests/test_erosion.py` (`leveling_datum_m`, `coastal_leveling_grind`,
+`_spread_coastal_leveling` -- direction, exact mass conservation incl. the no-sink fallback,
+and a single-lump-declumps-across-neighbours check) and the renamed stability floor
+`stress_tests/test_world_stepping.py::test_coastal_feedback_stays_stable_over_many_steps`.
+
+**Measured so far (apply_erosion-only loop, 10 steps, seeds 830054688 / 505070493 / 443034896
+-- the seed-888151728 density-4 save was not on disk and the older saves can't `step_world`,
+so this is a proxy; feedback ON vs OFF).** In the near-sea-level band:
+
+| | flip fraction | band \|dElev\|/step p90 | deposition top-10% share |
+|---|---|---|---|
+| seed 830054688 | 0.32 -> 0.25 | 37 -> 21 m | 0.35 -> 0.23 |
+| seed 505070493 | 0.36 -> 0.30 | 41 -> 25 m | 0.60 -> 0.39 |
+| seed 443034896 | 0.32 -> 0.23 | 40 -> 24 m | 0.72 -> 0.55 |
+
+Every metric improves on every save -- the deposition-concentration drop is the de-clumping
+working directly. Round-1's pass on the *same* proxy went the wrong way (flip 0.40 / 0.50,
+p90 ~73 / ~90 m) -- its 250 m/My planation rate and one-shot infill scatter both amplify
+node-scale noise here; round 2 is a clear improvement over both round 1 and no feedback.
+
+**Still to verify (round 2).** No fresh density-4 `step_world` measurement yet (needs a
+loadable density-4 save or a long from-scratch run). Re-run the 2026-08-31 investigation
+against a seed-888151728-style world (~25 `step_world` steps of 100 ky), in the ~8x30 deg
+box over 5 N / -10 E: band nodes flipping land<->ocean per step (was 315/768), deposition
+top-10% share (was 51%), per-step |dElev| p10/p90 in the band (was +-50 m). The
+transient-lake log spam and the stranded deep basins (below) are downstream symptoms of the
+same dithering shelf and should ease.
 
 **Related symptom -- event-log flooding.** ~~The world's event log is almost entirely
 "N-node lake formed/split ... at elevation ~0 m" -- hundreds of these per My.~~ **Fixed
@@ -379,7 +440,11 @@ resample with no coastal cleanup is what turns a fuzzy zone into a checkerboard.
 Net (before the fix): a marginally-submerged flat sheet is a stable fixed point that just
 dithers forever.
 
-**What landed (option 2 + emergent option 3), 2026-08-31.** A per-step pass in
+**What landed (option 2 + emergent option 3), 2026-08-31 -- round 1, superseded by round 2
+above.** `coastal_planation_amount` / `_spread_coastal_infill` / the `PLANATION_*` /
+`INFILL_DEPTH_M` / `INFILL_MARSH_CREST_M` constants named here were renamed and merged into
+the symmetric leveling pass; `_coastal_openness`, the `BARRIER_*` / `PROMINENCE_*` fields,
+and the emergent-barrier / prominence mechanics carried over unchanged. A per-step pass in
 `erosion.apply_erosion`, all mass-conserving via `np.add.at` (no new `_flatten`-style
 term):
 
