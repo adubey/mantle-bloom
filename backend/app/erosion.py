@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, hydrology
+from . import climate, geometry, hydrology, lakes
 from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
 from .plates import (
     Plate,
@@ -899,7 +899,7 @@ def apply_erosion(
     # sea level without connecting to open ocean now gets the *subaerial* erosion/deposition
     # pathways (and its lake silt, folded into elevation below), not the marine ones.
     is_ocean_node = hydro.is_ocean
-    for message in hydro.lake_events:
+    for message in lakes.summarize_lake_events(hydro.lake_events, world.sea_level_m):
         world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
 

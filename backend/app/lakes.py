@@ -112,6 +112,64 @@ SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
 # doesn't reuse to avoid the two meanings being confused).
 _OCEAN_CATCHMENT = -2
 
+# A lake merge/split transition whose water surface sits within this band of sea level is a
+# transient coastal pond on a dithering low-relief shelf (docs/TODO.md "Speckled low-relief
+# coastlines"), not a real basin event -- on a long run over a drowned coastal plain hundreds
+# of these form and split every My, one pair per puddle per step, and they bury genuine
+# (deep) basin/tectonic events in the UI's event console. `summarize_lake_events` collapses a
+# whole step's worth of them into a single aggregate line. Deliberately generous: the dither
+# is +-50 m per step around the waterline (see the TODO), but a real lake this shallow is
+# still functionally a coastal pond, so aggregating it costs nothing.
+NEAR_SEA_LEVEL_EVENT_BAND_M = 15.0
+
+
+@dataclass(frozen=True)
+class LakeEvent:
+    """One lake merge or split transition detected in `_resolve` this step. `message` is the
+    same human-readable line the code used to append directly; the structured fields exist so
+    `summarize_lake_events` can filter/aggregate the near-sea-level coastal-pond churn before
+    it reaches `World.log_event` -- see `NEAR_SEA_LEVEL_EVENT_BAND_M`. Kept as a plain value
+    object (no `World` dependency) for the same testability reason the module never calls
+    `world.log_event` itself."""
+
+    kind: str  # "merge" | "split"
+    node_count: int  # nodes in the merged body (merge) / the body that just split (split)
+    elevation_m: float  # water surface at the transition -- the shared saddle (`min_depth`)
+    basin_count: int  # basins involved: 2 for a merge, the child count for a split
+
+    @property
+    def message(self) -> str:
+        if self.kind == "merge":
+            return (
+                f"A {self.node_count}-node lake formed as two basins merged "
+                f"at elevation {self.elevation_m:.0f}m."
+            )
+        return (
+            f"A {self.node_count}-node lake split back into {self.basin_count} "
+            f"separate basins at elevation {self.elevation_m:.0f}m."
+        )
+
+
+def summarize_lake_events(events: list[LakeEvent], sea_level_m: float) -> list[str]:
+    """Turn this step's raw `LakeEvent`s into the lines to write to the event log. Genuine
+    basin events (water surface more than `NEAR_SEA_LEVEL_EVENT_BAND_M` from sea level) pass
+    through individually. Near-sea-level transients are collapsed: a lone one still passes
+    through verbatim, but two or more become a single aggregate count line so a dithering
+    coast can't flood the log. Real events are listed first, the aggregate (if any) last."""
+    near = [e for e in events if abs(e.elevation_m - sea_level_m) <= NEAR_SEA_LEVEL_EVENT_BAND_M]
+    real = [e for e in events if abs(e.elevation_m - sea_level_m) > NEAR_SEA_LEVEL_EVENT_BAND_M]
+    lines = [e.message for e in real]
+    if len(near) == 1:
+        lines.append(near[0].message)
+    elif near:
+        merged = sum(1 for e in near if e.kind == "merge")
+        split = len(near) - merged
+        lines.append(
+            f"{len(near)} transient coastal ponds churned near sea level this step "
+            f"({merged} merged, {split} split)."
+        )
+    return lines
+
 
 @dataclass
 class Lake:
@@ -419,7 +477,7 @@ def _resolve(
     is_frozen: np.ndarray,
     out_lake_depth: np.ndarray,
     out_silt_deposited: np.ndarray,
-    events: list[str],
+    events: list[LakeEvent],
 ) -> float:
     """Resolves one lake (and, for a parent, implicitly its whole subtree) into this step's
     actual water elevation, writing every member's own `out_lake_depth` exactly once, and
@@ -457,7 +515,7 @@ def _resolve(
             for child in lake.children
         ]
         if max(child_levels) >= lake.min_depth:
-            events.append(f"A {len(lake.members)}-node lake formed as two basins merged at elevation {lake.min_depth:.0f}m.")
+            events.append(LakeEvent(kind="merge", node_count=len(lake.members), elevation_m=lake.min_depth, basin_count=2))
             out_lake_depth[lake.members] = np.maximum(0.0, lake.min_depth - elevation[lake.members])
             lake.current_water_elevation = lake.min_depth
             lake.is_spilling = lake.max_depth is not None and lake.min_depth >= lake.max_depth
@@ -467,7 +525,7 @@ def _resolve(
 
     new_level = _water_balance(lake, prev_level, elevation, water_deposited, years_myr, lake_is_frozen, out_silt_deposited)
     if lake.children and new_level < lake.min_depth:
-        events.append(f"A {len(lake.members)}-node lake split back into {len(lake.children)} separate basins at elevation {lake.min_depth:.0f}m.")
+        events.append(LakeEvent(kind="split", node_count=len(lake.members), elevation_m=lake.min_depth, basin_count=len(lake.children)))
         for child in lake.children:
             out_lake_depth[child.members] = np.maximum(0.0, lake.min_depth - elevation[child.members])
             child.current_water_elevation = lake.min_depth
@@ -489,7 +547,7 @@ def step_lakes(
     water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, list[Lake], list[str]]:
+) -> tuple[np.ndarray, np.ndarray, list[Lake], list[LakeEvent]]:
     """The full per-step lake update: rebuild this step's depression hierarchy from current
     terrain (`build_lake_hierarchy`, bare `elevation` -- everything silted in through the end of
     last step is already folded into real `elevation` by erosion.py, so there's no separate
@@ -504,9 +562,10 @@ def step_lakes(
     step's fully-resolved `Lake` tree (each lake's own `current_water_elevation`/`is_spilling`
     set to its outcome this step -- informational only, e.g. for a future per-lake stats view;
     nothing in this module reads it back next step, see the module docstring for why no
-    persistent registry is needed); and `events` human-readable merge/split transition strings
-    for the caller to log (mirroring merge_split.apply_topology_changes's own pattern -- this
-    module never calls `world.log_event` directly, keeping it testable without a `World`)."""
+    persistent registry is needed); and `events` this step's `LakeEvent`s (merge/split
+    transitions -- the caller runs them through `summarize_lake_events` and logs the result,
+    mirroring merge_split.apply_topology_changes's own pattern; this module never calls
+    `world.log_event` directly, keeping it testable without a `World`)."""
     n = len(elevation)
     lake_depth = np.zeros(n)
     silt_deposited = np.zeros(n)
@@ -516,7 +575,7 @@ def step_lakes(
     forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
     years_myr = years / 1_000_000.0
 
-    events: list[str] = []
+    events: list[LakeEvent] = []
     for root in forest:
         _resolve(root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, lake_depth, silt_deposited, events)
     return lake_depth, silt_deposited, forest, events

@@ -295,13 +295,13 @@ together toward a common local datum) rather than two separately-gated passes th
 half the checkerboard. The transient-lake log spam and the stranded deep basins (below) are
 both downstream symptoms of the same dithering shelf.
 
-**Related symptom -- event-log flooding.** The world's event log is almost entirely
-"N-node lake formed/split ... at elevation ~0 m" -- hundreds of these per My, one pair per
-dithering puddle every step. `world.log_event` / `hydrology.lake_events` should either
-dedupe/aggregate near-sea-level transient lakes ("~40 coastal ponds churned this step")
-or suppress lakes whose floor is within a few metres of sea level and whose lifetime is one
-step. As-is the log is unusable for spotting real basin events (there are genuine ones
-buried in it: a persistent ~435-node lake oscillating around -1770 m).
+**Related symptom -- event-log flooding.** ~~The world's event log is almost entirely
+"N-node lake formed/split ... at elevation ~0 m" -- hundreds of these per My.~~ **Fixed
+2026-08-31** by `lakes.summarize_lake_events` (see the "Diagnostic views & debug output"
+section below): a step's near-sea-level transients collapse to one aggregate line, so real
+basin events are legible again (e.g. the genuine persistent ~435-node lake oscillating
+around -1770 m, which still logs individually). The dither this was a symptom of is still
+open (see "Fix direction" above).
 
 **Related symptom -- stranded sub-sea-level basins.** The log also shows persistent
 endorheic depressions well below sea level (a 435-node basin at ~-1770 m, another cluster at
@@ -463,6 +463,19 @@ total node count against a clean-tiling estimate (`4*pi / line_spacing_rad(node_
 `docs/debugging.md`; test `unit_tests/test_plate_diagnostics.py`. Makes the "is this save's
 geometry healthy?" check for the plate-geometry re-verify a one-liner.
 
+**Landed 2026-08-31 -- lake-churn event aggregation.** `lakes.step_lakes` now returns
+structured `lakes.LakeEvent`s (`kind` / `node_count` / `elevation_m` / `basin_count`, with a
+`.message` property carrying the old wording) instead of pre-formatted strings, and
+`erosion.py` funnels a step's events through `lakes.summarize_lake_events(events,
+world.sea_level_m)` before logging. A transition whose water surface is >
+`NEAR_SEA_LEVEL_EVENT_BAND_M` (15 m) from sea level logs individually as before; two or more
+*within* that band in one step collapse to one line ("38 transient coastal ponds churned
+near sea level this step (22 merged, 16 split)."). A lone near-sea-level event still logs
+verbatim. Persistent deep basins (the real ~435-node -1770 m lake) stay visible; the
+checkerboard shelf contributes at most one aggregate line per step. Tests:
+`test_summarize_lake_events_*` in `unit_tests/test_lakes.py`. Documented in
+`docs/debugging.md` ("Lake-churn aggregation"). This was item 4 below.
+
 **Still worth building:**
 
 1. **A speckle / coastal-dither overlay render mode.** Colour every node whose elevation is
@@ -485,10 +498,10 @@ geometry healthy?" check for the plate-geometry re-verify a one-liner.
    node count, floor elevation, centroid, how long they've persisted. The event log has this
    information today but drowned in transient-coastal-pond spam (see the coastal section).
 
-4. **Event-log dedup / severity for lake churn.** `world.log_event` should collapse the
-   hundreds of per-step "N-node lake formed/split at ~0 m" messages into one aggregate line,
-   or drop one-step lakes with a near-sea-level floor entirely, so the log is usable for
-   real basin/tectonic events again.
+4. ~~**Event-log dedup / severity for lake churn.**~~ **Landed 2026-08-31** as
+   `lakes.summarize_lake_events` -- see the "Landed" note above. Went with the aggregate-line
+   approach; "drop one-step lakes" was rejected because one-step detection needs cross-step
+   state and `lakes.py` deliberately keeps no persistent `Lake` registry.
 
 5. ~~**A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.**~~
    **Landed 2026-08-31** as `python -m app.plate_diagnostics` -- see the "Landed" note above.
