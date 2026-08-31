@@ -514,6 +514,50 @@ been generated yet.
   any basin. `basin` is `null`.
 - `"ocean"` -- the nearest node is open ocean. `basin` is `null`.
 
+## `GET /world/stranded_basins`
+
+Endorheic depressions whose floor sits below sea level and that have **no drainage path to
+the ocean at all** -- the "land-locked coastal pit" pathology from
+[TODO.md](TODO.md)'s coastal-speckle section, which the event log records but drowns in
+near-sea-level transient-pond churn. Read straight off this step's already-resolved
+depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin with no known
+spill (`lakes.Lake.max_depth is None`) whose floor is below `world.sea_level_m`. `stranded_basins`
+is `[]` before the first step (or when no basin is stranded -- the healthy case). `404` if no
+world has been generated yet. See [debugging.md](debugging.md) for how to read this and the
+matching offline dump (`python -m app.stranded_basins`).
+
+```json
+{
+  "elapsed_years": 85100000,
+  "sea_level_m": 0.0,
+  "stranded_basins": [
+    {
+      "floor_elevation_m": -1771.0,
+      "depth_below_sea_level_m": 1771.0,
+      "catchment_node_count": 435,
+      "flooded_node_count": 412,
+      "water_elevation_m": -1750.3,
+      "centroid_xyz": [0.62, 0.55, -0.21],
+      "centroid_lat_deg": -12.3,
+      "centroid_lon_deg": 45.6,
+      "floor_xyz": [0.61, 0.56, -0.22],
+      "first_seen_years": 72700000,
+      "persisted_years": 12400000,
+      "steps_seen": 124
+    }
+  ]
+}
+```
+
+- entries are sorted deepest-first (`depth_below_sea_level_m` descending).
+- `catchment_node_count` is the full geometric catchment (every node draining into the pit);
+  `flooded_node_count` is how many of those currently hold visible standing water.
+- `water_elevation_m` is the current standing-water surface, or `null` if the basin is dry.
+- `first_seen_years`/`persisted_years`/`steps_seen` come from `world.stranded_basin_tracks`,
+  a cross-step tracker `world.step_world` reconciles by centroid proximity every hydrology
+  step (at most one step stale, same tolerance as `hydrology_cache` itself). A basin new this
+  step reports `persisted_years: 0`, `steps_seen: 1`.
+
 ## `POST /world/export_hexgrid`
 
 The "File > Export Hex Grid" action: tiles the sphere into a geodesic-icosahedron
