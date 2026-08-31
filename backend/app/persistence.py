@@ -34,4 +34,17 @@ def load_world_bytes(data: bytes) -> World:
     world = pickle.loads(data)
     if not isinstance(world, World):
         raise TypeError(f"expected a World, got {type(world).__name__}")
+    _drop_derived_caches(world)
     return world
+
+
+def _drop_derived_caches(world: World) -> None:
+    """Clear every plate's lazily-rebuilt geometry cache (bounding polygon, its k-d tree,
+    the contains_batch row lookup). These are pure functions of a plate's current lines +
+    frame, so a stale one from an older app version -- e.g. a pre-keyhole `outline_world`
+    result, or a `_RowLookup` from before it grew per-arc intervals -- would otherwise be
+    trusted as-is on load. Cheap: each rebuilds on first use after this."""
+    for plate in world.plates:
+        invalidate = getattr(plate, "_invalidate_bounding_polygon", None)
+        if callable(invalidate):
+            invalidate()

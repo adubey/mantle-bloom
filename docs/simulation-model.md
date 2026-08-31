@@ -330,17 +330,28 @@ trigger (contested, not a positive closing rate) changed:
   not interpolated from anything), *unless* the growth event rolls "overstretched" (see
   below), in which case it comes back as a fresh volcano instead. If an end is contested,
   remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
-  the safety ceiling -- but never the plate's last remaining node in a line. Deliberately
-  end-only, not "remove any contested node anywhere along the line": every line is assumed
-  contiguous (see [Known simplifications](#known-simplifications)), and removing an
-  interior node would puncture a hole this representation has no way to record, since a
-  line's outline contribution is read only from its own first/last theta -- confirmed
-  directly as a real bug during development, where doing this made the "no plate's node
-  should sit inside a neighbor's polygon" check *worse*, not better, since the resulting
-  holes kept over-claiming exactly where they'd just been hollowed out. This is where mass
-  conservation lives: material is only ever created at open ends and destroyed at contested
-  ones, as literal point insertion/deletion -- there's no grid-resampling step that can lose
-  or duplicate it.
+  the safety ceiling -- but never the plate's last remaining node in a line. Growth and
+  *ordinary* shrink are end-only: each `ElevationLine` is a single contiguous arc, and
+  inserting/deleting anywhere but an end would break that. The one interior case handled is
+  **interior subduction** on an oceanic self-plate: a run of at least
+  `_INTERIOR_SUBDUCTION_MIN_RUN` contested nodes stranded in a row's *middle*, live nodes on
+  both sides (a neighbor -- typically a continental plate, whose own contested nodes never
+  subduct -- has rotated bodily over a mid-row patch faster than the end-shrink could
+  retreat). That run is carved out and the row's survivors returned as *two* separate
+  contiguous `ElevationLine`s at the same `phi`, one per arc; `PlateWithLines.outline_world`
+  and `contains_batch` both handle several lines at one `phi`, tracing the gap between the
+  arcs as a genuine hole (keyholed out of the plate's polygon, see [Known
+  simplifications](#known-simplifications)) rather than claiming it. Total interior deletion
+  per call is capped by the safety ceiling, not `D` -- those nodes were overridden over many
+  past steps, so clearing them is catch-up cleanup, not this step's own subduction. Before
+  this, an interior-only contested patch was left untouched every turn on the reasoning that
+  "the neighbor's own growth reaches this row's nearer end before long" -- which never
+  happens when the neighbor plants a lobe mid-row and then stops advancing, leaving a frozen
+  continental-over-oceanic overlap that didn't heal (seen in a real long-run world:
+  `seed 888151728` at 6.9 Myr, plates 9 and 1). This is also where mass conservation lives:
+  material is only ever created at open ends and destroyed where genuinely overridden, as
+  literal point insertion/deletion -- there's no grid-resampling step that can lose or
+  duplicate it.
 
   **A row never winds past a full revolution.** A line is a circle of plate-local latitude,
   so its theta extent physically can't exceed `2*pi`. Nothing here treats theta as periodic,
@@ -400,9 +411,13 @@ and the randomized-order design above means a plate's own "what am I entitled to
 be up to one turn stale against a neighbor not yet processed this same turn. Both mean a
 node can transiently read as inside a neighbor's polygon without the two plates' actual node
 clouds genuinely interpenetrating. Confirmed directly across many stepped turns: sampled
-overlap stays in the low-teens percent and doesn't grow -- bounded, self-correcting behavior,
-not a runaway. A stricter, exactly-zero invariant would need either a self-intersection-safe
-polygon construction or a supplementary node-cloud distance guard; not pursued for v1.
+overlap stays low single-digit percent and doesn't grow -- bounded, self-correcting behavior,
+not a runaway. (It used to sit in the low teens: the interior-subduction carve-out above
+removed the one case -- a neighbor's lobe frozen mid-row on an oceanic plate -- that stayed
+put indefinitely rather than self-correcting. Re-running `seed 888151728` from 6.9 Myr, the
+plates 9/1 envelope overlap drops from ~15% to a bounded ~2-3% on the first step and stays
+there.) A stricter, exactly-zero invariant would need either a self-intersection-safe polygon
+construction or a supplementary node-cloud distance guard; not pursued for v1.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)
@@ -2541,22 +2556,29 @@ than an oversight:
   that, and -- since `PlateWithLines.deform` now uses this same polygon to decide
   contested/open territory every turn, see [Plate motion: shift and
   deform](#boundary-evolution) -- confirmed directly to cause real over-claiming, not just a
-  cosmetic smoothing). The polygon is always in sync with the real territory (read live from
-  the same line data, never a separately-tracked, driftable copy) and self-intersection-safe
-  for the ordinary case of two adjacent rows with differing extents, but not guaranteed
-  self-intersection-safe for an arbitrarily large lateral shift between rows (e.g. heavy
-  transform shearing) -- a residual source of the bounded-but-nonzero overlap noted in [Plate
-  motion: shift and deform](#boundary-evolution).
-- **Lines are deliberately kept spatially contiguous, not just assumed to be.** A line's two
-  ends (`theta[0]`, `theta[-1]`) are its true territorial edges, and `deform()`'s own
-  shrink rule is scoped specifically to preserve this: it only ever removes a *consecutive*
-  run of contested nodes from a line's two ends, never an isolated contested node stranded in
-  the interior, even though the latter would resolve slightly faster. This was a real bug
-  found during development -- removing interior contested nodes punches a hole
-  `outline_world()` has no way to represent (it only reads each line's own first/last theta),
-  so the hole kept reading as still-claimed territory, making the overlap invariant *worse*.
-  An interior-only contested patch (rare) is left for a later turn, once the contesting
-  neighbor's own continued growth reaches this line's nearer end.
+  cosmetic smoothing). Since the split-row work below, the outline is traced as the exact
+  boundary of the union of every row's theta-interval(s) (`_plate_outline_loops`), a general
+  rectilinear-union trace that also handles a plate momentarily in two disconnected pieces,
+  or with an interior hole, without the old single-staircase's diagonal over-claiming. It's
+  still one `(n, 3)` vertex array -- holes and disjoint pieces are joined by zero-width
+  keyhole seams (`_stitch_loops`) that the winding-number test cancels through -- so every
+  `get_bounding_polygon()` consumer is unchanged. Always in sync with the real territory
+  (read live from the same line data, never a separately-tracked, driftable copy). Not
+  guaranteed self-intersection-safe for an arbitrarily large lateral shift between rows (e.g.
+  heavy transform shearing) -- a residual source of the bounded-but-nonzero overlap noted in
+  [Plate motion: shift and deform](#boundary-evolution).
+- **Each `ElevationLine` is one contiguous arc; a row may carry several of them.** A line's
+  two ends (`theta[0]`, `theta[-1]`) are its true territorial edges, and `deform()`'s
+  ordinary grow/shrink only ever touches those ends. What it *can't* fix that way is a run of
+  overridden nodes stranded in a row's interior with live nodes either side -- so `deform()`
+  carves that run out (oceanic self-plate only) and hands the row back as two separate
+  contiguous `ElevationLine`s at the same `phi`, with the gap between them a real hole in the
+  plate's territory (see [Plate motion: shift and deform](#boundary-evolution)). `outline_
+  world` / `contains_batch` / `_RowLookup` all take several lines per `phi`; `split` and
+  defragmentation likewise now keep every arc of a partition-severed row (`split_into_
+  contiguous_runs`) rather than dropping all but the largest. An earlier version instead left
+  an interior contested patch untouched, punching no hole but never resolving the overlap
+  either -- the frozen `seed 888151728` plates 9/1 case.
 - **Vegetation is a derived climate classification, not a persisted field.** Climate (see
   [Climate](#climate)) feeds erosion, deposition, hydrology, and glaciation (see
   [Erosion](#erosion), [Hydrology](#hydrology), and [Glaciation](#glaciation):

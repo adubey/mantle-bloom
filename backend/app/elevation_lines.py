@@ -582,6 +582,40 @@ def largest_contiguous_run(line: ElevationLine, ref_spacing_rad: float | None = 
     return line.masked(keep)
 
 
+def split_into_contiguous_runs(line: ElevationLine, ref_spacing_rad: float | None = None) -> list[ElevationLine]:
+    """`line` partitioned at every interior theta gap wider than `CONTIGUOUS_RUN_GAP_MULT`
+    times a reference node spacing, into a list of `ElevationLine`s each a single contiguous
+    arc (ascending theta) -- the multi-arc generalisation of `largest_contiguous_run`, which
+    is just this followed by picking the longest. An already-contiguous line (the common
+    case) comes back as a one-element `[line]`, the same object.
+
+    Used by `PlateWithLines._grow_or_shrink_line_for_deform` when an oceanic self-plate has
+    dropped a neighbour-overridden run out of a row's *interior*: the surviving nodes fall
+    into two arcs with a real gap between them, and each arc is carried as its own line so
+    the one-contiguous-arc-per-`ElevationLine` invariant every other consumer relies on still
+    holds (`outline_world` and the row-lookup fast path both handle several lines at one
+    `phi`; see their own docstrings). `ref_spacing_rad` is the caller's `dtheta` target;
+    without it the line's own median step is used (needs `len >= 3`, else returned unsplit).
+    Every persistent field rides along via `ElevationLine.masked`, no resample."""
+    if len(line) < 2:
+        return [line]
+    gaps = np.diff(line.theta)
+    if ref_spacing_rad is None:
+        if len(line) < 3:
+            return [line]
+        ref_spacing_rad = float(np.median(gaps))
+    break_after = np.nonzero(gaps > CONTIGUOUS_RUN_GAP_MULT * ref_spacing_rad)[0]
+    if len(break_after) == 0:
+        return [line]
+    bounds = [0, *(int(k) + 1 for k in break_after), len(line)]
+    runs: list[ElevationLine] = []
+    for lo, hi in zip(bounds[:-1], bounds[1:]):
+        keep = np.zeros(len(line), dtype=bool)
+        keep[lo:hi] = True
+        runs.append(line.masked(keep))
+    return runs
+
+
 def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
     if len(line) < 3:
         return False

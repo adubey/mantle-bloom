@@ -21,6 +21,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
 from . import ellipse, geometry, mantle
+from . import elevation_lines
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
     ERUPTION_ELEVATION_M,
@@ -37,10 +38,10 @@ from .elevation_lines import (
     build_lines_from_lattice,
     install_point_field_accessors,
     iter_local_lattice,
-    largest_contiguous_run,
     line_spacing_rad,
     needs_regularizing,
     regularize_line,
+    split_into_contiguous_runs,
 )
 from .lat_long_grid import LatLongGrid
 from .noise import SphereNoise
@@ -379,6 +380,14 @@ POLE_CAP_MARGIN_MULT = 4.0
 # is treated as a closed ring and never grown further (nor, in regularize_line, resampled to
 # more than one revolution).
 _ROW_FULL_REVOLUTION_SLACK = 1.0
+
+# Minimum length (nodes) of an interior `shrinkable` run for `_grow_or_shrink_line_for_deform`
+# to carve it out and split the row into separate contiguous `ElevationLine`s -- see that
+# method. Shorter transient interior contests are left for when they reach an end: a 1-2 node
+# gap wouldn't clear `elevation_lines.CONTIGUOUS_RUN_GAP_MULT` to survive as a real split, and
+# would just be refilled by the next regularize pass. Set to CONTIGUOUS_RUN_GAP_MULT so the
+# post-removal gap is always wide enough for `split_into_contiguous_runs` to actually break.
+_INTERIOR_SUBDUCTION_MIN_RUN = int(elevation_lines.CONTIGUOUS_RUN_GAP_MULT)
 
 # Growth at a line end -- ordinarily plain ridge/rift fill -- instead comes back as a fresh
 # volcano (guaranteed one immediate eruption, then the ordinary per-step eruption roll in
@@ -869,10 +878,13 @@ class Plate(abc.ABC):
 @dataclass
 class _RowLookup:
     """`PlateWithLines.contains_batch`'s cached fast-path data -- see that method's own
-    docstring for the algorithm. `phis` is every line's own `phi`, sorted ascending;
-    `low_thetas[i]`/`high_thetas[i]` are that same row's own theta[0]/theta[-1] (`outline_
-    world`'s own "low"/"high" labels, kept index-aligned with `phis` the same way). The rest
-    are all derived once here rather than per query:
+    docstring for the algorithm. `phis` is every *distinct* line phi, sorted ascending (a
+    row split into arcs by interior subduction has several lines at one phi -- see
+    `_grow_or_shrink_line_for_deform`). `low_thetas[i]`/`high_thetas[i]` are that row's
+    overall theta envelope (min arc low / max arc high), index-aligned with `phis`;
+    `interval_lo`/`interval_hi` are `(n_rows, max_arcs)` with each row's actual arc
+    intervals, absent slots padded (+inf / -inf) so they never match. The rest are derived
+    once here rather than per query:
 
     `margin_rad` -- see `_row_lookup_bulge_margin_rad`'s own docstring: a query point whose
     nearest-row interval test says "outside" isn't necessarily outside -- this bounds how
@@ -882,11 +894,14 @@ class _RowLookup:
     *and* by whichever of its own immediate row-neighbours (index - 1, index + 1) reaches
     further -- covers a query point landing just past a shelf-step boundary, whose relevant
     bulge belongs jointly to the two rows either side of that step, not to its own nearest
-    row alone."""
+    row alone. (An interior hole's rim within `margin_rad` falls back to the winding test
+    against the keyholed `get_bounding_polygon()`, same as any other near-boundary point.)"""
 
     phis: np.ndarray
     low_thetas: np.ndarray
     high_thetas: np.ndarray
+    interval_lo: np.ndarray
+    interval_hi: np.ndarray
     margin_rad: float
     phi_min_pad: float
     phi_max_pad: float
@@ -934,6 +949,189 @@ def _row_lookup_bulge_margin_rad(phis: np.ndarray, low_thetas: np.ndarray, high_
     margins.append(float(bulge(np.asarray(phis[0]), np.asarray((high_thetas[0] - low_thetas[0]) / 2.0))))
     margins.append(float(bulge(np.asarray(phis[-1]), np.asarray((high_thetas[-1] - low_thetas[-1]) / 2.0))))
     return max(margins)
+
+
+def _row_intervals(lines: list[ElevationLine]) -> list[tuple[float, list[tuple[float, float]]]]:
+    """`(phi, [(theta_lo, theta_hi), ...])` per *distinct* phi across `lines`, phi ascending
+    and each row's intervals sorted, non-overlapping. One `ElevationLine` is one interval;
+    a row split by interior subduction (see `_grow_or_shrink_line_for_deform`) contributes
+    two or more. Touching/overlapping intervals at one phi (not expected -- arcs are carved
+    with a real gap between them) are merged so downstream gap detection stays clean."""
+    by_phi: dict[float, list[tuple[float, float]]] = {}
+    for line in lines:
+        if len(line) == 0:
+            continue
+        by_phi.setdefault(line.phi, []).append((float(line.theta[0]), float(line.theta[-1])))
+    rows: list[tuple[float, list[tuple[float, float]]]] = []
+    for phi in sorted(by_phi):
+        merged: list[list[float]] = []
+        for lo, hi in sorted(by_phi[phi]):
+            if merged and lo <= merged[-1][1]:
+                merged[-1][1] = max(merged[-1][1], hi)
+            else:
+                merged.append([lo, hi])
+        rows.append((phi, [(lo, hi) for lo, hi in merged]))
+    return rows
+
+
+def _interval_complement(lo: float, hi: float, cover: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The sub-intervals of `[lo, hi]` left uncovered by any interval in `cover`."""
+    segs = [(lo, hi)]
+    for c_lo, c_hi in cover:
+        nxt: list[tuple[float, float]] = []
+        for s_lo, s_hi in segs:
+            if c_hi <= s_lo or c_lo >= s_hi:
+                nxt.append((s_lo, s_hi))
+                continue
+            if s_lo < c_lo:
+                nxt.append((s_lo, c_lo))
+            if c_hi < s_hi:
+                nxt.append((c_hi, s_hi))
+        segs = nxt
+    return segs
+
+
+def _plate_outline_loops(rows: list[tuple[float, list[tuple[float, float]]]]) -> list[list[tuple[float, float]]]:
+    """Every closed boundary loop of a plate's territory, as the exact boundary of the union
+    of its rows' theta-intervals (each row's band runs from the midpoint phi with the row
+    below to the midpoint with the row above; the two extreme rows' outer edges sit at their
+    own phi, matching the old single-interval staircase). One outer loop for a simple plate;
+    additional inner loops, wound opposite, for every hole a split row leaves between its
+    arcs (interior subduction -- see `_grow_or_shrink_line_for_deform`) or a notch a
+    partial override cuts. `_stitch_loops` joins them into the single vertex array
+    `get_bounding_polygon()` returns.
+
+    Handles the general case directly (holes, one-sided notches, disjoint pieces) rather
+    than the old "outer staircase + separately detected enclosed holes" split, which
+    mishandled a hole that stays open where an adjacent row was end-eroded instead of
+    interior-split."""
+    n = len(rows)
+    if n == 0:
+        return []
+    phis = [phi for phi, _ in rows]
+    band_lo = [phis[0], *[(phis[i - 1] + phis[i]) / 2.0 for i in range(1, n)]]
+    band_hi = [*[(phis[i] + phis[i + 1]) / 2.0 for i in range(n - 1)], phis[-1]]
+
+    # Axis-aligned boundary segments in (phi, theta): every interval's two vertical edges
+    # (full band height), plus the parts of its top/bottom edges not shared with the
+    # neighbouring row's coverage.
+    adjacency: dict[tuple[float, float], list[tuple[float, float]]] = {}
+
+    def add_segment(a: tuple[float, float], b: tuple[float, float]) -> None:
+        if a == b:
+            return
+        adjacency.setdefault(a, []).append(b)
+        adjacency.setdefault(b, []).append(a)
+
+    for i, (_phi, ivs) in enumerate(rows):
+        above = rows[i + 1][1] if i + 1 < n else []
+        below = rows[i - 1][1] if i - 1 >= 0 else []
+        lo_b, hi_b = band_lo[i], band_hi[i]
+        for lo, hi in ivs:
+            add_segment((lo_b, lo), (hi_b, lo))
+            add_segment((lo_b, hi), (hi_b, hi))
+            for s_lo, s_hi in _interval_complement(lo, hi, above):
+                add_segment((hi_b, s_lo), (hi_b, s_hi))
+            for s_lo, s_hi in _interval_complement(lo, hi, below):
+                add_segment((lo_b, s_lo), (lo_b, s_hi))
+
+    # Walk the segment graph into closed loops, keeping the covered region on the left at
+    # every vertex (turn as far counterclockwise as the available edges allow). That orients
+    # the outer boundary CCW and every hole CW -- opposite windings, so a keyhole stitch
+    # cancels to zero inside the holes.
+    used: set[tuple[tuple[float, float], tuple[float, float]]] = set()
+
+    def turn_key(incoming: tuple[float, float], outgoing: tuple[float, float]) -> int:
+        # incoming/outgoing are unit cardinal directions (dx, dy). Rank: left(0) < straight(1)
+        # < right(2) < back(3), by the cross product and dot of the two headings.
+        ix, iy = incoming
+        ox, oy = outgoing
+        cross = ix * oy - iy * ox
+        dot = ix * ox + iy * oy
+        if cross > 0:
+            return 0
+        if cross == 0 and dot > 0:
+            return 1
+        if cross < 0:
+            return 2
+        return 3
+
+    def direction(a: tuple[float, float], b: tuple[float, float]) -> tuple[float, float]:
+        dx, dy = b[1] - a[1], b[0] - a[0]  # (theta, phi) as (x, y)
+        if abs(dx) >= abs(dy):
+            return (1.0 if dx > 0 else -1.0, 0.0)
+        return (0.0, 1.0 if dy > 0 else -1.0)
+
+    def covered(phi_t: float, theta_t: float) -> bool:
+        for i in range(n):
+            if band_lo[i] <= phi_t <= band_hi[i]:
+                if any(lo <= theta_t <= hi for lo, hi in rows[i][1]):
+                    return True
+        return False
+
+    def left_is_covered(loop: list[tuple[float, float]]) -> bool:
+        # Test a point a hair to the left of the loop's first edge -- keep the loop only if
+        # covered territory sits on its left (drops the unbounded face and each hole's own
+        # interior face, keeps the outer boundary and every real hole rim).
+        (ay, ax), (by, bx) = loop[0], loop[1]
+        dx, dy = bx - ax, by - ay
+        norm = (dx * dx + dy * dy) ** 0.5
+        if norm == 0:
+            return False
+        eps = 1e-6
+        theta_t = (ax + bx) / 2.0 + eps * (-dy / norm)
+        phi_t = (ay + by) / 2.0 + eps * (dx / norm)
+        return covered(phi_t, theta_t)
+
+    loops: list[list[tuple[float, float]]] = []
+    for start, neighbours in adjacency.items():
+        for first in neighbours:
+            if (start, first) in used:
+                continue
+            loop = [start]
+            prev, cur = start, first
+            while True:
+                used.add((prev, cur))
+                loop.append(cur)
+                incoming = direction(prev, cur)
+                candidates = [nb for nb in adjacency[cur] if (cur, nb) not in used and nb != prev]
+                if not candidates and (cur, prev) not in used and prev != cur:
+                    candidates = [prev]  # dead end -- retrace the spur
+                if not candidates:
+                    break
+                nxt = min(candidates, key=lambda nb: turn_key(incoming, direction(cur, nb)))
+                prev, cur = cur, nxt
+                if cur == start:
+                    used.add((prev, cur))
+                    break
+                if (prev, cur) in used:
+                    break
+            if len(loop) >= 4 and left_is_covered(loop):
+                loops.append(loop)
+    return loops
+
+
+def _stitch_loops(loops: list[list[tuple[float, float]]]) -> list[tuple[float, float]]:
+    """Join several boundary loops into one vertex loop via zero-width keyhole seams -- a
+    degenerate out-and-back seam edge pair contributes zero winding everywhere off itself,
+    so the winding-number test still reads covered territory as inside and holes as outside,
+    and every `get_bounding_polygon()` consumer keeps working on one plain array. The seam
+    for each loop runs between its nearest vertex and the nearest vertex of the loop stitched
+    so far."""
+    if not loops:
+        return []
+    combined = list(loops[0])
+    for extra in loops[1:]:
+        best = None
+        for i, (pi, ti) in enumerate(combined):
+            for j, (pj, tj) in enumerate(extra):
+                d = (pi - pj) ** 2 + (ti - tj) ** 2
+                if best is None or d < best[0]:
+                    best = (d, i, j)
+        _, i, j = best
+        rotated = extra[j:] + extra[:j]
+        combined = combined[: i + 1] + rotated + [extra[j], combined[i]] + combined[i + 1 :]
+    return combined
 
 
 class PlateWithLines(Plate):
@@ -994,53 +1192,31 @@ class PlateWithLines(Plate):
         self._row_lookup_cache = None
 
     def outline_world(self) -> np.ndarray:
-        """Derived directly from each line's current two endpoints -- the actual edge
-        deform() maintains -- rather than a separately-tracked polygon that could drift out
-        of sync with the real data. Traces a *staircase*, not a smooth scanline: the
-        high-theta edge across lines in ascending phi, then the low-theta edge back down,
-        stepping at the midpoint phi between each pair of adjacent rows so the loop only
-        ever claims territory out to whichever row's own actual extent applies on its own
-        side of that midpoint.
+        """Derived directly from each line's current endpoints -- the actual edge deform()
+        maintains -- rather than a separately-tracked polygon that could drift out of sync
+        with the real data. The exact boundary of the union of every row's theta-interval(s),
+        each row's band spanning the midpoint phi to the row below and above (a straight
+        diagonal between two rows with very different theta bounds would cut across the
+        concave notch between them, silently claiming sphere area this plate doesn't cover --
+        fatal once `deform()` uses this same outline for its own contested/open
+        classification; see `PlateWithLines.deform` and the no-node-inside-a-neighbour's-
+        polygon invariant test in `unit_tests/test_plates.py` / `stress_tests/
+        test_world_stepping.py`).
 
-        A straight diagonal between two rows whose theta extents differ a lot (an ordinary
-        outcome once a plate's shape is no longer convex-ish -- deform() growing/shrinking
-        each row's ends independently means adjacent rows routinely end up at quite
-        different theta bounds) cuts across whatever concave notch sits between them,
-        silently claiming sphere area this plate doesn't actually cover. That's fatal once
-        `deform()` uses this same outline for its own contested/open classification --
-        `PlateWithLines.deform`'s own docstring, and the invariant test in
-        `unit_tests/test_plates.py`/`stress_tests/test_world_stepping.py` checking that no
-        plate's own node ever falls inside a different plate's `get_bounding_polygon()`,
-        both depend on this being a tight fit, not just a "reasonable envelope." Confirmed
-        directly: the smooth-diagonal version this replaced put real nodes 50-120km inside a
-        neighbor's polygon -- well past that neighbor's own actual nearest node -- purely
-        from this concave-notch-filling effect, not genuine territory overlap."""
+        A row split into two arcs by interior subduction (see
+        `_grow_or_shrink_line_for_deform`), or by a split/defragment partition, contributes
+        both intervals; the gap between them is a genuine hole in this plate's territory
+        (a neighbour's lobe that punched through the middle of it, or a stranded sibling),
+        traced as its own loop wound opposite to the outer boundary and stitched in via a
+        zero-width keyhole seam (`_plate_outline_loops` / `_stitch_loops`) so the winding-
+        number test reads it as outside the plate. Still one plain `(n, 3)` array, so every
+        `get_bounding_polygon()` consumer is unchanged."""
         lines_with_nodes = [line for line in self._lines if len(line) > 0]
         if not lines_with_nodes:
             return np.zeros((0, 3))
-        ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
-        phis = [line.phi for line in ordered]
-        high_thetas = [line[-1].get_theta() for line in ordered]
-        low_thetas = [line[0].get_theta() for line in ordered]
-        n = len(ordered)
-
-        high_side: list[tuple[float, float]] = []
-        for i in range(n):
-            high_side.append((phis[i], high_thetas[i]))
-            if i + 1 < n and high_thetas[i] != high_thetas[i + 1]:
-                boundary_phi = (phis[i] + phis[i + 1]) / 2.0
-                high_side.append((boundary_phi, high_thetas[i]))
-                high_side.append((boundary_phi, high_thetas[i + 1]))
-
-        low_side: list[tuple[float, float]] = []
-        for i in range(n - 1, -1, -1):
-            low_side.append((phis[i], low_thetas[i]))
-            if i - 1 >= 0 and low_thetas[i] != low_thetas[i - 1]:
-                boundary_phi = (phis[i] + phis[i - 1]) / 2.0
-                low_side.append((boundary_phi, low_thetas[i]))
-                low_side.append((boundary_phi, low_thetas[i - 1]))
-
-        loop = high_side + low_side
+        loop = _stitch_loops(_plate_outline_loops(_row_intervals(lines_with_nodes)))
+        if len(loop) < 3:
+            return np.zeros((0, 3))
         phi_arr = np.array([p for p, _ in loop])
         theta_arr = np.array([t for _, t in loop])
         loop_local = geometry.local_xyz(phi_arr, theta_arr)
@@ -1054,10 +1230,17 @@ class PlateWithLines(Plate):
         lines_with_nodes = [line for line in self._lines if len(line) > 0]
         if not lines_with_nodes:
             return None
-        ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
-        phis = np.array([line.phi for line in ordered])
-        low_thetas = np.array([line.theta[0] for line in ordered])
-        high_thetas = np.array([line.theta[-1] for line in ordered])
+        rows = _row_intervals(lines_with_nodes)
+        phis = np.array([phi for phi, _ in rows])
+        low_thetas = np.array([ivs[0][0] for _, ivs in rows])
+        high_thetas = np.array([ivs[-1][1] for _, ivs in rows])
+        max_arcs = max(len(ivs) for _, ivs in rows)
+        interval_lo = np.full((len(rows), max_arcs), np.inf)
+        interval_hi = np.full((len(rows), max_arcs), -np.inf)
+        for i, (_, ivs) in enumerate(rows):
+            for k, (lo, hi) in enumerate(ivs):
+                interval_lo[i, k] = lo
+                interval_hi[i, k] = hi
 
         margin_rad = _row_lookup_bulge_margin_rad(phis, low_thetas, high_thetas)
         if len(phis) >= 2:
@@ -1075,6 +1258,8 @@ class PlateWithLines(Plate):
             phis=phis,
             low_thetas=low_thetas,
             high_thetas=high_thetas,
+            interval_lo=interval_lo,
+            interval_hi=interval_hi,
             margin_rad=margin_rad,
             phi_min_pad=float(phis[0] - margin_rad),
             phi_max_pad=float(phis[-1] + margin_rad),
@@ -1113,7 +1298,7 @@ class PlateWithLines(Plate):
         row_lookup = self._get_row_lookup()
         if row_lookup is None:
             return np.zeros(n, dtype=bool)
-        phis, low_thetas, high_thetas = row_lookup.phis, row_lookup.low_thetas, row_lookup.high_thetas
+        phis = row_lookup.phis
 
         local_xyz = geometry.to_local(self._frame, points_xyz)
         phi_q, theta_q = geometry.xyz_to_latlon(local_xyz)
@@ -1123,12 +1308,14 @@ class PlateWithLines(Plate):
         nearer_to_lo = np.abs(phi_q - phis[idx_lo]) <= np.abs(phis[idx_hi] - phi_q)
         nearest = np.where(nearer_to_lo, idx_lo, idx_hi)
 
-        idealized_inside = (
-            (phi_q >= phis[0])
-            & (phi_q <= phis[-1])
-            & (theta_q >= low_thetas[nearest])
-            & (theta_q <= high_thetas[nearest])
-        )
+        # theta_q inside *any* of the nearest row's arc intervals (usually one; two+ when a
+        # row was split by interior subduction). Absent arc slots are +inf/-inf padded, so
+        # they never match -- a point in the gap between two arcs reads as outside here and,
+        # if beyond the bulge margin, as definitely outside below.
+        lo_sel = row_lookup.interval_lo[nearest]
+        hi_sel = row_lookup.interval_hi[nearest]
+        in_any_interval = np.any((theta_q[:, None] >= lo_sel) & (theta_q[:, None] <= hi_sel), axis=1)
+        idealized_inside = (phi_q >= phis[0]) & (phi_q <= phis[-1]) & in_any_interval
         maybe_boundary = (
             ~idealized_inside
             & (phi_q >= row_lookup.phi_min_pad)
@@ -1261,12 +1448,13 @@ class PlateWithLines(Plate):
 
         A great circle can cut a row (one small circle of local latitude) so that one side's
         nodes land in the row's *interior*, leaving the other side holding two arcs with a
-        gap between them. That row can't be carried as-is -- `outline_world` / `contains_batch`
+        gap between them. That row can't be carried whole -- `outline_world` / `contains_batch`
         would then have this daughter's envelope claim the gap, i.e. the sibling's own
         territory (the historical "split produces overlapping siblings" degradation). Each
-        masked row is reduced to its largest contiguous arc (`largest_contiguous_run`); the
-        dropped sliver, a thin strip along the cut, is re-grown by ordinary gap-fill/deform if
-        it is really this daughter's ground."""
+        masked row is split into its separate contiguous arcs (`split_into_contiguous_runs`),
+        each carried as its own `ElevationLine` -- the gap between them is keyholed out of
+        the daughter's polygon, same as an interior-subduction hole (see
+        `_grow_or_shrink_line_for_deform`)."""
         lines_a: list[ElevationLine] = []
         lines_b: list[ElevationLine] = []
         for line in self._lines:
@@ -1274,9 +1462,9 @@ class PlateWithLines(Plate):
             side = np.sum(world_pts * cut_normal, axis=-1) > 0
             ref = _row_median_step(line)
             if np.any(side):
-                lines_a.append(largest_contiguous_run(line.masked(side), ref))
+                lines_a.extend(split_into_contiguous_runs(line.masked(side), ref))
             if np.any(~side):
-                lines_b.append(largest_contiguous_run(line.masked(~side), ref))
+                lines_b.extend(split_into_contiguous_runs(line.masked(~side), ref))
 
         if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
             return None
@@ -1302,11 +1490,10 @@ class PlateWithLines(Plate):
                 offset += n
                 if np.any(sub):
                     # A single connected component can still wrap a row into two arcs (a
-                    # U-shape closed through other rows) -- keep each row a single contiguous
-                    # arc so this fragment's envelope can't claim the gap. See
-                    # `largest_contiguous_run`; anything it drops is reported as shed nodes by
-                    # `defragment_plates`.
-                    lines.append(largest_contiguous_run(line.masked(sub), _row_median_step(line)))
+                    # U-shape closed through other rows) -- carry each arc as its own
+                    # contiguous `ElevationLine` so the fragment's envelope keyholes the gap
+                    # out rather than claiming it (see `split_into_contiguous_runs`).
+                    lines.extend(split_into_contiguous_runs(line.masked(sub), _row_median_step(line)))
             if not lines:
                 continue
             plates.append(
@@ -1479,7 +1666,7 @@ class PlateWithLines(Plate):
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
             updated_line = line.replace(elevation=elevation, divergent_age_myr=new_age)
-            grown_line = self._grow_or_shrink_line_for_deform(
+            grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
                 dist,
                 contested,
@@ -1492,8 +1679,7 @@ class PlateWithLines(Plate):
                 line_index,
                 neighbours,
             )
-            if len(grown_line) > 0:
-                new_lines.append(grown_line)
+            new_lines.extend(gl for gl in grown_lines if len(gl) > 0)
 
         self.set_lines(new_lines)
         self._claim_adjacent_territory(world, neighbours, spacing_rad)
@@ -1529,7 +1715,7 @@ class PlateWithLines(Plate):
         world: "World",
         line_index: int,
         neighbours: list["Plate"],
-    ) -> ElevationLine:
+    ) -> list[ElevationLine]:
         """Shrink `line`'s two ends by however many *consecutive* `shrinkable` nodes sit
         there (a subset of `contested` -- see `deform()`'s own comment: only genuine
         subduction deletes territory, so this is all-False for a continental self-plate),
@@ -1538,24 +1724,27 @@ class PlateWithLines(Plate):
         must not also grow into territory a neighbour still occupies) and far from any
         neighbour -- the `deform()` counterpart to the old `boundary._grow_or_shrink_line`.
 
-        Deliberately end-only, not "remove any contested node anywhere in the line": every
-        other piece of this codebase that touches an `ElevationLine` (outline_world's own
-        polygon trace, `elevation_lines.regularize_line`'s endpoint-preserving resample, the
-        old `boundary._grow_or_shrink_line` this replaces) assumes a line's node set is one
-        *contiguous* span of territory at its own phi -- removing a node stranded in the
-        middle would puncture a hole outline_world() has no way to represent (it only reads
-        each line's own first/last theta), so the hole would keep reading as still-claimed
-        territory. Confirmed directly as a real bug during development: removing interior
-        contested nodes made the "no plate's node sits inside a neighbour's polygon"
-        invariant *worse*, not better, since the resulting holes over-claimed exactly where
-        they'd just been hollowed out. An interior-only contested patch (rare -- it needs a
-        neighbour's own growth to have reached past this row's two ends without yet
-        registering at either) is left alone for this call; the neighbour's own continued
-        growth in subsequent turns reaches this row's nearer end before long, at which point
-        the ordinary end-shrink below picks it up.
+        Grow/shrink is end-only, but for an oceanic self-plate one interior case is also
+        handled: a substantial run of `shrinkable` nodes stranded in the row's *middle*,
+        with live nodes on both sides (a neighbour has rotated bodily over a patch of this
+        row faster than the end-shrink could retreat -- see
+        docs/simulation-model.md#known-simplifications). Such a run is carved out and the
+        surviving nodes returned as two separate contiguous `ElevationLine`s
+        (`split_into_contiguous_runs`), one per arc, each with a real end at the resulting
+        hole that ordinary end-shrink keeps retreating on later steps. Several lines at one
+        `phi` is fine: `outline_world` and the row-lookup fast path both handle it (see
+        their docstrings), keyholing the gap out of the plate's own polygon instead of
+        claiming it. This was previously left alone every turn -- "the neighbour's own
+        growth reaches this row's nearer end before long" -- which fails when the neighbour
+        plants a lobe in the row's interior and then stops advancing (a frozen
+        continental-over-oceanic overlap that never healed).
 
-        Node-count caps: `max_distance` (`D`, this step's actual max node displacement -- see
-        `Plate.shift`) and the hard safety ceiling `max_extend_nodes`."""
+        Returns a list of 1+ `ElevationLine`s -- one for the ordinary (still-contiguous)
+        case, more when an interior run was carved out. Node-count caps: `max_distance`
+        (`D`, this step's actual max node displacement -- see `Plate.shift`) and the hard
+        safety ceiling `max_extend_nodes` (also the cap on total interior deletion, since
+        those nodes were overridden over many past steps, not this one -- catch-up cleanup,
+        not this turn's subduction, so D doesn't bound it)."""
         theta = line.theta.copy()
         elevation = line.elevation.copy()
         contested = contested.copy()
@@ -1563,7 +1752,7 @@ class PlateWithLines(Plate):
         dist = dist.copy()
         persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
         if len(theta) == 0:
-            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+            return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
 
         dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)
         target = _divergent_target(self.crust_type)
@@ -1601,7 +1790,7 @@ class PlateWithLines(Plate):
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
 
         if len(theta) == 0:
-            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+            return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
 
         if shrinkable[0]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
@@ -1614,7 +1803,36 @@ class PlateWithLines(Plate):
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
 
         if len(theta) == 0:
-            return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+            return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
+
+        # Interior subduction: a run of `shrinkable` nodes stranded mid-row that the two
+        # end-shrinks above structurally can't reach (live nodes on both sides). Carve out
+        # each run of at least `_INTERIOR_SUBDUCTION_MIN_RUN` nodes; the survivors fall into
+        # separate arcs at `split_into_contiguous_runs` below. `shrinkable` is empty for a
+        # continental self-plate, so this is oceanic-only, same as the end-shrinks.
+        if len(shrinkable) >= _INTERIOR_SUBDUCTION_MIN_RUN + 2 and shrinkable[1:-1].any():
+            prev_shrink = np.concatenate([[False], shrinkable[:-1]])
+            run_starts = np.nonzero(shrinkable & ~prev_shrink)[0]
+            keep = np.ones(len(theta), dtype=bool)
+            budget = max_extend_nodes
+            for start in run_starts:
+                end = start
+                while end < len(shrinkable) and shrinkable[end]:
+                    end += 1
+                if start == 0 or end >= len(shrinkable):
+                    continue  # touches an end -- the end-shrink above already owns it
+                if end - start < _INTERIOR_SUBDUCTION_MIN_RUN or budget <= 0:
+                    continue
+                take = min(end - start, budget)
+                keep[start : start + take] = False
+                budget -= take
+            if not keep.all():
+                theta = theta[keep]
+                elevation = elevation[keep]
+                contested = contested[keep]
+                shrinkable = shrinkable[keep]
+                dist = dist[keep]
+                persistent_fields = {name: values[keep] for name, values in persistent_fields.items()}
 
         def grow_end(n_new: int, end_tag: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
             rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, line_index, end_tag))
@@ -1668,7 +1886,10 @@ class PlateWithLines(Plate):
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.insert(values, 0, fill)
 
-        return ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+        result = ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
+        # One element for the ordinary contiguous case; two+ when an interior run was carved
+        # out above and the survivors span a real gap now.
+        return split_into_contiguous_runs(result, dtheta)
 
     def _claim_adjacent_territory(self, world: "World", neighbours: list["Plate"], spacing_rad: float) -> None:
         """Claim a whole new phi row just beyond this plate's current phi extremes, where

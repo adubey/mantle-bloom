@@ -694,3 +694,101 @@ def test_split_yields_disjoint_daughters_when_a_cut_strands_a_row():
     pb, _ = b.all_points_and_elevation()
     assert not np.any(a.contains_batch(pb))
     assert not np.any(b.contains_batch(pa))
+
+
+# -- interior subduction: an overridden mid-row patch is carved out and keyholed -----------
+#
+# deform()'s end-only shrink can't reach a run of overridden nodes stranded in the *middle*
+# of an oceanic row (live nodes on both sides). _grow_or_shrink_line_for_deform carves it
+# out and returns the row as two contiguous ElevationLines; outline_world / contains_batch
+# then keyhole the gap out instead of claiming the neighbour's lobe. Fixes the frozen
+# continental-over-oceanic overlap in the seed-888151728 world.
+
+
+def _oceanic_slab(plate_id: int, frame: np.ndarray, half_theta: float = 0.6) -> PlateWithLines:
+    spacing = line_spacing_rad(1.0)
+    lines = []
+    for r in range(-18, 19):
+        phi = r * spacing
+        dtheta = spacing / max(np.cos(phi), 1e-3)
+        theta = np.arange(-half_theta, half_theta, dtheta)
+        if len(theta) < 3:
+            continue
+        lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.full(len(theta), -3800.0)))
+    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="oceanic", lines=lines)
+
+
+def test_deform_carves_interior_override_into_two_arcs_and_keyholes_it():
+    from app.plates import _row_intervals
+    from app.world import World
+
+    # A continental plate whose territory sits squarely over the middle of an oceanic plate's
+    # rows -- a neighbour's lobe planted in the interior, the frozen-overlap geometry.
+    ocean = _oceanic_slab(1, np.eye(3))
+    cont_frame = geometry.rotation_matrix(np.array([0.0, 1.0, 0.0]), 0.25)
+    cont = _oceanic_slab(2, cont_frame, half_theta=0.18)
+    cont._crust_type = "continental"
+    world = World(seed=0, plates=[ocean, cont], mantle_centers=[], node_density=1.0)
+
+    assert all(len(ivs) == 1 for _phi, ivs in _row_intervals(list(ocean.lines)))
+    cont_pts, _ = cont.all_points_and_elevation()
+    assert ocean.contains_batch(cont_pts).mean() > 0.5  # lobe starts squarely inside
+
+    for _ in range(3):
+        ocean.deform(world, [cont], years=1_000_000, max_distance=5 * line_spacing_rad(1.0))
+
+    rows = _row_intervals([ln for ln in ocean.lines if len(ln) > 0])
+    split_rows = [ivs for _phi, ivs in rows if len(ivs) > 1]
+    assert split_rows, "expected some oceanic rows carved into two arcs"
+    # every ElevationLine stays a single contiguous arc
+    for line in ocean.lines:
+        if len(line) >= 2:
+            dtheta = line_spacing_rad(1.0) / max(np.cos(line.phi), 1e-3)
+            assert np.all(np.diff(line.theta) < 4.0 * dtheta)
+
+    # the continental lobe's own nodes are almost entirely out of the oceanic plate's
+    # polygon now -- the frozen overlap is gone.
+    assert ocean.contains_batch(cont_pts).mean() < 0.05
+
+
+def test_outline_world_still_one_contiguous_array_and_excludes_the_hole():
+    from app.plates import _plate_outline_loops, _row_intervals
+
+    ocean = _oceanic_slab(1, np.eye(3))
+    lines = list(ocean.lines)
+    spacing = line_spacing_rad(1.0)
+    holed = []
+    for i, ln in enumerate(lines):
+        if 12 <= i <= 24 and len(ln.theta) > 24:
+            keep = np.ones(len(ln.theta), dtype=bool)
+            mid = len(ln.theta) // 2
+            keep[mid - 4 : mid + 4] = False
+            from app.elevation_lines import split_into_contiguous_runs
+
+            holed.extend(split_into_contiguous_runs(ln.masked(keep), spacing / max(np.cos(ln.phi), 1e-3)))
+        else:
+            holed.append(ln)
+    ocean.set_lines(holed)
+
+    rows = _row_intervals([ln for ln in ocean.lines if len(ln) > 0])
+    loops = _plate_outline_loops(rows)
+    assert len(loops) == 2  # outer boundary + one hole
+
+    poly = ocean.get_bounding_polygon()
+    assert poly.ndim == 2 and poly.shape[1] == 3
+    assert np.allclose(np.linalg.norm(poly, axis=-1), 1.0, atol=1e-9)
+
+    # a point in the hole is outside the polygon and outside contains_batch;
+    # a point in a still-covered row is inside.
+    hole_phi = ocean.lines[len(ocean.lines) // 2].phi
+    gap = [ivs for phi, ivs in rows if abs(phi - hole_phi) < 1e-9][0]
+    hole_theta = (gap[0][1] + gap[1][0]) / 2.0
+    hole_pt = geometry.to_world(ocean.frame, geometry.local_xyz(np.array([hole_phi]), np.array([hole_theta])))
+    assert not geometry.points_in_spherical_polygon(hole_pt, poly)[0]
+    assert not ocean.contains_batch(hole_pt)[0]
+
+    edge_row = ocean.lines[0]
+    solid_pt = geometry.to_world(
+        ocean.frame, geometry.local_xyz(np.array([edge_row.phi]), np.array([float(np.median(edge_row.theta))]))
+    )
+    assert ocean.contains_batch(solid_pt)[0]
