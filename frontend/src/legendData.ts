@@ -185,6 +185,30 @@ const COAL_COLOR = rgb(28, 24, 22);
 const OIL_GAS_COLOR = rgb(92, 56, 14);
 const MINERAL_COLOR = rgb(175, 62, 205);
 
+// Speckle / coastal-dither debug view -- see backend app/render_image.py's SPECKLE_* constants
+// (_SPECKLE_STOP_F / _SPECKLE_STOP_RGB, SPECKLE_*_BACKDROP_RGB, SPECKLE_FLAG_RGB). The
+// gradient runs over the coastal-dither fraction (share of a near-sea-level node's nearest
+// neighbours on the opposite side of the waterline), 0 = clean coast, ~0.5 = checkerboard.
+const SPECKLE_LAND_COLOR = rgb(54, 58, 46);
+const SPECKLE_OCEAN_COLOR = rgb(24, 34, 52);
+const SPECKLE_FLAG_COLOR = rgb(255, 0, 200);
+const SPECKLE_GRADIENT: LegendGradient = {
+  min: 0,
+  max: 1,
+  stops: [
+    { value: 0.0, color: rgb(60, 130, 90) },
+    { value: 0.2, color: rgb(150, 180, 70) },
+    { value: 0.35, color: rgb(240, 205, 70) },
+    { value: 0.5, color: rgb(240, 140, 50) },
+    { value: 1.0, color: rgb(230, 50, 50) },
+  ],
+  ticks: [
+    { value: 0, label: "Clean" },
+    { value: 0.5, label: "Dither" },
+    { value: 1, label: "Isolated" },
+  ],
+};
+
 // geology.py's own soil_fertility_colors stops (_SOIL_STOP_V / _SOIL_STOP_RGB) -- fertility
 // is already a [0, 1] score (sqrt(mineral_content * organic_content)), not a physical unit.
 const SOIL_QUALITY_GRADIENT: LegendGradient = {
@@ -361,6 +385,16 @@ export function legendFor(view: MapView): LegendSpec | null {
       };
     case "soilQuality":
       return { title: "Soil Quality", gradient: SOIL_QUALITY_GRADIENT, symbols: [COASTLINE_SYMBOL] };
+    case "speckle":
+      return {
+        title: "Coastal dither (opposite-class neighbour fraction)",
+        gradient: SPECKLE_GRADIENT,
+        symbols: [
+          { kind: "square", color: SPECKLE_FLAG_COLOR, label: "Flagged (fraction ≥ 0.75)" },
+          { kind: "square", color: SPECKLE_LAND_COLOR, label: "Land backdrop" },
+          { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },
+        ],
+      };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }

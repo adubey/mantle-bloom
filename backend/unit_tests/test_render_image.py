@@ -320,6 +320,62 @@ def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
     assert np.any(np.all(pixels == swell_marker_white, axis=-1))
 
 
+def _latlon_grid_points(n=12, spacing_deg=0.4):
+    ii, jj = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    pts = geometry.latlon_to_xyz(np.radians(ii.reshape(-1) * spacing_deg), np.radians(jj.reshape(-1) * spacing_deg))
+    return pts, ii.reshape(-1), jj.reshape(-1)
+
+
+def test_coastal_dither_fraction_flags_isolated_specks_but_not_a_coherent_coast():
+    pts, ii, jj = _latlon_grid_points()
+
+    # A mostly-ocean shelf with a scattering of lone, well-separated land nodes -- exactly the
+    # single-pixel islands the investigation cared about. Each speck's whole neighbourhood is
+    # the opposite class, so it pegs at 1.0 and clears the flag threshold.
+    speck_elev = np.full(pts.shape[0], -20.0)
+    speck_mask = (ii % 4 == 1) & (jj % 4 == 1)
+    speck_elev[speck_mask] = 20.0
+    speck_frac, speck_near = render_image.coastal_dither_fraction(pts, speck_elev, 0.0)
+    assert speck_near.all()  # every |elev| = 20 < SPECKLE_NEAR_BAND_M
+    assert np.all(speck_frac[speck_mask] >= 0.99)
+    assert int((speck_frac >= render_image.SPECKLE_FLAG_FRACTION).sum()) == int(speck_mask.sum())
+
+    # A gentle monotonic ramp across sea level is a coherent shoreline: only nodes straddling
+    # the waterline see any disagreement at all, and none of it reaches the flag threshold.
+    ramp_frac, ramp_near = render_image.coastal_dither_fraction(pts, (ii - 5.5) * 8.0, 0.0)
+    assert not (ramp_frac >= render_image.SPECKLE_FLAG_FRACTION).any()
+    assert speck_frac[speck_mask].max() > ramp_frac[ramp_near].max() + 0.3
+
+
+def test_coastal_dither_fraction_is_zero_outside_the_near_band():
+    pts, ii, jj = _latlon_grid_points()
+    elev = np.where((ii + jj) % 2 == 0, 5000.0, -5000.0)  # a checkerboard, but nowhere near sea level
+    frac, near = render_image.coastal_dither_fraction(pts, elev, 0.0)
+    assert not near.any()
+    assert np.all(frac == 0.0)
+
+
+def test_speckle_view_differs_from_the_elevation_view():
+    world = _world()
+    assert render_image.render_png(world, "behrmann", "speckle", 320, 180) != render_image.render_png(
+        world, "behrmann", "elevation", 320, 180
+    )
+
+
+def test_speckle_view_draws_flagged_nodes_in_the_flag_color(monkeypatch):
+    # Feed the renderer a synthetic per-node fraction so a known slice of nodes clears
+    # SPECKLE_FLAG_FRACTION -- those must show up as the oversized magenta flag marker.
+    world = _world()
+    all_points, _elev, _owner = render_image.plates.collect_all_points(world.plates)
+    n = len(all_points)
+    monkeypatch.setattr(
+        render_image, "coastal_dither_fraction", lambda *a, **k: (np.linspace(0.0, 1.0, n), np.ones(n, dtype=bool))
+    )
+    png = render_image.render_png(world, "behrmann", "speckle", 500, 275)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).reshape(-1, 3)
+    assert np.any(np.all(pixels == np.array(render_image.SPECKLE_FLAG_RGB), axis=-1))
+
+
 def test_rotate_maps_a_known_point_to_its_expected_position():
     """The core operation the whole view-rotation feature rests on: a 180-degree rotation
     about the z-axis should send lat=0/lon=0 to lat=0/lon=180 (its antipode on the equator)."""
