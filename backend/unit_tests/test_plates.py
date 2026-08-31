@@ -578,3 +578,68 @@ def test_has_negligible_territory_flags_a_comb_of_one_node_stubs():
 
 def test_has_negligible_territory_false_for_a_plate_with_real_rows():
     assert not _lobed_plate([0.0]).has_negligible_territory()
+
+
+# -- pole cap / theta-winding guard ---------------------------------------------------
+#
+# A row is a circle of local latitude, so its theta extent can't physically exceed a full
+# 2*pi revolution. Nothing treats theta as periodic, so before the guard in
+# _grow_or_shrink_line_for_deform a plate that grew to encircle its own local pole -- where
+# the "gap to nearest neighbour" is wide open forever, the cap belonging to nobody -- just
+# kept winding the same ring, covering the same ground dozens of times (concentric-circle /
+# hole artifacts in the Plate Inspector, unbounded overlap + node count on long runs).
+
+
+def test_deform_never_winds_a_row_past_a_full_revolution():
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    # An isolated plate hugging its own local pole (frame = identity, so local phi is world
+    # latitude): near-pole rows plus a mid-latitude row for contrast. No neighbours, so every
+    # end is "wide open" every step.
+    near_pole_phis = [np.pi / 2 - k * spacing for k in (8, 7, 6, 5, 4)]
+    lines = [
+        ElevationLine(phi=phi, theta=np.linspace(-0.5, 0.5, 6), elevation=np.zeros(6))
+        for phi in [0.3] + near_pole_phis
+    ]
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=lines)
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+
+    for _ in range(25):
+        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
+
+    for line in plate.lines:
+        span = float(line.theta[-1] - line.theta[0])
+        assert span <= 2.0 * np.pi + spacing, f"row at phi={line.phi:.3f} wound to {span:.2f} rad"
+        assert np.all(np.diff(line.theta) > 0)  # still a sorted, contiguous span
+
+    # A near-pole row *did* close its loop (the guard caps it, it isn't just slow growth).
+    assert any(
+        line.theta[-1] - line.theta[0] > 2.0 * np.pi - 3 * (spacing / max(np.cos(line.phi), 1e-3))
+        for line in plate.lines
+        if line.phi > 1.0
+    )
+    # ... and the mid-latitude row is still an ordinary partial arc, untouched by the cap.
+    mid = min(plate.lines, key=lambda ln: ln.phi)
+    assert mid.theta[-1] - mid.theta[0] < 2.0 * np.pi
+
+
+def test_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
+    from app.plates import POLE_CAP_MARGIN_MULT
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    # A plate whose poleward rows already sit just inside the pole-cap margin: claim should
+    # refuse to add a new row past it, however open the space is.
+    phis = [np.pi / 2 - k * spacing for k in (POLE_CAP_MARGIN_MULT + 2, POLE_CAP_MARGIN_MULT + 1)]
+    lines = [
+        ElevationLine(phi=phi, theta=np.linspace(-0.3, 0.3, 20), elevation=np.zeros(20))
+        for phi in phis
+    ]
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=lines)
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+
+    for _ in range(10):
+        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
+
+    assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9

@@ -341,6 +341,18 @@ trigger (contested, not a positive closing rate) changed:
   conservation lives: material is only ever created at open ends and destroyed at contested
   ones, as literal point insertion/deletion -- there's no grid-resampling step that can lose
   or duplicate it.
+
+  **A row never winds past a full revolution.** A line is a circle of plate-local latitude,
+  so its theta extent physically can't exceed `2*pi`. Nothing here treats theta as periodic,
+  and near a plate's own local pole the "gap to the nearest neighbor" reads as wide open
+  forever (the polar cap belongs to nobody), so without a guard a plate that has grown to
+  encircle its pole just keeps winding the same ring -- the same ground covered many times
+  over (`theta` spans of tens of revolutions were seen on long runs, showing up as
+  concentric circles / moire "holes" in the Plate Inspector and as an unbounded contribution
+  to plate overlap and node count). End-growth is capped so a row's span never exceeds one
+  revolution; once it closes, that end stops. `elevation_lines.regularize_line` also unwinds
+  an already-over-wound row (keeping the outermost single revolution) so a world saved before
+  this guard heals on its next few steps.
 - **Overstretched growth becomes volcanic.** Ordinary ridge/rift fill at a growing end
   instead spawns a fresh volcano (`is_volcano=True`, a random `volcano_active_years_remaining`
   draw, and one *guaranteed* immediate eruption -- see [Volcanism](#volcanism)) with a small
@@ -364,7 +376,14 @@ trigger (contested, not a positive closing rate) changed:
   below): after growing/shrinking each existing line's ends, a plate checks for a whole new
   phi row just beyond its current phi extremes -- the one case ordinary end-growth
   structurally can't reach, since growth only ever extends an *existing* line's own theta
-  range, never adds a new line. If that row is open (uncontested) territory, it's added
+  range, never adds a new line. The new row is only added if it stays at least
+  `POLE_CAP_MARGIN_MULT` target spacings clear of the plate's own local pole (`+-pi/2`):
+  right at the pole a row's theta step (`spacing / cos(phi)`) blows up and the row degenerates
+  into a handful of sub-spacing-circumference rings, so growth *toward* the pole stops short
+  and a small permanent polar cap is left unclaimed (harmless -- the render grid's
+  nearest-node fill covers it, and `deform()`'s contested test doesn't care). Generation's own
+  lattice sweep still fills to the pole, so a plate that legitimately owns its pole *at
+  generation* keeps those rings. If that row is open (uncontested) territory, it's added
   directly as a new `ElevationLine` -- not via a full lattice resample (`Plate.grow_into`,
   used elsewhere for rare, merge-scale events): calling that every turn for every plate was
   tried and rejected during development, confirmed to balloon a plate's own node count by

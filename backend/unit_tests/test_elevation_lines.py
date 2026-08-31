@@ -122,3 +122,32 @@ def test_crumple_elevation_preserves_endpoints_exactly():
     crumpled = _crumple_elevation(elevation, 4)
     assert crumpled[0] == elevation[0]
     assert crumpled[-1] == elevation[-1]
+
+
+def _wound_ring(phi: float, revolutions: float, spacing_rad: float) -> ElevationLine:
+    """A single over-wound row: theta marching well past a full 2*pi (as a plate that grew
+    around its own local pole did before the wrap guard existed / on worlds saved then)."""
+    dtheta = spacing_rad / max(np.cos(phi), 1e-3)
+    theta = np.arange(0.0, revolutions * 2.0 * np.pi, dtheta)
+    return ElevationLine(phi=phi, theta=theta, elevation=np.linspace(-1000.0, 1000.0, len(theta)))
+
+
+def test_needs_regularizing_flags_an_over_wound_ring():
+    spacing = line_spacing_rad(1.0)
+    assert needs_regularizing(_wound_ring(1.45, revolutions=3.4, spacing_rad=spacing), spacing)
+    # An ordinary near-full but sub-revolution ring is fine.
+    assert not needs_regularizing(_wound_ring(1.45, revolutions=0.95, spacing_rad=spacing), spacing)
+
+
+def test_regularize_line_unwinds_an_over_wound_ring_to_one_revolution():
+    spacing = line_spacing_rad(1.0)
+    wound = _wound_ring(1.45, revolutions=4.0, spacing_rad=spacing)
+    fixed = regularize_line(wound, spacing)
+
+    span = fixed.theta[-1] - fixed.theta[0]
+    assert span <= 2.0 * np.pi + 1e-9
+    assert span > 2.0 * np.pi - 3 * (spacing / np.cos(1.45))  # kept a full revolution, not a sliver
+    assert np.all(np.diff(fixed.theta) > 0)
+    assert len(fixed) < len(wound)  # the inner windings are gone
+    # It kept the *outermost* revolution (theta near the wound row's own high end).
+    assert fixed.theta[-1] == wound.theta[-1]

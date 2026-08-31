@@ -77,7 +77,15 @@ cheapest remaining CFD-path saving if that mode's per-step cost is ever revisite
 
 ## Plate geometry degrades on long runs: pole winding, unbounded overlap, bad split siblings
 
-**Status:** not started. Diagnosed 2026-08-30 from two save files of seed 936513024
+**Status:** bug 1 (pole winding) **fixed** 2026-08-30 -- wrap guard in
+`plates._grow_or_shrink_line_for_deform` + pole-cap margin in `_claim_adjacent_territory` +
+`elevation_lines.regularize_line` unwinding already-wound rows on load. Verified against the
+158.6 My save: 191 over-wound rows -> 0 after one step, `theta` max span 10,489 deg -> 360
+deg, ~229k nodes -> ~223k. Bugs 2 (split/defrag siblings) and 3 (every plate at
+`MAX_PLATE_RATE`) are **not started** -- node count still creeps back up over ~12 steps as
+those two keep operating.
+
+Diagnosed 2026-08-30 from two save files of seed 936513024
 (`~/Downloads/mantle-bloom-seed936513024-90000000y.mbworld` and `...-158600000y.mbworld`,
 1586 steps of 100 ky). Symptoms show up in the Plate Inspector: plates with concentric
 circles (33, 36, 38), plates whose points overlap a neighbour's (14/22, and far worse
@@ -113,11 +121,14 @@ randomized-order effect). Nearly all the damage happens in the 90 -> 159 My wind
    - Smaller time steps do **not** help: they only drop `n_distance_cap` to 1 (one node/
      step instead of a few), but that node still jumps ~561 deg and there are ~10x more
      steps. Confirmed this is geometric + threshold, not integration-step-size.
-   - **Fix sketch:** (a) stop `_claim_adjacent_territory` well short of +-90 deg -- leave a
-     real polar cap, or switch a pole-enclosing plate to a cap representation (single cap
-     node + bounded rings); (b) in end-growth, if `theta[-1] - theta[0] >= 2*pi - dtheta`,
-     refuse to extend and stitch the ends into a closed ring instead; (c) reconsider the
-     `1e-3` `cos(phi)` floor -- it's what makes a single near-pole step enormous.
+   - **Fixed** as: (a) `_claim_adjacent_territory` keeps `POLE_CAP_MARGIN_MULT` (4) target
+     spacings clear of `+-pi/2`, leaving a small unclaimed polar cap; (b) end-growth caps a
+     row's span at one revolution (`_ROW_FULL_REVOLUTION_SLACK`), and the end stops once the
+     loop closes; (c) `regularize_line` / `needs_regularizing` unwind an already-over-wound
+     row to its outermost single revolution, so old saves self-heal. Not done: closing the
+     ring's two ends into a genuine periodic loop (they just stop a `dtheta` apart), and
+     pulling *generation*'s lattice back from the pole too (left as-is -- a plate that owns
+     its pole at generation keeps its small rings; only growth toward the pole is capped).
 
 2. **Split/defragmentation produces overlapping siblings.** Plates 33/38, 36/39, 22/35
    overlap 46-93% by node count (33's cloud is 93% coincident with 38's -- effectively the

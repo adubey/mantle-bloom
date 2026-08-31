@@ -361,6 +361,24 @@ MAX_BOUNDARY_EFFECT_RAD = max(
 # can grow/shrink in one call.
 MAX_EXTEND_NODES_PER_STEP = 400
 
+# How many target spacings of margin `_claim_adjacent_territory` keeps between a plate's
+# poleward-most row and its own local pole (+-pi/2). A row is a circle of local latitude, so
+# its theta step (spacing_rad / cos(phi)) blows up as cos(phi) -> 0: without a margin a plate
+# that grows to encircle its own pole ends up with a handful of degenerate near-pole rings,
+# and -- since nothing here treats theta as periodic -- ordinary end-growth just keeps winding
+# those rings past a full revolution, covering the same ground many times over (the
+# concentric-circle / moire "holes" artifacts in the Plate Inspector, plus a real unbounded
+# contribution to plate overlap and node count on long runs). This margin keeps near-pole
+# rows at a sane circumference; `_grow_or_shrink_line_for_deform` separately refuses to extend
+# any row past 2*pi (`_ROW_FULL_REVOLUTION_SLACK`). Generation's own lattice sweep
+# (`iter_local_lattice`) still fills to the pole -- a plate that legitimately owns the pole at
+# generation keeps its small Voronoi-clipped rings; only *growth* toward the pole is capped.
+POLE_CAP_MARGIN_MULT = 4.0
+# A row whose theta span is within this many target-spacing steps of a full 2*pi revolution
+# is treated as a closed ring and never grown further (nor, in regularize_line, resampled to
+# more than one revolution).
+_ROW_FULL_REVOLUTION_SLACK = 1.0
+
 # Growth at a line end -- ordinarily plain ridge/rift fill -- instead comes back as a fresh
 # volcano (guaranteed one immediate eruption, then the ordinary per-step eruption roll in
 # volcanism.py takes over) with this probability per growth *event*, representing "the plate
@@ -1524,6 +1542,17 @@ class PlateWithLines(Plate):
         target = _divergent_target(self.crust_type)
         n_distance_cap = max(1, int(max_distance / spacing_rad))
 
+        # A row is a circle of local latitude -- its theta extent physically cannot exceed a
+        # full revolution. Nothing here treats theta as periodic, so once end-growth has
+        # closed the loop the ordinary "gap to nearest neighbour is wide open" test stays
+        # true forever near a plate's own local pole (the pole cap belongs to nobody) and the
+        # row just keeps winding. `ring_room()` is how many more `dtheta` nodes this end can
+        # take before the row spans 2*pi; growth is capped by it, and at zero the end stops.
+        full_revolution_span = 2.0 * np.pi - _ROW_FULL_REVOLUTION_SLACK * dtheta
+
+        def ring_room() -> int:
+            return int(np.floor((full_revolution_span - (theta[-1] - theta[0])) / dtheta))
+
         def contested_run_from_end(mask: np.ndarray, from_high: bool) -> int:
             ordered = mask[::-1] if from_high else mask
             run = 0
@@ -1574,9 +1603,9 @@ class PlateWithLines(Plate):
         # dist can be +inf (no neighbour anywhere -- e.g. a genuinely isolated plate/field),
         # so the gap-derived candidate count is computed against a finite stand-in distance
         # before dividing; the real cap either way is n_distance_cap/max_extend_nodes.
-        if not contested[-1] and dist[-1] > extend_threshold_rad:
+        if not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
-            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
             candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
             n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
             if n_new > 0:
@@ -1593,9 +1622,9 @@ class PlateWithLines(Plate):
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.append(values, fill)
 
-        if not contested[0] and dist[0] > extend_threshold_rad:
+        if not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
-            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
             candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
             n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
             if n_new > 0:
@@ -1637,7 +1666,11 @@ class PlateWithLines(Plate):
         if not lines_with_nodes:
             return
         ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
-        max_phi_limit = np.pi / 2 - spacing_rad / 2
+        # Stop well short of the local pole -- see POLE_CAP_MARGIN_MULT. A plate that has
+        # grown right up against +-pi/2 gets degenerate sub-spacing-circumference rings that
+        # read as concentric circles / holes in the Plate Inspector and feed the theta-winding
+        # pathology `_grow_or_shrink_line_for_deform` now guards against.
+        max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
         base = base_elevation(self.crust_type)
         amp = noise_amplitude(self.crust_type)
         new_lines: list[ElevationLine] = []

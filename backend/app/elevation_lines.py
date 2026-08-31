@@ -544,6 +544,12 @@ def build_lines_from_lattice(frame: np.ndarray, is_owned, elevation_at, spacing_
 def needs_regularizing(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACING_RAD) -> bool:
     if len(line) < 3:
         return False
+    # A row is a circle of local latitude: any theta span past a full 2*pi revolution is an
+    # over-wound ring (a plate that grew around its own local pole before the wrap guard in
+    # plates._grow_or_shrink_line_for_deform, or on a world saved from back then) -- the
+    # inner windings are duplicate coverage of the same ground. regularize_line unwinds it.
+    if line.theta[-1] - line.theta[0] > 2.0 * np.pi:
+        return True
     dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
     gaps = np.diff(line.theta)
     ratio = gaps / dtheta_target
@@ -611,6 +617,15 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         return line
 
     dtheta_target = spacing_rad / max(np.cos(line.phi), 1e-3)
+
+    # Over-wound ring (span > a full revolution): keep only the outermost single revolution
+    # -- the most recently grown one -- and resample that. See needs_regularizing.
+    if line.theta[-1] - line.theta[0] > 2.0 * np.pi:
+        keep = line.theta >= line.theta[-1] - (2.0 * np.pi - dtheta_target)
+        line = line.masked(keep)
+        if len(line) < 3:
+            return line
+
     theta_min, theta_max = line.theta[0], line.theta[-1]
     span = theta_max - theta_min
     n = max(int(round(span / dtheta_target)) + 1, 2)
