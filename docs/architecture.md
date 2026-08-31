@@ -258,7 +258,9 @@ climate.py           temperature/wind/currents/humidity/precipitation, computed 
                      their own fixed equirectangular grid -- every render, and now every
                      step too, to drive erosion.py (see simulation-model.md#climate)
 erosion.py           every-step rain/river/weathering/glacier erosion + downstream sediment
-                     deposition + glacier flattening, elevation deltas driven by climate.py's
+                     deposition + glacier flattening + coastal planation/infill feedback
+                     (near-sea-level wave-cut planation + sheltered-shelf silting, emergent
+                     barrier islands), elevation deltas driven by climate.py's
                      current fields and hydrology.py's flow routing/glacier state (see
                      simulation-model.md#erosion) -- the weather-influences-geology half of
                      the coupling; climate.py's own elevation-reading mechanics (lapse rate,

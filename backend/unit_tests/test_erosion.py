@@ -132,3 +132,102 @@ def test_apply_erosion_noop_for_empty_world():
     world = World(seed=0, plates=[])
     erosion.apply_erosion(world, years=1_000_000)  # must not raise
     assert world.plates == []
+
+
+# --- Coastal planation + infill feedback (docs/TODO.md "Speckled low-relief coastlines") ---
+
+
+def _equator_lattice(half_span_deg: float, step_deg: float) -> np.ndarray:
+    """A square lattice of unit vectors straddling (lat, lon) = (0, 0), for the coastal-
+    feedback helpers (which only care about relative node geometry, not which plate owns
+    what)."""
+    grid = np.radians(np.arange(-half_span_deg, half_span_deg + 1e-9, step_deg))
+    lat, lon = np.meshgrid(grid, grid, indexing="ij")
+    return geometry.latlon_to_xyz(lat.ravel(), lon.ravel())
+
+
+def test_coastal_openness_tracks_open_water_fraction():
+    points = _equator_lattice(half_span_deg=3.0, step_deg=0.4)
+    lon_deg = np.degrees(geometry.xyz_to_latlon(points)[1])
+    is_ocean = lon_deg > 0.0  # a straight N-S coastline down the prime meridian
+
+    openness = erosion._coastal_openness(points, is_ocean)
+
+    deep_land = np.argmin(lon_deg)  # far to the west, ringed by land
+    deep_ocean = np.argmax(lon_deg)  # far to the east, ringed by ocean
+    coast = np.argmin(np.abs(lon_deg) + np.abs(np.degrees(geometry.xyz_to_latlon(points)[0])))
+    assert openness[deep_land] < 0.05
+    assert openness[deep_ocean] > 0.95
+    assert 0.3 < openness[coast] < 0.7
+
+
+def test_coastal_openness_zero_when_no_open_ocean():
+    points = _equator_lattice(half_span_deg=2.0, step_deg=0.4)
+    assert np.all(erosion._coastal_openness(points, np.zeros(len(points), dtype=bool)) == 0.0)
+
+
+def test_coastal_planation_only_near_sea_level_land_and_scales_with_exposure():
+    elevation = np.array([10.0, 25.0, 100.0, -50.0])
+    openness = np.full(4, 0.5)  # well above PLANATION_EXPOSURE_REF -> full exposure
+    amt = erosion.coastal_planation_amount(elevation, sea_level_m=0.0, openness=openness, dt_myr=0.05)
+    assert amt[0] > amt[1] > 0.0  # both in-band, shallower planes faster (bigger proximity)
+    assert amt[2] == 0.0  # above the band
+    assert amt[3] == 0.0  # underwater -- infill's job, not planation's
+
+    sheltered = erosion.coastal_planation_amount(elevation, 0.0, np.full(4, 0.15), dt_myr=0.05)
+    assert sheltered[0] < amt[0]  # half the exposure -> half the planation (0.15 / 0.3)
+
+    # Never past the wave-cut platform (sea level minus PLANATION_UNDERCUT_M at full
+    # exposure), however long the step -- here 12 m above + 6 m undercut = 18 m.
+    huge = erosion.coastal_planation_amount(np.array([12.0]), 0.0, np.array([1.0]), dt_myr=99.0)
+    assert huge[0] == 12.0 + erosion.PLANATION_UNDERCUT_M
+
+
+def test_spread_coastal_infill_conserves_mass_including_fallback():
+    rng = np.random.default_rng(0)
+    points = _equator_lattice(half_span_deg=3.0, step_deg=0.5)
+    n = len(points)
+    elevation = rng.uniform(-500.0, 200.0, n)
+    is_ocean = elevation <= 0.0
+    openness = rng.uniform(0.0, 1.0, n)
+    dist_to_land = rng.uniform(0.0, 0.02, n)
+    source = np.zeros(n)
+    source[rng.choice(n, 5, replace=False)] = rng.uniform(1.0, 10.0, 5)
+
+    out = erosion._spread_coastal_infill(points, elevation, is_ocean, openness, dist_to_land, 0.0, source)
+    assert np.isclose(out.sum(), source.sum())
+
+    # No ocean at all -> every source keeps its own amount in place.
+    land_only = erosion._spread_coastal_infill(
+        points, np.full(n, 100.0), np.zeros(n, dtype=bool), openness, dist_to_land, 0.0, source
+    )
+    assert np.allclose(land_only, source)
+
+
+def test_spread_coastal_infill_prefers_sheltered_shallow_and_barrier_nodes():
+    # Three ocean sinks in a row just west of a land source; only geometry/openness differ.
+    lat = np.radians(np.array([0.0, 0.0, 0.0, 0.0]))
+    lon = np.radians(np.array([0.30, 0.10, -0.10, -0.30]))  # source, sheltered, exposed-deep, barrier
+    points = geometry.latlon_to_xyz(lat, lon)
+    elevation = np.array([20.0, -10.0, -2000.0, -1.0])
+    is_ocean = np.array([False, True, True, True])
+    openness = np.array([0.0, 0.1, 0.9, 0.4])  # sheltered bay / open abyss / barrier edge
+    dist_to_land = np.array([0.0, 0.05, 0.05, 0.001])  # barrier node hugs the coast
+    source = np.array([100.0, 0.0, 0.0, 0.0])
+
+    out = erosion._spread_coastal_infill(points, elevation, is_ocean, openness, dist_to_land, 0.0, source)
+    assert out[1] > 0.0  # sheltered shallow water silts up
+    assert out[3] > 0.0  # barrier candidate accretes despite facing open water
+    assert out[2] < out[1] and out[2] < out[3]  # exposed deep abyss gets far less
+    assert np.isclose(out.sum(), 100.0)
+
+
+def test_apply_erosion_coastal_feedback_keeps_a_generated_world_sane():
+    world = generate_world(seed=23, num_plates=8)
+    _, before, _, _, _, _ = erosion._gather_nodes(world)
+    erosion.apply_erosion(world, years=2_000_000)
+    _, after, _, _, _, _ = erosion._gather_nodes(world)
+    assert np.all(np.isfinite(after))
+    assert np.all(after >= MIN_ELEVATION_M - 1e-6) and np.all(after <= MAX_ELEVATION_M + 1e-6)
+    # The feedback nudges the coast, it doesn't rewrite the whole map in one step.
+    assert np.median(np.abs(after - before)) < 50.0
