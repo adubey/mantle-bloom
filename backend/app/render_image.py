@@ -233,11 +233,15 @@ PLATE_PALETTE = np.array(
 # stop here is pure (255, 255, 255) white, even at the highest peaks -- white is reserved
 # exclusively for actual ice cover (GLACIER_COLOR_RGB, applied as an overlay below) so it
 # reads unambiguously as "glaciated," not "merely high/rocky."
-_ELEVATION_STOP_E = np.array([-11000, -4000, -1500, -200, 0, 200, 1200, 3000, 6000, 9000], dtype=float)
+# The whole ocean ramp stays blue right up to the waterline: the 0 stop is a pale light
+# blue (shallowest water), and the sandy beach tan sits just above sea level (the +40 stop)
+# so it colors the first sliver of dry land rather than bleeding back into shallow water.
+_ELEVATION_STOP_E = np.array([-11000, -4000, -1500, -200, 0, 40, 200, 1200, 3000, 6000, 9000], dtype=float)
 _ELEVATION_STOP_RGB = np.array(
     [
-        (10, 10, 40), (15, 40, 110), (40, 110, 190), (110, 170, 210), (200, 210, 150),
-        (90, 150, 60), (170, 160, 90), (120, 90, 60), (195, 188, 178), (222, 217, 210),
+        (10, 10, 40), (15, 40, 110), (40, 110, 190), (90, 160, 205), (150, 195, 222),
+        (205, 205, 155), (90, 150, 60), (170, 160, 90), (120, 90, 60), (195, 188, 178),
+        (222, 217, 210),
     ],
     dtype=float,
 )

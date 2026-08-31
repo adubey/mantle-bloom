@@ -45,7 +45,7 @@ def test_elevation_colors_matches_known_stops():
     # Exact stops from the hypsometric table should map to their exact color.
     colors = render_image.elevation_colors(np.array([-11000.0, 0.0, 9000.0]))
     assert tuple(colors[0]) == (10, 10, 40)
-    assert tuple(colors[1]) == (200, 210, 150)
+    assert tuple(colors[1]) == (150, 195, 222)  # waterline: pale light blue, not sandy tan
     assert tuple(colors[2]) == (222, 217, 210)
     # Never pure white -- reserved exclusively for ice cover (GLACIER_COLOR_RGB), see
     # elevation_colors' own docstring.
@@ -59,7 +59,7 @@ def test_elevation_colors_clamps_outside_the_stop_range():
 
 
 def test_elevation_colors_shifts_with_sea_level():
-    # A cell right at the new sea level should get the "coastal" stop's color (0m in the
+    # A cell right at the new sea level should get the waterline stop's color (0m in the
     # unshifted table), the same way elevation=0 does at the default sea_level_m=0.0.
     shifted = render_image.elevation_colors(np.array([500.0]), sea_level_m=500.0)
     baseline = render_image.elevation_colors(np.array([0.0]), sea_level_m=0.0)
