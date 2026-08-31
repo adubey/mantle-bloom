@@ -108,7 +108,7 @@ function isIdentityRotation(rotation: Mat3): boolean {
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
   "elevation", "plates", "platesDetail", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "plateInspector", "riverInspector", "lakeInspector",
+  "resources", "soilQuality", "geomorph", "plateInspector", "riverInspector", "lakeInspector",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -665,6 +665,7 @@ export default function App() {
               <optgroup label="Debug &gt;">
                 <option value="platesDetail">Points</option>
                 <option value="plates">Plates</option>
+                <option value="geomorph">Erosion &amp; Deposition</option>
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
                 <option value="lakeInspector">Lakes</option>

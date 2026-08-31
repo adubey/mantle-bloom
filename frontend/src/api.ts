@@ -23,6 +23,7 @@ export type MapView =
   | "combined"
   | "resources"
   | "soilQuality"
+  | "geomorph"
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector";

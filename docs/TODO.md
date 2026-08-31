@@ -491,6 +491,24 @@ checkerboard shelf contributes at most one aggregate line per step. Tests:
 `test_summarize_lake_events_*` in `unit_tests/test_lakes.py`. Documented in
 `docs/debugging.md` ("Lake-churn aggregation"). This was item 4 below.
 
+**Landed 2026-08-31 -- per-node geomorph-rate render view.** `GET /world/render?view=geomorph`
+(Map View dropdown: **Debug > Erosion & Deposition**; `render_image._render_geomorph_view`,
+was item 2 below) colours every node by `erosion.ErosionResult.net_elevation_change_m` --
+this step's post-erosion elevation minus pre-erosion, i.e. erosion minus every deposition
+pathway plus the small flatten/lake-siltation terms, no tectonics -- on a diverging
+warm(erosion)/cool(deposition) scale (`geomorph_colors`, clamped +-60 m/step) with the
+coastline overlaid. The `ErosionResult` is retained on `World.erosion_cache` (one-step-stale,
+not persisted) purely for this view; `geology.py` still gets its own copy as a direct
+`step_world` argument. Neutral field before the first step / on a fresh load. Tests:
+`test_geomorph_colors_diverge_around_zero`,
+`test_geomorph_view_renders_neutral_before_a_step_then_varies_after` in
+`unit_tests/test_render_image.py`. Documented in `docs/debugging.md` and
+`docs/simulation-model.md#resources-and-soil`. This makes the deposition lumpiness in the
+near-sea-level band (256 m on one node, ~0 on its neighbour) -- the whole coastal-speckle
+mechanism -- legible for the first time; use it as a before/after for any coastal-feedback
+change. Not done: a `/world/sample_at` field for the click-popup (the popup is only wired for
+elevation/biome/combined today), and a gross-deposition-vs-net toggle (net alone was enough).
+
 **Still worth building:**
 
 1. **A speckle / coastal-dither overlay render mode.** Colour every node whose elevation is
@@ -502,11 +520,8 @@ checkerboard shelf contributes at most one aggregate line per step. Tests:
    Natural home: a `render_image.py` view alongside `platesDetail`, or a boolean overlay on
    the `elevation` / `biome` views.
 
-2. **A per-node geomorph-rate view.** Render `ErosionResult.sediment_deposited` (and/or net
-   `dElev` this step) as a diverging map. The lumpiness of deposition in the near-sea-level
-   band -- 256 m on one node, ~0 on its neighbour -- is invisible in every current view but
-   is the whole coastal-speckle mechanism. `ErosionResult` already carries the arrays;
-   this is a render path plus maybe a `/world/sample_at` field.
+2. ~~**A per-node geomorph-rate view.**~~ **Landed 2026-08-31** as `view=geomorph` -- see the
+   "Landed" note above.
 
 3. ~~**Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
    endorheic basins whose floor is below sea level and that are not connected to the ocean:

@@ -45,7 +45,11 @@ CLIMATE_VIEWS = ("temperature", "wind", "oceanCurrents", "humidity", "precipitat
 # they share a render path with each other (one shared fine-grid resample) but not with
 # elevation/plates' own render-grid machinery.
 RESOURCE_VIEWS = ("resources", "soilQuality")
-VIEWS = ("elevation", "plates", "platesDetail", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS
+# "geomorph" is also node-cloud-derived, but from last step's erosion breakdown
+# (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
+# (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
+# invisible in every other view (see docs/TODO.md / docs/debugging.md).
+VIEWS = ("elevation", "plates", "platesDetail", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + ("geomorph",)
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -305,6 +309,28 @@ _PRECIPITATION_STOP_RGB = np.array(
 )
 
 
+# Geomorph Rate debug view (see _render_geomorph_view): this step's net per-node elevation
+# change (erosion.ErosionResult.net_elevation_change_m -- erosion minus every deposition
+# pathway, no tectonics). A diverging scale centred on 0 -- warm/brown where the step
+# net-lowered a node (degradation), cool/blue where it net-raised one (aggradation), a flat
+# near-neutral grey in the +-few-metre band so only the lumps stand out. Keyed in metres per
+# step; +-60 m spans the p10/p90 of the near-sea-level checkerboard band the view exists to
+# expose (see docs/TODO.md), with everything past that clamped to the end stops.
+_GEOMORPH_STOP_M = np.array([-60.0, -20.0, -4.0, 0.0, 4.0, 20.0, 60.0], dtype=float)
+_GEOMORPH_STOP_RGB = np.array(
+    [
+        (120, 42, 20),  # strong erosion -- dark red-brown
+        (206, 96, 44),  # erosion -- burnt orange
+        (224, 200, 170),  # mild erosion -- pale tan
+        (232, 232, 232),  # ~no net change -- neutral grey
+        (168, 206, 214),  # mild deposition -- pale cyan
+        (52, 132, 184),  # deposition -- mid blue
+        (18, 52, 112),  # strong deposition -- deep blue
+    ],
+    dtype=float,
+)
+
+
 def _interp_colors(values: np.ndarray, stops: np.ndarray, stop_rgb: np.ndarray) -> np.ndarray:
     channels = [np.interp(values, stops, stop_rgb[:, c]) for c in range(3)]
     return np.clip(np.round(np.stack(channels, axis=-1)), 0, 255).astype(np.uint8)
@@ -324,6 +350,10 @@ def precipitation_colors(precipitation_mm: np.ndarray) -> np.ndarray:
 
 def soil_fertility_colors(fertility: np.ndarray) -> np.ndarray:
     return _interp_colors(fertility, _SOIL_STOP_V, _SOIL_STOP_RGB)
+
+
+def geomorph_colors(net_change_m: np.ndarray) -> np.ndarray:
+    return _interp_colors(net_change_m, _GEOMORPH_STOP_M, _GEOMORPH_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -1254,6 +1284,48 @@ def _render_resource_view(world: World, projection: str, view: str, width: int, 
     return _encode_image(image)
 
 
+def _render_geomorph_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "geomorph" (see VIEWS): every node coloured by its net elevation change over
+    the last step -- erosion.ErosionResult.net_elevation_change_m off World.erosion_cache,
+    nearest-node resampled onto the same fine grid the Biome/Resources views use, coloured by
+    the diverging geomorph_colors scale (warm = the step net-lowered this node, cool = it
+    net-raised it). The point of the view is that per-step deposition in the near-sea-level
+    band is wildly lumpy -- a +200 m spike on one node, ~0 on its neighbour -- which drives
+    the coastal checkerboard but is invisible in every other view (see docs/TODO.md).
+
+    erosion_cache is None until the world has been stepped once with climate & biomes on (and
+    on a freshly loaded save, which doesn't persist it) -- then this draws a flat neutral
+    field with just the coastline for orientation, rather than erroring like Biome does."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    flat_xyz = world_xyz.reshape(-1, 3)
+
+    result = world.erosion_cache
+    if result is None or len(result.points) == 0:
+        net_change = np.zeros(len(flat_xyz))
+    else:
+        _, idx = cKDTree(result.points).query(flat_xyz)
+        net_change = result.net_elevation_change_m[idx]
+    colors = geomorph_colors(net_change)
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    image = Image.fromarray(pixels, mode="RGB")
+    # The diverging scale carries no land/ocean cue on its own (same reasoning as soilQuality/
+    # the climate heatmaps) -- and erosion vs deposition straddles the shoreline, so the
+    # coastline is exactly the reference a viewer needs to read this view.
+    draw = ImageDraw.Draw(image)
+    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    return _encode_image(image)
+
+
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
 ) -> Image.Image:
@@ -1361,6 +1433,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         return _render_combined_view(world, projection, width, height, view_rotation)
     if view in RESOURCE_VIEWS:
         return _render_resource_view(world, projection, view, width, height, view_rotation)
+    if view == "geomorph":
+        return _render_geomorph_view(world, projection, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

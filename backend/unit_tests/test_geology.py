@@ -47,6 +47,7 @@ def _erosion_result(points, elevation, slope=None, rain=None, river=None, weathe
         river=zeros if river is None else np.asarray(river, dtype=float),
         weathering=zeros if weathering is None else np.asarray(weathering, dtype=float),
         sediment_deposited=zeros if sediment_deposited is None else np.asarray(sediment_deposited, dtype=float),
+        net_elevation_change_m=zeros,
         temperature_c=zeros if temperature_c is None else np.asarray(temperature_c, dtype=float),
         precipitation_mm=zeros if precipitation_mm is None else np.asarray(precipitation_mm, dtype=float),
     )
