@@ -75,6 +75,77 @@ cheapest remaining CFD-path saving if that mode's per-step cost is ever revisite
 
 ---
 
+## Plate geometry degrades on long runs: pole winding, unbounded overlap, bad split siblings
+
+**Status:** not started. Diagnosed 2026-08-30 from two save files of seed 936513024
+(`~/Downloads/mantle-bloom-seed936513024-90000000y.mbworld` and `...-158600000y.mbworld`,
+1586 steps of 100 ky). Symptoms show up in the Plate Inspector: plates with concentric
+circles (33, 36, 38), plates whose points overlap a neighbour's (14/22, and far worse
+33/38, 36/39, 22/35), plates with holes (36), combs of stranded one-node "teeth" (11).
+
+**What's measured.**
+
+| | fresh gen | 90 My (900 steps) | 158.6 My (1586 steps) |
+|---|---|---|---|
+| plates | 16 | 16 | 26 |
+| total nodes (4x density; clean tiling ~130k) | 32,651 @ 1x | ~149k (~15% over) | ~229k (~75% over) |
+| plates whose territory reaches a local pole (\|phi\| > 88 deg) | 0 | 0 | 3 |
+| elevation-lines winding past 360 deg of theta | 0 | 0 | 191 (one row spans ~10,500 deg) |
+| plates pinned at exactly `MAX_PLATE_RATE` | 16/16 | 16/16 | 26/26 |
+
+The world is healthy at 90 My (the ~15% overlap is the documented bounded envelope/
+randomized-order effect). Nearly all the damage happens in the 90 -> 159 My window.
+
+**Three distinct bugs, most impactful first.**
+
+1. **Pole winding / no periodic-theta guard (causes the concentric circles, the 36-style
+   holes, and most of the node-count blowup).**
+   - `PlateWithLines._claim_adjacent_territory` (`plates.py` ~L1617) adds new phi rows
+     outward all the way to `max_phi_limit = pi/2 - spacing/2` -- it will march a plate
+     right onto its own local pole whenever the space is open.
+   - `_grow_or_shrink_line_for_deform` (`plates.py` ~L1523) then extends those near-pole
+     rows with `dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)`. Near the pole
+     `cos(phi) -> 0`, floored at `1e-3`, so **each inserted node jumps ~9.8 rad (~561 deg)
+     in theta**. Nothing checks whether the row has already closed a 2*pi loop, and the
+     open-space test (`_count_open_prefix`, world-space) barely moves near the pole, so the
+     ring keeps winding indefinitely. That's the 10,500-deg row and plate 38 at ~210
+     nodes/row.
+   - Smaller time steps do **not** help: they only drop `n_distance_cap` to 1 (one node/
+     step instead of a few), but that node still jumps ~561 deg and there are ~10x more
+     steps. Confirmed this is geometric + threshold, not integration-step-size.
+   - **Fix sketch:** (a) stop `_claim_adjacent_territory` well short of +-90 deg -- leave a
+     real polar cap, or switch a pole-enclosing plate to a cap representation (single cap
+     node + bounded rings); (b) in end-growth, if `theta[-1] - theta[0] >= 2*pi - dtheta`,
+     refuse to extend and stitch the ends into a closed ring instead; (c) reconsider the
+     `1e-3` `cos(phi)` floor -- it's what makes a single near-pole step enormous.
+
+2. **Split/defragmentation produces overlapping siblings.** Plates 33/38, 36/39, 22/35
+   overlap 46-93% by node count (33's cloud is 93% coincident with 38's -- effectively the
+   same plate twice). 33/36/38/39 all have `age_steps = 6`: born together from one ancestor
+   ~6 steps before the save. A clean partition (split cuts on a great circle; defrag masks
+   by connected component) must yield disjoint plates. Either the partition is duplicating
+   nodes, or the siblings immediately re-grow through each other because each one's
+   `deform()` sees the other's stale envelope as not-yet-covering the shared region. Audit
+   `merge_split.split` / `defragment_plates` partitioning for this case; check plate count
+   history in `world.events` for the 90 -> 159 My window.
+
+3. **Every plate railed at `MAX_PLATE_RATE` (15 cm/yr).** True at *both* epochs, all plates.
+   The damped Euler-pole fit (`plates.py` L206-208, `mantle.clamp_rate`) never settles below
+   the clamp for any plate. Unrealistic, and it's what makes the bounded-overlap mechanism
+   run hot enough to stop self-correcting once (1) and (2) inject extra crust. Investigate
+   whether `fit_euler_pole` is over-fitting large/wound footprints (near-pole node clusters
+   dominating the least-squares system), or whether `MANTLE_FLOW_REFERENCE_RATE` / cell
+   strengths just make saturation the normal case for this seed.
+
+**Not bugs:** plate 23's "two blobs" is a single connected node cloud (1 component even at
+2.5x spacing) -- a crescent plate whose min-area enclosing ellipse balloons in the Inspector.
+Plate 11's "teeth" are 8 legitimate one-to-two-node stub rows from heavy subduction
+(`deform()` never deletes a line's last node); defragmentation is meant to prune them but
+runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work on
+`fix/plate-defragmentation` (unmerged).
+
+---
+
 ## Deferred work found in code/doc comments
 
 A sweep of every source file (2026-08-27) turned up **no `TODO`/`FIXME` comments** -- this
