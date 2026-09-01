@@ -19,11 +19,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 from .elevation_lines import line_spacing_rad
 from . import lithosphere
+from .plates import query_workers
 
 SECONDS_PER_YEAR = 365.25 * 86400.0
 
@@ -85,38 +85,52 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
         empty3 = np.zeros((0, 3))
         return BoundaryForceInputs(empty3, np.zeros(0), np.zeros(0), np.full(0, np.inf), empty3, np.zeros(0, dtype=bool), empty3)
 
+    no_neighbour = BoundaryForceInputs(
+        own_points, own_hc, own_hm, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3))
+    )
     if not neighbours:
-        return BoundaryForceInputs(
-            own_points, own_hc, own_hm, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3))
-        )
+        return no_neighbour
 
-    pieces = [p.all_points_and_elevation()[0] for p in neighbours]
-    owners = [np.full(len(pts), i) for i, pts in enumerate(pieces)]
-    neighbour_points = np.concatenate(pieces, axis=0)
-    neighbour_owner_idx = np.concatenate(owners, axis=0)
-    if len(neighbour_points) == 0:
-        return BoundaryForceInputs(
-            own_points, own_hc, own_hm, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3))
-        )
+    # Query each neighbour's own cached node k-d tree (Plate.get_node_kdtree, invalidated on
+    # rotate / node-set change exactly like the bounding polygon) and keep the elementwise
+    # nearest, rather than concatenating every neighbour's node cloud into a fresh cKDTree on
+    # every call. The same plate is a neighbour of several others and is queried in both the
+    # shift and deform pass, so one cached tree per plate is built once per step instead of
+    # the ~24 fresh builds this used to do. The argmin over neighbours reproduces the single
+    # global-nearest the combined tree returned -- `neighbours` is in the same order the old
+    # concatenation used, so distance ties break identically.
+    #
+    # (cKDTree, not bvh.py's tree: this runs every step over a plate's entire node set --
+    # tens of thousands of points at real density -- where bvh.py's pure-Python per-point
+    # recursion loses badly to cKDTree's compiled batch query. bvh.py's tree-vs-tree
+    # traversal stays available for merge_split.py's smaller, less frequent plate-pair check.)
+    workers = query_workers(n)
+    best_dist = np.full(n, np.inf)
+    best_point = np.zeros((n, 3))
+    best_owner = np.full(n, -1)
+    for i, neighbour in enumerate(neighbours):
+        tree = neighbour.get_node_kdtree()
+        if tree is None:
+            continue
+        dist, idx = tree.query(own_points, workers=workers)
+        closer = dist < best_dist
+        best_dist[closer] = dist[closer]
+        best_point[closer] = tree.data[idx[closer]]
+        best_owner[closer] = i
 
-    # cKDTree, not bvh.py's own tree -- this runs every step for every plate's *entire* node
-    # set (tens of thousands of points at real density), where bvh.py's pure-Python per-point
-    # recursion loses badly to cKDTree's compiled batch query (confirmed directly: an 8-step,
-    # ~16k-node-per-plate run went from ~2 minutes with the BVH here to a couple of seconds
-    # with cKDTree). bvh.py's tree-vs-tree traversal (query_nearest_cross) is validated
-    # against brute force (unit_tests/v2/test_bvh.py) and well-suited to a smaller, less
-    # frequent plate-pair query -- merge_split.py's own collision-pair proximity check is the
-    # natural next call site -- but isn't wired into that shared v1 module in this pass, to
-    # avoid touching well-tested v1 code for a query that isn't currently a measured
-    # bottleneck. Not yet exercised at runtime; kept available and independently tested.
-    tree = cKDTree(neighbour_points)
-    dist, idx = tree.query(own_points)
-    owner_idx = neighbour_owner_idx[idx]
-    nearest_points = neighbour_points[idx]
-    direction = geometry.normalize(nearest_points - own_points)
-    neighbor_is_oceanic = np.array([neighbours[i].crust_type == "oceanic" for i in owner_idx])
-    neighbor_omega = np.array([neighbours[i].omega for i in owner_idx])
-    dist = np.where(dist <= reach_rad, dist, np.inf)
+    if not np.any(best_owner >= 0):
+        return no_neighbour
+
+    direction = geometry.normalize(best_point - own_points)
+    neighbor_is_oceanic = np.zeros(n, dtype=bool)
+    neighbor_omega = np.zeros((n, 3))
+    for i, neighbour in enumerate(neighbours):
+        owned = best_owner == i
+        if not np.any(owned):
+            continue
+        neighbor_is_oceanic[owned] = neighbour.crust_type == "oceanic"
+        neighbor_omega[owned] = neighbour.omega
+    dist = np.where(best_dist <= reach_rad, best_dist, np.inf)
     return BoundaryForceInputs(own_points, own_hc, own_hm, dist, direction, neighbor_is_oceanic, neighbor_omega)
 
 

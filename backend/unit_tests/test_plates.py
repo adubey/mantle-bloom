@@ -260,6 +260,18 @@ def test_get_bounding_polygon_cache_invalidated_by_replace_line():
     assert refreshed is not cached
 
 
+def test_get_node_kdtree_is_cached_until_geometry_changes():
+    p = generate_plates(seed=12, num_plates=8)[0]
+    first = p.get_node_kdtree()
+    assert first is p.get_node_kdtree()  # same cached tree
+    p.rotate(geometry.plate_frame_from_seed(np.array([0.0, 1.0, 0.0])))
+    rotated = p.get_node_kdtree()
+    assert rotated is not first  # invalidated by rotate
+    assert np.allclose(np.asarray(rotated.data), p.all_points_and_elevation()[0])
+    p.set_lines(list(p.lines))
+    assert p.get_node_kdtree() is not rotated  # invalidated by set_lines
+
+
 def test_map_world_points_on_plate_fraction_spans_zero_to_one_along_each_line():
     frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
     theta = np.array([0.0, 0.25, 1.0])
