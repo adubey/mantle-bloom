@@ -522,6 +522,13 @@ class Plate(abc.ABC):
         # plate's outline got re-treed from scratch on every one of those incoming checks
         # this step, not just once.
         self._bounding_polygon_tree_cache: cKDTree | None = None
+        # A cKDTree over this plate's full node cloud (all_points_and_elevation()[0]), built
+        # lazily by get_node_kdtree() and invalidated in lockstep with the two caches above --
+        # node *positions*, like the outline, only change via rotate() or a node-set mutation,
+        # never an elevation-only edit. torque.gather_boundary_force_inputs queries every
+        # neighbour's tree once per plate per pass; sharing one cached tree per plate turns
+        # ~24 fresh per-call tree builds a step into one build per plate.
+        self._node_kdtree_cache: cKDTree | None = None
 
     @property
     def plate_id(self) -> int:
@@ -680,9 +687,23 @@ class Plate(abc.ABC):
             self._bounding_polygon_tree_cache = cKDTree(polygon)
         return self._bounding_polygon_tree_cache
 
+    def get_node_kdtree(self) -> cKDTree | None:
+        """A `cKDTree` over `all_points_and_elevation()[0]`, cached and invalidated the same
+        way `get_bounding_polygon_tree()` is -- `None` if this plate currently has no nodes.
+        Shared across `torque.gather_boundary_force_inputs`' per-neighbour nearest-node
+        queries (one plate is a neighbour of several others, and is queried in both the shift
+        and deform pass) so its node cloud is treed once per step, not once per query."""
+        if self._node_kdtree_cache is None:
+            points = self.all_points_and_elevation()[0]
+            if len(points) == 0:
+                return None
+            self._node_kdtree_cache = cKDTree(points, balanced_tree=False, compact_nodes=False)
+        return self._node_kdtree_cache
+
     def _invalidate_bounding_polygon(self) -> None:
         self._bounding_polygon_cache = None
         self._bounding_polygon_tree_cache = None
+        self._node_kdtree_cache = None
 
     def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray:
         """True for every point in `points_xyz` (world unit vectors) currently inside this

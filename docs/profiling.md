@@ -90,7 +90,19 @@ Totals over the 8 profiled steps.
    ~5 iters in practice). Result is bit-exact against a 60-iteration reference. Microbenchmark
    on the same box at the profiled grid size (801x1601): `eckert4` full-grid call
    ~380 ms -> ~22 ms (~17x), ~8 passes/render -> roughly **2.7 s/frame saved**.
-4. **Build the neighbour `cKDTree` once per step in `torque`** and share it across every
-   plate's `shift`/`deform` instead of rebuilding it ~24x.
+4. ~~**Build the neighbour `cKDTree` once per step in `torque`** and share it across every
+   plate's `shift`/`deform` instead of rebuilding it ~24x.~~ **Done** (`Plate.get_node_kdtree`:
+   a per-plate `cKDTree` over the plate's own node cloud, cached and invalidated in lockstep
+   with the bounding-polygon caches -- i.e. on `rotate` / any node-set change, never an
+   elevation-only edit -- and built with the same `balanced_tree=False, compact_nodes=False`
+   fast-build flags v1's `deform` already uses. `gather_boundary_force_inputs` now queries
+   each neighbour's cached tree and keeps the elementwise-nearest via an argmin over
+   neighbours instead of concatenating every neighbour's nodes into a fresh tree per call;
+   one plate is a neighbour of several others and is queried in both the shift and deform
+   pass, so its cloud is treed ~once per step rather than ~24x.) Output is bit-exact against
+   the old combined-tree path (`dist`/`direction`/`omega`/`is_oceanic`, verified over a
+   10-plate world across the fresh state and three steps). Bench on the same box (10 plates,
+   `node_density` 4, 6 steps): `gather_boundary_force_inputs` cumulative 6.29 s -> 3.78 s
+   (its own `tottime` 4.49 s -> 0.15 s), ~0.42 s/step, ~3.6 s/step -> ~3.2 s/step wall.
 5. Vectorize `all_points_and_elevation` / `elevation_lines.world_xyz` to remove the 237 K
    per-node calls.
