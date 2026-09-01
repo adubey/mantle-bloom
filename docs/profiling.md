@@ -104,5 +104,19 @@ Totals over the 8 profiled steps.
    10-plate world across the fresh state and three steps). Bench on the same box (10 plates,
    `node_density` 4, 6 steps): `gather_boundary_force_inputs` cumulative 6.29 s -> 3.78 s
    (its own `tottime` 4.49 s -> 0.15 s), ~0.42 s/step, ~3.6 s/step -> ~3.2 s/step wall.
-5. Vectorize `all_points_and_elevation` / `elevation_lines.world_xyz` to remove the 237 K
-   per-node calls.
+5. ~~**Vectorize `all_points_and_elevation` / `elevation_lines.world_xyz` to remove the 237 K
+   per-node calls.**~~ **Done** (both a vectorize and a cache). `PlateWithLines._get_world_points`
+   concatenates every non-empty line's `(phi, theta)` and runs a single `local_xyz` + one
+   frame rotation over the whole plate, instead of a small pair of numpy calls per line; the
+   result is cached in `_world_points_cache` and invalidated in lockstep with the
+   bounding-polygon / node-kdtree / row-lookup caches (i.e. on `rotate` or any node-set
+   change, never an elevation-only edit -- same rule as fix 4). `all_points_and_elevation`
+   now returns that cached array (read-only for callers, like `get_bounding_polygon()`)
+   paired with a fresh `collect("elevation")`, since elevation mutates without a node-set
+   change. Output matches the old per-line path to ~1 ULP (2e-16 on unit vectors, from BLAS
+   matmul blocking at the larger size; full unit + stepping/plate/elevation-line stress
+   suites stay green, including the "preserves spacing exactly" rigid-rotation checks).
+   Microbench on a freshly generated 9-plate world (`node_density` 4, ~131 K nodes),
+   300 full-plate-cloud sweeps: old per-line style 2.94 s -> vectorized-but-cold 1.24 s ->
+   warm cache 0.10 s. In a real step almost every one of the ~24 `all_points_and_elevation`
+   calls per plate hits the warm cache.
