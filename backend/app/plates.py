@@ -1177,6 +1177,16 @@ class PlateWithLines(Plate):
         # bounding-polygon cache (same rotate()/set_lines()/replace_line() call sites) --
         # see contains_batch's own docstring for what this backs.
         self._row_lookup_cache: _RowLookup | None = None
+        # Every non-empty line's node world-xyz, concatenated in line order -- a pure
+        # function of each line's plate-local (phi, theta) and this plate's frame, so it
+        # only changes on rotate() or a node-set mutation, never an elevation-only edit.
+        # Built in one vectorized pass by _get_world_points() (a single local_xyz + frame
+        # rotation over the whole plate, not a small pair of numpy calls per line) and
+        # invalidated in lockstep with the bounding-polygon caches. Backs
+        # all_points_and_elevation, itself called dozens of times per step for the same
+        # unchanged geometry (torque's per-neighbour shift/deform passes, erosion,
+        # merge/defrag checks). Read-only for callers, same as get_bounding_polygon().
+        self._world_points_cache: np.ndarray | None = None
 
     @property
     def lines(self) -> tuple[ElevationLine, ...]:
@@ -1213,6 +1223,7 @@ class PlateWithLines(Plate):
     def _invalidate_bounding_polygon(self) -> None:
         super()._invalidate_bounding_polygon()
         self._row_lookup_cache = None
+        self._world_points_cache = None
 
     def outline_world(self) -> np.ndarray:
         """Derived directly from each line's current endpoints -- the actual edge deform()
@@ -1356,13 +1367,31 @@ class PlateWithLines(Plate):
     def node_count(self) -> int:
         return sum(len(line) for line in self._lines)
 
+    def _get_world_points(self) -> np.ndarray:
+        """Every non-empty line's node world-xyz `(n, 3)`, concatenated in line order --
+        cached (see `_world_points_cache`). Rebuilt with a single `local_xyz` +
+        frame-rotation over the whole plate's `(phi, theta)` rather than a per-line pair of
+        small numpy calls, which is what drove the profiled `world_xyz`/`latlon_to_xyz`
+        call counts (see docs/profiling.md). Read-only for callers."""
+        if self._world_points_cache is None:
+            lines = [line for line in self._lines if len(line) > 0]
+            if not lines:
+                self._world_points_cache = np.zeros((0, 3))
+            else:
+                theta = np.concatenate([line.theta for line in lines])
+                phi = np.repeat(
+                    np.array([line.phi for line in lines], dtype=float),
+                    [len(line) for line in lines],
+                )
+                self._world_points_cache = geometry.to_world(self._frame, geometry.local_xyz(phi, theta))
+        return self._world_points_cache
+
     def all_points_and_elevation(self) -> tuple[np.ndarray, np.ndarray]:
-        """Every elevation-line node's world position and elevation, concatenated."""
-        if not self._lines:
-            return np.zeros((0, 3)), np.zeros(0)
-        points = np.concatenate([line.world_xyz(self._frame) for line in self._lines], axis=0)
-        elevation = np.concatenate([line.elevation for line in self._lines], axis=0)
-        return points, elevation
+        """Every elevation-line node's world position and elevation, concatenated. The
+        positions come from `_get_world_points()`'s cache (read-only, like
+        `get_bounding_polygon()`); elevation is gathered fresh every call since it changes
+        without a node-set mutation."""
+        return self._get_world_points(), self.collect("elevation")
 
     def collect(self, field_name: str) -> np.ndarray:
         chunks = [getattr(line, field_name) for line in self._lines if len(line) > 0]

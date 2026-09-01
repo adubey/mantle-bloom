@@ -71,33 +71,50 @@ Landed since the original profile (each measured on the box it was written on):
 
 1. ~~**Cache `_project_climate_grid` across frames + `lru_cache` `_biome_grid`.**~~ **Done**
    (`_PROJECT_GRID_CACHE` ring keyed on grid size + projection + rotation bytes + dimensions +
-   padding; `_biome_grid` is `lru_cache`d). `_render_combined_view` 5.25 s (cold) -> 2.85 s
-   (warm) per frame, ~2.4 s/frame saved.
-2. ~~**Numba-jit `_fill_rects`.**~~ **Done** (`_fill_rects_kernel`, `@njit(cache=True)`,
-   serial). ~0.78 s -> ~0.027 s per call at the profiled grid size, run twice per render --
-   ~1.5 s/frame saved.
-3. ~~**`_eckert4_theta`: fewer Newton iters + solve on unique latitudes.**~~ **Done**
-   (`np.unique` on the flattened latitudes so ~801 distinct values are solved and scattered
-   back; loop caps at 12 iters, breaks below 1e-14 correction -- ~5 in practice; bit-exact vs
-   a 60-iter reference). Full-grid `eckert4` ~380 ms -> ~22 ms, ~8 passes/render -- roughly
-   2.7 s/frame saved.
-4. ~~**Build the neighbour `cKDTree` once per step in `torque`.**~~ **Done**
-   (`Plate.get_node_kdtree`, a per-plate tree cached/invalidated in lockstep with the
-   bounding-polygon caches; `gather_boundary_force_inputs` queries each neighbour's cached
-   tree and keeps the elementwise-nearest via an argmin. Bit-exact vs the old combined-tree
-   path.) `gather_boundary_force_inputs` cumulative 6.29 s -> 3.78 s over 6 steps.
-
-Still open, roughly in order:
-
-5. **`workers=` on the two full-grid render queries.** Both `_biome_fields`' own
-   `cKDTree(all_points).query(flat_xyz)` and `hydrology.sample_is_ocean` build a fresh tree
-   and run a **single-threaded** query over all 1.28 M grid points every frame. Pass
-   `workers=-1` (the codebase already does this in `torque` / the land k-d tree via
-   `plates.query_workers`) and/or cache the tree -- the queried node cloud only changes on a
-   step, not between static-camera re-renders. ~0.6-1.0 s/frame, and it speeds every
-   `combined`/`biome` re-render too, not just animation.
-6. **Vectorize `all_points_and_elevation` / `elevation_lines.world_xyz`** to remove the
-   per-node `latlon_to_xyz` calls (~0.26 s/step, ~180 K calls in the 9-frame run).
-7. **`hydrology._compute_basin_spill`'s ~1.05 M `heapq.heappop`** -- a priority-flood in pure
-   Python; ~0.19 s/step and grows with basin count. Candidate for a numba kernel or
-   `scipy.ndimage`-based watershed.
+   padding; `_biome_grid` is `lru_cache`d). Measured on the same box: `_render_combined_view`
+   dropped 5.25 s (cold) -> 2.85 s (warm cache) per frame, ~2.4 s/frame saved.
+2. ~~**Numba-jit `_fill_rects`** (the codebase already JITs `atmosphere_cfd`). The
+   1.28 M-iteration Python loop is ~1.5 s/frame.~~ **Done** (`_fill_rects_kernel`,
+   `@njit(cache=True)`, serial -- overlapping cells would race under `prange`; the Python
+   wrapper still does the vectorized clip/round and normalizes `colors` to the buffer dtype
+   once). Microbenchmark on the same box at the profiled grid size (801x1601 points):
+   ~0.78 s -> ~0.027 s per `_fill_rects` call, run twice per combined render -- ~1.5 s/frame
+   saved.
+3. ~~**`_eckert4_theta`: drop `_NEWTON_ITERS` 30 -> ~8** (Newton converges quadratically,
+   double precision is reached well before 30) and/or solve on the ~801 unique latitudes
+   rather than all 1.28 M points. Independent of fix 1.~~ **Done** (both: `np.unique` on the
+   flattened latitudes so the solve runs on the ~801 distinct values and is scattered back;
+   Newton loop now caps at 12 iters and breaks once the max correction drops below 1e-14 --
+   ~5 iters in practice). Result is bit-exact against a 60-iteration reference. Microbenchmark
+   on the same box at the profiled grid size (801x1601): `eckert4` full-grid call
+   ~380 ms -> ~22 ms (~17x), ~8 passes/render -> roughly **2.7 s/frame saved**.
+4. ~~**Build the neighbour `cKDTree` once per step in `torque`** and share it across every
+   plate's `shift`/`deform` instead of rebuilding it ~24x.~~ **Done** (`Plate.get_node_kdtree`:
+   a per-plate `cKDTree` over the plate's own node cloud, cached and invalidated in lockstep
+   with the bounding-polygon caches -- i.e. on `rotate` / any node-set change, never an
+   elevation-only edit -- and built with the same `balanced_tree=False, compact_nodes=False`
+   fast-build flags v1's `deform` already uses. `gather_boundary_force_inputs` now queries
+   each neighbour's cached tree and keeps the elementwise-nearest via an argmin over
+   neighbours instead of concatenating every neighbour's nodes into a fresh tree per call;
+   one plate is a neighbour of several others and is queried in both the shift and deform
+   pass, so its cloud is treed ~once per step rather than ~24x.) Output is bit-exact against
+   the old combined-tree path (`dist`/`direction`/`omega`/`is_oceanic`, verified over a
+   10-plate world across the fresh state and three steps). Bench on the same box (10 plates,
+   `node_density` 4, 6 steps): `gather_boundary_force_inputs` cumulative 6.29 s -> 3.78 s
+   (its own `tottime` 4.49 s -> 0.15 s), ~0.42 s/step, ~3.6 s/step -> ~3.2 s/step wall.
+5. ~~**Vectorize `all_points_and_elevation` / `elevation_lines.world_xyz` to remove the 237 K
+   per-node calls.**~~ **Done** (both a vectorize and a cache). `PlateWithLines._get_world_points`
+   concatenates every non-empty line's `(phi, theta)` and runs a single `local_xyz` + one
+   frame rotation over the whole plate, instead of a small pair of numpy calls per line; the
+   result is cached in `_world_points_cache` and invalidated in lockstep with the
+   bounding-polygon / node-kdtree / row-lookup caches (i.e. on `rotate` or any node-set
+   change, never an elevation-only edit -- same rule as fix 4). `all_points_and_elevation`
+   now returns that cached array (read-only for callers, like `get_bounding_polygon()`)
+   paired with a fresh `collect("elevation")`, since elevation mutates without a node-set
+   change. Output matches the old per-line path to ~1 ULP (2e-16 on unit vectors, from BLAS
+   matmul blocking at the larger size; full unit + stepping/plate/elevation-line stress
+   suites stay green, including the "preserves spacing exactly" rigid-rotation checks).
+   Microbench on a freshly generated 9-plate world (`node_density` 4, ~131 K nodes),
+   300 full-plate-cloud sweeps: old per-line style 2.94 s -> vectorized-but-cold 1.24 s ->
+   warm cache 0.10 s. In a real step almost every one of the ~24 `all_points_and_elevation`
+   calls per plate hits the warm cache.
