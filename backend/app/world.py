@@ -74,15 +74,6 @@ class World:
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
-    # plate_ids currently tracked as an active volcanic field -- removed (and relabeled as an
-    # ordinary continental plate) once fewer than volcanism.VOLCANO_FRACTION_DORMANT_
-    # THRESHOLD of the plate's own nodes are still is_volcano. Nothing populates this set any
-    # more (PlateWithLines.deform spawns overstretch volcanoes as new nodes on the same
-    # plate's own existing line, not as a separate tracked plate) -- kept for now since
-    # apply_volcanic_activity's own per-node eruption rolling (which reads `is_volcano`
-    # directly off every plate's lines, independent of this set) still needs somewhere to
-    # report a field "cooling" if that tracking comes back later. See volcanism.py.
-    volcanic_field_plate_ids: set[int] = field(default_factory=set)
     # Cross-step memory for the stranded-basin diagnostic (docs/debugging.md): one
     # `stranded_basins.StrandedBasinTrack` per endorheic, below-sea-level, ocean-disconnected
     # basin currently present, reconciled by centroid proximity every hydrology step (see
@@ -368,8 +359,7 @@ def step_world(world: World, years: float) -> None:
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         world.erosion_cache = erosion_result
     if world.simulate_plate_movement:
-        for message in volcanism.apply_volcanic_activity(world, years):
-            world.log_event(message)
+        volcanism.apply_volcanic_activity(world, years)
     if erosion_result is not None:
         geology.apply_resource_formation(world, years, erosion_result)
         # Reconcile the stranded-basin tracker against this step's freshly-rebuilt depression

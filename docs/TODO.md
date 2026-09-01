@@ -622,14 +622,3 @@ codebase tracks follow-ups here, not inline. The items below are the loose ends 
 logic. If `PlateWithRTree` is meant to become a drop-in replacement, it needs its own
 version of the per-turn node density / spacing upkeep (`elevation_lines.py`,
 `TARGET_LINE_SPACING_RAD`), otherwise its lines drift out of spec over a long run.
-
-### `World.volcanic_field_plate_ids` is dead state
-
-**Where:** `world.py` ~line 70 ("Nothing populates this set any more ... kept for now").
-
-Since `PlateWithLines.deform()` started spawning overstretched-rift volcanoes as new nodes
-on the plate's own line (rather than as a separately tracked volcanic-field plate), nothing
-adds to `volcanic_field_plate_ids`. Per-node eruption rolling in `volcanism.py` reads
-`is_volcano` directly and doesn't need it. It's retained only as a place to report a field
-"cooling" if per-field tracking ever comes back. Decide: revive the tracking, or remove the
-field (and bump save/load).

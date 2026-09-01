@@ -105,8 +105,9 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
     for that representation. Uses the cached get_bounding_polygon() rather than outline_world()
     directly since this runs once per plate per call, each time re-reading every other
     plate's own outline -- an O(n) set of calls across all_plates that would otherwise
-    recompute the same unchanged outlines from scratch every time (see world.py's callers,
-    e.g. volcanism.merge_close_volcanic_fields' own per-field loop). Same bounding-sphere
+    recompute the same unchanged outlines from scratch every time (see get_neighbours' own
+    callers, e.g. torque.py's per-plate neighbour torque and lithosphere_plate.py's own
+    boundary-reach query). Same bounding-sphere
     prefilter as boundary.py's step_boundaries (cheap enough to compute per plate, and enough
     to rule out most pairs before a real nearest-point query)."""
     own_points = plate.get_bounding_polygon()
@@ -734,7 +735,7 @@ class Plate(abc.ABC):
         """Every other plate in `all_plates` (this plate need not be excluded by the caller
         -- it's excluded here) whose outline comes within `threshold_rad` of this plate's
         own -- defaults to NEIGHBOUR_DISTANCE_RAD, but callers with their own notion of
-        "close enough" (e.g. volcanism.py's merge/isolation distances) can pass their own."""
+        "close enough" (e.g. a boundary-effect or force-reach radius) can pass their own."""
         ...
 
     @abc.abstractmethod

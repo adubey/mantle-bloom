@@ -1,8 +1,8 @@
 """Whole-`World` save/load to a single opaque file -- the "File > Save/Load" feature.
 
 Deliberately just `pickle`, not a hand-written interchange format: every field on `World`
-(see world.py) -- plates, mantle centers, the collision-progress dict, the volcanic-field id
-set, the climate/hydrology caches -- is already a plain dataclass or numpy array with no
+(see world.py) -- plates, mantle centers, the collision-progress dict, the climate/hydrology
+caches -- is already a plain dataclass or numpy array with no
 open handles or unpicklable state, so pickling the object graph directly round-trips it
 exactly with no bespoke (de)serialization code to keep in sync as `World`'s own fields
 change. This deliberately makes no promise of compatibility across app versions (pickling by
