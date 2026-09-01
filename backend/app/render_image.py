@@ -18,6 +18,7 @@ it, so there's no payload-size reason to keep the grid coarse -- it's a free-sta
 from __future__ import annotations
 
 import base64
+import functools
 import io
 from fractions import Fraction
 
@@ -495,11 +496,16 @@ def _render_grid_arrays(
     )
 
 
+@functools.lru_cache(maxsize=8)
 def _biome_grid(height: int, width: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Same lat/lon/world_xyz construction as climate.py's own `_build_grid` (row 0 = north
     pole, increasing southward; column increasing eastward, wrapping) -- duplicated rather
     than imported since that's a private helper of climate.py's own native simulation grid,
-    and this one is deliberately a different (finer) shape -- see BIOME_GRID_HEIGHT/WIDTH."""
+    and this one is deliberately a different (finer) shape -- see BIOME_GRID_HEIGHT/WIDTH.
+
+    Pure function of (height, width), so it's `lru_cache`d -- every renderer rebuilds the
+    same lat/lon/xyz arrays for a given grid size, and across animation frames the size never
+    changes. Callers treat the returned arrays as read-only."""
     lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
     lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
     lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
@@ -646,6 +652,17 @@ def _fit_and_project_sphere(
     return centers, flat_xy, scale, offset_x, offset_y
 
 
+# Small ring of recently-computed `_project_climate_grid` results. The projection geometry is
+# a pure function of (grid size, projection, view rotation, output dimensions, padding) -- none
+# of which change across the frames of an animation or across a static-camera re-render -- yet
+# rebuilding it runs ~8 full-grid projection passes (each a 30-iteration Newton solve over the
+# whole 1.28 M-point grid). Keyed on the exact rotation bytes so a new-but-equal rotation array
+# still hits. Cleared wholesale rather than LRU-evicted since it never holds more than a couple
+# of live entries in practice. See docs/profiling.md.
+_PROJECT_GRID_CACHE: dict = {}
+_PROJECT_GRID_CACHE_MAXSIZE = 8
+
+
 def _project_climate_grid(
     lat_deg: np.ndarray, lon_deg: np.ndarray, world_xyz: np.ndarray,
     projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
@@ -657,7 +674,34 @@ def _project_climate_grid(
     that's required once the view can rotate). Shared by every CLIMATE_VIEWS renderer and the
     Biome/Combined views' own finer grid (see BIOME_GRID_HEIGHT/WIDTH) so they all place the
     sphere identically and never rescale or re-center relative to one another when the user
-    switches views."""
+    switches views.
+
+    `lat_deg`/`lon_deg`/`world_xyz` are always a `_biome_grid(grid_h, grid_w)` result (every
+    call site builds them that way), so the output is fully determined by grid size + the
+    scalar/string/rotation args -- which is what `_PROJECT_GRID_CACHE` keys on. Result arrays
+    are treated as read-only by callers."""
+    grid_h, grid_w = world_xyz.shape[:2]
+    key = (
+        grid_h, grid_w, projection, np.asarray(view_rotation).tobytes(),
+        int(width), int(height), round(float(padding_px), 6),
+    )
+    cached = _PROJECT_GRID_CACHE.get(key)
+    if cached is not None:
+        return cached
+    result = _compute_projected_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    if len(_PROJECT_GRID_CACHE) >= _PROJECT_GRID_CACHE_MAXSIZE:
+        _PROJECT_GRID_CACHE.clear()
+    _PROJECT_GRID_CACHE[key] = result
+    return result
+
+
+def _compute_projected_climate_grid(
+    lat_deg: np.ndarray, lon_deg: np.ndarray, world_xyz: np.ndarray,
+    projection: str, view_rotation: np.ndarray, width: int, height: int, padding_px: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float, float]:
+    """Uncached body of `_project_climate_grid` -- see that function's docstring."""
     grid_h, grid_w = world_xyz.shape[:2]
     flat_xyz = world_xyz.reshape(-1, 3)
 
