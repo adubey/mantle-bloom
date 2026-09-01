@@ -55,7 +55,8 @@ production build (`vite build` + `vite preview`); pass `--dev` to run the Vite d
 ./bin/restart.sh --dev
 ```
 
-Logs land in `/tmp/mantle-bloom-backend.log` and `/tmp/mantle-bloom-frontend.log`. Open
+Logs land in `/tmp/mantle-bloom-backend-<backend-port>.log` and
+`/tmp/mantle-bloom-frontend-<frontend-port>.log` (e.g. `/tmp/mantle-bloom-backend-8000.log`). Open
 `http://localhost:5173`, click **Generate World**, then **Step** or **Play**.
 
 Stop everything with `./bin/stop.sh`.

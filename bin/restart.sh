@@ -11,7 +11,9 @@
 # wired to reach the backend at its actual port (VITE_API_BASE, baked in at build/dev-server-
 # start time -- see frontend/src/api.ts), and the backend's CORS allowlist is pointed at the
 # actual frontend port (FRONTEND_PORT -- see backend/app/main.py), so a non-default pair
-# still talks to itself correctly.
+# still talks to itself correctly. Logs are written per-port to
+# /tmp/mantle-bloom-backend-<backend-port>.log and /tmp/mantle-bloom-frontend-<frontend-port>.log
+# so parallel instances don't clobber each other's output.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -43,30 +45,30 @@ else
   CAFFEINATE=
 fi
 
-BACKEND_LOGS=/tmp/mantle-bloom-backend.log
+BACKEND_LOGS="/tmp/mantle-bloom-backend-${backend_port}.log"
 echo "Starting backend on :$backend_port with logs ${BACKEND_LOGS}..."
 (
   cd backend
   source .venv/bin/activate
-  FRONTEND_PORT="$frontend_port" nohup ${CAFFEINATE:-} uvicorn app.main:app --host 127.0.0.1 --port "$backend_port" > /tmp/mantle-bloom-backend.log 2>&1 &
+  FRONTEND_PORT="$frontend_port" nohup ${CAFFEINATE:-} uvicorn app.main:app --host 127.0.0.1 --port "$backend_port" > "$BACKEND_LOGS" 2>&1 &
 )
 
 api_base="http://localhost:$backend_port"
 
-FRONTEND_LOGS=/tmp/mantle-bloom-frontend.log
+FRONTEND_LOGS="/tmp/mantle-bloom-frontend-${frontend_port}.log"
 if [ "$dev" = true ]; then
   echo "Starting frontend dev server on :$frontend_port with logs ${FRONTEND_LOGS}..."
   (
     cd frontend
-    VITE_API_BASE="$api_base" nohup ${CAFFEINATE:-} npm run dev -- --port "$frontend_port" --strictPort > /tmp/mantle-bloom-frontend.log 2>&1 &
+    VITE_API_BASE="$api_base" nohup ${CAFFEINATE:-} npm run dev -- --port "$frontend_port" --strictPort > "$FRONTEND_LOGS" 2>&1 &
   )
 else
   echo "Building frontend for production..."
-  (cd frontend && VITE_API_BASE="$api_base" npm run build) > /tmp/mantle-bloom-frontend.log 2>&1
+  (cd frontend && VITE_API_BASE="$api_base" npm run build) > "$FRONTEND_LOGS" 2>&1
   echo "Starting frontend (production build) on :$frontend_port with logs ${FRONTEND_LOGS}..."
   (
     cd frontend
-    nohup ${CAFFEINATE:-} npm run preview -- --port "$frontend_port" --strictPort >> /tmp/mantle-bloom-frontend.log 2>&1 &
+    nohup ${CAFFEINATE:-} npm run preview -- --port "$frontend_port" --strictPort >> "$FRONTEND_LOGS" 2>&1 &
   )
 fi
 
