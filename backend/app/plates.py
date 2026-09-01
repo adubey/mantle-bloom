@@ -47,6 +47,7 @@ from .lat_long_grid import LatLongGrid
 from .noise import SphereNoise
 
 if TYPE_CHECKING:
+    from . import terrain_noise
     from .world import World
 
 CONTINENTAL_FRACTION = 0.4
@@ -2165,11 +2166,20 @@ def noise_amplitude(crust_type: str) -> float:
 
 
 def _land_noise_threshold(
-    owner_tree: cKDTree, crust_types: list[str], noise: SphereNoise, land_fraction: float
+    owner_tree: cKDTree,
+    crust_types: list[str],
+    noise: "terrain_noise.ReliefField",
+    land_fraction: float,
+    sealevel_noise_offset: float = 0.0,
 ) -> float | None:
     """Translate a requested whole-sphere land_fraction into a concrete noise threshold for
     continental crust's elevation formula (each caller applies this threshold in its own
     per-node elevation/thickness formula).
+
+    `noise` is anything with a `sample(xyz) -> array` method -- a bare `SphereNoise` or
+    `terrain_noise.ContinentalRelief` (whose `sample()` is the land/sea-deciding component,
+    deliberately kept at the same low-frequency character so this coarse quantile stays a
+    good estimator; its orogenic `uplift()` is added elsewhere and never crosses sea level).
 
     A one-off whole-sphere sweep (independent of any plate's own lattice, at the coarser
     LAND_FRACTION_SAMPLE_SPACING_RAD -- this only needs to be a statistically representative
@@ -2181,7 +2191,15 @@ def _land_noise_threshold(
     needs to end up above sea level to hit the requested whole-sphere land_fraction: e.g. if
     continental crust only covers 40% of the sphere but 29% land was requested, ~72% of
     continental crust needs to be land. Returns None if there's no continental crust at all
-    to place land on."""
+    to place land on.
+
+    `sealevel_noise_offset` corrects for the reference continental column not sitting
+    exactly at sea level: a node is land when its noise value exceeds `threshold +
+    offset`, not `threshold` (the caller knows `offset` -- it is `(Hc_at_sealevel - Hc0) /
+    amplitude` through the isostasy formula, a small negative number). Subtracting it here
+    means `quantile(1 - target)` lands on the actual land/sea crossing, so the measured
+    land fraction tracks the request instead of overshooting it. Default 0.0 keeps the
+    old behaviour for a caller that adds the noise straight onto elevation."""
     sample_pts = np.concatenate(
         [
             world_pts
@@ -2197,6 +2215,6 @@ def _land_noise_threshold(
 
     target_sub_fraction = min(land_fraction / continental_area_fraction, 1.0)
     continental_noise = noise.sample(sample_pts[is_continental])
-    return float(np.quantile(continental_noise, 1.0 - target_sub_fraction))
+    return float(np.quantile(continental_noise, 1.0 - target_sub_fraction)) - sealevel_noise_offset
 
 
