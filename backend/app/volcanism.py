@@ -13,12 +13,6 @@ at creation), decremented every step. While active, it rolls a per-step eruption
 (`1 - exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1e6)`) and, if it erupts, adds
 `elevation_lines.ERUPTION_ELEVATION_M` of new land and grows `mineral_deposit_m`.
 Deterministic per `(seed, elapsed_years, plate_id, line_index)`.
-
-A plate stops being tracked as a volcanic field once fewer than
-`VOLCANO_FRACTION_DORMANT_THRESHOLD` (5%) of its own nodes are still `is_volcano` -- not a
-fixed elapsed-time countdown. `is_volcano` never reverts to False once set, so this ratio can
-only ever fall, by dilution, as the field's own edges grow via ordinary deform() growth and
-each newly-added node starts non-volcanic.
 """
 
 from __future__ import annotations
@@ -28,14 +22,10 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from .elevation_lines import ERUPTION_ELEVATION_M, MAX_ELEVATION_M, MIN_ELEVATION_M
-from .plates import Plate, PlateWithLines
+from .plates import PlateWithLines
 
 if TYPE_CHECKING:
     from .world import World
-
-# Once a volcanic-field plate's own is_volcano fraction dilutes below this, it's no longer
-# tracked as a field -- see module docstring.
-VOLCANO_FRACTION_DORMANT_THRESHOLD = 0.05
 
 # Expected number of eruption events over a volcano's full active life is
 # ERUPTION_RATE_PER_MYR * (active life in Myr) -- e.g. at the low end of VOLCANO_ACTIVE
@@ -54,32 +44,11 @@ MINERAL_DEPOSIT_PER_ERUPTION_M = 0.5
 MAX_MINERAL_DEPOSIT_M = 20.0
 
 
-def _volcano_fraction(plate: Plate) -> float:
-    total = plate.node_count()
-    if total == 0:
-        return 0.0
-    return int(plate.collect("is_volcano").sum()) / total
-
-
-def apply_volcanic_activity(world: "World", years: float) -> list[str]:
-    """Every step: relabels any volcanic-field plate whose is_volcano fraction has diluted
-    below VOLCANO_FRACTION_DORMANT_THRESHOLD as an ordinary continental plate (see module
-    docstring), and rolls each individual active volcano's own eruption chance, adding
-    ERUPTION_ELEVATION_M wherever it erupts. Mutates world.plates/world.volcanic_field_
-    plate_ids in place. Returns one human-readable event message per field that just cooled
-    into ordinary continental crust this step, for the UI's event console."""
-    events = []
-    plate_by_id = {plate.plate_id: plate for plate in world.plates}
-    for plate_id in list(world.volcanic_field_plate_ids):
-        plate = plate_by_id.get(plate_id)
-        if plate is None or _volcano_fraction(plate) < VOLCANO_FRACTION_DORMANT_THRESHOLD:
-            world.volcanic_field_plate_ids.discard(plate_id)
-            if plate is not None:
-                events.append(f"The volcanic field on plate {plate_id} has cooled into ordinary continental crust.")
-
+def apply_volcanic_activity(world: "World", years: float) -> None:
+    """Every step: rolls each individual active volcano's own eruption chance, adding
+    ERUPTION_ELEVATION_M wherever it erupts. Mutates world.plates in place."""
     for plate in world.plates:
         _apply_volcanic_activity_to_lines(plate, world, years)
-    return events
 
 
 def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", years: float) -> None:

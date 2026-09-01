@@ -636,14 +636,3 @@ min vs a couple of seconds for an 8-step run). The intended call site for the BV
 a smaller, less frequent query -- `merge_split.py`'s collision-pair proximity check is
 called out as "the natural next call site." Either wire it in there, or drop `bvh.py`'s
 cross-traversal path if it's never going to be used.
-
-### `World.volcanic_field_plate_ids` is dead state
-
-**Where:** `world.py` ~line 70 ("Nothing populates this set any more ... kept for now").
-
-Since `PlateWithLines.deform()` started spawning overstretched-rift volcanoes as new nodes
-on the plate's own line (rather than as a separately tracked volcanic-field plate), nothing
-adds to `volcanic_field_plate_ids`. Per-node eruption rolling in `volcanism.py` reads
-`is_volcano` directly and doesn't need it. It's retained only as a place to report a field
-"cooling" if per-field tracking ever comes back. Decide: revive the tracking, or remove the
-field (and bump save/load).
