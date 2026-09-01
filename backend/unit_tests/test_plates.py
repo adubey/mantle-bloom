@@ -169,13 +169,10 @@ def test_generate_plates_continental_fraction_is_clamped_to_one():
 
 
 def test_generate_plates_land_fraction_matches_target_when_achievable():
-    # 70% continental plates leaves comfortably more continental area than 29% land needs, so
-    # the target should land in the right ballpark (bounded only by the sampling in
-    # _land_noise_threshold, not by running out of continental crust to place land on). A wider
-    # tolerance than the noise threshold alone would suggest: elevation is derived from Hc/Hm
-    # via isostasy (see lithosphere.py) rather than added on top of the noise field directly,
-    # so the same quantile threshold overshoots the target land fraction somewhat rather than
-    # landing on it as tightly as a direct elevation formula would.
+    # 70% continental plates leaves comfortably more continental area than 29% land needs.
+    # _land_noise_threshold corrects for the isostatic sea-level offset of the reference
+    # continental column (see its `sealevel_noise_offset` param), so the measured land
+    # fraction tracks the request closely rather than overshooting it.
     plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.7, land_fraction=0.29)
     assert abs(_measured_land_fraction(plates) - 0.29) < 0.1
 
@@ -190,14 +187,73 @@ def test_generate_plates_land_fraction_is_capped_by_continental_area():
 
 
 def test_generate_plates_land_fraction_zero_gives_no_land():
-    # Not an exact 0.0: the threshold is estimated from a coarser whole-sphere sample
-    # (LAND_FRACTION_SAMPLE_SPACING_KM) than the actual plate lattice it's applied to, so a
-    # handful of real nodes can have a noise value fractionally above that sample's max. A
-    # looser ceiling than that sampling gap alone would suggest, for the same isostasy-derived-
-    # elevation reason test_generate_plates_land_fraction_matches_target_when_achievable's own
-    # comment gives -- still small, just not "a few thousandths of a percent" small.
+    # Not guaranteed to be an exact 0.0: the threshold is estimated from a coarser
+    # whole-sphere sample (LAND_FRACTION_SAMPLE_SPACING_KM) than the actual plate lattice it
+    # is applied to, so a handful of real nodes can sit fractionally above that sample's max.
     plates = generate_plates(seed=2, num_plates=14, continental_fraction=0.7, land_fraction=0.0)
     assert _measured_land_fraction(plates) < 0.02
+
+
+def _land_points_and_elevation(plates_list):
+    from app.plates import gather_node_positions
+
+    points, ordered = gather_node_positions(plates_list)
+    elevation = np.concatenate([p.collect("elevation") for p in ordered])
+    land = elevation > 0.0
+    return points[land], elevation[land]
+
+
+def test_generation_elevation_is_deterministic_for_same_seed():
+    # Stronger than test_generation_is_deterministic_for_same_seed (which only checks
+    # frame/crust type/line count): the composite relief field must reproduce the exact
+    # per-node elevation for a given seed.
+    e1 = np.concatenate([l.elevation for p in generate_plates(seed=321, num_plates=10) for l in p.lines])
+    e2 = np.concatenate([l.elevation for p in generate_plates(seed=321, num_plates=10) for l in p.lines])
+    assert np.array_equal(e1, e2)
+
+
+def test_generation_relief_has_more_variety_than_a_smooth_base():
+    # The orogenic/plateau uplift materially widens the spread of land elevation versus a
+    # world seeded from the low-frequency sample() field alone.
+    import app.terrain_noise as terrain_noise
+
+    kw = dict(seed=6, num_plates=12, continental_fraction=0.55, land_fraction=0.29, node_density=1.0)
+    _, varied = _land_points_and_elevation(generate_plates(**kw))
+
+    original = terrain_noise.ContinentalRelief.uplift
+    terrain_noise.ContinentalRelief.uplift = lambda self, xyz: np.zeros(np.shape(xyz)[:-1])
+    try:
+        _, smooth = _land_points_and_elevation(generate_plates(**kw))
+    finally:
+        terrain_noise.ContinentalRelief.uplift = original
+
+    assert np.std(varied) > 1.5 * np.std(smooth)
+    assert np.std(varied) > 900.0
+
+
+def test_generation_has_clustered_mountain_ranges():
+    # Nodes above 3 km are not scattered singletons -- they form connected belts.
+    lp, le = _land_points_and_elevation(
+        generate_plates(seed=6, num_plates=12, continental_fraction=0.55, land_fraction=0.29, node_density=1.0)
+    )
+    peaks = le > 3000.0
+    assert peaks.sum() > 100
+    labels = node_components(lp[peaks], 2.2 * line_spacing_rad(1.0))
+    assert np.max(np.bincount(labels)) >= 50  # one contiguous range of >=50 peak nodes
+
+
+def test_generation_has_elevated_flats():
+    # A plateau reads as high ground that is also locally flat -- distinct from a peak,
+    # which is high but locally rough.
+    from scipy.spatial import cKDTree
+
+    lp, le = _land_points_and_elevation(
+        generate_plates(seed=3, num_plates=12, continental_fraction=0.55, land_fraction=0.29, node_density=1.0)
+    )
+    _, idx = cKDTree(lp).query(lp, k=10)
+    local_std = le[idx].std(axis=1)
+    elevated_flat = (le > 1600.0) & (local_std < 300.0)
+    assert elevated_flat.sum() > 150
 
 
 def test_outline_world_traces_a_loop_covering_every_line():

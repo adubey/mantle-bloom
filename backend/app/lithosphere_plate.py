@@ -40,7 +40,7 @@ from .plates import (
     _land_noise_threshold,
     _row_median_step,
 )
-from . import bathymetry, lithosphere, rheology, torque
+from . import bathymetry, lithosphere, rheology, terrain_noise, torque
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -340,15 +340,20 @@ class LithospherePlate(PlateWithLines):
     def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
         """Same shape as `PlateWithLines._claim_adjacent_territory` -- a brand-new phi row
         just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm by
-        crust type (plus texture noise on Hc, replacing v1's noise-on-elevation) rather than
-        a flat elevation baseline."""
+        crust type plus `terrain_noise.FractalTexture` on Hc (an extension of an
+        already-shaped plate, so texture rather than a fresh orogen), rather than a flat
+        elevation baseline. Keyed off `(world.seed, plate_id, _TERRAIN_SEED_TAG)` so the
+        texture stays attached to this plate as it grows."""
         lines_with_nodes = [line for line in self.lines if len(line) > 0]
         if not lines_with_nodes:
             return
         ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
         max_phi_limit = np.pi / 2 - spacing_rad / 2
         hc0, hm0 = lithosphere.reference_thickness(self.crust_type)
-        amp = hc0 * 0.1  # texture noise on fresh Hc, same spirit as v1's noise-on-elevation
+        amp = hc0 * 0.1  # texture on fresh Hc, same spirit as v1's noise-on-elevation
+        texture = terrain_noise.FractalTexture(
+            np.random.default_rng((world.seed, self.plate_id, _TERRAIN_SEED_TAG))
+        )
         new_lines: list[ElevationLine] = []
 
         for reference, direction in ((ordered[0], -1), (ordered[-1], 1)):
@@ -366,12 +371,9 @@ class LithospherePlate(PlateWithLines):
             if not np.any(open_mask):
                 continue
 
-            direction_tag = 0 if direction < 0 else 1
-            rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, direction_tag))
-            noise = SphereNoise(rng, octaves=3, base_freq=2.5)
             theta_open = theta_candidates[open_mask]
             n_open = int(open_mask.sum())
-            hc_open = np.full(n_open, hc0) + amp * noise.sample(world_pts[open_mask])
+            hc_open = np.full(n_open, hc0) + amp * texture.sample(world_pts[open_mask])
             hm_open = np.full(n_open, hm0)
             elevation_open = lithosphere.isostatic_elevation(hc_open, hm_open, self.crust_density())
             new_lines.append(
@@ -500,6 +502,51 @@ _HC_NOISE_AMPLITUDE_OCEANIC_M = 900.0 / (
     (1.0 - lithosphere.RHO_OCEANIC_CRUST / lithosphere.RHO_ASTHENOSPHERE) * (lithosphere.RHO_ASTHENOSPHERE / (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER))
 )
 
+# Amplitudes for terrain_noise.ContinentalRelief.uplift() (orogenic belts + plateaus).
+# Expressed in metres of the elevation swing each contribution should produce, then divided
+# by the same 2000 m the CONTINENTAL amplitude above bakes in -- so multiplying the relief
+# field (in those units) by `_HC_NOISE_AMPLITUDE_CONTINENTAL_M` lands the contribution at
+# the intended elevation through the isostasy formula, and continental crust keeps one
+# single Hc-noise amplitude. `_OROGENIC_RELIEF_M` is a belt crest's lift over its own
+# `sample()` baseline; a between-ridge basin gets ~none of it, so that is also the depth of
+# the intermontane valley below the crests. Sized (with plateaus, and the occasional
+# overlap of the two) to land routine peaks near 6 km and the tallest near 7-8 km, under
+# MAX_ELEVATION_M = 9000 with only occasional clipping.
+_OROGENIC_RELIEF_M = 5200.0
+_PLATEAU_BASE_UPLIFT_M = 2800.0
+_PLATEAU_INTERNAL_RELIEF_M = 900.0
+_OROGENIC_RELIEF_UNITS = _OROGENIC_RELIEF_M / 2000.0
+_PLATEAU_UPLIFT_UNITS = _PLATEAU_BASE_UPLIFT_M / 2000.0
+_PLATEAU_RELIEF_UNITS = _PLATEAU_INTERNAL_RELIEF_M / 2000.0
+
+# Land gate for the uplift term: it ramps from 0 to full over `sample()` values from
+# `land_threshold + _UPLIFT_SEA_MARGIN` to `+ _UPLIFT_SEA_MARGIN + _UPLIFT_SEA_RAMP` (units
+# of `sample()`, ~2000 m each). So orogeny/plateaus only touch crust already well above sea
+# level -- they can never lift a marine node into land or (being non-negative anyway) drop a
+# coastal node into the sea, keeping the land set identical to `sample()` alone.
+_UPLIFT_SEA_MARGIN = 0.05
+_UPLIFT_SEA_RAMP = 0.35
+
+# RNG tag distinguishing the terrain-noise stream from every other `(seed, plate_id, ...)`
+# stream a plate draws (fault noise uses 9001, etc). numpy's SeedSequence only accepts
+# integers, so this is an int, not the string "terrain".
+_TERRAIN_SEED_TAG = 0x7E44A1
+
+
+def _continental_sealevel_noise_offset() -> float:
+    """`(Hc_at_sealevel - Hc0) / amplitude` for the continental column -- the amount by
+    which a node's `relief.sample()` value can sit *below* `land_threshold` and still be
+    land, because the reference continental column already floats ~+200 m above sea level.
+    Passed to `_land_noise_threshold` so its quantile lands on the true land/sea crossing
+    (see that function). Small and negative (~-0.10)."""
+    hc0, hm0 = lithosphere.reference_thickness("continental")
+    hc_sealevel = float(
+        lithosphere.crustal_thickness_for_submerged_elevation(
+            np.array([0.0]), np.array([float(hm0)]), lithosphere.RHO_CONTINENTAL_CRUST
+        )[0]
+    )
+    return (hc_sealevel - hc0) / _HC_NOISE_AMPLITUDE_CONTINENTAL_M
+
 
 # Each plate is seeded with one "primary" site plus this many "extra" sites, and the plate's
 # territory is the *union* of its own sites' Voronoi cells rather than a single cell. Merging
@@ -566,10 +613,11 @@ def generate_plates(
     `EXTRA_SITES_PER_PLATE`) rather than a single cell -- still deterministic per `seed`, still
     nearest-site-owns-the-node so the tiling has no gaps/overlaps by construction, just with
     lumpier, less convex plate outlines. Only the per-plate line-building step differs from
-    v1: instead of a base elevation + noise texture, each node gets a reference Hc/Hm plus
-    noise on Hc (see `_HC_NOISE_AMPLITUDE_*` above for how that noise amplitude is chosen to
-    land on the *same* elevation swing v1's own generation produces), with `elevation` itself
-    computed once via isostasy at the end."""
+    v1: each node gets a reference Hc/Hm plus a composite relief field on Hc (see
+    `terrain_noise.py` -- a low-frequency `sample()` that decides land/sea exactly as v1's
+    single noise did, plus a land-gated non-negative `uplift()` carrying orogenic belts and
+    plateaus; `_HC_NOISE_AMPLITUDE_*`/`_OROGENIC_*`/`_PLATEAU_*` above set the amplitudes),
+    with `elevation` itself computed once via isostasy at the end."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -594,12 +642,24 @@ def generate_plates(
     site_crust_types = [crust_types[tiling.site_plate[s]] for s in range(len(seed_xyz))]
 
     owner_tree = cKDTree(seed_xyz)
-    noise = SphereNoise(rng, octaves=4, base_freq=2.5)
+    # Composite relief fields (see terrain_noise.py) -- the last consumers of `rng`, drawn in
+    # a fixed order so a given seed reproduces the same terrain. `relief.sample()` stands in
+    # for the old single `SphereNoise` (same std, same land/sea decision); `relief.uplift()`
+    # adds the orogenic belts and plateaus, land-gated in `hc_at` below.
+    relief = terrain_noise.ContinentalRelief(
+        rng,
+        orogenic_units=_OROGENIC_RELIEF_UNITS,
+        plateau_units=_PLATEAU_UPLIFT_UNITS,
+        plateau_relief_units=_PLATEAU_RELIEF_UNITS,
+    )
+    ocean_relief = terrain_noise.OceanicRelief(rng)
 
     land_threshold = None
     if land_fraction is not None:
         land_fraction = max(0.0, min(land_fraction, 1.0))
-        land_threshold = _land_noise_threshold(owner_tree, site_crust_types, noise, land_fraction)
+        land_threshold = _land_noise_threshold(
+            owner_tree, site_crust_types, relief, land_fraction, _continental_sealevel_noise_offset()
+        )
 
     spacing_rad = line_spacing_rad(node_density)
     plates: list[LithospherePlate] = []
@@ -613,14 +673,17 @@ def generate_plates(
             _, nearest_idx = owner_tree.query(world_pts)
             return tiling.site_plate[nearest_idx] == _i
 
-        if crust_type == "continental" and land_threshold is not None:
+        if crust_type == "continental":
+            _lt = 0.0 if land_threshold is None else land_threshold
 
-            def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp) -> np.ndarray:
-                return _hc0 + _amp * (noise.sample(world_pts) - land_threshold)
+            def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp, _lt: float = _lt) -> np.ndarray:
+                s = relief.sample(world_pts)
+                gate = np.clip((s - _lt - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
+                return _hc0 + _amp * (s - _lt) + _amp * gate * relief.uplift(world_pts)
         else:
 
             def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp) -> np.ndarray:
-                return _hc0 + _amp * noise.sample(world_pts)
+                return _hc0 + _amp * ocean_relief.sample(world_pts)
 
         def elevation_at(world_pts: np.ndarray) -> np.ndarray:
             return np.zeros(len(world_pts))  # placeholder; synced from Hc/Hm below
@@ -647,11 +710,31 @@ def generate_plates(
 
 def new_plate(plate_id: int, frame: np.ndarray, crust_type: str, spacing_rad: float, seed: int) -> LithospherePlate:
     """A brand-new `LithospherePlate` covering `frame`'s entire local lattice at
-    `spacing_rad`, seeded with reference Hc/Hm plus texture noise on Hc -- the v2 analogue of
-    `plates.generate_plates`' own per-plate initial-line construction."""
+    `spacing_rad`, seeded with reference Hc/Hm plus the same composite relief field
+    `generate_plates` uses (see `terrain_noise.py`) -- the v2 analogue of
+    `plates.generate_plates`' own per-plate initial-line construction. Keyed off
+    `(seed, plate_id, _TERRAIN_SEED_TAG)` so the crust stays attached to this plate."""
     hc0, hm0 = lithosphere.reference_thickness(crust_type)
-    amp = hc0 * 0.15
-    noise = SphereNoise(np.random.default_rng((seed, plate_id)), octaves=4, base_freq=3.0)
+    rng = np.random.default_rng((seed, plate_id, _TERRAIN_SEED_TAG))
+    if crust_type == "continental":
+        relief = terrain_noise.ContinentalRelief(
+            rng,
+            orogenic_units=_OROGENIC_RELIEF_UNITS,
+            plateau_units=_PLATEAU_UPLIFT_UNITS,
+            plateau_relief_units=_PLATEAU_RELIEF_UNITS,
+        )
+        amp = _HC_NOISE_AMPLITUDE_CONTINENTAL_M
+
+        def hc_at(world_pts: np.ndarray) -> np.ndarray:
+            s = relief.sample(world_pts)
+            gate = np.clip((s - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
+            return hc0 + amp * s + amp * gate * relief.uplift(world_pts)
+    else:
+        ocean_relief = terrain_noise.OceanicRelief(rng)
+        amp = _HC_NOISE_AMPLITUDE_OCEANIC_M
+
+        def hc_at(world_pts: np.ndarray) -> np.ndarray:
+            return hc0 + amp * ocean_relief.sample(world_pts)
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         return np.ones(len(world_pts), dtype=bool)
@@ -663,7 +746,7 @@ def new_plate(plate_id: int, frame: np.ndarray, crust_type: str, spacing_rad: fl
     hc_lines = []
     for line in lines:
         world_pts = line.world_xyz(frame)
-        hc = hc0 + amp * noise.sample(world_pts)
+        hc = np.clip(hc_at(world_pts), lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
         hm = np.full(len(line), hm0)
         hc_lines.append(line.replace(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm))
     plate = LithospherePlate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=hc_lines)
