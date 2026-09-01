@@ -24,24 +24,38 @@ def behrmann(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 _ECKERT4_C = 2.0 / np.sqrt(np.pi * (4.0 + np.pi))
 _ECKERT4_RHS_SCALE = 2.0 + np.pi / 2.0
-_NEWTON_ITERS = 30
+# Newton converges quadratically from the lat/2 guess; double precision is reached in ~5
+# iterations. Cap generously and break once the correction stops mattering.
+_NEWTON_MAX_ITERS = 12
+_NEWTON_TOL = 1e-14
 
 
 def _eckert4_theta(lat: np.ndarray) -> np.ndarray:
     """Solve theta + sin(theta)cos(theta) + 2 sin(theta) = (2 + pi/2) sin(lat) for theta,
-    via Newton's method, vectorized."""
+    via Newton's method, vectorized.
+
+    Render grids repeat each latitude across every longitude column (1.28 M points, ~800
+    distinct latitudes), so the solve runs on the unique values and is scattered back.
+    """
     lat = np.asarray(lat, dtype=float)
-    target = _ECKERT4_RHS_SCALE * np.sin(lat)
-    theta = lat / 2.0  # standard starting guess
-    for _ in range(_NEWTON_ITERS):
+    flat = np.ravel(lat)
+    uniq, inverse = np.unique(flat, return_inverse=True)
+
+    target = _ECKERT4_RHS_SCALE * np.sin(uniq)
+    theta = uniq / 2.0  # standard starting guess
+    for _ in range(_NEWTON_MAX_ITERS):
         sin_t, cos_t = np.sin(theta), np.cos(theta)
         f = theta + sin_t * cos_t + 2.0 * sin_t - target
         fprime = 2.0 * cos_t * (cos_t + 1.0)
         safe_fprime = np.where(np.abs(fprime) < 1e-9, 1e-9, fprime)
-        theta = theta - f / safe_fprime
+        step = f / safe_fprime
+        theta = theta - step
+        if np.max(np.abs(step)) < _NEWTON_TOL:
+            break
     # Exact at the poles, where the Newton denominator vanishes.
-    theta = np.where(np.isclose(np.abs(lat), np.pi / 2), np.sign(lat) * (np.pi / 2), theta)
-    return theta
+    theta = np.where(np.isclose(np.abs(uniq), np.pi / 2), np.sign(uniq) * (np.pi / 2), theta)
+
+    return theta[inverse].reshape(lat.shape)
 
 
 def eckert4(lat: np.ndarray, lon: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
