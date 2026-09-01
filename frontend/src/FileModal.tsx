@@ -76,6 +76,9 @@ export default function FileModal({
   const [stepsPerFrame, setStepsPerFrame] = useState(DEFAULT_STEPS_PER_FRAME);
   const yearsPerFrame = stepsPerFrame * stepYears;
   const [animation, setAnimation] = useState<AnimateResponse | null>(null);
+  // Frames rendered so far during an in-flight Make Animation run, for the progress bar --
+  // null when no run is active (see api.ts's animateWorld, which streams one update per frame).
+  const [animProgress, setAnimProgress] = useState<{ frame: number; total: number } | null>(null);
   const [hexFrequency, setHexFrequency] = useState(DEFAULT_HEX_FREQUENCY);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,15 +117,23 @@ export default function FileModal({
   }), [runAction, mapWrapperRef, seed, mapView, elapsedYears]);
 
   const handleMakeAnimation = useCallback(() => runAction("animate", async () => {
-    const result = await animateWorld(projection, mapView, renderWidth, renderHeight, rotation, yearsPerFrame, numFrames);
-    setAnimation(result);
-    await onWorldAdvanced(result);
+    setAnimProgress({ frame: 0, total: numFrames });
+    try {
+      const result = await animateWorld(
+        projection, mapView, renderWidth, renderHeight, rotation, yearsPerFrame, numFrames,
+        (p) => setAnimProgress(p),
+      );
+      setAnimation(result);
+      await onWorldAdvanced(result);
+    } finally {
+      setAnimProgress(null);
+    }
   }), [runAction, projection, mapView, renderWidth, renderHeight, rotation, yearsPerFrame, numFrames, onWorldAdvanced]);
 
   const handleSaveAnimation = useCallback(() => runAction("saveAnimation", async () => {
     if (!animation) return;
-    const blob = await (await fetch(`data:image/gif;base64,${animation.image_base64}`)).blob();
-    downloadBlob(blob, `mantle-bloom-seed${seed}-animation-${Math.round(animation.elapsed_years)}y.gif`);
+    const blob = await (await fetch(`data:${animation.mime};base64,${animation.videoBase64}`)).blob();
+    downloadBlob(blob, `mantle-bloom-seed${seed}-animation-${Math.round(animation.elapsed_years)}y.mp4`);
   }), [runAction, animation, seed]);
 
   const handleExportHexGrid = useCallback(() => runAction("export", async () => {
@@ -226,15 +237,35 @@ export default function FileModal({
               <button onClick={handleMakeAnimation} disabled={!hasWorld || busy !== null} style={{ width: "100%", fontSize: 12, marginBottom: 6 }}>
                 {busy === "animate" ? "Simulating..." : "Make Animation"}
               </button>
+              {animProgress && (
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ height: 6, borderRadius: 3, background: "#2a3050", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${(animProgress.frame / animProgress.total) * 100}%`,
+                        background: "#5b8cff",
+                        transition: "width 0.2s linear",
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 3 }}>
+                    Rendering frame {animProgress.frame} of {animProgress.total}...
+                  </div>
+                </div>
+              )}
               {animation && (
                 <>
-                  <img
-                    src={`data:image/gif;base64,${animation.image_base64}`}
-                    alt="animation preview"
+                  <video
+                    src={`data:${animation.mime};base64,${animation.videoBase64}`}
+                    controls
+                    autoPlay
+                    loop
+                    muted
                     style={{ width: "100%", borderRadius: 4, marginBottom: 6 }}
                   />
                   <button onClick={handleSaveAnimation} disabled={busy !== null} style={{ width: "100%", fontSize: 12 }}>
-                    {busy === "saveAnimation" ? "Saving..." : "Save Animation (GIF)"}
+                    {busy === "saveAnimation" ? "Saving..." : "Save Animation (MP4)"}
                   </button>
                 </>
               )}

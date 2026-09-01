@@ -5,6 +5,7 @@ scipy
 numba
 astropy-healpix
 Pillow
+av
 pytest
 pytest-xdist
 httpx

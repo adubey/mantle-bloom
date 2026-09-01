@@ -257,8 +257,8 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 
 ## `POST /world/animate`
 
-The "File > Make Animation" action -- an animated GIF of `view`/`projection`'s progress, one
-frame for the world's current state plus more, each `years_per_frame` further along:
+The "File > Make Animation" action -- an H.264/MP4 video of `view`/`projection`'s progress,
+one frame for the world's current state plus more, each `years_per_frame` further along:
 
 ```json
 {
@@ -275,21 +275,28 @@ frame for the world's current state plus more, each `years_per_frame` further al
 Same fields/validation as `/world/render`'s own query params (`rotation` is the same
 9-comma-separated-float string, `400` for an unrecognized `projection`/`view` or an
 out-of-range `width`/`height`), plus `num_frames` bounded to `[1,
-main.MAX_ANIMATION_FRAMES]` (60) -- each frame costs a full simulation step and render, so
-this bounds worst-case request time. `404` if no world has been generated yet.
+main.MAX_ANIMATION_FRAMES]` (240) -- each frame costs a full simulation step and render, so
+this bounds worst-case request time. `404` if no world has been generated yet, `503` if a
+step or another animation is already in progress.
 
 **This permanently advances the world** by `(num_frames - 1) * years_per_frame` years, the
 same as calling `/world/step` that many times in a row -- deliberately not a
-side-effect-free preview (see `render_image.render_animation_gif`'s own docstring). Response
-is the same summary shape `/world/generate`/`/world/step` return, plus:
+side-effect-free preview (see `render_image.stream_animation_mp4`'s own docstring).
+
+The response is a stream of newline-delimited JSON objects (`application/x-ndjson`), one
+per line, so the client can drive a progress bar instead of blocking on one opaque request:
 
 ```json
-{ "image_base64": "R0lGODlhAAA..." }
+{"type": "progress", "frame": 1, "total": 20}
+{"type": "progress", "frame": 2, "total": 20}
+...
+{"type": "done", "mime": "video/mp4", "video_base64": "AAAAIGZ0eXBpc29t...", "seed": 9, "elapsed_years": 19000000, "num_plates": 6, "events": []}
 ```
 
-`image_base64` decodes to an animated GIF (`data:image/gif;base64,<this>`), each frame
-quantized against the first frame's own color palette so static regions don't flicker
-between playback frames.
+The final `done` line carries the same summary shape `/world/generate`/`/world/step` return,
+plus `video_base64` (decode via `data:video/mp4;base64,<this>` -- H.264, playable directly in
+a `<video>` element) and `mime`. If rendering raises partway through, a `{"type": "error",
+"detail": "..."}` line is emitted instead -- the HTTP status is already `200` by then.
 
 ## `GET /world/plates`
 

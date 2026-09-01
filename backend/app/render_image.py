@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import base64
 import io
+from fractions import Fraction
 
+import av
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
@@ -1680,11 +1682,17 @@ def render_png_base64(world: World, projection: str, view: str, width: int, heig
 
 
 # How long each animation frame is shown, milliseconds -- matches frontend/src/App.tsx's own
-# PLAY_INTERVAL_MS, so a saved GIF plays back at the same pace clicking Play already does.
+# PLAY_INTERVAL_MS, so a saved video plays back at the same pace clicking Play already does.
 ANIMATION_FRAME_DURATION_MS = 400
+# The playback frame rate that duration implies (5/2 fps at 400ms/frame). H.264 is happy with
+# a low fps; PyAV's add_stream wants an exact rational rate, not a float.
+ANIMATION_FPS = Fraction(1000, ANIMATION_FRAME_DURATION_MS)
+# libx264 quality knob (0 lossless .. 51 worst). 20 is visually lossless for a flat-shaded
+# map at this scale while keeping the file a small fraction of the equivalent GIF's size.
+ANIMATION_CRF = "20"
 
 
-def render_animation_gif(
+def stream_animation_mp4(
     world: World,
     projection: str,
     view: str,
@@ -1694,46 +1702,48 @@ def render_animation_gif(
     years_per_frame: float,
     num_frames: int,
     step_fn=step_world,
-) -> bytes:
-    """Renders an animated GIF of `world`'s progress in `view`/`projection`: frame 0 is the
-    world's current state, and each of the `num_frames - 1` frames after it is
-    `years_per_frame` further along -- calling `step_fn` (defaulting to `step_world`) for real
-    between frames, so this permanently advances `world` by
-    `(num_frames - 1) * years_per_frame` years total (see main.py's `/world/animate` --
-    deliberately not a side-effect-free preview, same "the map really did move forward"
-    semantics manually clicking Step that many times would have). Every frame is quantized
-    against the *first* frame's own color palette rather than picking its own adaptive
-    palette independently, which would otherwise make static regions (ocean, unchanged
-    coastline) visibly flicker between playback frames -- a well-known GIF-encoding pitfall,
-    not the deliberately-changing regions this animation exists to show."""
-    frames = []
+):
+    """Generator driving the "File > Make Animation" action. Renders `world`'s progress in
+    `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
+    each of the `num_frames - 1` frames after it is `years_per_frame` further along, calling
+    `step_fn` (defaulting to `step_world`) for real between frames. So this permanently
+    advances `world` by `(num_frames - 1) * years_per_frame` years total (see main.py's
+    `/world/animate` -- deliberately not a side-effect-free preview, same "the map really did
+    move forward" semantics manually clicking Step that many times would have).
+
+    Yields `("progress", frames_done, num_frames)` as each frame finishes encoding, then a
+    final `("done", mp4_bytes)` carrying the complete video. Streaming frame-by-frame lets
+    the caller show a real progress bar instead of blocking the client on one opaque request
+    that can take minutes on a big world (240 frames, each a full step_world + render).
+
+    MP4 replaces the animated GIF this used to emit: an order of magnitude smaller on the
+    wire for the same frames, and no 256-color quantization (the GIF path had to quantize
+    every frame against the first frame's palette just to stop static regions flickering).
+    H.264's yuv420p pixel format needs even dimensions, so an odd requested width/height is
+    cropped by a single pixel here rather than rejected upstream."""
+    enc_w, enc_h = width - (width % 2), height - (height % 2)
+    buf = io.BytesIO()
+    container = av.open(buf, mode="w", format="mp4")
+    stream = container.add_stream("libx264", rate=ANIMATION_FPS)
+    stream.width, stream.height = enc_w, enc_h
+    stream.pix_fmt = "yuv420p"
+    # +faststart relocates the moov atom to the front of the file so a <video> element can
+    # begin playback before the whole blob has arrived.
+    stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
+
     for i in range(num_frames):
         if i > 0:
             step_fn(world, years_per_frame)
         png_bytes = render_png(world, projection, view, width, height, view_rotation)
-        frames.append(Image.open(io.BytesIO(png_bytes)).convert("RGB"))
+        frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+        if frame_img.size != (enc_w, enc_h):
+            frame_img = frame_img.crop((0, 0, enc_w, enc_h))
+        av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
+        for packet in stream.encode(av_frame):
+            container.mux(packet)
+        yield ("progress", i + 1, num_frames)
 
-    reference_palette = frames[0].convert("P", palette=Image.ADAPTIVE, colors=256)
-    quantized = [f.quantize(palette=reference_palette) for f in frames]
-
-    buf = io.BytesIO()
-    quantized[0].save(
-        buf, format="GIF", save_all=True, append_images=quantized[1:], duration=ANIMATION_FRAME_DURATION_MS, loop=0
-    )
-    return buf.getvalue()
-
-
-def render_animation_gif_base64(
-    world: World,
-    projection: str,
-    view: str,
-    width: int,
-    height: int,
-    view_rotation: np.ndarray,
-    years_per_frame: float,
-    num_frames: int,
-    step_fn=step_world,
-) -> str:
-    return base64.b64encode(
-        render_animation_gif(world, projection, view, width, height, view_rotation, years_per_frame, num_frames, step_fn=step_fn)
-    ).decode("ascii")
+    for packet in stream.encode():  # flush libx264's remaining buffered frames
+        container.mux(packet)
+    container.close()
+    yield ("done", buf.getvalue())

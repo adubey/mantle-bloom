@@ -442,14 +442,22 @@ export function loadWorld(file: Blob): Promise<WorldSummary> {
 }
 
 export interface AnimateResponse extends WorldSummary {
-  // An animated GIF, base64-encoded -- decode via `data:image/gif;base64,${this}`, same
-  // convention RenderResponse.image_base64 uses for a single PNG frame.
-  image_base64: string;
+  // The rendered animation, base64-encoded -- decode via `data:${mime};base64,${videoBase64}`.
+  videoBase64: string;
+  // The video's MIME type (currently always "video/mp4" -- H.264, see backend
+  // app/render_image.py's stream_animation_mp4).
+  mime: string;
+}
+
+// Progress during a Make Animation run -- `frame` of `total` frames rendered so far.
+export interface AnimateProgress {
+  frame: number;
+  total: number;
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
 // /world/animate), and up to MAX_ANIMATION_FRAMES=240 of those run back-to-back server-side
-// before the response comes back -- by far the slowest request the app makes, and one that's
+// before the video is complete -- by far the slowest request the app makes, and one that's
 // only gotten slower as the simulation itself has picked up more per-step work (erosion,
 // sediment redistribution, coastline stabilization, ...). A generous explicit timeout so a
 // real hang surfaces as an error instead of leaving the dialog spinning forever, while still
@@ -458,11 +466,17 @@ const ANIMATE_TIMEOUT_MS = 15 * 60 * 1000;
 
 // "File > Make Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
 // starting from the world's current state (frame 0) and stepping it forward by
-// `yearsPerFrame` real years between each subsequent frame. **This permanently advances the
-// world** by `(numFrames - 1) * yearsPerFrame` years, the same as calling stepWorld that
-// many times -- not a side-effect-free preview (see backend app/main.py's /world/animate).
-// The caller should run the same post-step refresh sequence it runs after stepWorld.
-export function animateWorld(
+// `yearsPerFrame` real years between each subsequent frame, encoded as an H.264/MP4 video.
+// **This permanently advances the world** by `(numFrames - 1) * yearsPerFrame` years, the
+// same as calling stepWorld that many times -- not a side-effect-free preview (see backend
+// app/main.py's /world/animate). The caller should run the same post-step refresh sequence
+// it runs after stepWorld.
+//
+// The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total}` per
+// frame (surfaced via `onProgress`, for a progress bar), then a final `{type: "done", ...}`
+// carrying the video. A mid-stream `{type: "error"}` line (rendering blew up after the
+// response already 200'd) is re-thrown here like any other failure.
+export async function animateWorld(
   projection: Projection,
   view: MapView,
   width: number,
@@ -470,8 +484,9 @@ export function animateWorld(
   rotation: number[] | undefined,
   yearsPerFrame: number,
   numFrames: number,
+  onProgress?: (progress: AnimateProgress) => void,
 ): Promise<AnimateResponse> {
-  return fetch(`${API_BASE}/world/animate`, {
+  const resp = await fetch(`${API_BASE}/world/animate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -484,7 +499,48 @@ export function animateWorld(
       num_frames: numFrames,
     }),
     signal: AbortSignal.timeout(ANIMATE_TIMEOUT_MS),
-  }).then(asJson<AnimateResponse>);
+  });
+  if (!resp.ok || !resp.body) {
+    const detail = await resp.text();
+    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  let done: AnimateResponse | null = null;
+
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    const msg = JSON.parse(line) as Record<string, unknown>;
+    if (msg.type === "progress") {
+      onProgress?.({ frame: msg.frame as number, total: msg.total as number });
+    } else if (msg.type === "error") {
+      throw new Error(String(msg.detail));
+    } else if (msg.type === "done") {
+      done = {
+        seed: msg.seed as number,
+        elapsed_years: msg.elapsed_years as number,
+        num_plates: msg.num_plates as number,
+        events: msg.events as WorldEvent[],
+        videoBase64: msg.video_base64 as string,
+        mime: msg.mime as string,
+      };
+    }
+  };
+
+  for (;;) {
+    const { value, done: streamDone } = await reader.read();
+    if (streamDone) break;
+    buffered += decoder.decode(value, { stream: true });
+    const lines = buffered.split("\n");
+    buffered = lines.pop() ?? "";
+    for (const line of lines) handleLine(line);
+  }
+  if (buffered) handleLine(buffered);
+
+  if (!done) throw new Error("animation stream ended without a result");
+  return done;
 }
 
 // "File > Export Hex Grid" data -- a geodesic-icosahedron hex/pentagon tiling of the sphere

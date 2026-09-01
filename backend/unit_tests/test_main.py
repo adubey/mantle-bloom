@@ -1,7 +1,9 @@
 import base64
 import io
+import json
 import math
 import threading
+import av
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -568,26 +570,28 @@ def test_load_with_malformed_bytes_returns_400(client):
     assert resp.status_code == 400
 
 
-def test_animate_advances_the_world_and_returns_a_multi_frame_gif(client):
+def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
     client.post("/world/generate", json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
         json={"projection": "eckert4", "view": "elevation", "width": 200, "height": 110, "years_per_frame": 1_000_000, "num_frames": 3},
     )
     assert resp.status_code == 200
-    body = resp.json()
-    assert body["elapsed_years"] == 2_000_000.0  # (num_frames - 1) * years_per_frame
 
-    image = Image.open(io.BytesIO(base64.b64decode(body["image_base64"])))
-    assert image.format == "GIF"
-    frame_count = 0
-    try:
-        while True:
-            image.seek(frame_count)
-            frame_count += 1
-    except EOFError:
-        pass
-    assert frame_count == 3
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    progress = [m for m in messages if m["type"] == "progress"]
+    assert [m["frame"] for m in progress] == [1, 2, 3]
+    assert all(m["total"] == 3 for m in progress)
+
+    done = messages[-1]
+    assert done["type"] == "done"
+    assert done["mime"] == "video/mp4"
+    assert done["elapsed_years"] == 2_000_000.0  # (num_frames - 1) * years_per_frame
+
+    video = base64.b64decode(done["video_base64"])
+    assert video[4:12] == b"ftypisom"  # an MP4 container
+    with av.open(io.BytesIO(video)) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 3
 
 
 def test_animate_rejects_out_of_range_frame_counts(client):
