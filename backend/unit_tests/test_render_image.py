@@ -113,8 +113,9 @@ def test_geomorph_view_renders_neutral_before_a_step_then_varies_after():
 
 
 def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
-    # Combined's per-pixel biome id rides in alpha (see render_image.COMBINED_LAKE_ID_CODE's
-    # comment): alpha = 255 - code, code 0 for ocean/unclassified, biome_id + 1 for land.
+    # Combined's per-pixel class id rides in alpha (see render_image.COMBINED_LAKE_ID_CODE's
+    # comment): alpha = 255 - code, code 0 only for gaps between cells, biome_id + 1 for every
+    # classified land (Köppen) or ocean (pelagic) cell, lake/glacier overlays above that.
     world = _world()
     png = render_image.render_png(world, "behrmann", "combined", 320, 180)
     image = Image.open(io.BytesIO(png))
@@ -122,11 +123,10 @@ def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
 
     alpha = np.asarray(image.convert("RGBA"))[:, :, 3]
     codes = 255 - alpha.astype(int)
-    # Background/ocean stays code 0; land carries real biome codes within the encodable range.
-    assert codes.min() == 0
-    assert codes.max() > 0
+    assert codes.min() >= 0
     assert codes.max() <= render_image.COMBINED_GLACIER_ID_CODE
-    assert np.count_nonzero(codes) > 0
+    # Both land and ocean carry real codes now (ocean is no longer code 0).
+    assert np.count_nonzero(codes) > 0.5 * codes.size
 
     # Other views stay plain RGB -- alpha is a Combined-only channel.
     elev = Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "elevation", 320, 180)))
@@ -140,15 +140,25 @@ def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_re
     from app import biomes
 
     world = _world(seed=7, num_plates=12, continental_fraction=0.6)
-    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, _gl = render_image._biome_fields(
+    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth = render_image._biome_fields(
         world, *render_image.biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
+    lat_grid = np.broadcast_to(lat_deg[:, None], elevation_m.shape)
+    # Same geometry inputs smooth_biome_field derives internally, so the diff isolates the
+    # vote pass rather than the continentality/coast-distance inputs.
     raw = biomes.classify_biomes(
-        display_temp.reshape(-1), precip.reshape(-1), elevation_m.reshape(-1), slope.reshape(-1), is_ocean.reshape(-1), world.sea_level_m
-    ).reshape(elevation_m.shape)
-    smoothed = biomes.smooth_biome_field(display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m)
+        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_grid, axial_tilt_deg=world.axial_tilt_deg,
+        continentality=biomes.grid_continentality(is_ocean),
+        dist_to_land_rad=biomes.grid_dist_to_land_rad(is_ocean),
+        has_sea_ice=is_ocean & (glacier_depth > 0.0),
+    )
+    smoothed = biomes.smooth_biome_field(
+        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=glacier_depth,
+    )
 
     land = ~is_ocean
     n_land = int(land.sum())

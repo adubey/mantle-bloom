@@ -58,10 +58,10 @@ const SEGMENT_BREAK_FACTOR = 6;
 const HIGHLIGHT_DIM_FACTOR = 0.35;
 
 // The Biome view (see backend app/render_image.py's _render_biome_view) draws every pixel as
-// exactly one of biomes.BIOME_COLORS' fixed palette -- no coastline/graticule overlay on top
-// -- so an exact RGB match (tolerance 0) against the clicked legend swatch's color is enough
-// to pick out that biome's cells, entirely client-side, with no new server render mode
-// needed.
+// exactly one of biomes.BIOME_COLORS' fixed palette (Köppen land classes + pelagic ocean
+// classes) -- no coastline/graticule overlay on top -- so an exact RGB match (tolerance 0)
+// against the clicked legend group's member colors is enough to pick out that group's cells,
+// entirely client-side, with no new server render mode needed.
 //
 // Classification is nearest-neighbor across the *entire* palette, not just a within-tolerance
 // check against the selected label's own colors: picking the closest label first, and only

@@ -106,13 +106,23 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "simulation", label: "Simulation" },
 ];
 
-// Fixed order (biomes.BIOME_NAMES minus "Ocean") rather than sorted by current fraction --
-// keeps the tab's rows, and the Graph dropdown/legend, in a stable order across generate/
-// step calls instead of visibly reshuffling every time the world changes.
+// Fixed order (the Köppen land classes of biomes.BIOME_NAMES -- the pelagic ocean classes are
+// excluded from biome_land_fraction) rather than sorted by current fraction, so the tab's
+// rows and the Graph dropdown/legend stay stable across generate/step calls. Kept in sync by
+// hand with backend biomes.KOPPEN_NAMES, same precedent as legendData.ts's BIOME_RGB_ENTRIES.
 const BIOME_NAMES = [
-  "Ice", "Tundra", "Boreal Forest", "Temperate Desert", "Temperate Grassland",
-  "Woodland/Shrubland", "Temperate Seasonal Forest", "Temperate Rainforest",
-  "Subtropical Desert", "Savanna", "Tropical Seasonal Forest", "Tropical Rainforest",
+  "Tropical Rainforest", "Tropical Monsoon", "Tropical Savanna", "Tropical Savanna (Dry Summer)",
+  "Hot Desert", "Cold Desert", "Hot Semi-Arid", "Cold Semi-Arid",
+  "Hot-Summer Mediterranean", "Warm-Summer Mediterranean", "Cold-Summer Mediterranean",
+  "Humid Subtropical (Dry Winter)", "Subtropical Highland", "Cold Subtropical Highland",
+  "Humid Subtropical", "Oceanic", "Subpolar Oceanic",
+  "Mediterranean Continental (Hot Summer)", "Mediterranean Continental (Warm Summer)",
+  "Mediterranean Subarctic", "Extremely Cold Mediterranean Subarctic",
+  "Monsoon Continental (Hot Summer)", "Monsoon Continental (Warm Summer)",
+  "Monsoon Subarctic", "Extremely Cold Monsoon Subarctic",
+  "Hot-Summer Humid Continental", "Warm-Summer Humid Continental",
+  "Subarctic (Boreal)", "Extremely Cold Subarctic",
+  "Tundra", "Ice Cap",
 ];
 
 const TAB_METRICS: Record<Exclude<TabKey, "simulation">, TabEntry[]> = {

@@ -148,32 +148,141 @@ const PRECIPITATION_GRADIENT: LegendGradient = {
   ],
 };
 
-// biomes.BIOME_NAMES / biomes.BIOME_COLORS. Kept as raw [r, g, b] tuples (not just CSS
-// strings) and exported, so MapCanvas.tsx's legend-click-to-highlight feature can compare
-// them directly against decoded canvas pixel data -- the Biome view draws every pixel as
-// one of exactly these colors (see backend app/render_image.py's _render_biome_view: no
-// coastline/graticule overlay drawn on top), so an exact RGB match is enough to pick out a
-// clicked biome's cells with no server round-trip.
+// biomes.BIOME_NAMES / biomes.BIOME_COLORS, in the same order (the 31 Köppen-Geiger land
+// classes -- descriptive names, internal 3rd-level detail -- then the 10 pelagic ocean
+// classes). Kept as raw [r, g, b] tuples (not just CSS strings) and exported, so
+// MapCanvas.tsx's legend-click-to-highlight can compare them directly against decoded canvas
+// pixel data: the Biome view draws every pixel as exactly one of these colors (see backend
+// app/render_image.py's _render_biome_view -- no coastline/graticule overlay), so an exact
+// RGB match picks out a clicked group's cells with no server round-trip. Hand-synced with
+// biomes.py, same precedent this file always had with render_image.py's color constants.
 export const BIOME_RGB_ENTRIES: [string, [number, number, number]][] = [
-  ["Ocean", [18, 28, 55]],
-  ["Ice", [223, 235, 240]],
-  ["Tundra", [156, 171, 158]],
-  ["Boreal Forest", [61, 96, 74]],
-  ["Temperate Desert", [176, 152, 116]],
-  ["Temperate Grassland", [168, 178, 107]],
-  ["Woodland/Shrubland", [126, 143, 90]],
-  ["Temperate Seasonal Forest", [79, 121, 66]],
-  ["Temperate Rainforest", [42, 94, 68]],
-  ["Subtropical Desert", [214, 178, 115]],
-  ["Savanna", [196, 178, 92]],
-  ["Tropical Seasonal Forest", [58, 122, 66]],
-  ["Tropical Rainforest", [26, 84, 46]],
-  ["Wetland", [101, 111, 66]],
-  ["Carboniferous Forest", [20, 66, 40]],
-  ["Intertidal Zone", [70, 120, 130]],
+  ["Tropical Rainforest", [26, 51, 21]],
+  ["Tropical Monsoon", [34, 66, 29]],
+  ["Tropical Savanna", [74, 92, 44]],
+  ["Tropical Savanna (Dry Summer)", [92, 103, 52]],
+  ["Hot Desert", [176, 141, 99]],
+  ["Cold Desert", [150, 136, 104]],
+  ["Hot Semi-Arid", [156, 134, 78]],
+  ["Cold Semi-Arid", [124, 128, 82]],
+  ["Hot-Summer Mediterranean", [150, 138, 66]],
+  ["Warm-Summer Mediterranean", [128, 136, 76]],
+  ["Cold-Summer Mediterranean", [112, 126, 86]],
+  ["Humid Subtropical (Dry Winter)", [94, 116, 54]],
+  ["Subtropical Highland", [100, 122, 66]],
+  ["Cold Subtropical Highland", [106, 124, 80]],
+  ["Humid Subtropical", [58, 96, 44]],
+  ["Oceanic", [72, 104, 56]],
+  ["Subpolar Oceanic", [92, 112, 76]],
+  ["Mediterranean Continental (Hot Summer)", [132, 126, 80]],
+  ["Mediterranean Continental (Warm Summer)", [124, 124, 84]],
+  ["Mediterranean Subarctic", [120, 122, 92]],
+  ["Extremely Cold Mediterranean Subarctic", [128, 126, 104]],
+  ["Monsoon Continental (Hot Summer)", [96, 110, 56]],
+  ["Monsoon Continental (Warm Summer)", [104, 116, 68]],
+  ["Monsoon Subarctic", [116, 118, 84]],
+  ["Extremely Cold Monsoon Subarctic", [128, 122, 100]],
+  ["Hot-Summer Humid Continental", [84, 104, 52]],
+  ["Warm-Summer Humid Continental", [100, 114, 66]],
+  ["Subarctic (Boreal)", [122, 112, 80]],
+  ["Extremely Cold Subarctic", [140, 128, 100]],
+  ["Tundra", [150, 152, 132]],
+  ["Ice Cap", [234, 238, 240]],
+  ["Tropical Open Ocean", [7, 17, 43]],
+  ["Subtropical Gyre", [4, 12, 36]],
+  ["Equatorial Divergence", [14, 40, 78]],
+  ["Tropical Coastal Waters", [34, 82, 122]],
+  ["Temperate Open Ocean", [10, 26, 58]],
+  ["Temperate Shelf", [30, 70, 106]],
+  ["Cold-Temperate Open Ocean", [18, 42, 72]],
+  ["Cold-Temperate Shelf", [38, 74, 104]],
+  ["Polar Ocean", [32, 62, 94]],
+  ["Polar Sea Ice", [226, 233, 237]],
 ];
 
-const BIOME_ENTRIES: [string, string][] = BIOME_RGB_ENTRIES.map(([label, [r, g, b]]) => [label, rgb(r, g, b)]);
+const RGB_BY_LABEL = new Map(BIOME_RGB_ENTRIES.map(([label, tuple]) => [label, tuple]));
+
+// The legend shows 1st-level Köppen groups split by selected 2nd-level distinctions (and the
+// pelagic classes by thermal realm), not all 41 internal classes. Each group lists the class
+// labels (from BIOME_RGB_ENTRIES) it covers; a click highlights every member. `swatch` is the
+// representative member whose color the legend row shows.
+interface BiomeGroup {
+  label: string;
+  swatch: string;
+  members: string[];
+}
+
+const LAND_GROUPS: BiomeGroup[] = [
+  { label: "Tropical Rainforest", swatch: "Tropical Rainforest", members: ["Tropical Rainforest", "Tropical Monsoon"] },
+  { label: "Tropical Savanna", swatch: "Tropical Savanna", members: ["Tropical Savanna", "Tropical Savanna (Dry Summer)"] },
+  { label: "Desert", swatch: "Hot Desert", members: ["Hot Desert", "Cold Desert"] },
+  { label: "Semi-Arid Steppe", swatch: "Hot Semi-Arid", members: ["Hot Semi-Arid", "Cold Semi-Arid"] },
+  {
+    label: "Mediterranean",
+    swatch: "Hot-Summer Mediterranean",
+    members: ["Hot-Summer Mediterranean", "Warm-Summer Mediterranean", "Cold-Summer Mediterranean"],
+  },
+  {
+    label: "Humid Subtropical",
+    swatch: "Humid Subtropical",
+    members: ["Humid Subtropical", "Humid Subtropical (Dry Winter)"],
+  },
+  {
+    label: "Subtropical Highland",
+    swatch: "Subtropical Highland",
+    members: ["Subtropical Highland", "Cold Subtropical Highland"],
+  },
+  { label: "Oceanic", swatch: "Oceanic", members: ["Oceanic", "Subpolar Oceanic"] },
+  {
+    label: "Humid Continental",
+    swatch: "Warm-Summer Humid Continental",
+    members: [
+      "Hot-Summer Humid Continental",
+      "Warm-Summer Humid Continental",
+      "Mediterranean Continental (Hot Summer)",
+      "Mediterranean Continental (Warm Summer)",
+      "Monsoon Continental (Hot Summer)",
+      "Monsoon Continental (Warm Summer)",
+    ],
+  },
+  {
+    label: "Subarctic (Boreal)",
+    swatch: "Subarctic (Boreal)",
+    members: [
+      "Subarctic (Boreal)",
+      "Extremely Cold Subarctic",
+      "Mediterranean Subarctic",
+      "Extremely Cold Mediterranean Subarctic",
+      "Monsoon Subarctic",
+      "Extremely Cold Monsoon Subarctic",
+    ],
+  },
+  { label: "Tundra", swatch: "Tundra", members: ["Tundra"] },
+  { label: "Ice Cap", swatch: "Ice Cap", members: ["Ice Cap"] },
+];
+
+const OCEAN_GROUPS: BiomeGroup[] = [
+  {
+    label: "Tropical Seas",
+    swatch: "Tropical Open Ocean",
+    members: ["Tropical Open Ocean", "Subtropical Gyre", "Equatorial Divergence", "Tropical Coastal Waters"],
+  },
+  { label: "Temperate Seas", swatch: "Temperate Open Ocean", members: ["Temperate Open Ocean", "Temperate Shelf"] },
+  {
+    label: "Cold-Temperate Seas",
+    swatch: "Cold-Temperate Open Ocean",
+    members: ["Cold-Temperate Open Ocean", "Cold-Temperate Shelf"],
+  },
+  { label: "Polar Ocean", swatch: "Polar Ocean", members: ["Polar Ocean"] },
+  { label: "Sea Ice", swatch: "Polar Sea Ice", members: ["Polar Sea Ice"] },
+];
+
+const BIOME_GROUPS: BiomeGroup[] = [...LAND_GROUPS, ...OCEAN_GROUPS];
+
+const groupSwatchColor = (g: BiomeGroup): string => {
+  const t = RGB_BY_LABEL.get(g.swatch)!;
+  return rgb(t[0], t[1], t[2]);
+};
 
 const COASTLINE_SYMBOL: LegendSymbol = { kind: "line", color: COASTLINE_COLOR, label: "Coastline" };
 
@@ -249,19 +358,23 @@ const GEOMORPH_GRADIENT: LegendGradient = {
   ],
 };
 
-// Combined mode's per-pixel biome id, carried in the render's alpha channel (see backend
+// Combined mode's per-pixel class id, carried in the render's alpha channel (see backend
 // app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 - code, where code is a
-// land biome's index in BIOME_RGB_ENTRIES + 1 (that order matches backend biomes.BIOME_NAMES,
-// same hand-sync precedent as BIOME_RGB_ENTRIES itself), or one of the two overlay codes
-// below, or 0 for ocean / unclassified. MapCanvas.tsx reads this straight off each pixel's
-// alpha byte -- exact, no RGB match -- so Combined's land colors are free to span a wide
-// shaded-relief range without any risk of two biomes colliding.
+// class's index in BIOME_RGB_ENTRIES + 1 (that order matches backend biomes.BIOME_NAMES, same
+// hand-sync precedent as BIOME_RGB_ENTRIES itself -- every classified cell now carries one,
+// land Köppen and ocean pelagic alike), or one of the two overlay codes below, or 0 for a gap
+// between cells. MapCanvas.tsx reads this straight off each pixel's alpha byte -- exact, no
+// RGB match -- so Combined's colors are free to span a wide shaded-relief range.
 const COMBINED_LAKE_ID_CODE = BIOME_RGB_ENTRIES.length + 1;
 const COMBINED_GLACIER_ID_CODE = BIOME_RGB_ENTRIES.length + 2;
 
 function combinedIdCode(label: string): number | null {
   const idx = BIOME_RGB_ENTRIES.findIndex(([l]) => l === label);
   return idx < 0 ? null : idx + 1;
+}
+
+function groupFor(label: string): BiomeGroup | undefined {
+  return BIOME_GROUPS.find((g) => g.label === label);
 }
 
 export interface PaletteEntry {
@@ -281,30 +394,38 @@ export interface HighlightTarget {
   idCodes?: number[];
 }
 
-// Resolves a clicked legend swatch label to a HighlightTarget for the two views whose legends
-// are clickable (see Legend.tsx). Biome matches on exact fixed pixel colors; Combined matches
-// on the alpha-channel id code. Ocean/Intertidal Zone are excluded from Combined -- both are
-// is_ocean cells Combined always paints with the elevation gradient rather than a biome color
-// (id code 0), so neither is ever a distinguishable pixel a click could highlight; they still
-// appear as legend swatches for list parity with Biome (see Legend.tsx), just non-functional.
+// Resolves a clicked legend group label to a HighlightTarget for the two clickable views (see
+// Legend.tsx). A legend row is a 1st/2nd-level group covering several internal classes, so a
+// click highlights every member: Biome matches on the members' exact fixed pixel colors,
+// Combined on the members' alpha-channel id codes. The "Sea Ice" group also folds in the
+// glacier overlay code (glaciated ocean paints over Polar-Sea-Ice cells with nearly the same
+// colour).
 export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
+  if (view === "combined" && label === "Lake") {
+    return { selected: label, palette: [], tolerance: 0, idCodes: [COMBINED_LAKE_ID_CODE] };
+  }
+  if (view === "combined" && label === "Glacier (ice cover)") {
+    return { selected: label, palette: [], tolerance: 0, idCodes: [COMBINED_GLACIER_ID_CODE] };
+  }
+
+  const group = groupFor(label);
+  if (!group) return null;
+
   if (view === "biome") {
-    if (!BIOME_RGB_ENTRIES.some(([l]) => l === label)) return null;
-    const palette: PaletteEntry[] = BIOME_RGB_ENTRIES.map(([l, rgbTuple]) => ({ label: l, colors: [rgbTuple] }));
+    // Nearest-neighbour match across every group, so one group's highlight can't bleed into a
+    // neighbour whose colour lands nearby -- `selected` picks out this group's members.
+    const palette: PaletteEntry[] = BIOME_GROUPS.map((g) => ({
+      label: g.label,
+      colors: g.members.map((m) => RGB_BY_LABEL.get(m)!),
+    }));
     return { selected: label, palette, tolerance: 0 };
   }
   if (view === "combined") {
-    if (label === "Ocean" || label === "Intertidal Zone") return null;
-    let idCodes: number[] | null = null;
-    if (label === "Lake") idCodes = [COMBINED_LAKE_ID_CODE];
-    // Ice-biome land with no ice cover keeps its own biome code; glaciated cells (which paint
-    // over Ice-biome cells with almost the same color -- see Legend.tsx) get the overlay code.
-    else if (label === "Ice / Glacier") idCodes = [combinedIdCode("Ice")!, COMBINED_GLACIER_ID_CODE];
-    else {
-      const code = combinedIdCode(label);
-      if (code !== null) idCodes = [code];
-    }
-    if (!idCodes) return null;
+    const idCodes = group.members
+      .map((m) => combinedIdCode(m))
+      .filter((c): c is number => c !== null);
+    if (label === "Sea Ice") idCodes.push(COMBINED_GLACIER_ID_CODE);
+    if (idCodes.length === 0) return null;
     return { selected: label, palette: [], tolerance: 0, idCodes };
   }
   return null;
@@ -364,34 +485,25 @@ export function legendFor(view: MapView): LegendSpec | null {
       };
     case "biome":
       return {
-        title: "Biome",
-        symbols: BIOME_ENTRIES.map(([label, color]) => ({ kind: "square", color, label }) as LegendSymbol),
+        // 1st-level Köppen groups split by selected 2nd-level distinctions, then the pelagic
+        // ocean classes by thermal realm (see BIOME_GROUPS). Each row covers several internal
+        // 3rd-level classes; a click highlights every member (see highlightTargetFor).
+        title: "Köppen Climate",
+        symbols: BIOME_GROUPS.map((g) => ({ kind: "square", color: groupSwatchColor(g), label: g.label }) as LegendSymbol),
       };
     case "combined":
       return {
-        // Ocean/land relief both follow the elevation gradient (see backend
-        // app/render_image.py's _render_combined_view), and land is additionally tinted by
-        // biome -- but unlike the Elevation/Plates Detail views, that gradient isn't shown as
-        // its own bar here: land's per-cell brightness already visibly varies with elevation
-        // (see shadedVariants/highlightTargetFor above, mirroring backend
-        // _land_shade_factor), so the swatches below stay the single reference a click can
-        // target, without a separate scale implying elevation is the primary thing being
-        // shown. The biome list otherwise matches Biome's legend swatch-for-swatch (see
-        // BIOME_ENTRIES) for consistency between the two views, Ocean and Intertidal Zone
-        // included even though neither's own biome color is ever actually visible in Combined
-        // (see highlightTargetFor's own comment) -- both always render via the elevation
-        // gradient instead. The Ice biome swatch is dropped from that list and folded into the
-        // "Ice / Glacier" swatch above instead -- render_image.py's is_glacier overlay paints
-        // over Ice-biome cells with almost the same color (GLACIER_RENDER_RGB vs. the Ice
-        // biome's own shaded rgb), so showing both as separate legend rows read as a
-        // near-duplicate; highlightTargetFor's combined palette merges their color sets under
-        // this one label to match.
-        title: "Elevation & Biome",
+        // Same grouped Köppen/pelagic list as the Biome view (see BIOME_GROUPS) for
+        // consistency between the two, plus the river/lake/ice overlays drawn on top. The
+        // hypsometric elevation gradient isn't shown as its own bar: land brightness already
+        // varies visibly with elevation and ocean with depth (see _render_combined_view), so
+        // the grouped swatches stay the single click target.
+        title: "Elevation & Köppen Climate",
         symbols: [
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
-          { kind: "square", color: GLACIER_COLOR, label: "Ice / Glacier" },
-          ...BIOME_ENTRIES.filter(([label]) => label !== "Ice").map(([label, color]) => ({ kind: "square", color, label }) as LegendSymbol),
+          { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
+          ...BIOME_GROUPS.map((g) => ({ kind: "square", color: groupSwatchColor(g), label: g.label }) as LegendSymbol),
         ],
       };
     case "resources":

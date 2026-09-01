@@ -513,6 +513,7 @@ def test_compute_climate_biome_ids_matches_a_direct_smooth_biome_field_call():
     display_temp = np.where(fields.is_ocean, fields.ocean_temperature_c, fields.air_temperature_c)
     slope = biomes.grid_slope(fields.elevation_m, fields.lat_deg)
     expected = biomes.smooth_biome_field(
-        display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m
+        display_temp, fields.precipitation_mm, fields.elevation_m, slope, fields.is_ocean, world.sea_level_m,
+        lat_deg=fields.lat_deg, axial_tilt_deg=world.axial_tilt_deg,
     )
     assert np.array_equal(fields.biome_ids, expected)

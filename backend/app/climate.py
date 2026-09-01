@@ -1039,25 +1039,23 @@ RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
 # a cell can amplify what actually fell there, never conjure more out of nothing turn after
 # turn, so the recurrence has a real fixed point instead of an open-ended climb.
 VEGETATION_RECYCLING_FRACTION = 0.16
+# Index-aligned with biomes.BIOME_NAMES: the 31 Köppen land classes (dense forest recycles
+# rain toward its own; desert / ice return almost nothing), then the 10 pelagic ocean classes
+# (all 0.0 -- ocean evaporation is handled directly, not as a recycling term). Built from
+# biomes.KOPPEN_CODES so it stays aligned if that list is reordered.
+_TRANSPIRATION_BY_KOPPEN = {
+    "Af": 1.0, "Am": 0.95, "Aw": 0.4, "As": 0.35,
+    "BWh": 0.02, "BWk": 0.02, "BSh": 0.1, "BSk": 0.15,
+    "Csa": 0.35, "Csb": 0.5, "Csc": 0.45, "Cwa": 0.6, "Cwb": 0.6, "Cwc": 0.5,
+    "Cfa": 0.7, "Cfb": 0.8, "Cfc": 0.6,
+    "Dsa": 0.35, "Dsb": 0.4, "Dsc": 0.4, "Dsd": 0.3,
+    "Dwa": 0.55, "Dwb": 0.6, "Dwc": 0.5, "Dwd": 0.3,
+    "Dfa": 0.65, "Dfb": 0.7, "Dfc": 0.5, "Dfd": 0.3,
+    "ET": 0.05, "EF": 0.0,
+}
 VEGETATION_TRANSPIRATION_BY_BIOME = np.array(
-    [
-        0.0,   # Ocean
-        0.0,   # Ice
-        0.05,  # Tundra -- sparse, cold-stunted vegetation
-        0.5,   # Boreal Forest
-        0.02,  # Temperate Desert
-        0.2,   # Temperate Grassland
-        0.35,  # Woodland/Shrubland
-        0.7,   # Temperate Seasonal Forest
-        0.9,   # Temperate Rainforest
-        0.02,  # Subtropical Desert
-        0.3,   # Savanna
-        0.75,  # Tropical Seasonal Forest
-        1.0,   # Tropical Rainforest -- the archetypal "rain recycles itself" biome
-        0.5,   # Wetland
-        0.95,  # Carboniferous Forest -- dense primeval swamp-forest
-        0.0,   # Intertidal Zone
-    ]
+    [_TRANSPIRATION_BY_KOPPEN[code] for code in biomes.KOPPEN_CODES]
+    + [0.0] * len(biomes.PELAGIC_NAMES)
 )
 assert len(VEGETATION_TRANSPIRATION_BY_BIOME) == len(biomes.BIOME_NAMES)
 
@@ -1095,7 +1093,11 @@ def _vegetation_transpiration_source(world: "World", elevation_m: np.ndarray, is
         return np.zeros_like(elevation_m)
     prev_temperature_c = np.where(prev.is_ocean, prev.ocean_temperature_c, prev.air_temperature_c)
     flat_slope = np.zeros_like(elevation_m)
-    biome_id = biomes.classify_biomes(prev_temperature_c, prev.precipitation_mm, elevation_m, flat_slope, is_ocean, world.sea_level_m)
+    biome_id = biomes.classify_biomes(
+        prev_temperature_c, prev.precipitation_mm, elevation_m, flat_slope, is_ocean, world.sea_level_m,
+        lat_deg=prev.lat_deg[:, None], axial_tilt_deg=world.axial_tilt_deg,
+        continentality=biomes.grid_continentality(is_ocean),
+    )
     prev_precip_humidity_equiv = prev.precipitation_mm / PRECIP_HUMIDITY_COEFFICIENT_MM
     return VEGETATION_TRANSPIRATION_BY_BIOME[biome_id] * VEGETATION_RECYCLING_FRACTION * prev_precip_humidity_equiv
 
@@ -1510,7 +1512,10 @@ def compute_climate(
 
     display_temp = np.where(is_ocean, ocean_temperature_c, air_temperature_c)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.smooth_biome_field(display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m)
+    biome_ids = biomes.smooth_biome_field(
+        display_temp, precipitation_mm, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg,
+    )
 
     return ClimateFields(
         lat_deg=lat_deg,

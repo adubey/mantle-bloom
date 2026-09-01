@@ -1158,19 +1158,25 @@ RELIEF_ELEVATION_RANGE_M = 6000.0
 # buffer (see COMBINED_LAKE_ID_CODE below) is left un-blurred so biome ids stay exact.
 COMBINED_BLUR_RADIUS_PX = 1.0
 
-# Combined's land shading now spans a wide brightness range (see biomes.BIOME_SHADE_AMPLITUDE)
-# and, near peaks, blends toward the elevation gradient on top of that -- far too much color
-# spread for the frontend to still tell which biome a land pixel is from its RGB alone. So the
-# per-pixel biome id rides in the render's *alpha* channel instead: alpha = 255 - code, where
-# code is 0 for ocean / unclassified, biome_id + 1 (1..len(BIOME_NAMES)) for a land biome
-# cell, or one of the two overlay codes below for lake / glacier cover. frontend/src/
-# legendData.ts mirrors this mapping by hand (same precedent as its BIOME_RGB_ENTRIES) and
-# MapCanvas.tsx reads the id straight from alpha -- exact, no RGB tolerance match -- then
-# resets alpha to opaque before display (the small 237..255 spread is a data channel, never
-# meant to actually composite). The alpha buffer is filled at cell resolution and left
-# un-blurred (unlike the RGB image) so ids stay crisp at biome boundaries.
+# Combined's land shading spans a wide brightness range (see biomes.BIOME_SHADE_AMPLITUDE)
+# and, near peaks, blends toward the elevation gradient on top of that; ocean is a blend of
+# the pelagic-province color and the hypsometric depth shade -- far too much color spread for
+# the frontend to tell which class a pixel is from its RGB alone. So the per-pixel class id
+# rides in the render's *alpha* channel instead: alpha = 255 - code, where code is 0 for a
+# gap between cells, biome_id + 1 (1..len(BIOME_NAMES), Köppen land classes then pelagic ocean
+# classes) for a classified cell, or one of the two overlay codes below for lake / glacier
+# cover. frontend/src/legendData.ts mirrors this mapping by hand (same precedent as its
+# BIOME_RGB_ENTRIES) and MapCanvas.tsx reads the id straight from alpha -- exact, no RGB
+# tolerance match -- then resets alpha to opaque before display (the ~212..255 spread is a
+# data channel, never meant to actually composite). The alpha buffer is filled at cell
+# resolution and left un-blurred (unlike the RGB image) so ids stay crisp at boundaries.
 COMBINED_LAKE_ID_CODE = len(biomes.BIOME_NAMES) + 1
 COMBINED_GLACIER_ID_CODE = len(biomes.BIOME_NAMES) + 2
+
+# Combined's ocean color = the pelagic-province flat color blended toward the hypsometric
+# depth shade by this fraction, so deep basins still darken and shelves still lighten (the
+# photo-real bathymetry look) while every water cell still carries its province's hue.
+OCEAN_PELAGIC_RELIEF_BLEND = 0.5
 
 
 def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -1195,7 +1201,10 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.smooth_biome_field(display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m)
+    biome_ids = biomes.smooth_biome_field(
+        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=_glacier_depth,
+    )
 
     centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
         lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
@@ -1233,7 +1242,8 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
     biome_ids = biomes.smooth_biome_field(
-        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m
+        display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=glacier_depth,
     ).reshape(-1)
     biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
@@ -1246,7 +1256,10 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     land_rgb = shaded_biome_rgb * (1 - blend) + terrain_rgb * blend
 
     flat_ocean = is_ocean.reshape(-1)
-    colors = np.where(flat_ocean[:, None], terrain_rgb, land_rgb)
+    # Ocean: the pelagic-province color blended toward the hypsometric depth shade (see
+    # OCEAN_PELAGIC_RELIEF_BLEND) so basins still darken and shelves lighten.
+    ocean_rgb = biome_rgb * (1.0 - OCEAN_PELAGIC_RELIEF_BLEND) + terrain_rgb * OCEAN_PELAGIC_RELIEF_BLEND
+    colors = np.where(flat_ocean[:, None], ocean_rgb, land_rgb)
     is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
     if np.any(is_lake):
         colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=float), colors)
@@ -1255,9 +1268,9 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
-    # Per-cell biome id -> alpha (see COMBINED_LAKE_ID_CODE's comment). Ocean/Intertidal both
-    # render via the elevation gradient, not a biome color, so they carry no id.
-    id_code = np.where(flat_ocean, 0, biome_ids + 1)
+    # Per-cell class id -> alpha (see COMBINED_LAKE_ID_CODE's comment): every classified cell
+    # (land Köppen or ocean pelagic) carries biome_id + 1; lake/glacier overlays win.
+    id_code = biome_ids + 1
     id_code = np.where(is_lake, COMBINED_LAKE_ID_CODE, id_code)
     id_code = np.where(is_glacier, COMBINED_GLACIER_ID_CODE, id_code)
     cell_alpha = (255 - id_code).astype(np.uint8)
