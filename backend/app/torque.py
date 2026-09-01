@@ -98,12 +98,9 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
     # shift and deform pass, so one cached tree per plate is built once per step instead of
     # the ~24 fresh builds this used to do. The argmin over neighbours reproduces the single
     # global-nearest the combined tree returned -- `neighbours` is in the same order the old
-    # concatenation used, so distance ties break identically.
-    #
-    # (cKDTree, not bvh.py's tree: this runs every step over a plate's entire node set --
-    # tens of thousands of points at real density -- where bvh.py's pure-Python per-point
-    # recursion loses badly to cKDTree's compiled batch query. bvh.py's tree-vs-tree
-    # traversal stays available for merge_split.py's smaller, less frequent plate-pair check.)
+    # concatenation used, so distance ties break identically. scipy's compiled batch query
+    # beats a pure-Python spherical-BVH recursion badly at this node count (tens of thousands
+    # of points per plate at real density), so there's no accelerator worth swapping in here.
     workers = query_workers(n)
     best_dist = np.full(n, np.inf)
     best_point = np.zeros((n, 3))
