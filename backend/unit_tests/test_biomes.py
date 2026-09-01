@@ -183,7 +183,7 @@ def test_classify_wetland_excludes_ocean():
     assert not is_wetland[0] and not is_carboniferous[0]
 
 
-# --- biome_relative_shade_factor (unchanged behavior) -------------------------------
+# --- biome_relative_shade_factor ---------------------------------------------------
 
 
 def test_biome_relative_shade_factor_matches_shape_of_biome_ids():
@@ -209,6 +209,17 @@ def test_biome_relative_shade_factor_spans_the_full_range_and_is_continuous():
     assert result.max() == pytest.approx(biomes.BIOME_SHADE_MAX)
     assert len(np.unique(result)) == n
     assert np.all(np.diff(result) > 0)
+
+
+def test_biome_relative_shade_factor_gives_equal_elevation_equal_shade():
+    # Two big flat plateaus (many exactly-equal values) plus one peak. Cells that share an
+    # elevation must share a shade -- no tie-break by array position (the horizontal-banding bug).
+    biome_ids = np.full(201, biomes.koppen_index("BWh"))
+    elevation = np.concatenate([np.full(100, 200.0), np.full(100, 201.0), [9000.0]])
+    result = biomes.biome_relative_shade_factor(biome_ids, elevation)
+    assert len(np.unique(result[:100])) == 1
+    assert len(np.unique(result[100:200])) == 1
+    assert result[0] < result[100] < result[200]
 
 
 def test_biome_relative_shade_factor_ranks_are_relative_to_each_class_separately():
