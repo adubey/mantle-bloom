@@ -75,8 +75,13 @@ Totals over the 8 profiled steps.
    (`_PROJECT_GRID_CACHE` ring keyed on grid size + projection + rotation bytes + dimensions +
    padding; `_biome_grid` is `lru_cache`d). Measured on the same box: `_render_combined_view`
    dropped 5.25 s (cold) -> 2.85 s (warm cache) per frame, ~2.4 s/frame saved.
-2. **Numba-jit `_fill_rects`** (the codebase already JITs `atmosphere_cfd`). The
-   1.28 M-iteration Python loop is ~1.5 s/frame.
+2. ~~**Numba-jit `_fill_rects`** (the codebase already JITs `atmosphere_cfd`). The
+   1.28 M-iteration Python loop is ~1.5 s/frame.~~ **Done** (`_fill_rects_kernel`,
+   `@njit(cache=True)`, serial -- overlapping cells would race under `prange`; the Python
+   wrapper still does the vectorized clip/round and normalizes `colors` to the buffer dtype
+   once). Microbenchmark on the same box at the profiled grid size (801x1601 points):
+   ~0.78 s -> ~0.027 s per `_fill_rects` call, run twice per combined render -- ~1.5 s/frame
+   saved.
 3. **`_eckert4_theta`: drop `_NEWTON_ITERS` 30 -> ~8** (Newton converges quadratically,
    double precision is reached well before 30) and/or solve on the ~801 unique latitudes
    rather than all 1.28 M points. Independent of fix 1.

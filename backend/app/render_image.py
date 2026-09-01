@@ -24,6 +24,7 @@ from fractions import Fraction
 
 import av
 import numpy as np
+from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
@@ -795,23 +796,42 @@ def _to_pixels(scale: float, offset_x: float, offset_y: float, xy: np.ndarray) -
     return np.stack([px, py], axis=-1)
 
 
+@njit(cache=True)
+def _fill_rects_kernel(
+    pixels: np.ndarray, x0: np.ndarray, x1: np.ndarray, y0: np.ndarray, y1: np.ndarray, colors: np.ndarray
+) -> None:
+    """The hot inner loop of `_fill_rects`, compiled. At the combined view's default inputs
+    this runs ~1.28 M times per call, twice per render -- a pure-Python `for` over that many
+    numpy slice-assigns was ~1.5 s/frame (see docs/profiling.md). Serial on purpose: cells
+    overlap (CELL_OVERLAP_FACTOR > 1), so a `prange` split would race on shared pixels."""
+    channels = pixels.shape[2]
+    for i in range(x0.shape[0]):
+        if x1[i] > x0[i] and y1[i] > y0[i]:
+            for y in range(y0[i], y1[i]):
+                for x in range(x0[i], x1[i]):
+                    for c in range(channels):
+                        pixels[y, x, c] = colors[i, c]
+
+
 def _fill_rects(pixels: np.ndarray, centers: np.ndarray, half_w, half_h, colors: np.ndarray) -> None:
     """Fills each point's axis-aligned rectangle (centers[i] +/- (half_w, half_h)) directly
-    via numpy slicing. Used for both the render-grid cells and (in "Plates (details)") the
-    per-node dots -- at tens of thousands of points, one array slice per point is far
-    cheaper than one Pillow draw call per point."""
+    into the pixel buffer (see `_fill_rects_kernel`). Used for both the render-grid cells and
+    (in "Plates (details)") the per-node dots -- at tens of thousands of points, painting each
+    rect directly is far cheaper than one Pillow draw call per point."""
     if len(centers) == 0:
         return
-    height, width, _ = pixels.shape
+    height, width, channels = pixels.shape
     half_w = np.broadcast_to(np.asarray(half_w, dtype=float), (len(centers),))
     half_h = np.broadcast_to(np.asarray(half_h, dtype=float), (len(centers),))
-    x0 = np.clip(np.round(centers[:, 0] - half_w).astype(int), 0, width)
-    x1 = np.clip(np.round(centers[:, 0] + half_w).astype(int), 0, width)
-    y0 = np.clip(np.round(centers[:, 1] - half_h).astype(int), 0, height)
-    y1 = np.clip(np.round(centers[:, 1] + half_h).astype(int), 0, height)
-    for i in range(len(centers)):
-        if x1[i] > x0[i] and y1[i] > y0[i]:
-            pixels[y0[i] : y1[i], x0[i] : x1[i]] = colors[i]
+    x0 = np.clip(np.round(centers[:, 0] - half_w).astype(np.intp), 0, width)
+    x1 = np.clip(np.round(centers[:, 0] + half_w).astype(np.intp), 0, width)
+    y0 = np.clip(np.round(centers[:, 1] - half_h).astype(np.intp), 0, height)
+    y1 = np.clip(np.round(centers[:, 1] + half_h).astype(np.intp), 0, height)
+    # `colors` reaches here as (N, channels) in assorted dtypes (uint8 lookups, int64 from
+    # np.where on RGB tuples, float blends) -- normalize to the buffer's dtype and layout once
+    # so the kernel is a single specialization.
+    colors = np.ascontiguousarray(colors).reshape(len(centers), -1).astype(pixels.dtype, copy=False)
+    _fill_rects_kernel(pixels, x0, x1, y0, y1, colors)
 
 
 def _stroke_robust_loop(draw: ImageDraw.ImageDraw, pixel_pts: np.ndarray, color: tuple[int, int, int], width_px: float) -> None:
