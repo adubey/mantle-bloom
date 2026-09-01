@@ -82,9 +82,14 @@ Totals over the 8 profiled steps.
    once). Microbenchmark on the same box at the profiled grid size (801x1601 points):
    ~0.78 s -> ~0.027 s per `_fill_rects` call, run twice per combined render -- ~1.5 s/frame
    saved.
-3. **`_eckert4_theta`: drop `_NEWTON_ITERS` 30 -> ~8** (Newton converges quadratically,
+3. ~~**`_eckert4_theta`: drop `_NEWTON_ITERS` 30 -> ~8** (Newton converges quadratically,
    double precision is reached well before 30) and/or solve on the ~801 unique latitudes
-   rather than all 1.28 M points. Independent of fix 1.
+   rather than all 1.28 M points. Independent of fix 1.~~ **Done** (both: `np.unique` on the
+   flattened latitudes so the solve runs on the ~801 distinct values and is scattered back;
+   Newton loop now caps at 12 iters and breaks once the max correction drops below 1e-14 --
+   ~5 iters in practice). Result is bit-exact against a 60-iteration reference. Microbenchmark
+   on the same box at the profiled grid size (801x1601): `eckert4` full-grid call
+   ~380 ms -> ~22 ms (~17x), ~8 passes/render -> roughly **2.7 s/frame saved**.
 4. **Build the neighbour `cKDTree` once per step in `torque`** and share it across every
    plate's `shift`/`deform` instead of rebuilding it ~24x.
 5. Vectorize `all_points_and_elevation` / `elevation_lines.world_xyz` to remove the 237 K
