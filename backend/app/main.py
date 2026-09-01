@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import threading
 from contextlib import contextmanager
@@ -9,6 +11,7 @@ from contextlib import contextmanager
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from scipy.spatial import cKDTree
 
@@ -127,7 +130,7 @@ class AnimateRequest(BaseModel):
     years_per_frame: float
     # Total frames, including frame 0 (the world's current, unstepped state) -- so this
     # permanently advances the world by (num_frames - 1) * years_per_frame years (see
-    # render_image.render_animation_gif's own docstring).
+    # render_image.stream_animation_mp4's own docstring).
     num_frames: int
 
 
@@ -580,16 +583,23 @@ def render(
 
 
 @app.post("/world/animate")
-def animate(req: AnimateRequest) -> dict:
-    """The "File > Make Animation" action: an animated GIF of `view`/`projection`'s
-    progress, one frame for the world's current state plus `req.num_frames - 1` more, each
-    `req.years_per_frame` further along -- see render_image.render_animation_gif for the
-    encoding details. **This permanently advances the world** by
-    `(req.num_frames - 1) * req.years_per_frame` years, the same as calling /world/step that
-    many times -- not a side-effect-free preview. Same validation as /world/render for
-    projection/view/width/height/rotation, plus `num_frames` bounded to
-    `[1, MAX_ANIMATION_FRAMES]` (each frame costs a full step_world + render). `404` if no
-    world has been generated yet."""
+def animate(req: AnimateRequest) -> StreamingResponse:
+    """The "File > Make Animation" action: streams newline-delimited JSON progress while
+    rendering an H.264/MP4 video of `view`/`projection`'s progress -- one frame for the
+    world's current state plus `req.num_frames - 1` more, each `req.years_per_frame` further
+    along (see render_image.stream_animation_mp4 for the encoding details). Each response
+    line is one JSON object: `{"type": "progress", "frame": n, "total": N}` as each frame
+    finishes, then a final `{"type": "done", "video_base64": ..., "mime": "video/mp4",
+    ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
+    "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
+    the stream has started.
+
+    **This permanently advances the world** by `(req.num_frames - 1) * req.years_per_frame`
+    years, the same as calling /world/step that many times -- not a side-effect-free preview.
+    Same validation as /world/render for projection/view/width/height/rotation, plus
+    `num_frames` bounded to `[1, MAX_ANIMATION_FRAMES]` (each frame costs a full step_world +
+    render). `404` if no world has been generated yet, `503` if a step or another animation
+    is already in progress."""
     world = _require_world()
     if req.projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {req.projection!r}")
@@ -601,11 +611,34 @@ def animate(req: AnimateRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"num_frames must be in [1, {MAX_ANIMATION_FRAMES}]")
     view_rotation = _parse_view_rotation(req.rotation)
 
-    with _reject_if_busy("a step or animation is already in progress"):
-        image_base64 = render_image.render_animation_gif_base64(
-            world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
-        )
-        return {**_summary(world), "image_base64": image_base64}
+    # Acquire `_world_lock` synchronously (like _reject_if_busy, but the response streams so
+    # the release has to happen in the generator's `finally`, not a `with` here) -- an
+    # overlapping step/animation still 503s before the stream starts.
+    if not _world_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="a step or animation is already in progress")
+
+    def _stream():
+        try:
+            for message in render_image.stream_animation_mp4(
+                world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
+            ):
+                if message[0] == "progress":
+                    _, frame, total = message
+                    yield json.dumps({"type": "progress", "frame": frame, "total": total}) + "\n"
+                else:
+                    _, mp4_bytes = message
+                    yield json.dumps({
+                        "type": "done",
+                        "mime": "video/mp4",
+                        "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
+                        **_summary(world),
+                    }) + "\n"
+        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+            yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+        finally:
+            _world_lock.release()
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
 
 @app.post("/world/controls")
