@@ -129,7 +129,7 @@ def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
 
 
 def test_coastal_feedback_stays_stable_over_many_steps():
-    # A regression floor for the coastal planation + infill feedback (erosion.py), not a tight
+    # A regression floor for the symmetric coastal-leveling feedback (erosion.py), not a tight
     # bound. The real drowned-shelf checkerboard from docs/TODO.md "Speckled low-relief
     # coastlines" only bites at node_density=4 (or on the seed-888151728 save) -- too slow for
     # a stress test, and a sudden sea-level jump on a density-1 world just makes a rough
@@ -152,7 +152,7 @@ def test_coastal_feedback_stays_stable_over_many_steps():
 
     assert np.all(np.isfinite(after))
     assert np.all(after >= MIN_ELEVATION_M - 1e-6) and np.all(after <= MAX_ELEVATION_M + 1e-6)
-    # The near-waterline shelf hasn't wholesale-drowned or wholesale-emerged -- planation and
-    # infill nudge the coast, they don't run away with it.
+    # The near-waterline shelf hasn't wholesale-drowned or wholesale-emerged -- the grind and
+    # fill halves nudge the coast toward its local datum, they don't run away with it.
     still_near = float(np.mean(np.abs(after - sl) <= 200.0))
     assert still_near > 0.05

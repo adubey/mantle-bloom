@@ -283,6 +283,12 @@ lakes.py              every-step lake growth/evaporation/merge/split/silt, an ex
                      also rebuilt fresh, on demand, by main.py to answer the Lake Inspector's
                      GET /world/lakes and GET /world/lake_at (see
                      simulation-model.md#lake-inspector)
+stranded_basins.py   diagnostic-only: finds endorheic below-sea-level basins with no ocean
+                     drainage (the "land-locked coastal pit") in lakes.py's forest, and
+                     tracks how long each has persisted across steps (world.stranded_basin_
+                     tracks, reconciled from world.step_world) -- backs GET /world/stranded_
+                     basins and the python -m app.stranded_basins offline dump (see
+                     debugging.md)
 bathymetry.py        the shelf-width constant geology.py keys off, plus a one-off
                      generation-time pass (shape_initial_bathymetry) that drowns submerged
                      continental interiors toward abyssal depth by distance from land and
@@ -307,6 +313,7 @@ main.py              FastAPI routes
 render_image.py      renders /world/render's requested view/resolution to a PNG server-side
                      (see simulation-model.md#render-image and simulation-model.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
+                     and the "speckle" coastal-dither debug overlay (see docs/debugging.md)
 persistence.py       whole-World save/load to a single opaque pickle file (File > Save/Load
                      World -- see api-reference.md's /world/save//world/load)
 geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/biome

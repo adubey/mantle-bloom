@@ -3,7 +3,7 @@ import io
 import numpy as np
 from PIL import Image
 from app import climate, geometry, hydrology, render_image
-from app.world import World, generate_world
+from app.world import World, generate_world, step_world
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
@@ -81,6 +81,35 @@ def test_render_png_is_decodable_at_requested_size():
         image = Image.open(io.BytesIO(png))
         assert image.format == "PNG"
         assert image.size == (320, 180)
+
+
+def test_geomorph_colors_diverge_around_zero():
+    # Neutral grey at no net change, warm where the step net-lowered a node, cool where it
+    # net-raised one -- and clamped to the end stops past the +-60 m band.
+    neutral, erosion, deposition = render_image.geomorph_colors(np.array([0.0, -50.0, 50.0]))
+    assert tuple(neutral) == (232, 232, 232)
+    assert erosion[0] > erosion[2]  # more red than blue
+    assert deposition[2] > deposition[0]  # more blue than red
+    lo, hi = render_image.geomorph_colors(np.array([-9999.0, 9999.0]))
+    assert tuple(lo) == tuple(render_image._GEOMORPH_STOP_RGB[0].astype(int))
+    assert tuple(hi) == tuple(render_image._GEOMORPH_STOP_RGB[-1].astype(int))
+
+
+def test_geomorph_view_renders_neutral_before_a_step_then_varies_after():
+    world = _world(seed=7, num_plates=8)
+    # erosion_cache is None until the first climate/erosion step -- the view falls back to a
+    # flat neutral field (plus the coastline) rather than erroring.
+    before = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "geomorph", 320, 180))).convert("RGB"))
+    assert world.erosion_cache is None
+
+    step_world(world, years=1_000_000)
+    assert world.erosion_cache is not None
+    assert world.erosion_cache.net_elevation_change_m.shape == world.erosion_cache.points.shape[:1]
+
+    after = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "geomorph", 320, 180))).convert("RGB"))
+    # A real geomorph field has erosion and deposition both -- more than one distinct color
+    # away from the background, unlike the pre-step neutral fill.
+    assert len(np.unique(after.reshape(-1, 3), axis=0)) > len(np.unique(before.reshape(-1, 3), axis=0))
 
 
 def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
@@ -318,6 +347,62 @@ def test_ocean_currents_view_marks_swells_at_synthetic_convergence(monkeypatch):
     pixels = np.asarray(image).reshape(-1, 3)
     swell_marker_white = np.array([255, 255, 255])
     assert np.any(np.all(pixels == swell_marker_white, axis=-1))
+
+
+def _latlon_grid_points(n=12, spacing_deg=0.4):
+    ii, jj = np.meshgrid(np.arange(n), np.arange(n), indexing="ij")
+    pts = geometry.latlon_to_xyz(np.radians(ii.reshape(-1) * spacing_deg), np.radians(jj.reshape(-1) * spacing_deg))
+    return pts, ii.reshape(-1), jj.reshape(-1)
+
+
+def test_coastal_dither_fraction_flags_isolated_specks_but_not_a_coherent_coast():
+    pts, ii, jj = _latlon_grid_points()
+
+    # A mostly-ocean shelf with a scattering of lone, well-separated land nodes -- exactly the
+    # single-pixel islands the investigation cared about. Each speck's whole neighbourhood is
+    # the opposite class, so it pegs at 1.0 and clears the flag threshold.
+    speck_elev = np.full(pts.shape[0], -20.0)
+    speck_mask = (ii % 4 == 1) & (jj % 4 == 1)
+    speck_elev[speck_mask] = 20.0
+    speck_frac, speck_near = render_image.coastal_dither_fraction(pts, speck_elev, 0.0)
+    assert speck_near.all()  # every |elev| = 20 < SPECKLE_NEAR_BAND_M
+    assert np.all(speck_frac[speck_mask] >= 0.99)
+    assert int((speck_frac >= render_image.SPECKLE_FLAG_FRACTION).sum()) == int(speck_mask.sum())
+
+    # A gentle monotonic ramp across sea level is a coherent shoreline: only nodes straddling
+    # the waterline see any disagreement at all, and none of it reaches the flag threshold.
+    ramp_frac, ramp_near = render_image.coastal_dither_fraction(pts, (ii - 5.5) * 8.0, 0.0)
+    assert not (ramp_frac >= render_image.SPECKLE_FLAG_FRACTION).any()
+    assert speck_frac[speck_mask].max() > ramp_frac[ramp_near].max() + 0.3
+
+
+def test_coastal_dither_fraction_is_zero_outside_the_near_band():
+    pts, ii, jj = _latlon_grid_points()
+    elev = np.where((ii + jj) % 2 == 0, 5000.0, -5000.0)  # a checkerboard, but nowhere near sea level
+    frac, near = render_image.coastal_dither_fraction(pts, elev, 0.0)
+    assert not near.any()
+    assert np.all(frac == 0.0)
+
+
+def test_speckle_view_differs_from_the_elevation_view():
+    world = _world()
+    assert render_image.render_png(world, "behrmann", "speckle", 320, 180) != render_image.render_png(
+        world, "behrmann", "elevation", 320, 180
+    )
+
+
+def test_speckle_view_draws_flagged_nodes_in_the_flag_color(monkeypatch):
+    # Feed the renderer a synthetic per-node fraction so a known slice of nodes clears
+    # SPECKLE_FLAG_FRACTION -- those must show up as the oversized magenta flag marker.
+    world = _world()
+    all_points, _elev, _owner = render_image.plates.collect_all_points(world.plates)
+    n = len(all_points)
+    monkeypatch.setattr(
+        render_image, "coastal_dither_fraction", lambda *a, **k: (np.linspace(0.0, 1.0, n), np.ones(n, dtype=bool))
+    )
+    png = render_image.render_png(world, "behrmann", "speckle", 500, 275)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).reshape(-1, 3)
+    assert np.any(np.all(pixels == np.array(render_image.SPECKLE_FLAG_RGB), axis=-1))
 
 
 def test_rotate_maps_a_known_point_to_its_expected_position():

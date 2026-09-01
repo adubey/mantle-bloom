@@ -253,13 +253,16 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level
 
-**Status: PARTIALLY RESOLVED.** The coastal planation + infill feedback (option 2, "What
-landed" below) cut the density-1 dither roughly in half; barrier islands (option 3) fall out
-of it in emergent form. But a fresh look at
-`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld` (2026-08-31, seed 888151728,
-851 steps / 85.1 My, `node_density=4`) shows the coast is **still visibly speckled** -- a
-broad checkerboard fringe along the south and east coasts of the plate-3 land mass around
-5 N / -10 E. New diagnosis below; the feedback is running but is being *swamped*.
+**Status: PARTIALLY RESOLVED (round 2).** Round 1 -- the coastal planation + infill feedback
+(option 2) -- cut the density-1 dither roughly in half; barrier islands (option 3) fall out
+of it in emergent form. A fresh density-4 look
+(`~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld`, 2026-08-31, seed 888151728,
+851 steps / 85.1 My) then showed the coast **still visibly speckled** along the south/east
+coasts of the plate-3 land mass around 5 N / -10 E -- the feedback was running but *swamped*
+by lumpy river deposition (diagnosis below). Round 2 (2026-08-31, "What landed (round 2)")
+de-clumps that deposition with a distributary spread and merges planation + infill into one
+symmetric leveling pass across a band straddling sea level. Still needs a fresh density-4
+measurement pass to confirm the checkerboard is gone (see Verification in the round-2 notes).
 
 **Why it's still speckled at 85 My (measured, per 100-ky step, in an ~8x30 deg box over the
 worst stretch).** The user's hypothesis was right that this should be a coastal plain -- but
@@ -286,22 +289,80 @@ the problem is *not* a sediment shortage:
   reweight, so it ignores everything that is already a hair below the waterline (that's
   infill's job) and everything that isn't standing proud of its neighbours.
 
-**Fix direction (not yet done).** The deposition needs to be *rate-limited or diffused* in
-the near-sea-level band -- cap per-node per-step deposition at some fraction of local relief,
-or spread each routed lump across its k nearest coastal neighbours (mass-conserving) instead
-of dropping it on one node -- and planation + infill should engage as **one symmetric pass**
-across a band that straddles sea level (grind the +30 m bumps and fill the -30 m ponds
-together toward a common local datum) rather than two separately-gated passes that each miss
-half the checkerboard. The transient-lake log spam and the stranded deep basins (below) are
-both downstream symptoms of the same dithering shelf.
+**What landed (round 2), 2026-08-31.** All in `erosion.py`, all mass-conserving via
+`np.add.at`, stateless per-step (same idiom as the other `_spread_*` helpers), no new
+persistent fields:
 
-**Related symptom -- event-log flooding.** The world's event log is almost entirely
-"N-node lake formed/split ... at elevation ~0 m" -- hundreds of these per My, one pair per
-dithering puddle every step. `world.log_event` / `hydrology.lake_events` should either
-dedupe/aggregate near-sea-level transient lakes ("~40 coastal ponds churned this step")
-or suppress lakes whose floor is within a few metres of sea level and whose lifetime is one
-step. As-is the log is unusable for spotting real basin events (there are genuine ones
-buried in it: a persistent ~435-node lake oscillating around -1770 m).
+- **Distributary redirect.** In `apply_erosion`, after the beach spread: a near-sea-level
+  land node (`|elev - sea_level| <= COASTAL_LEVELING_BAND_M`, 45 m) flagged `is_depositing`
+  (the existing slow-big-river `DEPOSITION_*` test) has `DELTA_REDIRECT_FRACTION` (0.8) of the
+  lump `route_downstream` piled on it pulled back out and fed to the leveling fill spread,
+  which scatters it across the band's below-datum hollows -- the emergent distributary fan.
+  The rest stays put as the active channel bar / natural levee.
+- **`coastal_planation_amount` + `_spread_coastal_infill` -> `coastal_leveling_grind` +
+  `_spread_coastal_leveling`**, one symmetric pass over a band straddling sea level. Every
+  band node has a local target datum (`leveling_datum_m`: a single continuous function of
+  wave exposure -- `sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure + LEVELING_MARSH_CREST_M
+  * shelter`, or `sea_level + BARRIER_CREST_M` for a barrier candidate). The grind half planes
+  down every node standing above its datum (a just-submerged shoal included -- the old
+  planation gate ignored everything below sea level); the fill half silts up every node below
+  its datum, land or ocean alike (a dry interdistributary low fills as readily as sheltered
+  shallow water). `prominence` / `hollow` still reweight both at node scale.
+- The fill side is a **capped iterative water-fill**: each below-datum sink has a hard
+  per-step capacity (its metres of room to the datum, bounded by one `LEVELING_RATE` step),
+  and `LEVELING_FILL_ITERS` passes distribute each source's remaining load across its
+  still-open sinks (`LEVELING_SPREAD_NEIGHBOR_COUNT`), capping and carrying the overflow. That
+  is what makes a 200 m lump genuinely spread across the flat plain instead of piling onto the
+  single most-weighted node -- the failure mode round-1's `_spread_coastal_infill` still had.
+- The fill pool is the ground-off rock + `COASTAL_INFILL_MARINE_FRACTION` (0.5) of the
+  submarine/coastal erosion pool + the distributary redirect; the rest of the sea-side pool
+  still spreads to deep water via `_spread_marine_sediment`. `LEVELING_LOCAL_FRACTION` (0.25)
+  of a spread stays put only when the source is itself a below-datum node; a pure source
+  spreads in full, and never back onto itself; whatever no sink had room for bounces back.
+
+Renamed constants: `PLANATION_RATE_M_PER_MYR -> LEVELING_RATE_M_PER_MYR` (**250 -> 60**;
+round-1's 250 over-planed the drowned shelf), `PLANATION_EXPOSURE_REF -> LEVELING_EXPOSURE_REF`,
+`PLANATION_UNDERCUT_M -> LEVELING_PLATFORM_UNDERCUT_M`, `INFILL_MARSH_CREST_M ->
+LEVELING_MARSH_CREST_M`; `PLANATION_BAND_M` + `INFILL_DEPTH_M` collapsed into
+`COASTAL_LEVELING_BAND_M` (45 m); `COASTAL_INFILL_MARINE_FRACTION` kept 0.5. New:
+`DELTA_REDIRECT_FRACTION`, `LEVELING_LOCAL_FRACTION`, `LEVELING_MIN_OPENNESS`,
+`LEVELING_SPREAD_NEIGHBOR_COUNT`, `LEVELING_FILL_ITERS`.
+
+Tests: `unit_tests/test_erosion.py` (`leveling_datum_m`, `coastal_leveling_grind`,
+`_spread_coastal_leveling` -- direction, exact mass conservation incl. the no-sink fallback,
+and a single-lump-declumps-across-neighbours check) and the renamed stability floor
+`stress_tests/test_world_stepping.py::test_coastal_feedback_stays_stable_over_many_steps`.
+
+**Measured so far (apply_erosion-only loop, 10 steps, seeds 830054688 / 505070493 / 443034896
+-- the seed-888151728 density-4 save was not on disk and the older saves can't `step_world`,
+so this is a proxy; feedback ON vs OFF).** In the near-sea-level band:
+
+| | flip fraction | band \|dElev\|/step p90 | deposition top-10% share |
+|---|---|---|---|
+| seed 830054688 | 0.32 -> 0.25 | 37 -> 21 m | 0.35 -> 0.23 |
+| seed 505070493 | 0.36 -> 0.30 | 41 -> 25 m | 0.60 -> 0.39 |
+| seed 443034896 | 0.32 -> 0.23 | 40 -> 24 m | 0.72 -> 0.55 |
+
+Every metric improves on every save -- the deposition-concentration drop is the de-clumping
+working directly. Round-1's pass on the *same* proxy went the wrong way (flip 0.40 / 0.50,
+p90 ~73 / ~90 m) -- its 250 m/My planation rate and one-shot infill scatter both amplify
+node-scale noise here; round 2 is a clear improvement over both round 1 and no feedback.
+
+**Still to verify (round 2).** No fresh density-4 `step_world` measurement yet (needs a
+loadable density-4 save or a long from-scratch run). Re-run the 2026-08-31 investigation
+against a seed-888151728-style world (~25 `step_world` steps of 100 ky), in the ~8x30 deg
+box over 5 N / -10 E: band nodes flipping land<->ocean per step (was 315/768), deposition
+top-10% share (was 51%), per-step |dElev| p10/p90 in the band (was +-50 m). The
+transient-lake log spam and the stranded deep basins (below) are downstream symptoms of the
+same dithering shelf and should ease.
+
+**Related symptom -- event-log flooding.** ~~The world's event log is almost entirely
+"N-node lake formed/split ... at elevation ~0 m" -- hundreds of these per My.~~ **Fixed
+2026-08-31** by `lakes.summarize_lake_events` (see the "Diagnostic views & debug output"
+section below): a step's near-sea-level transients collapse to one aggregate line, so real
+basin events are legible again (e.g. the genuine persistent ~435-node lake oscillating
+around -1770 m, which still logs individually). The dither this was a symptom of is still
+open (see "Fix direction" above).
 
 **Related symptom -- stranded sub-sea-level basins.** The log also shows persistent
 endorheic depressions well below sea level (a 435-node basin at ~-1770 m, another cluster at
@@ -379,7 +440,11 @@ resample with no coastal cleanup is what turns a fuzzy zone into a checkerboard.
 Net (before the fix): a marginally-submerged flat sheet is a stable fixed point that just
 dithers forever.
 
-**What landed (option 2 + emergent option 3), 2026-08-31.** A per-step pass in
+**What landed (option 2 + emergent option 3), 2026-08-31 -- round 1, superseded by round 2
+above.** `coastal_planation_amount` / `_spread_coastal_infill` / the `PLANATION_*` /
+`INFILL_DEPTH_M` / `INFILL_MARSH_CREST_M` constants named here were renamed and merged into
+the symmetric leveling pass; `_coastal_openness`, the `BARRIER_*` / `PROMINENCE_*` fields,
+and the emergent-barrier / prominence mechanics carried over unchanged. A per-step pass in
 `erosion.apply_erosion`, all mass-conserving via `np.add.at` (no new `_flatten`-style
 term):
 
@@ -453,6 +518,62 @@ plate). `mantle.rad_per_yr_to_cm_per_yr` is the new unit helper. Test:
 plate 2" -- are what turned a vague "the plates look wrong" into the specific follow-ups in
 the plate-geometry section.
 
+**Landed 2026-08-31 -- stranded-basin report** (was item 3 below).
+`GET /world/stranded_basins` and `python -m app.stranded_basins <save.mbworld>`
+(`backend/app/stranded_basins.py`) list every **endorheic** basin (`lakes.Lake.max_depth is
+None` -- no spill path to the ocean at any fill level) whose floor is **below sea level** --
+the "land-locked coastal pit" the coastal-speckle section flags. Read straight off
+`world.hydrology_cache.lake_forest`, so it can't drift from the Lake Inspector. Persistence
+("how long has this pit been stranded") comes from `world.stranded_basin_tracks`, a small
+cross-step centroid-matched first-seen tracker `world.step_world` maintains the same way
+`collision_progress` tracks plate pairs (new `default_factory` field, backfilled on load by
+`persistence._backfill_added_fields`). Deepest-first; reports node count (catchment +
+flooded), floor elevation, centroid lat/lon, current water level, and persisted years/steps.
+Documented in `docs/debugging.md` + `docs/api-reference.md`; tests
+`unit_tests/test_stranded_basins.py` + `test_main.py`. Most seeds strand nothing (empty list
+= healthy); reproduces the -1770 m / -4560 m basins the seed-888151728 investigation found.
+
+**Landed 2026-08-31 -- standalone plate-diagnostics dump.**
+`python -m app.plate_diagnostics <save.mbworld>` (`backend/app/plate_diagnostics.py`, was
+item 5 below) loads a `.mbworld` offline -- no server, no port -- and prints the per-plate
+motion/shape table, the territory-overlap list, the `collision_progress` timers, and the
+total node count against a clean-tiling estimate (`4*pi / line_spacing_rad(node_density)**2`,
+~130k at density 4). `--json` for the structured form. Reuses `main._plate_summary` /
+`main._plate_overlaps` so it can't drift from `GET /world/plates`. Documented in
+`docs/debugging.md`; test `unit_tests/test_plate_diagnostics.py`. Makes the "is this save's
+geometry healthy?" check for the plate-geometry re-verify a one-liner.
+
+**Landed 2026-08-31 -- lake-churn event aggregation.** `lakes.step_lakes` now returns
+structured `lakes.LakeEvent`s (`kind` / `node_count` / `elevation_m` / `basin_count`, with a
+`.message` property carrying the old wording) instead of pre-formatted strings, and
+`erosion.py` funnels a step's events through `lakes.summarize_lake_events(events,
+world.sea_level_m)` before logging. A transition whose water surface is >
+`NEAR_SEA_LEVEL_EVENT_BAND_M` (15 m) from sea level logs individually as before; two or more
+*within* that band in one step collapse to one line ("38 transient coastal ponds churned
+near sea level this step (22 merged, 16 split)."). A lone near-sea-level event still logs
+verbatim. Persistent deep basins (the real ~435-node -1770 m lake) stay visible; the
+checkerboard shelf contributes at most one aggregate line per step. Tests:
+`test_summarize_lake_events_*` in `unit_tests/test_lakes.py`. Documented in
+`docs/debugging.md` ("Lake-churn aggregation"). This was item 4 below.
+
+**Landed 2026-08-31 -- per-node geomorph-rate render view.** `GET /world/render?view=geomorph`
+(Map View dropdown: **Debug > Erosion & Deposition**; `render_image._render_geomorph_view`,
+was item 2 below) colours every node by `erosion.ErosionResult.net_elevation_change_m` --
+this step's post-erosion elevation minus pre-erosion, i.e. erosion minus every deposition
+pathway plus the small flatten/lake-siltation terms, no tectonics -- on a diverging
+warm(erosion)/cool(deposition) scale (`geomorph_colors`, clamped +-60 m/step) with the
+coastline overlaid. The `ErosionResult` is retained on `World.erosion_cache` (one-step-stale,
+not persisted) purely for this view; `geology.py` still gets its own copy as a direct
+`step_world` argument. Neutral field before the first step / on a fresh load. Tests:
+`test_geomorph_colors_diverge_around_zero`,
+`test_geomorph_view_renders_neutral_before_a_step_then_varies_after` in
+`unit_tests/test_render_image.py`. Documented in `docs/debugging.md` and
+`docs/simulation-model.md#resources-and-soil`. This makes the deposition lumpiness in the
+near-sea-level band (256 m on one node, ~0 on its neighbour) -- the whole coastal-speckle
+mechanism -- legible for the first time; use it as a before/after for any coastal-feedback
+change. Not done: a `/world/sample_at` field for the click-popup (the popup is only wired for
+elevation/biome/combined today), and a gross-deposition-vs-net toggle (net alone was enough).
+
 **Still worth building:**
 
 1. **A speckle / coastal-dither overlay render mode.** Colour every node whose elevation is
@@ -464,28 +585,24 @@ the plate-geometry section.
    Natural home: a `render_image.py` view alongside `platesDetail`, or a boolean overlay on
    the `elevation` / `biome` views.
 
-2. **A per-node geomorph-rate view.** Render `ErosionResult.sediment_deposited` (and/or net
-   `dElev` this step) as a diverging map. The lumpiness of deposition in the near-sea-level
-   band -- 256 m on one node, ~0 on its neighbour -- is invisible in every current view but
-   is the whole coastal-speckle mechanism. `ErosionResult` already carries the arrays;
-   this is a render path plus maybe a `/world/sample_at` field.
+2. ~~**A per-node geomorph-rate view.**~~ **Landed 2026-08-31** as `view=geomorph` -- see the
+   "Landed" note above.
 
-3. **Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
+3. ~~**Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
    endorheic basins whose floor is below sea level and that are not connected to the ocean:
-   node count, floor elevation, centroid, how long they've persisted. The event log has this
-   information today but drowned in transient-coastal-pond spam (see the coastal section).
+   node count, floor elevation, centroid, how long they've persisted.~~ **Landed 2026-08-31**
+   as `GET /world/stranded_basins` + `python -m app.stranded_basins` -- see the "Landed" note
+   above. Not done: no map-view render of it (the endpoint returns `centroid_xyz`/`floor_xyz`
+   ready for one); persistence resets on a `simulate_climate_biomes=False` stretch (only
+   hydrology steps are counted, by design).
 
-4. **Event-log dedup / severity for lake churn.** `world.log_event` should collapse the
-   hundreds of per-step "N-node lake formed/split at ~0 m" messages into one aggregate line,
-   or drop one-step lakes with a near-sea-level floor entirely, so the log is usable for
-   real basin/tectonic events again.
+4. ~~**Event-log dedup / severity for lake churn.**~~ **Landed 2026-08-31** as
+   `lakes.summarize_lake_events` -- see the "Landed" note above. Went with the aggregate-line
+   approach; "drop one-step lakes" was rejected because one-step detection needs cross-step
+   state and `lakes.py` deliberately keeps no persistent `Lake` registry.
 
-5. **A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.** The
-   investigation used a throwaway script (scratchpad `probe*.py`) to load a `.mbworld` and
-   print the per-plate table, overlap matrix, `collision_progress`, and node-count vs
-   clean-tiling estimate. A checked-in version -- reusing `main._plate_overlaps` and
-   `_plate_summary` -- would make the "is this save's geometry healthy?" check a one-liner
-   for the long-run re-verify the plate-geometry section keeps asking for.
+5. ~~**A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.**~~
+   **Landed 2026-08-31** as `python -m app.plate_diagnostics` -- see the "Landed" note above.
 
 ---
 

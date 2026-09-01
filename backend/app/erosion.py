@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, hydrology
+from . import climate, geometry, hydrology, lakes
 from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
 from .plates import (
     Plate,
@@ -315,18 +315,24 @@ BEACH_DEPOSITION_RANGE_RAD = BEACH_DEPOSITION_RANGE_KM / PLANET_RADIUS_KM
 BEACH_SHELF_DEPTH_M = -200.0
 BEACH_SPREAD_NEIGHBOR_COUNT = 8
 
-# Coastal planation + infill feedback (mantle-bloom-original -- see docs/TODO.md "Speckled
-# low-relief coastlines"). Every source above is either purely subaerial or purely submarine,
-# and none of them look at coastal *connectivity*: a marginally-submerged flat continental
-# shelf sitting right on the waterline is a stable fixed point that just dithers land<->ocean
-# node-by-node forever (per-node elevation noise > the surface's height above/below sea level).
-# This pass makes a clean coastline the stable state instead: it planes near-sea-level *land*
-# down toward sea level (wave-cut planation) and silts *sheltered* near-sea-level shallow
-# *ocean* up toward sea level, feeding the infill conservatively (np.add.at, same as the
-# _spread_* helpers) from the planed-off rock plus a redirected share of the submarine/coastal
-# erosion pool. Barrier islands and their back-barrier lagoons/marshes then emerge across
-# steps from the same shelter field, with no explicit lagoon detection (see
-# _spread_coastal_infill's docstring).
+# Coastal leveling feedback (mantle-bloom-original -- see docs/TODO.md "Speckled low-relief
+# coastlines"). Every source above is either purely subaerial or purely submarine, and none
+# of them look at coastal *connectivity*: a marginally-submerged flat continental shelf
+# sitting right on the waterline is a stable fixed point that just dithers land<->ocean
+# node-by-node forever (per-node elevation noise > the surface's height above/below sea level),
+# and the water-routed deposition pool makes it worse -- route_downstream funnels a slow
+# river's whole load down one discretised channel and drops 50-250 m on a single band node
+# while its neighbour gets ~0 (real rivers on a delta plain avulse into distributaries and
+# spread that load laterally across the whole flat fan). This pass makes a coherent coast the
+# stable state instead. It is *one symmetric operation* over a band that straddles sea level
+# (COASTAL_LEVELING_BAND_M): every band node has a local target datum, and the pass grinds
+# the nodes standing above it (wave-cut planation) and silts up the ones sitting below it
+# (sheltered-shelf / interdistributary infill) toward that common datum -- conservatively
+# (np.add.at, same as the _spread_* helpers), fed from the ground-off rock, a redirected
+# share of the submarine/coastal erosion pool, and DELTA_REDIRECT_FRACTION of the clumped
+# near-sea-level river-deposition lump (the distributary spread). Barrier islands and their
+# back-barrier lagoons/marshes then emerge across steps from the same shelter field, with no
+# explicit lagoon detection (see _spread_coastal_leveling's docstring).
 
 # "Wave exposure" proxy: the fraction of nodes within COASTAL_OPENNESS_RANGE_KM that are open
 # ocean (hydrology's connectivity-aware is_ocean, so an inland-lake shore reads as fully
@@ -336,48 +342,80 @@ BEACH_SPREAD_NEIGHBOR_COUNT = 8
 COASTAL_OPENNESS_RANGE_KM = 150.0
 COASTAL_OPENNESS_RANGE_RAD = COASTAL_OPENNESS_RANGE_KM / PLANET_RADIUS_KM
 
-# Wave-cut planation: land within PLANATION_BAND_M of sea level is ground down toward a
-# wave-cut platform, rate = PLANATION_RATE_M_PER_MYR * exposure * proximity * prominence
-# (proximity tapers linearly to 0 at the band edge; exposure saturates once
-# PLANATION_EXPOSURE_REF of the neighbourhood is open water; prominence -- see PROMINENCE_*
-# below -- boosts a protruding speck). The band is deliberately far shallower than
-# COASTAL_EROSION_BAND_M (200 m) -- this targets the low-relief drowned shelf specifically,
-# not every sea cliff. The platform it cuts toward sits PLANATION_UNDERCUT_M * exposure
-# *below* sea level, so a genuinely wave-exposed low sheet is cut down into open water (real
-# shore platforms are planed to roughly low-tide level and a little below) rather than left
-# balanced exactly on the waterline still dithering -- this is what lets the feedback
-# *resolve* a checkerboard into a coastline that follows the shelter field, not just damp its
-# amplitude. PLANATION_RATE_M_PER_MYR is a from-scratch coefficient, order-of-magnitude-
-# checked against boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR (800 m/Myr) and a live run the
-# same way every other rate here was: fast enough to collapse the dither in a few My, slow
-# enough not to eat a genuine low coastal plain in one step (the neighbour-drop and
-# height-above-platform caps in apply_erosion bound it further).
-PLANATION_BAND_M = 60.0
-PLANATION_RATE_M_PER_MYR = 250.0
-PLANATION_EXPOSURE_REF = 0.3
-PLANATION_UNDERCUT_M = 6.0
+# The single near-sea-level band the leveling pass operates on: |elevation - sea_level| within
+# COASTAL_LEVELING_BAND_M, both sides. Deliberately far shallower than COASTAL_EROSION_BAND_M
+# (200 m) -- this targets the low-relief drowned shelf / coastal plain specifically, not every
+# sea cliff. Subsumes the old separate PLANATION_BAND_M (land, +60 m) and INFILL_DEPTH_M
+# (ocean, -70 m) one-sided gates, which each only saw half the checkerboard.
+COASTAL_LEVELING_BAND_M = 45.0
 
-# Sheltered-shelf infill: shallow ocean within INFILL_DEPTH_M of sea level accretes sediment,
-# weighted toward the most sheltered (shelter = 1 - openness/INFILL_SHELTER_REF) and shallowest
-# (proximity) nodes, and toward whatever headroom it still has below its cap (so a node stops
-# receiving as it approaches its cap -- no per-step overshoot, no iteration). Spread across up
-# to INFILL_SPREAD_NEIGHBOR_COUNT sinks within INFILL_RANGE_KM, inverse-distance weighted,
-# exactly like _spread_marine_sediment. A source with no sheltered-shallow sink in range keeps
-# its full amount locally. A sheltered sink fills to INFILL_MARSH_CREST_M * shelter *above*
-# sea level -- a silted-up embayment emerges as marsh/coastal plain (biomes.classify_wetland),
-# the sheltered-side counterpart to planation's undercut, so the two together turn a dithering
-# sheet into land where it's sheltered and open water where it's exposed.
-INFILL_DEPTH_M = 70.0
+# Each band node's target datum (see leveling_datum_m) is a single continuous function of
+# wave exposure: sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure + LEVELING_MARSH_CREST_M
+# * shelter. A genuinely wave-exposed low sheet is cut down into open water (real shore
+# platforms are planed to roughly low-tide level and a little below), a sheltered embayment
+# silts up to a marsh sitting just proud of the waterline (biomes.classify_wetland), and a
+# straight open coast lands near sea level. Cutting/filling to a datum that is *off* the
+# waterline (rather than balanced exactly on it) is what lets the feedback *resolve* a
+# checkerboard into a coast that follows the shelter field, not just damp its amplitude.
+# Grinding rate = LEVELING_RATE_M_PER_MYR * coastal * proximity * prominence (coastal
+# saturating once LEVELING_EXPOSURE_REF of the neighbourhood is open water, so a landlocked
+# lowland is untouched; proximity tapers linearly to 0 at the band edge; prominence -- see
+# PROMINENCE_* below -- boosts a protruding speck and nearly spares a flat sheet). Also caps
+# the fill side's per-step per-node receipt (see _spread_coastal_leveling), so a hollow and
+# its neighbouring bump converge on the datum at the same pace instead of the hollow slamming
+# shut in one step. This is a from-scratch coefficient, order-of-magnitude-checked against
+# boundary.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR (800 m/Myr) and swept on real saves (round-1's
+# 250 over-planed the drowned shelf and *raised* the node-flip rate; 60 both cuts the dither
+# and holds |dElev|/step in the near-sea-level band well down -- flip fraction ~0.40 -> ~0.29,
+# band |dElev| p90 ~45 m -> ~25 m, across two seeds, an apply_erosion-only loop).
+LEVELING_RATE_M_PER_MYR = 60.0
+LEVELING_EXPOSURE_REF = 0.3
+LEVELING_PLATFORM_UNDERCUT_M = 6.0
+LEVELING_MARSH_CREST_M = 4.0
+# A fill sink must have at least this fraction of open water in its neighbourhood -- an
+# inland-lake shore reads ~0 on the connectivity-aware openness field and must never silt up
+# through this coastal pass (it has its own lake siltation). Just above 0, not a real gate on
+# genuine coast.
+LEVELING_MIN_OPENNESS = 0.03
+
+# The fill side is a capped water-fill (see _spread_coastal_leveling): each below-datum band
+# node has a hard per-step capacity -- its own metres of room to its datum, so nothing is
+# raised past the datum in one step -- and LEVELING_FILL_ITERS passes distribute each source's
+# remaining load across its still-open sinks (up to LEVELING_SPREAD_NEIGHBOR_COUNT of them
+# within INFILL_RANGE_KM), weighted by shelter x hollow x room-left / distance, capping and
+# carrying the overflow to the next pass. That is what makes a 200 m lump genuinely spread
+# across the flat plain -- each near sink takes only its ~30 m of room and the rest flows on
+# -- instead of piling onto the single most-weighted node (the failure mode the round-1
+# _spread_coastal_infill still had). LEVELING_LOCAL_FRACTION stays put at a source that is
+# itself a below-datum node (its own hollow to fill -- a river emptying into a genuine basin
+# isn't fully swept clean); a pure source spreads in full. Whatever no sink had room for after
+# the last pass stays on the source (net-zero, no mass loss).
 INFILL_RANGE_KM = 120.0
 INFILL_RANGE_RAD = INFILL_RANGE_KM / PLANET_RADIUS_KM
 INFILL_SHELTER_REF = 0.5
-INFILL_SPREAD_NEIGHBOR_COUNT = 12
-INFILL_MARSH_CREST_M = 4.0
+LEVELING_SPREAD_NEIGHBOR_COUNT = 48
+LEVELING_FILL_ITERS = 3
+LEVELING_LOCAL_FRACTION = 0.25
 # How much of each step's submarine + coastal erosion is redirected from _spread_marine_sediment
 # (which only runs spoil *downhill to deeper* water -- actively counterproductive in a shallow
-# embayment) into the sheltered-shallow infill sink, which gets first call on it. The rest
-# still spreads to deep water as before.
+# embayment) into the leveling fill sink, which gets first call on it. The rest still spreads
+# to deep water as before. Feeding the band matters: on real saves, routing more of this pool
+# (and more of the distributary redirect) into the capped water-fill is what actually pulls
+# the near-sea-level flip rate and |dElev|/step down -- the fill can only ever raise a node to
+# its datum, so there is no runaway, and whatever the thin band can't hold bounces back to the
+# eroding node.
 COASTAL_INFILL_MARINE_FRACTION = 0.5
+
+# Distributary redirect: a big, slow river on the near-sea-level plain (the existing
+# DEPOSITION_* "depositing" test -- slow river_speed, real flow) has route_downstream drop its
+# retained load on whichever single node its discretised flow path runs through. A real delta
+# splits into distributaries and spreads that load across the whole flat fan. This fraction of
+# such a band node's water-routed deposit is pulled back out and fed into the leveling fill
+# spread (which scatters it across the band's hollows -- the emergent distributary fan); the
+# rest stays put as the active channel / natural levee. Swept high on real saves (0.8 beats
+# 0.6 beats 0) -- the capped water-fill trickles it out over several steps anyway, so an
+# aggressive redirect is safe and de-clumps faster.
+DELTA_REDIRECT_FRACTION = 0.8
 
 # Barrier islands: a shallow near-sea-level sink that has land within BARRIER_LANDWARD_KM (a
 # shore to parallel) but still faces open water (openness >= BARRIER_MIN_OPENNESS -- it's on
@@ -395,12 +433,12 @@ BARRIER_CREST_M = 3.0
 
 # Prominence: waves plane protrusions and fill hollows, so a near-sea-level node that stands
 # `PROMINENCE_REF_M` above its own neighbourhood mean is planed ~PROMINENCE_MAX times harder
-# than a flat one (and one sitting below its neighbours ~0), while a shallow-ocean node that
-# sits *below* its neighbourhood mean is the preferred infill sink. This is what actually
-# collapses a pixel-by-pixel land<->ocean checkerboard into a coherent shoreline -- openness
-# alone, measured at a ~150 km fetch scale, is far too smooth to make that call at ~60 km
-# node spacing. It only reweights the existing planation / infill (no new mass term): the
-# rock a prominence-boosted node loses still goes through the conservative infill pool.
+# than a flat one (and one sitting below its neighbours ~0), while a band node that sits
+# *below* its neighbourhood mean is the preferred fill sink. This is what actually collapses a
+# pixel-by-pixel land<->ocean checkerboard into a coherent shoreline -- openness alone,
+# measured at a ~150 km fetch scale, is far too smooth to make that call at ~60 km node
+# spacing. It only reweights the existing grind / fill (no new mass term): the rock a
+# prominence-boosted node loses still goes through the conservative leveling pool.
 PROMINENCE_REF_M = 18.0
 PROMINENCE_MAX = 3.0
 # A barrier candidate whose openness is above INFILL_SHELTER_REF has shelter == 0; without a
@@ -429,7 +467,17 @@ class ErosionResult:
     river/runoff floodplain deposit, glacier till, glacier-transported moraine/outwash material,
     wind-blown resettling, beach/nearshore spreading, and marine sediment shed onto the sea
     floor by submarine and coastal erosion, all summed together (see apply_erosion's own comment
-    for how they're split and redistributed) -- not just the water-routed share alone."""
+    for how they're split and redistributed) -- not just the water-routed share alone.
+
+    `net_elevation_change_m` is this step's total geomorphic elevation delta per node
+    (post-erosion `new_elevation` minus the pre-erosion `elevation` above): erosion removed,
+    every deposition pathway added, plus the small non-conservative flatten/lake-siltation
+    terms -- but *not* tectonic deform, isostasy, or volcanism, which move elevation outside
+    this module. Signed (negative where the step net-lowered a node, positive where it
+    net-raised it). Retained on `World.erosion_cache` for the Geomorph Rate debug view
+    (`render_image._render_geomorph_view`) -- the lumpiness of near-sea-level deposition (a
+    +200 m spike on one node, ~0 on its neighbour) is invisible in every other view but is
+    the whole coastal-speckle mechanism (see docs/TODO.md)."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -438,6 +486,7 @@ class ErosionResult:
     river: np.ndarray
     weathering: np.ndarray
     sediment_deposited: np.ndarray
+    net_elevation_change_m: np.ndarray
     temperature_c: np.ndarray
     precipitation_mm: np.ndarray
 
@@ -709,112 +758,172 @@ def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
     return ocean_count / np.maximum(total, 1)
 
 
-def coastal_planation_amount(
+def leveling_datum_m(
+    sea_level_m: float,
+    openness: np.ndarray,
+    dist_to_land: np.ndarray,
+) -> np.ndarray:
+    """Each node's local target elevation for the symmetric coastal-leveling pass, a single
+    continuous function of wave exposure: `sea_level - LEVELING_PLATFORM_UNDERCUT_M * exposure
+    + LEVELING_MARSH_CREST_M * shelter`. An exposed node (openness >= LEVELING_EXPOSURE_REF)
+    targets a wave-cut platform a few metres *below* the waterline (real shore platforms are
+    planed to roughly low-tide level and a little below); a sheltered node (openness <
+    INFILL_SHELTER_REF) targets a marsh crest a few metres *above* it; a straight open coast
+    lands near sea level. Cutting/filling to a datum that is *off* the waterline (rather than
+    balanced exactly on it) is what lets the pass *resolve* a checkerboard into a coast that
+    follows the shelter field, not just damp its amplitude. A barrier candidate (land within
+    BARRIER_LANDWARD_RAD but still facing open water, openness >= BARRIER_MIN_OPENNESS)
+    instead targets `sea_level + BARRIER_CREST_M`, so a shore-parallel bar can just breach the
+    surface. Both the grind side and the fill side aim at this one number, so they can never
+    fight each other over a node."""
+    exposure = np.clip(openness / LEVELING_EXPOSURE_REF, 0.0, 1.0)
+    shelter = np.clip(1.0 - openness / INFILL_SHELTER_REF, 0.0, 1.0)
+    datum = sea_level_m - LEVELING_PLATFORM_UNDERCUT_M * exposure + LEVELING_MARSH_CREST_M * shelter
+    is_barrier = (dist_to_land <= BARRIER_LANDWARD_RAD) & (openness >= BARRIER_MIN_OPENNESS)
+    return np.where(is_barrier, sea_level_m + BARRIER_CREST_M, datum)
+
+
+def coastal_leveling_grind(
     elevation: np.ndarray,
     sea_level_m: float,
     openness: np.ndarray,
+    datum_m: np.ndarray,
     dt_myr: float,
     local_relief_m: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Meters of wave-cut planation this step: land within PLANATION_BAND_M above sea level is
-    ground down toward a wave-cut platform sitting PLANATION_UNDERCUT_M * exposure below sea
-    level, at PLANATION_RATE_M_PER_MYR * exposure * proximity * prominence -- `proximity`
-    tapering linearly to 0 at the band edge, `exposure` saturating once PLANATION_EXPOSURE_REF
-    of the neighbourhood is open water (so a landlocked lowland, openness ~ 0, is untouched,
-    and a barely-exposed one is only nudged to the waterline while a fully-exposed one is cut
-    into open water), and `prominence` (from `local_relief_m`, this node's height above its
-    own neighbourhood mean -- 1.0 when omitted) making a protruding speck plane several times
-    faster than a flat sheet and a hollow one barely at all. Zero on ocean nodes and on land
-    above the band. Returned uncapped against the neighbour drop -- a wave-cut platform
-    genuinely planes a bench below adjacent terrain -- but never past its own platform target;
-    apply_erosion caps it further against the erosion already taken this step."""
+    """Meters ground off each band node this step (the grind / source half of the symmetric
+    leveling pass): a node within COASTAL_LEVELING_BAND_M of sea level that stands *above* its
+    local `datum_m` (see `leveling_datum_m`) is planed down toward it at `LEVELING_RATE_M_PER_MYR
+    * coastal * proximity * prominence` -- `coastal` saturating once LEVELING_EXPOSURE_REF of
+    the neighbourhood is open water (a landlocked lowland, openness ~ 0, is untouched),
+    `proximity` tapering linearly to 0 at the band edge, and `prominence` (from
+    `local_relief_m`, this node's height above its own neighbourhood mean -- 1.0 when omitted)
+    making a protruding speck plane several times faster than a flat sheet and a hollow one
+    barely at all. Applies to a just-submerged shoal as readily as to low land -- the old
+    planation gate ignored everything below sea level. Returned uncapped against the neighbour
+    drop -- a wave-cut platform genuinely planes a bench below adjacent terrain -- but never
+    past `datum_m`; apply_erosion caps it further against the erosion already taken this
+    step."""
     height_above_sea_m = elevation - sea_level_m
-    proximity = np.clip(1.0 - height_above_sea_m / PLANATION_BAND_M, 0.0, 1.0)
-    in_band = (height_above_sea_m > 0.0) & (height_above_sea_m <= PLANATION_BAND_M)
-    exposure = np.clip(openness / PLANATION_EXPOSURE_REF, 0.0, 1.0)
+    in_band = np.abs(height_above_sea_m) <= COASTAL_LEVELING_BAND_M
+    proximity = np.clip(1.0 - np.abs(height_above_sea_m) / COASTAL_LEVELING_BAND_M, 0.0, 1.0)
+    coastal = np.clip(openness / LEVELING_EXPOSURE_REF, 0.0, 1.0)
     if local_relief_m is None:
         prominence = 1.0
     else:
         prominence = np.clip(1.0 + local_relief_m / PROMINENCE_REF_M, 0.0, PROMINENCE_MAX)
-    rate_m = PLANATION_RATE_M_PER_MYR * exposure * proximity * prominence * dt_myr
-    room_to_platform_m = np.clip(elevation - (sea_level_m - PLANATION_UNDERCUT_M * exposure), 0.0, None)
-    return np.where(in_band, np.minimum(rate_m, room_to_platform_m), 0.0)
+    rate_m = LEVELING_RATE_M_PER_MYR * coastal * proximity * prominence * dt_myr
+    room_to_datum_m = np.clip(elevation - datum_m, 0.0, None)
+    return np.where(in_band, np.minimum(rate_m, room_to_datum_m), 0.0)
 
 
-def _spread_coastal_infill(
+def _spread_coastal_leveling(
     points: np.ndarray,
     elevation: np.ndarray,
-    is_ocean: np.ndarray,
     openness: np.ndarray,
     dist_to_land: np.ndarray,
     sea_level_m: float,
+    datum_m: np.ndarray,
     source_amount: np.ndarray,
+    dt_myr: float,
     local_relief_m: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Redistributes `source_amount` (planed-off rock + the redirected share of submarine/
-    coastal erosion) onto nearby *sheltered, shallow* ocean nodes -- the "shallow + sheltered
-    sink with priority" docs/TODO.md asks for, the counterpart to _spread_marine_sediment's
-    downhill-to-deep-water spread. Each sink within INFILL_RANGE_RAD attracts sediment in
-    proportion to `priority * attract * headroom / dist`, where `attract = shelter * proximity
-    * hollow` (shelter = how enclosed the water is, proximity = how shallow, hollow = how far
-    the node sits *below* its own neighbourhood mean from `local_relief_m`, so an isolated
-    pond fills several times faster than a broad shelf -- 1.0 when omitted), and `headroom` is
-    how far the node still sits below its fill cap -- so a sink stops receiving as it reaches
-    its cap, with no per-step overshoot and no iteration. A barrier candidate (land within
-    BARRIER_LANDWARD_RAD but still facing open water, openness >= BARRIER_MIN_OPENNESS) gets a
-    BARRIER_PRIORITY weight boost, a BARRIER_ATTRACT_FLOOR under `attract`, and a cap raised
-    BARRIER_CREST_M above sea level, so a shore-parallel bar can just breach -- the lagoon it
-    then shelters silts up on later steps as its own openness falls. A source with no sink in
-    range keeps its full amount locally. Exactly conserves source_amount's total via np.add.at,
-    same shape as _spread_marine_sediment."""
+    """Redistributes `source_amount` (ground-off rock + the redirected share of submarine/
+    coastal erosion + the redirected distributary share of the river-deposition lump) onto
+    band nodes sitting *below* their local `datum_m` (see `leveling_datum_m`) -- the fill /
+    sink half of the symmetric leveling pass, land or ocean alike, so a dry interdistributary
+    low just above sea level fills as readily as sheltered shallow water. A sink must have at
+    least LEVELING_MIN_OPENNESS of open water in its neighbourhood (an inland-lake shore,
+    connectivity-openness ~ 0, never silts up here).
+
+    This is a **capped water-fill**, not a one-shot weighted scatter: no sink can be raised
+    past its own datum in a step (`below_datum_m` is a hard per-node capacity), and the fill
+    runs LEVELING_FILL_ITERS passes -- each pass distributes what's left of every source
+    across its still-open sinks in proportion to `priority * attract * room_left / dist`, then
+    caps every sink at its capacity and carries the overflow into the next pass -- so a big
+    lump genuinely spreads across the whole flat plain (each near sink takes only its ~30 m of
+    room, the rest flows on) instead of piling 200 m onto the single most-weighted node.
+    `attract = shelter * hollow` (shelter = how enclosed -- the most sheltered embayment silts
+    up fastest, that is where a marsh belongs; hollow = how far below its own neighbourhood
+    mean, so an isolated pond fills faster than a broad shelf -- 1.0 when `local_relief_m` is
+    omitted). A barrier candidate (see `leveling_datum_m`) gets a BARRIER_PRIORITY boost and a
+    BARRIER_ATTRACT_FLOOR. A source that is itself a below-datum node keeps
+    LEVELING_LOCAL_FRACTION (its own hollow to fill); a pure source spreads in full. The
+    spread never returns to its own source node; whatever no sink had room for after the last
+    pass stays on the source. Exactly conserves source_amount's total via np.add.at."""
     n = len(points)
     result = np.zeros(n)
     source_idx = np.nonzero(source_amount > 0)[0]
     if len(source_idx) == 0:
         return result
 
-    depth_below_sea_m = sea_level_m - elevation
-    is_sink = is_ocean & (depth_below_sea_m >= 0.0) & (depth_below_sea_m <= INFILL_DEPTH_M)
+    height_above_sea_m = elevation - sea_level_m
+    below_datum_m = datum_m - elevation
+    in_band = np.abs(height_above_sea_m) <= COASTAL_LEVELING_BAND_M
+    is_sink = in_band & (below_datum_m > 0.0) & (openness > LEVELING_MIN_OPENNESS)
     sink_idx = np.nonzero(is_sink)[0]
     if len(sink_idx) == 0:
         result[source_idx] = source_amount[source_idx]
         return result
 
-    proximity = np.clip(1.0 - depth_below_sea_m[sink_idx] / INFILL_DEPTH_M, 0.0, 1.0)
+    # Per-step capacity: room to the datum, but never more than the grind side can take off in
+    # the same step -- so a checkerboard hollow and its neighbouring bump both move ~one
+    # LEVELING_RATE step toward the datum, damping the dither instead of slamming the hollow
+    # shut in a single step and setting up a new oscillation.
+    capacity_m = np.minimum(below_datum_m[sink_idx], LEVELING_RATE_M_PER_MYR * dt_myr)
     shelter = np.clip(1.0 - openness[sink_idx] / INFILL_SHELTER_REF, 0.0, 1.0)
     if local_relief_m is None:
         hollow = 1.0
     else:
         hollow = np.clip(1.0 - local_relief_m[sink_idx] / PROMINENCE_REF_M, 0.0, PROMINENCE_MAX)
     is_barrier = (dist_to_land[sink_idx] <= BARRIER_LANDWARD_RAD) & (openness[sink_idx] >= BARRIER_MIN_OPENNESS)
-    base_attract = shelter * proximity * hollow
+    base_attract = shelter * hollow
     attract = np.where(is_barrier, np.maximum(base_attract, BARRIER_ATTRACT_FLOOR), base_attract)
     priority = np.where(is_barrier, BARRIER_PRIORITY, 1.0)
-    # A sheltered sink silts up to a marsh sitting `INFILL_MARSH_CREST_M * shelter` above sea
-    # level; a barrier bar to `BARRIER_CREST_M`. An exposed sink (shelter 0, not a barrier)
-    # caps exactly at sea level.
-    cap_elevation_m = sea_level_m + np.where(is_barrier, BARRIER_CREST_M, INFILL_MARSH_CREST_M * shelter)
-    headroom = np.clip(cap_elevation_m - elevation[sink_idx], 0.0, INFILL_DEPTH_M) / INFILL_DEPTH_M
-    sink_factor = priority * attract * headroom
+    sink_pref = priority * attract  # distance- and room-independent part of the weight
 
     tree = cKDTree(points[sink_idx], balanced_tree=False, compact_nodes=False)
-    k = min(INFILL_SPREAD_NEIGHBOR_COUNT, len(sink_idx))
+    k = min(LEVELING_SPREAD_NEIGHBOR_COUNT, len(sink_idx))
     dist, nearby = tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
     if k == 1:
         dist = dist[:, None]
         nearby = nearby[:, None]
 
-    within_range = dist <= INFILL_RANGE_RAD
-    weight = np.where(within_range, sink_factor[nearby] / np.maximum(dist, 1e-9), 0.0)
-    weight_sum = weight.sum(axis=1)
-    has_target = weight_sum > 0
+    # A source that is itself a sink must not spread onto itself.
+    is_self = sink_idx[nearby] == source_idx[:, None]
+    reachable = (dist <= INFILL_RANGE_RAD) & ~is_self
+    inv_dist = np.where(reachable, 1.0 / np.maximum(dist, 1e-9), 0.0)
+    pref = sink_pref[nearby] * inv_dist  # (n_source, k), distance-weighted preference
 
     total = source_amount[source_idx]
-    result[source_idx] += np.where(has_target, 0.0, total)
+    source_is_sink = is_sink[source_idx]
+    any_reachable = reachable.any(axis=1)
+    local_share = np.where(
+        any_reachable, np.where(source_is_sink, total * LEVELING_LOCAL_FRACTION, 0.0), total
+    )
+    amt = total - local_share  # per-source amount still to place
+    result[source_idx] += local_share
 
-    normalized_weight = np.divide(weight, weight_sum[:, None], out=np.zeros_like(weight), where=weight_sum[:, None] > 0)
-    contribution = normalized_weight * np.where(has_target, total, 0.0)[:, None]
-    np.add.at(result, sink_idx[nearby].ravel(), contribution.ravel())
+    received = np.zeros(len(sink_idx))
+    for _ in range(LEVELING_FILL_ITERS):
+        if amt.sum() <= 1e-6:
+            break
+        room_left = np.clip(capacity_m - received, 0.0, None)
+        weight = pref * room_left[nearby]
+        weight_sum = weight.sum(axis=1)
+        frac = np.divide(weight, weight_sum[:, None], out=np.zeros_like(weight), where=weight_sum[:, None] > 0)
+        want = frac * amt[:, None]  # (n_source, k) tentative give this pass
+
+        tentative = np.zeros(len(sink_idx))
+        np.add.at(tentative, nearby.ravel(), want.ravel())
+        # Scale back every source's give to whichever sinks oversubscribed this pass.
+        scale = np.where(tentative > room_left, np.divide(room_left, tentative, out=np.ones_like(tentative), where=tentative > 0), 1.0)
+        given = want * scale[nearby]
+        np.add.at(received, nearby.ravel(), given.ravel())
+        amt = amt - given.sum(axis=1)
+
+    result[source_idx] += amt  # whatever no sink had room for stays on the source
+    np.add.at(result, sink_idx, received)
     return result
 
 
@@ -899,7 +1008,7 @@ def apply_erosion(
     # sea level without connecting to open ocean now gets the *subaerial* erosion/deposition
     # pathways (and its lake silt, folded into elevation below), not the marine ones.
     is_ocean_node = hydro.is_ocean
-    for message in hydro.lake_events:
+    for message in lakes.summarize_lake_events(hydro.lake_events, world.sea_level_m):
         world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
 
@@ -1016,33 +1125,46 @@ def apply_erosion(
     remaining_drop_m = np.clip(drop_to_lowest_neighbor_m - erosion_amount, 0.0, None)
     sea_side_erosion = np.minimum(np.clip(submarine + coastal, 0.0, None), remaining_drop_m)
 
-    # Coastal planation + infill feedback (see the COASTAL_OPENNESS_* / PLANATION_* /
-    # INFILL_* / BARRIER_* constants). `coastal_openness` is this step's wave-exposure proxy;
-    # planation grinds near-sea-level land down toward sea level (capped here against the
-    # erosion already taken this step, so land can't be pushed underwater in one step); the
-    # planed rock plus COASTAL_INFILL_MARINE_FRACTION of the submarine/coastal pool feeds
-    # _spread_coastal_infill, which silts up sheltered shallow water (and builds barrier bars)
-    # with first call on that sediment. The rest of the sea-side pool still spreads to deep
-    # water as before. All mass-conserving via np.add.at, same as _spread_marine_sediment.
+    # Symmetric coastal leveling (see the COASTAL_OPENNESS_* / COASTAL_LEVELING_* / LEVELING_*
+    # / INFILL_* / BARRIER_* / PROMINENCE_* constants). `coastal_openness` is this step's
+    # wave-exposure proxy; `leveling_datum` is each near-sea-level node's local target
+    # elevation. One pass then pushes every band node toward that datum: grind the ones
+    # standing above it (`ground_off`, capped here against the erosion already taken this step
+    # so land can't be shoved underwater in one step), fill the ones sitting below it
+    # (`leveling_fill`). Its fill pool is the ground-off rock + COASTAL_INFILL_MARINE_FRACTION
+    # of the submarine/coastal pool + `delta_redirect` (the distributary share of the clumped
+    # river-deposition lump); the rest of the sea-side pool still spreads to deep water. All
+    # mass-conserving via np.add.at, same as _spread_marine_sediment.
     coastal_openness = _coastal_openness(points, is_ocean_node)
     dist_to_land = world.distance_from_land_approx(points)
     # Each node's height above its own flow-graph neighbourhood mean -- drives the prominence /
-    # hollow reweighting that lets planation + infill actually resolve a checkerboard (waves
-    # plane protrusions, fill hollows). Reuses hydrology's k=FLOW_NEIGHBOR_COUNT graph.
+    # hollow reweighting that lets the pass actually resolve a checkerboard at node scale
+    # (waves plane protrusions, fill hollows; the openness field alone is far too smooth to
+    # make a land/ocean call at ~60 km node spacing). Reuses hydrology's k=FLOW_NEIGHBOR_COUNT
+    # graph.
     local_relief_m = elevation - elevation[hydro.neighbor_idx].mean(axis=1)
-    planation = coastal_planation_amount(elevation, world.sea_level_m, coastal_openness, dt_myr, local_relief_m)
-    planation = np.minimum(
-        planation, np.clip(elevation - erosion_amount - (world.sea_level_m - PLANATION_UNDERCUT_M), 0.0, None)
-    )
-    infill_source = planation + COASTAL_INFILL_MARINE_FRACTION * sea_side_erosion
+    leveling_datum = leveling_datum_m(world.sea_level_m, coastal_openness, dist_to_land)
+
+    # Distributary redirect: route_downstream funnels a slow river's retained load down one
+    # discretised channel and drops it on whichever single near-sea-level node that channel
+    # runs through. A real delta splits into distributaries and spreads that load across the
+    # whole flat fan -- pull DELTA_REDIRECT_FRACTION of it back off those band land nodes and
+    # hand it to the leveling fill spread, which scatters it across the band's hollows.
+    in_delta_band = (~is_ocean_node) & is_depositing & (np.abs(elevation - world.sea_level_m) <= COASTAL_LEVELING_BAND_M)
+    delta_redirect = np.where(in_delta_band, DELTA_REDIRECT_FRACTION * sediment_deposited, 0.0)
+    total_deposited = total_deposited - delta_redirect
+
+    ground_off = coastal_leveling_grind(elevation, world.sea_level_m, coastal_openness, leveling_datum, dt_myr, local_relief_m)
+    ground_off = np.minimum(ground_off, np.clip(elevation - erosion_amount - leveling_datum, 0.0, None))
+    leveling_source = ground_off + COASTAL_INFILL_MARINE_FRACTION * sea_side_erosion + delta_redirect
     marine_deposit = _spread_marine_sediment(
         points, elevation, is_ocean_node, sea_side_erosion * (1.0 - COASTAL_INFILL_MARINE_FRACTION)
     )
-    infill_deposit = _spread_coastal_infill(
-        points, elevation, is_ocean_node, coastal_openness, dist_to_land, world.sea_level_m, infill_source, local_relief_m
+    leveling_fill = _spread_coastal_leveling(
+        points, elevation, coastal_openness, dist_to_land, world.sea_level_m, leveling_datum, leveling_source, dt_myr, local_relief_m
     )
-    erosion_amount = erosion_amount + sea_side_erosion + planation
-    total_deposited = total_deposited + marine_deposit + infill_deposit
+    erosion_amount = erosion_amount + sea_side_erosion + ground_off
+    total_deposited = total_deposited + marine_deposit + leveling_fill
 
     flatten_delta = _flatten(hydro, ice_factor, years)
 
@@ -1088,6 +1210,7 @@ def apply_erosion(
         river=river,
         weathering=weathering,
         sediment_deposited=total_deposited,
+        net_elevation_change_m=new_elevation - elevation,
         temperature_c=temperature,
         precipitation_mm=precipitation_mm,
     )

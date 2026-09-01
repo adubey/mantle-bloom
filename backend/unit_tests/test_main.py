@@ -59,6 +59,10 @@ def test_lake_at_before_generate_returns_404(client):
     assert client.get("/world/lake_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
+def test_stranded_basins_before_generate_returns_404(client):
+    assert client.get("/world/stranded_basins").status_code == 404
+
+
 def test_save_before_generate_returns_404(client):
     assert client.get("/world/save").status_code == 404
 
@@ -469,6 +473,52 @@ def test_lake_at_rejects_non_finite_query(client):
     client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/lake_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/lake_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_stranded_basins_is_empty_before_the_first_step(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    resp = client.get("/world/stranded_basins")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["stranded_basins"] == []
+    assert body["sea_level_m"] == 0.0
+
+
+def test_stranded_basins_returns_well_formed_entries_after_stepping(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    client.post("/world/step", json={"years": 3_000_000})
+    body = client.get("/world/stranded_basins").json()
+    for basin in body["stranded_basins"]:
+        assert basin["depth_below_sea_level_m"] > 0.0
+        assert basin["floor_elevation_m"] < body["sea_level_m"]
+        assert basin["catchment_node_count"] >= 1
+        assert basin["steps_seen"] >= 1
+        assert basin["persisted_years"] >= 0.0
+
+
+def test_stranded_basin_summary_wire_shape():
+    from app.main import _stranded_basin_summary
+    from app.stranded_basins import StrandedBasin
+
+    basin = StrandedBasin(
+        floor_elevation_m=-1770.58,
+        depth_below_sea_level_m=1770.58,
+        catchment_node_count=435,
+        flooded_node_count=412,
+        water_elevation_m=-1750.2,
+        centroid_xyz=(0.6234567, 0.55, -0.21),
+        centroid_lat_deg=-12.3,
+        centroid_lon_deg=45.6,
+        floor_xyz=(0.61, 0.56, -0.22),
+        first_seen_years=72_700_000.0,
+        persisted_years=12_400_000.0,
+        steps_seen=124,
+    )
+    out = _stranded_basin_summary(basin)
+    assert out["floor_elevation_m"] == -1770.6  # rounded to 1 dp
+    assert out["catchment_node_count"] == 435 and out["flooded_node_count"] == 412
+    assert len(out["centroid_xyz"]) == 3 and out["centroid_xyz"][0] == 0.623457
+    assert out["persisted_years"] == 12_400_000.0 and out["steps_seen"] == 124
 
 
 def test_stats_returns_expected_shape(client):

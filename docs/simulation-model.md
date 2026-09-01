@@ -1968,8 +1968,9 @@ already places `is_volcano` nodes (rift-spawned volcanic fields, see
 simulator has.
 
 **`erosion.apply_erosion` now returns an `ErosionResult`** (`points`/`elevation`/`slope`/
-`rain`/`river`/`weathering`/`sediment_deposited`/`temperature_c`/`precipitation_mm`, all this
-step's already-computed per-node terms, `None` for an empty world) instead of nothing, so
+`rain`/`river`/`weathering`/`sediment_deposited`/`net_elevation_change_m`/`temperature_c`/
+`precipitation_mm`, all this step's already-computed per-node terms, `None` for an empty world)
+instead of nothing, so
 `geology.apply_resource_formation` -- called right after it (and after `bathymetry.py`/
 `volcanism.py`, so `mineral_deposit_m` is already this step's fresh value before soil reads it)
 from `world.step_world` -- can reuse them directly rather than re-deriving them a second time.
@@ -2040,6 +2041,20 @@ co-occur with either, since volcanism isn't restricted by crust type). "Soil Qua
 continuous fertility heatmap (the same color-stop-interpolation technique
 temperature/humidity/precipitation already use), plus the coastline overlay (a continuous
 color scale carries no land/ocean cue on its own).
+
+A third node-cloud-derived view, **"geomorph"** (a debug view -- Map View dropdown's
+**Debug > Erosion & Deposition**; see [debugging.md](debugging.md)), colours every node by
+`ErosionResult.net_elevation_change_m` -- this step's post-erosion elevation minus its
+pre-erosion elevation, i.e. erosion minus every deposition pathway plus the small
+flatten/lake-siltation terms, but *not* tectonic deform, isostasy, or volcanism. It is
+retained on `World.erosion_cache` (a one-step-stale cache, same tolerance as
+`climate_cache`/`hydrology_cache`, not persisted) purely so this view can nearest-node
+resample it onto the same fine grid `_resource_fields` uses. The scale is diverging (warm
+brown/orange where the step net-lowered a node, cool blue where it net-raised one, neutral
+grey in the +-few-metre band, clamped past +-60 m/step) with the coastline overlaid. Its
+purpose is to make the per-step lumpiness of near-sea-level deposition -- a +200 m spike on
+one node, ~0 on its neighbour, the coastal-checkerboard mechanism -- visible, since it shows
+up in no other view. A flat neutral field before the world has been stepped.
 
 <a id="hydrology"></a>
 ## Hydrology: rivers and lakes (`hydrology.py`)
