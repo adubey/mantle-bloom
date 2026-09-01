@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
+from scipy.stats import rankdata
 
 from .elevation_lines import PLANET_RADIUS_KM
 from .hydrology import GLACIER_ACCUMULATION_TEMP_C
@@ -195,7 +196,7 @@ assert BIOME_COLORS.shape == (len(BIOME_NAMES), 3)
 
 
 # ---------------------------------------------------------------------------------------
-# Relief shading (unchanged behavior -- see render_image.py's _render_combined_view)
+# Relief shading (see render_image.py's _render_combined_view)
 # ---------------------------------------------------------------------------------------
 # Peak-to-trough brightness swing biome_relative_shade_factor spreads each class's flat
 # BIOME_COLORS entry across, keyed to a cell's elevation *rank among other cells of the same
@@ -213,7 +214,13 @@ def biome_relative_shade_factor(biome_ids: np.ndarray, elevation_m: np.ndarray) 
     linear in that cell's elevation *rank among same-class cells only*. Rank-based (an even
     spread over the sorted order) rather than a quantile-of-value ramp, so a class with one
     outlier peak and otherwise flat terrain still spans the full range smoothly. Multiply this
-    elementwise into a class's flat BIOME_COLORS entry to shade it."""
+    elementwise into a class's flat BIOME_COLORS entry to shade it.
+
+    Ties share a rank (`rankdata`'s "average" method): the Combined view feeds this a
+    nearest-node elevation resample, so large flat regions land on a handful of exactly-equal
+    elevation values, and a plain argsort would break those ties by flattened array position
+    -- i.e. by latitude then longitude -- painting grid-aligned horizontal bands and diagonal
+    corduroy across terrain that is actually uniform. Equal elevation must mean equal shade."""
     biome_ids = np.asarray(biome_ids)
     elevation_m = np.asarray(elevation_m)
     flat_ids = biome_ids.reshape(-1)
@@ -225,10 +232,9 @@ def biome_relative_shade_factor(biome_ids: np.ndarray, elevation_m: np.ndarray) 
         n = int(mask.sum())
         if n <= 1:
             continue
-        order = np.argsort(flat_elevation[mask])
-        ranks = np.empty(n, dtype=np.int64)
-        ranks[order] = np.arange(n)
-        frac = ranks / (n - 1)
+        # rankdata "average" -> ranks in [1, n]; ties averaged. (rank - 1) / (n - 1) maps the
+        # lowest cell to 0 and the highest to 1, same as the old argsort ramp for tie-free input.
+        frac = (rankdata(flat_elevation[mask], method="average") - 1.0) / (n - 1)
         factor[mask] = BIOME_SHADE_MIN + (BIOME_SHADE_MAX - BIOME_SHADE_MIN) * frac
 
     return factor.reshape(biome_ids.shape)
