@@ -69,9 +69,12 @@ Totals over the 8 profiled steps.
 
 ### Highest-value fixes, roughly in order
 
-1. **Cache `_project_climate_grid`'s result across frames** (key on projection + rotation +
+1. ~~**Cache `_project_climate_grid`'s result across frames** (key on projection + rotation +
    dimensions), and `lru_cache` `_biome_grid`. Saves ~2.5 s/frame -- **~25% off the whole
-   animation** -- and speeds every static-camera re-render, not just animation.
+   animation** -- and speeds every static-camera re-render, not just animation.~~ **Done**
+   (`_PROJECT_GRID_CACHE` ring keyed on grid size + projection + rotation bytes + dimensions +
+   padding; `_biome_grid` is `lru_cache`d). Measured on the same box: `_render_combined_view`
+   dropped 5.25 s (cold) -> 2.85 s (warm cache) per frame, ~2.4 s/frame saved.
 2. **Numba-jit `_fill_rects`** (the codebase already JITs `atmosphere_cfd`). The
    1.28 M-iteration Python loop is ~1.5 s/frame.
 3. **`_eckert4_theta`: drop `_NEWTON_ITERS` 30 -> ~8** (Newton converges quadratically,
