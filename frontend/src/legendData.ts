@@ -261,20 +261,23 @@ const LAND_GROUPS: BiomeGroup[] = [
   { label: "Ice Cap", swatch: "Ice Cap", members: ["Ice Cap"] },
 ];
 
+// Coldest-first, so "Sea Ice" and "Polar Ocean" sit right after land's "Ice Cap" in
+// BIOME_GROUPS -- the two frozen biomes (Ice Cap, Sea Ice) end up adjacent, and the whole
+// ocean block stays contiguous next to them (see BIOME_GROUPS).
 const OCEAN_GROUPS: BiomeGroup[] = [
-  {
-    label: "Tropical Seas",
-    swatch: "Tropical Open Ocean",
-    members: ["Tropical Open Ocean", "Subtropical Gyre", "Equatorial Divergence", "Tropical Coastal Waters"],
-  },
-  { label: "Temperate Seas", swatch: "Temperate Open Ocean", members: ["Temperate Open Ocean", "Temperate Shelf"] },
+  { label: "Sea Ice", swatch: "Polar Sea Ice", members: ["Polar Sea Ice"] },
+  { label: "Polar Ocean", swatch: "Polar Ocean", members: ["Polar Ocean"] },
   {
     label: "Cold-Temperate Seas",
     swatch: "Cold-Temperate Open Ocean",
     members: ["Cold-Temperate Open Ocean", "Cold-Temperate Shelf"],
   },
-  { label: "Polar Ocean", swatch: "Polar Ocean", members: ["Polar Ocean"] },
-  { label: "Sea Ice", swatch: "Polar Sea Ice", members: ["Polar Sea Ice"] },
+  { label: "Temperate Seas", swatch: "Temperate Open Ocean", members: ["Temperate Open Ocean", "Temperate Shelf"] },
+  {
+    label: "Tropical Seas",
+    swatch: "Tropical Open Ocean",
+    members: ["Tropical Open Ocean", "Subtropical Gyre", "Equatorial Divergence", "Tropical Coastal Waters"],
+  },
 ];
 
 const BIOME_GROUPS: BiomeGroup[] = [...LAND_GROUPS, ...OCEAN_GROUPS];
@@ -491,21 +494,32 @@ export function legendFor(view: MapView): LegendSpec | null {
         title: "Köppen Climate",
         symbols: BIOME_GROUPS.map((g) => ({ kind: "square", color: groupSwatchColor(g), label: g.label }) as LegendSymbol),
       };
-    case "combined":
+    case "combined": {
+      // Same grouped Köppen/pelagic list as the Biome view (see BIOME_GROUPS) for
+      // consistency between the two, plus the river/lake/ice overlays drawn on top. The
+      // hypsometric elevation gradient isn't shown as its own bar: land brightness already
+      // varies visibly with elevation and ocean with depth (see _render_combined_view), so
+      // the grouped swatches stay the single click target.
+      //
+      // The three overlays sit where their subject matter does rather than all bunched at
+      // the front: "Glacier (ice cover)" between land's "Ice Cap" and ocean's "Sea Ice" with
+      // the other frozen swatches, and "Lake"/"River" right after the ocean block.
+      const groupSymbol = (g: BiomeGroup): LegendSymbol => ({
+        kind: "square",
+        color: groupSwatchColor(g),
+        label: g.label,
+      });
       return {
-        // Same grouped Köppen/pelagic list as the Biome view (see BIOME_GROUPS) for
-        // consistency between the two, plus the river/lake/ice overlays drawn on top. The
-        // hypsometric elevation gradient isn't shown as its own bar: land brightness already
-        // varies visibly with elevation and ocean with depth (see _render_combined_view), so
-        // the grouped swatches stay the single click target.
         title: "Elevation & Köppen Climate",
         symbols: [
-          { kind: "line", color: RIVER_COLOR, label: "River" },
-          { kind: "square", color: LAKE_COLOR, label: "Lake" },
+          ...LAND_GROUPS.map(groupSymbol),
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
-          ...BIOME_GROUPS.map((g) => ({ kind: "square", color: groupSwatchColor(g), label: g.label }) as LegendSymbol),
+          ...OCEAN_GROUPS.map(groupSymbol),
+          { kind: "square", color: LAKE_COLOR, label: "Lake" },
+          { kind: "line", color: RIVER_COLOR, label: "River" },
         ],
       };
+    }
     case "resources":
       return {
         title: "Resources",

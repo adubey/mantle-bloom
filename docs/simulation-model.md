@@ -603,26 +603,15 @@ deform](#boundary-evolution) for why this replaced the old whole-sphere gap-outl
 (`GAP_OUTLIER_FACTOR`, boundary-point median-spacing comparison) and why it's a probability
 roll rather than a deterministic threshold. A volcano node is a node *on the growing plate's
 own existing line* -- not a separately spawned `Plate` the way the old detection pass worked.
-One consequence: `World.volcanic_field_plate_ids` (still a field on `World`, still read by
-the dormancy check below) is never populated any more, since nothing creates a
-separately-tracked field plate -- kept in case that tracking is reintroduced later, not
-actively used today. A fresh volcano gets a random `volcano_active_years_remaining` draw
+One consequence: there is no longer any whole-plate "volcanic field" bookkeeping at all --
+`World` used to carry a `volcanic_field_plate_ids` set and `volcanism.py` a dormancy check
+that relabelled a diluted field as ordinary continental crust, but with nothing creating a
+separately-tracked field plate both were dead weight and have been removed. A fresh volcano
+gets a random `volcano_active_years_remaining` draw
 (`VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years) and **one guaranteed immediate eruption**
 (`+= ERUPTION_ELEVATION_M`, unconditional -- unlike every later eruption, which is rolled
 probabilistically, see below) -- distinguishing a freshly-created rift volcano from an
 ordinary volcano's own first, merely-probable eruption.
-
-**A plate stops being tracked as a volcanic field once fewer than
-`VOLCANO_FRACTION_DORMANT_THRESHOLD` (5%) of its own nodes are still `is_volcano`** -- not a
-fixed elapsed-time countdown. `is_volcano` never reverts to `False` once set, so this ratio
-can only ever fall, and only by dilution: as a plate's edges keep growing via ordinary
-`deform()` growth, each newly-added non-volcanic node dilutes the ratio, so a plate that
-keeps growing eventually reads as "just an ordinary continental plate that happens to have a
-few old volcanoes embedded in it." Checked every step, alongside the eruption roll below, so
-the transition is caught within one step of crossing the threshold. In practice this check
-now has little left to *do*, since nothing populates `volcanic_field_plate_ids` for it to
-check against any more (see above) -- kept as-is rather than removed, since it's harmless and
-costs nothing to leave running.
 
 **Eruption, every step, unchanged.** Each individual volcano point has its own
 `volcano_active_years_remaining` (drawn once at creation, whether by `deform()`'s rift

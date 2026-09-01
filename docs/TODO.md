@@ -5,6 +5,33 @@ point that picking it up doesn't need a fresh investigation.
 
 ---
 
+## Lake-hierarchy caterpillar trees: lean on siltation to keep them shallow
+
+**Context.** On an old, rough world (seed 23097282 @ 79.2 My) `lakes.build_lake_hierarchy`
+produced a merge forest whose deepest subtree was ~3,500 levels -- a near-linear chain, one
+`Lake` per catchment in a long spill cascade. `lakes._resolve` was recursive and overran
+Python's recursion limit; **that crash is fixed** (2026-09-01) by making `_resolve` an
+explicit-stack post-order walk, matching `build_lake_hierarchy` / `_catchment_roots` which
+were already iterative for the same reason. So this is no longer a crash, just a smell.
+
+**Why the tree gets that deep.** `build_lake_hierarchy` unions catchments pairwise in
+ascending saddle-elevation order; a chain of many small closed basins each spilling into the
+next hangs one new component off the growing blob per merge, giving a depth ~= the number of
+catchments in that drainage network. Thousands of tiny sub-resolution depressions is itself
+the pathology -- the same dithering-shelf / stranded-basin family already tracked below.
+
+**Direction.** Lake sediment deposition (`_water_balance`'s `SILT_ACCUMULATION_COEFFICIENT`
+term, folded into `elevation` by `erosion.py`) should be filling these pits in faster than
+tectonic roughening digs them, collapsing the cascade back toward a handful of real basins.
+It clearly isn't keeping up. Look at: whether the silt term actually reaches the shallow
+transient pits (it only deposits under standing water this step, `elevation < new_level`, so
+a pit that never holds water gets nothing), the coefficient's magnitude vs. the per-step
+roughening rate, and whether a cheap "fill depressions below N nodes / below M metres of
+relief straight into `elevation`" pre-pass belongs in erosion or terrain relaxation. Shares
+root cause with "stranded sub-sea-level basins" and the coastal-dither work below.
+
+---
+
 ## Diagnostic ("ABL") wind model: close the last ~5-10% gap to the CFD
 
 **Status:** shipped behind `World.wind_model` (Controls window; `"diagnostic"` default,
@@ -622,14 +649,3 @@ codebase tracks follow-ups here, not inline. The items below are the loose ends 
 logic. If `PlateWithRTree` is meant to become a drop-in replacement, it needs its own
 version of the per-turn node density / spacing upkeep (`elevation_lines.py`,
 `TARGET_LINE_SPACING_RAD`), otherwise its lines drift out of spec over a long run.
-
-### `World.volcanic_field_plate_ids` is dead state
-
-**Where:** `world.py` ~line 70 ("Nothing populates this set any more ... kept for now").
-
-Since `PlateWithLines.deform()` started spawning overstretched-rift volcanoes as new nodes
-on the plate's own line (rather than as a separately tracked volcanic-field plate), nothing
-adds to `volcanic_field_plate_ids`. Per-node eruption rolling in `volcanism.py` reads
-`is_volcano` directly and doesn't need it. It's retained only as a place to report a field
-"cooling" if per-field tracking ever comes back. Decide: revive the tracking, or remove the
-field (and bump save/load).

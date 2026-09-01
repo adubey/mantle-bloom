@@ -26,9 +26,9 @@ def test_round_trip_preserves_a_freshly_generated_world():
 
 
 def test_round_trip_preserves_state_only_a_step_would_populate():
-    # collision_progress/volcanic_field_plate_ids/climate_cache/hydrology_cache/events are
-    # all empty/None on a freshly generated world -- step it first so the round trip has to
-    # actually carry a dict, a set, and the two cache dataclasses, not just empty defaults.
+    # collision_progress/climate_cache/hydrology_cache/events are all empty/None on a freshly
+    # generated world -- step it first so the round trip has to actually carry a dict and the
+    # two cache dataclasses, not just empty defaults.
     world = generate_world(seed=7, num_plates=6)
     step_world(world, 5_000_000)
     step_world(world, 5_000_000)
@@ -38,7 +38,6 @@ def test_round_trip_preserves_state_only_a_step_would_populate():
     assert loaded.elapsed_years == world.elapsed_years
     assert loaded.steps_taken == world.steps_taken == 2
     assert loaded.collision_progress == world.collision_progress
-    assert loaded.volcanic_field_plate_ids == world.volcanic_field_plate_ids
     assert loaded.events == world.events
     assert (loaded.climate_cache is None) == (world.climate_cache is None)
     assert (loaded.hydrology_cache is None) == (world.hydrology_cache is None)
