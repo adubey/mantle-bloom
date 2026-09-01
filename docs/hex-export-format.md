@@ -25,7 +25,7 @@ tile. See `backend/app/geodesic.py` for the construction itself; this document i
       "corner_vertex_ids": [14, 87, 203, 55, 9, 301],
       "elevation_m": 812.4,
       "is_ocean": false,
-      "biome": "TemperateGrassland",
+      "biome": "Humid Subtropical",
       "neighbor_ids": [1, 4, 7, 12, 18, 23]
     }
   ]
@@ -46,8 +46,9 @@ tile. See `backend/app/geodesic.py` for the construction itself; this document i
   sharing the edge between `corner_vertex_ids[k]` and `corner_vertex_ids[(k+1) % n]`.
 - `elevation_m`/`is_ocean`/`biome` are sampled from the world exactly as it stood at export
   time -- `is_ocean` is `elevation_m <= ` the world's current sea level, `biome` is one of
-  `backend/app/biomes.py`'s `BIOME_NAMES` (the same categories the Biome/Combined map views
-  use).
+  `backend/app/biomes.py`'s `BIOME_NAMES` (a descriptive Köppen-Geiger climate class such as
+  `"Hot Desert"` or `"Subarctic (Boreal)"` for land, or a pelagic class such as
+  `"Subtropical Gyre"` for ocean -- the same categories the Biome/Combined map views use).
 
 ## Finding a tile's neighbors
 

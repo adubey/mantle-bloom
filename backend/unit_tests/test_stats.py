@@ -90,6 +90,6 @@ def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_
     expected = {
         name: float(np.count_nonzero(land_biome_ids == i)) / n_land
         for i, name in enumerate(biomes.BIOME_NAMES)
-        if i != biomes.OCEAN and n_land > 0
+        if i not in biomes.OCEAN_IDS and n_land > 0
     }
     assert result["biome_land_fraction"] == expected

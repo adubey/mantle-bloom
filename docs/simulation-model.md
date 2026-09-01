@@ -1215,11 +1215,10 @@ precipitation. `compute_humidity` samples `plates.ElevationLine`'s own persisted
 `channel_depth` fields onto the climate grid (the same nearest-neighbor resample elevation
 itself already gets, see `_sample_elevation_and_crust`) to size a lake-evaporation and a
 river-evaporation source; a third source, vegetation transpiration, comes from
-`biomes.classify_biomes` (`VEGETATION_TRANSPIRATION_BY_BIOME`, a hand-picked weight per named
-biome peaking at Tropical Rainforest/Carboniferous Forest, near zero at Ice/Tundra/desert
-biomes) applied to a *flat*, slope-less classification (this module has no grid-based slope of
-its own -- an approximation that only matters for the Wetland/Carboniferous-Forest split,
-irrelevant to a transpiration weight). Classifying vegetation needs a precipitation value, and
+`biomes.classify_biomes` (`VEGETATION_TRANSPIRATION_BY_BIOME`, a hand-picked weight per Köppen
+class peaking at the wet-tropical / oceanic classes, near zero at ice/tundra/desert classes
+and at every pelagic ocean class) applied to a *flat* classification with a broadcast latitude
+row (continentality via a distance transform on `is_ocean`). Classifying vegetation needs a precipitation value, and
 this step's own precipitation is exactly what transpiration itself feeds into -- so, like
 every other circular coupling in this module (e.g. ocean current <-> temperature), the loop is
 broken with a one-step lag: vegetation is classified from `World.climate_cache`, last step's
@@ -1283,45 +1282,53 @@ boundary on its own.
 ### Biomes (`biomes.py`)
 
 A pure, stateless classification -- `biomes.classify_biomes(temperature_c, precipitation_mm,
-elevation_m, slope, is_ocean, sea_level_m)` -- bucketing each cell into one of sixteen named
-biomes (Ocean, Intertidal Zone, Ice, Tundra, Boreal Forest, five temperate bands from desert to
-rainforest, four tropical bands from desert to rainforest, Wetland, and Carboniferous Forest)
-from temperature and precipitation (the same two axes the real Whittaker biome diagram uses, in
-the same broad cold-to-hot/dry-to-wet relative order) plus elevation/slope for the three biomes
-that need more than climate alone. This module's own boundary values are a simplification in
-the same spirit as this codebase's other openly-approximate constants (e.g. erosion.py's
-`RAIN_EROSION_COEFFICIENT`), not fit against any specific real-world dataset. `ICE_TEMP_C`
-reuses `hydrology.GLACIER_ACCUMULATION_TEMP_C` directly (rather than inventing a second,
-potentially-inconsistent cold cutoff) so a biome map's Ice region lines up with where the
-simulation would actually grow a glacier. `is_ocean` still wins over temperature/precipitation
-for the ordinary land bands, since those are land-surface concepts and `is_ocean` already
-settles the question for a water cell -- Intertidal Zone is purely a further elevation-band
-split *within* the ocean category (`(sea_level_m - elevation_m) <= INTERTIDAL_MAX_DEPTH_M`,
-real tides not being modeled), not an exception to that rule.
+elevation_m, slope, is_ocean, sea_level_m, *, lat_deg, axial_tilt_deg, continentality=None,
+dist_to_land_rad=None, has_sea_ice=None)` -- assigning each land cell one of the **31
+Köppen-Geiger** 3rd-level classes (`classify_koppen`) and each ocean cell one of **10 pelagic
+classes** (`classify_pelagic`), with `is_ocean` settling the land/water split. `BIOME_NAMES` /
+`BIOME_COLORS` are the Köppen classes first (descriptive names -- "Humid Subtropical", not
+"Cfa"), then the pelagic classes; `OCEAN_IDS` is the id set of the latter.
 
-The function itself stays a pure, input-in/output-out classification with nothing cached
-inside it, but its result is no longer recomputed independently at every call site: `climate.
-compute_climate` now calls it once per computation and stores the result as `ClimateFields.
-biome_ids`, riding along on `World.climate_cache`'s existing "computed once per step, reused
-by every caller that turn" contract (see [Climate](#climate)). `stats.py`'s
-`biome_land_fraction` reads that stored field directly; the map-view/hex-export/vegetation-
-transpiration call sites still call `classify_biomes` themselves, since each needs a genuinely
-different input (a finer render-only grid, a hex-tile sampling, or last step's lagged
-snapshot -- see `climate.py`'s own module docstring for the last one).
+Real Köppen keys off sub-annual quantities this model never produces -- coldest/warmest-month
+temperature and the summer/winter precipitation split -- so `biomes.py` **synthesizes** them:
+`_seasonal_temp_amplitude` drives a mean-to-peak seasonal swing from `|lat|`, continentality
+(distance inland, 0 at the coast), and `axial_tilt_deg` (a tilt-0 world gets amplitude 0, so
+its `s`/`w`/`d` subtypes never occur); `_precip_season` drives a summer precipitation share
+and a seasonality concentration from latitude (monsoon belt summer-wet and peaked, a narrow
+subtropical dry-summer dip, mid-latitudes even), scaled by the same tilt factor. All of these
+constants are visually tuned like the codebase's other openly-approximate values (e.g.
+erosion.py's `RAIN_EROSION_COEFFICIENT`), calibrated so an Earth-like world lands its major
+zones roughly where Earth's are -- latitude alone can't tell a west coast (Mediterranean) from
+an east coast (humid) at the same latitude, so `s` is further gated on maritime
+continentality and modest precipitation, and some regimes (the East-Asian-monsoon `Dw` belt)
+read as their `f` sibling instead. `ICE_TEMP_C` still reuses
+`hydrology.GLACIER_ACCUMULATION_TEMP_C`.
 
-**Wetland and Carboniferous Forest** (`classify_wetland`, shared with `geology.py`'s own
-per-node coal formation -- see [Resources and soil](#resources-and-soil)) need flat, low-lying
-land -- a floodplain, delta, or coastal marsh, not an upland bog on a slope --
-(`elevation_m > 0`, `<= WETLAND_MAX_ELEVATION_M`, `slope <= WETLAND_MAX_SLOPE`, the same
-dimensionless rise/run convention `erosion.compute_slope` uses). Carboniferous Forest is the
-warm (`>= CARBONIFEROUS_MIN_TEMP_C`, aliased to `TROPICAL_TEMP_C`), very wet
-(`>= CARBONIFEROUS_MIN_PRECIP_MM`, aliased to `HUMID_MM`) subtype -- the real geological analog
-of Carboniferous/Permian coal swamps, which were predominantly tropical lowland swamp forest,
-not the cooler bogs/marshes plain Wetland alone covers -- and `geology.py` reuses this exact
-split so the map's Carboniferous Forest region always lines up with where the simulation is
-actually forming coal fastest, the same "one shared cutoff" precedent `ICE_TEMP_C` already sets.
+**Pelagic classes** are PPOW's abiotic hierarchy rather than its Earth-geographic province
+names (which can't transfer to a different planet): a thermal realm from sea-surface
+temperature (polar / cold-temperate / temperate / subtropical / tropical) crossed with a
+structural zone -- sea ice (`has_sea_ice` or SST `< -1`), coastal shelf
+(`dist_to_land_rad <= SHELF_RANGE_RAD`, matching `geology.SHELF_RANGE_RAD`), equatorial
+divergence (`|lat| <= 6` in the tropics), or open ocean / subtropical gyre.
 
-**Slope, for the map view specifically**, comes from `render_image.grid_slope` -- real
+`smooth_biome_field` (the version the map views and `/world/stats` use) computes
+`continentality` and coast distance from `is_ocean` itself via a distance transform, plus
+sea-ice cover from a passed glacier-depth grid, then runs the same stateless neighbour-vote
+cleanup as before on land cells only. `climate.compute_climate` calls it once per computation
+and stores `ClimateFields.biome_ids` (see [Climate](#climate)); `stats.py`'s
+`biome_land_fraction` (which excludes every `OCEAN_IDS` id) reads that stored field, while the
+map-view / hex-export / vegetation-transpiration call sites still classify against their own
+grid.
+
+**Wetland and Carboniferous Forest** are no longer displayed climate classes (Köppen has no
+such category), but `classify_wetland` and its constants stay: `geology.py`'s per-node coal
+formation calls it directly (see [Resources and soil](#resources-and-soil)). Both require
+flat, low-lying land (`elevation_m > 0`, `<= WETLAND_MAX_ELEVATION_M`,
+`slope <= WETLAND_MAX_SLOPE`); Carboniferous Forest is the warm
+(`>= CARBONIFEROUS_MIN_TEMP_C`, aliased to `TROPICAL_TEMP_C`), very wet
+(`>= CARBONIFEROUS_MIN_PRECIP_MM`, aliased to `HUMID_MM`) subtype.
+
+**Slope** (`biomes.grid_slope`, still used by `classify_wetland` and `geology.py`) -- real
 elevation difference to each cell's steeper of its north/south or east/west neighbor, divided
 by that neighbor's real great-circle spacing in meters (longitude narrowed by `cos(lat)`, the
 same convention `plates.iter_local_lattice` uses) -- computed on the fine Biome/Combined grid
@@ -1341,20 +1348,21 @@ for "Combined", though Ocean/Intertidal Zone's own biome color is never actually
 rather than chained `np.where` overwrites, so each band's cutoffs stay a self-contained,
 independently checkable list instead of depending on write order to get boundary cells right.
 
-**Combined-view shading.** `_render_combined_view` multiplies each land cell's flat biome
+**Combined-view shading.** `_render_combined_view` multiplies each land cell's flat Köppen
 color by `biomes.biome_relative_shade_factor` -- a *continuous* brightness ramp from
-`1 - BIOME_SHADE_AMPLITUDE` at a biome's lowest-elevation cell to `1 + BIOME_SHADE_AMPLITUDE`
-(±25%) at its highest, linear in that cell's elevation *rank among its own biome's cells only*
-(so a biome pinned to a narrow absolute elevation band still spans the full range). Ranking
-relative to the biome, and ramping continuously rather than in a few discrete steps, is what
-keeps within-biome relief from reading as visible bands/contour lines. Near real peaks the
-result is further blended toward the elevation gradient (`RELIEF_BLEND_MAX`). Because that
-wide color spread means a land pixel's *color* no longer identifies its biome, the render is
-**RGBA** and the per-pixel biome/lake/glacier id is carried in the alpha byte
-(`alpha = 255 - code`; see `render_image.COMBINED_LAKE_ID_CODE`). `frontend/src/legendData.ts`
-mirrors that id mapping by hand and `MapCanvas.tsx` reads it straight off alpha for
-legend-click-to-highlight -- exact, no RGB tolerance match -- then resets alpha to opaque
-before display.
+`1 - BIOME_SHADE_AMPLITUDE` at a class's lowest-elevation cell to `1 + BIOME_SHADE_AMPLITUDE`
+(±25%) at its highest, linear in that cell's elevation *rank among its own class's cells only*
+(so a class pinned to a narrow absolute elevation band still spans the full range). Near real
+peaks the result is further blended toward the elevation gradient (`RELIEF_BLEND_MAX`); ocean
+cells are the pelagic-province color blended toward the hypsometric depth shade
+(`OCEAN_PELAGIC_RELIEF_BLEND`), so deep basins still darken and shelves lighten while every
+water cell carries its province's hue. Because that wide color spread means a pixel's *color*
+no longer identifies its class, the render is **RGBA** and the per-pixel class/lake/glacier id
+is carried in the alpha byte (`alpha = 255 - code`, every classified land and ocean cell now
+carrying one; see `render_image.COMBINED_LAKE_ID_CODE`). `frontend/src/legendData.ts` mirrors
+that id mapping by hand -- grouping the 41 classes into the ~17 1st/2nd-level legend rows --
+and `MapCanvas.tsx` reads it straight off alpha for legend-click-to-highlight, then resets
+alpha to opaque before display.
 
 <a id="ocean-atmospheric-fluid-dynamics"></a>
 ## Atmospheric wind solver (`fluid_dynamics.py`, `atmosphere_cfd.py`)

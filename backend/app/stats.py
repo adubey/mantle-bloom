@@ -73,7 +73,7 @@ def compute_stats(world: World) -> dict:
     biome_land_fraction = {
         name: float(np.count_nonzero(land_biome_ids == i)) / n_land
         for i, name in enumerate(biomes.BIOME_NAMES)
-        if i != biomes.OCEAN and n_land > 0
+        if i not in biomes.OCEAN_IDS and n_land > 0
     }
 
     return {

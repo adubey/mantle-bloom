@@ -219,10 +219,16 @@ def export_hexgrid(world: World, frequency: int) -> dict:
     climate_tree = cKDTree(climate_fields.world_xyz.reshape(-1, 3))
     _, climate_idx = climate_tree.query(centers_xyz)
     air_temp_c = climate_fields.air_temperature_c.reshape(-1)[climate_idx]
+    ocean_temp_c = climate_fields.ocean_temperature_c.reshape(-1)[climate_idx]
     precip_mm = climate_fields.precipitation_mm.reshape(-1)[climate_idx]
+    display_temp_c = np.where(is_ocean, ocean_temp_c, air_temp_c)
 
     slope = _hex_slope(centers_xyz, elevation_m, tiles)
-    biome_ids = biomes.classify_biomes(air_temp_c, precip_mm, elevation_m, slope, is_ocean, world.sea_level_m)
+    biome_ids = biomes.classify_biomes(
+        display_temp_c, precip_mm, elevation_m, slope, is_ocean, world.sea_level_m,
+        lat_deg=np.degrees(center_lat), axial_tilt_deg=world.axial_tilt_deg,
+        dist_to_land_rad=world.distance_from_land_approx(centers_xyz),
+    )
 
     return {
         "planet_radius_km": PLANET_RADIUS_KM,
