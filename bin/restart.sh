@@ -20,6 +20,7 @@ cd "$REPO_ROOT"
 dev=false
 backend_port=8000
 frontend_port=5173
+stay_awake=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --dev) dev=true; shift ;;
@@ -27,6 +28,8 @@ while [ $# -gt 0 ]; do
       backend_port="$2"; shift 2 ;;
     --frontend-port)
       frontend_port="$2"; shift 2 ;;
+    --stay-awake)
+      stay_awake=true; shift 2 ;;
     *)
       echo "Unknown argument: $1 (supported: --dev, --backend-port PORT, --frontend-port PORT)" >&2
       exit 1
@@ -35,12 +38,17 @@ while [ $# -gt 0 ]; do
 done
 
 "$SCRIPT_DIR/stop.sh" --backend-port "$backend_port" --frontend-port "$frontend_port"
+if [ "$stay_awake" = true ]; then
+  CAFFEINATE=caffeinate 
+else
+  CAFFEINATE=
+fi
 
 echo "Starting backend on :$backend_port..."
 (
   cd backend
   source .venv/bin/activate
-  FRONTEND_PORT="$frontend_port" nohup uvicorn app.main:app --host 127.0.0.1 --port "$backend_port" > /tmp/mantle-bloom-backend.log 2>&1 &
+  FRONTEND_PORT="$frontend_port" nohup "$CAFFEINATE" uvicorn app.main:app --host 127.0.0.1 --port "$backend_port" > /tmp/mantle-bloom-backend.log 2>&1 &
 )
 
 api_base="http://localhost:$backend_port"
@@ -49,7 +57,7 @@ if [ "$dev" = true ]; then
   echo "Starting frontend dev server on :$frontend_port..."
   (
     cd frontend
-    VITE_API_BASE="$api_base" nohup npm run dev -- --port "$frontend_port" --strictPort > /tmp/mantle-bloom-frontend.log 2>&1 &
+    VITE_API_BASE="$api_base" nohup "$CAFFEINATE" npm run dev -- --port "$frontend_port" --strictPort > /tmp/mantle-bloom-frontend.log 2>&1 &
   )
 else
   echo "Building frontend for production..."
@@ -57,7 +65,7 @@ else
   echo "Starting frontend (production build) on :$frontend_port..."
   (
     cd frontend
-    nohup npm run preview -- --port "$frontend_port" --strictPort >> /tmp/mantle-bloom-frontend.log 2>&1 &
+    nohup "$CAFFEINATE" npm run preview -- --port "$frontend_port" --strictPort >> /tmp/mantle-bloom-frontend.log 2>&1 &
   )
 fi
 
