@@ -54,21 +54,26 @@ from . import bathymetry, lithosphere, rheology, terrain_noise, torque
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
 
-# A continental line's *contested* end normally never retreats -- only oceanic crust subducts,
-# so a continent-continent suture crumples in place (Hc thickens) instead. But a continental
-# edge overridden by an *oceanic* neighbour is a passive margin / accretion front, not a
-# suture: the ocean slab descends under it and the buried continental node cedes nothing the
-# model should keep. Left un-retreatable, that end still grows at its *other* (divergent) side
-# every step and never back -- the continental node ratchet that drives the unbounded
-# node-count creep and the slow land-fraction decline (docs/TODO.md "Node-count creep").
-# So an oceanic-contested continental end *is* allowed to retreat, but only:
+# A continental line's *contested* end is allowed to retreat -- one node per step -- whether
+# the overriding neighbour is oceanic (a passive margin / accretion front: the ocean slab
+# descends under it and the buried continental node cedes nothing the model should keep) or
+# continental (a suture whose overlapping crust is being consumed into the orogen -- see
+# rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST, which channels that shortening into extra
+# thickening so the belt still builds real relief). Left un-retreatable, a contested end
+# still grows at its *other* (divergent) side every step and never back -- the continental
+# node ratchet that drives the unbounded node-count creep and the slow land-fraction decline
+# (docs/TODO.md "Node-count creep") -- and, for a continent-continent pile-up, a deep
+# territory overlap that just sat there for tens of Myr until the forced-merge timer fused
+# the pair (the `overlapAge` view's stalled multi-plate collisions). Retreat is gated:
 #   - one node per step (the existing `n_distance_cap` / `max_extend_nodes` caps already do
 #     this at continental drift rates), and
-#   - where it is part of a run of at least this many consecutive oceanic-contested nodes, so
-#     a single stray node from bounding-polygon envelope fuzz can't nibble a stable coastline
-#     or, worse, sever a lobe into a spurious defragmentation plate (the failure the naive
-#     "retreat every continental contested node" experiment hit -- see that TODO section).
-CONTINENTAL_OCEANIC_RETREAT_MIN_RUN = 3
+#   - only where the contested node is part of a run of at least this many consecutive
+#     contested nodes, so a single stray node from bounding-polygon envelope fuzz can't
+#     nibble a stable coastline or, worse, sever a lobe into a spurious defragmentation plate
+#     (the failure the naive "retreat every continental contested node" experiment hit -- see
+#     that TODO section; the interior-subduction carve below also stays oceanic-only for the
+#     same lobe-severing reason).
+CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 
 
 def growth_seed_thickness() -> tuple[float, float]:
@@ -92,8 +97,8 @@ def growth_seed_thickness() -> tuple[float, float]:
 
 def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
     """`mask`, with every True-run shorter than `min_run` cleared to False. Used to gate
-    continental-edge retreat on a genuine multi-node oceanic-contested stretch rather than a
-    single stray envelope-fuzz node (see CONTINENTAL_OCEANIC_RETREAT_MIN_RUN). Runs are taken
+    continental-edge retreat on a genuine multi-node contested stretch rather than a
+    single stray envelope-fuzz node (see CONTINENTAL_CONTESTED_RETREAT_MIN_RUN). Runs are taken
     in the plate's concatenated node order -- a run that happens to bridge two lines' worth of
     nodes is astronomically rare (line breaks sit at a plate's theta extremes) and harmless
     if it ever happens, since `_grow_or_shrink_line_for_deform` re-checks per line anyway."""
@@ -144,16 +149,18 @@ class LithospherePlate(PlateWithLines):
         closing_rate_all = rheology.normal_closing_rate_m_per_s(self.omega, neighbor_omega_all, own_points, inputs.direction_to_neighbor)
 
         # What may retreat this step. Oceanic crust: any contested node subducts. Continental
-        # crust: only where an *oceanic* neighbour is overriding it, and only in runs of
-        # >= CONTINENTAL_OCEANIC_RETREAT_MIN_RUN consecutive such nodes -- a continent-continent
-        # suture still crumples in place (thickens), and envelope fuzz can't nibble a stable
-        # margin. See CONTINENTAL_OCEANIC_RETREAT_MIN_RUN for the ratchet this breaks.
+        # crust: any contested end-node in a run of >= CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
+        # consecutive contested nodes -- whether the overriding neighbour is oceanic (passive
+        # margin) or continental (a suture whose overlap is consumed into the orogen, with the
+        # shortening channelled into extra thickening -- see the fault_factor boost below and
+        # rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST). Envelope fuzz (a lone contested
+        # node) still can't nibble a stable margin, and the interior carve below stays
+        # oceanic-only so a continental row is never severed mid-line. See
+        # CONTINENTAL_CONTESTED_RETREAT_MIN_RUN for the ratchet / frozen-overlap this breaks.
         if self.crust_type != "continental":
             shrinkable_all = contested_all
         else:
-            shrinkable_all = _runs_of_at_least(
-                contested_all & inputs.neighbor_is_oceanic, CONTINENTAL_OCEANIC_RETREAT_MIN_RUN
-            )
+            shrinkable_all = _runs_of_at_least(contested_all, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
 
         years_myr = years / 1_000_000.0
         rho_c = self.crust_density()
@@ -202,6 +209,19 @@ class LithospherePlate(PlateWithLines):
                     if fault_noise is not None
                     else np.ones(n)
                 )
+                # Continent-continent contested nodes: the overlapping crust the suture is
+                # now retreating over (shrinkable, above) is thrust into the belt, not lost --
+                # channel that shortening into extra plastic thickening rather than plumbing
+                # the retreated column's volume through the grow/shrink pass. `fault_factor`
+                # is normally <= 1 (a downthrown block accumulating less strain); here it is
+                # deliberately pushed past 1 on these nodes, since it is exactly the
+                # strain-accumulation multiplier apply_convergent_deformation applies and more
+                # shortening is the intent. See rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST.
+                if self.crust_type == "continental":
+                    cc_contested = contested & ~inputs.neighbor_is_oceanic[sl]
+                    fault_factor = np.where(
+                        cc_contested, fault_factor * rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST, fault_factor
+                    )
                 new_hc, new_hm = rheology.apply_convergent_deformation(hc[contested], hm[contested], closing_rate[contested], years_myr, fault_factor[contested])
                 hc[contested] = new_hc
                 hm[contested] = new_hm

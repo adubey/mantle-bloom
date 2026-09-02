@@ -62,6 +62,18 @@ RIFT_CRITICAL_THICKNESS_M = 5_000.0
 # accumulates less shortening than the thrust sheets around it), not on elevation directly.
 REVERSE_FAULT_VALLEY_UPLIFT_FACTOR = 0.15
 
+# Continent-continent suture: the overlapping crust the boundary now retreats over (see
+# lithosphere_plate.CONTINENTAL_CONTESTED_RETREAT_MIN_RUN -- a continental self-plate's
+# contested end used to only crumple in place, so a deep overlap just sat there for tens of
+# Myr) is thrust *into* the belt, not lost. Rather than plumb the retreated column's volume
+# through _grow_or_shrink_line_for_deform, channel that shortening into extra plastic
+# thickening at the contested nodes themselves: a >1 multiplier on `fault_factor` for
+# continent-continent contested nodes, so a consumed overlap builds real relief instead of
+# the boundary just sliding back. Calibrated so a stalled ~3 cm/yr collision that had been
+# overlapping for tens of Myr crumples its overlap into an orogen over a comparable span
+# rather than only after the 30-My forced-merge timer fuses the pair.
+CONTINENTAL_COLLISION_SHORTENING_BOOST = 2.5
+
 
 def normal_closing_rate_m_per_s(plate_omega: np.ndarray, neighbor_omega: np.ndarray, points_xyz: np.ndarray, direction_to_neighbor: np.ndarray) -> np.ndarray:
     """`boundary.closing_rate`'s own formula (relative tangential velocity projected onto the
