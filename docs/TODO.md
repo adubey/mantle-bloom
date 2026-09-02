@@ -509,11 +509,13 @@ and stops tracking reality. That stale-cache freeze is its own bug, see Directio
 | volcanism OFF (else all on) | 0.2442 -> 0.1470 | -0.097 | 32,230 -> 19,628 | -> 133,559 (+1.2%) |
 | **baseline** (everything on) | 0.2442 -> 0.147 | **-0.097** | ~32,230 -> ~19,500 | -> 132,693 (+0.5%) |
 | Climate OFF (`simulate_climate_biomes=False`) | 0.2442 -> 0.144 | -0.100 | -> ~19,000 | -> 134,614 (+2.0%) |
+| `wind_model="cfd"` (else all on) | 0.2442 -> 0.1517 | -0.093 | 32,230 -> 20,044 | -> 132,155 (+0.1%) |
 
-Wind model (`"diagnostic"` vs `"cfd"`): a 40-step sweep put land fraction within 0.002 and
-mean elevation within 15 m -- no effect. (`erosion OFF` and `Climate OFF` land within
-0.0005 / a few hundred nodes of each other at every step, i.e. two independent ways of
-disabling erosion agree -- the fluid solve does nothing to `elevation` without erosion.)
+The `"cfd"` row lands within 0.005 land fraction / 40 m mean elevation of baseline across the
+full 150 My -- same magnitude as the baseline-vs-volcanism-off spread, i.e. trajectory noise,
+not an effect. (`erosion OFF` and `Climate OFF` also land within 0.0005 / a few hundred nodes
+of each other at every step -- two independent ways of disabling erosion agree, since the
+fluid solve does nothing to `elevation` without erosion.)
 
 **What this says.**
 
