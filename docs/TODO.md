@@ -466,34 +466,106 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ---
 
-## Land fraction slowly declines over a long run (residual of the 2026-09-01 growth-seed fix)
+## Land fraction slowly declines over a long run
 
-**FIXED 2026-09-01 -- erosional isostatic compensation.** The residual downward drift
-(and the far steeper decline on seed 331015891 @ 243.7 My, where continents were ~93%
-drowned and still sinking ~4.5 m/Myr) was `erosion.py` moving rock between columns -- coastal
-+ submarine erosion shipping continental crust to the abyss -- while never touching `Hc`, so
-Airy isostasy never rebounded the unloaded crust. `apply_erosion` now books its whole
-per-step geomorphic change against `crustal_thickness_m` and moves `elevation` by exactly the
-resulting `isostatic_elevation` delta (same delta idiom `deform()` uses for tectonic Hc/Hm
-changes -- `elevation` stays a faithful readout of the column). Only ~1/6 of subaerial
-erosion and ~1/4 of submarine erosion now survives as a surface drop; the rest is rebound,
-which is why real continents keep their freeboard for gigayears once orogeny stops. On the
-331015891 save the node-level land-fraction decline dropped ~7x (-0.0034 -> -0.0005 per 30
-steps); continental mean elevation went from -4.5 m/Myr to roughly flat. v1 PlateWithLines
-(no Hc) keeps the bare 1:1 response. See `lithosphere.isostatic_elevation` (now broadcasts a
-per-node rho_c), `test_erosion.py::test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates`,
-`test_world_smoke.py::test_erosion_books_against_hc_and_survives_deform`.
+**The erosion half is FIXED (2026-09-01, erosional isostatic compensation):** `apply_erosion`
+books its whole per-step geomorphic change against `crustal_thickness_m` and moves `elevation`
+by exactly the resulting `isostatic_elevation` delta, so an unloaded crustal root rebounds
+(only ~1/6 of subaerial erosion, ~1/4 of submarine, survives as a surface drop) -- the same
+delta idiom `deform()` uses for tectonic Hc/Hm changes. On seed 331015891 the node-level
+land-fraction decline dropped ~7x. See `lithosphere.isostatic_elevation` (per-node rho_c),
+`test_erosion.py::test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates`,
+`test_world_smoke.py::test_erosion_books_against_hc_and_survives_deform`. The `elevReason`
+view's `moved`/override gates key off the *raw* geomorphic move, since compensation shrinks
+the surface expression ~5x without changing which process is shaping the column.
 
-**Note.** The `elevReason` view's `moved`/override gates now key off the *raw* geomorphic
-move, not `new_elevation - elevation` -- isostatic compensation shrinks the surface
-expression ~5x but doesn't change which process is doing the shaping, and those two
-thresholds were tuned against the raw pre-compensation move.
+**The tectonic half is NOT fixed** -- see the sweep below. Land keeps falling on a long run
+because plate movement drowns continental crust faster than anything lifts it, and that is
+now the dominant driver (erosion contributes < 15%).
 
-**Not addressed here:** grid `elevation_mean_m` still drifts down slowly on a long run, but
-that's the separate node-count creep (fresh deep-oceanic nodes diluting the average -- see
-"Node-count creep" above), not mass loss. A legacy save carries a pre-existing
-`elevation` vs `isostatic_elevation(Hc,Hm)` offset (built up under the old erosion); the new
-code doesn't worsen it and topology re-syncs slowly heal it.
+### Toggle sweep: land vs node count, seed 60461418 @ 69 My (2026-09-02)
+
+**Reported symptom.** On `~/Downloads/mantle-bloom-seed60461418-69000000y.mbworld` (seed
+60461418, 69 steps of 1 My, `node_density=4`, 19 plates, 16 of them continental and 12 of
+those already >50% submerged) the land area falls and the node count rises step after step.
+
+**What the toggle sweep shows.** The save was stepped 40 My (step 69 -> 109) six ways --
+everything on, then each subsystem disabled in turn. `node LF` = fraction of *nodes* above
+sea level (computed straight off live `elevation`); `grid LF` = `stats.compute_stats`
+`land_fraction` (climate grid, connectivity-filtered `is_ocean`).
+
+| config | total nodes | continental | oceanic | node LF | grid LF | node mean elev |
+|---|---|---|---|---|---|---|
+| **baseline (all on)** | 131,979 -> 132,160  (+0.1%) | 111,268 -> 115,836  (**+4.1%**) | 20,711 -> 16,324  (**-21%**) | 0.244 -> 0.216  (**-0.028**) | 0.202 -> 0.174 | -2892 -> -2946 m |
+| plate movement OFF | 131,979 (flat) | flat | flat | 0.244 -> 0.242  (-0.002) | 0.202 -> 0.198 | -2892 -> -2893 |
+| climate + erosion OFF | 132,276  (+0.2%) | +3.8% | -19% | 0.244 -> 0.219  (-0.025) | frozen\* | -2892 -> -2948 |
+| `erosion.apply_erosion` -> no-op | identical to "climate+erosion off" | | | 0.219 | frozen\* | |
+| volcanism OFF | ~baseline | ~baseline | ~baseline | 0.215 | 0.174 | -2952 |
+| wind model = CFD | ~baseline | ~baseline | ~baseline | 0.217 | 0.175 | -2953 |
+
+\* `grid LF` is read from `world.climate_cache`, which `step_world` never recomputes while
+`simulate_climate_biomes` is off -- so it is stale at 0.202 for those two rows, not a
+measurement. `node LF` is always live and is the metric to trust.
+
+**Long-run baseline (everything on, step 69 -> 219 = +150 My).**
+
+| step / My | total nodes | continental | oceanic | plates | node LF | grid LF | node mean elev |
+|---|---|---|---|---|---|---|---|
+| 69  | 131,979 | 111,268 | 20,711 | 19 | 0.244 | 0.202 | -2892 m |
+| 114 | 132,187 | 116,196 | 15,991 | 17 | 0.212 | 0.170 | -2952 m |
+| 159 | 132,781 | 118,211 | 14,570 | 23 | 0.186 | 0.138 | -3009 m |
+| 189 | 132,534 | 117,456 | 15,078 | 19 | 0.167 | 0.119 | -3095 m |
+| 219 | 132,693 | 117,866 | 14,827 | 18 | **0.147** | **0.104** | -3195 m |
+
+Over 150 My the **total node count stays flat** (+0.5%, peak +1.6% at step 204) -- not the
+runaway it historically was; oceanic consumption keeps pace with continental growth, and
+oceanic nodes even recover after step ~174 as plate count churns up to 23 (the split tuning
+is working). **Land, though, falls relentlessly and near-linearly: node LF 0.244 -> 0.147,
+grid LF 0.202 -> 0.104 -- roughly halved in 150 My, ~-0.00065 /My, monotonic.** Node mean
+elevation sinks ~2 m/My. The planet is slowly drowning.
+
+**Conclusions.**
+
+1. **Total node count is *not* running away on this save** -- +0.1% over 40 My, +0.5% over
+   150 My, inside the noise. The 2026-08/09 ratchet work (growth-seed forced oceanic,
+   continental contested-run retreat, one-split-per-step) has stabilised the *total*. The
+   historical "node count keeps increasing" headline is, for the total, resolved on this seed.
+
+2. **But the continental/oceanic split churns hard: +4,600 continental nodes, -4,400 oceanic
+   nodes in 40 My** (+4% / -21%). Continental boundaries still ratchet outward every step
+   (`endshrink_continental` stays ~0 unless a contested stretch is >= 3 nodes long); the total
+   only holds because oceanic plates are being consumed at a matching rate. It is entirely
+   plate movement (perfectly flat with `simulate_plate_movement` off). This is the still-open
+   core of the "Node-count creep" item above -- now a *composition* problem rather than a
+   *total-count* one, but the same mechanism, and it will resume blowing up the total the
+   moment oceanic crust runs low (oceanic is already down to ~13% of nodes here and falling
+   ~1%/My).
+
+3. **Land loss is ~90% tectonic, ~10% erosional.** node LF falls 0.244 -> 0.216 with
+   everything on, 0.244 -> **0.219** with all erosion/climate off (nearly identical), and
+   0.244 -> **0.242** with plate movement off (nearly flat). So the driver is plate movement.
+   With erosion off the total node count barely moves yet node LF still drops 0.025 in 40 My,
+   so *existing* above-sea continental nodes are being pushed under water -- i.e. genuine
+   `deform()` subsidence (divergent thinning of shear-stretched rows + Airy isostasy), not
+   just the drowned-margin seeding (which adds new below-sea nodes but can't lower the
+   above-sea count on its own). New margin nodes are all seeded at the oceanic reference
+   column (~-3.5 km, `lithosphere_plate.growth_seed_thickness`), so they pile drowned crust on
+   too. Not separately instrumented which of the two dominates. Erosion removes only ~0.003 of
+   land fraction on top of that -- the 2026-09-01 isostatic-compensation fix is holding.
+
+4. **Volcanism and the wind model are irrelevant to both metrics** -- baseline vs no-volcanism
+   vs CFD differ by < 0.002 in land fraction and < 10 m in mean elevation.
+
+5. `grid LF` falls faster in relative terms than `node LF` (over 150 My: -48% vs -40%)
+   because connectivity-filtered `is_ocean` reclassifies each newly-drowned shelf strip as
+   ocean as soon as it links up to the world ocean.
+
+**Direction.** Same fix as the "Node-count creep: continental boundaries grow but never
+retreat" item above -- and this sweep makes **direction 2 (cap a plate's footprint against
+its integrated crustal volume)** the clear priority over the retreat tuning: an un-stretched
+continent neither tiles drowned margin outward (node count) nor thins-and-drowns its interior
+(land fraction), so the one cap addresses both symptoms at once. Directions 1 (contested-run
+retreat) and 3 (forced merge) are already partly landed and did not stop either trend here.
 
 ---
 
@@ -727,114 +799,36 @@ a stress test proved infeasible: injecting a `+-40 m` node checkerboard triggers
 elevation instability, and a sea-level jump on a density-1 world just makes a rough newborn
 coast whose transient roughening swamps the feedback's slow ~My effect).
 
-**Options considered, in effort order.**
-
-1. **Render-only cleanup (cosmetic).** A majority / morphological filter on the render's
-   land-ocean field flips isolated 1-cell specks to match their surroundings -- zero physics
-   risk, but the simulation still holds the dithering shelf. Shipped 2026-08-31 as
-   `render_image._despeckle_coastal_elevation`, then **deleted** once option 2 landed (it
-   was measured to be near-redundant on top of the feedback).
-
-2. **Coastal planation + infill feedback (the real fix)** -- **shipped 2026-08-31**, see
-   "What landed" and the Status table above. Cuts the node-level dither roughly in half and
-   turns the drowned shelf into a marsh/intertidal coast instead of a checkerboard.
-
-3. **Barrier islands (the user's framing)** -- **delivered in emergent form** (see "What
-   landed"). A genuine wave-exposure / fetch field plus an explicit longshore-transport
-   direction (for real spits and drift-aligned bars, not just fetch-sheltered accretion)
-   remains an optional future refinement.
+**Options considered (all resolved).** Render-only despeckle: shipped then deleted as
+near-redundant. Coastal planation + infill feedback (the real fix): shipped 2026-08-31.
+Barrier islands: delivered in emergent form. Optional future refinement: a genuine
+wave-exposure / fetch field plus an explicit longshore-transport direction for real spits
+and drift-aligned bars.
 
 ---
 
 ## Diagnostic views & debug output (from the 2026-08-31 seed-888151728 investigation)
 
 Working through the plate-geometry and coastal-speckle degradation above needed several
-numbers the program didn't surface. What landed, and what's still worth building:
+numbers the program didn't surface. **Landed** (all 2026-08-31 unless noted; see
+`docs/debugging.md`):
 
-**Landed 2026-08-31 -- Plate Inspector motion / shape / overlap fields.** `GET /world/plates`
-(`main._plate_summary`) and the Plate Inspector panel (`App.tsx`) now report, per plate:
-`speed_cm_per_yr` + `at_max_rate` (railed-at-`MAX_PLATE_RATE` flag, shown in red),
-`euler_pole` (lat/lon), `age_steps`, `median_elevation_m` + `submerged_fraction` (red when a
-continental plate is >50% submerged), `overlaps` (which other plates this one's territory
-sits on top of, and by what fraction of its own nodes -- `main._plate_overlaps`, one global
-cKDTree pair query), and `collisions` (`world.collision_progress` timers involving the
-plate). `mantle.rad_per_yr_to_cm_per_yr` is the new unit helper. Test:
-`test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics`. These three numbers --
-"every oceanic plate is at 15.0 cm/yr", "plate 3 is 71% submerged", "plate 4 is 17% inside
-plate 2" -- are what turned a vague "the plates look wrong" into the specific follow-ups in
-the plate-geometry section.
-
-**Landed 2026-08-31 -- stranded-basin report** (was item 3 below).
-`GET /world/stranded_basins` and `python -m app.stranded_basins <save.mbworld>`
-(`backend/app/stranded_basins.py`) list every **endorheic** basin (`lakes.Lake.max_depth is
-None` -- no spill path to the ocean at any fill level) whose floor is **below sea level** --
-the "land-locked coastal pit" the coastal-speckle section flags. Read straight off
-`world.hydrology_cache.lake_forest`, so it can't drift from the Lake Inspector. Persistence
-("how long has this pit been stranded") comes from `world.stranded_basin_tracks`, a small
-cross-step centroid-matched first-seen tracker `world.step_world` maintains the same way
-`collision_progress` tracks plate pairs (new `default_factory` field, backfilled on load by
-`persistence._backfill_added_fields`). Deepest-first; reports node count (catchment +
-flooded), floor elevation, centroid lat/lon, current water level, and persisted years/steps.
-Documented in `docs/debugging.md` + `docs/api-reference.md`; tests
-`unit_tests/test_stranded_basins.py` + `test_main.py`. Most seeds strand nothing (empty list
-= healthy); reproduces the -1770 m / -4560 m basins the seed-888151728 investigation found.
-
-**Landed 2026-08-31 -- standalone plate-diagnostics dump.**
-`python -m app.plate_diagnostics <save.mbworld>` (`backend/app/plate_diagnostics.py`, was
-item 5 below) loads a `.mbworld` offline -- no server, no port -- and prints the per-plate
-motion/shape table, the territory-overlap list, the `collision_progress` timers, and the
-total node count against a clean-tiling estimate (`4*pi / line_spacing_rad(node_density)**2`,
-~130k at density 4). `--json` for the structured form. Reuses `main._plate_summary` /
-`main._plate_overlaps` so it can't drift from `GET /world/plates`. Documented in
-`docs/debugging.md`; test `unit_tests/test_plate_diagnostics.py`. Makes the "is this save's
-geometry healthy?" check for the plate-geometry re-verify a one-liner.
-
-**Landed 2026-08-31 -- lake-churn event aggregation.** `lakes.step_lakes` now returns
-structured `lakes.LakeEvent`s (`kind` / `node_count` / `elevation_m` / `basin_count`, with a
-`.message` property carrying the old wording) instead of pre-formatted strings, and
-`erosion.py` funnels a step's events through `lakes.summarize_lake_events(events,
-world.sea_level_m)` before logging. A transition whose water surface is >
-`NEAR_SEA_LEVEL_EVENT_BAND_M` (15 m) from sea level logs individually as before; two or more
-*within* that band in one step collapse to one line ("38 transient coastal ponds churned
-near sea level this step (22 merged, 16 split)."). A lone near-sea-level event still logs
-verbatim. Persistent deep basins (the real ~435-node -1770 m lake) stay visible; the
-checkerboard shelf contributes at most one aggregate line per step. Tests:
-`test_summarize_lake_events_*` in `unit_tests/test_lakes.py`. Documented in
-`docs/debugging.md` ("Lake-churn aggregation"). This was item 4 below.
-
-**Landed 2026-08-31 -- per-node geomorph-rate render view.** `GET /world/render?view=geomorph`
-(Map View dropdown: **Debug > Erosion & Deposition**; `render_image._render_geomorph_view`,
-was item 2 below) colours every node by `erosion.ErosionResult.net_elevation_change_m` --
-this step's post-erosion elevation minus pre-erosion, i.e. erosion minus every deposition
-pathway plus the small flatten/lake-siltation terms, no tectonics -- on a diverging
-warm(erosion)/cool(deposition) scale (`geomorph_colors`, clamped +-60 m/step) with the
-coastline overlaid. The `ErosionResult` is retained on `World.erosion_cache` (one-step-stale,
-not persisted) purely for this view; `geology.py` still gets its own copy as a direct
-`step_world` argument. Neutral field before the first step / on a fresh load. Tests:
-`test_geomorph_colors_diverge_around_zero`,
-`test_geomorph_view_renders_neutral_before_a_step_then_varies_after` in
-`unit_tests/test_render_image.py`. Documented in `docs/debugging.md` and
-`docs/simulation-model.md#resources-and-soil`. This makes the deposition lumpiness in the
-near-sea-level band (256 m on one node, ~0 on its neighbour) -- the whole coastal-speckle
-mechanism -- legible for the first time; use it as a before/after for any coastal-feedback
-change. Not done: a `/world/sample_at` field for the click-popup (the popup is only wired for
-elevation/biome/combined today), and a gross-deposition-vs-net toggle (net alone was enough).
-
-**Landed 2026-09-01 -- plate-overlap onset field + `overlapAge` render view.** A new
-`ElevationLine.overlap_onset_years` (`OPTIONAL_FIELDS` member, rides rotation/split/merge/
-mask/regularize, backfilled on load by `__getattr__` like every other member) records
-`world.elapsed_years` at which each node first started sitting on top of another plate's
-territory, 0 whenever it isn't. Stamped every step by `merge_split.update_overlap_tracking`
-via the new shared `plates.compute_node_overlap` (which also now backs `main._plate_overlaps`
-so the two can't drift). Surfaced as: `since_years` on each `GET /world/plates` overlap
-entry + the Plate Inspector line (`#21 (15%, since 178 My)`); a `since ... My` column in
-`python -m app.plate_diagnostics`; and `GET /world/render?view=overlapAge` (Map View ->
-Debug -> Plate overlap age; `render_image._render_overlap_age_view` / `overlap_age_colors`),
-a node-cloud view colouring each still-overlapping node pale->magenta by
-`elapsed_years - overlap_onset_years`. Tests: `unit_tests/test_overlap_tracking.py`,
-`test_torque.py` (deep-overlap classification), `test_render_image.py`. Documented in
-`docs/debugging.md` + `docs/api-reference.md` + `docs/simulation-model.md`. Answers "which
-nodes have been overlapping, and since when" for the stalled-overlap item above.
+- **Plate Inspector motion / shape / overlap fields** -- `GET /world/plates` +
+  `main._plate_summary` + the Plate Inspector panel report per plate `speed_cm_per_yr` /
+  `at_max_rate` / `euler_pole` / `age_steps` / `median_elevation_m` / `submerged_fraction` /
+  `overlaps` / `collisions`.
+- **`GET /world/stranded_basins` + `python -m app.stranded_basins`** -- every endorheic basin
+  whose floor is below sea level, deepest-first, with `world.stranded_basin_tracks`
+  persistence.
+- **`python -m app.plate_diagnostics <save.mbworld>`** -- offline per-plate motion/shape
+  table, overlap list, collision timers, node count vs clean-tiling estimate. `--json` too.
+- **Lake-churn event aggregation** -- `lakes.step_lakes` returns structured `LakeEvent`s;
+  `lakes.summarize_lake_events` collapses a step's near-sea-level transients to one line.
+- **`GET /world/render?view=geomorph`** (Map View: Debug > Erosion & Deposition) -- colours
+  each node by `erosion.ErosionResult.net_elevation_change_m` on a diverging scale.
+- **`ElevationLine.overlap_onset_years` + `GET /world/render?view=overlapAge`** (2026-09-01)
+  -- when each node first started overlapping another plate; `since_years` on the plates
+  endpoint / inspector / `plate_diagnostics`.
 
 **Still worth building:**
 
@@ -846,25 +840,10 @@ nodes have been overlapping, and since when" for the stalled-overlap item above.
    makes a before/after for any coastal-feedback change legible without an ad-hoc script.
    Natural home: a `render_image.py` view alongside `platesDetail`, or a boolean overlay on
    the `elevation` / `biome` views.
-
-2. ~~**A per-node geomorph-rate view.**~~ **Landed 2026-08-31** as `view=geomorph` -- see the
-   "Landed" note above.
-
-3. ~~**Stranded-basin report.** A `/world/lakes`-style endpoint (or a field on it) listing
-   endorheic basins whose floor is below sea level and that are not connected to the ocean:
-   node count, floor elevation, centroid, how long they've persisted.~~ **Landed 2026-08-31**
-   as `GET /world/stranded_basins` + `python -m app.stranded_basins` -- see the "Landed" note
-   above. Not done: no map-view render of it (the endpoint returns `centroid_xyz`/`floor_xyz`
-   ready for one); persistence resets on a `simulate_climate_biomes=False` stretch (only
-   hydrology steps are counted, by design).
-
-4. ~~**Event-log dedup / severity for lake churn.**~~ **Landed 2026-08-31** as
-   `lakes.summarize_lake_events` -- see the "Landed" note above. Went with the aggregate-line
-   approach; "drop one-step lakes" was rejected because one-step detection needs cross-step
-   state and `lakes.py` deliberately keeps no persistent `Lake` registry.
-
-5. ~~**A standalone `python -m app.<something> <save.mbworld>` plate-diagnostics dump.**~~
-   **Landed 2026-08-31** as `python -m app.plate_diagnostics` -- see the "Landed" note above.
+2. **A map-view render of the stranded-basin report** -- the endpoint already returns
+   `centroid_xyz` / `floor_xyz` ready for one.
+3. **A `/world/sample_at` field for the geomorph view's click-popup** -- the popup is only
+   wired for elevation / biome / combined today.
 
 ---
 
