@@ -48,8 +48,8 @@ time; ratios hold): `render_png` cumulative 1.97 s/frame there.
 
 | Hotspot | Cost/frame | What it is |
 | --- | --- | --- |
-| `render_image._biome_fields` | **~1.3 s** (own time ~0.6 s) | a fresh `cKDTree(all_points)` + a **single-threaded** `query` of all 1.28 M grid points (`render_image._biome_fields` -- no `workers=`), then `hydrology.sample_is_ocean` ~0.38 s (a *second* fresh-tree single-threaded full-grid query); 3x `_bilinear_resample` ~0.06 s; `climate.compute_climate_cached` is a cache hit |
-| `hydrology.sample_is_ocean` | **~0.38 s** | 8.8 s cumulative over its 23 calls in the profiled run -- the single biggest line item in the whole profile now. Called once per render (full grid) and once per step. Fix 6 below (`workers=`) targets this and the `_biome_fields` query above together |
+| `render_image._biome_fields` | **~1.3 s -> ~0.5 s** (fix 6) | a fresh `cKDTree(all_points)` + a `query` of all 1.28 M grid points, then `hydrology.sample_is_ocean` (a *second* fresh-tree full-grid query); 3x `_bilinear_resample` ~0.06 s; `climate.compute_climate_cached` is a cache hit. Fix 6 put `workers=query_workers(...)` on both full-grid queries -- microbench at the profiled grid size: `_biome_fields` end-to-end ~1.30 s -> ~0.53 s |
+| `hydrology.sample_is_ocean` | **~0.38 s -> parallel** (fix 6) | was the single biggest line item -- a single-threaded fresh-tree full-grid `query`. Called once per render (full grid) and once per step; the render call now runs `workers=`-parallel (the per-step call's `query_xyz` is the coarse climate grid, also now parallel above its cutoff) |
 | `biomes.smooth_biome_field` | ~0.2 s | Koppen classification + the `_neighbour_vote` boundary-cleanup pass |
 | `_encode_image` + `GaussianBlur` | ~0.1 s | PNG encode ~0.07 s, blur ~0.03 s, both vectorized |
 | `_project_climate_grid`, `_fill_rects`, `projections._eckert4_theta` | **~0** | fixes 1-3 below. Geometry served from the ring cache (0.000 s), `_fill_rects` njit'd (~0.014 s/call), the Eckert solve runs on ~801 unique latitudes (~0.0001 s). All three fell off the profile entirely. |
@@ -109,17 +109,23 @@ Landed since the original profile (each measured on the box it was written on):
    s/step; microbench (9-plate world, `node_density` 4, 300 full-cloud sweeps) 2.94 s old ->
    1.24 s vectorized-cold -> 0.10 s warm cache.
 
+6. ~~**`workers=` on the full-grid render k-d tree queries.**~~ **Done.** `_biome_fields`'
+   `cKDTree(all_points).query(flat_xyz)` and `hydrology.sample_is_ocean`'s
+   `cKDTree(hydro.points).query(...)` each built a fresh tree and ran a **single-threaded**
+   query over all 1.28 M grid points every frame -- together ~1.0 s of the ~1.9 s render.
+   Both now pass `workers=query_workers(len(flat_xyz))` (`-1` at this size), matching how
+   `torque` / `climate` / the hydrology neighbour-index build already parallelize. Same
+   one-liner applied to the sibling full-grid resamples on the same render path:
+   `render_image._resource_fields`, `_render_geomorph_view`, `_render_elev_reason_view`, and
+   `coastline._lake_mask_on_grid`. Microbench (seed 0, `node_density`/`climate_density` 4,
+   801x1601 grid, 6-core Apple Silicon): `_biome_fields` end-to-end **1.30 s -> 0.53 s**
+   (~0.77 s/frame), nearest-node output bit-identical (deterministic query). Speeds every
+   `combined`/`biome`/`geomorph`/`resources` re-render, not just animation. The tree itself
+   is still rebuilt per render (it only changes on a step) -- caching it is a further,
+   separate win left for later.
+
 Still open, roughly in order:
 
-6. **`workers=` on the two full-grid render k-d tree queries.** Both `_biome_fields`' own
-   `cKDTree(all_points).query(flat_xyz)` and `hydrology.sample_is_ocean`'s
-   `cKDTree(hydro.points).query(...)` build a fresh tree and run a
-   **single-threaded** query over all 1.28 M grid points every frame -- together ~1.0 s of
-   the ~1.9 s render. Pass `workers=-1` (the codebase already does this via
-   `plates.query_workers` in `torque` / `climate` and the hydrology neighbour-index build)
-   and/or cache the tree -- the queried node cloud only changes on a step, not between
-   static-camera re-renders. Biggest remaining single win, and it speeds every
-   `combined`/`biome` re-render too, not just animation.
 7. **`hydrology._compute_basin_spill`'s `heapq.heappop` priority-flood** -- pure Python,
    ~0.21 s/step and grows with basin count. Candidate for a numba kernel or a
    `scipy.ndimage`-based watershed.
