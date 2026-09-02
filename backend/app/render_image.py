@@ -56,7 +56,12 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
 # invisible in every other view (see docs/TODO.md / docs/debugging.md).
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph")
+# "elevReason" is node-cloud-derived from a persistent per-node field
+# (ElevationLine.elev_change_reason -- the ELEV_CHANGE_* code for whatever process last moved
+# that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M), its own dispatch
+# branch (_render_elev_reason_view). A categorical debug view built to answer "why is so much
+# of this world flat: never uplifted, or actively planed down" (see docs/debugging.md).
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -362,6 +367,38 @@ def soil_fertility_colors(fertility: np.ndarray) -> np.ndarray:
 
 def geomorph_colors(net_change_m: np.ndarray) -> np.ndarray:
     return _interp_colors(net_change_m, _GEOMORPH_STOP_M, _GEOMORPH_STOP_RGB)
+
+
+# Elevation-change provenance debug view (see _render_elev_reason_view): one flat colour per
+# elevation_lines.ELEV_CHANGE_* code, index == code, hand-synced with ELEV_CHANGE_LABELS and
+# with the frontend's ELEV_REASON_ENTRIES (legendData.ts). Warm hues = crust being built
+# (tectonics/volcanism), cool blues = crust being planed down / buried (erosion/deposition/
+# coastal/marine), pale = ice, plain grey = untouched since generation.
+_ELEV_REASON_RGB = np.array(
+    [
+        (112, 112, 120),  # 0  NONE -- untouched since generation
+        (150, 28, 28),    # 1  COLLISION -- dark red
+        (198, 120, 110),  # 2  COLLISION_FAR_FIELD -- dusty red
+        (214, 118, 40),   # 3  SUBDUCTION_ARC -- orange
+        (86, 44, 110),    # 4  TRENCH -- purple
+        (198, 160, 30),   # 5  TRANSFORM -- gold
+        (22, 150, 130),   # 6  RIFT -- teal
+        (24, 110, 96),    # 7  NEW_CRUST -- dark teal
+        (232, 50, 40),    # 8  VOLCANO -- hot red
+        (150, 90, 50),    # 9  EROSION -- brown
+        (60, 140, 200),   # 10 DEPOSITION -- blue
+        (122, 190, 226),  # 11 COASTAL_LEVELING -- light blue
+        (28, 80, 140),    # 12 MARINE -- deep blue
+        (212, 232, 244),  # 13 GLACIAL_FLATTEN -- pale ice
+        (70, 200, 176),   # 14 LAKE_SILT -- aqua
+    ],
+    dtype=np.uint8,
+)
+
+
+def elev_reason_colors(codes: np.ndarray) -> np.ndarray:
+    idx = np.clip(np.round(np.asarray(codes)).astype(int), 0, len(_ELEV_REASON_RGB) - 1)
+    return _ELEV_REASON_RGB[idx]
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -1521,6 +1558,48 @@ def _render_geomorph_view(world: World, projection: str, width: int, height: int
     return _encode_image(image)
 
 
+def _render_elev_reason_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "elevReason" (see DEBUG_VIEWS): every node coloured by its
+    ElevationLine.elev_change_reason code -- the process (tectonic, volcanic, or geomorphic)
+    that last moved that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M.
+    Nearest-node resampled onto the same fine grid the Biome/Geomorph views use, coloured by
+    the flat categorical elev_reason_colors palette, coastline overlaid for orientation.
+
+    Unlike "geomorph", this reads a *persistent* field, so it survives save/load and step to
+    step -- but it starts all-NONE (grey) on a world that has never been stepped since this
+    field was added (an older save included), filling in over the next few steps. The point
+    of the view: large NONE / EROSION / COASTAL-LEVELING expanses on land tell you the flat
+    terrain was never tectonically built (or is being actively worn/planed down), whereas
+    COLLISION / SUBDUCTION_ARC / TRANSFORM belts are where relief is still being made."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    flat_xyz = world_xyz.reshape(-1, 3)
+
+    collected = plates.collect_all_points(world.plates) if world.plates else None
+    if collected is None:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    all_points, _all_elev, _owner = collected
+    reason = plates.collect_all_elev_change_reason(world.plates)
+    # Nearest-node lookup in the true (un-rotated) frame -- _project_climate_grid applies
+    # view_rotation later, at projection time, exactly as _render_geomorph_view does.
+    _, idx = cKDTree(all_points).query(flat_xyz)
+    colors = elev_reason_colors(reason[idx])
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    return _encode_image(image)
+
+
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
 ) -> Image.Image:
@@ -1632,6 +1711,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         return _render_speckle_view(world, projection, width, height, view_rotation)
     if view == "geomorph":
         return _render_geomorph_view(world, projection, width, height, view_rotation)
+    if view == "elevReason":
+        return _render_elev_reason_view(world, projection, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

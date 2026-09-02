@@ -261,20 +261,23 @@ const LAND_GROUPS: BiomeGroup[] = [
   { label: "Ice Cap", swatch: "Ice Cap", members: ["Ice Cap"] },
 ];
 
+// Coldest-first, so "Sea Ice" and "Polar Ocean" sit right after land's "Ice Cap" in
+// BIOME_GROUPS -- the two frozen biomes (Ice Cap, Sea Ice) end up adjacent, and the whole
+// ocean block stays contiguous next to them (see BIOME_GROUPS).
 const OCEAN_GROUPS: BiomeGroup[] = [
-  {
-    label: "Tropical Seas",
-    swatch: "Tropical Open Ocean",
-    members: ["Tropical Open Ocean", "Subtropical Gyre", "Equatorial Divergence", "Tropical Coastal Waters"],
-  },
-  { label: "Temperate Seas", swatch: "Temperate Open Ocean", members: ["Temperate Open Ocean", "Temperate Shelf"] },
+  { label: "Sea Ice", swatch: "Polar Sea Ice", members: ["Polar Sea Ice"] },
+  { label: "Polar Ocean", swatch: "Polar Ocean", members: ["Polar Ocean"] },
   {
     label: "Cold-Temperate Seas",
     swatch: "Cold-Temperate Open Ocean",
     members: ["Cold-Temperate Open Ocean", "Cold-Temperate Shelf"],
   },
-  { label: "Polar Ocean", swatch: "Polar Ocean", members: ["Polar Ocean"] },
-  { label: "Sea Ice", swatch: "Polar Sea Ice", members: ["Polar Sea Ice"] },
+  { label: "Temperate Seas", swatch: "Temperate Open Ocean", members: ["Temperate Open Ocean", "Temperate Shelf"] },
+  {
+    label: "Tropical Seas",
+    swatch: "Tropical Open Ocean",
+    members: ["Tropical Open Ocean", "Subtropical Gyre", "Equatorial Divergence", "Tropical Coastal Waters"],
+  },
 ];
 
 const BIOME_GROUPS: BiomeGroup[] = [...LAND_GROUPS, ...OCEAN_GROUPS];
@@ -335,6 +338,27 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
     { value: 1, label: "Rich" },
   ],
 };
+
+// Hand-synced with backend render_image.py's _ELEV_REASON_RGB and elevation_lines.py's
+// ELEV_CHANGE_LABELS (index == ELEV_CHANGE_* code) -- the "Last elevation change" debug view
+// (_render_elev_reason_view): one flat colour per process that last moved a node's elevation.
+const ELEV_REASON_ENTRIES: LegendSymbol[] = [
+  { kind: "square", color: rgb(112, 112, 120), label: "Unchanged since generation" },
+  { kind: "square", color: rgb(150, 28, 28), label: "Continental collision uplift" },
+  { kind: "square", color: rgb(198, 120, 110), label: "Far-field collision uplift" },
+  { kind: "square", color: rgb(214, 118, 40), label: "Subduction-arc uplift" },
+  { kind: "square", color: rgb(86, 44, 110), label: "Oceanic trench subsidence" },
+  { kind: "square", color: rgb(198, 160, 30), label: "Transform pressure ridge" },
+  { kind: "square", color: rgb(22, 150, 130), label: "Divergent rift / ridge" },
+  { kind: "square", color: rgb(24, 110, 96), label: "New crust at spreading edge" },
+  { kind: "square", color: rgb(232, 50, 40), label: "Volcanic eruption" },
+  { kind: "square", color: rgb(150, 90, 50), label: "Erosion (worn down)" },
+  { kind: "square", color: rgb(60, 140, 200), label: "Sediment deposition" },
+  { kind: "square", color: rgb(122, 190, 226), label: "Coastal planation / infill" },
+  { kind: "square", color: rgb(28, 80, 140), label: "Submarine erosion / sediment" },
+  { kind: "square", color: rgb(212, 232, 244), label: "Glacial flattening" },
+  { kind: "square", color: rgb(70, 200, 176), label: "Lake / basin siltation" },
+];
 
 // render_image.py's geomorph_colors stops (_GEOMORPH_STOP_M / _GEOMORPH_STOP_RGB) -- this
 // step's net per-node elevation change in metres, a diverging scale centred on 0 (warm =
@@ -491,21 +515,32 @@ export function legendFor(view: MapView): LegendSpec | null {
         title: "Köppen Climate",
         symbols: BIOME_GROUPS.map((g) => ({ kind: "square", color: groupSwatchColor(g), label: g.label }) as LegendSymbol),
       };
-    case "combined":
+    case "combined": {
+      // Same grouped Köppen/pelagic list as the Biome view (see BIOME_GROUPS) for
+      // consistency between the two, plus the river/lake/ice overlays drawn on top. The
+      // hypsometric elevation gradient isn't shown as its own bar: land brightness already
+      // varies visibly with elevation and ocean with depth (see _render_combined_view), so
+      // the grouped swatches stay the single click target.
+      //
+      // The three overlays sit where their subject matter does rather than all bunched at
+      // the front: "Glacier (ice cover)" between land's "Ice Cap" and ocean's "Sea Ice" with
+      // the other frozen swatches, and "Lake"/"River" right after the ocean block.
+      const groupSymbol = (g: BiomeGroup): LegendSymbol => ({
+        kind: "square",
+        color: groupSwatchColor(g),
+        label: g.label,
+      });
       return {
-        // Same grouped Köppen/pelagic list as the Biome view (see BIOME_GROUPS) for
-        // consistency between the two, plus the river/lake/ice overlays drawn on top. The
-        // hypsometric elevation gradient isn't shown as its own bar: land brightness already
-        // varies visibly with elevation and ocean with depth (see _render_combined_view), so
-        // the grouped swatches stay the single click target.
         title: "Elevation & Köppen Climate",
         symbols: [
-          { kind: "line", color: RIVER_COLOR, label: "River" },
-          { kind: "square", color: LAKE_COLOR, label: "Lake" },
+          ...LAND_GROUPS.map(groupSymbol),
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
-          ...BIOME_GROUPS.map((g) => ({ kind: "square", color: groupSwatchColor(g), label: g.label }) as LegendSymbol),
+          ...OCEAN_GROUPS.map(groupSymbol),
+          { kind: "square", color: LAKE_COLOR, label: "Lake" },
+          { kind: "line", color: RIVER_COLOR, label: "River" },
         ],
       };
+    }
     case "resources":
       return {
         title: "Resources",
@@ -531,6 +566,8 @@ export function legendFor(view: MapView): LegendSpec | null {
       };
     case "geomorph":
       return { title: "Elevation change / step", gradient: GEOMORPH_GRADIENT, symbols: [COASTLINE_SYMBOL] };
+    case "elevReason":
+      return { title: "Last elevation change", symbols: [...ELEV_REASON_ENTRIES, COASTLINE_SYMBOL] };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }

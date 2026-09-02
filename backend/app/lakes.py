@@ -504,39 +504,62 @@ def _resolve(
 
     Returns this lake's own resolved level (informational -- only consulted by a parent's own
     merge check above; a lake that just split returns its parent's saddle, not a per-child
-    value, since the two children no longer share one level)."""
-    lake_is_frozen = bool(is_frozen[lake.members].any())
-    prev_level = _prev_level(lake, elevation, prev_lake_depth)
-    already_merged = prev_level >= lake.min_depth  # trivially true for a leaf (min_depth == floor_elevation)
+    value, since the two children no longer share one level).
 
-    if lake.children and not already_merged:
-        child_levels = [
-            _resolve(child, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, out_lake_depth, out_silt_deposited, events)
-            for child in lake.children
-        ]
-        if max(child_levels) >= lake.min_depth:
-            events.append(LakeEvent(kind="merge", node_count=len(lake.members), elevation_m=lake.min_depth, basin_count=2))
-            out_lake_depth[lake.members] = np.maximum(0.0, lake.min_depth - elevation[lake.members])
-            lake.current_water_elevation = lake.min_depth
-            lake.is_spilling = lake.max_depth is not None and lake.min_depth >= lake.max_depth
-            return lake.min_depth
-        lake.current_water_elevation = max(child_levels)
-        return lake.current_water_elevation
+    Implemented as an explicit-stack post-order walk of the subtree rather than plain
+    recursion: the merge hierarchy `build_lake_hierarchy` produces is a near-linear chain for
+    a long spill cascade (thousands of levels deep on an old, rough world), and a recursive
+    resolve -- one Python frame per level -- overran the interpreter's recursion limit.
+    `build_lake_hierarchy` and `_catchment_roots` are already iterative for exactly this
+    reason. Each stack entry is visited twice: `descend=False` pushes the node's children,
+    `descend=True` resolves it once they are done. A resolved lake's level is read back off
+    its own `current_water_elevation`, which every branch below sets to the same value it
+    would previously have returned."""
+    stack: list[tuple[Lake, bool]] = [(lake, False)]
+    while stack:
+        node, resolve_now = stack.pop()
 
-    new_level = _water_balance(lake, prev_level, elevation, water_deposited, years_myr, lake_is_frozen, out_silt_deposited)
-    if lake.children and new_level < lake.min_depth:
-        events.append(LakeEvent(kind="split", node_count=len(lake.members), elevation_m=lake.min_depth, basin_count=len(lake.children)))
-        for child in lake.children:
-            out_lake_depth[child.members] = np.maximum(0.0, lake.min_depth - elevation[child.members])
-            child.current_water_elevation = lake.min_depth
-            child.is_spilling = False
-        lake.current_water_elevation = lake.min_depth
-        return lake.min_depth
+        if resolve_now:
+            # A parent that was still split last step: its children are now resolved, so
+            # decide whether this step's rise has merged them.
+            child_levels = [child.current_water_elevation for child in node.children]
+            if max(child_levels) >= node.min_depth:
+                events.append(LakeEvent(kind="merge", node_count=len(node.members), elevation_m=node.min_depth, basin_count=2))
+                out_lake_depth[node.members] = np.maximum(0.0, node.min_depth - elevation[node.members])
+                node.current_water_elevation = node.min_depth
+                node.is_spilling = node.max_depth is not None and node.min_depth >= node.max_depth
+            else:
+                node.current_water_elevation = max(child_levels)
+            continue
 
-    out_lake_depth[lake.members] = np.maximum(0.0, new_level - elevation[lake.members])
-    lake.current_water_elevation = new_level
-    lake.is_spilling = lake.max_depth is not None and new_level >= lake.max_depth
-    return new_level
+        prev_level = _prev_level(node, elevation, prev_lake_depth)
+        already_merged = prev_level >= node.min_depth  # trivially true for a leaf (min_depth == floor_elevation)
+
+        if node.children and not already_merged:
+            # Resolve children independently first, then merge-check on the way back up.
+            # Pushed in reverse so the leftmost child resolves first, matching the old
+            # list-comprehension order (only affects `events` ordering -- sibling subtrees
+            # write disjoint node sets).
+            stack.append((node, True))
+            stack.extend((child, False) for child in reversed(node.children))
+            continue
+
+        # A leaf, or a parent already one merged body last step: single connected water body.
+        node_is_frozen = bool(is_frozen[node.members].any())
+        new_level = _water_balance(node, prev_level, elevation, water_deposited, years_myr, node_is_frozen, out_silt_deposited)
+        if node.children and new_level < node.min_depth:
+            events.append(LakeEvent(kind="split", node_count=len(node.members), elevation_m=node.min_depth, basin_count=len(node.children)))
+            for child in node.children:
+                out_lake_depth[child.members] = np.maximum(0.0, node.min_depth - elevation[child.members])
+                child.current_water_elevation = node.min_depth
+                child.is_spilling = False
+            node.current_water_elevation = node.min_depth
+        else:
+            out_lake_depth[node.members] = np.maximum(0.0, new_level - elevation[node.members])
+            node.current_water_elevation = new_level
+            node.is_spilling = node.max_depth is not None and new_level >= node.max_depth
+
+    return lake.current_water_elevation
 
 
 def step_lakes(

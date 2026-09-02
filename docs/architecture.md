@@ -152,11 +152,6 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `collision_progress: dict[(int, int), float]` -- sustained-collision tracking for
   merge_split.py, pair of plate ids -> accumulated convergent years (see
   [simulation-model.md#merge-and-split](simulation-model.md#merge-and-split)).
-- `volcanic_field_plate_ids: set[int]` -- plate ids tracked as an active volcanic field,
-  removed once diluted below volcanism.VOLCANO_FRACTION_DORMANT_THRESHOLD (see
-  [simulation-model.md#volcanism](simulation-model.md#volcanism)). Nothing populates this set
-  any more (volcano creation now happens as new nodes on an existing plate's own line, not as
-  a separately spawned field plate) -- kept in case that tracking is reintroduced later.
 - `axial_tilt_deg` -- a fixed generation-time property like `seed`, read by `climate.py`'s
   insolation calculation on every future render (see
   [simulation-model.md#climate](simulation-model.md#climate)).

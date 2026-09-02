@@ -1,5 +1,7 @@
 import numpy as np
 from app.elevation_lines import (
+    ELEV_CHANGE_COLLISION,
+    ELEV_CHANGE_VOLCANO,
     TARGET_LINE_SPACING_RAD,
     ElevationLine,
     _crumple_elevation,
@@ -44,6 +46,48 @@ def test_elevation_line_soil_and_resource_fields_default_to_zero():
         values = getattr(line, field)
         assert values.shape == theta.shape
         assert np.all(values == 0.0)
+
+
+def test_elev_change_reason_defaults_to_zero_and_rides_through_replace_and_masked():
+    theta = np.array([0.0, 0.1, 0.2, 0.3])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(4))
+    assert np.all(line.elev_change_reason == 0.0)
+
+    stamped = line.replace(elev_change_reason=np.array([0.0, ELEV_CHANGE_COLLISION, ELEV_CHANGE_VOLCANO, 0.0]))
+    assert stamped.elev_change_reason[1] == ELEV_CHANGE_COLLISION
+    # masked (plate split / node removal) carries the codes with the nodes
+    kept = stamped.masked(np.array([1, 2]))
+    assert list(kept.elev_change_reason) == [ELEV_CHANGE_COLLISION, ELEV_CHANGE_VOLCANO]
+    # brand-new nodes start with no provenance
+    grown = stamped.with_new_nodes(np.array([0.4]), np.array([0.0]))
+    assert grown.elev_change_reason[-1] == 0.0
+
+
+def test_regularize_line_carries_elev_change_reason_by_nearest_node():
+    theta = np.linspace(0.0, 0.6, 7)
+    line = ElevationLine(
+        phi=0.0,
+        theta=theta,
+        elevation=np.zeros(7),
+        elev_change_reason=np.array([0, 0, ELEV_CHANGE_COLLISION, ELEV_CHANGE_COLLISION, ELEV_CHANGE_COLLISION, 0, 0], dtype=float),
+    )
+    # force a resample by asking for a much finer spacing
+    regularized = regularize_line(line, spacing_rad=TARGET_LINE_SPACING_RAD / 8)
+    assert len(regularized) != len(line)
+    # the collision-stamped middle stretch survives as a contiguous run of the same code,
+    # and the code set is unchanged (nearest-neighbour carry, never an interpolated value)
+    assert set(np.unique(regularized.elev_change_reason)) <= {0.0, float(ELEV_CHANGE_COLLISION)}
+    assert (regularized.elev_change_reason == ELEV_CHANGE_COLLISION).sum() > 0
+
+
+def test_elevation_line_missing_optional_field_backfills_on_unpickle():
+    # An ElevationLine pickled before elev_change_reason existed has no _elev_change_reason
+    # backing attr -- __getattr__ should lazily materialise it as zeros rather than raise.
+    theta = np.array([0.0, 0.1, 0.2])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
+    del line.__dict__["_elev_change_reason"]
+    assert line.elev_change_reason.shape == theta.shape
+    assert np.all(line.elev_change_reason == 0.0)
 
 
 def test_needs_regularizing_false_for_evenly_spaced_line():

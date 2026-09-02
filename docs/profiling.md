@@ -48,7 +48,7 @@ time; ratios hold): `render_png` cumulative 1.97 s/frame there.
 
 | Hotspot | Cost/frame | What it is |
 | --- | --- | --- |
-| `render_image._biome_fields` | **~1.3 s** (own time ~0.6 s) | a fresh `cKDTree(all_points)` + a **single-threaded** `query` of all 1.28 M grid points (`render_image.py:578` -- no `workers=`), then `hydrology.sample_is_ocean` ~0.38 s (a *second* fresh-tree single-threaded full-grid query, `hydrology.py:386`); 3x `_bilinear_resample` ~0.06 s; `climate.compute_climate_cached` is a cache hit |
+| `render_image._biome_fields` | **~1.3 s** (own time ~0.6 s) | a fresh `cKDTree(all_points)` + a **single-threaded** `query` of all 1.28 M grid points (`render_image._biome_fields` -- no `workers=`), then `hydrology.sample_is_ocean` ~0.38 s (a *second* fresh-tree single-threaded full-grid query); 3x `_bilinear_resample` ~0.06 s; `climate.compute_climate_cached` is a cache hit |
 | `hydrology.sample_is_ocean` | **~0.38 s** | 8.8 s cumulative over its 23 calls in the profiled run -- the single biggest line item in the whole profile now. Called once per render (full grid) and once per step. Fix 6 below (`workers=`) targets this and the `_biome_fields` query above together |
 | `biomes.smooth_biome_field` | ~0.2 s | Koppen classification + the `_neighbour_vote` boundary-cleanup pass |
 | `_encode_image` + `GaussianBlur` | ~0.1 s | PNG encode ~0.07 s, blur ~0.03 s, both vectorized |
@@ -112,8 +112,8 @@ Landed since the original profile (each measured on the box it was written on):
 Still open, roughly in order:
 
 6. **`workers=` on the two full-grid render k-d tree queries.** Both `_biome_fields`' own
-   `cKDTree(all_points).query(flat_xyz)` (`render_image.py:578`) and
-   `hydrology.sample_is_ocean` (`hydrology.py:386`) build a fresh tree and run a
+   `cKDTree(all_points).query(flat_xyz)` and `hydrology.sample_is_ocean`'s
+   `cKDTree(hydro.points).query(...)` build a fresh tree and run a
    **single-threaded** query over all 1.28 M grid points every frame -- together ~1.0 s of
    the ~1.9 s render. Pass `workers=-1` (the codebase already does this via
    `plates.query_workers` in `torque` / `climate` and the hydrology neighbour-index build)

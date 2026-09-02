@@ -105,8 +105,9 @@ def _plates_within(plate: "Plate", all_plates: list["Plate"], threshold_rad: flo
     for that representation. Uses the cached get_bounding_polygon() rather than outline_world()
     directly since this runs once per plate per call, each time re-reading every other
     plate's own outline -- an O(n) set of calls across all_plates that would otherwise
-    recompute the same unchanged outlines from scratch every time (see world.py's callers,
-    e.g. volcanism.merge_close_volcanic_fields' own per-field loop). Same bounding-sphere
+    recompute the same unchanged outlines from scratch every time (see get_neighbours' own
+    callers, e.g. torque.py's per-plate neighbour torque and lithosphere_plate.py's own
+    boundary-reach query). Same bounding-sphere
     prefilter as boundary.py's step_boundaries (cheap enough to compute per plate, and enough
     to rule out most pairs before a real nearest-point query)."""
     own_points = plate.get_bounding_polygon()
@@ -734,7 +735,7 @@ class Plate(abc.ABC):
         """Every other plate in `all_plates` (this plate need not be excluded by the caller
         -- it's excluded here) whose outline comes within `threshold_rad` of this plate's
         own -- defaults to NEIGHBOUR_DISTANCE_RAD, but callers with their own notion of
-        "close enough" (e.g. volcanism.py's merge/isolation distances) can pass their own."""
+        "close enough" (e.g. a boundary-effect or force-reach radius) can pass their own."""
         ...
 
     @abc.abstractmethod
@@ -1716,7 +1717,26 @@ class PlateWithLines(Plate):
             elevation[relaxing] += (target - elevation[relaxing]) * relax_factor * divergent_intensity[relaxing]
 
             elevation = np.clip(elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
-            updated_line = line.replace(elevation=elevation, divergent_age_myr=new_age)
+
+            # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
+            # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
+            # node this step, but only where the move actually cleared ELEV_CHANGE_MIN_DELTA_M,
+            # so a node barely grazed by a fading intensity curve keeps its older provenance.
+            # Masks here are effectively disjoint per node (a node is classified contested /
+            # transform / divergent, and contested splits into subduction vs collision by the
+            # neighbour's crust type), so a plain per-mask assignment needs no priority order.
+            reason = line.elev_change_reason.copy()
+            moved = np.abs(elevation - line.elevation) >= elevation_lines.ELEV_CHANGE_MIN_DELTA_M
+            if self.crust_type == "continental":
+                reason[(far_field_intensity > 0.0) & collision & moved] = elevation_lines.ELEV_CHANGE_COLLISION_FAR_FIELD
+                reason[(collision_intensity > 0.0) & collision & moved] = elevation_lines.ELEV_CHANGE_COLLISION
+                reason[subduction & moved] = elevation_lines.ELEV_CHANGE_SUBDUCTION_ARC
+            else:
+                reason[contested & moved] = elevation_lines.ELEV_CHANGE_TRENCH
+            reason[transform & moved] = elevation_lines.ELEV_CHANGE_TRANSFORM
+            reason[relaxing & moved] = elevation_lines.ELEV_CHANGE_RIFT
+
+            updated_line = line.replace(elevation=elevation, divergent_age_myr=new_age, elev_change_reason=reason)
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
                 dist,
@@ -1914,6 +1934,15 @@ class PlateWithLines(Plate):
                         fill = new_is_volcano
                     elif name == "volcano_active_years_remaining":
                         fill = new_remaining
+                    elif name == "elev_change_reason":
+                        # Brand-new crust at a spreading edge -- volcanic if grow_end rolled
+                        # overstretched (see grow_end / STRETCH_VOLCANO_PROBABILITY), plain
+                        # ridge/rift fill otherwise.
+                        fill = np.where(
+                            new_is_volcano,
+                            elevation_lines.ELEV_CHANGE_VOLCANO,
+                            elevation_lines.ELEV_CHANGE_NEW_CRUST,
+                        ).astype(values.dtype)
                     else:
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.append(values, fill)
@@ -1933,6 +1962,15 @@ class PlateWithLines(Plate):
                         fill = new_is_volcano
                     elif name == "volcano_active_years_remaining":
                         fill = new_remaining
+                    elif name == "elev_change_reason":
+                        # Brand-new crust at a spreading edge -- volcanic if grow_end rolled
+                        # overstretched (see grow_end / STRETCH_VOLCANO_PROBABILITY), plain
+                        # ridge/rift fill otherwise.
+                        fill = np.where(
+                            new_is_volcano,
+                            elevation_lines.ELEV_CHANGE_VOLCANO,
+                            elevation_lines.ELEV_CHANGE_NEW_CRUST,
+                        ).astype(values.dtype)
                     else:
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.insert(values, 0, fill)
@@ -1994,7 +2032,14 @@ class PlateWithLines(Plate):
             noise = SphereNoise(rng, octaves=3, base_freq=2.5)
             theta_open = theta_candidates[open_mask]
             elevation_open = base + amp * noise.sample(world_pts[open_mask])
-            new_lines.append(ElevationLine(phi=new_phi, theta=theta_open, elevation=elevation_open))
+            new_lines.append(
+                ElevationLine(
+                    phi=new_phi,
+                    theta=theta_open,
+                    elevation=elevation_open,
+                    elev_change_reason=np.full(len(theta_open), elevation_lines.ELEV_CHANGE_NEW_CRUST, dtype=float),
+                )
+            )
 
         if new_lines:
             self.set_lines(list(self._lines) + new_lines)
@@ -2168,6 +2213,13 @@ def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
 
 def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "elevation")
+
+
+def collect_all_elev_change_reason(plate_list: list[Plate]) -> np.ndarray:
+    """Every node's elevation-change provenance code (see elevation_lines.ELEV_CHANGE_*) --
+    read by erosion.py to preserve a quiescent node's older provenance, and by
+    render_image.py's "elevReason" debug view."""
+    return _collect_all(plate_list, "elev_change_reason")
 
 
 def collect_all_soil_depth(plate_list: list[Plate]) -> np.ndarray:

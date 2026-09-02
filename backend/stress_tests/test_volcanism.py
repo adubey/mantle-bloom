@@ -55,6 +55,9 @@ def test_volcanism_integration_is_deterministic_for_the_same_seed():
         world.simulate_climate_biomes = False
         for _ in range(10):
             step_world(world, years=2_000_000)
-        return sorted(world.volcanic_field_plate_ids), len(world.plates)
+        return (
+            len(world.plates),
+            sorted((p.plate_id, int(p.collect("is_volcano").sum())) for p in world.plates),
+        )
 
     assert run() == run()

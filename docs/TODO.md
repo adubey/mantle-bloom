@@ -5,6 +5,33 @@ point that picking it up doesn't need a fresh investigation.
 
 ---
 
+## Lake-hierarchy caterpillar trees: lean on siltation to keep them shallow
+
+**Context.** On an old, rough world (seed 23097282 @ 79.2 My) `lakes.build_lake_hierarchy`
+produced a merge forest whose deepest subtree was ~3,500 levels -- a near-linear chain, one
+`Lake` per catchment in a long spill cascade. `lakes._resolve` was recursive and overran
+Python's recursion limit; **that crash is fixed** (2026-09-01) by making `_resolve` an
+explicit-stack post-order walk, matching `build_lake_hierarchy` / `_catchment_roots` which
+were already iterative for the same reason. So this is no longer a crash, just a smell.
+
+**Why the tree gets that deep.** `build_lake_hierarchy` unions catchments pairwise in
+ascending saddle-elevation order; a chain of many small closed basins each spilling into the
+next hangs one new component off the growing blob per merge, giving a depth ~= the number of
+catchments in that drainage network. Thousands of tiny sub-resolution depressions is itself
+the pathology -- the same dithering-shelf / stranded-basin family already tracked below.
+
+**Direction.** Lake sediment deposition (`_water_balance`'s `SILT_ACCUMULATION_COEFFICIENT`
+term, folded into `elevation` by `erosion.py`) should be filling these pits in faster than
+tectonic roughening digs them, collapsing the cascade back toward a handful of real basins.
+It clearly isn't keeping up. Look at: whether the silt term actually reaches the shallow
+transient pits (it only deposits under standing water this step, `elevation < new_level`, so
+a pit that never holds water gets nothing), the coefficient's magnitude vs. the per-step
+roughening rate, and whether a cheap "fill depressions below N nodes / below M metres of
+relief straight into `elevation`" pre-pass belongs in erosion or terrain relaxation. Shares
+root cause with "stranded sub-sea-level basins" and the coastal-dither work below.
+
+---
+
 ## Diagnostic ("ABL") wind model: close the last ~5-10% gap to the CFD
 
 **Status:** shipped behind `World.wind_model` (Controls window; `"diagnostic"` default,
@@ -141,6 +168,76 @@ The **k-means split-cluster quality** noted under bug 2 / bug 3 (velocity-space 
 from spatially-intermingled points -> disjoint daughters that drift back over each other,
 with euler poles fit far from the daughter body) is the common root of (2), (3) and (4) and
 is still entirely open.
+
+### Node-count creep: continental boundaries grow but never retreat (2026-09-01 investigation)
+
+**The dominant driver of the node-count blowup (item 5) and of the "plates overlap
+neighbours" / over-stretched-continent geometry (items 2-4) is one asymmetry, and it is not
+k-means split quality.** `lithosphere_plate.LithospherePlate.deform` sets
+`shrinkable_all = np.zeros_like(...)` for a continental self-plate (only oceanic crust
+subducts), so a continental line's *contested* (leading) end is a no-op every step while its
+*uncontested / divergent* (trailing) end still grows -- each continental row ratchets
+outward and never back. Measured (seed 936513024, `node_density=1`, 100-ky steps,
+climate/biomes off, instrumented `_grow_or_shrink_line_for_deform` / `_claim_adjacent_
+territory` / `regularize_line` / `apply_topology_changes`):
+
+| | 0 My | 80 My | 160 My |
+|---|---|---|---|
+| continental nodes | 15,976 | 22,120 (+38%) | 33,097 (+107%) |
+| oceanic nodes | 16,675 | 12,620 (-24%) | 4,826 (-71%, being consumed) |
+| total / clean-tiling ratio | 1.00 | 1.06 | 1.16 |
+
+Cumulative over the 1600-step run: `endgrow_continental +19,364`, `claimrow_continental
++1,321`, **`endshrink_continental` exactly 0** -- continental crust adds ~21k boundary nodes
+and removes none. Oceanic is ~balanced (`endgrow +45,549 + claim +2,801` vs `endshrink
+-55,610` plus `-6,723` topology). A second seed (42) tracks: continental +43% by 80 My,
+`endshrink_continental` 0. The *total* ratio understates the damage because ocean
+consumption partly masks it -- the geometric symptom is the unbounded continental growth and
+the envelope overlap it drives, exactly items 2/3/4.
+
+**Naive fix rejected.** Forcing continental contested ends to retreat like oceanic
+(`shrinkable = contested`) cut continental growth from +38% to +7.7% at 80 My, but (a) the
+freed ground is immediately re-claimed by the oceanic neighbour so the *total* barely moves
+(1.06 -> 1.04 at 80 My, still climbing to ~1.10 by 110 My), and (b) aggressive edge deletion
+severs continental lobes -> defragmentation spawns spurious plates (plate count 18 -> 23+ by
+110 My). Not viable as-is.
+
+**Directions worth trying, roughly in effort order:**
+
+1. **Retreat continental edges only against an oceanic neighbour, or only a deep contested
+   run.** A continent contested by *ocean* is not a real continent-continent collision (the
+   slab subducts under) -- deleting those nodes cedes nothing the model should keep. Gate
+   `shrinkable_all` for continental crust on `neighbor_is_oceanic` (needs the neighbour-owner
+   array `deform` already builds for the elevation branch) and/or on a minimum consecutive-
+   contested run length so envelope fuzz doesn't nibble. Keep genuine continent-continent
+   contested nodes crumpling in place (they still merge, eventually). Watch for the
+   lobe-severing / spurious-split side effect above -- cap deletion hard (1 node/step) and
+   re-check plate counts.
+2. **Cap a plate's total footprint against its crustal volume.** `sum(Hc * node_area)` is a
+   conserved-ish quantity; once a plate's node count implies an area well above what its
+   integrated `crustal_thickness_m` supports, stop `_grow_or_shrink_line_for_deform` /
+   `_claim_adjacent_territory` from extending it (the stretch *is* the bug -- item 2). This
+   also addresses the "giant 80%-drowned continental plate" directly.
+3. **Make frozen continent-continent overlaps actually resolve.** `_merge_probability`
+   floors at 0.02 once a pair's combined node share passes 0.25 (`MERGE_SIZE_UNLIKELY_
+   FRACTION`), so large collisions overlap forever (item 4). Either drop the floor, or force
+   a merge once an overlap has been stable-and-large for N steps regardless of the closing-
+   rate / size roll.
+
+**Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
+"Bug 1" (below) added a `ring_room()` one-revolution cap in
+`_grow_or_shrink_line_for_deform` and a `POLE_CAP_MARGIN_MULT` clearance in
+`_claim_adjacent_territory` -- but only to `plates.PlateWithLines`. The running
+`lithosphere_plate.LithospherePlate` overrides of both still used `max_phi_limit = pi/2 -
+spacing/2` (marches onto the pole) and had no revolution cap at all, leaning entirely on
+`regularize_line`'s after-the-fact unwind (rows over-wound past 2*pi and were unwound again
+every step -- churn, wasted RNG draws, near-pole 1-3 node rings). Both guards are now ported
+(`ring_room()` + `POLE_CAP_MARGIN_MULT`), with `test_lithosphere_deform_never_winds_a_row_
+past_a_full_revolution` / `test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_
+the_local_pole` mirroring the v1 tests. Effect on the headline node count is small at the
+seeds checked (pole winding was a minor contributor next to the continental ratchet -- max
+row span 185 deg -> 147 deg, near-pole nodes ~halved), but it removes the per-step
+regularize churn and brings the two engines back to parity.
 
 Bug 1 (pole winding) **fixed** 2026-08-30 -- wrap guard in
 `plates._grow_or_shrink_line_for_deform` + pole-cap margin in `_claim_adjacent_territory` +
@@ -622,14 +719,3 @@ codebase tracks follow-ups here, not inline. The items below are the loose ends 
 logic. If `PlateWithRTree` is meant to become a drop-in replacement, it needs its own
 version of the per-turn node density / spacing upkeep (`elevation_lines.py`,
 `TARGET_LINE_SPACING_RAD`), otherwise its lines drift out of spec over a long run.
-
-### `World.volcanic_field_plate_ids` is dead state
-
-**Where:** `world.py` ~line 70 ("Nothing populates this set any more ... kept for now").
-
-Since `PlateWithLines.deform()` started spawning overstretched-rift volcanoes as new nodes
-on the plate's own line (rather than as a separately tracked volcanic-field plate), nothing
-adds to `volcanic_field_plate_ids`. Per-node eruption rolling in `volcanism.py` reads
-`is_volcano` directly and doesn't need it. It's retained only as a place to report a field
-"cooling" if per-field tracking ever comes back. Decide: revive the tracking, or remove the
-field (and bump save/load).

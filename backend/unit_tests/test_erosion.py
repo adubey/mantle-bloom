@@ -119,6 +119,27 @@ def test_apply_erosion_keeps_elevation_finite_and_changing():
     assert not np.allclose(elevation_after, elevation_before)
 
 
+def test_apply_erosion_stamps_geomorphic_provenance_but_leaves_a_sticky_structural_code():
+    from app.elevation_lines import ELEV_CHANGE_COLLISION, ELEV_CHANGE_NONE
+
+    world = generate_world(seed=21, num_plates=8)
+    # Pre-stamp every land node's provenance as a structural (collision) code -- ordinary
+    # background erosion, one step, must leave the overwhelming majority of them alone (only a
+    # node with a genuinely large net geomorphic step overrides a structural code).
+    for p in world.plates:
+        for l in p.lines:
+            if len(l):
+                l.set_fields(elev_change_reason=np.full(len(l), ELEV_CHANGE_COLLISION, dtype=float))
+
+    erosion.apply_erosion(world, years=1_000_000)
+
+    after = plates.collect_all_elev_change_reason(world.plates)
+    kept = np.mean(after == ELEV_CHANGE_COLLISION)
+    assert kept > 0.8  # structural code is sticky against background wash
+    # ...but some nodes did flip to a geomorphic code (the pass really ran on real terrain).
+    assert np.any((after != ELEV_CHANGE_COLLISION) & (after != ELEV_CHANGE_NONE))
+
+
 def test_apply_erosion_respects_elevation_bounds():
     world = generate_world(seed=22, num_plates=8)
     erosion.apply_erosion(world, years=5_000_000)

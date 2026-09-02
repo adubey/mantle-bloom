@@ -26,9 +26,9 @@ def test_round_trip_preserves_a_freshly_generated_world():
 
 
 def test_round_trip_preserves_state_only_a_step_would_populate():
-    # collision_progress/volcanic_field_plate_ids/climate_cache/hydrology_cache/events are
-    # all empty/None on a freshly generated world -- step it first so the round trip has to
-    # actually carry a dict, a set, and the two cache dataclasses, not just empty defaults.
+    # collision_progress/climate_cache/hydrology_cache/events are all empty/None on a freshly
+    # generated world -- step it first so the round trip has to actually carry a dict and the
+    # two cache dataclasses, not just empty defaults.
     world = generate_world(seed=7, num_plates=6)
     step_world(world, 5_000_000)
     step_world(world, 5_000_000)
@@ -38,7 +38,6 @@ def test_round_trip_preserves_state_only_a_step_would_populate():
     assert loaded.elapsed_years == world.elapsed_years
     assert loaded.steps_taken == world.steps_taken == 2
     assert loaded.collision_progress == world.collision_progress
-    assert loaded.volcanic_field_plate_ids == world.volcanic_field_plate_ids
     assert loaded.events == world.events
     assert (loaded.climate_cache is None) == (world.climate_cache is None)
     assert (loaded.hydrology_cache is None) == (world.hydrology_cache is None)
@@ -57,6 +56,24 @@ def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.steps_taken == 0
+
+
+def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
+    # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
+    # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).
+    # ElevationLine.__getattr__ backfills it lazily as zeros so load + step still work.
+    from app.world import step_world
+
+    world = generate_world(seed=4, num_plates=6)
+    for plate in world.plates:
+        for line in plate.lines:
+            line.__dict__.pop("_elev_change_reason", None)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    for plate in loaded.plates:
+        for line in plate.lines:
+            assert np.all(line.elev_change_reason == 0.0)
+    step_world(loaded, years=1_000_000)  # must not raise
 
 
 def test_loading_garbage_bytes_raises():

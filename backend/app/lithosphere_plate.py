@@ -21,6 +21,13 @@ from scipy.spatial import cKDTree
 
 from . import geometry
 from .elevation_lines import (
+    ELEV_CHANGE_COLLISION,
+    ELEV_CHANGE_MIN_DELTA_M,
+    ELEV_CHANGE_NEW_CRUST,
+    ELEV_CHANGE_RIFT,
+    ELEV_CHANGE_SUBDUCTION_ARC,
+    ELEV_CHANGE_TRENCH,
+    ELEV_CHANGE_VOLCANO,
     ElevationLine,
     build_lines_from_lattice,
     line_spacing_rad,
@@ -34,8 +41,10 @@ from .plates import (
     MIN_AUTO_PLATES,
     MAX_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
+    POLE_CAP_MARGIN_MULT,
     PlateWithLines,
     _INTERIOR_SUBDUCTION_MIN_RUN,
+    _ROW_FULL_REVOLUTION_SLACK,
     _contested_by_any,
     _land_noise_threshold,
     _row_median_step,
@@ -164,6 +173,23 @@ class LithospherePlate(PlateWithLines):
             elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
             new_elevation = rheology.clip_elevation_bounds(line.elevation + (elevation_after - elevation_before))
 
+            # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
+            # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
+            # node this step, gated on ELEV_CHANGE_MIN_DELTA_M so a node barely grazed by a
+            # fading boundary force keeps its older provenance. This engine (unlike v1's
+            # plates.deform) has no separate transform-uplift term, so contested convergence
+            # and divergent thinning/melting are the only structural codes it emits.
+            neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
+            reason = line.elev_change_reason.copy()
+            moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
+            if self.crust_type == "continental":
+                reason[contested & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
+                reason[contested & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
+            else:
+                reason[contested & moved] = ELEV_CHANGE_TRENCH
+            reason[divergent & moved] = ELEV_CHANGE_RIFT
+            reason[melting] = ELEV_CHANGE_VOLCANO
+
             updated_line = line.replace(
                 elevation=new_elevation,
                 crustal_thickness_m=hc,
@@ -171,6 +197,7 @@ class LithospherePlate(PlateWithLines):
                 divergent_age_myr=new_age,
                 is_volcano=is_volcano,
                 volcano_active_years_remaining=volcano_remaining,
+                elev_change_reason=reason,
             )
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
@@ -236,6 +263,24 @@ class LithospherePlate(PlateWithLines):
         dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)
         n_distance_cap = max(1, int(max_distance / spacing_rad))
 
+        # A row is a circle of local latitude -- its theta extent physically cannot exceed a
+        # full revolution. Nothing here treats theta as periodic, so once end-growth has
+        # closed the loop the "gap to nearest neighbour is wide open" test stays true forever
+        # near a plate's own local pole (the pole cap belongs to nobody) and the row just
+        # keeps winding. `ring_room()` is how many more `dtheta` nodes an end can take before
+        # the row spans 2*pi; growth is capped by it, and at zero the end stops. Ported from
+        # `PlateWithLines._grow_or_shrink_line_for_deform` (the v1 pole-winding fix) -- this
+        # v2 override predates that fix and, without this, relied entirely on
+        # `regularize_line`'s after-the-fact unwind, so rows still over-wound by up to a
+        # revolution every step and were unwound the next (continuous churn, and near-pole
+        # rings feeding overlap / node count).
+        full_revolution_span = 2.0 * np.pi - _ROW_FULL_REVOLUTION_SLACK * dtheta
+
+        def ring_room() -> int:
+            if len(theta) < 2:
+                return n_distance_cap
+            return int(np.floor((full_revolution_span - (theta[-1] - theta[0])) / dtheta))
+
         def contested_run_from_end(mask: np.ndarray, from_high: bool) -> int:
             ordered = mask[::-1] if from_high else mask
             run = 0
@@ -296,9 +341,9 @@ class LithospherePlate(PlateWithLines):
         def grow_end(n_new: int) -> tuple[np.ndarray, np.ndarray]:
             return np.full(n_new, hc0), np.full(n_new, hm0)
 
-        if not contested[-1] and dist[-1] > extend_threshold_rad:
+        if not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
-            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
             candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
             n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
             if n_new > 0:
@@ -311,13 +356,15 @@ class LithospherePlate(PlateWithLines):
                         fill = new_hc
                     elif name == "mantle_lithosphere_thickness_m":
                         fill = new_hm
+                    elif name == "elev_change_reason":
+                        fill = np.full(n_new, ELEV_CHANGE_NEW_CRUST, dtype=values.dtype)
                     else:
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.append(values, fill)
 
-        if not contested[0] and dist[0] > extend_threshold_rad:
+        if not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
-            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes)
+            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
             candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
             n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
             if n_new > 0:
@@ -330,6 +377,8 @@ class LithospherePlate(PlateWithLines):
                         fill = new_hc
                     elif name == "mantle_lithosphere_thickness_m":
                         fill = new_hm
+                    elif name == "elev_change_reason":
+                        fill = np.full(n_new, ELEV_CHANGE_NEW_CRUST, dtype=values.dtype)
                     else:
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.insert(values, 0, fill)
@@ -348,7 +397,13 @@ class LithospherePlate(PlateWithLines):
         if not lines_with_nodes:
             return
         ordered = sorted(lines_with_nodes, key=lambda line: line.phi)
-        max_phi_limit = np.pi / 2 - spacing_rad / 2
+        # Keep POLE_CAP_MARGIN_MULT target spacings clear of the local pole -- see the v1
+        # POLE_CAP_MARGIN_MULT comment. Right at +-pi/2 a row's theta step (spacing / cos phi)
+        # blows up and the row degenerates into a handful of sub-spacing rings that read as
+        # concentric circles / holes and feed the theta-winding pathology the ring_room cap in
+        # `_grow_or_shrink_line_for_deform` now guards against. This v2 override predated the
+        # v1 fix and still marched a plate right onto its pole (spacing_rad / 2).
+        max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
         hc0, hm0 = lithosphere.reference_thickness(self.crust_type)
         amp = hc0 * 0.1  # texture on fresh Hc, same spirit as v1's noise-on-elevation
         texture = terrain_noise.FractalTexture(
@@ -383,6 +438,7 @@ class LithospherePlate(PlateWithLines):
                     elevation=elevation_open,
                     crustal_thickness_m=hc_open,
                     mantle_lithosphere_thickness_m=hm_open,
+                    elev_change_reason=np.full(n_open, ELEV_CHANGE_NEW_CRUST, dtype=float),
                 )
             )
 

@@ -73,11 +73,26 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import climate, geometry, hydrology, lakes
-from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
+from .elevation_lines import (
+    ELEV_CHANGE_COASTAL_LEVELING,
+    ELEV_CHANGE_COLLISION,
+    ELEV_CHANGE_DEPOSITION,
+    ELEV_CHANGE_EROSION,
+    ELEV_CHANGE_GLACIAL_FLATTEN,
+    ELEV_CHANGE_LAKE_SILT,
+    ELEV_CHANGE_MARINE,
+    ELEV_CHANGE_MIN_DELTA_M,
+    ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR,
+    ELEV_CHANGE_VOLCANO,
+    MAX_ELEVATION_M,
+    MIN_ELEVATION_M,
+    PLANET_RADIUS_KM,
+)
 from .plates import (
     Plate,
     collect_all_channel_depth,
     collect_all_channel_width,
+    collect_all_elev_change_reason,
     collect_all_elevation,
     collect_all_glacier_depth,
     gather_node_positions,
@@ -1183,6 +1198,48 @@ def apply_erosion(
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
+    # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_* and
+    # render_image's "elevReason" view). Group this step's geomorphic contributions and stamp
+    # each node with whichever moved it most -- but only where |net change| clears
+    # ELEV_CHANGE_MIN_DELTA_M, so a low-relief, low-rainfall node the coastal/erosion passes
+    # only brush by sub-metre keeps whatever last genuinely shaped it (tectonics, or NONE --
+    # untouched since generation). That gate is the point of the view: it separates land
+    # that's actually being planed flat now from land that was simply never built up.
+    subaerial_erosion = erosion_amount - sea_side_erosion - ground_off  # undo the line-1178 merge
+    plain_deposition = total_deposited - marine_deposit - leveling_fill  # undo the line-1179 merge
+    reason_contrib = np.stack(
+        [
+            subaerial_erosion,
+            plain_deposition,
+            ground_off + leveling_fill,
+            sea_side_erosion + marine_deposit,
+            np.abs(flatten_delta),
+            hydro.silt_deposited,
+        ],
+        axis=-1,
+    )
+    reason_codes = np.array(
+        [
+            ELEV_CHANGE_EROSION,
+            ELEV_CHANGE_DEPOSITION,
+            ELEV_CHANGE_COASTAL_LEVELING,
+            ELEV_CHANGE_MARINE,
+            ELEV_CHANGE_GLACIAL_FLATTEN,
+            ELEV_CHANGE_LAKE_SILT,
+        ],
+        dtype=float,
+    )
+    prior_reason = collect_all_elev_change_reason(plates_in_order)
+    dominant = reason_codes[np.argmax(reason_contrib, axis=-1)]
+    net_abs = np.abs(new_elevation - elevation)
+    moved = net_abs >= ELEV_CHANGE_MIN_DELTA_M
+    # A structural code (deform()/volcanism, re-stamped every step the belt is still active) is
+    # sticky against ordinary background wash -- only a large net geomorphic step overrides it.
+    prior_structural = (prior_reason >= ELEV_CHANGE_COLLISION) & (prior_reason <= ELEV_CHANGE_VOLCANO)
+    override_structural = net_abs >= ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR * dt_myr
+    overwrite = moved & (~prior_structural | override_structural)
+    new_elev_change_reason = np.where(overwrite, dominant, prior_reason)
+
     # theta (and therefore every other parallel array's shape) is never touched here --
     # writing each changed field straight back via set_fields_on_plate (a vectorized
     # per-plate slice write, no per-node point object) leaves every other persistent field
@@ -1199,6 +1256,7 @@ def apply_erosion(
             lake_depth=hydro.lake_depth[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=hydro.silt_depth[offset : offset + n],
+            elev_change_reason=new_elev_change_reason[offset : offset + n],
         )
         offset += n
 

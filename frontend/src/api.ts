@@ -25,6 +25,7 @@ export type MapView =
   | "resources"
   | "soilQuality"
   | "geomorph"
+  | "elevReason"
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector";
@@ -459,10 +460,14 @@ export interface AnimateProgress {
 // /world/animate), and up to MAX_ANIMATION_FRAMES=240 of those run back-to-back server-side
 // before the video is complete -- by far the slowest request the app makes, and one that's
 // only gotten slower as the simulation itself has picked up more per-step work (erosion,
-// sediment redistribution, coastline stabilization, ...). A generous explicit timeout so a
-// real hang surfaces as an error instead of leaving the dialog spinning forever, while still
-// giving a big/slow world's worst case (240 frames) plenty of room.
-const ANIMATE_TIMEOUT_MS = 15 * 60 * 1000;
+// sediment redistribution, coastline stabilization, ...). A big/slow world's 240-frame worst
+// case genuinely can run past any fixed whole-request deadline (the old 15-min total cap was
+// aborting healthy runs mid-render), so instead of bounding the whole run we bound only the
+// gap *between* stream lines: the endpoint sends a `{type: "progress"}` line after every
+// single frame, and no one frame's step_world + render comes anywhere near this long, so a
+// silence past it means the server or connection actually died rather than the render merely
+// being slow.
+const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
 // "File > Make Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
 // starting from the world's current state (frame 0) and stepping it forward by
@@ -475,7 +480,9 @@ const ANIMATE_TIMEOUT_MS = 15 * 60 * 1000;
 // The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total}` per
 // frame (surfaced via `onProgress`, for a progress bar), then a final `{type: "done", ...}`
 // carrying the video. A mid-stream `{type: "error"}` line (rendering blew up after the
-// response already 200'd) is re-thrown here like any other failure.
+// response already 200'd) is re-thrown here like any other failure. The run is aborted only
+// if the stream goes silent for ANIMATE_IDLE_TIMEOUT_MS -- an actively-progressing render,
+// however long in total, keeps resetting that window.
 export async function animateWorld(
   projection: Projection,
   view: MapView,
@@ -486,61 +493,79 @@ export async function animateWorld(
   numFrames: number,
   onProgress?: (progress: AnimateProgress) => void,
 ): Promise<AnimateResponse> {
-  const resp = await fetch(`${API_BASE}/world/animate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      projection,
-      view,
-      width,
-      height,
-      rotation: rotation ? rotation.join(",") : null,
-      years_per_frame: yearsPerFrame,
-      num_frames: numFrames,
-    }),
-    signal: AbortSignal.timeout(ANIMATE_TIMEOUT_MS),
-  });
-  if (!resp.ok || !resp.body) {
-    const detail = await resp.text();
-    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
-  }
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffered = "";
-  let done: AnimateResponse | null = null;
-
-  const handleLine = (line: string) => {
-    if (!line.trim()) return;
-    const msg = JSON.parse(line) as Record<string, unknown>;
-    if (msg.type === "progress") {
-      onProgress?.({ frame: msg.frame as number, total: msg.total as number });
-    } else if (msg.type === "error") {
-      throw new Error(String(msg.detail));
-    } else if (msg.type === "done") {
-      done = {
-        seed: msg.seed as number,
-        elapsed_years: msg.elapsed_years as number,
-        num_plates: msg.num_plates as number,
-        events: msg.events as WorldEvent[],
-        videoBase64: msg.video_base64 as string,
-        mime: msg.mime as string,
-      };
-    }
+  // Idle watchdog: abort the fetch if no bytes arrive for ANIMATE_IDLE_TIMEOUT_MS. Rearmed
+  // on every chunk (see the read loop below), so an actively-streaming run never trips it.
+  const idleAbort = new AbortController();
+  let idleTimer: ReturnType<typeof setTimeout> | undefined;
+  const rearmIdleTimer = () => {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(
+      () => idleAbort.abort(new DOMException("animation stream stalled -- no data from server", "TimeoutError")),
+      ANIMATE_IDLE_TIMEOUT_MS,
+    );
   };
+  rearmIdleTimer();
 
-  for (;;) {
-    const { value, done: streamDone } = await reader.read();
-    if (streamDone) break;
-    buffered += decoder.decode(value, { stream: true });
-    const lines = buffered.split("\n");
-    buffered = lines.pop() ?? "";
-    for (const line of lines) handleLine(line);
+  try {
+    const resp = await fetch(`${API_BASE}/world/animate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projection,
+        view,
+        width,
+        height,
+        rotation: rotation ? rotation.join(",") : null,
+        years_per_frame: yearsPerFrame,
+        num_frames: numFrames,
+      }),
+      signal: idleAbort.signal,
+    });
+    if (!resp.ok || !resp.body) {
+      const detail = await resp.text();
+      throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = "";
+    let done: AnimateResponse | null = null;
+
+    const handleLine = (line: string) => {
+      if (!line.trim()) return;
+      const msg = JSON.parse(line) as Record<string, unknown>;
+      if (msg.type === "progress") {
+        onProgress?.({ frame: msg.frame as number, total: msg.total as number });
+      } else if (msg.type === "error") {
+        throw new Error(String(msg.detail));
+      } else if (msg.type === "done") {
+        done = {
+          seed: msg.seed as number,
+          elapsed_years: msg.elapsed_years as number,
+          num_plates: msg.num_plates as number,
+          events: msg.events as WorldEvent[],
+          videoBase64: msg.video_base64 as string,
+          mime: msg.mime as string,
+        };
+      }
+    };
+
+    for (;;) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      rearmIdleTimer();
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines) handleLine(line);
+    }
+    if (buffered) handleLine(buffered);
+
+    if (!done) throw new Error("animation stream ended without a result");
+    return done;
+  } finally {
+    clearTimeout(idleTimer);
   }
-  if (buffered) handleLine(buffered);
-
-  if (!done) throw new Error("animation stream ended without a result");
-  return done;
 }
 
 // "File > Export Hex Grid" data -- a geodesic-icosahedron hex/pentagon tiling of the sphere
