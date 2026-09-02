@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import geometry, mantle
+from .boundary import TRANSFORM_RATE_THRESHOLD
 from .elevation_lines import line_spacing_rad
 from . import lithosphere
 from .plates import query_workers
@@ -33,6 +34,17 @@ SECONDS_PER_YEAR = 365.25 * 86400.0
 SUBDUCTION_LSINK_M = 250_000.0  # effective down-dip sunk-slab length contributing pull today
 ASTHENOSPHERE_VISCOSITY_PA_S = 5e19  # within the spec's 1e19-1e21 Pa*s range
 SHEAR_ZONE_THICKNESS_M = 100_000.0  # d_s, Eq. 10
+# Deep-mantle viscosity the *sunk slab* shears against as it descends (`slab_drag_torque`),
+# ~20x the asthenosphere value the surface plate's own base slides over -- the mantle below
+# the asthenosphere is far stiffer. The spec's Eq. 8 gives slab *pull* but no matching
+# resistance, so on its own it drives every subducting oceanic plate straight past
+# MAX_PLATE_RATE and `clamp_rate` then pins them all there -- the "every oceanic plate railed
+# at MAX" reading the overlapAge / long-run plate-geometry investigations kept seeing. A real
+# slab's descent is resisted mostly by exactly this viscous coupling to the surrounding
+# mantle, not by basal drag on the trailing surface plate; adding it back lets oceanic plate
+# speed self-regulate (the faster a plate converges, the harder the mantle resists its slab)
+# rather than everything sitting on the clamp. Within the spec's own 1e19-1e21 Pa*s bracket.
+SLAB_MANTLE_VISCOSITY_PA_S = 1e21
 # Typical old-ocean-floor depth ridge relief is measured against -- the isostatic elevation
 # of oceanic crust already at its own reference thickness (lithosphere.REFERENCE_HC/HM_
 # OCEANIC_M), so this tracks ISOSTATIC_REFERENCE_OFFSET_M automatically rather than
@@ -131,23 +143,67 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
     return BoundaryForceInputs(own_points, own_hc, own_hm, dist, direction, neighbor_is_oceanic, neighbor_omega)
 
 
-def slab_pull_torque(plate, inputs: BoundaryForceInputs, spacing_rad: float, reach_rad: float) -> np.ndarray:
-    """Eq. 8, discretized as a sum over this plate's own subducting-boundary nodes -- this
-    plate must itself be oceanic (only oceanic lithosphere is dense enough to subduct, same
-    asymmetry `deform()`'s own trench-vs-uplift branch already draws) and contested (its
-    territory is being overridden -- see `rheology.py`'s reuse of the same "contested"
-    geometric test `deform()` uses)."""
-    if plate.crust_type != "oceanic" or len(inputs.own_points) == 0:
-        return np.zeros(3)
-    subducting = inputs.dist_to_neighbor <= reach_rad
-    if not np.any(subducting):
+def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
+    """This plate's own boundary-band nodes that are genuinely subducting: the plate is
+    oceanic (only oceanic lithosphere is dense enough to descend, the same asymmetry
+    `deform()`'s trench-vs-uplift branch draws), the node is within `reach_rad` of a
+    neighbour, *and* the two plates are actually converging there (`closing_rate` past the
+    same `TRANSFORM_RATE_THRESHOLD` `merge_split` uses). The convergence check is what this
+    used to be missing: slab pull was applied to the plate's *entire* near-neighbour band,
+    ridge and transform stretches included, so a plate spreading at three of its four edges
+    still felt a full-perimeter pull and railed at MAX_PLATE_RATE. A ridge does not pull a
+    slab down."""
+    n = len(inputs.own_points)
+    if plate.crust_type != "oceanic" or n == 0:
+        return np.zeros(n, dtype=bool)
+    band = inputs.dist_to_neighbor <= reach_rad
+    v_self = np.cross(plate.omega, inputs.own_points)
+    v_neighbor = np.cross(inputs.neighbor_omega, inputs.own_points)
+    closing = np.sum((v_self - v_neighbor) * inputs.direction_to_neighbor, axis=-1)
+    return band & (closing > TRANSFORM_RATE_THRESHOLD)
+
+
+def slab_pull_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """Eq. 8, discretized as a sum over this plate's own subducting-boundary nodes
+    (`subducting_mask`, from `subducting_boundary_mask` -- passed in rather than recomputed so
+    it stays in lockstep with the matching `slab_drag_torque` resistance)."""
+    if not np.any(subducting_mask):
         return np.zeros(3)
     ds = spacing_rad * lithosphere.PLANET_RADIUS_M
-    hm = inputs.own_hm[subducting]
+    hm = inputs.own_hm[subducting_mask]
     force_mag = (lithosphere.RHO_LITHOSPHERE_MANTLE - lithosphere.RHO_ASTHENOSPHERE) * lithosphere.GRAVITY_M_S2 * hm * SUBDUCTION_LSINK_M * ds
-    force = force_mag[:, None] * inputs.direction_to_neighbor[subducting]
-    r = inputs.own_points[subducting] * lithosphere.PLANET_RADIUS_M
+    force = force_mag[:, None] * inputs.direction_to_neighbor[subducting_mask]
+    r = inputs.own_points[subducting_mask] * lithosphere.PLANET_RADIUS_M
     return np.cross(r, force).sum(axis=0)
+
+
+def slab_drag_coefficient_matrix(inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """The `K` half of Eq. 10-style drag, but for the *sunk slab* shearing against the deep
+    mantle (`SLAB_MANTLE_VISCOSITY_PA_S`) over its `SUBDUCTION_LSINK_M` down-dip length,
+    summed over this plate's subducting nodes. Folded into `integrate_omega`'s implicit `K`
+    exactly like `basal_drag_coefficients` -- it is at least as stiff, and an explicit step on
+    it would overshoot the same way. `b` is zero: the deep mantle it shears against is taken
+    at rest (unlike the asthenosphere, which carries `mantle.flow_at`), so the drag is purely
+    `-K @ omega`. Without this term slab pull is unopposed and every subducting oceanic plate
+    rails at `MAX_PLATE_RATE` (see `SLAB_MANTLE_VISCOSITY_PA_S`)."""
+    pts = inputs.own_points[subducting_mask]
+    if len(pts) == 0:
+        return np.zeros((3, 3))
+    ds = spacing_rad * lithosphere.PLANET_RADIUS_M
+    c = (
+        (SLAB_MANTLE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M)
+        * (SUBDUCTION_LSINK_M * ds)
+        * lithosphere.PLANET_RADIUS_M**2
+        / SECONDS_PER_YEAR
+    )
+    return c * (len(pts) * np.eye(3) - np.einsum("ni,nj->nij", pts, pts).sum(axis=0))
+
+
+def slab_drag_torque(plate, inputs: BoundaryForceInputs, subducting_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+    """`slab_drag_coefficient_matrix` evaluated at the plate's current `omega` (`-K @ omega`)
+    -- a standalone entry point for tests / callers that just want the resistive torque;
+    `shift_plate` itself folds the `K` into `integrate_omega` for implicit stability."""
+    return -slab_drag_coefficient_matrix(inputs, subducting_mask, spacing_rad) @ plate.omega
 
 
 def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
@@ -336,16 +392,18 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
     contested, divergent = classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
     collision_mask = contested & (plate.crust_type == "continental") & ~inputs.neighbor_is_oceanic
+    subducting = subducting_boundary_mask(plate, inputs, reach_rad)
 
     rho_c = lithosphere.crust_density(plate.crust_type)
     inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad)
 
     explicit_torque = (
-        slab_pull_torque(plate, inputs, spacing_rad, reach_rad)
+        slab_pull_torque(plate, inputs, subducting, spacing_rad)
         + ridge_push_torque(plate, inputs, divergent, spacing_rad)
         + collision_friction_torque(plate, inputs, collision_mask, spacing_rad)
     )
     drag_b, drag_k = basal_drag_coefficients(plate, world, spacing_rad)
+    drag_k = drag_k + slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
     new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
     plate.set_omega(new_omega)
 

@@ -58,6 +58,27 @@ COLLISION_MERGE_MAX_YEARS = 100_000_000
 MERGE_SIZE_UNLIKELY_FRACTION = 0.25
 MERGE_PROBABILITY_FLOOR = 0.02  # never impossible -- real supercontinents do form eventually
 
+# A fast relative motion between two colliding continental plates means a decisive, head-on
+# convergence rather than a slow oblique graze -- it should resolve more readily, even for a
+# large pair the size gate above would otherwise crush to the floor. Requested directly from
+# a long-run save where a cluster of continental plates had piled into a stationary
+# "supercontinent" of ~9 mutually-overlapping plates that essentially never fused. A pair
+# whose relative rotation rate approaches MAX_PLATE_RATE gets up to this fraction of the
+# remaining distance from its size-gated probability to certainty.
+SPEED_MERGE_BOOST = 0.5
+
+# Backstop for the same pile-up: two continental plates whose node clouds have genuinely
+# interpenetrated by at least this fraction (of the more-covered plate's nodes) and stayed
+# that way for at least FORCED_MERGE_SUSTAINED_YEARS have, physically, already merged -- only
+# the bookkeeping hasn't caught up. Fuse them regardless of the closing-rate / size roll
+# (which the deepest overlaps fail anyway: they overlap so completely they no longer register
+# a closing rate, so `find_continental_collision_pairs` stops tracking them and their
+# collision timer never accumulates). Tracked exactly like the closing-rate collision timer
+# -- see `update_overlap_progress` / `World.overlap_progress` -- and, like every other
+# topology change, at most one forced fusion resolves per step.
+FORCED_MERGE_OVERLAP_FRACTION = 0.30
+FORCED_MERGE_SUSTAINED_YEARS = 30_000_000
+
 # A node count, not a distance -- doesn't scale automatically with TARGET_LINE_SPACING_RAD
 # the way the distance-based thresholds elsewhere do. Node count for a given physical plate
 # area scales with the *square* of resolution (more rows and more samples per row), so this
@@ -250,7 +271,12 @@ def _merge_probability(world: "World", pair: tuple[int, int]) -> float:
     b = next(p for p in world.plates if p.plate_id == pair[1])
     combined_frac = (a.node_count() + b.node_count()) / total_nodes
     size_frac = min(1.0, combined_frac / MERGE_SIZE_UNLIKELY_FRACTION)
-    return 1.0 - size_frac * (1.0 - MERGE_PROBABILITY_FLOOR)
+    base = 1.0 - size_frac * (1.0 - MERGE_PROBABILITY_FLOOR)
+    # |omega_a - omega_b| is the two plates' relative rotation rate; near MAX_PLATE_RATE it is
+    # a genuinely fast, decisive convergence that should merge more readily than a slow graze
+    # regardless of size (see SPEED_MERGE_BOOST).
+    speed_frac = min(1.0, float(np.linalg.norm(a.omega - b.omega)) / mantle.MAX_PLATE_RATE)
+    return base + (1.0 - base) * SPEED_MERGE_BOOST * speed_frac
 
 
 def update_collision_progress(world: "World", years: float) -> list[tuple[int, int]]:
@@ -289,6 +315,74 @@ def update_collision_progress(world: "World", years: float) -> list[tuple[int, i
             del world.collision_progress[pair]
 
     return ready
+
+
+def _deep_continental_overlap_fractions(world: "World", overlap: dict[int, dict]) -> dict[tuple[int, int], float]:
+    """For every pair of continental plates whose node clouds currently interpenetrate, the
+    fraction of the *more-covered* plate's own nodes sitting on the other -- keyed by sorted
+    (id, id). `overlap` is a `plates.compute_node_overlap` result (the same node-cloud read
+    behind the Plate Inspector / `overlapAge` view), so "40% of plate 61 is on plate 0" here
+    is the same number the UI shows."""
+    continental = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+
+    fractions: dict[tuple[int, int], float] = {}
+    for pid_a, info_a in overlap.items():
+        if pid_a not in continental:
+            continue
+        for pid_b, count_a_on_b in info_a["by_partner"].items():
+            if pid_b not in continental:
+                continue
+            pair = (pid_a, pid_b) if pid_a < pid_b else (pid_b, pid_a)
+            frac = count_a_on_b / max(1, continental[pid_a].node_count())
+            fractions[pair] = max(fractions.get(pair, 0.0), frac)
+    return fractions
+
+
+def update_overlap_progress(world: "World", years: float, overlap: dict[int, dict]) -> None:
+    """Advance `world.overlap_progress` (pair -> accumulated years of sustained deep overlap):
+    `+= years` for every continental pair currently overlapping by at least
+    `FORCED_MERGE_OVERLAP_FRACTION`, and drop any pair that has fallen back below it (the
+    overlap didn't sustain). Mirror of `update_collision_progress`, on the territory-overlap
+    signal instead of the closing-rate one -- a deep overlap that persists for tens of Myr
+    *is* a finished continental collision, including the case the closing-rate tracker
+    structurally misses: two plates so completely superimposed they no longer register any
+    closing rate at all, so `find_continental_collision_pairs` never sees them.
+
+    Called once per step from `world.step_world` (via `update_overlap_tracking`, which already
+    computes the same overlap read for the `overlapAge` diagnostic). `apply_topology_changes`
+    consumes the result on the *next* step through `pop_ready_forced_merge` -- a one-step lag
+    that is immaterial for a tens-of-Myr-sustained decision."""
+    fractions = _deep_continental_overlap_fractions(world, overlap)
+    for pair, frac in fractions.items():
+        if frac >= FORCED_MERGE_OVERLAP_FRACTION:
+            world.overlap_progress[pair] = world.overlap_progress.get(pair, 0.0) + years
+    for pair in list(world.overlap_progress):
+        if fractions.get(pair, 0.0) < FORCED_MERGE_OVERLAP_FRACTION:
+            del world.overlap_progress[pair]
+
+
+def pop_ready_forced_merge(world: "World") -> tuple[int, int] | None:
+    """The continental pair that has sustained a deep overlap longest past
+    `FORCED_MERGE_SUSTAINED_YEARS`, as `(id_keep, id_absorb)` with `id_keep` the larger plate
+    (more territory, more stable frame -- `merge_plates`' own keep/absorb sense) -- removed
+    from `world.overlap_progress` and returned, or `None`. At most one per step, same as every
+    other topology change. A pair whose plate has since vanished (subducted, defragmented) is
+    silently dropped."""
+    live = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
+    ready = [
+        pair
+        for pair, acc in world.overlap_progress.items()
+        if acc >= FORCED_MERGE_SUSTAINED_YEARS and pair[0] in live and pair[1] in live
+    ]
+    for pair in list(world.overlap_progress):
+        if pair[0] not in live or pair[1] not in live:
+            del world.overlap_progress[pair]
+    if not ready:
+        return None
+    pair = max(ready, key=lambda p: world.overlap_progress[p])
+    del world.overlap_progress[pair]
+    a, b = pair
+    return (a, b) if live[a].node_count() >= live[b].node_count() else (b, a)
 
 
 def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
@@ -406,29 +500,36 @@ def defragment_plates(world: "World") -> list[str]:
 
     world.plates = new_plates
 
-    # A fragmented/removed plate can leave stale collision-progress keys behind -- same
-    # cleanup update_collision_progress does for pairs that stop being close-and-converging.
+    # A fragmented/removed plate can leave stale cross-step tracker keys behind -- same
+    # cleanup update_collision_progress / pop_ready_forced_merge do for their own dicts.
     live_ids = {p.plate_id for p in world.plates}
-    for pair in list(world.collision_progress):
-        if pair[0] not in live_ids or pair[1] not in live_ids:
-            del world.collision_progress[pair]
+    for tracker in (world.collision_progress, world.overlap_progress):
+        for pair in list(tracker):
+            if pair[0] not in live_ids or pair[1] not in live_ids:
+                del tracker[pair]
 
     return events
 
 
-def update_overlap_tracking(world: "World") -> None:
-    """Diagnostic per-node bookkeeping (nothing in the physics reads it back): stamp
-    `ElevationLine.overlap_onset_years` with `world.elapsed_years` on every node that has
-    *just* started sitting on top of another plate's territory, and clear it (back to 0.0) on
-    every node no longer overlapping anything. Run once per step from `world.step_world`
-    right after `apply_topology_changes`, so it sees this step's final geometry.
+def update_overlap_tracking(world: "World", years: float) -> None:
+    """Per-step overlap bookkeeping, run once from `world.step_world` right after
+    `apply_topology_changes` so it sees this step's final geometry:
 
-    Uses the same `plates.compute_node_overlap` the Plate Inspector / `plate_diagnostics.py`
-    overlap view goes through, so "15% of plate 21 is on plate 0" and "...since 178 My" are
-    the same underlying node set. Mirrors `stranded_basins.reconcile_world_tracks` /
-    `World.collision_progress` -- a lightweight first-seen tracker, persisted in the save."""
+    - Diagnostic (nothing in the physics reads it back): stamp
+      `ElevationLine.overlap_onset_years` with `world.elapsed_years` on every node that has
+      *just* started sitting on top of another plate's territory, and clear it (to 0.0) on
+      every node no longer overlapping anything.
+    - `update_overlap_progress`: advance `World.overlap_progress`, the sustained-deep-overlap
+      timer the forced continental merge (`pop_ready_forced_merge`) consumes.
+
+    Both go through the one `plates.compute_node_overlap` read the Plate Inspector /
+    `plate_diagnostics.py` overlap view also uses, so "15% of plate 21 is on plate 0" and
+    "...since 178 My" are the same underlying node set. Mirrors
+    `stranded_basins.reconcile_world_tracks` / `World.collision_progress` -- lightweight
+    cross-step trackers, persisted in the save."""
     tol = plates_mod.OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
     overlap = plates_mod.compute_node_overlap(world.plates, tol)
+    update_overlap_progress(world, years, overlap)
     for plate in world.plates:
         n = plate.node_count()
         if n == 0:
@@ -472,6 +573,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
         events.extend(defragment_plates(world))
 
     ready_pairs = update_collision_progress(world, years)
+    merged_this_step = False
     if ready_pairs:
         # Real continental collisions don't resolve all at once, and merging every ready
         # pair in the same call could still cascade through a whole chain of plates in one
@@ -479,10 +581,24 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
         id_keep, id_absorb = ready_pairs[0]
         elapsed_years = world.collision_progress.pop((id_keep, id_absorb), 0.0)
         merge_plates(world, id_keep, id_absorb)
+        merged_this_step = True
         events.append(
             f"Plates {id_keep} and {id_absorb} collided and merged into plate {id_keep} "
             f"after {elapsed_years / 1e6:.0f} million years."
         )
+
+    # Backstop: a continental pair that has physically interpenetrated and stayed stuck for
+    # tens of Myr is already one landmass -- fuse it even though the closing-rate/size roll
+    # above never fired (see update_overlap_progress / FORCED_MERGE_OVERLAP_FRACTION). Still at
+    # most one fusion per step; skipped on a step that already merged a ready pair.
+    if not merged_this_step:
+        forced = pop_ready_forced_merge(world)
+        if forced is not None:
+            id_keep, id_absorb = forced
+            merge_plates(world, id_keep, id_absorb)
+            events.append(
+                f"Plates {id_keep} and {id_absorb} had overlapped so long they fused into plate {id_keep}."
+            )
 
     # At most one rift per step, same incremental-change rule as the merge above -- real
     # continental breakup plays out over tens of Myr, and splitting every eligible plate in

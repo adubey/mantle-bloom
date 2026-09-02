@@ -111,18 +111,24 @@ shifted from "pole winding + winding-driven node blowup" to a cluster of related
 below. This save is the same seed the coastal-speckle work used, stepped far longer, and its
 geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactful first:**
 
-1. **Every oceanic plate rails at `MAX_PLATE_RATE` (15 cm/yr).** 6 of 7 oceanic plates sit
-   at *exactly* `mantle.MAX_PLATE_RATE` at 85 My (the 7th at 11.7); all 6 continental plates
-   are a healthy 0.7-3.9 cm/yr. Stepping the loaded save 4 more times with current `main`
-   does **not** relax them -- so this is not just a stale pre-fix save. Bug 3's backward-Euler
-   basal-drag fix genuinely settled the *continental* plates but the *oceanic* ones are still
-   pinned: `torque`'s explicit slab-pull (+ ridge-push + collision) alone exceeds the clamp
-   ceiling for them, every step. Either slab-pull's scale (`SUBDUCTION_LSINK_M`,
-   `slab_pull_torque`) is hot, or a mostly-ocean world genuinely subducts oceanic crust on
-   nearly every margin and 15 cm/yr is simply the cap it deserves -- but 6/7 at the *exact*
-   ceiling forever, driving fast oceanic plates into every continent, is the upstream cause
-   of most of what follows. Check `integrate_omega`'s output against the clamp for an
-   oceanic plate on this seed and see how far over it lands.
+1. **Every oceanic plate rails at `MAX_PLATE_RATE` (15 cm/yr).** **FIXED 2026-09-02 (seed
+   495717634 @ 254.8 My -- 31/31 oceanic plates at *exactly* the clamp).** Two causes, both
+   in `torque.py`:
+   - `slab_pull_torque` applied pull to the plate's *entire* near-neighbour band
+     (`dist_to_neighbor <= reach_rad`), ridge and transform stretches included -- its own
+     docstring said "contested" but the code never checked. Now gated by
+     `subducting_boundary_mask` (oceanic self, in-band, closing rate past
+     `TRANSFORM_RATE_THRESHOLD`).
+   - Spec Eq. 8 has slab *pull* with no matching resistance. A real slab's descent is resisted
+     mostly by viscous coupling to the surrounding mantle, not by basal drag on the trailing
+     surface plate -- so `integrate_omega`'s steady state wanted 16-65 cm/yr for every oceanic
+     plate and `clamp_rate` pinned them all at 15. New `slab_drag_coefficient_matrix`
+     (`SLAB_MANTLE_VISCOSITY_PA_S = 1e21` over `SUBDUCTION_LSINK_M`, folded into the implicit
+     `K` like basal drag) makes oceanic speed self-regulate: median ~4-5 cm/yr on this seed,
+     31/31-railed -> 0-3 railed, only genuinely fast slab-pull-driven plates near the cap.
+   `test_torque.py::test_subducting_mask_only_flags_a_converging_oceanic_boundary` /
+   `test_slab_drag_keeps_a_subducting_plate_off_the_clamp` pin both. This removes the upstream
+   driver of most of what follows in this list.
 
 2. **Over-stretched continental plates that have mostly drowned.** Plate 3 (id 3):
    continental, 22,936 nodes, **71% of its own nodes at/below sea level**, median elevation
@@ -289,28 +295,38 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
 **Directions worth trying, roughly in effort order:**
 
 1. **Retreat continental edges only against an oceanic neighbour, or only a deep contested
-   run.** A continent contested by *ocean* is not a real continent-continent collision (the
-   slab subducts under) -- deleting those nodes cedes nothing the model should keep. Gate
-   `shrinkable_all` for continental crust on `neighbor_is_oceanic` (needs the neighbour-owner
-   array `deform` already builds for the elevation branch) and/or on a minimum consecutive-
-   contested run length so envelope fuzz doesn't nibble. Keep genuine continent-continent
-   contested nodes crumpling in place (they still merge, eventually). Watch for the
-   lobe-severing / spurious-split side effect above -- cap deletion hard (1 node/step) and
-   re-check plate counts.
+   run.** **DONE 2026-09-02 (seed 495717634 @ 254.8 My).** `LithospherePlate.deform` now sets
+   `shrinkable_all = _runs_of_at_least(contested_all & inputs.neighbor_is_oceanic,
+   CONTINENTAL_OCEANIC_RETREAT_MIN_RUN)` for continental crust (was all-False), and the
+   interior-subduction carve is gated to `crust_type == "oceanic"` so a continental row can
+   never be carved mid-line into a spurious defrag plate. `neighbor_is_oceanic` +
+   `CONTINENTAL_OCEANIC_RETREAT_MIN_RUN = 3` + the pre-existing `n_distance_cap` (= 1 at real
+   continental drift rates) are the "gate on ocean, gate on run length, cap at 1 node/step"
+   this direction called for. `test_lithosphere_continental_edge_retreats_only_against_an_
+   oceanic_neighbour` pins it. **Caveat, as predicted here:** direction 1 alone barely moves
+   the *node count* -- freed ground is re-claimed by the oceanic neighbour as new oceanic
+   crust -- but it does stop the *land-fraction* bleed (the reclaimed ground is now sea floor,
+   not another drowned continental accreted-margin node). Direction 2 is still the complement
+   for the raw node count.
 2. **Cap a plate's total footprint against its crustal volume.** `sum(Hc * node_area)` is a
    conserved-ish quantity; once a plate's node count implies an area well above what its
    integrated `crustal_thickness_m` supports, stop `_grow_or_shrink_line_for_deform` /
    `_claim_adjacent_territory` from extending it (the stretch *is* the bug -- item 2). This
-   also addresses the "giant 80%-drowned continental plate" directly.
-3. **Make frozen continent-continent overlaps actually resolve.** `_merge_probability`
-   floors at 0.02 once a pair's combined node share passes 0.25 (`MERGE_SIZE_UNLIKELY_
-   FRACTION`), so large collisions overlap forever (item 4). Either drop the floor, or force
-   a merge once an overlap has been stable-and-large for N steps regardless of the closing-
-   rate / size roll. **Partly addressed 2026-09-01:** deep-interior overlap is now classified
-   `contested` (see item 4's own update), so a stuck continental overlap crumples in place
-   (Hc thickens -> uplift) instead of just sitting inert -- the plates still don't *fuse*,
-   but the overlap is no longer a forcing-free dead zone, and `overlap_onset_years` now
-   records how long each has been stuck. The size-floor / forced-merge question is unchanged.
+   also addresses the "giant 80%-drowned continental plate" directly. **Still open.**
+3. **Make frozen continent-continent overlaps actually resolve.** **DONE 2026-09-02.**
+   `merge_split.update_overlap_progress` / `World.overlap_progress` is a second sustained-timer
+   -- the territory-overlap sibling of `collision_progress` -- and `pop_ready_forced_merge`
+   fuses any continental pair that has interpenetrated by >= `FORCED_MERGE_OVERLAP_FRACTION`
+   (0.30) for >= `FORCED_MERGE_SUSTAINED_YEARS` (30 My), bypassing the size/closing-rate roll
+   entirely. This is what the "or force a merge once an overlap has been stable-and-large for
+   N steps" option called for -- and it catches the case `collision_progress` structurally
+   can't (item 4: a pair overlapping too completely to register any closing rate). Separately,
+   `_merge_probability` now adds a `SPEED_MERGE_BOOST` term: `|omega_a - omega_b| /
+   MAX_PLATE_RATE` lifts a large pair's odds toward certainty (a fast head-on collision merges
+   more readily than a slow graze). The `MERGE_PROBABILITY_FLOOR` itself is unchanged.
+   `test_forced_merge_*` / `test_merge_probability_speed_boost_*` pin both. The deep-overlap ->
+   `contested` -> Hc-thickening path (partly-addressed note below) still applies in the
+   meantime, so a pair crumples-and-thickens while its forced-merge timer runs.
 
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
 "Bug 1" (below) added a `ring_room()` one-revolution cap in

@@ -790,6 +790,70 @@ def test_lithosphere_deform_never_winds_a_row_past_a_full_revolution():
     assert not regularized_phis, f"rows still churning through regularize every step: {regularized_phis}"
 
 
+def test_runs_of_at_least_clears_short_true_runs():
+    from app.lithosphere_plate import _runs_of_at_least
+
+    mask = np.array([1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1], dtype=bool)
+    assert list(_runs_of_at_least(mask, 3)) == [0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1]
+    assert list(_runs_of_at_least(mask, 1)) == list(mask)
+    assert not _runs_of_at_least(np.array([1, 1, 0, 0, 1], dtype=bool), 3).any()
+    # a qualifying run flush against the end is kept
+    assert list(_runs_of_at_least(np.array([0, 0, 1, 1, 1], dtype=bool), 3)) == [0, 0, 1, 1, 1]
+
+
+def test_lithosphere_continental_edge_retreats_only_against_an_oceanic_neighbour():
+    """A continental line's contested end normally never retreats -- but where an *oceanic*
+    neighbour is overriding it (a passive margin / accretion front, not a continent-continent
+    suture) it now does, one node per step, breaking the node ratchet. A continental neighbour
+    overriding the same end still makes it crumple in place (no nodes lost)."""
+    from app.lithosphere_plate import CONTINENTAL_OCEANIC_RETREAT_MIN_RUN, LithospherePlate
+    from app.lithosphere import reference_thickness
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _plate(pid, crust_type, theta_lo, theta_hi, n):
+        hc0, hm0 = reference_thickness(crust_type)
+        theta = np.linspace(theta_lo, theta_hi, n)
+        line = ElevationLine(
+            phi=0.2,
+            theta=theta,
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, hc0),
+            mantle_lithosphere_thickness_m=np.full(n, hm0),
+        )
+        filler = ElevationLine(
+            phi=-0.6,
+            theta=np.linspace(-0.2, 0.2, 8),
+            elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, hc0),
+            mantle_lithosphere_thickness_m=np.full(8, hm0),
+        )
+        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
+
+    def _high_end_retreat(neighbour_crust: str) -> float:
+        continent = _plate(0, "continental", -0.5, 0.5, 40)
+        # Same frame, theta range overlapping the continent's high end -> the continent's
+        # nodes with theta > ~0.15 fall inside this neighbour's polygon (contested). The
+        # regularize pass keeps the node *count* ~constant, so it's the line's theta *extent*
+        # (its actual territory) that retreats.
+        neighbour = _plate(1, neighbour_crust, 0.15, 0.9, 40)
+        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+
+        def high_theta() -> float:
+            return max(ln.theta[-1] for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
+
+        before = high_theta()
+        for _ in range(6):
+            continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
+        return before - high_theta()
+
+    retreat_against_ocean = _high_end_retreat("oceanic")
+    retreat_against_continent = _high_end_retreat("continental")
+    assert retreat_against_ocean > CONTINENTAL_OCEANIC_RETREAT_MIN_RUN * spacing
+    assert retreat_against_continent == 0.0
+
+
 def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
     from app.plates import POLE_CAP_MARGIN_MULT
     from app.world import World

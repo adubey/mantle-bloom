@@ -47,6 +47,8 @@ def _backfill_added_fields(world: World) -> None:
     Only mutable-default fields need listing here."""
     if not hasattr(world, "stranded_basin_tracks"):
         world.stranded_basin_tracks = []
+    if not hasattr(world, "overlap_progress"):
+        world.overlap_progress = {}
 
 
 def _drop_derived_caches(world: World) -> None:
