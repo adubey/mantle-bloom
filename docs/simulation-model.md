@@ -1920,6 +1920,20 @@ behavior, not a bug). `line.elevation`, `line.channel_depth` (this module's own)
 together per line -- no resampling, no topology change, so none of this can interact with
 line regularization or point reassignment at all.
 
+**Erosional isostatic compensation.** The net per-step surface change (all erosion minus all
+deposition, plus glacial flattening and lake silt) is the rock added to or stripped from a
+lithospheric column, so it is applied to `crustal_thickness_m` in full and to `elevation`
+only by the resulting Airy response -- `isostatic_elevation(Hc + delta, Hm) -
+isostatic_elevation(Hc, Hm)`, the same delta idiom `deform()` uses for tectonic Hc/Hm
+changes (see [Isostasy](#isostasy)). An unloaded crustal root rebounds and a sediment pile
+subsides under its own weight, so only ~1/6 of subaerial erosion and ~1/4 of submarine
+erosion shows up as a surface elevation change; the rest is isostatic. Without this,
+coastal + submarine erosion exporting continental crust to the deep ocean planed every
+continent flat over a few hundred Myr once orogeny slowed (`docs/TODO.md`); with it, `elevation`
+also stays a faithful readout of `isostatic_elevation(Hc, Hm)` between tectonic events rather
+than drifting away from it. v1 `PlateWithLines` carries no `Hc` -- those nodes keep the bare
+one-for-one response.
+
 **Cadence: every step, no lag on climate -- but a deliberate change from erosion's own
 earlier no-hydrology version regarding flow routing.** This module still calls
 `climate.compute_climate(world)` fresh every step (no staleness to reason about, same as

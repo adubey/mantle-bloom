@@ -36,6 +36,29 @@ def test_isostatic_elevation_thicker_mantle_lithosphere_sinks_the_column():
     assert np.all(np.diff(z) < 0)
 
 
+def test_isostatic_elevation_broadcasts_a_per_node_crust_density():
+    """erosion.apply_erosion spans several plates at once, so it passes rho_c as a per-node
+    array -- the result must match calling the scalar form plate by plate, and a small Hc
+    change must move the surface by well under that change (Airy rebound eats most of it)."""
+    hc = np.array([40_000.0, 40_000.0, 18_000.0, 18_000.0])
+    hm = np.full(4, lithosphere.REFERENCE_HM_CONTINENTAL_M)
+    rho_c = np.array(
+        [lithosphere.RHO_CONTINENTAL_CRUST, lithosphere.RHO_OCEANIC_CRUST] * 2
+    )
+
+    vectorized = lithosphere.isostatic_elevation(hc, hm, rho_c)
+    per_node = np.array(
+        [lithosphere.isostatic_elevation(hc[i : i + 1], hm[i : i + 1], rho_c[i])[0] for i in range(4)]
+    )
+    assert np.allclose(vectorized, per_node)
+
+    # Remove 100 m of crustal column; the subaerial columns (indices 0-1) are still well
+    # above sea level and drop far less than 100 m.
+    dropped = lithosphere.isostatic_elevation(hc - 100.0, hm, rho_c)
+    surface_drop = vectorized[:2] - dropped[:2]
+    assert np.all(surface_drop > 0.0) and np.all(surface_drop < 25.0)
+
+
 def test_isostatic_elevation_clips_to_world_bounds():
     from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 

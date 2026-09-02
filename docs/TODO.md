@@ -411,23 +411,32 @@ runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work o
 
 ## Land fraction slowly declines over a long run (residual of the 2026-09-01 growth-seed fix)
 
-**Context.** Fixing the land-area *runaway* (see "Node-count creep" above -- new areal crust
-is now seeded oceanic, not +200 m continental) traded a strong upward drift for a mild
-downward one: on seed 559394024 at `node_density=1`, land fraction goes 0.266 -> ~0.20 over
-200 Myr (mean planet elevation stays flat, so mass is conserved -- this is redistribution,
-not loss). Cause: erosion planes continental freeboard down every step, nothing rebuilds it
-except collisions (rarer now that plates are smaller), and `World.sea_level_m` is a fixed
-user control, so the ocean can't rise to maintain freeboard the way real eustatic sea level
-does as basins fill with sediment and young ridge crust displaces water. A slow decline is
-far more physical than the old runaway and stays Earth-ish for ~100 Myr, so this is a
-low-priority polish item, not a bug.
+**FIXED 2026-09-01 -- erosional isostatic compensation.** The residual downward drift
+(and the far steeper decline on seed 331015891 @ 243.7 My, where continents were ~93%
+drowned and still sinking ~4.5 m/Myr) was `erosion.py` moving rock between columns -- coastal
++ submarine erosion shipping continental crust to the abyss -- while never touching `Hc`, so
+Airy isostasy never rebounded the unloaded crust. `apply_erosion` now books its whole
+per-step geomorphic change against `crustal_thickness_m` and moves `elevation` by exactly the
+resulting `isostatic_elevation` delta (same delta idiom `deform()` uses for tectonic Hc/Hm
+changes -- `elevation` stays a faithful readout of the column). Only ~1/6 of subaerial
+erosion and ~1/4 of submarine erosion now survives as a surface drop; the rest is rebound,
+which is why real continents keep their freeboard for gigayears once orogeny stops. On the
+331015891 save the node-level land-fraction decline dropped ~7x (-0.0034 -> -0.0005 per 30
+steps); continental mean elevation went from -4.5 m/Myr to roughly flat. v1 PlateWithLines
+(no Hc) keeps the bare 1:1 response. See `lithosphere.isostatic_elevation` (now broadcasts a
+per-node rho_c), `test_erosion.py::test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates`,
+`test_world_smoke.py::test_erosion_books_against_hc_and_survives_deform`.
 
-**Directions.** (a) Seed continental-plate areal growth at the continental *rift* target
-(~-200 m, a thinned continental margin that then subsides via thermal aging) rather than the
-full oceanic column at ~-3.5 km -- keeps more near-sea-level shelf. (b) A gentle automatic
-sea-level term: nudge `sea_level_m` each step toward the level that conserves total ocean
-*volume* as the hypsometric curve shifts. Changes a user-facing control, so it would need a
-toggle. (c) Accept it and document the ~100 Myr Earth-like window.
+**Note.** The `elevReason` view's `moved`/override gates now key off the *raw* geomorphic
+move, not `new_elevation - elevation` -- isostatic compensation shrinks the surface
+expression ~5x but doesn't change which process is doing the shaping, and those two
+thresholds were tuned against the raw pre-compensation move.
+
+**Not addressed here:** grid `elevation_mean_m` still drifts down slowly on a long run, but
+that's the separate node-count creep (fresh deep-oceanic nodes diluting the average -- see
+"Node-count creep" above), not mass loss. A legacy save carries a pre-existing
+`elevation` vs `isostatic_elevation(Hc,Hm)` offset (built up under the old erosion); the new
+code doesn't worsen it and topology re-syncs slowly heal it.
 
 ---
 

@@ -95,10 +95,11 @@ def crust_density(crust_type: str) -> float:
 ISOSTATIC_REFERENCE_OFFSET_M = -4184.615384615388
 
 
-def isostatic_elevation(hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float) -> np.ndarray:
+def isostatic_elevation(hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float | np.ndarray) -> np.ndarray:
     """Airy isostatic elevation/bathymetry, Eq. 1/2 plus `ISOSTATIC_REFERENCE_OFFSET_M`
-    (see above). `rho_c` is a scalar (this plate's own crust density) since a plate's crust
-    type doesn't vary node-to-node.
+    (see above). `rho_c` is normally a scalar (this plate's own crust density) since a
+    plate's crust type doesn't vary node-to-node -- but it broadcasts, so a caller spanning
+    several plates at once (erosion.apply_erosion) can pass a per-node density array.
 
     The calibration offset is folded into `shifted_bracket` *before* the water-loading
     branch, not added on afterward to each branch separately -- adding it after applying

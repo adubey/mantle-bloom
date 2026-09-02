@@ -67,23 +67,33 @@ def test_isostasy_derived_elevation_matches_hc_hm_state_at_generation():
             assert np.allclose(line.elevation, expected, atol=1e-6)
 
 
-def test_deform_applies_isostasy_as_a_delta_not_an_overwrite(stepped_world):
-    """After stepping (which runs erosion every step, mutating `elevation` directly with no
-    notion of Hc/Hm -- see lithosphere_plate.LithospherePlate.deform's own comment on why this
-    must be a delta), `elevation` should generally have drifted *away* from a bare
-    `isostatic_elevation(Hc, Hm)` readout on at least some nodes -- confirming erosion's
-    contribution survived the subsequent deform() call rather than being silently erased by
-    an unconditional overwrite back to pure isostasy."""
+def test_erosion_books_against_hc_and_survives_deform(stepped_world):
+    """Erosion now hands its per-step rock change to Hc and moves `elevation` by the Airy
+    response (erosion.apply_erosion), instead of mutating `elevation` alone. So after several
+    real steps: (1) Hc has moved off its generation value on plenty of nodes -- erosion's
+    contribution wasn't silently reset by deform()/regularize; and (2) `elevation` still
+    tracks `isostatic_elevation(Hc, Hm)`, i.e. the derived-field contract that used to break
+    the moment erosion ran now holds across a stepped world too."""
     from app import lithosphere
 
     world = stepped_world
-    any_diverged = False
+    fresh = generate_world(seed=11, **_COARSE_KWARGS)
+    fresh_hc_total = sum(float(line.crustal_thickness_m.sum()) for p in fresh.plates for line in p.lines if len(line))
+
+    residuals = []
     for plate in world.plates:
         rho_c = lithosphere.crust_density(plate.crust_type)
         for line in plate.lines:
             if len(line) == 0:
                 continue
-            pure_isostasy = lithosphere.isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-            if not np.allclose(line.elevation, pure_isostasy, atol=1e-6):
-                any_diverged = True
-    assert any_diverged
+            pure_isostasy = lithosphere.isostatic_elevation(
+                line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c
+            )
+            residuals.append(np.abs(line.elevation - pure_isostasy))
+    # The invariant erosion used to violate: elevation is the isostatic readout of the column
+    # (bar the odd MIN_CRUSTAL_THICKNESS / elevation-bound clamp).
+    assert np.median(np.concatenate(residuals)) < 5.0
+
+    # Erosion genuinely thinned crust somewhere (not a no-op that deform then papered over).
+    stepped_hc_total = sum(float(line.crustal_thickness_m.sum()) for p in world.plates for line in p.lines if len(line))
+    assert stepped_hc_total != pytest.approx(fresh_hc_total, rel=1e-6)

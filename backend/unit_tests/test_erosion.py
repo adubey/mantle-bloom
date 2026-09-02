@@ -107,6 +107,41 @@ def test_apply_erosion_can_lower_a_submerged_range():
     assert np.any(elevation_after[is_ocean] < elevation_before[is_ocean] - 1e-6)
 
 
+def test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates():
+    # Erosion now books its rock removal against Hc and only lets the isostatically
+    # compensated fraction reach the surface -- so a node that erodes drops its Hc by more
+    # than its surface, and `elevation` stays a faithful readout of isostatic_elevation(Hc).
+    from app import lithosphere
+
+    world = generate_world(seed=24, num_plates=8)
+    _, elev_before, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    hc_before = plates.collect_all_crustal_thickness(plates_in_order)
+    assert np.all(hc_before > 0.0)  # v2 world
+
+    erosion.apply_erosion(world, years=5_000_000)
+
+    _, elev_after, _, _, _, plates_after = erosion._gather_nodes(world)
+    hc_after = plates.collect_all_crustal_thickness(plates_after)
+
+    eroded = elev_after < elev_before - 5.0  # nodes that lost real height
+    assert np.any(eroded)
+    # The crustal column fell by more than the surface did (the rest is isostatic rebound).
+    assert np.all((hc_before - hc_after)[eroded] > (elev_before - elev_after)[eroded])
+
+    # elevation still tracks the Airy readout, per-plate (rho_c is per plate).
+    resid = []
+    for plate in plates_after:
+        z = lithosphere.isostatic_elevation(
+            plate.collect("crustal_thickness_m"),
+            plate.collect("mantle_lithosphere_thickness_m"),
+            lithosphere.crust_density(plate.crust_type),
+        )
+        resid.append(np.abs(z - plate.collect("elevation")))
+    resid = np.concatenate(resid)
+    assert np.median(resid) < 1.0
+    assert np.percentile(resid, 99) < 25.0
+
+
 def test_apply_erosion_keeps_elevation_finite_and_changing():
     world = generate_world(seed=21, num_plates=8)
     _, elevation_before, _, _, _, _ = erosion._gather_nodes(world)
