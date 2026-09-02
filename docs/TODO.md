@@ -322,11 +322,10 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
    neighbour the freed ground is re-claimed as new oceanic crust so the *node count* barely
    moves, but it stops the *land-fraction* bleed. Direction 2 is still the complement for the
    raw node count.
-2. **Cap a plate's total footprint against its crustal volume.** `sum(Hc * node_area)` is a
-   conserved-ish quantity; once a plate's node count implies an area well above what its
-   integrated `crustal_thickness_m` supports, stop `_grow_or_shrink_line_for_deform` /
-   `_claim_adjacent_territory` from extending it (the stretch *is* the bug -- item 2). This
-   also addresses the "giant 80%-drowned continental plate" directly. **Still open.**
+2. **Cap a plate's total footprint against its crustal volume.** **Still open -- now the
+   priority.** Expanded into a full solution design (retreat-mechanism inventory, suture-
+   orientation regime analysis, ranked mechanisms): see
+   [Continental ratchet: solution design](#continental-ratchet-solution) below.
 3. **Make frozen continent-continent overlaps actually resolve.** **DONE 2026-09-02.**
    `merge_split.update_overlap_progress` / `World.overlap_progress` is a second sustained-timer
    -- the territory-overlap sibling of `collision_progress` -- and `pop_ready_forced_merge`
@@ -341,6 +340,93 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
    `test_forced_merge_*` / `test_merge_probability_speed_boost_*` pin both. The deep-overlap ->
    `contested` -> Hc-thickening path (partly-addressed note below) still applies in the
    meantime, so a pair crumples-and-thickens while its forced-merge timer runs.
+
+<a id="continental-ratchet-solution"></a>
+### Continental ratchet: solution design (2026-09-02)
+
+Design pass on how to actually stop the ratchet -- item 5, this section, and the land-fraction
+sweep further down all reduce to it. Grounded in a full read of `lithosphere_plate.deform`,
+`_grow_or_shrink_line_for_deform`, `_claim_adjacent_territory`,
+`rheology.apply_convergent_deformation`, `elevation_lines.regularize_line` /
+`split_into_contiguous_runs`, `torque.classify_boundary_nodes`.
+
+**What retreat can and can't do today.** A plate is a stack of `ElevationLine` rows at fixed
+plate-local `phi`, each a theta-sorted node array plus parallel Hc/Hm arrays; isostasy derives
+`elevation` from Hc (you never set elevation directly). Growth/shrink is:
+- **end-only per row** -- `_grow_or_shrink_line_for_deform` trims `shrinkable` nodes only
+  where the run reaches `theta[0]` / `theta[-1]` (`contested_run_from_end`).
+- the interior carve is gated `crust_type == "oceanic"` -- carving a continental row mid-span
+  severs the landmass into a spurious defrag plate.
+- `_claim_adjacent_territory` only ever *adds* a row past a phi extreme. **Nothing anywhere
+  removes a whole leading row.**
+- the 2026-09-02 continental retreat (`_runs_of_at_least(contested_all, 3)`) does **not**
+  conserve the retreated column's volume -- it drops the mass and multiplies `fault_factor`
+  by `CONTINENTAL_COLLISION_SHORTENING_BOOST = 2.5` as a proxy.
+
+**Suture orientation vs. the row grid decides which retreat op is even possible.** Three
+regimes, two of them with no implementation:
+
+| Suture vs. *that plate's* rows | Contested nodes land... | Today |
+|---|---|---|
+| **Transverse** (crosses many phi-rows) | bunched at one theta-end of each row | end-trim works (runs >=3, ends only) |
+| **Oblique** (enters a row mid-span) | a run mid-row, live nodes both sides | nothing -- interior carve is oceanic-only; the tongue just thickens in place |
+| **Parallel** (compression along phi) | the whole frontmost row(s), full theta width | nothing -- no uncontested end, no whole-row removal -> continental plate *cannot* retreat |
+
+Gotcha: the grid is plate-local, each plate has its own `frame`, so one suture is
+simultaneously *parallel* to plate A's rows and *transverse* to plate B's. You cannot punt
+the parallel case hoping the neighbour handles retreat -- A's node pile ratchets regardless.
+
+**On the "delete a node from each plate, respawn a thicker one" idea** (mass-conserving suture
+consumption). Right direction, more honest than the `fault_factor` fudge, lets
+`CONTINENTAL_COLLISION_SHORTENING_BOOST` be deleted. Three refinements:
+1. *Not symmetric.* Each plate's `deform()` reads the other's polygon live. If both retreat
+   their frontmost node and the rate doesn't track the closing rate, you either never heal
+   the overlap or open a gap between two colliding continents that classifies `divergent` ->
+   spurious rift. Pick an indentor (larger plate / larger `|omega|` share of the closing
+   rate); the *overridden* plate loses its node, the *indentor* keeps its node and absorbs
+   the deleted column's Hc (this is Tibet).
+2. *Cap retreat at the closing distance* -- the same `n_distance_cap` the oceanic path uses,
+   else gap/overlap oscillation.
+3. *"Higher elevation" = larger Hc on the surviving node.* Sum the two columns' `Hc * area`;
+   `regularize_line` re-evens spacing next pass; isostasy lifts it.
+   Cleanest framing: accretion / terrane-transfer (move B's Hc onto A) rather than delete-and-
+   respawn. Only really helps the transverse regime (already partly handled) plus continent-
+   continent (forced-merge timer already backstops) -- so **lower priority than the volume
+   cap.**
+
+**Mechanisms, ranked.**
+
+1. **Volume-budget growth gate (this is "direction 2" above) -- highest leverage, do first.**
+   `lithosphere.node_area_m2(spacing)` is constant per node by design, so a plate's implied
+   mean crustal thickness is just `mean(crustal_thickness_m)`. The ratchet *dilutes* this --
+   every ratcheted margin node and every `_claim_adjacent_territory` node is seeded at oceanic
+   Hc (11 km, `growth_seed_thickness`). So:
+   - `n_continental = count(Hc >= 0.6 * REFERENCE_HC_CONTINENTAL_M)` per plate;
+   - if `len(all nodes) > k * n_continental` (k ~ 1.5-2, a realistic shelf/margin allowance),
+     suppress **both** end-growth and `_claim_adjacent_territory` for that plate this step;
+   - optionally let divergent thinning keep running so an over-stretched plate thins/drowns
+     back toward budget instead of just freezing.
+   Regime-independent, neighbour-independent, a few lines in `deform`. Kills both symptoms
+   (node count + "giant 80%-drowned continental plate"). A real craton sits near reference Hc,
+   nowhere near the cap.
+2. **Make `_claim_adjacent_territory` reversible -- a leading-row drop.** The structural fix
+   for the parallel-suture regime: the existing claim logic with the sign flipped, run at the
+   same point in `deform()`. If a plate's outermost phi-row is >= ~70% contested for >= N
+   sustained steps, delete the whole row. Whole-row removal keeps the plate contiguous (the
+   lobe-severing hazard is specific to *mid*-plate carving), so far safer than splitting rows.
+3. **Suture consumption as accretion, replacing (not stacking on)
+   `CONTINENTAL_COLLISION_SHORTENING_BOOST`.** As above -- physical honesty, lower urgency.
+4. **Periodic conservative continental re-lattice.** `build_lines_from_lattice` already
+   rebuilds a plate's rows from an outline + ownership predicate. Every K steps, refit the
+   lattice to the *current outline* and redistribute the existing total `sum(Hc * area)` onto
+   the new node set -- the 2-D generalisation of `regularize_line`. `grow_into` was rejected
+   for per-*step* use (its coverage radius balloons the plate); as a periodic re-fit-to-
+   outline that objection may not hold. Prototype-worthy.
+
+**Recommendation.** Volume cap (1) first as the regime-free runaway-killer; leading-row drop
+(2) for the parallel-suture gap; suture accretion (3) later for honesty. The design rule the
+regime table implies: for continental crust, prefer whole-row ops + volume caps over mid-row
+carving/splitting.
 
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
 "Bug 1" (below) added a `ring_room()` one-revolution cap in
@@ -549,12 +635,12 @@ retracted.)
   refresh a cheap connectivity mask each step regardless of `simulate_climate_biomes`, or mark
   the stat stale in the response / panel. (`node LF` -- a bare `elevation > sea_level` count --
   is always right and would be a good panel addition on its own.)
-- **The node-count + land-loss driver is the continental boundary ratchet**, same as the
-  "Node-count creep: continental boundaries grow but never retreat" item above. This sweep
-  makes **direction 2 there (cap a plate's footprint against its integrated crustal volume)**
-  the priority: an un-stretched continent neither tiles drowned margin outward (node count)
-  nor thins-and-drowns its interior (land). Directions 1 (contested-run retreat) and 3 (forced
-  merge) are partly landed and did not stop either trend.
+- **The node-count + land-loss driver is the continental boundary ratchet** -- see
+  [Continental ratchet: solution design](#continental-ratchet-solution). This sweep is what
+  makes the volume-cap (direction 2 there) the priority: an un-stretched continent neither
+  tiles drowned margin outward (node count) nor thins-and-drowns its interior (land).
+  Directions 1 (contested-run retreat) and 3 (forced merge) are partly landed and did not
+  stop either trend.
 
 ---
 
