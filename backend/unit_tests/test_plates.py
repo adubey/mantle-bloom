@@ -801,12 +801,12 @@ def test_runs_of_at_least_clears_short_true_runs():
     assert list(_runs_of_at_least(np.array([0, 0, 1, 1, 1], dtype=bool), 3)) == [0, 0, 1, 1, 1]
 
 
-def test_lithosphere_continental_edge_retreats_only_against_an_oceanic_neighbour():
-    """A continental line's contested end normally never retreats -- but where an *oceanic*
-    neighbour is overriding it (a passive margin / accretion front, not a continent-continent
-    suture) it now does, one node per step, breaking the node ratchet. A continental neighbour
-    overriding the same end still makes it crumple in place (no nodes lost)."""
-    from app.lithosphere_plate import CONTINENTAL_OCEANIC_RETREAT_MIN_RUN, LithospherePlate
+def test_lithosphere_continental_contested_edge_retreats():
+    """A continental line's contested end retreats one node per step whether the overriding
+    neighbour is oceanic (a passive margin / accretion front, breaking the node ratchet) or
+    continental (a suture whose territory overlap is consumed into the orogen rather than
+    frozen for tens of Myr). Both cases lose real theta extent."""
+    from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, LithospherePlate
     from app.lithosphere import reference_thickness
     from app.world import World
 
@@ -850,8 +850,58 @@ def test_lithosphere_continental_edge_retreats_only_against_an_oceanic_neighbour
 
     retreat_against_ocean = _high_end_retreat("oceanic")
     retreat_against_continent = _high_end_retreat("continental")
-    assert retreat_against_ocean > CONTINENTAL_OCEANIC_RETREAT_MIN_RUN * spacing
-    assert retreat_against_continent == 0.0
+    assert retreat_against_ocean > CONTINENTAL_CONTESTED_RETREAT_MIN_RUN * spacing
+    assert retreat_against_continent > CONTINENTAL_CONTESTED_RETREAT_MIN_RUN * spacing
+
+
+def test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate(monkeypatch):
+    """The overlap a retreating continent-continent suture consumes is thrust into the belt,
+    not lost: contested nodes there accumulate `CONTINENTAL_COLLISION_SHORTENING_BOOST` times
+    the plastic thickening a plain (fault_factor 1) collision node would -- so a consumed
+    overlap still builds real relief. Same geometry with the boost forced to 1.0 thickens
+    strictly less."""
+    from app import rheology
+    from app.lithosphere import reference_thickness
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    hc0, hm0 = reference_thickness("continental")
+    spacing = line_spacing_rad(1.0)
+
+    def _plate(pid, theta_lo, theta_hi, n, omega_z=0.0):
+        theta = np.linspace(theta_lo, theta_hi, n)
+        line = ElevationLine(
+            phi=0.2,
+            theta=theta,
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, hc0),
+            mantle_lithosphere_thickness_m=np.full(n, hm0),
+        )
+        filler = ElevationLine(
+            phi=-0.6,
+            theta=np.linspace(-0.2, 0.2, 8),
+            elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, hc0),
+            mantle_lithosphere_thickness_m=np.full(8, hm0),
+        )
+        return LithospherePlate(
+            plate_id=pid, frame=np.eye(3), crust_type="continental", lines=[line, filler],
+            omega=np.array([0.0, 0.0, omega_z]),
+        )
+
+    def _suture_hc_gain(boost: float) -> float:
+        monkeypatch.setattr(rheology, "CONTINENTAL_COLLISION_SHORTENING_BOOST", boost)
+        continent = _plate(0, -0.5, 0.5, 40, omega_z=1e-8)  # head-on convergence, well past yield
+        neighbour = _plate(1, 0.15, 0.9, 40)  # overlaps the continent's high end -> contested
+        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+        continent.deform(world, [neighbour], years=1_000_000, max_distance=1.5 * spacing)
+        hc = np.concatenate([ln.crustal_thickness_m for ln in continent.lines])
+        return float(hc.max() - hc0)
+
+    boosted = _suture_hc_gain(rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST)
+    plain = _suture_hc_gain(1.0)
+    assert plain > 0.0  # the collision clears yield at all
+    assert boosted > plain * 1.8
 
 
 def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():

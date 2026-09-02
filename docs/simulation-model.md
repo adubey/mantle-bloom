@@ -365,17 +365,28 @@ trigger (contested, not a positive closing rate) changed:
   If an end is contested,
   remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
   the safety ceiling -- but never the plate's last remaining node in a line. **A continental
-  end only shrinks where an *oceanic* neighbour is overriding it** (`torque` /
-  `LithospherePlate.deform` supply a per-node `neighbor_is_oceanic` flag; the retreatable set
-  is `contested & neighbor_is_oceanic`, further gated to runs of at least
-  `CONTINENTAL_OCEANIC_RETREAT_MIN_RUN` consecutive such nodes so bounding-polygon envelope
-  fuzz can't nibble a stable coast or sever a lobe). A continent-continent *suture* still
-  crumples in place (Hc thickens -> uplift) and never retreats. This breaks the **continental
-  node ratchet** -- before it, a continental line's contested (leading) end was a no-op every
-  step while its divergent (trailing) end kept growing, so every continent tiled itself with
-  ever more drowned ~-3.5 km accreted-margin nodes (`growth_seed_thickness`, above) and the
-  dry-land fraction drifted down under a fixed sea level with nothing able to compensate. The
-  interior-subduction carve below stays oceanic-only for the same lobe-severing reason.
+  end retreats whether the overriding neighbour is oceanic or continental**, gated to runs of
+  at least `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN` consecutive contested nodes (so a
+  bounding-polygon envelope-fuzz node can't nibble a stable coast) and to one node per step.
+  Against an *oceanic* neighbour this is a passive margin / accretion front (the slab descends
+  under the buried continental node). Against a *continental* neighbour it is a suture whose
+  territory overlap is **consumed into the orogen**: the retreated crust isn't lost, it's
+  thrust into the belt -- `LithospherePlate.deform` channels that shortening into extra
+  plastic thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`,
+  a >1 multiplier on `fault_factor`), so a consumed overlap still builds real relief. Before
+  this a continent-continent suture only crumpled in place and never retreated, so a deep
+  territory overlap just sat there for tens of Myr until `merge_split`'s forced-merge timer
+  fused the pair (the `overlapAge` view's stalled multi-plate collisions; on
+  `seed 656865324` @ 60 My, plate 8 sat 17% on top of plate 6 since 33 My and the
+  30%-forced-merge threshold was never reached -- with retreat it drains to ~2% within
+  ~1.5 My). Retreat also breaks the **continental node ratchet** -- before it, a continental
+  line's contested (leading) end was a no-op every step while its divergent (trailing) end
+  kept growing, so every continent tiled itself with ever more drowned ~-3.5 km
+  accreted-margin nodes (`growth_seed_thickness`, above) and the dry-land fraction drifted
+  down under a fixed sea level with nothing able to compensate. The interior-subduction carve
+  below stays oceanic-only (a continental row is only ever shrunk from its ends) for the
+  lobe-severing reason -- carving a continental row's middle would sever the landmass into a
+  spurious defragmentation plate.
   Growth and
   *ordinary* shrink are end-only: each `ElevationLine` is a single contiguous arc, and
   inserting/deleting anywhere but an end would break that. The one interior case handled is
@@ -491,6 +502,16 @@ Every node's onset year is also stamped onto
 `ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
 see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
+
+**Consuming a continent-continent overlap (2026-09).** A contested continental end now
+retreats one node per step against a *continental* neighbour too, not only an oceanic one
+(see [Boundary evolution](#boundary-evolution) / `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`), so
+the territory overlap of a stalled suture is consumed geologically instead of only by the
+forced-merge timer below. The retreated shortening is channelled into extra plastic
+thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`), so the
+overlap crumples into an orogen rather than the boundary just sliding back. On
+`seed 656865324` @ 60 My, plate 8's 17%-since-33-My overlap on plate 6 drains to ~2% within
+~1.5 My, with no spurious defragmentation plates and a flat node count.
 
 **Forced merge for a stuck continental pile-up (2026-09).** A continent-continent overlap
 that classifies contested now *thickens*, but the two plates still don't *fuse* -- and the

@@ -187,6 +187,14 @@ geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactfu
    nodes have been overlapping and *since when*, so a genuinely stuck overlap is legible
    rather than a bare current fraction.
 
+   **Further addressed 2026-09-02** (seed 656865324 @ 60 My): continental contested ends now
+   *retreat* against a continental neighbour too (direction 1 above), so a stalled suture
+   consumes its own territory overlap geologically rather than waiting on the forced-merge
+   timer (direction 3). Plate 8's 17%-since-33-My overlap on plate 6 -- below the 30%
+   forced-merge threshold, so `overlap_progress` never fired -- drains to ~2% within ~1.5 My.
+   The retreated shortening feeds extra Hc thickening (`CONTINENTAL_COLLISION_SHORTENING_
+   BOOST`) so the overlap crumples into an orogen.
+
 5. **Node-count blowup persists** (the original headline symptom): ~140k nodes at 85 My for
    `node_density=4` vs a clean-tiling estimate of ~130k *at 1x* -- consistent with the
    ~15-75%-over range the 2026-08-30 table recorded, i.e. not fixed, just no longer
@@ -295,19 +303,25 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
 **Directions worth trying, roughly in effort order:**
 
 1. **Retreat continental edges only against an oceanic neighbour, or only a deep contested
-   run.** **DONE 2026-09-02 (seed 495717634 @ 254.8 My).** `LithospherePlate.deform` now sets
-   `shrinkable_all = _runs_of_at_least(contested_all & inputs.neighbor_is_oceanic,
-   CONTINENTAL_OCEANIC_RETREAT_MIN_RUN)` for continental crust (was all-False), and the
+   run.** **DONE 2026-09-02, then extended to continental neighbours 2026-09-02
+   (seed 656865324 @ 60 My).** `LithospherePlate.deform` now sets `shrinkable_all =
+   _runs_of_at_least(contested_all, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)` for continental
+   crust (was all-False, then briefly `contested_all & inputs.neighbor_is_oceanic`), and the
    interior-subduction carve is gated to `crust_type == "oceanic"` so a continental row can
-   never be carved mid-line into a spurious defrag plate. `neighbor_is_oceanic` +
-   `CONTINENTAL_OCEANIC_RETREAT_MIN_RUN = 3` + the pre-existing `n_distance_cap` (= 1 at real
-   continental drift rates) are the "gate on ocean, gate on run length, cap at 1 node/step"
-   this direction called for. `test_lithosphere_continental_edge_retreats_only_against_an_
-   oceanic_neighbour` pins it. **Caveat, as predicted here:** direction 1 alone barely moves
-   the *node count* -- freed ground is re-claimed by the oceanic neighbour as new oceanic
-   crust -- but it does stop the *land-fraction* bleed (the reclaimed ground is now sea floor,
-   not another drowned continental accreted-margin node). Direction 2 is still the complement
-   for the raw node count.
+   never be carved mid-line into a spurious defrag plate. `CONTINENTAL_CONTESTED_RETREAT_MIN_
+   RUN = 3` + the pre-existing `n_distance_cap` (= 1 at real continental drift rates) are the
+   "gate on run length, cap at 1 node/step" this direction called for; the earlier
+   ocean-only gate is dropped because a stalled continent-continent suture needs to consume
+   its overlap too (item 4, below). The retreated shortening is channelled into extra plastic
+   thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`, a >1
+   `fault_factor` multiplier) so the consumed overlap builds real relief.
+   `test_lithosphere_continental_contested_edge_retreats` /
+   `test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate` pin it. On
+   seed 656865324 the plate-8/6 17%-since-33-My overlap drains to ~2% within ~1.5 My, plate
+   count flat at 16, node count flat. **Caveat, as predicted here:** against an *oceanic*
+   neighbour the freed ground is re-claimed as new oceanic crust so the *node count* barely
+   moves, but it stops the *land-fraction* bleed. Direction 2 is still the complement for the
+   raw node count.
 2. **Cap a plate's total footprint against its crustal volume.** `sum(Hc * node_area)` is a
    conserved-ish quantity; once a plate's node count implies an area well above what its
    integrated `crustal_thickness_m` supports, stop `_grow_or_shrink_line_for_deform` /
