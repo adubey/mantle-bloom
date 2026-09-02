@@ -1,0 +1,88 @@
+# Builds the self-contained desktop binary for macOS and Windows.
+# See docs/packaging.md. PyInstaller can't cross-compile, hence the OS matrix.
+#
+# Trigger: push a tag like v0.1.0, or run manually from the Actions tab.
+# Artifacts are attached to the workflow run (and to the Release, for tag builds).
+name: package
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            artifact: mantle-bloom-macos-arm64
+          - os: windows-latest
+            artifact: mantle-bloom-windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          # 3.13 rather than 3.14: numba/llvmlite/av wheels are unambiguously
+          # available here, and the app code is compatible (see docs/packaging.md).
+          python-version: "3.13"
+
+      - name: Build frontend
+        working-directory: frontend
+        env:
+          VITE_API_BASE: ""
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install backend + build deps
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: PyInstaller
+        run: pyinstaller bin/mantle-bloom.spec --noconfirm --clean
+
+      - name: Smoke-test the binary (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          MANTLE_BLOOM_PORT=8799 ./dist/mantle-bloom/mantle-bloom &
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null http://127.0.0.1:8799/ && break || sleep 2
+          done
+          curl -sf -o /dev/null -w "generate %{http_code}\n" -X POST \
+            http://127.0.0.1:8799/world/generate -H 'content-type: application/json' -d '{"seed":1}'
+          curl -sf -o /dev/null -w "step %{http_code}\n" -X POST \
+            http://127.0.0.1:8799/world/step -H 'content-type: application/json' -d '{"years":1000000}'
+          kill %1
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          cd dist
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ditto -c -k --keepParent mantle-bloom.app ../${{ matrix.artifact }}.zip
+          else
+            7z a ../${{ matrix.artifact }}.zip mantle-bloom
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}.zip
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact }}.zip

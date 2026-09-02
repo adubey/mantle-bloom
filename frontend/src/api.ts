@@ -1,6 +1,10 @@
 // Overridable at build/dev time via VITE_API_BASE (see bin/restart.sh's --backend-port), so a
 // non-default backend port stays wired up correctly instead of silently pointing at :8000.
-const API_ROOT = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
+// With no override, a production build talks to its own origin ("" -> same host/port) -- that's
+// the packaged single-process app, where FastAPI serves this bundle itself (see
+// backend/app/main.py's mount_frontend). A dev build with no override still points at :8000.
+const API_ROOT =
+  import.meta.env.VITE_API_BASE ?? (import.meta.env.PROD ? "" : "http://localhost:8000");
 
 export const API_BASE = API_ROOT;
 

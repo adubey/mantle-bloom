@@ -12,6 +12,8 @@ An Earth-like planet simulator, including plate tectonics, climate and biosphere
 - **[docs/api-reference.md](docs/api-reference.md)** -- the three backend routes.
 - **[docs/debugging.md](docs/debugging.md)** -- diagnostic views, endpoints, and the
   `python -m app.plate_diagnostics` offline dump for checking a long run's health.
+- **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
+  (`bin/package.sh`); **[docs/HOSTING.md](docs/HOSTING.md)** -- putting it on the public web.
 
 ## Getting started
 
@@ -46,20 +48,31 @@ cd ..
 ./bin/restart.sh
 ```
 
-Starts the backend (FastAPI/uvicorn on `:8000`) and the frontend (on `:5173`) in the
-background and waits for both to respond. By default the frontend is built and served as a
-production build (`vite build` + `vite preview`); pass `--dev` to run the Vite dev server
-(hot module reload) instead:
+Builds the frontend and starts the **single-process app** in the background on `:8000` --
+FastAPI serves the frontend bundle from its own origin (`backend/app/desktop.py`), the same
+setup `bin/package.sh` freezes into a binary. Waits for it to respond, then prints the URL.
+Open `http://localhost:8000`, click **Generate World**, then **Step** or **Play**.
+
+For active frontend work, `--dev` runs the **two-process** setup instead -- uvicorn plus
+the Vite dev server (hot module reload) on `:5173`:
 
 ```bash
-./bin/restart.sh --dev
+./bin/restart.sh --dev   # then open http://localhost:5173
 ```
 
-Logs land in `/tmp/mantle-bloom-backend-<backend-port>.log` and
-`/tmp/mantle-bloom-frontend-<frontend-port>.log` (e.g. `/tmp/mantle-bloom-backend-8000.log`). Open
-`http://localhost:5173`, click **Generate World**, then **Step** or **Play**.
+`--port` / `--frontend-port` (the latter `--dev` only) move the ports; `--stay-awake` wraps
+the processes in `caffeinate`. Logs land in `/tmp/mantle-bloom-<port>.log` (and
+`/tmp/mantle-bloom-frontend-<frontend-port>.log` in `--dev`).
 
-Stop everything with `./bin/stop.sh`.
+Stop everything with `./bin/stop.sh` (pass the same `--port` you started with, if any).
+
+### As a standalone desktop binary
+
+`./bin/package.sh` bundles the single-process app into a self-contained executable (no
+Python or Node needed to run it, opens a browser on launch) under `dist/`. Run it on the OS
+you want to ship for -- PyInstaller doesn't cross-compile; CI
+(`.github/workflows/package.yml`) produces the macOS and Windows builds. See
+[docs/packaging.md](docs/packaging.md).
 
 ### Running the tests
 
@@ -91,8 +104,9 @@ mantle-bloom/
     src/             # React + TypeScript + Canvas map viewer
   docs/              # you are here
   bin/
-    restart.sh       # start/restart the backend and frontend server
+    restart.sh       # start/restart the single-process app (--dev for the Vite HMR setup)
     stop.sh          # stop everything restart.sh started
+    package.sh       # build the self-contained desktop binary (see docs/packaging.md)
     unit_test.sh     # run the backend's fast unit test suite
     stress_test.sh   # run the backend's slow, full-simulation test suite
 ```

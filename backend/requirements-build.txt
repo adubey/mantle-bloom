@@ -1,0 +1,4 @@
+# Extra deps for producing the packaged desktop binary (see bin/mantle-bloom.spec).
+# Install on top of requirements.txt, in the same venv.
+-r requirements.txt
+pyinstaller>=6.11
