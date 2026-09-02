@@ -294,28 +294,37 @@ def test_draw_rivers_only_draws_segments_above_the_flow_floor():
     assert above_floor > 0
 
 
-def test_river_draw_min_flow_increases_with_generation_resolution():
-    # A world generated at a higher elevation-point density and/or climate & biome resolution
-    # should require a higher flow_accum to draw a river segment at all, since flow_accum is
-    # being swept from a finer-grained network -- see river_draw_min_flow's own docstring.
+def test_river_draw_min_flow_rises_gently_with_node_density():
+    # The draw floor is calibrated per node_density (see RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY):
+    # it goes up with resolution -- a finer grid resolves more small separate catchments as
+    # their own networks -- but only gently, since flow_accum at a river mouth is a physical
+    # water total, nearly resolution-independent. It must NOT track total node/cell count the
+    # way the old node_density * climate_density**2 scaling did.
     world = _world()
-    world.node_density = 1.0
-    world.climate_density = 1.0
-    lowest = render_image.river_draw_min_flow(world)
-    assert lowest == render_image.RIVER_DRAW_MIN_FLOW
 
-    world.node_density = 4.0
-    higher_node_density = render_image.river_draw_min_flow(world)
-    assert higher_node_density > lowest
+    floors = {}
+    for nd in (0.5, 1.0, 2.0, 4.0):
+        world.node_density = nd
+        floors[nd] = render_image.river_draw_min_flow(world)
 
-    world.node_density = 1.0
-    world.climate_density = 2.0
-    higher_climate_density = render_image.river_draw_min_flow(world)
-    assert higher_climate_density > lowest
+    # Monotonically increasing across the four Detail presets.
+    assert floors[0.5] < floors[1.0] < floors[2.0] < floors[4.0]
+    # The Medium preset is the published reference constant.
+    assert floors[1.0] == render_image.RIVER_DRAW_MIN_FLOW
+    # "Gently": the Very-High floor is only a single-digit multiple of the Medium one, not the
+    # ~64x an area/count-based (d**3) scaling would give.
+    assert floors[4.0] / floors[1.0] < 8.0
 
-    world.node_density = 4.0
-    world.climate_density = 2.0
-    assert render_image.river_draw_min_flow(world) > max(higher_node_density, higher_climate_density)
+    # climate_density is not an independent factor -- the UI locks it to node_density, and the
+    # per-node_density calibration already covers both moving together.
+    world.node_density = 2.0
+    world.climate_density = 0.5
+    assert render_image.river_draw_min_flow(world) == floors[2.0]
+
+    # Off-preset node_density (API-only) still resolves to a sane, monotonic value.
+    world.node_density = 3.0
+    world.climate_density = 3.0
+    assert floors[2.0] < render_image.river_draw_min_flow(world) < floors[4.0]
 
 
 def test_render_png_scales_visual_constants_with_resolution():

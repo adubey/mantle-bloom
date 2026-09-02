@@ -79,7 +79,7 @@ LAKE_COLOR_RGB = (58, 92, 122)
 # where a tributary's own flow merges in), this keeps a river's drawn width flat until a real
 # confluence, and wider from then on toward the mouth -- never gradually thickening on its own
 # -- only *which* segments get drawn at all varies with flow magnitude directly, via
-# RIVER_FLOW_PERCENTILE below.
+# hydrology's RIVER_FLOW_PERCENTILE and RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY below.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.1
 # A light Gaussian blur of just the river-line mask before compositing the fixed river color
@@ -100,27 +100,43 @@ RIVER_LINE_WIDTH_MAX_TIERS = 3
 # don't clutter every general-purpose view -- unlike the River Inspector (main.py's
 # /world/rivers, RiverInspector.tsx), which deliberately keeps showing every is_river network
 # regardless of flow_rate, since picking a small tributary out from the full list is exactly
-# what that view is for. This is the floor at the *lowest* generation resolution (node_density
-# == climate_density == 1.0) -- see river_draw_min_flow below for how a world generated at a
-# higher elevation-point density and/or climate & biome resolution scales it up from here, not
-# a value read directly by _draw_rivers.
-RIVER_DRAW_MIN_FLOW = 5_000.0
+# what that view is for.
+#
+# Calibrated per World.node_density (the frontend's single "Detail" dial sets climate_density
+# to the same value -- see App.tsx's DETAIL_CHOICES -- so these four entries cover every
+# generation resolution the UI can actually produce). Each value was picked empirically: at
+# that resolution, generate a spread of seeds, step each to a mature world, and take the floor
+# that leaves roughly 5-10 distinct river networks drawn on the general-purpose map views
+# (wetter/higher-relief worlds land nearer 10, arid ones nearer 5, which is the point -- a
+# desert planet *should* show fewer rivers than a rainforest one). flow_accum at a river mouth
+# is very nearly resolution-independent (it's a physical upstream-water total, not a per-node
+# count), so the floor rises only gently with resolution -- just enough to offset a finer grid
+# resolving proportionally more small separate catchments as their own networks -- rather than
+# tracking total node/cell count the way an earlier `RIVER_DRAW_MIN_FLOW * node_density *
+# climate_density**2` scaling did (that put the Very-High-detail floor ~64x the Medium one and
+# left the default-detail map with essentially no rivers on it at all).
+RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY = {
+    0.5: 4_000.0,
+    1.0: 6_500.0,
+    2.0: 11_000.0,
+    4.0: 20_000.0,
+}
+# The Medium (reference) entry, also the base for the off-preset fallback in river_draw_min_flow.
+RIVER_DRAW_MIN_FLOW = RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY[1.0]
 
 
 def river_draw_min_flow(world: World) -> float:
-    """The effective RIVER_DRAW_MIN_FLOW floor for `world`'s own generation resolution --
-    higher at a higher elevation-point density (World.node_density) and/or climate & biome
-    resolution (World.climate_density), since both mean flow_accum is being swept from a
-    finer-grained network with more individual nodes/cells each contributing to it, so the
-    same absolute floor would let proportionally more low-magnitude clutter through than it
-    does at the reference (1.0, 1.0) resolution this constant was tuned at. Scales each
-    density the same way its own module already relates it to node/cell *count* -- linearly
-    for node_density (plates.line_spacing_rad's own docstring: node_density itself is the
-    count-scaling factor relative to the reference), squared for climate_density
-    (climate.grid_dimensions scales *both* grid dimensions by climate_density, so cell count
-    scales by climate_density**2) -- rather than inventing a third, unrelated scaling rule
-    here."""
-    return RIVER_DRAW_MIN_FLOW * world.node_density * (world.climate_density ** 2)
+    """The minimum flow_accum a river segment needs to be drawn at all on the general map
+    views, for `world`'s own generation resolution -- see RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY
+    for the calibration and why it rises only gently with resolution. `climate_density` isn't
+    a separate factor: the UI locks it to `node_density` (one "Detail" dial), and the
+    per-node_density calibration already accounts for both moving together. Values off the
+    preset set (only reachable by calling the API directly, not through the UI) fall back to a
+    power-law fit through the calibrated points."""
+    table = RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY
+    if world.node_density in table:
+        return table[world.node_density]
+    return RIVER_DRAW_MIN_FLOW * world.node_density ** 0.85
 
 
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
