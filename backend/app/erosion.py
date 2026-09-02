@@ -758,18 +758,27 @@ def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
     well below that inside a bay or behind a barrier, above it on a headland or peninsula
     tip. Two radius counts (`query_ball_point(..., return_length=True)`), density-independent
     -- not a fixed-k neighbourhood, whose real radius would shrink as node_density rises. 0
-    everywhere for a world too small to have a meaningful neighbourhood."""
+    everywhere for a world too small to have a meaningful neighbourhood.
+
+    The second count is of each node's *non*-open neighbours (land + connectivity-enclosed
+    water), not its open-ocean ones, with `ocean_count` recovered as `total - non_open_count`:
+    every node is in exactly one of the two sets (self included), so the subtraction is exact
+    and the returned field is bit-identical, but on a mostly-ocean world the non-open set is
+    several times smaller, making both that tree build and its radius query much cheaper."""
     n = len(points)
     if n <= SLOPE_NEIGHBOR_COUNT:
         return np.zeros(n)
     workers = query_workers(n)
     tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
     total = tree.query_ball_point(points, COASTAL_OPENNESS_RANGE_RAD, workers=workers, return_length=True)
-    ocean_idx = np.nonzero(is_ocean)[0]
-    if len(ocean_idx) == 0:
+    if not np.any(is_ocean):
         return np.zeros(n)
-    ocean_tree = cKDTree(points[ocean_idx], balanced_tree=False, compact_nodes=False)
-    ocean_count = ocean_tree.query_ball_point(points, COASTAL_OPENNESS_RANGE_RAD, workers=workers, return_length=True)
+    non_open_idx = np.nonzero(~np.asarray(is_ocean, dtype=bool))[0]
+    if len(non_open_idx) == 0:
+        return total / np.maximum(total, 1)
+    non_open_tree = cKDTree(points[non_open_idx], balanced_tree=False, compact_nodes=False)
+    non_open_count = non_open_tree.query_ball_point(points, COASTAL_OPENNESS_RANGE_RAD, workers=workers, return_length=True)
+    ocean_count = total - non_open_count
     return ocean_count / np.maximum(total, 1)
 
 
@@ -881,6 +890,22 @@ def _spread_coastal_leveling(
         result[source_idx] = source_amount[source_idx]
         return result
 
+    # Only sources within INFILL_RANGE_RAD of some sink can place anything. On a mostly-ocean
+    # world `source_idx` is ~every ocean node (each carries a sliver of redirected submarine/
+    # coastal spoil) while the sink band is a thin coastal ribbon, so this usually cuts the
+    # k-NN query below from ~10^5 source points to a few thousand. Every excluded source keeps
+    # its full amount -- bit-identical to the `any_reachable is False` branch that would
+    # otherwise handle it once its k nearest sinks all came back beyond the range.
+    sink_tree = cKDTree(points[sink_idx], balanced_tree=False, compact_nodes=False)
+    near_sink_count = sink_tree.query_ball_point(
+        points[source_idx], INFILL_RANGE_RAD, workers=query_workers(len(source_idx)), return_length=True
+    )
+    out_of_range = source_idx[near_sink_count == 0]
+    result[out_of_range] = source_amount[out_of_range]
+    source_idx = source_idx[near_sink_count > 0]
+    if len(source_idx) == 0:
+        return result
+
     # Per-step capacity: room to the datum, but never more than the grind side can take off in
     # the same step -- so a checkerboard hollow and its neighbouring bump both move ~one
     # LEVELING_RATE step toward the datum, damping the dither instead of slamming the hollow
@@ -897,9 +922,8 @@ def _spread_coastal_leveling(
     priority = np.where(is_barrier, BARRIER_PRIORITY, 1.0)
     sink_pref = priority * attract  # distance- and room-independent part of the weight
 
-    tree = cKDTree(points[sink_idx], balanced_tree=False, compact_nodes=False)
     k = min(LEVELING_SPREAD_NEIGHBOR_COUNT, len(sink_idx))
-    dist, nearby = tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
+    dist, nearby = sink_tree.query(points[source_idx], k=k, workers=query_workers(len(source_idx)))
     if k == 1:
         dist = dist[:, None]
         nearby = nearby[:, None]
