@@ -21,6 +21,13 @@ from scipy.spatial import cKDTree
 
 from . import geometry
 from .elevation_lines import (
+    ELEV_CHANGE_COLLISION,
+    ELEV_CHANGE_MIN_DELTA_M,
+    ELEV_CHANGE_NEW_CRUST,
+    ELEV_CHANGE_RIFT,
+    ELEV_CHANGE_SUBDUCTION_ARC,
+    ELEV_CHANGE_TRENCH,
+    ELEV_CHANGE_VOLCANO,
     ElevationLine,
     build_lines_from_lattice,
     line_spacing_rad,
@@ -166,6 +173,23 @@ class LithospherePlate(PlateWithLines):
             elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
             new_elevation = rheology.clip_elevation_bounds(line.elevation + (elevation_after - elevation_before))
 
+            # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
+            # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
+            # node this step, gated on ELEV_CHANGE_MIN_DELTA_M so a node barely grazed by a
+            # fading boundary force keeps its older provenance. This engine (unlike v1's
+            # plates.deform) has no separate transform-uplift term, so contested convergence
+            # and divergent thinning/melting are the only structural codes it emits.
+            neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
+            reason = line.elev_change_reason.copy()
+            moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
+            if self.crust_type == "continental":
+                reason[contested & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
+                reason[contested & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
+            else:
+                reason[contested & moved] = ELEV_CHANGE_TRENCH
+            reason[divergent & moved] = ELEV_CHANGE_RIFT
+            reason[melting] = ELEV_CHANGE_VOLCANO
+
             updated_line = line.replace(
                 elevation=new_elevation,
                 crustal_thickness_m=hc,
@@ -173,6 +197,7 @@ class LithospherePlate(PlateWithLines):
                 divergent_age_myr=new_age,
                 is_volcano=is_volcano,
                 volcano_active_years_remaining=volcano_remaining,
+                elev_change_reason=reason,
             )
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
@@ -331,6 +356,8 @@ class LithospherePlate(PlateWithLines):
                         fill = new_hc
                     elif name == "mantle_lithosphere_thickness_m":
                         fill = new_hm
+                    elif name == "elev_change_reason":
+                        fill = np.full(n_new, ELEV_CHANGE_NEW_CRUST, dtype=values.dtype)
                     else:
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.append(values, fill)
@@ -350,6 +377,8 @@ class LithospherePlate(PlateWithLines):
                         fill = new_hc
                     elif name == "mantle_lithosphere_thickness_m":
                         fill = new_hm
+                    elif name == "elev_change_reason":
+                        fill = np.full(n_new, ELEV_CHANGE_NEW_CRUST, dtype=values.dtype)
                     else:
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.insert(values, 0, fill)
@@ -409,6 +438,7 @@ class LithospherePlate(PlateWithLines):
                     elevation=elevation_open,
                     crustal_thickness_m=hc_open,
                     mantle_lithosphere_thickness_m=hm_open,
+                    elev_change_reason=np.full(n_open, ELEV_CHANGE_NEW_CRUST, dtype=float),
                 )
             )
 

@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .elevation_lines import ERUPTION_ELEVATION_M, MAX_ELEVATION_M, MIN_ELEVATION_M
+from .elevation_lines import ELEV_CHANGE_VOLCANO, ERUPTION_ELEVATION_M, MAX_ELEVATION_M, MIN_ELEVATION_M
 from .plates import PlateWithLines
 
 if TYPE_CHECKING:
@@ -72,6 +72,9 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
         new_mineral_deposit = np.clip(
             line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
         )
+        # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*):
+        # an eruption always adds ERUPTION_ELEVATION_M, well past the min-delta threshold.
+        new_reason = np.where(erupts, ELEV_CHANGE_VOLCANO, line.elev_change_reason)
 
         # theta unchanged -- line.replace copies every other field (including
         # channel_width) from the existing line automatically. See plates.ElevationLine's
@@ -80,7 +83,10 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
         plate.replace_line(
             line_index,
             line.replace(
-                elevation=new_elevation, volcano_active_years_remaining=new_remaining, mineral_deposit_m=new_mineral_deposit
+                elevation=new_elevation,
+                volcano_active_years_remaining=new_remaining,
+                mineral_deposit_m=new_mineral_deposit,
+                elev_change_reason=new_reason,
             ),
         )
 

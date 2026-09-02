@@ -266,6 +266,41 @@ rather than erroring.
 
 ---
 
+## `elevReason` render view (last elevation change)
+
+`GET /world/render?view=elevReason` (Map View dropdown: **Debug > Last elevation change**)
+colours every node by `ElevationLine.elev_change_reason` -- one categorical
+`elevation_lines.ELEV_CHANGE_*` code per node recording *which process last moved that node's
+elevation* by more than `ELEV_CHANGE_MIN_DELTA_M` (2 m in a step). Warm hues = crust being
+built (collision / subduction-arc / transform / rift / new crust / volcano), cool blues =
+crust being planed down or buried (erosion / deposition / coastal planation / submarine),
+pale = glacial flattening, plain grey = **untouched since generation**. Coastline overlaid
+for orientation. `render_image._render_elev_reason_view` / `_ELEV_REASON_RGB`; labels in
+`elevation_lines.ELEV_CHANGE_LABELS`, frontend legend in `legendData.ts`'s
+`ELEV_REASON_ENTRIES` (hand-synced, same precedent as the biome palette).
+
+What it's for: "there should be more terrain features -- why is so much of this world flat?"
+The geomorph view above shows *this step's* rate; this shows the *standing* provenance
+accumulated over the run. A large grey (NONE) expanse on land means that terrain was never
+tectonically built -- its only relief is the generation-time noise texture, slowly being
+worn/buried away. Large erosion/deposition/coastal-leveling expanses mean it *is* being
+actively flattened now. Collision / subduction-arc / rift belts are where relief is still
+being made -- if those are thin or absent while the continents are large and quiescent, the
+tectonic engine has stalled and nothing is replacing the relief erosion removes.
+
+Provenance is written by `plates`/`lithosphere_plate.deform` (tectonic codes, re-stamped
+every step a belt stays active), `volcanism` (eruptions), and `erosion` (geomorphic codes).
+A structural code is **sticky**: erosion only overrides it when this step's net geomorphic
+change is itself large (`ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR`, ~100 m/Myr), so ordinary
+background wash on an actively-rising range doesn't relabel it "erosion".
+
+Unlike `geomorph`, the field is *persistent* (rides the plate through rotation/split/merge,
+survives save/load). But a save written before this field existed -- or a world never stepped
+since -- reads all-NONE and fills in over the next few steps. `ELEV_CHANGE_MIN_DELTA_M` /
+`ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR` (elevation_lines.py) tune the two thresholds.
+
+---
+
 ## River & Lake Inspectors
 
 `GET /world/rivers` / `GET /world/lakes` and their map views

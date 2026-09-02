@@ -181,7 +181,7 @@ Response echoes back the world's current values for all five:
 { "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -239,7 +239,12 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   -- erosion minus every deposition pathway, no tectonics) on a diverging warm/cool scale plus
   the coastline overlay, so the per-step lumpiness of near-sea-level deposition is legible; a
   flat neutral field before the world has been stepped (or on a freshly loaded save, which
-  doesn't persist the cache). `"oceanCfdSediment"`/
+  doesn't persist the cache). `"elevReason"` (a debug view, see
+  [debugging.md](debugging.md#elevreason-render-view-last-elevation-change)) colours every
+  node by which process last moved its elevation -- a persistent per-node code
+  (`ElevationLine.elev_change_reason`), so unlike `"geomorph"` it accumulates over the whole
+  run: grey where terrain is untouched since generation, warm where crust is being built,
+  cool/pale where it's being planed down or buried. `"oceanCfdSediment"`/
   `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
   (`/world/render` rejects them with `400`, same as any other unrecognized view name).
 - `rotation` is the map's current view orientation (see

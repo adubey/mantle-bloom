@@ -112,6 +112,38 @@ def test_geomorph_view_renders_neutral_before_a_step_then_varies_after():
     assert len(np.unique(after.reshape(-1, 3), axis=0)) > len(np.unique(before.reshape(-1, 3), axis=0))
 
 
+def test_elev_reason_view_is_all_none_before_a_step_then_gains_process_codes():
+    from app import plates
+    from app.elevation_lines import ELEV_CHANGE_LABELS
+
+    world = _world(seed=7, num_plates=10)
+    # Freshly generated: nothing has moved elevation yet, so every node reads NONE.
+    assert np.all(plates.collect_all_elev_change_reason(world.plates) == 0.0)
+    before = render_image.render_png(world, "behrmann", "elevReason", 320, 180)
+
+    for _ in range(6):
+        step_world(world, years=1_000_000)
+
+    codes = np.unique(np.round(plates.collect_all_elev_change_reason(world.plates)).astype(int))
+    # More than one process code now (at minimum an erosion/deposition/marine geomorphic one),
+    # and every code is a real ELEV_CHANGE_* index.
+    assert len(codes) > 1
+    assert codes.max() < len(ELEV_CHANGE_LABELS)
+    after = render_image.render_png(world, "behrmann", "elevReason", 320, 180)
+    assert after != before
+
+
+def test_elev_reason_colors_are_flat_per_code_and_clamp_out_of_range():
+    from app.elevation_lines import ELEV_CHANGE_LABELS
+
+    codes = np.arange(len(ELEV_CHANGE_LABELS), dtype=float)
+    colors = render_image.elev_reason_colors(codes)
+    assert colors.shape == (len(ELEV_CHANGE_LABELS), 3)
+    assert len({tuple(c) for c in colors}) == len(ELEV_CHANGE_LABELS)  # every code a distinct swatch
+    # a code past the table (or a fractional one from a resample) clamps, never indexes OOB
+    assert tuple(render_image.elev_reason_colors(np.array([999.0]))[0]) == tuple(colors[-1])
+
+
 def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
     # Combined's per-pixel class id rides in alpha (see render_image.COMBINED_LAKE_ID_CODE's
     # comment): alpha = 255 - code, code 0 only for gaps between cells, biome_id + 1 for every
