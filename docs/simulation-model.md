@@ -2320,18 +2320,21 @@ overlay toggle needed. Lake cells use
 a muddier, less-saturated blue than open ocean (`render_image.LAKE_COLOR_RGB`) via the same
 nearest-neighbor grid resample `_render_grid_arrays` already does for elevation/plate_id
 (`plates.collect_all_lake_depth`, index-aligned with `plates.collect_all_points`'s own
-output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one
-per `is_river` node to its own `flow_target` (top `RIVER_FLOW_PERCENTILE = 90.0` of land
-`flow_accum`) -- fixed color and
-width for every segment regardless of discharge (only *which* segments get drawn varies with
-flow magnitude, not how they're drawn).
-A second, independent cut applies only here, on top of `is_river`: `render_image.
-river_draw_min_flow(world)` (calibrated per `node_density` -- see
-`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY`) requires a segment's own `flow_accum` to also clear
-that absolute floor before it's drawn on these general-purpose views, tuned so a mature world
-shows roughly 5-10 distinct river networks -- the River Inspector (below) deliberately
-keeps listing/drawing every `is_river` network regardless of flow, unaffected by this floor,
-since picking a minor tributary out of the full list is exactly what that view is for.
+output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one per drawn `is_river` node to its own
+`flow_target`, in a fixed color. Which networks and how wide is `render_image._rivers_to_draw`:
+group `is_river` nodes into connected drainage networks (`hydrology.group_rivers`), keep the
+strongest `river_draw_max_networks(world)` by mouth `flow_accum`
+(`RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`, ~6-10 by `node_density`), and drop any whose
+mouth can't clear the small absolute trickle floor `river_draw_min_flow(world)`
+(`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY`, also used to trim sub-threshold headwater stubs).
+This is a *world-relative* cut because mouth `flow_accum` -- a physical upstream water total
+-- spans orders of magnitude between an arid and a soaked world, so no single absolute floor
+generalizes. Line width is a 1/2/3 px tier off each segment's `flow_accum` as a fraction of
+its own network's mouth flow (`RIVER_WIDTH_TIER_FRACTIONS`), then capped by the network's
+size rank (`RIVER_WIDTH_CAP_BY_RANK` = `(3,2,2)`, tail 1) so only the single largest river is
+ever drawn 3 px wide. The River Inspector (below) deliberately keeps listing/drawing every
+`is_river` network regardless of flow, unaffected by any of this, since picking a minor
+tributary out of the full list is exactly what that view is for.
 
 Confirmed live on a real run: river networks render as visibly branching, dendritic
 drainage patterns converging toward coasts and lake basins, matching real-world drainage
