@@ -342,6 +342,48 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence():
     assert total_after == total_before
 
 
+def test_apply_topology_changes_splits_at_most_one_plate_per_call():
+    """Two independently split-eligible plates -> only one rifts this call, the same
+    incremental-change rule the merge path uses (so a freshly-generated world staggers its
+    rifts over time instead of shattering on the first eligible step)."""
+    strong_rate = mantle.MANTLE_FLOW_REFERENCE_RATE * 20
+    plates_list = []
+    all_centers = []
+    for i, base in enumerate(([1.0, 0.0, 0.0], [0.0, 1.0, 0.0])):
+        seed_xyz = np.array(base, dtype=float)
+        frame = geometry.plate_frame_from_seed(seed_xyz)
+        theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
+        line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
+        # A second real row so remove_defunct_plates doesn't prune the plate as "one line
+        # left" before the split loop is even reached (see _test_plate's own note).
+        filler = ElevationLine(phi=0.05, theta=theta.copy(), elevation=np.zeros_like(theta))
+        plate = PlateWithLines(
+            plate_id=i, frame=frame, crust_type="continental", lines=[line, filler], age_steps=merge_split.SPLIT_MIN_AGE_STEPS
+        )
+        west = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
+        east = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
+        all_centers += [
+            mantle.ConvectionCenter(position=west, strength=strong_rate, falloff=0.3),
+            mantle.ConvectionCenter(position=east, strength=-strong_rate, falloff=0.3),
+        ]
+        plates_list.append(plate)
+
+    # steps_taken=1 so the DEFRAG_INTERVAL_STEPS-gated defragment pass (which would also
+    # slice these synthetic two-row plates) doesn't run this call -- the split loop is what's
+    # under test.
+    world = World(
+        seed=0, plates=plates_list, mantle_centers=all_centers, next_plate_id=len(plates_list),
+        node_density=1.0, steps_taken=1,
+    )
+    for plate in world.plates:
+        pts, _ = plate.all_points_and_elevation()
+        plate.set_omega(mantle.fit_euler_pole(pts, mantle.flow_at(pts, all_centers)))
+
+    events = merge_split.apply_topology_changes(world, 1_000_000.0)
+    assert sum("split into plates" in e for e in events) == 1
+    assert len(world.plates) == 3
+
+
 # -- Geometric defragmentation --------------------------------------------------------
 #
 # defragment_plates / Plate.defragment: subduction/transform can sever one Plate's node

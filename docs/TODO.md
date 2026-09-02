@@ -159,6 +159,23 @@ geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactfu
    `MERGE_SIZE_UNLIKELY_FRACTION` (0.25) -- plate 3 alone is ~16% of the world's nodes, so
    most of its collision pairs are effectively unmergeable and just overlap indefinitely.
 
+   **Partly addressed 2026-09-01** (seed 559394024 @ 199 My). `torque.classify_boundary_nodes`
+   used to polygon-test only nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
+   plate slid *deep* over another had its deep-interior overlapping nodes classified as
+   neither contested nor divergent -- `rheology` never touched them, so the overlap just sat
+   with no forcing at all. It now also tests any node inside a neighbour's bounding sphere: a
+   deep continental overlap classifies `contested` -> `apply_convergent_deformation` thickens
+   Hc/Hm -> mountain uplift (the overlap crumples in place, as a real collision should), and a
+   deep oceanic overlap classifies `contested` -> subduction deletion -> the overlap actually
+   heals. Verified on the save: the plate-21/0 15%-overlap cleared within ~15 steps and
+   plate-21's overridden nodes rose ~+400 m. **Still open:** the `_merge_probability` size
+   floor for a genuinely huge pair (direction 3 below) -- though the split tuning (see
+   "Plate count only decreases" below) now keeps a single plate from reaching ~16% of the
+   world in the first place. `ElevationLine.overlap_onset_years` +
+   `merge_split.update_overlap_tracking` + the `overlapAge` debug view now record *which*
+   nodes have been overlapping and *since when*, so a genuinely stuck overlap is legible
+   rather than a bare current fraction.
+
 5. **Node-count blowup persists** (the original headline symptom): ~140k nodes at 85 My for
    `node_density=4` vs a clean-tiling estimate of ~130k *at 1x* -- consistent with the
    ~15-75%-over range the 2026-08-30 table recorded, i.e. not fixed, just no longer
@@ -168,6 +185,28 @@ The **k-means split-cluster quality** noted under bug 2 / bug 3 (velocity-space 
 from spatially-intermingled points -> disjoint daughters that drift back over each other,
 with euler poles fit far from the daughter body) is the common root of (2), (3) and (4) and
 is still entirely open.
+
+6. **Plate count only decreases -- rifting essentially never fires.** Partly fixed
+   2026-09-01 (seed 559394024). With the torque engine a large continental plate gets a
+   *good* rigid-rotation fit, so `merge_split.SPLIT_RMS_RESIDUAL_THRESHOLD` (9 cm/yr) was
+   never tripped; `SPLIT_SIZE_CERTAIN_RIFT_RAD = pi` only relaxed the gates for
+   near-hemisphere plates; and the great-circle cut between the two k-means flow centroids
+   frequently left one half below `SPLIT_MIN_NODES` (1200) so `plate.split()` rejected it.
+   Instrumented over 70 steps: plates repeatedly cleared both physics gates only to fail the
+   size floor, and true rift-splits basically never happened while merges + oceanic
+   consumption ran unchecked -- 12 plates decaying to 9 in a 180-step reproduction, oceanic
+   plates 6 -> 3. Tuning: `SPLIT_RMS_RESIDUAL_THRESHOLD` 9->6 cm/yr, `SPLIT_MIN_POLE_SEPARATION`
+   6->4, `SPLIT_MIN_NODES` 1200->700, `SPLIT_SIZE_CERTAIN_RIFT_RAD` pi->2.2 rad,
+   `SPLIT_MIN_AGE_STEPS` 15->20; plus `apply_topology_changes` now splits **at most one plate
+   per step** (same incremental rule the merge path uses), so a freshly-generated world
+   staggers its rifts instead of shattering all at once (1.8 rad was tried first and
+   shattered every plate within ~30 My). A 200-step repro now oscillates 15-26 plates in a
+   genuine churn (splits + merges + consumption). **Still open:** the k-means cluster-quality
+   problem above -- a daughter's euler pole is still fit from spatially-intermingled velocity
+   clusters, so the cut geometry can still be poor; and there is still no mechanism to spawn a
+   *new* plate for a large region a consumed oceanic plate vacated (the old `gaps.py`
+   fallback, never ported). Plate count held healthy in the repro without it, so a spawn net
+   was not added.
 
 ### Node-count creep: continental boundaries grow but never retreat (2026-09-01 investigation)
 
@@ -194,6 +233,24 @@ and removes none. Oceanic is ~balanced (`endgrow +45,549 + claim +2,801` vs `end
 `endshrink_continental` 0. The *total* ratio understates the damage because ocean
 consumption partly masks it -- the geometric symptom is the unbounded continental growth and
 the envelope overlap it drives, exactly items 2/3/4.
+
+**The land-area side of this is fixed 2026-09-01, the node-count side is not.** The same
+ratchet meant `_grow_or_shrink_line_for_deform` / `_claim_adjacent_territory` seeded every
+new continental boundary node with `reference_thickness("continental")` -- Hc 35 km /
+Hm 100 km -> `isostatic_elevation` = **+200 m dry land** -- so a continental plate growing
+into vacated ocean permanently converted sea floor into land (measured land fraction climbed
+0.27 -> 0.48 and mean planet elevation rose ~1.7 km over 180 Myr on seed 559394024, a
+separate reported bug: "the amount of land is increasing over time"). Fix:
+`lithosphere_plate.growth_seed_thickness()` -- brand-new areal crust is *always* the oceanic
+reference column regardless of plate type ("any gap that opens on the sphere is floored by
+sea-floor spreading"). A continental plate's new margin now lands ~-3.5 km (a drowned
+passive margin / accreted terrane), so land fraction goes flat and the "giant 80%-drowned
+continental plate" of item 2 is now the *expected* reading rather than a bathymetry
+artefact. **This does not touch the node count** -- the rows still ratchet outward and
+`endshrink_continental` is still 0; directions 1-2 below are still the fix for that. It also
+left a smaller residual: land fraction now drifts *down* ~0.045 per 100 Myr (erosion planing
+continents with no orogenic renewal, and a fixed sea level that can't compensate the way a
+real ocean would) -- see the note below.
 
 **Naive fix rejected.** Forcing continental contested ends to retreat like oceanic
 (`shrinkable = contested`) cut continental growth from +38% to +7.7% at 80 My, but (a) the
@@ -222,7 +279,11 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
    floors at 0.02 once a pair's combined node share passes 0.25 (`MERGE_SIZE_UNLIKELY_
    FRACTION`), so large collisions overlap forever (item 4). Either drop the floor, or force
    a merge once an overlap has been stable-and-large for N steps regardless of the closing-
-   rate / size roll.
+   rate / size roll. **Partly addressed 2026-09-01:** deep-interior overlap is now classified
+   `contested` (see item 4's own update), so a stuck continental overlap crumples in place
+   (Hc thickens -> uplift) instead of just sitting inert -- the plates still don't *fuse*,
+   but the overlap is no longer a forcing-free dead zone, and `overlap_onset_years` now
+   records how long each has been stuck. The size-floor / forced-merge question is unchanged.
 
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
 "Bug 1" (below) added a `ring_room()` one-revolution cap in
@@ -345,6 +406,28 @@ Plate 11's "teeth" are 8 legitimate one-to-two-node stub rows from heavy subduct
 (`deform()` never deletes a line's last node); defragmentation is meant to prune them but
 runs only every `DEFRAG_INTERVAL_STEPS`. Related: the severed-lobe defrag work on
 `fix/plate-defragmentation` (unmerged).
+
+---
+
+## Land fraction slowly declines over a long run (residual of the 2026-09-01 growth-seed fix)
+
+**Context.** Fixing the land-area *runaway* (see "Node-count creep" above -- new areal crust
+is now seeded oceanic, not +200 m continental) traded a strong upward drift for a mild
+downward one: on seed 559394024 at `node_density=1`, land fraction goes 0.266 -> ~0.20 over
+200 Myr (mean planet elevation stays flat, so mass is conserved -- this is redistribution,
+not loss). Cause: erosion planes continental freeboard down every step, nothing rebuilds it
+except collisions (rarer now that plates are smaller), and `World.sea_level_m` is a fixed
+user control, so the ocean can't rise to maintain freeboard the way real eustatic sea level
+does as basins fill with sediment and young ridge crust displaces water. A slow decline is
+far more physical than the old runaway and stays Earth-ish for ~100 Myr, so this is a
+low-priority polish item, not a bug.
+
+**Directions.** (a) Seed continental-plate areal growth at the continental *rift* target
+(~-200 m, a thinned continental margin that then subsides via thermal aging) rather than the
+full oceanic column at ~-3.5 km -- keeps more near-sea-level shelf. (b) A gentle automatic
+sea-level term: nudge `sea_level_m` each step toward the level that conserves total ocean
+*volume* as the hypsometric curve shifts. Changes a user-facing control, so it would need a
+toggle. (c) Accept it and document the ~100 Myr Earth-like window.
 
 ---
 
@@ -670,6 +753,22 @@ near-sea-level band (256 m on one node, ~0 on its neighbour) -- the whole coasta
 mechanism -- legible for the first time; use it as a before/after for any coastal-feedback
 change. Not done: a `/world/sample_at` field for the click-popup (the popup is only wired for
 elevation/biome/combined today), and a gross-deposition-vs-net toggle (net alone was enough).
+
+**Landed 2026-09-01 -- plate-overlap onset field + `overlapAge` render view.** A new
+`ElevationLine.overlap_onset_years` (`OPTIONAL_FIELDS` member, rides rotation/split/merge/
+mask/regularize, backfilled on load by `__getattr__` like every other member) records
+`world.elapsed_years` at which each node first started sitting on top of another plate's
+territory, 0 whenever it isn't. Stamped every step by `merge_split.update_overlap_tracking`
+via the new shared `plates.compute_node_overlap` (which also now backs `main._plate_overlaps`
+so the two can't drift). Surfaced as: `since_years` on each `GET /world/plates` overlap
+entry + the Plate Inspector line (`#21 (15%, since 178 My)`); a `since ... My` column in
+`python -m app.plate_diagnostics`; and `GET /world/render?view=overlapAge` (Map View ->
+Debug -> Plate overlap age; `render_image._render_overlap_age_view` / `overlap_age_colors`),
+a node-cloud view colouring each still-overlapping node pale->magenta by
+`elapsed_years - overlap_onset_years`. Tests: `unit_tests/test_overlap_tracking.py`,
+`test_torque.py` (deep-overlap classification), `test_render_image.py`. Documented in
+`docs/debugging.md` + `docs/api-reference.md` + `docs/simulation-model.md`. Answers "which
+nodes have been overlapping, and since when" for the stalled-overlap item above.
 
 **Still worth building:**
 

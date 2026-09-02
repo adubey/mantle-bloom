@@ -91,6 +91,52 @@ def test_slab_pull_points_toward_subduction_direction():
     assert np.dot(geometry.normalize(tau[None, :])[0], expected_direction) > 0.99
 
 
+def test_classify_boundary_nodes_flags_deep_interior_overlap():
+    """A node far (> reach_rad) from any neighbour node but geometrically *inside* a
+    neighbour's territory -- a plate that has slid deep over another -- must still classify
+    `contested`, so rheology thickens/subducts it instead of leaving the overlap frozen.
+    Before the bounding-sphere widening, only the reach_rad-local band was ever polygon-
+    tested."""
+    center = geometry.normalize(np.array([1.0, 0.0, 0.0]))
+    east, north = geometry.local_tangent_basis(center)
+    # Neighbour node cloud: a ring ~0.3 rad around `center` (centroid ~= center, radius ~0.3).
+    ang = np.linspace(0, 2 * np.pi, 24, endpoint=False)
+    ring = geometry.normalize(
+        np.cos(0.3) * center + np.sin(0.3) * (np.cos(ang)[:, None] * east + np.sin(ang)[:, None] * north)
+    )
+
+    class FakeNeighbour:
+        crust_type = "continental"
+        plate_id = 99
+
+        def all_points_and_elevation(self):
+            return ring, np.zeros(len(ring))
+
+        def contains_batch(self, pts):
+            return geometry.angular_distance(np.asarray(pts), center) < 0.15
+
+    # Self plate: one node right at `center` (deep inside the ring, ~0.3 rad from any ring
+    # node -> not "near"), one node out at the antipode (neither near nor inside).
+    own = np.array([center, [-1.0, 0.0, 0.0]])
+    reach_rad = 0.06
+    inputs = torque.BoundaryForceInputs(
+        own_points=own,
+        own_hc=np.full(2, 35_000.0),
+        own_hm=np.full(2, 100_000.0),
+        dist_to_neighbor=np.array([np.inf, np.inf]),
+        direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (2, 1)),
+        neighbor_is_oceanic=np.zeros(2, dtype=bool),
+        neighbor_omega=np.zeros((2, 3)),
+    )
+
+    class SelfPlate:
+        crust_type = "continental"
+
+    contested, divergent = torque.classify_boundary_nodes(SelfPlate(), [FakeNeighbour()], inputs, reach_rad)
+    assert bool(contested[0]) and not bool(contested[1])
+    assert not divergent.any()  # a deep-interior overlap is contested, never divergent
+
+
 def test_basal_drag_coefficients_reproduce_the_plain_torque():
     """`basal_drag_torque(omega) == b - K @ omega` exactly, for arbitrary omega -- the affine
     split `integrate_omega` integrates implicitly must be the same physics as the direct

@@ -181,7 +181,7 @@ Response echoes back the world's current values for all five:
 { "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
 ```
 
-## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
+## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|overlapAge|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`
 
 Renders the current world as a PNG, base64-encoded. All drawing (elevation fill, plate-color
 fill, boundary outlines, pole markers, rotation arcs, per-node dots) happens server-side
@@ -244,7 +244,12 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   node by which process last moved its elevation -- a persistent per-node code
   (`ElevationLine.elev_change_reason`), so unlike `"geomorph"` it accumulates over the whole
   run: grey where terrain is untouched since generation, warm where crust is being built,
-  cool/pale where it's being planed down or buried. `"oceanCfdSediment"`/
+  cool/pale where it's being planed down or buried. `"overlapAge"` (a debug view, see
+  [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset)) colours every node
+  currently sitting on top of another plate by how long it has
+  (`elapsed_years - ElevationLine.overlap_onset_years`) over a muted land/ocean backdrop plus
+  the coastline, pale where fresh and magenta where stuck for tens of Myr; all-backdrop is
+  the healthy case. `"oceanCfdSediment"`/
   `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
   (`/world/render` rejects them with `400`, same as any other unrecognized view name).
 - `rotation` is the map's current view orientation (see
@@ -329,7 +334,7 @@ has been generated yet.
       "age_steps": 43,
       "median_elevation_m": 210.0,
       "submerged_fraction": 0.22,
-      "overlaps": [{ "plate_id": 6, "fraction": 0.058 }],
+      "overlaps": [{ "plate_id": 6, "fraction": 0.058, "since_years": 178000000.0 }],
       "collisions": [{ "plate_id": 6, "years": 30700000.0 }],
       "outline": [[0.98, 0.12, -0.05], ["..."]],
       "points": [[0.981423, 0.117582, -0.052207], ["..."]],
@@ -372,7 +377,12 @@ has been generated yet.
 - `overlaps` lists the other plates this plate's territory currently sits on top of --
   `fraction` is the share of *this* plate's nodes within half a target node spacing of a
   node owned by `plate_id` (ordinary shared boundaries sit ~one full spacing apart, so this
-  only fires on genuine territory overlap). `collisions` surfaces
+  only fires on genuine territory overlap; `plates.compute_node_overlap`). `since_years` is
+  the earliest `elapsed_years` any of this plate's still-overlapping nodes first went over
+  another plate (`ElevationLine.overlap_onset_years`, stamped by
+  `merge_split.update_overlap_tracking`) -- `null` if the save predates the field or the
+  overlap only appeared this step; not partner-specific. See the `overlapAge` debug render
+  view. `collisions` surfaces
   `merge_split.update_collision_progress`'s sustained-collision timers (accumulated
   convergent years) for pairs involving this plate. Both are diagnostics for the long-run
   plate-geometry degradation tracked in `docs/TODO.md`.

@@ -55,6 +55,25 @@ EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_
 MAX_EXTEND_NODES_PER_STEP = 400
 
 
+def growth_seed_thickness() -> tuple[float, float]:
+    """(Hc, Hm) a plate seeds *brand-new areal* nodes with -- when a line grows an end into
+    open water (`_grow_or_shrink_line_for_deform`) or claims a whole new phi row
+    (`_claim_adjacent_territory`).
+
+    Always the *oceanic* reference column, regardless of the growing plate's own
+    `crust_type`: any gap that opens on the sphere is floored by sea-floor spreading, not by
+    the neighbouring plate's crust. Seeding a continental plate's own reference column here
+    (Hc 35 km / Hm 100 km -> isostatic_elevation = +200 m) was a real land-area runaway: a
+    continental plate continuously grows into the space a subducting oceanic plate vacates,
+    and continental crust never subducts back, so every such step converted ocean floor into
+    +200 m dry land permanently -- measured land fraction climbed 0.27 -> 0.48 and mean
+    planet elevation rose ~1.7 km over 180 Myr on seed 559394024. New oceanic crust on a
+    continental plate lands ~-3.5 km (a drowned passive margin / accreted terrane); genuine
+    continental rifting is untouched, since that thins *existing* crust
+    (`rheology.apply_divergent_deformation`) rather than growing new nodes here."""
+    return lithosphere.REFERENCE_HC_OCEANIC_M, lithosphere.YOUNG_RIDGE_HM_M
+
+
 class LithospherePlate(PlateWithLines):
     """A `PlateWithLines` whose per-node state is a lithospheric column (Hc/Hm) rather than
     an independently-set elevation -- see elevation_lines.py's own note on the two new
@@ -334,7 +353,9 @@ class LithospherePlate(PlateWithLines):
                 contested, shrinkable, dist = contested[keep], shrinkable[keep], dist[keep]
                 persistent_fields = {name: values[keep] for name, values in persistent_fields.items()}
 
-        hc0, hm0 = lithosphere.reference_thickness(self.crust_type)
+        # Brand-new areal crust at a growing end is oceanic regardless of this plate's own
+        # type -- see growth_seed_thickness() for the land-area runaway this fixes.
+        hc0, hm0 = growth_seed_thickness()
         rho_c = self.crust_density()
         new_node_elevation = float(lithosphere.isostatic_elevation(np.array([hc0]), np.array([hm0]), rho_c)[0])
 
@@ -388,11 +409,11 @@ class LithospherePlate(PlateWithLines):
 
     def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
         """Same shape as `PlateWithLines._claim_adjacent_territory` -- a brand-new phi row
-        just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm by
-        crust type plus `terrain_noise.FractalTexture` on Hc (an extension of an
-        already-shaped plate, so texture rather than a fresh orogen), rather than a flat
-        elevation baseline. Keyed off `(world.seed, plate_id, _TERRAIN_SEED_TAG)` so the
-        texture stays attached to this plate as it grows."""
+        just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm
+        (oceanic reference, see `growth_seed_thickness`) plus `terrain_noise.FractalTexture`
+        on Hc (an extension of an already-shaped plate, so texture rather than a fresh
+        orogen), rather than a flat elevation baseline. Keyed off `(world.seed, plate_id,
+        _TERRAIN_SEED_TAG)` so the texture stays attached to this plate as it grows."""
         lines_with_nodes = [line for line in self.lines if len(line) > 0]
         if not lines_with_nodes:
             return
@@ -404,7 +425,9 @@ class LithospherePlate(PlateWithLines):
         # `_grow_or_shrink_line_for_deform` now guards against. This v2 override predated the
         # v1 fix and still marched a plate right onto its pole (spacing_rad / 2).
         max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
-        hc0, hm0 = lithosphere.reference_thickness(self.crust_type)
+        # Oceanic regardless of self.crust_type -- new sphere area is floored by sea-floor
+        # spreading, not by this plate's own crust (see growth_seed_thickness()).
+        hc0, hm0 = growth_seed_thickness()
         amp = hc0 * 0.1  # texture on fresh Hc, same spirit as v1's noise-on-elevation
         texture = terrain_noise.FractalTexture(
             np.random.default_rng((world.seed, self.plate_id, _TERRAIN_SEED_TAG))

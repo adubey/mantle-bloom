@@ -251,6 +251,15 @@ class ElevationLine:
         # nearest-neighbour pick in regularize_line (it's categorical, not a quantity), unlike
         # every other field here.
         "elev_change_reason",
+        # Diagnostic only (nothing in the physics reads it back): `world.elapsed_years` at
+        # which this node *first* started sitting on top of another plate's territory, per
+        # merge_split.update_overlap_tracking -- 0.0 whenever the node is not currently
+        # overlapping anything. Surfaced by main._plate_overlaps / plate_diagnostics.py /
+        # the `overlapAge` debug render view so a stalled territory conflict (see
+        # docs/debugging.md "Plate geometry degrades on long runs") can be read as "which
+        # nodes, since when" instead of a bare current-fraction number. Same lightweight
+        # first-seen-per-key tracker role World.collision_progress plays for plate pairs.
+        "overlap_onset_years",
         # V2 only (see v2/lithosphere.py) -- the 3D lithospheric column state Airy isostasy
         # derives `elevation` from (v2/lithosphere.isostatic_elevation). Zero/unused for every
         # v1 line. Kept here rather than as a v2-only subclass field so a single ElevationLine
@@ -280,6 +289,7 @@ class ElevationLine:
         mineral_deposit_m: np.ndarray | None = None,
         divergent_age_myr: np.ndarray | None = None,
         elev_change_reason: np.ndarray | None = None,
+        overlap_onset_years: np.ndarray | None = None,
         crustal_thickness_m: np.ndarray | None = None,
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
     ) -> None:
@@ -303,6 +313,7 @@ class ElevationLine:
         self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
         self._divergent_age_myr = divergent_age_myr if divergent_age_myr is not None else np.zeros_like(theta)
         self._elev_change_reason = elev_change_reason if elev_change_reason is not None else np.zeros_like(theta)
+        self._overlap_onset_years = overlap_onset_years if overlap_onset_years is not None else np.zeros_like(theta)
         self._crustal_thickness_m = crustal_thickness_m if crustal_thickness_m is not None else np.zeros_like(theta)
         self._mantle_lithosphere_thickness_m = (
             mantle_lithosphere_thickness_m if mantle_lithosphere_thickness_m is not None else np.zeros_like(theta)
@@ -393,6 +404,10 @@ class ElevationLine:
     @property
     def elev_change_reason(self) -> np.ndarray:
         return self._elev_change_reason
+
+    @property
+    def overlap_onset_years(self) -> np.ndarray:
+        return self._overlap_onset_years
 
     @property
     def crustal_thickness_m(self) -> np.ndarray:
@@ -523,6 +538,9 @@ class ElevationPoint(Protocol):
 
     def get_elev_change_reason(self) -> float: ...
     def set_elev_change_reason(self, value: float) -> None: ...
+
+    def get_overlap_onset_years(self) -> float: ...
+    def set_overlap_onset_years(self, value: float) -> None: ...
 
 
 def _point_field_getter(name: str):
@@ -850,6 +868,12 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
     nearest_original = np.abs(new_theta[:, None] - line.theta[None, :]).argmin(axis=1)
     new_elev_change_reason = line.elev_change_reason[nearest_original]
+    # overlap_onset_years is a per-node "year this overlap started" stamp (diagnostic only,
+    # merge_split.update_overlap_tracking). Carry it onto each resampled node from its nearest
+    # original -- np.interp between two onset years would invent an in-between year, and a
+    # nearest-neighbour carry keeps a genuinely-stuck overlap's onset intact across the
+    # regularize pass that runs every deform() call.
+    new_overlap_onset_years = line.overlap_onset_years[nearest_original]
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,
@@ -868,6 +892,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         oil_gas_deposit_m=new_oil_gas_deposit_m,
         mineral_deposit_m=new_mineral_deposit_m,
         elev_change_reason=new_elev_change_reason,
+        overlap_onset_years=new_overlap_onset_years,
         crustal_thickness_m=new_crustal_thickness_m,
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
     )

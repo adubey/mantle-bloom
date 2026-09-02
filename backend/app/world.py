@@ -341,6 +341,9 @@ def step_world(world: World, years: float) -> None:
     if world.simulate_plate_movement:
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
+        # Diagnostic: stamp/clear ElevationLine.overlap_onset_years against this step's final
+        # geometry (see merge_split.update_overlap_tracking / docs/debugging.md).
+        merge_split.update_overlap_tracking(world)
 
     erosion_result = None
     if world.simulate_climate_biomes:

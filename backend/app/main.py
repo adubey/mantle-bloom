@@ -223,47 +223,38 @@ def _round_coords(arr: np.ndarray) -> list:
     return np.round(arr, _COORD_DECIMALS).tolist()
 
 
-#  Two plates' node clouds are "co-located" -- overlapping the same patch of sphere rather
-# than merely adjacent -- when nodes land within half a target spacing of each other. Ordinary
-# shared boundaries sit ~one full spacing apart, so this only fires on genuine territory
-# overlap (a stalled collision, a bad split partition, a plate drifting over a neighbour it
-# can't merge with). See docs/TODO.md "Plate geometry degrades on long runs".
-_OVERLAP_TOLERANCE_MULT = 0.5
-
-
 def _plate_overlaps(world: World) -> dict[int, list[dict]]:
     """For every plate, which other plates its territory currently overlaps and by how much
-    (`fraction` = share of *this* plate's own nodes that sit on top of that other plate).
-    One global cKDTree pair query over every node, so the whole thing is O(N log N) once per
-    /world/plates call rather than a per-pair envelope test."""
+    (`fraction` = share of *this* plate's own nodes that sit on top of that other plate),
+    plus `since_years` -- the earliest `world.elapsed_years` at which any of this plate's
+    still-overlapping nodes first went over that partner (`ElevationLine.overlap_onset_years`,
+    stamped by merge_split.update_overlap_tracking; None if the save predates the field or the
+    overlap only appeared this step). The node-cloud overlap itself is
+    `plates.compute_node_overlap`, shared with that tracker so the two can't drift."""
+    tol = plates.OVERLAP_TOLERANCE_MULT * plates.line_spacing_rad(world.node_density)
+    overlap = plates.compute_node_overlap(world.plates, tol)
     active = [p for p in world.plates if p.node_count() > 0]
-    if len(active) < 2:
-        return {}
-    clouds = [p.all_points_and_elevation()[0] for p in active]
-    counts = [len(c) for c in clouds]
-    offsets = np.cumsum([0, *counts])
-    owner = np.concatenate([np.full(n, i) for i, n in enumerate(counts)])
-    tol = _OVERLAP_TOLERANCE_MULT * plates.line_spacing_rad(world.node_density)
-    pairs = cKDTree(np.concatenate(clouds)).query_pairs(tol, output_type="ndarray")
     result: dict[int, list[dict]] = {p.plate_id: [] for p in active}
-    if len(pairs) == 0:
-        return result
-    owners_lo, owners_hi = owner[pairs[:, 0]], owner[pairs[:, 1]]
-    cross = owners_lo != owners_hi
-    pairs, owners_lo, owners_hi = pairs[cross], owners_lo[cross], owners_hi[cross]
-    for glob, src, dst in ((pairs[:, 0], owners_lo, owners_hi), (pairs[:, 1], owners_hi, owners_lo)):
-        for i, src_plate in enumerate(active):
-            here = src == i
-            if not here.any():
-                continue
-            local = glob[here] - offsets[i]
-            dst_here = dst[here]
-            for j, dst_plate in enumerate(active):
-                on_j = dst_here == j
-                if not on_j.any():
-                    continue
-                fraction = len(np.unique(local[on_j])) / counts[i]
-                result[src_plate.plate_id].append({"plate_id": dst_plate.plate_id, "fraction": round(float(fraction), 4)})
+    for src_plate in active:
+        info = overlap.get(src_plate.plate_id)
+        if info is None or not info["by_partner"]:
+            continue
+        count = src_plate.node_count()
+        mask = info["overlap_mask"]
+        onset = src_plate.collect("overlap_onset_years")
+        # A per-node partner id isn't tracked, so `since_years` is the earliest non-zero
+        # onset over *all* of this plate's overlapping nodes -- close enough for "how long
+        # has this plate been stuck on top of something", which is what the number is for.
+        overlapping_onsets = onset[mask & (onset > 0.0)]
+        since = float(overlapping_onsets.min()) if len(overlapping_onsets) else None
+        for partner_id, n in info["by_partner"].items():
+            result[src_plate.plate_id].append(
+                {
+                    "plate_id": partner_id,
+                    "fraction": round(n / count, 4),
+                    "since_years": since,
+                }
+            )
     for plate_id in result:
         result[plate_id].sort(key=lambda entry: -entry["fraction"])
     return result

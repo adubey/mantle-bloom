@@ -328,7 +328,23 @@ trigger (contested, not a positive closing rate) changed:
   bound -- see `shift()` above) and `MAX_EXTEND_NODES_PER_STEP` as a hard safety ceiling, not
   the normal limit. Each new node gets the ridge/rift target elevation (brand new material,
   not interpolated from anything), *unless* the growth event rolls "overstretched" (see
-  below), in which case it comes back as a fresh volcano instead. If an end is contested,
+  below), in which case it comes back as a fresh volcano instead.
+
+  **Torque engine (`lithosphere_plate.py`): new areal crust is always oceanic.** Under the
+  Hc/Hm isostasy engine, a growing end (`_grow_or_shrink_line_for_deform`) and a claimed new
+  phi row (`_claim_adjacent_territory`) seed the new nodes' lithospheric column via
+  `lithosphere_plate.growth_seed_thickness()` -- the *oceanic* reference column regardless of
+  the plate's own `crust_type`, because any gap that opens on the sphere is floored by
+  sea-floor spreading, not by the neighbouring plate's crust. Seeding a continental plate's
+  own reference column there was a real land-area runaway: continental plates continuously
+  grow into space subducting oceanic plates vacate, and continental crust never subducts
+  back, so every such step permanently converted ocean floor into ~+200 m dry land (measured
+  land fraction climbed 0.27 -> 0.48, mean planet elevation rose ~1.7 km over 180 Myr on one
+  seed). New oceanic crust on a continental plate lands ~-3.5 km -- a drowned passive margin
+  / accreted terrane. Genuine continental rifting is untouched: that thins *existing* crust
+  (`rheology.apply_divergent_deformation`), it doesn't grow new nodes here.
+
+  If an end is contested,
   remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
   the safety ceiling -- but never the plate's last remaining node in a line. Growth and
   *ordinary* shrink are end-only: each `ElevationLine` is a single contiguous arc, and
@@ -418,6 +434,19 @@ put indefinitely rather than self-correcting. Re-running `seed 888151728` from 6
 plates 9/1 envelope overlap drops from ~15% to a bounded ~2-3% on the first step and stays
 there.) A stricter, exactly-zero invariant would need either a self-intersection-safe polygon
 construction or a supplementary node-cloud distance guard; not pursued for v1.
+
+**Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
+test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
+plate that had slid *deep* over another had its deep-interior overlapping nodes classified
+as neither contested nor divergent -- no thickening, no subduction, the overlap just sat
+(observed: 15% of one plate on top of another, static). `torque.classify_boundary_nodes` now
+also polygon-tests any node inside a neighbour's bounding sphere (cheap triangle-inequality
+prefilter). A deep continental overlap then classifies contested -> `rheology` thickens
+Hc/Hm -> **mountain uplift**; a deep oceanic overlap classifies contested -> subduction
+deletion -> the overlap heals. Every node's onset year is also stamped onto
+`ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
+surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
+see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)
@@ -531,7 +560,20 @@ routine per-step motion.
   elevation "banding," since each sliver rotates almost identically to its neighbors).
   `SPLIT_MIN_AGE_STEPS` (a per-plate step counter, reset to 0 on creation by generation,
   split, or merge) requires a plate to exist for a while before it's split-eligible again,
-  and `SPLIT_MIN_NODES = 1200` keeps the check off small fragments entirely.
+  and `SPLIT_MIN_NODES` keeps the check off small fragments entirely.
+
+  **Tuning (2026), for the torque engine.** With `torque.py` driving `omega` a large
+  continental plate gets a *good* rigid-rotation fit, so the RMS-residual gate at its
+  original 9 cm/yr was never tripped -- ordinary supercontinent-scale plates simply never
+  rifted, and with `maybe_split_plate` the only source of new plates, plate count decayed
+  monotonically as oceanic plates subducted. The gates were loosened
+  (`SPLIT_RMS_RESIDUAL_THRESHOLD` 9->6 cm/yr, `SPLIT_MIN_POLE_SEPARATION` 6->4,
+  `SPLIT_MIN_NODES` 1200->700, `SPLIT_SIZE_CERTAIN_RIFT_RAD` pi->2.2 rad,
+  `SPLIT_MIN_AGE_STEPS` 15->20), and -- like the collision merge -- `apply_topology_changes`
+  now performs **at most one split per step**, so a freshly-generated world (every plate
+  clearing its identical cooldown on the same step) staggers its rifts over time instead of
+  shattering all at once. A 200-step reproduction goes from 12 plates decaying to 9, to a
+  healthy churn oscillating ~18-26.
 - **Defragmentation.** `deform()` only ever grows or shrinks a line's *ends*, and never
   deletes its last node -- so subduction or transform shear can carve one plate's node
   cloud into two (or more) fully disconnected landmasses, still carried as a single
