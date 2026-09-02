@@ -71,17 +71,17 @@ BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
 # should read as visibly distinct from the open ocean, not just "more blue."
 LAKE_COLOR_RGB = (58, 92, 122)
-# Fixed river overlay color (#4dd8e6); line width is not fixed -- see _draw_rivers, which
-# steps it directly off the segment's own flow_accum: exactly at river_draw_min_flow(world)
-# (the minimum flow a segment can have and still be drawn at all) a river is a single pixel
-# wide, and it only steps up to 2x/3x that width once flow_accum itself reaches 2x/3x the
-# floor. Since flow_accum along an unbranched stretch of channel is constant (it only grows
-# where a tributary's own flow merges in), this keeps a river's drawn width flat until a real
-# confluence, and wider from then on toward the mouth -- never gradually thickening on its own
-# -- only *which* segments get drawn at all varies with flow magnitude directly, via
-# hydrology's RIVER_FLOW_PERCENTILE and RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY below.
+# Fixed river overlay color (#4dd8e6); line width is not fixed -- see _draw_rivers and
+# _rivers_to_draw. A segment's width steps 1/2/3 px off its own flow_accum as a fraction of
+# its network's mouth flow (RIVER_WIDTH_TIER_FRACTIONS): flat along an unbranched reach (where
+# flow_accum is constant), stepping up only at a real confluence and only downstream of it, so
+# a river reads narrowest at the head and widest toward the mouth. That per-segment tier is
+# then capped by the network's size rank among the drawn set -- only the single largest river
+# may reach 3 px, the next two cap at 2 px, everything else at 1 px (RIVER_WIDTH_CAP_BY_RANK)
+# -- so the map never fills with fat blue lines even on a world whose rivers are all of
+# similar size.
 RIVER_COLOR_RGB = (77, 216, 230)
-RIVER_LINE_WIDTH_PX = 1.1
+RIVER_LINE_WIDTH_PX = 1.0
 # A light Gaussian blur of just the river-line mask before compositing the fixed river color
 # in by the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
 # COMBINED_BLUR_RADIUS_PX already uses for cell edges (see that constant's own comment), just
@@ -91,30 +91,46 @@ RIVER_LINE_WIDTH_PX = 1.1
 # backdrop, and leaves whatever was already drawn underneath (coastline, plate boundaries)
 # untouched -- unlike blurring the whole image, which would re-soften those too.
 RIVER_BLUR_RADIUS_PX = 0.6
-# Widest a river is ever drawn (at 3x river_draw_min_flow(world) or beyond) -- see
-# RIVER_LINE_WIDTH_MAX_TIERS.
-RIVER_LINE_WIDTH_MAX_TIERS = 3
-# A second, independent cut on top of hydrology.py's own is_river classification
-# (RIVER_FLOW_PERCENTILE): the main map views only draw a river segment if its own
-# flow_accum also clears this absolute floor, so a large world's merely-top-decile trickles
-# don't clutter every general-purpose view -- unlike the River Inspector (main.py's
-# /world/rivers, RiverInspector.tsx), which deliberately keeps showing every is_river network
-# regardless of flow_rate, since picking a small tributary out from the full list is exactly
+# Per-segment width tier as a function of flow_accum / (its network's own mouth flow_accum):
+# a segment carrying >= 80% of what reaches the mouth is a tier-3 candidate, >= 35% a tier-2
+# candidate, below that tier 1 -- so only a river's lower trunk ever widens, not its whole
+# mid-course. Fractions (not absolute flow) so the taper looks the same on a trickle-fed
+# desert river and a continent-draining one; the final width is min(this tier, the network's
+# rank cap below).
+RIVER_WIDTH_TIER_FRACTIONS = (0.80, 0.35)
+# Cap on a drawn network's per-segment width tier, indexed by its flow-size rank among the
+# drawn set (rank 0 = largest). Only the single biggest river may be drawn 3 px wide; the next
+# two cap at 2 px; every remaining river is a flat 1 px line. This is what keeps a 3-px river
+# rare regardless of how flat a world's river-size distribution is -- an absolute flow tier
+# can't, because flow_accum at a mouth spans orders of magnitude between a desert world and a
+# rainforest one, so on a wet-but-even world *every* drawn river clears any fixed 3-px flow.
+RIVER_WIDTH_CAP_BY_RANK = (3, 2, 2)
+RIVER_WIDTH_CAP_TAIL = 1
+
+# How many distinct drainage networks the general-purpose map views draw, strongest-first by
+# mouth flow_accum -- a world-relative cut, since an absolute flow floor alone can't separate
+# "a real river" from "a trickle" consistently when mouth flow_accum ranges from ~1e5 on an
+# arid world to >1e9 on a very wet one (see _rivers_to_draw). The River Inspector (main.py's
+# /world/rivers, RiverInspector.tsx) is deliberately unaffected -- it still lists every
+# is_river network regardless of size, since picking a small tributary out of the full list is
 # what that view is for.
 #
-# Calibrated per World.node_density (the frontend's single "Detail" dial sets climate_density
-# to the same value -- see App.tsx's DETAIL_CHOICES -- so these four entries cover every
-# generation resolution the UI can actually produce). Each value was picked empirically: at
-# that resolution, generate a spread of seeds, step each to a mature world, and take the floor
-# that leaves roughly 5-10 distinct river networks drawn on the general-purpose map views
-# (wetter/higher-relief worlds land nearer 10, arid ones nearer 5, which is the point -- a
-# desert planet *should* show fewer rivers than a rainforest one). flow_accum at a river mouth
-# is very nearly resolution-independent (it's a physical upstream-water total, not a per-node
-# count), so the floor rises only gently with resolution -- just enough to offset a finer grid
-# resolving proportionally more small separate catchments as their own networks -- rather than
-# tracking total node/cell count the way an earlier `RIVER_DRAW_MIN_FLOW * node_density *
-# climate_density**2` scaling did (that put the Very-High-detail floor ~64x the Medium one and
-# left the default-detail map with essentially no rivers on it at all).
+# Keyed by World.node_density (the frontend's single "Detail" dial locks climate_density to
+# the same value -- see App.tsx's DETAIL_CHOICES -- so these four entries cover every
+# generation resolution the UI can produce). The count rises gently with resolution: a finer
+# grid genuinely resolves a few more separate catchments as their own networks, but a planet
+# doesn't grow more major rivers just because it was sampled more densely.
+RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY = {
+    0.5: 6,
+    1.0: 7,
+    2.0: 8,
+    4.0: 10,
+}
+# A drawn network is still trimmed to segments whose own flow_accum clears this small absolute
+# floor (drops the sub-threshold headwater stubs so a river tapers to a point rather than
+# ending in a blunt 1-px dash), and a network whose mouth doesn't even reach it isn't drawn at
+# all no matter how few others there are -- so a bone-dry world shows its 2-3 real rivers, not
+# the top 10 of its creeks. Keyed by node_density like the count above.
 RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY = {
     0.5: 4_000.0,
     1.0: 6_500.0,
@@ -127,16 +143,26 @@ RIVER_DRAW_MIN_FLOW = RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY[1.0]
 
 def river_draw_min_flow(world: World) -> float:
     """The minimum flow_accum a river segment needs to be drawn at all on the general map
-    views, for `world`'s own generation resolution -- see RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY
-    for the calibration and why it rises only gently with resolution. `climate_density` isn't
-    a separate factor: the UI locks it to `node_density` (one "Detail" dial), and the
-    per-node_density calibration already accounts for both moving together. Values off the
-    preset set (only reachable by calling the API directly, not through the UI) fall back to a
-    power-law fit through the calibrated points."""
+    views, for `world`'s own generation resolution -- see RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY.
+    `climate_density` isn't a separate factor: the UI locks it to `node_density` (one "Detail"
+    dial), and the per-node_density calibration already accounts for both moving together.
+    Values off the preset set (only reachable by calling the API directly, not through the UI)
+    fall back to a power-law fit through the calibrated points."""
     table = RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY
     if world.node_density in table:
         return table[world.node_density]
     return RIVER_DRAW_MIN_FLOW * world.node_density ** 0.85
+
+
+def river_draw_max_networks(world: World) -> int:
+    """How many drainage networks the general map views draw for `world` (the strongest that
+    many by mouth flow_accum) -- see RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY. Off-preset
+    node_density falls back to the nearest calibrated key."""
+    table = RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY
+    if world.node_density in table:
+        return table[world.node_density]
+    nearest = min(table, key=lambda nd: abs(nd - world.node_density))
+    return table[nearest]
 
 
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
@@ -1717,25 +1743,69 @@ def _render_elev_reason_view(world: World, projection: str, width: int, height: 
     return _encode_image(image)
 
 
+def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray]:
+    """Selects which river segments the general-purpose map views draw, and how wide each is.
+
+    Returns (src_idx, width_tier): `src_idx` is the node index at the *upstream* end of each
+    drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed >= 0), and
+    `width_tier` is the matching 1/2/3 pre-pixel-scale line-width tier.
+
+    Selection is world-relative: group every is_river node into connected drainage networks
+    (hydrology.group_rivers), then keep the strongest river_draw_max_networks(world) of them
+    by mouth flow_accum, dropping any whose mouth doesn't clear river_draw_min_flow(world).
+    An absolute flow floor alone can't do this job -- mouth flow_accum is a physical upstream
+    water total that ranges over ~four orders of magnitude between an arid world and a soaked
+    one, so no fixed floor both keeps a desert planet's few real rivers and culls a wet one's
+    hundreds.
+
+    Width: within a kept network a segment's tier steps off its flow_accum as a fraction of
+    that network's mouth flow (RIVER_WIDTH_TIER_FRACTIONS) -- flat along an unbranched reach,
+    stepping up only downstream of a real confluence, so a river tapers from head to mouth.
+    That tier is then capped by the network's size rank (RIVER_WIDTH_CAP_BY_RANK): only the
+    single largest river can be drawn 3 px wide, the next two cap at 2 px, the rest at 1 px."""
+    hydro = world.hydrology_cache
+    if hydro is None:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+
+    min_flow = river_draw_min_flow(world)
+    max_networks = river_draw_max_networks(world)
+    rivers = sorted(
+        (r for r in hydrology.group_rivers(hydro) if r.flow_rate >= min_flow),
+        key=lambda r: r.flow_rate,
+        reverse=True,
+    )[:max_networks]
+    if not rivers:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+
+    flow_target = hydro.flow_target
+    flow_accum = hydro.flow_accum
+    frac_hi, frac_lo = RIVER_WIDTH_TIER_FRACTIONS
+    src_chunks: list[np.ndarray] = []
+    tier_chunks: list[np.ndarray] = []
+    for rank, river in enumerate(rivers):
+        cap = RIVER_WIDTH_CAP_BY_RANK[rank] if rank < len(RIVER_WIDTH_CAP_BY_RANK) else RIVER_WIDTH_CAP_TAIL
+        members = river.member_idx
+        keep = members[(flow_target[members] >= 0) & (flow_accum[members] >= min_flow)]
+        if len(keep) == 0:
+            continue
+        frac = flow_accum[keep] / river.flow_rate
+        tier = np.where(frac >= frac_hi, 3, np.where(frac >= frac_lo, 2, 1))
+        src_chunks.append(keep)
+        tier_chunks.append(np.minimum(tier, cap))
+    if not src_chunks:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+    return np.concatenate(src_chunks).astype(np.int64), np.concatenate(tier_chunks).astype(np.int64)
+
+
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
 ) -> Image.Image:
-    """Draws each river node's edge to its own downstream flow target as a short line
-    segment (see hydrology.py's is_river/flow_target) -- reads world.hydrology_cache
-    directly, populated by erosion.py every step (None before the world has ever been
-    stepped, in which case this returns `image` unchanged). Each segment is a real, short 3D
-    hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not two independent
-    _project_points calls) keeps it from being wrongly split across the antimeridian seam --
-    same technique _render_grid_arrays' own corner measurements already rely on. Also cut by
-    river_draw_min_flow(world) -- see that function's own docstring for why this view is
-    stricter than the River Inspector's own /world/rivers listing, and why the floor itself
-    isn't a single fixed constant. Line width steps directly off each segment's own
-    flow_accum in whole multiples of that same floor -- exactly at the floor a segment is
-    1 pixel wide, at 2x the floor it's 2 pixels, at 3x (RIVER_LINE_WIDTH_MAX_TIERS) or beyond
-    it's 3 and no wider. flow_accum is constant along any unbranched stretch of channel (it
-    only grows where a tributary's own flow actually merges in), so this widens a river only
-    at real confluences -- never gradually along a single reach -- and only downstream of
-    them, so it reads narrowest at the head and widest toward the mouth.
+    """Draws each selected river segment (see _rivers_to_draw for which segments and how wide)
+    as a short line from a river node to its own downstream flow target. Each segment is a
+    real, short 3D hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not
+    two independent _project_points calls) keeps it from being wrongly split across the
+    antimeridian seam -- same technique _render_grid_arrays' own corner measurements already
+    rely on.
 
     Takes and returns a plain Image (rather than drawing onto a caller-owned
     ImageDraw.ImageDraw, like _draw_coastline and the other _draw_* helpers do) because
@@ -1745,13 +1815,11 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    min_flow = river_draw_min_flow(world)
-    river_idx = np.nonzero(hydro.is_river & (hydro.flow_target >= 0) & (hydro.flow_accum >= min_flow))[0]
+    river_idx, width_tier = _rivers_to_draw(world)
     if len(river_idx) == 0:
         return image
     target_idx = hydro.flow_target[river_idx]
 
-    width_tier = np.clip(np.floor(hydro.flow_accum[river_idx] / min_flow), 1.0, RIVER_LINE_WIDTH_MAX_TIERS)
     width_px = np.maximum(np.round(width_tier * RIVER_LINE_WIDTH_PX * pixel_scale).astype(int), 1)
 
     from_points = _rotate(hydro.points[river_idx], view_rotation)

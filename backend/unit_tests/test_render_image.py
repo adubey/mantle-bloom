@@ -327,6 +327,84 @@ def test_river_draw_min_flow_rises_gently_with_node_density():
     assert floors[2.0] < render_image.river_draw_min_flow(world) < floors[4.0]
 
 
+def _linear_rivers_world(mouth_flows):
+    """A synthetic world whose hydrology_cache holds one independent 3-node linear river per
+    entry in `mouth_flows` (head -> mid -> mouth -> ocean sink). Node i of river r is index
+    3*r + i; flow_accum along each river is 20% / 50% / 100% of that river's mouth flow, so
+    the head is a width-tier-1 segment, the mid tier-2, the mouth tier-3 (before any rank
+    cap). Ocean sink nodes come last."""
+    world = _world()
+    world.node_density = 1.0
+    world.climate_density = 1.0
+    r = len(mouth_flows)
+    n = 3 * r + 1
+    ocean = n - 1
+
+    points = np.zeros((n, 3))
+    points[:, 0] = 1.0
+    points[:, 1] = np.linspace(-0.4, 0.4, n)  # spread them out so segments are real hops
+    points = points / np.linalg.norm(points, axis=1, keepdims=True)
+
+    flow_target = np.full(n, -1, dtype=np.int64)
+    flow_accum = np.zeros(n)
+    is_river = np.zeros(n, dtype=bool)
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[ocean] = True
+    for ri_, mf in enumerate(mouth_flows):
+        head, mid, mouth = 3 * ri_, 3 * ri_ + 1, 3 * ri_ + 2
+        flow_target[head], flow_target[mid], flow_target[mouth] = mid, mouth, ocean
+        flow_accum[head], flow_accum[mid], flow_accum[mouth] = 0.2 * mf, 0.5 * mf, mf
+        is_river[head] = is_river[mid] = is_river[mouth] = True
+
+    world.hydrology_cache = hydrology.HydrologyFields(
+        points=points,
+        elevation=np.linspace(50.0, 0.0, n),
+        is_ocean=is_ocean,
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=is_river,
+        flow_target=flow_target,
+        flow_accum=flow_accum,
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        plates_in_order=[],
+    )
+    return world
+
+
+def test_rivers_to_draw_keeps_only_the_strongest_networks():
+    # The general map views draw at most river_draw_max_networks(world) distinct drainage
+    # networks, the strongest that many by mouth flow_accum, and never one whose mouth can't
+    # clear river_draw_min_flow(world) -- so a bone-dry world shows its few real rivers, not
+    # the top of its creeks.
+    world = _linear_rivers_world([100_000, 90_000, 80_000, 70_000, 60_000, 50_000, 40_000, 30_000, 1_000])
+    cap = render_image.river_draw_max_networks(world)  # 7 at node_density 1.0
+    assert cap == 7
+
+    src_idx, _ = render_image._rivers_to_draw(world)
+    drawn_rivers = {int(i) // 3 for i in src_idx}
+    # The 8th river (mouth 30k) is above the floor but past the count cap; the 9th (1k) is
+    # below the floor outright. Only the strongest 7 survive.
+    assert drawn_rivers == {0, 1, 2, 3, 4, 5, 6}
+
+
+def test_rivers_to_draw_lets_only_the_single_largest_river_reach_width_tier_3():
+    # Width tier is capped by size rank (RIVER_WIDTH_CAP_BY_RANK): only rank 0 may be drawn
+    # 3 px wide, the next two cap at 2 px, the rest at 1 px -- so a world whose rivers are all
+    # a similar size still never fills the map with fat blue lines.
+    world = _linear_rivers_world([100_000, 99_000, 98_000, 97_000, 96_000])
+    src_idx, width_tier = render_image._rivers_to_draw(world)
+    river_of = np.array([int(i) // 3 for i in src_idx])
+
+    # Exactly one river carries any tier-3 segment, and it's the largest.
+    assert set(river_of[width_tier == 3].tolist()) == {0}
+    # Ranks 1-2 top out at tier 2; ranks 3+ are a flat tier 1.
+    assert width_tier[np.isin(river_of, [1, 2])].max() == 2
+    assert set(width_tier[np.isin(river_of, [3, 4])].tolist()) == {1}
+
+
 def test_render_png_scales_visual_constants_with_resolution():
     """Doubling the requested width (the "sharper, same displayed size" retina use case)
     should double pixel_scale, so a fixed-size feature like the pole marker should occupy
