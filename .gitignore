@@ -7,3 +7,7 @@ backend/.pytest_cache/
 frontend/node_modules/
 frontend/dist/
 .venv/
+
+# PyInstaller (bin/package.sh, bin/mantle-bloom.spec)
+/build/
+/dist/
