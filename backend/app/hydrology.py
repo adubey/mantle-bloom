@@ -71,12 +71,12 @@ not just the trickle of ordinary flow passing through that one point (see
 
 from __future__ import annotations
 
-import heapq
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
+from numba import njit
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -395,32 +395,96 @@ def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
     generalizes cleanly from grid 8-neighbor adjacency to the k-NN graph's edges. Returns
     (filled_elevation, spill_target): the minimal-bottleneck elevation to
     reach open ocean from each node, and a one-hop escape neighbor toward it (-1 for ocean
-    or a node with no path to any ocean at all)."""
+    or a node with no path to any ocean at all).
+
+    The work is an njit kernel (`_basin_spill_kernel`): a pure-Python `heapq` priority-flood
+    was ~0.21 s/step at `node_density` 4 and grew with basin count (profiling.md #7). Every
+    heap entry has a distinct `(cost, node)` key -- `cost[j]` only ever changes on a strict
+    decrease -- so the min is unique and pop order is identical to `heapq`'s tuple compare
+    regardless of heap internals; the kernel is bit-exact with the old path."""
     n = len(elevation)
-    elevation_list = elevation.tolist()  # plain-list access is much faster than per-element
-    is_ocean_list = is_ocean.tolist()  # numpy indexing inside this loop's hot path
-    neighbor_list = neighbor_idx.tolist()
+    if n == 0:
+        return np.zeros(0), np.zeros(0, dtype=np.int64)
+    return _basin_spill_kernel(
+        np.ascontiguousarray(elevation, dtype=np.float64),
+        np.ascontiguousarray(is_ocean, dtype=np.bool_),
+        np.ascontiguousarray(neighbor_idx, dtype=np.int64),
+    )
 
-    cost = [np.inf] * n
-    spill_target = [-1] * n
-    visited = [False] * n
 
-    heap: list[tuple[float, int]] = []
+@njit(cache=True)
+def _basin_spill_kernel(
+    elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Array-backed binary min-heap priority-flood -- see `_compute_basin_spill`. The heap is
+    ordered lexicographically on `(key, node)` to match Python `heapq`'s tuple comparison.
+    `cap` bounds total pushes exactly: each directed edge is relaxed at most once (only after
+    its source is popped, guarded by `visited`), plus one seed per ocean node."""
+    n = elevation.shape[0]
+    k = neighbor_idx.shape[1]
+
+    cost = np.full(n, np.inf)
+    spill_target = np.full(n, -1, dtype=np.int64)
+    visited = np.zeros(n, dtype=np.bool_)
+
+    cap = n * k + n + 1
+    heap_key = np.empty(cap, dtype=np.float64)
+    heap_node = np.empty(cap, dtype=np.int64)
+    size = 0
+
     for i in range(n):
-        if is_ocean_list[i]:
-            cost[i] = elevation_list[i]
-            heap.append((cost[i], i))
-    heapq.heapify(heap)
+        if is_ocean[i]:
+            cost[i] = elevation[i]
+            heap_key[size] = elevation[i]
+            heap_node[size] = i
+            child = size
+            size += 1
+            while child > 0:
+                parent = (child - 1) >> 1
+                if heap_key[child] < heap_key[parent] or (
+                    heap_key[child] == heap_key[parent] and heap_node[child] < heap_node[parent]
+                ):
+                    heap_key[child], heap_key[parent] = heap_key[parent], heap_key[child]
+                    heap_node[child], heap_node[parent] = heap_node[parent], heap_node[child]
+                    child = parent
+                else:
+                    break
 
-    while heap:
-        d, i = heapq.heappop(heap)
+    while size > 0:
+        d = heap_key[0]
+        i = heap_node[0]
+        size -= 1
+        heap_key[0] = heap_key[size]
+        heap_node[0] = heap_node[size]
+        parent = 0
+        while True:
+            left = 2 * parent + 1
+            right = left + 1
+            smallest = parent
+            if left < size and (
+                heap_key[left] < heap_key[smallest]
+                or (heap_key[left] == heap_key[smallest] and heap_node[left] < heap_node[smallest])
+            ):
+                smallest = left
+            if right < size and (
+                heap_key[right] < heap_key[smallest]
+                or (heap_key[right] == heap_key[smallest] and heap_node[right] < heap_node[smallest])
+            ):
+                smallest = right
+            if smallest == parent:
+                break
+            heap_key[parent], heap_key[smallest] = heap_key[smallest], heap_key[parent]
+            heap_node[parent], heap_node[smallest] = heap_node[smallest], heap_node[parent]
+            parent = smallest
+
         if visited[i]:
             continue
         visited[i] = True
-        for j in neighbor_list[i]:
-            if visited[j] or is_ocean_list[j]:
+        for c in range(k):
+            j = neighbor_idx[i, c]
+            if visited[j] or is_ocean[j]:
                 continue
-            neighbor_elev = elevation_list[j]
+            neighbor_elev = elevation[j]
             candidate = neighbor_elev if neighbor_elev > d else d
             if candidate < cost[j]:
                 cost[j] = candidate
@@ -429,9 +493,23 @@ def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
                 else:
                     inherited = spill_target[i]
                     spill_target[j] = inherited if inherited >= 0 else i
-                heapq.heappush(heap, (candidate, j))
+                heap_key[size] = candidate
+                heap_node[size] = j
+                child = size
+                size += 1
+                while child > 0:
+                    parent = (child - 1) >> 1
+                    if heap_key[child] < heap_key[parent] or (
+                        heap_key[child] == heap_key[parent]
+                        and heap_node[child] < heap_node[parent]
+                    ):
+                        heap_key[child], heap_key[parent] = heap_key[parent], heap_key[child]
+                        heap_node[child], heap_node[parent] = heap_node[parent], heap_node[child]
+                        child = parent
+                    else:
+                        break
 
-    return np.array(cost), np.array(spill_target, dtype=np.int64)
+    return cost, spill_target
 
 
 def lake_components(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> list[np.ndarray]:
