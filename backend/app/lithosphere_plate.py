@@ -75,6 +75,26 @@ MAX_EXTEND_NODES_PER_STEP = 400
 #     same lobe-severing reason).
 CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 
+# Whole-row retreat -- the reverse of `_claim_adjacent_territory`, and the *only* retreat op
+# available in the "parallel suture" regime: when a neighbour overrides a continental plate's
+# frontmost phi-row over its full theta width there is no uncontested end for
+# `_grow_or_shrink_line_for_deform` to trim, and a continental row is never carved mid-span
+# (that severs the landmass into a spurious defragmentation plate), so end-trim alone leaves
+# that plate physically unable to give ground -- its trailing edge still grows every step, so
+# the node pile ratchets outward regardless (docs/TODO.md#continental-ratchet-solution,
+# mechanism 2). Once a plate's outermost row (either phi extreme) has been at least
+# LEADING_ROW_CONTESTED_FRACTION contested for a cumulative LEADING_ROW_RETREAT_SUSTAINED_YEARS
+# of deform time, the whole row is dropped. Whole-row removal keeps the plate contiguous -- the
+# lobe-severing hazard is specific to *mid*-row carving -- so this is safe exactly where the
+# interior-subduction carve is not. Like the 2026-09-02 end-retreat this does not plumb the
+# dropped column's volume anywhere; the newly-exposed frontmost row is contested next step and
+# thickens through the ordinary `CONTINENTAL_COLLISION_SHORTENING_BOOST` path.
+LEADING_ROW_CONTESTED_FRACTION = 0.7
+LEADING_ROW_RETREAT_SUSTAINED_YEARS = 5_000_000.0
+# Never drop a row that would take the plate below this many rows -- a tiny plate has no
+# "leading row" worth the name and the contiguity argument gets thin.
+LEADING_ROW_DROP_MIN_ROWS = 4
+
 
 def growth_seed_thickness() -> tuple[float, float]:
     """(Hc, Hm) a plate seeds *brand-new areal* nodes with -- when a line grows an end into
@@ -296,6 +316,9 @@ class LithospherePlate(PlateWithLines):
             )
             new_lines.extend(gl for gl in grown_lines if len(gl) > 0)
 
+        if self.crust_type == "continental":
+            new_lines = self._retreat_contested_leading_rows(new_lines, contested_all, years)
+
         self.set_lines(new_lines)
         self._claim_adjacent_territory(world, neighbours, spacing_rad)
 
@@ -472,6 +495,61 @@ class LithospherePlate(PlateWithLines):
 
         result = ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
         return split_into_contiguous_runs(result, dtheta)
+
+    def _retreat_contested_leading_rows(
+        self, new_lines: list[ElevationLine], contested_all: np.ndarray, years: float
+    ) -> list[ElevationLine]:
+        """Drop this plate's outermost phi-row (at either phi extreme) once a neighbour has
+        overridden it -- `LEADING_ROW_CONTESTED_FRACTION` of its nodes contested -- for a
+        cumulative `LEADING_ROW_RETREAT_SUSTAINED_YEARS` of deform time. The reverse of
+        `_claim_adjacent_territory`, and the only retreat op the parallel-suture regime allows.
+        See the constant block above.
+
+        `contested_all` is this step's boundary classification in the concatenation order of
+        the *pre-grow* `self.lines` (this runs before `set_lines(new_lines)`); the drop is
+        applied to `new_lines` by matching `line.phi` (grow/shrink is theta-only, so a row's
+        phi is unchanged, and a row split into two arcs by `split_into_contiguous_runs` shares
+        one phi and is dropped as a unit). The sustained-time tally lives on the plate
+        (`_leading_row_retreat_years`), keyed by which extreme -- it survives a rotation (rows
+        are stored plate-local) but resets on merge/split/load, which only delays a drop."""
+        tracker: dict[str, tuple[float, float]] = getattr(self, "_leading_row_retreat_years", None)
+        if tracker is None:
+            tracker = {}
+            self._leading_row_retreat_years = tracker
+
+        contested_by_phi: dict[float, list[float]] = {}
+        offset = 0
+        for line in self.lines:
+            n = len(line)
+            key = round(float(line.phi), 6)
+            agg = contested_by_phi.setdefault(key, [0.0, 0.0])
+            agg[0] += n
+            agg[1] += float(contested_all[offset : offset + n].sum())
+            offset += n
+
+        rows_left = sorted({round(float(ln.phi), 6) for ln in new_lines if len(ln) > 0})
+        if len(rows_left) < LEADING_ROW_DROP_MIN_ROWS:
+            tracker.clear()
+            return new_lines
+
+        drop_phis: list[float] = []
+        for extreme, phi_key in (("lo", rows_left[0]), ("hi", rows_left[-1])):
+            n_nodes, n_contested = contested_by_phi.get(phi_key, (0.0, 0.0))
+            fraction = n_contested / n_nodes if n_nodes else 0.0
+            if fraction < LEADING_ROW_CONTESTED_FRACTION:
+                tracker.pop(extreme, None)
+                continue
+            prev_phi, prev_years = tracker.get(extreme, (None, 0.0))
+            accumulated = (prev_years if prev_phi == phi_key else 0.0) + years
+            if accumulated >= LEADING_ROW_RETREAT_SUSTAINED_YEARS:
+                drop_phis.append(phi_key)
+                tracker.pop(extreme, None)
+            else:
+                tracker[extreme] = (phi_key, accumulated)
+
+        if not drop_phis:
+            return new_lines
+        return [ln for ln in new_lines if round(float(ln.phi), 6) not in drop_phis]
 
     def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
         """Same shape as `PlateWithLines._claim_adjacent_territory` -- a brand-new phi row

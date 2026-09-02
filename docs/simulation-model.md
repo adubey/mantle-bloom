@@ -387,6 +387,24 @@ trigger (contested, not a positive closing rate) changed:
   below stays oceanic-only (a continental row is only ever shrunk from its ends) for the
   lobe-severing reason -- carving a continental row's middle would sever the landmass into a
   spurious defragmentation plate.
+
+  **Whole-row drop (parallel suture).** End-trim can only bite where a row has an *uncontested*
+  end. When a neighbour overrides a continental plate's frontmost phi-row across its full theta
+  width -- a suture running *along* that plate's rows -- there is no uncontested end and (per
+  the previous paragraph) no mid-row carve, so end-trim alone leaves that plate unable to give
+  ground while its trailing edge keeps growing: the ratchet again. `LithospherePlate._retreat_
+  contested_leading_rows` (continental crust only, run just before `_claim_adjacent_territory`)
+  is the sign-flipped mirror of the claim: once a plate's outermost row at *either* phi extreme
+  has been `LEADING_ROW_CONTESTED_FRACTION` (0.7) contested for a cumulative `LEADING_ROW_
+  RETREAT_SUSTAINED_YEARS` (5 My) of deform time -- tracked per-plate in `_leading_row_retreat_
+  years`, keyed by extreme -- the whole row is deleted. Removing an outermost row keeps the
+  plate contiguous (unlike a mid-row carve), so it is gated only by `LEADING_ROW_DROP_MIN_ROWS`
+  (4). Volume is not conserved through the drop (parity with the end-retreat above); the row
+  it exposes is contested next step and thickens through the same `CONTINENTAL_COLLISION_
+  SHORTENING_BOOST` path. The claim/drop timing is deliberately asymmetric -- a row is claimed
+  the instant open space appears, but only dropped after a sustained override, so a transient
+  boundary wobble can't thrash a stable margin.
+
   Growth and
   *ordinary* shrink are end-only: each `ElevationLine` is a single contiguous arc, and
   inserting/deleting anywhere but an end would break that. The one interior case handled is
