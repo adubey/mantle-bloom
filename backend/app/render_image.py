@@ -442,6 +442,33 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
     return world_pts @ view_rotation.T
 
 
+def _node_cloud_and_tree(world: World):
+    """`(all_points, all_elevation, all_owner, cKDTree)` for the current node cloud, or
+    `None` for an empty world -- the shared entry point for every render that does a
+    nearest-node resample off the full plate node cloud (`_render_grid_arrays`,
+    `_biome_fields`, `_resource_fields`, `_render_elev_reason_view`, `_render_speckle_view`).
+
+    The tree (a `cKDTree` over ~131 K nodes at node_density 4) costs ~20 ms to build -- not
+    huge next to its own ~165 ms grid query, but a combined/elevation render runs several
+    separate resamples off it, and an animation re-renders every frame without moving a
+    node. It, and the concatenated arrays it indexes into, are cached on
+    `World.node_kdtree_cache` and reused until the next `step_world` moves a node and resets
+    the cache -- node positions are otherwise fixed between steps, and no render ever runs
+    mid-step. This is the "left for later" tail of docs/profiling.md #6. Every
+    `plates.collect_all_*` array is built in this same per-plate/per-node order, so the
+    tree's query indices map into any of them, not just the three returned here."""
+    cached = world.node_kdtree_cache
+    if cached is not None:
+        return cached
+    collected = plates.collect_all_points(world.plates)
+    if collected is None:
+        return None
+    all_points, all_elevation, all_owner = collected
+    result = (all_points, all_elevation, all_owner, cKDTree(all_points))
+    world.node_kdtree_cache = result
+    return result
+
+
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
@@ -473,14 +500,13 @@ def _render_grid_arrays(
     (confirmed directly: this was the source of a handful of huge false cells smearing all
     the way across the render). _project_offset keeps the corner's longitude unwrapped
     relative to the cell's own center, which a true small step should always permit."""
-    collected = plates.collect_all_points(world.plates)
-    if collected is None:
+    node_cloud = _node_cloud_and_tree(world)
+    if node_cloud is None:
         return None
-    all_points, all_elevation, all_owner = collected
+    _all_points, all_elevation, all_owner, tree = node_cloud
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
-    tree = cKDTree(all_points)
 
     # At the default node_density, GRID_SPACING_RAD (100km) is already finer than the
     # physics resolution (plates.line_spacing_rad(1.0) = 125km), so it's the effective
@@ -602,17 +628,16 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     flat_xyz = world_xyz.reshape(-1, 3)
     shape = (grid_h, grid_w)
 
-    collected = plates.collect_all_points(world.plates)
-    if collected is None:
+    node_cloud = _node_cloud_and_tree(world)
+    if node_cloud is None:
         elevation_m = np.zeros(shape)
         is_ocean = np.ones(shape, dtype=bool)
         lake_depth = np.zeros(shape)
         glacier_depth = np.zeros(shape)
     else:
-        all_points, all_elevation, _ = collected
+        _all_points, all_elevation, _owner, tree = node_cloud
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
-        tree = cKDTree(all_points)
         _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
@@ -643,13 +668,12 @@ def _resource_fields(world: World, grid_h: int, grid_w: int):
     flat_xyz = world_xyz.reshape(-1, 3)
     shape = (grid_h, grid_w)
 
-    collected = plates.collect_all_points(world.plates)
-    if collected is None:
+    node_cloud = _node_cloud_and_tree(world)
+    if node_cloud is None:
         z = np.zeros(shape)
         return lat_deg, lon_deg, world_xyz, np.ones(shape, dtype=bool), z, z, z, z, z, z
 
-    all_points, all_elevation, _ = collected
-    tree = cKDTree(all_points)
+    _all_points, all_elevation, _owner, tree = node_cloud
     _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     is_ocean = hydrology.sample_is_ocean(world, world_xyz, (all_elevation[idx].reshape(shape)) <= world.sea_level_m)
 
@@ -1479,12 +1503,12 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
     grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
-    collected = plates.collect_all_points(world.plates) if world.plates else None
-    if grid is None or collected is None:
+    node_cloud = _node_cloud_and_tree(world) if world.plates else None
+    if grid is None or node_cloud is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
     xy, elev, _owner, _lake, _glacier, _volcano, half_w, half_h = grid
-    all_points, all_elevation, _ = collected
+    all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
     all_xy = np.concatenate([xy, node_xy], axis=0)
@@ -1579,14 +1603,14 @@ def _render_elev_reason_view(world: World, projection: str, width: int, height: 
     lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
     flat_xyz = world_xyz.reshape(-1, 3)
 
-    collected = plates.collect_all_points(world.plates) if world.plates else None
-    if collected is None:
+    node_cloud = _node_cloud_and_tree(world) if world.plates else None
+    if node_cloud is None:
         return _encode_image(Image.fromarray(pixels, mode="RGB"))
-    all_points, _all_elev, _owner = collected
+    _all_points, _all_elev, _owner, tree = node_cloud
     reason = plates.collect_all_elev_change_reason(world.plates)
     # Nearest-node lookup in the true (un-rotated) frame -- _project_climate_grid applies
     # view_rotation later, at projection time, exactly as _render_geomorph_view does.
-    _, idx = cKDTree(all_points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
+    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     colors = elev_reason_colors(reason[idx])
 
     centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
