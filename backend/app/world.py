@@ -108,6 +108,17 @@ class World:
     # lazily on first use after that. None means "not built yet this step," not "no land" --
     # distance_from_land_approx itself is what tells those two cases apart.
     land_kdtree_cache: cKDTree | None = None
+    # The render path's full node-cloud k-d tree (a cKDTree over plates.collect_all_points'
+    # concatenated node positions -- ~131 K at node_density 4), paired with the concatenated
+    # (points, elevation, owner) arrays it indexes into -- see
+    # render_image._node_cloud_and_tree. The tree build is ~20 ms at that size (docs/profiling.md
+    # #6 -- the query over the render grid is the larger cost and is already workers=parallel);
+    # the node cloud is fixed between steps (only elevation/other per-node fields still move
+    # mid-step, and the render path never runs mid-step), so this is built once by the first
+    # render after a step and reused by every subsequent render -- and by the several separate
+    # resamples within a single combined/elevation render -- until step_world resets it.
+    # Persisted like the other caches but dropped on load (persistence._drop_derived_caches).
+    node_kdtree_cache: tuple[np.ndarray, np.ndarray, np.ndarray, cKDTree] | None = None
     # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
@@ -327,6 +338,12 @@ def step_world(world: World, years: float) -> None:
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
     world.steps_taken += 1
+    # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) is a pure
+    # function of node positions, which shift()/deform()/topology changes below are about to
+    # move -- drop it now so the first render after this step rebuilds it. (land_kdtree_cache
+    # is reset separately, inside the simulate_climate_biomes block, since only that path
+    # reads it.)
+    world.node_kdtree_cache = None
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)

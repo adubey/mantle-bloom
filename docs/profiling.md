@@ -120,9 +120,23 @@ Landed since the original profile (each measured on the box it was written on):
    `coastline._lake_mask_on_grid`. Microbench (seed 0, `node_density`/`climate_density` 4,
    801x1601 grid, 6-core Apple Silicon): `_biome_fields` end-to-end **1.30 s -> 0.53 s**
    (~0.77 s/frame), nearest-node output bit-identical (deterministic query). Speeds every
-   `combined`/`biome`/`geomorph`/`resources` re-render, not just animation. The tree itself
-   is still rebuilt per render (it only changes on a step) -- caching it is a further,
-   separate win left for later.
+   `combined`/`biome`/`geomorph`/`resources` re-render, not just animation.
+
+   ~~The tree itself is still rebuilt per render (it only changes on a step) -- caching it is
+   a further, separate win left for later.~~ **Done** (`World.node_kdtree_cache`, populated by
+   `render_image._node_cloud_and_tree` and reset at the top of `step_world` -- the node cloud
+   is fixed between steps and no render runs mid-step; dropped on load like the other derived
+   caches). Turned out smaller than the "~0.5-0.8 s" this note implied: at `node_density` 4
+   (~131 K nodes) the `cKDTree` *build* is only ~20 ms -- the ~165 ms grid `query` is the real
+   cost and fix 6 already parallelized that. Still worth it because a single
+   `combined`/`elevation` render runs several separate resamples off one tree and an animation
+   re-renders every frame without moving a node: measured ~35 ms/render on a 5-render
+   view-switching sequence (4.61 s -> 4.44 s), render output bit-identical.
+
+   Not cached: `hydrology.sample_is_ocean`'s `cKDTree(hydro.points)` (built once per
+   `_biome_fields` / `_resource_fields` call). It keys off `world.hydrology_cache`, which is
+   already per-step, so a `_ocean_tree` lazy attribute on `HydrologyFields` would be the same
+   pattern for another ~20 ms/frame -- left as a small follow-up.
 
 Still open, roughly in order:
 
