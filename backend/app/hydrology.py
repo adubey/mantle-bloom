@@ -383,7 +383,8 @@ def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np
     hydro = getattr(world, "hydrology_cache", None)
     if hydro is None or len(hydro.points) == 0 or len(hydro.is_ocean) != len(hydro.points):
         return fallback_is_ocean
-    _, idx = cKDTree(hydro.points).query(np.asarray(query_xyz).reshape(-1, 3))
+    flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
+    _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
     return hydro.is_ocean[idx].reshape(fallback_is_ocean.shape)
 
 

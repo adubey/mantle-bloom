@@ -613,7 +613,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
         tree = cKDTree(all_points)
-        _, idx = tree.query(flat_xyz)
+        _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
         glacier_depth = all_glacier_depth[idx].reshape(shape)
@@ -650,7 +650,7 @@ def _resource_fields(world: World, grid_h: int, grid_w: int):
 
     all_points, all_elevation, _ = collected
     tree = cKDTree(all_points)
-    _, idx = tree.query(flat_xyz)
+    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     is_ocean = hydrology.sample_is_ocean(world, world_xyz, (all_elevation[idx].reshape(shape)) <= world.sea_level_m)
 
     def resample(collector) -> np.ndarray:
@@ -1540,7 +1540,7 @@ def _render_geomorph_view(world: World, projection: str, width: int, height: int
     if result is None or len(result.points) == 0:
         net_change = np.zeros(len(flat_xyz))
     else:
-        _, idx = cKDTree(result.points).query(flat_xyz)
+        _, idx = cKDTree(result.points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         net_change = result.net_elevation_change_m[idx]
     colors = geomorph_colors(net_change)
 
@@ -1586,7 +1586,7 @@ def _render_elev_reason_view(world: World, projection: str, width: int, height: 
     reason = plates.collect_all_elev_change_reason(world.plates)
     # Nearest-node lookup in the true (un-rotated) frame -- _project_climate_grid applies
     # view_rotation later, at projection time, exactly as _render_geomorph_view does.
-    _, idx = cKDTree(all_points).query(flat_xyz)
+    _, idx = cKDTree(all_points).query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     colors = elev_reason_colors(reason[idx])
 
     centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(

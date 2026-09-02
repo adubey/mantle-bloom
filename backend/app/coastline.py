@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, hydrology
+from . import geometry, hydrology, plates
 
 if TYPE_CHECKING:
     from .world import World
@@ -49,7 +49,8 @@ def _lake_mask_on_grid(world: "World", world_xyz: np.ndarray) -> np.ndarray:
     if hydro is None or len(hydro.points) == 0:
         return np.zeros((height, width), dtype=bool)
     tree = cKDTree(hydro.points)
-    _, idx = tree.query(world_xyz.reshape(-1, 3))
+    flat_xyz = world_xyz.reshape(-1, 3)
+    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     lake_depth = hydro.lake_depth[idx].reshape(height, width)
     return lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
 
