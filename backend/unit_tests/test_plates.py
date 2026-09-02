@@ -904,6 +904,63 @@ def test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate(mon
     assert boosted > plain * 1.8
 
 
+def test_lithosphere_continental_volume_budget_suppresses_growth():
+    """A continental plate whose node footprint has outrun its crustal volume -- most of its
+    lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new
+    areal crust this step (neither end-growth nor a claimed new row), so it thins/drowns back
+    toward budget instead of tiling drowned margin outward forever. A plate at genuine
+    continental thickness everywhere is within budget and still grows normally."""
+    from app.lithosphere import (
+        REFERENCE_HC_CONTINENTAL_M,
+        REFERENCE_HC_OCEANIC_M,
+        REFERENCE_HM_CONTINENTAL_M,
+    )
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _continent(main_hc: float) -> LithospherePlate:
+        n = 40
+        main = ElevationLine(
+            phi=0.2,
+            theta=np.linspace(-0.5, 0.5, n),
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, main_hc),
+            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
+        )
+        # A genuinely-continental core so `n_continental` is never zero in either case.
+        core = ElevationLine(
+            phi=-0.6,
+            theta=np.linspace(-0.2, 0.2, 8),
+            elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, REFERENCE_HC_CONTINENTAL_M),
+            mantle_lithosphere_thickness_m=np.full(8, REFERENCE_HM_CONTINENTAL_M),
+        )
+        return LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main, core])
+
+    def _main_span_growth(main_hc: float) -> float:
+        plate = _continent(main_hc)
+        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+
+        def main_span() -> float:
+            line = next(ln for ln in plate.lines if abs(ln.phi - 0.2) < 1e-6)
+            return float(line.theta[-1] - line.theta[0])
+
+        before = main_span()
+        # One step, with a wide max_distance so an unsuppressed end can take several nodes --
+        # a later step would see `_claim_adjacent_territory` dilute the compact plate too (the
+        # ratchet this gate exists to bound), so measure the first step alone.
+        plate.deform(world, [], years=200_000, max_distance=5 * spacing)
+        return main_span() - before
+
+    # Diluted lattice (main row at the oceanic reference column): ~40 nodes vs ~8 genuine
+    # continental -> well past CONTINENTAL_AREA_BUDGET_MULT -> the open end grows nothing.
+    assert _main_span_growth(REFERENCE_HC_OCEANIC_M) < 0.5 * spacing
+    # Genuine continental thickness everywhere -> within budget -> the open end still grows.
+    assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 3 * spacing
+
+
 def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
     from app.plates import POLE_CAP_MARGIN_MULT
     from app.world import World

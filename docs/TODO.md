@@ -322,10 +322,12 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
    neighbour the freed ground is re-claimed as new oceanic crust so the *node count* barely
    moves, but it stops the *land-fraction* bleed. Direction 2 is still the complement for the
    raw node count.
-2. **Cap a plate's total footprint against its crustal volume.** **Still open -- now the
-   priority.** Expanded into a full solution design (retreat-mechanism inventory, suture-
-   orientation regime analysis, ranked mechanisms): see
-   [Continental ratchet: solution design](#continental-ratchet-solution) below.
+2. **Cap a plate's total footprint against its crustal volume.** **DONE 2026-09-02** -- the
+   volume-budget growth gate, mechanism 1 of the
+   [Continental ratchet: solution design](#continental-ratchet-solution) below (which also
+   carries the retreat-mechanism inventory and suture-orientation regime analysis). Halves
+   continental-node growth over a 120 My run. The parallel-suture leading-row drop
+   (mechanism 2 there) is the remaining piece.
 3. **Make frozen continent-continent overlaps actually resolve.** **DONE 2026-09-02.**
    `merge_split.update_overlap_progress` / `World.overlap_progress` is a second sustained-timer
    -- the territory-overlap sibling of `collision_progress` -- and `pop_ready_forced_merge`
@@ -397,18 +399,25 @@ consumption). Right direction, more honest than the `fault_factor` fudge, lets
 **Mechanisms, ranked.**
 
 1. **Volume-budget growth gate (this is "direction 2" above) -- highest leverage, do first.**
-   `lithosphere.node_area_m2(spacing)` is constant per node by design, so a plate's implied
-   mean crustal thickness is just `mean(crustal_thickness_m)`. The ratchet *dilutes* this --
-   every ratcheted margin node and every `_claim_adjacent_territory` node is seeded at oceanic
-   Hc (11 km, `growth_seed_thickness`). So:
-   - `n_continental = count(Hc >= 0.6 * REFERENCE_HC_CONTINENTAL_M)` per plate;
-   - if `len(all nodes) > k * n_continental` (k ~ 1.5-2, a realistic shelf/margin allowance),
-     suppress **both** end-growth and `_claim_adjacent_territory` for that plate this step;
-   - optionally let divergent thinning keep running so an over-stretched plate thins/drowns
-     back toward budget instead of just freezing.
-   Regime-independent, neighbour-independent, a few lines in `deform`. Kills both symptoms
-   (node count + "giant 80%-drowned continental plate"). A real craton sits near reference Hc,
-   nowhere near the cap.
+   **DONE 2026-09-02 (seed 60461418, 120 My at node_density=1).**
+   `lithosphere_plate.deform` computes, for a continental self-plate only:
+   `n_continental = count(Hc >= CONTINENTAL_BUDGET_HC_FRACTION * REFERENCE_HC_CONTINENTAL_M)`
+   (fraction 0.6) and `suppress_growth = len(own_points) > CONTINENTAL_AREA_BUDGET_MULT *
+   n_continental` (mult 1.8). When set, the two `grow_end` blocks in
+   `_grow_or_shrink_line_for_deform` are skipped and `_claim_adjacent_territory` is not
+   called at all this step -- but retreat (`shrinkable`), divergent thinning and convergent
+   thickening all keep running, so an over-budget plate thins / drowns / crumples back toward
+   its crustal volume rather than merely freezing. Regime- and neighbour-independent.
+   Effect over 120 My: continental-node growth **+7.4% vs +18.5%** with the gate disabled
+   (roughly halved -- the same order as the rheology-calibration fix); total node count
+   +1.6% vs +2.3% (ocean consumption masks most of it, as predicted); land fraction a hair
+   better (0.428 vs 0.417 at 120 My -- the gate deliberately lets divergent thinning
+   continue, so it doesn't stop the interior-drowning half). `plates.py` v1 engine
+   untouched (not the running one). `test_lithosphere_continental_volume_budget_suppresses_
+   growth` (unit) + `test_continental_volume_budget_bounds_the_boundary_ratchet` (stress)
+   pin it. **Left for the leading-row drop (2 below):** the *parallel-suture* regime, where a
+   plate's frontmost row is entirely contested -- the gate freezes its growth but nothing
+   removes the row, so that pile-up still can't retreat.
 2. **Make `_claim_adjacent_territory` reversible -- a leading-row drop.** The structural fix
    for the parallel-suture regime: the existing claim logic with the sign flipped, run at the
    same point in `deform()`. If a plate's outermost phi-row is >= ~70% contested for >= N
@@ -427,6 +436,8 @@ consumption). Right direction, more honest than the `fault_factor` fudge, lets
 (2) for the parallel-suture gap; suture accretion (3) later for honesty. The design rule the
 regime table implies: for continental crust, prefer whole-row ops + volume caps over mid-row
 carving/splitting.
+
+**Progress:** mechanism (1) landed 2026-09-02 (see its entry above). (2)-(4) still open.
 
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
 "Bug 1" (below) added a `ring_room()` one-revolution cap in
@@ -636,11 +647,12 @@ retracted.)
   the stat stale in the response / panel. (`node LF` -- a bare `elevation > sea_level` count --
   is always right and would be a good panel addition on its own.)
 - **The node-count + land-loss driver is the continental boundary ratchet** -- see
-  [Continental ratchet: solution design](#continental-ratchet-solution). This sweep is what
-  makes the volume-cap (direction 2 there) the priority: an un-stretched continent neither
-  tiles drowned margin outward (node count) nor thins-and-drowns its interior (land).
-  Directions 1 (contested-run retreat) and 3 (forced merge) are partly landed and did not
-  stop either trend.
+  [Continental ratchet: solution design](#continental-ratchet-solution). The volume-cap
+  (direction 2 / mechanism 1 there) **landed 2026-09-02** and halves the continental-node
+  growth over a long run (+7.4% vs +18.5% at 120 My); it does not fix the land-fraction
+  decline, because it deliberately lets divergent thinning keep drowning an over-budget
+  plate's interior. Directions 1 (contested-run retreat) and 3 (forced merge) were partly
+  landed earlier and did not stop either trend on their own.
 
 ---
 

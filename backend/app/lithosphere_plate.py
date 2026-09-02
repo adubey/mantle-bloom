@@ -75,6 +75,30 @@ MAX_EXTEND_NODES_PER_STEP = 400
 #     same lobe-severing reason).
 CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 
+# Volume-budget growth gate (docs/TODO.md "Continental ratchet: solution design",
+# mechanism 1). A lattice node's physical footprint is constant across the sphere by
+# construction (`lithosphere.node_area_m2`), so a plate's total area is just its node count
+# times that -- and its implied *mean* crustal thickness is `mean(crustal_thickness_m)`.
+# The continental boundary ratchet dilutes this: `_grow_or_shrink_line_for_deform` and
+# `_claim_adjacent_territory` seed every new margin node at the *oceanic* reference column
+# (`growth_seed_thickness`), and nothing ever removes a whole leading row, so a
+# shear-stretched continental plate tiles unbounded drowned passive-margin outward -- node
+# count creeps ~+5-6% per 150 My and the plate interior isostatically oceanises into a
+# "giant 80%-drowned continent" (docs/TODO.md items 2 / 5, and the land-fraction decline).
+#
+# The gate counts a plate's *genuine* continental nodes -- Hc at least
+# `CONTINENTAL_BUDGET_HC_FRACTION` of the continental reference -- and, once the plate's
+# total node count exceeds `CONTINENTAL_AREA_BUDGET_MULT` times that count, suppresses all
+# areal *growth* for the step (end-growth here and whole new rows in
+# `_claim_adjacent_territory`). Retreat, divergent thinning and convergent thickening keep
+# running, so an over-budget plate thins / drowns / crumples back toward its crustal volume
+# rather than merely freezing. A real craton sits near reference Hc across its whole area,
+# nowhere near the cap; the >1 multiplier is the realistic shelf + accreted-terrane
+# allowance. Regime-independent and neighbour-independent -- unlike the contested-run
+# retreat it does not care how the suture sits against the row grid.
+CONTINENTAL_BUDGET_HC_FRACTION = 0.6
+CONTINENTAL_AREA_BUDGET_MULT = 1.8
+
 
 def growth_seed_thickness() -> tuple[float, float]:
     """(Hc, Hm) a plate seeds *brand-new areal* nodes with -- when a line grows an end into
@@ -134,6 +158,16 @@ class LithospherePlate(PlateWithLines):
         own_points, _ = self.all_points_and_elevation()
         if not self.lines or len(own_points) == 0:
             return
+
+        # Volume-budget growth gate -- see CONTINENTAL_AREA_BUDGET_MULT. Continental crust
+        # only: oceanic footprint is already bounded by subduction. Over budget -> this step
+        # grows no new areal crust (end-growth below and `_claim_adjacent_territory`), but
+        # still retreats / thins / thickens toward the budget.
+        suppress_growth = False
+        if self.crust_type == "continental":
+            hc_all = self.collect("crustal_thickness_m")
+            n_continental = int(np.count_nonzero(hc_all >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M))
+            suppress_growth = len(own_points) > CONTINENTAL_AREA_BUDGET_MULT * n_continental
 
         spacing_rad = line_spacing_rad(world.node_density)
         reach_rad = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
@@ -293,11 +327,13 @@ class LithospherePlate(PlateWithLines):
                 world,
                 line_index,
                 neighbours,
+                suppress_growth,
             )
             new_lines.extend(gl for gl in grown_lines if len(gl) > 0)
 
         self.set_lines(new_lines)
-        self._claim_adjacent_territory(world, neighbours, spacing_rad)
+        if not suppress_growth:
+            self._claim_adjacent_territory(world, neighbours, spacing_rad)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):
@@ -324,6 +360,7 @@ class LithospherePlate(PlateWithLines):
         world: "World",  # noqa: F821
         line_index: int,
         neighbours: list,
+        suppress_growth: bool = False,
     ) -> list[ElevationLine]:
         """Same grow/shrink shape as `PlateWithLines._grow_or_shrink_line_for_deform` (see
         that method's own docstring -- end-only growth/shrink, plus the oceanic-only
@@ -428,7 +465,7 @@ class LithospherePlate(PlateWithLines):
         def grow_end(n_new: int) -> tuple[np.ndarray, np.ndarray]:
             return np.full(n_new, hc0), np.full(n_new, hm0)
 
-        if not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
+        if not suppress_growth and not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
             n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
             candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
@@ -449,7 +486,7 @@ class LithospherePlate(PlateWithLines):
                         fill = np.zeros(n_new, dtype=values.dtype)
                     persistent_fields[name] = np.append(values, fill)
 
-        if not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
+        if not suppress_growth and not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
             n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
             candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
