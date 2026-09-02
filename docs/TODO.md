@@ -480,81 +480,83 @@ view's `moved`/override gates key off the *raw* geomorphic move, since compensat
 the surface expression ~5x without changing which process is shaping the column.
 
 **The tectonic half is NOT fixed** -- see the sweep below. Land keeps falling on a long run
-because plate movement drowns continental crust faster than anything lifts it, and that is
-now the dominant driver (erosion contributes < 15%).
+because plate movement drowns continental crust faster than anything lifts it. **Erosion's
+net effect on land fraction is within noise of zero** -- if anything marginally
+land-*preserving* (deposition + coastal leveling). The earlier "~10% erosional" / "erosion
+contributes < 15%" wording overstated it ~5x and is retracted.
 
-### Toggle sweep: land vs node count, seed 60461418 @ 69 My (2026-09-02, corrected)
+### Toggle sweep: land vs node count, seed 60461418 @ 69 My (2026-09-02, re-run)
 
 **Reported symptom.** On `~/Downloads/mantle-bloom-seed60461418-69000000y.mbworld` (seed
 60461418, 69 steps of 1 My, `node_density=4`, 19 plates, 16 continental and 12 of those
-already >50% submerged): with **Climate turned OFF**, elevation-point count keeps rising and
-the Stats-panel land fraction sits still. Both observations are **correct** -- see below.
+already >50% submerged): the elevation-point count keeps rising and land keeps falling.
+Confirmed.
 
-**Two land-fraction numbers, and they disagree.** `node LF` = fraction of *nodes* whose live
-`elevation` is above sea level (recomputed directly every sample). `grid LF` = what
-`stats.compute_stats` / the Stats panel report -- the climate grid's `is_ocean` fraction,
-which comes from `hydrology.sample_is_ocean` resampling `world.hydrology_cache.is_ocean`.
-**`hydrology_cache` is only rebuilt inside `erosion.apply_erosion`, so with
-`simulate_climate_biomes` off it is frozen at its step-69 state and `grid LF` cannot move at
-all** -- 0.202 forever, no matter how far elevations actually sink. So the panel showing
-"land static" with Climate off is a stale-cache artefact, not a real measurement; the live
-`node LF` under it is falling the whole time.
+**Metric.** `land fraction` throughout = **(count of nodes with live `elevation` >
+`sea_level_m`) / (total node count)** -- computed straight off the plates every sample, not
+the Stats panel's number. (The panel's `land_fraction` reads `world.hydrology_cache.is_ocean`
+via `hydrology.sample_is_ocean`, and `hydrology_cache` is only rebuilt inside
+`erosion.apply_erosion` -- so with Climate/erosion off it freezes at the toggle-step value
+and stops tracking reality. That stale-cache freeze is its own bug, see Direction below.)
 
-**Long-run, everything ON vs Climate OFF (both stepped 69 -> 219 = +150 My).**
+**Clean isolation -- each subsystem toggled alone, stepped 69 -> 219 My (+150 My).**
 
-| | nodes | continental | oceanic | plates | node LF (live) | grid LF (panel) | node mean elev |
-|---|---|---|---|---|---|---|---|
-| **all on**, 69 My  | 131,979 | 111,268 | 20,711 | 19 | 0.244 | 0.202 | -2892 m |
-| **all on**, 219 My | 132,693  (+0.5%) | 117,866  (**+5.9%**) | 14,827  (**-28%**) | 18 | **0.147** | **0.104** | -3195 m |
-| **Climate OFF**, 69 My  | 131,979 | 111,268 | 20,711 | 19 | 0.244 | 0.202 | -2892 m |
-| **Climate OFF**, 219 My | 134,614  (**+2.0%**) | 116,758  (**+4.9%**) | 17,856  (**-14%**) | 16 | **0.144** | **0.202** (frozen) | -3271 m |
+| config | land frac 69 My -> 219 My | delta | above-sea nodes 69 -> 219 | total nodes 69 -> 219 |
+|---|---|---|---|---|
+| control: plate movement OFF **and** erosion OFF | 0.2442 -> 0.2442 | **0.000** | 32,230 -> 32,230 | 131,979 (flat) |
+| **erosion only** (plate movement OFF, erosion/climate ON) | 0.2442 -> 0.2424 | **-0.002** | 32,230 -> 31,989 (-241) | 131,979 (flat) |
+| **tectonics only** (erosion OFF, plate movement ON) | 0.2442 -> 0.1445 | **-0.100** | 32,230 -> 19,451 (**-12,779**) | 131,979 -> 134,614 (**+2.0%**) |
+| volcanism OFF (else all on) | 0.2442 -> 0.1470 | -0.097 | 32,230 -> 19,628 | -> 133,559 (+1.2%) |
+| **baseline** (everything on) | 0.2442 -> 0.147 | **-0.097** | ~32,230 -> ~19,500 | -> 132,693 (+0.5%) |
+| Climate OFF (`simulate_climate_biomes=False`) | 0.2442 -> 0.144 | -0.100 | -> ~19,000 | -> 134,614 (+2.0%) |
 
-Climate-OFF node count: 131,979 -> 132,485 (step 99) -> 133,680 (149) -> 134,614 (219),
-climbing ~+2% per 100 My in the back half and still accelerating. **So the reported symptom
-is real -- the elevation-point count does keep going up.** (An earlier version of this note
-called it "flat", from a 40-step run that stopped at step 109 -- +0.2%, before the ramp;
-retracted.)
+Wind model (`"diagnostic"` vs `"cfd"`): a 40-step sweep put land fraction within 0.002 and
+mean elevation within 15 m -- no effect. (`erosion OFF` and `Climate OFF` land within
+0.0005 / a few hundred nodes of each other at every step, i.e. two independent ways of
+disabling erosion agree -- the fluid solve does nothing to `elevation` without erosion.)
 
-**What's actually happening.**
+**What this says.**
 
-1. **Continental boundaries ratchet outward ~+5-6% per 150 My, in every config**
-   (`lithosphere_plate.deform` sets `shrinkable_all` to almost nothing for a continental
-   self-plate -- see the "Node-count creep" item above). This is the robust, config-independent
-   signal and the root cause of the elevation-point growth.
+1. **Land loss is ~98% tectonic.** "Tectonics only" reproduces the full baseline decline
+   (-0.100 vs -0.097 -- the small overshoot means erosion is *slowing* the loss slightly, not
+   driving it). "Erosion only" is -0.002 over 150 My and non-monotonic (dips to -0.0022,
+   recovers to -0.0018) -- erosion is in rough equilibrium with its own deposition and the
+   coastal-leveling pass. The 2026-09-01 isostatic-compensation fix is holding.
 
-2. **Whether that shows up in the *total* depends on how fast oceanic crust is consumed to
-   compensate**, and that is trajectory-sensitive (slab pull in `torque.py` reads bathymetry,
-   so once elevations diverge the two runs consume different oceanic plates at different
-   rates): -28% oceanic with everything on nearly cancels the continental growth (total
-   +0.5%); -14% with Climate off does not (total +2.0% and rising). Either way the continental
-   node pile only grows.
+2. **The drowning is `deform()` pushing existing above-sea continental crust under water.**
+   In the tectonics-only run 12,779 nodes that were above sea level at 69 My are below it by
+   219 My, while the node cloud only grew by 2,635 -- so this is genuine subsidence of
+   standing crust, not just dilution by new deep nodes. Mechanism: over-stretched continental
+   plates (euler poles far from the plate body -> near-pure shear) thinning their interiors
+   via `rheology.apply_divergent_deformation` + Airy isostasy, plus every newly grown margin
+   node seeded at the drowned oceanic reference column (~-3.5 km,
+   `lithosphere_plate.growth_seed_thickness`). Not instrumented which of the two dominates.
 
-3. **Land loss is ~85-90% tectonic.** node LF falls 0.244 -> 0.147 (all on) vs 0.244 -> 0.144
-   (Climate off) over the same 150 My -- erosion barely changes it. With erosion off the total
-   node count still grows yet node LF still drops, so *existing* above-sea continental nodes
-   are being pushed underwater -- `deform()` subsidence (divergent thinning of shear-stretched
-   over-large plates + Airy isostasy), plus every newly grown margin node seeded at the
-   drowned oceanic reference column (~-3.5 km, `lithosphere_plate.growth_seed_thickness`). Not
-   instrumented which of the two dominates.
+3. **Node-count growth is the continental boundary ratchet.** Continental nodes climb +5-6%
+   per 150 My in every plate-movement-on config (`lithosphere_plate.deform` leaves
+   `shrinkable_all` ~empty for a continental self-plate -- see the "Node-count creep" item
+   above). Whether it shows in the *total* depends on how fast oceanic crust is subducted to
+   compensate, which is trajectory-sensitive (slab pull in `torque.py` reads bathymetry, so
+   once elevations diverge the runs consume different oceanic plates): +0.5% total with
+   everything on, +2.0% and rising with erosion or climate off.
 
-4. **Volcanism and the wind model are irrelevant** to both metrics (40-step sweep: baseline
-   vs no-volcanism vs `wind_model="cfd"` differ < 0.002 in land fraction, < 15 m in mean
-   elevation). **Plate movement is the whole story**: with `simulate_plate_movement` off, node
-   count is exactly flat and node LF barely moves (0.244 -> 0.242 in 40 My).
+4. **Volcanism and the wind model are irrelevant.** Plate movement is the whole story: with
+   `simulate_plate_movement` off, node count is exactly flat and land fraction moves -0.002 in
+   150 My (all of it erosion).
 
 **Direction.**
 
-- **The stale-`hydrology_cache` `grid LF` freeze is its own bug** -- the Stats panel and
-  `/world/stats` `land_fraction` silently stop tracking reality whenever Climate is off. Either
-  refresh a cheap connectivity mask each step regardless of `simulate_climate_biomes`, or mark
-  the stat stale in the response / panel. (`node LF` -- a bare `elevation > sea_level` count --
-  is always right and would be a good panel addition on its own.)
-- **The node-count + land-loss driver is the continental boundary ratchet**, same as the
-  "Node-count creep: continental boundaries grow but never retreat" item above. This sweep
+- **Fix the stale-`hydrology_cache` land-fraction freeze.** The Stats panel and
+  `/world/stats` `land_fraction` silently stop tracking reality whenever Climate is off --
+  refresh a cheap connectivity mask each step regardless of `simulate_climate_biomes`, or
+  surface the raw `elevation > sea_level` fraction (always correct) alongside/instead.
+- **The land loss + node growth share one root: the continental boundary ratchet** -- same as
+  the "Node-count creep: continental boundaries grow but never retreat" item above. This sweep
   makes **direction 2 there (cap a plate's footprint against its integrated crustal volume)**
-  the priority: an un-stretched continent neither tiles drowned margin outward (node count)
-  nor thins-and-drowns its interior (land). Directions 1 (contested-run retreat) and 3 (forced
-  merge) are partly landed and did not stop either trend.
+  the priority: an un-stretched continent neither tiles drowned margin outward (nodes) nor
+  thins-and-drowns its interior (land). Directions 1 (contested-run retreat) and 3 (forced
+  merge) are partly landed and did not stop either trend. Erosion tuning is *not* a lever
+  here.
 
 ---
 
