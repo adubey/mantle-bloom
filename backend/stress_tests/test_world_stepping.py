@@ -1,5 +1,6 @@
 import numpy as np
 from app import erosion, geometry
+from app import lithosphere_plate
 from app.world import generate_world, step_world
 
 
@@ -126,6 +127,41 @@ def test_step_world_events_are_timestamped_with_post_step_elapsed_years():
     for elapsed, _ in world.events:
         assert elapsed <= world.elapsed_years
     assert len(world.events) <= 200  # MAX_EVENT_LOG_LENGTH
+
+
+def _continental_node_count(world) -> int:
+    return sum(
+        sum(len(line) for line in plate.lines)
+        for plate in world.plates
+        if plate.crust_type == "continental"
+    )
+
+
+def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
+    """The continental boundary ratchet (docs/TODO.md "Continental ratchet: solution design")
+    grows every continental margin at the oceanic reference column and never retreats a
+    leading row, so a continental plate's node pile climbs without limit over a long run. The
+    volume-budget growth gate (lithosphere_plate.CONTINENTAL_AREA_BUDGET_MULT) suppresses
+    areal growth once a plate has outrun its crustal volume. Same seed / step schedule with
+    the gate effectively disabled must grow the continental node count meaningfully more."""
+
+    def _run_continental_growth(budget_mult: float) -> float:
+        monkeypatch.setattr(lithosphere_plate, "CONTINENTAL_AREA_BUDGET_MULT", budget_mult)
+        world = generate_world(seed=60461418, num_plates=14, continental_fraction=0.6, node_density=0.5)
+        world.simulate_climate_biomes = False  # plate geometry only -- keeps the run quick
+        before = _continental_node_count(world)
+        for _ in range(60):
+            step_world(world, years=2_000_000)
+        return _continental_node_count(world) / before - 1.0
+
+    gated = _run_continental_growth(1.8)
+    ungated = _run_continental_growth(1e9)
+
+    # The gate does bite -- the ungated ratchet grows the continental lattice substantially
+    # more over the same 120 My.
+    assert ungated > gated + 0.04
+    # ... and the gated run's own growth stays modest rather than running away.
+    assert gated < 0.15
 
 
 def test_coastal_feedback_stays_stable_over_many_steps():

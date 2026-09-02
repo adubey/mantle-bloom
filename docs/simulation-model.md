@@ -410,6 +410,28 @@ trigger (contested, not a positive closing rate) changed:
   literal point insertion/deletion -- there's no grid-resampling step that can lose or
   duplicate it.
 
+  **A continental plate stops growing once its footprint outruns its crustal volume.**
+  Every lattice node covers the same physical area (`lithosphere.node_area_m2` is constant
+  by construction), and every node grown at a margin -- end-growth here or a whole new row
+  in `_claim_adjacent_territory` -- is seeded at the *oceanic* reference column
+  (`growth_seed_thickness`). A continental plate sheared into a much larger envelope by a
+  far-off euler pole therefore tiles unbounded drowned passive-margin outward while nothing
+  removes a leading row, so its node count and its bounding envelope both creep upward
+  without limit (a plate reaching ~16% of the whole planet, 70%+ of its own area below sea
+  level, was a real long-run symptom). `LithospherePlate.deform` counts a continental
+  plate's *genuine* continental nodes -- `crustal_thickness_m` at least
+  `CONTINENTAL_BUDGET_HC_FRACTION` (0.6) of the continental reference -- and once the plate's
+  total node count exceeds `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all
+  areal growth for the step (both `grow_end` branches here, and the
+  `_claim_adjacent_territory` call is skipped entirely). Retreat, divergent thinning and
+  convergent thickening keep running, so an over-budget plate thins / drowns / crumples back
+  toward its crustal volume rather than merely freezing at its current size. The gate is
+  regime- and neighbour-independent (unlike the contested-run retreat it does not care how
+  the suture sits against the row grid). A real craton sits near reference Hc across its
+  whole area, far below the cap; the >1 multiplier is the realistic continental-shelf +
+  accreted-terrane allowance. Over a 120 My run this roughly halves the continental-node
+  creep. Oceanic plates are exempt -- their footprint is already bounded by subduction.
+
   **A row never winds past a full revolution.** A line is a circle of plate-local latitude,
   so its theta extent physically can't exceed `2*pi`. Nothing here treats theta as periodic,
   and near a plate's own local pole the "gap to the nearest neighbor" reads as wide open
