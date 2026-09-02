@@ -76,6 +76,66 @@ DEFAULT_NODE_DENSITY = 4.0
 MIN_ELEVATION_M = -11000.0
 MAX_ELEVATION_M = 9000.0
 
+# --- Elevation-change provenance ("why did this node's elevation last move") -------------
+#
+# `ElevationLine.elev_change_reason` (an OPTIONAL_FIELDS member below, so it rides along with
+# every rotation/split/merge/mask/regularize for free -- see that list's own comment) holds
+# one of these integer codes per node: the dominant process that last moved that node's
+# `elevation` by a non-trivial amount. plates.py's `deform()` stamps the tectonic codes,
+# volcanism.py the eruption code, erosion.py the geomorphic codes -- each only where its own
+# per-step delta clears `ELEV_CHANGE_MIN_DELTA_M`, so a quiescent low-relief node keeps
+# whatever last genuinely shaped it (often NONE -- untouched since generation) rather than
+# being relabelled every step by sub-metre erosion noise. Diagnostic only; nothing in the
+# physics reads it back. Surfaced by render_image.py's "elevReason" debug view -- built to
+# answer "why is so much of this world flat: never uplifted, or actively planed down?".
+ELEV_CHANGE_MIN_DELTA_M = 2.0
+
+# Erosion runs every step and brushes almost every land node a little, so without a guard it
+# would relabel an actively-rising mountain belt "erosion" purely because a few m/step of
+# rain wash also happened there -- burying the tectonic signal the view exists to show. A
+# structural code (ELEV_CHANGE_COLLISION..ELEV_CHANGE_VOLCANO, re-stamped by deform() every
+# step the belt is still active) is therefore only overwritten by a geomorphic code when this
+# step's net geomorphic change is itself large -- at least this rate, comparable to a real
+# uplift increment, not ordinary background wash. Non-structural prior codes (NONE, or an
+# earlier geomorphic one) are overwritten on any move past ELEV_CHANGE_MIN_DELTA_M.
+ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR = 100.0
+
+ELEV_CHANGE_NONE = 0  # untouched since initial generation (or below the per-step threshold)
+ELEV_CHANGE_COLLISION = 1  # continent-continent near-field collision uplift
+ELEV_CHANGE_COLLISION_FAR_FIELD = 2  # broad far-field collision uplift, deep in the interior
+ELEV_CHANGE_SUBDUCTION_ARC = 3  # oceanic-under-continental volcanic-arc uplift
+ELEV_CHANGE_TRENCH = 4  # subducting oceanic plate's own trench subsidence
+ELEV_CHANGE_TRANSFORM = 5  # transform-boundary pressure-ridge uplift
+ELEV_CHANGE_RIFT = 6  # divergent ridge/rift relaxation toward the spreading target
+ELEV_CHANGE_NEW_CRUST = 7  # brand-new crust inserted at a growing spreading edge
+ELEV_CHANGE_VOLCANO = 8  # volcanic eruption (deform-spawned or ongoing lifecycle)
+ELEV_CHANGE_EROSION = 9  # subaerial erosion (rain/river/weathering/glacier/seismic)
+ELEV_CHANGE_DEPOSITION = 10  # fluvial / wind / glacial-transport sediment deposition
+ELEV_CHANGE_COASTAL_LEVELING = 11  # wave-cut planation + sheltered-shelf infill toward sea level
+ELEV_CHANGE_MARINE = 12  # submarine erosion / marine sediment spread on the sea floor
+ELEV_CHANGE_GLACIAL_FLATTEN = 13  # glacier flattening (broad sub-ice smoothing)
+ELEV_CHANGE_LAKE_SILT = 14  # lake / endorheic-basin siltation raising a basin floor
+
+# Human-readable label per code, index == code -- kept here (not in render_image.py or the
+# frontend) as the single source both sync against, same precedent as biomes.BIOME_NAMES.
+ELEV_CHANGE_LABELS = (
+    "Unchanged since generation",
+    "Continental collision uplift",
+    "Far-field collision uplift",
+    "Subduction-arc uplift",
+    "Oceanic trench subsidence",
+    "Transform pressure ridge",
+    "Divergent rift / ridge",
+    "New crust at spreading edge",
+    "Volcanic eruption",
+    "Erosion (worn down)",
+    "Sediment deposition",
+    "Coastal planation / infill",
+    "Submarine erosion / sediment",
+    "Glacial flattening",
+    "Lake / basin siltation",
+)
+
 REGULARIZE_INTERVAL_STEPS = 5
 IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
 
@@ -186,6 +246,11 @@ class ElevationLine:
         # still happens to sit near a neighbour (a real passive margin), so the latter stops
         # being pulled toward the rift target once it's had its one-time settling period.
         "divergent_age_myr",
+        # Elevation-change provenance -- one ELEV_CHANGE_* code per node (see the constants
+        # above). Diagnostic only, nothing in the physics reads it. Interpolated as a
+        # nearest-neighbour pick in regularize_line (it's categorical, not a quantity), unlike
+        # every other field here.
+        "elev_change_reason",
         # V2 only (see v2/lithosphere.py) -- the 3D lithospheric column state Airy isostasy
         # derives `elevation` from (v2/lithosphere.isostatic_elevation). Zero/unused for every
         # v1 line. Kept here rather than as a v2-only subclass field so a single ElevationLine
@@ -214,6 +279,7 @@ class ElevationLine:
         oil_gas_deposit_m: np.ndarray | None = None,
         mineral_deposit_m: np.ndarray | None = None,
         divergent_age_myr: np.ndarray | None = None,
+        elev_change_reason: np.ndarray | None = None,
         crustal_thickness_m: np.ndarray | None = None,
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
     ) -> None:
@@ -236,10 +302,25 @@ class ElevationLine:
         self._oil_gas_deposit_m = oil_gas_deposit_m if oil_gas_deposit_m is not None else np.zeros_like(theta)
         self._mineral_deposit_m = mineral_deposit_m if mineral_deposit_m is not None else np.zeros_like(theta)
         self._divergent_age_myr = divergent_age_myr if divergent_age_myr is not None else np.zeros_like(theta)
+        self._elev_change_reason = elev_change_reason if elev_change_reason is not None else np.zeros_like(theta)
         self._crustal_thickness_m = crustal_thickness_m if crustal_thickness_m is not None else np.zeros_like(theta)
         self._mantle_lithosphere_thickness_m = (
             mantle_lithosphere_thickness_m if mantle_lithosphere_thickness_m is not None else np.zeros_like(theta)
         )
+
+    def __getattr__(self, name: str) -> np.ndarray:
+        """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
+        no backing `_<field>` attribute -- pickle restores `__dict__` directly and never calls
+        `__init__`. Lazily materialise it as the same zeros/False default `__init__` uses (and
+        cache it, so this only runs once per line per missing field). Only OPTIONAL_FIELDS
+        backing names are handled here; every other missing attribute is a real
+        `AttributeError`, and `__getattr__` is never consulted for an attribute that already
+        exists, so live lines pay nothing."""
+        if name.startswith("_") and name[1:] in ElevationLine.OPTIONAL_FIELDS:
+            value = np.zeros_like(self._theta, dtype=bool if name == "_is_volcano" else float)
+            object.__setattr__(self, name, value)
+            return value
+        raise AttributeError(name)
 
     @property
     def phi(self) -> float:
@@ -308,6 +389,10 @@ class ElevationLine:
     @property
     def divergent_age_myr(self) -> np.ndarray:
         return self._divergent_age_myr
+
+    @property
+    def elev_change_reason(self) -> np.ndarray:
+        return self._elev_change_reason
 
     @property
     def crustal_thickness_m(self) -> np.ndarray:
@@ -435,6 +520,9 @@ class ElevationPoint(Protocol):
 
     def get_mineral_deposit_m(self) -> float: ...
     def set_mineral_deposit_m(self, value: float) -> None: ...
+
+    def get_elev_change_reason(self) -> float: ...
+    def set_elev_change_reason(self, value: float) -> None: ...
 
 
 def _point_field_getter(name: str):
@@ -757,6 +845,11 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # own docstring warns about. A no-op array of zeros for v1 lines.
     new_crustal_thickness_m = np.interp(new_theta, line.theta, line.crustal_thickness_m)
     new_mantle_lithosphere_thickness_m = np.interp(new_theta, line.theta, line.mantle_lithosphere_thickness_m)
+    # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
+    # each resampled node from its nearest original node rather than np.interp'ing between two
+    # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
+    nearest_original = np.abs(new_theta[:, None] - line.theta[None, :]).argmin(axis=1)
+    new_elev_change_reason = line.elev_change_reason[nearest_original]
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,
@@ -774,6 +867,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         coal_deposit_m=new_coal_deposit_m,
         oil_gas_deposit_m=new_oil_gas_deposit_m,
         mineral_deposit_m=new_mineral_deposit_m,
+        elev_change_reason=new_elev_change_reason,
         crustal_thickness_m=new_crustal_thickness_m,
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
     )

@@ -109,7 +109,7 @@ const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
   "elevation", "plates", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "geomorph", "plateInspector", "riverInspector", "lakeInspector",
+  "resources", "soilQuality", "geomorph", "elevReason", "plateInspector", "riverInspector", "lakeInspector",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -668,6 +668,7 @@ export default function App() {
                 <option value="speckle">Coastal dither (speckle)</option>
                 <option value="plates">Plates</option>
                 <option value="geomorph">Erosion &amp; Deposition</option>
+                <option value="elevReason">Last elevation change</option>
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
                 <option value="lakeInspector">Lakes</option>

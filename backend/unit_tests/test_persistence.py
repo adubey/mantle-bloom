@@ -58,6 +58,24 @@ def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
     assert loaded.steps_taken == 0
 
 
+def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
+    # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
+    # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).
+    # ElevationLine.__getattr__ backfills it lazily as zeros so load + step still work.
+    from app.world import step_world
+
+    world = generate_world(seed=4, num_plates=6)
+    for plate in world.plates:
+        for line in plate.lines:
+            line.__dict__.pop("_elev_change_reason", None)
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    for plate in loaded.plates:
+        for line in plate.lines:
+            assert np.all(line.elev_change_reason == 0.0)
+    step_world(loaded, years=1_000_000)  # must not raise
+
+
 def test_loading_garbage_bytes_raises():
     with pytest.raises(Exception):
         persistence.load_world_bytes(b"not a pickle at all")

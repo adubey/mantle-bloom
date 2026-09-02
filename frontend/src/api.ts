@@ -25,6 +25,7 @@ export type MapView =
   | "resources"
   | "soilQuality"
   | "geomorph"
+  | "elevReason"
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector";

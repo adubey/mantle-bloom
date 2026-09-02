@@ -339,6 +339,27 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
   ],
 };
 
+// Hand-synced with backend render_image.py's _ELEV_REASON_RGB and elevation_lines.py's
+// ELEV_CHANGE_LABELS (index == ELEV_CHANGE_* code) -- the "Last elevation change" debug view
+// (_render_elev_reason_view): one flat colour per process that last moved a node's elevation.
+const ELEV_REASON_ENTRIES: LegendSymbol[] = [
+  { kind: "square", color: rgb(112, 112, 120), label: "Unchanged since generation" },
+  { kind: "square", color: rgb(150, 28, 28), label: "Continental collision uplift" },
+  { kind: "square", color: rgb(198, 120, 110), label: "Far-field collision uplift" },
+  { kind: "square", color: rgb(214, 118, 40), label: "Subduction-arc uplift" },
+  { kind: "square", color: rgb(86, 44, 110), label: "Oceanic trench subsidence" },
+  { kind: "square", color: rgb(198, 160, 30), label: "Transform pressure ridge" },
+  { kind: "square", color: rgb(22, 150, 130), label: "Divergent rift / ridge" },
+  { kind: "square", color: rgb(24, 110, 96), label: "New crust at spreading edge" },
+  { kind: "square", color: rgb(232, 50, 40), label: "Volcanic eruption" },
+  { kind: "square", color: rgb(150, 90, 50), label: "Erosion (worn down)" },
+  { kind: "square", color: rgb(60, 140, 200), label: "Sediment deposition" },
+  { kind: "square", color: rgb(122, 190, 226), label: "Coastal planation / infill" },
+  { kind: "square", color: rgb(28, 80, 140), label: "Submarine erosion / sediment" },
+  { kind: "square", color: rgb(212, 232, 244), label: "Glacial flattening" },
+  { kind: "square", color: rgb(70, 200, 176), label: "Lake / basin siltation" },
+];
+
 // render_image.py's geomorph_colors stops (_GEOMORPH_STOP_M / _GEOMORPH_STOP_RGB) -- this
 // step's net per-node elevation change in metres, a diverging scale centred on 0 (warm =
 // the step net-lowered a node, cool = it net-raised one), clamped past +-60 m/step.
@@ -545,6 +566,8 @@ export function legendFor(view: MapView): LegendSpec | null {
       };
     case "geomorph":
       return { title: "Elevation change / step", gradient: GEOMORPH_GRADIENT, symbols: [COASTLINE_SYMBOL] };
+    case "elevReason":
+      return { title: "Last elevation change", symbols: [...ELEV_REASON_ENTRIES, COASTLINE_SYMBOL] };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }
