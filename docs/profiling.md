@@ -173,12 +173,72 @@ Landed since the original profile (each measured on the box it was written on):
 
 Still open, roughly in order:
 
-9. **`climate.compute_climate` (~0.59 s/step) and `hydrology.compute_hydrology` (~0.48 s/step)**
+9. ~~**`climate.compute_climate` (~0.59 s/step) and `hydrology.compute_hydrology` (~0.48 s/step)**
    -- with the coastal passes and the basin spill handled, these two are now what
-   `apply_erosion` spends its time on. Both are called fresh once per step (climate is a cache
-   hit at *render* time but not here). Not yet broken down.
+   `apply_erosion` spends its time on. Not yet broken down.~~ **Broken down** (2026-09-01,
+   `main` at `391cd71`). Re-measured directly -- 15 warmed `compute_climate` + `compute_hydrology`
+   calls at the frontend defaults (seed 0, `node_density` 4, `climate_density` 4 -> **360 x 720
+   grid**, ~131 K nodes), driving exactly the pair of calls `apply_erosion` makes, on 6-core
+   Apple Silicon, unprofiled wall clock. Current cost is **climate ~0.50 s/call**, **hydrology
+   ~0.23 s/call** -- hydrology already roughly halved vs the ~0.48 note (fix 7's njit basin-spill
+   postdates that figure), climate a touch under ~0.59.
+
+   Per-region wall (wrapper timers on the named sub-functions; nested regions indented, so a
+   parent's number includes its children; `workers=-1` k-d tree pools spin up inside several
+   of these and overlap, so the column over-counts the true critical path -- treat it as a
+   ranking, not an additive budget):
+
+   | `compute_climate` region | ms/call | what |
+   | --- | --- | --- |
+   | `compute_ocean_currents` | **~205** | `_land_swirl_current` ~120 (a fresh `cKDTree` over the land grid cells + a full-grid nearest query, then per-cell `np.cross`/`np.stack` over `(H, W, 3)` to build the tangent frame, and `_lon_grid` rebuilt twice); `_smooth_along_coast` ~59 (8 Jacobi passes, each 4x`np.roll` on `u` and `v` plus a re-deflect) |
+   | `_sample_elevation_and_crust` | **~185** | a fresh `cKDTree` over the ~131 K node cloud + a full-grid query (259 K points), then `hydrology.sample_is_ocean` -- **a second fresh ~131 K-node tree** (last step's cached points) with its own full-grid query, ~86 of the 185 |
+   | `biomes.smooth_biome_field` | ~80 | Koppen classification + `_neighbour_vote` boundary cleanup |
+   | `compute_humidity` | ~69 | `_humidity_zonal_sweep` ~48 -- a **Python loop over all 720 columns x 2 laps**, each pass ~15 vectorized `(H,)` ops; a sequential scan along the sweep direction, not vectorizable as-is |
+   | `compute_wind` | ~49 | `_sample_at_offset` x~11 (~30 total -- mountain-tangent pick + 5-step wake lookback, each a closed-form lat/lon->row/col gather with a `.tolist()`), `_smooth_field` x2, `_mountain_deflection` / `_mountain_wake_factor` |
+   | `compute_moisture_flux_convergence` | ~39 | banding noise + flux-divergence sweep |
+   | `_vegetation_transpiration_source` | ~28 | `biomes.classify_biomes` of last step's snapshot |
+   | `advect_ocean_temperature`, `_build_grid` | ~7, ~6 | -- |
+
+   | `compute_hydrology` region | ms/call | what |
+   | --- | --- | --- |
+   | `_build_neighbor_graph` | **~71** | a fresh `cKDTree(points)` (~131 K, `balanced_tree=False`) + one batched k=9 self-query. A **third** rebuild this step of essentially the same node-cloud tree `_sample_elevation_and_crust` already built |
+   | `lakes.step_lakes` -> `build_lake_hierarchy` | **~58** | `_catchment_roots` ~22 (Python pointer-chase with path compression over all N nodes) + Python union-find (`find`, ~3.5 M calls across the 12-frame profile) over the catchment-boundary edges + a `_make_leaf` per catchment |
+   | `_lake_component_sizes` -> `lake_components` | **~42** | a *separate* Python union-find over the whole k-NN graph (`is_lake.tolist()`, `neighbor_idx.tolist()`, nested loop), only to get each node's lake-component node count |
+   | `_compute_basin_spill` | ~40 | njit heap kernel (fix 7) is ~20 of this; the rest is `neighbor_idx` marshalling into the kernel |
+   | `route_downstream` (x2 paths) | ~28 | downstream flux accumulation |
+   | `connected_ocean_mask` | ~24 | `coo_matrix` + `scipy` `connected_components` over the below-sea-level subgraph |
+   | `_compute_flow_direction` x2 | ~22 | water + ice flow targets |
+
+   Follow-ups, split out as their own items below (10-13).
+
    - Note on the sibling spreads: `_spread_marine_sediment` has the same ~110 K-source shape
      `_spread_coastal_leveling` did, but its targets are the *entire* ocean node set, not a
      thin band, so the source pre-filter doesn't apply -- nearly every source has an in-range
      lower-ocean target. `_spread_beach_sediment`'s sources are just river-mouth nodes (small).
      Neither showed up as a hotspot; left alone.
+
+10. **Build the node-cloud `cKDTree` once per step and share it across climate + hydrology.**
+    `_sample_elevation_and_crust` (climate) and `_build_neighbor_graph` (hydrology) each build a
+    fresh `cKDTree` over the identical ~131 K-node `node_cloud` every step (~20-30 ms each), and
+    the render path builds a third. `World.node_kdtree_cache` already exists for the render side
+    (fix 6) and is reset by `step_world`; erosion's per-step `node_cloud` is that same cloud.
+    Populate/read that cache from the two erosion-path callers too -> ~40-60 ms/step. (`sample_is_ocean`
+    genuinely can't share -- it queries *last* step's cached points against a tree of *this*
+    step's, on purpose -- but it can at least take `balanced_tree=False`.)
+
+11. **numba the lake pipeline's Python union-find passes.** `lakes._catchment_roots`,
+    `build_lake_hierarchy`'s boundary-merge loop, and `hydrology.lake_components` are ~100 ms/step
+    of pure-Python pointer-chasing and `.tolist()` loops -- the same shape as the basin-spill
+    priority-flood fix 7 replaced with an njit kernel. `_lake_component_sizes` -> `lake_components`
+    in particular is a whole second union-find over the k-NN graph that runs every step purely
+    for per-node component sizes.
+
+12. **`climate._humidity_zonal_sweep` (~48 ms/step) is a 720-iteration Python column scan** (x2
+    laps). It's a strict left-to-right recurrence along the sweep direction, so it can't be
+    vectorized away, but it's a clean candidate for an njit prefix-scan kernel (fix 7 pattern).
+
+13. **`climate._land_swirl_current` (~120 ms/step).** Fresh land-cell `cKDTree` + full-grid
+    query, then a per-cell `np.cross` / `np.stack` tangent-frame build over `(H, W, 3)`. The
+    `east`/`north` tangent frame is a pure function of the fixed grid -- precompute it once
+    (module-level, keyed on `(height, width)`) instead of every call; `_lon_grid` is currently
+    built twice per call on top of that.
