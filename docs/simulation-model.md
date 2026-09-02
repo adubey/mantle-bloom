@@ -2312,9 +2312,10 @@ per `is_river` node to its own `flow_target` (top `RIVER_FLOW_PERCENTILE = 90.0`
 width for every segment regardless of discharge (only *which* segments get drawn varies with
 flow magnitude, not how they're drawn).
 A second, independent cut applies only here, on top of `is_river`: `render_image.
-RIVER_DRAW_MIN_FLOW = 100,000` requires a segment's own `flow_accum` to also clear that
-absolute floor before it's drawn on these general-purpose views, so a large world's merely-
-top-decile trickles don't clutter every view -- the River Inspector (below) deliberately
+river_draw_min_flow(world)` (calibrated per `node_density` -- see
+`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY`) requires a segment's own `flow_accum` to also clear
+that absolute floor before it's drawn on these general-purpose views, tuned so a mature world
+shows roughly 5-10 distinct river networks -- the River Inspector (below) deliberately
 keeps listing/drawing every `is_river` network regardless of flow, unaffected by this floor,
 since picking a minor tributary out of the full list is exactly what that view is for.
 
