@@ -109,7 +109,7 @@ const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
   "elevation", "plates", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "geomorph", "elevReason", "plateInspector", "riverInspector", "lakeInspector",
+  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "plateInspector", "riverInspector", "lakeInspector",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -669,6 +669,7 @@ export default function App() {
                 <option value="plates">Plates</option>
                 <option value="geomorph">Erosion &amp; Deposition</option>
                 <option value="elevReason">Last elevation change</option>
+                <option value="overlapAge">Plate overlap age</option>
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
                 <option value="lakeInspector">Lakes</option>
@@ -736,7 +737,14 @@ export default function App() {
                       overlaps:{" "}
                       {selectedPlate.overlaps
                         .filter((o) => o.fraction >= 0.01)
-                        .map((o) => `#${o.plate_id} (${(o.fraction * 100).toFixed(0)}%)`)
+                        .map(
+                          (o) =>
+                            `#${o.plate_id} (${(o.fraction * 100).toFixed(0)}%` +
+                            (o.since_years != null
+                              ? `, since ${(o.since_years / 1e6).toFixed(0)} My`
+                              : "") +
+                            ")",
+                        )
                         .join(", ") || "<1% only"}
                     </div>
                   )}

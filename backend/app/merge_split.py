@@ -23,7 +23,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle
+from . import geometry, mantle, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
@@ -61,15 +61,27 @@ MERGE_PROBABILITY_FLOOR = 0.02  # never impossible -- real supercontinents do fo
 # A node count, not a distance -- doesn't scale automatically with TARGET_LINE_SPACING_RAD
 # the way the distance-based thresholds elsewhere do. Node count for a given physical plate
 # area scales with the *square* of resolution (more rows and more samples per row), so this
-# is scaled by ~4x alongside plates.py's most recent resolution doubling, to keep meaning
-# "the same physical plate size" rather than silently becoming 4x more split-happy.
-SPLIT_MIN_NODES = 1200
+# is scaled by node_density directly at the point of use.
+#
+# Halved 1200 -> 600 (2026): the great-circle cut between the two k-means flow centroids is
+# frequently lopsided, so at 1200 a plate needed well over 2*1200 well-distributed nodes for
+# *both* halves to clear the floor -- instrumenting a real run showed plates repeatedly
+# clearing both physics gates only to have plate.split() reject the cut on size, and true
+# rift-splits essentially never happening while merges/consumption ran unchecked (reported:
+# "the number of plates is decreasing over time"). 600 still means each half is a genuinely
+# plate-sized fragment, not a near-continent; SPLIT_MIN_AGE_STEPS is what actually blocks the
+# freshly-split-daughter sliver cascade.
+SPLIT_MIN_NODES = 700
 # A single rigid rotation essentially never fits a wide footprint's flow samples exactly
 # -- any spatially-varying field sampled over a large angular extent has *some* residual,
 # even for a plate that has no business splitting. These thresholds need to sit well above
 # that everyday baseline, or the split check fires on ordinary plates every time it runs.
-SPLIT_RMS_RESIDUAL_THRESHOLD = mantle.cm_per_yr_to_rad_per_yr(9.0)
-SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(6.0)
+# Lowered from 9.0/6.0 cm/yr (2026) -- with the torque engine a large continental plate gets
+# a *good* rigid-rotation fit (measured residual ~0.3-0.7x the old threshold), so ordinary
+# supercontinent-scale plates never tripped the residual gate and never rifted; 6.0/4.0 is
+# still ~3-4x the everyday oceanic-plate baseline the instrumented run showed.
+SPLIT_RMS_RESIDUAL_THRESHOLD = mantle.cm_per_yr_to_rad_per_yr(6.0)
+SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(4.0)
 # Cooldown after a plate is created (by generation, split, or merge) before it's eligible
 # to split again. Without this, a freshly-split daughter plate -- still not a perfect rigid-
 # rotation fit, since the field it was cut from was continuous, not truly bimodal -- would
@@ -77,7 +89,10 @@ SPLIT_MIN_POLE_SEPARATION = mantle.cm_per_yr_to_rad_per_yr(6.0)
 # slicing the original plate into many thin near-parallel slivers within a handful of
 # steps (this happened during development: what looked like elevation "banding" turned out
 # to be dozens of sliver plates, each rotating almost identically to its neighbors).
-SPLIT_MIN_AGE_STEPS = 15
+# Raised 15 -> 20 (2026) alongside the more permissive split gates below -- it also spaces
+# out the otherwise-synchronized first rift of every freshly-generated plate (they all clear
+# their cooldown on the same step).
+SPLIT_MIN_AGE_STEPS = 20
 
 # A plate's own sheer size independently raises its odds of rifting, on top of (not instead
 # of) the mantle-flow-fit criteria above -- a bigger footprint is both more likely to
@@ -92,7 +107,13 @@ SPLIT_MIN_AGE_STEPS = 15
 # i.e. rifting probability is effectively 100%. At radius 0 this changes nothing (both gates
 # at their normal full strength); the plate still needs kmeans to find two genuinely
 # separate clusters either way, since there's no sensible cut without one.
-SPLIT_SIZE_CERTAIN_RIFT_RAD = np.pi
+#
+# Lowered pi -> 2.2 rad (2026): at pi the relaxation only bit for near-hemisphere plates, so
+# real supercontinent-scale plates (radius ~1.3-2.0 rad) barely felt it and effectively
+# never rifted. 2.2 rad still forces a genuinely huge plate to rift eventually while leaving
+# ordinary large plates to the flow-fit gates -- 1.8 was tried first and shattered every
+# freshly-generated plate within the first ~30 Myr (they all start near radius 1.3-1.5).
+SPLIT_SIZE_CERTAIN_RIFT_RAD = 2.2
 
 # Defragmentation (see defragment_plates / Plate.defragment). Ordinary deform() never
 # deletes a line's last node and only ever shrinks a line's ends, so subduction/transform
@@ -395,6 +416,31 @@ def defragment_plates(world: "World") -> list[str]:
     return events
 
 
+def update_overlap_tracking(world: "World") -> None:
+    """Diagnostic per-node bookkeeping (nothing in the physics reads it back): stamp
+    `ElevationLine.overlap_onset_years` with `world.elapsed_years` on every node that has
+    *just* started sitting on top of another plate's territory, and clear it (back to 0.0) on
+    every node no longer overlapping anything. Run once per step from `world.step_world`
+    right after `apply_topology_changes`, so it sees this step's final geometry.
+
+    Uses the same `plates.compute_node_overlap` the Plate Inspector / `plate_diagnostics.py`
+    overlap view goes through, so "15% of plate 21 is on plate 0" and "...since 178 My" are
+    the same underlying node set. Mirrors `stranded_basins.reconcile_world_tracks` /
+    `World.collision_progress` -- a lightweight first-seen tracker, persisted in the save."""
+    tol = plates_mod.OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
+    overlap = plates_mod.compute_node_overlap(world.plates, tol)
+    for plate in world.plates:
+        n = plate.node_count()
+        if n == 0:
+            continue
+        info = overlap.get(plate.plate_id)
+        mask = info["overlap_mask"] if info is not None else np.zeros(n, dtype=bool)
+        onset = np.asarray(plate.collect("overlap_onset_years"), dtype=float).copy()
+        onset[mask & (onset == 0.0)] = world.elapsed_years
+        onset[~mask] = 0.0
+        plate.set_fields_on_plate(overlap_onset_years=onset)
+
+
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate
@@ -438,12 +484,18 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
             f"after {elapsed_years / 1e6:.0f} million years."
         )
 
+    # At most one rift per step, same incremental-change rule as the merge above -- real
+    # continental breakup plays out over tens of Myr, and splitting every eligible plate in
+    # one call shatters a freshly-generated world (every plate clears its identical cooldown
+    # on the same step) instead of staggering the rifts over time.
     new_plates: list[Plate] = []
+    split_done = False
     for plate in world.plates:
-        split_result = maybe_split_plate(world, plate)
+        split_result = None if split_done else maybe_split_plate(world, plate)
         if split_result is None:
             new_plates.append(plate)
         else:
+            split_done = True
             new_plates.extend(split_result)
             events.append(
                 f"Plate {plate.plate_id} split into plates {split_result[0].plate_id} "

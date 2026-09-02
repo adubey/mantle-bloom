@@ -110,8 +110,10 @@ band nodes flip land↔ocean every step" — is this same `near` band; a fix sho
 Per plate, alongside the geometry: `speed_cm_per_yr` + `at_max_rate` (railed at
 `mantle.MAX_PLATE_RATE`, shown red), `euler_pole` (lat/lon), `age_steps`,
 `median_elevation_m` + `submerged_fraction` (red when a continental plate is >50% under
-water), `overlaps` (which other plates this one's territory sits on top of, and by what
-fraction of its own nodes — `main._plate_overlaps`), and `collisions`
+water), `overlaps` (which other plates this one's territory sits on top of, by what
+fraction of its own nodes, and `since_years` — the earliest `elapsed_years` any still-
+overlapping node first went over another plate; `main._plate_overlaps` /
+`ElevationLine.overlap_onset_years`, see the `overlapAge` view below), and `collisions`
 (`world.collision_progress` timers involving the plate). See `docs/TODO.md` ("Plate geometry
 degrades on long runs") for what these numbers turned up.
 # Debugging & Diagnostic Views
@@ -298,6 +300,35 @@ Unlike `geomorph`, the field is *persistent* (rides the plate through rotation/s
 survives save/load). But a save written before this field existed -- or a world never stepped
 since -- reads all-NONE and fills in over the next few steps. `ELEV_CHANGE_MIN_DELTA_M` /
 `ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR` (elevation_lines.py) tune the two thresholds.
+
+---
+
+## `overlapAge` render view (plate overlap onset)
+
+`GET /world/render?view=overlapAge` (Map View dropdown: **Debug > Plate overlap age**)
+draws a muted land/ocean backdrop (same grid as Elevation) overlaid with one dot per node
+that is **currently** sitting on top of another plate's territory, coloured by how long it
+has been -- `world.elapsed_years - ElevationLine.overlap_onset_years`
+(`render_image._render_overlap_age_view` / `overlap_age_colors`). Pale yellow = a fresh
+overlap (transient envelope slop, self-correcting); deepening through orange to
+magenta-purple = stuck for tens of Myr (a real stalled collision the merge path never
+resolves -- see TODO.md "Plate geometry degrades on long runs"). Clamped at 60 Myr.
+
+`overlap_onset_years` is a per-node `ElevationLine` field stamped every step by
+`merge_split.update_overlap_tracking`, which goes through the same
+`plates.compute_node_overlap` the Plate Inspector's own overlap fractions use -- so the map,
+the `since_years` number in `GET /world/plates` / `App.tsx` (`#21 (15%, since 178 My)`), and
+`python -m app.plate_diagnostics`'s `21 -> 0  15.2%  since 178.0 My` line are all the same
+underlying node set. A save written before the field existed loads with every onset at 0
+(`ElevationLine.__getattr__` backfill) and shows an all-backdrop map / `since` omitted
+until it is stepped. An all-backdrop map on a stepped world is the healthy case.
+
+The overlap itself now also *heals*: `torque.classify_boundary_nodes` tests deep-interior
+nodes (inside a neighbour's bounding sphere, not just within `reach_rad` of one) for polygon
+containment, so a plate that has slid well over another has those deep nodes classified
+`contested` -- continental crust thickens there (`rheology.apply_convergent_deformation` ->
+mountain uplift), oceanic crust subducts. Before this, only the boundary-local band was
+classified and a deep overlap just sat.
 
 ---
 

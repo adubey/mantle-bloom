@@ -26,6 +26,7 @@ export type MapView =
   | "soilQuality"
   | "geomorph"
   | "elevReason"
+  | "overlapAge"
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector";
@@ -63,6 +64,10 @@ export interface BoundingEllipse {
 export interface PlateOverlap {
   plate_id: number;
   fraction: number; // share of THIS plate's nodes sitting on top of plate_id
+  // elapsed_years at which the earliest still-overlapping node first went over another
+  // plate (ElevationLine.overlap_onset_years). null if the save predates the field or the
+  // overlap only appeared this step. Not partner-specific -- see backend _plate_overlaps.
+  since_years: number | null;
 }
 
 export interface PlateSummary {

@@ -284,17 +284,40 @@ def classify_boundary_nodes(plate, neighbours: list, inputs: BoundaryForceInputs
     n = len(inputs.own_points)
     if n == 0 or not neighbours:
         return np.zeros(n, dtype=bool), np.zeros(n, dtype=bool)
-    near = inputs.dist_to_neighbor <= reach_rad
+    own_points = inputs.own_points
+
+    # `near` (within reach_rad of a neighbour node) is the ordinary boundary-local band.
+    # But a plate that has slid *deep* over a neighbour has its deep-interior overlapping
+    # nodes far from any neighbour node, so they'd never get the polygon test and would sit
+    # in neither `contested` nor `divergent` -- no thickening, no subduction, the overlap
+    # just persists (reported: "plates 21 and 0 have quite some overlapping" -- 15% of one
+    # plate's nodes on top of the other, static). Also test any node inside a neighbour's
+    # bounding sphere (cheap triangle-inequality prefilter, same one
+    # merge_split.find_continental_collision_pairs uses); the polygon `contains_batch` below
+    # still only actually runs on nodes genuinely inside a sphere, so this costs ~one
+    # angular_distance per neighbour when there's no real overlap. A deep continental
+    # overlap then classifies contested -> rheology thickens Hc/Hm -> mountain uplift; a
+    # deep oceanic overlap classifies contested -> subduction deletion -> the overlap heals.
+    consider = inputs.dist_to_neighbor <= reach_rad
+    for neighbour in neighbours:
+        npts, _ = neighbour.all_points_and_elevation()
+        if len(npts) == 0:
+            continue
+        centroid, radius = geometry.bounding_sphere(npts)
+        consider |= geometry.angular_distance(own_points, centroid) <= radius
+
     contested = np.zeros(n, dtype=bool)
-    if np.any(near):
-        near_points = inputs.own_points[near]
-        near_contested = np.zeros(len(near_points), dtype=bool)
+    if np.any(consider):
+        consider_points = own_points[consider]
+        consider_contested = np.zeros(len(consider_points), dtype=bool)
         for neighbour in neighbours:
-            near_contested |= neighbour.contains_batch(near_points)
-            if np.all(near_contested):
+            consider_contested |= neighbour.contains_batch(consider_points)
+            if np.all(consider_contested):
                 break
-        contested[near] = near_contested
-    divergent = near & ~contested
+        contested[consider] = consider_contested
+    # Only the boundary-local band (not the deep-overlap extension above) can be divergent --
+    # an uncontested deep-interior node is just interior, not an opening rift.
+    divergent = (inputs.dist_to_neighbor <= reach_rad) & ~contested
     return contested, divergent
 
 

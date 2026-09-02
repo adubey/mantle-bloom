@@ -61,7 +61,10 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M), its own dispatch
 # branch (_render_elev_reason_view). A categorical debug view built to answer "why is so much
 # of this world flat: never uplifted, or actively planed down" (see docs/debugging.md).
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason")
+# "overlapAge" is node-cloud-derived from ElevationLine.overlap_onset_years (the year each
+# still-overlapping node first went over another plate -- merge_split.update_overlap_tracking),
+# its own dispatch branch (_render_overlap_age_view). See docs/debugging.md.
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -399,6 +402,29 @@ _ELEV_REASON_RGB = np.array(
 def elev_reason_colors(codes: np.ndarray) -> np.ndarray:
     idx = np.clip(np.round(np.asarray(codes)).astype(int), 0, len(_ELEV_REASON_RGB) - 1)
     return _ELEV_REASON_RGB[idx]
+
+
+# Overlap Age debug view (see _render_overlap_age_view): how long (Myr) each node has been
+# continuously sitting on top of another plate's territory -- elapsed_years minus
+# ElevationLine.overlap_onset_years, drawn only for nodes currently overlapping. A sequential
+# ramp, pale where the overlap is fresh (this is transient envelope slop, self-correcting)
+# deepening to magenta where it has been stuck for tens of Myr (a real stalled collision the
+# merge path never resolves -- docs/debugging.md). Clamped at 60 Myr.
+_OVERLAP_AGE_STOP_MYR = np.array([0.0, 2.0, 10.0, 30.0, 60.0], dtype=float)
+_OVERLAP_AGE_STOP_RGB = np.array(
+    [
+        (250, 244, 190),  # brand-new -- pale yellow
+        (252, 205, 120),  # a few Myr -- amber
+        (232, 126, 74),   # ~10 Myr -- orange
+        (196, 52, 96),    # ~30 Myr -- deep rose
+        (120, 20, 110),   # 60+ Myr stuck -- magenta-purple
+    ],
+    dtype=float,
+)
+
+
+def overlap_age_colors(age_myr: np.ndarray) -> np.ndarray:
+    return _interp_colors(age_myr, _OVERLAP_AGE_STOP_MYR, _OVERLAP_AGE_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -1540,6 +1566,57 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
             _fill_rects(pixels, near_centers[flagged], base_r * 2.0, base_r * 2.0, flag_colors)
 
     return _encode_image(Image.fromarray(pixels, mode="RGB"))
+
+
+def _render_overlap_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders the "overlapAge" debug view (see docs/debugging.md): a muted land/ocean
+    backdrop (same full-sphere grid as the Elevation view) overlaid with one dot per node
+    that is *currently* sitting on top of another plate's territory, coloured by how long it
+    has been -- `world.elapsed_years - ElevationLine.overlap_onset_years`, stamped by
+    merge_split.update_overlap_tracking. Answers "where is the overlap, and since when" that
+    the Plate Inspector's single per-pair fraction can't. All-backdrop (no dots) is the
+    healthy case, and also what a save predating the onset field shows until it is stepped."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
+    collected = plates.collect_all_points(world.plates) if world.plates else None
+    if grid is None or collected is None:
+        return _encode_image(Image.fromarray(blank, mode="RGB"))
+
+    xy, elev, _owner, _lake, _glacier, _volcano, half_w, half_h = grid
+    all_points, _all_elevation, _ = collected
+    onset = plates.collect_all_overlap_onset_years(world.plates)
+    node_xy = _project_points(projection, _rotate(all_points, view_rotation))
+
+    all_xy = np.concatenate([xy, node_xy], axis=0)
+    min_x, min_y = all_xy.min(axis=0)
+    max_x, max_y = all_xy.max(axis=0)
+    data_w = max(max_x - min_x, 1e-9)
+    data_h = max(max_y - min_y, 1e-9)
+    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
+    offset_x = width / 2 - scale * (min_x + max_x) / 2
+    offset_y = height / 2 + scale * (min_y + max_y) / 2
+
+    pixels = blank.copy()
+    centers = _to_pixels(scale, offset_x, offset_y, xy)
+    backdrop = np.where(
+        (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
+    )
+    _fill_rects(pixels, centers, half_w * scale * CELL_OVERLAP_FACTOR, half_h * scale * CELL_OVERLAP_FACTOR, backdrop)
+
+    overlapping = onset > 0.0
+    if np.any(overlapping):
+        age_myr = (world.elapsed_years - onset[overlapping]) / 1e6
+        dot_centers = _to_pixels(scale, offset_x, offset_y, node_xy[overlapping])
+        r = NODE_DOT_RADIUS_PX * pixel_scale
+        _fill_rects(pixels, dot_centers, r, r, overlap_age_colors(age_myr))
+
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    return _encode_image(image)
 def _render_geomorph_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "geomorph" (see VIEWS): every node coloured by its net elevation change over
     the last step -- erosion.ErosionResult.net_elevation_change_m off World.erosion_cache,
@@ -1737,6 +1814,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
         return _render_geomorph_view(world, projection, width, height, view_rotation)
     if view == "elevReason":
         return _render_elev_reason_view(world, projection, width, height, view_rotation)
+    if view == "overlapAge":
+        return _render_overlap_age_view(world, projection, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

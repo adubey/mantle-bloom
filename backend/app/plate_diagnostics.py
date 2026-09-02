@@ -146,8 +146,12 @@ def format_report(report: dict) -> str:
             if over["fraction"] < _OVERLAP_DISPLAY_FLOOR:
                 continue
             shown += 1
+            since = over.get("since_years")
+            since_cell = (
+                f"   since {since / 1e6:.1f} My" if since is not None else ""
+            )
             lines.append(
-                f"  {row['plate_id']:>3} -> {over['plate_id']:<3}  {over['fraction'] * 100:5.1f}%"
+                f"  {row['plate_id']:>3} -> {over['plate_id']:<3}  {over['fraction'] * 100:5.1f}%{since_cell}"
             )
     if not shown:
         lines.append("  (none)")

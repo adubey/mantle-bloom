@@ -2171,6 +2171,63 @@ def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray,
     )
 
 
+# Two plates' node clouds are "co-located" -- overlapping the same patch of sphere rather
+# than merely adjacent -- when nodes land within this multiple of a target spacing of each
+# other. Ordinary shared boundaries sit ~one full spacing apart, so half a spacing only fires
+# on genuine territory overlap (a stalled collision, a bad split partition, a plate drifting
+# over a neighbour it can't merge with). Shared by main._plate_overlaps (the Plate Inspector /
+# diagnostics view) and merge_split.update_overlap_tracking (the per-node onset stamp).
+OVERLAP_TOLERANCE_MULT = 0.5
+
+
+def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, dict]:
+    """Per plate (keyed by plate_id, only plates with nodes), a genuine node-cloud overlap
+    read against every *other* plate:
+
+    - `overlap_mask`: bool array aligned to this plate's own node order
+      (`all_points_and_elevation()` / `collect` order) -- True where this node sits within
+      `tol_rad` of some other plate's node.
+    - `by_partner`: {other_plate_id: count of this plate's own unique nodes on top of it},
+      sorted-desc when iterated is up to the caller.
+
+    One global `cKDTree.query_pairs` over every node, so O(N log N) once rather than a
+    per-pair envelope test -- the same construction main._plate_overlaps used inline before
+    this was factored out so the API view and merge_split's onset tracker can't drift."""
+    active = [p for p in plate_list if p.node_count() > 0]
+    result: dict[int, dict] = {
+        p.plate_id: {"overlap_mask": np.zeros(p.node_count(), dtype=bool), "by_partner": {}} for p in active
+    }
+    if len(active) < 2:
+        return result
+
+    clouds = [p.all_points_and_elevation()[0] for p in active]
+    counts = [len(c) for c in clouds]
+    offsets = np.cumsum([0, *counts])
+    owner = np.concatenate([np.full(n, i) for i, n in enumerate(counts)])
+    pairs = cKDTree(np.concatenate(clouds)).query_pairs(tol_rad, output_type="ndarray")
+    if len(pairs) == 0:
+        return result
+
+    owners_lo, owners_hi = owner[pairs[:, 0]], owner[pairs[:, 1]]
+    cross = owners_lo != owners_hi
+    pairs, owners_lo, owners_hi = pairs[cross], owners_lo[cross], owners_hi[cross]
+
+    for glob, src, dst in ((pairs[:, 0], owners_lo, owners_hi), (pairs[:, 1], owners_hi, owners_lo)):
+        for i, src_plate in enumerate(active):
+            here = src == i
+            if not here.any():
+                continue
+            local = glob[here] - offsets[i]
+            result[src_plate.plate_id]["overlap_mask"][local] = True
+            dst_here = dst[here]
+            for j, dst_plate in enumerate(active):
+                on_j = dst_here == j
+                if not on_j.any():
+                    continue
+                result[src_plate.plate_id]["by_partner"][dst_plate.plate_id] = int(len(np.unique(local[on_j])))
+    return result
+
+
 def _collect_all(plate_list: list[Plate], field_name: str) -> np.ndarray:
     """Every plate's current `field_name` (elevation or an ElevationLine OPTIONAL_FIELDS
     name), concatenated in the exact same per-plate/per-node order collect_all_points uses --
@@ -2209,6 +2266,12 @@ def collect_all_channel_width(plate_list: list[Plate]) -> np.ndarray:
 
 def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "is_volcano")
+
+
+def collect_all_overlap_onset_years(plate_list: list[Plate]) -> np.ndarray:
+    """Used by render_image.py's `overlapAge` debug view -- see
+    merge_split.update_overlap_tracking / ElevationLine.overlap_onset_years."""
+    return _collect_all(plate_list, "overlap_onset_years")
 
 
 def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:

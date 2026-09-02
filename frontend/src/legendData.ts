@@ -382,6 +382,26 @@ const GEOMORPH_GRADIENT: LegendGradient = {
   ],
 };
 
+// render_image.py's overlap_age_colors stops (_OVERLAP_AGE_STOP_MYR / _OVERLAP_AGE_STOP_RGB) --
+// how long (Myr) each still-overlapping node has been sitting on top of another plate,
+// pale where fresh (transient), magenta where stuck for tens of Myr. Clamped at 60 Myr.
+const OVERLAP_AGE_GRADIENT: LegendGradient = {
+  min: 0,
+  max: 60,
+  stops: [
+    { value: 0, color: rgb(250, 244, 190) },
+    { value: 2, color: rgb(252, 205, 120) },
+    { value: 10, color: rgb(232, 126, 74) },
+    { value: 30, color: rgb(196, 52, 96) },
+    { value: 60, color: rgb(120, 20, 110) },
+  ],
+  ticks: [
+    { value: 0, label: "0" },
+    { value: 30, label: "30 My" },
+    { value: 60, label: "60+ My" },
+  ],
+};
+
 // Combined mode's per-pixel class id, carried in the render's alpha channel (see backend
 // app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 - code, where code is a
 // class's index in BIOME_RGB_ENTRIES + 1 (that order matches backend biomes.BIOME_NAMES, same
@@ -568,6 +588,16 @@ export function legendFor(view: MapView): LegendSpec | null {
       return { title: "Elevation change / step", gradient: GEOMORPH_GRADIENT, symbols: [COASTLINE_SYMBOL] };
     case "elevReason":
       return { title: "Last elevation change", symbols: [...ELEV_REASON_ENTRIES, COASTLINE_SYMBOL] };
+    case "overlapAge":
+      return {
+        title: "Plate overlap age (Myr on top of another plate)",
+        gradient: OVERLAP_AGE_GRADIENT,
+        symbols: [
+          { kind: "square", color: SPECKLE_LAND_COLOR, label: "Land backdrop" },
+          { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },
+          COASTLINE_SYMBOL,
+        ],
+      };
     default:
       return null; // plateInspector/riverInspector never had a server-drawn legend either
   }
