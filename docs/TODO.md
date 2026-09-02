@@ -427,10 +427,23 @@ consumption). Right direction, more honest than the `fault_factor` fudge, lets
    `_claim_adjacent_territory` adds a row the instant space opens, retreat waits out 5 My of
    sustained override so a transient boundary wobble can't thrash a stable margin.
    `test_lithosphere_contested_leading_row_is_dropped_after_sustained_override` pins it.
-   **Still open:** this is the *parallel*-suture complement -- it does nothing for a plate
-   whose footprint is over-large without a neighbour currently overriding its front row (a
-   plate that stretched, drowned, and drifted clear). The volume cap (1) is still the
-   regime-free runaway-killer and remains the priority.
+
+   **Measured (seed 936513024, node_density 1, climate off, 800 x 100-ky steps -- the same
+   config as the "Node-count creep" table above).** The drop *fires* readily: 82 whole-row
+   drops over 80 My across ~9 continental plates (several plates dropping a row every few Myr
+   as their leading edge is continuously overridden). But aggregate continental node count is
+   **unchanged** vs the drop disabled: +12.8% vs +12.9% at 80 My (total nodes +2.4% vs +2.2%,
+   plate count 20 vs 19). Two reasons, both expected: (a) on a young from-scratch world almost
+   every overridden continental margin faces *ocean*, and the freed ground re-tiles as new
+   oceanic crust within a step or two; (b) the drop removes one outermost row per extreme per
+   5 My while the plate's *trailing* (divergent) edge keeps growing unbounded every step --
+   only the volume cap (1) caps that. So this is a **correctness fix for the stalled
+   parallel continent-continent suture** (the `overlapAge` view's frozen multi-plate
+   collisions -- verified directly: a plate whose whole front row a neighbour overruns loses
+   that row after 5 My instead of never), **not** a node-count-creep fix.
+
+   **Still open:** the volume cap (1) is still the regime-free runaway-killer and remains the
+   priority -- it is what stops the trailing-edge growth this mechanism can't touch.
 3. **Suture consumption as accretion, replacing (not stacking on)
    `CONTINENTAL_COLLISION_SHORTENING_BOOST`.** As above -- physical honesty, lower urgency.
 4. **Periodic conservative continental re-lattice.** `build_lines_from_lattice` already
