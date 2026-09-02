@@ -62,7 +62,7 @@ Steady-state frames run ~4.6-4.8 s (run A), so ~2.8-3.0 s of that is the step on
 
 | Hotspot | Cost/step | Note |
 | --- | --- | --- |
-| `erosion.apply_erosion` | **~1.7 s -> ~1.5 s** (fix 7) | `climate.compute_climate` fresh (~0.59 s), `hydrology.compute_hydrology` (~0.48 s), `_spread_coastal_leveling` (~0.23 s), `hydrology._compute_basin_spill` (**~0.16 s -> ~0.02 s**, fix 7 -- was a pure-Python priority-flood, ~0.75 M `heapq.heappop` across the profiled run; now an njit heap kernel), `_coastal_openness` (~0.14 s), `lakes.build_lake_hierarchy` (~0.09 s) |
+| `erosion.apply_erosion` | **~1.7 s -> ~1.5 s (fix 7) -> ~1.2 s (fix 8)** | `climate.compute_climate` fresh (~0.59 s), `hydrology.compute_hydrology` (~0.48 s), `_spread_coastal_leveling` (**~0.27 s -> ~0.02 s**, fix 8 -- was a k=48 k-d tree query over ~110 K "sources" that are really every ocean node; now pre-filtered to the few thousand within `INFILL_RANGE_RAD` of a sink), `hydrology._compute_basin_spill` (**~0.16 s -> ~0.02 s**, fix 7 -- was a pure-Python priority-flood, ~0.75 M `heapq.heappop` across the profiled run; now an njit heap kernel), `_coastal_openness` (**~0.15 s -> ~0.10 s**, fix 8 -- counts the smaller non-open neighbour set and subtracts), `lakes.build_lake_hierarchy` (~0.09 s) |
 | plate movement (`shift` + `deform`) | ~1.4 s | `torque.gather_boundary_force_inputs` cumulative ~0.5 s but own time only ~0.05 s -- fix 4 landed, so its ~44 calls/step each hit a *cached* per-plate tree; what's left is `plates._plates_within` / `get_neighbours` (~0.2 s) and the `tree.query` itself. `lithosphere_plate._grow_or_shrink_line_for_deform` ~0.23 s. |
 | `PlateWithLines.all_points_and_elevation` | **~0.05 s** | was ~0.26 s/step of per-node `geometry.latlon_to_xyz` (~234 K calls). Fix 5 landed: `PlateWithLines._get_world_points` builds the whole plate's world-space cloud in one `local_xyz` + one frame rotation and caches it; `latlon_to_xyz` is down to ~14 K calls / ~0.13 s across the 11 steps, and almost every `all_points_and_elevation` call in a step is a warm-cache read. |
 | `world._advance_fluid_dynamics` | **0 (no-op)** | `World.wind_model` defaults to `"diagnostic"` (`frontend` `DEFAULT_WIND_MODEL`), and `_advance_fluid_dynamics` early-returns unless it is `"cfd"`. The old "runs in background threads" note only held when CFD wind was active. Diagnostic wind is rebuilt inside each `compute_climate`. |
@@ -136,8 +136,35 @@ Landed since the original profile (each measured on the box it was written on):
    `spill_target` both `array_equal`). Microbench (seed 0, `node_density` 4, ~131 K nodes):
    **~162 ms -> ~18 ms per call** (~9x), ~0.14 s/step off `apply_erosion`.
 
+8. ~~**`erosion._spread_coastal_leveling` (~0.27 s/step) and `_coastal_openness` (~0.15 s/step)**
+   -- the next tier down in `apply_erosion` after climate/hydrology.~~ **Done** -- neither was
+   a Python neighbour sweep after all; both were dominated by one oversized scipy k-d tree
+   query.
+   - `_spread_coastal_leveling`: `source_amount` is `> 0` at ~110 K nodes (every ocean node
+     carries a sliver of redirected submarine/coastal spoil), but the fill sinks are a thin
+     coastal band (~800 nodes at the profiled size). The `cKDTree(points[sink_idx]).query(
+     points[source_idx], k=48, workers=-1)` was therefore ~110 K x 48 -- **~85 ms**, and its
+     `np.add.at` / `reduce` tails scaled with it too. Now a cheap `sink_tree.query_ball_point(
+     sources, INFILL_RANGE_RAD, return_length=True)` pre-filter drops the source set to the
+     ~2.7 K within reach of any sink before the k=48 query; the out-of-range sources keep
+     their full amount, which is exactly the `any_reachable is False` branch that handled
+     them before -- **bit-exact** (verified `array_equal` on both fields across a 4-step
+     seed-0 run). ~197 ms -> ~19 ms per call.
+   - `_coastal_openness`: two `query_ball_point(..., return_length=True)` radius counts, one
+     over all nodes (`total`), one over the ~111 K open-ocean nodes. The second now runs over
+     the ~20 K *non*-open nodes instead and recovers `ocean_count = total - non_open_count`
+     (every node is in exactly one set, self included, so the subtraction is exact) -- same
+     `ocean_count / max(total, 1)`, **bit-identical** output, ~6x smaller tree + query.
+     ~0.15 s -> ~0.10 s per call (the `total` count is the irreducible half).
+
 Still open, roughly in order:
 
-8. **`erosion._spread_coastal_leveling` (~0.23 s/step) and `_coastal_openness` (~0.14 s/step)**
-   -- the next tier down in `apply_erosion` after climate/hydrology, both still largely
-   Python-level neighbour sweeps.
+9. **`climate.compute_climate` (~0.59 s/step) and `hydrology.compute_hydrology` (~0.48 s/step)**
+   -- with the coastal passes and the basin spill handled, these two are now what
+   `apply_erosion` spends its time on. Both are called fresh once per step (climate is a cache
+   hit at *render* time but not here). Not yet broken down.
+   - Note on the sibling spreads: `_spread_marine_sediment` has the same ~110 K-source shape
+     `_spread_coastal_leveling` did, but its targets are the *entire* ocean node set, not a
+     thin band, so the source pre-filter doesn't apply -- nearly every source has an in-range
+     lower-ocean target. `_spread_beach_sediment`'s sources are just river-mouth nodes (small).
+     Neither showed up as a hotspot; left alone.
