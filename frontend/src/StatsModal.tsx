@@ -106,26 +106,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: "simulation", label: "Simulation" },
 ];
 
-// Fixed order (the Köppen land classes of biomes.BIOME_NAMES -- the pelagic ocean classes are
-// excluded from biome_land_fraction) rather than sorted by current fraction, so the tab's
-// rows and the Graph dropdown/legend stay stable across generate/step calls. Kept in sync by
-// hand with backend biomes.KOPPEN_NAMES, same precedent as legendData.ts's BIOME_RGB_ENTRIES.
-const BIOME_NAMES = [
-  "Tropical Rainforest", "Tropical Monsoon", "Tropical Savanna", "Tropical Savanna (Dry Summer)",
-  "Hot Desert", "Cold Desert", "Hot Semi-Arid", "Cold Semi-Arid",
-  "Hot-Summer Mediterranean", "Warm-Summer Mediterranean", "Cold-Summer Mediterranean",
-  "Humid Subtropical (Dry Winter)", "Subtropical Highland", "Cold Subtropical Highland",
-  "Humid Subtropical", "Oceanic", "Subpolar Oceanic",
-  "Mediterranean Continental (Hot Summer)", "Mediterranean Continental (Warm Summer)",
-  "Mediterranean Subarctic", "Extremely Cold Mediterranean Subarctic",
-  "Monsoon Continental (Hot Summer)", "Monsoon Continental (Warm Summer)",
-  "Monsoon Subarctic", "Extremely Cold Monsoon Subarctic",
-  "Hot-Summer Humid Continental", "Warm-Summer Humid Continental",
-  "Subarctic (Boreal)", "Extremely Cold Subarctic",
-  "Tundra", "Ice Cap",
-];
-
-const TAB_METRICS: Record<Exclude<TabKey, "simulation">, TabEntry[]> = {
+const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> = {
   physical: [
     metricEntry(pctMetric("land_fraction", "Land", (s) => s.land_fraction)),
     metricEntry(pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction)),
@@ -144,9 +125,6 @@ const TAB_METRICS: Record<Exclude<TabKey, "simulation">, TabEntry[]> = {
       ),
     ),
   ],
-  biome: BIOME_NAMES.map((name) =>
-    metricEntry(pctMetric(name, name, (s) => (name in s.biome_land_fraction ? s.biome_land_fraction[name] : null))),
-  ),
   temperature: [
     groupEntry(
       numGroup(
@@ -216,6 +194,127 @@ const ACCENT_COLOR = "#4f9dff"; // avg
 const MIN_COLOR = "#4fd68c";
 const MAX_COLOR = "#ff9f4f";
 const BAND_COLOR = "rgba(139, 143, 163, 0.28)"; // translucent AXIS_TEXT_COLOR grey
+
+// Categorical line colors for the multi-series Biome charts, assigned in fixed order (a
+// series keeps its color regardless of how many others are shown) -- the dark-surface steps
+// of the shared data-viz categorical palette, validated for CVD separation against this
+// modal's #151a2e surface. No Biome view defines more than 5 series, so the ramp is never
+// cycled (a cycled hue would collide); a view that ever needs a 9th series should group instead.
+const CATEGORICAL_COLORS = [
+  "#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#9085e9", "#008300", "#e66767",
+];
+
+// The Biome tab plots several biome fractions on one chart at once; the dropdown picks which
+// set. Each `series` value at a given step is the summed fraction of its `members` (entries
+// of backend biomes.BIOME_NAMES) -- over land cells for a "land" view, ocean cells for an
+// "ocean" view (biome_land_fraction / biome_ocean_fraction respectively). Member name lists
+// are hand-synced with backend biomes.KOPPEN_NAMES / PELAGIC_NAMES, same precedent as
+// legendData.ts's BIOME_RGB_ENTRIES. The "groups" and "ocean" views also back Table mode's
+// full per-class breakdown, so their `members` stay the complete class lists.
+type BiomeDomain = "land" | "ocean";
+
+interface BiomeSeriesDef {
+  key: string;
+  label: string;
+  members: string[];
+}
+
+interface BiomeView {
+  key: string;
+  label: string;
+  domain: BiomeDomain;
+  series: BiomeSeriesDef[];
+}
+
+const KOPPEN_A = ["Tropical Rainforest", "Tropical Monsoon", "Tropical Savanna", "Tropical Savanna (Dry Summer)"];
+const KOPPEN_B = ["Hot Desert", "Cold Desert", "Hot Semi-Arid", "Cold Semi-Arid"];
+const KOPPEN_C = [
+  "Hot-Summer Mediterranean", "Warm-Summer Mediterranean", "Cold-Summer Mediterranean",
+  "Humid Subtropical (Dry Winter)", "Subtropical Highland", "Cold Subtropical Highland",
+  "Humid Subtropical", "Oceanic", "Subpolar Oceanic",
+];
+const KOPPEN_D = [
+  "Mediterranean Continental (Hot Summer)", "Mediterranean Continental (Warm Summer)",
+  "Mediterranean Subarctic", "Extremely Cold Mediterranean Subarctic",
+  "Monsoon Continental (Hot Summer)", "Monsoon Continental (Warm Summer)",
+  "Monsoon Subarctic", "Extremely Cold Monsoon Subarctic",
+  "Hot-Summer Humid Continental", "Warm-Summer Humid Continental",
+  "Subarctic (Boreal)", "Extremely Cold Subarctic",
+];
+const KOPPEN_E = ["Tundra", "Ice Cap"];
+
+const one = (name: string): BiomeSeriesDef => ({ key: name, label: name, members: [name] });
+
+const BIOME_VIEWS: BiomeView[] = [
+  {
+    key: "groups",
+    label: "Climate groups (Köppen A–E)",
+    domain: "land",
+    series: [
+      { key: "A", label: "Tropical (A)", members: KOPPEN_A },
+      { key: "B", label: "Arid (B)", members: KOPPEN_B },
+      { key: "C", label: "Temperate (C)", members: KOPPEN_C },
+      { key: "D", label: "Continental (D)", members: KOPPEN_D },
+      { key: "E", label: "Polar (E)", members: KOPPEN_E },
+    ],
+  },
+  {
+    key: "ocean",
+    label: "Oceanic provinces",
+    domain: "ocean",
+    series: [
+      {
+        key: "tropical",
+        label: "Tropical seas",
+        members: ["Tropical Open Ocean", "Subtropical Gyre", "Equatorial Divergence", "Tropical Coastal Waters"],
+      },
+      { key: "temperate", label: "Temperate seas", members: ["Temperate Open Ocean", "Temperate Shelf"] },
+      { key: "coldTemperate", label: "Cold-temperate seas", members: ["Cold-Temperate Open Ocean", "Cold-Temperate Shelf"] },
+      { key: "polar", label: "Polar ocean", members: ["Polar Ocean"] },
+      { key: "seaIce", label: "Sea ice", members: ["Polar Sea Ice"] },
+    ],
+  },
+  { key: "tropical", label: "Tropical zone (A) subtypes", domain: "land", series: KOPPEN_A.map(one) },
+  { key: "arid", label: "Arid zone (B) subtypes", domain: "land", series: KOPPEN_B.map(one) },
+  {
+    key: "temperate",
+    label: "Temperate zone (C) subtypes",
+    domain: "land",
+    series: [
+      { key: "Cs", label: "Mediterranean (dry summer)", members: KOPPEN_C.slice(0, 3) },
+      { key: "Cw", label: "Dry-winter temperate", members: KOPPEN_C.slice(3, 6) },
+      { key: "Cf", label: "Year-round-wet temperate", members: KOPPEN_C.slice(6, 9) },
+    ],
+  },
+  {
+    key: "continental",
+    label: "Continental zone (D) subtypes",
+    domain: "land",
+    series: [
+      { key: "Ds", label: "Dry-summer continental", members: KOPPEN_D.slice(0, 4) },
+      { key: "Dw", label: "Dry-winter continental", members: KOPPEN_D.slice(4, 8) },
+      { key: "Df", label: "Year-round-wet continental", members: KOPPEN_D.slice(8, 12) },
+    ],
+  },
+  { key: "polar", label: "Polar zone (E) subtypes", domain: "land", series: KOPPEN_E.map(one) },
+];
+
+function biomeDomainDict(s: WorldStats, domain: BiomeDomain): Record<string, number> {
+  return domain === "land" ? s.biome_land_fraction : s.biome_ocean_fraction ?? {};
+}
+
+// Summed fraction of `members`, or null when the domain has no cells at all this step (an
+// empty dict) so the chart draws a gap rather than a misleading 0.
+function biomeSeriesValue(s: WorldStats, domain: BiomeDomain, members: string[]): number | null {
+  const dict = biomeDomainDict(s, domain);
+  if (Object.keys(dict).length === 0) return null;
+  let sum = 0;
+  for (const m of members) sum += dict[m] ?? 0;
+  return sum;
+}
+
+const biomePctFormat = (v: number) => `${(v * 100).toFixed(0)}%`;
+const biomePctTableFormat = (v: number | null) => (v === null ? "--" : `${(v * 100).toFixed(1)}%`);
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -347,6 +446,82 @@ function MetricTab({ entries, history, current }: { entries: TabEntry[]; history
   );
 }
 
+// Biomes get their own tab (not MetricTab): Graph mode plots a whole *set* of biome
+// fractions on one chart -- the dropdown picks the set (top-level Köppen groups, the ocean
+// provinces, or one zone's subtypes) rather than a single line at a time. Table mode ignores
+// the dropdown and shows the full per-class breakdown for both domains at the current step.
+function BiomeTab({ history, current }: { history: WorldStats[]; current: WorldStats }) {
+  const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
+  const [selectedKey, setSelectedKey] = useState(BIOME_VIEWS[0].key);
+  const view = BIOME_VIEWS.find((v) => v.key === selectedKey) ?? BIOME_VIEWS[0];
+
+  const chartData: ChartPoint[] = useMemo(
+    () =>
+      history.map((h) => ({
+        x: h.elapsed_years,
+        values: Object.fromEntries(view.series.map((s) => [s.key, biomeSeriesValue(h, view.domain, s.members)])),
+      })),
+    [history, view],
+  );
+  const chartSeries: ChartSeries[] = useMemo(
+    () => view.series.map((s, i) => ({ key: s.key, label: s.label, color: CATEGORICAL_COLORS[i % CATEGORICAL_COLORS.length] })),
+    [view],
+  );
+
+  // Full breakdown for both domains -- the "groups" and "ocean" views already carry the
+  // complete Köppen / pelagic class lists, so Table mode is just those rendered with a
+  // group subtotal and its member classes indented under it.
+  const tableSections: { title: string; view: BiomeView }[] = [
+    { title: "Land — Köppen classes (% of land)", view: BIOME_VIEWS.find((v) => v.key === "groups")! },
+    { title: "Ocean — pelagic provinces (% of ocean)", view: BIOME_VIEWS.find((v) => v.key === "ocean")! },
+  ];
+
+  return (
+    <>
+      <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
+      {viewMode === "table" ? (
+        tableSections.map((section) => {
+          const dict = biomeDomainDict(current, section.view.domain);
+          return (
+            <div key={section.title} style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6 }}>{section.title}</div>
+              {Object.keys(dict).length === 0 ? (
+                <div style={{ opacity: 0.6 }}>No {section.view.domain} cells.</div>
+              ) : (
+                section.view.series.map((group) => (
+                  <div key={group.key} style={{ marginBottom: 8 }}>
+                    <Row label={group.label} value={biomePctTableFormat(biomeSeriesValue(current, section.view.domain, group.members))} />
+                    <div style={{ paddingLeft: 12, opacity: 0.85 }}>
+                      {group.members.map((m) => (
+                        <Row key={m} label={m} value={biomePctTableFormat(m in dict ? dict[m] : null)} />
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          );
+        })
+      ) : (
+        <>
+          <select
+            value={selectedKey}
+            onChange={(e) => setSelectedKey(e.target.value)}
+            style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
+          >
+            {BIOME_VIEWS.map((v) => (
+              <option key={v.key} value={v.key}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={biomePctFormat} />
+        </>
+      )}
+    </>
+  );
+}
+
 // `current` isn't enough on its own here (unlike MetricTab's tabs, "min/max/avg/std dev"
 // for these two metrics means over the *run*, not a snapshot) -- Table mode is a dedicated
 // historyStats summary per metric instead of MetricTab's plain current-value rows; Graph
@@ -461,6 +636,8 @@ export default function StatsModal({ stats, history, onClose }: Props) {
                 switching to a tab whose metrics don't include the old selection. */}
             {activeTab === "simulation" ? (
               <SimulationTab history={history} />
+            ) : activeTab === "biome" ? (
+              <BiomeTab key={activeTab} history={history} current={stats} />
             ) : (
               <MetricTab key={activeTab} entries={TAB_METRICS[activeTab]} history={history} current={stats} />
             )}

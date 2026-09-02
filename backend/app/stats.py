@@ -32,6 +32,12 @@ resolution the way a rendered map's coastlines visibly do. The denominator is la
 (Ocean is always 0% by construction, so it's omitted from the dict entirely rather than
 reported as a permanent zero).
 
+`biome_ocean_fraction` is the exact mirror for the pelagic (ocean) classes -- the same
+`ClimateFields.biome_ids` field, but counted over ocean cells with `biomes.OCEAN_IDS` as the
+denominator, so the Stats panel's Biome tab can chart the ocean provinces over time the same
+way it charts the Köppen land classes. Land Köppen classes are omitted from it (0% of ocean),
+and it's `{}` when there are no ocean cells at all.
+
 `plate_count`/`elevation_point_count` are the two exceptions to "every stat here is a
 spatial min/max/mean snapshot of the current world": each is a single running total (plate
 count, and the sum of every plate's own `node_count()`), with no per-call distribution to
@@ -75,6 +81,13 @@ def compute_stats(world: World) -> dict:
         for i, name in enumerate(biomes.BIOME_NAMES)
         if i not in biomes.OCEAN_IDS and n_land > 0
     }
+    ocean_biome_ids = fields.biome_ids[is_ocean]
+    n_ocean = int(is_ocean.sum())
+    biome_ocean_fraction = {
+        name: float(np.count_nonzero(ocean_biome_ids == i)) / n_ocean
+        for i, name in enumerate(biomes.BIOME_NAMES)
+        if i in biomes.OCEAN_IDS and n_ocean > 0
+    }
 
     return {
         "elapsed_years": world.elapsed_years,
@@ -107,4 +120,5 @@ def compute_stats(world: World) -> dict:
         "precipitation_mean_mm": precip_mean,
         "precipitation_std_mm": precip_std,
         "biome_land_fraction": biome_land_fraction,
+        "biome_ocean_fraction": biome_ocean_fraction,
     }

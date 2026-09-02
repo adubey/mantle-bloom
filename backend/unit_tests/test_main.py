@@ -541,6 +541,9 @@ def test_stats_returns_expected_shape(client):
     ):
         assert body[key] is not None
     assert body["precipitation_min_mm"] <= body["precipitation_mean_mm"] <= body["precipitation_max_mm"]
+    # Both biome breakdowns are present and each sums to ~1 over its own domain (land / ocean).
+    assert math.isclose(sum(body["biome_land_fraction"].values()), 1.0, abs_tol=1e-6)
+    assert math.isclose(sum(body["biome_ocean_fraction"].values()), 1.0, abs_tol=1e-6)
 
 
 def test_save_then_load_round_trips_the_exact_world_state(client):
