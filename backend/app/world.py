@@ -74,6 +74,13 @@ class World:
     # Sustained-collision tracking for merge_split.py: (plate_id, plate_id) -> accumulated
     # convergent years. See merge_split.update_collision_progress.
     collision_progress: dict[tuple[int, int], float] = field(default_factory=dict)
+    # The territory-overlap sibling of collision_progress: (plate_id, plate_id) -> accumulated
+    # years the two continental plates have sat deeply superimposed. Feeds the forced
+    # continental merge that resolves a stuck multi-plate pile-up the closing-rate timer above
+    # can't (they overlap too completely to register a closing rate). See
+    # merge_split.update_overlap_progress. A default_factory field -> backfilled on load of an
+    # older save (persistence._backfill_added_fields).
+    overlap_progress: dict[tuple[int, int], float] = field(default_factory=dict)
     # Cross-step memory for the stranded-basin diagnostic (docs/debugging.md): one
     # `stranded_basins.StrandedBasinTrack` per endorheic, below-sea-level, ocean-disconnected
     # basin currently present, reconciled by centroid proximity every hydrology step (see
@@ -358,9 +365,10 @@ def step_world(world: World, years: float) -> None:
     if world.simulate_plate_movement:
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
-        # Diagnostic: stamp/clear ElevationLine.overlap_onset_years against this step's final
-        # geometry (see merge_split.update_overlap_tracking / docs/debugging.md).
-        merge_split.update_overlap_tracking(world)
+        # Stamp/clear ElevationLine.overlap_onset_years and advance World.overlap_progress
+        # against this step's final geometry (see merge_split.update_overlap_tracking /
+        # docs/debugging.md).
+        merge_split.update_overlap_tracking(world, years)
 
     erosion_result = None
     if world.simulate_climate_biomes:

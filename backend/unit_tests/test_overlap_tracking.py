@@ -45,19 +45,19 @@ def test_compute_node_overlap_flags_colocated_nodes_both_ways():
 def test_update_overlap_tracking_stamps_once_then_clears():
     world = _overlapping_world()
     world.elapsed_years = 5_000_000.0
-    merge_split.update_overlap_tracking(world)
+    merge_split.update_overlap_tracking(world, 100_000.0)
     onset0 = world.plates[0].collect("overlap_onset_years")
     assert np.all(onset0[:8] == 5_000_000.0)
     assert np.all(onset0[8:] == 0.0)
 
     # Still overlapping a step later -> the onset year is not overwritten.
     world.elapsed_years = 9_000_000.0
-    merge_split.update_overlap_tracking(world)
+    merge_split.update_overlap_tracking(world, 100_000.0)
     assert np.all(world.plates[0].collect("overlap_onset_years")[:8] == 5_000_000.0)
 
     # Move B off A entirely -> the stamp clears back to 0.
     world.plates[1] = _plate(1, [-1.0, 0.0, 0.0], np.linspace(-0.05, 0.05, 8))
-    merge_split.update_overlap_tracking(world)
+    merge_split.update_overlap_tracking(world, 100_000.0)
     assert np.all(world.plates[0].collect("overlap_onset_years") == 0.0)
 
 

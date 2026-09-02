@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import elevation_lines, mantle, persistence
+from . import elevation_lines, mantle, merge_split, persistence
 from .main import _plate_overlaps, _plate_summary
 from .world import World
 
@@ -66,6 +66,11 @@ def build_report(world: World) -> dict:
          for (a, b), years in world.collision_progress.items()),
         key=lambda entry: -entry["years"],
     )
+    forced_merge_timers = sorted(
+        ({"plates": [int(a), int(b)], "years": float(years)}
+         for (a, b), years in getattr(world, "overlap_progress", {}).items()),
+        key=lambda entry: -entry["years"],
+    )
     return {
         "seed": world.seed,
         "elapsed_years": world.elapsed_years,
@@ -76,6 +81,7 @@ def build_report(world: World) -> dict:
         "max_plate_rate_cm_per_yr": mantle.rad_per_yr_to_cm_per_yr(mantle.MAX_PLATE_RATE),
         "plates": plate_rows,
         "collisions": collisions,
+        "forced_merge_timers": forced_merge_timers,
         "node_budget": {
             "total_nodes": int(total_nodes),
             "clean_tiling_estimate": int(round(estimate)),
@@ -160,6 +166,18 @@ def format_report(report: dict) -> str:
     lines.append("sustained-collision timers  (world.collision_progress)")
     if report["collisions"]:
         for entry in report["collisions"]:
+            a, b = entry["plates"]
+            lines.append(f"  ({a:>3}, {b:>3})  {entry['years'] / 1e6:6.1f} My")
+    else:
+        lines.append("  (none)")
+    lines.append("")
+
+    lines.append(
+        "forced-merge timers  (world.overlap_progress; a continental pair fuses at "
+        f"{merge_split.FORCED_MERGE_SUSTAINED_YEARS / 1e6:.0f} My)"
+    )
+    if report.get("forced_merge_timers"):
+        for entry in report["forced_merge_timers"]:
             a, b = entry["plates"]
             lines.append(f"  ({a:>3}, {b:>3})  {entry['years'] / 1e6:6.1f} My")
     else:

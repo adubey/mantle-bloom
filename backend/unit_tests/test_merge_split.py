@@ -2,6 +2,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from app import geometry, mantle, merge_split
+from app import plates as plates_mod
 from app.plates import ElevationLine, PlateWithLines, line_spacing_rad, node_components
 from app.world import World, generate_world, step_world
 
@@ -504,3 +505,89 @@ def test_apply_topology_changes_drops_a_defrag_debris_plate_via_the_territory_ch
 
     assert [p.plate_id for p in world.plates] == [1]
     assert any("no land left" in e for e in events)
+
+
+# -- speed-boosted merge probability + the forced-merge backstop for a stuck pile-up --------
+
+
+def _overlapping_continental_pair_world(main_nodes=30):
+    """Plates 0 and 1 share a frame and theta range, so 1's whole main row sits on top of 0's
+    (a deep interpenetration). Plate 2 is a large padding continent elsewhere."""
+    theta = np.linspace(-0.05, 0.05, main_nodes)
+    a = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(main_nodes))
+    b = _test_plate(1, [1.0, 0.0, 0.0], "continental", theta[: main_nodes - 6], np.zeros(main_nodes - 6))
+    pad = _test_plate(2, [0.0, 1.0, 0.0], "continental", np.linspace(-0.05, 0.05, 400), np.zeros(400))
+    return World(seed=0, plates=[a, b, pad], next_plate_id=3)
+
+
+def _overlap_read(world):
+    tol = plates_mod.OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
+    return plates_mod.compute_node_overlap(world.plates, tol)
+
+
+def test_merge_probability_speed_boost_raises_a_large_pairs_odds():
+    theta = np.linspace(-0.01, 0.01, 5000)
+    a = _test_plate(3, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5000))
+    b = _test_plate(4, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5000))
+    filler = _test_plate(2, [0.0, 1.0, 0.0], "continental", np.linspace(-0.01, 0.01, 500), np.zeros(500))
+    world = World(seed=0, plates=[a, b, filler], next_plate_id=5)
+
+    slow = merge_split._merge_probability(world, (3, 4))  # both plates motionless -> size floor
+    assert np.isclose(slow, merge_split.MERGE_PROBABILITY_FLOOR)
+
+    a.set_omega(np.array([0.0, 0.0, mantle.MAX_PLATE_RATE]))
+    b.set_omega(np.array([0.0, 0.0, -mantle.MAX_PLATE_RATE]))  # relative rate 2x MAX -> speed_frac clamps to 1
+    fast = merge_split._merge_probability(world, (3, 4))
+    assert fast > slow
+    assert np.isclose(fast, slow + (1.0 - slow) * merge_split.SPEED_MERGE_BOOST)
+
+
+def test_forced_merge_fires_only_after_a_sustained_deep_overlap():
+    world = _overlapping_continental_pair_world()
+    step = 1_000_000.0
+
+    merge_split.update_overlap_progress(world, step, _overlap_read(world))
+    assert (0, 1) in world.overlap_progress  # tracking started
+    assert merge_split.pop_ready_forced_merge(world) is None  # but nowhere near the threshold
+
+    for _ in range(int(merge_split.FORCED_MERGE_SUSTAINED_YEARS // step) + 1):
+        merge_split.update_overlap_progress(world, step, _overlap_read(world))
+
+    pair = merge_split.pop_ready_forced_merge(world)
+    assert pair == (0, 1)  # the larger plate is kept
+    assert (0, 1) not in world.overlap_progress  # accumulator consumed
+
+
+def test_forced_merge_progress_drops_when_the_overlap_separates():
+    world = _overlapping_continental_pair_world()
+    for _ in range(5):
+        merge_split.update_overlap_progress(world, 1_000_000.0, _overlap_read(world))
+    assert (0, 1) in world.overlap_progress
+
+    world.plates[1].rotate(geometry.rotation_matrix_from_omega(np.array([0.0, 0.0, 1.0]), 1.0))
+    merge_split.update_overlap_progress(world, 1_000_000.0, _overlap_read(world))
+    assert (0, 1) not in world.overlap_progress  # dropped entirely, not paused
+
+
+def test_apply_topology_changes_performs_the_forced_merge_and_logs_it():
+    world = _overlapping_continental_pair_world()
+    world.overlap_progress[(0, 1)] = merge_split.FORCED_MERGE_SUSTAINED_YEARS + 1.0
+
+    events = merge_split.apply_topology_changes(world, 1_000_000.0)
+
+    assert {p.plate_id for p in world.plates} == {0, 2}
+    assert any("fused into plate 0" in e for e in events)
+
+
+def test_forced_merge_yields_to_a_ready_closing_rate_merge_the_same_step(monkeypatch):
+    """At most one continental fusion per step: a step that already resolved a closing-rate
+    collision does not also run a forced merge."""
+    monkeypatch.setattr(merge_split, "MERGE_SIZE_UNLIKELY_FRACTION", 1e9)
+    world = _converging_pair_world()
+    # Prime both an about-to-fire collision timer and an over-threshold overlap timer.
+    world.collision_progress[(0, 1)] = merge_split._collision_threshold_years(world.seed, (0, 1))
+    world.overlap_progress[(0, 1)] = merge_split.FORCED_MERGE_SUSTAINED_YEARS + 1.0
+
+    events = merge_split.apply_topology_changes(world, 1_000_000.0)
+
+    assert sum(("merged into" in e or "fused into" in e) for e in events) == 1

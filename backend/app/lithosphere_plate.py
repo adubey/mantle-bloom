@@ -54,6 +54,22 @@ from . import bathymetry, lithosphere, rheology, terrain_noise, torque
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
 
+# A continental line's *contested* end normally never retreats -- only oceanic crust subducts,
+# so a continent-continent suture crumples in place (Hc thickens) instead. But a continental
+# edge overridden by an *oceanic* neighbour is a passive margin / accretion front, not a
+# suture: the ocean slab descends under it and the buried continental node cedes nothing the
+# model should keep. Left un-retreatable, that end still grows at its *other* (divergent) side
+# every step and never back -- the continental node ratchet that drives the unbounded
+# node-count creep and the slow land-fraction decline (docs/TODO.md "Node-count creep").
+# So an oceanic-contested continental end *is* allowed to retreat, but only:
+#   - one node per step (the existing `n_distance_cap` / `max_extend_nodes` caps already do
+#     this at continental drift rates), and
+#   - where it is part of a run of at least this many consecutive oceanic-contested nodes, so
+#     a single stray node from bounding-polygon envelope fuzz can't nibble a stable coastline
+#     or, worse, sever a lobe into a spurious defragmentation plate (the failure the naive
+#     "retreat every continental contested node" experiment hit -- see that TODO section).
+CONTINENTAL_OCEANIC_RETREAT_MIN_RUN = 3
+
 
 def growth_seed_thickness() -> tuple[float, float]:
     """(Hc, Hm) a plate seeds *brand-new areal* nodes with -- when a line grows an end into
@@ -72,6 +88,25 @@ def growth_seed_thickness() -> tuple[float, float]:
     continental rifting is untouched, since that thins *existing* crust
     (`rheology.apply_divergent_deformation`) rather than growing new nodes here."""
     return lithosphere.REFERENCE_HC_OCEANIC_M, lithosphere.YOUNG_RIDGE_HM_M
+
+
+def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
+    """`mask`, with every True-run shorter than `min_run` cleared to False. Used to gate
+    continental-edge retreat on a genuine multi-node oceanic-contested stretch rather than a
+    single stray envelope-fuzz node (see CONTINENTAL_OCEANIC_RETREAT_MIN_RUN). Runs are taken
+    in the plate's concatenated node order -- a run that happens to bridge two lines' worth of
+    nodes is astronomically rare (line breaks sit at a plate's theta extremes) and harmless
+    if it ever happens, since `_grow_or_shrink_line_for_deform` re-checks per line anyway."""
+    if min_run <= 1 or not mask.any():
+        return mask.copy()
+    edges = np.diff(np.concatenate(([0], mask.astype(np.int8), [0])))
+    starts = np.flatnonzero(edges == 1)
+    ends = np.flatnonzero(edges == -1)
+    long_enough = (ends - starts) >= min_run
+    out = np.zeros_like(mask)
+    for start, end in zip(starts[long_enough], ends[long_enough]):
+        out[start:end] = True
+    return out
 
 
 class LithospherePlate(PlateWithLines):
@@ -108,9 +143,17 @@ class LithospherePlate(PlateWithLines):
         neighbor_omega_all = inputs.neighbor_omega
         closing_rate_all = rheology.normal_closing_rate_m_per_s(self.omega, neighbor_omega_all, own_points, inputs.direction_to_neighbor)
 
-        # Only genuine subduction deletes territory -- continental crust crumples in place
-        # (thickens) instead, same asymmetry v1 draws (deform()'s own docstring there).
-        shrinkable_all = contested_all if self.crust_type != "continental" else np.zeros_like(contested_all)
+        # What may retreat this step. Oceanic crust: any contested node subducts. Continental
+        # crust: only where an *oceanic* neighbour is overriding it, and only in runs of
+        # >= CONTINENTAL_OCEANIC_RETREAT_MIN_RUN consecutive such nodes -- a continent-continent
+        # suture still crumples in place (thickens), and envelope fuzz can't nibble a stable
+        # margin. See CONTINENTAL_OCEANIC_RETREAT_MIN_RUN for the ratchet this breaks.
+        if self.crust_type != "continental":
+            shrinkable_all = contested_all
+        else:
+            shrinkable_all = _runs_of_at_least(
+                contested_all & inputs.neighbor_is_oceanic, CONTINENTAL_OCEANIC_RETREAT_MIN_RUN
+            )
 
         years_myr = years / 1_000_000.0
         rho_c = self.crust_density()
@@ -331,8 +374,11 @@ class LithospherePlate(PlateWithLines):
 
         # Interior subduction: carve out each substantial mid-row `shrinkable` run the two
         # end-shrinks can't reach, splitting the row into separate arcs -- see
-        # `PlateWithLines._grow_or_shrink_line_for_deform` for the full rationale.
-        if len(shrinkable) >= _INTERIOR_SUBDUCTION_MIN_RUN + 2 and shrinkable[1:-1].any():
+        # `PlateWithLines._grow_or_shrink_line_for_deform` for the full rationale. Oceanic
+        # self-plate only: a continental row's oceanic-contested nodes (now `shrinkable`, see
+        # deform) must only ever retreat from the ends -- carving a continental row's middle
+        # would sever the landmass into a spurious defragmentation plate.
+        if self.crust_type == "oceanic" and len(shrinkable) >= _INTERIOR_SUBDUCTION_MIN_RUN + 2 and shrinkable[1:-1].any():
             prev_shrink = np.concatenate([[False], shrinkable[:-1]])
             run_starts = np.nonzero(shrinkable & ~prev_shrink)[0]
             keep = np.ones(len(theta), dtype=bool)

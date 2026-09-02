@@ -36,33 +36,52 @@ def test_basal_drag_vanishes_when_plate_matches_mantle_flow():
     assert np.allclose(tau, 0.0, atol=1e-6)
 
 
-def test_slab_pull_only_applies_to_oceanic_plates():
+def test_subducting_mask_only_flags_a_converging_oceanic_boundary():
+    """`subducting_boundary_mask` gates slab pull: a continental plate never subducts, and
+    even an oceanic plate only feels pull where it is actually converging on its neighbour
+    (a ridge or transform stretch, however close, does not pull a slab down -- the bug that
+    railed every oceanic plate at MAX_PLATE_RATE)."""
+
     class FakePlate:
-        def __init__(self, crust_type):
+        def __init__(self, crust_type, omega):
             self.crust_type = crust_type
+            self.omega = omega
 
     n = 10
     points = np.tile(np.array([1.0, 0.0, 0.0]), (n, 1))
-    hm = np.full(n, 60_000.0)
-    direction = np.tile(np.array([0.0, 1.0, 0.0]), (n, 1))
+    direction = np.tile(np.array([0.0, 1.0, 0.0]), (n, 1))  # neighbour is toward +y
+    # A plate spinning about +z carries +x-material toward +y -- i.e. toward the neighbour.
+    converging_omega = np.array([0.0, 0.0, 2.0 * mantle.MAX_PLATE_RATE])
     inputs = torque.BoundaryForceInputs(
         own_points=points,
         own_hc=np.full(n, 7000.0),
-        own_hm=hm,
+        own_hm=np.full(n, 60_000.0),
         dist_to_neighbor=np.full(n, 0.001),
         direction_to_neighbor=direction,
         neighbor_is_oceanic=np.zeros(n, dtype=bool),
         neighbor_omega=np.zeros((n, 3)),
     )
     reach = 0.01
-    spacing = 0.02
 
-    continental = FakePlate("continental")
-    assert np.allclose(torque.slab_pull_torque(continental, inputs, spacing, reach), 0.0)
+    assert not torque.subducting_boundary_mask(FakePlate("continental", converging_omega), inputs, reach).any()
+    assert torque.subducting_boundary_mask(FakePlate("oceanic", converging_omega), inputs, reach).all()
+    # Same geometry, spinning the other way -> the boundary is diverging, no slab pull.
+    assert not torque.subducting_boundary_mask(FakePlate("oceanic", -converging_omega), inputs, reach).any()
 
-    oceanic = FakePlate("oceanic")
-    tau = torque.slab_pull_torque(oceanic, inputs, spacing, reach)
-    assert not np.allclose(tau, 0.0)
+
+def test_slab_pull_is_zero_without_a_subducting_node():
+    n = 10
+    inputs = torque.BoundaryForceInputs(
+        own_points=np.tile(np.array([1.0, 0.0, 0.0]), (n, 1)),
+        own_hc=np.full(n, 7000.0),
+        own_hm=np.full(n, 60_000.0),
+        dist_to_neighbor=np.full(n, 0.001),
+        direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
+        neighbor_is_oceanic=np.zeros(n, dtype=bool),
+        neighbor_omega=np.zeros((n, 3)),
+    )
+    assert np.allclose(torque.slab_pull_torque(None, inputs, np.zeros(n, dtype=bool), spacing_rad=0.02), 0.0)
+    assert not np.allclose(torque.slab_pull_torque(None, inputs, np.ones(n, dtype=bool), spacing_rad=0.02), 0.0)
 
 
 def test_slab_pull_points_toward_subduction_direction():
@@ -84,7 +103,7 @@ def test_slab_pull_points_toward_subduction_direction():
         neighbor_is_oceanic=np.array([False]),
         neighbor_omega=np.zeros((1, 3)),
     )
-    tau = torque.slab_pull_torque(FakePlate(), inputs, spacing_rad=0.02, reach_rad=0.01)
+    tau = torque.slab_pull_torque(FakePlate(), inputs, np.array([True]), spacing_rad=0.02)
     r = point[0] * lithosphere.PLANET_RADIUS_M
     force_direction = direction[0]
     expected_direction = geometry.normalize(np.cross(r, force_direction)[None, :])[0]
@@ -214,6 +233,57 @@ def test_integrate_omega_relaxes_to_the_mantle_rate_instead_of_railing():
             plate.omega = torque.integrate_omega(plate, np.zeros(3), b, k, inertia, years)
         assert np.linalg.norm(plate.omega) == pytest.approx(fitted_rate, rel=1e-3)
         assert np.linalg.norm(plate.omega) < 0.5 * mantle.MAX_PLATE_RATE
+
+
+def test_slab_drag_keeps_a_subducting_plate_off_the_clamp():
+    """Slab pull with no resistance drives a subducting oceanic plate straight past
+    `MAX_PLATE_RATE`, so `integrate_omega`'s `clamp_rate` pins it exactly at the clamp (the
+    'every oceanic plate railed at MAX' reading). Folding `slab_drag_coefficient_matrix` into
+    the implicit `K` -- the sunk slab's viscous coupling to the deep mantle -- lets the speed
+    self-regulate below the clamp instead, and the drag is unconditionally stable at any step
+    size the way basal drag is."""
+    rng = np.random.default_rng(495717634)
+    center = geometry.normalize(np.array([1.0, 0.2, -0.3]))
+    tangent = geometry.normalize(np.cross(center, np.array([0.0, 0.0, 1.0])))
+    bitangent = np.cross(center, tangent)
+    ang = rng.uniform(0.0, 1.0, size=300) ** 0.5 * 0.4
+    azi = rng.uniform(0.0, 2 * np.pi, size=300)
+    points = geometry.normalize(
+        np.cos(ang)[:, None] * center
+        + (np.sin(ang) * np.cos(azi))[:, None] * tangent
+        + (np.sin(ang) * np.sin(azi))[:, None] * bitangent
+    )
+    n = len(points)
+    # Every node subducts toward +tangent -- a whole-perimeter trench, the worst case.
+    inputs = torque.BoundaryForceInputs(
+        own_points=points,
+        own_hc=np.full(n, lithosphere.REFERENCE_HC_OCEANIC_M),
+        own_hm=np.full(n, lithosphere.REFERENCE_HM_OCEANIC_M),
+        dist_to_neighbor=np.full(n, 0.001),
+        direction_to_neighbor=np.tile(tangent, (n, 1)),
+        neighbor_is_oceanic=np.ones(n, dtype=bool),
+        neighbor_omega=np.zeros((n, 3)),
+    )
+    subducting = np.ones(n, dtype=bool)
+    inertia = lithosphere.moment_of_inertia_tensor(
+        points, inputs.own_hc, inputs.own_hm, lithosphere.RHO_OCEANIC_CRUST, 0.02
+    )
+    pull = torque.slab_pull_torque(None, inputs, subducting, spacing_rad=0.02)
+
+    class FakePlate:
+        omega = np.zeros(3)
+
+    without_drag = torque.integrate_omega(FakePlate(), pull, np.zeros(3), np.zeros((3, 3)), inertia, years=100_000.0)
+    assert np.linalg.norm(without_drag) == pytest.approx(mantle.MAX_PLATE_RATE, rel=1e-9)
+
+    drag_k = torque.slab_drag_coefficient_matrix(inputs, subducting, spacing_rad=0.02)
+    plate = FakePlate()
+    for years in (10_000.0, 100_000.0, 5_000_000.0):
+        settled = plate.omega
+        for _ in range(60):
+            settled = torque.integrate_omega(plate, pull, np.zeros(3), drag_k, inertia, years)
+            plate = type("P", (), {"omega": settled})()
+        assert np.linalg.norm(settled) < mantle.MAX_PLATE_RATE
 
 
 def test_merge_omega_conserves_angular_momentum():

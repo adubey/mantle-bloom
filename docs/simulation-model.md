@@ -203,6 +203,24 @@ is blended with the plate's current `omega` (`VELOCITY_DAMPING = 0.3`, so a plat
 accelerates smoothly rather than snapping) and clamped to a plausible speed range
 (`MIN/MAX_PLATE_RATE`, equivalent to 0.5-15 cm/yr at `PLANET_RADIUS_KM = 6371`).
 
+**Torque engine (`torque.py`), which actually drives `omega` now.** OLS-to-mantle-flow above
+is v1; the running engine balances slab-pull / ridge-push / basal-drag / collision-friction
+torques (spec section 3) and integrates the stiff drag terms implicitly (`integrate_omega`).
+Two long-run corrections (2026-09):
+- **Slab pull only acts on a genuinely *converging* subduction margin** (`subducting_boundary_
+  mask`: oceanic self-plate, within `reach_rad` of a neighbour, closing rate past
+  `TRANSFORM_RATE_THRESHOLD`). It used to apply to the whole near-neighbour band -- ridge and
+  transform stretches included -- so an oceanic plate spreading on three sides still felt a
+  full-perimeter pull.
+- **The sunk slab is resisted by the deep mantle** (`slab_drag_coefficient_matrix`, viscous
+  coupling over `SUBDUCTION_LSINK_M` at `SLAB_MANTLE_VISCOSITY_PA_S`, folded into the implicit
+  `K`). Spec Eq. 8 gives slab pull with no matching resistance, so on its own it drove *every*
+  subducting oceanic plate straight past `MAX_PLATE_RATE` and `clamp_rate` pinned them all
+  there -- the "every oceanic plate railed at MAX" reading the `overlapAge` / long-run
+  plate-geometry investigations kept hitting. With the drag term, oceanic speed
+  self-regulates (median ~4-5 cm/yr, a few genuinely fast plates near the cap) instead of
+  everything sitting on the clamp. `backend/unit_tests/test_torque.py` pins both.
+
 <a id="boundary-evolution"></a>
 ## Plate motion: shift and deform (`plates.py`'s `Plate.shift`/`Plate.deform`)
 
@@ -346,7 +364,19 @@ trigger (contested, not a positive closing rate) changed:
 
   If an end is contested,
   remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
-  the safety ceiling -- but never the plate's last remaining node in a line. Growth and
+  the safety ceiling -- but never the plate's last remaining node in a line. **A continental
+  end only shrinks where an *oceanic* neighbour is overriding it** (`torque` /
+  `LithospherePlate.deform` supply a per-node `neighbor_is_oceanic` flag; the retreatable set
+  is `contested & neighbor_is_oceanic`, further gated to runs of at least
+  `CONTINENTAL_OCEANIC_RETREAT_MIN_RUN` consecutive such nodes so bounding-polygon envelope
+  fuzz can't nibble a stable coast or sever a lobe). A continent-continent *suture* still
+  crumples in place (Hc thickens -> uplift) and never retreats. This breaks the **continental
+  node ratchet** -- before it, a continental line's contested (leading) end was a no-op every
+  step while its divergent (trailing) end kept growing, so every continent tiled itself with
+  ever more drowned ~-3.5 km accreted-margin nodes (`growth_seed_thickness`, above) and the
+  dry-land fraction drifted down under a fixed sea level with nothing able to compensate. The
+  interior-subduction carve below stays oceanic-only for the same lobe-severing reason.
+  Growth and
   *ordinary* shrink are end-only: each `ElevationLine` is a single contiguous arc, and
   inserting/deleting anywhere but an end would break that. The one interior case handled is
   **interior subduction** on an oceanic self-plate: a run of at least
@@ -461,6 +491,21 @@ Every node's onset year is also stamped onto
 `ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
 see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
+
+**Forced merge for a stuck continental pile-up (2026-09).** A continent-continent overlap
+that classifies contested now *thickens*, but the two plates still don't *fuse* -- and the
+worst pile-ups (a long-run save showed ~9 continental plates mutually overlapping 5-60%,
+some since 100+ Myr) overlap so completely they no longer register any closing rate, so
+`find_continental_collision_pairs` never sees them and `World.collision_progress` never
+accumulates. `merge_split.update_overlap_progress` adds a second sustained-timer,
+`World.overlap_progress`, on the *territory-overlap* signal instead of the closing-rate one:
+for every continental pair whose node clouds interpenetrate by at least
+`FORCED_MERGE_OVERLAP_FRACTION` (of the more-covered plate), accumulate years; once a pair
+passes `FORCED_MERGE_SUSTAINED_YEARS` it is fused regardless of the size/closing-rate roll
+(`apply_topology_changes`, at most one forced fusion per step, and skipped on a step that
+already merged a ready closing-rate pair). Separately, `_merge_probability` now also lifts a
+large pair's odds toward certainty in proportion to `|omega_a - omega_b| / MAX_PLATE_RATE` --
+a fast, decisive convergence merges more readily than a slow oblique graze.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)
