@@ -222,10 +222,14 @@ export interface WorldStats {
   precipitation_max_mm: number;
   precipitation_mean_mm: number;
   precipitation_std_mm: number;
-  // Percent of *land* cells (0 to 1 each) in each named biome (see backend app/biomes.py) --
-  // "Ocean" is never a key here (it's always 0% of land, by construction) and the dict is
-  // `{}` entirely when there are no land cells at all.
+  // Percent of *land* cells (0 to 1 each) in each Köppen land class (see backend
+  // app/biomes.py) -- the pelagic ocean classes are never keys here (always 0% of land, by
+  // construction) and the dict is `{}` entirely when there are no land cells at all.
   biome_land_fraction: Record<string, number>;
+  // The exact mirror for the pelagic (ocean) provinces: fraction of *ocean* cells in each,
+  // Köppen land classes never keyed, `{}` when there are no ocean cells. (Absent on
+  // WorldStats records captured before this field was added -- treat missing as `{}`.)
+  biome_ocean_fraction?: Record<string, number>;
 }
 
 async function asJson<T>(resp: Response): Promise<T> {

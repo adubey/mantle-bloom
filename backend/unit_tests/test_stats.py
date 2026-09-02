@@ -56,6 +56,18 @@ def test_compute_stats_biome_land_fraction_excludes_ocean_and_sums_to_one():
     assert result["biome_land_fraction"] == {}
 
 
+def test_compute_stats_biome_ocean_fraction_excludes_land_and_sums_to_one():
+    world = _all_ocean_world()
+    result = stats.compute_stats(world)
+    # Every cell is ocean here -- the pelagic classes should cover 100% of it, and no Köppen
+    # land class should appear as a key.
+    assert result["biome_ocean_fraction"] != {}
+    assert np.isclose(sum(result["biome_ocean_fraction"].values()), 1.0)
+    from app import biomes
+
+    assert all(name in biomes.PELAGIC_NAMES for name in result["biome_ocean_fraction"])
+
+
 def _land_and_ocean_world() -> World:
     theta = np.linspace(-np.pi, np.pi, 40, endpoint=False)
     elevation = np.where(np.abs(theta) < np.pi / 2, 500.0, -3800.0)  # half land, half ocean
@@ -70,6 +82,9 @@ def test_compute_stats_biome_land_fraction_sums_to_one_with_land():
     assert result["biome_land_fraction"] != {}
     assert np.isclose(sum(result["biome_land_fraction"].values()), 1.0)
     assert "Ocean" not in result["biome_land_fraction"]
+    # The ocean half is classified into pelagic provinces the same way.
+    assert np.isclose(sum(result["biome_ocean_fraction"].values()), 1.0)
+    assert set(result["biome_land_fraction"]).isdisjoint(result["biome_ocean_fraction"])
 
 
 def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_ids():
