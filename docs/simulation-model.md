@@ -368,13 +368,22 @@ trigger (contested, not a positive closing rate) changed:
   end retreats whether the overriding neighbour is oceanic or continental**, gated to runs of
   at least `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN` consecutive contested nodes (so a
   bounding-polygon envelope-fuzz node can't nibble a stable coast) and to one node per step.
-  Against an *oceanic* neighbour this is a passive margin / accretion front (the slab descends
-  under the buried continental node). Against a *continental* neighbour it is a suture whose
-  territory overlap is **consumed into the orogen**: the retreated crust isn't lost, it's
-  thrust into the belt -- `LithospherePlate.deform` channels that shortening into extra
-  plastic thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`,
-  a >1 multiplier on `fault_factor`), so a consumed overlap still builds real relief. Before
-  this a continent-continent suture only crumpled in place and never retreated, so a deep
+  Against an *oceanic* neighbour this is a passive margin (the slab descends under the buried
+  continental node, which is genuinely subducted and lost). Against a *continental* neighbour
+  it is a suture whose territory overlap is **consumed into the orogen as accretion**: the
+  retreated column's crustal volume is conserved and thrust back onto the plate's own
+  surviving leading-edge nodes, spread over `SUTURE_ACCRETION_SPREAD_NODES` of them
+  (`_redistribute_accreted_column` -- an imbricate thrust wedge), so the belt thickens in
+  direct proportion to the overlap it actually eats, up to a `SUTURE_ACCRETION_MAX_HC_M`
+  (~2.4x reference Hc) ceiling past which the crustal root delaminates (a suture that never
+  heals would otherwise pile every consumed column onto the same retreating-edge nodes
+  forever). Node area is constant per node, so this is just moving the dropped nodes' summed
+  Hc onto the survivors (the attached mantle lithosphere thickening in proportion);
+  `regularize_line` re-evens the spacing next pass and isostasy lifts the thickened belt.
+  (This replaced an earlier
+  `rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST` fudge -- a flat 2.5x `fault_factor`
+  multiplier at continent-continent contested nodes, unrelated to how much overlap was
+  consumed.) Before any retreat at all, a continent-continent suture only crumpled in place, so a deep
   territory overlap just sat there for tens of Myr until `merge_split`'s forced-merge timer
   fused the pair (the `overlapAge` view's stalled multi-plate collisions; on
   `seed 656865324` @ 60 My, plate 8 sat 17% on top of plate 6 since 33 My and the
@@ -529,9 +538,9 @@ see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
 retreats one node per step against a *continental* neighbour too, not only an oceanic one
 (see [Boundary evolution](#boundary-evolution) / `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`), so
 the territory overlap of a stalled suture is consumed geologically instead of only by the
-forced-merge timer below. The retreated shortening is channelled into extra plastic
-thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`), so the
-overlap crumples into an orogen rather than the boundary just sliding back. On
+forced-merge timer below. The retreated column's volume is conserved as accretion onto the
+plate's own leading edge (`_redistribute_accreted_column` -- see [Boundary evolution](#boundary-evolution)),
+so the overlap crumples into an orogen rather than the boundary just sliding back. On
 `seed 656865324` @ 60 My, plate 8's 17%-since-33-My overlap on plate 6 drains to ~2% within
 ~1.5 My, with no spurious defragmentation plates and a flat node count.
 

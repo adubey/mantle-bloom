@@ -192,8 +192,9 @@ geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactfu
    consumes its own territory overlap geologically rather than waiting on the forced-merge
    timer (direction 3). Plate 8's 17%-since-33-My overlap on plate 6 -- below the 30%
    forced-merge threshold, so `overlap_progress` never fired -- drains to ~2% within ~1.5 My.
-   The retreated shortening feeds extra Hc thickening (`CONTINENTAL_COLLISION_SHORTENING_
-   BOOST`) so the overlap crumples into an orogen.
+   The retreated column's volume is conserved as accretion onto the plate's own leading edge
+   (`_redistribute_accreted_column`, mechanism 3 below -- **done 2026-09-02**), so the overlap
+   crumples into an orogen.
 
 5. **Node-count blowup persists** (the original headline symptom): ~140k nodes at 85 My for
    `node_density=4` vs a clean-tiling estimate of ~130k *at 1x* -- consistent with the
@@ -312,11 +313,15 @@ severs continental lobes -> defragmentation spawns spurious plates (plate count 
    RUN = 3` + the pre-existing `n_distance_cap` (= 1 at real continental drift rates) are the
    "gate on run length, cap at 1 node/step" this direction called for; the earlier
    ocean-only gate is dropped because a stalled continent-continent suture needs to consume
-   its overlap too (item 4, below). The retreated shortening is channelled into extra plastic
-   thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`, a >1
-   `fault_factor` multiplier) so the consumed overlap builds real relief.
+   its overlap too (item 4, below). The retreated column's crustal volume is conserved as
+   accretion onto the plate's own surviving leading edge -- the attached mantle lithosphere
+   thickening in proportion -- via `_redistribute_accreted_column` /
+   `SUTURE_ACCRETION_SPREAD_NODES` (mechanism 3 below, **done 2026-09-02**, replacing the
+   earlier `CONTINENTAL_COLLISION_SHORTENING_BOOST` fudge), so the consumed overlap builds
+   real relief in proportion to what it ate.
    `test_lithosphere_continental_contested_edge_retreats` /
-   `test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate` pin it. On
+   `test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion` /
+   `test_redistribute_accreted_column_conserves_crustal_volume` pin it. On
    seed 656865324 the plate-8/6 17%-since-33-My overlap drains to ~2% within ~1.5 My, plate
    count flat at 16, node count flat. **Caveat, as predicted here:** against an *oceanic*
    neighbour the freed ground is re-claimed as new oceanic crust so the *node count* barely
@@ -361,9 +366,11 @@ plate-local `phi`, each a theta-sorted node array plus parallel Hc/Hm arrays; is
   severs the landmass into a spurious defrag plate.
 - `_claim_adjacent_territory` only ever *adds* a row past a phi extreme. **Nothing anywhere
   removes a whole leading row.**
-- the 2026-09-02 continental retreat (`_runs_of_at_least(contested_all, 3)`) does **not**
-  conserve the retreated column's volume -- it drops the mass and multiplies `fault_factor`
-  by `CONTINENTAL_COLLISION_SHORTENING_BOOST = 2.5` as a proxy.
+- the 2026-09-02 continental retreat (`_runs_of_at_least(contested_all, 3)`) **does** conserve
+  the retreated column's volume as of mechanism 3 below (**done 2026-09-02**):
+  `_redistribute_accreted_column` thrusts the dropped nodes' summed Hc/Hm onto the surviving
+  leading edge, replacing the old `CONTINENTAL_COLLISION_SHORTENING_BOOST = 2.5` `fault_factor`
+  fudge. A retreat against an *oceanic* neighbour still drops the column (real subduction).
 
 **Suture orientation vs. the row grid decides which retreat op is even possible.** Three
 regimes, two of them with no implementation:
@@ -380,7 +387,8 @@ the parallel case hoping the neighbour handles retreat -- A's node pile ratchets
 
 **On the "delete a node from each plate, respawn a thicker one" idea** (mass-conserving suture
 consumption). Right direction, more honest than the `fault_factor` fudge, lets
-`CONTINENTAL_COLLISION_SHORTENING_BOOST` be deleted. Three refinements:
+`CONTINENTAL_COLLISION_SHORTENING_BOOST` be deleted. **Landed 2026-09-02 as the within-plate
+variant** (`_redistribute_accreted_column`); the refinements below are how it was scoped:
 1. *Not symmetric.* Each plate's `deform()` reads the other's polygon live. If both retreat
    their frontmost node and the rate doesn't track the closing rate, you either never heal
    the overlap or open a gap between two colliding continents that classifies `divergent` ->
@@ -424,7 +432,27 @@ consumption). Right direction, more honest than the `fault_factor` fudge, lets
    sustained steps, delete the whole row. Whole-row removal keeps the plate contiguous (the
    lobe-severing hazard is specific to *mid*-plate carving), so far safer than splitting rows.
 3. **Suture consumption as accretion, replacing (not stacking on)
-   `CONTINENTAL_COLLISION_SHORTENING_BOOST`.** As above -- physical honesty, lower urgency.
+   `CONTINENTAL_COLLISION_SHORTENING_BOOST`.** **DONE 2026-09-02.** When a continental
+   contested end retreats against a *continental* neighbour (`accrete_all = shrinkable_all &
+   ~neighbor_is_oceanic` in `deform`), `_grow_or_shrink_line_for_deform` now captures the
+   dropped nodes' summed Hc and `_redistribute_accreted_column` thrusts it back onto the
+   `SUTURE_ACCRETION_SPREAD_NODES` (3) surviving leading-edge nodes, with the matching
+   isostatic-elevation bump -- an imbricate thrust wedge, mass-conserving because node area is
+   constant, up to a `SUTURE_ACCRETION_MAX_HC_M` (~2.4x reference Hc) ceiling past which the
+   root delaminates (a never-healing suture would otherwise pile every consumed column onto
+   the same retreating-edge nodes forever -- measured Hc ran to ~190 km and climbing over
+   30 My without it; capped it plateaus at ~87 km, p95/p99/median unchanged from baseline).
+   `CONTINENTAL_COLLISION_SHORTENING_BOOST` (the flat 2.5x `fault_factor` proxy) is
+   deleted; the convergent path at those nodes is now just the ordinary yield-limited
+   thickening. A retreat against an *oceanic* neighbour is untouched -- that column genuinely
+   subducts. `test_redistribute_accreted_column_conserves_crustal_volume` (exact mass check) +
+   `test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion` (edge
+   thickens kilometres against a continental neighbour, ~nothing against an oceanic one) pin
+   it. **Not done -- deferred:** the cross-plate *indentor* asymmetry of refinement 1 (larger
+   plate keeps its node and absorbs the smaller's column -- true terrane transfer). It needs
+   `deform()` to write a *neighbour's* lines, which the engine never does; the within-plate
+   version conserves each plate's own consumed crust onto its own belt (a two-sided orogen,
+   geologically fine) and the forced-merge timer still backstops a genuinely stuck pair.
 4. **Periodic conservative continental re-lattice.** `build_lines_from_lattice` already
    rebuilds a plate's rows from an outline + ownership predicate. Every K steps, refit the
    lattice to the *current outline* and redistribute the existing total `sum(Hc * area)` onto
@@ -433,11 +461,13 @@ consumption). Right direction, more honest than the `fault_factor` fudge, lets
    outline that objection may not hold. Prototype-worthy.
 
 **Recommendation.** Volume cap (1) first as the regime-free runaway-killer; leading-row drop
-(2) for the parallel-suture gap; suture accretion (3) later for honesty. The design rule the
-regime table implies: for continental crust, prefer whole-row ops + volume caps over mid-row
-carving/splitting.
+(2) for the parallel-suture gap; suture accretion (3) ~~later for honesty~~ **done
+2026-09-02** (within-plate imbricate version; cross-plate terrane transfer deferred). The
+design rule the regime table implies: for continental crust, prefer whole-row ops + volume
+caps over mid-row carving/splitting.
 
-**Progress:** mechanism (1) landed 2026-09-02 (see its entry above). (2)-(4) still open.
+**Progress:** mechanisms (1) and (3) landed 2026-09-02 (see their entries above). (2) and
+(4) still open.
 
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
 "Bug 1" (below) added a `ring_room()` one-revolution cap in

@@ -57,9 +57,10 @@ MAX_EXTEND_NODES_PER_STEP = 400
 # A continental line's *contested* end is allowed to retreat -- one node per step -- whether
 # the overriding neighbour is oceanic (a passive margin / accretion front: the ocean slab
 # descends under it and the buried continental node cedes nothing the model should keep) or
-# continental (a suture whose overlapping crust is being consumed into the orogen -- see
-# rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST, which channels that shortening into extra
-# thickening so the belt still builds real relief). Left un-retreatable, a contested end
+# continental (a suture whose overlapping crust is consumed into the orogen -- its volume is
+# not discarded but thrust back onto the plate's own surviving leading edge, see
+# `_redistribute_accreted_column` / SUTURE_ACCRETION_SPREAD_NODES, so the belt builds real
+# relief in proportion to the overlap it actually eats). Left un-retreatable, a contested end
 # still grows at its *other* (divergent) side every step and never back -- the continental
 # node ratchet that drives the unbounded node-count creep and the slow land-fraction decline
 # (docs/TODO.md "Node-count creep") -- and, for a continent-continent pile-up, a deep
@@ -99,6 +100,27 @@ CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 CONTINENTAL_BUDGET_HC_FRACTION = 0.6
 CONTINENTAL_AREA_BUDGET_MULT = 1.8
 
+# When a continental *suture* end retreats (a continental neighbour overrides it -- not an
+# oceanic one, where the buried column genuinely subducts and is lost), the removed column's
+# crustal volume is conserved: it is thrust back onto the plate's own surviving leading-edge
+# nodes, spread over this many of them (an imbricate thrust wedge), the attached mantle
+# lithosphere thickening in proportion. This is the mass-honest replacement for the retired
+# `rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST` fudge (a flat 2.5x `fault_factor`
+# multiplier at continent-continent contested nodes, unrelated to how much overlap was
+# actually consumed). Node area is constant per node (`lithosphere.node_area_m2`), so
+# conserving volume is just moving the summed Hc of the dropped nodes onto the survivors;
+# `regularize_line` re-evens the spacing next pass and isostasy lifts the thickened belt.
+SUTURE_ACCRETION_SPREAD_NODES = 3
+
+# Hard ceiling on a node's Hc after suture accretion. A suture that never heals (the
+# neighbour keeps overriding) would otherwise pile every consumed column onto the same few
+# retreating-edge nodes indefinitely -- Hc ran to ~190 km and climbing on a 30-My test run.
+# Real orogenic crust does not stack past ~2x reference: the excess root is removed by
+# lower-crustal / mantle-lithosphere delamination (and the surface by erosion). Accreted
+# mass over this ceiling is dropped (delaminated), so accretion is mass-conserving only up
+# to the cap -- which a normal collision, healing over ~1-2 My, never reaches.
+SUTURE_ACCRETION_MAX_HC_M = 2.4 * lithosphere.REFERENCE_HC_CONTINENTAL_M
+
 
 def growth_seed_thickness() -> tuple[float, float]:
     """(Hc, Hm) a plate seeds *brand-new areal* nodes with -- when a line grows an end into
@@ -136,6 +158,46 @@ def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
     for start, end in zip(starts[long_enough], ends[long_enough]):
         out[start:end] = True
     return out
+
+
+def _redistribute_accreted_column(
+    persistent_fields: dict[str, np.ndarray],
+    elevation: np.ndarray,
+    rho_c: float,
+    removed_hc: np.ndarray,
+    accrete_removed: np.ndarray,
+    from_high: bool,
+) -> None:
+    """Conserve the crustal volume of the continental-suture nodes just dropped from a line
+    end (`removed_hc`, restricted to the `accrete_removed` subset) by thrusting it back onto
+    the `SUTURE_ACCRETION_SPREAD_NODES` surviving nodes nearest that same end -- the attached
+    mantle lithosphere thickening in proportion, and each node's elevation bumped by the
+    isostatic delta. Mutates `persistent_fields`' Hc/Hm arrays and `elevation` in place.
+
+    No-op when nothing dropped was flagged for accretion -- a passive-margin retreat against
+    an *oceanic* neighbour leaves `accrete_removed` all-False, and that column is genuinely
+    subducted, not preserved. Node area is constant per node, so summed Hc *is* the conserved
+    volume (see SUTURE_ACCRETION_SPREAD_NODES / SUTURE_ACCRETION_MAX_HC_M)."""
+    if not np.any(accrete_removed):
+        return
+    add_hc = float(np.sum(removed_hc[accrete_removed]))
+    hc = persistent_fields["crustal_thickness_m"]
+    hm = persistent_fields["mantle_lithosphere_thickness_m"]
+    n = len(hc)
+    if n == 0 or add_hc <= 0.0:
+        return
+    k = min(SUTURE_ACCRETION_SPREAD_NODES, n)
+    idx = np.arange(n - k, n) if from_high else np.arange(k)
+    before = lithosphere.isostatic_elevation(hc[idx], hm[idx], rho_c)
+    # Crustal shortening drags the attached mantle lithosphere along in proportion (same as
+    # rheology.apply_convergent_deformation). Hc is capped at SUTURE_ACCRETION_MAX_HC_M -- the
+    # overflow delaminates (see the constant) -- and Hm thickens by whatever fraction Hc
+    # actually grew after that cap.
+    new_hc = np.minimum(hc[idx] + add_hc / k, SUTURE_ACCRETION_MAX_HC_M)
+    hm[idx] *= new_hc / hc[idx]
+    hc[idx] = new_hc
+    after = lithosphere.isostatic_elevation(hc[idx], hm[idx], rho_c)
+    elevation[idx] = rheology.clip_elevation_bounds(elevation[idx] + (after - before))
 
 
 class LithospherePlate(PlateWithLines):
@@ -185,16 +247,25 @@ class LithospherePlate(PlateWithLines):
         # What may retreat this step. Oceanic crust: any contested node subducts. Continental
         # crust: any contested end-node in a run of >= CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
         # consecutive contested nodes -- whether the overriding neighbour is oceanic (passive
-        # margin) or continental (a suture whose overlap is consumed into the orogen, with the
-        # shortening channelled into extra thickening -- see the fault_factor boost below and
-        # rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST). Envelope fuzz (a lone contested
-        # node) still can't nibble a stable margin, and the interior carve below stays
-        # oceanic-only so a continental row is never severed mid-line. See
-        # CONTINENTAL_CONTESTED_RETREAT_MIN_RUN for the ratchet / frozen-overlap this breaks.
+        # margin) or continental (a suture whose overlap is consumed into the orogen, the
+        # retreated column's volume thrust onto the plate's own leading edge -- see
+        # _redistribute_accreted_column). Envelope fuzz (a lone contested node) still can't
+        # nibble a stable margin, and the interior carve below stays oceanic-only so a
+        # continental row is never severed mid-line. See CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
+        # for the ratchet / frozen-overlap this breaks.
         if self.crust_type != "continental":
             shrinkable_all = contested_all
         else:
             shrinkable_all = _runs_of_at_least(contested_all, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
+
+        # Continental suture retreat conserves the consumed column's volume by accreting it
+        # onto this plate's own leading edge (_redistribute_accreted_column); a retreat where
+        # the overriding neighbour is *oceanic* does not -- that column subducts and is lost.
+        # Oceanic self-plates never accrete.
+        if self.crust_type == "continental":
+            accrete_all = shrinkable_all & ~inputs.neighbor_is_oceanic
+        else:
+            accrete_all = np.zeros_like(shrinkable_all)
 
         years_myr = years / 1_000_000.0
         rho_c = self.crust_density()
@@ -215,6 +286,7 @@ class LithospherePlate(PlateWithLines):
             contested = contested_all[sl]
             divergent = divergent_all[sl]
             shrinkable = shrinkable_all[sl]
+            accrete = accrete_all[sl]
             closing_rate = closing_rate_all[sl]
 
             hc = line.crustal_thickness_m.copy()
@@ -243,19 +315,11 @@ class LithospherePlate(PlateWithLines):
                     if fault_noise is not None
                     else np.ones(n)
                 )
-                # Continent-continent contested nodes: the overlapping crust the suture is
-                # now retreating over (shrinkable, above) is thrust into the belt, not lost --
-                # channel that shortening into extra plastic thickening rather than plumbing
-                # the retreated column's volume through the grow/shrink pass. `fault_factor`
-                # is normally <= 1 (a downthrown block accumulating less strain); here it is
-                # deliberately pushed past 1 on these nodes, since it is exactly the
-                # strain-accumulation multiplier apply_convergent_deformation applies and more
-                # shortening is the intent. See rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST.
-                if self.crust_type == "continental":
-                    cc_contested = contested & ~inputs.neighbor_is_oceanic[sl]
-                    fault_factor = np.where(
-                        cc_contested, fault_factor * rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST, fault_factor
-                    )
+                # The overlapping crust a continent-continent suture retreats over is not
+                # lost here via a `fault_factor` boost -- its actual volume is conserved and
+                # thrust onto the leading edge in `_grow_or_shrink_line_for_deform` (see
+                # `_redistribute_accreted_column`). This path is just the ordinary
+                # yield-limited plastic thickening.
                 new_hc, new_hm = rheology.apply_convergent_deformation(hc[contested], hm[contested], closing_rate[contested], years_myr, fault_factor[contested])
                 hc[contested] = new_hc
                 hm[contested] = new_hm
@@ -320,6 +384,7 @@ class LithospherePlate(PlateWithLines):
                 inputs.dist_to_neighbor[sl],
                 contested,
                 shrinkable,
+                accrete,
                 spacing_rad,
                 extend_threshold_rad,
                 max_extend_nodes,
@@ -353,6 +418,7 @@ class LithospherePlate(PlateWithLines):
         dist: np.ndarray,
         contested: np.ndarray,
         shrinkable: np.ndarray,
+        accrete: np.ndarray,
         spacing_rad: float,
         extend_threshold_rad: float,
         max_extend_nodes: int,
@@ -369,12 +435,19 @@ class LithospherePlate(PlateWithLines):
         below needs to seed fresh Hc/Hm columns instead of a flat elevation target.
         Shrinking (end and interior) is generic over every `ElevationLine.OPTIONAL_FIELDS`
         name already (Hc/Hm included, since they're threaded through `OPTIONAL_FIELDS` --
-        see elevation_lines.py), so only growth needed a new Hc/Hm-aware body."""
+        see elevation_lines.py), so only growth needed a new Hc/Hm-aware body.
+
+        `accrete` marks end nodes whose crustal/mantle-lithosphere volume must be conserved
+        when they retreat (a continental suture -- see `_redistribute_accreted_column`);
+        elsewhere retreat drops the column (oceanic subduction, or a continental passive
+        margin against an oceanic slab)."""
         theta = line.theta.copy()
         elevation = line.elevation.copy()
         contested = contested.copy()
         shrinkable = shrinkable.copy()
+        accrete = accrete.copy()
         dist = dist.copy()
+        rho_c = self.crust_density()
         persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
@@ -412,9 +485,12 @@ class LithospherePlate(PlateWithLines):
         if len(shrinkable) > 0 and shrinkable[-1]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=True), n_distance_cap, max_extend_nodes, len(theta) - 1)
             if n_remove > 0:
+                removed_hc = persistent_fields["crustal_thickness_m"][-n_remove:].copy()
+                accrete_removed = accrete[-n_remove:].copy()
                 theta, elevation = theta[:-n_remove], elevation[:-n_remove]
-                contested, shrinkable, dist = contested[:-n_remove], shrinkable[:-n_remove], dist[:-n_remove]
+                contested, shrinkable, accrete, dist = contested[:-n_remove], shrinkable[:-n_remove], accrete[:-n_remove], dist[:-n_remove]
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
+                _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, accrete_removed, from_high=True)
 
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
@@ -422,9 +498,12 @@ class LithospherePlate(PlateWithLines):
         if shrinkable[0]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
             if n_remove > 0:
+                removed_hc = persistent_fields["crustal_thickness_m"][:n_remove].copy()
+                accrete_removed = accrete[:n_remove].copy()
                 theta, elevation = theta[n_remove:], elevation[n_remove:]
-                contested, shrinkable, dist = contested[n_remove:], shrinkable[n_remove:], dist[n_remove:]
+                contested, shrinkable, accrete, dist = contested[n_remove:], shrinkable[n_remove:], accrete[n_remove:], dist[n_remove:]
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
+                _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, accrete_removed, from_high=False)
 
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
@@ -453,13 +532,12 @@ class LithospherePlate(PlateWithLines):
                 budget -= take
             if not keep.all():
                 theta, elevation = theta[keep], elevation[keep]
-                contested, shrinkable, dist = contested[keep], shrinkable[keep], dist[keep]
+                contested, shrinkable, accrete, dist = contested[keep], shrinkable[keep], accrete[keep], dist[keep]
                 persistent_fields = {name: values[keep] for name, values in persistent_fields.items()}
 
         # Brand-new areal crust at a growing end is oceanic regardless of this plate's own
         # type -- see growth_seed_thickness() for the land-area runaway this fixes.
         hc0, hm0 = growth_seed_thickness()
-        rho_c = self.crust_density()
         new_node_elevation = float(lithosphere.isostatic_elevation(np.array([hc0]), np.array([hm0]), rho_c)[0])
 
         def grow_end(n_new: int) -> tuple[np.ndarray, np.ndarray]:
