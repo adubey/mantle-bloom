@@ -713,6 +713,98 @@ def test_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
     assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
 
 
+# The v2 engine (LithospherePlate) overrides both _grow_or_shrink_line_for_deform and
+# _claim_adjacent_territory, and originally shipped without either pole-winding guard -- it
+# relied entirely on regularize_line's after-the-fact unwind, so rows still over-wound by up
+# to a revolution every step. These mirror the two PlateWithLines tests above for the class
+# that actually runs.
+
+
+def _lithosphere_polar_plate(near_pole_phis, theta, crust_type="oceanic"):
+    from app.lithosphere import reference_thickness
+    from app.lithosphere_plate import LithospherePlate
+
+    hc0, hm0 = reference_thickness(crust_type)
+    lines = [
+        ElevationLine(
+            phi=phi,
+            theta=theta.copy(),
+            elevation=np.zeros(len(theta)),
+            crustal_thickness_m=np.full(len(theta), hc0),
+            mantle_lithosphere_thickness_m=np.full(len(theta), hm0),
+        )
+        for phi in near_pole_phis
+    ]
+    return LithospherePlate(plate_id=0, frame=np.eye(3), crust_type=crust_type, lines=lines)
+
+
+def test_lithosphere_deform_never_winds_a_row_past_a_full_revolution():
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    near_pole_phis = [0.3] + [np.pi / 2 - k * spacing for k in (8, 7, 6, 5, 4)]
+    plate = _lithosphere_polar_plate(near_pole_phis, np.linspace(-0.5, 0.5, 6))
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+
+    from app.elevation_lines import needs_regularizing
+
+    for _ in range(25):
+        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
+
+    grew_a_full_ring = False
+    for line in plate.lines:
+        span = float(line.theta[-1] - line.theta[0])
+        dtheta = spacing / max(np.cos(line.phi), 1e-3)
+        assert span <= 2.0 * np.pi + spacing, f"row at phi={line.phi:.3f} wound to {span:.2f} rad"
+        assert np.all(np.diff(line.theta) > 0)
+        if line.phi > 1.0 and span > 2.0 * np.pi - 4 * dtheta:
+            grew_a_full_ring = True
+
+    # A near-pole row *did* grow all the way around to the ring cap (the cap stopped it there,
+    # it isn't just slow growth).
+    assert grew_a_full_ring
+    # ... and the mid-latitude row is still an ordinary partial arc, untouched by the cap.
+    mid = min(plate.lines, key=lambda ln: ln.phi)
+    assert mid.theta[-1] - mid.theta[0] < 2.0 * np.pi
+
+    # The point of the ring_room cap (vs. leaning on regularize_line's after-the-fact unwind):
+    # once a near-pole ring has closed, end-growth stops there rather than over-winding past
+    # 2*pi and being unwound again on the very next step, step after step. Spy on one more
+    # step: no row should still be tripping regularize_line (pre-fix, the near-pole rings wind
+    # past 2*pi and get unwound every single step, forever).
+    assert not any(needs_regularizing(line, spacing) for line in plate.lines)
+    import app.lithosphere_plate as _lp
+
+    regularized_phis = []
+    orig = _lp.regularize_line
+
+    def _spy(line, *a, **k):
+        regularized_phis.append(round(line.phi, 3))
+        return orig(line, *a, **k)
+
+    _lp.regularize_line = _spy
+    try:
+        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
+    finally:
+        _lp.regularize_line = orig
+    assert not regularized_phis, f"rows still churning through regularize every step: {regularized_phis}"
+
+
+def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
+    from app.plates import POLE_CAP_MARGIN_MULT
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    phis = [np.pi / 2 - k * spacing for k in (POLE_CAP_MARGIN_MULT + 2, POLE_CAP_MARGIN_MULT + 1)]
+    plate = _lithosphere_polar_plate(phis, np.linspace(-0.3, 0.3, 20))
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+
+    for _ in range(10):
+        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
+
+    assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
+
+
 # -- split / defragment keep every row one contiguous arc -----------------------------
 #
 # A great circle can cut a row so one side's nodes land in its interior, leaving the other
