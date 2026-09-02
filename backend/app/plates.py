@@ -2278,6 +2278,19 @@ def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "elevation")
 
 
+def collect_all_crustal_thickness(plate_list: list[Plate]) -> np.ndarray:
+    """Every node's Hc (v2 LithospherePlate only -- all-zero for v1 PlateWithLines). Read by
+    erosion.py so a step's net rock-column change lands on Hc and Airy isostasy can rebound
+    it, not just on the bare `elevation` cache."""
+    return _collect_all(plate_list, "crustal_thickness_m")
+
+
+def collect_all_mantle_lithosphere_thickness(plate_list: list[Plate]) -> np.ndarray:
+    """Every node's Hm (v2 LithospherePlate only -- all-zero for v1). Paired with
+    `collect_all_crustal_thickness` for erosion.py's isostatic-rebound bookkeeping."""
+    return _collect_all(plate_list, "mantle_lithosphere_thickness_m")
+
+
 def collect_all_elev_change_reason(plate_list: list[Plate]) -> np.ndarray:
     """Every node's elevation-change provenance code (see elevation_lines.ELEV_CHANGE_*) --
     read by erosion.py to preserve a quiescent node's older provenance, and by

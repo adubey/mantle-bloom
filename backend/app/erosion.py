@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, hydrology, lakes
+from . import climate, geometry, hydrology, lakes, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -92,9 +92,11 @@ from .plates import (
     Plate,
     collect_all_channel_depth,
     collect_all_channel_width,
+    collect_all_crustal_thickness,
     collect_all_elev_change_reason,
     collect_all_elevation,
     collect_all_glacier_depth,
+    collect_all_mantle_lithosphere_thickness,
     gather_node_positions,
     query_workers,
 )
@@ -1187,11 +1189,36 @@ def apply_erosion(
     # standing water this step (hydrology.step_lakes -> silt_deposited) is folded straight into
     # elevation, so a still-water basin genuinely fills in and stays filled. A small
     # non-conservative source, same character as flatten_delta -- the amounts are tiny per step.
-    new_elevation = np.clip(
-        elevation - erosion_amount + total_deposited + flatten_delta + hydro.silt_deposited,
-        MIN_ELEVATION_M,
-        MAX_ELEVATION_M,
+    geomorphic_delta = -erosion_amount + total_deposited + flatten_delta + hydro.silt_deposited
+
+    # Erosional isostatic compensation. Every term above moves rock between columns but, on
+    # its own, never told isostasy: `elevation` used to absorb the whole change, drifting
+    # ever further below isostatic_elevation(Hc, Hm) as coastal + submarine erosion shipped
+    # continental crust off to the abyss with no rebound -- which planed every continent flat
+    # over a few hundred Myr once orogeny slowed (docs/TODO.md "Land fraction slowly
+    # declines"). Now the full rock-column change books against Hc and `elevation` moves by
+    # exactly the resulting Airy response -- so the unloaded crustal root rebounds (only
+    # ~1/6 of subaerial erosion, ~1/4 of submarine, survives as a surface drop) and a
+    # sediment pile subsides under its own load, the same delta idiom deform() already uses
+    # for tectonic Hc/Hm changes. `elevation` stays a faithful readout of the column, so
+    # deform()'s mechanism stays exact. v1 PlateWithLines carries no Hc (all-zero) -- those
+    # nodes keep the bare 1:1 response.
+    prior_hc = collect_all_crustal_thickness(plates_in_order)
+    prior_hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
+    rho_c_per_node = np.concatenate(
+        [np.full(p.node_count(), lithosphere.crust_density(p.crust_type)) for p in plates_in_order]
     )
+    has_column = prior_hc > 0.0
+    new_crustal_thickness = np.where(
+        has_column,
+        np.maximum(prior_hc + geomorphic_delta, lithosphere.MIN_CRUSTAL_THICKNESS_M),
+        prior_hc,
+    )
+    isostatic_delta = lithosphere.isostatic_elevation(
+        new_crustal_thickness, prior_hm, rho_c_per_node
+    ) - lithosphere.isostatic_elevation(prior_hc, prior_hm, rho_c_per_node)
+    applied_delta = np.where(has_column, isostatic_delta, geomorphic_delta)
+    new_elevation = np.clip(elevation + applied_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
@@ -1231,7 +1258,11 @@ def apply_erosion(
     )
     prior_reason = collect_all_elev_change_reason(plates_in_order)
     dominant = reason_codes[np.argmax(reason_contrib, axis=-1)]
-    net_abs = np.abs(new_elevation - elevation)
+    # Provenance tracks which *process* is reshaping the column, so it keys off the raw
+    # geomorphic move (rock added/removed), not `new_elevation - elevation` -- isostatic
+    # compensation shrinks the surface expression ~5x but doesn't change what's doing the
+    # shaping, and the two thresholds below were tuned against the raw pre-compensation move.
+    net_abs = np.abs(geomorphic_delta)
     moved = net_abs >= ELEV_CHANGE_MIN_DELTA_M
     # A structural code (deform()/volcanism, re-stamped every step the belt is still active) is
     # sticky against ordinary background wash -- only a large net geomorphic step overrides it.
@@ -1251,6 +1282,7 @@ def apply_erosion(
         n = plate.node_count()
         plate.set_fields_on_plate(
             elevation=new_elevation[offset : offset + n],
+            crustal_thickness_m=new_crustal_thickness[offset : offset + n],
             channel_depth=new_channel_depth[offset : offset + n],
             channel_width=new_channel_width[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
