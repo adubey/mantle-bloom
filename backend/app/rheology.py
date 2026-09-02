@@ -22,11 +22,24 @@ from . import lithosphere
 COHESION_PA = 2e7  # C, ~20 MPa, a plausible upper-crustal cohesion
 INTERNAL_FRICTION_ANGLE_RAD = np.radians(30.0)  # phi, Byerlee's-law-consistent ballpark
 
-# Converts a boundary-normal closing/opening rate (m/yr) into a normal stress proxy sigma_n
-# (Pa) via an effective lithospheric viscosity -- not a literal depth-integrated rheology
-# solve, just enough of a stand-in to make the yield check respond to how fast two plates are
-# actually converging/diverging, not merely whether they geometrically touch.
-EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M = 3e13  # sigma_n = this * closing_rate_m_per_s
+# Converts a boundary-normal closing/opening rate (m/s) into a normal stress proxy sigma_n
+# (Pa) -- not a literal depth-integrated rheology solve, just enough of a stand-in to make
+# the yield check respond to how fast two plates are actually converging/diverging, not
+# merely whether they geometrically touch.
+#
+# Calibration (2026-09): sigma_n = this * closing_rate_m_per_s, and the closing rate for a
+# real continental collision is a few cm/yr -- 3 cm/yr is ~9.5e-10 m/s. The Mohr-Coulomb
+# yield stress here is COHESION_PA (2e7) plus a friction term, so sigma_n has to reach
+# ~5e7 Pa before `yield_excess` is even nonzero. The original 3e13 put sigma_n at ~3 cm/yr
+# around 3e4 Pa -- three orders of magnitude below yield -- so `apply_convergent_deformation`
+# returned Hc unchanged at *every* plate speed mantle.MAX_PLATE_RATE (15 cm/yr) allows: the
+# engine never thickened crust, never built a mountain, and continents only ever thinned
+# (rifting + erosion-isostasy) and drowned, with land fraction falling monotonically and the
+# stalled multi-plate overlaps the `overlapAge` view shows never crumpling into orogens.
+# 1e17 puts a sustained 3 cm/yr collision a few x past yield (plastic strain ~0.016/Myr, Hc
+# doubles over ~45 Myr -- the Himalaya/Tibet timescale), while a ~1 cm/yr graze stays
+# sub-yield (no spurious mountains) and >=5 cm/yr saturates.
+EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M = 1e17
 
 SECONDS_PER_YEAR = 365.25 * 86400.0
 

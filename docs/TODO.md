@@ -168,7 +168,12 @@ geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactfu
    Hc/Hm -> mountain uplift (the overlap crumples in place, as a real collision should), and a
    deep oceanic overlap classifies `contested` -> subduction deletion -> the overlap actually
    heals. Verified on the save: the plate-21/0 15%-overlap cleared within ~15 steps and
-   plate-21's overridden nodes rose ~+400 m. **Still open:** the `_merge_probability` size
+   plate-21's overridden nodes rose ~+400 m. **(2026-09 correction: the continental half of
+   that -- `apply_convergent_deformation` thickening Hc -> uplift -- did nothing at the time,
+   because the Mohr-Coulomb yield scale was mis-calibrated and no collision thickened crust
+   at any speed. The "+400 m" was the oceanic subduction-deletion path. Calibration fixed --
+   see "Orogenic renewal was completely dead" above -- so the continental case now genuinely
+   crumples-and-thickens.)** **Still open:** the `_merge_probability` size
    floor for a genuinely huge pair (direction 3 below) -- though the split tuning (see
    "Plate count only decreases" below) now keeps a single plate from reaching ~16% of the
    world in the first place. `ElevationLine.overlap_onset_years` +
@@ -248,9 +253,31 @@ passive margin / accreted terrane), so land fraction goes flat and the "giant 80
 continental plate" of item 2 is now the *expected* reading rather than a bathymetry
 artefact. **This does not touch the node count** -- the rows still ratchet outward and
 `endshrink_continental` is still 0; directions 1-2 below are still the fix for that. It also
-left a smaller residual: land fraction now drifts *down* ~0.045 per 100 Myr (erosion planing
-continents with no orogenic renewal, and a fixed sea level that can't compensate the way a
-real ocean would) -- see the note below.
+left a smaller residual: land fraction drifts *down* over hundreds of Myr (the continental
+node ratchet keeps tiling drowned ~-3.5 km accreted margin onto every continental plate, and
+a fixed sea level can't compensate the way a real ocean would).
+
+**Orogenic renewal was completely dead until 2026-09 -- fixed.** The residual above was
+originally blamed partly on "erosion planing continents with no orogenic renewal." It turned
+out there was *no* orogenic renewal at all, from any collision, ever:
+`rheology.EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M` (the closing-rate -> normal-stress
+proxy scale) was ~3-4 orders of magnitude too small, so `rheology.plastic_strain_rate_per_
+myr` never cleared the Mohr-Coulomb yield stress at *any* closing rate `mantle.MAX_PLATE_
+RATE` (15 cm/yr) permits -- `apply_convergent_deformation` returned Hc unchanged on every
+contested node. Instrumented on seed 926698457 @ 239.6 My: ~48k continental nodes/step
+through the convergent path (~24k actually converging, median 1.6 cm/yr), **0 past yield,
+0.0 m Hc added.** So the `overlapAge` view's multi-plate collisions stuck since 126-176 My
+never built the mountains this doc and item 4 claim, continents only ever thinned (rift +
+erosion-isostasy) and drowned, and land fell monotonically (~-0.003/step with climate on
+that seed). Fix: `EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M` 3e13 -> 1e17, so a sustained
+~3 cm/yr collision sits a few x past yield (plastic strain ~0.016/Myr, Hc doubles over
+~45 Myr -- the Himalaya/Tibet timescale the constant's docstring always claimed). A fresh
+seed-926698457 world stepped 300x (node_density 2, climate off): land trajectory unchanged
+(-0.019 vs -0.021 over 30 Myr), node-count creep **halved** (+3.6% vs +7.5%), and
+continental orogen crust (p95 Hc) now *builds* (+682 m) where it used to slowly erode away
+(-212 m). On the collapsed save the decline roughly halves and continental median Hc climbs
+instead of falling. `unit_tests/test_rheology.py` pins the calibration. The node-ratchet
+residual (directions 1-2) is unchanged -- that is now the dominant land-fraction driver.
 
 **Naive fix rejected.** Forcing continental contested ends to retreat like oceanic
 (`shrinkable = contested`) cut continental growth from +38% to +7.7% at 80 My, but (a) the

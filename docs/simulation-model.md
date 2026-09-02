@@ -443,7 +443,21 @@ as neither contested nor divergent -- no thickening, no subduction, the overlap 
 also polygon-tests any node inside a neighbour's bounding sphere (cheap triangle-inequality
 prefilter). A deep continental overlap then classifies contested -> `rheology` thickens
 Hc/Hm -> **mountain uplift**; a deep oceanic overlap classifies contested -> subduction
-deletion -> the overlap heals. Every node's onset year is also stamped onto
+deletion -> the overlap heals.
+
+The thickening half of that quietly did nothing until 2026-09:
+`rheology.EFFECTIVE_LITHOSPHERE_VISCOSITY_PA_S_PER_M`, the scale converting a boundary-normal
+closing rate into the Mohr-Coulomb normal-stress proxy, was ~3-4 orders of magnitude too
+small, so `plastic_strain_rate_per_myr` never cleared the yield stress at *any* closing rate
+`mantle.MAX_PLATE_RATE` allows and `apply_convergent_deformation` returned Hc unchanged on
+every contested node -- no collision in the engine's history built a mountain, continents
+only ever thinned and drowned, and the stalled multi-plate overlaps the `overlapAge` view
+shows (some stuck 100+ Myr) never crumpled into orogens. Recalibrated to `1e17` (a sustained
+~3 cm/yr collision now sits a few x past yield: Hc doubles over ~45 Myr, the Himalaya/Tibet
+timescale); `backend/unit_tests/test_rheology.py` pins it. See
+[TODO.md](TODO.md#plate-geometry-degrades-on-long-runs-pole-winding-unbounded-overlap-bad-split-siblings).
+
+Every node's onset year is also stamped onto
 `ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
 see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
