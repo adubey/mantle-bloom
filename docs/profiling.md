@@ -62,7 +62,7 @@ Steady-state frames run ~4.6-4.8 s (run A), so ~2.8-3.0 s of that is the step on
 
 | Hotspot | Cost/step | Note |
 | --- | --- | --- |
-| `erosion.apply_erosion` | **~1.7 s** | `climate.compute_climate` fresh (~0.59 s), `hydrology.compute_hydrology` (~0.48 s), `_spread_coastal_leveling` (~0.23 s), `hydrology._compute_basin_spill` (~0.21 s -- a pure-Python priority-flood, ~0.75 M `heapq.heappop` across the profiled run), `_coastal_openness` (~0.14 s), `lakes.build_lake_hierarchy` (~0.09 s) |
+| `erosion.apply_erosion` | **~1.7 s -> ~1.5 s** (fix 7) | `climate.compute_climate` fresh (~0.59 s), `hydrology.compute_hydrology` (~0.48 s), `_spread_coastal_leveling` (~0.23 s), `hydrology._compute_basin_spill` (**~0.16 s -> ~0.02 s**, fix 7 -- was a pure-Python priority-flood, ~0.75 M `heapq.heappop` across the profiled run; now an njit heap kernel), `_coastal_openness` (~0.14 s), `lakes.build_lake_hierarchy` (~0.09 s) |
 | plate movement (`shift` + `deform`) | ~1.4 s | `torque.gather_boundary_force_inputs` cumulative ~0.5 s but own time only ~0.05 s -- fix 4 landed, so its ~44 calls/step each hit a *cached* per-plate tree; what's left is `plates._plates_within` / `get_neighbours` (~0.2 s) and the `tree.query` itself. `lithosphere_plate._grow_or_shrink_line_for_deform` ~0.23 s. |
 | `PlateWithLines.all_points_and_elevation` | **~0.05 s** | was ~0.26 s/step of per-node `geometry.latlon_to_xyz` (~234 K calls). Fix 5 landed: `PlateWithLines._get_world_points` builds the whole plate's world-space cloud in one `local_xyz` + one frame rotation and caches it; `latlon_to_xyz` is down to ~14 K calls / ~0.13 s across the 11 steps, and almost every `all_points_and_elevation` call in a step is a warm-cache read. |
 | `world._advance_fluid_dynamics` | **0 (no-op)** | `World.wind_model` defaults to `"diagnostic"` (`frontend` `DEFAULT_WIND_MODEL`), and `_advance_fluid_dynamics` early-returns unless it is `"cfd"`. The old "runs in background threads" note only held when CFD wind was active. Diagnostic wind is rebuilt inside each `compute_climate`. |
@@ -124,11 +124,20 @@ Landed since the original profile (each measured on the box it was written on):
    is still rebuilt per render (it only changes on a step) -- caching it is a further,
    separate win left for later.
 
+7. ~~**`hydrology._compute_basin_spill`'s `heapq.heappop` priority-flood** -- pure Python,
+   ~0.21 s/step and grows with basin count. Candidate for a numba kernel or a
+   `scipy.ndimage`-based watershed.~~ **Done** (`hydrology._basin_spill_kernel`, `@njit(cache=True)`).
+   The k-NN graph isn't a grid, so `scipy.ndimage` watershed doesn't apply -- instead the
+   multi-source minimax Dijkstra now runs over an array-backed binary min-heap, ordered
+   lexicographically on `(key, node)` to match Python `heapq`'s tuple comparison. Every heap
+   entry has a distinct `(cost, node)` key (`cost[j]` only changes on a strict decrease), so
+   the min is unique and pop order is identical regardless of heap internals -- **bit-exact**
+   with the old path (verified over every spill call across a 4-step seed-0 run, `cost` and
+   `spill_target` both `array_equal`). Microbench (seed 0, `node_density` 4, ~131 K nodes):
+   **~162 ms -> ~18 ms per call** (~9x), ~0.14 s/step off `apply_erosion`.
+
 Still open, roughly in order:
 
-7. **`hydrology._compute_basin_spill`'s `heapq.heappop` priority-flood** -- pure Python,
-   ~0.21 s/step and grows with basin count. Candidate for a numba kernel or a
-   `scipy.ndimage`-based watershed.
 8. **`erosion._spread_coastal_leveling` (~0.23 s/step) and `_coastal_openness` (~0.14 s/step)**
    -- the next tier down in `apply_erosion` after climate/hydrology, both still largely
    Python-level neighbour sweeps.
