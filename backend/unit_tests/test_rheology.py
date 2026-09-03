@@ -70,6 +70,46 @@ def test_plastic_strain_rate_monotonic_and_saturates():
     assert strain[-1] < 4.0 * strain[3]
 
 
+def test_arc_magmatism_adds_juvenile_crust_scaled_by_band_and_convergence():
+    """A subducting oceanic slab underplates the overriding continental margin with juvenile
+    melt -- extra Hc (only Hc; Hm is left for the ordinary convergent shortening), scaled by
+    the caller's band `intensity` and, more gently, by how fast the slab is converging.
+    Nothing at all where the boundary is not closing, or where band intensity is zero."""
+    hc = np.full(4, 25_000.0)
+    hm = np.full(4, 55_000.0)
+    closing = np.array([_closing_m_per_s(2.0), _closing_m_per_s(6.0), -_closing_m_per_s(4.0), _closing_m_per_s(6.0)])
+    intensity = np.array([1.0, 1.0, 1.0, 0.0])
+
+    new_hc, new_hm = rheology.apply_arc_magmatic_thickening(hc, hm, closing, years_myr=1.0, intensity=intensity)
+
+    assert np.array_equal(new_hm, hm)  # Hm untouched here
+    assert new_hc[0] > hc[0]
+    assert new_hc[1] > new_hc[0]  # faster convergence -> more melt flux
+    assert new_hc[2] == hc[2]  # diverging: no arc
+    assert new_hc[3] == hc[3]  # outside the band (intensity 0): nothing
+    # A sustained ~5 cm/yr margin at *full* band intensity for tens of Myr builds a thick
+    # Altiplano-scale arc welt -- the band-average node (intensity ~0.5, slower convergence)
+    # sees a few km, which is the geologically ordinary case.
+    hc_over_40myr, _ = rheology.apply_arc_magmatic_thickening(
+        np.array([25_000.0]), np.array([55_000.0]), np.array([_closing_m_per_s(5.0)]), years_myr=40.0, intensity=np.array([1.0])
+    )
+    assert 8_000.0 < hc_over_40myr[0] - 25_000.0 < 22_000.0
+
+
+def test_arc_magmatism_flux_saturates_at_a_fast_margin():
+    """The convergence multiplier is capped so an unusually fast slab can't flux unbounded
+    melt -- a 30 cm/yr margin adds only modestly more than the reference 5 cm/yr one."""
+    one = np.array([1.0])
+    ref, _ = rheology.apply_arc_magmatic_thickening(
+        np.array([25_000.0]), np.array([55_000.0]), np.array([_closing_m_per_s(5.0)]), years_myr=1.0, intensity=one
+    )
+    fast, _ = rheology.apply_arc_magmatic_thickening(
+        np.array([25_000.0]), np.array([55_000.0]), np.array([_closing_m_per_s(30.0)]), years_myr=1.0, intensity=one
+    )
+    assert fast[0] > ref[0]
+    assert (fast[0] - 25_000.0) <= rheology.ARC_MAGMATIC_CONVERGENCE_CAP * (ref[0] - 25_000.0) + 1e-6
+
+
 def test_extension_thins_crust_and_triggers_decompression_melting():
     """The divergent branch is the same yield check with the opposite sign -- a fast rift
     thins Hc, and a column dragged below `RIFT_CRITICAL_THICKNESS_M` flags for melting."""

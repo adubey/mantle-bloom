@@ -1013,6 +1013,113 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
     assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 3 * spacing
 
 
+def test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor():
+    """A continental plate's *leading* edge advancing into space a subducting oceanic slab is
+    vacating grows juvenile arc / accreted-terrane crust (the thicker ARC_MARGIN_SEED_*
+    column, stamped as a subduction arc), not the drowned oceanic reference column
+    `growth_seed_thickness` seeds everywhere else. The active-margin signal here is the
+    subduction-arc provenance stamp a recent convergent step left on the leading nodes."""
+    from app.elevation_lines import ELEV_CHANGE_NEW_CRUST, ELEV_CHANGE_SUBDUCTION_ARC
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_CONTINENTAL_M
+    from app.lithosphere_plate import ARC_MARGIN_SEED_HC_M, LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _grown_high_end(mark_active_margin: bool):
+        n = 40
+        reason = np.zeros(n)
+        if mark_active_margin:
+            reason[-4:] = ELEV_CHANGE_SUBDUCTION_ARC
+        main = ElevationLine(
+            phi=0.2,
+            theta=np.linspace(-0.5, 0.5, n),
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
+            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
+            elev_change_reason=reason,
+        )
+        plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main])
+        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+        plate.deform(world, [], years=200_000, max_distance=5 * spacing)
+        line = next(ln for ln in plate.lines if abs(ln.phi - 0.2) < 1e-6)
+        new = line.theta > 0.5 + 1e-9
+        assert new.any(), "expected the open high end to grow"
+        return line.crustal_thickness_m[new], line.elev_change_reason[new]
+
+    ocean_hc, ocean_reason = _grown_high_end(mark_active_margin=False)
+    arc_hc, arc_reason = _grown_high_end(mark_active_margin=True)
+
+    # Baseline: new margin nodes seeded at (or near, after regularize blends toward the old
+    # continental interior) the oceanic reference column, stamped plain new crust.
+    assert ocean_hc.mean() < 0.5 * (REFERENCE_HC_OCEANIC_M + REFERENCE_HC_CONTINENTAL_M)
+    assert (ocean_reason == ELEV_CHANGE_NEW_CRUST).any()
+    # Active margin: markedly thicker juvenile crust, stamped as a subduction arc.
+    assert arc_hc.mean() > ocean_hc.mean() + 5_000.0
+    assert arc_hc.max() >= ARC_MARGIN_SEED_HC_M - 1e-6 or arc_hc.mean() > 20_000.0
+    assert (arc_reason == ELEV_CHANGE_SUBDUCTION_ARC).any()
+
+
+def test_lithosphere_arc_magmatism_thickens_the_continental_margin_band(monkeypatch):
+    """A converging oceanic neighbour underplates juvenile crust across the overriding
+    continental plate's arc *band* (out to `reach_rad`, not just the contested contact line).
+    Isolated by running the same setup with the magmatic rate zeroed -- the difference is the
+    arc contribution alone, and it is a real multi-hundred-metre Hc gain over a swath many
+    nodes wide, not confined to the two or three nodes that actually overlap."""
+    from app import mantle, rheology
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_CONTINENTAL_M, REFERENCE_HM_OCEANIC_M
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _line(phi, lo, hi, count, hc, hm, elev):
+        theta = np.linspace(lo, hi, count)
+        return ElevationLine(
+            phi=phi, theta=theta, elevation=np.full(count, elev),
+            crustal_thickness_m=np.full(count, hc), mantle_lithosphere_thickness_m=np.full(count, hm),
+        )
+
+    def _run(arc_rate: float):
+        monkeypatch.setattr(rheology, "ARC_MAGMATIC_HC_RATE_M_PER_MYR", arc_rate)
+        cont = LithospherePlate(
+            plate_id=0, frame=np.eye(3), crust_type="continental",
+            lines=[
+                _line(0.15, -0.6, 0.6, 60, REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M, 0.0),
+                _line(-0.05, -0.6, 0.6, 60, REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M, 0.0),
+            ],
+        )
+        ocean = LithospherePlate(
+            plate_id=1, frame=np.eye(3), crust_type="oceanic",
+            lines=[
+                _line(0.15, 0.55, 1.6, 50, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M, -4000.0),
+                _line(-0.05, 0.55, 1.6, 50, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M, -4000.0),
+            ],
+        )
+        cont.set_omega(np.zeros(3))
+        ocean.set_omega(np.array([0.0, 0.0, -0.35 * mantle.MAX_PLATE_RATE]))  # drifts toward the continent's high end
+        world = World(seed=1, plates=[cont, ocean], mantle_centers=[], node_density=1.0)
+        for _ in range(6):
+            cont.deform(world, [ocean], years=500_000, max_distance=1.5 * spacing)
+        line = next(ln for ln in cont.lines if abs(ln.phi - 0.15) < 1e-6)
+        return line.theta.copy(), line.crustal_thickness_m.copy()
+
+    default_rate = rheology.ARC_MAGMATIC_HC_RATE_M_PER_MYR
+    theta_off, hc_off = _run(0.0)
+    theta_on, hc_on = _run(default_rate)
+
+    # Compare on the shared theta support (regularize can shift node counts a hair). The
+    # difference is the arc contribution alone -- convergent shortening at the contested
+    # contact runs identically in both.
+    hi = theta_on > 0.2
+    gain = hc_on[hi] - np.interp(theta_on[hi], theta_off, hc_off)
+    assert gain.max() > 400.0  # the margin band genuinely thickened over the 3 My run
+    assert int((gain > 30.0).sum()) >= 3  # ... over a swath, not a single contact node
+    # No effect on the trailing (non-margin) half.
+    lo = theta_on < -0.3
+    assert np.allclose(hc_on[lo], np.interp(theta_on[lo], theta_off, hc_off), atol=5.0)
+
+
 def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
     from app.plates import POLE_CAP_MARGIN_MULT
     from app.world import World

@@ -688,6 +688,71 @@ fluid solve does nothing to `elevation` without erosion.)
   plate's interior. Directions 1 (contested-run retreat) and 3 (forced merge) were partly
   landed earlier and did not stop either trend on their own.
 
+- **Arc accretion at active margins -- crust-building counterweight. Landed 2026-09-02.**
+  "An oceanic plate subducting under a continent should make more continent." Two halves,
+  both in the torque engine, both gated by the volume-budget cap so neither can revive the
+  old land-area runaway:
+  - *Areal* (`lithosphere_plate`): a continental plate's *leading* edge growing into space a
+    subducting oceanic slab is vacating seeds `ARC_MARGIN_SEED_HC_M`/`_HM_M` (~28/55 km, a
+    shallow ~-450 m forearc that builds to land) + `ELEV_CHANGE_SUBDUCTION_ARC`, not
+    `growth_seed_thickness`'s drowned oceanic column. The active-margin signal is a node in
+    the arc band within `ARC_MARGIN_END_SCAN_NODES` of the growing end, or a recent
+    subduction-arc provenance stamp there.
+  - *Magmatic* (`rheology.apply_arc_magmatic_thickening`): juvenile Hc added across the whole
+    arc *band* -- this plate's continental nodes within `reach_rad` (~500 km) of a converging
+    oceanic neighbour, distance-faded from the trench -- **not** yield-gated (unlike
+    `apply_convergent_deformation`, which conserves volume and only bites the few-node contact
+    line). `ARC_MAGMATIC_HC_RATE_M_PER_MYR = 450`, gentle convergence-rate dependence.
+  - **Measured** (seed 926698457, node_density 0.5, climate off, arc-ON vs a rate-0/oceanic-
+    seed control, 120 My): land-fraction decline **-0.066 vs -0.073** (~10% slower, +0.006-
+    0.008 LF, positive at every checkpoint), mean Hc **+150-250 m**, node count flat (no
+    runaway). New: `test_rheology.py::test_arc_magmatism_*`,
+    `test_plates.py::test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor` /
+    `test_lithosphere_arc_magmatism_thickens_the_continental_margin_band`.
+  - Real but modest on its own -- it defends the *margins*. Paired with eustatic sea level
+    (below) it stops being marginal.
+
+- **Eustatic sea level -- the big one. Landed 2026-09-02 (`eustasy.py`).** `World.sea_level_m`
+  is no longer a fixed input: it's re-solved every step from a **conserved ocean water
+  volume** against the world's current hypsometry. Every node has equal area, so ocean volume
+  is proportional to the summed water column `W = sum_i max(0, sea_level - z_i)`; `W` is
+  snapshotted at generation (`eustasy.initialize_water_budget`, from the flat starting sea
+  level) and `eustasy.update_sea_level` (called unconditionally at the end of `step_world`)
+  bisects `total_water_column(h) == W` for the new `h`. Deepening a basin (spreading,
+  subduction) or drowning a continent raises `total_water_column` at every `h`, so the solved
+  `h` drops -- the eustatic fall that hands land back as freeboard, which a fixed sea level
+  never did. The `/world/controls` slider now sets `W` to whatever floats the *current*
+  hypsometry at the requested level (`eustasy.set_sea_level_via_water_budget`) -- i.e. it
+  adds/removes ocean water, which is then itself conserved. Persistence: `ocean_water_column_m`
+  is backfilled from an old save's own hypsometry + sea level so loading doesn't jump the
+  shoreline. New `World.ocean_water_column_m`; `test_eustasy.py`.
+  - **Measured** (seed 926698457, nd 0.5, climate off, 100 My): eustasy alone cuts the
+    land-fraction decline from ~-0.052 to ~-0.025 vs a fixed sea level -- roughly halved. Sea
+    level falls to ~-150 to -300 m as basins deepen (with visible ~150 m jumps at discrete
+    plate-consumption events -- a smoothing pass is a worthwhile follow-up); trajectory goes
+    from monotonic decline to slight-rise-then-slow-decline.
+  - **All three on** (arc + eustasy + failed rifts) vs a full baseline (none), same seed,
+    150 My: land fraction holds **+0.02 to +0.03 above baseline at every checkpoint**, starts
+    by *rising* (0.266 -> 0.279 by 25 My) instead of declining immediately, and ends 0.203 vs
+    0.182 -- the 150 My decline shrinks from -0.076 to -0.063 and is front-loaded with a gain.
+    Plate-count churn stays healthy (14 -> ~21). Chaotic run-to-run divergence makes finer
+    attribution unreliable (as the sweep above keeps noting).
+
+- **Failed rifts. Landed 2026-09-02 (`merge_split.RIFT_SUCCESS_PROBABILITY = 0.55`).** A
+  continental plate that clears every split gate (flow-fit, pole separation, size, viable
+  great-circle cut) now only actually *breaks up* with this probability; otherwise the rift
+  arrests (an aulacogen: North Sea, Benue Trough). `LithospherePlate.apply_failed_rift` books
+  a one-off thinning (`FAILED_RIFT_THINNING_FRACTION = 0.10`) in a band
+  (`FAILED_RIFT_BAND_MULT = 2.5` spacings) around the would-be cut great circle -- a sag
+  basin, still thick continental crust, *not* oceanised -- and `reset_age()` puts the plate on
+  the normal split cooldown. This directly cuts the rate of the sustained divergent-thinning +
+  decompression-melting a *successful* rift inflicts on both daughters' margins. Also hardened
+  `apply_failed_rift` against `maybe_split_plate`'s known degenerate-`cut_normal` case
+  (spatially-intermingled k-means clusters -> non-unit normal -> skip, no aulacogen).
+  Probability tuned to keep the healthy ~18-26 plate-count churn (docs/TODO.md "Plate count
+  only decreases"). `test_merge_split.py::test_apply_failed_rift_*` /
+  `test_maybe_split_plate_with_failed_outcome_*`.
+
 ---
 
 ## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
+from . import atmosphere_cfd, climate, erosion, eustasy, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -134,6 +134,14 @@ class World:
     # either forces an immediate climate_cache recompute (see main.py's controls route) so
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
+    # Eustatic sea level (see eustasy.py). `sea_level_m` above is no longer a fixed input --
+    # `step_world` re-solves it every step so it tracks the ocean volume this conserved
+    # water-column budget represents against the world's changing hypsometry (deeper basins /
+    # drowned continents -> lower stand). `None` until first initialized (a freshly built
+    # World, or a save written before eustasy existed); `eustasy.initialize_water_budget`
+    # snapshots it from the flat starting sea level at generation. The `/world/controls`
+    # slider sets this budget rather than `sea_level_m` directly (adds/removes ocean water).
+    ocean_water_column_m: float | None = None
     solar_multiplier: float = 1.0
     # Live-adjustable via POST /world/controls, same pattern as sea_level_m/solar_multiplier
     # above -- the UI's "Controls" window lets the user run *just* plate tectonics or *just*
@@ -290,6 +298,10 @@ def generate_world(
     terrain = climate.compute_climate(world, height, width)
     world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, terrain)
 
+    # Snapshot the ocean water volume from the flat starting sea level -- from here on
+    # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
+    eustasy.initialize_water_budget(world)
+
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     world.log_event(f"World generated with {len(plates)} plates ({n_continents} continental).")
     return world
@@ -394,5 +406,11 @@ def step_world(world: World, years: float) -> None:
         # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
         # actually recomputed hydrology, so persistence timers count simulated hydrology steps.
         stranded_basins.reconcile_world_tracks(world)
+
+    # Eustatic sea level: re-solve world.sea_level_m against this step's final hypsometry,
+    # holding the conserved ocean water volume fixed (see eustasy.py). Unconditional -- both
+    # tectonics and erosion reshape the basins, and even a movement-and-climate-off step
+    # should keep sea level self-consistent if a control just changed the water budget.
+    eustasy.update_sea_level(world)
 
 

@@ -121,6 +121,29 @@ SUTURE_ACCRETION_SPREAD_NODES = 3
 # to the cap -- which a normal collision, healing over ~1-2 My, never reaches.
 SUTURE_ACCRETION_MAX_HC_M = 2.4 * lithosphere.REFERENCE_HC_CONTINENTAL_M
 
+# Active-margin (Cordilleran) accretion. When a continental plate's *leading* edge grows
+# into space a subducting oceanic neighbour is vacating (slab rollback / trench retreat),
+# the new ground is juvenile arc + accreted-terrane crust, not abyssal sea floor -- so it is
+# seeded at this intermediate column (Hc ~0.8x continental reference) rather than
+# `growth_seed_thickness`'s drowned oceanic one. This is the deliberately *restricted*
+# reverse of the land-area runaway that `growth_seed_thickness` documents: the runaway was
+# seeding +200 m dry land on *every* growth event, including growth into open ocean far from
+# any margin; seeding a thicker column *only* where the growing end abuts a genuinely
+# converging oceanic slab -- and still under the `CONTINENTAL_AREA_BUDGET_MULT` volume gate
+# -- is arc accretion, the dominant land-loss driver's actual physical counterweight (see
+# docs/TODO.md "Land fraction slowly declines"). The seed lands as shallow forearc/shelf
+# (~ -450 m) and builds to land as convergence continues via
+# `rheology.apply_arc_magmatic_thickening` + ordinary convergent shortening.
+ARC_MARGIN_SEED_HC_M = 28_000.0
+ARC_MARGIN_SEED_HM_M = 55_000.0
+
+# How many nodes in from a line end are scanned for an active-margin signal -- a node
+# contested by an oceanic neighbour, or one still carrying a subduction-arc provenance stamp
+# from a recent step -- when deciding whether that end's growth seeds arc crust or ocean
+# floor. Small: the signal only has to survive the one step between the ocean's edge
+# retreating and this plate's edge growing into the gap.
+ARC_MARGIN_END_SCAN_NODES = 4
+
 
 def growth_seed_thickness() -> tuple[float, float]:
     """(Hc, Hm) a plate seeds *brand-new areal* nodes with -- when a line grows an end into
@@ -267,6 +290,25 @@ class LithospherePlate(PlateWithLines):
         else:
             accrete_all = np.zeros_like(shrinkable_all)
 
+        # Continental arc band: this plate's own nodes within `reach_rad` of a *converging
+        # oceanic* neighbour -- the volcanic arc + accreted forearc / underplated wedge sits
+        # inboard of the trench, a swath (~500 km at default density), not just the contact
+        # line (which is only a few tens of nodes -- far too narrow to counter the land
+        # decline). `arc_intensity_all` fades from 1 at the contact to ~0.3 at the band edge.
+        # Feeds both the magmatic Hc thickening (below) and the arc-crust growth seed
+        # (`arc_end_*` -> `_grow_or_shrink_line_for_deform`). See ARC_MARGIN_SEED_HC_M.
+        arc_band_all = np.zeros(len(own_points), dtype=bool)
+        arc_intensity_all = np.zeros(len(own_points))
+        if self.crust_type == "continental":
+            arc_band_all = (
+                inputs.neighbor_is_oceanic
+                & np.isfinite(inputs.dist_to_neighbor)
+                & (closing_rate_all > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
+            )
+            arc_intensity_all = np.where(
+                arc_band_all, np.clip(1.0 - 0.7 * (inputs.dist_to_neighbor / reach_rad), 0.3, 1.0), 0.0
+            )
+
         years_myr = years / 1_000_000.0
         rho_c = self.crust_density()
 
@@ -288,6 +330,20 @@ class LithospherePlate(PlateWithLines):
             shrinkable = shrinkable_all[sl]
             accrete = accrete_all[sl]
             closing_rate = closing_rate_all[sl]
+            neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
+            arc_band = arc_band_all[sl]
+            arc_intensity = arc_intensity_all[sl]
+
+            # Active-margin growth seed per line end -- see ARC_MARGIN_SEED_HC_M. An end is an
+            # active margin if a node within ARC_MARGIN_END_SCAN_NODES of it is in the arc
+            # band, or still carries a subduction-arc provenance stamp from a recent step (the
+            # ocean's edge can retreat a step before this plate's edge grows into the gap).
+            arc_end_low = arc_end_high = False
+            if self.crust_type == "continental" and n > 0:
+                arc_signal = arc_band | (line.elev_change_reason == ELEV_CHANGE_SUBDUCTION_ARC)
+                k = ARC_MARGIN_END_SCAN_NODES
+                arc_end_low = bool(arc_signal[:k].any())
+                arc_end_high = bool(arc_signal[-k:].any())
 
             hc = line.crustal_thickness_m.copy()
             hm = line.mantle_lithosphere_thickness_m.copy()
@@ -324,6 +380,18 @@ class LithospherePlate(PlateWithLines):
                 hc[contested] = new_hc
                 hm[contested] = new_hm
 
+            # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
+            # the mantle wedge and underplates juvenile crust across the whole arc band --
+            # extra Hc (added from the mantle, not conserved), the crust-building half of
+            # "subduction under a continent makes more continent" (docs/TODO.md "Land fraction
+            # slowly declines"). Separate from the contested shortening above: the band is far
+            # wider than the contact line. Bounded long-term by the CONTINENTAL_AREA_BUDGET_MULT
+            # volume gate.
+            if np.any(arc_band):
+                hc[arc_band], hm[arc_band] = rheology.apply_arc_magmatic_thickening(
+                    hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
+                )
+
             melting = np.zeros(n, dtype=bool)
             if np.any(divergent):
                 new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
@@ -359,12 +427,12 @@ class LithospherePlate(PlateWithLines):
             # fading boundary force keeps its older provenance. This engine (unlike v1's
             # plates.deform) has no separate transform-uplift term, so contested convergence
             # and divergent thinning/melting are the only structural codes it emits.
-            neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
             reason = line.elev_change_reason.copy()
             moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
             if self.crust_type == "continental":
                 reason[contested & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
                 reason[contested & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
+                reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
             else:
                 reason[contested & moved] = ELEV_CHANGE_TRENCH
             reason[divergent & moved] = ELEV_CHANGE_RIFT
@@ -393,6 +461,8 @@ class LithospherePlate(PlateWithLines):
                 line_index,
                 neighbours,
                 suppress_growth,
+                arc_end_low,
+                arc_end_high,
             )
             new_lines.extend(gl for gl in grown_lines if len(gl) > 0)
 
@@ -427,6 +497,8 @@ class LithospherePlate(PlateWithLines):
         line_index: int,
         neighbours: list,
         suppress_growth: bool = False,
+        arc_end_low: bool = False,
+        arc_end_high: bool = False,
     ) -> list[ElevationLine]:
         """Same grow/shrink shape as `PlateWithLines._grow_or_shrink_line_for_deform` (see
         that method's own docstring -- end-only growth/shrink, plus the oceanic-only
@@ -535,13 +607,34 @@ class LithospherePlate(PlateWithLines):
                 contested, shrinkable, accrete, dist = contested[keep], shrinkable[keep], accrete[keep], dist[keep]
                 persistent_fields = {name: values[keep] for name, values in persistent_fields.items()}
 
-        # Brand-new areal crust at a growing end is oceanic regardless of this plate's own
-        # type -- see growth_seed_thickness() for the land-area runaway this fixes.
-        hc0, hm0 = growth_seed_thickness()
-        new_node_elevation = float(lithosphere.isostatic_elevation(np.array([hc0]), np.array([hm0]), rho_c)[0])
+        # Brand-new areal crust at a growing end is normally oceanic regardless of this
+        # plate's own type -- see growth_seed_thickness() for the land-area runaway that rule
+        # prevents. The one exception is a continental plate's *leading* edge advancing into
+        # space a subducting oceanic neighbour is vacating (`arc_end_low` / `arc_end_high`,
+        # from deform's active-margin scan): that ground is juvenile arc / accreted-terrane
+        # crust, seeded at the thicker ARC_MARGIN_SEED_* column and stamped as a subduction
+        # arc. See ARC_MARGIN_SEED_HC_M for why this is safe against the old runaway.
+        ocean_hc0, ocean_hm0 = growth_seed_thickness()
 
-        def grow_end(n_new: int) -> tuple[np.ndarray, np.ndarray]:
-            return np.full(n_new, hc0), np.full(n_new, hm0)
+        def _end_seed(is_arc: bool) -> tuple[float, float, float, float]:
+            hc_seed, hm_seed = (ARC_MARGIN_SEED_HC_M, ARC_MARGIN_SEED_HM_M) if is_arc else (ocean_hc0, ocean_hm0)
+            elev_seed = float(lithosphere.isostatic_elevation(np.array([hc_seed]), np.array([hm_seed]), rho_c)[0])
+            reason_seed = ELEV_CHANGE_SUBDUCTION_ARC if is_arc else ELEV_CHANGE_NEW_CRUST
+            return hc_seed, hm_seed, elev_seed, reason_seed
+
+        def _fill_new_nodes(n_new: int, hc_seed: float, hm_seed: float, reason_seed: float) -> dict[str, np.ndarray]:
+            out = {}
+            for name, values in persistent_fields.items():
+                if name == "crustal_thickness_m":
+                    fill = np.full(n_new, hc_seed)
+                elif name == "mantle_lithosphere_thickness_m":
+                    fill = np.full(n_new, hm_seed)
+                elif name == "elev_change_reason":
+                    fill = np.full(n_new, reason_seed, dtype=values.dtype)
+                else:
+                    fill = np.zeros(n_new, dtype=values.dtype)
+                out[name] = fill
+            return out
 
         if not suppress_growth and not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
@@ -549,20 +642,12 @@ class LithospherePlate(PlateWithLines):
             candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
             n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
             if n_new > 0:
+                hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(arc_end_high)
                 new_theta = candidate_theta[:n_new]
-                new_hc, new_hm = grow_end(n_new)
                 theta = np.append(theta, new_theta)
-                elevation = np.append(elevation, np.full(n_new, new_node_elevation))
-                for name, values in persistent_fields.items():
-                    if name == "crustal_thickness_m":
-                        fill = new_hc
-                    elif name == "mantle_lithosphere_thickness_m":
-                        fill = new_hm
-                    elif name == "elev_change_reason":
-                        fill = np.full(n_new, ELEV_CHANGE_NEW_CRUST, dtype=values.dtype)
-                    else:
-                        fill = np.zeros(n_new, dtype=values.dtype)
-                    persistent_fields[name] = np.append(values, fill)
+                elevation = np.append(elevation, np.full(n_new, elev_seed))
+                for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
+                    persistent_fields[name] = np.append(persistent_fields[name], fill)
 
         if not suppress_growth and not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
             gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
@@ -570,20 +655,12 @@ class LithospherePlate(PlateWithLines):
             candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
             n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
             if n_new > 0:
+                hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(arc_end_low)
                 new_theta = candidate_theta[:n_new][::-1]
-                new_hc, new_hm = grow_end(n_new)
                 theta = np.insert(theta, 0, new_theta)
-                elevation = np.insert(elevation, 0, np.full(n_new, new_node_elevation))
-                for name, values in persistent_fields.items():
-                    if name == "crustal_thickness_m":
-                        fill = new_hc
-                    elif name == "mantle_lithosphere_thickness_m":
-                        fill = new_hm
-                    elif name == "elev_change_reason":
-                        fill = np.full(n_new, ELEV_CHANGE_NEW_CRUST, dtype=values.dtype)
-                    else:
-                        fill = np.zeros(n_new, dtype=values.dtype)
-                    persistent_fields[name] = np.insert(values, 0, fill)
+                elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
+                for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
+                    persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
 
         result = ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
         return split_into_contiguous_runs(result, dtheta)
@@ -706,6 +783,59 @@ class LithospherePlate(PlateWithLines):
         plate_a = LithospherePlate(plate_id=self.plate_id, frame=self.frame.copy(), crust_type=self.crust_type, lines=lines_a)
         plate_b = LithospherePlate(plate_id=new_id, frame=self.frame.copy(), crust_type=self.crust_type, lines=lines_b)
         return plate_a, plate_b
+
+    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
+        """A rift that started but *aborted* (`merge_split.RIFT_SUCCESS_PROBABILITY`): the
+        plate does not break up, but the stretched zone along the would-be cut is left as a
+        thinned continental sag basin (an aulacogen -- the North Sea, the Benue Trough), not
+        healed back to full thickness and not oceanised. Thins Hc/Hm by up to
+        `FAILED_RIFT_THINNING_FRACTION` within `FAILED_RIFT_BAND_MULT` spacings of the cut
+        great circle, tapering to zero at the band edge, and books the isostatic subsidence as
+        a delta on `elevation` (the same idiom `deform` uses so erosion isn't clobbered).
+        This is a one-off event -- far less crust lost than the sustained divergent thinning +
+        decompression-melting a *successful* rift would inflict on both daughters' margins."""
+        from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
+
+        # A well-formed cut plane's normal is a unit vector; a degenerate one (the two flow
+        # clusters were spatially intermingled, so `normalize(centroid_a - centroid_b)`
+        # collapsed toward zero -- a known `maybe_split_plate` failure mode, see the
+        # pole-winding notes in docs/TODO.md) would put every node "next to the rift" and thin
+        # the whole plate. No cut, no aulacogen -- the rift just fails silently.
+        if not np.isfinite(cut_normal).all() or abs(np.linalg.norm(cut_normal) - 1.0) > 1e-3:
+            return
+        band_sin = float(np.sin(FAILED_RIFT_BAND_MULT * spacing_rad))
+        rho_c = self.crust_density()
+        new_lines: list[ElevationLine] = []
+        for line in self.lines:
+            if len(line) == 0:
+                new_lines.append(line)
+                continue
+            dist_to_plane = np.abs(line.world_xyz(self.frame) @ cut_normal)
+            in_band = dist_to_plane < band_sin
+            if not np.any(in_band):
+                new_lines.append(line)
+                continue
+            hc = line.crustal_thickness_m.copy()
+            hm = line.mantle_lithosphere_thickness_m.copy()
+            z_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
+            taper = np.clip(1.0 - dist_to_plane / band_sin, 0.0, 1.0)
+            factor = 1.0 - FAILED_RIFT_THINNING_FRACTION * taper
+            hc[in_band] = np.maximum(hc[in_band] * factor[in_band], lithosphere.MIN_CRUSTAL_THICKNESS_M)
+            hm[in_band] = np.maximum(hm[in_band] * factor[in_band], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
+            z_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
+            new_elevation = rheology.clip_elevation_bounds(line.elevation + (z_after - z_before))
+            reason = line.elev_change_reason.copy()
+            moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
+            reason[in_band & moved] = ELEV_CHANGE_RIFT
+            new_lines.append(
+                line.replace(
+                    elevation=new_elevation,
+                    crustal_thickness_m=hc,
+                    mantle_lithosphere_thickness_m=hm,
+                    elev_change_reason=reason,
+                )
+            )
+        self.set_lines(new_lines)
 
 
 def _lines_from_resample(
