@@ -22,6 +22,7 @@ from . import (
     climate,
     coastline,
     eustasy,
+    faults,
     geodesic,
     geometry,
     hydrology,
@@ -755,6 +756,91 @@ def plate_at(lat_deg: float, lon_deg: float) -> dict:
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
     query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
     return {"plate_id": plates.nearest_plate_id(world.plates, query_xyz)}
+
+
+def _fault_summary(fault, plate, other_plate_tree) -> dict:
+    """One fault's inspector payload -- trace in true world coords (rounded like
+    `_plate_summary`'s points), plus its type/motion/age metadata and how far the trace
+    midpoint currently sits from the nearest cross-plate boundary node."""
+    trace = faults.fault_world_points(fault, plate)
+    mid = trace[len(trace) // 2]
+    if other_plate_tree is not None:
+        dist_rad = float(other_plate_tree.query(mid)[0])
+    else:
+        dist_rad = 0.0
+    return {
+        "fault_id": fault.fault_id,
+        "plate_id": fault.plate_id,
+        "kind": fault.kind,
+        "trace": _round_coords(trace),
+        "active": bool(fault.active),
+        "slip_rate_m_per_myr": round(float(fault.slip_rate_m_per_myr), 1),
+        "cumulative_offset_m": round(float(fault.cumulative_offset_m), 1),
+        "age_myr": round(float(fault.age_myr), 2),
+        "lifespan_myr": round(float(fault.lifespan_myr), 2),
+        "dip_deg": round(float(fault.dip_deg), 1),
+        "length_km": round(float(fault.length_km()), 1),
+        "set_id": fault.set_id,
+        "birth_distance_from_boundary_km": round(float(fault.birth_distance_from_boundary_km), 1),
+        "distance_from_boundary_km": round(float(dist_rad) * mantle.PLANET_RADIUS_KM, 1),
+    }
+
+
+def _other_plate_trees(world: World) -> dict:
+    """plate_id -> cKDTree over every *other* plate's nodes, so a fault's distance to the
+    nearest cross-plate boundary is one query. Built once per /world/faults call."""
+    collected = plates.collect_all_points(world.plates)
+    if collected is None:
+        return {}
+    points, _, owner = collected
+    trees: dict[int, cKDTree] = {}
+    for pid in {p.plate_id for p in world.plates}:
+        mask = owner != pid
+        trees[pid] = cKDTree(points[mask]) if np.any(mask) else None
+    return trees
+
+
+@app.get("/world/faults")
+def list_faults() -> dict:
+    """Every intraplate fault line (see faults.py) as plain JSON, for the "Fault Line
+    Inspector" map mode -- same philosophy as /world/plates: un-rotated/true-frame, the
+    client renders and drives interaction itself. `404` if no world has been generated yet."""
+    world = _require_world()
+    with _world_lock:
+        by_id = {p.plate_id: p for p in world.plates}
+        trees = _other_plate_trees(world)
+        summaries = [
+            _fault_summary(fault, by_id[fault.plate_id], trees.get(fault.plate_id))
+            for fault in world.faults
+            if fault.plate_id in by_id
+        ]
+        return {"elapsed_years": world.elapsed_years, "faults": summaries}
+
+
+@app.get("/world/fault_at")
+def fault_at(lat_deg: float, lon_deg: float) -> dict:
+    """Which fault trace is nearest (lat_deg, lon_deg), or `null` if none is within a small
+    threshold -- the Fault Line Inspector's click hit-test. Same true-frame / finite-input
+    contract as `/world/plate_at`."""
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+    with _world_lock:
+        by_id = {p.plate_id: p for p in world.plates}
+        threshold_rad = 120.0 / mantle.PLANET_RADIUS_KM
+        best_id = None
+        best_dist = threshold_rad
+        for fault in world.faults:
+            plate = by_id.get(fault.plate_id)
+            if plate is None:
+                continue
+            trace = faults.fault_world_points(fault, plate)
+            d = float(np.min(np.arccos(np.clip(trace @ query_xyz, -1.0, 1.0))))
+            if d < best_dist:
+                best_dist = d
+                best_id = fault.fault_id
+    return {"fault_id": best_id}
 
 
 @app.get("/world/sample_at")

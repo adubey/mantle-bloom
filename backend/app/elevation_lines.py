@@ -115,6 +115,12 @@ ELEV_CHANGE_COASTAL_LEVELING = 11  # wave-cut planation + sheltered-shelf infill
 ELEV_CHANGE_MARINE = 12  # submarine erosion / marine sediment spread on the sea floor
 ELEV_CHANGE_GLACIAL_FLATTEN = 13  # glacier flattening (broad sub-ice smoothing)
 ELEV_CHANGE_LAKE_SILT = 14  # lake / endorheic-basin siltation raising a basin floor
+# Intraplate fault relief (see faults.py) -- a fault line that is *not* a plate boundary,
+# so these are distinct from ELEV_CHANGE_TRANSFORM (which is boundary-only). Structural, so
+# they get the same erosion-override protection as the boundary codes above.
+ELEV_CHANGE_FAULT_NORMAL = 15  # extensional graben subsidence / footwall-shoulder uplift
+ELEV_CHANGE_FAULT_REVERSE = 16  # intraplate thrust / fold-belt uplift away from a boundary
+ELEV_CHANGE_FAULT_STRIKE_SLIP = 17  # strike-slip transpressional ridge / transtensional sag
 
 # Human-readable label per code, index == code -- kept here (not in render_image.py or the
 # frontend) as the single source both sync against, same precedent as biomes.BIOME_NAMES.
@@ -134,6 +140,9 @@ ELEV_CHANGE_LABELS = (
     "Submarine erosion / sediment",
     "Glacial flattening",
     "Lake / basin siltation",
+    "Fault: normal (graben)",
+    "Fault: reverse (thrust)",
+    "Fault: strike-slip",
 )
 
 REGULARIZE_INTERVAL_STEPS = 5

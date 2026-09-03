@@ -1079,3 +1079,56 @@ codebase tracks follow-ups here, not inline. The items below are the loose ends 
 logic. If `PlateWithRTree` is meant to become a drop-in replacement, it needs its own
 version of the per-turn node density / spacing upkeep (`elevation_lines.py`,
 `TARGET_LINE_SPACING_RAD`), otherwise its lines drift out of spec over a long run.
+
+---
+
+## Intraplate faults: follow-ups
+
+**Status:** shipped (`faults.py`, `World.faults`; "Fault lines" map view). See
+`docs/simulation-model.md#faults`. The layer is additive -- it never touches `deform()`'s
+own boundary classification -- so it can be tuned or reverted in isolation.
+
+**1. Trace and fault-system lengths are far too short.** `LENGTH_MEDIAN_KM` = 45,
+`LENGTH_MAX_KM` = 200, and a fault set is at most `SET_MAX_MEMBERS` = 5 members
+`SET_SPACING_KM` = 20 km apart -- so the longest thing the model can produce is a ~200 km
+trace, and the widest "system" is ~80 km across. Reality is an order of magnitude bigger: an
+individual continuous fault runs up to ~1300 km (San Andreas ~1200 km, North Anatolian
+~1500 km, Great Sumatran ~1900 km), and a fault *zone / system* -- many sub-parallel and en
+echelon strands acting together -- reaches ~5500 km (see
+<https://en.wikipedia.org/wiki/List_of_fault_zones>: East African Rift, the Anatolian
+system, the Sunda/Sumatran system). The current numbers make every fault a minor local
+feature and, combined with the world-scale render (a 40 km fault is ~1 display px, see
+`docs/simulation-model.md#fault-inspector`), are the main reason the "Fault lines" view reads
+as a scatter of dots rather than lineaments. Fix: widen the length distribution (lognormal
+with a long tail to ~1300 km, not a hard 200 km clamp); make a "system" a first-class object
+that owns a long master trace plus a spatially-extended family of strands (hundreds of km of
+spacing, not 20), rather than today's tight 5-member echelon; and let a system's strands
+follow a gently curving belt over 1000s of km instead of one short straight seed. This also
+feeds item 3 -- longer faults with more slip carry proportionally more relief.
+
+**2. The trace applies relief but doesn't shear the node field.** `_apply_plate_fault_relief`
+raises/lowers `elevation` near an active trace per regime, but the `ElevationLine` nodes on
+either side are never actually displaced *along* the fault -- a strike-slip fault with tens
+of km of `cumulative_offset_m` leaves piercing points (a river valley, a ridge crest) exactly
+where they were. Real strike-slip offset of pre-existing features is the visually
+recognisable thing about a fault like the San Andreas. Doing it properly means moving nodes
+tangent to the trace by the along-strike component of slip, which interacts with line
+regularization (`elevation_lines.py`) and the plate-local frame -- deferred as its own piece
+of work rather than folded into the first cut.
+
+**3. Spawn rate / relief magnitudes are eyeballed, not calibrated.** `BASE_SPAWN_RATE_PER_MYR`
+(3.0 systems/Myr sphere-wide at full stress) and the per-regime `*_M_PER_MYR` relief
+constants were picked to look plausible and stay well under the boundary rates, not measured
+against a target fault density or a hypsometry budget. Worth a sweep: fault count vs.
+`elapsed_years` across seeds, and whether the cumulative fault relief moves the land-fraction
+/ hypsography numbers the [land-fraction decline](#land-fraction-slowly-declines-over-a-long-run)
+work cares about.
+
+**4. No live tuning knob.** Unlike the geomorphic budget, none of the fault constants are
+exposed in the Controls window. If they turn out to matter for a world's look, they should
+join the other live knobs rather than needing a code edit + regenerate.
+
+**5. Faults don't influence seismicity / hazard output.** There is no earthquake model; a
+fault's `slip_rate` and `active` flag are only used for relief and rendering. If a
+seismic-hazard or "recent earthquakes" view is ever wanted, the active-fault set is the
+natural source.

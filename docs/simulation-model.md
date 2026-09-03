@@ -11,6 +11,7 @@
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage (subsumed into deform)](#gap-filling)
 - [Volcanism](#volcanism)
+- [Faults (intraplate)](#faults)
 - [Boundary point reassignment (subsumed into deform)](#reassignment)
 - [Projections](#projections)
 - [Render image](#render-image)
@@ -28,6 +29,7 @@
 - [Glaciation](#glaciation)
 - [River Inspector](#river-inspector)
 - [Lake Inspector](#lake-inspector)
+- [Fault Line Inspector](#fault-inspector)
 - [Coastline](#coastline)
 - [Known simplifications](#known-simplifications)
 
@@ -852,6 +854,102 @@ volcano actually went dormant.
 glaciers are (`VOLCANO_COLOR_RGB`, a hot red-orange distinct from both), drawn after lake but
 before glacier so ice still wins where both would apply (a volcano cold enough to glaciate
 should read as ice-covered, not lava-red).
+
+<a id="faults"></a>
+## Faults (intraplate) (`faults.py`)
+
+An **additive** layer for fault lines that are *not* plate boundaries. `deform()` already
+carries all the deformation that happens *at* a plate edge, and classifies it geometrically
+(contested territory → convergent, uncontested-but-near → transform, wider → divergent). That
+model has no notion of a fault sitting inside a plate, away from any edge -- yet real faults
+nucleate at a wide range of distances from boundaries (most within ~200 km, but
+stable-continental-region faults sit well over 1000 km away -- the New Madrid seismic zone is
+~1500 km from the nearest boundary), come in sub-parallel families (Basin-and-Range
+horst/graben trains, en echelon step-overs), and stay individually active for a few to a few
+tens of Myr before locking up and surviving as inert scars. `faults.py` adds exactly that,
+and **never touches `deform()`'s own boundary classification** -- the two layers are
+independent, the same way [volcanism](#volcanism) rides on top of `deform()` rather than
+replacing any of it.
+
+`update_faults` runs once per step from `world.step_world`, inside the
+`simulate_plate_movement` block, right after the `deform()` loop and before
+`merge_split.apply_topology_changes` (so a fresh fault's relief is already in place when
+merge/split geometry is judged). Each call:
+
+**1. Age / accrue / retire.** Every existing fault ages by the step's Myr; an active one
+accumulates `cumulative_offset_m += slip_rate_m_per_myr * Δmyr` and, once `age_myr` passes
+its drawn `lifespan_myr`, flips to `active = False` and logs a "locked up" event. An inactive
+fault is **kept forever as a scar** (like `is_volcano` after dormancy) -- it still draws, just
+dashed and dim, and applies no further relief.
+
+**2. Stress-weighted Poisson spawn, per plate.** For each own-node, the distance to the
+nearest cross-plate boundary node gives a stress weight `exp(-d / SPAWN_DECAY_LEN_KM)` (500
+km) floored at `SPAWN_INTERIOR_FLOOR` (0.03) -- so faulting concentrates near boundaries but
+never drops to zero in the deep interior (real intraplate seismicity). The expected count is
+`BASE_SPAWN_RATE_PER_MYR` (3.0 fault *systems*/Myr over the whole sphere at full stress)
+scaled by the plate's area fraction and its mean stress weight, then `rng.poisson`. Seed
+nodes are drawn weighted by the same stress field. Deterministic per
+`(seed, round(elapsed_years), plate_id, _FAULT_SEED_TAG)`, the same convention
+[volcanism](#volcanism) uses, so a replayed session spawns identical faults.
+
+**3. Regime from Andersonian faulting theory.** At the seed node, `boundary.closing_rate`
+against the nearest cross-plate neighbour's omega gives the local closing rate: `> +threshold`
+→ **reverse** (thrust, 30° dip), `< -threshold` → **normal** (60° dip), else → **strike-slip**
+(90° dip, striking `STRIKE_SLIP_OBLIQUITY_DEG` = 30° oblique to the local shortening
+direction). `threshold` is `boundary.TRANSFORM_RATE_THRESHOLD`, shared with `deform()`'s own
+transform classification so the two can't drift.
+
+**4. Fault sets.** With `SET_PROBABILITY` (0.4) the spawn is a whole sub-parallel family
+(`SET_MIN..MAX_MEMBERS`, 2–5) rather than a lone trace, spaced `SET_SPACING_KM` (20 km) apart
+with a small `SET_ECHELON_STEP_KM` (3 km) along-strike step. Normal-fault sets alternate
+horst/graben polarity member to member. The family's first member's `fault_id` doubles as the
+`set_id` every member carries.
+
+**5. Geometry, in the plate's local frame.** Each trace is a short great-circle arc
+(`length_km` lognormal, ~12–200 km -- **known too short**, real faults reach ~1300 km and
+systems ~5500 km; see `docs/TODO.md` "Intraplate faults: follow-ups" item 1) sampled at ~1
+node per 15 km, with a sinusoidal along-strike bend up to `BEND_MAX_FRACTION` (0.12) of its
+length so sets don't look like a ruled grid. Slip rate scales with the seed's stress weight² between `SLIP_RATE_MIN` (150
+m/Myr) and `SLIP_RATE_MAX` (30000 m/Myr); lifespan scales with stress weight between
+`LIFESPAN_MIN..MAX_MYR` (2–25 Myr). Stored as `local_phi`/`local_theta` in the owning plate's
+frame, so a fault rides along with the crust as the plate rotates for free -- the same
+"attached to the crust, not the world" property every persistent `ElevationLine` field has.
+
+**6. Relief.** Each active fault applies its own relief to crust within `MAX_FAULT_REACH_KM`
+(45 km) of the trace, tapering linearly to zero at that distance and scaled by
+`slip_rate / SLIP_RATE_REF_M_PER_MYR` (clamped 0.2–3×):
+
+- **reverse** -- a symmetric uplift ridge (`REVERSE_UPLIFT_M_PER_MYR`, 220).
+- **normal** -- hanging-wall down (`NORMAL_THROW_M_PER_MYR`, 180) on the `dip_dir_local` side,
+  footwall shoulder up (`NORMAL_SHOULDER_UPLIFT_M_PER_MYR`, 55) on the other.
+- **strike-slip** -- a modest always-on transpressional ridge (`STRIKE_SLIP_RIDGE_M_PER_MYR`,
+  70) plus a `strike_sense`-signed restraining-uplift / releasing-sag term
+  (`STRIKE_SLIP_BEND_M_PER_MYR`, 130). The node field is *not* physically sheared across the
+  trace -- relief only (see `docs/TODO.md`).
+
+All rates are kept well below `deform()`'s boundary rates (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
+= 800) so this additive layer doesn't disturb long-run hypsometry tuning. The affected nodes'
+`elev_change_reason` is stamped with one of three new codes,
+`ELEV_CHANGE_FAULT_NORMAL`/`_REVERSE`/`_STRIKE_SLIP` (15/16/17) -- distinct from
+`ELEV_CHANGE_TRANSFORM`, which is boundary-only -- and `erosion.py` gives them the same
+structural-stickiness protection as the boundary codes (only a large net geomorphic step
+overrides them).
+
+**Topology reconciliation.** After any merge/split, `reconcile_faults` (mirroring
+`stranded_basins.reconcile_world_tracks`) re-homes each fault onto whichever surviving plate
+now sits under its trace midpoint -- recomputing `local_phi`/`local_theta` and
+`dip_dir_local` in the new plate's frame while preserving age / offset / active state -- and
+drops any fault whose plate subducted with no surviving territory under it. A
+`world_polyline` (true-frame) is refreshed on every fault at the end of `update_faults` so a
+fault can still be re-homed even after its owning plate's id has vanished in a merge.
+
+**Memory bound.** A plate keeps at most `MAX_SCARS_PER_PLATE` (40) inactive scars, oldest
+culled first; active faults are never culled.
+
+**Persistence.** `World.faults` (a list of `Fault` dataclasses) and `World.next_fault_id`
+(the monotonic id source) -- `faults` is a `default_factory` field backfilled to `[]` on load
+of an older save (`persistence._backfill_added_fields`); `next_fault_id` is a plain-int
+default a pre-field pickle falls through to.
 
 <a id="reassignment"></a>
 ## Boundary point reassignment (subsumed into `deform()`)
@@ -2912,6 +3010,43 @@ this basin drain out" is visible at a glance rather than only in the sidebar tex
 `coastline_segments` River Inspector already fetches is reused rather than a second copy, since
 `/world/lakes` computes the identical boundary -- both endpoints expose it independently
 (matching `/world/rivers`' own precedent) but the frontend only needs to fetch it once.
+
+<a id="fault-inspector"></a>
+## Fault Line Inspector
+
+A fifth interactive map mode, same "raw JSON, client renders it" philosophy as
+[River Inspector](#river-inspector) / [Lake Inspector](#lake-inspector): `GET /world/faults`
+returns every intraplate fault (see [Faults](#faults)) as a true-frame trace polyline plus
+its type / motion / age metadata, and `frontend/src/FaultInspector.tsx` renders and drives
+the interaction entirely client-side -- the same `rotationDrag.ts` gesture (rotation shared
+with `MapCanvas` via one lifted `App.tsx` state), plus click-to-select and Tab/Shift+Tab to
+cycle faults.
+
+**`fault_id` *is* stable across a step here**, unlike `river_id` / `lake_id`. Faults carry a
+persistent identity for their whole lifetime (a monotonic `World.next_fault_id` counter, an
+`is_volcano`-style lifecycle rather than a regroup-from-scratch-every-call one), so `App.tsx`
+resets `selectedFaultId` only on generate, like `selectedPlateId` -- not on every step.
+
+**`distance_from_boundary_km`** is recomputed live per call (nearest cross-plate node via one
+`cKDTree` per plate, built once per `/world/faults` call), separate from the stored
+`birth_distance_from_boundary_km` -- so the sidebar can show a fault drifting away from (or
+toward) a boundary as its plate moves.
+
+**Rendering**: each trace is an ordered polyline (not a branch-capable edge list like a
+river), colored by regime -- reverse magenta-red, normal yellow-green, strike-slip warm
+yellow, matching `render_image.py`'s `_ELEV_REASON_RGB` fault stops (codes 15/16/17) and the
+[Last elevation change](#render-image) view. Active faults draw solid; locked-up scars draw
+dashed and dim. Every fault also gets a midpoint mark -- filled for active, a hollow ring for
+a scar -- because a real fault is only tens of km long and its whole trace can project to a
+few pixels at world scale, so the line alone wouldn't register. The selected fault draws
+bright and thick with both endpoints ringed (the same `ctx.arc` primitive the River / Lake
+inspectors use). Same per-edge antimeridian
+longitude-unwrap as `RiverInspector.projectSegment`. Reuses the `coastline_segments` already
+fetched for the River / Lake inspectors -- this view has no other land/ocean cue.
+
+**Click-to-select** is a server round trip (`GET /world/fault_at`), nearest-trace within a
+120 km threshold -- there's no shape to point-in-polygon test, only sparse polylines, so a
+min-distance hit-test is the natural fit (as with `river_at` / `lake_at`).
 
 <a id="coastline"></a>
 ## Coastline (`coastline.py`)

@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+  fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
+  FaultSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
 import LakeInspector from "./LakeInspector";
+import FaultInspector, { FAULT_KIND_LABEL } from "./FaultInspector";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
@@ -115,7 +116,7 @@ const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
   "elevation", "plates", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "plateInspector", "riverInspector", "lakeInspector",
+  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "plateInspector", "riverInspector", "lakeInspector", "faultInspector",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -235,6 +236,12 @@ export default function App() {
   const [lakesData, setLakesData] = useState<LakeSummary[]>([]);
   const [selectedBasin, setSelectedBasin] = useState<LakeSummary | null>(null);
   const [selectedBasinKind, setSelectedBasinKind] = useState<LakeAtResponse["kind"] | null>(null);
+  // Fault Inspector's own data (see FaultInspector.tsx) -- same true-frame/world-state-only
+  // refresh pattern as platesData. Unlike river_id/lake_id, fault_id IS stable across a step
+  // (a monotonic counter on the backend, see World.next_fault_id), so the selection only
+  // resets on a generate, like selectedPlateId.
+  const [faultsData, setFaultsData] = useState<FaultSummary[]>([]);
+  const [selectedFaultId, setSelectedFaultId] = useState<number | null>(null);
   // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see
   // MapCanvas.tsx's onProbe and the popup JSX below). `displayX`/`displayY` place it over the
   // map in CSS pixels; `sample` fills in once GET /world/sample_at resolves. Cleared on any
@@ -323,7 +330,7 @@ export default function App() {
   // instead of overwriting a newer one.
   const renderRequestIdRef = useRef(0);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector") return; // none of these use renderData -- see below
+    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "faultInspector") return; // none of these use renderData -- see below
     const requestId = ++renderRequestIdRef.current;
     try {
       const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
@@ -361,6 +368,15 @@ export default function App() {
     }
   }, []);
 
+  const refreshFaults = useCallback(async () => {
+    try {
+      const data = await fetchFaults();
+      setFaultsData(data.faults);
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
   // Stats are a secondary/best-effort feature -- a failed fetch here (e.g. a transient
   // network blip) shouldn't surface as the main error line or block generate/step, unlike
   // refresh/refreshPlates above which are core to the map actually updating.
@@ -386,6 +402,7 @@ export default function App() {
       );
       setSummary(s);
       setSelectedPlateId(null);
+      setSelectedFaultId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
@@ -397,7 +414,7 @@ export default function App() {
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setWindModel(DEFAULT_WIND_MODEL);
       setTuning(DEFAULT_TUNING);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -405,7 +422,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates,
-    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats,
+    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
 
@@ -489,7 +506,7 @@ export default function App() {
       setSelectedBasinKind(null);
       // mapViewRef.current, not mapView -- see the ref's own comment above.
       await Promise.all([
-        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats(),
+        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
       ]);
     } catch (e) {
       setError(String(e));
@@ -497,7 +514,7 @@ export default function App() {
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
+  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
@@ -512,6 +529,7 @@ export default function App() {
     try {
       setSummary(s);
       setSelectedPlateId(null);
+      setSelectedFaultId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
@@ -523,13 +541,13 @@ export default function App() {
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setWindModel(controls.wind_model);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // FileModal's "Make Animation" -- it already advanced the world for real (see
   // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
@@ -538,8 +556,8 @@ export default function App() {
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
-    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, recordStats]);
+    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -550,6 +568,7 @@ export default function App() {
 
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
   const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
+  const selectedFault = faultsData.find((f) => f.fault_id === selectedFaultId) ?? null;
 
   // Re-render with the current world whenever the projection, map view, or view rotation
   // changes -- all three are baked server-side into the returned image (see api.ts's
@@ -703,6 +722,7 @@ export default function App() {
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
                 <option value="lakeInspector">Lakes</option>
+                <option value="faultInspector">Fault lines</option>
               </optgroup>
             </select>
             <select
@@ -852,6 +872,35 @@ export default function App() {
             </fieldset>
           )}
 
+          {mapView === "faultInspector" && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Selected fault</legend>
+              {selectedFault ? (
+                <div style={{ opacity: 0.9 }}>
+                  <div>id: {selectedFault.fault_id}{selectedFault.set_id != null ? ` (family #${selectedFault.set_id})` : ""}</div>
+                  <div>type: {FAULT_KIND_LABEL[selectedFault.kind]}</div>
+                  <div style={{ color: selectedFault.active ? "#8fd07a" : undefined }}>
+                    {selectedFault.active ? "active" : "locked-up scar"}
+                  </div>
+                  <div>on plate: {selectedFault.plate_id}</div>
+                  <div>length: {selectedFault.length_km.toFixed(0)} km</div>
+                  <div>slip rate: {selectedFault.slip_rate_m_per_myr.toFixed(0)} m/Myr</div>
+                  <div>total offset: {(selectedFault.cumulative_offset_m / 1000).toFixed(2)} km</div>
+                  <div>age: {selectedFault.age_myr.toFixed(1)} / {selectedFault.lifespan_myr.toFixed(0)} Myr</div>
+                  <div>dip: {selectedFault.dip_deg.toFixed(0)}&deg;</div>
+                  <div>
+                    from boundary: {selectedFault.distance_from_boundary_km.toFixed(0)} km
+                    {" "}(born at {selectedFault.birth_distance_from_boundary_km.toFixed(0)})
+                  </div>
+                </div>
+              ) : (
+                <div style={{ opacity: 0.6 }}>
+                  {faultsData.length > 0 ? "Click a fault, or press Tab." : "No faults yet -- step the world forward."}
+                </div>
+              )}
+            </fieldset>
+          )}
+
           {summary && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
@@ -910,6 +959,21 @@ export default function App() {
                 setSelectedBasinKind(kind);
                 setSelectedBasin(basin);
               }}
+              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+              onRotationCommitted={(newRotation) => setRotation(newRotation)}
+            />
+          ) : mapView === "faultInspector" ? (
+            <FaultInspector
+              faults={faultsData}
+              coastlineSegments={coastlineSegments}
+              width={RENDER_WIDTH}
+              height={RENDER_HEIGHT}
+              displayWidth={DISPLAY_WIDTH}
+              displayHeight={DISPLAY_HEIGHT}
+              projection={projection}
+              rotation={rotation}
+              selectedFaultId={selectedFaultId}
+              onSelectFault={setSelectedFaultId}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
             />
@@ -990,6 +1054,8 @@ export default function App() {
                 ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
                 : mapView === "lakeInspector"
                   ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
+                  : mapView === "faultInspector"
+                  ? "Click a fault to select it. Tab / Shift+Tab cycles faults. Solid = active, dashed = locked-up scar. Press and hold, then drag to rotate."
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
                     : "Press and hold, then drag the map to rotate it."}
