@@ -2271,11 +2271,18 @@ Two things compress the whole-world numbers, and both are *features*, not knob w
   `collision_uplift_multiplier` over 6 steps); the table above is the damped long-run
   residual.
 
-Practical guidance: for a world visibly losing land, `ocean_deposition_multiplier` ~2-3x is
-the biggest lever, `coastal_leveling_multiplier` ~0.3 and `ocean_erosion_multiplier` ~0.5
-stop the coastline being ground down, and `collision_uplift_multiplier` ~2 with
-`collision_uplift_reach_multiplier` ~2 rebuilds interior relief. Stack them -- the per-knob
-effects roughly add.
+Practical guidance: for a world visibly losing land, nudge `ocean_deposition_multiplier` to
+~1.3-1.5 and pull `coastal_leveling_multiplier` down to ~0.5 -- the two levers that add/keep
+coastal land without feeding the eustatic loop hard. **Do not stack aggressively.** The
+per-knob effects do *not* simply add over a long run: across four seeds at
+`ocean_deposition` 2.5x + `coastal_leveling` 0.3x + `ocean_erosion` 0.5x +
+`collision_uplift`/`reach` 2x, one seed (`495717634`) *lost* most of its land (0.27 -> 0.09
+over 150 My) because the extra shelf sediment plus railed orogens spiked eustatic sea level
+and drowned everything below the new mountains. Big collision-uplift settings in particular
+are unpredictable once peaks hit `MAX_ELEVATION_M`. Change one or two knobs at a time,
+step 20-30 My, and watch `land_fraction` in Stats before going further. This is exactly the
+"no single setting is right for every seed" situation the knobs exist to let you navigate by
+hand -- which is why the shipped defaults are all `1.0`.
 
 <a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)
