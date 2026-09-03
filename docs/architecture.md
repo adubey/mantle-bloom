@@ -262,8 +262,10 @@ volcanism.py          every-step eruption lifecycle for existing volcano nodes (
 faults.py            every-step intraplate fault-line lifecycle (stress-weighted Poisson
                      spawn near boundaries, Andersonian regime pick, sub-parallel fault
                      sets, per-regime relief within ~45 km of the trace, lock-up into
-                     permanent scars) -- an *additive* layer that never touches deform()'s
-                     own boundary classification; re-homed across merges/splits by
+                     permanent scars) plus fault *systems* (FaultSystem: a long curving
+                     master lineament + a wide strand family, one level above the lone
+                     trace) -- an *additive* layer that never touches deform()'s own
+                     boundary classification; re-homed across merges/splits by
                      reconcile_faults from world.step_world; backs the "Fault lines" map view
                      (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
 world.py             World/Plate orchestration: generate_world, step_world

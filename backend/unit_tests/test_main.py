@@ -489,6 +489,7 @@ def test_faults_is_empty_right_after_generate(client):
     resp = client.get("/world/faults")
     assert resp.status_code == 200
     assert resp.json()["faults"] == []
+    assert resp.json()["fault_systems"] == []
     assert client.get("/world/fault_at", params={"lat_deg": 0, "lon_deg": 0}).json()["fault_id"] is None
 
 
@@ -508,6 +509,18 @@ def test_faults_returns_well_formed_entries_after_stepping(client):
     assert f["kind"] in {"normal", "reverse", "strike_slip"}
     assert len(f["trace"]) >= 2 and all(len(p) == 3 for p in f["trace"])
     assert f["length_km"] > 0.0
+    assert "system_id" in f
+
+    # Fault systems: well-formed, and every strand's system_id points at a real system.
+    systems = body["fault_systems"]
+    system_ids = {s["system_id"] for s in systems}
+    for s in systems:
+        assert s["kind"] in {"normal", "reverse", "strike_slip"}
+        assert len(s["trace"]) >= 2 and all(len(p) == 3 for p in s["trace"])
+        assert s["length_km"] > 0.0
+    for strand in body["faults"]:
+        if strand["system_id"] is not None:
+            assert strand["system_id"] in system_ids
     # a click on the first fault's own midpoint hit-tests back to it
     mid = f["trace"][len(f["trace"]) // 2]
     lat = math.degrees(math.asin(max(-1.0, min(1.0, mid[2]))))

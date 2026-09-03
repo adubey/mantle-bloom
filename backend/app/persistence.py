@@ -51,6 +51,8 @@ def _backfill_added_fields(world: World) -> None:
         world.overlap_progress = {}
     if not hasattr(world, "faults"):
         world.faults = []
+    if not hasattr(world, "fault_systems"):
+        world.fault_systems = []
     # Eustatic sea level (eustasy.py): a save written before this existed has a fixed
     # sea_level_m and no water budget -- snapshot the budget from that save's own hypsometry
     # + sea level so loading it doesn't jump the shoreline, then let it be conserved onward.

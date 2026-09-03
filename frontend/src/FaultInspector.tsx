@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
-import type { FaultSummary, Projection, Segment } from "./api";
+import type { FaultSummary, FaultSystemSummary, Projection, Segment } from "./api";
 import { fetchFaultAt } from "./api";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon } from "./rotation";
@@ -8,6 +8,7 @@ import { useRotationDrag } from "./rotationDrag";
 
 interface Props {
   faults: FaultSummary[];
+  faultSystems: FaultSystemSummary[];
   coastlineSegments: Segment[];
   width: number;
   height: number;
@@ -57,9 +58,10 @@ const COASTLINE_HALO_RGB = "15, 15, 15";
 // long-press-drag rotate gesture as the other inspectors (rotationDrag.ts) plus
 // click-to-select and Tab/Shift+Tab to cycle faults.
 export default function FaultInspector({
-  faults, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
+  faults, faultSystems, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
   selectedFaultId, onSelectFault, onRotationPreview, onRotationCommitted,
 }: Props) {
+  const selectedSystemId = faults.find((f) => f.fault_id === selectedFaultId)?.system_id ?? null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -109,13 +111,49 @@ export default function FaultInspector({
     strokeEdges(coastlineSegments, `rgba(${COASTLINE_HALO_RGB}, 1.0)`, lineWidth * 2.6);
     strokeEdges(coastlineSegments, `rgba(${COASTLINE_RGB}, 1.0)`, lineWidth * 1.1);
 
-    const traceEdges = (fault: FaultSummary): [Vec3, Vec3][] => {
+    const traceEdges = (trace: [number, number, number][]): [Vec3, Vec3][] => {
       const edges: [Vec3, Vec3][] = [];
-      for (let i = 0; i + 1 < fault.trace.length; i++) {
-        edges.push([fault.trace[i] as Vec3, fault.trace[i + 1] as Vec3]);
+      for (let i = 0; i + 1 < trace.length; i++) {
+        edges.push([trace[i] as Vec3, trace[i + 1] as Vec3]);
       }
       return edges;
     };
+
+    // One continuous stroked path for a trace (unlike strokeEdges' per-segment strokes) --
+    // needed for the wide system belt, which would otherwise render as disjoint capsules.
+    const strokePolyline = (trace: [number, number, number][], color: string, w: number, dash: number[] = []) => {
+      if (trace.length < 2) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = w;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.setLineDash(dash);
+      ctx.beginPath();
+      for (let i = 0; i + 1 < trace.length; i++) {
+        const [[x1, y1], [x2, y2]] = projectEdge(trace[i] as Vec3, trace[i + 1] as Vec3, previewRotation, transform);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineJoin = "miter";
+      ctx.lineCap = "butt";
+    };
+
+    // Fault-system master lineaments, drawn first so the strand family sits on top: a broad
+    // translucent belt (the zone the strands scatter across) plus a thin dashed centerline.
+    for (const sys of faultSystems) {
+      const rgb = KIND_RGB[sys.kind];
+      const sel = sys.system_id === selectedSystemId;
+      const beltAlpha = sys.active ? (sel ? 0.28 : 0.14) : 0.07;
+      strokePolyline(sys.trace, `rgba(${rgb}, ${beltAlpha})`, lineWidth * (sel ? 26 : 18));
+      strokePolyline(
+        sys.trace,
+        `rgba(${rgb}, ${sys.active ? (sel ? 0.9 : 0.5) : 0.25})`,
+        lineWidth * (sel ? 2 : 1.2),
+        [lineWidth * 6, lineWidth * 5],
+      );
+    }
 
     const projectPoint = (v: Vec3): [number, number] => {
       const r = matApply(previewRotation, v);
@@ -130,7 +168,7 @@ export default function FaultInspector({
       const w = selected ? lineWidth * 3.2 : fault.active ? lineWidth * 2 : lineWidth * 1.3;
       const dash = fault.active ? [] : [lineWidth * 3, lineWidth * 3];
       const rgb = KIND_RGB[fault.kind];
-      strokeEdges(traceEdges(fault), `rgba(${rgb}, ${alpha})`, w, dash);
+      strokeEdges(traceEdges(fault.trace), `rgba(${rgb}, ${alpha})`, w, dash);
 
       // A midpoint mark, so a fault whose whole trace projects to a few pixels at world
       // scale still registers -- filled for an active fault, a hollow ring for a scar.
@@ -171,7 +209,7 @@ export default function FaultInspector({
   useEffect(() => {
     draw(rotation);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [faults, coastlineSegments, selectedFaultId, projection, rotation, width, height]);
+  }, [faults, faultSystems, coastlineSegments, selectedFaultId, projection, rotation, width, height]);
 
   const handleClick = (backingX: number, backingY: number) => {
     const transform = getRenderTransform(projection, width, height);

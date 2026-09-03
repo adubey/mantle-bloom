@@ -781,8 +781,26 @@ def _fault_summary(fault, plate, other_plate_tree) -> dict:
         "dip_deg": round(float(fault.dip_deg), 1),
         "length_km": round(float(fault.length_km()), 1),
         "set_id": fault.set_id,
+        "system_id": fault.system_id,
         "birth_distance_from_boundary_km": round(float(fault.birth_distance_from_boundary_km), 1),
         "distance_from_boundary_km": round(float(dist_rad) * mantle.PLANET_RADIUS_KM, 1),
+    }
+
+
+def _fault_system_summary(system, plate) -> dict:
+    """One fault system's inspector payload -- its master lineament in true world coords,
+    plus the belt-scale metadata. The strand `Fault`s carry `system_id` and are returned in
+    the same `faults` list."""
+    master = faults.system_world_points(system, plate)
+    return {
+        "system_id": system.system_id,
+        "plate_id": system.plate_id,
+        "kind": system.kind,
+        "trace": _round_coords(master),
+        "active": bool(system.active),
+        "length_km": round(float(system.length_km), 1),
+        "age_myr": round(float(system.age_myr), 2),
+        "lifespan_myr": round(float(system.lifespan_myr), 2),
     }
 
 
@@ -814,7 +832,12 @@ def list_faults() -> dict:
             for fault in world.faults
             if fault.plate_id in by_id
         ]
-        return {"elapsed_years": world.elapsed_years, "faults": summaries}
+        systems = [
+            _fault_system_summary(system, by_id[system.plate_id])
+            for system in world.fault_systems
+            if system.plate_id in by_id
+        ]
+        return {"elapsed_years": world.elapsed_years, "faults": summaries, "fault_systems": systems}
 
 
 @app.get("/world/fault_at")

@@ -5,7 +5,7 @@ import {
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  FaultSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
+  FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
@@ -241,6 +241,7 @@ export default function App() {
   // (a monotonic counter on the backend, see World.next_fault_id), so the selection only
   // resets on a generate, like selectedPlateId.
   const [faultsData, setFaultsData] = useState<FaultSummary[]>([]);
+  const [faultSystemsData, setFaultSystemsData] = useState<FaultSystemSummary[]>([]);
   const [selectedFaultId, setSelectedFaultId] = useState<number | null>(null);
   // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see
   // MapCanvas.tsx's onProbe and the popup JSX below). `displayX`/`displayY` place it over the
@@ -372,6 +373,7 @@ export default function App() {
     try {
       const data = await fetchFaults();
       setFaultsData(data.faults);
+      setFaultSystemsData(data.fault_systems);
     } catch (e) {
       setError(String(e));
     }
@@ -569,6 +571,10 @@ export default function App() {
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
   const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
   const selectedFault = faultsData.find((f) => f.fault_id === selectedFaultId) ?? null;
+  const selectedFaultSystem =
+    selectedFault?.system_id != null
+      ? faultSystemsData.find((s) => s.system_id === selectedFault.system_id) ?? null
+      : null;
 
   // Re-render with the current world whenever the projection, map view, or view rotation
   // changes -- all three are baked server-side into the returned image (see api.ts's
@@ -877,7 +883,14 @@ export default function App() {
               <legend style={{ fontSize: 11 }}>Selected fault</legend>
               {selectedFault ? (
                 <div style={{ opacity: 0.9 }}>
-                  <div>id: {selectedFault.fault_id}{selectedFault.set_id != null ? ` (family #${selectedFault.set_id})` : ""}</div>
+                  <div>
+                    id: {selectedFault.fault_id}
+                    {selectedFault.system_id != null
+                      ? ` (system #${selectedFault.system_id})`
+                      : selectedFault.set_id != null
+                      ? ` (family #${selectedFault.set_id})`
+                      : ""}
+                  </div>
                   <div>type: {FAULT_KIND_LABEL[selectedFault.kind]}</div>
                   <div style={{ color: selectedFault.active ? "#8fd07a" : undefined }}>
                     {selectedFault.active ? "active" : "locked-up scar"}
@@ -892,10 +905,26 @@ export default function App() {
                     from boundary: {selectedFault.distance_from_boundary_km.toFixed(0)} km
                     {" "}(born at {selectedFault.birth_distance_from_boundary_km.toFixed(0)})
                   </div>
+                  {selectedFaultSystem && (
+                    <div style={{ marginTop: 4, paddingTop: 4, borderTop: "1px solid #333" }}>
+                      <div>strand of system #{selectedFaultSystem.system_id}</div>
+                      <div>
+                        {FAULT_KIND_LABEL[selectedFaultSystem.kind]} zone,{" "}
+                        {selectedFaultSystem.length_km.toFixed(0)} km along the belt
+                      </div>
+                      <div>
+                        system age: {selectedFaultSystem.age_myr.toFixed(0)} /{" "}
+                        {selectedFaultSystem.lifespan_myr.toFixed(0)} Myr
+                        {selectedFaultSystem.active ? "" : " (inactive)"}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ opacity: 0.6 }}>
-                  {faultsData.length > 0 ? "Click a fault, or press Tab." : "No faults yet -- step the world forward."}
+                  {faultsData.length > 0
+                    ? `Click a fault, or press Tab.${faultSystemsData.length > 0 ? ` ${faultSystemsData.length} fault system(s).` : ""}`
+                    : "No faults yet -- step the world forward."}
                 </div>
               )}
             </fieldset>
@@ -965,6 +994,7 @@ export default function App() {
           ) : mapView === "faultInspector" ? (
             <FaultInspector
               faults={faultsData}
+              faultSystems={faultSystemsData}
               coastlineSegments={coastlineSegments}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}
@@ -1055,7 +1085,7 @@ export default function App() {
                 : mapView === "lakeInspector"
                   ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
                   : mapView === "faultInspector"
-                  ? "Click a fault to select it. Tab / Shift+Tab cycles faults. Solid = active, dashed = locked-up scar. Press and hold, then drag to rotate."
+                  ? "Click a fault to select it. Tab / Shift+Tab cycles faults. Solid = active strand, thin dash = a fault system's master lineament (its shaded belt is where the strands scatter). Press and hold, then drag to rotate."
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
                     : "Press and hold, then drag the map to rotate it."}

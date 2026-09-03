@@ -116,6 +116,13 @@ class World:
     # a plain-int default so an old pickle falls through to 0.
     faults: list = field(default_factory=list)
     next_fault_id: int = 0
+    # Fault systems (see faults.FaultSystem) -- a first-class zone above the individual
+    # trace: one long curving master lineament plus the strand family (`Fault`s carrying its
+    # `system_id`) scattered along its belt. Same local-frame storage, same
+    # update_faults / reconcile_faults lifecycle. `default_factory` -> backfilled on load;
+    # `next_fault_system_id` is a plain-int default so an old pickle falls through to 0.
+    fault_systems: list = field(default_factory=list)
+    next_fault_system_id: int = 0
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs

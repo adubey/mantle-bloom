@@ -593,8 +593,21 @@ is `[]` before the first step. `404` if no world has been generated yet.
       "dip_deg": 31.0,
       "length_km": 63.0,
       "set_id": null,
+      "system_id": 2,
       "birth_distance_from_boundary_km": 210.0,
       "distance_from_boundary_km": 260.0
+    }
+  ],
+  "fault_systems": [
+    {
+      "system_id": 2,
+      "plate_id": 5,
+      "kind": "reverse",
+      "trace": [[0.34, -0.10, -0.93], ["..."]],
+      "active": true,
+      "length_km": 2840.0,
+      "age_myr": 4.4,
+      "lifespan_myr": 96.0
     }
   ]
 }
@@ -606,7 +619,12 @@ is `[]` before the first step. `404` if no world has been generated yet.
   of unit vectors (rounded), not a branch-capable edge list.
 - `active` is `false` once the fault has locked up and survives only as an inert scar.
 - `cumulative_offset_m` is total slip since birth; `set_id` is non-`null` (and equal to the
-  family's first member's `fault_id`) for a member of a sub-parallel fault family.
+  family's first member's `fault_id`) for a member of a tight sub-parallel fault family.
+- `system_id` is non-`null` for a strand of a **fault system** -- the entry in `fault_systems`
+  with the matching id holds that zone's long, gently curving master lineament (`trace`) and
+  belt-scale metadata (see [simulation-model.md#faults](simulation-model.md#faults)). The
+  master trace applies no relief of its own; its strands (the `faults` entries carrying the
+  `system_id`) do. `fault_systems` is `[]` before the first step.
 - `distance_from_boundary_km` is recomputed live each call (nearest cross-plate node), so it
   changes as the plate moves, unlike the stored `birth_distance_from_boundary_km`.
 

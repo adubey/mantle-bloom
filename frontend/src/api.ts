@@ -150,16 +150,34 @@ export interface FaultSummary {
   lifespan_myr: number;
   dip_deg: number;
   length_km: number;
-  // Non-null for a member of a sub-parallel fault family (Basin-and-Range-style) -- equal to
-  // the family's first member's fault_id.
+  // Non-null for a member of a tight sub-parallel fault family (Basin-and-Range-style) --
+  // equal to the family's first member's fault_id.
   set_id: number | null;
+  // Non-null for a strand of a fault *system* (see FaultSystemSummary) -- a much larger,
+  // spatially-extended zone than a `set_id` family.
+  system_id: number | null;
   birth_distance_from_boundary_km: number;
   distance_from_boundary_km: number;
+}
+
+// A fault system / zone (see backend faults.FaultSystem): one long, gently curving master
+// lineament that a family of `FaultSummary` strands (each carrying this `system_id`) is
+// scattered along. The master trace itself applies no relief -- it's a scaffold.
+export interface FaultSystemSummary {
+  system_id: number;
+  plate_id: number;
+  kind: FaultKind;
+  trace: [number, number, number][];
+  active: boolean;
+  length_km: number;
+  age_myr: number;
+  lifespan_myr: number;
 }
 
 export interface FaultsResponse {
   elapsed_years: number;
   faults: FaultSummary[];
+  fault_systems: FaultSystemSummary[];
 }
 
 export interface RiversResponse {
