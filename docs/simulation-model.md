@@ -22,6 +22,7 @@
 - [Erosion](#erosion)
 - [Bathymetry](#bathymetry)
 - [Eustatic sea level](#eustatic-sea-level)
+- [Live tuning knobs](#tuning-knobs)
 - [Resources and soil](#resources-and-soil)
 - [Hydrology (rivers and lakes)](#hydrology)
 - [Glaciation](#glaciation)
@@ -2106,6 +2107,9 @@ regularization](#line-regularization) -- and the old periodic gap-fill/reassign 
 gone entirely, see [Whole-sphere coverage](#gap-filling)/[Boundary point
 reassignment](#reassignment)).
 
+Nine of the twelve live [tuning knobs](#tuning-knobs) act here -- each erosion/deposition
+term reads a `world.*_multiplier` scale (default `1.0`) at the point it is formed.
+
 <a id="bathymetry"></a>
 ## Bathymetry (`bathymetry.py`)
 
@@ -2195,6 +2199,83 @@ roughly halves against a fixed sea level (~-0.025 vs ~-0.052), and the trajector
 from monotonic decline to a slight rise then a slow decline as sea level tracks the basins
 down (to roughly -150 to -300 m over the run). See docs/TODO.md "Land fraction slowly
 declines".
+
+<a id="tuning-knobs"></a>
+## Live tuning knobs (`world.TUNING_MULTIPLIER_FIELDS`)
+
+The long-run land budget is a tug-of-war between a handful of erosion, deposition, uplift and
+volcanism processes whose individual hard-coded rates can't be recalibrated for one seed
+without regressing another. Twelve **dimensionless multipliers** on `World` let the user
+retune a *live* world and watch the result, via the "Controls" window / `POST /world/controls`
+(same immediate-`climate_cache`-recompute path as `sea_level_m`/`solar_multiplier`). Every one
+defaults to `1.0`, and `1.0` is **byte-identical** to the code before the knobs existed (plain
+IEEE `*1.0`; verified by `test_tuning_knobs.py` and an old-pickle load). Negative values are
+rejected with a `400`.
+
+| Knob | Scales | Where |
+|---|---|---|
+| `rain_erosion_multiplier` | rain/sheet erosion term | `erosion.apply_erosion` |
+| `river_erosion_multiplier` | stream-power river erosion term | `erosion.apply_erosion` |
+| `wind_erosion_multiplier` | wind-driven weathering term | `erosion.apply_erosion` |
+| `ocean_erosion_multiplier` | submarine slump + coastal wave/frost attack | `erosion.apply_erosion` |
+| `coastal_leveling_multiplier` | the symmetric near-shore planation *grind* (`ground_off`) | `erosion.apply_erosion` |
+| `glacier_erosion_multiplier` | glacial abrasion term **and** the ice-flattening blur (`_flatten`) | `erosion.apply_erosion` |
+| `seismic_erosion_multiplier` | earthquake-triggered landsliding term | `erosion.apply_erosion` |
+| `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
+| `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
+| `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `LithospherePlate.deform` |
+| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line (`_dilate_1d`); `<1` narrows/weakens it instead | `LithospherePlate.deform` |
+| `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
+
+**Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
+neighbour-drop cap, the transport split and the isostatic bookkeeping downstream all see a
+consistent scaled amount. The two *deposition* knobs instead scale the already-spread settled
+sediment (scaling the pre-spread pool would desync the mass-conserving `np.add.at` spread
+against the deep-water remainder), so away from `1.0` they are a small deliberate
+non-conservative shelf-building / shelf-starving source -- the same character as
+`flatten_delta` or lake siltation.
+
+**Collision uplift is in the real engine.** The live mountain-building path is
+`LithospherePlate.deform` -> `rheology.apply_convergent_deformation` (thicken `Hc`/`Hm`, then
+read isostasy), **not** the `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` code in
+`PlateWithLines.deform`, which is dead for any generated world. The *amount* knob is a
+`strength` multiplier on the plastic thickening; the *reach* knob widens the node band that
+thickens (a near-field ring at `COLLISION_REACH_NEAR_FIELD_FACTOR` of the contested rate,
+`COLLISION_REACH_DILATION_NODES_PER_UNIT` nodes wider per unit of multiplier above 1).
+
+### Effect sizes
+
+Measured on seed 20, node_density 1, climate on, 80 My (40 x 2 My steps), land fraction and
+mean land elevation vs. an all-`1.0` baseline of `land = 0.294`, `mean = 1172 m`:
+
+| Setting | land | mean elev | note |
+|---|---|---|---|
+| `ocean_deposition` 0x / 3x | 0.285 / **0.317** | 1185 / 1152 | **strongest single land lever** -- ~+8% land area at 3x |
+| `coastal_leveling` 0x | 0.300 | 1179 | planation off -> coasts keep their relief (the "save my land" direction) |
+| `volcanism` 4x | 0.299 | 1185 | modest; only bites where a seed actually has active volcano nodes |
+| `collision_uplift` 0.2x / 3x | 0.291 / 0.297 | 1181 / 1193 | monotonic on land *and* mean elevation |
+| `collision_uplift_reach` 3x | 0.295 | 1158 | `elev_max` 8000 -> 8800 m: the belt spreads and the crest climbs |
+| all erosion 0.3x / 3x | 0.297 / 0.291 | 1178 / 1157 | small over long runs -- see damping note |
+| `river_deposition` 3x | 0.294 | 1176 | ~flat on this seed/horizon; fattens individual deltas locally |
+
+Two things compress the whole-world numbers, and both are *features*, not knob weakness:
+
+- **[Eustasy](#eustatic-sea-level) is a negative feedback.** Ocean water volume is conserved,
+  so building land anywhere (deposition up, erosion down, uplift up) displaces water, raises
+  the eustatic stand, and re-drowns marginal coastline elsewhere -- roughly halving the
+  net whole-sphere land-fraction change a knob would produce without it.
+- **Erosional isostatic compensation** rebounds most of any sustained elevation change over
+  tens of My, so an erosion knob's effect on *mean elevation* is far larger on a short
+  horizon than after the crust has re-floated. `test_tuning_knobs.py` pins the clean
+  short-horizon scaling (e.g. total `crustal_thickness_m` scales monotonically with
+  `collision_uplift_multiplier` over 6 steps); the table above is the damped long-run
+  residual.
+
+Practical guidance: for a world visibly losing land, `ocean_deposition_multiplier` ~2-3x is
+the biggest lever, `coastal_leveling_multiplier` ~0.3 and `ocean_erosion_multiplier` ~0.5
+stop the coastline being ground down, and `collision_uplift_multiplier` ~2 with
+`collision_uplift_reach_multiplier` ~2 rebuilds interior relief. Stack them -- the per-knob
+effects roughly add.
 
 <a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)

@@ -183,6 +183,32 @@ def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
     return out
 
 
+def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
+    """`mask` grown by `width` positions on each side, within the 1-D node order (used per
+    line, so no wrap). `width <= 0` returns an unchanged copy. Backs the collision-uplift
+    *reach* knob: a wider contested band -> the orogenic thickening spreads into a broader
+    belt, the same "how far inland does a collision crumple crust" lever v1 had as
+    COLLISION_RANGE_RAD."""
+    if width <= 0 or not mask.any():
+        return mask.copy()
+    out = mask.copy()
+    for shift in range(1, width + 1):
+        out[shift:] |= mask[:-shift]
+        out[:-shift] |= mask[shift:]
+    return out
+
+
+# The collision-uplift *reach* knob (World.collision_uplift_reach_multiplier) dilates the
+# contested band feeding the orogenic thickening by this many nodes per unit of multiplier
+# above 1.0 (so reach 3x -> +4 nodes each side of every contested stretch, at the default
+# node density); below 1.0 it instead scales the thickening strength down. Reach exactly 1.0
+# is a no-op either way.
+COLLISION_REACH_DILATION_NODES_PER_UNIT = 2
+# Near-field (dilated-but-not-contested) nodes thicken at this fraction of the contested
+# rate -- a collision belt's deformation fades outward from the suture, it doesn't step.
+COLLISION_REACH_NEAR_FIELD_FACTOR = 0.4
+
+
 def _redistribute_accreted_column(
     persistent_fields: dict[str, np.ndarray],
     elevation: np.ndarray,
@@ -312,6 +338,20 @@ class LithospherePlate(PlateWithLines):
         years_myr = years / 1_000_000.0
         rho_c = self.crust_density()
 
+        # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
+        # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
+        # widens (>1) or narrows (<1) the belt it acts on -- see _dilate_1d /
+        # COLLISION_REACH_*. Both exactly 1.0 leave apply_convergent_deformation's strength at
+        # 1.0 over precisely the contested set, i.e. byte-identical to before the knobs.
+        orogen_amount = world.collision_uplift_multiplier
+        orogen_reach = world.collision_uplift_reach_multiplier
+        orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)
+        orogen_dilation_nodes = (
+            round((orogen_reach - 1.0) * COLLISION_REACH_DILATION_NODES_PER_UNIT)
+            if orogen_reach > 1.0 and self.crust_type == "continental"
+            else 0
+        )
+
         fault_noise = (
             SphereNoise(np.random.default_rng((world.seed, self.plate_id, 9001)), octaves=3, base_freq=9.0)
             if self.crust_type == "continental"
@@ -361,7 +401,19 @@ class LithospherePlate(PlateWithLines):
             rho_c = self.crust_density()
             elevation_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
 
-            if np.any(contested):
+            # The band that plastically thickens: the contested nodes at
+            # `orogen_contested_strength`, plus (reach knob > 1) a dilated near-field ring at
+            # a faded rate. `orogen_strength` is the per-node multiplier handed to
+            # apply_convergent_deformation; > 0 exactly on the nodes that thicken.
+            near_field = (
+                _dilate_1d(contested, orogen_dilation_nodes) & ~contested & ~divergent
+                if orogen_dilation_nodes > 0
+                else np.zeros(n, dtype=bool)
+            )
+            orogen_strength = np.where(contested, orogen_contested_strength, 0.0)
+            orogen_strength[near_field] = orogen_amount * COLLISION_REACH_NEAR_FIELD_FACTOR
+            thicken = orogen_strength > 0.0
+            if np.any(thicken):
                 fault_factor = (
                     np.where(
                         fault_noise.sample(geometry.local_xyz(np.full(n, line.phi), line.theta)) < -0.15,
@@ -376,9 +428,12 @@ class LithospherePlate(PlateWithLines):
                 # thrust onto the leading edge in `_grow_or_shrink_line_for_deform` (see
                 # `_redistribute_accreted_column`). This path is just the ordinary
                 # yield-limited plastic thickening.
-                new_hc, new_hm = rheology.apply_convergent_deformation(hc[contested], hm[contested], closing_rate[contested], years_myr, fault_factor[contested])
-                hc[contested] = new_hc
-                hm[contested] = new_hm
+                new_hc, new_hm = rheology.apply_convergent_deformation(
+                    hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
+                    fault_factor[thicken], strength=orogen_strength[thicken],
+                )
+                hc[thicken] = new_hc
+                hm[thicken] = new_hm
 
             # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
             # the mantle wedge and underplates juvenile crust across the whole arc band --
@@ -430,7 +485,9 @@ class LithospherePlate(PlateWithLines):
             reason = line.elev_change_reason.copy()
             moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
             if self.crust_type == "continental":
-                reason[contested & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
+                # near_field (the reach knob's dilated ring) is continent-continent orogenic
+                # belt too, so it carries the same COLLISION provenance as the contested core.
+                reason[(contested | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
                 reason[contested & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
                 reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
             else:

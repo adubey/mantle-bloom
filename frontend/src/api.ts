@@ -303,20 +303,41 @@ export function generateWorld(
   }).then(asJson<WorldSummary>);
 }
 
-// Live-adjusts sea level, solar heat, and/or the plate-movement/climate-biomes step toggles
-// on the current world (the "Controls" window -- see backend app/world.py's
-// World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
-// World.simulate_climate_biomes and main.py's /world/controls) -- any argument may be
-// omitted to leave that value untouched. Forces an immediate server-side climate recompute,
-// so the caller should re-fetch /world/render and /world/stats right after this resolves to
-// see the effect.
-export interface ControlsState {
+// The geomorphic-budget tuning knobs (backend world.TUNING_MULTIPLIER_FIELDS) -- all
+// dimensionless multipliers, 1.0 == the model's untuned behaviour. Kept as one list so the
+// request body, the response type and the Controls UI all stay in sync from a single source.
+export const TUNING_MULTIPLIER_KEYS = [
+  "rain_erosion_multiplier",
+  "river_erosion_multiplier",
+  "wind_erosion_multiplier",
+  "ocean_erosion_multiplier",
+  "coastal_leveling_multiplier",
+  "glacier_erosion_multiplier",
+  "seismic_erosion_multiplier",
+  "river_deposition_multiplier",
+  "ocean_deposition_multiplier",
+  "collision_uplift_multiplier",
+  "collision_uplift_reach_multiplier",
+  "volcanism_multiplier",
+] as const;
+export type TuningKey = (typeof TUNING_MULTIPLIER_KEYS)[number];
+export type TuningMultipliers = Record<TuningKey, number>;
+
+// Live-adjusts sea level, solar heat, the plate-movement/climate-biomes step toggles, the
+// wind model, and/or the geomorphic-budget tuning multipliers on the current world (the
+// "Controls" window -- see backend app/world.py's World.sea_level_m/World.solar_multiplier/
+// World.simulate_plate_movement/World.simulate_climate_biomes/World.wind_model, its
+// tuning-knob field group, and main.py's /world/controls) -- any argument may be omitted to
+// leave that value untouched. Forces an immediate server-side climate recompute, so the
+// caller should re-fetch /world/render and /world/stats right after this resolves to see the
+// effect.
+export type ControlsState = {
   sea_level_m: number;
   solar_multiplier: number;
   simulate_plate_movement: boolean;
   simulate_climate_biomes: boolean;
   wind_model: string;
-}
+} & TuningMultipliers;
 
 export function updateControls(controls: {
   seaLevelM?: number;
@@ -324,6 +345,7 @@ export function updateControls(controls: {
   simulatePlateMovement?: boolean;
   simulateClimateBiomes?: boolean;
   windModel?: string;
+  tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
   return fetch(`${API_BASE}/world/controls`, {
     method: "POST",
@@ -334,6 +356,7 @@ export function updateControls(controls: {
       simulate_plate_movement: controls.simulatePlateMovement,
       simulate_climate_biomes: controls.simulateClimateBiomes,
       wind_model: controls.windModel,
+      ...controls.tuning,
     }),
   }).then(asJson<ControlsState>);
 }

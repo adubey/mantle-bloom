@@ -34,7 +34,7 @@ from . import (
     stats,
     stranded_basins,
 )
-from .world import DEFAULT_MANTLE_CENTERS, World, generate_world, step_world
+from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
 # client's query string, and PIL will happily try to allocate whatever it's told, so an
@@ -167,6 +167,21 @@ class ControlsRequest(BaseModel):
     simulate_plate_movement: bool | None = None
     simulate_climate_biomes: bool | None = None
     wind_model: str | None = None
+    # Geomorphic-budget tuning knobs -- dimensionless multipliers, 1.0 == untuned (see
+    # world.TUNING_MULTIPLIER_FIELDS and World's field group). Same "only the touched one is
+    # sent" convention as the fields above; each is rejected below if negative.
+    rain_erosion_multiplier: float | None = None
+    river_erosion_multiplier: float | None = None
+    wind_erosion_multiplier: float | None = None
+    ocean_erosion_multiplier: float | None = None
+    coastal_leveling_multiplier: float | None = None
+    glacier_erosion_multiplier: float | None = None
+    seismic_erosion_multiplier: float | None = None
+    river_deposition_multiplier: float | None = None
+    ocean_deposition_multiplier: float | None = None
+    collision_uplift_multiplier: float | None = None
+    collision_uplift_reach_multiplier: float | None = None
+    volcanism_multiplier: float | None = None
 
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
@@ -653,21 +668,29 @@ def animate(req: AnimateRequest) -> StreamingResponse:
 @app.post("/world/controls")
 def set_controls(req: ControlsRequest) -> dict:
     """Live-adjusts sea level, solar heat, the plate-movement/climate-biomes step toggles,
-    and/or the wind model on the current world (the "Controls" window -- see World.sea_level_m/
-    World.solar_multiplier/World.simulate_plate_movement/World.simulate_climate_biomes/
-    World.wind_model) and immediately recomputes world.climate_cache so the very next /world/render or
+    the wind model, and/or the geomorphic-budget tuning multipliers
+    (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
+    coastal leveling, river/ocean deposition, collision uplift rate & reach, volcanism; all
+    dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
+    World.sea_level_m/World.solar_multiplier/World.simulate_plate_movement/
+    World.simulate_climate_biomes/World.wind_model and World's tuning-knob field group) and
+    immediately recomputes world.climate_cache so the very next /world/render or
     /world/stats call reflects the change without waiting for a step -- climate_cache is
     otherwise only refreshed by erosion.py once per step (see World.climate_cache), which
     would make a real-time control feel laggy or unresponsive between steps. This one-time
     recompute happens regardless of the current simulate_climate_biomes setting -- it's a
     single call triggered by a UI action, not a per-step cost, so it's cheap even when the
-    user has turned off per-step climate computation to speed up stepping. `404` if no world
-    has been generated yet."""
+    user has turned off per-step climate computation to speed up stepping. `400` for an
+    unknown wind model or a negative multiplier; `404` if no world has been generated yet."""
     world = _require_world()
     if req.wind_model is not None and req.wind_model not in WIND_MODEL_CHOICES:
         raise HTTPException(
             status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
         )
+    tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
+    for name, value in tuning_updates.items():
+        if value < 0.0:
+            raise HTTPException(status_code=400, detail=f"{name} must be >= 0 (got {value})")
     with _world_lock:
         if req.sea_level_m is not None:
             # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
@@ -682,6 +705,8 @@ def set_controls(req: ControlsRequest) -> dict:
             world.simulate_climate_biomes = req.simulate_climate_biomes
         if req.wind_model is not None:
             world.wind_model = req.wind_model
+        for name, value in tuning_updates.items():
+            setattr(world, name, float(value))
         world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
     return {
         "sea_level_m": world.sea_level_m,
@@ -689,6 +714,7 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,
+        **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},
     }
 
 
