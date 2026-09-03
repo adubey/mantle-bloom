@@ -357,7 +357,9 @@ sweep further down all reduce to it. Grounded in a full read of `lithosphere_pla
 `rheology.apply_convergent_deformation`, `elevation_lines.regularize_line` /
 `split_into_contiguous_runs`, `torque.classify_boundary_nodes`.
 
-**What retreat can and can't do today.** A plate is a stack of `ElevationLine` rows at fixed
+**What retreat can and can't do today.** *(The "nothing removes a whole leading row" gap
+below was closed 2026-09-02 by ranked-mechanism 2 -- `_retreat_contested_leading_rows`. The
+rest of this design pass stands.)* A plate is a stack of `ElevationLine` rows at fixed
 plate-local `phi`, each a theta-sorted node array plus parallel Hc/Hm arrays; isostasy derives
 `elevation` from Hc (you never set elevation directly). Growth/shrink is:
 - **end-only per row** -- `_grow_or_shrink_line_for_deform` trims `shrinkable` nodes only
@@ -379,7 +381,7 @@ regimes, two of them with no implementation:
 |---|---|---|
 | **Transverse** (crosses many phi-rows) | bunched at one theta-end of each row | end-trim works (runs >=3, ends only) |
 | **Oblique** (enters a row mid-span) | a run mid-row, live nodes both sides | nothing -- interior carve is oceanic-only; the tongue just thickens in place |
-| **Parallel** (compression along phi) | the whole frontmost row(s), full theta width | nothing -- no uncontested end, no whole-row removal -> continental plate *cannot* retreat |
+| **Parallel** (compression along phi) | the whole frontmost row(s), full theta width | whole-row drop after 5 My sustained >=70% override (`_retreat_contested_leading_rows`, done 2026-09-02) |
 
 Gotcha: the grid is plate-local, each plate has its own `frame`, so one suture is
 simultaneously *parallel* to plate A's rows and *transverse* to plate B's. You cannot punt
@@ -426,11 +428,39 @@ variant** (`_redistribute_accreted_column`); the refinements below are how it wa
    pin it. **Left for the leading-row drop (2 below):** the *parallel-suture* regime, where a
    plate's frontmost row is entirely contested -- the gate freezes its growth but nothing
    removes the row, so that pile-up still can't retreat.
-2. **Make `_claim_adjacent_territory` reversible -- a leading-row drop.** The structural fix
-   for the parallel-suture regime: the existing claim logic with the sign flipped, run at the
-   same point in `deform()`. If a plate's outermost phi-row is >= ~70% contested for >= N
-   sustained steps, delete the whole row. Whole-row removal keeps the plate contiguous (the
-   lobe-severing hazard is specific to *mid*-plate carving), so far safer than splitting rows.
+2. **Make `_claim_adjacent_territory` reversible -- a leading-row drop. DONE 2026-09-02**
+   (branch `feat/leading-row-drop`). The structural fix for the parallel-suture regime: the
+   existing claim logic with the sign flipped, run at the same point in `deform()`.
+   `LithospherePlate._retreat_contested_leading_rows` (continental crust only) drops a plate's
+   outermost phi-row at either extreme once `LEADING_ROW_CONTESTED_FRACTION` (0.7) of its
+   nodes have been contested for a cumulative `LEADING_ROW_RETREAT_SUSTAINED_YEARS` (5 My) of
+   deform time -- a per-plate `_leading_row_retreat_years` tally keyed by extreme (survives a
+   rotation since rows are plate-local; resets on merge/split/load, which only delays a drop).
+   Whole-row removal keeps the plate contiguous -- the lobe-severing hazard is specific to
+   *mid*-row carving -- so it is gated only by `LEADING_ROW_DROP_MIN_ROWS` (4). It does not
+   plumb the dropped column's volume anywhere (parity with the 2026-09-02 end-retreat); the
+   newly-exposed row is contested next step and thickens through the ordinary
+   `CONTINENTAL_COLLISION_SHORTENING_BOOST` path. The drop/claim asymmetry is deliberate:
+   `_claim_adjacent_territory` adds a row the instant space opens, retreat waits out 5 My of
+   sustained override so a transient boundary wobble can't thrash a stable margin.
+   `test_lithosphere_contested_leading_row_is_dropped_after_sustained_override` pins it.
+
+   **Measured (seed 936513024, node_density 1, climate off, 800 x 100-ky steps -- the same
+   config as the "Node-count creep" table above).** The drop *fires* readily: 82 whole-row
+   drops over 80 My across ~9 continental plates (several plates dropping a row every few Myr
+   as their leading edge is continuously overridden). But aggregate continental node count is
+   **unchanged** vs the drop disabled: +12.8% vs +12.9% at 80 My (total nodes +2.4% vs +2.2%,
+   plate count 20 vs 19). Two reasons, both expected: (a) on a young from-scratch world almost
+   every overridden continental margin faces *ocean*, and the freed ground re-tiles as new
+   oceanic crust within a step or two; (b) the drop removes one outermost row per extreme per
+   5 My while the plate's *trailing* (divergent) edge keeps growing unbounded every step --
+   only the volume cap (1) caps that. So this is a **correctness fix for the stalled
+   parallel continent-continent suture** (the `overlapAge` view's frozen multi-plate
+   collisions -- verified directly: a plate whose whole front row a neighbour overruns loses
+   that row after 5 My instead of never), **not** a node-count-creep fix.
+
+   **Still open:** the volume cap (1) is still the regime-free runaway-killer and remains the
+   priority -- it is what stops the trailing-edge growth this mechanism can't touch.
 3. **Suture consumption as accretion, replacing (not stacking on)
    `CONTINENTAL_COLLISION_SHORTENING_BOOST`.** **DONE 2026-09-02.** When a continental
    contested end retreats against a *continental* neighbour (`accrete_all = shrinkable_all &
@@ -460,13 +490,13 @@ variant** (`_redistribute_accreted_column`); the refinements below are how it wa
    for per-*step* use (its coverage radius balloons the plate); as a periodic re-fit-to-
    outline that objection may not hold. Prototype-worthy.
 
-**Recommendation.** Volume cap (1) first as the regime-free runaway-killer; leading-row drop
-(2) for the parallel-suture gap; suture accretion (3) ~~later for honesty~~ **done
+**Recommendation.** Volume cap (1) first as the regime-free runaway-killer; ~~leading-row drop
+(2) for the parallel-suture gap~~ (done 2026-09-02); suture accretion (3) ~~later for honesty~~ **done
 2026-09-02** (within-plate imbricate version; cross-plate terrane transfer deferred). The
 design rule the regime table implies: for continental crust, prefer whole-row ops + volume
 caps over mid-row carving/splitting.
 
-**Progress:** mechanisms (1) and (3) landed 2026-09-02 (see their entries above). (2) and
+**Progress:** mechanisms (1) (2) and (3) landed 2026-09-02 (see their entries above).
 (4) still open.
 
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**

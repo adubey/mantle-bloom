@@ -1120,6 +1120,80 @@ def test_lithosphere_arc_magmatism_thickens_the_continental_margin_band(monkeypa
     assert np.allclose(hc_on[lo], np.interp(theta_on[lo], theta_off, hc_off), atol=5.0)
 
 
+def test_lithosphere_contested_leading_row_is_dropped_after_sustained_override():
+    """The parallel-suture retreat op: a continental plate's outermost phi-row that a
+    neighbour has overridden over its full theta width -- no uncontested end for end-trim,
+    no mid-row carve allowed -- is dropped whole once the override has held for a cumulative
+    LEADING_ROW_RETREAT_SUSTAINED_YEARS. Inner rows and a control plate with open ground are
+    untouched."""
+    from app.lithosphere import reference_thickness
+    from app.lithosphere_plate import (
+        LEADING_ROW_CONTESTED_FRACTION,
+        LEADING_ROW_RETREAT_SUSTAINED_YEARS,
+        LithospherePlate,
+    )
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    hc0, hm0 = reference_thickness("continental")
+
+    def _rows(phis, theta_lo, theta_hi, n):
+        theta = np.linspace(theta_lo, theta_hi, n)
+        return [
+            ElevationLine(
+                phi=phi,
+                theta=theta.copy(),
+                elevation=np.zeros(n),
+                crustal_thickness_m=np.full(n, hc0),
+                mantle_lithosphere_thickness_m=np.full(n, hm0),
+            )
+            for phi in phis
+        ]
+
+    front_phi = 0.30
+    inner_phis = [0.10, 0.15, 0.20, 0.25]
+    continent = LithospherePlate(
+        plate_id=0, frame=np.eye(3), crust_type="continental",
+        lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),
+    )
+    # A continental neighbour whose (densely-spaced) rows straddle the continent's front row
+    # and just outrun it in theta -> every node of the phi=0.30 row falls inside the
+    # neighbour's polygon (a suture *parallel* to the continent's own rows: no uncontested
+    # end, so end-trim can't touch it), while the lower inner rows stay clear of it.
+    neighbour = LithospherePlate(
+        plate_id=1, frame=np.eye(3), crust_type="continental",
+        lines=_rows(list(front_phi - 0.5 * spacing + spacing * np.arange(10)), -0.53, 0.53, 60),
+    )
+    world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+
+    def front_row_present() -> bool:
+        return any(abs(ln.phi - front_phi) < 1e-6 for ln in continent.lines)
+
+    def inner_rows_present() -> bool:
+        return all(any(abs(ln.phi - p) < 1e-6 for ln in continent.lines) for p in inner_phis)
+
+    years_per_step = 1_000_000
+    steps_to_drop = int(np.ceil(LEADING_ROW_RETREAT_SUSTAINED_YEARS / years_per_step))
+
+    assert LEADING_ROW_CONTESTED_FRACTION <= 1.0
+    for step in range(steps_to_drop):
+        assert front_row_present(), f"front row gone early, on step {step}"
+        continent.deform(world, [neighbour], years=years_per_step, max_distance=1.5 * spacing)
+
+    assert not front_row_present(), "sustained-override front row should have been dropped"
+    assert inner_rows_present(), "inner rows must survive a leading-row drop"
+
+    # Control: same plate, no neighbour -- nothing is contested, nothing is dropped.
+    lonely = LithospherePlate(
+        plate_id=0, frame=np.eye(3), crust_type="continental",
+        lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),
+    )
+    lonely_world = World(seed=0, plates=[lonely], mantle_centers=[], node_density=1.0)
+    for _ in range(steps_to_drop + 2):
+        lonely.deform(lonely_world, [], years=years_per_step, max_distance=1.5 * spacing)
+    assert any(abs(ln.phi - front_phi) < 1e-6 for ln in lonely.lines)
+
+
 def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
     from app.plates import POLE_CAP_MARGIN_MULT
     from app.world import World
