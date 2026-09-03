@@ -169,16 +169,31 @@ solve every step (`_advance_fluid_dynamics`), `"diagnostic"` skips it and rebuil
 air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps for
 ~85-90% of the CFD biome map. See simulation-model.md#wind-model.
 
+The body also accepts the twelve **geomorphic-budget tuning multipliers**
+(`world.TUNING_MULTIPLIER_FIELDS`): `rain_erosion_multiplier`, `river_erosion_multiplier`,
+`wind_erosion_multiplier`, `ocean_erosion_multiplier`, `coastal_leveling_multiplier`,
+`glacier_erosion_multiplier`, `seismic_erosion_multiplier`, `river_deposition_multiplier`,
+`ocean_deposition_multiplier`, `collision_uplift_multiplier`,
+`collision_uplift_reach_multiplier`, `volcanism_multiplier`. Each is a dimensionless scale on
+one erosion / deposition / uplift / volcanism process, default `1.0` (== untuned, bit for
+bit), and a negative value is a `400`. See
+[simulation-model.md#tuning-knobs](simulation-model.md#tuning-knobs) for what each one scales
+and measured effect sizes.
+
 Forces an immediate `climate.compute_climate` recompute (stored back onto
 `world.climate_cache`) so the very next `/world/render` or `/world/stats` call reflects the
 change without waiting for a step -- `climate_cache` is otherwise only refreshed once per
 step by `erosion.py`, and not at all while `simulate_climate_biomes` is `false`. `404` if no
 world has been generated yet.
 
-Response echoes back the world's current values for all five:
+Response echoes back the world's current values for all five controls plus all twelve tuning
+multipliers:
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd",
+  "rain_erosion_multiplier": 1.0, "river_erosion_multiplier": 1.0, "wind_erosion_multiplier": 1.0, "ocean_erosion_multiplier": 1.0,
+  "coastal_leveling_multiplier": 1.0, "glacier_erosion_multiplier": 1.0, "seismic_erosion_multiplier": 1.0, "river_deposition_multiplier": 1.0,
+  "ocean_deposition_multiplier": 1.0, "collision_uplift_multiplier": 1.0, "collision_uplift_reach_multiplier": 1.0, "volcanism_multiplier": 1.0 }
 ```
 
 ## `GET /world/render?projection=behrmann|eckert4&view=elevation|plates|platesDetail|speckle|combined|temperature|wind|oceanCurrents|humidity|precipitation|biome|resources|soilQuality|geomorph|elevReason|overlapAge|oceanCfdSediment|oceanCfdDeposition&width=1100&height=611&rotation=1,0,0,0,1,0,0,0,1`

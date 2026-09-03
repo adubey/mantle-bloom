@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
+from . import atmosphere_cfd, climate, erosion, eustasy, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -18,6 +18,24 @@ DEFAULT_AXIAL_TILT_DEG = 23.5
 # Bounds how large World.events can grow over a long play session -- the UI's console only
 # ever needs recent history, not an unbounded transcript.
 MAX_EVENT_LOG_LENGTH = 200
+
+# The dimensionless geomorphic-budget tuning knobs on World (see the field group below),
+# named once here so main.py's /world/controls route can validate/apply/echo them without
+# repeating the list. All default 1.0; all must stay >= 0.
+TUNING_MULTIPLIER_FIELDS = (
+    "rain_erosion_multiplier",
+    "river_erosion_multiplier",
+    "wind_erosion_multiplier",
+    "ocean_erosion_multiplier",
+    "coastal_leveling_multiplier",
+    "glacier_erosion_multiplier",
+    "seismic_erosion_multiplier",
+    "river_deposition_multiplier",
+    "ocean_deposition_multiplier",
+    "collision_uplift_multiplier",
+    "collision_uplift_reach_multiplier",
+    "volcanism_multiplier",
+)
 
 
 @dataclass
@@ -134,7 +152,41 @@ class World:
     # either forces an immediate climate_cache recompute (see main.py's controls route) so
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
+    # Eustatic sea level (see eustasy.py). `sea_level_m` above is no longer a fixed input --
+    # `step_world` re-solves it every step so it tracks the ocean volume this conserved
+    # water-column budget represents against the world's changing hypsometry (deeper basins /
+    # drowned continents -> lower stand). `None` until first initialized (a freshly built
+    # World, or a save written before eustasy existed); `eustasy.initialize_water_budget`
+    # snapshots it from the flat starting sea level at generation. The `/world/controls`
+    # slider sets this budget rather than `sea_level_m` directly (adds/removes ocean water).
+    ocean_water_column_m: float | None = None
     solar_multiplier: float = 1.0
+    # Geomorphic-budget tuning knobs -- live-adjustable via POST /world/controls, same
+    # "Controls" window / same immediate-climate-recompute pattern as sea_level_m/
+    # solar_multiplier. Every one is a dimensionless multiplier, 1.0 == the model's
+    # untuned behaviour exactly (so an old save, or a user who never opens the panel, is
+    # bit-identical to before these existed). They exist because mantle-bloom's long-run
+    # land budget is a balance between a handful of erosion, deposition, uplift and
+    # volcanism processes whose individual hard-coded rates can't be re-tuned for one seed
+    # without regressing another -- these let the user rebalance a *live* world and watch
+    # the result. Read directly off `world` by erosion.apply_erosion (the *_erosion_/
+    # *_deposition_ knobs), lithosphere_plate.LithospherePlate.deform (the collision_uplift_*
+    # knobs, via rheology.apply_convergent_deformation's `strength`) and
+    # volcanism.apply_volcanic_activity (volcanism_multiplier) -- none of those need a
+    # signature change since they already take `world`. Plain-scalar defaults, so an older
+    # pickle falls through to 1.0 with no persistence backfill needed (see persistence.py).
+    rain_erosion_multiplier: float = 1.0
+    river_erosion_multiplier: float = 1.0
+    wind_erosion_multiplier: float = 1.0  # wind-driven weathering (erosion.WEATHERING_COEFFICIENT term)
+    ocean_erosion_multiplier: float = 1.0  # submarine + coastal (wave/frost) sea-side erosion
+    coastal_leveling_multiplier: float = 1.0  # the symmetric near-shore planation grind -- a prime long-run land drain
+    glacier_erosion_multiplier: float = 1.0  # glacial abrasion + the ice-flattening blur
+    seismic_erosion_multiplier: float = 1.0  # earthquake-triggered landsliding in active ranges
+    river_deposition_multiplier: float = 1.0  # floodplain/delta retain fraction (erosion.DEPOSITION_FRACTION)
+    ocean_deposition_multiplier: float = 1.0  # marine + beach sediment settling onto the shelf
+    collision_uplift_multiplier: float = 1.0  # convergent mountain-building rate (rate, not reach)
+    collision_uplift_reach_multiplier: float = 1.0  # horizontal reach of the collision/subduction uplift bands
+    volcanism_multiplier: float = 1.0  # per-node eruption frequency *and* per-eruption elevation added
     # Live-adjustable via POST /world/controls, same pattern as sea_level_m/solar_multiplier
     # above -- the UI's "Controls" window lets the user run *just* plate tectonics or *just*
     # climate & biomes. When False, step_world skips plate rotation, boundary evolution
@@ -290,6 +342,10 @@ def generate_world(
     terrain = climate.compute_climate(world, height, width)
     world.atmosphere_cfd_state = atmosphere_cfd.init_atmosphere_cfd(world, terrain)
 
+    # Snapshot the ocean water volume from the flat starting sea level -- from here on
+    # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
+    eustasy.initialize_water_budget(world)
+
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     world.log_event(f"World generated with {len(plates)} plates ({n_continents} continental).")
     return world
@@ -394,5 +450,11 @@ def step_world(world: World, years: float) -> None:
         # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
         # actually recomputed hydrology, so persistence timers count simulated hydrology steps.
         stranded_basins.reconcile_world_tracks(world)
+
+    # Eustatic sea level: re-solve world.sea_level_m against this step's final hypsometry,
+    # holding the conserved ocean water volume fixed (see eustasy.py). Unconditional -- both
+    # tectonics and erosion reshape the basins, and even a movement-and-climate-off step
+    # should keep sea level self-consistent if a control just changed the water budget.
+    eustasy.update_sea_level(world)
 
 

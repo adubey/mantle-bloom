@@ -21,6 +21,8 @@
 - [Ocean/Atmospheric Fluid Dynamics](#ocean-atmospheric-fluid-dynamics)
 - [Erosion](#erosion)
 - [Bathymetry](#bathymetry)
+- [Eustatic sea level](#eustatic-sea-level)
+- [Live tuning knobs](#tuning-knobs)
 - [Resources and soil](#resources-and-soil)
 - [Hydrology (rivers and lakes)](#hydrology)
 - [Glaciation](#glaciation)
@@ -348,7 +350,8 @@ trigger (contested, not a positive closing rate) changed:
   not interpolated from anything), *unless* the growth event rolls "overstretched" (see
   below), in which case it comes back as a fresh volcano instead.
 
-  **Torque engine (`lithosphere_plate.py`): new areal crust is always oceanic.** Under the
+  **Torque engine (`lithosphere_plate.py`): new areal crust is oceanic, except at an active
+  margin.** Under the
   Hc/Hm isostasy engine, a growing end (`_grow_or_shrink_line_for_deform`) and a claimed new
   phi row (`_claim_adjacent_territory`) seed the new nodes' lithospheric column via
   `lithosphere_plate.growth_seed_thickness()` -- the *oceanic* reference column regardless of
@@ -362,19 +365,42 @@ trigger (contested, not a positive closing rate) changed:
   / accreted terrane. Genuine continental rifting is untouched: that thins *existing* crust
   (`rheology.apply_divergent_deformation`), it doesn't grow new nodes here.
 
+  **The one exception is a continental plate's *leading* edge advancing into space a
+  subducting oceanic slab is vacating** (slab rollback / trench retreat). That ground is
+  juvenile arc + accreted-terrane crust, so `deform()` flags an end as an *active margin*
+  (`arc_end_low`/`arc_end_high`: a node in the arc band -- see [arc magmatism](#boundary-
+  evolution) -- or a recent subduction-arc provenance stamp within a few nodes of the end)
+  and `grow_end` seeds it at `ARC_MARGIN_SEED_HC_M` / `ARC_MARGIN_SEED_HM_M` (~28 km / 55 km
+  -> a shallow ~-450 m forearc that builds to land as convergence continues) rather than the
+  drowned oceanic column, stamped `ELEV_CHANGE_SUBDUCTION_ARC`. This is the deliberately
+  restricted reverse of the runaway above: the runaway was +200 m dry land on *every* growth
+  event; a thicker seed *only* where the growing edge abuts a genuinely converging oceanic
+  slab -- and still under the volume-budget gate below -- is arc accretion, the dominant
+  land-decline driver's physical counterweight ("an oceanic plate subducting under a
+  continent makes more continent"). Open-ocean growth and poleward row claims stay oceanic.
+
   If an end is contested,
   remove however many *consecutive* contested nodes sit there, capped the same way by `D` and
   the safety ceiling -- but never the plate's last remaining node in a line. **A continental
   end retreats whether the overriding neighbour is oceanic or continental**, gated to runs of
   at least `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN` consecutive contested nodes (so a
   bounding-polygon envelope-fuzz node can't nibble a stable coast) and to one node per step.
-  Against an *oceanic* neighbour this is a passive margin / accretion front (the slab descends
-  under the buried continental node). Against a *continental* neighbour it is a suture whose
-  territory overlap is **consumed into the orogen**: the retreated crust isn't lost, it's
-  thrust into the belt -- `LithospherePlate.deform` channels that shortening into extra
-  plastic thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`,
-  a >1 multiplier on `fault_factor`), so a consumed overlap still builds real relief. Before
-  this a continent-continent suture only crumpled in place and never retreated, so a deep
+  Against an *oceanic* neighbour this is a passive margin (the slab descends under the buried
+  continental node, which is genuinely subducted and lost). Against a *continental* neighbour
+  it is a suture whose territory overlap is **consumed into the orogen as accretion**: the
+  retreated column's crustal volume is conserved and thrust back onto the plate's own
+  surviving leading-edge nodes, spread over `SUTURE_ACCRETION_SPREAD_NODES` of them
+  (`_redistribute_accreted_column` -- an imbricate thrust wedge), so the belt thickens in
+  direct proportion to the overlap it actually eats, up to a `SUTURE_ACCRETION_MAX_HC_M`
+  (~2.4x reference Hc) ceiling past which the crustal root delaminates (a suture that never
+  heals would otherwise pile every consumed column onto the same retreating-edge nodes
+  forever). Node area is constant per node, so this is just moving the dropped nodes' summed
+  Hc onto the survivors (the attached mantle lithosphere thickening in proportion);
+  `regularize_line` re-evens the spacing next pass and isostasy lifts the thickened belt.
+  (This replaced an earlier
+  `rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST` fudge -- a flat 2.5x `fault_factor`
+  multiplier at continent-continent contested nodes, unrelated to how much overlap was
+  consumed.) Before any retreat at all, a continent-continent suture only crumpled in place, so a deep
   territory overlap just sat there for tens of Myr until `merge_split`'s forced-merge timer
   fused the pair (the `overlapAge` view's stalled multi-plate collisions; on
   `seed 656865324` @ 60 My, plate 8 sat 17% on top of plate 6 since 33 My and the
@@ -427,6 +453,28 @@ trigger (contested, not a positive closing rate) changed:
   material is only ever created at open ends and destroyed where genuinely overridden, as
   literal point insertion/deletion -- there's no grid-resampling step that can lose or
   duplicate it.
+
+  **A continental plate stops growing once its footprint outruns its crustal volume.**
+  Every lattice node covers the same physical area (`lithosphere.node_area_m2` is constant
+  by construction), and every node grown at a margin -- end-growth here or a whole new row
+  in `_claim_adjacent_territory` -- is seeded at the *oceanic* reference column
+  (`growth_seed_thickness`). A continental plate sheared into a much larger envelope by a
+  far-off euler pole therefore tiles unbounded drowned passive-margin outward while nothing
+  removes a leading row, so its node count and its bounding envelope both creep upward
+  without limit (a plate reaching ~16% of the whole planet, 70%+ of its own area below sea
+  level, was a real long-run symptom). `LithospherePlate.deform` counts a continental
+  plate's *genuine* continental nodes -- `crustal_thickness_m` at least
+  `CONTINENTAL_BUDGET_HC_FRACTION` (0.6) of the continental reference -- and once the plate's
+  total node count exceeds `CONTINENTAL_AREA_BUDGET_MULT` (1.8) times that, suppresses all
+  areal growth for the step (both `grow_end` branches here, and the
+  `_claim_adjacent_territory` call is skipped entirely). Retreat, divergent thinning and
+  convergent thickening keep running, so an over-budget plate thins / drowns / crumples back
+  toward its crustal volume rather than merely freezing at its current size. The gate is
+  regime- and neighbour-independent (unlike the contested-run retreat it does not care how
+  the suture sits against the row grid). A real craton sits near reference Hc across its
+  whole area, far below the cap; the >1 multiplier is the realistic continental-shelf +
+  accreted-terrane allowance. Over a 120 My run this roughly halves the continental-node
+  creep. Oceanic plates are exempt -- their footprint is already bounded by subduction.
 
   **A row never winds past a full revolution.** A line is a circle of plate-local latitude,
   so its theta extent physically can't exceed `2*pi`. Nothing here treats theta as periodic,
@@ -516,6 +564,21 @@ shows (some stuck 100+ Myr) never crumpled into orogens. Recalibrated to `1e17` 
 timescale); `backend/unit_tests/test_rheology.py` pins it. See
 [TODO.md](TODO.md#plate-geometry-degrades-on-long-runs-pole-winding-unbounded-overlap-bad-split-siblings).
 
+**Continental arc magmatism (2026).** `apply_convergent_deformation` is yield-limited plastic
+*shortening* -- it conserves crustal volume, and only bites at the contested contact line (a
+few tens of nodes). Real Cordilleran margins also *grow* crust: the subducting slab dehydrates,
+fluxes the mantle wedge, and the melt underplates / intrudes the overriding continental plate
+across the whole arc band inboard of the trench. `lithosphere_plate.deform` computes an
+`arc_band` -- this plate's own continental nodes within `reach_rad` (~500 km at default
+density) of a *converging oceanic* neighbour -- and `rheology.apply_arc_magmatic_thickening`
+adds juvenile Hc there (Hc only; the contested subset's Hm is dragged along by the shortening
+term), fading from the trench inboard and scaled gently by convergence rate. This is *added*
+mass (from the mantle, not conserved from the neighbour) and is **not** yield-gated. Together
+with the arc-crust growth seed above it is the crust-building answer to "an oceanic plate
+subducting under a continent makes more continent" -- the land-fraction decline's physical
+counterweight (docs/TODO.md "Land fraction slowly declines"). Long-term footprint is still
+bounded by the volume-budget gate. `backend/unit_tests/test_rheology.py` pins the calibration.
+
 Every node's onset year is also stamped onto
 `ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --
@@ -525,9 +588,9 @@ see [debugging.md](debugging.md#overlapage-render-view-plate-overlap-onset).
 retreats one node per step against a *continental* neighbour too, not only an oceanic one
 (see [Boundary evolution](#boundary-evolution) / `CONTINENTAL_CONTESTED_RETREAT_MIN_RUN`), so
 the territory overlap of a stalled suture is consumed geologically instead of only by the
-forced-merge timer below. The retreated shortening is channelled into extra plastic
-thickening at the contested nodes (`rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST`), so the
-overlap crumples into an orogen rather than the boundary just sliding back. On
+forced-merge timer below. The retreated column's volume is conserved as accretion onto the
+plate's own leading edge (`_redistribute_accreted_column` -- see [Boundary evolution](#boundary-evolution)),
+so the overlap crumples into an orogen rather than the boundary just sliding back. On
 `seed 656865324` @ 60 My, plate 8's 17%-since-33-My overlap on plate 6 drains to ~2% within
 ~1.5 My, with no spurious defragmentation plates and a flat node count.
 
@@ -646,6 +709,23 @@ routine per-step motion.
   than `SPLIT_MIN_POLE_SEPARATION` apart), the plate is cut along the great circle
   equidistant from the two clusters' centroids (`P . (centroid_a - centroid_b) == 0` is
   exactly that circle's plane) and every node partitioned by which side it falls on.
+
+  **Rifts fail.** Even a plate that clears every gate -- flow-fit, pole separation, size, and
+  a viable great-circle cut with both halves above the node floor -- only actually *breaks
+  up* with `RIFT_SUCCESS_PROBABILITY` (0.55). Otherwise the rift arrests: continental
+  extension routinely localizes elsewhere or the driving stress relaxes before breakup,
+  leaving a thinned but intact continental sag basin (an aulacogen -- the North Sea, the
+  Benue Trough, the failed arm of a triple junction), not a new ocean. On a failed roll
+  `LithospherePlate.apply_failed_rift` books a one-off thinning
+  (`FAILED_RIFT_THINNING_FRACTION`, 10%) of `Hc`/`Hm` in a band
+  (`FAILED_RIFT_BAND_MULT` node spacings) around the would-be cut great circle -- tapering to
+  zero at the band edge, with the isostatic subsidence booked as an `elevation` delta -- and
+  the plate's split cooldown resets (`reset_age`). A *successful* rift, by contrast, puts
+  that whole zone through sustained `apply_divergent_deformation` thinning on both daughters
+  and ends in decompression melting -> oceanic crust + permanently drowned passive margins,
+  so failing half of them is a real brake on the land-fraction decline (docs/TODO.md "Land
+  fraction slowly declines"). The probability is tuned to keep the healthy plate-count churn
+  the 2026 split-gate loosening produced.
 
   **Why splitting needs a cooldown.** A single rigid rotation essentially never fits a wide
   footprint's flow samples *exactly* -- any spatially-varying field sampled over a large
@@ -2045,6 +2125,9 @@ regularization](#line-regularization) -- and the old periodic gap-fill/reassign 
 gone entirely, see [Whole-sphere coverage](#gap-filling)/[Boundary point
 reassignment](#reassignment)).
 
+Nine of the twelve live [tuning knobs](#tuning-knobs) act here -- each erosion/deposition
+term reads a `world.*_multiplier` scale (default `1.0`) at the point it is formed.
+
 <a id="bathymetry"></a>
 ## Bathymetry (`bathymetry.py`)
 
@@ -2092,6 +2175,132 @@ floor bending into a trench), which is correct. Confirmed directly at the defaul
 submerged continental crust now runs from ~-50m on the shelf to ~-5.2km in a large drowned
 interior (was a near-flat ~-500m everywhere), and the median elevation step between adjacent
 nodes straddling a continent/ocean boundary drops from ~4km to ~2km.
+
+<a id="eustatic-sea-level"></a>
+## Eustatic sea level (`eustasy.py`)
+
+`World.sea_level_m` -- the datum every `is_ocean` / coastline / bathymetry check in the
+codebase reads -- is **not a fixed input**. It is re-solved every step from a *conserved
+ocean water volume*, so the shoreline responds to tectonics and erosion the way it does on
+the real Earth: open a new ocean basin and sea level drops, handing that volume of coastline
+back to the continents as freeboard.
+
+Every lattice node covers the same area (`lithosphere.node_area_m2` depends only on spacing),
+so ocean volume is proportional to the summed water column
+
+```
+W = sum over all nodes of  max(0, sea_level - z_i)
+```
+
+`W` is snapshotted once at generation (`eustasy.initialize_water_budget`, from the flat
+`sea_level_m = 0` starting datum) and stored on `World.ocean_water_column_m`. Each step,
+`eustasy.update_sea_level` (called unconditionally at the end of `step_world`) solves the
+monotonic 1-D equation `total_water_column(h) == W` for the new `h` by bisection (~40
+iterations, each one vectorized sum). `total_water_column` is strictly increasing in `h`, so
+the bracket `[min z, max z + headroom]` always contains exactly one root.
+
+- **Deepening a basin** (sea-floor spreading, a subducting slab, `growth_seed_thickness`
+  tiling drowned oceanic column) raises `total_water_column(h)` at every `h`, so the solved
+  `h` **falls** -- the eustatic response that a fixed sea level never produced, and the
+  reason continental subsidence is no longer a one-way loss of dry land.
+- **Node-count creep** (the continental boundary ratchet) grows total represented area; the
+  same water volume over more ocean area also lowers the stand, which is physically right.
+- The `POST /world/controls` sea-level slider now calls `eustasy.set_sea_level_via_water_
+  budget`: "put sea level at X" is interpreted as "add or remove ocean water until the
+  *current* hypsometry floats at X", and that new `W` is then conserved going forward (a
+  glacio-eustatic / bigger-ocean change, not a one-frame override the next step erases).
+- Persistence backfills `ocean_water_column_m` for a save written before this existed, from
+  that save's own hypsometry and `sea_level_m`, so loading it doesn't jump the shoreline.
+
+Measured (seed 926698457, node_density 0.5, climate off, 100 My): the land-fraction decline
+roughly halves against a fixed sea level (~-0.025 vs ~-0.052), and the trajectory changes
+from monotonic decline to a slight rise then a slow decline as sea level tracks the basins
+down (to roughly -150 to -300 m over the run). See docs/TODO.md "Land fraction slowly
+declines".
+
+<a id="tuning-knobs"></a>
+## Live tuning knobs (`world.TUNING_MULTIPLIER_FIELDS`)
+
+The long-run land budget is a tug-of-war between a handful of erosion, deposition, uplift and
+volcanism processes whose individual hard-coded rates can't be recalibrated for one seed
+without regressing another. Twelve **dimensionless multipliers** on `World` let the user
+retune a *live* world and watch the result, via the "Controls" window / `POST /world/controls`
+(same immediate-`climate_cache`-recompute path as `sea_level_m`/`solar_multiplier`). Every one
+defaults to `1.0`, and `1.0` is **byte-identical** to the code before the knobs existed (plain
+IEEE `*1.0`; verified by `test_tuning_knobs.py` and an old-pickle load). Negative values are
+rejected with a `400`.
+
+| Knob | Scales | Where |
+|---|---|---|
+| `rain_erosion_multiplier` | rain/sheet erosion term | `erosion.apply_erosion` |
+| `river_erosion_multiplier` | stream-power river erosion term | `erosion.apply_erosion` |
+| `wind_erosion_multiplier` | wind-driven weathering term | `erosion.apply_erosion` |
+| `ocean_erosion_multiplier` | submarine slump + coastal wave/frost attack | `erosion.apply_erosion` |
+| `coastal_leveling_multiplier` | the symmetric near-shore planation *grind* (`ground_off`) | `erosion.apply_erosion` |
+| `glacier_erosion_multiplier` | glacial abrasion term **and** the ice-flattening blur (`_flatten`) | `erosion.apply_erosion` |
+| `seismic_erosion_multiplier` | earthquake-triggered landsliding term | `erosion.apply_erosion` |
+| `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
+| `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
+| `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `LithospherePlate.deform` |
+| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line (`_dilate_1d`); `<1` narrows/weakens it instead | `LithospherePlate.deform` |
+| `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
+
+**Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
+neighbour-drop cap, the transport split and the isostatic bookkeeping downstream all see a
+consistent scaled amount. The two *deposition* knobs instead scale the already-spread settled
+sediment (scaling the pre-spread pool would desync the mass-conserving `np.add.at` spread
+against the deep-water remainder), so away from `1.0` they are a small deliberate
+non-conservative shelf-building / shelf-starving source -- the same character as
+`flatten_delta` or lake siltation.
+
+**Collision uplift is in the real engine.** The live mountain-building path is
+`LithospherePlate.deform` -> `rheology.apply_convergent_deformation` (thicken `Hc`/`Hm`, then
+read isostasy), **not** the `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` code in
+`PlateWithLines.deform`, which is dead for any generated world. The *amount* knob is a
+`strength` multiplier on the plastic thickening; the *reach* knob widens the node band that
+thickens (a near-field ring at `COLLISION_REACH_NEAR_FIELD_FACTOR` of the contested rate,
+`COLLISION_REACH_DILATION_NODES_PER_UNIT` nodes wider per unit of multiplier above 1).
+
+### Effect sizes
+
+Measured on seed 20, node_density 1, climate on, 80 My (40 x 2 My steps), land fraction and
+mean land elevation vs. an all-`1.0` baseline of `land = 0.294`, `mean = 1172 m`:
+
+| Setting | land | mean elev | note |
+|---|---|---|---|
+| `ocean_deposition` 0x / 3x | 0.285 / **0.317** | 1185 / 1152 | **strongest single land lever** -- ~+8% land area at 3x |
+| `coastal_leveling` 0x | 0.300 | 1179 | planation off -> coasts keep their relief (the "save my land" direction) |
+| `volcanism` 4x | 0.299 | 1185 | modest; only bites where a seed actually has active volcano nodes |
+| `collision_uplift` 0.2x / 3x | 0.291 / 0.297 | 1181 / 1193 | monotonic on land *and* mean elevation |
+| `collision_uplift_reach` 3x | 0.295 | 1158 | `elev_max` 8000 -> 8800 m: the belt spreads and the crest climbs |
+| all erosion 0.3x / 3x | 0.297 / 0.291 | 1178 / 1157 | small over long runs -- see damping note |
+| `river_deposition` 3x | 0.294 | 1176 | ~flat on this seed/horizon; fattens individual deltas locally |
+
+Two things compress the whole-world numbers, and both are *features*, not knob weakness:
+
+- **[Eustasy](#eustatic-sea-level) is a negative feedback.** Ocean water volume is conserved,
+  so building land anywhere (deposition up, erosion down, uplift up) displaces water, raises
+  the eustatic stand, and re-drowns marginal coastline elsewhere -- roughly halving the
+  net whole-sphere land-fraction change a knob would produce without it.
+- **Erosional isostatic compensation** rebounds most of any sustained elevation change over
+  tens of My, so an erosion knob's effect on *mean elevation* is far larger on a short
+  horizon than after the crust has re-floated. `test_tuning_knobs.py` pins the clean
+  short-horizon scaling (e.g. total `crustal_thickness_m` scales monotonically with
+  `collision_uplift_multiplier` over 6 steps); the table above is the damped long-run
+  residual.
+
+Practical guidance: for a world visibly losing land, nudge `ocean_deposition_multiplier` to
+~1.3-1.5 and pull `coastal_leveling_multiplier` down to ~0.5 -- the two levers that add/keep
+coastal land without feeding the eustatic loop hard. **Do not stack aggressively.** The
+per-knob effects do *not* simply add over a long run: across four seeds at
+`ocean_deposition` 2.5x + `coastal_leveling` 0.3x + `ocean_erosion` 0.5x +
+`collision_uplift`/`reach` 2x, one seed (`495717634`) *lost* most of its land (0.27 -> 0.09
+over 150 My) because the extra shelf sediment plus railed orogens spiked eustatic sea level
+and drowned everything below the new mountains. Big collision-uplift settings in particular
+are unpredictable once peaks hit `MAX_ELEVATION_M`. Change one or two knobs at a time,
+step 20-30 My, and watch `land_fraction` in Stats before going further. This is exactly the
+"no single setting is right for every seed" situation the knobs exist to let you navigate by
+hand -- which is why the shipped defaults are all `1.0`.
 
 <a id="resources-and-soil"></a>
 ## Resources and soil (`geology.py`, plus `volcanism.py`'s own eruption roll)

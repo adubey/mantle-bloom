@@ -724,3 +724,28 @@ def test_controls_wind_model_toggle_and_validation(client):
     assert client.get("/world/render", params={"view": "temperature"}).status_code == 200
 
     assert client.post("/world/controls", json={"wind_model": "nonsense"}).status_code == 400
+
+
+def test_controls_tuning_multipliers_round_trip_and_validate(client):
+    from app import main
+    from app.world import TUNING_MULTIPLIER_FIELDS
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+
+    # Default: every knob reads 1.0, and an untouched POST echoes them all.
+    body = client.post("/world/controls", json={}).json()
+    for name in TUNING_MULTIPLIER_FIELDS:
+        assert body[name] == 1.0
+        assert getattr(world, name) == 1.0
+
+    resp = client.post("/world/controls", json={"rain_erosion_multiplier": 0.0, "collision_uplift_multiplier": 2.5})
+    assert resp.status_code == 200
+    assert resp.json()["rain_erosion_multiplier"] == 0.0
+    assert resp.json()["collision_uplift_multiplier"] == 2.5
+    assert world.rain_erosion_multiplier == 0.0
+    assert world.collision_uplift_multiplier == 2.5
+    assert world.river_erosion_multiplier == 1.0  # untouched knob unchanged
+
+    assert client.post("/world/controls", json={"volcanism_multiplier": -0.5}).status_code == 400
+    assert world.volcanism_multiplier == 1.0  # rejected write did not land

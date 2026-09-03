@@ -62,18 +62,6 @@ RIFT_CRITICAL_THICKNESS_M = 5_000.0
 # accumulates less shortening than the thrust sheets around it), not on elevation directly.
 REVERSE_FAULT_VALLEY_UPLIFT_FACTOR = 0.15
 
-# Continent-continent suture: the overlapping crust the boundary now retreats over (see
-# lithosphere_plate.CONTINENTAL_CONTESTED_RETREAT_MIN_RUN -- a continental self-plate's
-# contested end used to only crumple in place, so a deep overlap just sat there for tens of
-# Myr) is thrust *into* the belt, not lost. Rather than plumb the retreated column's volume
-# through _grow_or_shrink_line_for_deform, channel that shortening into extra plastic
-# thickening at the contested nodes themselves: a >1 multiplier on `fault_factor` for
-# continent-continent contested nodes, so a consumed overlap builds real relief instead of
-# the boundary just sliding back. Calibrated so a stalled ~3 cm/yr collision that had been
-# overlapping for tens of Myr crumples its overlap into an orogen over a comparable span
-# rather than only after the 30-My forced-merge timer fuses the pair.
-CONTINENTAL_COLLISION_SHORTENING_BOOST = 2.5
-
 
 def normal_closing_rate_m_per_s(plate_omega: np.ndarray, neighbor_omega: np.ndarray, points_xyz: np.ndarray, direction_to_neighbor: np.ndarray) -> np.ndarray:
     """`boundary.closing_rate`'s own formula (relative tangential velocity projected onto the
@@ -119,6 +107,7 @@ def apply_convergent_deformation(
     closing_rate_m_per_s: np.ndarray,
     years_myr: float,
     fault_factor: np.ndarray,
+    strength: np.ndarray | float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Contested (convergent) nodes: mass-conserving thickening under compression. Hc and Hm
     both thicken in proportion (crustal shortening drags the attached mantle lithosphere
@@ -126,10 +115,13 @@ def apply_convergent_deformation(
     FACTOR` on noise-selected downthrown blocks, same pattern v1 used) modulates how much of
     the plastic strain this particular node actually accumulates, giving the same
     discrete-thrust-sheet visual texture v1 had, now as a real strain-rate multiplier rather
-    than a post-hoc elevation multiplier."""
+    than a post-hoc elevation multiplier. `strength` is the live collision-uplift tuning knob
+    (World.collision_uplift_multiplier, plus the reach knob's near-field taper -- see
+    lithosphere_plate.py); a plain 1.0 default keeps every existing caller/behaviour
+    unchanged."""
     rate = plastic_strain_rate_per_myr(closing_rate_m_per_s)
     rate = np.clip(rate, 0.0, None)  # convergent branch only ever thickens
-    fractional_change = rate * years_myr * fault_factor
+    fractional_change = rate * years_myr * fault_factor * strength
     new_hc = hc_m * (1.0 + fractional_change)
     new_hm = hm_m * (1.0 + fractional_change)
     return new_hc, new_hm
@@ -148,6 +140,42 @@ def apply_divergent_deformation(hc_m: np.ndarray, hm_m: np.ndarray, closing_rate
     new_hm = np.clip(hm_m * (1.0 + fractional_change), lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, None)
     melting = was_above & (new_hc < RIFT_CRITICAL_THICKNESS_M)
     return new_hc, new_hm, melting
+
+
+# Continental arc magmatism (Cordilleran / Andean active margins). Distinct from
+# `apply_convergent_deformation`'s yield-limited plastic *shortening*: subduction dehydrates
+# the down-going slab, fluxes the mantle wedge, and the melt underplates / intrudes the
+# overriding continental crust -- juvenile mass added from the mantle, not conserved from the
+# neighbour, and it happens whether or not the margin is at Mohr-Coulomb yield. This is the
+# crust-*building* half of "an oceanic plate subducting under a continent makes more
+# continent" (the areal half is `lithosphere_plate.ARC_MARGIN_SEED_*`). It acts over the
+# whole arc *band* inboard of the trench (`lithosphere_plate` passes a per-node distance-
+# falloff `intensity`, not just the contact line -- the contact line alone is only a few tens
+# of nodes, far too narrow to matter), with a gentle extra dependence on convergence rate
+# (more slab -> more flux). Calibrated so a sustained ~5 cm/yr margin at full band intensity
+# adds ~9-14 km of Hc over the tens of Myr an arc is active -- the order of measured Andean
+# crustal-growth rates -- without runaway (the CONTINENTAL_AREA_BUDGET_MULT volume gate still
+# bounds the plate's footprint).
+ARC_MAGMATIC_HC_RATE_M_PER_MYR = 450.0
+ARC_REFERENCE_CONVERGENCE_M_PER_S = 0.05 / SECONDS_PER_YEAR  # 5 cm/yr
+ARC_MAGMATIC_CONVERGENCE_CAP = 3.0  # a very fast margin fluxes at most 3x the reference
+ARC_MIN_CONVERGENCE_M_PER_S = 0.002 / SECONDS_PER_YEAR  # 0.2 cm/yr -- below this it's a graze, no arc
+
+
+def apply_arc_magmatic_thickening(
+    hc_m: np.ndarray, hm_m: np.ndarray, closing_rate_m_per_s: np.ndarray, years_myr: float, intensity: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Add juvenile arc crust to the overriding continental margin. `intensity` is the
+    caller's per-node band weight (1 at the trench, fading inboard). Only Hc grows -- arc
+    magmatism thickens the crustal column; the attached mantle lithosphere is returned
+    unchanged (the caller still runs the ordinary convergent shortening on the contested
+    subset, which does drag Hm along). Nodes not actually converging
+    (`closing_rate <= ARC_MIN_CONVERGENCE_M_PER_S`) get nothing."""
+    active = closing_rate_m_per_s > ARC_MIN_CONVERGENCE_M_PER_S
+    convergence = np.clip(closing_rate_m_per_s / ARC_REFERENCE_CONVERGENCE_M_PER_S, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP)
+    rate_mult = np.where(active, np.clip(0.4 + 0.6 * convergence, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP), 0.0)
+    new_hc = hc_m + ARC_MAGMATIC_HC_RATE_M_PER_MYR * years_myr * rate_mult * np.asarray(intensity)
+    return new_hc, hm_m
 
 
 def relax_young_oceanic_mantle_lithosphere(hm_m: np.ndarray, divergent_age_myr: np.ndarray, years_myr: float) -> np.ndarray:

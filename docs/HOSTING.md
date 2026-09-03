@@ -30,8 +30,8 @@ drawn from what worldbuilding communities actually ask for.
   real domain.
 - **Marketing:** content-led and community-led, ~$20–120 one-time (domain + a few assets).
   The killer asset is already in the codebase: `/world/animate` exports H.264 timelapses of
-  a planet evolving — that is native front-page material for r/proceduralgeneration,
-  r/worldbuilding, Hacker News, YouTube, and short-form video.
+  a planet evolving — that is native front-page material for [r/proceduralgeneration](https://old.reddit.com/r/proceduralgeneration),
+  [r/worldbuilding](https://old.reddit.com/r/worldbuilding), Hacker News, YouTube, and short-form video.
 - **Banner ads:** at < 1,000 MAU, programmatic banner ads will earn **roughly $1–15/month**
   and will visually degrade an image-first tool. Recommendation: **do not run a
   programmatic network yet.** Instead do (a) one tasteful **EthicalAds** or **Carbon Ads**
@@ -269,24 +269,24 @@ World Anvil, Worldengine, ProcGenesis, Gleba, planet-hex, World Climate Lab):
 
 | Segment | Where they are | What they want from this |
 | --- | --- | --- |
-| Fantasy/SF writers & worldbuilders | r/worldbuilding, r/worldbuilding Discord, World Anvil, Bluesky #worldbuilding, Tumblr | A believable base map + climate they can defend; "why is there a desert here?" |
-| TTRPG GMs / homebrew setting makers | r/DnD, r/DMAcademy, r/rpg, r/dndmaps, r/UnearthedArcana, Foundry/Roll20 communities | A campaign continent with rivers, biomes, resources; export to VTT / battlemap tools |
-| Procedural-generation hobbyists & devs | r/proceduralgeneration, Hacker News, lobste.rs, #procjam, Bluesky #procgen | The method and the writeup; the animations; the code |
-| Map-making / cartography hobbyists | r/mapmaking, r/cartography, CartographersGuild | High-res exports, projections, heightmaps to paint over |
-| Earth-science / geography educators & enthusiasts | r/geology, r/geography, science-teacher communities | "What if Earth's tectonics were different" as a teaching sandbox |
-| Game developers | r/gamedev, itch.io, Godot/Unity communities | Heightmap / hex-grid / biome exports as a world seed for their game |
+| Fantasy/SF writers & worldbuilders | [r/worldbuilding](https://old.reddit.com/r/worldbuilding), [r/worldbuilding](https://old.reddit.com/r/worldbuilding) Discord, World Anvil, Bluesky #worldbuilding, Tumblr | A believable base map + climate they can defend; "why is there a desert here?" |
+| TTRPG GMs / homebrew setting makers | [r/DnD](https://old.reddit.com/r/DnD), [r/DMAcademy](https://old.reddit.com/r/DMAcademy), [r/rpg](https://old.reddit.com/r/rpg), [r/dndmaps](https://old.reddit.com/r/dndmaps), [r/UnearthedArcana](https://old.reddit.com/r/UnearthedArcana), Foundry/Roll20 communities | A campaign continent with rivers, biomes, resources; export to VTT / battlemap tools |
+| Procedural-generation hobbyists & devs | [r/proceduralgeneration](https://old.reddit.com/r/proceduralgeneration), Hacker News, lobste.rs, #procjam, Bluesky #procgen | The method and the writeup; the animations; the code |
+| Map-making / cartography hobbyists | [r/mapmaking](https://old.reddit.com/r/mapmaking), [r/cartography](https://old.reddit.com/r/cartography), CartographersGuild | High-res exports, projections, heightmaps to paint over |
+| Earth-science / geography educators & enthusiasts | [r/geology](https://old.reddit.com/r/geology), [r/geography](https://old.reddit.com/r/geography), science-teacher communities | "What if Earth's tectonics were different" as a teaching sandbox |
+| Game developers | [r/gamedev](https://old.reddit.com/r/gamedev), itch.io, Godot/Unity communities | Heightmap / hex-grid / biome exports as a world seed for their game |
 
 ### 4.3 Channels (all free or near-free)
 
 **Reddit** (respect each sub's self-promo rules — participate first, post artifacts not
 links-only, use the flair):
-- r/proceduralgeneration — the most receptive; timelapse GIF + short method note.
-- r/worldbuilding — "I built a tool that simulates your world's tectonics and climate,"
+- [r/proceduralgeneration](https://old.reddit.com/r/proceduralgeneration) — the most receptive; timelapse GIF + short method note.
+- [r/worldbuilding](https://old.reddit.com/r/worldbuilding) — "I built a tool that simulates your world's tectonics and climate,"
   lead with a gorgeous biome map + the "click anywhere for its climate" feature.
-- r/mapmaking, r/cartography — the export story (heightmaps, projections).
-- r/dndmaps, r/DMAcademy — "generate a plausible campaign continent in 2 minutes."
-- r/simulated, r/EarthPorn-adjacent, r/geology — the physics angle.
-- r/InternetIsBeautiful — once the site is polished and fast.
+- [r/mapmaking](https://old.reddit.com/r/mapmaking), [r/cartography](https://old.reddit.com/r/cartography) — the export story (heightmaps, projections).
+- [r/dndmaps](https://old.reddit.com/r/dndmaps), [r/DMAcademy](https://old.reddit.com/r/DMAcademy) — "generate a plausible campaign continent in 2 minutes."
+- [r/simulated](https://old.reddit.com/r/simulated), [r/EarthPorn](https://old.reddit.com/r/EarthPorn)-adjacent, [r/geology](https://old.reddit.com/r/geology) — the physics angle.
+- [r/InternetIsBeautiful](https://old.reddit.com/r/InternetIsBeautiful) — once the site is polished and fast.
 
 **Hacker News** — a **Show HN** with a title like *"Show HN: A from-scratch planet
 simulator — plate tectonics, climate, erosion"* linking a page that loads instantly
@@ -309,7 +309,7 @@ the ProcJam community.
 worldbuilding-tools audience and its own discovery.
 
 **Directories & wikis** — AlternativeTo, "best fantasy map generator" listicles
-(Reedsy, GM Hub, etc. — reach out), the r/worldbuilding wiki resources list, awesome-lists
+(Reedsy, GM Hub, etc. — reach out), the [r/worldbuilding](https://old.reddit.com/r/worldbuilding) wiki resources list, awesome-lists
 (awesome-proceduralgeneration, awesome-gamedev), World Anvil / Cartographers Guild
 resource threads.
 
@@ -361,9 +361,9 @@ Cheap to make; several are one command away given the existing export features.
 1. **Weeks −4 to −1 (private):** ship §3.4 blockers; build the gallery; make the curated
    set + first video batch; write "How it works"; set up analytics + error tracking; get
    a few worldbuilder friends to try it and break it.
-2. **Soft launch:** post in 1–2 Discords and r/proceduralgeneration only. Fix what breaks.
+2. **Soft launch:** post in 1–2 Discords and [r/proceduralgeneration](https://old.reddit.com/r/proceduralgeneration) only. Fix what breaks.
    Confirm the box survives modest concurrent load.
-3. **Launch week:** Show HN (Tue–Thu morning US) → same day, r/worldbuilding + r/mapmaking
+3. **Launch week:** Show HN (Tue–Thu morning US) → same day, [r/worldbuilding](https://old.reddit.com/r/worldbuilding) + [r/mapmaking](https://old.reddit.com/r/mapmaking)
    with *tailored* posts and native media → lobste.rs → Bluesky/Mastodon thread with the
    best timelapse. Watch the box; keep the gallery fallback armed.
 4. **Sustain (ongoing):** "Seed of the week" post every week (cross-post video everywhere),
@@ -380,7 +380,7 @@ Cheap to make; several are one command away given the existing export features.
 | Logo / brand | $0–80 (DIY vs. cheap commission) | — |
 | Analytics | $0 (Cloudflare) or ~$9/mo (Plausible) | optional |
 | Error tracking | $0 (free tier) | — |
-| Optional: a boosted r/worldbuilding or Reddit ad experiment | $50–150 | — |
+| Optional: a boosted [r/worldbuilding](https://old.reddit.com/r/worldbuilding) or Reddit ad experiment | $50–150 | — |
 | **Total** | **~$0–230** | **~$15–40/mo** |
 
 Everything load-bearing here is free-tier + the VPS + the domain. The rest is time.
@@ -462,7 +462,7 @@ network.**
 
 ## 6. Feature ideas from worldbuilding communities
 
-Synthesized from r/worldbuilding, r/proceduralgeneration, r/mapmaking, the Azgaar
+Synthesized from [r/worldbuilding](https://old.reddit.com/r/worldbuilding), [r/proceduralgeneration](https://old.reddit.com/r/proceduralgeneration), [r/mapmaking](https://old.reddit.com/r/mapmaking), the Azgaar
 community, and comparable tools (Azgaar's FMG, Wonderdraft, Worldengine, Gleba,
 planet-hex, World Climate Lab, ProcGenesis). Grouped by theme; rough effort (S/M/L) and
 impact (★–★★★) are guesses to help sequencing.
@@ -485,7 +485,7 @@ world *out* of it." mantle-bloom already has a hex-grid export; extend the expor
 
 ### 6.2 Climate & environment inspection — the worldbuilder's core need
 
-The #1 question in r/worldbuilding is *"what's the climate here and is it plausible?"*
+The #1 question in [r/worldbuilding](https://old.reddit.com/r/worldbuilding) is *"what's the climate here and is it plausible?"*
 
 | Feature | Effort | Impact | Notes |
 | --- | --- | --- | --- |
@@ -503,7 +503,7 @@ The #1 question in r/worldbuilding is *"what's the climate here and is it plausi
 | Feature | Effort | Impact | Notes |
 | --- | --- | --- | --- |
 | **Scenario presets** — Pangaea / archipelago world / ice age / hothouse / waterworld / young violent tectonics / old quiet world | S–M | ★★★ | Low effort over existing sliders, high discoverability, great for social posts ("I generated an ice-age world"). |
-| **Planet parameters** — radius / gravity / day length / stronger or weaker sun / higher axial tilt / low obliquity | M–L | ★★ | r/worldbuilding and r/SpaceEngine love "super-earth" and "tilted 40°" experiments. Axial tilt + solar multiplier already exist. |
+| **Planet parameters** — radius / gravity / day length / stronger or weaker sun / higher axial tilt / low obliquity | M–L | ★★ | [r/worldbuilding](https://old.reddit.com/r/worldbuilding) and [r/SpaceEngine](https://old.reddit.com/r/SpaceEngine) love "super-earth" and "tilted 40°" experiments. Axial tilt + solar multiplier already exist. |
 | **Tidally-locked / binary-star / eyeball planet** mode | L | ★★ | A whole content genre on its own. Big climate-model change. |
 | **Guided континент placement / "draw your landmasses" seed** | L | ★★★ | The bridge between "roll a random planet" and "I have a specific map in mind." The most common reason people bounce off physics-based generators. |
 | **Constrain generation** — "give me a world with a big equatorial continent and a polar ocean," reroll until it fits | M | ★★ | Rejection-sampling over existing params; big UX payoff. |

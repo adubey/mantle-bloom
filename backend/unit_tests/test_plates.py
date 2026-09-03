@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from app import geometry
 from app.elevation_lines import ElevationLine, line_spacing_rad
 from app.lithosphere_plate import build_plate_tiling, generate_plates
@@ -854,13 +855,54 @@ def test_lithosphere_continental_contested_edge_retreats():
     assert retreat_against_continent > CONTINENTAL_CONTESTED_RETREAT_MIN_RUN * spacing
 
 
-def test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate(monkeypatch):
-    """The overlap a retreating continent-continent suture consumes is thrust into the belt,
-    not lost: contested nodes there accumulate `CONTINENTAL_COLLISION_SHORTENING_BOOST` times
-    the plastic thickening a plain (fault_factor 1) collision node would -- so a consumed
-    overlap still builds real relief. Same geometry with the boost forced to 1.0 thickens
-    strictly less."""
-    from app import rheology
+def test_redistribute_accreted_column_conserves_crustal_volume():
+    """`_redistribute_accreted_column` moves the exact summed Hc/Hm of the dropped, accretion-
+    flagged nodes onto the surviving edge nodes (node area is constant, so summed thickness is
+    the conserved volume), and lifts their elevation by the matching isostatic delta. Dropped
+    nodes not flagged (a passive margin against an oceanic slab) contribute nothing."""
+    from app.lithosphere import crust_density, isostatic_elevation
+    from app.lithosphere_plate import _redistribute_accreted_column, SUTURE_ACCRETION_SPREAD_NODES
+
+    rho_c = crust_density("continental")
+    hc = np.full(10, 35_000.0)
+    hm = np.full(10, 100_000.0)
+    fields = {"crustal_thickness_m": hc, "mantle_lithosphere_thickness_m": hm}
+    elevation = isostatic_elevation(hc, hm, rho_c).copy()
+
+    removed_hc = np.array([35_000.0, 35_000.0, 35_000.0])
+    accrete_removed = np.array([True, True, False])  # last one was against ocean -> subducts
+
+    total_hc_before = hc.sum()
+    _redistribute_accreted_column(fields, elevation, rho_c, removed_hc, accrete_removed, from_high=True)
+
+    assert fields["crustal_thickness_m"].sum() == pytest.approx(total_hc_before + 2 * 35_000.0)
+    # spread over the last SUTURE_ACCRETION_SPREAD_NODES nodes, evenly
+    k = SUTURE_ACCRETION_SPREAD_NODES
+    assert np.allclose(fields["crustal_thickness_m"][-k:], 35_000.0 + 2 * 35_000.0 / k)
+    assert np.allclose(fields["crustal_thickness_m"][:-k], 35_000.0)
+    # thicker crust -> higher ground on exactly those nodes
+    assert np.all(elevation[-k:] > elevation[:-k].max())
+
+    # A suture that never heals would pile columns onto the same nodes forever -- Hc is capped
+    # (the overflow delaminates), so it can't run away.
+    from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
+
+    hc2 = np.full(6, 60_000.0)
+    fields2 = {"crustal_thickness_m": hc2, "mantle_lithosphere_thickness_m": np.full(6, 100_000.0)}
+    elev2 = isostatic_elevation(hc2, fields2["mantle_lithosphere_thickness_m"], rho_c).copy()
+    _redistribute_accreted_column(
+        fields2, elev2, rho_c,
+        np.full(5, 90_000.0), np.ones(5, dtype=bool), from_high=True,
+    )
+    assert np.all(fields2["crustal_thickness_m"] <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
+
+
+def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion():
+    """The overlap a retreating continent-continent suture consumes is thrust onto the plate's
+    own leading edge, not discarded: the retreated column's crustal volume reappears on the
+    surviving edge nodes (so the belt thickens and the plate's total Hc is conserved). A
+    retreat against an *oceanic* neighbour is a passive margin -- that column subducts, so the
+    edge does not thicken and total Hc drops."""
     from app.lithosphere import reference_thickness
     from app.lithosphere_plate import LithospherePlate
     from app.world import World
@@ -868,14 +910,14 @@ def test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate(mon
     hc0, hm0 = reference_thickness("continental")
     spacing = line_spacing_rad(1.0)
 
-    def _plate(pid, theta_lo, theta_hi, n, omega_z=0.0):
+    def _plate(pid, crust_type, theta_lo, theta_hi, n):
         theta = np.linspace(theta_lo, theta_hi, n)
         line = ElevationLine(
             phi=0.2,
             theta=theta,
             elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, hc0),
-            mantle_lithosphere_thickness_m=np.full(n, hm0),
+            crustal_thickness_m=np.full(n, hc0 if crust_type == "continental" else reference_thickness("oceanic")[0]),
+            mantle_lithosphere_thickness_m=np.full(n, hm0 if crust_type == "continental" else reference_thickness("oceanic")[1]),
         )
         filler = ElevationLine(
             phi=-0.6,
@@ -884,24 +926,198 @@ def test_continent_continent_suture_thickens_faster_than_the_bare_yield_rate(mon
             crustal_thickness_m=np.full(8, hc0),
             mantle_lithosphere_thickness_m=np.full(8, hm0),
         )
-        return LithospherePlate(
-            plate_id=pid, frame=np.eye(3), crust_type="continental", lines=[line, filler],
-            omega=np.array([0.0, 0.0, omega_z]),
+        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
+
+    def _run(neighbour_crust: str) -> tuple[float, float]:
+        continent = _plate(0, "continental", -0.5, 0.5, 40)
+        neighbour = _plate(1, neighbour_crust, 0.15, 0.9, 40)  # overlaps the continent's high end
+        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+
+        def suture_line():
+            return next(ln for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
+
+        edge_hc_before = float(suture_line().crustal_thickness_m[-4:].max())
+        for _ in range(6):
+            continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
+        edge_hc_after = float(suture_line().crustal_thickness_m[-4:].max())
+        return edge_hc_after - edge_hc_before, float(suture_line().crustal_thickness_m.sum())
+
+    edge_gain_cc, suture_hc_cc = _run("continental")
+    edge_gain_co, suture_hc_co = _run("oceanic")
+
+    # Suture accretion piles the consumed columns onto the leading edge -- kilometres, not the
+    # metres a bare sub-yield graze would add.
+    assert edge_gain_cc > 3_000.0
+    # Passive margin against an oceanic slab: the retreated column is subducted, so no edge
+    # pile-up...
+    assert edge_gain_co < edge_gain_cc / 3
+    # ...and the suture line keeps several consumed continental columns' worth of extra crust
+    # that the oceanic-neighbour run simply loses.
+    assert suture_hc_cc > suture_hc_co + 3 * 30_000.0
+
+
+def test_lithosphere_continental_volume_budget_suppresses_growth():
+    """A continental plate whose node footprint has outrun its crustal volume -- most of its
+    lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new
+    areal crust this step (neither end-growth nor a claimed new row), so it thins/drowns back
+    toward budget instead of tiling drowned margin outward forever. A plate at genuine
+    continental thickness everywhere is within budget and still grows normally."""
+    from app.lithosphere import (
+        REFERENCE_HC_CONTINENTAL_M,
+        REFERENCE_HC_OCEANIC_M,
+        REFERENCE_HM_CONTINENTAL_M,
+    )
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _continent(main_hc: float) -> LithospherePlate:
+        n = 40
+        main = ElevationLine(
+            phi=0.2,
+            theta=np.linspace(-0.5, 0.5, n),
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, main_hc),
+            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
+        )
+        # A genuinely-continental core so `n_continental` is never zero in either case.
+        core = ElevationLine(
+            phi=-0.6,
+            theta=np.linspace(-0.2, 0.2, 8),
+            elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, REFERENCE_HC_CONTINENTAL_M),
+            mantle_lithosphere_thickness_m=np.full(8, REFERENCE_HM_CONTINENTAL_M),
+        )
+        return LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main, core])
+
+    def _main_span_growth(main_hc: float) -> float:
+        plate = _continent(main_hc)
+        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+
+        def main_span() -> float:
+            line = next(ln for ln in plate.lines if abs(ln.phi - 0.2) < 1e-6)
+            return float(line.theta[-1] - line.theta[0])
+
+        before = main_span()
+        # One step, with a wide max_distance so an unsuppressed end can take several nodes --
+        # a later step would see `_claim_adjacent_territory` dilute the compact plate too (the
+        # ratchet this gate exists to bound), so measure the first step alone.
+        plate.deform(world, [], years=200_000, max_distance=5 * spacing)
+        return main_span() - before
+
+    # Diluted lattice (main row at the oceanic reference column): ~40 nodes vs ~8 genuine
+    # continental -> well past CONTINENTAL_AREA_BUDGET_MULT -> the open end grows nothing.
+    assert _main_span_growth(REFERENCE_HC_OCEANIC_M) < 0.5 * spacing
+    # Genuine continental thickness everywhere -> within budget -> the open end still grows.
+    assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 3 * spacing
+
+
+def test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor():
+    """A continental plate's *leading* edge advancing into space a subducting oceanic slab is
+    vacating grows juvenile arc / accreted-terrane crust (the thicker ARC_MARGIN_SEED_*
+    column, stamped as a subduction arc), not the drowned oceanic reference column
+    `growth_seed_thickness` seeds everywhere else. The active-margin signal here is the
+    subduction-arc provenance stamp a recent convergent step left on the leading nodes."""
+    from app.elevation_lines import ELEV_CHANGE_NEW_CRUST, ELEV_CHANGE_SUBDUCTION_ARC
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_CONTINENTAL_M
+    from app.lithosphere_plate import ARC_MARGIN_SEED_HC_M, LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _grown_high_end(mark_active_margin: bool):
+        n = 40
+        reason = np.zeros(n)
+        if mark_active_margin:
+            reason[-4:] = ELEV_CHANGE_SUBDUCTION_ARC
+        main = ElevationLine(
+            phi=0.2,
+            theta=np.linspace(-0.5, 0.5, n),
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
+            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
+            elev_change_reason=reason,
+        )
+        plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main])
+        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+        plate.deform(world, [], years=200_000, max_distance=5 * spacing)
+        line = next(ln for ln in plate.lines if abs(ln.phi - 0.2) < 1e-6)
+        new = line.theta > 0.5 + 1e-9
+        assert new.any(), "expected the open high end to grow"
+        return line.crustal_thickness_m[new], line.elev_change_reason[new]
+
+    ocean_hc, ocean_reason = _grown_high_end(mark_active_margin=False)
+    arc_hc, arc_reason = _grown_high_end(mark_active_margin=True)
+
+    # Baseline: new margin nodes seeded at (or near, after regularize blends toward the old
+    # continental interior) the oceanic reference column, stamped plain new crust.
+    assert ocean_hc.mean() < 0.5 * (REFERENCE_HC_OCEANIC_M + REFERENCE_HC_CONTINENTAL_M)
+    assert (ocean_reason == ELEV_CHANGE_NEW_CRUST).any()
+    # Active margin: markedly thicker juvenile crust, stamped as a subduction arc.
+    assert arc_hc.mean() > ocean_hc.mean() + 5_000.0
+    assert arc_hc.max() >= ARC_MARGIN_SEED_HC_M - 1e-6 or arc_hc.mean() > 20_000.0
+    assert (arc_reason == ELEV_CHANGE_SUBDUCTION_ARC).any()
+
+
+def test_lithosphere_arc_magmatism_thickens_the_continental_margin_band(monkeypatch):
+    """A converging oceanic neighbour underplates juvenile crust across the overriding
+    continental plate's arc *band* (out to `reach_rad`, not just the contested contact line).
+    Isolated by running the same setup with the magmatic rate zeroed -- the difference is the
+    arc contribution alone, and it is a real multi-hundred-metre Hc gain over a swath many
+    nodes wide, not confined to the two or three nodes that actually overlap."""
+    from app import mantle, rheology
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_CONTINENTAL_M, REFERENCE_HM_OCEANIC_M
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _line(phi, lo, hi, count, hc, hm, elev):
+        theta = np.linspace(lo, hi, count)
+        return ElevationLine(
+            phi=phi, theta=theta, elevation=np.full(count, elev),
+            crustal_thickness_m=np.full(count, hc), mantle_lithosphere_thickness_m=np.full(count, hm),
         )
 
-    def _suture_hc_gain(boost: float) -> float:
-        monkeypatch.setattr(rheology, "CONTINENTAL_COLLISION_SHORTENING_BOOST", boost)
-        continent = _plate(0, -0.5, 0.5, 40, omega_z=1e-8)  # head-on convergence, well past yield
-        neighbour = _plate(1, 0.15, 0.9, 40)  # overlaps the continent's high end -> contested
-        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
-        continent.deform(world, [neighbour], years=1_000_000, max_distance=1.5 * spacing)
-        hc = np.concatenate([ln.crustal_thickness_m for ln in continent.lines])
-        return float(hc.max() - hc0)
+    def _run(arc_rate: float):
+        monkeypatch.setattr(rheology, "ARC_MAGMATIC_HC_RATE_M_PER_MYR", arc_rate)
+        cont = LithospherePlate(
+            plate_id=0, frame=np.eye(3), crust_type="continental",
+            lines=[
+                _line(0.15, -0.6, 0.6, 60, REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M, 0.0),
+                _line(-0.05, -0.6, 0.6, 60, REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M, 0.0),
+            ],
+        )
+        ocean = LithospherePlate(
+            plate_id=1, frame=np.eye(3), crust_type="oceanic",
+            lines=[
+                _line(0.15, 0.55, 1.6, 50, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M, -4000.0),
+                _line(-0.05, 0.55, 1.6, 50, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M, -4000.0),
+            ],
+        )
+        cont.set_omega(np.zeros(3))
+        ocean.set_omega(np.array([0.0, 0.0, -0.35 * mantle.MAX_PLATE_RATE]))  # drifts toward the continent's high end
+        world = World(seed=1, plates=[cont, ocean], mantle_centers=[], node_density=1.0)
+        for _ in range(6):
+            cont.deform(world, [ocean], years=500_000, max_distance=1.5 * spacing)
+        line = next(ln for ln in cont.lines if abs(ln.phi - 0.15) < 1e-6)
+        return line.theta.copy(), line.crustal_thickness_m.copy()
 
-    boosted = _suture_hc_gain(rheology.CONTINENTAL_COLLISION_SHORTENING_BOOST)
-    plain = _suture_hc_gain(1.0)
-    assert plain > 0.0  # the collision clears yield at all
-    assert boosted > plain * 1.8
+    default_rate = rheology.ARC_MAGMATIC_HC_RATE_M_PER_MYR
+    theta_off, hc_off = _run(0.0)
+    theta_on, hc_on = _run(default_rate)
+
+    # Compare on the shared theta support (regularize can shift node counts a hair). The
+    # difference is the arc contribution alone -- convergent shortening at the contested
+    # contact runs identically in both.
+    hi = theta_on > 0.2
+    gain = hc_on[hi] - np.interp(theta_on[hi], theta_off, hc_off)
+    assert gain.max() > 400.0  # the margin band genuinely thickened over the 3 My run
+    assert int((gain > 30.0).sum()) >= 3  # ... over a swath, not a single contact node
+    # No effect on the trailing (non-margin) half.
+    lo = theta_on < -0.3
+    assert np.allclose(hc_on[lo], np.interp(theta_on[lo], theta_off, hc_off), atol=5.0)
 
 
 def test_lithosphere_contested_leading_row_is_dropped_after_sustained_override():
