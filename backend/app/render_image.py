@@ -436,6 +436,9 @@ _ELEV_REASON_RGB = np.array(
         (28, 80, 140),    # 12 MARINE -- deep blue
         (212, 232, 244),  # 13 GLACIAL_FLATTEN -- pale ice
         (70, 200, 176),   # 14 LAKE_SILT -- aqua
+        (120, 190, 90),   # 15 FAULT_NORMAL -- yellow-green (intraplate extension)
+        (176, 60, 90),    # 16 FAULT_REVERSE -- magenta-red (intraplate shortening)
+        (230, 190, 70),   # 17 FAULT_STRIKE_SLIP -- warm yellow (wrench)
     ],
     dtype=np.uint8,
 )

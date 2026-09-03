@@ -14,12 +14,14 @@
   small, dependency-free port of just enough backend geometry/projection math to drive the
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
-  Plate Inspector (`PlateInspector.tsx`), River Inspector (`RiverInspector.tsx`), and Lake
-  Inspector (`LakeInspector.tsx`) views, which each render and drive their whole interaction
+  Plate Inspector (`PlateInspector.tsx`), River Inspector (`RiverInspector.tsx`), Lake
+  Inspector (`LakeInspector.tsx`), and Fault Line Inspector (`FaultInspector.tsx`) views,
+  which each render and drive their whole interaction
   client-side from raw JSON rather than a baked PNG (see
   [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
-  [simulation-model.md#river-inspector](simulation-model.md#river-inspector), and
-  [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector)). None of this makes
+  [simulation-model.md#river-inspector](simulation-model.md#river-inspector),
+  [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector), and
+  [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)). None of this makes
   it a mapping library, and the real detailed rendering stays entirely server-side for every
   other view.
 
@@ -110,6 +112,15 @@ When the "Lake Inspector" map view is active, the browser instead fetches (same 
     Clicking anywhere on land -- not just a visible lake -- sends its unprojected true lat/lon
     to GET /world/lake_at, which always resolves to something informative: a lake, a dry but
     real basin, "drains straight to the ocean, no basin here," or open ocean.
+
+When the "Fault lines" map view is active, the browser instead fetches (same cadence):
+  GET /world/faults
+  → every intraplate fault (see faults.py / simulation-model.md#faults) as a true-frame
+    trace polyline + type/motion/age metadata, plus the shared coastline_segments, as JSON,
+    not a PNG -- see api-reference.md and simulation-model.md#fault-inspector. Unlike
+    river_id/lake_id, fault_id is a stable identity for the fault's whole lifetime, so the
+    selection survives a step. Empty before the first step. Clicking a fault sends its
+    unprojected true lat/lon to GET /world/fault_at, a nearest-trace hit-test.
 ```
 
 The frontend never holds simulation state, and holds only one small piece of *rendering*
@@ -248,6 +259,13 @@ volcanism.py          every-step eruption lifecycle for existing volcano nodes (
                      volcanic-field *creation* now happens inline inside `deform()`'s own
                      overstretched-rift handling, not a separate periodic detection pass (see
                      simulation-model.md#volcanism)
+faults.py            every-step intraplate fault-line lifecycle (stress-weighted Poisson
+                     spawn near boundaries, Andersonian regime pick, sub-parallel fault
+                     sets, per-regime relief within ~45 km of the trace, lock-up into
+                     permanent scars) -- an *additive* layer that never touches deform()'s
+                     own boundary classification; re-homed across merges/splits by
+                     reconcile_faults from world.step_world; backs the "Fault lines" map view
+                     (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
 world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every

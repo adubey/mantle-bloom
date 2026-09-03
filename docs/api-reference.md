@@ -565,6 +565,61 @@ been generated yet.
   any basin. `basin` is `null`.
 - `"ocean"` -- the nearest node is open ocean. `basin` is `null`.
 
+## `GET /world/faults`
+
+The "Fault lines" map mode's data source (see
+[simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)) -- same "plain
+JSON, client renders it" contract as `/world/rivers`; `frontend/src/FaultInspector.tsx`
+renders and drives the interaction itself. These are **intraplate** faults (see `faults.py` /
+[simulation-model.md#faults](simulation-model.md#faults)), distinct from plate boundaries.
+Unlike `river_id` / `lake_id`, `fault_id` is a **persistent** identity for the fault's whole
+lifetime (a monotonic `World.next_fault_id` counter), so a selection survives a step. `faults`
+is `[]` before the first step. `404` if no world has been generated yet.
+
+```json
+{
+  "elapsed_years": 12000000,
+  "faults": [
+    {
+      "fault_id": 3,
+      "plate_id": 5,
+      "kind": "reverse",
+      "trace": [[0.35, -0.11, -0.93], ["..."]],
+      "active": true,
+      "slip_rate_m_per_myr": 4200.0,
+      "cumulative_offset_m": 18500.0,
+      "age_myr": 4.4,
+      "lifespan_myr": 12.0,
+      "dip_deg": 31.0,
+      "length_km": 63.0,
+      "set_id": null,
+      "birth_distance_from_boundary_km": 210.0,
+      "distance_from_boundary_km": 260.0
+    }
+  ]
+}
+```
+
+- `kind` is `"normal"`, `"reverse"`, or `"strike_slip"` (Andersonian regime, picked from the
+  local closing rate at spawn).
+- `trace` is the fault's polyline in **true** (un-rotated) world coordinates, an ordered list
+  of unit vectors (rounded), not a branch-capable edge list.
+- `active` is `false` once the fault has locked up and survives only as an inert scar.
+- `cumulative_offset_m` is total slip since birth; `set_id` is non-`null` (and equal to the
+  family's first member's `fault_id`) for a member of a sub-parallel fault family.
+- `distance_from_boundary_km` is recomputed live each call (nearest cross-plate node), so it
+  changes as the plate moves, unlike the stored `birth_distance_from_boundary_km`.
+
+## `GET /world/fault_at?lat_deg=0&lon_deg=0`
+
+The Fault Line Inspector's click hit-test: the `fault_id` of the trace nearest
+`(lat_deg, lon_deg)` within ~120 km, else `null` -- same true-frame contract as
+`/world/river_at`. `400` for non-finite input, `404` if no world has been generated yet.
+
+```json
+{ "fault_id": 3 }
+```
+
 ## `GET /world/stranded_basins`
 
 Endorheic depressions whose floor sits below sea level and that have **no drainage path to

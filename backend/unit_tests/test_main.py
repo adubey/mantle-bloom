@@ -55,6 +55,14 @@ def test_lakes_before_generate_returns_404(client):
     assert client.get("/world/lakes").status_code == 404
 
 
+def test_faults_before_generate_returns_404(client):
+    assert client.get("/world/faults").status_code == 404
+
+
+def test_fault_at_before_generate_returns_404(client):
+    assert client.get("/world/fault_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
+
+
 def test_lake_at_before_generate_returns_404(client):
     assert client.get("/world/lake_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
@@ -473,6 +481,38 @@ def test_lake_at_rejects_non_finite_query(client):
     client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/lake_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/lake_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_faults_is_empty_right_after_generate(client):
+    # No fault spawns before the first step, same degrade-to-empty contract /world/rivers has.
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    resp = client.get("/world/faults")
+    assert resp.status_code == 200
+    assert resp.json()["faults"] == []
+    assert client.get("/world/fault_at", params={"lat_deg": 0, "lon_deg": 0}).json()["fault_id"] is None
+
+
+def test_fault_at_rejects_non_finite_query(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    assert client.get("/world/fault_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
+    assert client.get("/world/fault_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_faults_returns_well_formed_entries_after_stepping(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    for _ in range(20):
+        client.post("/world/step", json={"years": 1_000_000})
+    body = client.get("/world/faults").json()
+    assert body["faults"], "expected some faults after 20 Myr"
+    f = body["faults"][0]
+    assert f["kind"] in {"normal", "reverse", "strike_slip"}
+    assert len(f["trace"]) >= 2 and all(len(p) == 3 for p in f["trace"])
+    assert f["length_km"] > 0.0
+    # a click on the first fault's own midpoint hit-tests back to it
+    mid = f["trace"][len(f["trace"]) // 2]
+    lat = math.degrees(math.asin(max(-1.0, min(1.0, mid[2]))))
+    lon = math.degrees(math.atan2(mid[1], mid[0]))
+    assert client.get("/world/fault_at", params={"lat_deg": lat, "lon_deg": lon}).json()["fault_id"] == f["fault_id"]
 
 
 def test_stranded_basins_is_empty_before_the_first_step(client):

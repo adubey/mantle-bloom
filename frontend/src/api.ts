@@ -33,7 +33,8 @@ export type MapView =
   | "overlapAge"
   | "plateInspector"
   | "riverInspector"
-  | "lakeInspector";
+  | "lakeInspector"
+  | "faultInspector";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -126,6 +127,40 @@ export interface RiverSummary {
 // A world-space segment pair -- shared shape for both RiverSummary.segments and
 // coastline_segments below.
 export type Segment = [[number, number, number], [number, number, number]];
+
+// Fault Line Inspector data -- same "raw JSON, client renders itself" philosophy as
+// PlatesResponse/RiversResponse (see FaultInspector.tsx and backend app/faults.py). These
+// are *intraplate* faults, distinct from plate boundaries (which the Plate Inspector shows).
+// `fault_id` is stable within one world's lifetime (a monotonic counter, see
+// World.next_fault_id) -- unlike river_id, it survives a step -- but not across a regenerate.
+export type FaultKind = "normal" | "reverse" | "strike_slip";
+
+export interface FaultSummary {
+  fault_id: number;
+  plate_id: number;
+  kind: FaultKind;
+  // The fault trace as an ordered list of *true* world-space points (see Segment for the
+  // frame convention) -- a gently curved polyline, not an edge list.
+  trace: [number, number, number][];
+  // false once the fault has locked up and survives only as an inert scar (see faults.py).
+  active: boolean;
+  slip_rate_m_per_myr: number;
+  cumulative_offset_m: number;
+  age_myr: number;
+  lifespan_myr: number;
+  dip_deg: number;
+  length_km: number;
+  // Non-null for a member of a sub-parallel fault family (Basin-and-Range-style) -- equal to
+  // the family's first member's fault_id.
+  set_id: number | null;
+  birth_distance_from_boundary_km: number;
+  distance_from_boundary_km: number;
+}
+
+export interface FaultsResponse {
+  elapsed_years: number;
+  faults: FaultSummary[];
+}
 
 export interface RiversResponse {
   elapsed_years: number;
@@ -455,6 +490,16 @@ export function fetchRiverAt(latDeg: number, lonDeg: number): Promise<{ river_id
 
 export function fetchLakes(): Promise<LakesResponse> {
   return fetch(`${API_BASE}/world/lakes`).then(asJson<LakesResponse>);
+}
+
+export function fetchFaults(): Promise<FaultsResponse> {
+  return fetch(`${API_BASE}/world/faults`).then(asJson<FaultsResponse>);
+}
+
+// The Fault Line Inspector's click hit-test -- same true-frame contract as fetchPlateAt.
+export function fetchFaultAt(latDeg: number, lonDeg: number): Promise<{ fault_id: number | null }> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/fault_at?${params}`).then(asJson<{ fault_id: number | null }>);
 }
 
 // "File > Save World" -- the entire current world state as an opaque binary blob (see

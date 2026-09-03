@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -108,6 +108,14 @@ class World:
     # `default_factory` field, so an older save without it is backfilled on load (see
     # persistence._backfill_added_fields).
     stranded_basin_tracks: list = field(default_factory=list)
+    # Intraplate fault lines (see faults.py) -- a `faults.Fault` per trace, geometry stored
+    # in the owning plate's local frame so it rotates with the crust. Grown/retired/applied
+    # by faults.update_faults every step and re-homed across topology changes by
+    # faults.reconcile_faults. A `default_factory` field -> backfilled on load of an older
+    # save (persistence._backfill_added_fields). `next_fault_id` is the monotonic id source,
+    # a plain-int default so an old pickle falls through to 0.
+    faults: list = field(default_factory=list)
+    next_fault_id: int = 0
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
@@ -417,10 +425,16 @@ def step_world(world: World, years: float) -> None:
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
             plate.deform(world, others, years, distances[plate.plate_id])
+        # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
+        # replacing) deform()'s boundary classification -- see faults.py. Before topology
+        # changes so a fresh fault's relief is in place when merge/split geometry is judged.
+        faults.update_faults(world, years)
     world.elapsed_years += years
     if world.simulate_plate_movement:
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
+        # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
+        faults.reconcile_faults(world)
         # Stamp/clear ElevationLine.overlap_onset_years and advance World.overlap_progress
         # against this step's final geometry (see merge_split.update_overlap_tracking /
         # docs/debugging.md).

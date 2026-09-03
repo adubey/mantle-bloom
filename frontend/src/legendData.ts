@@ -358,6 +358,9 @@ const ELEV_REASON_ENTRIES: LegendSymbol[] = [
   { kind: "square", color: rgb(28, 80, 140), label: "Submarine erosion / sediment" },
   { kind: "square", color: rgb(212, 232, 244), label: "Glacial flattening" },
   { kind: "square", color: rgb(70, 200, 176), label: "Lake / basin siltation" },
+  { kind: "square", color: rgb(120, 190, 90), label: "Fault: normal (graben)" },
+  { kind: "square", color: rgb(176, 60, 90), label: "Fault: reverse (thrust)" },
+  { kind: "square", color: rgb(230, 190, 70), label: "Fault: strike-slip" },
 ];
 
 // render_image.py's geomorph_colors stops (_GEOMORPH_STOP_M / _GEOMORPH_STOP_RGB) -- this
@@ -595,6 +598,18 @@ export function legendFor(view: MapView): LegendSpec | null {
         symbols: [
           { kind: "square", color: SPECKLE_LAND_COLOR, label: "Land backdrop" },
           { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },
+          COASTLINE_SYMBOL,
+        ],
+      };
+    case "faultInspector":
+      // Colors match render_image.py's _ELEV_REASON_RGB fault stops (codes 15/16/17) and
+      // FaultInspector.tsx's KIND_RGB. See backend app/faults.py.
+      return {
+        title: "Intraplate fault lines",
+        symbols: [
+          { kind: "line", color: rgb(176, 60, 90), label: "Reverse (thrust) — shortening" },
+          { kind: "line", color: rgb(120, 190, 90), label: "Normal (graben) — extension" },
+          { kind: "line", color: rgb(230, 190, 70), label: "Strike-slip — wrench" },
           COASTLINE_SYMBOL,
         ],
       };

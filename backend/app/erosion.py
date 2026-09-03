@@ -78,6 +78,8 @@ from .elevation_lines import (
     ELEV_CHANGE_COLLISION,
     ELEV_CHANGE_DEPOSITION,
     ELEV_CHANGE_EROSION,
+    ELEV_CHANGE_FAULT_NORMAL,
+    ELEV_CHANGE_FAULT_STRIKE_SLIP,
     ELEV_CHANGE_GLACIAL_FLATTEN,
     ELEV_CHANGE_LAKE_SILT,
     ELEV_CHANGE_MARINE,
@@ -1320,7 +1322,9 @@ def apply_erosion(
     moved = net_abs >= ELEV_CHANGE_MIN_DELTA_M
     # A structural code (deform()/volcanism, re-stamped every step the belt is still active) is
     # sticky against ordinary background wash -- only a large net geomorphic step overrides it.
-    prior_structural = (prior_reason >= ELEV_CHANGE_COLLISION) & (prior_reason <= ELEV_CHANGE_VOLCANO)
+    prior_structural = ((prior_reason >= ELEV_CHANGE_COLLISION) & (prior_reason <= ELEV_CHANGE_VOLCANO)) | (
+        (prior_reason >= ELEV_CHANGE_FAULT_NORMAL) & (prior_reason <= ELEV_CHANGE_FAULT_STRIKE_SLIP)
+    )
     override_structural = net_abs >= ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR * dt_myr
     overwrite = moved & (~prior_structural | override_structural)
     new_elev_change_reason = np.where(overwrite, dominant, prior_reason)
