@@ -899,21 +899,41 @@ against the nearest cross-plate neighbour's omega gives the local closing rate: 
 direction). `threshold` is `boundary.TRANSFORM_RATE_THRESHOLD`, shared with `deform()`'s own
 transform classification so the two can't drift.
 
-**4. Fault sets.** With `SET_PROBABILITY` (0.4) the spawn is a whole sub-parallel family
-(`SET_MIN..MAX_MEMBERS`, 2–5) rather than a lone trace, spaced `SET_SPACING_KM` (20 km) apart
-with a small `SET_ECHELON_STEP_KM` (3 km) along-strike step. Normal-fault sets alternate
-horst/graben polarity member to member. The family's first member's `fault_id` doubles as the
-`set_id` every member carries.
+**4. Fault sets and fault systems.** Two levels of sub-parallel grouping:
 
-**5. Geometry, in the plate's local frame.** Each trace is a short great-circle arc
-(`length_km` lognormal, ~12–200 km -- **known too short**, real faults reach ~1300 km and
-systems ~5500 km; see `docs/TODO.md` "Intraplate faults: follow-ups" item 1) sampled at ~1
-node per 15 km, with a sinusoidal along-strike bend up to `BEND_MAX_FRACTION` (0.12) of its
-length so sets don't look like a ruled grid. Slip rate scales with the seed's stress weight² between `SLIP_RATE_MIN` (150
-m/Myr) and `SLIP_RATE_MAX` (30000 m/Myr); lifespan scales with stress weight between
-`LIFESPAN_MIN..MAX_MYR` (2–25 Myr). Stored as `local_phi`/`local_theta` in the owning plate's
-frame, so a fault rides along with the crust as the plate rotates for free -- the same
-"attached to the crust, not the world" property every persistent `ElevationLine` field has.
+- A **set** (`SET_PROBABILITY` = 0.4 of *lone* spawns) is a tight family: `SET_MIN..MAX_MEMBERS`
+  (2–5) traces `SET_SPACING_KM` (20 km) apart with a small `SET_ECHELON_STEP_KM` (3 km)
+  along-strike step; normal-fault sets alternate horst/graben polarity member to member. The
+  family's first member's `fault_id` doubles as the `set_id` every member carries.
+- A **fault system** (`SYSTEM_SPAWN_FRACTION` = 0.18 of spawns take this path *instead* of a
+  lone fault/set -- `FaultSystem`, tracked in `World.fault_systems`) is a first-class zone one
+  level up: a long, gently curving **master lineament** (`SYSTEM_LENGTH_*` lognormal, ~600 km
+  up to `SYSTEM_LENGTH_MAX_KM` = 5500 km -- East African Rift / Anatolian / Sunda scale)
+  warped by `SYSTEM_BEND_LOBES` low-frequency lateral lobes so the belt bends rather than
+  running straight, with a family of `SYSTEM_STRAND_COUNT_MIN..MAX` (5–16) strand `Fault`s
+  scattered along it: stepped `SYSTEM_STRAND_SPACING_KM` (65 km) apart along strike, offset up
+  to `SYSTEM_BELT_HALF_WIDTH_KM` (130 km) either side of the master, each striking along the
+  local master tangent with up to `SYSTEM_STRAND_STRIKE_JITTER_DEG` (12°) of jitter and
+  (`SYSTEM_OFFREGIME_FRACTION`, 0.15) occasionally bucking the system's dominant regime.
+  Strand lengths use a **widened** lognormal (`SYSTEM_STRAND_LENGTH_*`, median 150 km up to
+  1300 km -- San Andreas / North Anatolian / Great Sumatran scale), an order of magnitude past
+  the lone-fault `LENGTH_MAX_KM` (200 km). Every strand carries the `system_id`. The master
+  lineament applies **no relief of its own** -- it's an organising scaffold; the strands carry
+  the relief exactly as lone faults do. A system outlives its strands (2–25 Myr) by an order
+  of magnitude (`SYSTEM_LIFESPAN_MIN..MAX_MYR`, 25–140 Myr), then becomes an inert scar
+  bundle; `_cull_inactive_systems` keeps at most `MAX_INACTIVE_SYSTEMS_PER_PLATE` (12) of
+  those per plate.
+
+**5. Geometry, in the plate's local frame.** Each trace is a great-circle arc (`length_km`
+lognormal -- lone faults ~12–200 km, system strands to ~1300 km) sampled at ~1 node per 15 km
+(35 km for the longer system strands), with a sinusoidal along-strike bend up to
+`BEND_MAX_FRACTION` (0.12) of its length so sets don't look like a ruled grid. Slip rate
+scales with the seed's stress weight² between `SLIP_RATE_MIN` (150 m/Myr) and `SLIP_RATE_MAX`
+(30000 m/Myr); lifespan scales with stress weight between `LIFESPAN_MIN..MAX_MYR` (2–25 Myr).
+Stored as `local_phi`/`local_theta` in the owning plate's frame (the system's master trace as
+`master_local_phi`/`_theta`), so a fault rides along with the crust as the plate rotates for
+free -- the same "attached to the crust, not the world" property every persistent
+`ElevationLine` field has.
 
 **6. Relief.** Each active fault applies its own relief to crust within `MAX_FAULT_REACH_KM`
 (45 km) of the trace, tapering linearly to zero at that distance and scaled by
@@ -3043,6 +3063,13 @@ bright and thick with both endpoints ringed (the same `ctx.arc` primitive the Ri
 inspectors use). Same per-edge antimeridian
 longitude-unwrap as `RiverInspector.projectSegment`. Reuses the `coastline_segments` already
 fetched for the River / Lake inspectors -- this view has no other land/ocean cue.
+
+**Fault systems** (`fault_systems` in the same `/world/faults` payload -- see
+[Faults](#faults)) draw *under* the strand family: a broad translucent belt (the zone the
+strands scatter across) plus a thin dashed centerline for the master lineament, regime-
+colored. Selecting a strand highlights its parent system's belt and shows the system's
+regime / length / age in the sidebar -- there's no separate system hit-test; the strands are
+what you click.
 
 **Click-to-select** is a server round trip (`GET /world/fault_at`), nearest-trace within a
 120 km threshold -- there's no shape to point-in-polygon test, only sparse polylines, so a

@@ -8,9 +8,11 @@ from app.elevation_lines import (
 )
 from app.faults import (
     Fault,
+    FaultSystem,
     _KIND_NORMAL,
     _KIND_REVERSE,
     _KIND_STRIKE_SLIP,
+    _cull_inactive_systems,
     _cull_scars,
     _regime_from_closing,
     reconcile_faults,
@@ -29,6 +31,10 @@ def _fast_faults(monkeypatch):
     monkeypatch.setattr(faults, "BASE_SPAWN_RATE_PER_MYR", 40.0)
     monkeypatch.setattr(faults, "LIFESPAN_MIN_MYR", 2.0)
     monkeypatch.setattr(faults, "LIFESPAN_MAX_MYR", 6.0)
+    # Systems too: spawn them often, and let them retire inside a ~15-step test.
+    monkeypatch.setattr(faults, "SYSTEM_SPAWN_FRACTION", 0.5)
+    monkeypatch.setattr(faults, "SYSTEM_LIFESPAN_MIN_MYR", 4.0)
+    monkeypatch.setattr(faults, "SYSTEM_LIFESPAN_MAX_MYR", 10.0)
 
 
 def _run(seed: int, *, plates: int = 8, steps: int = 15, dt: float = 1_000_000) -> World:
@@ -232,6 +238,86 @@ def test_faults_never_dangle_on_a_vanished_plate_over_a_run():
     world = _run(seed=9, steps=10)
     live = {p.plate_id for p in world.plates}
     assert all(f.plate_id in live for f in world.faults)
+
+
+# --------------------------------------------------------------------------- fault systems
+
+
+def test_fault_systems_spawn_with_long_master_traces_and_strand_families():
+    world = _run(seed=3, steps=12)
+    assert world.fault_systems, "expected some fault systems"
+
+    # Master lineaments are an order of magnitude longer than a lone fault's ~200 km cap.
+    assert max(s.master_length_km() for s in world.fault_systems) > 600.0
+    for s in world.fault_systems:
+        assert s.kind in {_KIND_NORMAL, _KIND_REVERSE, _KIND_STRIKE_SLIP}
+        assert len(s.master_local_phi) >= 6
+
+    # Strands carry a valid system_id, and can run past the lone-fault LENGTH_MAX_KM (200)
+    # -- the widened distribution.
+    live_system_ids = {s.system_id for s in world.fault_systems}
+    strand_system_ids = {f.system_id for f in world.faults if f.system_id is not None}
+    assert strand_system_ids
+    assert strand_system_ids & live_system_ids  # strands point at systems that still exist
+    assert max(f.length_km() for f in world.faults if f.system_id is not None) > faults.LENGTH_MAX_KM
+
+    # Lone faults (no system) still obey the original tight length cap.
+    lone = [f.length_km() for f in world.faults if f.system_id is None]
+    if lone:
+        assert max(lone) <= faults.LENGTH_MAX_KM + 1.0
+
+
+def test_fault_systems_age_and_go_inactive():
+    world = _run(seed=8, steps=15)
+    assert any(not s.active for s in world.fault_systems), "some systems should have timed out"
+    for s in world.fault_systems:
+        if not s.active:
+            assert s.age_myr >= s.lifespan_myr
+    assert "fault system" in " ".join(m for _, m in world.events)
+
+
+def test_cull_inactive_systems_caps_scars_per_plate_keeping_youngest():
+    world = World(seed=0, plates=[])
+    n = faults.MAX_INACTIVE_SYSTEMS_PER_PLATE + 4
+    for i in range(n):
+        world.fault_systems.append(
+            FaultSystem(
+                system_id=i, plate_id=0, kind=_KIND_REVERSE,
+                master_local_phi=np.zeros(3), master_local_theta=np.zeros(3),
+                length_km=2000.0, birth_years=0.0, lifespan_myr=1.0,
+                age_myr=float(i), active=False,
+            )
+        )
+    world.fault_systems.append(
+        FaultSystem(
+            system_id=999, plate_id=0, kind=_KIND_REVERSE,
+            master_local_phi=np.zeros(3), master_local_theta=np.zeros(3),
+            length_km=2000.0, birth_years=0.0, lifespan_myr=1.0, age_myr=500.0, active=True,
+        )
+    )
+    _cull_inactive_systems(world)
+    assert sum(not s.active for s in world.fault_systems) == faults.MAX_INACTIVE_SYSTEMS_PER_PLATE
+    assert any(s.system_id == 999 for s in world.fault_systems)
+
+
+def test_fault_systems_round_trip_through_a_save(tmp_path):
+    world = _run(seed=7, steps=10)
+    assert world.fault_systems
+    save = tmp_path / "sys7.mbworld"
+    save.write_bytes(persistence.save_world_bytes(world))
+    loaded = persistence.load_world_bytes(save.read_bytes())
+    assert len(loaded.fault_systems) == len(world.fault_systems)
+    assert loaded.next_fault_system_id == world.next_fault_system_id
+    step_world(loaded, 1_000_000)  # keeps stepping cleanly
+
+
+def test_old_save_without_fault_systems_field_still_loads(tmp_path):
+    world = generate_world(seed=7, num_plates=6)
+    del world.fault_systems
+    save = tmp_path / "old_sys.mbworld"
+    save.write_bytes(persistence.save_world_bytes(world))
+    loaded = persistence.load_world_bytes(save.read_bytes())
+    assert loaded.fault_systems == []
 
 
 # --------------------------------------------------------------------------- persistence

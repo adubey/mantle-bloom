@@ -30,6 +30,14 @@ a fault rides along with the crust as the plate rotates for free -- the same "at
 the crust, not the world" property every persistent `ElevationLine` field already has.
 `reconcile_faults` re-homes faults across merges/splits and drops those whose plate
 subducted (see world.step_world).
+
+**Fault systems** (`FaultSystem`) sit one level above the individual trace: with
+`SYSTEM_SPAWN_FRACTION` of spawns, instead of a lone fault / tight set we lay a long,
+gently curving *master lineament* (up to ~5500 km -- East African Rift / Anatolian /
+Sunda scale) and scatter a wide sub-parallel family of strands along its belt, each strand
+an ordinary `Fault` (with a widened length distribution, tail to ~1300 km) carrying the
+system's `system_id`. The master trace applies no relief of its own -- it is an organising
+scaffold; the strands carry the relief exactly as lone faults do.
 """
 
 from __future__ import annotations
@@ -105,13 +113,62 @@ DIP_STRIKE_SLIP_DEG = 90.0
 # Strike-slip faults strike obliquely to the local shortening direction.
 STRIKE_SLIP_OBLIQUITY_DEG = 30.0
 
-# Fault sets -- sub-parallel families. Basin-and-Range major normal faults sit ~15-30 km
-# apart; en echelon step-overs ~1-5 km.
+# Fault sets -- tight sub-parallel families born of a single lone spawn. Basin-and-Range
+# major normal faults sit ~15-30 km apart; en echelon step-overs ~1-5 km. (For the larger,
+# spatially-extended sub-parallel family that shares one belt over 1000s of km, see fault
+# systems below -- a set is the local cluster, a system is the whole zone.)
 SET_PROBABILITY = 0.4
 SET_MIN_MEMBERS = 2
 SET_MAX_MEMBERS = 5
 SET_SPACING_KM = 20.0
 SET_ECHELON_STEP_KM = 3.0
+
+# --- Fault systems: a first-class structure one level above the individual trace ---
+# A real fault zone / system is many sub-parallel and en echelon strands acting together
+# along one gently curving belt: the East African Rift, the Anatolian system and the
+# Sunda/Sumatran system all reach ~5500 km, and individual continuous strands within them
+# run to ~1300 km (San Andreas ~1200, North Anatolian ~1500, Great Sumatran ~1900). The
+# lone-fault/set path above tops out near ~200 km, so systems are spawned as their own
+# thing: with SYSTEM_SPAWN_FRACTION of Poisson spawns, instead of a lone trace/set we lay a
+# long master lineament and scatter a wide strand family along it. Everything else about a
+# strand (relief, aging, scars, reconcile) is identical to a lone fault -- a system is an
+# organising scaffold, not a new relief mechanism.
+SYSTEM_SPAWN_FRACTION = 0.18
+
+# Master lineament length -- lognormal, long right tail, no hard clamp near the median.
+SYSTEM_LENGTH_MEDIAN_KM = 2200.0
+SYSTEM_LENGTH_SIGMA = 0.5
+SYSTEM_LENGTH_MIN_KM = 600.0
+SYSTEM_LENGTH_MAX_KM = 5500.0
+# The belt curves: a few low-frequency lobes of lateral wander, as a fraction of length.
+SYSTEM_BEND_LOBES = 2
+SYSTEM_BEND_MAX_FRACTION = 0.06
+SYSTEM_MASTER_NODE_KM = 70.0
+SYSTEM_MASTER_NODES_MAX = 80
+
+# Strand family: sub-parallel traces scattered along and across the belt.
+SYSTEM_STRAND_SPACING_KM = 65.0  # mean along-belt gap between strand seed points
+SYSTEM_BELT_HALF_WIDTH_KM = 130.0  # strands scatter this far either side of the master trace
+SYSTEM_STRAND_COUNT_MIN = 5
+SYSTEM_STRAND_COUNT_MAX = 16
+SYSTEM_STRAND_STRIKE_JITTER_DEG = 12.0
+SYSTEM_OFFREGIME_FRACTION = 0.15  # strands that buck the system's dominant regime
+# Strand length -- widened vs the lone-fault LENGTH_* (median ~45, max 200): a system strand
+# is a major fault in its own right.
+SYSTEM_STRAND_LENGTH_MEDIAN_KM = 150.0
+SYSTEM_STRAND_LENGTH_SIGMA = 0.7
+SYSTEM_STRAND_LENGTH_MIN_KM = 20.0
+SYSTEM_STRAND_LENGTH_MAX_KM = 1300.0
+SYSTEM_STRAND_NODE_KM = 35.0
+SYSTEM_STRAND_NODES_MAX = 40
+
+# A system outlives its individual strands (2-25 Myr) by an order of magnitude -- the belt
+# stays a locus of faulting long after any one strand locks up.
+SYSTEM_LIFESPAN_MIN_MYR = 25.0
+SYSTEM_LIFESPAN_MAX_MYR = 140.0
+MAX_INACTIVE_SYSTEMS_PER_PLATE = 12
+
+_FAULT_SYSTEM_SEED_TAG = 7332
 
 # Relief (per Myr, at the trace, tapering linearly to zero at MAX_FAULT_REACH_KM). Kept well
 # below the boundary rates in plates.py (CONVERGENT_MOUNTAIN_RATE_M_PER_MYR = 800) so this
@@ -162,6 +219,9 @@ class Fault:
     birth_years: float
     birth_distance_from_boundary_km: float
     set_id: int | None = None
+    # The fault system (see FaultSystem) this trace is a strand of, or None for a lone
+    # fault / tight set. A plain-default field, so an older pickle without it reads None.
+    system_id: int | None = None
     age_myr: float = 0.0
     cumulative_offset_m: float = 0.0
     active: bool = True
@@ -171,9 +231,42 @@ class Fault:
     world_polyline: np.ndarray | None = field(default=None, repr=False, compare=False)
 
     def length_km(self) -> float:
-        pts = geometry.local_xyz(self.local_phi, self.local_theta)
-        seg = np.arccos(np.clip(np.sum(pts[:-1] * pts[1:], axis=-1), -1.0, 1.0))
-        return float(np.sum(seg) * PLANET_RADIUS_KM)
+        return _polyline_length_km(self.local_phi, self.local_theta)
+
+
+@dataclass
+class FaultSystem:
+    """A fault zone / system: one long, gently curving master lineament plus the family of
+    sub-parallel strands (`Fault`s carrying this `system_id`) scattered along its belt. The
+    master trace is an organising scaffold -- it applies no relief of its own; each strand
+    does, exactly as a lone fault would. Geometry is stored in the owning plate's local
+    frame, same as a `Fault`, so the whole belt rides with the crust.
+
+    A system outlives its strands: it stays `active` (a locus that keeps spawning fresh
+    strands is a future refinement -- for now `active` just drives rendering and culling)
+    for `lifespan_myr`, then becomes an inert scar bundle like a locked-up fault.
+    """
+
+    system_id: int
+    plate_id: int
+    kind: str  # the belt's dominant regime
+    master_local_phi: np.ndarray
+    master_local_theta: np.ndarray
+    length_km: float
+    birth_years: float
+    lifespan_myr: float
+    age_myr: float = 0.0
+    active: bool = True
+    world_polyline: np.ndarray | None = field(default=None, repr=False, compare=False)
+
+    def master_length_km(self) -> float:
+        return _polyline_length_km(self.master_local_phi, self.master_local_theta)
+
+
+def _polyline_length_km(local_phi: np.ndarray, local_theta: np.ndarray) -> float:
+    pts = geometry.local_xyz(local_phi, local_theta)
+    seg = np.arccos(np.clip(np.sum(pts[:-1] * pts[1:], axis=-1), -1.0, 1.0))
+    return float(np.sum(seg) * PLANET_RADIUS_KM)
 
 
 def plate_by_id(world: "World") -> dict[int, Plate]:
@@ -183,6 +276,11 @@ def plate_by_id(world: "World") -> dict[int, Plate]:
 def fault_world_points(fault: Fault, plate: Plate) -> np.ndarray:
     """The fault's trace in true world coordinates, via the owning plate's current frame."""
     return geometry.to_world(plate.frame, geometry.local_xyz(fault.local_phi, fault.local_theta))
+
+
+def system_world_points(system: FaultSystem, plate: Plate) -> np.ndarray:
+    """The system's master lineament in true world coordinates."""
+    return geometry.to_world(plate.frame, geometry.local_xyz(system.master_local_phi, system.master_local_theta))
 
 
 # --------------------------------------------------------------------------- step entry point
@@ -205,11 +303,21 @@ def update_faults(world: "World", years: float) -> None:
                     f"locked up after {fault.age_myr:.0f} Myr"
                 )
 
+    for system in world.fault_systems:
+        system.age_myr += years_myr
+        if system.active and system.age_myr >= system.lifespan_myr:
+            system.active = False
+            world.log_event(
+                f"fault system #{system.system_id} ({_KIND_LABEL[system.kind]}, ~{system.length_km:.0f} km) "
+                f"on plate {system.plate_id} went inactive after {system.age_myr:.0f} Myr"
+            )
+
     total_nodes = max(1, sum(p.node_count() for p in world.plates))
     for plate in world.plates:
         _maybe_spawn_faults(world, plate, total_nodes, years_myr)
 
     _cull_scars(world)
+    _cull_inactive_systems(world)
 
     for plate in world.plates:
         _apply_plate_fault_relief(world, plate, years_myr)
@@ -219,6 +327,10 @@ def update_faults(world: "World", years: float) -> None:
         plate = by_id.get(fault.plate_id)
         if plate is not None:
             fault.world_polyline = fault_world_points(fault, plate)
+    for system in world.fault_systems:
+        plate = by_id.get(system.plate_id)
+        if plate is not None:
+            system.world_polyline = system_world_points(system, plate)
 
 
 def reconcile_faults(world: "World") -> None:
@@ -226,16 +338,19 @@ def reconcile_faults(world: "World") -> None:
     trace midpoint now lies in a different surviving plate's territory (covers both a merge
     -- the absorbed plate's id vanishes -- and a split -- a new id appears near the cut).
     Recomputes local coordinates in the new plate's frame; preserves age / offset / active.
-    Mirrors stranded_basins.reconcile_world_tracks."""
-    if not world.faults:
+    Mirrors stranded_basins.reconcile_world_tracks. Fault systems' master lineaments are
+    re-homed by the same midpoint rule."""
+    if not world.faults and not world.fault_systems:
         return
     live = plate_by_id(world)
     if not live:
         world.faults = []
+        world.fault_systems = []
         return
     collected = collect_all_points(world.plates)
     if collected is None:
         world.faults = []
+        world.fault_systems = []
         return
     points, _, owner = collected
     tree = cKDTree(points)
@@ -266,6 +381,33 @@ def reconcile_faults(world: "World") -> None:
         fault.world_polyline = fault_world_points(fault, new_plate)
         kept.append(fault)
     world.faults = kept
+
+    # Re-home the systems' master lineaments the same way (by their midpoint). A strand and
+    # its system can land on different plates after a split cuts the belt -- that's fine,
+    # each carries its own plate_id; `system_id` just links them for display.
+    kept_systems: list[FaultSystem] = []
+    for system in world.fault_systems:
+        world_poly = system.world_polyline
+        if world_poly is None:
+            plate = live.get(system.plate_id)
+            if plate is None:
+                continue
+            world_poly = system_world_points(system, plate)
+        mid = world_poly[len(world_poly) // 2]
+        _, idx = tree.query(mid)
+        new_pid = int(owner[idx])
+        if new_pid != system.plate_id or system.plate_id not in live:
+            new_plate = live.get(new_pid)
+            if new_plate is None:
+                continue
+            local = geometry.to_local(new_plate.frame, world_poly)
+            phi, theta = geometry.xyz_to_latlon(local)
+            system.plate_id = new_pid
+            system.master_local_phi = phi
+            system.master_local_theta = theta
+            system.world_polyline = system_world_points(system, new_plate)
+        kept_systems.append(system)
+    world.fault_systems = kept_systems
 
 
 def _rehome_dip_dir(world_poly: np.ndarray, new_plate: Plate) -> np.ndarray:
@@ -330,7 +472,8 @@ def _maybe_spawn_faults(world: "World", plate: Plate, total_nodes: int, years_my
     probs = weight / weight.sum()
     seeds = rng.choice(len(own_points), size=n_spawn, p=probs)
     for seed_idx in seeds:
-        _spawn_one_or_set(
+        spawn = _spawn_fault_system if rng.random() < SYSTEM_SPAWN_FRACTION else _spawn_one_or_set
+        spawn(
             world, plate, rng,
             seed_world=own_points[seed_idx],
             seed_dist_rad=float(dist[seed_idx]),
@@ -428,15 +571,169 @@ def _spawn_one_or_set(
     )
 
 
+def _seed_frame(plate: Plate, seed_world: np.ndarray, nn_omega: np.ndarray, nn_point: np.ndarray):
+    """(seed_world, closing_rate, kind, t_perp, t_par) at a spawn seed. `t_perp` points
+    toward the nearest boundary (local shortening/extension direction), `t_par` runs along
+    it. Shared by the lone-fault and the fault-system spawn paths."""
+    seed_world = seed_world / np.linalg.norm(seed_world)
+    closing = float(
+        boundary.closing_rate(seed_world[None], np.asarray(plate.omega, dtype=float), nn_omega[None], nn_point[None])[0]
+    )
+    kind = _regime_from_closing(closing)
+    toward = nn_point - seed_world
+    t_perp = toward - np.dot(toward, seed_world) * seed_world
+    n = np.linalg.norm(t_perp)
+    if n < 1e-9:
+        east, _ = geometry.local_tangent_basis(seed_world)
+        t_perp = east
+    else:
+        t_perp = t_perp / n
+    t_par = np.cross(seed_world, t_perp)
+    t_par = t_par / max(np.linalg.norm(t_par), 1e-12)
+    return seed_world, closing, kind, t_perp, t_par
+
+
+def _spawn_fault_system(
+    world: "World", plate: Plate, rng: np.random.Generator,
+    seed_world: np.ndarray, seed_dist_rad: float, seed_weight: float,
+    nn_omega: np.ndarray, nn_point: np.ndarray,
+) -> None:
+    """A whole fault zone: one long, gently curving master lineament plus a family of
+    sub-parallel strands scattered along its belt. Signature matches `_spawn_one_or_set` so
+    `_maybe_spawn_faults` can pick either."""
+    seed_world, _closing, kind, t_perp, t_par = _seed_frame(plate, seed_world, nn_omega, nn_point)
+
+    if kind == _KIND_STRIKE_SLIP:
+        sign = 1.0 if rng.random() < 0.5 else -1.0
+        ang = np.radians(STRIKE_SLIP_OBLIQUITY_DEG) * sign
+        master_strike = np.cos(ang) * t_par + np.sin(ang) * t_perp
+        master_strike = master_strike / max(np.linalg.norm(master_strike), 1e-12)
+    else:
+        master_strike = t_par
+
+    length_km = float(
+        np.clip(
+            rng.lognormal(np.log(SYSTEM_LENGTH_MEDIAN_KM), SYSTEM_LENGTH_SIGMA),
+            SYSTEM_LENGTH_MIN_KM,
+            SYSTEM_LENGTH_MAX_KM,
+        )
+    )
+    length_rad = length_km / PLANET_RADIUS_KM
+
+    # Master lineament: a great-circle arc through the seed along master_strike, warped by a
+    # few low-frequency lateral lobes so the belt gently curves rather than running straight.
+    n_master = int(np.clip(round(length_km / SYSTEM_MASTER_NODE_KM) + 1, 6, SYSTEM_MASTER_NODES_MAX))
+    u = np.linspace(-length_rad / 2.0, length_rad / 2.0, n_master)
+    s01 = (u - u[0]) / max(u[-1] - u[0], 1e-12)
+    bend = np.zeros(n_master)
+    for lobe in range(1, SYSTEM_BEND_LOBES + 1):
+        amp = rng.uniform(-1.0, 1.0) * SYSTEM_BEND_MAX_FRACTION * length_rad / lobe
+        bend += amp * np.sin(lobe * np.pi * s01 + rng.uniform(0.0, np.pi))
+    master = (
+        np.cos(u)[:, None] * seed_world[None, :]
+        + np.sin(u)[:, None] * master_strike[None, :]
+        + bend[:, None] * t_perp[None, :]
+    )
+    master = master / np.linalg.norm(master, axis=-1, keepdims=True)
+
+    system_id = world.next_fault_system_id
+    world.next_fault_system_id += 1
+    system = FaultSystem(
+        system_id=system_id,
+        plate_id=plate.plate_id,
+        kind=kind,
+        master_local_phi=np.zeros(0),
+        master_local_theta=np.zeros(0),
+        length_km=length_km,
+        birth_years=world.elapsed_years,
+        lifespan_myr=float(rng.uniform(SYSTEM_LIFESPAN_MIN_MYR, SYSTEM_LIFESPAN_MAX_MYR)),
+    )
+    local_master = geometry.to_local(plate.frame, master)
+    system.master_local_phi, system.master_local_theta = geometry.xyz_to_latlon(local_master)
+    system.world_polyline = master
+    world.fault_systems.append(system)
+
+    # Strands: seeded at points stepped along the master, offset across the belt, striking
+    # along the local master tangent with a little jitter.
+    n_strands = int(
+        np.clip(
+            round(length_km / SYSTEM_STRAND_SPACING_KM * rng.uniform(0.7, 1.3)),
+            SYSTEM_STRAND_COUNT_MIN,
+            SYSTEM_STRAND_COUNT_MAX,
+        )
+    )
+    tangents = np.gradient(master, axis=0)
+    tangents = tangents / np.clip(np.linalg.norm(tangents, axis=-1, keepdims=True), 1e-12, None)
+    dip_base = {_KIND_NORMAL: DIP_NORMAL_DEG, _KIND_REVERSE: DIP_REVERSE_DEG, _KIND_STRIKE_SLIP: DIP_STRIKE_SLIP_DEG}
+    half_width_rad = SYSTEM_BELT_HALF_WIDTH_KM / PLANET_RADIUS_KM
+
+    for i in range(n_strands):
+        frac = (i + rng.uniform(-0.35, 0.35)) / max(n_strands - 1, 1)
+        frac = float(np.clip(frac, 0.0, 1.0))
+        m_idx = int(round(frac * (n_master - 1)))
+        c0 = master[m_idx]
+        tang = tangents[m_idx]
+        perp = np.cross(c0, tang)
+        perp = perp / max(np.linalg.norm(perp), 1e-12)
+        centre = c0 + rng.uniform(-1.0, 1.0) * half_width_rad * perp
+        centre = centre / np.linalg.norm(centre)
+
+        jitter = np.radians(rng.uniform(-SYSTEM_STRAND_STRIKE_JITTER_DEG, SYSTEM_STRAND_STRIKE_JITTER_DEG))
+        strike = np.cos(jitter) * tang + np.sin(jitter) * perp
+        strike = strike / max(np.linalg.norm(strike), 1e-12)
+
+        strand_kind = kind
+        if rng.random() < SYSTEM_OFFREGIME_FRACTION:
+            strand_kind = rng.choice([_KIND_NORMAL, _KIND_REVERSE, _KIND_STRIKE_SLIP])
+
+        strand_len = float(
+            np.clip(
+                rng.lognormal(np.log(SYSTEM_STRAND_LENGTH_MEDIAN_KM), SYSTEM_STRAND_LENGTH_SIGMA),
+                SYSTEM_STRAND_LENGTH_MIN_KM,
+                SYSTEM_STRAND_LENGTH_MAX_KM,
+            )
+        )
+        slip_rate = SLIP_RATE_MIN_M_PER_MYR + (SLIP_RATE_MAX_M_PER_MYR - SLIP_RATE_MIN_M_PER_MYR) * (seed_weight**2)
+        slip_rate *= float(rng.uniform(0.6, 1.4))
+        lifespan = LIFESPAN_MIN_MYR + (LIFESPAN_MAX_MYR - LIFESPAN_MIN_MYR) * (0.3 + 0.7 * seed_weight)
+        lifespan *= float(rng.uniform(0.7, 1.3))
+        member_sense = 1 if rng.random() < 0.5 else -1
+
+        fault = _build_fault(
+            world, plate, rng, centre, strike, perp, strand_kind,
+            length_km=strand_len,
+            slip_rate=float(np.clip(slip_rate, SLIP_RATE_MIN_M_PER_MYR, SLIP_RATE_MAX_M_PER_MYR)),
+            dip_deg=float(dip_base[strand_kind] + rng.uniform(-5.0, 5.0)),
+            strike_sense=member_sense,
+            dip_dir_world=member_sense * perp,
+            lifespan_myr=float(np.clip(lifespan, LIFESPAN_MIN_MYR, LIFESPAN_MAX_MYR + 15.0)),
+            seed_dist_km=seed_dist_rad * PLANET_RADIUS_KM,
+            set_id=None,
+            system_id=system_id,
+            node_km=SYSTEM_STRAND_NODE_KM,
+            max_nodes=SYSTEM_STRAND_NODES_MAX,
+        )
+        world.faults.append(fault)
+        world.next_fault_id += 1
+
+    world.log_event(
+        f"fault system #{system_id} born on plate {plate.plate_id} ({_KIND_LABEL[kind]}, "
+        f"~{length_km:.0f} km master, {n_strands} strands, "
+        f"{seed_dist_rad * PLANET_RADIUS_KM:.0f} km from boundary)"
+    )
+
+
 def _build_fault(
     world: "World", plate: Plate, rng: np.random.Generator,
     centre: np.ndarray, strike: np.ndarray, t_perp: np.ndarray, kind: str,
     length_km: float, slip_rate: float, dip_deg: float, strike_sense: int,
     dip_dir_world: np.ndarray, lifespan_myr: float, seed_dist_km: float, set_id: int | None,
+    system_id: int | None = None, node_km: float = 15.0, max_nodes: int = FAULT_NODES_MAX,
 ) -> Fault:
     length_rad = length_km / PLANET_RADIUS_KM
-    # ~1 node per 15 km of trace, clamped -- enough to render a gently curved line.
-    n_nodes = int(np.clip(round(length_km / 15.0) + 1, FAULT_NODES_MIN, FAULT_NODES_MAX))
+    # ~1 node per `node_km` of trace, clamped -- enough to render a gently curved line and
+    # give the relief query even coverage along a long strand.
+    n_nodes = int(np.clip(round(length_km / node_km) + 1, FAULT_NODES_MIN, max_nodes))
     u = np.linspace(-length_rad / 2.0, length_rad / 2.0, n_nodes)
     base = np.cos(u)[:, None] * centre[None, :] + np.sin(u)[:, None] * strike[None, :]
     bend_amp = rng.uniform(-BEND_MAX_FRACTION, BEND_MAX_FRACTION) * length_rad
@@ -462,6 +759,7 @@ def _build_fault(
         birth_years=world.elapsed_years,
         birth_distance_from_boundary_km=seed_dist_km,
         set_id=set_id,
+        system_id=system_id,
     )
 
 
@@ -479,6 +777,25 @@ def _cull_scars(world: "World") -> None:
             drop.add(id(fault))
     if drop:
         world.faults = [f for f in world.faults if id(f) not in drop]
+
+
+def _cull_inactive_systems(world: "World") -> None:
+    """Keep at most MAX_INACTIVE_SYSTEMS_PER_PLATE inert system scars per plate (oldest
+    first); active systems are never culled. A dropped system's strands are untouched --
+    they age out and get culled on their own by `_cull_scars`."""
+    by_plate: dict[int, list[FaultSystem]] = {}
+    for system in world.fault_systems:
+        if not system.active:
+            by_plate.setdefault(system.plate_id, []).append(system)
+    drop: set[int] = set()
+    for scars in by_plate.values():
+        if len(scars) <= MAX_INACTIVE_SYSTEMS_PER_PLATE:
+            continue
+        scars.sort(key=lambda s: s.age_myr, reverse=True)
+        for system in scars[MAX_INACTIVE_SYSTEMS_PER_PLATE:]:
+            drop.add(id(system))
+    if drop:
+        world.fault_systems = [s for s in world.fault_systems if id(s) not in drop]
 
 
 # --------------------------------------------------------------------------- relief

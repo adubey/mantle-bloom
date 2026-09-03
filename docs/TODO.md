@@ -1084,27 +1084,26 @@ version of the per-turn node density / spacing upkeep (`elevation_lines.py`,
 
 ## Intraplate faults: follow-ups
 
-**Status:** shipped (`faults.py`, `World.faults`; "Fault lines" map view). See
-`docs/simulation-model.md#faults`. The layer is additive -- it never touches `deform()`'s
-own boundary classification -- so it can be tuned or reverted in isolation.
+**Status:** shipped (`faults.py`, `World.faults` / `World.fault_systems`; "Fault lines" map
+view). See `docs/simulation-model.md#faults`. The layer is additive -- it never touches
+`deform()`'s own boundary classification -- so it can be tuned or reverted in isolation.
 
-**1. Trace and fault-system lengths are far too short.** `LENGTH_MEDIAN_KM` = 45,
-`LENGTH_MAX_KM` = 200, and a fault set is at most `SET_MAX_MEMBERS` = 5 members
-`SET_SPACING_KM` = 20 km apart -- so the longest thing the model can produce is a ~200 km
-trace, and the widest "system" is ~80 km across. Reality is an order of magnitude bigger: an
-individual continuous fault runs up to ~1300 km (San Andreas ~1200 km, North Anatolian
-~1500 km, Great Sumatran ~1900 km), and a fault *zone / system* -- many sub-parallel and en
-echelon strands acting together -- reaches ~5500 km (see
-<https://en.wikipedia.org/wiki/List_of_fault_zones>: East African Rift, the Anatolian
-system, the Sunda/Sumatran system). The current numbers make every fault a minor local
-feature and, combined with the world-scale render (a 40 km fault is ~1 display px, see
-`docs/simulation-model.md#fault-inspector`), are the main reason the "Fault lines" view reads
-as a scatter of dots rather than lineaments. Fix: widen the length distribution (lognormal
-with a long tail to ~1300 km, not a hard 200 km clamp); make a "system" a first-class object
-that owns a long master trace plus a spatially-extended family of strands (hundreds of km of
-spacing, not 20), rather than today's tight 5-member echelon; and let a system's strands
-follow a gently curving belt over 1000s of km instead of one short straight seed. This also
-feeds item 3 -- longer faults with more slip carry proportionally more relief.
+**1. Trace and fault-system lengths. DONE (2026-09).** Added `FaultSystem` as a first-class
+object one level above the lone fault (`World.fault_systems`, `SYSTEM_SPAWN_FRACTION` = 0.18
+of spawns): a long, gently curving master lineament (`SYSTEM_LENGTH_*`, to
+`SYSTEM_LENGTH_MAX_KM` = 5500 km) warped by a couple of low-frequency lateral lobes, with a
+5–16-strand sub-parallel family scattered along it -- `SYSTEM_STRAND_SPACING_KM` (65 km)
+along strike, `SYSTEM_BELT_HALF_WIDTH_KM` (130 km) across -- each strand a `Fault` carrying
+the `system_id`, drawn from a **widened** length distribution (`SYSTEM_STRAND_LENGTH_*`,
+median 150 km, tail to 1300 km). The master trace is a scaffold: it applies no relief, the
+strands do. Systems outlive their strands (`SYSTEM_LIFESPAN_MIN..MAX_MYR`, 25–140 Myr) then
+become inert scar bundles (`_cull_inactive_systems`). The lone-fault / tight-set path
+(`LENGTH_MAX_KM` = 200 km, `SET_*`) is unchanged -- a system is layered *on top*, not a
+replacement. Rendered in the "Fault lines" view as a shaded belt + dashed master centerline
+under the strand family (`FaultInspector.tsx`), with `system_id` in `/world/faults` and the
+inspector panel. Not done here: the master lineament doesn't spawn *fresh* strands over its
+lifetime (the family is all born at once); and item 3's calibration sweep now matters more
+(systems add a lot of cumulative strand relief).
 
 **2. The trace applies relief but doesn't shear the node field.** `_apply_plate_fault_relief`
 raises/lowers `elevation` near an active trace per regime, but the `ElevationLine` nodes on
