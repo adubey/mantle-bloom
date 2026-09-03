@@ -136,6 +136,30 @@ SPLIT_MIN_AGE_STEPS = 20
 # freshly-generated plate within the first ~30 Myr (they all start near radius 1.3-1.5).
 SPLIT_SIZE_CERTAIN_RIFT_RAD = 2.2
 
+# Rift failure. Continental rifts routinely *arrest* before breakup -- the extension localizes
+# elsewhere, or the driving stress relaxes -- leaving a thinned but intact continental sag
+# basin (an aulacogen: the North Sea, the Benue Trough, the failed arm of a triple junction),
+# not a new ocean. In the model a *successful* rift is expensive for land area: it puts the
+# whole would-be-cut zone through sustained `apply_divergent_deformation` thinning on *both*
+# daughters, ending in decompression melting -> oceanic crust and permanently drowned passive
+# margins. So a plate that clears every split gate (flow-fit, pole separation, size, and a
+# viable great-circle cut) still only actually breaks up with this probability; otherwise the
+# rift fails -- `LithospherePlate.apply_failed_rift` books a one-off aulacogen thinning along
+# the cut and the plate's split cooldown is reset (`reset_age`), and it stays one plate.
+# Tuned against plate-count churn: 0.55 keeps the healthy ~18-26 oscillation from the 2026
+# split-gate loosening (docs/TODO.md "Plate count only decreases") while roughly halving the
+# rifted-margin drowning.
+RIFT_SUCCESS_PROBABILITY = 0.55
+_RIFT_OUTCOME_SEED_TAG = 71  # np.random.default_rng tuple slot, distinct from other per-plate draws
+
+# Aulacogen thinning a *failed* rift leaves behind: crust thinned by up to this fraction
+# within FAILED_RIFT_BAND_MULT node spacings of the would-be cut great circle, tapering to
+# zero at the band edge. A sag basin (a few hundred m of subsidence on a 35 km column), not a
+# breakup -- far less crust lost than the sustained divergent thinning a successful rift
+# inflicts. See LithospherePlate.apply_failed_rift.
+FAILED_RIFT_THINNING_FRACTION = 0.10
+FAILED_RIFT_BAND_MULT = 2.5
+
 # Defragmentation (see defragment_plates / Plate.defragment). Ordinary deform() never
 # deletes a line's last node and only ever shrinks a line's ends, so subduction/transform
 # can sever a plate's node cloud into two disconnected landmasses (still carried as one
@@ -459,6 +483,19 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     # shouldn't burn an id.
     split_result = plate.split(world.next_plate_id, cut_normal, min_nodes)
     if split_result is None:
+        return None
+
+    # A rift that clears every gate still only *breaks up* with RIFT_SUCCESS_PROBABILITY --
+    # otherwise it arrests as an aulacogen (see the constant). Deterministic per
+    # (seed, elapsed_years, plate). The split_result is discarded (next_plate_id never
+    # incremented), the failed-rift thinning is booked, and the plate's cooldown resets.
+    outcome_rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, _RIFT_OUTCOME_SEED_TAG))
+    if outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY:
+        failed_rift = getattr(plate, "apply_failed_rift", None)
+        if callable(failed_rift):
+            failed_rift(cut_normal, line_spacing_rad(world.node_density))
+        plate.reset_age()
+        world.log_event(f"Plate {plate.plate_id} began rifting but the rift failed, leaving an aulacogen basin.")
         return None
     world.next_plate_id += 1
 

@@ -302,7 +302,92 @@ def test_maybe_split_plate_returns_none_for_small_plate():
     assert merge_split.maybe_split_plate(world, small) is None
 
 
-def test_maybe_split_plate_splits_under_engineered_flow_divergence():
+def _engineered_split_world():
+    """The `test_maybe_split_plate_splits_under_engineered_flow_divergence` setup as a
+    `LithospherePlate` (Hc/Hm columns) so the rift-failure test can reuse the exact same
+    split-eligible plate + engineered flow."""
+    from app.lithosphere_plate import LithospherePlate
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
+
+    seed_xyz = np.array([1.0, 0.0, 0.0])
+    frame = geometry.plate_frame_from_seed(seed_xyz)
+    n = 4 * merge_split.SPLIT_MIN_NODES
+    theta = np.linspace(-0.5, 0.5, n)
+    line = ElevationLine(
+        phi=0.0, theta=theta, elevation=np.zeros(n),
+        crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
+        mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
+    )
+    plate = LithospherePlate(
+        plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS
+    )
+    strong_rate = mantle.MANTLE_FLOW_REFERENCE_RATE * 20
+    west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
+    east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
+    centers = [
+        mantle.ConvectionCenter(position=west_pt, strength=strong_rate, falloff=0.3),
+        mantle.ConvectionCenter(position=east_pt, strength=-strong_rate, falloff=0.3),
+    ]
+    world = World(seed=0, plates=[plate], mantle_centers=centers, next_plate_id=1, node_density=1.0)
+    pts, _ = plate.all_points_and_elevation()
+    plate.set_omega(mantle.fit_euler_pole(pts, mantle.flow_at(pts, centers)))
+    return world, plate
+
+
+def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(monkeypatch):
+    """A rift that clears every split gate but loses the outcome roll
+    (`RIFT_SUCCESS_PROBABILITY`) leaves the plate whole -- no daughter, no plate id consumed
+    -- and resets its split cooldown so it doesn't re-roll next step."""
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)  # every rift fails
+    world, plate = _engineered_split_world()
+    nodes_before = plate.node_count()
+
+    result = merge_split.maybe_split_plate(world, plate)
+
+    assert result is None
+    assert world.next_plate_id == 1  # no id consumed
+    assert plate.age_steps == 0  # cooldown reset
+    assert plate.node_count() == nodes_before  # still one plate, nothing removed
+
+
+def test_apply_failed_rift_thins_a_band_into_an_aulacogen_not_the_whole_plate():
+    """`LithospherePlate.apply_failed_rift` thins Hc/Hm within a band of the cut great circle
+    (a sag basin) and subsides it, leaving the rest of the plate and the far side untouched --
+    a fraction of the crust a successful rift's sustained divergent thinning would remove."""
+    from app.lithosphere_plate import LithospherePlate
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
+    from app.elevation_lines import line_spacing_rad
+
+    n = 200
+    rows = np.linspace(-0.3, 0.3, 10)
+    lines = [
+        ElevationLine(
+            phi=p, theta=np.linspace(-0.6, 0.6, n), elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, REFERENCE_HC_CONTINENTAL_M),
+            mantle_lithosphere_thickness_m=np.full(n, REFERENCE_HM_CONTINENTAL_M),
+        )
+        for p in rows
+    ]
+    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
+    # A cut great circle through theta ~= 0 (its normal is the local +theta tangent at the
+    # plate's own centre, ~world +y for an identity frame at phi=theta=0).
+    cut_normal = np.array([0.0, 1.0, 0.0])
+
+    z_before = np.concatenate([ln.elevation for ln in plate.lines])
+    plate.apply_failed_rift(cut_normal, line_spacing_rad(1.0))
+
+    hc = plate.collect("crustal_thickness_m")
+    z_after = np.concatenate([ln.elevation for ln in plate.lines])
+    thinned = hc < REFERENCE_HC_CONTINENTAL_M - 1.0
+    assert thinned.any() and not thinned.all()  # a band, not the whole plate
+    assert hc.min() > 0.8 * REFERENCE_HC_CONTINENTAL_M  # a sag basin (~10%), not oceanised
+    assert z_after.min() < z_before.min() - 10.0  # the basin subsided
+    # The plate is still one connected piece -- no nodes removed.
+    assert plate.node_count() == len(rows) * n
+
+
+def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)  # this test pins the *cut*, not the outcome roll
     seed_xyz = np.array([1.0, 0.0, 0.0])
     frame = geometry.plate_frame_from_seed(seed_xyz)
     # Comfortably more than 2 * SPLIT_MIN_NODES, so each half still clears the threshold.
@@ -343,10 +428,11 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence():
     assert total_after == total_before
 
 
-def test_apply_topology_changes_splits_at_most_one_plate_per_call():
+def test_apply_topology_changes_splits_at_most_one_plate_per_call(monkeypatch):
     """Two independently split-eligible plates -> only one rifts this call, the same
     incremental-change rule the merge path uses (so a freshly-generated world staggers its
     rifts over time instead of shattering on the first eligible step)."""
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)  # pin the one-per-call rule, not the outcome roll
     strong_rate = mantle.MANTLE_FLOW_REFERENCE_RATE * 20
     plates_list = []
     all_centers = []

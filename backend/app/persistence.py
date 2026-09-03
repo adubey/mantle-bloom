@@ -49,6 +49,13 @@ def _backfill_added_fields(world: World) -> None:
         world.stranded_basin_tracks = []
     if not hasattr(world, "overlap_progress"):
         world.overlap_progress = {}
+    # Eustatic sea level (eustasy.py): a save written before this existed has a fixed
+    # sea_level_m and no water budget -- snapshot the budget from that save's own hypsometry
+    # + sea level so loading it doesn't jump the shoreline, then let it be conserved onward.
+    if getattr(world, "ocean_water_column_m", None) is None:
+        from . import eustasy
+
+        eustasy.initialize_water_budget(world)
 
 
 def _drop_derived_caches(world: World) -> None:

@@ -138,6 +138,42 @@ def apply_divergent_deformation(hc_m: np.ndarray, hm_m: np.ndarray, closing_rate
     return new_hc, new_hm, melting
 
 
+# Continental arc magmatism (Cordilleran / Andean active margins). Distinct from
+# `apply_convergent_deformation`'s yield-limited plastic *shortening*: subduction dehydrates
+# the down-going slab, fluxes the mantle wedge, and the melt underplates / intrudes the
+# overriding continental crust -- juvenile mass added from the mantle, not conserved from the
+# neighbour, and it happens whether or not the margin is at Mohr-Coulomb yield. This is the
+# crust-*building* half of "an oceanic plate subducting under a continent makes more
+# continent" (the areal half is `lithosphere_plate.ARC_MARGIN_SEED_*`). It acts over the
+# whole arc *band* inboard of the trench (`lithosphere_plate` passes a per-node distance-
+# falloff `intensity`, not just the contact line -- the contact line alone is only a few tens
+# of nodes, far too narrow to matter), with a gentle extra dependence on convergence rate
+# (more slab -> more flux). Calibrated so a sustained ~5 cm/yr margin at full band intensity
+# adds ~9-14 km of Hc over the tens of Myr an arc is active -- the order of measured Andean
+# crustal-growth rates -- without runaway (the CONTINENTAL_AREA_BUDGET_MULT volume gate still
+# bounds the plate's footprint).
+ARC_MAGMATIC_HC_RATE_M_PER_MYR = 450.0
+ARC_REFERENCE_CONVERGENCE_M_PER_S = 0.05 / SECONDS_PER_YEAR  # 5 cm/yr
+ARC_MAGMATIC_CONVERGENCE_CAP = 3.0  # a very fast margin fluxes at most 3x the reference
+ARC_MIN_CONVERGENCE_M_PER_S = 0.002 / SECONDS_PER_YEAR  # 0.2 cm/yr -- below this it's a graze, no arc
+
+
+def apply_arc_magmatic_thickening(
+    hc_m: np.ndarray, hm_m: np.ndarray, closing_rate_m_per_s: np.ndarray, years_myr: float, intensity: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Add juvenile arc crust to the overriding continental margin. `intensity` is the
+    caller's per-node band weight (1 at the trench, fading inboard). Only Hc grows -- arc
+    magmatism thickens the crustal column; the attached mantle lithosphere is returned
+    unchanged (the caller still runs the ordinary convergent shortening on the contested
+    subset, which does drag Hm along). Nodes not actually converging
+    (`closing_rate <= ARC_MIN_CONVERGENCE_M_PER_S`) get nothing."""
+    active = closing_rate_m_per_s > ARC_MIN_CONVERGENCE_M_PER_S
+    convergence = np.clip(closing_rate_m_per_s / ARC_REFERENCE_CONVERGENCE_M_PER_S, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP)
+    rate_mult = np.where(active, np.clip(0.4 + 0.6 * convergence, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP), 0.0)
+    new_hc = hc_m + ARC_MAGMATIC_HC_RATE_M_PER_MYR * years_myr * rate_mult * np.asarray(intensity)
+    return new_hc, hm_m
+
+
 def relax_young_oceanic_mantle_lithosphere(hm_m: np.ndarray, divergent_age_myr: np.ndarray, years_myr: float) -> np.ndarray:
     """Freshly-formed ridge crust starts with thin mantle lithosphere (`lithosphere.
     YOUNG_RIDGE_HM_M`) and thickens toward the reference oceanic value as it cools and ages

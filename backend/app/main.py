@@ -21,6 +21,7 @@ from . import (
     biomes,
     climate,
     coastline,
+    eustasy,
     geodesic,
     geometry,
     hydrology,
@@ -669,7 +670,10 @@ def set_controls(req: ControlsRequest) -> dict:
         )
     with _world_lock:
         if req.sea_level_m is not None:
-            world.sea_level_m = req.sea_level_m
+            # Sea level is eustatic now (see eustasy.py) -- the slider sets the conserved
+            # ocean water volume to whatever floats the current hypsometry at this level,
+            # rather than pinning sea_level_m directly (which the next step would re-solve away).
+            eustasy.set_sea_level_via_water_budget(world, req.sea_level_m)
         if req.solar_multiplier is not None:
             world.solar_multiplier = req.solar_multiplier
         if req.simulate_plate_movement is not None:
