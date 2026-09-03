@@ -19,6 +19,24 @@ DEFAULT_AXIAL_TILT_DEG = 23.5
 # ever needs recent history, not an unbounded transcript.
 MAX_EVENT_LOG_LENGTH = 200
 
+# The dimensionless geomorphic-budget tuning knobs on World (see the field group below),
+# named once here so main.py's /world/controls route can validate/apply/echo them without
+# repeating the list. All default 1.0; all must stay >= 0.
+TUNING_MULTIPLIER_FIELDS = (
+    "rain_erosion_multiplier",
+    "river_erosion_multiplier",
+    "wind_erosion_multiplier",
+    "ocean_erosion_multiplier",
+    "coastal_leveling_multiplier",
+    "glacier_erosion_multiplier",
+    "seismic_erosion_multiplier",
+    "river_deposition_multiplier",
+    "ocean_deposition_multiplier",
+    "collision_uplift_multiplier",
+    "collision_uplift_reach_multiplier",
+    "volcanism_multiplier",
+)
+
 
 @dataclass
 class World:
@@ -143,6 +161,32 @@ class World:
     # slider sets this budget rather than `sea_level_m` directly (adds/removes ocean water).
     ocean_water_column_m: float | None = None
     solar_multiplier: float = 1.0
+    # Geomorphic-budget tuning knobs -- live-adjustable via POST /world/controls, same
+    # "Controls" window / same immediate-climate-recompute pattern as sea_level_m/
+    # solar_multiplier. Every one is a dimensionless multiplier, 1.0 == the model's
+    # untuned behaviour exactly (so an old save, or a user who never opens the panel, is
+    # bit-identical to before these existed). They exist because mantle-bloom's long-run
+    # land budget is a balance between a handful of erosion, deposition, uplift and
+    # volcanism processes whose individual hard-coded rates can't be re-tuned for one seed
+    # without regressing another -- these let the user rebalance a *live* world and watch
+    # the result. Read directly off `world` by erosion.apply_erosion (the *_erosion_/
+    # *_deposition_ knobs), lithosphere_plate.LithospherePlate.deform (the collision_uplift_*
+    # knobs, via rheology.apply_convergent_deformation's `strength`) and
+    # volcanism.apply_volcanic_activity (volcanism_multiplier) -- none of those need a
+    # signature change since they already take `world`. Plain-scalar defaults, so an older
+    # pickle falls through to 1.0 with no persistence backfill needed (see persistence.py).
+    rain_erosion_multiplier: float = 1.0
+    river_erosion_multiplier: float = 1.0
+    wind_erosion_multiplier: float = 1.0  # wind-driven weathering (erosion.WEATHERING_COEFFICIENT term)
+    ocean_erosion_multiplier: float = 1.0  # submarine + coastal (wave/frost) sea-side erosion
+    coastal_leveling_multiplier: float = 1.0  # the symmetric near-shore planation grind -- a prime long-run land drain
+    glacier_erosion_multiplier: float = 1.0  # glacial abrasion + the ice-flattening blur
+    seismic_erosion_multiplier: float = 1.0  # earthquake-triggered landsliding in active ranges
+    river_deposition_multiplier: float = 1.0  # floodplain/delta retain fraction (erosion.DEPOSITION_FRACTION)
+    ocean_deposition_multiplier: float = 1.0  # marine + beach sediment settling onto the shelf
+    collision_uplift_multiplier: float = 1.0  # convergent mountain-building rate (rate, not reach)
+    collision_uplift_reach_multiplier: float = 1.0  # horizontal reach of the collision/subduction uplift bands
+    volcanism_multiplier: float = 1.0  # per-node eruption frequency *and* per-eruption elevation added
     # Live-adjustable via POST /world/controls, same pattern as sea_level_m/solar_multiplier
     # above -- the UI's "Controls" window lets the user run *just* plate tectonics or *just*
     # climate & biomes. When False, step_world skips plate rotation, boundary evolution

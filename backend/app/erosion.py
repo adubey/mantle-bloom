@@ -1053,10 +1053,15 @@ def apply_erosion(
         world.log_event(message)
     water_accum_m = hydro.flow_accum / 1000.0
 
-    rain = RAIN_EROSION_COEFFICIENT * slope * (precipitation_mm / 1000.0) * dt_myr
+    # `world.*_erosion_multiplier` (and the deposition/leveling knobs further down) are the
+    # user's live geomorphic-budget tuning knobs -- 1.0 everywhere == untuned behaviour (see
+    # World's field group). Applied right where each term is formed so every downstream cap/
+    # split/isostasy step just sees a scaled amount and stays self-consistent.
+    rain = RAIN_EROSION_COEFFICIENT * world.rain_erosion_multiplier * slope * (precipitation_mm / 1000.0) * dt_myr
     channel_boost = 1.0 + CHANNEL_EROSION_BOOST * np.clip(prior_channel_depth / CHANNEL_BOOST_REFERENCE_M, 0.0, 1.0)
     river = (
         RIVER_EROSION_COEFFICIENT
+        * world.river_erosion_multiplier
         * channel_boost
         * np.power(np.clip(water_accum_m, 0.0, None), RIVER_FLOW_EXPONENT)
         * np.power(slope, RIVER_SLOPE_EXPONENT)
@@ -1064,9 +1069,9 @@ def apply_erosion(
     )
     humidity_norm = np.clip(humidity / HUMIDITY_REFERENCE, 0.0, 1.0)
     relief_factor = np.clip(slope / WEATHERING_RELIEF_REFERENCE_SLOPE, 0.0, 1.0)
-    weathering = WEATHERING_COEFFICIENT * wind_speed * humidity_norm * relief_factor * dt_myr
+    weathering = WEATHERING_COEFFICIENT * world.wind_erosion_multiplier * wind_speed * humidity_norm * relief_factor * dt_myr
     ice_factor = np.clip(prior_glacier_depth / GLACIER_EROSION_REFERENCE_DEPTH_M, 0.0, GLACIER_EROSION_MAX_FACTOR)
-    glacier = GLACIER_EROSION_COEFFICIENT * slope * ice_factor * dt_myr
+    glacier = GLACIER_EROSION_COEFFICIENT * world.glacier_erosion_multiplier * slope * ice_factor * dt_myr
     # See SEISMIC_EROSION_* constants' own comment: elevation (clipped/normalized against
     # SEISMIC_EROSION_ELEVATION_REFERENCE_M, then raised to a superlinear power) stands in for
     # how tectonically active/seismic a mountain range is, this model having no separate
@@ -1074,7 +1079,13 @@ def apply_erosion(
     # negative elevation would otherwise flip sign under the exponent -- ocean nodes are zeroed
     # out below regardless, but this keeps the intermediate factor itself well-defined.
     mountain_height_factor = np.clip(np.clip(elevation, 0.0, None) / SEISMIC_EROSION_ELEVATION_REFERENCE_M, 0.0, SEISMIC_EROSION_MAX_HEIGHT_FACTOR)
-    seismic = SEISMIC_EROSION_COEFFICIENT * slope * np.power(mountain_height_factor, SEISMIC_EROSION_ELEVATION_EXPONENT) * dt_myr
+    seismic = (
+        SEISMIC_EROSION_COEFFICIENT
+        * world.seismic_erosion_multiplier
+        * slope
+        * np.power(mountain_height_factor, SEISMIC_EROSION_ELEVATION_EXPONENT)
+        * dt_myr
+    )
     # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
     # valley floor it drains into. Zeroed over ocean nodes (elevation <= sea level, the same
     # convention climate.py/plates.py use everywhere else): every source here is a subaerial
@@ -1118,7 +1129,11 @@ def apply_erosion(
     # -- route_downstream still conserves the total exactly either way.
     river_speed = hydrology.compute_river_speed(slope, hydro.flow_accum)
     is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
-    retain_fraction = np.where(is_depositing, DEPOSITION_FRACTION, 0.0)
+    # river_deposition_multiplier scales the settle-out fraction; clamped below 1.0 so a big
+    # multiplier can't make a reach retain more than passes through it (route_downstream still
+    # conserves the routed total exactly at any fraction in [0, 1)).
+    deposition_fraction = float(np.clip(DEPOSITION_FRACTION * world.river_deposition_multiplier, 0.0, 0.95))
+    retain_fraction = np.where(is_depositing, deposition_fraction, 0.0)
     _, water_routed_deposit = hydrology.route_downstream(
         elevation, is_ocean_node, hydro.flow_target, water_routed_amount, retain_fraction=retain_fraction
     )
@@ -1128,7 +1143,12 @@ def apply_erosion(
     # shallow coast instead -- see _spread_beach_sediment's own docstring. Land-side deposits
     # (floodplain retention, dead-end-basin sinks) are untouched.
     ocean_terminal_deposit = np.where(is_ocean_node, water_routed_deposit, 0.0)
-    beach_deposit = _spread_beach_sediment(points, elevation, is_ocean_node, ocean_terminal_deposit)
+    # ocean_deposition_multiplier scales the *settled* marine sediment (here and marine_deposit
+    # below), not the pre-spread pool -- scaling the pool would desync the mass-conserving
+    # np.add.at spread against the deep-water remainder. At 1.0 this is exact; away from 1.0
+    # it's a deliberate small non-conservative shelf-building / shelf-starving source, same
+    # character as flatten_delta and lake siltation.
+    beach_deposit = _spread_beach_sediment(points, elevation, is_ocean_node, ocean_terminal_deposit) * world.ocean_deposition_multiplier
     sediment_deposited = np.where(is_ocean_node, beach_deposit, water_routed_deposit)
 
     wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source)
@@ -1164,7 +1184,11 @@ def apply_erosion(
     submarine = submarine_erosion_amount(elevation, slope, is_ocean_node, dt_myr)
     coastal = coastal_erosion_amount(elevation, temperature, dt_myr)
     remaining_drop_m = np.clip(drop_to_lowest_neighbor_m - erosion_amount, 0.0, None)
-    sea_side_erosion = np.minimum(np.clip(submarine + coastal, 0.0, None), remaining_drop_m)
+    # ocean_erosion_multiplier scales both the sea-floor slump and the shoreline wave/frost
+    # attack together (still capped at the remaining drop to the lowest neighbour).
+    sea_side_erosion = np.minimum(
+        np.clip((submarine + coastal) * world.ocean_erosion_multiplier, 0.0, None), remaining_drop_m
+    )
 
     # Symmetric coastal leveling (see the COASTAL_OPENNESS_* / COASTAL_LEVELING_* / LEVELING_*
     # / INFILL_* / BARRIER_* / PROMINENCE_* constants). `coastal_openness` is this step's
@@ -1195,19 +1219,25 @@ def apply_erosion(
     delta_redirect = np.where(in_delta_band, DELTA_REDIRECT_FRACTION * sediment_deposited, 0.0)
     total_deposited = total_deposited - delta_redirect
 
+    # coastal_leveling_multiplier scales the near-shore planation grind (a prime long-run land
+    # drain) -- applied before the one-step "can't be shoved below its datum" safety cap, which
+    # then still holds, and feeds through to leveling_source/erosion_amount consistently.
     ground_off = coastal_leveling_grind(elevation, world.sea_level_m, coastal_openness, leveling_datum, dt_myr, local_relief_m)
+    ground_off = ground_off * world.coastal_leveling_multiplier
     ground_off = np.minimum(ground_off, np.clip(elevation - erosion_amount - leveling_datum, 0.0, None))
     leveling_source = ground_off + COASTAL_INFILL_MARINE_FRACTION * sea_side_erosion + delta_redirect
     marine_deposit = _spread_marine_sediment(
         points, elevation, is_ocean_node, sea_side_erosion * (1.0 - COASTAL_INFILL_MARINE_FRACTION)
-    )
+    ) * world.ocean_deposition_multiplier
     leveling_fill = _spread_coastal_leveling(
         points, elevation, coastal_openness, dist_to_land, world.sea_level_m, leveling_datum, leveling_source, dt_myr, local_relief_m
     )
     erosion_amount = erosion_amount + sea_side_erosion + ground_off
     total_deposited = total_deposited + marine_deposit + leveling_fill
 
-    flatten_delta = _flatten(hydro, ice_factor, years)
+    # Glacial flattening rides the same knob as glacial abrasion -- both are "heavier / more
+    # active ice reworks the bed harder".
+    flatten_delta = _flatten(hydro, ice_factor, years) * world.glacier_erosion_multiplier
 
     # Lake / endorheic-basin siltation raises real terrain: the sediment that settled out of
     # standing water this step (hydrology.step_lakes -> silt_deposited) is folded straight into

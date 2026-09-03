@@ -61,12 +61,17 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
             continue
 
         active_years_this_step = np.minimum(years, line.volcano_active_years_remaining)
-        p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1_000_000.0)
+        # world.volcanism_multiplier (the "Controls" tuning knob, 1.0 == untuned) scales both
+        # the per-step eruption probability *and* the elevation each eruption adds below, so a
+        # single knob controls total volcanic land-building. 0.0 -> p_erupt == 0 everywhere.
+        p_erupt = 1.0 - np.exp(
+            -ERUPTION_RATE_PER_MYR * world.volcanism_multiplier * active_years_this_step / 1_000_000.0
+        )
         rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, line_index))
         erupts = active_mask & (rng.random(len(line)) < p_erupt)
 
         new_elevation = line.elevation.copy()
-        new_elevation[erupts] += ERUPTION_ELEVATION_M
+        new_elevation[erupts] += ERUPTION_ELEVATION_M * world.volcanism_multiplier
         new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
         new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
         new_mineral_deposit = np.clip(

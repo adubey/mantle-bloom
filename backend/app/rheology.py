@@ -107,6 +107,7 @@ def apply_convergent_deformation(
     closing_rate_m_per_s: np.ndarray,
     years_myr: float,
     fault_factor: np.ndarray,
+    strength: np.ndarray | float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Contested (convergent) nodes: mass-conserving thickening under compression. Hc and Hm
     both thicken in proportion (crustal shortening drags the attached mantle lithosphere
@@ -114,10 +115,13 @@ def apply_convergent_deformation(
     FACTOR` on noise-selected downthrown blocks, same pattern v1 used) modulates how much of
     the plastic strain this particular node actually accumulates, giving the same
     discrete-thrust-sheet visual texture v1 had, now as a real strain-rate multiplier rather
-    than a post-hoc elevation multiplier."""
+    than a post-hoc elevation multiplier. `strength` is the live collision-uplift tuning knob
+    (World.collision_uplift_multiplier, plus the reach knob's near-field taper -- see
+    lithosphere_plate.py); a plain 1.0 default keeps every existing caller/behaviour
+    unchanged."""
     rate = plastic_strain_rate_per_myr(closing_rate_m_per_s)
     rate = np.clip(rate, 0.0, None)  # convergent branch only ever thickens
-    fractional_change = rate * years_myr * fault_factor
+    fractional_change = rate * years_myr * fault_factor * strength
     new_hc = hc_m * (1.0 + fractional_change)
     new_hm = hm_m * (1.0 + fractional_change)
     return new_hc, new_hm

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
   fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+  TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, WorldStats, WorldSummary,
+  LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
@@ -73,6 +74,11 @@ const DEFAULT_PLATES = 14;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
+// Every geomorphic-budget tuning knob defaults to 1.0 (untuned) -- matches every
+// *_multiplier default on backend app/world.py's World.
+const DEFAULT_TUNING: TuningMultipliers = Object.fromEntries(
+  TUNING_MULTIPLIER_KEYS.map((k) => [k, 1]),
+) as TuningMultipliers;
 // Matching backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes
 // defaults -- both on, i.e. a normal full simulation.
 const DEFAULT_SIMULATE_PLATE_MOVEMENT = true;
@@ -290,6 +296,10 @@ export default function App() {
   // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
   // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
   const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
+  // Geomorphic-budget tuning knobs (see DEFAULT_TUNING / backend World's *_multiplier
+  // group) -- one object of dimensionless multipliers, live-adjustable via Controls, reset
+  // to all-1.0 on a fresh Generate and synced from the loaded world on Load.
+  const [tuning, setTuning] = useState<TuningMultipliers>(DEFAULT_TUNING);
   const [showControlsModal, setShowControlsModal] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
   // The div wrapping whichever map view component is currently mounted -- see
@@ -386,6 +396,7 @@ export default function App() {
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setWindModel(DEFAULT_WIND_MODEL);
+      setTuning(DEFAULT_TUNING);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
@@ -403,27 +414,45 @@ export default function App() {
   // only once movement has paused briefly. Local slider state (seaLevelM/solarMultiplier)
   // still updates immediately on every change, so the slider itself never feels laggy.
   const controlsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pushControls = useCallback((next: {
+  // Accumulates every touched control between debounce fires (and deep-merges `tuning`), so
+  // adjusting two different knobs inside the 150ms window doesn't drop the first one.
+  const pendingControlsRef = useRef<{
     seaLevelM?: number;
     solarMultiplier?: number;
     simulatePlateMovement?: boolean;
     simulateClimateBiomes?: boolean;
     windModel?: string;
-  }) => {
+    tuning?: Partial<TuningMultipliers>;
+  }>({});
+  const pushControls = useCallback((next: typeof pendingControlsRef.current) => {
+    const pending = pendingControlsRef.current;
+    pendingControlsRef.current = { ...pending, ...next, tuning: { ...pending.tuning, ...next.tuning } };
     if (controlsDebounceRef.current) clearTimeout(controlsDebounceRef.current);
     controlsDebounceRef.current = setTimeout(async () => {
+      const payload = pendingControlsRef.current;
+      pendingControlsRef.current = {};
       try {
-        await updateControls(next);
-        await Promise.all([refresh(projection, mapView, rotation), recordStats()]);
+        await updateControls(payload);
+        await Promise.all([refresh(projection, mapViewRef.current, rotation), recordStats()]);
       } catch (e) {
         setError(String(e));
       }
     }, 150);
-  }, [projection, mapView, rotation, refresh, recordStats]);
+  }, [projection, rotation, refresh, recordStats]);
 
   const handleSeaLevelChange = useCallback((v: number) => {
     setSeaLevelM(v);
     pushControls({ seaLevelM: v });
+  }, [pushControls]);
+
+  const handleTuningChange = useCallback((key: TuningKey, v: number) => {
+    setTuning((prev) => ({ ...prev, [key]: v }));
+    pushControls({ tuning: { [key]: v } });
+  }, [pushControls]);
+
+  const handleTuningReset = useCallback(() => {
+    setTuning(DEFAULT_TUNING);
+    pushControls({ tuning: DEFAULT_TUNING });
   }, [pushControls]);
 
   // Checkboxes, not sliders, so no dragging concern -- still routed through the same
@@ -493,6 +522,7 @@ export default function App() {
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setWindModel(controls.wind_model);
+      setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), recordStats()]);
     } catch (e) {
       setError(String(e));
@@ -1083,11 +1113,14 @@ export default function App() {
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
           windModel={windModel}
+          tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
           onWindModelChange={handleWindModelChange}
+          onTuningChange={handleTuningChange}
+          onTuningReset={handleTuningReset}
           onClose={() => setShowControlsModal(false)}
         />
       )}
