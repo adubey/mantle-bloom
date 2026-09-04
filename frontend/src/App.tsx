@@ -50,19 +50,32 @@ const DEFAULT_INITIAL_SOIL_MATURITY_PERCENT = 0;
 // the two share the same discrete multiplier set, so one dial covers both rather than
 // asking the user to reason about two separately. A discrete set, not a free-form slider,
 // since there's no continuous unit for "how many points/cells," only "how many times as
-// many." "Low" is the coarsest, fastest option; the default ("Very High") is the finest.
-const DETAIL_CHOICES: { value: number; label: string }[] = [
-  { value: 4, label: "Very High" },
-  { value: 2, label: "High" },
-  { value: 1, label: "Medium" },
-  { value: 0.5, label: "Low" },
+// many." "Very Low" is the coarsest, fastest option; the default ("Standard") is one step
+// short of the finest. "High" is the exception to the "one dial, one multiplier" rule above:
+// it trades more cost for sharper detail unevenly -- 1.5x Standard's point density but 2x its
+// climate-grid resolution -- so it carries its own `climateDensity` override (see
+// climateDensityForDetail below) instead of reusing `value` as both.
+const DETAIL_CHOICES: { value: number; label: string; climateDensity?: number }[] = [
+  { value: 6, label: "High", climateDensity: 8 },
+  { value: 4, label: "Standard" },
+  { value: 2, label: "Medium" },
+  { value: 1, label: "Low" },
+  { value: 0.5, label: "Very Low" },
 ];
 const DEFAULT_DETAIL = 4;
+// node_density and climate_density (see DETAIL_CHOICES' own comment) agree for every choice
+// except "High", which asks for more climate resolution than point density -- look up its
+// override, falling back to `detail` itself (node_density == climate_density) everywhere else.
+function climateDensityForDetail(detail: number): number {
+  return DETAIL_CHOICES.find((d) => d.value === detail)?.climateDensity ?? detail;
+}
 // The Advanced-settings dialog's own "Fluid dynamics resolution" choice (see backend app/
-// world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at "High": the
-// atmospheric wind solver runs every step (see docs/simulation-model.md#ocean-atmospheric-
-// fluid-dynamics), so there's no "only pay for Very High when you opt in" case left to justify
-// offering it, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
+// world.py's World.fluid_density) -- same shape as DETAIL_CHOICES but capped at its own top
+// choice, "High" (value 2, unrelated to -- and unchanged by -- the "High" now atop
+// DETAIL_CHOICES above; the two dials' labels aren't on a shared scale): the atmospheric wind
+// solver runs every step (see docs/simulation-model.md#ocean-atmospheric-fluid-dynamics), so
+// there's no "only pay for Standard (or finer) when you opt in" case left to justify offering
+// this dial anything past that, matching backend app/climate.py's own FLUID_DENSITY_CHOICES.
 const FLUID_DETAIL_CHOICES: { value: number; label: string }[] = [
   { value: 2, label: "High" },
   { value: 1, label: "Medium" },
@@ -189,14 +202,14 @@ export default function App() {
   const [landPercent, setLandPercent] = useState(DEFAULT_LAND_PERCENT);
   const [axialTiltDeg, setAxialTiltDeg] = useState(DEFAULT_AXIAL_TILT_DEG);
   const [detail, setDetail] = useState(DEFAULT_DETAIL);
-  // The Advanced-settings dialog's own "Fluid dynamics resolution" choice -- same
-  // DETAIL_CHOICES set as `detail` above, but a separate dial: unlike node_density/
-  // climate_density (merged into `detail`), this only affects Ocean/Atmospheric Fluid
-  // Dynamics's own grid (see backend app/world.py's World.fluid_density), not plate/climate
-  // resolution, so it's worth letting the user pick independently rather than folding it into
-  // `detail` too. Defaults to DEFAULT_FLUID_DETAIL ("High"), matching the backend's own
-  // FLUID_DENSITY_CHOICES cap -- see that constant's own comment for why it's lower than
-  // DETAIL_CHOICES' own "Very High".
+  // The Advanced-settings dialog's own "Fluid dynamics resolution" choice -- a separate dial
+  // from `detail` above: unlike node_density/climate_density (both driven off `detail`, modulo
+  // "High"'s own climateDensity override -- see climateDensityForDetail), this only affects
+  // Ocean/Atmospheric Fluid Dynamics's own grid (see backend app/world.py's World.fluid_density),
+  // not plate/climate resolution, so it's worth letting the user pick independently rather than
+  // folding it into `detail` too. Defaults to DEFAULT_FLUID_DETAIL ("High", *this* dial's own
+  // top choice), matching the backend's own FLUID_DENSITY_CHOICES cap -- see that constant's
+  // own comment for why it's lower than DETAIL_CHOICES' own top choice.
   const [fluidDensity, setFluidDensity] = useState(DEFAULT_FLUID_DETAIL);
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
@@ -477,7 +490,7 @@ export default function App() {
         generateMode === "human" && sketchImageDataUrl ? sketchImageDataUrl.split(",", 2)[1] ?? null : null;
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        detail, fluidDensity, autoPlates ? null : numPlates, sketchBase64,
+        climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, sketchBase64,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -867,7 +880,12 @@ export default function App() {
                 disabled={busy || stepping || !summary || animating || playing}
                 title="Play"
                 aria-label="Play"
-                style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
+                // Green while clickable, same "color signals affordance" treatment as Record's
+                // red (below) -- both go back to the default (undefined) color once disabled.
+                style={{
+                  flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0",
+                  color: busy || stepping || !summary || animating || playing ? undefined : "#27c93f",
+                }}
               >
                 ▶
               </button>
