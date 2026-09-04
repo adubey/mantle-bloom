@@ -23,6 +23,23 @@ kept as two separate stats rather than one combined min/max/mean the way it used
 since lumping a -11000m trench and a 9000m peak into the same range made neither number
 very informative on its own.
 
+`elevation_*_m`/`ocean_depth_*_m` reconcile `fields.is_ocean` against the *current* elevation
+before splitting land from ocean, rather than trusting it outright: `is_ocean` is resampled
+from last step's hydrology cache (see hydrology.sample_is_ocean's docstring), so mid-step
+tectonics (a collision uplifting a former seabed, a rift dropping crust out from under an
+existing coastline) can leave it briefly disagreeing with where elevation actually sits versus
+world.sea_level_m -- a mountain that just rose still reads "ocean" until hydrology's next
+recompute, and the reverse for a newly-subsided trench. Left alone this shows up as a
+physically nonsensical negative "ocean depth" (a peak above sea level tagged ocean) or an
+elevation "land" value plunging to MIN_ELEVATION_M (a trench tagged land, far past any real
+endorheic basin -- Earth's deepest, the Dead Sea, bottoms out around -430 m, hence
+`MAX_ENDORHEIC_BASIN_DEPTH_M`). `_reconcile_land_ocean` folds both mismatches the physically
+sane way: an "ocean" cell sitting above sea level is recounted as land (it plainly is, whatever
+last step's cache says), and a "land" cell sitting deeper than any plausible desert basin is
+recounted as ocean instead. A genuine, shallow endorheic basin -- still tagged land, still
+below sea level, but within that plausible band -- is untouched, so elevation_min_m can
+legitimately land slightly below 0 rather than being hard-floored there.
+
 `biome_land_fraction` reads `ClimateFields.biome_ids` -- the same stored classification
 `compute_climate` computes once (via `biomes.smooth_biome_field`, so the boundary-cleanup
 pass is already baked in) and every other biome-consuming caller now shares, at climate.py's
@@ -60,10 +77,29 @@ def _min_max_mean_std(values: np.ndarray) -> tuple[float | None, float | None, f
     return float(values.min()), float(values.max()), float(values.mean()), float(values.std())
 
 
+# How far below sea level an ordinary endorheic desert basin can plausibly sit -- Earth's most
+# extreme example, the Dead Sea depression, bottoms out around -430 m, so 500 m leaves a little
+# headroom. Below this, a "land" cell is almost certainly a stale-cache mismatch (see
+# `_reconcile_land_ocean`), not a real closed basin.
+MAX_ENDORHEIC_BASIN_DEPTH_M = 500.0
+
+
+def _reconcile_land_ocean(fields: "climate.ClimateFields", sea_level_m: float) -> tuple[np.ndarray, np.ndarray]:
+    """(is_ocean, is_land) for stats purposes, correcting `fields.is_ocean` (last-step-cached,
+    see module docstring) against the *current* elevation: a cell it calls "ocean" despite
+    sitting above sea level is recounted as land, and a cell it calls "land" despite sitting
+    deeper than any plausible endorheic basin (`MAX_ENDORHEIC_BASIN_DEPTH_M`) is recounted as
+    ocean. Everything else -- including a genuine, shallow below-sea-level closed basin --
+    keeps its original classification."""
+    elevation = fields.elevation_m
+    is_ocean = fields.is_ocean & (elevation <= sea_level_m)
+    is_ocean |= (~fields.is_ocean) & (elevation < sea_level_m - MAX_ENDORHEIC_BASIN_DEPTH_M)
+    return is_ocean, ~is_ocean
+
+
 def compute_stats(world: World) -> dict:
     fields = climate.compute_climate_cached(world)
-    is_ocean = fields.is_ocean
-    is_land = ~is_ocean
+    is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
     total = is_ocean.size
 
     elevation_min, elevation_max, elevation_mean, elevation_std = _min_max_mean_std(fields.elevation_m[is_land])

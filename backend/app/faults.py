@@ -1152,10 +1152,15 @@ def _cull_inactive_systems(world: "World") -> None:
 def _relief_mode_scales(world: "World") -> tuple[float, float]:
     """(rate_scale, reach_scale) for `_apply_plate_fault_relief`, keyed off
     `world.fault_deformation_mode`. Both 1.0 in "boundary" mode -- bit-identical to a
-    pre-mode pickle. In "fault"/"both" mode the fault-relief layer widens (see
-    FAULT_RELIEF_MODE_*); the rate stays 1.0 to avoid double-counting the boundary bands."""
+    pre-mode pickle, and this is also why `world.fault_relief_multiplier` (the Controls
+    window's fault-based-only "Fault relief strength" knob) is folded into rate_scale only in
+    the fault/both branch below: in "boundary" mode the knob is a genuine no-op, matching it
+    being disabled in the UI. In "fault"/"both" mode the fault-relief layer widens (see
+    FAULT_RELIEF_MODE_*); the base rate stays 1.0 (before the user's multiplier) to avoid
+    double-counting the boundary bands."""
     if getattr(world, "fault_deformation_mode", "fault") in ("fault", "both"):
-        return FAULT_RELIEF_MODE_RATE_SCALE, FAULT_RELIEF_MODE_REACH_SCALE
+        rate_scale = FAULT_RELIEF_MODE_RATE_SCALE * getattr(world, "fault_relief_multiplier", 1.0)
+        return rate_scale, FAULT_RELIEF_MODE_REACH_SCALE
     return 1.0, 1.0
 
 

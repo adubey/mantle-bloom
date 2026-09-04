@@ -35,6 +35,7 @@ TUNING_MULTIPLIER_FIELDS = (
     "collision_uplift_multiplier",
     "collision_uplift_reach_multiplier",
     "volcanism_multiplier",
+    "fault_relief_multiplier",
 )
 
 
@@ -249,6 +250,13 @@ class World:
     collision_uplift_multiplier: float = 1.0  # convergent mountain-building rate (rate, not reach)
     collision_uplift_reach_multiplier: float = 1.0  # horizontal reach of the collision/subduction uplift bands
     volcanism_multiplier: float = 1.0  # per-node eruption frequency *and* per-eruption elevation added
+    # Fault-based-only: scales the relief individual fault traces stamp onto the terrain (see
+    # faults._apply_plate_fault_relief's `rate_scale`). A true no-op in "boundary"
+    # fault_deformation_mode -- faults._relief_mode_scales hard-returns 1.0 there regardless of
+    # this value, since boundary mode's smooth polygon-edge bands (not fault traces) carry the
+    # deformation. Meaningful only in "fault"/"both" mode, where it directly controls how sharp
+    # fault-line ridges/scarps read relative to the surrounding boundary swell.
+    fault_relief_multiplier: float = 1.0
     # Live-adjustable via POST /world/controls, same pattern as sea_level_m/solar_multiplier
     # above -- the UI's "Controls" window lets the user run *just* plate tectonics or *just*
     # climate & biomes. When False, step_world skips plate rotation, boundary evolution
