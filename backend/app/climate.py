@@ -180,7 +180,7 @@ class ClimateFields:
     wind_v: np.ndarray  # (H, W) northward
     current_u: np.ndarray  # (H, W) eastward, zero over land
     current_v: np.ndarray  # (H, W) northward, zero over land
-    humidity: np.ndarray  # (H, W), roughly [0, MAX_EVAPORATION_CEILING]
+    humidity: np.ndarray  # (H, W), [MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING]
     precipitation_mm: np.ndarray  # (H, W)
     biome_ids: np.ndarray  # (H, W) int, index into biomes.BIOME_NAMES/BIOME_COLORS
     swell_rows: np.ndarray  # (K,) int, sampled convergence points
@@ -912,6 +912,21 @@ def advect_ocean_temperature(baseline_c: np.ndarray, current_u: np.ndarray, curr
 EVAPORATION_REFERENCE_TEMP_C = 20.0
 MIN_EVAPORATION_CEILING = 0.3
 MAX_EVAPORATION_CEILING = 1.4
+# An irreducible background specific-humidity everywhere -- the trace of atmospheric water
+# vapour that no advective sweep drains completely (turbulent mixing, transient synoptic
+# intrusions, the fact that even the driest air over a polar plateau is not bone dry). The
+# steady-state zonal/meridional humidity sweeps below decay moisture multiplicatively with
+# distance travelled over dry land (MOISTURE_HALVING_DISTANCE_KM) with no local source in a
+# frozen interior (`_land_moisture_source` -> 0 where lakes/rivers are ice and vegetation is
+# absent), so without this floor a large cold continent's centre reaches *exactly* zero
+# humidity -- and then, via `PRECIP_HUMIDITY_COEFFICIENT_MM * humidity`, exactly zero
+# precipitation, which starves glacier accumulation (hydrology `_update_glaciers` scales
+# accumulation by frozen precipitation) so a permanently-below-freezing pole that is cold
+# enough to keep ice forever never receives a single flake to keep. ~0.02 q is a few tens of
+# mm/yr of baseline precipitation -- the order of a real polar desert (central Antarctica
+# runs ~50 mm/yr water-equivalent, wetter than the Atacama), enough to seed and sustain a
+# polar ice cap over geological time without meaningfully wetting a hot subtropical desert.
+MIN_BACKGROUND_HUMIDITY = 0.02
 MIN_WIND_RETENTION_FACTOR = 0.5
 # Real-world rule of thumb: over flat land, rainfall runs about half as much 300km inland as
 # it does right at the shore -- an exponential decay of airborne moisture with distance
@@ -1294,9 +1309,13 @@ def compute_humidity(
     default to zero (no land moisture source at all) so existing callers -- most usefully,
     test fixtures exercising this function in isolation -- keep working unchanged.
 
+    The blended field is clamped to `[MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING]`
+    regardless of `rng` -- the floor is the irreducible background water vapour that keeps a
+    dry continental interior off exactly zero (see `MIN_BACKGROUND_HUMIDITY`).
+
     `rng`, when given, adds a fractal gaussian perturbation (`_coherent_noise`, std
-    `HUMIDITY_NOISE_STD`) to the blended humidity field, re-clipped to
-    `[0, MAX_EVAPORATION_CEILING]`. The evaporation ceiling is nearly a pure function of
+    `HUMIDITY_NOISE_STD`) to the blended humidity field before that clamp. The evaporation
+    ceiling is nearly a pure function of
     latitude, so both sweeps inherit flat parallels that read as horizontal banding on the
     humidity map (and the precipitation baseline it scales); the noise undulates and stipples
     those bands the same way it does for the moisture-flux convergence (see
@@ -1327,7 +1346,13 @@ def compute_humidity(
         height, width = is_ocean.shape
         correlation_cells = MFC_NOISE_CORRELATION_DEG * height / 180.0  # deg latitude -> rows, resolution-invariant
         noise = _coherent_noise(rng, (height, width), HUMIDITY_NOISE_STD, correlation_cells, MFC_NOISE_SPECTRAL_BETA)
-        humidity = np.clip(humidity + noise, 0.0, MAX_EVAPORATION_CEILING)
+        humidity = humidity + noise
+    # Clamp to [background floor, evaporation ceiling]. The floor keeps a dry continental
+    # interior (or a cell the mean-zero noise above pushed negative) from bottoming out at
+    # exactly zero humidity -- see MIN_BACKGROUND_HUMIDITY. Ocean cells already sit well above
+    # the floor (the evaporation ceiling is >= MIN_EVAPORATION_CEILING), so it only bites on
+    # dry land.
+    humidity = np.clip(humidity, MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING)
     return humidity, orographic
 
 
@@ -1429,13 +1454,21 @@ def compute_precipitation(
     humidity+orographic-only field -- for callers/tests exercising this in isolation."""
     baseline = PRECIP_HUMIDITY_COEFFICIENT_MM * humidity
     orographic = OROGRAPHIC_PRECIPITATION_COEFFICIENT * PRECIP_HUMIDITY_COEFFICIENT_MM * orographic_dump
+    # The background-humidity floor (MIN_BACKGROUND_HUMIDITY) carried through as a hard minimum
+    # rainfall -- large-scale subsidence below can scale the *convective* baseline down toward
+    # zero (a subtropical high), but it does not suppress the trace delivery that keeps even a
+    # permanently-subsiding polar plateau accumulating snow. Applying it as a floor on the
+    # final field (rather than only inside `baseline`) is what guarantees precipitation is
+    # never exactly zero anywhere -- see MIN_BACKGROUND_HUMIDITY for why that matters to
+    # glaciation.
+    floor_mm = PRECIP_HUMIDITY_COEFFICIENT_MM * MIN_BACKGROUND_HUMIDITY
     if moisture_flux_convergence is None:
-        return baseline + orographic
+        return np.maximum(baseline + orographic, floor_mm)
     converging = np.clip(moisture_flux_convergence, 0.0, None)
     diverging = np.clip(-moisture_flux_convergence, 0.0, None)
     convergence_rain = PRECIP_HUMIDITY_COEFFICIENT_MM * np.minimum(MFC_CONVERGENCE_GAIN * converging, MFC_CONVERGENCE_MAX_Q)
     subsidence = 1.0 - np.minimum(MFC_SUBSIDENCE_GAIN * diverging, MFC_SUBSIDENCE_MAX_SUPPRESSION)
-    return baseline * subsidence + orographic + convergence_rain
+    return np.maximum(baseline * subsidence + orographic + convergence_rain, floor_mm)
 
 
 # ---------------------------------------------------------------------------------------
