@@ -18,7 +18,7 @@ import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
 import Legend from "./Legend";
-import { highlightTargetFor } from "./legendData";
+import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
@@ -198,12 +198,16 @@ export default function App() {
     return { lat: (latRad * 180) / Math.PI, lon: (lonRad * 180) / Math.PI };
   });
   // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
-  // Biome, Combined and "Last elevation change" views (the only legends whose swatches are
-  // clickable), so it's cleared any time the view changes away from all three rather than
-  // silently carrying a stale selection into a view whose legend can't reflect or clear it.
+  // views whose legend swatches are clickable (Biome, Combined, "Last elevation change" and
+  // "Plates & Faults"), so it's cleared any time the view changes away from all of them rather
+  // than silently carrying a stale selection into a view whose legend can't reflect or clear it.
   const [highlightedBiome, setHighlightedBiome] = useState<string | null>(null);
   useEffect(() => {
-    if (mapView !== "biome" && mapView !== "combined" && mapView !== "elevReason") setHighlightedBiome(null);
+    if (
+      mapView !== "biome" && mapView !== "combined" && mapView !== "elevReason" && mapView !== "platesAndFaults"
+    ) {
+      setHighlightedBiome(null);
+    }
   }, [mapView]);
   // Memoized so its identity only changes with the selection itself, not on every render --
   // MapCanvas.tsx's highlight-toggle effect is keyed directly on this object's identity.
@@ -1092,6 +1096,7 @@ export default function App() {
               volcanoes={volcanoesData}
               coastlineSegments={coastlineSegments}
               showQuakesVolcanoes={showQuakesVolcanoes}
+              highlightedFaultKind={highlightedBiome ? faultKindForLegendLabel(highlightedBiome) : null}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}
               displayWidth={DISPLAY_WIDTH}
@@ -1183,7 +1188,7 @@ export default function App() {
                 : mapView === "lakeInspector"
                   ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
                   : mapView === "platesAndFaults"
-                  ? "Click a plate to select it (its fault strands emphasise). Tab / Shift+Tab cycles plates. Fault systems + strands are shown for context; toggle the earthquake & volcano overlay in the sidebar. Press and hold, then drag to rotate."
+                  ? "Click a plate to select it (its fault strands emphasise, and its Euler pole + a speed-scaled motion arc appear). Tab / Shift+Tab cycles plates. Click a fault type in the legend to isolate that regime. Toggle the earthquake & volcano overlay in the sidebar. Press and hold, then drag to rotate."
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
                     : "Press and hold, then drag the map to rotate it."}

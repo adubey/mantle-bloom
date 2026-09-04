@@ -1,5 +1,5 @@
 import type { MapView } from "./api";
-import { legendFor } from "./legendData";
+import { faultKindForLegendLabel, legendFor } from "./legendData";
 import type { LegendGradient, LegendSymbol, SwatchKind } from "./legendData";
 
 interface Props {
@@ -124,10 +124,12 @@ export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Prop
   const spec = legendFor(mapView);
   if (!spec) return null;
 
-  // Biome, Combined and "Last elevation change" are the views whose swatches are clickable
-  // (each pixel is exactly one legend colour) -- see the Props doc comment.
+  // Views with clickable swatches: Biome / Combined / "Last elevation change" match on exact
+  // pixel colour (see the Props doc comment); "Plates & Faults" instead resolves a clicked
+  // fault-type row to a FaultKind the client-drawn view isolates (see faultKindForLegendLabel).
   const clickable =
-    (mapView === "biome" || mapView === "combined" || mapView === "elevReason") && !!onBiomeClick;
+    (mapView === "biome" || mapView === "combined" || mapView === "elevReason" || mapView === "platesAndFaults") &&
+    !!onBiomeClick;
 
   return (
     <div
@@ -151,9 +153,13 @@ export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Prop
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient ? 2 : 8 }}>
         {spec.symbols.map((sym) => {
-          // "Coastline" is an orientation cue, not a selectable class -- leave it read-only
-          // even on an otherwise-clickable legend (see highlightTargetFor's elevReason branch).
-          const rowClickable = clickable && sym.label !== "Coastline";
+          // On "Plates & Faults" only the three fault-type rows do anything; elsewhere every
+          // row but "Coastline" (a plain orientation cue) is clickable.
+          const rowClickable =
+            clickable &&
+            (mapView === "platesAndFaults"
+              ? faultKindForLegendLabel(sym.label) !== null
+              : sym.label !== "Coastline");
           return (
             <SymbolRow
               key={sym.label}
