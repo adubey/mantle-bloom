@@ -1560,8 +1560,15 @@ first and closing the loop only for the final consumer-facing fields:
    `MFC_NOISE_CORRELATION_DEG`, seeded per world state on its own RNG stream) is added to the
    blended humidity field at std `HUMIDITY_NOISE_STD` (smaller than `MFC_NOISE_Q_STD` -- it
    perturbs the baseline everywhere, not just a belt edge), re-clipped to
-   `[0, MAX_EVAPORATION_CEILING]`. The orographic dump, a separate rain-shadow channel, is
-   left untouched.
+   `[MIN_BACKGROUND_HUMIDITY, MAX_EVAPORATION_CEILING]`. The orographic dump, a separate
+   rain-shadow channel, is left untouched. **`MIN_BACKGROUND_HUMIDITY`** is an irreducible
+   background specific humidity -- the trace of water vapour no advective sweep drains
+   completely. Without it the centre of a large cold continent reaches *exactly* zero
+   humidity (the distance-decay sweeps with no local source over a frozen interior), hence
+   exactly zero precipitation, which starves glacier accumulation (scaled by frozen
+   precipitation, see [Glaciation](#glaciation)) so a pole cold enough to keep ice forever
+   never receives any to keep. ~0.02 q is a few tens of mm/yr of baseline precipitation --
+   the order of a real polar desert, enough to seed a polar ice cap over geological time.
 10. **Precipitation** = f(humidity) + an orographic bonus (continuous saturating
     windward-slope moisture dump, from wind blowing up-elevation) + a **Hadley/Ferrel
     moisture-flux convergence** term (`compute_moisture_flux_convergence`): the
@@ -1570,7 +1577,10 @@ first and closing the loop only for the final consumer-facing fields:
     wet/dry belts read as continuous bands. Converging moisture-bearing wind adds rainfall
     (the ITCZ where the two hemispheres' trades meet, the ~50-65 deg sub-polar front);
     diverging wind multiplies the humidity baseline *down* (the subtropical highs at ~15-35
-    deg, the poles under the polar cells). This is the model's zonal precipitation
+    deg, the poles under the polar cells) -- but the final field is floored at the
+    `MIN_BACKGROUND_HUMIDITY`-equivalent rainfall, so subsidence can suppress the convective
+    baseline toward zero without ever driving precipitation to exactly zero (a polar plateau
+    is permanently subsiding yet still accumulates snow). This is the model's zonal precipitation
     climatology -- but emergent from the winds, not a hardcoded function of latitude, so the
     bands shift and distort with the circulation (a supercontinent, an off-centre landmass, a
     monsoon dragging the ITCZ poleward over a summer continent). The convergence bonus is
