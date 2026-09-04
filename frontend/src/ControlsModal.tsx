@@ -62,6 +62,15 @@ const TUNING_GROUPS: { heading: string; tab: TabKey; knobs: { key: TuningKey; la
   },
 ];
 
+// Fault-based-only tectonics knobs -- rendered separately from TUNING_GROUPS (rather than
+// folded into the "Tectonics & volcanism" group above) because these get disabled, not just
+// listed, when faultDeformationMode is "boundary": see backend faults._relief_mode_scales,
+// where fault_relief_multiplier is a genuine no-op in that mode (boundary mode's smooth
+// polygon-edge bands carry the deformation instead of fault traces).
+const FAULT_ONLY_KNOBS: { key: TuningKey; label: string }[] = [
+  { key: "fault_relief_multiplier", label: "Fault relief strength" },
+];
+
 const TABS: { key: TabKey; label: string }[] = [
   { key: "climate", label: "Climate" },
   { key: "erosion", label: "Erosion" },
@@ -112,8 +121,8 @@ export default function ControlsModal({
   const anyTuned = Object.values(tuning).some((v) => v !== 1);
   const bothSimsOff = !simulatePlateMovement && !simulateClimateBiomes;
 
-  const tuningGroup = (heading: string, knobs: { key: TuningKey; label: string }[]) => (
-    <div key={heading} style={{ marginBottom: 12 }}>
+  const tuningGroup = (heading: string, knobs: { key: TuningKey; label: string }[], disabled = false) => (
+    <div key={heading} style={{ marginBottom: 12, opacity: disabled ? 0.5 : 1 }}>
       <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, color: "#8b8fa3", marginBottom: 6 }}>
         {heading}
       </div>
@@ -121,7 +130,9 @@ export default function ControlsModal({
         <label key={key} style={{ display: "block", marginBottom: 10, fontSize: 12 }}>
           <span style={{ display: "flex", justifyContent: "space-between" }}>
             <span>{label}</span>
-            <span style={{ color: tuning[key] === 1 ? "#8b8fa3" : "#e6e8ef" }}>{tuning[key].toFixed(1)}×</span>
+            <span style={{ color: tuning[key] === 1 ? "#8b8fa3" : "#e6e8ef" }}>
+              {disabled ? "—" : `${tuning[key].toFixed(1)}×`}
+            </span>
           </span>
           <input
             type="range"
@@ -129,6 +140,7 @@ export default function ControlsModal({
             max={3}
             step={0.1}
             value={tuning[key]}
+            disabled={disabled}
             onChange={(e) => onTuningChange(key, Number(e.target.value))}
             style={{ width: "100%" }}
           />
@@ -347,6 +359,13 @@ export default function ControlsModal({
                     ? "Boundary uplift / rifting concentrates onto active fault traces, and the fault relief layer is scaled up to carry it. Faults spawn boundary-hugging, so the collision zone reads as fault-tracking ridges rather than one smooth swell."
                     : "Boundary bands at full strength plus the scaled-up fault relief layer on top."}
               </div>
+              {tuningGroup("Fault-based tectonics", FAULT_ONLY_KNOBS, faultDeformationMode === "boundary")}
+              {faultDeformationMode === "boundary" && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: -4, marginBottom: 4 }}>
+                  Disabled in "Boundary bands" mode — deformation there comes entirely from the smooth
+                  polygon-edge bands, not fault traces, so this knob has no effect.
+                </div>
+              )}
             </div>
 
             <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>

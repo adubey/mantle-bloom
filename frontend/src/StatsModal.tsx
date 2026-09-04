@@ -428,17 +428,19 @@ function MetricTab({ entries, history, current }: { entries: TabEntry[]; history
         )
       ) : (
         <>
-          <select
-            value={selectedKey}
-            onChange={(e) => setSelectedKey(e.target.value)}
-            style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
-          >
-            {entries.map((e) => (
-              <option key={entryKey(e)} value={entryKey(e)}>
-                {entryLabel(e)}
-              </option>
-            ))}
-          </select>
+          {entries.length > 1 && (
+            <select
+              value={selectedKey}
+              onChange={(e) => setSelectedKey(e.target.value)}
+              style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
+            >
+              {entries.map((e) => (
+                <option key={entryKey(e)} value={entryKey(e)}>
+                  {entryLabel(e)}
+                </option>
+              ))}
+            </select>
+          )}
           <TimeSeriesChart series={chartSeries} data={chartData} yFormat={yFormat} bands={chartBands} />
         </>
       )}
