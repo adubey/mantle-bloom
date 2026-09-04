@@ -373,6 +373,7 @@ export const ELEV_REASON_RGB_ENTRIES: [string, [number, number, number]][] = [
   ["Fault: normal (graben)", [120, 190, 90]],
   ["Fault: reverse (thrust)", [176, 60, 90]],
   ["Fault: strike-slip", [230, 190, 70]],
+  ["Volcanic plain", [224, 130, 24]],
 ];
 
 const ELEV_REASON_ENTRIES: LegendSymbol[] = ELEV_REASON_RGB_ENTRIES.map(

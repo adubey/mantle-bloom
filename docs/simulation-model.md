@@ -920,6 +920,19 @@ clamped to the volcano's own *remaining* life, not the full step size -- a large
 offers up to 10 Myr) shouldn't roll eruption chances for years past when a short-lived
 volcano actually went dormant.
 
+**Volcanic plains (2026-09-04).** A real effusive eruption doesn't just build a point peak --
+it spreads lava broadly around the vent (Hawaiian shield flanks, the Deccan/Siberian Traps at
+the extreme end). `_spread_volcanic_plains` applies a second, much weaker and much
+broader-reaching elevation bump around every vent that erupted this step:
+`VOLCANIC_PLAIN_ELEVATION_M` (60 m, vs the point bump's `ERUPTION_ELEVATION_M`, 300 m) at the
+vent itself, tapering linearly to 0 by `VOLCANIC_PLAIN_REACH_KM` (120 km) -- the same
+KD-tree-and-linear-taper shape `faults._apply_plate_fault_relief` uses for a fault's own
+relief. Where two vents erupt the same step with overlapping aprons, the *larger* contribution
+wins (`np.maximum.at`), not the sum -- a cluster of vents should read as one coalesced plain,
+not a runaway stack. Stamped `ELEV_CHANGE_VOLCANIC_PLAIN` in the "Last elevation change" view,
+distinct from the vent's own `ELEV_CHANGE_VOLCANO` (never downgrades a node the point bump
+already claimed this step).
+
 **Rendering.** Baked directly into the elevation/plates views' raster the same way lakes and
 glaciers are (`VOLCANO_COLOR_RGB`, a hot red-orange distinct from both), drawn after lake but
 before glacier so ice still wins where both would apply (a volcano cold enough to glaciate
@@ -2511,7 +2524,7 @@ rejected with a `400`.
 | `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
 | `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `LithospherePlate.deform` |
-| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line (`_dilate_1d`); `<1` narrows/weakens it instead | `LithospherePlate.deform` |
+| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line by a physical-km ring, density-independent (`_dilate_1d`); `<1` narrows/weakens it instead | `LithospherePlate.deform` |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
@@ -2528,7 +2541,31 @@ read isostasy), **not** the `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` code in
 `PlateWithLines.deform`, which is dead for any generated world. The *amount* knob is a
 `strength` multiplier on the plastic thickening; the *reach* knob widens the node band that
 thickens (a near-field ring at `COLLISION_REACH_NEAR_FIELD_FACTOR` of the contested rate,
-`COLLISION_REACH_DILATION_NODES_PER_UNIT` nodes wider per unit of multiplier above 1).
+`COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` (200 km) wider per unit of multiplier).
+
+**Near-field reach is now density-independent (2026-09-04).** The ring used to widen by a flat
+node count (`COLLISION_REACH_DILATION_NODES_PER_UNIT`, 2 nodes/unit) -- at the default
+`node_density` (1.0, line spacing 125 km) that is ~250 km, a plausible orogen crumple-zone
+width, but at higher `node_density` the same flat node count is a *narrower* physical belt
+(only ~125 km at density 4), since line spacing itself shrinks with density. Confirmed as a
+real "mountains look too narrow at higher detail" bug, not just a subjective impression.
+`COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` fixes this by converting the reach knob to a physical
+km figure first, then dividing by this step's *actual* `spacing_rad` to get the node count --
+the belt now reads the same width across every `node_density` / detail-level setting.
+
+**Far-field collision uplift is now live.** `ELEV_CHANGE_COLLISION_FAR_FIELD` has existed in
+the "Last elevation change" legend since v1 (`plates.py`'s `PlateWithLines.deform`, dead code
+for any generated world -- see above), but the live `LithospherePlate.deform` never applied an
+equivalent term, so the legend swatch could never actually paint. `LithospherePlate.deform` now
+carries its own far-field band (`FAR_FIELD_INNER_KM`/`FAR_FIELD_OUTER_KM`, 300-1000 km, rate
+`FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR` = 60 m/Myr, applied as a direct elevation delta rather than
+through `Hc`/`Hm`): a real continent-continent collision transmits uplift-inducing stress deep
+into the stable interior (the Tibetan Plateau's own far-field effects raise terrain across much
+of interior Asia). Gated on distance to the nearest *continental* neighbour (queried out to
+`FAR_FIELD_OUTER_KM`, well past the near-boundary `reach_rad` the rest of `deform()` uses) and
+on this plate having an active continent-continent collision *somewhere* on its edge this step
+-- a quiet continent's interior never uplifts on its own. Zeroed wherever the near-field
+ring/contested band already applies, so the two bands never double-count the same node.
 
 ### Effect sizes
 

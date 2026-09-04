@@ -125,6 +125,10 @@ ELEV_CHANGE_LAKE_SILT = 14  # lake / endorheic-basin siltation raising a basin f
 ELEV_CHANGE_FAULT_NORMAL = 15  # extensional graben subsidence / footwall-shoulder uplift
 ELEV_CHANGE_FAULT_REVERSE = 16  # intraplate thrust / fold-belt uplift away from a boundary
 ELEV_CHANGE_FAULT_STRIKE_SLIP = 17  # strike-slip transpressional ridge / transtensional sag
+# A broad, low-relief apron an eruption spreads around itself (see volcanism.py's
+# VOLCANIC_PLAIN_*) -- distinct from ELEV_CHANGE_VOLCANO, which is reserved for the sharp
+# point bump at the vent itself.
+ELEV_CHANGE_VOLCANIC_PLAIN = 18
 
 # Human-readable label per code, index == code -- kept here (not in render_image.py or the
 # frontend) as the single source both sync against, same precedent as biomes.BIOME_NAMES.
@@ -147,6 +151,7 @@ ELEV_CHANGE_LABELS = (
     "Fault: normal (graben)",
     "Fault: reverse (thrust)",
     "Fault: strike-slip",
+    "Volcanic plain",
 )
 
 REGULARIZE_INTERVAL_STEPS = 5
@@ -168,6 +173,18 @@ VOLCANO_ACTIVE_MAX_YEARS = 1_000_000
 # steps (measured: across a 188 My save, volcano nodes averaged *below* sea level). Raised
 # 2026-09-04 so a volcano that does erupt a few times actually builds a lasting peak.
 ERUPTION_ELEVATION_M = 300.0
+
+# A shield-volcano/flood-basalt apron: real effusive eruptions don't just build a point peak,
+# they spread lava broadly around the vent (Hawaiian shield flanks, the Deccan/Siberian Traps
+# at the extreme end) -- a real, physically distinct landform from the sharp vent bump above,
+# so it gets its own reason code (ELEV_CHANGE_VOLCANIC_PLAIN) and shows up separately in the
+# "Last elevation change" view. Applied by volcanism.py alongside the existing point bump,
+# same eruption roll, tapering linearly from the vent to zero at VOLCANIC_PLAIN_REACH_KM --
+# see `_spread_volcanic_plains`. Deliberately much lower than ERUPTION_ELEVATION_M (a plain is
+# low-relief by definition) and reaches roughly one neighbour ring at default node density, so
+# it reads as a genuine broad apron rather than an isolated spike.
+VOLCANIC_PLAIN_REACH_KM = 120.0
+VOLCANIC_PLAIN_ELEVATION_M = 60.0
 
 # Self-affine scaling exponent used by _crumple_elevation below: real terrain roughened by
 # compressing a profile horizontally by k doesn't just get resampled at the new spacing, its

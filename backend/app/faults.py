@@ -197,7 +197,7 @@ _FAULT_SYSTEM_SEED_TAG = 7332
 # Relief (per Myr, at the trace, tapering linearly to zero at MAX_FAULT_REACH_KM). Kept well
 # below the boundary rates in plates.py (CONVERGENT_MOUNTAIN_RATE_M_PER_MYR = 800) so this
 # additive layer doesn't disturb long-run hypsometry tuning.
-MAX_FAULT_REACH_KM = 45.0
+MAX_FAULT_REACH_KM = 50.0
 REVERSE_UPLIFT_M_PER_MYR = 220.0
 NORMAL_THROW_M_PER_MYR = 180.0  # hanging-wall down
 NORMAL_SHOULDER_UPLIFT_M_PER_MYR = 55.0  # footwall up
