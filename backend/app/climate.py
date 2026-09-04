@@ -353,6 +353,40 @@ SUNLIGHT = 1.0
 INSOLATION_FLOOR = 0.03
 AXIAL_TILT_DECLINATION_SAMPLES = 24
 
+# --- Ice ages --------------------------------------------------------------------------
+# `World.ice_age_period_years` (the Controls "Ice Age Frequency" slider, 0 = disabled) sets
+# the full period of a slow glacial<->interglacial swing driven purely by `elapsed_years`.
+# `ice_age_glacial_intensity` is a raised cosine in [0, 1] -- 0 at t=0 (a fresh world starts
+# interglacial) and at every whole multiple of the period, 1 at the half-period glacial
+# maximum. `ice_age_cooling_c` turns that into a single uniform temperature depression added
+# to *both* the land and ocean baselines in `compute_climate`, so every downstream consumer
+# (air temperature, biomes, hydrology's freeze / glacier-growth terms, erosion) feels the ice
+# age through the one temperature field it already reads -- no separate causal channel. The
+# cooling has no spatial structure of its own: the poles cross into permanent-ice territory
+# first simply because they start coldest. ICE_AGE_MAX_COOLING_C is picked to roughly match a
+# real Pleistocene glacial-maximum global mean cooling (~4-7 C) with headroom, not calibrated
+# against a specific target.
+ICE_AGE_MAX_COOLING_C = 8.0
+
+
+def ice_age_glacial_intensity(world: "World") -> float:
+    """Raised-cosine glacial intensity in [0, 1] for the world's current `elapsed_years` --
+    0 outside an ice-age cycle (period 0) and at every whole multiple of the period, 1 at the
+    half-period glacial maximum. Deterministic in `elapsed_years` alone, so a render and the
+    step that produced it agree, and a replayed session reproduces the same cycle."""
+    period = getattr(world, "ice_age_period_years", 0.0) or 0.0
+    if period <= 0.0:
+        return 0.0
+    phase = 2.0 * np.pi * (world.elapsed_years / period)
+    return float(0.5 * (1.0 - np.cos(phase)))
+
+
+def ice_age_cooling_c(world: "World") -> float:
+    """Uniform temperature depression (C, >= 0) for the world's current point in its ice-age
+    cycle -- `ICE_AGE_MAX_COOLING_C` scaled by `ice_age_glacial_intensity`. 0 when ice ages
+    are disabled."""
+    return ICE_AGE_MAX_COOLING_C * ice_age_glacial_intensity(world)
+
 
 def compute_insolation(lat_deg: np.ndarray, axial_tilt_deg: float, solar_multiplier: float = 1.0) -> np.ndarray:
     """Annual-mean insolation, (H,) broadcastable. Flat zenith-angle cosine law with no
@@ -1436,6 +1470,17 @@ def compute_climate(
     insolation_row = compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_temperature_c = compute_land_temperature(insolation_row, elevation_m)
     ocean_baseline_c = compute_ocean_temperature_baseline(insolation_row, height, width)
+
+    # Ice age: a uniform cooling of both baselines for the world's current point in its
+    # glacial<->interglacial cycle (see ice_age_cooling_c). 0 when the Controls slider is at
+    # "never", so an ordinary world is unaffected. Applied here, before wind / air temperature
+    # / currents / biomes / the erosion+hydrology node sampling all derive from these two
+    # fields, so the ice age propagates through every one of them without its own plumbing.
+    ice_age_cooling = ice_age_cooling_c(world)
+    if ice_age_cooling:
+        land_temperature_c = land_temperature_c - ice_age_cooling
+        ocean_baseline_c = ocean_baseline_c - ice_age_cooling
+
     surface_temperature_c = np.where(is_ocean, ocean_baseline_c, land_temperature_c)
 
     # wind_u/wind_v normally come from the world's own always-on atmosphere_cfd_state -- a

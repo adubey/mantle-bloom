@@ -165,6 +165,9 @@ class ControlsRequest(BaseModel):
     # World.wind_model for what each one does physically.
     sea_level_m: float | None = None
     solar_multiplier: float | None = None
+    # Full period (years) of the glacial<->interglacial cycle; 0 disables it. See
+    # World.ice_age_period_years / climate.ice_age_cooling_c.
+    ice_age_period_years: float | None = None
     simulate_plate_movement: bool | None = None
     simulate_climate_biomes: bool | None = None
     wind_model: str | None = None
@@ -670,8 +673,8 @@ def animate(req: AnimateRequest) -> StreamingResponse:
 
 @app.post("/world/controls")
 def set_controls(req: ControlsRequest) -> dict:
-    """Live-adjusts sea level, solar heat, the plate-movement/climate-biomes step toggles,
-    the wind model, and/or the geomorphic-budget tuning multipliers
+    """Live-adjusts sea level, solar heat, ice-age frequency, the plate-movement/climate-biomes
+    step toggles, the wind model, and/or the geomorphic-budget tuning multipliers
     (world.TUNING_MULTIPLIER_FIELDS -- rain/river/wind/ocean/glacier/seismic erosion,
     coastal leveling, river/ocean deposition, collision uplift rate & reach, volcanism; all
     dimensionless, 1.0 == untuned) on the current world (the "Controls" window -- see
@@ -707,6 +710,8 @@ def set_controls(req: ControlsRequest) -> dict:
             eustasy.set_sea_level_via_water_budget(world, req.sea_level_m)
         if req.solar_multiplier is not None:
             world.solar_multiplier = req.solar_multiplier
+        if req.ice_age_period_years is not None:
+            world.ice_age_period_years = max(0.0, float(req.ice_age_period_years))
         if req.simulate_plate_movement is not None:
             world.simulate_plate_movement = req.simulate_plate_movement
         if req.simulate_climate_biomes is not None:
@@ -721,6 +726,7 @@ def set_controls(req: ControlsRequest) -> dict:
     return {
         "sea_level_m": world.sea_level_m,
         "solar_multiplier": world.solar_multiplier,
+        "ice_age_period_years": world.ice_age_period_years,
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,

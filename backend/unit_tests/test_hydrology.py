@@ -12,11 +12,15 @@ def _flow_line_plate(plate_id, theta, elevation):
     return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
 
 
-def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth):
+def _flow_line_plate_with_lake(plate_id, theta, elevation, lake_depth, glacier_depth=None):
     frame = geometry.plate_frame_from_seed([1.0, 0.0, 0.0])
     theta = np.asarray(theta, dtype=float)
+    kw = {}
+    if glacier_depth is not None:
+        kw["glacier_depth"] = np.asarray(glacier_depth, dtype=float)
     line = ElevationLine(
-        phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float), lake_depth=np.asarray(lake_depth, dtype=float)
+        phi=0.0, theta=theta, elevation=np.asarray(elevation, dtype=float),
+        lake_depth=np.asarray(lake_depth, dtype=float), **kw,
     )
     return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="continental", lines=[line])
 
@@ -454,6 +458,34 @@ def test_update_glaciers_discards_ice_reaching_an_ocean_node():
     assert new_depth[0] < 50.0  # node 0 still lost the ice that flowed out
 
 
+def test_update_glaciers_keeps_ice_over_ocean_when_allow_ocean_ice():
+    # Same setup as the calving test, but with allow_ocean_ice set for the ocean node -- an
+    # ice age lets a floating ice cap grow over freezing polar water instead of calving.
+    elevation = np.array([500.0, -50.0])
+    is_ocean = np.array([False, True])
+    flow_target = np.array([1, -1])
+    slope = np.array([0.9, 0.0])
+    prev_glacier = np.array([50.0, 20.0])
+    frozen_precip = np.array([0.0, 5.0])  # snow falling on the frozen sea itself
+    frozen_from_lake = np.array([0.0, 0.0])
+    is_accumulating = np.array([False, True])
+    temperature = np.full(2, hydrology.GLACIER_ACCUMULATION_TEMP_C)
+
+    new_depth, _ = hydrology._update_glaciers(
+        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake,
+        is_accumulating, temperature, years=1_000_000,
+        allow_ocean_ice=np.array([False, True]),
+    )
+    assert new_depth[1] > 20.0  # the polar sea now holds (and grew) its ice cap
+    # A False mask entry still calves -- prove the exemption is per-node, not global.
+    new_depth_calving, _ = hydrology._update_glaciers(
+        elevation, is_ocean, flow_target, slope, prev_glacier, frozen_precip, frozen_from_lake,
+        is_accumulating, temperature, years=1_000_000,
+        allow_ocean_ice=np.array([False, False]),
+    )
+    assert new_depth_calving[1] == 0.0
+
+
 def test_compute_hydrology_freezes_an_existing_lake_when_cold():
     # A single evenly-spaced, tightly-packed 16-point chain -- dense enough that every
     # point's FLOW_NEIGHBOR_COUNT=8 nearest neighbors really are just its ~4 closest
@@ -522,6 +554,32 @@ def test_compute_hydrology_freezing_river_blocks_flow_and_banks_ice_at_the_freez
     assert np.all(fields.flow_target[land] == -1)  # every land node frozen -- nothing routes onward
     assert np.all(fields.water_deposited[fields.is_ocean] == 0.0)  # so nothing reaches the ocean this step
     assert np.all(fields.glacier_depth[land] > 0.0)  # the water that would have flowed froze in place instead
+
+
+def test_compute_hydrology_freezes_rivers_and_snow_over_an_ice_cap_above_freezing():
+    # Same 12-node descending chain as the freezing-river test, at a sampled temperature of
+    # +2C -- above freezing. A bare chain routes rain to the sea; an otherwise-identical chain
+    # that already carries a real ice cap (200 m of glacier) freezes every river shut and lets
+    # no liquid runoff reach the ocean -- the precipitation lands as snow on the cap, not rain.
+    # (Standing lakes over an ice cap freeze the same way, via the same is_frozen mask the
+    # cold-lake tests above already exercise.)
+    d = 0.002
+    theta = d * np.arange(12)
+    elevation = 500.0 - 60.0 * np.arange(12)  # last two nodes are below sea level -> ocean
+    warm = np.full(12, 2.0)
+    precip = np.full(12, 800.0)
+
+    bare = _flow_line_plate(0, theta, elevation)
+    bare_fields = hydrology.compute_hydrology(World(seed=0, plates=[bare]), precip, warm, years=1_000_000)
+    bare_land = ~bare_fields.is_ocean
+    assert np.any(bare_fields.flow_target[bare_land] >= 0)  # control: warm -> rivers route downhill
+    assert bare_fields.water_deposited[bare_fields.is_ocean].sum() > 0.0  # control: rain reaches the sea
+
+    iced = _flow_line_plate_with_lake(0, theta, elevation, np.zeros(12), glacier_depth=np.full(12, 200.0))
+    iced_fields = hydrology.compute_hydrology(World(seed=0, plates=[iced]), precip, warm, years=1_000_000)
+    iced_land = ~iced_fields.is_ocean
+    assert np.all(iced_fields.flow_target[iced_land] == -1)  # every river over the cap is frozen shut
+    assert iced_fields.water_deposited[iced_fields.is_ocean].sum() == 0.0  # nothing liquid runs off as rain
 
 
 def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():

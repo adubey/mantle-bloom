@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from app import biomes, climate, geometry
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
@@ -517,3 +518,37 @@ def test_compute_climate_biome_ids_matches_a_direct_smooth_biome_field_call():
         lat_deg=fields.lat_deg, axial_tilt_deg=world.axial_tilt_deg,
     )
     assert np.array_equal(fields.biome_ids, expected)
+
+
+def test_ice_age_glacial_intensity_is_a_raised_cosine_in_elapsed_years():
+    world = _world(seed=11)
+    # Disabled by default -- no cycle.
+    world.ice_age_period_years = 0.0
+    world.elapsed_years = 123_456.0
+    assert climate.ice_age_glacial_intensity(world) == 0.0
+    assert climate.ice_age_cooling_c(world) == 0.0
+
+    world.ice_age_period_years = 400_000.0
+    world.elapsed_years = 0.0
+    assert climate.ice_age_glacial_intensity(world) == 0.0  # a fresh world starts interglacial
+    world.elapsed_years = 200_000.0  # half period -> glacial maximum
+    assert climate.ice_age_glacial_intensity(world) == pytest.approx(1.0)
+    assert climate.ice_age_cooling_c(world) == pytest.approx(climate.ICE_AGE_MAX_COOLING_C)
+    world.elapsed_years = 400_000.0  # full period -> back to interglacial
+    assert climate.ice_age_glacial_intensity(world) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_ice_age_cooling_lowers_temperatures_uniformly():
+    world = _world(seed=12)
+    warm = climate.compute_climate(world, height=40, width=80)
+
+    world.ice_age_period_years = 400_000.0
+    world.elapsed_years = 200_000.0  # glacial maximum
+    cold = climate.compute_climate(world, height=40, width=80)
+
+    assert np.all(cold.land_temperature_c < warm.land_temperature_c)
+    assert cold.ocean_temperature_c.mean() < warm.ocean_temperature_c.mean()
+    # The land baseline shift is exactly the uniform cooling (no other channel touched it).
+    assert np.allclose(
+        warm.land_temperature_c - cold.land_temperature_c, climate.ICE_AGE_MAX_COOLING_C
+    )

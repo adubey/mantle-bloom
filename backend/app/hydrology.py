@@ -194,6 +194,23 @@ GLACIER_BASAL_MELT_REFERENCE_DEPTH_M = 2500.0
 # ~1.5x the thickest ice sheet on real Earth.
 GLACIER_MAX_DEPTH_M = 5000.0
 
+# During a deep enough ice age -- climate.ice_age_glacial_intensity at or above
+# ICE_AGE_SEA_ICE_MIN_INTENSITY -- ice is allowed to pile up on, and persist over, genuinely
+# freezing polar *ocean* nodes (surface temperature below SEA_ICE_FORMATION_TEMP_C) rather
+# than being discarded at the coastline the way it is the rest of the time (see
+# _update_glaciers' is_ocean guard, now gated by an `allow_ocean_ice` mask). This is the "ice
+# caps can grow over polar water in an ice age" behaviour: land glaciers calving toward the
+# coast, plus frozen precipitation landing on the sea itself, build a floating ice cap over
+# the pole. Outside an ice age -- or during its interglacial phase, intensity near 0 -- the
+# gate stays shut and the old calve-at-the-coast rule holds exactly (bit-identical). The sea
+# ice still melts back through the ordinary melt_factor term, and once the glacial phase
+# passes the gate closes and that step discards whatever had accumulated (shed to meltwater,
+# mass-conserving into the river/ocean system). SEA_ICE_FORMATION_TEMP_C matches biomes.py's
+# own `sst < -1.0` sea-ice cutoff; the intensity floor is half the raised-cosine amplitude,
+# i.e. "past the midpoint of a glacial build".
+SEA_ICE_FORMATION_TEMP_C = -1.0
+ICE_AGE_SEA_ICE_MIN_INTENSITY = 0.5
+
 # River evaporation: a fraction of a river's own downstream flux evaporates at every node it
 # passes through this step -- warmer nodes lose a bigger fraction, up to
 # RIVER_EVAPORATION_MAX_FRACTION (capped well short of 1.0 so a single very large step can't
@@ -731,12 +748,19 @@ def _update_glaciers(
     is_frozen: np.ndarray,
     temperature: np.ndarray,
     years: float,
+    allow_ocean_ice: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Grows/melts/flows glacier ice, generalized from grid 8-neighbor D8 routing to this
     module's flow_target graph. Returns (new_glacier_depth, melt): melt feeds back into this
     step's water source (see compute_hydrology) as real meltwater, not a separate accounting
     bucket -- glacial melt becomes real river discharge rather than a parallel, disconnected
-    accounting path."""
+    accounting path.
+
+    `allow_ocean_ice` is the per-node mask of freezing polar ocean nodes that an active ice
+    age lets ice accumulate over (see SEA_ICE_FORMATION_TEMP_C); `None` (the default) means
+    all-False, reproducing the old unconditional calve-at-the-coast behaviour exactly."""
+    if allow_ocean_ice is None:
+        allow_ocean_ice = np.zeros_like(is_ocean, dtype=bool)
     years_myr = years / 1_000_000.0
     accumulation = np.where(is_frozen, GLACIER_ACCUMULATION_RATE * frozen_precip * years_myr, 0.0)
     depth_before_flow = prev_glacier_depth + frozen_from_lake + accumulation
@@ -764,10 +788,12 @@ def _update_glaciers(
     inflow = np.zeros_like(elevation)
     np.add.at(inflow, flow_target[has_target], outflow[has_target])
 
-    # Ice reaching (or accumulating on) an ocean node is discarded, not piled up -- real sea
-    # ice is a different, thinner, seasonal phenomenon this model doesn't represent; this
-    # same guard reads as calving where a glacier reaches a coast.
-    piled = np.where(is_ocean, 0.0, np.clip(remaining + inflow, 0.0, None))
+    # Ice reaching (or accumulating on) an ocean node is normally discarded, not piled up --
+    # ordinary sea ice is a different, thinner, seasonal phenomenon this model doesn't
+    # represent; that guard reads as calving where a glacier reaches a coast. During a deep
+    # ice age, `allow_ocean_ice` exempts genuinely freezing polar ocean nodes, so a real
+    # floating ice cap grows over the pole (see SEA_ICE_FORMATION_TEMP_C).
+    piled = np.where(is_ocean & ~allow_ocean_ice, 0.0, np.clip(remaining + inflow, 0.0, None))
     # Shed anything past GLACIER_MAX_DEPTH_M (see its comment) into this step's meltwater.
     overflow = np.clip(piled - GLACIER_MAX_DEPTH_M, 0.0, None)
     new_depth = piled - overflow
@@ -830,7 +856,16 @@ def compute_hydrology(
     is_ocean = connected_ocean_mask(points, elevation, world.sea_level_m, neighbor_idx)
     filled_elevation, spill_target = _compute_basin_spill(elevation, is_ocean, neighbor_idx)
 
-    is_frozen = temperature_at_nodes < FREEZE_POINT_C
+    # A node is "frozen" this step -- any liquid water on it turns to ice, precipitation falls
+    # as snow, a river crossing it stops -- when its sampled surface temperature is below the
+    # real freezing point, OR when it already carries a real ice cap (GLACIER_VISIBLE_DEPTH_M
+    # of accumulated ice, the same "genuine ice, not a trace" threshold rendering uses). The
+    # second clause is what keeps rivers/lakes/snowfall frozen *over the ice caps* even on a
+    # step whose temperature briefly ticks above 0: a marginal thaw doesn't put liquid water
+    # back on top of kilometres of ice. The glacier's own surface melt (`_update_glaciers`,
+    # temperature-driven) still ablates the cap regardless -- this governs only what happens to
+    # water and precipitation arriving on it, not whether the ice itself survives.
+    is_frozen = (temperature_at_nodes < FREEZE_POINT_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M)
     freezing_lake = is_frozen & (prev_lake_depth > 0.0)
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
     frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
@@ -857,9 +892,25 @@ def compute_hydrology(
     frozen_precip = np.where(is_frozen, precipitation_at_nodes, 0.0)
     liquid_precip = np.where(is_frozen, 0.0, precipitation_at_nodes)
 
+    # In a deep enough glacial phase, let ice pile up over freezing polar ocean (a floating
+    # ice cap) instead of calving at the coast -- see SEA_ICE_FORMATION_TEMP_C. `climate` is
+    # imported locally: it imports this module at load time, so a top-level import here would
+    # be circular, but by the time this runs climate is fully initialized.
+    from . import climate
+
+    # Freezing polar ocean grows an ice cap; an ocean node that *already* holds one keeps it
+    # (a bit of thermal-inertia hysteresis -- sea ice doesn't vanish the instant the water
+    # edges back above its freezing point) -- but only while the glacial phase itself lasts:
+    # once intensity falls back below the gate the cap is shed regardless (see _update_glaciers).
+    allow_ocean_ice = (
+        is_ocean
+        & ((temperature_at_nodes < SEA_ICE_FORMATION_TEMP_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M))
+        & (climate.ice_age_glacial_intensity(world) >= ICE_AGE_SEA_ICE_MIN_INTENSITY)
+    )
+
     slope_to_ice_target = _slope_to_flow_target(points, elevation, ice_flow_target)
     new_glacier_depth, melt = _update_glaciers(
-        elevation, is_ocean, ice_flow_target, slope_to_ice_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years
+        elevation, is_ocean, ice_flow_target, slope_to_ice_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years, allow_ocean_ice=allow_ocean_ice
     )
 
     # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of

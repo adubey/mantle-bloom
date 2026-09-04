@@ -197,6 +197,21 @@ class World:
     # slider sets this budget rather than `sea_level_m` directly (adds/removes ocean water).
     ocean_water_column_m: float | None = None
     solar_multiplier: float = 1.0
+    # The "Ice Age Frequency" Controls slider (Climate tab): the full period, in years, of a
+    # slow glacial<->interglacial temperature oscillation driven purely by `elapsed_years`.
+    # 0.0 (the default) disables it entirely -- no ice-age cycle, bit-identical to before this
+    # field existed and to an older save (a plain-scalar default an old pickle falls through
+    # to, no persistence backfill needed). See climate.ice_age_glacial_intensity /
+    # climate.ice_age_cooling_c: a raised-cosine intensity in [0, 1] (0 at generation and at
+    # every whole multiple of the period, 1 at the half-period glacial maximum) scales a
+    # uniform cooling applied to climate.py's land+ocean temperature baselines, so every
+    # downstream consumer (air temperature, biomes, hydrology's freeze/glacier growth,
+    # erosion) feels the ice age through fields it already reads. During a deep enough glacial
+    # phase hydrology also lets ice caps spread out over freezing polar ocean (see
+    # hydrology.compute_hydrology's `polar_ocean_ice` mask), and eustasy.py debits the water
+    # locked into that ice (and into glaciers/large lakes) from the ocean budget, so sea level
+    # falls as the ice sheets grow.
+    ice_age_period_years: float = 0.0
     # Geomorphic-budget tuning knobs -- live-adjustable via POST /world/controls, same
     # "Controls" window / same immediate-climate-recompute pattern as sea_level_m/
     # solar_multiplier. Every one is a dimensionless multiplier, 1.0 == the model's
