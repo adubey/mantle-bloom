@@ -3016,12 +3016,12 @@ reusing the same `rotationDrag.ts` gesture (rotation is shared with `MapCanvas`/
 plus click-to-select and Tab/Shift+Tab to cycle through rivers.
 
 **There is no "a river" concept anywhere else in the codebase before this feature.**
-`hydrology.py`'s `is_river` is (and remains) a flat per-node boolean mask -- the top decile of
-land `flow_accum`, plus one addition: a land node not itself under visible ice but with at
+`hydrology.py`'s `is_river` is (and remains) a flat per-node boolean mask -- the top ~7%
+(`RIVER_FLOW_PERCENTILE`) of land `flow_accum`, plus one addition: a land node not itself under visible ice but with at
 least one neighbor that is (`GLACIER_VISIBLE_DEPTH_M`), and that's actually carrying real
 outflow this step (`flow_accum > 0`), is also marked `is_river` directly. Rivers commonly begin
 right where a glacier's meltwater first emerges from the ice, but a fresh headwater has, by
-definition, no upstream tributaries yet, so it can easily fail to clear the ordinary top-decile
+definition, no upstream tributaries yet, so it can easily fail to clear the ordinary percentile
 threshold on its own even though it's a perfectly real river source -- this gives such a stream
 a visible source right at the glacier's edge instead of only appearing once downstream
 tributaries happen to push it over the percentile cut. With no grouping into distinct networks
@@ -3029,7 +3029,7 @@ otherwise. `hydrology.group_rivers` adds
 exactly that grouping, via union-find over `flow_target` edges restricted to nodes that are
 `is_river` on *both* ends. This is exact,
 not a heuristic: `flow_accum` is monotonically non-decreasing downhill, so once a node clears
-the top-decile threshold, every node further downstream in its own chain does too -- meaning
+the percentile threshold, every node further downstream in its own chain does too -- meaning
 two river nodes joined by a `flow_target` edge always belong to the same real drainage
 network, and two nodes in different connected components never do. Grouping is recomputed
 fresh from `world.hydrology_cache` on every `/world/rivers` (and `/world/river_at`) call
@@ -3043,10 +3043,16 @@ every step for the same reason, not just on generate.
 downhill, so nothing in the group can out-flow it, which also guarantees the mouth's own
 `flow_target` (if any) points *outside* the group: a same-or-higher-`flow_accum` land node
 downstream would itself have cleared the threshold and been unioned in already, so the only
-things left outside are open ocean or a true dead-end sink. **`mouth_type`** checks
-`lake_depth` first (a river can end at a still-spilling/draining lake, which reads more
-usefully as `"lake"` than `"ocean"` even though it also has a `flow_target`), then whether
-that `flow_target` lands on the ocean, else `"other"` (a dry interior sink).
+things left outside are open ocean, a lake (`is_river` always excludes flooded nodes, so a
+lake can never itself be a group member), or a true dead-end sink. **`mouth_type`** reads
+`is_ocean`/`lake_depth` off *what the mouth's own `flow_target` points at*, not off the mouth
+itself -- the mouth can never itself carry standing water, so checking its own lake_depth
+would make `"lake"` unreachable and silently mislabel a river ending at a lake as `"ocean"`
+instead (a real bug an earlier version of this had, since fixed): `"other"` only when
+`flow_target` is exactly `-1` (a true, still-unresolved, not-yet-spilling dry sink -- one
+`lakes.step_lakes` is already busy growing into a real lake node by node every step, so this
+reads as `"lake"` on its own the moment that basin's water crosses
+`LAKE_MIN_VISIBLE_DEPTH_M`).
 
 **`num_tributaries` is an original definition** -- nothing existing to build on. Counts each
 member's in-network in-degree (how
@@ -3145,6 +3151,12 @@ this basin drain out" is visible at a glance rather than only in the sidebar tex
 `coastline_segments` River Inspector already fetches is reused rather than a second copy, since
 `/world/lakes` computes the identical boundary -- both endpoints expose it independently
 (matching `/world/rivers`' own precedent) but the frontend only needs to fetch it once.
+`LakeInspector.tsx` projects each of those coastline edges with the same two-point,
+antimeridian-safe technique River Inspector's own segments use (unwrap the second endpoint's
+longitude relative to the first's -- see River Inspector's own Rendering section above): an
+earlier version projected each endpoint independently here, which drew a spurious line clear
+across the whole canvas whenever a rotated view put the seam across a coastline edge (a bug,
+since fixed).
 
 <a id="fault-inspector"></a>
 ## Plates & Faults view

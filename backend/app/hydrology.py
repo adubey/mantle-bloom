@@ -101,10 +101,16 @@ if TYPE_CHECKING:
 # below runs on.
 FLOW_NEIGHBOR_COUNT = 8
 
-# Top ~12% of land flow_accum counts as "a river" -- used for both rendering and the
-# major_river_fraction stat. Slightly below a strict top-decile cut so modest channels still
-# register as rivers rather than falling just short of the threshold.
-RIVER_FLOW_PERCENTILE = 88.0
+# Top ~7% of land flow_accum counts as "a river" -- used for both rendering and the
+# major_river_fraction stat. Raised from an earlier 88.0 (top ~12%): at that lower bar a
+# world's full drainage tree, down to its thinnest low-volume headwater tributaries, all
+# registered as "a river" -- correct on a topographic map, but visually noisy on this one,
+# and it let a tributary earn a place in the River Inspector's ranked list on hardly any flow
+# at all. The major stems (which clear this same threshold by a wide margin at every point
+# along their course) are unaffected; only the smallest branch tributaries -- exactly what
+# should need to prove themselves with real accumulated flow before joining the display -- drop
+# out.
+RIVER_FLOW_PERCENTILE = 93.0
 
 # How established a downhill neighbor's own channel needs to be before flow direction
 # prefers it over the literal steepest candidate -- see _compute_flow_direction. Deliberately
@@ -1023,12 +1029,23 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     downhill, so nothing in the group can out-flow it -- which also guarantees the mouth's
     own `flow_target` (if any) points *outside* the group: a same-or-higher-flow_accum land
     node downstream would itself have cleared the threshold and been unioned in already, so
-    the only things left outside are open ocean or a true dead-end sink.
+    the only things left outside are open ocean, a lake (excluded from `is_river` by the
+    `~is_lake` term below, regardless of its own flow_accum), or a true dead-end sink.
 
-    **mouth_type** checks `lake_depth` first (a river can end at a still-spilling/draining
-    lake, which reads more usefully as `"lake"` than `"ocean"` even though it also has a
-    `flow_target`), then whether that `flow_target` lands on the ocean, else `"other"` (a dry
-    interior sink -- `flow_target == -1` with no lake standing there).
+    **mouth_type** reads `lake_depth`/`is_ocean` off *`flow_target[mouth_idx]`* -- the node
+    the mouth actually empties into -- not off the mouth itself: `is_river` above always
+    excludes lake nodes (`~is_lake`), so the mouth of a real river can never itself carry
+    standing water, and checking the mouth's own (structurally always-dry) lake_depth here
+    made `"lake"` effectively unreachable and silently mislabeled every river that actually
+    ends at a lake as `"ocean"` instead (any real flow_target at all, lake or open sea, used
+    to read as `"ocean"` outright -- confirmed directly: a hand-built fixture modeling a river
+    ending at a lake only ever passed because it fabricated `is_river=True` on the flooded
+    node itself, a state real `compute_hydrology` output can never produce). `"other"` is now
+    reserved for what it was always meant to mean -- a genuine, still-unresolved dry interior
+    sink (`flow_target == -1`, not yet spilling) -- which `lakes.step_lakes` already grows
+    into a real lake node by node every step regardless of this classification; once that
+    basin's own water crosses `LAKE_MIN_VISIBLE_DEPTH_M` this same river correctly flips to
+    `"lake"` on its own, no separate fix needed there.
 
     **num_tributaries** (an original definition, with no existing precedent in this codebase
     to follow): counts each member's in-network in-degree (how many *other* members flow
@@ -1073,11 +1090,21 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
         member_idx = np.array(members, dtype=np.int64)
         mouth_idx = int(member_idx[np.argmax(fields.flow_accum[member_idx])])
 
-        if fields.lake_depth[mouth_idx] > LAKE_MIN_VISIBLE_DEPTH_M:
-            mouth_type = "lake"
-        elif fields.flow_target[mouth_idx] >= 0:
+        # See this function's own docstring for why this reads the *target*'s state, not the
+        # (structurally always-dry) mouth's own.
+        mouth_target = fields.flow_target[mouth_idx]
+        if mouth_target < 0:
+            mouth_type = "other"
+        elif fields.is_ocean[mouth_target]:
             mouth_type = "ocean"
+        elif fields.lake_depth[mouth_target] > LAKE_MIN_VISIBLE_DEPTH_M:
+            mouth_type = "lake"
         else:
+            # Flows onward into ordinary land outside this network -- flow_accum's usual
+            # downhill-monotonic guarantee (see this function's own docstring) makes this rare
+            # (river evaporation can, in principle, dip flow_accum enough at that one next node
+            # to miss the same percentile cut that qualified the mouth itself), but it's still a
+            # genuinely unresolved interior node, the same "other" meaning as a true dead end.
             mouth_type = "other"
 
         member_set = set(members)
