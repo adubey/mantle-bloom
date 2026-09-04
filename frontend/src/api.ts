@@ -491,15 +491,22 @@ export async function stepWorld(years: number): Promise<WorldSummary> {
 // `rotation` is the map's current view orientation (see rotation.ts and
 // docs/simulation-model.md#rotating-the-view) -- a flattened row-major 3x3 matrix, default
 // identity (center at lat=0/lon=0) when omitted, matching backend main.py's own default.
+// `showMountains`/`showPlainsPlateaus` are the Elevation view's own legend toggles (see
+// Legend.tsx/App.tsx) -- both meaningless outside `view === "elevation"`, and left off the
+// query string entirely when false/omitted so every other call's URL is unchanged.
 export function renderWorld(
   projection: Projection,
   view: MapView,
   width: number,
   height: number,
   rotation?: number[],
+  showMountains?: boolean,
+  showPlainsPlateaus?: boolean,
 ): Promise<RenderResponse> {
   const params = new URLSearchParams({ projection, view, width: String(width), height: String(height) });
   if (rotation) params.set("rotation", rotation.join(","));
+  if (showMountains) params.set("show_mountains", "true");
+  if (showPlainsPlateaus) params.set("show_plains_plateaus", "true");
   return fetch(`${API_BASE}/world/render?${params}`).then(asJson<RenderResponse>);
 }
 

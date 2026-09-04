@@ -29,10 +29,13 @@ if TYPE_CHECKING:
 
 # Expected number of eruption events over a volcano's full active life is
 # ERUPTION_RATE_PER_MYR * (active life in Myr) -- e.g. at the low end of VOLCANO_ACTIVE
-# (0.1 Myr), that's 0.3 expected events (p(>=1) ~= 26%, so most short-lived volcanoes erupt
-# zero or one time); at the high end (1 Myr), 3 expected events. "Occasionally," not "every
-# step" or "constantly."
-ERUPTION_RATE_PER_MYR = 3.0
+# (0.1 Myr), that's 0.5 expected events (p(>=1) ~= 39%, so most short-lived volcanoes still
+# erupt zero or one time); at the high end (1 Myr), 5 expected events -> up to
+# ERUPTION_ELEVATION_M * 5 = 1500 m of gross relief before dormancy. "Occasionally," not
+# "every step" or "constantly." Raised alongside ERUPTION_ELEVATION_M 2026-09-04 -- see that
+# constant's own comment (docs/TODO.md "Land fraction slowly declines") -- volcanism was
+# contributing next to nothing to land at the old rate.
+ERUPTION_RATE_PER_MYR = 5.0
 
 # Mineral deposits: real hydrothermal circulation around an active volcanic vent precipitates
 # metal-rich ore (porphyry-copper/VMS-style deposits), so mineral_deposit_m is grown right

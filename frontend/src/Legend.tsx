@@ -10,6 +10,14 @@ interface Props {
   // other view, where the legend stays the plain, non-interactive read-only panel it always was.
   highlightedBiome?: string | null;
   onBiomeClick?: (label: string) => void;
+  // Elevation view's own "Mountains" / "Plains & Plateaus" toggle rows -- independent
+  // checkboxes (either, both, or neither can be on), unlike highlightedBiome's single-select
+  // click-to-highlight above, and baked server-side into the rendered image rather than a
+  // client-side redraw (see App.tsx's terrainOverlayRef/refresh). Omitted on every other view.
+  showMountains?: boolean;
+  onToggleMountains?: () => void;
+  showPlainsPlateaus?: boolean;
+  onTogglePlainsPlateaus?: () => void;
 }
 
 const SWATCH_SIZE = 14;
@@ -120,7 +128,15 @@ function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClic
 // this one never obscures any part of the map. Still updates instantly on a projection/view
 // change and stays legible during a live rotation-preview drag (which only ever re-draws the
 // canvas above it).
-export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Props) {
+export default function Legend({
+  mapView,
+  highlightedBiome,
+  onBiomeClick,
+  showMountains,
+  onToggleMountains,
+  showPlainsPlateaus,
+  onTogglePlainsPlateaus,
+}: Props) {
   const spec = legendFor(mapView);
   if (!spec) return null;
 
@@ -130,6 +146,12 @@ export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Prop
   const clickable =
     (mapView === "biome" || mapView === "combined" || mapView === "elevReason" || mapView === "platesAndFaults") &&
     !!onBiomeClick;
+  // Elevation view's own toggle rows (see the Props doc comment) -- independent checkboxes,
+  // handled entirely separately from the click-to-highlight `clickable` mechanism above.
+  const TERRAIN_TOGGLES: Record<string, { on?: boolean; toggle?: () => void }> = {
+    Mountains: { on: showMountains, toggle: onToggleMountains },
+    "Plains & Plateaus": { on: showPlainsPlateaus, toggle: onTogglePlainsPlateaus },
+  };
 
   return (
     <div
@@ -153,6 +175,12 @@ export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Prop
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient ? 2 : 8 }}>
         {spec.symbols.map((sym) => {
+          const terrainToggle = mapView === "elevation" ? TERRAIN_TOGGLES[sym.label] : undefined;
+          if (terrainToggle) {
+            return (
+              <SymbolRow key={sym.label} symbol={sym} onClick={terrainToggle.toggle} selected={!!terrainToggle.on} />
+            );
+          }
           // On "Plates & Faults" only the three fault-type rows do anything; elsewhere every
           // row but "Coastline" (a plain orientation cue) is clickable.
           const rowClickable =

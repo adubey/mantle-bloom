@@ -174,6 +174,17 @@ GLACIER_COLOR_RGB = (221, 240, 245)
 # "active/recent volcanism" at a glance rather than blending into ordinary high terrain.
 VOLCANO_COLOR_RGB = (207, 63, 28)
 
+# Elevation view's "Mountains" / "Plains & Plateaus" legend toggles (see
+# _classify_terrain_relief / main.py's show_mountains/show_plains_plateaus render params).
+# Unlike LAKE_COLOR_RGB/GLACIER_COLOR_RGB above these are blended as a translucent wash
+# (TERRAIN_OVERLAY_ALPHA) rather than a flat swap -- the whole point is to highlight which
+# part of the hypsometric map is which, not to hide the elevation colour underneath. A dusty
+# red for rugged terrain and a warm ochre for the flat remainder, both clearly distinct from
+# the cool lake/glacier overlays and from the volcano marker.
+MOUNTAIN_OVERLAY_RGB = (196, 64, 56)
+PLAINS_PLATEAU_OVERLAY_RGB = (214, 188, 74)
+TERRAIN_OVERLAY_ALPHA = 0.35
+
 # erosion.py's channel_depth/channel_width are real, persistent, monotonically-growing fields
 # (a mature river can carve up to erosion.MAX_CHANNEL_DEPTH_M = 2000m deep and
 # erosion.MAX_CHANNEL_WIDTH_M = 5000m wide) but, before this, influenced nothing anywhere in
@@ -571,15 +582,63 @@ def _node_cloud_and_tree(world: World):
     return result
 
 
+# Real-world radius (not a fixed neighbour *count*) so the mountain/plain split reads the same
+# regardless of World.node_density -- a fixed k of nearest neighbours would cover a much
+# smaller real neighbourhood at high density than at low, silently changing what "mountain"
+# means between two otherwise-identical worlds. Threshold picked by sampling the relief
+# distribution this produces on a long-run save (docs/TODO.md "Land fraction slowly
+# declines"): land relief over a 50 km neighbourhood is overwhelmingly near 0 (most land is
+# genuinely flat at this scale) with a clearly separated rugged tail, and the resulting
+# mountain share is fairly insensitive to the exact cutoff across a wide range around it.
+TERRAIN_RELIEF_RADIUS_KM = 50.0
+MOUNTAIN_RELIEF_THRESHOLD_M = 400.0
+
+_TERRAIN_NONE = 0
+_TERRAIN_MOUNTAIN = 1
+_TERRAIN_PLAINS_PLATEAU = 2
+
+
+def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, tree: cKDTree, sea_level_m: float) -> np.ndarray:
+    """Per-node terrain class for the Elevation view's "Mountains" / "Plains & Plateaus"
+    legend toggles: `_TERRAIN_MOUNTAIN` or `_TERRAIN_PLAINS_PLATEAU` for every land node
+    (mutually exclusive, together covering all of it -- matching the toggles' own "the rest of
+    the land" framing), `_TERRAIN_NONE` for ocean. The split is on local *relief* (ruggedness),
+    not raw elevation -- a high, flat plateau is not a mountain, and a low coastal bluff is not
+    a plain, the same distinction real geomorphology uses. `all_points`/`all_elevation`/`tree`
+    are `_node_cloud_and_tree`'s own (already cached on `World.node_kdtree_cache`), so this
+    builds no second tree. Only ever called from the Elevation view's own render path, and only
+    when at least one of the two toggles is on -- see render_png's `view == "elevation"`
+    branch -- so an ordinary render (or any other view) never pays this cost."""
+    n = len(all_points)
+    if n == 0:
+        return np.zeros(0, dtype=np.uint8)
+    radius_rad = TERRAIN_RELIEF_RADIUS_KM / plates.PLANET_RADIUS_KM
+    neighbours = tree.query_ball_point(all_points, radius_rad, workers=plates.query_workers(n))
+    relief = np.fromiter(
+        (float(all_elevation[nb].max() - all_elevation[nb].min()) for nb in neighbours), dtype=np.float64, count=n
+    )
+    is_land = all_elevation > sea_level_m
+    codes = np.full(n, _TERRAIN_NONE, dtype=np.uint8)
+    codes[is_land] = np.where(relief[is_land] >= MOUNTAIN_RELIEF_THRESHOLD_M, _TERRAIN_MOUNTAIN, _TERRAIN_PLAINS_PLATEAU)
+    return codes
+
+
 def _render_grid_arrays(
-    world: World, projection: str, view_rotation: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+    world: World, projection: str, view_rotation: np.ndarray, include_terrain_relief: bool = False
+) -> tuple[np.ndarray, ...] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
     owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, and channel_width -- see
     docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy,
     elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width,
     cell_half_width, cell_half_height) arrays, or None for an empty world.
+
+    `include_terrain_relief` (default `False`, every caller but the Elevation view's own
+    "Mountains"/"Plains & Plateaus" toggles) appends one more array, each cell's
+    `_classify_terrain_relief` code -- computed once per node and sampled onto the grid with
+    the exact same nearest-node `idx` every other per-cell field already uses here, so it's
+    guaranteed pixel-aligned with the elevation this same call returns. `False` returns the
+    same 10-tuple this function always has, so every existing caller is unaffected.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -605,12 +664,15 @@ def _render_grid_arrays(
     node_cloud = _node_cloud_and_tree(world)
     if node_cloud is None:
         return None
-    _all_points, all_elevation, all_owner, tree = node_cloud
+    all_points, all_elevation, all_owner, tree = node_cloud
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
     all_channel_depth = plates.collect_all_channel_depth(world.plates)
     all_channel_width = plates.collect_all_channel_width(world.plates)
+    all_terrain_relief = (
+        _classify_terrain_relief(all_points, all_elevation, tree, world.sea_level_m) if include_terrain_relief else None
+    )
 
     # At the default node_density, GRID_SPACING_RAD (100km) is already finer than the
     # physics resolution (plates.line_spacing_rad(1.0) = 125km), so it's the effective
@@ -623,8 +685,8 @@ def _render_grid_arrays(
     # density where 100km was already the tighter bound.
     grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, hw_chunks, hh_chunks = (
-        [], [], [], [], [], [], [], [], [], [],
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, hw_chunks, hh_chunks, terrain_chunks = (
+        [], [], [], [], [], [], [], [], [], [], [],
     )
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
@@ -638,6 +700,8 @@ def _render_grid_arrays(
         volcano_chunks.append(all_is_volcano[idx])
         channel_depth_chunks.append(all_channel_depth[idx])
         channel_width_chunks.append(all_channel_width[idx])
+        if all_terrain_relief is not None:
+            terrain_chunks.append(all_terrain_relief[idx])
 
         _, center_lon = geometry.xyz_to_latlon(rotated)
         half_dtheta = grid_spacing_rad / max(np.cos(phi), 1e-3) / 2
@@ -656,7 +720,7 @@ def _render_grid_arrays(
         hw_chunks.append(np.max([np.abs(s[:, 0]) for s in corner_steps], axis=0))
         hh_chunks.append(np.max([np.abs(s[:, 1]) for s in corner_steps], axis=0))
 
-    return (
+    result = (
         np.concatenate(xy_chunks, axis=0),
         np.concatenate(elev_chunks, axis=0),
         np.concatenate(owner_chunks, axis=0),
@@ -668,6 +732,9 @@ def _render_grid_arrays(
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
+    if include_terrain_relief:
+        result = result + (np.concatenate(terrain_chunks, axis=0),)
+    return result
 
 
 @functools.lru_cache(maxsize=8)
@@ -1931,12 +1998,25 @@ def _draw_coastline(
         draw.line([(x1, y1), (x2, y2)], fill=COASTLINE_COLOR_RGB, width=line_width_px)
 
 
-def render_png(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> bytes:
+def render_png(
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray | None = None,
+    show_mountains: bool = False,
+    show_plains_plateaus: bool = False,
+) -> bytes:
     """Render `view` of `world` in `projection`, at `width`x`height` pixels, as PNG bytes.
     Mirrors what MapCanvas.tsx used to compute client-side from raw coordinate JSON -- this
     is now the only place that drawing logic lives. `view_rotation` (default identity, i.e.
     today's behavior exactly, center at lat=0/lon=0) is a pure render-time transform -- see
-    _rotate's docstring and docs/simulation-model.md#rotating-the-view."""
+    _rotate's docstring and docs/simulation-model.md#rotating-the-view.
+
+    `show_mountains`/`show_plains_plateaus` are the Elevation view's own legend toggles (see
+    _classify_terrain_relief) -- silently ignored on every other view, both default `False`
+    (an ordinary render pays no extra cost for them)."""
     if view_rotation is None:
         view_rotation = np.eye(3)
     pixel_scale = width / REFERENCE_WIDTH_PX
@@ -1963,7 +2043,12 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    grid = _render_grid_arrays(world, projection, view_rotation) if view in ("elevation", "plates") else None
+    show_terrain_relief = view == "elevation" and (show_mountains or show_plains_plateaus)
+    grid = (
+        _render_grid_arrays(world, projection, view_rotation, include_terrain_relief=show_terrain_relief)
+        if view in ("elevation", "plates")
+        else None
+    )
     tectonics = {p.plate_id: _plate_tectonics(projection, p, view_rotation) for p in world.plates}
 
     detail_lines = []  # (projected_xy, elevation) per non-empty plate, "platesDetail" only --
@@ -2009,7 +2094,8 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h, *rest = grid
+        terrain_relief = rest[0] if rest else None
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
@@ -2021,6 +2107,20 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             channel_shade = _channel_visible_shade(channel_depth, channel_width)
             if np.any(channel_shade < 1.0):
                 colors = np.clip(np.round(colors.astype(np.float32) * channel_shade[:, None]), 0, 255).astype(np.uint8)
+        # "Mountains" / "Plains & Plateaus" legend toggles: a translucent wash (not a flat
+        # swap, unlike the lake/glacier/volcano overlays below) so the hypsometric colour
+        # underneath stays legible -- the point is to show *which* land is which, not to hide
+        # the elevation. Applied before those flat overlays so a lake/glacier still fully wins
+        # over a terrain tint wherever both would otherwise apply.
+        if terrain_relief is not None:
+            for code, on, rgb in (
+                (_TERRAIN_MOUNTAIN, show_mountains, MOUNTAIN_OVERLAY_RGB),
+                (_TERRAIN_PLAINS_PLATEAU, show_plains_plateaus, PLAINS_PLATEAU_OVERLAY_RGB),
+            ):
+                mask = on & (terrain_relief == code)
+                if np.any(mask):
+                    blended = colors.astype(np.float32) * (1.0 - TERRAIN_OVERLAY_ALPHA) + np.array(rgb, dtype=np.float32) * TERRAIN_OVERLAY_ALPHA
+                    colors = np.where(mask[:, None], np.clip(np.round(blended), 0, 255).astype(np.uint8), colors)
         # Baked directly into the raster rather than a separate overlay/toggle: always
         # visible, no separate overlay needed, and a lake (or a glacier) is meaningful on
         # every view that shows terrain at all (matches how ocean itself isn't specially
@@ -2094,8 +2194,19 @@ def _encode_image(image: Image.Image) -> bytes:
     return buf.getvalue()
 
 
-def render_png_base64(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray | None = None) -> str:
-    return base64.b64encode(render_png(world, projection, view, width, height, view_rotation)).decode("ascii")
+def render_png_base64(
+    world: World,
+    projection: str,
+    view: str,
+    width: int,
+    height: int,
+    view_rotation: np.ndarray | None = None,
+    show_mountains: bool = False,
+    show_plains_plateaus: bool = False,
+) -> str:
+    return base64.b64encode(
+        render_png(world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus)
+    ).decode("ascii")
 
 
 # How long each animation frame is shown, milliseconds -- matches frontend/src/App.tsx's own
