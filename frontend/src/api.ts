@@ -180,6 +180,27 @@ export interface FaultsResponse {
   fault_systems: FaultSystemSummary[];
 }
 
+// A recent earthquake (see backend faults.Earthquake) -- a transient located event emitted
+// when an active fault ruptures. Aged out of the backend's list after
+// faults.EARTHQUAKE_RETAIN_MYR, so this list only ever holds the last few Myr of activity;
+// the Fault Lines view draws each as an epicentre marker fading with `age_myr`.
+export interface EarthquakeSummary {
+  earthquake_id: number;
+  fault_id: number;
+  plate_id: number;
+  kind: FaultKind;
+  // Epicentre as a single *true* world-space point (see Segment for the frame convention).
+  epicenter: [number, number, number];
+  magnitude: number;
+  age_myr: number;
+  birth_years: number;
+}
+
+export interface EarthquakesResponse {
+  elapsed_years: number;
+  earthquakes: EarthquakeSummary[];
+}
+
 export interface RiversResponse {
   elapsed_years: number;
   rivers: RiverSummary[];
@@ -390,6 +411,7 @@ export type ControlsState = {
   simulate_plate_movement: boolean;
   simulate_climate_biomes: boolean;
   wind_model: string;
+  fault_deformation_mode: string;
 } & TuningMultipliers;
 
 export function updateControls(controls: {
@@ -398,6 +420,7 @@ export function updateControls(controls: {
   simulatePlateMovement?: boolean;
   simulateClimateBiomes?: boolean;
   windModel?: string;
+  faultDeformationMode?: string;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
   return fetch(`${API_BASE}/world/controls`, {
@@ -409,6 +432,7 @@ export function updateControls(controls: {
       simulate_plate_movement: controls.simulatePlateMovement,
       simulate_climate_biomes: controls.simulateClimateBiomes,
       wind_model: controls.windModel,
+      fault_deformation_mode: controls.faultDeformationMode,
       ...controls.tuning,
     }),
   }).then(asJson<ControlsState>);
@@ -512,6 +536,10 @@ export function fetchLakes(): Promise<LakesResponse> {
 
 export function fetchFaults(): Promise<FaultsResponse> {
   return fetch(`${API_BASE}/world/faults`).then(asJson<FaultsResponse>);
+}
+
+export function fetchEarthquakes(): Promise<EarthquakesResponse> {
+  return fetch(`${API_BASE}/world/earthquakes`).then(asJson<EarthquakesResponse>);
 }
 
 // The Fault Line Inspector's click hit-test -- same true-frame contract as fetchPlateAt.

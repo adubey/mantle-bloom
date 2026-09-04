@@ -123,6 +123,27 @@ class World:
     # `next_fault_system_id` is a plain-int default so an old pickle falls through to 0.
     fault_systems: list = field(default_factory=list)
     next_fault_system_id: int = 0
+    # Recent earthquakes (see faults.Earthquake) -- transient located events produced when an
+    # active fault ruptures (faults.update_faults), each with a true-world-frame epicenter, a
+    # magnitude, and the id of the fault that slipped. Not persistent geology: pruned once
+    # older than faults.EARTHQUAKE_RETAIN_MYR every step, and never re-homed across topology
+    # changes (an epicenter is a fixed point in space, and the window is short). Read by
+    # erosion.py (a local seismic-erosion burst around each epicenter) and exposed via
+    # GET /world/earthquakes for the "Fault lines" view's fading epicenter overlay.
+    # `default_factory` -> backfilled on load; `next_earthquake_id` is a plain-int default an
+    # old pickle falls through to 0.
+    earthquakes: list = field(default_factory=list)
+    next_earthquake_id: int = 0
+    # Which model applies plate-boundary deformation (uplift / rift / transform). Live-
+    # adjustable via POST /world/controls, same pattern as `wind_model`:
+    #   "boundary" (default) -- LithospherePlate.deform's smooth distance-band thickening at
+    #     the polygon edge, exactly as before this field existed (bit-identical old saves).
+    #   "fault" -- that boundary thickening is gated to proximity to an active fault trace
+    #     (faults.fault_influence), and faults.py's own relief layer is scaled up to carry
+    #     the deformation the bands give up, so transformation localises onto fault lines.
+    #   "both" -- boundary bands at full strength *and* the scaled-up fault relief layer.
+    # See faults.FAULT_DEFORMATION_MODES and LithospherePlate.deform.
+    fault_deformation_mode: str = "boundary"
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs

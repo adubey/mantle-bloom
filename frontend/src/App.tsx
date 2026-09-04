@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+  fetchEarthquakes, fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
+  EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
@@ -88,6 +88,11 @@ const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
 // (ABL) wind: it reproduces ~85-90% of the CFD biome map for a fraction of the per-step cost,
 // so it's the better starting point; switch to "cfd" in Controls for the full shallow-water solve.
 const DEFAULT_WIND_MODEL = "diagnostic";
+// Matching backend app/world.py's World.fault_deformation_mode default. "boundary" is the
+// pre-faults-rework behaviour (smooth uplift/rift bands at the polygon edge); "fault"
+// localises that deformation onto fault lines; "both" runs the boundary bands plus the
+// scaled-up fault relief. See faults.py / LithospherePlate.deform.
+const DEFAULT_FAULT_DEFORMATION_MODE = "boundary";
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -243,6 +248,10 @@ export default function App() {
   const [faultsData, setFaultsData] = useState<FaultSummary[]>([]);
   const [faultSystemsData, setFaultSystemsData] = useState<FaultSystemSummary[]>([]);
   const [selectedFaultId, setSelectedFaultId] = useState<number | null>(null);
+  // Recent earthquakes for the Fault Inspector's fading epicentre overlay (see
+  // faults.Earthquake / GET /world/earthquakes). Refreshed alongside faultsData; the backend
+  // prunes them after a few Myr so this list stays short. Nothing to select -- pure overlay.
+  const [earthquakesData, setEarthquakesData] = useState<EarthquakeSummary[]>([]);
   // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see
   // MapCanvas.tsx's onProbe and the popup JSX below). `displayX`/`displayY` place it over the
   // map in CSS pixels; `sample` fills in once GET /world/sample_at resolves. Cleared on any
@@ -304,6 +313,9 @@ export default function App() {
   // "cfd" (shallow-water solve) or "diagnostic" (fast closed-form ABL wind) -- see backend
   // app/world.py's World.wind_model. Live-adjustable via Controls like the toggles above.
   const [windModel, setWindModel] = useState(DEFAULT_WIND_MODEL);
+  // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
+  // Live-adjustable via Controls like windModel.
+  const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
   // Geomorphic-budget tuning knobs (see DEFAULT_TUNING / backend World's *_multiplier
   // group) -- one object of dimensionless multipliers, live-adjustable via Controls, reset
   // to all-1.0 on a fresh Generate and synced from the loaded world on Load.
@@ -371,9 +383,10 @@ export default function App() {
 
   const refreshFaults = useCallback(async () => {
     try {
-      const data = await fetchFaults();
-      setFaultsData(data.faults);
-      setFaultSystemsData(data.fault_systems);
+      const [faults, quakes] = await Promise.all([fetchFaults(), fetchEarthquakes()]);
+      setFaultsData(faults.faults);
+      setFaultSystemsData(faults.fault_systems);
+      setEarthquakesData(quakes.earthquakes);
     } catch (e) {
       setError(String(e));
     }
@@ -415,6 +428,7 @@ export default function App() {
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setWindModel(DEFAULT_WIND_MODEL);
+      setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
       setTuning(DEFAULT_TUNING);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
@@ -441,6 +455,7 @@ export default function App() {
     simulatePlateMovement?: boolean;
     simulateClimateBiomes?: boolean;
     windModel?: string;
+    faultDeformationMode?: string;
     tuning?: Partial<TuningMultipliers>;
   }>({});
   const pushControls = useCallback((next: typeof pendingControlsRef.current) => {
@@ -496,6 +511,11 @@ export default function App() {
     pushControls({ windModel: v });
   }, [pushControls]);
 
+  const handleFaultDeformationModeChange = useCallback((v: string) => {
+    setFaultDeformationMode(v);
+    pushControls({ faultDeformationMode: v });
+  }, [pushControls]);
+
   const handleStep = useCallback(async () => {
     if (!summary) return;
     setStepping(true);
@@ -542,6 +562,7 @@ export default function App() {
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setWindModel(controls.wind_model);
+      setFaultDeformationMode(controls.fault_deformation_mode);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
     } catch (e) {
@@ -995,6 +1016,7 @@ export default function App() {
             <FaultInspector
               faults={faultsData}
               faultSystems={faultSystemsData}
+              earthquakes={earthquakesData}
               coastlineSegments={coastlineSegments}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}
@@ -1209,12 +1231,14 @@ export default function App() {
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
           windModel={windModel}
+          faultDeformationMode={faultDeformationMode}
           tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
           onWindModelChange={handleWindModelChange}
+          onFaultDeformationModeChange={handleFaultDeformationModeChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
           onClose={() => setShowControlsModal(false)}

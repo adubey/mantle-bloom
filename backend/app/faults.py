@@ -10,20 +10,33 @@ come in sub-parallel families (Basin-and-Range horst/graben trains, en echelon s
 and stay individually active for a few to a few tens of Myr before locking up and surviving
 as inert scars.
 
-This module is an **additive** layer: it never touches deform()'s own boundary
-classification. Each step it
+By default this module is an **additive** layer: it never touches the live deform()
+classification (`LithospherePlate.deform`). Each step it
 
 1. ages every existing fault, accumulating slip on the active ones and retiring those past
    their drawn lifespan (kept forever after as an inactive scar, like `is_volcano`);
 2. rolls a stress-weighted Poisson spawn per plate -- probability high in a band near the
    boundary, decaying exponentially into the interior with a small nonzero floor everywhere,
-   the regime (normal / reverse / strike-slip) picked from the local closing rate per
-   Andersonian faulting theory, and with `SET_PROBABILITY` chance a whole sub-parallel
-   family rather than a lone trace;
+   **and lifted to `OVERLAP_STRESS_WEIGHT` wherever this plate's nodes sit on top of a
+   neighbour's** (a point overlap -- a stalled collision, a plate drifting bodily over one it
+   can't merge with -- is locally super-stressed crust), the regime (normal / reverse /
+   strike-slip) picked from the local closing rate per Andersonian faulting theory, and with
+   `SET_PROBABILITY` chance a whole sub-parallel family rather than a lone trace;
 3. applies each active fault's own relief to the nearby crust -- reverse: an uplift ridge;
    normal: a hanging-wall graben with a footwall shoulder; strike-slip: a modest
    transpressional ridge or transtensional sag (relief only -- the node field is *not*
-   physically sheared across the trace, see docs/TODO.md).
+   physically sheared across the trace, see docs/TODO.md);
+4. rolls each active fault's **earthquakes** for the step (`_generate_earthquakes`): a
+   Poisson count from `slip_rate * dt / CHARACTERISTIC_SLIP_PER_QUAKE_M`, each a transient
+   located `Earthquake` (magnitude from trace length + slip rate) appended to
+   `World.earthquakes`, pruned after `EARTHQUAKE_RETAIN_MYR`. `erosion.py` reads them for a
+   local seismic-erosion burst; the "Fault lines" view draws them as a fading overlay.
+
+When `World.fault_deformation_mode` is `"fault"` or `"both"` the layer stops being purely
+additive: `_apply_plate_fault_relief`'s rates/reach scale up (`FAULT_RELIEF_MODE_*`) and, in
+`"fault"` mode, `LithospherePlate.deform` gates its own boundary thickening by
+`fault_influence()` so plate-boundary transformation localises onto fault lines rather than a
+smooth band at the polygon edge. `"boundary"` (the default) is bit-identical to before.
 
 Geometry is stored in the owning plate's **local frame** (`local_phi` / `local_theta`), so
 a fault rides along with the crust as the plate rotates for free -- the same "attached to
@@ -57,8 +70,9 @@ from .elevation_lines import (
     MAX_ELEVATION_M,
     MIN_ELEVATION_M,
     PLANET_RADIUS_KM,
+    line_spacing_rad,
 )
-from .plates import Plate, collect_all_points, query_workers
+from .plates import OVERLAP_TOLERANCE_MULT, Plate, collect_all_points, query_workers
 
 if TYPE_CHECKING:
     from .world import World
@@ -184,6 +198,57 @@ STRIKE_SLIP_BEND_M_PER_MYR = 130.0  # +restraining (uplift) / -releasing (sag), 
 # active faults are never culled.
 MAX_SCARS_PER_PLATE = 40
 
+# --- Point-overlap spawning (see _maybe_spawn_faults / World docstring) ---
+# A node sitting within this many line-spacings of another plate's node is a genuine point
+# overlap (two plates tiling the same patch of sphere), not a normal shared boundary -- the
+# same OVERLAP_TOLERANCE_MULT the Plate Inspector / merge_split.update_overlap_tracking use.
+# Such a node is treated as locally super-stressed: its spawn weight is lifted to
+# OVERLAP_STRESS_WEIGHT (> 1.0, i.e. more stressed than a clean convergent edge), which both
+# raises the plate's mean weight (more fault systems spawn) and pulls seeds into the overlap.
+OVERLAP_STRESS_WEIGHT = 1.5
+
+# --- Fault-deformation mode (World.fault_deformation_mode; see LithospherePlate.deform) ---
+FAULT_DEFORMATION_MODES = ("boundary", "fault", "both")
+# In "fault" mode, boundary thickening in LithospherePlate.deform is multiplied by
+# fault_influence(): 1.0 within FAULT_DEFORM_REACH_KM of an active fault trace, tapering to
+# FAULT_DEFORM_FLOOR far from one (never 0 -- a contested zone with no fault yet still
+# deforms while Piece-1 spawning fills it in).
+FAULT_DEFORM_REACH_KM = 120.0
+FAULT_DEFORM_FLOOR = 0.15
+# In "fault"/"both" mode faults.py's own relief layer is scaled up to carry the deformation
+# the smooth boundary bands give up -- rates toward plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR
+# (800), reach wider. Exactly 1.0 in "boundary" mode (bit-identical to before this existed).
+FAULT_RELIEF_MODE_RATE_SCALE = 3.0
+FAULT_RELIEF_MODE_REACH_SCALE = 1.6
+
+# --- Earthquakes (see Earthquake / _generate_earthquakes) ---
+_QUAKE_SEED_TAG = 7333
+# A fault that accumulated at least this much slip this step gets one `Earthquake` record --
+# the characteristic (roughly largest) rupture of that interval. Over a Myr a real active
+# fault ruptures thousands of times; storing each is pointless, so one representative event
+# per active fault per step is the model. Below this the fault is treated as aseismic for the
+# step (a barely-creeping trace).
+MIN_STEP_SLIP_FOR_QUAKE_M = 25.0
+# A fault born in a point-overlap zone (a stalled collision -- a seismic hotspot) adds this to
+# its characteristic magnitude.
+OVERLAP_QUAKE_MW_BONUS = 0.4
+# Moment magnitude from trace length and slip rate: Mw ~ base + len_coeff*log10(km) +
+# slip_coeff*log10(m/Myr), clamped, plus a small per-event jitter. Eyeballed to put a
+# ~200 km / 3000 m-per-Myr fault near Mw 6.5 and a ~1300 km system strand near Mw 8.
+QUAKE_MW_BASE = 3.4
+QUAKE_MW_LENGTH_COEFF = 1.15
+QUAKE_MW_SLIP_COEFF = 0.35
+QUAKE_MW_JITTER = 0.3
+QUAKE_MW_MIN = 4.0
+QUAKE_MW_MAX = 9.3
+# At most one earthquake per step is written to the UI event console -- the step's largest,
+# and only if it clears this magnitude (a genuinely major event). The console is for
+# structural/topology history; routine seismicity lives on the "Fault lines" overlay.
+EARTHQUAKE_LOG_MIN_MW = 7.5
+# An earthquake is dropped from World.earthquakes once older than this -- bounds memory and
+# matches the fading-overlay window in the "Fault lines" view.
+EARTHQUAKE_RETAIN_MYR = 5.0
+
 _KIND_NORMAL = "normal"
 _KIND_REVERSE = "reverse"
 _KIND_STRIKE_SLIP = "strike_slip"
@@ -222,6 +287,10 @@ class Fault:
     # The fault system (see FaultSystem) this trace is a strand of, or None for a lone
     # fault / tight set. A plain-default field, so an older pickle without it reads None.
     system_id: int | None = None
+    # True if the seed node lay in a point overlap with another plate (see
+    # OVERLAP_STRESS_WEIGHT) -- a plain-default field an older pickle reads as False. Drives
+    # a higher rupture rate in _generate_earthquakes.
+    born_in_overlap: bool = False
     age_myr: float = 0.0
     cumulative_offset_m: float = 0.0
     active: bool = True
@@ -263,6 +332,24 @@ class FaultSystem:
         return _polyline_length_km(self.master_local_phi, self.master_local_theta)
 
 
+@dataclass
+class Earthquake:
+    """One rupture on an active fault this-or-a-recent step. `epicenter_world` is a fixed
+    unit vector in the true (un-rotated) world frame -- an earthquake is an event at a place,
+    not a persistent crustal feature, so it is never re-homed across a merge/split; it just
+    ages out of `World.earthquakes` after `EARTHQUAKE_RETAIN_MYR`. `magnitude` is a moment
+    magnitude (see `_earthquake_magnitude`)."""
+
+    earthquake_id: int
+    fault_id: int
+    plate_id: int
+    kind: str
+    epicenter_world: np.ndarray
+    magnitude: float
+    slip_m: float
+    birth_years: float
+
+
 def _polyline_length_km(local_phi: np.ndarray, local_theta: np.ndarray) -> float:
     pts = geometry.local_xyz(local_phi, local_theta)
     seg = np.arccos(np.clip(np.sum(pts[:-1] * pts[1:], axis=-1), -1.0, 1.0))
@@ -287,10 +374,18 @@ def system_world_points(system: FaultSystem, plate: Plate) -> np.ndarray:
 
 
 def update_faults(world: "World", years: float) -> None:
-    """Age / spawn / retire faults and apply their relief. Called once per step from
-    world.step_world, inside the simulate_plate_movement block, right after the deform loop
-    and before merge_split.apply_topology_changes."""
+    """Age / spawn / retire faults, apply their relief, and roll each active fault's
+    earthquakes. Called once per step from world.step_world, inside the
+    simulate_plate_movement block, right after the deform loop and before
+    merge_split.apply_topology_changes."""
     years_myr = years / 1_000_000.0
+
+    # Drop earthquakes that have aged out of the retention window (memory bound + the
+    # fading-overlay window). Done first so a rupture logged this step isn't immediately
+    # eligible for pruning.
+    if world.earthquakes:
+        cutoff = world.elapsed_years - EARTHQUAKE_RETAIN_MYR * 1_000_000.0
+        world.earthquakes = [q for q in world.earthquakes if q.birth_years >= cutoff]
 
     for fault in world.faults:
         fault.age_myr += years_myr
@@ -321,6 +416,8 @@ def update_faults(world: "World", years: float) -> None:
 
     for plate in world.plates:
         _apply_plate_fault_relief(world, plate, years_myr)
+
+    _generate_earthquakes(world, years_myr)
 
     by_id = plate_by_id(world)
     for fault in world.faults:
@@ -463,6 +560,16 @@ def _maybe_spawn_faults(world: "World", plate: Plate, total_nodes: int, years_my
     weight = np.exp(-dist_km / SPAWN_DECAY_LEN_KM)
     weight = SPAWN_INTERIOR_FLOOR + (1.0 - SPAWN_INTERIOR_FLOOR) * np.clip(weight, 0.0, 1.0)
 
+    # Point overlap -> locally super-stressed crust (see OVERLAP_STRESS_WEIGHT). A node this
+    # close to a neighbour's node isn't a normal shared boundary (those sit ~1 spacing apart);
+    # it's two plates tiling the same ground -- a stalled collision, a plate drifting bodily
+    # over one it can't merge with. Lifting the weight here both raises the plate's mean
+    # weight (`expected` below -> more fault systems) and pulls seeds into the overlap.
+    overlap_tol_rad = OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
+    overlap_mask = dist < overlap_tol_rad
+    if np.any(overlap_mask):
+        weight[overlap_mask] = np.maximum(weight[overlap_mask], OVERLAP_STRESS_WEIGHT)
+
     area_frac = len(own_points) / total_nodes
     expected = BASE_SPAWN_RATE_PER_MYR * area_frac * float(np.mean(weight)) * years_myr
     n_spawn = int(rng.poisson(max(expected, 0.0)))
@@ -473,6 +580,7 @@ def _maybe_spawn_faults(world: "World", plate: Plate, total_nodes: int, years_my
     seeds = rng.choice(len(own_points), size=n_spawn, p=probs)
     for seed_idx in seeds:
         spawn = _spawn_fault_system if rng.random() < SYSTEM_SPAWN_FRACTION else _spawn_one_or_set
+        before = len(world.faults)
         spawn(
             world, plate, rng,
             seed_world=own_points[seed_idx],
@@ -481,6 +589,11 @@ def _maybe_spawn_faults(world: "World", plate: Plate, total_nodes: int, years_my
             nn_omega=nn_omega[seed_idx],
             nn_point=nn_pts[seed_idx],
         )
+        # Tag the traces this spawn just appended (a lone fault, a whole set, or a system's
+        # strand family) so _generate_earthquakes can rupture overlap-born faults harder.
+        if bool(overlap_mask[seed_idx]):
+            for fault in world.faults[before:]:
+                fault.born_in_overlap = True
 
 
 def _regime_from_closing(closing_rate_rad_per_yr: float) -> str:
@@ -801,6 +914,42 @@ def _cull_inactive_systems(world: "World") -> None:
 # --------------------------------------------------------------------------- relief
 
 
+def _relief_mode_scales(world: "World") -> tuple[float, float]:
+    """(rate_scale, reach_scale) for `_apply_plate_fault_relief`, keyed off
+    `world.fault_deformation_mode`. Both 1.0 in the default "boundary" mode -- bit-identical
+    to before the mode existed. In "fault"/"both" mode the fault-relief layer is scaled up to
+    carry the deformation the smooth boundary bands give up (see FAULT_RELIEF_MODE_*)."""
+    if getattr(world, "fault_deformation_mode", "boundary") in ("fault", "both"):
+        return FAULT_RELIEF_MODE_RATE_SCALE, FAULT_RELIEF_MODE_REACH_SCALE
+    return 1.0, 1.0
+
+
+def fault_influence(
+    world: "World", plate: Plate, own_points: np.ndarray,
+    reach_km: float = FAULT_DEFORM_REACH_KM, floor: float = FAULT_DEFORM_FLOOR,
+) -> np.ndarray:
+    """Per own-node, 1.0 within `reach_km` of one of this plate's active fault traces,
+    tapering linearly to `floor` beyond -- never 0, so a contested zone that has no fault yet
+    still deforms while Piece-1 spawning fills it in. All-ones if the plate has no active
+    fault. Used by LithospherePlate.deform in "fault" mode to localise boundary thickening
+    onto fault lines (see World.fault_deformation_mode). Uses each fault's `world_polyline`
+    (refreshed at the end of update_faults last step -- deform runs before update_faults, so
+    "last step's faults" is the right, and only available, set)."""
+    if len(own_points) == 0:
+        return np.ones(0)
+    traces = [
+        f.world_polyline
+        for f in world.faults
+        if f.plate_id == plate.plate_id and f.active and f.world_polyline is not None
+    ]
+    if not traces:
+        return np.ones(len(own_points))
+    reach_rad = reach_km / PLANET_RADIUS_KM
+    trace_points = np.concatenate(traces, axis=0)
+    d, _ = cKDTree(trace_points).query(own_points, workers=query_workers(len(own_points)))
+    return np.clip(1.0 - d / reach_rad, floor, 1.0)
+
+
 def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) -> None:
     if not hasattr(plate, "lines"):
         return
@@ -810,8 +959,9 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) ->
     own_points = plate.all_points_and_elevation()[0]
     if len(own_points) == 0:
         return
+    rate_scale, reach_scale = _relief_mode_scales(world)
     tree = cKDTree(own_points, balanced_tree=False, compact_nodes=False)
-    reach_rad = MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
+    reach_rad = reach_scale * MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
 
     delta = np.zeros(len(own_points))
     reason = np.zeros(len(own_points), dtype=float)
@@ -826,7 +976,7 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) ->
         d, _ = cKDTree(trace).query(pts)
         taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
         slip_norm = float(np.clip(fault.slip_rate_m_per_myr / SLIP_RATE_REF_M_PER_MYR, 0.2, 3.0))
-        mag = taper * slip_norm * years_myr
+        mag = taper * slip_norm * years_myr * rate_scale
 
         if fault.kind == _KIND_REVERSE:
             contrib = REVERSE_UPLIFT_M_PER_MYR * mag
@@ -865,3 +1015,68 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) ->
         changed = True
     if changed:
         plate.set_lines(new_lines)
+
+
+# --------------------------------------------------------------------------- earthquakes
+
+
+def _earthquake_magnitude(length_km: float, slip_rate_m_per_myr: float, born_in_overlap: bool, jitter: float) -> float:
+    """Moment magnitude from trace length and slip rate (see QUAKE_MW_* constants), plus an
+    overlap bonus and a per-event jitter."""
+    mw = (
+        QUAKE_MW_BASE
+        + QUAKE_MW_LENGTH_COEFF * np.log10(max(length_km, 1.0))
+        + QUAKE_MW_SLIP_COEFF * np.log10(max(slip_rate_m_per_myr, 1.0))
+        + (OVERLAP_QUAKE_MW_BONUS if born_in_overlap else 0.0)
+        + jitter
+    )
+    return float(np.clip(mw, QUAKE_MW_MIN, QUAKE_MW_MAX))
+
+
+def _generate_earthquakes(world: "World", years_myr: float) -> None:
+    """One characteristic `Earthquake` per active fault that accumulated at least
+    `MIN_STEP_SLIP_FOR_QUAKE_M` of slip this step (a real active fault ruptures thousands of
+    times per Myr -- one representative event per step is all we keep). Epicentre is a node
+    drawn along the trace; magnitude from length + slip + an overlap bonus + a small jitter.
+    Deterministic per `(seed, round(elapsed_years), fault_id, _QUAKE_SEED_TAG)` so a replayed
+    session produces identical earthquakes."""
+    by_id = plate_by_id(world)
+    step_quakes: list[Earthquake] = []
+    for fault in world.faults:
+        if not fault.active or fault.slip_rate_m_per_myr * years_myr < MIN_STEP_SLIP_FOR_QUAKE_M:
+            continue
+        plate = by_id.get(fault.plate_id)
+        if plate is None:
+            continue
+        rng = np.random.default_rng((world.seed, round(world.elapsed_years), fault.fault_id, _QUAKE_SEED_TAG))
+        trace = fault.world_polyline
+        if trace is None or len(trace) == 0:
+            trace = fault_world_points(fault, plate)
+        magnitude = _earthquake_magnitude(
+            fault.length_km(), fault.slip_rate_m_per_myr, fault.born_in_overlap,
+            float(rng.uniform(-QUAKE_MW_JITTER, QUAKE_MW_JITTER)),
+        )
+        epicenter = trace[int(rng.integers(len(trace)))]
+        epicenter = epicenter / max(float(np.linalg.norm(epicenter)), 1e-12)
+        quake = Earthquake(
+            earthquake_id=world.next_earthquake_id,
+            fault_id=fault.fault_id,
+            plate_id=fault.plate_id,
+            kind=fault.kind,
+            epicenter_world=epicenter,
+            magnitude=magnitude,
+            slip_m=fault.slip_rate_m_per_myr * years_myr,
+            birth_years=world.elapsed_years,
+        )
+        world.earthquakes.append(quake)
+        world.next_earthquake_id += 1
+        step_quakes.append(quake)
+
+    # One console line per step at most: the step's largest, if it's a major event.
+    if step_quakes:
+        biggest = max(step_quakes, key=lambda q: q.magnitude)
+        if biggest.magnitude >= EARTHQUAKE_LOG_MIN_MW:
+            world.log_event(
+                f"M{biggest.magnitude:.1f} earthquake on fault #{biggest.fault_id} "
+                f"({_KIND_LABEL[biggest.kind]}) on plate {biggest.plate_id}"
+            )

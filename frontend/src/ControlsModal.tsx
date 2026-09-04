@@ -7,12 +7,14 @@ interface Props {
   simulatePlateMovement: boolean;
   simulateClimateBiomes: boolean;
   windModel: string;
+  faultDeformationMode: string;
   tuning: TuningMultipliers;
   onSeaLevelChange: (v: number) => void;
   onSolarMultiplierChange: (v: number) => void;
   onSimulatePlateMovementChange: (v: boolean) => void;
   onSimulateClimateBiomesChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
+  onFaultDeformationModeChange: (v: string) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
   onClose: () => void;
@@ -64,12 +66,14 @@ export default function ControlsModal({
   simulatePlateMovement,
   simulateClimateBiomes,
   windModel,
+  faultDeformationMode,
   tuning,
   onSeaLevelChange,
   onSolarMultiplierChange,
   onSimulatePlateMovementChange,
   onSimulateClimateBiomesChange,
   onWindModelChange,
+  onFaultDeformationModeChange,
   onTuningChange,
   onTuningReset,
   onClose,
@@ -188,6 +192,34 @@ export default function ControlsModal({
             {windModel === "diagnostic"
               ? "Skips the shallow-water solve -- much faster steps, ~85-90% of the CFD biome map. Wind/temperature maps show the closed-form field."
               : "Genuine time-integrated shallow-water solve -- the largest single cost of a step at high fluid-dynamics resolution."}
+          </div>
+        </div>
+
+        <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
+          <label style={{ display: "block", marginBottom: 6 }}>Fault deformation model</label>
+          <select
+            value={faultDeformationMode}
+            onChange={(e) => onFaultDeformationModeChange(e.target.value)}
+            style={{
+              width: "100%",
+              background: "#0f1424",
+              color: "#e6e8ef",
+              border: "1px solid #333",
+              borderRadius: 4,
+              padding: "4px 6px",
+              fontSize: 13,
+            }}
+          >
+            <option value="boundary">Boundary bands (classic)</option>
+            <option value="fault">Along fault lines</option>
+            <option value="both">Both (superimposed)</option>
+          </select>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+            {faultDeformationMode === "boundary"
+              ? "Uplift / rifting apply as smooth bands at the plate-polygon edge -- unchanged from before intraplate faults drove deformation."
+              : faultDeformationMode === "fault"
+                ? "Boundary uplift / rifting concentrates onto active fault traces, and the fault relief layer is scaled up to carry it. Fault families blanket overlap zones."
+                : "Boundary bands at full strength plus the scaled-up fault relief layer on top."}
           </div>
         </div>
 

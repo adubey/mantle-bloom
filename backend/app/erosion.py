@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, geometry, hydrology, lakes, lithosphere
+from . import climate, faults, geometry, hydrology, lakes, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -227,6 +227,18 @@ SEISMIC_EROSION_COEFFICIENT = 6000.0
 SEISMIC_EROSION_ELEVATION_REFERENCE_M = 3000.0
 SEISMIC_EROSION_ELEVATION_EXPONENT = 2.0
 SEISMIC_EROSION_MAX_HEIGHT_FACTOR = 3.0
+
+# Earthquake-triggered landsliding burst: when faults.py records recent ruptures
+# (World.earthquakes -- transient located events, see faults.Earthquake), the seismic-erosion
+# term above is locally multiplied by (1 + burst) around each epicentre, where a single
+# epicentre contributes EARTHQUAKE_EROSION_PEAK_BOOST * 10**(Mw - EARTHQUAKE_EROSION_MW_REF)
+# at the epicentre, tapering linearly to zero at EARTHQUAKE_EROSION_REACH_KM_PER_MW * Mw.
+# This is the direct-fault-driven counterpart to the elevation stand-in above -- now that
+# there *is* a fault/stress signal, use it where it exists. Recency-weighted so a quake's
+# landsliding pulse fades over the retention window rather than cutting off abruptly.
+EARTHQUAKE_EROSION_PEAK_BOOST = 4.0
+EARTHQUAKE_EROSION_MW_REF = 6.5
+EARTHQUAKE_EROSION_REACH_KM_PER_MW = 12.0
 
 # Submarine erosion (mantle-bloom-original): plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR uplifts a
 # colliding node regardless of whether it sits above or below sea level, so two *submerged*
@@ -534,6 +546,34 @@ def _gather_nodes(
         collect_all_glacier_depth(plates_in_order),
         plates_in_order,
     )
+
+
+def _earthquake_erosion_multiplier(world: "World", points: np.ndarray) -> np.ndarray:
+    """Per-node `(1 + burst)` factor for the seismic-erosion term: a recency-weighted,
+    magnitude-scaled bump around every recent epicentre in `World.earthquakes`, tapering
+    linearly to 1.0 (no boost) beyond a per-quake reach. All-ones when nothing has ruptured
+    recently -- so this is exactly a no-op in `"boundary"` mode with no active fast faults."""
+    quakes = getattr(world, "earthquakes", None)
+    if not quakes or len(points) == 0:
+        return np.ones(len(points))
+    boost = np.zeros(len(points))
+    retain_years = faults.EARTHQUAKE_RETAIN_MYR * 1_000_000.0
+    epicentres = np.array([q.epicenter_world for q in quakes])
+    tree = cKDTree(points)
+    for q, epi in zip(quakes, epicentres):
+        recency = np.clip(1.0 - (world.elapsed_years - q.birth_years) / max(retain_years, 1.0), 0.0, 1.0)
+        if recency <= 0.0:
+            continue
+        reach_rad = EARTHQUAKE_EROSION_REACH_KM_PER_MW * q.magnitude / PLANET_RADIUS_KM
+        near = tree.query_ball_point(epi, reach_rad)
+        if not near:
+            continue
+        near = np.asarray(near)
+        d = geometry.angular_distance(points[near], epi)
+        taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
+        peak = EARTHQUAKE_EROSION_PEAK_BOOST * 10.0 ** (q.magnitude - EARTHQUAKE_EROSION_MW_REF)
+        boost[near] += peak * recency * taper
+    return 1.0 + boost
 
 
 def compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -1088,6 +1128,9 @@ def apply_erosion(
         * np.power(mountain_height_factor, SEISMIC_EROSION_ELEVATION_EXPONENT)
         * dt_myr
     )
+    # Direct earthquake-driven landsliding burst around each recent epicentre (see
+    # EARTHQUAKE_EROSION_* and faults.Earthquake). No-op when nothing has ruptured recently.
+    seismic = seismic * _earthquake_erosion_multiplier(world, points)
     # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
     # valley floor it drains into. Zeroed over ocean nodes (elevation <= sea level, the same
     # convention climate.py/plates.py use everywhere else): every source here is a subaerial

@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import erosion, geometry, plates
+from app import erosion, faults, geometry, plates
 from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 from app.world import World, generate_world
 
@@ -173,6 +173,49 @@ def test_apply_erosion_stamps_geomorphic_provenance_but_leaves_a_sticky_structur
     assert kept > 0.8  # structural code is sticky against background wash
     # ...but some nodes did flip to a geomorphic code (the pass really ran on real terrain).
     assert np.any((after != ELEV_CHANGE_COLLISION) & (after != ELEV_CHANGE_NONE))
+
+
+def test_earthquake_erosion_multiplier_bumps_near_the_epicentre_only():
+    world = World(seed=0, plates=[])
+    world.elapsed_years = 1_000_000
+    ang = np.linspace(0.0, 0.5, 40)
+    points = np.stack([np.cos(ang), np.sin(ang), np.zeros_like(ang)], axis=1)
+    assert np.all(erosion._earthquake_erosion_multiplier(world, points) == 1.0)  # nothing yet
+
+    world.earthquakes = [
+        faults.Earthquake(
+            earthquake_id=0, fault_id=0, plate_id=0, kind="reverse",
+            epicenter_world=points[0], magnitude=7.5, slip_m=100.0, birth_years=1_000_000,
+        )
+    ]
+    mult = erosion._earthquake_erosion_multiplier(world, points)
+    assert mult[0] > 1.5  # right at a fresh M7.5 epicentre
+    assert mult[-1] == 1.0  # far side of the arc: untouched
+    assert np.all(np.diff(mult) <= 1e-9)
+
+
+def test_earthquakes_increase_seismic_erosion_on_a_generated_world():
+    base = generate_world(seed=21, num_plates=8)
+    pts0, elev0, _, _, _, _ = erosion._gather_nodes(base)
+    erosion.apply_erosion(base, years=1_000_000)
+    _, elev_no_quake, _, _, _, _ = erosion._gather_nodes(base)
+    # Highest land node that actually eroded on the plain run -- it has the height + slope the
+    # seismic term keys off (and isn't submerged, where subaerial erosion is zeroed).
+    eroded_land = np.where((elev0 > 800.0) & (elev0 - elev_no_quake > 1.0), elev0, -np.inf)
+    target = int(np.argmax(eroded_land))
+    assert np.isfinite(eroded_land[target])
+
+    quaked = generate_world(seed=21, num_plates=8)
+    quaked.elapsed_years = 0.0
+    quaked.earthquakes = [
+        faults.Earthquake(
+            earthquake_id=0, fault_id=0, plate_id=0, kind="reverse",
+            epicenter_world=pts0[target], magnitude=8.5, slip_m=200.0, birth_years=0.0,
+        )
+    ]
+    erosion.apply_erosion(quaked, years=1_000_000)
+    _, elev_quake, _, _, _, _ = erosion._gather_nodes(quaked)
+    assert elev_quake[target] < elev_no_quake[target] - 1.0
 
 
 def test_apply_erosion_respects_elevation_bounds():

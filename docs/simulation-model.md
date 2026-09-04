@@ -858,18 +858,19 @@ should read as ice-covered, not lava-red).
 <a id="faults"></a>
 ## Faults (intraplate) (`faults.py`)
 
-An **additive** layer for fault lines that are *not* plate boundaries. `deform()` already
-carries all the deformation that happens *at* a plate edge, and classifies it geometrically
-(contested territory → convergent, uncontested-but-near → transform, wider → divergent). That
-model has no notion of a fault sitting inside a plate, away from any edge -- yet real faults
-nucleate at a wide range of distances from boundaries (most within ~200 km, but
-stable-continental-region faults sit well over 1000 km away -- the New Madrid seismic zone is
-~1500 km from the nearest boundary), come in sub-parallel families (Basin-and-Range
+By default an **additive** layer for fault lines that are *not* plate boundaries. `deform()`
+already carries all the deformation that happens *at* a plate edge, and classifies it
+geometrically (contested territory → convergent, uncontested-but-near → transform, wider →
+divergent). That model has no notion of a fault sitting inside a plate, away from any edge --
+yet real faults nucleate at a wide range of distances from boundaries (most within ~200 km,
+but stable-continental-region faults sit well over 1000 km away -- the New Madrid seismic
+zone is ~1500 km from the nearest boundary), come in sub-parallel families (Basin-and-Range
 horst/graben trains, en echelon step-overs), and stay individually active for a few to a few
 tens of Myr before locking up and surviving as inert scars. `faults.py` adds exactly that,
-and **never touches `deform()`'s own boundary classification** -- the two layers are
-independent, the same way [volcanism](#volcanism) rides on top of `deform()` rather than
-replacing any of it.
+and in the default `World.fault_deformation_mode == "boundary"` **never touches `deform()`'s
+own boundary classification** -- the two layers are independent, the same way
+[volcanism](#volcanism) rides on top of `deform()` rather than replacing any of it. In
+`"fault"` / `"both"` mode the layer becomes load-bearing -- see **Deformation mode** below.
 
 `update_faults` runs once per step from `world.step_world`, inside the
 `simulate_plate_movement` block, right after the `deform()` loop and before
@@ -885,10 +886,15 @@ dashed and dim, and applies no further relief.
 **2. Stress-weighted Poisson spawn, per plate.** For each own-node, the distance to the
 nearest cross-plate boundary node gives a stress weight `exp(-d / SPAWN_DECAY_LEN_KM)` (500
 km) floored at `SPAWN_INTERIOR_FLOOR` (0.03) -- so faulting concentrates near boundaries but
-never drops to zero in the deep interior (real intraplate seismicity). The expected count is
-`BASE_SPAWN_RATE_PER_MYR` (3.0 fault *systems*/Myr over the whole sphere at full stress)
-scaled by the plate's area fraction and its mean stress weight, then `rng.poisson`. Seed
-nodes are drawn weighted by the same stress field. Deterministic per
+never drops to zero in the deep interior (real intraplate seismicity). A node that sits
+*within* `OVERLAP_TOLERANCE_MULT` line-spacings of another plate's node -- a genuine **point
+overlap**, not a normal shared boundary: a stalled collision, a plate drifting bodily over
+one it can't merge with -- has its weight lifted to `OVERLAP_STRESS_WEIGHT` (1.5, i.e. more
+stressed than a clean convergent edge). The expected count is `BASE_SPAWN_RATE_PER_MYR` (3.0
+fault *systems*/Myr over the whole sphere at full stress) scaled by the plate's area fraction
+and its mean stress weight, then `rng.poisson` -- so a broad overlap both raises the count
+and pulls the seeds into itself. Overlap-born traces carry `born_in_overlap = True` (a higher
+earthquake rate, below). Deterministic per
 `(seed, round(elapsed_years), plate_id, _FAULT_SEED_TAG)`, the same convention
 [volcanism](#volcanism) uses, so a replayed session spawns identical faults.
 
@@ -966,10 +972,46 @@ fault can still be re-homed even after its owning plate's id has vanished in a m
 **Memory bound.** A plate keeps at most `MAX_SCARS_PER_PLATE` (40) inactive scars, oldest
 culled first; active faults are never culled.
 
+**Deformation mode (`World.fault_deformation_mode`).** A live Controls select, three values:
+
+- **`"boundary"`** (default) -- everything above; `deform()`'s smooth distance-band
+  thickening at the polygon edge is untouched. Bit-identical to before this field existed.
+- **`"fault"`** -- `LithospherePlate.deform` multiplies its own convergent (`orogen_strength`)
+  and divergent thickening by `faults.fault_influence()`: 1.0 within `FAULT_DEFORM_REACH_KM`
+  (120 km) of an active fault trace on that plate, tapering to `FAULT_DEFORM_FLOOR` (0.15)
+  far from one (never 0 -- a fresh contested zone still deforms while Piece-1 overlap
+  spawning fills it with faults). The arc band is left alone (a volcanic arc is a genuinely
+  broad swath). Alongside, `_apply_plate_fault_relief` scales its own rates by
+  `FAULT_RELIEF_MODE_RATE_SCALE` (3×) and reach by `FAULT_RELIEF_MODE_REACH_SCALE` (1.6×) to
+  carry the deformation the bands gave up. Net effect: uplift / rifting reads as
+  fault-localised ridges and valleys threading the collision zone rather than one smooth swell.
+- **`"both"`** -- the boundary bands at full strength *and* the scaled-up fault relief layer.
+
+`deform()` runs before `update_faults`, so `"fault"` mode acts on *last* step's fault set
+(fine -- faults persist step to step).
+
+**Earthquakes (`_generate_earthquakes` / `World.earthquakes`).** After relief, every active
+fault that accumulated at least `MIN_STEP_SLIP_FOR_QUAKE_M` (25 m) of slip this step emits
+one `Earthquake` -- the characteristic (roughly largest) rupture of that interval; a real
+active fault ruptures thousands of times per Myr, so one representative event per step is all
+that's kept. `magnitude` is `QUAKE_MW_BASE + QUAKE_MW_LENGTH_COEFF·log10(len_km) +
+QUAKE_MW_SLIP_COEFF·log10(slip_rate) + (OVERLAP_QUAKE_MW_BONUS if born_in_overlap) + jitter`,
+clamped to `[QUAKE_MW_MIN, QUAKE_MW_MAX]`. The epicentre is a node drawn along the trace (a
+fixed true-world-frame point -- never re-homed). Deterministic per
+`(seed, round(elapsed_years), fault_id, _QUAKE_SEED_TAG)`. Each step's largest, if
+`>= EARTHQUAKE_LOG_MIN_MW` (7.5), is logged to the event console; the rest live only on the
+"Fault lines" overlay. `update_faults` prunes anything older than `EARTHQUAKE_RETAIN_MYR`
+(5 Myr) at the top of the step. `erosion.py`'s seismic-erosion term is multiplied by
+`_earthquake_erosion_multiplier` -- `1 + Σ EARTHQUAKE_EROSION_PEAK_BOOST·10^(Mw −
+EARTHQUAKE_EROSION_MW_REF)·recency·taper` over nearby epicentres, a landsliding burst that
+fades over the retention window. Exposed via `GET /world/earthquakes`.
+
 **Persistence.** `World.faults` (a list of `Fault` dataclasses) and `World.next_fault_id`
 (the monotonic id source) -- `faults` is a `default_factory` field backfilled to `[]` on load
 of an older save (`persistence._backfill_added_fields`); `next_fault_id` is a plain-int
-default a pre-field pickle falls through to.
+default a pre-field pickle falls through to. Same story for `World.earthquakes` /
+`next_earthquake_id`. `fault_deformation_mode` is a plain-str default (`"boundary"`), so an
+old pickle falls through with no backfill entry.
 
 <a id="reassignment"></a>
 ## Boundary point reassignment (subsumed into `deform()`)

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
-import type { FaultSummary, FaultSystemSummary, Projection, Segment } from "./api";
+import type { EarthquakeSummary, FaultSummary, FaultSystemSummary, Projection, Segment } from "./api";
 import { fetchFaultAt } from "./api";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon } from "./rotation";
@@ -9,6 +9,7 @@ import { useRotationDrag } from "./rotationDrag";
 interface Props {
   faults: FaultSummary[];
   faultSystems: FaultSystemSummary[];
+  earthquakes: EarthquakeSummary[];
   coastlineSegments: Segment[];
   width: number;
   height: number;
@@ -44,6 +45,12 @@ const ACTIVE_ALPHA = 0.85;
 const SCAR_ALPHA = 0.3; // locked-up faults -- present but recessive
 const SELECTED_ALPHA = 1.0;
 
+// Earthquake epicentre overlay: a warm ring, radius growing with magnitude, opacity fading
+// with age over the backend's faults.EARTHQUAKE_RETAIN_MYR retention window (~5 Myr) so a
+// quake's mark decays rather than vanishing between steps.
+const EARTHQUAKE_RGB = "255, 180, 70";
+const EARTHQUAKE_RETAIN_MYR = 5.0;
+
 // Matches backend render_image.py's COASTLINE_COLOR_RGB/COASTLINE_HALO_RGB -- same reason
 // RiverInspector needs it: this view draws no filled backdrop, so without a coastline there's
 // no land/ocean cue at all.
@@ -58,7 +65,7 @@ const COASTLINE_HALO_RGB = "15, 15, 15";
 // long-press-drag rotate gesture as the other inspectors (rotationDrag.ts) plus
 // click-to-select and Tab/Shift+Tab to cycle faults.
 export default function FaultInspector({
-  faults, faultSystems, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
+  faults, faultSystems, earthquakes, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
   selectedFaultId, onSelectFault, onRotationPreview, onRotationCommitted,
 }: Props) {
   const selectedSystemId = faults.find((f) => f.fault_id === selectedFaultId)?.system_id ?? null;
@@ -204,12 +211,28 @@ export default function FaultInspector({
     }
     const selected = faults.find((f) => f.fault_id === selectedFaultId);
     if (selected) drawOne(selected, true);
+
+    // Earthquake epicentres last, on top of everything: a filled dot + ring, sized by
+    // magnitude, fading with age.
+    for (const q of earthquakes) {
+      const recency = Math.max(0, 1 - q.age_myr / EARTHQUAKE_RETAIN_MYR);
+      if (recency <= 0) continue;
+      const [ex, ey] = projectPoint(q.epicenter as Vec3);
+      const r = (1.5 + 1.6 * Math.max(0, q.magnitude - 4)) * pixelScale;
+      ctx.beginPath();
+      ctx.arc(ex, ey, r, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(${EARTHQUAKE_RGB}, ${0.15 + 0.5 * recency})`;
+      ctx.fill();
+      ctx.lineWidth = lineWidth * 1.4;
+      ctx.strokeStyle = `rgba(${EARTHQUAKE_RGB}, ${0.4 + 0.6 * recency})`;
+      ctx.stroke();
+    }
   };
 
   useEffect(() => {
     draw(rotation);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [faults, faultSystems, coastlineSegments, selectedFaultId, projection, rotation, width, height]);
+  }, [faults, faultSystems, earthquakes, coastlineSegments, selectedFaultId, projection, rotation, width, height]);
 
   const handleClick = (backingX: number, backingY: number) => {
     const transform = getRenderTransform(projection, width, height);
