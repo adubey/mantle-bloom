@@ -22,6 +22,7 @@ from scipy.spatial import cKDTree
 from . import geometry
 from .elevation_lines import (
     ELEV_CHANGE_COLLISION,
+    ELEV_CHANGE_COLLISION_FAR_FIELD,
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_NEW_CRUST,
     ELEV_CHANGE_RIFT,
@@ -30,6 +31,7 @@ from .elevation_lines import (
     ELEV_CHANGE_TRENCH,
     ELEV_CHANGE_VOLCANO,
     ElevationLine,
+    PLANET_RADIUS_KM,
     build_lines_from_lattice,
     line_spacing_rad,
     needs_regularizing,
@@ -49,6 +51,7 @@ from .plates import (
     _contested_by_any,
     _land_noise_threshold,
     _row_median_step,
+    query_workers,
 )
 from . import bathymetry, lithosphere, rheology, terrain_noise, torque, worldsketch
 
@@ -227,19 +230,54 @@ def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
 
 
 # The collision-uplift *reach* knob (World.collision_uplift_reach_multiplier) dilates the
-# contested band feeding the orogenic thickening by this many nodes per unit of the knob (so
-# reach 3x -> +6 nodes each side of every contested stretch, at the default node density) --
-# linear in the knob, not "extra beyond 1.0": at the knob's own untuned value (1.0) this is
-# already +2 nodes of near-field belt, not zero. A real orogen is a broad crumple zone (the
-# Himalaya spans ~500 km), not literally just the suture line, so the near-field ring is part
-# of the model's own baseline collision-uplift behaviour, not something that only exists once
-# a user raises this knob above default (see docs/TODO.md "Land fraction slowly declines" --
-# measured, this also modestly slows the land-fraction decline in its own right, since more of
-# a collision's crust ends up thickened rather than left for erosion to plane down untouched).
-COLLISION_REACH_DILATION_NODES_PER_UNIT = 2
+# contested band feeding the orogenic thickening by this many physical km per unit of the
+# knob (so reach 3x -> +600 km each side of every contested stretch) -- linear in the knob,
+# not "extra beyond 1.0": at the knob's own untuned value (1.0) this is already a real
+# near-field belt (~200 km, a real orogen's crumple-zone width -- the Himalaya spans ~500 km),
+# not zero, so the near-field ring is part of the model's own baseline collision-uplift
+# behaviour, not something that only exists once a user raises this knob above default (see
+# docs/TODO.md "Land fraction slowly declines" -- measured, this also modestly slows the
+# land-fraction decline in its own right, since more of a collision's crust ends up thickened
+# rather than left for erosion to plane down untouched).
+#
+# Expressed in km, not a flat node count: `_dilate_1d` still operates on node indices (there
+# is no cheaper way to widen a per-line band), but the index count converted to is divided by
+# this step's *actual* line spacing (`spacing_rad`, which shrinks as `world.node_density`
+# rises) so the belt's physical width stays ~200 km regardless of render/simulation
+# resolution -- a flat node count would otherwise make mountains visibly narrower at higher
+# node_density (confirmed: at density=4 a flat 2-node ring is only ~125 km, well under the
+# real-world width it's meant to model).
+COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT = 200.0
 # Near-field (dilated-but-not-contested) nodes thicken at this fraction of the contested
 # rate -- a collision belt's deformation fades outward from the suture, it doesn't step.
 COLLISION_REACH_NEAR_FIELD_FACTOR = 0.4
+
+# Broad far-field collision stress: a genuine continent-continent collision transmits
+# uplift-inducing stress deep into the stable interior, well beyond the fold-thrust belt
+# itself (the Tibetan Plateau's own far-field effects raise terrain across much of interior
+# Asia; the Ancestral Rockies formed ~1000+ km from the Marathon-Ouachita suture that drove
+# them). Zero within FAR_FIELD_INNER_KM -- where the much stronger near-field ring above
+# already dominates -- ramping to full strength there and fading back to zero by
+# FAR_FIELD_OUTER_KM. Applied as a direct elevation delta (like TRANSFORM_UPLIFT_RATE_M_PER_MYR
+# below), not routed through Hc/Hm -- a broad, low-amplitude regional swell doesn't need
+# isostatic bookkeeping the way real orogenic crustal thickening does. Ported from v1's
+# COLLISION_RANGE_KM/FAR_FIELD_COLLISION_* (plates.py) -- v1 gated this on the same `contested`
+# mask as the near-field belt, which is a geometric-overlap test that (by construction) never
+# reaches 1000 km out, so the term could never actually fire there; `ELEV_CHANGE_COLLISION_
+# FAR_FIELD` existed in the "Last elevation change" legend the whole time but nothing ever
+# painted it. Gated here purely by distance to the nearest continental neighbour, plus a
+# whole-plate "is this plate colliding with anyone right now" check, so a quiet continent's
+# interior doesn't uplift for no reason.
+FAR_FIELD_INNER_KM = 300.0
+FAR_FIELD_OUTER_KM = 1000.0
+FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR = 60.0
+
+
+def _far_field_intensity(dist_km: np.ndarray, inner_km: float, outer_km: float) -> np.ndarray:
+    """One-sided ramp: 0 below `inner_km`, 1.0 right at `inner_km`, decaying linearly to 0 by
+    `outer_km` -- same shape as v1's plates._far_field_intensity."""
+    ramp = np.clip(1.0 - (dist_km - inner_km) / (outer_km - inner_km), 0.0, 1.0)
+    return np.where(dist_km < inner_km, 0.0, ramp)
 
 
 def _redistribute_accreted_column(
@@ -403,10 +441,36 @@ class LithospherePlate(PlateWithLines):
         orogen_reach = world.collision_uplift_reach_multiplier
         orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)
         orogen_dilation_nodes = (
-            round(orogen_reach * COLLISION_REACH_DILATION_NODES_PER_UNIT)
+            round(orogen_reach * COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT / (spacing_rad * PLANET_RADIUS_KM))
             if orogen_reach > 0.0 and self.crust_type == "continental"
             else 0
         )
+
+        # Far-field collision uplift (see FAR_FIELD_* above): only worth the extra KD-tree
+        # query when this plate is continental and actually has an active continent-continent
+        # collision somewhere on its edge this step -- a quiet plate's interior should never
+        # uplift. `far_neighbours` intentionally re-queries at FAR_FIELD_OUTER_KM (far wider
+        # than `reach_rad`, ~3 line-spacings) since the near-boundary `inputs.dist_to_neighbor`
+        # is `inf` past that reach and can't answer "how far to the nearest continent" out to
+        # 1000 km.
+        far_field_intensity_all = np.zeros(len(own_points))
+        if self.crust_type == "continental" and np.any(convergent_all & ~inputs.neighbor_is_oceanic):
+            far_reach_rad = FAR_FIELD_OUTER_KM / PLANET_RADIUS_KM
+            far_neighbours = self.get_neighbours(other_plates, threshold_rad=far_reach_rad)
+            far_pieces = [p.all_points_and_elevation()[0] for p in far_neighbours if p.node_count() > 0]
+            if far_pieces:
+                far_is_oceanic = np.concatenate(
+                    [np.full(len(pts), p.crust_type != "continental") for p, pts in zip(far_neighbours, far_pieces)]
+                )
+                far_pts = np.concatenate(far_pieces, axis=0)
+                far_tree = cKDTree(far_pts, balanced_tree=False, compact_nodes=False)
+                far_dist, far_idx = far_tree.query(own_points, workers=query_workers(len(own_points)))
+                far_continental_neighbor = ~far_is_oceanic[far_idx]
+                far_field_intensity_all = np.where(
+                    far_continental_neighbor,
+                    _far_field_intensity(far_dist * PLANET_RADIUS_KM, FAR_FIELD_INNER_KM, FAR_FIELD_OUTER_KM),
+                    0.0,
+                )
 
         fault_noise = (
             SphereNoise(np.random.default_rng((world.seed, self.plate_id, 9001)), octaves=3, base_freq=9.0)
@@ -431,6 +495,7 @@ class LithospherePlate(PlateWithLines):
             neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
             arc_band = arc_band_all[sl]
             arc_intensity = arc_intensity_all[sl]
+            far_field_intensity = far_field_intensity_all[sl]
             fault_influence = fault_influence_all[sl]  # all-ones except in "fault" mode
 
             # Active-margin growth seed per line end -- see ARC_MARGIN_SEED_HC_M. An end is an
@@ -554,9 +619,16 @@ class LithospherePlate(PlateWithLines):
                 TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * fault_influence[transform]
             )
 
+            # Far-field collision uplift (see FAR_FIELD_* above): zeroed wherever the much
+            # stronger near-field ring/contested band already applies, so the two bands never
+            # double-count the same node.
+            far_field_uplift = np.where(
+                convergent | near_field, 0.0, FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR * years_myr * far_field_intensity
+            )
+
             elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
             new_elevation = rheology.clip_elevation_bounds(
-                line.elevation + (elevation_after - elevation_before) + transform_uplift
+                line.elevation + (elevation_after - elevation_before) + transform_uplift + far_field_uplift
             )
 
             # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
@@ -573,6 +645,7 @@ class LithospherePlate(PlateWithLines):
             if self.crust_type == "continental":
                 # near_field (the reach knob's dilated ring) is continent-continent orogenic
                 # belt too, so it carries the same COLLISION provenance as the converging core.
+                reason[(far_field_uplift > 0.0) & moved] = ELEV_CHANGE_COLLISION_FAR_FIELD
                 reason[(convergent | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
                 reason[convergent & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
                 reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
