@@ -608,7 +608,13 @@ async def load_world(request: Request) -> dict:
 
 @app.get("/world/render")
 def render(
-    projection: str = "behrmann", view: str = "elevation", width: int = 1100, height: int = 611, rotation: str | None = None
+    projection: str = "behrmann",
+    view: str = "elevation",
+    width: int = 1100,
+    height: int = 611,
+    rotation: str | None = None,
+    show_mountains: bool = False,
+    show_plains_plateaus: bool = False,
 ) -> dict:
     """Renders `view` of the current world, in `projection`, as a `width`x`height` PNG,
     returned base64-encoded in `image_base64` -- see render_image.py for the actual
@@ -616,6 +622,11 @@ def render(
     _parse_view_rotation), default identity. `400` for an unrecognized projection/view, an
     out-of-range width/height, or a malformed rotation, `404` if no world has been generated
     yet.
+
+    `show_mountains`/`show_plains_plateaus` are the Elevation view's own legend toggles (see
+    render_image._classify_terrain_relief) -- both default `False`, and are silently ignored
+    (no validation error) on every `view` but `"elevation"`, same as any other view-specific
+    param in this codebase.
 
     Takes `_world_lock` (blocking) around the actual read, unlike step/animate which 503 on a
     busy lock and let the caller retry. A render is a read, called far more often (every view
@@ -638,7 +649,9 @@ def render(
     view_rotation = _parse_view_rotation(rotation)
 
     with _world_lock:
-        image_base64 = render_image.render_png_base64(world, projection, view, width, height, view_rotation)
+        image_base64 = render_image.render_png_base64(
+            world, projection, view, width, height, view_rotation, show_mountains, show_plains_plateaus
+        )
     return {
         "projection": projection,
         "elapsed_years": world.elapsed_years,

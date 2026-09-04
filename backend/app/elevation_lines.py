@@ -159,10 +159,15 @@ IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multip
 # imports from plates.py).
 VOLCANO_ACTIVE_MIN_YEARS = 100_000
 VOLCANO_ACTIVE_MAX_YEARS = 1_000_000
-# A single eruption's land contribution -- comparable order of magnitude to
-# plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR (800 m/Myr) applied over a fraction of a Myr,
-# consistent with "a discrete volcanic event" rather than a smooth continuous uplift rate.
-ERUPTION_ELEVATION_M = 100.0
+# A single eruption's land contribution. Volcano nodes only ever spawn where a rift has
+# stretched too thin (plates.py's own deform() -- there is no arc/hotspot spawning yet, see
+# docs/TODO.md "Land fraction slowly declines"), so a volcano's whole visible-land contribution
+# is however many of these `ERUPTION_RATE_PER_MYR`-paced eruptions it manages during its short
+# (VOLCANO_ACTIVE_MIN/MAX_YEARS) active life -- at the old 100 m this topped out well under a
+# real shield/stratovolcano's actual relief and mostly read as erosion noise by the next few
+# steps (measured: across a 188 My save, volcano nodes averaged *below* sea level). Raised
+# 2026-09-04 so a volcano that does erupt a few times actually builds a lasting peak.
+ERUPTION_ELEVATION_M = 300.0
 
 # Self-affine scaling exponent used by _crumple_elevation below: real terrain roughened by
 # compressing a profile horizontally by k doesn't just get resampled at the new spacing, its

@@ -282,7 +282,13 @@ def test_fault_mode_is_the_default_and_differs_from_boundary_mode():
     for _ in range(9):
         step_world(a, 1_000_000)
         step_world(b, 1_000_000)
-    assert abs(float(elev(a).mean()) - float(elev(b).mean())) > 1.0  # >1 m mean shift
+    # Threshold lowered 2026-09-04 alongside lithosphere_plate.COLLISION_REACH_DILATION_NODES_
+    # PER_UNIT's baseline-dilation change (docs/TODO.md "Land fraction slowly declines"): both
+    # modes now carry a near-field ring even at the default reach multiplier, which -- being
+    # unconditional on fault_deformation_mode -- narrows the *aggregate* mean-elevation gap
+    # between them (the per-node arrays still diverge from step 1, asserted above; this is
+    # just a coarser whole-world summary, not the only evidence of a behavioural difference).
+    assert abs(float(elev(a).mean()) - float(elev(b).mean())) > 0.02
 
 
 def test_boundary_mode_deform_is_deterministic():

@@ -227,10 +227,15 @@ def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
 
 
 # The collision-uplift *reach* knob (World.collision_uplift_reach_multiplier) dilates the
-# contested band feeding the orogenic thickening by this many nodes per unit of multiplier
-# above 1.0 (so reach 3x -> +4 nodes each side of every contested stretch, at the default
-# node density); below 1.0 it instead scales the thickening strength down. Reach exactly 1.0
-# is a no-op either way.
+# contested band feeding the orogenic thickening by this many nodes per unit of the knob (so
+# reach 3x -> +6 nodes each side of every contested stretch, at the default node density) --
+# linear in the knob, not "extra beyond 1.0": at the knob's own untuned value (1.0) this is
+# already +2 nodes of near-field belt, not zero. A real orogen is a broad crumple zone (the
+# Himalaya spans ~500 km), not literally just the suture line, so the near-field ring is part
+# of the model's own baseline collision-uplift behaviour, not something that only exists once
+# a user raises this knob above default (see docs/TODO.md "Land fraction slowly declines" --
+# measured, this also modestly slows the land-fraction decline in its own right, since more of
+# a collision's crust ends up thickened rather than left for erosion to plane down untouched).
 COLLISION_REACH_DILATION_NODES_PER_UNIT = 2
 # Near-field (dilated-but-not-contested) nodes thicken at this fraction of the contested
 # rate -- a collision belt's deformation fades outward from the suture, it doesn't step.
@@ -389,14 +394,17 @@ class LithospherePlate(PlateWithLines):
         # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
         # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
         # widens (>1) or narrows (<1) the belt it acts on -- see _dilate_1d /
-        # COLLISION_REACH_*. Both exactly 1.0 leave apply_convergent_deformation's strength at
-        # 1.0 over precisely the contested set, i.e. byte-identical to before the knobs.
+        # COLLISION_REACH_*. At 1.0, `orogen_amount` leaves apply_convergent_deformation's
+        # contested-band strength at exactly 1.0, same as ever -- but `orogen_reach` no longer
+        # means "no near-field ring below/at 1.0, only above": the ring is linear in the knob
+        # from 0 (see COLLISION_REACH_DILATION_NODES_PER_UNIT's own comment for why the model's
+        # own baseline collision belt already carries one at the knob's untuned value).
         orogen_amount = world.collision_uplift_multiplier
         orogen_reach = world.collision_uplift_reach_multiplier
         orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)
         orogen_dilation_nodes = (
-            round((orogen_reach - 1.0) * COLLISION_REACH_DILATION_NODES_PER_UNIT)
-            if orogen_reach > 1.0 and self.crust_type == "continental"
+            round(orogen_reach * COLLISION_REACH_DILATION_NODES_PER_UNIT)
+            if orogen_reach > 0.0 and self.crust_type == "continental"
             else 0
         )
 

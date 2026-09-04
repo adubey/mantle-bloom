@@ -783,6 +783,87 @@ fluid solve does nothing to `elevation` without erosion.)
   only decreases"). `test_merge_split.py::test_apply_failed_rift_*` /
   `test_maybe_split_plate_with_failed_outcome_*`.
 
+### Fault mode re-verified; thin belts + weak volcanism addressed (2026-09-04)
+
+**Trigger.** User-supplied `~/Downloads/mantle-bloom-seed52459390-188100000y.mbworld`
+(node_density=4, 189 steps / 188.1 My): `land_fraction` 0.122 vs the 0.29 generation target.
+Asked to check three things: are collision mountains too thin, is there enough volcanism, and
+are glaciers/lakes/rivers/volcanoes building enough plains/plateaus.
+
+**Re-verified the above sections still apply under `fault_deformation_mode`.** Every fix above
+was landed/measured before intraplate faults existed (`9bdb7da`, `9fd9287`,
+2026-09-03) or before boundary faults covered every plate boundary (`f4b42b9`, this morning) --
+not something to just assume still holds. `LithospherePlate.deform()` now scales its
+convergent thickening *and* divergent thinning by `fault_influence` in `"fault"` mode
+(`lithosphere_plate.py:472`, `:514-516`). Read `faults.generate_boundary_faults`: it rebuilds a
+fault family the *entire* length of every plate boundary every step (not a sparse/aging
+Poisson layer), so `fault_influence` (80 km reach, 0.06 floor) stays close to 1.0 almost
+everywhere the gated deform() logic actually fires -- the gating should be close to a no-op in
+aggregate. Confirmed empirically: seed 52459390, node_density=1, land_fraction=0.29/
+continental_fraction=0.70 (UI defaults), 150 My, `boundary` vs `fault` mode:
+
+| config | 0 My | 50 My | 100 My | 150 My |
+|---|---|---|---|---|
+| `boundary` | 0.2900 | 0.2923 | 0.2404 | 0.2181 |
+| `fault` (default) | 0.2900 | 0.2947 | 0.2396 | 0.2081 |
+
+Within ~0.01 at every checkpoint -- noise-level, same magnitude as this section's own
+baseline-vs-volcanism-off spread above. The 2026-09-03 default change is not an additional
+regression on top of what's documented above.
+
+**Thin mountains -- confirmed, fixed.** On the trigger save, `elev_change_reason` land-node
+share: `ELEV_CHANGE_COLLISION` 2.4%, `ELEV_CHANGE_COLLISION_FAR_FIELD` 0.0% (never appears).
+Root cause: `orogen_dilation_nodes` (the near-field ring beyond the bare contested/overlap
+band) was `round((orogen_reach - 1.0) * COLLISION_REACH_DILATION_NODES_PER_UNIT) if orogen_reach
+> 1.0 else 0` -- a hard zero at `collision_uplift_reach_multiplier`'s own untuned default
+(1.0). A real orogen is a broad crumple zone (Himalaya ~500 km), not just the suture line.
+Fixed by making the ring linear in the knob from 0 (`round(orogen_reach *
+COLLISION_REACH_DILATION_NODES_PER_UNIT) if orogen_reach > 0.0 else 0`) -- the default now
+carries a real +2-node ring each side, not none, without touching the knob's own default value
+(TUNING_MULTIPLIER_FIELDS' "1.0 == untuned" contract, `test_tuning_knobs.py`, is a base-rate
+change, not a default-value change). Also found, and left alone: `fault` mode's own boundary-
+fault relief layer (master trace + 2 strands 40/80 km inland, `faults.py`) already gives a
+second, genuinely position-distinct uplift source up to ~125 km inland that `boundary` mode
+never had -- but at `BOUNDARY_FAULT_RELIEF_SCALE * REVERSE_UPLIFT_M_PER_MYR` = 66 m/Myr, ~8% of
+the core `CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` (800) rate, it's a minor contributor, not the
+fix. Measured (seed 559394024, `test_tuning_knobs.py`): `reach=3.0` land fraction 0.2900 ->
+0.2137 at 150 My vs 0.2081 unmodified `fault` default -- a real but modest +0.006 nudge, a
+shape/width fix for this specific complaint, not a reversal of the decline documented above.
+
+**Insufficient volcanism -- confirmed, more severe than expected, fixed.** Trigger save: 112
+volcano nodes ever spawned across 188 My / 24 plates, 0 still active, only 17 above sea level,
+mean elevation of every volcano node -4583 m. Volcano nodes only ever spawn where
+`PlateWithLines.deform` finds a rift boundary stretched too thin (`volcanism.py`'s own
+docstring) -- never at a convergent (arc) or intraplate (hotspot) setting, Earth's two dominant
+land-building volcanic regimes; no code changes for that here, it's a materially bigger change
+than this pass's scope. What *is* fixed: `ERUPTION_ELEVATION_M` 100 -> 300 m,
+`ERUPTION_RATE_PER_MYR` 3.0 -> 5.0 (`elevation_lines.py`/`volcanism.py`) -- a volcano that does
+erupt now tops out around 1500 m of gross relief instead of ~300 m, which used to read as
+erosion noise within a few steps. Measured: `volcanism_multiplier=5.0` on top of this tracks
+*identically* to the unmodified baseline through 50 My in aggregate land fraction (0.2947 both)
+-- expected, given how few nodes are ever volcanic; this is a fix for visible peaks, not one
+expected to move the aggregate number.
+
+**Not enough plains/plateaus -- not an independent mechanism; a symptom of the above two.**
+There's no dedicated "build a plateau" step, and this section's own erosion-half fix already
+established erosion/deposition as land-fraction-neutral over a long run -- it just planes down
+whatever relief tectonics/volcanism created. 52% of the trigger save's land last changed via
+erosion, 18% via deposition, only 2.4%/~0% via collision/volcanism -- nothing was actively
+building broad elevated terrain. The reach-multiplier fix above directly addresses this: its
+`COLLISION_REACH_NEAR_FIELD_FACTOR` (0.4x rate) near-field ring *is* a lower-relief, plateau-
+like apron around every belt, so no separate mechanism was added for this specifically.
+
+**New: Elevation view "Mountains" / "Plains & Plateaus" legend toggles**
+(`render_image._classify_terrain_relief`, `/world/render`'s `show_mountains`/
+`show_plains_plateaus`). Local relief (elevation range within `TERRAIN_RELIEF_RADIUS_KM` = 50
+km, a real-world radius so it reads the same across `node_density`), not raw elevation, decides
+the split -- every land node is exactly one of the two (mountain: relief >=
+`MOUNTAIN_RELIEF_THRESHOLD_M` = 400; plains/plateau: below), matching how real geomorphology
+tells a rugged range from a high flat plateau. Computed only for the Elevation view, only when
+at least one toggle is on (`_render_grid_arrays`' `include_terrain_relief` param, opt-in,
+every other caller unaffected) -- baked server-side as a translucent wash over the ordinary
+hypsometric colour, not a flat swap, so the elevation itself stays legible underneath.
+
 ---
 
 ## Speckled low-relief coastlines: a drowned flat shelf dithers pixel-by-pixel across sea level

@@ -163,3 +163,17 @@ def test_collision_uplift_reach_widens_the_thickened_belt():
     wide_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=3.0)
     narrow_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=1.0)
     assert wide_hc > narrow_hc
+
+
+def test_collision_uplift_reach_at_zero_thickens_less_than_its_own_default():
+    # 2026-09-04 (docs/TODO.md "Land fraction slowly declines"): the near-field dilation ring
+    # is no longer "extra width above 1.0" -- it's linear in the knob from 0 (see
+    # COLLISION_REACH_DILATION_NODES_PER_UNIT's own comment), so the knob's own untuned value
+    # (1.0) already carries a real near-field ring, not none. reach=0.0 both drops the ring
+    # (dilation_nodes == 0) *and* zeroes the core contested-band strength
+    # (`orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)`), so this isn't a
+    # surgical ring-only isolation -- just confirms the knob's default now does more than an
+    # explicit "off".
+    default_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=1.0)
+    zero_reach_hc, _ = _stepped_crust_and_relief(559394024, 6, collision_uplift_reach_multiplier=0.0)
+    assert default_hc > zero_reach_hc

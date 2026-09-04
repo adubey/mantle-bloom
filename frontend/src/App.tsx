@@ -257,6 +257,24 @@ export default function App() {
     () => (highlightedBiome ? highlightTargetFor(mapView, highlightedBiome) : null),
     [mapView, highlightedBiome],
   );
+  // Elevation view's own "Mountains" / "Plains & Plateaus" legend toggles (see Legend.tsx) --
+  // baked server-side into the rendered PNG (render_image.py's terrain-relief overlay), not a
+  // client-side highlight like highlightedBiome above, so they need their own refresh() call
+  // rather than a pure client-side redraw. Same "reset on leaving the view, don't persist
+  // across a browser refresh" precedent as highlightedBiome.
+  const [showMountains, setShowMountains] = useState(false);
+  const [showPlainsPlateaus, setShowPlainsPlateaus] = useState(false);
+  useEffect(() => {
+    if (mapView !== "elevation") {
+      setShowMountains(false);
+      setShowPlainsPlateaus(false);
+    }
+  }, [mapView]);
+  // refresh() reads these at call time (see its own definition below) rather than taking them
+  // as arguments -- avoids threading two more params through every one of refresh()'s several
+  // call sites, the same `mapViewRef` pattern used just above for the same reason.
+  const terrainOverlayRef = useRef({ showMountains, showPlainsPlateaus });
+  terrainOverlayRef.current = { showMountains, showPlainsPlateaus };
   const [summary, setSummary] = useState<WorldSummary | null>(null);
   const [renderData, setRenderData] = useState<RenderResponse | null>(null);
   // Plate Inspector's own data (see PlateInspector.tsx) -- true-frame/rotation-independent,
@@ -416,8 +434,9 @@ export default function App() {
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
     if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // none of these use renderData -- see below
     const requestId = ++renderRequestIdRef.current;
+    const { showMountains: mountains, showPlainsPlateaus: plainsPlateaus } = terrainOverlayRef.current;
     try {
-      const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
+      const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation, mountains, plainsPlateaus);
       if (requestId === renderRequestIdRef.current) setRenderData(data);
     } catch (e) {
       if (requestId === renderRequestIdRef.current) setError(String(e));
@@ -748,17 +767,17 @@ export default function App() {
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
   const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
 
-  // Re-render with the current world whenever the projection, map view, or view rotation
-  // changes -- all three are baked server-side into the returned image (see api.ts's
-  // renderWorld). A completed drag (see MapCanvas's onRotationCommitted below) just updates
-  // `rotation` state; this effect is what actually re-fetches, the same pattern
-  // projection/mapView already used before rotation existed.
+  // Re-render with the current world whenever the projection, map view, view rotation, or the
+  // Elevation view's terrain-relief toggles change -- all baked server-side into the returned
+  // image (see api.ts's renderWorld). A completed drag (see MapCanvas's onRotationCommitted
+  // below) just updates `rotation` state; this effect is what actually re-fetches, the same
+  // pattern projection/mapView already used before rotation existed.
   useEffect(() => {
     if (summary) {
       refresh(projection, mapView, rotation);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projection, mapView, rotation]);
+  }, [projection, mapView, rotation, showMountains, showPlainsPlateaus]);
 
   // Persists projection/mapView/rotation to VIEW_COOKIE_NAME on every change, so the next
   // page load's `initialView` (see loadViewCookie above) picks up wherever the user left off.
@@ -1292,6 +1311,10 @@ export default function App() {
             mapView={mapView}
             highlightedBiome={highlightedBiome}
             onBiomeClick={(label) => setHighlightedBiome((cur) => (cur === label ? null : label))}
+            showMountains={showMountains}
+            onToggleMountains={() => setShowMountains((cur) => !cur)}
+            showPlainsPlateaus={showPlainsPlateaus}
+            onTogglePlainsPlateaus={() => setShowPlainsPlateaus((cur) => !cur)}
           />
           <p style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
             {mapView === "plateInspector"

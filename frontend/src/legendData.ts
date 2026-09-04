@@ -61,6 +61,12 @@ const WIND_ARROW_COLOR = rgb(230, 230, 255);
 const CURRENT_ARROW_COLOR = rgb(140, 210, 255);
 const OCEAN_BACKDROP_COLOR = rgb(18, 28, 55);
 const LAND_BACKDROP_COLOR = rgb(40, 46, 34);
+// MOUNTAIN_OVERLAY_RGB / PLAINS_PLATEAU_OVERLAY_RGB -- the Elevation view's own
+// "Mountains" / "Plains & Plateaus" toggle rows (see Legend.tsx). The actual map overlay is a
+// translucent wash over the hypsometric colour (TERRAIN_OVERLAY_ALPHA), not this flat swatch
+// colour -- the swatch is just these same RGBs at full opacity, for legibility at this size.
+const MOUNTAIN_OVERLAY_COLOR = rgb(196, 64, 56);
+const PLAINS_PLATEAU_OVERLAY_COLOR = rgb(214, 188, 74);
 
 // _ELEVATION_STOP_E / _ELEVATION_STOP_RGB.
 const ELEVATION_GRADIENT: LegendGradient = {
@@ -523,6 +529,11 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "line", color: RIVER_COLOR, label: "River" },
           { kind: "square", color: LAKE_COLOR, label: "Lake" },
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
+          // Toggle rows, not click-to-highlight swatches -- see Legend.tsx's own special-case
+          // handling of these two labels on this view (showMountains/showPlainsPlateaus props,
+          // independent checkboxes rather than legendFor's usual single-select highlight).
+          { kind: "square", color: MOUNTAIN_OVERLAY_COLOR, label: "Mountains" },
+          { kind: "square", color: PLAINS_PLATEAU_OVERLAY_COLOR, label: "Plains & Plateaus" },
         ],
       };
     case "platesAndFaults":

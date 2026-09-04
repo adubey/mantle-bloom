@@ -45,6 +45,77 @@ def test_render_grid_arrays_match_selected_projection_shape():
     assert not np.allclose(behrmann_xy[0], eckert4_xy[0])
 
 
+def _close_points(n: int, step_km: float = 5.0):
+    """`n` points along the equator, `step_km` apart -- close enough together that every one
+    sits within TERRAIN_RELIEF_RADIUS_KM of every other for a small `n` (used by the
+    _classify_terrain_relief tests below, which need a controlled local neighbourhood)."""
+    from app.plates import PLANET_RADIUS_KM
+
+    theta = np.arange(n) * (step_km / PLANET_RADIUS_KM)
+    return geometry.local_xyz(np.zeros(n), theta)
+
+
+def test_classify_terrain_relief_flat_land_is_plains_plateau_not_mountain():
+    from scipy.spatial import cKDTree
+
+    points = _close_points(10)
+    elevation = np.full(10, 300.0)  # flat, well above sea level, no relief anywhere
+    codes = render_image._classify_terrain_relief(points, elevation, cKDTree(points), sea_level_m=0.0)
+    assert np.all(codes == render_image._TERRAIN_PLAINS_PLATEAU)
+
+
+def test_classify_terrain_relief_sharp_step_is_mountain_not_plains_plateau():
+    from scipy.spatial import cKDTree
+
+    points = _close_points(10)
+    # Alternating land/deep-ocean elevation: every land node's neighbourhood spans ~2300 m,
+    # well past MOUNTAIN_RELIEF_THRESHOLD_M -- a real cliff/escarmpent, not a gentle plain.
+    elevation = np.where(np.arange(10) % 2 == 0, 300.0, -2000.0)
+    codes = render_image._classify_terrain_relief(points, elevation, cKDTree(points), sea_level_m=0.0)
+    is_land = elevation > 0.0
+    assert np.all(codes[is_land] == render_image._TERRAIN_MOUNTAIN)
+    assert np.all(codes[~is_land] == render_image._TERRAIN_NONE)
+
+
+def test_classify_terrain_relief_empty_world_returns_empty():
+    from scipy.spatial import cKDTree
+
+    empty = np.zeros((0, 3))
+    codes = render_image._classify_terrain_relief(empty, np.zeros(0), cKDTree(_close_points(1)), sea_level_m=0.0)
+    assert codes.shape == (0,)
+
+
+def test_render_grid_arrays_terrain_relief_is_opt_in():
+    world = _world(num_plates=8)
+    default_grid = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
+    assert len(default_grid) == 10  # unaffected -- every existing caller's unpack still matches
+
+    full_grid = render_image._render_grid_arrays(world, "behrmann", np.eye(3), include_terrain_relief=True)
+    assert len(full_grid) == 11
+    terrain = full_grid[-1]
+    elevation = full_grid[1]
+    assert terrain.shape == elevation.shape
+    is_land = elevation > world.sea_level_m
+    assert np.all(terrain[~is_land] == render_image._TERRAIN_NONE)
+    assert np.all(np.isin(terrain[is_land], [render_image._TERRAIN_MOUNTAIN, render_image._TERRAIN_PLAINS_PLATEAU]))
+
+
+def test_render_png_terrain_toggles_only_change_the_elevation_view():
+    world = _world(num_plates=8)
+    plain = render_image.render_png(world, "behrmann", "elevation", 200, 111)
+    with_mountains = render_image.render_png(world, "behrmann", "elevation", 200, 111, show_mountains=True)
+    with_plains = render_image.render_png(world, "behrmann", "elevation", 200, 111, show_plains_plateaus=True)
+    assert with_mountains != plain
+    assert with_plains != plain
+
+    # A view with no relief information to tint shouldn't error, and the toggles shouldn't
+    # perturb it -- render_png silently ignores them outside "elevation" (see main.py's own
+    # render() docstring for the same contract at the API layer).
+    plates_plain = render_image.render_png(world, "behrmann", "plates", 200, 111)
+    plates_toggled = render_image.render_png(world, "behrmann", "plates", 200, 111, show_mountains=True)
+    assert plates_plain == plates_toggled
+
+
 def test_elevation_colors_matches_known_stops():
     # Exact stops from the hypsometric table should map to their exact color.
     colors = render_image.elevation_colors(np.array([-11000.0, 0.0, 9000.0]))
