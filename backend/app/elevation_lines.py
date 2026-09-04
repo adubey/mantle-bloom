@@ -62,12 +62,16 @@ TARGET_LINE_SPACING_RAD = TARGET_LINE_SPACING_KM / PLANET_RADIUS_KM
 
 # UI-facing choices for World.node_density -- a discrete set (not a free-form slider) since
 # there's no natural continuous unit for "how many points," only "how many times as many."
-# 2.0 (half the default multiplier) is a lower-resolution middle ground -- fewer nodes than the
-# default, so plate-movement-only stepping (World.simulate_plate_movement,
-# World.simulate_climate_biomes off) runs faster, without dropping all the way to 1.0's much
-# coarser boundary geometry. 0.5 (an eighth of the default) is coarser still -- the fastest,
-# lowest-fidelity option, useful where even 1.0's geometry is more than a given step needs.
-NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)
+# 6.0 (the UI's "High" choice, 1.5x the default multiplier) sits above the default -- more
+# boundary geometry than 4.0 for the rare step where even that isn't enough, at a real per-step
+# cost (see line_spacing_rad: node count scales with the *square* of this multiplier, so 1.5x
+# the density is already 2.25x the nodes). 2.0 (half the default multiplier) is a
+# lower-resolution middle ground -- fewer nodes than the default, so plate-movement-only
+# stepping (World.simulate_plate_movement, World.simulate_climate_biomes off) runs faster,
+# without dropping all the way to 1.0's much coarser boundary geometry. 0.5 (an eighth of the
+# default) is coarser still -- the fastest, lowest-fidelity option, useful where even 1.0's
+# geometry is more than a given step needs.
+NODE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0, 6.0)
 DEFAULT_NODE_DENSITY = 4.0
 
 # Physical elevation bounds every module that modifies elevation clips against (boundary.py,

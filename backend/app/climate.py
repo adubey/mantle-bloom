@@ -134,10 +134,14 @@ _REFERENCE_CELL_DEG = 360.0 / _REFERENCE_WIDTH
 # many grid cells," only "how many times as many per dimension." 0.5 (half the default
 # multiplier) is a lower-resolution option -- a coarser grid, so climate-and-biomes-only
 # stepping (or any step where climate.py's own grid computation dominates the cost) runs
-# faster. 4.0 (the default) is the finest option -- quadruple the reference resolution in
-# each dimension (16x the reference cell count), for the sharpest Temperature/Wind/Currents/
-# Humidity/Precipitation/Biome/Combined/Resources/Soil-Quality maps, at a real per-step cost.
-CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0)
+# faster. 4.0 (the default, the UI's "Standard") is the finest option most worlds pay for --
+# quadruple the reference resolution in each dimension (16x the reference cell count), for
+# sharp Temperature/Wind/Currents/Humidity/Precipitation/Biome/Combined/Resources/
+# Soil-Quality maps at a real per-step cost. 8.0 (the UI's "High," paired there with
+# node_density=6.0 -- see frontend App.tsx's DETAIL_CHOICES) doubles that again: 8x the
+# reference resolution per dimension, 64x the reference cell count, for the rare case where
+# even 4.0's maps read as blocky.
+CLIMATE_DENSITY_CHOICES = (0.5, 1.0, 2.0, 4.0, 8.0)
 DEFAULT_CLIMATE_DENSITY = 4.0
 
 # Same idea as CLIMATE_DENSITY_CHOICES, for World.fluid_density (the independent "Fluid
