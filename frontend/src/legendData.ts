@@ -610,6 +610,7 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "line", color: rgb(176, 60, 90), label: "Reverse (thrust) — shortening" },
           { kind: "line", color: rgb(120, 190, 90), label: "Normal (graben) — extension" },
           { kind: "line", color: rgb(230, 190, 70), label: "Strike-slip — wrench" },
+          { kind: "circle", color: rgb(255, 180, 70), label: "Recent earthquake (size ∝ magnitude)" },
           COASTLINE_SYMBOL,
         ],
       };

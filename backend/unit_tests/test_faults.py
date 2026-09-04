@@ -147,6 +147,46 @@ def test_spawning_is_deterministic_per_seed():
     assert key(_run(seed=11, steps=10)) != key(_run(seed=12, steps=10))
 
 
+class _StubPlate:
+    """Just enough of a plate for _maybe_spawn_faults' spawn path (identity frame)."""
+
+    def __init__(self):
+        self.plate_id = 0
+        self.frame = np.eye(3)
+        self.omega = np.array([0.0, 0.0, 1e-8])
+
+    def node_count(self):
+        return 400
+
+
+def test_point_overlap_nodes_spawn_extra_faults_flagged_born_in_overlap(monkeypatch):
+    world = World(seed=1, plates=[])
+    plate = _StubPlate()
+    # 400 own nodes on a small patch; the first 120 sit *on top of* a neighbour (dist ~ 0),
+    # the rest are a normal ~1.5-spacing boundary gap away.
+    ang = np.linspace(-0.05, 0.05, 400)
+    own = np.stack([np.cos(ang), np.sin(ang), np.zeros_like(ang)], axis=1)
+    dist = np.full(400, 0.02)
+    dist[:120] = 1e-4  # overlap
+    nn_omega = np.tile(np.array([0.0, 1e-7, 0.0]), (400, 1))
+    nn_pts = own + np.array([0.0, 0.0, 1e-3])
+    monkeypatch.setattr(faults, "_plate_stress", lambda w, p: (own, dist, nn_omega, nn_pts))
+
+    def spawn_counts():
+        world.faults = []
+        world.next_fault_id = 0
+        world.next_fault_system_id = 0
+        faults._maybe_spawn_faults(world, plate, total_nodes=400, years_myr=2.0)
+        return world.faults
+
+    spawned = spawn_counts()
+    assert spawned, "the overlap band should push mean weight high enough to spawn"
+    assert any(f.born_in_overlap for f in spawned)
+    overlap_born = [f for f in spawned if f.born_in_overlap]
+    # An overlap-born seed sits in the first 120 nodes -> near theta ~ 0 (the patch centre).
+    assert overlap_born
+
+
 # --------------------------------------------------------------------------- relief
 
 
@@ -196,6 +236,48 @@ def test_reverse_fault_uplifts_and_normal_fault_drops_its_hanging_wall():
 
     nrm = relief_delta(_KIND_NORMAL)
     assert np.min(nrm) < 0.0 and np.max(nrm) > 0.0  # graben down, footwall shoulder up
+
+
+# ------------------------------------------------------------ fault-localised deformation mode
+
+
+def test_fault_influence_tapers_from_one_to_floor_and_is_all_ones_without_faults():
+    world = World(seed=0, plates=[])
+    plate = _StubPlate()
+    # Nodes marching away from x=(1,0,0) along +y.
+    ang = np.linspace(0.0, 0.4, 60)
+    own = np.stack([np.cos(ang), np.sin(ang), np.zeros_like(ang)], axis=1)
+
+    assert np.all(faults.fault_influence(world, plate, own) == 1.0)  # no active faults -> no-op
+
+    f = _fault(plate_id=0)
+    f.world_polyline = np.array([[1.0, 0.0, 0.0], [1.0, 0.002, 0.0]])
+    world.faults = [f]
+    infl = faults.fault_influence(world, plate, own)
+    assert infl[0] == pytest.approx(1.0, abs=1e-6)  # right on the trace
+    assert infl[-1] == pytest.approx(faults.FAULT_DEFORM_FLOOR)  # far away -> floor, never 0
+    assert np.all(np.diff(infl) <= 1e-9)  # monotonically decreasing with distance
+
+
+def test_boundary_mode_is_the_default_and_leaves_deform_bit_identical():
+    a = generate_world(seed=4, num_plates=6)
+    assert a.fault_deformation_mode == "boundary"
+    b = generate_world(seed=4, num_plates=6)
+    for _ in range(6):
+        step_world(a, 1_000_000)
+        step_world(b, 1_000_000)
+    ea = np.concatenate([ln.elevation for p in a.plates for ln in p.lines])
+    eb = np.concatenate([ln.elevation for p in b.plates for ln in p.lines])
+    assert np.array_equal(ea, eb)
+
+
+def test_fault_mode_still_steps_cleanly_and_localises_relief():
+    world = generate_world(seed=4, num_plates=6)
+    world.fault_deformation_mode = "fault"
+    for _ in range(12):
+        step_world(world, 1_000_000)
+    assert world.plates  # didn't blow up
+    assert any(f.active for f in world.faults)
 
 
 # --------------------------------------------------------------------------- topology reconciliation
@@ -342,3 +424,49 @@ def test_faults_round_trip_through_a_save(tmp_path):
     assert loaded.next_fault_id == world.next_fault_id
     step_world(loaded, 1_000_000)
     assert len({f.fault_id for f in loaded.faults}) == len(loaded.faults)  # no id collisions
+
+
+def test_old_save_without_earthquakes_field_still_loads(tmp_path):
+    world = generate_world(seed=7, num_plates=6)
+    del world.earthquakes  # simulate a pickle written before the field existed
+    save = tmp_path / "old_quakes.mbworld"
+    save.write_bytes(persistence.save_world_bytes(world))
+    loaded = persistence.load_world_bytes(save.read_bytes())
+    assert loaded.earthquakes == []
+
+
+def test_earthquakes_round_trip_and_next_id_preserved(tmp_path):
+    world = _run(seed=7, steps=8)
+    assert world.earthquakes, "fast faults slip fast enough to rupture"
+    assert all(faults.QUAKE_MW_MIN <= q.magnitude <= faults.QUAKE_MW_MAX for q in world.earthquakes)
+    save = tmp_path / "quakes7.mbworld"
+    save.write_bytes(persistence.save_world_bytes(world))
+    loaded = persistence.load_world_bytes(save.read_bytes())
+    assert len(loaded.earthquakes) == len(world.earthquakes)
+    assert loaded.next_earthquake_id == world.next_earthquake_id
+    step_world(loaded, 1_000_000)
+
+
+# --------------------------------------------------------------------------- earthquakes
+
+
+def test_earthquakes_prune_past_the_retention_window(monkeypatch):
+    monkeypatch.setattr(faults, "EARTHQUAKE_RETAIN_MYR", 3.0)
+    world = _run(seed=5, steps=12, dt=1_000_000)
+    # The prune keys off elapsed_years as of the *start* of a step, so a surviving quake can
+    # be up to one step older than the raw window.
+    for q in world.earthquakes:
+        assert (world.elapsed_years - q.birth_years) <= 3.0 * 1_000_000.0 + 1_000_000.0 + 1.0
+    assert world.earthquakes, "12 fast-fault steps should leave some un-pruned quakes"
+
+
+def test_generate_earthquakes_one_per_active_fast_fault():
+    world = World(seed=0, plates=[type("Pl", (), {"plate_id": 0, "frame": np.eye(3)})()])
+    world.elapsed_years = 5_000_000
+    fast = _fault(fault_id=1, slip_rate_m_per_myr=8000.0)
+    fast.world_polyline = np.array([[1.0, 0.0, 0.0], [1.0, 0.001, 0.0]])
+    slow = _fault(fault_id=2, slip_rate_m_per_myr=1.0)  # < MIN_STEP_SLIP_FOR_QUAKE_M / dt
+    slow.world_polyline = np.array([[0.0, 1.0, 0.0], [0.0, 1.0, 0.001]])
+    world.faults = [fast, slow]
+    faults._generate_earthquakes(world, years_myr=1.0)
+    assert [q.fault_id for q in world.earthquakes] == [1]  # only the fast fault ruptured

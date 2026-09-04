@@ -309,6 +309,21 @@ class LithospherePlate(PlateWithLines):
         contested_all, divergent_all = torque.classify_boundary_nodes(self, neighbours, inputs, reach_rad)
         transform_all = ~contested_all & ~divergent_all & np.isfinite(inputs.dist_to_neighbor)
 
+        # Fault-localised deformation (World.fault_deformation_mode == "fault"): scale this
+        # step's convergent thickening and divergent thinning by proximity to an active fault
+        # trace, so plate-boundary transformation concentrates onto fault lines instead of a
+        # smooth band at the polygon edge. `fault_influence` is all-ones (i.e. a no-op) in
+        # every other mode, when the plate has no active fault, or before the first fault has
+        # spawned in a fresh contested zone -- Piece-1 overlap spawning fills those in within
+        # a step or two. Deliberately NOT applied to the arc band below: a volcanic arc is a
+        # genuinely broad magmatic swath, not a fault-localised structure.
+        if getattr(world, "fault_deformation_mode", "boundary") == "fault":
+            from . import faults
+
+            fault_influence_all = faults.fault_influence(world, self, own_points)
+        else:
+            fault_influence_all = np.ones(len(own_points))
+
         neighbor_omega_all = inputs.neighbor_omega
         closing_rate_all = rheology.normal_closing_rate_m_per_s(self.omega, neighbor_omega_all, own_points, inputs.direction_to_neighbor)
 
@@ -392,6 +407,7 @@ class LithospherePlate(PlateWithLines):
             neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
             arc_band = arc_band_all[sl]
             arc_intensity = arc_intensity_all[sl]
+            fault_influence = fault_influence_all[sl]  # all-ones except in "fault" mode
 
             # Active-margin growth seed per line end -- see ARC_MARGIN_SEED_HC_M. An end is an
             # active margin if a node within ARC_MARGIN_END_SCAN_NODES of it is in the arc
@@ -431,6 +447,9 @@ class LithospherePlate(PlateWithLines):
             )
             orogen_strength = np.where(contested, orogen_contested_strength, 0.0)
             orogen_strength[near_field] = orogen_amount * COLLISION_REACH_NEAR_FIELD_FACTOR
+            # "fault" mode: concentrate the shortening onto fault traces (no-op / all-ones
+            # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
+            orogen_strength = orogen_strength * fault_influence
             thicken = orogen_strength > 0.0
             if np.any(thicken):
                 fault_factor = (
@@ -469,8 +488,12 @@ class LithospherePlate(PlateWithLines):
             melting = np.zeros(n, dtype=bool)
             if np.any(divergent):
                 new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
-                hc[divergent] = new_hc
-                hm[divergent] = new_hm
+                # "fault" mode: scale the thinning delta by fault proximity (all-ones
+                # otherwise). Melt (decompression volcanism) still fires on the geometric
+                # rift threshold -- it's a discrete event, not a rate.
+                infl = fault_influence[divergent]
+                hc[divergent] = hc[divergent] + infl * (new_hc - hc[divergent])
+                hm[divergent] = hm[divergent] + infl * (new_hm - hm[divergent])
                 melting[divergent] = melt
 
             prior_age = line.divergent_age_myr

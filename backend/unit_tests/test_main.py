@@ -57,6 +57,7 @@ def test_lakes_before_generate_returns_404(client):
 
 def test_faults_before_generate_returns_404(client):
     assert client.get("/world/faults").status_code == 404
+    assert client.get("/world/earthquakes").status_code == 404
 
 
 def test_fault_at_before_generate_returns_404(client):
@@ -777,6 +778,34 @@ def test_controls_wind_model_toggle_and_validation(client):
     assert client.get("/world/render", params={"view": "temperature"}).status_code == 200
 
     assert client.post("/world/controls", json={"wind_model": "nonsense"}).status_code == 400
+
+
+def test_controls_fault_deformation_mode_toggle_and_validation(client):
+    from app import main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+    assert world.fault_deformation_mode == "boundary"
+
+    for mode in ("fault", "both", "boundary"):
+        resp = client.post("/world/controls", json={"fault_deformation_mode": mode})
+        assert resp.status_code == 200
+        assert resp.json()["fault_deformation_mode"] == mode
+        assert world.fault_deformation_mode == mode
+
+    assert client.post("/world/controls", json={"fault_deformation_mode": "nonsense"}).status_code == 400
+
+
+def test_earthquakes_endpoint(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    assert client.get("/world/earthquakes").json()["earthquakes"] == []  # none before a step
+    for _ in range(20):
+        client.post("/world/step", json={"years": 1_000_000})
+    body = client.get("/world/earthquakes").json()
+    for q in body["earthquakes"]:
+        assert len(q["epicenter"]) == 3
+        assert 3.5 <= q["magnitude"] <= 9.5
+        assert q["age_myr"] >= 0.0
 
 
 def test_controls_tuning_multipliers_round_trip_and_validate(client):

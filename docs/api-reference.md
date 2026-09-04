@@ -140,13 +140,15 @@ Request body (all fields optional, independently settable -- the "Controls" wind
 only whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd" }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd", "fault_deformation_mode": "fault" }
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
 scales `climate.SUNLIGHT`), `World.simulate_plate_movement`,
-`World.simulate_climate_biomes` (both default `true`), and/or `World.wind_model`
-(`"diagnostic"` default, or `"cfd"` -- a `400` for any other value) on the *current* world
+`World.simulate_climate_biomes` (both default `true`), `World.wind_model`
+(`"diagnostic"` default, or `"cfd"` -- a `400` for any other value), and/or
+`World.fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"`) on the
+*current* world
 -- no regenerate needed. Unlike `axial_tilt_deg`/`node_density`, these are meant to be tweaked
 mid-simulation: every `is_ocean` check in the codebase (`climate.py`, `hydrology.py`,
 `bathymetry.py`) keys off `sea_level_m` instead of a bare `elevation <= 0.0`, and
@@ -169,6 +171,12 @@ solve every step (`_advance_fluid_dynamics`), `"diagnostic"` skips it and rebuil
 air temperature from `climate.py`'s closed-form ABL formulas -- much faster steps for
 ~85-90% of the CFD biome map. See simulation-model.md#wind-model.
 
+`fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"` -- a `400` for any
+other value) picks where plate-boundary deformation is applied: `"boundary"` is the smooth
+distance-band thickening at the polygon edge, `"fault"` localises it onto active fault traces
+(and scales the fault-relief layer up to compensate), `"both"` runs both. See
+simulation-model.md#faults.
+
 The body also accepts the twelve **geomorphic-budget tuning multipliers**
 (`world.TUNING_MULTIPLIER_FIELDS`): `rain_erosion_multiplier`, `river_erosion_multiplier`,
 `wind_erosion_multiplier`, `ocean_erosion_multiplier`, `coastal_leveling_multiplier`,
@@ -186,11 +194,11 @@ change without waiting for a step -- `climate_cache` is otherwise only refreshed
 step by `erosion.py`, and not at all while `simulate_climate_biomes` is `false`. `404` if no
 world has been generated yet.
 
-Response echoes back the world's current values for all five controls plus all twelve tuning
+Response echoes back the world's current values for all six controls plus all twelve tuning
 multipliers:
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd",
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd", "fault_deformation_mode": "boundary",
   "rain_erosion_multiplier": 1.0, "river_erosion_multiplier": 1.0, "wind_erosion_multiplier": 1.0, "ocean_erosion_multiplier": 1.0,
   "coastal_leveling_multiplier": 1.0, "glacier_erosion_multiplier": 1.0, "seismic_erosion_multiplier": 1.0, "river_deposition_multiplier": 1.0,
   "ocean_deposition_multiplier": 1.0, "collision_uplift_multiplier": 1.0, "collision_uplift_reach_multiplier": 1.0, "volcanism_multiplier": 1.0 }
@@ -627,6 +635,37 @@ is `[]` before the first step. `404` if no world has been generated yet.
   `system_id`) do. `fault_systems` is `[]` before the first step.
 - `distance_from_boundary_km` is recomputed live each call (nearest cross-plate node), so it
   changes as the plate moves, unlike the stored `birth_distance_from_boundary_km`.
+
+## `GET /world/earthquakes`
+
+Recent earthquakes (see `faults.Earthquake` / [simulation-model.md#faults](simulation-model.md#faults))
+for the fading epicentre overlay in the "Fault lines" view. The backend prunes anything older
+than `faults.EARTHQUAKE_RETAIN_MYR` (~5 Myr) every step, so this list only ever holds the
+last few Myr of activity. `[]` before the first step. `404` if no world has been generated yet.
+
+```json
+{
+  "elapsed_years": 12000000,
+  "earthquakes": [
+    {
+      "earthquake_id": 41,
+      "fault_id": 3,
+      "plate_id": 5,
+      "kind": "reverse",
+      "epicenter": [0.35, -0.11, -0.93],
+      "magnitude": 7.12,
+      "age_myr": 0.0,
+      "birth_years": 12000000
+    }
+  ]
+}
+```
+
+- `epicenter` is a single unit vector in **true** (un-rotated) world coordinates.
+- `magnitude` is a moment magnitude (trace length + slip rate + an overlap-born bonus + a
+  small per-event jitter), clamped to roughly `[4, 9]`.
+- `age_myr` is `(elapsed_years - birth_years) / 1e6` -- the overlay fades a marker to zero by
+  `EARTHQUAKE_RETAIN_MYR`.
 
 ## `GET /world/fault_at?lat_deg=0&lon_deg=0`
 

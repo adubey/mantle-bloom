@@ -1105,15 +1105,22 @@ inspector panel. Not done here: the master lineament doesn't spawn *fresh* stran
 lifetime (the family is all born at once); and item 3's calibration sweep now matters more
 (systems add a lot of cumulative strand relief).
 
-**2. The trace applies relief but doesn't shear the node field.** `_apply_plate_fault_relief`
-raises/lowers `elevation` near an active trace per regime, but the `ElevationLine` nodes on
-either side are never actually displaced *along* the fault -- a strike-slip fault with tens
-of km of `cumulative_offset_m` leaves piercing points (a river valley, a ridge crest) exactly
-where they were. Real strike-slip offset of pre-existing features is the visually
-recognisable thing about a fault like the San Andreas. Doing it properly means moving nodes
-tangent to the trace by the along-strike component of slip, which interacts with line
-regularization (`elevation_lines.py`) and the plate-local frame -- deferred as its own piece
-of work rather than folded into the first cut.
+**2. The trace applies relief but doesn't shear the node field. PARTLY DONE (2026).**
+`_apply_plate_fault_relief` raises/lowers `elevation` near an active trace per regime, but the
+`ElevationLine` nodes on either side are never actually displaced *along* the fault -- a
+strike-slip fault with tens of km of `cumulative_offset_m` leaves piercing points (a river
+valley, a ridge crest) exactly where they were. Real strike-slip offset of pre-existing
+features is the visually recognisable thing about a fault like the San Andreas. Doing that
+properly (moving nodes tangent to the trace by the along-strike slip) is still open.
+
+What *did* land: `World.fault_deformation_mode` (`"boundary"` default / `"fault"` / `"both"`,
+Controls window). In `"fault"` mode `LithospherePlate.deform` gates its own
+convergent/divergent thickening by `faults.fault_influence()` (distance to an active fault
+trace) and `_apply_plate_fault_relief` scales its rates/reach up, so plate-boundary
+deformation localises onto fault lines instead of a smooth band at the polygon edge. Faults
+now also spawn wherever two plates' node clouds overlap (`OVERLAP_STRESS_WEIGHT` lifts the
+spawn weight on overlapped nodes), so a stalled collision / bodily overlap gets blanketed
+with fault families for the mode to act on. See `docs/simulation-model.md#faults`.
 
 **3. Spawn rate / relief magnitudes are eyeballed, not calibrated.** `BASE_SPAWN_RATE_PER_MYR`
 (3.0 systems/Myr sphere-wide at full stress) and the per-regime `*_M_PER_MYR` relief
@@ -1123,11 +1130,18 @@ against a target fault density or a hypsometry budget. Worth a sweep: fault coun
 / hypsography numbers the [land-fraction decline](#land-fraction-slowly-declines-over-a-long-run)
 work cares about.
 
-**4. No live tuning knob.** Unlike the geomorphic budget, none of the fault constants are
-exposed in the Controls window. If they turn out to matter for a world's look, they should
-join the other live knobs rather than needing a code edit + regenerate.
+**4. No live tuning knob.** Unlike the geomorphic budget, none of the fault *constants* are
+exposed in the Controls window (still true). `World.fault_deformation_mode` -- the
+`"boundary"` / `"fault"` / `"both"` selector added for item 2 -- *is* a Controls select now,
+but that's a model switch, not a magnitude knob. If the fault relief / spawn constants turn
+out to matter for a world's look they should still join the live knobs.
 
-**5. Faults don't influence seismicity / hazard output.** There is no earthquake model; a
-fault's `slip_rate` and `active` flag are only used for relief and rendering. If a
-seismic-hazard or "recent earthquakes" view is ever wanted, the active-fault set is the
-natural source.
+**5. Faults don't influence seismicity / hazard output. DONE (2026).** `faults._generate_earthquakes`
+emits one characteristic `Earthquake` per active fault per step once the fault has slipped at
+least `MIN_STEP_SLIP_FOR_QUAKE_M` (a real active fault ruptures thousands of times per Myr --
+one representative event is all we keep). Magnitude is from trace length + slip rate + an
+overlap bonus; epicentres are transient world-frame points in `World.earthquakes`, pruned
+after `EARTHQUAKE_RETAIN_MYR` (~5 Myr). `erosion.py` reads them for a local seismic-erosion
+burst (`_earthquake_erosion_multiplier`, `EARTHQUAKE_EROSION_*`); `GET /world/earthquakes`
+and the fading epicentre overlay in the "Fault lines" view expose them. The largest event
+each step (if `>= EARTHQUAKE_LOG_MIN_MW`) is logged to the event console.

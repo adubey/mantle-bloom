@@ -168,6 +168,7 @@ class ControlsRequest(BaseModel):
     simulate_plate_movement: bool | None = None
     simulate_climate_biomes: bool | None = None
     wind_model: str | None = None
+    fault_deformation_mode: str | None = None
     # Geomorphic-budget tuning knobs -- dimensionless multipliers, 1.0 == untuned (see
     # world.TUNING_MULTIPLIER_FIELDS and World's field group). Same "only the touched one is
     # sent" convention as the fields above; each is rejected below if negative.
@@ -186,6 +187,7 @@ class ControlsRequest(BaseModel):
 
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
+FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
@@ -688,6 +690,11 @@ def set_controls(req: ControlsRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown wind_model {req.wind_model!r}; choices are {WIND_MODEL_CHOICES}"
         )
+    if req.fault_deformation_mode is not None and req.fault_deformation_mode not in FAULT_DEFORMATION_MODE_CHOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown fault_deformation_mode {req.fault_deformation_mode!r}; choices are {FAULT_DEFORMATION_MODE_CHOICES}",
+        )
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
         if value < 0.0:
@@ -706,6 +713,8 @@ def set_controls(req: ControlsRequest) -> dict:
             world.simulate_climate_biomes = req.simulate_climate_biomes
         if req.wind_model is not None:
             world.wind_model = req.wind_model
+        if req.fault_deformation_mode is not None:
+            world.fault_deformation_mode = req.fault_deformation_mode
         for name, value in tuning_updates.items():
             setattr(world, name, float(value))
         world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
@@ -715,6 +724,7 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_plate_movement": world.simulate_plate_movement,
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,
+        "fault_deformation_mode": world.fault_deformation_mode,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},
     }
 
@@ -838,6 +848,31 @@ def list_faults() -> dict:
             if system.plate_id in by_id
         ]
         return {"elapsed_years": world.elapsed_years, "faults": summaries, "fault_systems": systems}
+
+
+@app.get("/world/earthquakes")
+def list_earthquakes() -> dict:
+    """Recent earthquakes (see faults.Earthquake / faults._generate_earthquakes) as plain
+    JSON, for the fading epicentre overlay in the "Fault lines" view. The backend prunes this
+    list after faults.EARTHQUAKE_RETAIN_MYR, so it only ever holds the last few Myr. `404` if
+    no world has been generated yet."""
+    world = _require_world()
+    with _world_lock:
+        elapsed = world.elapsed_years
+        quakes = [
+            {
+                "earthquake_id": q.earthquake_id,
+                "fault_id": q.fault_id,
+                "plate_id": q.plate_id,
+                "kind": q.kind,
+                "epicenter": _round_coords(np.asarray(q.epicenter_world)),
+                "magnitude": round(float(q.magnitude), 2),
+                "age_myr": round((elapsed - q.birth_years) / 1e6, 3),
+                "birth_years": q.birth_years,
+            }
+            for q in world.earthquakes
+        ]
+        return {"elapsed_years": elapsed, "earthquakes": quakes}
 
 
 @app.get("/world/fault_at")
