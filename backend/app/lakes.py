@@ -195,12 +195,34 @@ class Lake:
     outlet_node_idx: int = -1  # member node where max_depth's merge happens; -1 while unresolved
     current_water_elevation: float = 0.0  # this lake's water surface; == floor_elevation means dry
     is_spilling: bool = False  # hysteresis: was this lake actively spilling last step
+    # Leaf-only: this catchment's own true local minimum -- the same node `_catchment_roots`
+    # already computed as this leaf's `root` key, just threaded onto the object itself so
+    # `compute_spill_routing` can write per-sink-node results without recomputing it. -1 on a
+    # merged parent (which, being more than one original catchment, has no single sink node of
+    # its own -- see compute_spill_routing's own docstring for why a parent's *subtree* of
+    # leaves is what actually matters there).
+    sink_node_idx: int = -1
+    # The node on the FAR side of the boundary edge that set max_depth -- i.e. where this
+    # lake's overflow actually escapes to, once full. Distinct from outlet_node_idx (this
+    # lake's own side of that same edge, kept unchanged for main.py's outlet_xyz display):
+    # outlet_target_idx is a node in whatever lies on the other side of the rim -- a sibling
+    # lake's own catchment, or the ocean itself for a land-ocean merge -- not a member of this
+    # lake. -1 while unresolved (mirrors outlet_node_idx's own unresolved sentinel).
+    outlet_target_idx: int = -1
 
 
-def _make_leaf(lake_id: int, members: list[int], elevation_list: list[float]) -> Lake:
+def _make_leaf(lake_id: int, members: list[int], elevation_list: list[float], sink_node_idx: int) -> Lake:
     members_arr = np.array(members, dtype=np.int64)
     floor = min(elevation_list[m] for m in members)
-    return Lake(lake_id=lake_id, members=members_arr, floor_elevation=floor, min_depth=floor, max_depth=None, current_water_elevation=floor)
+    return Lake(
+        lake_id=lake_id,
+        members=members_arr,
+        floor_elevation=floor,
+        min_depth=floor,
+        max_depth=None,
+        current_water_elevation=floor,
+        sink_node_idx=sink_node_idx,
+    )
 
 
 def _catchment_roots(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray) -> list[int]:
@@ -292,7 +314,7 @@ def build_lake_hierarchy(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
         for node in members:
             if node != root:
                 parent[find(node)] = find(root)
-        component_lake[root] = _make_leaf(next_id, members, elevation_list)
+        component_lake[root] = _make_leaf(next_id, members, elevation_list, sink_node_idx=root)
         next_id += 1
     for node, root in enumerate(catchment_root):
         if root == _OCEAN_CATCHMENT:
@@ -333,10 +355,12 @@ def build_lake_hierarchy(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
         if a_ocean or b_ocean:
             land_root = rb if a_ocean else ra
             land_node = b if a_ocean else a
+            ocean_node = a if a_ocean else b
             lake = component_lake.pop(land_root, None)
             if lake is not None:
                 lake.max_depth = w
                 lake.outlet_node_idx = land_node
+                lake.outlet_target_idx = ocean_node
                 roots.append(lake)
             parent[land_root] = ocean_root
             continue
@@ -344,15 +368,19 @@ def build_lake_hierarchy(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
         # Both sides are real catchments (or already-merged parents) -- a genuine saddle.
         # Every catchment was eagerly given a leaf above, so these should always be present;
         # the fallback below is only a defensive no-op for an unreachable degenerate case
-        # (e.g. a node with no neighbors at all).
-        lake_a = component_lake.pop(ra, None) or _make_leaf(next_id, [ra], elevation_list)
-        lake_b = component_lake.pop(rb, None) or _make_leaf(next_id + 1, [rb], elevation_list)
+        # (e.g. a node with no neighbors at all). `ra`/`rb` are themselves real node indices
+        # (union-find representatives that trace back to a literal catchment-root node -- see
+        # the pre-merge loop above), so they're valid sink_node_idx values for this fallback.
+        lake_a = component_lake.pop(ra, None) or _make_leaf(next_id, [ra], elevation_list, sink_node_idx=ra)
+        lake_b = component_lake.pop(rb, None) or _make_leaf(next_id + 1, [rb], elevation_list, sink_node_idx=rb)
         next_id += 2
 
         lake_a.max_depth = w
         lake_a.outlet_node_idx = a
+        lake_a.outlet_target_idx = b
         lake_b.max_depth = w
         lake_b.outlet_node_idx = b
+        lake_b.outlet_target_idx = a
 
         parent[ra] = rb  # simple path-compressed union, same style as hydrology._lake_component_sizes
         new_root = rb
@@ -468,6 +496,83 @@ def _prev_level(lake: Lake, elevation: np.ndarray, prev_lake_depth: np.ndarray) 
     return max(float((elevation[members][wet] + member_depth[wet]).max()), lake.floor_elevation)
 
 
+def compute_spill_routing(
+    forest: list[Lake], elevation: np.ndarray, prev_lake_depth: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Per-node `(filled_elevation, spill_target)`, the pair `hydrology._compute_flow_direction`
+    consults at a sink node to decide whether it should redirect: `filled_elevation` the
+    elevation a sink's water surface must reach before it escapes its basin, `spill_target` the
+    one-hop neighbor to escape toward once it does. Formerly computed by an entirely separate,
+    independent priority-flood over bare terrain (`hydrology._basin_spill_kernel`) that never
+    agreed exactly with *this* module's own catchment+Kruskal hierarchy -- the two usually
+    landed close but were evaluated differently and could drift apart step to step (confirmed
+    directly against a real save: a merged lake's own fresh `_resolve` showed it hadn't yet
+    reached its true rim, while the old independent kernel's stale, one-step-lagged threshold
+    said it had already spilled). Deriving both arrays from this module's *own* tree instead
+    makes `build_lake_hierarchy`'s hierarchy the single source of truth for where a basin's
+    overflow goes -- see this module's own docstring for why that hierarchy, not a separate
+    Dijkstra pass, is the physically-correct one.
+
+    Every node defaults to its own bare `elevation`/`-1` (an ordinary hillslope node has no
+    real rim to speak of -- any downhill neighbor already clears it via plain steepest descent,
+    the same "no real rim ever blocks it" fact `_compute_flow_direction`'s own docstring relies
+    on) and only a genuine sink node -- a lakes.py catchment-root leaf's own local minimum,
+    `Lake.sink_node_idx` -- is ever overwritten below; see this module's own docstring for why
+    a `_catchment_roots` catchment root is always exactly a `_compute_flow_direction` sink node.
+    A leaf whose chain never reaches the ocean (`max_depth is None`, a genuine closed/endorheic
+    basin) gets `filled_elevation = inf`/`spill_target = -1`, matching the old kernel's own
+    "unreachable" convention -- it never spills, however full it gets.
+
+    **Which rim currently governs a sink is decided the same way `_resolve` decides "is this
+    lake one connected body yet," and deliberately reuses that exact test (`_prev_level` against
+    `min_depth`)** -- this is the one place this function depends on `prev_lake_depth`, not just
+    bare terrain, and it's what fixes the multi-sink-under-one-merged-body drift: once several
+    original leaf catchments have merged (as of *last* step's persisted water) into one shared
+    body, every one of their original sink nodes -- each still a literal local minimum in the
+    bare-terrain flow graph even while fully submerged -- must escape via the *merged* body's
+    own current rim, not whatever shallower rim its own individual leaf used to have before it
+    was swallowed. Walking down from each root, the first node found to already be one merged
+    body (a leaf, trivially, or a parent whose children were already united as of last step) is
+    exactly that governing rim: everything in its subtree writes that same `(max_depth,
+    outlet_target_idx)` pair. A node still short of that (a parent whose children were *not*
+    yet one body last step) recurses into its children independently instead, since they may
+    each still be governed by their own, still-separate, shallower rims. Because the walk always
+    stops at the *first* such node encountered from the root down, and a parent's own
+    `_prev_level` is computed over the union of both children's members (so it can only read as
+    "already merged" once the *real* `_resolve` pass actually pooled them), no leaf's
+    `sink_node_idx` can ever be written by more than one stopping point -- the whole walk does
+    `O(total tree size)` work, the same complexity class as `_resolve` itself, not `O(depth x
+    leaf count)`.
+
+    Implemented as an explicit-stack walk, matching `_catchment_roots`/`build_lake_hierarchy`/
+    `_resolve`'s own iterative style for the same reason: a long spill cascade's tree can run
+    thousands of levels deep, well past Python's recursion limit."""
+    n = len(elevation)
+    filled_elevation = elevation.copy()
+    spill_target = np.full(n, -1, dtype=np.int64)
+
+    def write_subtree(node: Lake, filled_value: float, target: int) -> None:
+        leaves = [node]
+        while leaves:
+            cur = leaves.pop()
+            if cur.children:
+                leaves.extend(cur.children)
+            else:
+                filled_elevation[cur.sink_node_idx] = filled_value
+                spill_target[cur.sink_node_idx] = target
+
+    stack: list[Lake] = list(forest)
+    while stack:
+        node = stack.pop()
+        already_merged = _prev_level(node, elevation, prev_lake_depth) >= node.min_depth
+        if node.children and not already_merged:
+            stack.extend(node.children)
+            continue
+        write_subtree(node, node.max_depth if node.max_depth is not None else np.inf, node.outlet_target_idx)
+
+    return filled_elevation, spill_target
+
+
 def _resolve(
     lake: Lake,
     elevation: np.ndarray,
@@ -562,6 +667,36 @@ def _resolve(
     return lake.current_water_elevation
 
 
+def resolve_lakes(
+    forest: list[Lake],
+    elevation: np.ndarray,
+    prev_lake_depth: np.ndarray,
+    water_deposited: np.ndarray,
+    years: float,
+    is_frozen: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[LakeEvent]]:
+    """The back half of `step_lakes` -- everything after `build_lake_hierarchy` -- pulled out
+    on its own so `compute_hydrology` can build the hierarchy once, early (before flow routing,
+    which now needs it too -- see `compute_spill_routing`), and pass that *same* `forest` in
+    here afterward rather than paying for a second, redundant `build_lake_hierarchy` call every
+    step. Resolves every top-level lake's own water balance (growth/evaporation/merge/split,
+    and this step's own silt drop -- see `_resolve`/`_water_balance`). Returns `(lake_depth,
+    silt_deposited, events)` -- see `step_lakes`'s own docstring for what each means; `forest`
+    itself isn't returned here since the caller already has the exact object it passed in,
+    now mutated in place with this step's resolved `current_water_elevation`/`is_spilling`."""
+    n = len(elevation)
+    lake_depth = np.zeros(n)
+    silt_deposited = np.zeros(n)
+    if n == 0:
+        return lake_depth, silt_deposited, []
+
+    years_myr = years / 1_000_000.0
+    events: list[LakeEvent] = []
+    for root in forest:
+        _resolve(root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, lake_depth, silt_deposited, events)
+    return lake_depth, silt_deposited, events
+
+
 def step_lakes(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -571,34 +706,26 @@ def step_lakes(
     years: float,
     is_frozen: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray, list[Lake], list[LakeEvent]]:
-    """The full per-step lake update: rebuild this step's depression hierarchy from current
-    terrain (`build_lake_hierarchy`, bare `elevation` -- everything silted in through the end of
-    last step is already folded into real `elevation` by erosion.py, so there's no separate
-    effective-floor offset to add), then resolve every top-level lake's own water balance
-    (growth/evaporation/merge/split, and this step's own silt drop -- see
-    `_resolve`/`_water_balance`). Returns `(lake_depth, silt_deposited, forest, events)`:
-    `lake_depth` an (N,) array aligned with `elevation` (0 wherever no lake reaches, exactly the
-    same shape/meaning hydrology.py's old `update_lakes` produced, for every other consumer --
-    render_image.py, coastline.py, erosion.py, group_rivers -- to keep reading unchanged);
-    `silt_deposited` *this step's* per-node sediment increment for erosion.py to add straight
-    into `elevation` (always >= 0, nonzero only under standing water this step); `forest` this
-    step's fully-resolved `Lake` tree (each lake's own `current_water_elevation`/`is_spilling`
-    set to its outcome this step -- informational only, e.g. for a future per-lake stats view;
-    nothing in this module reads it back next step, see the module docstring for why no
-    persistent registry is needed); and `events` this step's `LakeEvent`s (merge/split
-    transitions -- the caller runs them through `summarize_lake_events` and logs the result,
-    mirroring merge_split.apply_topology_changes's own pattern; this module never calls
+    """The full per-step lake update, for a caller that doesn't need to reuse the depression
+    hierarchy for anything else (`compute_hydrology` itself no longer calls this directly --
+    see `resolve_lakes`'s own docstring -- but every existing test, and any other future
+    caller that just wants "lakes for this terrain, resolved," still can): rebuild this step's
+    depression hierarchy from current terrain (`build_lake_hierarchy`, bare `elevation` --
+    everything silted in through the end of last step is already folded into real `elevation`
+    by erosion.py, so there's no separate effective-floor offset to add), then `resolve_lakes`
+    it. Returns `(lake_depth, silt_deposited, forest, events)`: `lake_depth` an (N,) array
+    aligned with `elevation` (0 wherever no lake reaches, exactly the same shape/meaning
+    hydrology.py's old `update_lakes` produced, for every other consumer -- render_image.py,
+    coastline.py, erosion.py, group_rivers -- to keep reading unchanged); `silt_deposited`
+    *this step's* per-node sediment increment for erosion.py to add straight into `elevation`
+    (always >= 0, nonzero only under standing water this step); `forest` this step's
+    fully-resolved `Lake` tree (each lake's own `current_water_elevation`/`is_spilling` set to
+    its outcome this step -- informational only, e.g. for a future per-lake stats view; nothing
+    in this module reads it back next step, see the module docstring for why no persistent
+    registry is needed); and `events` this step's `LakeEvent`s (merge/split transitions -- the
+    caller runs them through `summarize_lake_events` and logs the result, mirroring
+    merge_split.apply_topology_changes's own pattern; this module never calls
     `world.log_event` directly, keeping it testable without a `World`)."""
-    n = len(elevation)
-    lake_depth = np.zeros(n)
-    silt_deposited = np.zeros(n)
-    if n == 0:
-        return lake_depth, silt_deposited, [], []
-
     forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
-    years_myr = years / 1_000_000.0
-
-    events: list[LakeEvent] = []
-    for root in forest:
-        _resolve(root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, lake_depth, silt_deposited, events)
+    lake_depth, silt_deposited, events = resolve_lakes(forest, elevation, prev_lake_depth, water_deposited, years, is_frozen)
     return lake_depth, silt_deposited, forest, events

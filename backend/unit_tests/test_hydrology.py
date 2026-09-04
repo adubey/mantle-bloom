@@ -87,28 +87,6 @@ def _river_inspector_fields():
     )
 
 
-def test_compute_basin_spill_collapses_nested_rims_to_one_hop():
-    # A 4-node chain: 0 (elevation 30, behind a rim) -> 1 (the rim, 50) -> 2 (20) -> 3 (ocean,
-    # -10). Node 0's best path to the ocean is forced to cross node 1's rim (50) even though
-    # node 1 itself is higher than node 0 -- so filled_elevation[0] must be 50, not node 0's
-    # own (lower) neighbor chain. And per the priority-flood's own "collapse nested basins"
-    # rule, node 0's escape hop should point past node 1 straight to node 2 (the cell just on
-    # the low side of the rim it has to cross), not at node 1 itself.
-    elevation = np.array([30.0, 50.0, 20.0, -10.0])
-    is_ocean = np.array([False, False, False, True])
-    neighbor_idx = np.array(
-        [
-            [1, 1],
-            [0, 2],
-            [1, 3],
-            [2, 2],
-        ]
-    )
-    filled, spill = hydrology._compute_basin_spill(elevation, is_ocean, neighbor_idx)
-    assert filled.tolist() == [50.0, 50.0, 20.0, -10.0]
-    assert spill.tolist() == [2, 2, 3, -1]
-
-
 def test_compute_flow_direction_sink_redirects_once_lake_reaches_spill_point():
     # Same 4-node setup as above. Node 0 has no lower neighbor (its only neighbor, node 1,
     # is higher) so it's a sink candidate -- unless its current water surface has already
