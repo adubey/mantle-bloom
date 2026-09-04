@@ -135,6 +135,31 @@ CHANNEL_PREFERENCE_THRESHOLD_M = 5.0
 # docstring and lakes.py's own module docstring for why.
 LAKE_MIN_VISIBLE_DEPTH_M = 1.0
 
+# `connected_ocean_mask`'s own "second ocean" threshold: any below-sea-level connected
+# component whose node count is at least this fraction of the single largest one is *also*
+# classified as ocean, not demoted to a giant lake. Without this, a world with two genuinely
+# separate, ocean-scale bodies of water sees the smaller permanently misclassified as an
+# endorheic basin -- and worse, right at the strait between them, a few meters of ordinary
+# per-step erosion/tectonic drift is enough to open or close that connection, which flips the
+# smaller body between "merged into the one ocean component" and "its own giant lake" every
+# few steps (confirmed directly against a real save: an 11,151-node, -5856m-floor basin ~186km
+# from the 77,748-node main ocean, oscillating in and out of the lake list). Picked from that
+# same save's own size gap: the second-largest component there was 14.3% of the largest, while
+# every genuine lake was under 0.4% -- 5% sits well inside that gap, generously catching a
+# real second ocean while still demoting an actual Caspian-Sea-scale closed basin to a lake.
+SECOND_OCEAN_SIZE_FRACTION = 0.05
+
+# ...and an absolute floor alongside that fraction, since a *fraction* of the largest component
+# alone can't tell a real second ocean apart from an ordinary small enclosed pit sitting in a
+# proportionally tiny world -- this codebase's own unit tests exercise `connected_ocean_mask`
+# on toy fixtures as small as ~15-40 total nodes, where an enclosed 3-node pit is already 20%
+# of a 15-node "ocean" (see test_connected_ocean_mask_excludes_an_enclosed_interior_pit) despite
+# being exactly the kind of small interior depression this function must still demote. A real
+# generated world runs tens of thousands of nodes at minimum (node_density in world.py), so a
+# floor comfortably above any toy fixture but far below a genuine ocean-scale component costs
+# nothing on real worlds while keeping the small-fixture case exact.
+SECOND_OCEAN_MIN_NODE_COUNT = 500
+
 # A spilling lake's outlet channel erodes based on the *lake's* own surface area, not just
 # the ordinary precip-routed flow passing through that one node. Real overflowing lakes carry
 # far more erosive force at their outlet than an equivalent plain river of the same
@@ -363,8 +388,12 @@ def connected_ocean_mask(
     neighbor_idx: np.ndarray | None = None,
 ) -> np.ndarray:
     """Per-node bool, True only where a node is both below sea level *and* part of the world
-    ocean -- the single largest connected below-sea-level body. Found by a connected-components
-    pass (`scipy.sparse.csgraph`, same tool `plates.node_components` uses) over the k-NN graph
+    ocean -- the single largest connected below-sea-level body, plus any other component within
+    `SECOND_OCEAN_SIZE_FRACTION` of its size (see that constant's own comment for why: without
+    it, a world with two genuinely separate, ocean-scale bodies of water not only misclassifies
+    the smaller as a giant lake, but flickers it in and out of the lake list every few steps as
+    the strait between them opens/closes). Found by a connected-components pass
+    (`scipy.sparse.csgraph`, same tool `plates.node_components` uses) over the k-NN graph
     restricted to below-sea-level nodes. Every *other* below-sea-level region -- an enclosed
     interior depression that erosion or plate deformation dropped beneath sea level without
     ever connecting it to open water -- comes back False, so hydrology treats it as an ordinary
@@ -374,11 +403,7 @@ def connected_ocean_mask(
     `neighbor_idx` (this module's own FLOW_NEIGHBOR_COUNT graph) is reused when passed, else a
     fresh graph is built from `points`. Returns the bare `elevation <= sea_level_m` mask
     unchanged when there are too few nodes to build a graph, or when every below-sea-level node
-    is already one connected body -- the ordinary single-ocean world, the common case.
-
-    Known limitation: a world with two genuinely separate large oceans would see the smaller
-    demoted to a giant lake. A future knob could keep every component within some fraction of
-    the largest, not only the largest itself."""
+    is already one connected body -- the ordinary single-ocean world, the common case."""
     below = elevation <= sea_level_m
     n = len(elevation)
     if n == 0 or not below.any() or below.all():
@@ -399,8 +424,18 @@ def connected_ocean_mask(
     below_labels = labels[below_idx]
     if np.unique(below_labels).size <= 1:
         return below  # every below-sea-level node is one connected ocean already
-    ocean_label = np.bincount(below_labels).argmax()
-    return below & (labels == ocean_label)
+    counts = np.bincount(below_labels)
+    largest_label = counts.argmax()
+    largest_count = counts[largest_label]
+    # The largest component is always ocean, full stop, regardless of the floor below -- that
+    # floor exists only to gate whether some *other* component also counts as ocean, not to
+    # second-guess the single biggest below-sea-level body itself (which would otherwise
+    # wrongly demote the whole ocean to "no ocean at all" on a small enough world, toy test
+    # fixtures included).
+    qualifies = (counts >= largest_count * SECOND_OCEAN_SIZE_FRACTION) & (counts >= SECOND_OCEAN_MIN_NODE_COUNT)
+    qualifies[largest_label] = True
+    ocean_labels = np.nonzero(qualifies)[0]
+    return below & np.isin(labels, ocean_labels)
 
 
 def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np.ndarray) -> np.ndarray:
