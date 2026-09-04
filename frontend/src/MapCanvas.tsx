@@ -38,10 +38,12 @@ interface Props {
   // map. A click outside the projected globe silhouette reports null (dismiss the popup).
   // Omitted on every other view, which leaves a click doing nothing, exactly as before.
   onProbe?: (probe: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => void;
-  // Combined mode encodes a per-pixel biome id in the PNG's alpha channel (see backend
-  // render_image.py's COMBINED_LAKE_ID_CODE comment / legendData.ts). When true, every painted
-  // frame gets a full-canvas pass that reads those ids and then resets alpha to fully opaque --
-  // the 237..255 alpha spread is a data channel, not meant to actually composite.
+  // Biome and Combined mode both encode a per-pixel *dominant* biome id in the PNG's alpha
+  // channel (see backend render_image.py's COMBINED_LAKE_ID_CODE comment / legendData.ts) --
+  // both views now blend a boundary cell's RGB toward its runner-up class, so RGB alone no
+  // longer identifies a pixel's class. When true, every painted frame gets a full-canvas pass
+  // that reads those ids and then resets alpha to fully opaque -- the 237..255 alpha spread is
+  // a data channel, not meant to actually composite.
   alphaEncodedIds?: boolean;
   // While a background animation holds the world lock (see App.tsx), the rotate-drag + probe
   // click are inert -- a rotation/render there would only 503.
@@ -60,22 +62,19 @@ const SEGMENT_BREAK_FACTOR = 6;
 // enough contrast that the exact-match biome cells still read as clearly "lit up" next to it.
 const HIGHLIGHT_DIM_FACTOR = 0.35;
 
-// The Biome view (see backend app/render_image.py's _render_biome_view) draws every pixel as
-// exactly one of biomes.BIOME_COLORS' fixed palette (Köppen land classes + pelagic ocean
-// classes) -- no coastline/graticule overlay on top -- so an exact RGB match (tolerance 0)
-// against the clicked legend group's member colors is enough to pick out that group's cells,
-// entirely client-side, with no new server render mode needed.
+// Neither the Biome nor the Combined view matches on color: both blend a boundary cell's RGB
+// toward its runner-up class (see backend app/render_image.py's _biome_blend_rgb), so a pixel's
+// RGB alone no longer reliably identifies its class. Each carries its per-pixel *dominant*
+// (>50% share) biome id in the alpha channel instead (see legendData.ts's highlightTargetFor /
+// the `idCodes` branch below), read straight off each pixel with no color-distance ambiguity
+// and no risk of two biomes' colors colliding.
 //
-// Classification is nearest-neighbor across the *entire* palette, not just a within-tolerance
-// check against the selected label's own colors: picking the closest label first, and only
-// then comparing it to the selection, keeps one label's highlight from bleeding into another
-// whose color lands nearby in RGB space. `tolerance` still bounds how far the *closest* match
-// can be before a pixel counts as belonging to no known label at all (plain ocean, rivers,
-// coastline, graticule, etc.), so those never get swept into whichever label is nearest.
-//
-// The Combined view doesn't match on color at all -- its per-pixel biome id rides in the
-// alpha channel (see legendData.ts's highlightTargetFor / the `idCodes` branch below), which
-// lets its land colors span a wide shaded-relief range with no risk of two biomes colliding.
+// The elevReason debug view still matches on color (see legendData.ts) -- every pixel there is
+// exactly one of a small fixed palette, no blending -- so `classifyPixel` stays for that case:
+// nearest-neighbor across the *entire* palette, not just a within-tolerance check against the
+// selected label's own colors, so one label's highlight can't bleed into a neighbour whose
+// color lands nearby. `tolerance` bounds how far the *closest* match can be before a pixel
+// counts as belonging to no known label at all (coastline overlay, etc).
 function classifyPixel(r: number, g: number, b: number, palette: HighlightTarget["palette"], tolerance2: number): string | null {
   let bestLabel: string | null = null;
   let bestDist2 = Infinity;
