@@ -885,6 +885,11 @@ export default function App() {
                 disabled={busy || !summary || animating || playing}
                 title="Record animation"
                 aria-label="Record animation"
+                // Flashes red/grey while a recording is in flight (see index.css's
+                // .record-flashing, which overrides the static `color` below for as long as
+                // it's applied) so it reads as "recording" the way a camcorder's tally light
+                // does, distinct from just being disabled like the other controls.
+                className={animating ? "record-flashing" : undefined}
                 style={{
                   flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0",
                   color: busy || !summary || animating || playing ? undefined : "#ff5f56",
