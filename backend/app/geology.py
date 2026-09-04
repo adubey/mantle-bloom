@@ -30,7 +30,11 @@ term, since this codebase has no explicit vegetation field), is stripped by fast
 (rain/river erosion carries topsoil away), and gets an extra deposit wherever a slow, big river
 drops its sediment load (erosion.py's own floodplain deposition term, reused directly rather
 than re-derived -- soil "carried down river ... and deposited in flood plains" is literally the
-same mechanism). Mineral content relaxes toward a target driven by the node's own accumulated
+same mechanism). That same slow-river/floodplain signal (erosion.py's own `is_river_depositing`)
+also boosts `productivity` itself directly, at each depositing node and its immediate land
+neighbors -- a riverbank's real vegetation grows denser than the surrounding
+temperature/precipitation alone would produce, on the fertile silt periodic flooding leaves
+behind (see RIPARIAN_* below). Mineral content relaxes toward a target driven by the node's own accumulated
 mineral_deposit_m (weathered/hydrothermal rock feeding the soil above it) plus a small baseline
 from ordinary rock weathering; organic content relaxes toward the same productivity term soil
 depth's own organic contribution uses. Both land-only, [0, 1]-clamped, and -- unlike
@@ -102,6 +106,26 @@ SOIL_STRIP_FRACTION = 0.5
 SOIL_DEPOSITION_FRACTION = 0.3
 MAX_SOIL_DEPTH_M = 15.0
 
+# Riparian vegetation: a real floodplain is enriched by more than just the silt it settles at
+# the exact channel node above -- a slow, big river spills over its banks (this codebase has
+# no per-step stochastic weather to model a literal seasonal flood event, so this is instead
+# the long-run *average* of that: real floodplains flood often enough that the enrichment
+# reads as a steady, ongoing boost, the same "continuous rate standing in for an occasional
+# real event" treatment DEPOSITION_FRACTION above already gives ordinary floodplain silting)
+# and the fertile silt supports denser bank-side vegetation than the region's plain
+# temperature/precipitation would otherwise produce. This codebase has no explicit vegetation
+# field (see this module's own docstring), so the boost is expressed the same way every other
+# "how green is this land" question already is here -- directly on `productivity`, which
+# drives both soil_organic_content's own relaxation target and soil_gain's organic
+# contribution below. Gated on `erosion_result.is_river_depositing` -- reusing erosion.py's
+# own already-tuned "big enough + slow enough" floodplain-deposit test (DEPOSITION_
+# SPEED_THRESHOLD/DEPOSITION_MIN_FLOW_M) rather than inventing a second definition of "a slow
+# river" -- and spread to each depositing node's immediate land neighbors at
+# RIPARIAN_NEIGHBOR_FRACTION strength, not just the exact channel node itself: a real flood
+# spreads water, and the nutrients it carries, out across the whole bank.
+RIPARIAN_PRODUCTIVITY_BOOST = 0.35
+RIPARIAN_NEIGHBOR_FRACTION = 0.5
+
 # Organic/mineral content relax toward a target (same exponential-toward-target style
 # bathymetry.py's own shelf relaxation already uses) rather than integrate directly -- a
 # saturating [0, 1] fraction, not an unbounded accumulating depth.
@@ -171,6 +195,12 @@ def apply_resource_formation(world: "World", years: float, erosion_result: "Eros
     productivity = np.clip(erosion_result.precipitation_mm / biomes.HUMID_MM, 0.0, 1.0) * np.clip(
         erosion_result.temperature_c / biomes.TROPICAL_TEMP_C, 0.0, 1.0
     )
+    # --- Riparian vegetation boost (see RIPARIAN_* above) ---
+    is_depositing = erosion_result.is_river_depositing
+    neighbor_idx = hydro.neighbor_idx
+    on_bank = np.any(is_depositing[neighbor_idx], axis=1) if neighbor_idx.shape[1] > 0 else np.zeros(n, dtype=bool)
+    riparian_strength = np.where(is_depositing, 1.0, np.where(on_bank, RIPARIAN_NEIGHBOR_FRACTION, 0.0))
+    productivity = np.clip(productivity + RIPARIAN_PRODUCTIVITY_BOOST * np.where(is_land, riparian_strength, 0.0), 0.0, 1.0)
     soil_gain = SOIL_WEATHERING_TO_REGOLITH * erosion_result.weathering + SOIL_ORGANIC_RATE_M_PER_MYR * productivity * dt_myr
     deposition_gain = SOIL_DEPOSITION_FRACTION * erosion_result.sediment_deposited
     soil_loss = SOIL_STRIP_FRACTION * (erosion_result.rain + erosion_result.river)

@@ -4,6 +4,7 @@ import threading
 
 import av
 import numpy as np
+import pytest
 from PIL import Image
 from app import climate, geometry, hydrology, render_image
 from app.world import World, generate_world, step_world
@@ -15,7 +16,7 @@ def _world(seed=1, num_plates=10, continental_fraction=0.4):
 
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
     world = _world()
-    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
 
     n = len(xy)
     assert n > 1000  # a real full-sphere sweep, not a token few points
@@ -67,6 +68,24 @@ def test_elevation_colors_shifts_with_sea_level():
     shifted = render_image.elevation_colors(np.array([500.0]), sea_level_m=500.0)
     baseline = render_image.elevation_colors(np.array([0.0]), sea_level_m=0.0)
     assert tuple(shifted[0]) == tuple(baseline[0])
+
+
+def test_channel_visible_shade_needs_both_deep_and_wide():
+    depth = np.array([0.0, 500.0, 500.0, 500.0])
+    width = np.array([500.0, 0.0, 500.0, 500.0])
+    shade = render_image._channel_visible_shade(depth, width)
+    assert shade[0] == 1.0  # no depth at all -- untouched regardless of width
+    assert shade[1] == 1.0  # wide but no real depth -- untouched regardless of width
+    assert shade[2] == shade[3]  # same (deep, wide) input -> same shade
+    assert shade[2] < 1.0  # deep AND wide -- visibly darkened
+    assert shade[2] >= 1.0 - render_image.CHANNEL_VISIBLE_MAX_SHADE  # never past the floor
+
+
+def test_channel_visible_shade_saturates_at_the_cap_not_below_it():
+    modest = render_image._channel_visible_shade(np.array([200.0]), np.array([500.0]))
+    extreme = render_image._channel_visible_shade(np.array([50_000.0]), np.array([500.0]))
+    assert modest[0] > extreme[0]
+    assert extreme[0] == pytest.approx(1.0 - render_image.CHANNEL_VISIBLE_MAX_SHADE)
 
 
 def test_plate_colors_is_stable_and_wraps():
@@ -217,7 +236,7 @@ def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_re
     from app import biomes
 
     world = _world(seed=7, num_plates=12, continental_fraction=0.6)
-    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth = render_image._biome_fields(
+    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _channel_depth, _channel_width = render_image._biome_fields(
         world, *render_image.biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -596,7 +615,7 @@ def test_render_grid_stays_gap_free_under_a_nontrivial_rotation():
     no-gaps assertions at a rotation that mixes all three axes, not just identity/90/180."""
     world = _world(seed=8)
     rotation = geometry.rotation_matrix(np.array([0.4, -0.5, 0.7]), 1.3)
-    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
     assert len(xy) > 1000
     assert np.all(half_w > 0)
     assert np.all(half_h > 0)

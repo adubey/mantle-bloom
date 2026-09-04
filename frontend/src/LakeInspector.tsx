@@ -3,7 +3,7 @@ import type { KeyboardEvent } from "react";
 import type { LakeAtResponse, LakeSummary, Projection, Segment } from "./api";
 import { fetchLakeAt } from "./api";
 import type { Mat3, Vec3 } from "./rotation";
-import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, xyzToLatLon } from "./rotation";
+import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon } from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
 
 interface Props {
@@ -90,12 +90,29 @@ export default function LakeInspector({
       return toPixels(transform, x, y);
     };
 
+    // Projects one coastline edge (two *true* world points a real, short 3D hop apart),
+    // unwrapping the second point's longitude relative to the first's own (rotated) longitude
+    // -- same technique RiverInspector.tsx's own projectSegment uses, and for the same reason:
+    // independently projecting each endpoint with plain toScreen (as this used to) can bow a
+    // short edge all the way across the map at the antimeridian seam once the view is rotated,
+    // drawing a spurious line clear across the whole canvas.
+    const projectSegment = (a: Vec3, b: Vec3): [[number, number], [number, number]] => {
+      const ra = matApply(previewRotation, a);
+      const latA = Math.asin(Math.min(1, Math.max(-1, ra[2])));
+      const lonA = Math.atan2(ra[1], ra[0]);
+      const rb = matApply(previewRotation, b);
+      const latB = Math.asin(Math.min(1, Math.max(-1, rb[2])));
+      const lonB = wrapLongitudeNear(Math.atan2(rb[1], rb[0]), lonA);
+      const [xA, yA] = project(projection, latA, lonA);
+      const [xB, yB] = project(projection, latB, lonB);
+      return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
+    };
+
     const strokeSegments = (segments: [Vec3, Vec3][], color: string, width: number) => {
       ctx.strokeStyle = color;
       ctx.lineWidth = width;
       for (const [a, b] of segments) {
-        const [x1, y1] = toScreen(a);
-        const [x2, y2] = toScreen(b);
+        const [[x1, y1], [x2, y2]] = projectSegment(a, b);
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);

@@ -173,6 +173,37 @@ GLACIER_COLOR_RGB = (221, 240, 245)
 # and from both LAKE_COLOR_RGB/GLACIER_COLOR_RGB's cool blues, so a volcanic node reads as
 # "active/recent volcanism" at a glance rather than blending into ordinary high terrain.
 VOLCANO_COLOR_RGB = (207, 63, 28)
+
+# erosion.py's channel_depth/channel_width are real, persistent, monotonically-growing fields
+# (a mature river can carve up to erosion.MAX_CHANNEL_DEPTH_M = 2000m deep and
+# erosion.MAX_CHANNEL_WIDTH_M = 5000m wide) but, before this, influenced nothing anywhere in
+# render_image.py -- a river's own carved channel never showed up as any visible incision in
+# the terrain on the Elevation or Elevation & Biome (Combined) view, only as the thin fixed-
+# color line _draw_rivers paints over the top. This darkens a channelized node's own
+# already-computed color in proportion to how far its channel_depth sits past
+# CHANNEL_VISIBLE_MIN_DEPTH_M, so a long enough incised valley reads as a visibly darker gorge
+# cut into the surrounding hypsometric/biome color -- a shade multiply (`biome_relative_
+# shade_factor`'s own technique), not a full color replacement like the lake/glacier/volcano
+# overlays below, since a channel is a shape cut into the land, not a different substance
+# covering it. Gated on channel_width too -- "deep AND wide enough" -- so an early, narrow
+# trickle's still-modest channel_depth doesn't visibly gouge the land before the channel is
+# actually a mature, multi-Myr feature. CHANNEL_VISIBLE_DEPTH_RANGE_M is where the shading
+# saturates at CHANNEL_VISIBLE_MAX_SHADE (well short of black) past the depth floor, so even a
+# channel at the full MAX_CHANNEL_DEPTH_M still reads as terrain, not a hole.
+CHANNEL_VISIBLE_MIN_DEPTH_M = 80.0
+CHANNEL_VISIBLE_MIN_WIDTH_M = 250.0
+CHANNEL_VISIBLE_DEPTH_RANGE_M = 400.0
+CHANNEL_VISIBLE_MAX_SHADE = 0.55
+
+
+def _channel_visible_shade(channel_depth: np.ndarray, channel_width: np.ndarray) -> np.ndarray:
+    """Per-node multiplier in `[1 - CHANNEL_VISIBLE_MAX_SHADE, 1.0]` darkening a channelized
+    node's already-computed display color -- see CHANNEL_VISIBLE_MIN_DEPTH_M's own comment.
+    1.0 (no change at all) wherever channel_width hasn't cleared CHANNEL_VISIBLE_MIN_WIDTH_M
+    yet, or channel_depth hasn't cleared CHANNEL_VISIBLE_MIN_DEPTH_M yet."""
+    excess = np.clip(channel_depth - CHANNEL_VISIBLE_MIN_DEPTH_M, 0.0, None)
+    strength = np.where(channel_width >= CHANNEL_VISIBLE_MIN_WIDTH_M, np.clip(excess / CHANNEL_VISIBLE_DEPTH_RANGE_M, 0.0, 1.0), 0.0)
+    return 1.0 - CHANNEL_VISIBLE_MAX_SHADE * strength
 # Coastline: drawn on views that have no other land/ocean cue at all (temperature/humidity/
 # precipitation's color scales carry no land information on their own, unlike elevation's
 # hypsometric coloring) -- see coastline.py. A single fixed color would vanish against parts
@@ -542,13 +573,13 @@ def _node_cloud_and_tree(world: World):
 
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, lake_depth, glacier_depth, and is_volcano -- see
+    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, and channel_width -- see
     docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy,
-    elevation, plate_id, lake_depth, glacier_depth, is_volcano, cell_half_width,
-    cell_half_height) arrays, or None for an empty world.
+    elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width,
+    cell_half_width, cell_half_height) arrays, or None for an empty world.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -578,6 +609,8 @@ def _render_grid_arrays(
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
+    all_channel_depth = plates.collect_all_channel_depth(world.plates)
+    all_channel_width = plates.collect_all_channel_width(world.plates)
 
     # At the default node_density, GRID_SPACING_RAD (100km) is already finer than the
     # physics resolution (plates.line_spacing_rad(1.0) = 125km), so it's the effective
@@ -590,7 +623,9 @@ def _render_grid_arrays(
     # density where 100km was already the tighter bound.
     grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, hw_chunks, hh_chunks = [], [], [], [], [], [], [], []
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, hw_chunks, hh_chunks = (
+        [], [], [], [], [], [], [], [], [], [],
+    )
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
         rotated = _rotate(world_pts, view_rotation)
@@ -601,6 +636,8 @@ def _render_grid_arrays(
         lake_chunks.append(all_lake_depth[idx])
         glacier_chunks.append(all_glacier_depth[idx])
         volcano_chunks.append(all_is_volcano[idx])
+        channel_depth_chunks.append(all_channel_depth[idx])
+        channel_width_chunks.append(all_channel_width[idx])
 
         _, center_lon = geometry.xyz_to_latlon(rotated)
         half_dtheta = grid_spacing_rad / max(np.cos(phi), 1e-3) / 2
@@ -626,6 +663,8 @@ def _render_grid_arrays(
         np.concatenate(lake_chunks, axis=0),
         np.concatenate(glacier_chunks, axis=0),
         np.concatenate(volcano_chunks, axis=0),
+        np.concatenate(channel_depth_chunks, axis=0),
+        np.concatenate(channel_width_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
@@ -694,7 +733,8 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     coarser, fixed-shape simulation grid (see climate.compute_climate_cached) rather than
     resimulated at this resolution. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3),
     elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
-    lake_depth, glacier_depth), all (H, W) besides the first three."""
+    lake_depth, glacier_depth, channel_depth, channel_width), all (H, W) besides the first
+    three."""
     lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
     flat_xyz = world_xyz.reshape(-1, 3)
     shape = (grid_h, grid_w)
@@ -705,14 +745,20 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         is_ocean = np.ones(shape, dtype=bool)
         lake_depth = np.zeros(shape)
         glacier_depth = np.zeros(shape)
+        channel_depth = np.zeros(shape)
+        channel_width = np.zeros(shape)
     else:
         _all_points, all_elevation, _owner, tree = node_cloud
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
+        all_channel_depth = plates.collect_all_channel_depth(world.plates)
+        all_channel_width = plates.collect_all_channel_width(world.plates)
         _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
         glacier_depth = all_glacier_depth[idx].reshape(shape)
+        channel_depth = all_channel_depth[idx].reshape(shape)
+        channel_width = all_channel_width[idx].reshape(shape)
         # Connectivity-aware: an enclosed interior pit below sea level renders as lake/land, not
         # as ocean (and so no longer as an Intertidal Zone). See hydrology.connected_ocean_mask.
         is_ocean = hydrology.sample_is_ocean(world, world_xyz, elevation_m <= world.sea_level_m)
@@ -722,7 +768,10 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     ocean_temp = _bilinear_resample(fields.ocean_temperature_c, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
     precip = _bilinear_resample(fields.precipitation_mm, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
 
-    return lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth
+    return (
+        lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip,
+        lake_depth, glacier_depth, channel_depth, channel_width,
+    )
 
 
 def _resource_fields(world: World, grid_h: int, grid_w: int):
@@ -1329,7 +1378,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1369,7 +1418,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, channel_depth, channel_width = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1393,6 +1442,12 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     # OCEAN_PELAGIC_RELIEF_BLEND) so basins still darken and shelves lighten.
     ocean_rgb = biome_rgb * (1.0 - OCEAN_PELAGIC_RELIEF_BLEND) + terrain_rgb * OCEAN_PELAGIC_RELIEF_BLEND
     colors = np.where(flat_ocean[:, None], ocean_rgb, land_rgb)
+    # A deep-and-wide-enough channel darkens toward a visible gorge cut into the biome/terrain
+    # color -- see _channel_visible_shade's own comment; channel_depth is always 0 over ocean,
+    # so this is a land-only effect despite applying unconditionally here.
+    channel_shade = _channel_visible_shade(channel_depth.reshape(-1), channel_width.reshape(-1))
+    if np.any(channel_shade < 1.0):
+        colors = colors * channel_shade[:, None]
     is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
     if np.any(is_lake):
         colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=float), colors)
@@ -1579,7 +1634,7 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
     if grid is None or node_cloud is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, half_w, half_h = grid
     all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
@@ -1631,7 +1686,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, half_w, half_h = grid
     all_points, _all_elevation, _ = collected
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -1954,11 +2009,18 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, is_volcano, half_w, half_h = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h = grid
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
         colors = elevation_colors(elev, world.sea_level_m) if view == "elevation" else plate_colors(owner)
+        # A deep-and-wide-enough channel darkens toward a visible gorge -- see
+        # _channel_visible_shade's own comment. "elevation" only: "plates" is a categorical
+        # mosaic with no elevation-relief information to carve into in the first place.
+        if view == "elevation":
+            channel_shade = _channel_visible_shade(channel_depth, channel_width)
+            if np.any(channel_shade < 1.0):
+                colors = np.clip(np.round(colors.astype(np.float32) * channel_shade[:, None]), 0, 255).astype(np.uint8)
         # Baked directly into the raster rather than a separate overlay/toggle: always
         # visible, no separate overlay needed, and a lake (or a glacier) is meaningful on
         # every view that shows terrain at all (matches how ocean itself isn't specially

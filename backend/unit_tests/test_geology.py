@@ -36,7 +36,10 @@ def _world_with_hydrology(plate, is_ocean, water_deposited):
     return world
 
 
-def _erosion_result(points, elevation, slope=None, rain=None, river=None, weathering=None, sediment_deposited=None, temperature_c=None, precipitation_mm=None):
+def _erosion_result(
+    points, elevation, slope=None, rain=None, river=None, weathering=None, sediment_deposited=None,
+    is_river_depositing=None, temperature_c=None, precipitation_mm=None,
+):
     n = len(points)
     zeros = np.zeros(n)
     return ErosionResult(
@@ -47,6 +50,7 @@ def _erosion_result(points, elevation, slope=None, rain=None, river=None, weathe
         river=zeros if river is None else np.asarray(river, dtype=float),
         weathering=zeros if weathering is None else np.asarray(weathering, dtype=float),
         sediment_deposited=zeros if sediment_deposited is None else np.asarray(sediment_deposited, dtype=float),
+        is_river_depositing=np.zeros(n, dtype=bool) if is_river_depositing is None else np.asarray(is_river_depositing, dtype=bool),
         net_elevation_change_m=zeros,
         temperature_c=zeros if temperature_c is None else np.asarray(temperature_c, dtype=float),
         precipitation_mm=zeros if precipitation_mm is None else np.asarray(precipitation_mm, dtype=float),
@@ -141,6 +145,48 @@ def test_soil_depth_rises_from_weathering_and_deposition_and_falls_from_erosion(
     assert soil[0] > 0.0
     assert soil[1] == 0.0
     assert soil[0] <= geology.MAX_SOIL_DEPTH_M
+
+
+def test_riparian_boost_reaches_depositing_node_and_its_bank_neighbor_but_not_further():
+    # 3 nodes, all identical (cool, modest-rain) climate so any difference is purely the
+    # riparian boost, not the ordinary precipitation/temperature productivity term. node0 is a
+    # slow, big river actively depositing (erosion.is_river_depositing); node1 is node0's own
+    # neighbor (a "bank" node) but not itself depositing; node2 neighbors node1, not node0, so
+    # the boost shouldn't reach it at all.
+    theta = [0.0, 0.001, 0.002]
+    plate = _plate(theta, elevation=[100.0, 100.0, 100.0])
+    points = plate.lines[0].world_xyz(plate.frame)
+    n = len(points)
+    hydro = HydrologyFields(
+        points=points,
+        elevation=plate.lines[0].elevation.copy(),
+        is_ocean=np.zeros(n, dtype=bool),
+        neighbor_idx=np.array([[1], [0], [1]]),
+        flow_target=np.full(n, -1),
+        flow_accum=np.zeros(n),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1),
+        is_river=np.zeros(n, dtype=bool),
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        plates_in_order=[plate],
+    )
+    world = World(seed=0, plates=[plate])
+    world.hydrology_cache = hydro
+
+    result = _erosion_result(
+        points, elevation=[100.0, 100.0, 100.0],
+        temperature_c=[9.0, 9.0, 9.0], precipitation_mm=[800.0, 800.0, 800.0],
+        is_river_depositing=[True, False, False],
+    )
+    geology.apply_resource_formation(world, years=2_000_000, erosion_result=result)
+
+    organic = world.plates[0].lines[0].soil_organic_content
+    # Same base climate everywhere, so any ordering here is purely the riparian boost: the
+    # depositing node itself grows the richest, its bank neighbor a real but smaller boost,
+    # and node2 (not adjacent to the depositing node at all) is unaffected by either.
+    assert organic[0] > organic[1] > organic[2]
 
 
 def test_soil_zeroed_over_ocean():

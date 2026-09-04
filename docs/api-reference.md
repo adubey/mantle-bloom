@@ -490,8 +490,12 @@ runs once). `404` if no world has been generated yet.
 - `mouth_xyz` is the network's own highest-`flow_accum` node (flow only accumulates downhill,
   so nothing else in the network can out-flow it) -- what the River Inspector draws a ring
   around for the selected river.
-- `mouth_type` is `"ocean"`, `"lake"` (checked first -- a river can end at a still-draining
-  lake), or `"other"` (a dry interior sink with no lake standing there).
+- `mouth_type` is `"ocean"` or `"lake"` (based on what the mouth's own `flow_target` empties
+  into, not the mouth itself -- see
+  [simulation-model.md#river-inspector](simulation-model.md#river-inspector)), or `"other"`
+  (a true dead-end sink, `flow_target == -1` -- a basin `lakes.step_lakes` is already growing
+  into a real lake node by node every step, so this flips to `"lake"` on its own once that
+  basin's water crosses `LAKE_MIN_VISIBLE_DEPTH_M`).
 - `flow_rate` is `flow_accum` at the mouth; `speed` is `hydrology.compute_river_speed`
   evaluated there. Both are stylized, unitless quantities -- meaningful only relative to other
   rivers in the same world, not real physical units (see

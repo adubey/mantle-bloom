@@ -31,14 +31,22 @@ def _normalize(v):
 
 
 def _river_inspector_fields():
-    # A hand-built 7-node HydrologyFields for the River Inspector's grouping logic, not run
+    # A hand-built 9-node HydrologyFields for the River Inspector's grouping logic, not run
     # through compute_hydrology (small enough to hit its FLOW_NEIGHBOR_COUNT bail-out path
-    # anyway). Two separate is_river-classified networks:
+    # anyway). Three separate is_river-classified networks, one per mouth_type:
     #   Network A -- a Y-confluence: 0 and 1 (two headwaters) both flow into 2, which flows
     #   into 3 (the mouth, highest flow_accum in the group), which flows onward into ocean
-    #   node 4.
-    #   Network B -- a single lone node 5, sitting at its own sink with lake_depth above the
-    #   visible threshold (so it should read as ending in a lake, not the ocean).
+    #   node 4. mouth_type "ocean".
+    #   Network B -- a single lone node 5, flowing into node 7, a real lake (lake_depth above
+    #   the visible threshold). Node 7 itself is deliberately *not* is_river -- exactly the real
+    #   invariant compute_hydrology enforces (a lake node is never classified is_river, see
+    #   hydrology.compute_hydrology's own `~is_lake` term), unlike an earlier version of this
+    #   fixture that fabricated is_river=True directly on the flooded node -- a state
+    #   compute_hydrology can never actually produce, which had been masking a real group_rivers
+    #   bug (mouth_type read the mouth's own, structurally-always-dry lake_depth instead of the
+    #   target it flows into). mouth_type "lake".
+    #   Network C -- a single lone node 8, a genuine unresolved dry sink (flow_target -1, no
+    #   lake there yet). mouth_type "other".
     # Node 6 is ordinary land with flow but deliberately *not* in the is_river mask, to check
     # grouping doesn't pull in non-river neighbors.
     points = np.array(
@@ -50,15 +58,17 @@ def _river_inspector_fields():
             _normalize([1.0, 0.0, 0.09]),  # 4: ocean
             _normalize([-1.0, 0.0, 0.0]),  # 5: lone river node, ends at a lake
             _normalize([0.0, 1.0, 0.0]),  # 6: non-river land
+            _normalize([-1.0, 0.02, 0.0]),  # 7: the lake node 5 flows into (not itself a river)
+            _normalize([0.0, -1.0, 0.0]),  # 8: lone river node, a still-dry interior sink
         ]
     )
     n = len(points)
-    elevation = np.array([100.0, 110.0, 80.0, 50.0, -10.0, 60.0, 40.0])
-    is_ocean = np.array([False, False, False, False, True, False, False])
-    flow_target = np.array([2, 2, 3, 4, -1, -1, -1])
-    flow_accum = np.array([10.0, 12.0, 25.0, 40.0, 0.0, 5.0, 0.0])
-    is_river = np.array([True, True, True, True, False, True, False])
-    lake_depth = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0])  # node 5 well above LAKE_MIN_VISIBLE_DEPTH_M
+    elevation = np.array([100.0, 110.0, 80.0, 50.0, -10.0, 60.0, 40.0, 55.0, 70.0])
+    is_ocean = np.array([False, False, False, False, True, False, False, False, False])
+    flow_target = np.array([2, 2, 3, 4, -1, 7, -1, -1, -1])
+    flow_accum = np.array([10.0, 12.0, 25.0, 40.0, 0.0, 5.0, 0.0, 0.0, 3.0])
+    is_river = np.array([True, True, True, True, False, True, False, False, True])
+    lake_depth = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0])  # node 7 well above LAKE_MIN_VISIBLE_DEPTH_M
     zeros = np.zeros(n)
     return hydrology.HydrologyFields(
         points=points,
@@ -585,7 +595,7 @@ def test_compute_hydrology_freezes_rivers_and_snow_over_an_ice_cap_above_freezin
 def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
     fields = _river_inspector_fields()
     rivers = hydrology.group_rivers(fields)
-    assert len(rivers) == 2
+    assert len(rivers) == 3
 
     network_a = next(r for r in rivers if len(r.member_idx) == 4)
     assert sorted(network_a.member_idx.tolist()) == [0, 1, 2, 3]
@@ -595,17 +605,23 @@ def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
     assert network_a.num_tributaries == 1
 
 
-def test_group_rivers_classifies_mouth_type_ocean_vs_lake():
+def test_group_rivers_classifies_mouth_type_ocean_lake_and_other():
     fields = _river_inspector_fields()
     rivers = hydrology.group_rivers(fields)
 
     network_a = next(r for r in rivers if len(r.member_idx) == 4)
     assert network_a.mouth_type == "ocean"  # mouth's flow_target (4) is an ocean node
 
-    network_b = next(r for r in rivers if len(r.member_idx) == 1)
+    network_b = next(r for r in rivers if 5 in r.member_idx.tolist())
     assert network_b.mouth_idx == 5
-    assert network_b.mouth_type == "lake"  # lake_depth[5] = 5.0 > LAKE_MIN_VISIBLE_DEPTH_M
+    # lake_depth is read off *node 7* (what node 5 flows into), not node 5's own -- node 5
+    # itself, like every real river node, is never itself is_lake.
+    assert network_b.mouth_type == "lake"
     assert network_b.num_tributaries == 0  # a single unbranched node has no tributaries
+
+    network_c = next(r for r in rivers if 8 in r.member_idx.tolist())
+    assert network_c.mouth_idx == 8
+    assert network_c.mouth_type == "other"  # flow_target -1: a still-dry, unresolved sink
 
 
 def test_group_rivers_excludes_non_river_nodes():
@@ -614,6 +630,7 @@ def test_group_rivers_excludes_non_river_nodes():
     all_members = {i for r in rivers for i in r.member_idx.tolist()}
     assert 4 not in all_members  # ocean node, never is_river
     assert 6 not in all_members  # land node deliberately not classified as a river
+    assert 7 not in all_members  # the lake node itself -- is_river excludes it too
 
 
 def test_group_rivers_on_no_rivers_returns_empty_list():
@@ -626,7 +643,7 @@ def test_river_at_finds_the_network_nearest_a_query_point():
     fields = _river_inspector_fields()
     rivers = hydrology.group_rivers(fields)
     network_a_id = next(i for i, r in enumerate(rivers) if len(r.member_idx) == 4)
-    network_b_id = next(i for i, r in enumerate(rivers) if len(r.member_idx) == 1)
+    network_b_id = next(i for i, r in enumerate(rivers) if 5 in r.member_idx.tolist())
 
     near_a = hydrology.river_at(fields, rivers, fields.points[0])
     assert near_a == network_a_id

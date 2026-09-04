@@ -508,7 +508,13 @@ class ErosionResult:
     net-raised it). Retained on `World.erosion_cache` for the Geomorph Rate debug view
     (`render_image._render_geomorph_view`) -- the lumpiness of near-sea-level deposition (a
     +200 m spike on one node, ~0 on its neighbour) is invisible in every other view but is
-    the whole coastal-speckle mechanism (see docs/TODO.md)."""
+    the whole coastal-speckle mechanism (see docs/TODO.md).
+
+    `is_river_depositing` is exactly the mask DEPOSITION_SPEED_THRESHOLD/DEPOSITION_MIN_FLOW_M
+    already select internally -- "a big, slow river is actively settling its sediment load
+    here this step" -- exposed so geology.py can reuse the same, already-tuned "big and slow"
+    test for its own riparian-vegetation boost (see that module's RIPARIAN_* constants)
+    instead of re-deriving river_speed/water_accum_m a second time."""
 
     points: np.ndarray
     elevation: np.ndarray  # this step's *pre*-erosion elevation (same array hydro.elevation holds)
@@ -517,6 +523,7 @@ class ErosionResult:
     river: np.ndarray
     weathering: np.ndarray
     sediment_deposited: np.ndarray
+    is_river_depositing: np.ndarray  # bool -- a big, slow river settling sediment here this step
     net_elevation_change_m: np.ndarray
     temperature_c: np.ndarray
     precipitation_mm: np.ndarray
@@ -1403,6 +1410,7 @@ def apply_erosion(
         river=river,
         weathering=weathering,
         sediment_deposited=total_deposited,
+        is_river_depositing=is_depositing,
         net_elevation_change_m=new_elevation - elevation,
         temperature_c=temperature,
         precipitation_mm=precipitation_mm,
