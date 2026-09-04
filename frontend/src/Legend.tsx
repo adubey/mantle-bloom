@@ -124,9 +124,10 @@ export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Prop
   const spec = legendFor(mapView);
   if (!spec) return null;
 
-  // Biome and Combined are the only views whose swatches are clickable -- see the Props doc
-  // comment.
-  const clickable = (mapView === "biome" || mapView === "combined") && !!onBiomeClick;
+  // Biome, Combined and "Last elevation change" are the views whose swatches are clickable
+  // (each pixel is exactly one legend colour) -- see the Props doc comment.
+  const clickable =
+    (mapView === "biome" || mapView === "combined" || mapView === "elevReason") && !!onBiomeClick;
 
   return (
     <div
@@ -149,14 +150,19 @@ export default function Legend({ mapView, highlightedBiome, onBiomeClick }: Prop
         )}
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient ? 2 : 8 }}>
-        {spec.symbols.map((sym) => (
-          <SymbolRow
-            key={sym.label}
-            symbol={sym}
-            onClick={clickable ? () => onBiomeClick!(sym.label) : undefined}
-            selected={clickable && highlightedBiome === sym.label}
-          />
-        ))}
+        {spec.symbols.map((sym) => {
+          // "Coastline" is an orientation cue, not a selectable class -- leave it read-only
+          // even on an otherwise-clickable legend (see highlightTargetFor's elevReason branch).
+          const rowClickable = clickable && sym.label !== "Coastline";
+          return (
+            <SymbolRow
+              key={sym.label}
+              symbol={sym}
+              onClick={rowClickable ? () => onBiomeClick!(sym.label) : undefined}
+              selected={rowClickable && highlightedBiome === sym.label}
+            />
+          );
+        })}
       </div>
     </div>
   );

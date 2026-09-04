@@ -23,6 +23,8 @@ interface Props {
   onSelectPlate: (id: number | null) => void;
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
+  // Inert rotate-drag + click while a background animation holds the world lock (see App.tsx).
+  interactionDisabled?: boolean;
 }
 
 const BACKGROUND = "#0b1020";
@@ -60,7 +62,7 @@ const SEGMENT_BREAK_FACTOR = 6;
 // MapCanvas (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle plates.
 export default function PlateInspector({
   plates, width, height, displayWidth, displayHeight, projection, rotation,
-  selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted,
+  selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted, interactionDisabled,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -203,6 +205,7 @@ export default function PlateInspector({
     onRotationPreview,
     onRotationCommitted,
     onClick: handleClick,
+    disabled: interactionDisabled,
   });
 
   useEffect(() => {

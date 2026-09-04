@@ -43,6 +43,9 @@ interface Props {
   // frame gets a full-canvas pass that reads those ids and then resets alpha to fully opaque --
   // the 237..255 alpha spread is a data channel, not meant to actually composite.
   alphaEncodedIds?: boolean;
+  // While a background animation holds the world lock (see App.tsx), the rotate-drag + probe
+  // click are inert -- a rotation/render there would only 503.
+  interactionDisabled?: boolean;
 }
 
 const BACKGROUND = "#0b1020";
@@ -136,7 +139,7 @@ const CTX_OPTIONS: CanvasRenderingContext2DSettings = { willReadFrequently: true
 
 export default function MapCanvas({
   imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
-  onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds,
+  onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds, interactionDisabled,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
@@ -292,6 +295,7 @@ export default function MapCanvas({
     onRotationPreview,
     onRotationCommitted,
     onClick: onProbe ? handleProbeClick : undefined,
+    disabled: interactionDisabled,
   });
 
   return (

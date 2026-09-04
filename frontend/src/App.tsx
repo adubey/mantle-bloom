@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  fetchEarthquakes, fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+  animateWorld, fetchEarthquakes, fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, WorldStats, WorldSummary,
+  AnimateResponse, EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
 import LakeInspector from "./LakeInspector";
-import FaultInspector, { FAULT_KIND_LABEL } from "./FaultInspector";
+import PlatesAndFaults from "./PlatesAndFaults";
 import EventConsole from "./EventConsole";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
@@ -122,8 +122,8 @@ function isIdentityRotation(rotation: Mat3): boolean {
 const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
-  "elevation", "plates", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "plateInspector", "riverInspector", "lakeInspector", "faultInspector",
+  "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
+  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -200,12 +200,12 @@ export default function App() {
     return { lat: (latRad * 180) / Math.PI, lon: (lonRad * 180) / Math.PI };
   });
   // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
-  // Biome and Combined views (the only legends whose swatches are clickable), so it's cleared
-  // any time the view changes away from both rather than silently carrying a stale selection
-  // into a view whose legend can't reflect or clear it.
+  // Biome, Combined and "Last elevation change" views (the only legends whose swatches are
+  // clickable), so it's cleared any time the view changes away from all three rather than
+  // silently carrying a stale selection into a view whose legend can't reflect or clear it.
   const [highlightedBiome, setHighlightedBiome] = useState<string | null>(null);
   useEffect(() => {
-    if (mapView !== "biome" && mapView !== "combined") setHighlightedBiome(null);
+    if (mapView !== "biome" && mapView !== "combined" && mapView !== "elevReason") setHighlightedBiome(null);
   }, [mapView]);
   // Memoized so its identity only changes with the selection itself, not on every render --
   // MapCanvas.tsx's highlight-toggle effect is keyed directly on this object's identity.
@@ -243,17 +243,18 @@ export default function App() {
   const [lakesData, setLakesData] = useState<LakeSummary[]>([]);
   const [selectedBasin, setSelectedBasin] = useState<LakeSummary | null>(null);
   const [selectedBasinKind, setSelectedBasinKind] = useState<LakeAtResponse["kind"] | null>(null);
-  // Fault Inspector's own data (see FaultInspector.tsx) -- same true-frame/world-state-only
-  // refresh pattern as platesData. Unlike river_id/lake_id, fault_id IS stable across a step
-  // (a monotonic counter on the backend, see World.next_fault_id), so the selection only
-  // resets on a generate, like selectedPlateId.
+  // Intraplate fault + fault-system + activity data for the "Plates & Faults" view -- same
+  // true-frame/world-state-only refresh pattern as platesData. Faults aren't individually
+  // selectable there (plate selection is), so there's no fault-id selection state.
   const [faultsData, setFaultsData] = useState<FaultSummary[]>([]);
   const [faultSystemsData, setFaultSystemsData] = useState<FaultSystemSummary[]>([]);
-  const [selectedFaultId, setSelectedFaultId] = useState<number | null>(null);
-  // Recent earthquakes for the Fault Inspector's fading epicentre overlay (see
-  // faults.Earthquake / GET /world/earthquakes). Refreshed alongside faultsData; the backend
-  // prunes them after a few Myr so this list stays short. Nothing to select -- pure overlay.
+  // Recent earthquakes + current volcano vents for the "Plates & Faults" view's activity
+  // overlay (see faults.Earthquake / GET /world/earthquakes, volcanism.py / GET
+  // /world/volcanoes). Refreshed alongside faultsData; both are pure overlays, nothing to
+  // select. `showQuakesVolcanoes` is the sidebar checkbox that toggles the whole overlay.
   const [earthquakesData, setEarthquakesData] = useState<EarthquakeSummary[]>([]);
+  const [volcanoesData, setVolcanoesData] = useState<VolcanoSummary[]>([]);
+  const [showQuakesVolcanoes, setShowQuakesVolcanoes] = useState(true);
   // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see
   // MapCanvas.tsx's onProbe and the popup JSX below). `displayX`/`displayY` place it over the
   // map in CSS pixels; `sample` fills in once GET /world/sample_at resolves. Cleared on any
@@ -335,6 +336,17 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Background animation (see FileModal's "Start Animation" and handleStartAnimation below).
+  // `animation` is non-null only while a run is in flight -- it holds the live frame count for
+  // the sidebar progress bar; `animationResult` holds the finished MP4 (+ world summary) until
+  // the user saves or dismisses it. The run streams each frame's PNG straight onto the main
+  // map, and holds the server's world lock throughout, so every world-mutating / rendering
+  // control is disabled while `animation` is set (see `animating`). `animCancelRef` carries
+  // the AbortController that the sidebar "Cancel" button trips.
+  const [animation, setAnimation] = useState<{ frame: number; total: number } | null>(null);
+  const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
+  const animCancelRef = useRef<AbortController | null>(null);
+  const animating = animation !== null;
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
   // in flight fires one from the mode-change effect below (for the pre-step world) and
@@ -348,7 +360,7 @@ export default function App() {
   // instead of overwriting a newer one.
   const renderRequestIdRef = useRef(0);
   const refresh = useCallback(async (proj: Projection, view: MapView, viewRotation: Mat3) => {
-    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "faultInspector") return; // none of these use renderData -- see below
+    if (view === "plateInspector" || view === "riverInspector" || view === "lakeInspector" || view === "platesAndFaults") return; // none of these use renderData -- see below
     const requestId = ++renderRequestIdRef.current;
     try {
       const data = await renderWorld(proj, view, RENDER_WIDTH, RENDER_HEIGHT, viewRotation);
@@ -388,10 +400,11 @@ export default function App() {
 
   const refreshFaults = useCallback(async () => {
     try {
-      const [faults, quakes] = await Promise.all([fetchFaults(), fetchEarthquakes()]);
+      const [faults, quakes, volcanoes] = await Promise.all([fetchFaults(), fetchEarthquakes(), fetchVolcanoes()]);
       setFaultsData(faults.faults);
       setFaultSystemsData(faults.fault_systems);
       setEarthquakesData(quakes.earthquakes);
+      setVolcanoesData(volcanoes.volcanoes);
     } catch (e) {
       setError(String(e));
     }
@@ -422,7 +435,6 @@ export default function App() {
       );
       setSummary(s);
       setSelectedPlateId(null);
-      setSelectedFaultId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
@@ -563,7 +575,6 @@ export default function App() {
     try {
       setSummary(s);
       setSelectedPlateId(null);
-      setSelectedFaultId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
@@ -585,7 +596,7 @@ export default function App() {
     }
   }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
-  // FileModal's "Make Animation" -- it already advanced the world for real (see
+  // Post-animation refresh -- an animation run already advanced the world for real (see
   // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
   const handleWorldAdvanced = useCallback(async (s: WorldSummary) => {
     setSummary(s);
@@ -594,6 +605,67 @@ export default function App() {
     setSelectedBasinKind(null);
     await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
   }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+
+  // FileModal's "Start Animation" -- close the File dialog and run the whole animation in the
+  // background. Each streamed frame's PNG is painted straight onto the main map (the run holds
+  // the server world lock, so a normal render would 503 -- see api.ts/main.py), so the main
+  // display doubles as the animation preview; the sidebar shows progress + a Cancel button,
+  // and every world-mutating control is disabled until it finishes (see `animating`).
+  const handleStartAnimation = useCallback(
+    async ({ numFrames, yearsPerFrame }: { numFrames: number; yearsPerFrame: number }) => {
+      setShowFileModal(false);
+      setError(null);
+      setAnimationResult(null);
+      setAnimation({ frame: 0, total: numFrames });
+      const ctrl = new AbortController();
+      animCancelRef.current = ctrl;
+      const view = mapViewRef.current;
+      try {
+        const result = await animateWorld(
+          projection, view, RENDER_WIDTH, RENDER_HEIGHT, rotation, yearsPerFrame, numFrames,
+          (p) => {
+            setAnimation({ frame: p.frame, total: p.total });
+            if (p.imageBase64) {
+              // Paint the frame onto the main map. renderRequestIdRef is bumped so any
+              // pre-animation refresh() still in flight can't clobber it afterward.
+              renderRequestIdRef.current++;
+              setRenderData({ projection, elapsed_years: 0, image_base64: p.imageBase64 });
+            }
+          },
+          ctrl.signal,
+        );
+        setAnimationResult(result);
+        await handleWorldAdvanced(result);
+      } catch (e) {
+        if (ctrl.signal.aborted) {
+          // User pressed Cancel -- the world is left wherever the last completed frame put it.
+          await handleWorldAdvanced(await fetchWorldSummary().catch(() => null) ?? summary!);
+        } else {
+          setError(String(e));
+        }
+      } finally {
+        setAnimation(null);
+        animCancelRef.current = null;
+      }
+    },
+    [projection, rotation, handleWorldAdvanced, summary],
+  );
+
+  const handleCancelAnimation = useCallback(() => {
+    animCancelRef.current?.abort(new DOMException("animation cancelled", "AbortError"));
+  }, []);
+
+  const handleSaveAnimation = useCallback(async () => {
+    if (!animationResult) return;
+    const { mime, videoBase64, elapsed_years, seed: animSeed } = animationResult;
+    const blob = await (await fetch(`data:${mime};base64,${videoBase64}`)).blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mantle-bloom-seed${animSeed}-animation-${Math.round(elapsed_years)}y.mp4`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [animationResult]);
 
   // Resets the view orientation back to the default (lat=0/lon=0, see rotation.ts) -- just
   // updates state, same as a completed drag; the effect below does the actual re-fetch.
@@ -604,11 +676,6 @@ export default function App() {
 
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
   const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
-  const selectedFault = faultsData.find((f) => f.fault_id === selectedFaultId) ?? null;
-  const selectedFaultSystem =
-    selectedFault?.system_id != null
-      ? faultSystemsData.find((s) => s.system_id === selectedFault.system_id) ?? null
-      : null;
 
   // Re-render with the current world whenever the projection, map view, or view rotation
   // changes -- all three are baked server-side into the returned image (see api.ts's
@@ -687,7 +754,7 @@ export default function App() {
             Physical World Builder
           </p>
 
-          <button onClick={() => setShowGenerateDialog(true)} disabled={busy} style={{ fontSize: 12 }}>
+          <button onClick={() => setShowGenerateDialog(true)} disabled={busy || animating} style={{ fontSize: 12 }}>
             Generate World
           </button>
 
@@ -697,13 +764,13 @@ export default function App() {
 
           <button
             onClick={() => setShowControlsModal(true)}
-            disabled={!summary}
+            disabled={!summary || animating}
             style={{ fontSize: 12 }}
           >
             🎛️ Controls
           </button>
 
-          <button onClick={() => setShowFileModal(true)} style={{ fontSize: 12 }}>
+          <button onClick={() => setShowFileModal(true)} disabled={animating} style={{ fontSize: 12 }}>
             📁 File...
           </button>
 
@@ -724,10 +791,10 @@ export default function App() {
               </select>
             </label>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={handleStep} disabled={busy || stepping || !summary} style={{ flex: 1, fontSize: 12 }}>
+              <button onClick={handleStep} disabled={busy || stepping || !summary || animating} style={{ flex: 1, fontSize: 12 }}>
                 Step
               </button>
-              <button onClick={() => setPlaying((p) => !p)} disabled={busy || !summary} style={{ flex: 1, fontSize: 12 }}>
+              <button onClick={() => setPlaying((p) => !p)} disabled={busy || !summary || animating} style={{ flex: 1, fontSize: 12 }}>
                 {playing ? "Pause" : "Play"}
               </button>
             </div>
@@ -738,36 +805,37 @@ export default function App() {
             <select
               value={mapView}
               onChange={(e) => setMapView(e.target.value as MapView)}
+              disabled={animating}
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
               <optgroup label="Maps">
                 <option value="combined">Elevation &amp; Biome</option>
                 <option value="elevation">Elevation</option>
+                <option value="biome">Biome</option>
                 <option value="temperature">Temperature</option>
                 <option value="wind">Wind</option>
                 <option value="oceanCurrents">Ocean currents</option>
                 <option value="humidity">Humidity</option>
                 <option value="precipitation">Precipitation</option>
-                <option value="biome">Biome</option>
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
               </optgroup>
               <optgroup label="Debug &gt;">
                 <option value="platesDetail">Points</option>
                 <option value="speckle">Coastal dither (speckle)</option>
-                <option value="plates">Plates</option>
+                <option value="platesAndFaults">Plates &amp; Faults</option>
                 <option value="geomorph">Erosion &amp; Deposition</option>
                 <option value="elevReason">Last elevation change</option>
                 <option value="overlapAge">Plate overlap age</option>
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
                 <option value="lakeInspector">Lakes</option>
-                <option value="faultInspector">Fault lines</option>
               </optgroup>
             </select>
             <select
               value={projection}
               onChange={(e) => setProjection(e.target.value as Projection)}
+              disabled={animating}
               style={{ width: "100%", fontSize: 12 }}
             >
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
@@ -778,14 +846,52 @@ export default function App() {
             </div>
             <button
               onClick={handleRecenter}
-              disabled={busy || !summary || isIdentityRotation(rotation)}
+              disabled={busy || !summary || animating || isIdentityRotation(rotation)}
               style={{ width: "100%", marginTop: 6, fontSize: 12 }}
             >
               Re-center
             </button>
           </fieldset>
 
-          {mapView === "plateInspector" && (
+          {(animation || animationResult) && (
+            <fieldset style={{ border: "1px solid #3a4d8f", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Animation</legend>
+              {animation ? (
+                <>
+                  <div style={{ height: 6, borderRadius: 3, background: "#2a3050", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${(animation.frame / animation.total) * 100}%`,
+                        background: "#5b8cff",
+                        transition: "width 0.2s linear",
+                      }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.7, margin: "4px 0 6px" }}>
+                    Rendering frame {animation.frame} of {animation.total}… the map is stepping in the background.
+                  </div>
+                  <button onClick={handleCancelAnimation} style={{ width: "100%", fontSize: 12 }}>
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>Animation ready.</div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button onClick={handleSaveAnimation} style={{ flex: 1, fontSize: 12 }}>
+                      Save MP4
+                    </button>
+                    <button onClick={() => setAnimationResult(null)} style={{ flex: 1, fontSize: 12 }}>
+                      Dismiss
+                    </button>
+                  </div>
+                </>
+              )}
+            </fieldset>
+          )}
+
+          {(mapView === "plateInspector" || mapView === "platesAndFaults") && (
             <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
               <legend style={{ fontSize: 11 }}>Selected plate</legend>
               {selectedPlate ? (
@@ -853,6 +959,20 @@ export default function App() {
             </fieldset>
           )}
 
+          {mapView === "platesAndFaults" && (
+            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
+              <legend style={{ fontSize: 11 }}>Overlays</legend>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={showQuakesVolcanoes}
+                  onChange={(e) => setShowQuakesVolcanoes(e.target.checked)}
+                />
+                Earthquakes &amp; volcanoes
+              </label>
+            </fieldset>
+          )}
+
           {mapView === "riverInspector" && (
             <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
               <legend style={{ fontSize: 11 }}>Selected river</legend>
@@ -912,58 +1032,6 @@ export default function App() {
             </fieldset>
           )}
 
-          {mapView === "faultInspector" && (
-            <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
-              <legend style={{ fontSize: 11 }}>Selected fault</legend>
-              {selectedFault ? (
-                <div style={{ opacity: 0.9 }}>
-                  <div>
-                    id: {selectedFault.fault_id}
-                    {selectedFault.system_id != null
-                      ? ` (system #${selectedFault.system_id})`
-                      : selectedFault.set_id != null
-                      ? ` (family #${selectedFault.set_id})`
-                      : ""}
-                  </div>
-                  <div>type: {FAULT_KIND_LABEL[selectedFault.kind]}</div>
-                  <div style={{ color: selectedFault.active ? "#8fd07a" : undefined }}>
-                    {selectedFault.active ? "active" : "locked-up scar"}
-                  </div>
-                  <div>on plate: {selectedFault.plate_id}</div>
-                  <div>length: {selectedFault.length_km.toFixed(0)} km</div>
-                  <div>slip rate: {selectedFault.slip_rate_m_per_myr.toFixed(0)} m/Myr</div>
-                  <div>total offset: {(selectedFault.cumulative_offset_m / 1000).toFixed(2)} km</div>
-                  <div>age: {selectedFault.age_myr.toFixed(1)} / {selectedFault.lifespan_myr.toFixed(0)} Myr</div>
-                  <div>dip: {selectedFault.dip_deg.toFixed(0)}&deg;</div>
-                  <div>
-                    from boundary: {selectedFault.distance_from_boundary_km.toFixed(0)} km
-                    {" "}(born at {selectedFault.birth_distance_from_boundary_km.toFixed(0)})
-                  </div>
-                  {selectedFaultSystem && (
-                    <div style={{ marginTop: 4, paddingTop: 4, borderTop: "1px solid #333" }}>
-                      <div>strand of system #{selectedFaultSystem.system_id}</div>
-                      <div>
-                        {FAULT_KIND_LABEL[selectedFaultSystem.kind]} zone,{" "}
-                        {selectedFaultSystem.length_km.toFixed(0)} km along the belt
-                      </div>
-                      <div>
-                        system age: {selectedFaultSystem.age_myr.toFixed(0)} /{" "}
-                        {selectedFaultSystem.lifespan_myr.toFixed(0)} Myr
-                        {selectedFaultSystem.active ? "" : " (inactive)"}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ opacity: 0.6 }}>
-                  {faultsData.length > 0
-                    ? `Click a fault, or press Tab.${faultSystemsData.length > 0 ? ` ${faultSystemsData.length} fault system(s).` : ""}`
-                    : "No faults yet -- step the world forward."}
-                </div>
-              )}
-            </fieldset>
-          )}
-
           {summary && (
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
@@ -991,6 +1059,7 @@ export default function App() {
               onSelectPlate={setSelectedPlateId}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
+              interactionDisabled={animating}
             />
           ) : mapView === "riverInspector" ? (
             <RiverInspector
@@ -1006,6 +1075,7 @@ export default function App() {
               onSelectRiver={setSelectedRiverId}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
+              interactionDisabled={animating}
             />
           ) : mapView === "lakeInspector" ? (
             <LakeInspector
@@ -1024,23 +1094,28 @@ export default function App() {
               }}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
+              interactionDisabled={animating}
             />
-          ) : mapView === "faultInspector" ? (
-            <FaultInspector
+          ) : mapView === "platesAndFaults" ? (
+            <PlatesAndFaults
+              plates={platesData}
               faults={faultsData}
               faultSystems={faultSystemsData}
               earthquakes={earthquakesData}
+              volcanoes={volcanoesData}
               coastlineSegments={coastlineSegments}
+              showQuakesVolcanoes={showQuakesVolcanoes}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}
               displayWidth={DISPLAY_WIDTH}
               displayHeight={DISPLAY_HEIGHT}
               projection={projection}
               rotation={rotation}
-              selectedFaultId={selectedFaultId}
-              onSelectFault={setSelectedFaultId}
+              selectedPlateId={selectedPlateId}
+              onSelectPlate={setSelectedPlateId}
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
+              interactionDisabled={animating}
             />
           ) : (
             <MapCanvas
@@ -1056,6 +1131,7 @@ export default function App() {
               highlightTarget={highlightTarget}
               onProbe={mapView === "combined" || mapView === "elevation" || mapView === "biome" ? handleProbe : undefined}
               alphaEncodedIds={mapView === "combined"}
+              interactionDisabled={animating}
             />
           )}
           {probe && (
@@ -1119,8 +1195,8 @@ export default function App() {
                 ? "Click a river to select it. Tab / Shift+Tab cycles rivers. Press and hold, then drag to rotate."
                 : mapView === "lakeInspector"
                   ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
-                  : mapView === "faultInspector"
-                  ? "Click a fault to select it. Tab / Shift+Tab cycles faults. Solid = active strand, thin dash = a fault system's master lineament (its shaded belt is where the strands scatter). Press and hold, then drag to rotate."
+                  : mapView === "platesAndFaults"
+                  ? "Click a plate to select it (its fault strands emphasise). Tab / Shift+Tab cycles plates. Fault systems + strands are shown for context; toggle the earthquake & volcano overlay in the sidebar. Press and hold, then drag to rotate."
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
                     : "Press and hold, then drag the map to rotate it."}
@@ -1266,15 +1342,11 @@ export default function App() {
           seed={summary?.seed ?? null}
           elapsedYears={summary?.elapsed_years ?? null}
           stepYears={stepYears}
-          projection={projection}
           mapView={mapView}
-          rotation={rotation}
-          renderWidth={RENDER_WIDTH}
-          renderHeight={RENDER_HEIGHT}
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
-          onWorldAdvanced={handleWorldAdvanced}
+          onStartAnimation={handleStartAnimation}
         />
       )}
     </div>

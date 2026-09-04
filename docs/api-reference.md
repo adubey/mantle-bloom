@@ -294,7 +294,7 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
 
 ## `POST /world/animate`
 
-The "File > Make Animation" action -- an H.264/MP4 video of `view`/`projection`'s progress,
+The "File > Start Animation" action -- an H.264/MP4 video of `view`/`projection`'s progress,
 one frame for the world's current state plus more, each `years_per_frame` further along:
 
 ```json
@@ -324,16 +324,19 @@ The response is a stream of newline-delimited JSON objects (`application/x-ndjso
 per line, so the client can drive a progress bar instead of blocking on one opaque request:
 
 ```json
-{"type": "progress", "frame": 1, "total": 20}
-{"type": "progress", "frame": 2, "total": 20}
+{"type": "progress", "frame": 1, "total": 20, "image_base64": "iVBORw0KGgo..."}
+{"type": "progress", "frame": 2, "total": 20, "image_base64": "iVBORw0KGgo..."}
 ...
 {"type": "done", "mime": "video/mp4", "video_base64": "AAAAIGZ0eXBpc29t...", "seed": 9, "elapsed_years": 19000000, "num_plates": 6, "events": []}
 ```
 
-The final `done` line carries the same summary shape `/world/generate`/`/world/step` return,
-plus `video_base64` (decode via `data:video/mp4;base64,<this>` -- H.264, playable directly in
-a `<video>` element) and `mime`. If rendering raises partway through, a `{"type": "error",
-"detail": "..."}` line is emitted instead -- the HTTP status is already `200` by then.
+Each `progress` line carries that frame's own rendered PNG in `image_base64` (same encoding
+as `/world/render`) -- the frontend paints it straight onto the main map so the display
+doubles as the live animation step while the run holds the world lock. The final `done` line
+carries the same summary shape `/world/generate`/`/world/step` return, plus `video_base64`
+(decode via `data:video/mp4;base64,<this>` -- H.264, playable directly in a `<video>`
+element) and `mime`. If rendering raises partway through, a `{"type": "error", "detail":
+"..."}` line is emitted instead -- the HTTP status is already `200` by then.
 
 ## `GET /world/plates`
 
@@ -577,10 +580,11 @@ been generated yet.
 
 ## `GET /world/faults`
 
-The "Fault lines" map mode's data source (see
+One of the "Plates & Faults" map mode's data sources (see
 [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector)) -- same "plain
-JSON, client renders it" contract as `/world/rivers`; `frontend/src/FaultInspector.tsx`
-renders and drives the interaction itself. These are **intraplate** faults (see `faults.py` /
+JSON, client renders it" contract as `/world/rivers`; `frontend/src/PlatesAndFaults.tsx`
+renders the fault traces + systems over the plates (display-only there -- plate selection is
+what interaction drives). These are **intraplate** faults (see `faults.py` /
 [simulation-model.md#faults](simulation-model.md#faults)), distinct from plate boundaries.
 Unlike `river_id` / `lake_id`, `fault_id` is a **persistent** identity for the fault's whole
 lifetime (a monotonic `World.next_fault_id` counter), so a selection survives a step. `faults`
@@ -641,9 +645,26 @@ is `[]` before the first step. `404` if no world has been generated yet.
 ## `GET /world/earthquakes`
 
 Recent earthquakes (see `faults.Earthquake` / [simulation-model.md#faults](simulation-model.md#faults))
-for the fading epicentre overlay in the "Fault lines" view. The backend prunes anything older
-than `faults.EARTHQUAKE_RETAIN_MYR` (~5 Myr) every step, so this list only ever holds the
-last few Myr of activity. `[]` before the first step. `404` if no world has been generated yet.
+for the fading epicentre overlay in the "Plates & Faults" view. The backend prunes anything
+older than `faults.EARTHQUAKE_RETAIN_MYR` (~5 Myr) every step, so this list only ever holds
+the last few Myr of activity. `[]` before the first step. `404` if no world has been generated yet.
+
+## `GET /world/volcanoes`
+
+Every current volcano node (see `volcanism.py` / `elevation_lines.is_volcano`) for the
+"Plates & Faults" view's activity overlay -- same "plain JSON, client renders it" contract.
+Un-rotated/true-frame world positions; `active` is `true` while the vent still has eruption
+potential (`volcano_active_years_remaining > 0`) vs. a dormant cone. `[]` on a world with no
+volcanoes yet. `404` if no world has been generated yet.
+
+```json
+{
+  "elapsed_years": 12000000,
+  "volcanoes": [
+    { "position": [-0.73, 0.15, -0.67], "active": false }
+  ]
+}
+```
 
 ```json
 {

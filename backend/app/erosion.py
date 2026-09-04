@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, faults, geometry, hydrology, lakes, lithosphere
+from . import climate, faults, geometry, hydrology, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -1091,8 +1091,10 @@ def apply_erosion(
     # sea level without connecting to open ocean now gets the *subaerial* erosion/deposition
     # pathways (and its lake silt, folded into elevation below), not the marine ones.
     is_ocean_node = hydro.is_ocean
-    for message in lakes.summarize_lake_events(hydro.lake_events, world.sea_level_m):
-        world.log_event(message)
+    # Lake merge/split transitions (hydro.lake_events, via lakes.summarize_lake_events) are
+    # deliberately *not* routed to World.log_event: even after the near-sea-level aggregation
+    # they churn constantly along a dithering coastline and drown out the genuine tectonic
+    # events in the console. The structured events are still computed and available for tests.
     water_accum_m = hydro.flow_accum / 1000.0
 
     # `world.*_erosion_multiplier` (and the deposition/leveling knobs further down) are the
