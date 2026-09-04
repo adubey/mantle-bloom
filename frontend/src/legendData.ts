@@ -14,7 +14,7 @@
 // "at whatever sea level currently is," accurate regardless of that live-adjustable value
 // without this legend needing to know it.
 
-import type { MapView } from "./api";
+import type { FaultKind, MapView } from "./api";
 
 export type SwatchKind = "line" | "square" | "circle" | "ring" | "arrow" | "arc";
 
@@ -493,6 +493,24 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
     return { selected: label, palette: [], tolerance: 0, idCodes };
   }
   return null;
+}
+
+// The "Plates & Faults" view is client-drawn (PlatesAndFaults.tsx), not a classified PNG, so
+// its legend can't use the pixel-matching HighlightTarget path above. Instead a clicked
+// fault-type row resolves to one FaultKind and the component haloes that regime's strands +
+// systems and dims everything else. Only the three fault rows are clickable -- "Plate
+// outline", "Coastline" and the activity markers stay read-only.
+export function faultKindForLegendLabel(label: string): FaultKind | null {
+  switch (label) {
+    case "Fault: normal (graben)":
+      return "normal";
+    case "Fault: reverse (thrust)":
+      return "reverse";
+    case "Fault: strike-slip":
+      return "strike_slip";
+    default:
+      return null;
+  }
 }
 
 export function legendFor(view: MapView): LegendSpec | null {

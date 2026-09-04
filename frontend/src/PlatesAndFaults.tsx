@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import type {
-  EarthquakeSummary, FaultSummary, FaultSystemSummary, PlateSummary, Projection, Segment, VolcanoSummary,
+  EarthquakeSummary, FaultKind, FaultSummary, FaultSystemSummary, PlateSummary, Projection, Segment, VolcanoSummary,
 } from "./api";
 import { fetchPlateAt } from "./api";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import {
-  getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon,
+  getRenderTransform, latLonToXyz, matApply, matTranspose, project, rotationMatrix, toPixels, unproject,
+  wrapLongitudeNear, xyzToLatLon,
 } from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
 import { plateColor } from "./platePalette";
@@ -22,6 +23,10 @@ interface Props {
   // overlays together (both are seismic/magmatic activity markers, distinct from the standing
   // plate + fault geometry the view always shows).
   showQuakesVolcanoes: boolean;
+  // Set when a fault-type row in the legend is clicked (see Legend.tsx / legendData.ts's
+  // faultKindForLegendLabel): that kind's strands + systems are haloed and everything else on
+  // the map is dimmed right back, so you can see where that regime sits. null = no isolation.
+  highlightedFaultKind: FaultKind | null;
   width: number;
   height: number;
   displayWidth: number;
@@ -40,16 +45,21 @@ interface Props {
 
 const BACKGROUND = "#0b1020";
 
-// --- Plate drawing (ported from PlateInspector.tsx) ---
-const ELLIPSE_FILL_ALPHA = 0.22;
-const ELLIPSE_FILL_ALPHA_SELECTED = 0.5;
-const OUTLINE_ALPHA = 0.35;
+// --- Plate drawing --- just the outline loop now (no bounding ellipse, no per-node dots): the
+// view is the plate + fault geometry over a coastline, nothing else. Non-selected outlines sit
+// at OUTLINE_ALPHA in each plate's own palette colour, the selected one opaque and thicker.
+const OUTLINE_ALPHA = 0.6;
 const OUTLINE_ALPHA_SELECTED = 1.0;
-const POINT_RGB = "255, 255, 255";
-const POINT_RADIUS_PX = 1.6;
-const POINT_ALPHA = 0.16;
-const SELECTED_POINT_ALPHA = 0.9;
 const SEGMENT_BREAK_FACTOR = 6;
+
+// The selected plate's Euler pole + motion arc, and a bright cyan distinct from every plate
+// palette hue and from the three fault regime colours.
+const MOTION_RGB = "125, 225, 255";
+// Δθ swept about the Euler pole per (cm/yr) of plate speed -- scaled so a typical few-cm/yr
+// plate draws a clearly readable arc, clamped so a MAX-railed plate can't wrap the globe.
+const MOTION_ARC_DEG_PER_CM_YR = 8;
+const MOTION_ARC_MIN_DEG = 6;
+const MOTION_ARC_MAX_DEG = 95;
 
 // --- Fault drawing (same regime colours / earthquake overlay the old Fault Lines view used) ---
 const KIND_RGB: Record<FaultSummary["kind"], string> = {
@@ -66,17 +76,34 @@ const EARTHQUAKE_RETAIN_MYR = 5.0;
 // cone), filled when the vent still has eruption potential, hollow once dormant.
 const VOLCANO_RGB = "255, 120, 40";
 
-const COASTLINE_RGB = "235, 235, 235";
+// A cool blue-grey -- deliberately not white, so it reads as clearly distinct from the plate
+// outlines drawn over it (which carry each plate's own saturated palette hue).
+const COASTLINE_RGB = "150, 170, 200";
 const COASTLINE_HALO_RGB = "15, 15, 15";
 
+// Unit-vector centroid of a loop of world points -- the anchor for the motion arc and the
+// longitude-unwrap centre for projecting the outline.
+const loopCentroid = (pts: Vec3[]): Vec3 => {
+  let x = 0, y = 0, z = 0;
+  for (const p of pts) {
+    x += p[0];
+    y += p[1];
+    z += p[2];
+  }
+  const n = Math.hypot(x, y, z) || 1;
+  return [x / n, y / n, z / n];
+};
+
 // The "Plates & Faults" view (replaces the old PNG "Plates" view + "Fault lines" inspector):
-// plate outlines / bounding ellipses / node points with click-to-select + Tab cycling and a
-// metadata panel (see App.tsx), the intraplate fault systems + strands drawn for context
-// (not individually selectable here -- selecting a plate emphasises its own faults instead),
-// and an earthquake + volcano activity overlay toggled together from the sidebar. All
-// client-drawn, same "raw JSON, the client renders it" approach as the other inspectors.
+// plate outline loops with click-to-select + Tab cycling and a metadata panel (see App.tsx),
+// the selected plate's Euler pole + a speed-scaled motion arc, the intraplate fault systems +
+// strands drawn for context (not individually selectable here -- selecting a plate emphasises
+// its own faults instead; clicking a fault type in the legend isolates that regime), and an
+// earthquake + volcano activity overlay toggled together from the sidebar. All client-drawn,
+// same "raw JSON, the client renders it" approach as the other inspectors.
 export default function PlatesAndFaults({
   plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
+  highlightedFaultKind,
   width, height, displayWidth, displayHeight, projection, rotation,
   selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted, interactionDisabled,
 }: Props) {
@@ -154,8 +181,16 @@ export default function PlatesAndFaults({
     const transform = getRenderTransform(projection, width, height);
     const pixelScale = width / 1100;
     const lineWidth = Math.max(1, pixelScale);
-    const pointRadius = POINT_RADIUS_PX * pixelScale;
-    const pointSize = pointRadius * 2;
+    // A fault type is isolated from the legend -- dim the standing geometry (coastline, plate
+    // outlines, other regimes, the activity overlay) so that regime reads clearly on top.
+    const hk = highlightedFaultKind;
+    const contextDim = hk ? 0.32 : 1;
+    // The transient activity overlay isn't a fault regime -- push it further back than the
+    // standing geometry while a regime is isolated so it doesn't compete.
+    const activityDim = hk ? 0.12 : 1;
+    // A pixel jump longer than this between consecutive projected points is the antimeridian
+    // seam wrapping, not a real edge -- skip it (see strokeRobustLoop's own break logic).
+    const seamJump = Math.max(40 * pixelScale, width * 0.25);
 
     const projectPoint = (v: Vec3): [number, number] => {
       const r = matApply(previewRotation, v);
@@ -205,63 +240,54 @@ export default function PlatesAndFaults({
     };
 
     // 1. Coastline for orientation (halo then a lighter line on top).
-    strokeEdges(coastlineSegments, `rgba(${COASTLINE_HALO_RGB}, 1.0)`, lineWidth * 2.6);
-    strokeEdges(coastlineSegments, `rgba(${COASTLINE_RGB}, 1.0)`, lineWidth * 1.1);
+    strokeEdges(coastlineSegments, `rgba(${COASTLINE_HALO_RGB}, ${0.9 * activityDim})`, lineWidth * 2.6);
+    strokeEdges(coastlineSegments, `rgba(${COASTLINE_RGB}, ${contextDim})`, lineWidth * 1.1);
 
-    // 2. Plates -- non-selected first, then the selected one brighter on top.
-    const drawPlate = (plate: PlateSummary, fillAlpha: number, selected: boolean) => {
+    // 2. Plate outlines -- non-selected first, then the selected one opaque + thicker on top.
+    const drawPlate = (plate: PlateSummary, selected: boolean) => {
+      if (plate.outline.length === 0) return;
       const [r, g, b] = plateColor(plate.plate_id);
-      const ellipse = plate.bounding_ellipse;
-      const centerXyz: Vec3 = ellipse ? ellipse.center_xyz : plate.outline[0];
-      if (!centerXyz) return;
-      if (ellipse) {
-        const pixels = projectLoop(ellipse.outline, centerXyz, previewRotation, transform);
-        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${fillAlpha})`;
-        ctx.beginPath();
-        pixels.forEach(([px, py], i) => (i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)));
-        ctx.closePath();
-        ctx.fill();
-      }
-      if (plate.outline.length > 0) {
-        const pixels = projectLoop(plate.outline, centerXyz, previewRotation, transform);
-        strokeRobustLoop(
-          ctx, pixels, `rgba(${r}, ${g}, ${b}, ${selected ? OUTLINE_ALPHA_SELECTED : OUTLINE_ALPHA})`,
-          selected ? lineWidth * 2 : lineWidth,
-        );
-      }
-      ctx.fillStyle = `rgba(${POINT_RGB}, ${selected ? SELECTED_POINT_ALPHA : POINT_ALPHA})`;
-      for (const p of plate.points) {
-        const [px, py] = projectPoint(p as Vec3);
-        ctx.fillRect(px - pointRadius, py - pointRadius, pointSize, pointSize);
-      }
+      const center = loopCentroid(plate.outline as Vec3[]);
+      const pixels = projectLoop(plate.outline, center, previewRotation, transform);
+      const alpha = (selected ? OUTLINE_ALPHA_SELECTED : OUTLINE_ALPHA) * contextDim;
+      strokeRobustLoop(ctx, pixels, `rgba(${r}, ${g}, ${b}, ${alpha})`, selected ? lineWidth * 2 : lineWidth);
     };
 
     for (const plate of plates) {
       if (plate.plate_id === selectedPlateId) continue;
-      drawPlate(plate, ELLIPSE_FILL_ALPHA, false);
+      drawPlate(plate, false);
     }
-    const selected = plates.find((p) => p.plate_id === selectedPlateId);
-    if (selected) drawPlate(selected, ELLIPSE_FILL_ALPHA_SELECTED, true);
+    const selectedPlate = plates.find((p) => p.plate_id === selectedPlateId);
+    if (selectedPlate) drawPlate(selectedPlate, true);
 
     // 3. Fault-system master lineaments -- broad translucent belt + thin dashed centerline.
     for (const sys of faultSystems) {
       const rgb = KIND_RGB[sys.kind];
       const sel = selectedSystemIds.has(sys.system_id);
-      const beltAlpha = sys.active ? (sel ? 0.26 : 0.12) : 0.06;
+      const muted = hk != null && sys.kind !== hk;
+      const beltBase = sys.active ? (sel ? 0.26 : 0.12) : 0.06;
+      const beltAlpha = muted ? beltBase * 0.1 : hk != null ? Math.min(0.4, beltBase * 1.7) : beltBase;
       strokePolyline(sys.trace, `rgba(${rgb}, ${beltAlpha})`, lineWidth * (sel ? 24 : 16));
+      const lineBase = sys.active ? (sel ? 0.85 : 0.45) : 0.22;
       strokePolyline(
-        sys.trace, `rgba(${rgb}, ${sys.active ? (sel ? 0.85 : 0.45) : 0.22})`,
+        sys.trace, `rgba(${rgb}, ${muted ? lineBase * 0.12 : lineBase})`,
         lineWidth * (sel ? 1.8 : 1.1), [lineWidth * 6, lineWidth * 5],
       );
     }
 
-    // 4. Fault strands -- scars (recessive) first, then active.
+    // 4. Fault strands -- scars (recessive) first, then active, then the isolated regime on top.
     const drawFault = (fault: FaultSummary) => {
       const onSelectedPlate = fault.plate_id === selectedPlateId;
-      const alpha = fault.active ? (onSelectedPlate ? 1.0 : ACTIVE_ALPHA) : SCAR_ALPHA;
+      const muted = hk != null && fault.kind !== hk;
+      const isolated = hk != null && fault.kind === hk;
+      const alpha = (fault.active ? (onSelectedPlate ? 1.0 : ACTIVE_ALPHA) : SCAR_ALPHA) * (muted ? 0.1 : 1);
       const w = fault.active ? lineWidth * (onSelectedPlate ? 2.6 : 2) : lineWidth * 1.3;
       const dash = fault.active ? [] : [lineWidth * 3, lineWidth * 3];
-      strokeEdges(traceEdges(fault.trace), `rgba(${KIND_RGB[fault.kind]}, ${alpha})`, w, dash);
+      const edges = traceEdges(fault.trace);
+      if (isolated) {
+        strokeEdges(edges, `rgba(255, 255, 255, ${fault.active ? 0.5 : 0.25})`, w + lineWidth * 2.6, dash);
+      }
+      strokeEdges(edges, `rgba(${KIND_RGB[fault.kind]}, ${alpha})`, muted ? Math.max(1, w * 0.7) : w, dash);
       const [mx, my] = projectPoint(fault.trace[Math.floor(fault.trace.length / 2)] as Vec3);
       const r = 2.6 * pixelScale;
       ctx.fillStyle = `rgba(${KIND_RGB[fault.kind]}, ${alpha})`;
@@ -272,8 +298,80 @@ export default function PlatesAndFaults({
       if (fault.active) ctx.fill();
       ctx.stroke();
     };
-    for (const f of faults) if (!f.active) drawFault(f);
-    for (const f of faults) if (f.active) drawFault(f);
+    const faultRank = (f: FaultSummary) => (hk != null && f.kind === hk ? 2 : 0) + (f.active ? 1 : 0);
+    for (const f of [...faults].sort((a, b) => faultRank(a) - faultRank(b))) drawFault(f);
+
+    // 4b. Selected plate's Euler pole + a motion arc whose ground length tracks plate speed.
+    if (selectedPlate && selectedPlate.euler_pole && selectedPlate.outline.length > 0) {
+      const ma = hk ? 0.3 : 0.95;
+      const poleAxis = latLonToXyz(
+        (selectedPlate.euler_pole.lat_deg * Math.PI) / 180,
+        (selectedPlate.euler_pole.lon_deg * Math.PI) / 180,
+      );
+      // The centroid's small-circle path about the pole, swept over a fixed interval: Δθ ∝
+      // speed_cm_per_yr, and the small-circle radius sin(φ) scales it back to a true ground
+      // distance -- so the drawn arc length is proportional to the plate's surface speed here.
+      const centroid = loopCentroid(selectedPlate.outline as Vec3[]);
+      const D2R = Math.PI / 180;
+      const sweep = Math.min(
+        MOTION_ARC_MAX_DEG * D2R,
+        Math.max(MOTION_ARC_MIN_DEG * D2R, selectedPlate.speed_cm_per_yr * MOTION_ARC_DEG_PER_CM_YR * D2R),
+      );
+      const STEPS = 48;
+      const arcPts: Vec3[] = [];
+      for (let i = 0; i <= STEPS; i++) {
+        arcPts.push(matApply(rotationMatrix(poleAxis, (sweep * i) / STEPS), centroid) as Vec3);
+      }
+      ctx.strokeStyle = `rgba(${MOTION_RGB}, ${ma})`;
+      ctx.lineWidth = lineWidth * 2.2;
+      ctx.lineCap = "round";
+      for (let i = 0; i + 1 < arcPts.length; i++) {
+        const [[x1, y1], [x2, y2]] = projectEdge(arcPts[i], arcPts[i + 1], previewRotation, transform);
+        if (Math.hypot(x2 - x1, y2 - y1) > seamJump) continue;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt";
+      // Arrowhead at the leading end (direction = right-hand rotation about the Euler pole).
+      const [tailPx, tipPx] = projectEdge(arcPts[STEPS - 1], arcPts[STEPS], previewRotation, transform);
+      if (Math.hypot(tipPx[0] - tailPx[0], tipPx[1] - tailPx[1]) < seamJump) {
+        const ang = Math.atan2(tipPx[1] - tailPx[1], tipPx[0] - tailPx[0]);
+        const ah = 9 * pixelScale;
+        ctx.fillStyle = `rgba(${MOTION_RGB}, ${ma})`;
+        ctx.beginPath();
+        ctx.moveTo(tipPx[0], tipPx[1]);
+        ctx.lineTo(tipPx[0] - ah * Math.cos(ang - 0.42), tipPx[1] - ah * Math.sin(ang - 0.42));
+        ctx.lineTo(tipPx[0] - ah * Math.cos(ang + 0.42), tipPx[1] - ah * Math.sin(ang + 0.42));
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Euler pole glyph: a ringed crosshair at the pole, a hollow ring at its antipode.
+      const drawPole = (axis: Vec3, filled: boolean) => {
+        const [px, py] = projectPoint(axis);
+        const rr = 5 * pixelScale;
+        ctx.strokeStyle = `rgba(${MOTION_RGB}, ${ma})`;
+        ctx.fillStyle = `rgba(${MOTION_RGB}, ${ma})`;
+        ctx.lineWidth = lineWidth * 1.4;
+        ctx.beginPath();
+        ctx.arc(px, py, rr, 0, 2 * Math.PI);
+        ctx.stroke();
+        if (filled) {
+          ctx.beginPath();
+          ctx.arc(px, py, rr * 0.42, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+        ctx.beginPath();
+        ctx.moveTo(px - rr * 1.7, py);
+        ctx.lineTo(px + rr * 1.7, py);
+        ctx.moveTo(px, py - rr * 1.7);
+        ctx.lineTo(px, py + rr * 1.7);
+        ctx.stroke();
+      };
+      drawPole(poleAxis, true);
+      drawPole([-poleAxis[0], -poleAxis[1], -poleAxis[2]], false);
+    }
 
     if (!showQuakesVolcanoes) return;
 
@@ -285,10 +383,10 @@ export default function PlatesAndFaults({
       const r = (1.5 + 1.6 * Math.max(0, q.magnitude - 4)) * pixelScale;
       ctx.beginPath();
       ctx.arc(ex, ey, r, 0, 2 * Math.PI);
-      ctx.fillStyle = `rgba(${EARTHQUAKE_RGB}, ${0.15 + 0.5 * recency})`;
+      ctx.fillStyle = `rgba(${EARTHQUAKE_RGB}, ${(0.15 + 0.5 * recency) * activityDim})`;
       ctx.fill();
       ctx.lineWidth = lineWidth * 1.4;
-      ctx.strokeStyle = `rgba(${EARTHQUAKE_RGB}, ${0.4 + 0.6 * recency})`;
+      ctx.strokeStyle = `rgba(${EARTHQUAKE_RGB}, ${(0.4 + 0.6 * recency) * activityDim})`;
       ctx.stroke();
     }
 
@@ -302,11 +400,11 @@ export default function PlatesAndFaults({
       ctx.lineTo(vx + s * 0.9, vy + s * 0.7);
       ctx.closePath();
       if (v.active) {
-        ctx.fillStyle = `rgba(${VOLCANO_RGB}, 0.9)`;
+        ctx.fillStyle = `rgba(${VOLCANO_RGB}, ${0.9 * activityDim})`;
         ctx.fill();
       }
       ctx.lineWidth = lineWidth * 1.3;
-      ctx.strokeStyle = `rgba(${VOLCANO_RGB}, ${v.active ? 1 : 0.6})`;
+      ctx.strokeStyle = `rgba(${VOLCANO_RGB}, ${(v.active ? 1 : 0.6) * activityDim})`;
       ctx.stroke();
     }
   };
@@ -316,7 +414,7 @@ export default function PlatesAndFaults({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
-    selectedPlateId, projection, rotation, width, height,
+    highlightedFaultKind, selectedPlateId, projection, rotation, width, height,
   ]);
 
   const handleClick = (backingX: number, backingY: number) => {
