@@ -3,12 +3,20 @@ flow, and downstream flow accumulation over the world's current node cloud.
 
 A fixed grid's regular 8-neighbor adjacency would give flow routing, depression filling, and
 downstream accumulation a natural substrate, but mantle-bloom's world is instead an irregular
-per-plate node cloud. All three core flow-routing algorithms -- steepest-descent flow
-direction, priority-flood basin-spill, and elevation-ordered downstream accumulation -- turn
-out not to actually need a *grid*, only a *graph*: this module builds one via a whole-world
-k-nearest-neighbor query (the same
-technique reassign.py/erosion.py already use for their own whole-world passes), then runs
-the same algorithms directly on it. Glacier flow (accumulated ice moving one hop downhill per
+per-plate node cloud. Steepest-descent flow direction and elevation-ordered downstream
+accumulation turn out not to actually need a *grid*, only a *graph*: this module builds one via
+a whole-world k-nearest-neighbor query (the same technique reassign.py/erosion.py already use
+for their own whole-world passes), then runs both algorithms directly on it. Depression
+filling/basin-spill -- deciding where a lake's overflow escapes to once full -- is instead
+derived from `lakes.py`'s own catchment+Kruskal depression hierarchy
+(`lakes.compute_spill_routing`), not a separately-computed priority-flood pass over this
+module's own graph: an earlier version of this module *did* run its own independent
+multi-source-Dijkstra priority-flood here (`_compute_basin_spill`, since removed), but it
+could drift out of sync with `lakes.py`'s own, physically-correct hierarchy -- see
+`lakes.compute_spill_routing`'s own docstring for the real, save-file-confirmed drift this
+caused, and `compute_hydrology`'s own docstring for the resulting step order.
+
+Glacier flow (accumulated ice moving one hop downhill per
 step) reuses the same steepest-descent/spill-redirect machinery water's own flow_target does
 (`_compute_flow_direction`), but with its own separate target (`ice_flow_target`, on
 HydrologyFields) rather than literally sharing water's: ice keeps moving downhill under its own
@@ -38,7 +46,9 @@ flattening terms) and channel_depth (which erosion.py itself owns, since it's th
 actually carves it).
 
 **Lakes are an explicit object tree, not a flat per-node approximation** -- see `lakes.py`
-(`lakes.Lake`, `lakes.build_lake_hierarchy`, `lakes.step_lakes`). An earlier version of this
+(`lakes.Lake`, `lakes.build_lake_hierarchy`, `lakes.step_lakes`), and that same tree is now
+also what drives spill *routing* here, not just water-balance bookkeeping (see above). An
+earlier version of this
 module tracked lakes purely as a flood-fill over `lake_depth`, seeded from every node that held
 water last step and rate-limited per step (a hop cap on growth into new territory, a cap on
 per-node depth change) so a large lake's size changed gradually rather than snapping instantly
@@ -76,7 +86,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
-from numba import njit
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
@@ -411,130 +420,6 @@ def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np
     return hydro.is_ocean[idx].reshape(fallback_is_ocean.shape)
 
 
-def _compute_basin_spill(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Priority-flood depression filling: a multi-source Dijkstra seeded from every ocean
-    node, relaxing by *max* (the highest point a path is forced to cross) rather than by
-    sum -- a minimax path cost, not a shortest path. The same priority-flood algorithm
-    generalizes cleanly from grid 8-neighbor adjacency to the k-NN graph's edges. Returns
-    (filled_elevation, spill_target): the minimal-bottleneck elevation to
-    reach open ocean from each node, and a one-hop escape neighbor toward it (-1 for ocean
-    or a node with no path to any ocean at all).
-
-    The work is an njit kernel (`_basin_spill_kernel`): a pure-Python `heapq` priority-flood
-    was ~0.21 s/step at `node_density` 4 and grew with basin count (profiling.md #7). Every
-    heap entry has a distinct `(cost, node)` key -- `cost[j]` only ever changes on a strict
-    decrease -- so the min is unique and pop order is identical to `heapq`'s tuple compare
-    regardless of heap internals; the kernel is bit-exact with the old path."""
-    n = len(elevation)
-    if n == 0:
-        return np.zeros(0), np.zeros(0, dtype=np.int64)
-    return _basin_spill_kernel(
-        np.ascontiguousarray(elevation, dtype=np.float64),
-        np.ascontiguousarray(is_ocean, dtype=np.bool_),
-        np.ascontiguousarray(neighbor_idx, dtype=np.int64),
-    )
-
-
-@njit(cache=True)
-def _basin_spill_kernel(
-    elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Array-backed binary min-heap priority-flood -- see `_compute_basin_spill`. The heap is
-    ordered lexicographically on `(key, node)` to match Python `heapq`'s tuple comparison.
-    `cap` bounds total pushes exactly: each directed edge is relaxed at most once (only after
-    its source is popped, guarded by `visited`), plus one seed per ocean node."""
-    n = elevation.shape[0]
-    k = neighbor_idx.shape[1]
-
-    cost = np.full(n, np.inf)
-    spill_target = np.full(n, -1, dtype=np.int64)
-    visited = np.zeros(n, dtype=np.bool_)
-
-    cap = n * k + n + 1
-    heap_key = np.empty(cap, dtype=np.float64)
-    heap_node = np.empty(cap, dtype=np.int64)
-    size = 0
-
-    for i in range(n):
-        if is_ocean[i]:
-            cost[i] = elevation[i]
-            heap_key[size] = elevation[i]
-            heap_node[size] = i
-            child = size
-            size += 1
-            while child > 0:
-                parent = (child - 1) >> 1
-                if heap_key[child] < heap_key[parent] or (
-                    heap_key[child] == heap_key[parent] and heap_node[child] < heap_node[parent]
-                ):
-                    heap_key[child], heap_key[parent] = heap_key[parent], heap_key[child]
-                    heap_node[child], heap_node[parent] = heap_node[parent], heap_node[child]
-                    child = parent
-                else:
-                    break
-
-    while size > 0:
-        d = heap_key[0]
-        i = heap_node[0]
-        size -= 1
-        heap_key[0] = heap_key[size]
-        heap_node[0] = heap_node[size]
-        parent = 0
-        while True:
-            left = 2 * parent + 1
-            right = left + 1
-            smallest = parent
-            if left < size and (
-                heap_key[left] < heap_key[smallest]
-                or (heap_key[left] == heap_key[smallest] and heap_node[left] < heap_node[smallest])
-            ):
-                smallest = left
-            if right < size and (
-                heap_key[right] < heap_key[smallest]
-                or (heap_key[right] == heap_key[smallest] and heap_node[right] < heap_node[smallest])
-            ):
-                smallest = right
-            if smallest == parent:
-                break
-            heap_key[parent], heap_key[smallest] = heap_key[smallest], heap_key[parent]
-            heap_node[parent], heap_node[smallest] = heap_node[smallest], heap_node[parent]
-            parent = smallest
-
-        if visited[i]:
-            continue
-        visited[i] = True
-        for c in range(k):
-            j = neighbor_idx[i, c]
-            if visited[j] or is_ocean[j]:
-                continue
-            neighbor_elev = elevation[j]
-            candidate = neighbor_elev if neighbor_elev > d else d
-            if candidate < cost[j]:
-                cost[j] = candidate
-                if candidate > d:
-                    spill_target[j] = i
-                else:
-                    inherited = spill_target[i]
-                    spill_target[j] = inherited if inherited >= 0 else i
-                heap_key[size] = candidate
-                heap_node[size] = j
-                child = size
-                size += 1
-                while child > 0:
-                    parent = (child - 1) >> 1
-                    if heap_key[child] < heap_key[parent] or (
-                        heap_key[child] == heap_key[parent]
-                        and heap_node[child] < heap_node[parent]
-                    ):
-                        heap_key[child], heap_key[parent] = heap_key[parent], heap_key[child]
-                        heap_node[child], heap_node[parent] = heap_node[parent], heap_node[child]
-                        child = parent
-                    else:
-                        break
-
-    return cost, spill_target
-
-
 def lake_components(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> list[np.ndarray]:
     """Every connected `is_lake` component (as an array of member node indices) via union-find
     over `neighbor_idx`'s edges, treated as **undirected** here even though the k-NN graph
@@ -814,10 +699,12 @@ def compute_hydrology(
     node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
-    step's climate: basin-spill -> (lake freeze, if cold enough) -> flow direction ->
+    step's climate: (lake freeze, if cold enough) -> depression hierarchy + spill routing (see
+    `lakes.build_lake_hierarchy`/`lakes.compute_spill_routing`) -> flow direction ->
     glacier accumulation/melt/flow -> precipitation(-minus-frozen)-plus-meltwater-plus-lake-
-    breach downstream accumulation -> lake growth/evaporation/merge/split (see `lakes.py`) ->
-    river classification (excluding flooded lake nodes, so a river ends at a lake's shore
+    breach downstream accumulation -> lake growth/evaporation/merge/split, resolved against the
+    *same* depression hierarchy spill routing already used (`lakes.resolve_lakes`) -> river
+    classification (excluding flooded lake nodes, so a river ends at a lake's shore
     rather than being treated as continuing through it). A lake that's actively spilling this
     step also adds `LAKE_BREACH_EROSION_COEFFICIENT`-scaled extra "water" into the routed total
     at its own sink, sized by its connected lake's own node count (see that constant's own
@@ -842,7 +729,23 @@ def compute_hydrology(
     docstring for why that override can't reuse the ordinary should_spill escape valve). This
     is deliberately a *different*, warmer threshold than GLACIER_ACCUMULATION_TEMP_C (see that
     constant's own comment) -- freezing solid for a step doesn't imply building a *permanent*
-    glacier."""
+    glacier.
+
+    **`should_spill` (below) and a lake's own `is_spilling` (`lakes._resolve`, set inside
+    `lakes.resolve_lakes` near the end of this function) are now the same test -- "is this
+    lake's water at or above its own rim" -- applied to the same depression-hierarchy geometry,
+    just necessarily evaluated at two different points in the step** -- not two
+    independently-computed conditions that can drift apart on their own terms (that used to be
+    true, back when `should_spill` read a separately-computed Dijkstra basin-spill result --
+    see this module's own docstring). `should_spill` has to run early, against *last* step's
+    `lake_depth`, because `route_downstream` (which produces this step's `water_deposited`,
+    the very thing a lake needs to know its own *this-step* inflow) needs `flow_target` first,
+    which needs `should_spill` first. `resolve_lakes`'s own `is_spilling` runs afterward,
+    against the freshly-resolved *this-step* level. So a lake right at its rim can still show
+    `should_spill=True` while this same step's `is_spilling` says `False` (it hadn't quite
+    risen that last bit as of last step's snapshot) or vice versa -- a real, unavoidable
+    one-step lag, the same character every other persisted quantity in this codebase already
+    has, not a bug to chase further."""
     points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
@@ -860,7 +763,6 @@ def compute_hydrology(
     # enclosed interior depression that dipped below sea level is routed/pooled/silted as an
     # endorheic basin (see connected_ocean_mask) rather than treated as a vanishing ocean sink.
     is_ocean = connected_ocean_mask(points, elevation, world.sea_level_m, neighbor_idx)
-    filled_elevation, spill_target = _compute_basin_spill(elevation, is_ocean, neighbor_idx)
 
     # A node is "frozen" this step -- any liquid water on it turns to ice, precipitation falls
     # as snow, a river crossing it stops -- when its sampled surface temperature is below the
@@ -870,11 +772,25 @@ def compute_hydrology(
     # step whose temperature briefly ticks above 0: a marginal thaw doesn't put liquid water
     # back on top of kilometres of ice. The glacier's own surface melt (`_update_glaciers`,
     # temperature-driven) still ablates the cap regardless -- this governs only what happens to
-    # water and precipitation arriving on it, not whether the ice itself survives.
+    # water and precipitation arriving on it, not whether the ice itself survives. Computed
+    # *before* the depression hierarchy/spill routing below (moved up from its old position
+    # after basin-spill) since compute_spill_routing needs lake_depth_adjusted, not just bare
+    # terrain -- see that function's own docstring for why.
     is_frozen = (temperature_at_nodes < FREEZE_POINT_C) | (prev_glacier_depth >= GLACIER_VISIBLE_DEPTH_M)
     freezing_lake = is_frozen & (prev_lake_depth > 0.0)
     lake_depth_adjusted = np.where(freezing_lake, 0.0, prev_lake_depth)
     frozen_from_lake = np.where(freezing_lake, prev_lake_depth, 0.0)
+
+    # The depression hierarchy is built once, here, from bare terrain alone (no water/inflow
+    # input needed -- see build_lake_hierarchy's own signature) so it can drive *both* this
+    # step's spill routing (immediately below -- see compute_spill_routing's own docstring for
+    # why lakes.py's own hierarchy, not a separate independently-computed basin-spill pass, is
+    # now the single source of truth for where a lake's overflow goes) and, later, this same
+    # step's lake water-balance resolution (`lakes.resolve_lakes`, once water_deposited is
+    # known) -- the exact same `forest` object threaded through both, rather than paying for a
+    # second, redundant `build_lake_hierarchy` call and risking the two disagreeing.
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
+    filled_elevation, spill_target = lakes.compute_spill_routing(forest, elevation, lake_depth_adjusted)
 
     flow_target, should_spill = _compute_flow_direction(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen
@@ -965,9 +881,14 @@ def compute_hydrology(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
     )
-    fields.lake_depth, fields.silt_deposited, fields.lake_forest, fields.lake_events = lakes.step_lakes(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, water_deposited, years, is_frozen
+    # Resolves the *same* forest built early (above, for spill routing) against this step's
+    # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
+    # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
+    # used (see lakes.resolve_lakes's own docstring).
+    fields.lake_depth, fields.silt_deposited, fields.lake_events = lakes.resolve_lakes(
+        forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen
     )
+    fields.lake_forest = forest
     # Cumulative record only (erosion.py folds `silt_deposited` into real `elevation`); kept so
     # the persisted per-node silt_depth field stays a running total.
     fields.silt_depth = prev_silt_depth + fields.silt_deposited

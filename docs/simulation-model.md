@@ -2735,16 +2735,21 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
 (`hydrology.compute_hydrology`) and reuses the result for both erosion and
 `World.hydrology_cache`, rather than paying for it twice.
 
-**The three algorithms**, all operating on the k-NN graph:
+**The core algorithms**, all operating on the k-NN graph:
 
-- **Basin-spill** (`_compute_basin_spill`): a multi-source Dijkstra seeded
-  from every ocean node, relaxing by *max* (the highest point a path is forced to cross)
-  rather than by sum -- a minimax path cost, not a shortest path. Nested sub-basin chains
-  collapse to one hop each, cycle-free by construction -- necessary because a naive
-  single-neighbor check can't see past more than one nested rim. Still used for flow
-  *routing* (`_compute_flow_direction`'s `should_spill`, below) -- lake *detection* itself now
-  lives in `lakes.py`'s own, different (nested-basin-aware) algorithm, see
-  [Lakes](#lakes-are-an-explicit-tree) below.
+- **Basin-spill / spill routing** (`lakes.compute_spill_routing`): where a lake's overflow
+  escapes to, and at what elevation, feeding `_compute_flow_direction`'s `should_spill` below.
+  Formerly a *separate*, independently-computed multi-source Dijkstra priority-flood over bare
+  terrain (`hydrology._compute_basin_spill`/`_basin_spill_kernel`, since removed) -- distinct
+  from, and never reconciled with, `lakes.py`'s own catchment+Kruskal depression hierarchy
+  (below), which is what actually decides lake *detection*/geometry. The two usually agreed
+  closely but were evaluated at different times with different lag and could drift apart step
+  to step (confirmed against a real save: a merged lake's own fresh water-balance resolution
+  showed it hadn't yet reached its true rim, while the old kernel's stale, one-step-lagged
+  threshold said it had already spilled). `compute_spill_routing` instead derives
+  `filled_elevation`/`spill_target` directly from `lakes.py`'s own hierarchy -- see
+  [Lakes](#lakes-are-an-explicit-tree) below for how, making that hierarchy the single source
+  of truth for both where a lake *is* and where its water *goes*.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
@@ -2792,9 +2797,7 @@ floor/rim geometry directly, so a lake's maximum extent is known immediately rat
 discovered incrementally, which is what actually fixes that runaway-growth failure mode.
 
 The core data structure is `lakes.Lake`: an n-ary tree built by `build_lake_hierarchy`, a
-two-phase algorithm distinct from `_compute_basin_spill` above (which only finds one
-component's own bottleneck to the ocean, with no notion of *nested* sub-basins merging with
-each other first) -- a "depression hierarchy" / "watershed by immersion" technique (Barnes et
+two-phase algorithm -- a "depression hierarchy" / "watershed by immersion" technique (Barnes et
 al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k-NN graph:
 
 - **Phase 1** assigns every node to the catchment of the true local minimum its own *pure*
@@ -2818,10 +2821,16 @@ al.'s fill-spill-merge family), adapted from a regular grid to this codebase's k
   -- both are "reaching the top of the basin," one spilling to another basin, the other to the
   sea.
 
-Each step, `lakes.step_lakes` rebuilds this hierarchy from scratch (`elevation +
-prev_silt_depth`, not bare `elevation` -- see below) -- consistent with `flow_target`/
-`flow_accum` above being recomputed fresh every step rather than advected -- then resolves
-every lake's own water balance top-down: evaporate `prev_level`'s depth (same
+Each step, `compute_hydrology` builds this hierarchy fresh from current terrain
+(`lakes.build_lake_hierarchy`, bare `elevation` -- see below) -- consistent with
+`flow_target`/`flow_accum` above being recomputed fresh every step rather than advected --
+*once*, early (before flow direction, so `compute_spill_routing` above can use it), then reuses
+that same tree object later in the step (`lakes.resolve_lakes`) to resolve every lake's own
+water balance top-down, rather than paying for a second, redundant rebuild that could drift
+from the one spill routing already used. `lakes.step_lakes` -- `build_lake_hierarchy` +
+`resolve_lakes` in one call -- still exists for any caller (tests, mainly) that just wants
+"lakes for this terrain, resolved" without needing to reuse the tree for anything else.
+`resolve_lakes` resolves every lake's own water balance top-down: evaporate `prev_level`'s depth (same
 `LAKE_EVAPORATION_RATE_PER_MYR`/`LAKE_EVAPORATION_BASELINE_M_PER_MYR` constants and tuning
 rationale the old per-node design already used), grow from this step's own inflow (the sum of
 `route_downstream`'s `water_deposited` over every one of the lake's own members, since more
@@ -2845,13 +2854,14 @@ changed.
 **Lakes accumulate silt.** `silt_depth` (a new persistent per-node array, threaded through
 `PlateWithLines.deform`/`elevation_lines.py`/`merge_split.py` exactly like `lake_depth`) is a
 small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
-(monotonically -- silt never erodes back away) on a lake's own bed. `build_lake_hierarchy`
-is given `elevation + silt_depth`, not bare elevation, so a lake's own floor rises as silt
-accumulates without touching the real terrain `elevation` other modules read -- a small,
-low-inflow lake can plausibly silt in entirely over a long enough run: once its floor has
-risen to meet the surrounding rim, it stops registering as a local minimum at all (steepest
-descent no longer sees a depression there), and the lake disappears outright, exactly the
-"reaches ground level" case a lake should eventually hit.
+(monotonically -- silt never erodes back away) on a lake's own bed. `erosion.py` folds each
+step's `silt_deposited` straight into real terrain `elevation` (like every other deposition
+pathway), so `build_lake_hierarchy` builds every hierarchy from bare `elevation` -- last
+step's fill is already baked into it, no separate `elevation + silt_depth` effective floor
+needed -- a small, low-inflow lake can plausibly silt in entirely over a long enough run: once
+its floor has risen to meet the surrounding rim, it stops registering as a local minimum at
+all (steepest descent no longer sees a depression there), and the lake disappears outright,
+exactly the "reaches ground level" case a lake should eventually hit.
 
 A river's own `flow_target` can point at a node that's genuinely part of a lake (real inflow),
 but a flooded node is never itself classified `is_river` -- checked against this step's

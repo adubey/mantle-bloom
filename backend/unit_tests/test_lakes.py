@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import hydrology, lakes
+from app import lakes
 
 
 def _leaves(roots):
@@ -18,13 +18,11 @@ def test_build_lake_hierarchy_on_a_monotonic_slope_creates_no_lakes():
     assert roots == []
 
 
-def test_build_lake_hierarchy_single_depression_matches_basin_spill():
-    # Same 4-node fixture as hydrology.py's own
-    # test_compute_basin_spill_collapses_nested_rims_to_one_hop: node 0 sits behind a rim (node
-    # 1, elevation 50), with node 2 (20) and the ocean (node 3, -10) beyond it. Node 0 has no
-    # lower neighbor at all -- it's the only real local minimum -- so it's the only leaf lake;
-    # nodes 1 and 2 both drain straight to the ocean via steepest descent and never become part
-    # of any lake.
+def test_build_lake_hierarchy_single_depression():
+    # 4-node fixture: node 0 sits behind a rim (node 1, elevation 50), with node 2 (20) and the
+    # ocean (node 3, -10) beyond it. Node 0 has no lower neighbor at all -- it's the only real
+    # local minimum -- so it's the only leaf lake; nodes 1 and 2 both drain straight to the
+    # ocean via steepest descent and never become part of any lake.
     elevation = np.array([30.0, 50.0, 20.0, -10.0])
     is_ocean = np.array([False, False, False, True])
     neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
@@ -35,11 +33,14 @@ def test_build_lake_hierarchy_single_depression_matches_basin_spill():
     assert lake.children == []
     assert lake.members.tolist() == [0]
     assert lake.floor_elevation == 30.0
-    assert lake.max_depth == 50.0  # matches filled_elevation[0] from the basin-spill test
+    assert lake.max_depth == 50.0
     assert 1 not in lake.members.tolist() and 2 not in lake.members.tolist() and 3 not in lake.members.tolist()
 
-    filled, _ = hydrology._compute_basin_spill(elevation, is_ocean, neighbor_idx)
-    assert lake.max_depth == filled[0]
+    # sink_node_idx/outlet_target_idx: this leaf's own local minimum (0), and the far side
+    # (node 1) of the boundary edge that set max_depth -- the actual escape route once full.
+    assert lake.sink_node_idx == 0
+    assert lake.outlet_node_idx == 0
+    assert lake.outlet_target_idx == 1
 
 
 def test_build_lake_hierarchy_never_includes_ocean_nodes():
@@ -84,9 +85,6 @@ def test_build_lake_hierarchy_merges_two_basins_before_either_reaches_ocean():
     assert 4 not in root.members.tolist()  # the rim node itself drains straight to the ocean
     assert root.floor_elevation == 2.0
     assert root.max_depth == 30.0  # the rim to the ocean, via node 4
-
-    filled, _ = hydrology._compute_basin_spill(elevation, is_ocean, neighbor_idx)
-    assert root.max_depth == filled[0]
 
     # The root is a real merge: two children, each still an independently-reachable descendant
     # whose own min_depth records the saddle (12.0) where the two original basins first
@@ -152,9 +150,6 @@ def test_build_lake_hierarchy_flat_terrain_produces_one_bounded_lake():
     assert root.floor_elevation == 5.0
     assert root.max_depth == 20.0  # bounded by the real rim, not left open-ended
 
-    filled, _ = hydrology._compute_basin_spill(elevation, is_ocean, neighbor_idx)
-    assert root.max_depth == filled[0]
-
 
 def test_iter_all_lakes_walks_every_descendant():
     elevation = np.array([2.0, 12.0, 9.0, 4.0, 30.0, -10.0])
@@ -182,6 +177,58 @@ _SINK_NEIGHBORS = np.array([[1, 1], [0, 2], [1, 1]])
 _MERGE_ELEVATION = np.array([2.0, 12.0, 9.0, 4.0, 30.0, -10.0])
 _MERGE_IS_OCEAN = np.array([False, False, False, False, False, True])
 _MERGE_NEIGHBORS = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 4]])
+
+
+# -- compute_spill_routing -----------------------------------------------------------------
+
+
+def test_compute_spill_routing_single_lake_matches_its_own_max_depth():
+    # Dry lake (prev_lake_depth all zero): a leaf is trivially "already merged" (min_depth ==
+    # floor_elevation), so its own max_depth/outlet_target_idx govern immediately -- no inflow
+    # history needed to know a single, un-nested basin's rim.
+    forest = lakes.build_lake_hierarchy(_SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS)
+    lake = forest[0]
+    assert lake.sink_node_idx == 0 and lake.max_depth == 25.0
+
+    filled, spill = lakes.compute_spill_routing(forest, _SINK_ELEVATION, np.zeros(3))
+    assert filled[0] == lake.max_depth == 25.0
+    assert spill[0] == lake.outlet_target_idx == 1
+    # An ordinary, never-a-sink node keeps its own bare elevation/-1 -- nothing downhill of it
+    # ever needs a rim to escape past (see this function's own docstring).
+    assert filled[1] == _SINK_ELEVATION[1] and spill[1] == -1
+    assert filled[2] == _SINK_ELEVATION[2] and spill[2] == -1
+
+
+def test_compute_spill_routing_routes_both_original_sinks_to_the_parents_rim_once_merged():
+    # The core case this function exists for: {0, 1} and {2, 3} already merged as of
+    # prev_lake_depth (node 0's water surface at 12.0 == the saddle/min_depth), so *both*
+    # original leaf sink nodes (0 and 3) must now resolve to the shared parent's own rim
+    # (30.0, via node 4) -- not each leaf's own already-surpassed 12.0/individual target.
+    forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
+    root = forest[0]
+    assert root.min_depth == 12.0 and root.max_depth == 30.0 and root.outlet_target_idx == 4
+
+    already_merged_prev_depth = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # node 0 surface: 2+10=12
+    filled, spill = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, already_merged_prev_depth)
+    assert filled[0] == filled[3] == 30.0
+    assert spill[0] == spill[3] == 4
+
+    # Not yet merged (everything dry): each leaf's own, shallower saddle governs instead.
+    filled_dry, spill_dry = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, np.zeros(6))
+    assert filled_dry[0] == filled_dry[3] == 12.0
+    assert spill_dry[0] == 2  # leaf {0,1}'s own outlet_target_idx, toward node 2
+    assert spill_dry[3] == 1  # leaf {2,3}'s own outlet_target_idx, toward node 1
+
+
+def test_compute_spill_routing_endorheic_basin_never_spills():
+    elevation = np.array([5.0, 15.0, 8.0])
+    is_ocean = np.array([False, False, False])
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1]])
+
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
+    filled, spill = lakes.compute_spill_routing(forest, elevation, np.zeros(3))
+    assert np.isinf(filled[0])
+    assert spill[0] == -1
 
 
 def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
