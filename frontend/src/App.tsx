@@ -8,6 +8,7 @@ import type {
   AnimateResponse, EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
+import SketchEditor from "./SketchEditor";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
 import LakeInspector from "./LakeInspector";
@@ -158,6 +159,28 @@ const initialView = loadViewCookie();
 
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  // "Random" (today's noise-driven generation, default) vs. "Human-made" (a drawn or loaded
+  // coastline -- see SketchEditor.tsx and backend app/worldsketch.py). sketchImageDataUrl is
+  // the captured drawing/image as a full data URL (so it can double as an <img> preview
+  // source); handleGenerate strips its `data:image/png;base64,` prefix before sending. Neither
+  // resets on a successful Generate, so re-opening the dialog to tweak the seed/detail keeps
+  // the same drawing around rather than discarding it.
+  const [generateMode, setGenerateMode] = useState<"random" | "human">("random");
+  const [sketchImageDataUrl, setSketchImageDataUrl] = useState<string | null>(null);
+  const [showSketchEditor, setShowSketchEditor] = useState(false);
+  // "Load an image" (Human-made tab) -- a hidden file input triggered by a plain button, read
+  // via FileReader straight to a data URL, same shape SketchEditor's own "Done" produces.
+  const loadImageInputRef = useRef<HTMLInputElement>(null);
+  const handleLoadSketchFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // so picking the same file again still fires onChange
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setSketchImageDataUrl(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }, []);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [seed, setSeed] = useState(randomSeed());
   const [continentalPercent, setContinentalPercent] = useState(DEFAULT_CONTINENTAL_PERCENT);
@@ -435,9 +458,14 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
+      // The "Human-made" tab's sketch rides along as a bare base64 payload -- strip the data
+      // URL's `data:image/png;base64,` prefix generateWorld's caller (SketchEditor's
+      // toDataURL / the file-picker's FileReader) both produce.
+      const sketchBase64 =
+        generateMode === "human" && sketchImageDataUrl ? sketchImageDataUrl.split(",", 2)[1] ?? null : null;
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        detail, fluidDensity, autoPlates ? null : numPlates,
+        detail, fluidDensity, autoPlates ? null : numPlates, sketchBase64,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -462,7 +490,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates,
-    projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
+    generateMode, sketchImageDataUrl, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
 
@@ -1235,7 +1263,77 @@ export default function App() {
               overflowY: "auto",
             }}
           >
-            <h2 style={{ fontSize: 16, marginTop: 0 }}>Generate World</h2>
+            <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
+
+            <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
+              {(["random", "human"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setGenerateMode(mode)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    fontSize: 12,
+                    border: "none",
+                    background: "none",
+                    cursor: "pointer",
+                    color: generateMode === mode ? "#e6e8ef" : "#8b8fa3",
+                    borderBottom: generateMode === mode ? "2px solid #5b8cff" : "2px solid transparent",
+                  }}
+                >
+                  {mode === "random" ? "Random" : "Human-made"}
+                </button>
+              ))}
+            </div>
+
+            {generateMode === "human" && (
+              <div style={{ marginBottom: 16 }}>
+                {sketchImageDataUrl ? (
+                  <div>
+                    <img
+                      src={sketchImageDataUrl}
+                      alt="Drawn/loaded coastline preview"
+                      style={{ width: "100%", borderRadius: 4, border: "1px solid #333", display: "block" }}
+                    />
+                    <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                      <button type="button" onClick={() => setShowSketchEditor(true)} disabled={busy} style={{ flex: 1, fontSize: 12 }}>
+                        Redraw
+                      </button>
+                      <button type="button" onClick={() => loadImageInputRef.current?.click()} disabled={busy} style={{ flex: 1, fontSize: 12 }}>
+                        Load a different image
+                      </button>
+                      <button type="button" onClick={() => setSketchImageDataUrl(null)} disabled={busy} style={{ fontSize: 12 }}>
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button type="button" onClick={() => setShowSketchEditor(true)} disabled={busy} style={{ flex: 1, fontSize: 12 }}>
+                      ✏️ Draw a map
+                    </button>
+                    <button type="button" onClick={() => loadImageInputRef.current?.click()} disabled={busy} style={{ flex: 1, fontSize: 12 }}>
+                      📂 Load an image
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={loadImageInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={handleLoadSketchFile}
+                />
+                <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
+                  Land and sea come from this coastline instead of "Initial land" below
+                  (Advanced settings) -- draw, or load, a mostly-white image with the coastline
+                  as a dark outline; the map's corners are assumed ocean. "Continental plates"
+                  still controls how many plates a large landmass gets split across, the way
+                  real continents straddle more than one.
+                </div>
+              </div>
+            )}
 
             <label style={{ display: "block", marginBottom: 16 }}>
               Seed
@@ -1286,7 +1384,7 @@ export default function App() {
                 <button onClick={() => setShowGenerateDialog(false)} disabled={busy}>
                   Cancel
                 </button>
-                <button onClick={handleGenerate} disabled={busy}>
+                <button onClick={handleGenerate} disabled={busy || (generateMode === "human" && !sketchImageDataUrl)}>
                   Generate
                 </button>
               </div>
@@ -1340,6 +1438,17 @@ export default function App() {
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
           onClose={() => setShowControlsModal(false)}
+        />
+      )}
+
+      {showSketchEditor && (
+        <SketchEditor
+          initialImageDataUrl={sketchImageDataUrl}
+          onDone={(dataUrl) => {
+            setSketchImageDataUrl(dataUrl);
+            setShowSketchEditor(false);
+          }}
+          onCancel={() => setShowSketchEditor(false)}
         />
       )}
 

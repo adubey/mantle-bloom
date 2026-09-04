@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, geology, hydrology, mantle, merge_split, stranded_basins, volcanism
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, geology, hydrology, mantle, merge_split, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -345,6 +345,7 @@ def generate_world(
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
     fluid_density: float = 1.0,
     extra_sites_per_plate: int = lithosphere_plate.EXTRA_SITES_PER_PLATE,
+    sketch: worldsketch.SketchMasks | None = None,
 ) -> World:
     """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
@@ -369,9 +370,19 @@ def generate_world(
     own comment for why it's a separate knob from climate_density rather than reusing it.
     `extra_sites_per_plate` controls how many adjacent Voronoi cells each plate fuses at
     generation (see lithosphere_plate.build_plate_tiling) -- higher means lumpier, less
-    convex initial plate outlines; 0 is the old one-cell-per-plate tiling."""
+    convex initial plate outlines; 0 is the old one-cell-per-plate tiling. `sketch` (the
+    "Human-made" Generate World tab, see worldsketch.py) replaces noise-driven land/sea and
+    random plate-site placement with a drawn/loaded coastline -- see
+    lithosphere_plate.generate_plates's own `sketch` param for what it changes; `None` (every
+    caller before this parameter existed) is unaffected."""
     plates = generate_plates(
-        seed, num_plates, continental_fraction, land_fraction, node_density, extra_sites_per_plate=extra_sites_per_plate
+        seed,
+        num_plates,
+        continental_fraction,
+        land_fraction,
+        node_density,
+        extra_sites_per_plate=extra_sites_per_plate,
+        sketch=sketch,
     )
     rng = np.random.default_rng(seed)
     mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)

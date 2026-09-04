@@ -360,6 +360,12 @@ async function asBlob(resp: Response): Promise<Blob> {
 // fluidDensity is the Advanced-settings dialog's "Fluid dynamics resolution" choice (same
 // 0.5/1/2/4 set) -- how finely the continuous Ocean/Atmospheric CFD's own grid resolves
 // currents/wind, independent of climateDensity (see world.py's World.fluid_density).
+// sketchImageBase64 is the "Human-made" Generate tab's drawn-or-loaded coastline (a PNG,
+// base64-encoded without the `data:image/png;base64,` prefix -- see SketchEditor.tsx and
+// backend app/worldsketch.py for the ink convention) -- when non-null, land/sea (and, where
+// painted, mountains/rivers) come from that image instead of noise, and plate boundaries are
+// fit to it, instead of the usual random placement (landFraction is then ignored server-side).
+// `null` (every caller before this parameter existed) is the "Random" tab, unaffected.
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -370,6 +376,7 @@ export function generateWorld(
   climateDensity: number,
   fluidDensity: number,
   numPlates: number | null,
+  sketchImageBase64: string | null = null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -384,6 +391,7 @@ export function generateWorld(
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
       fluid_density: fluidDensity,
+      sketch: sketchImageBase64 ? { image_base64: sketchImageBase64 } : null,
     }),
   }).then(asJson<WorldSummary>);
 }
