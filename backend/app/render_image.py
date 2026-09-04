@@ -1410,15 +1410,20 @@ CELL_BLUR_RADIUS_PX = 1.0
 # Combined's land shading spans a wide brightness range (see biomes.BIOME_SHADE_AMPLITUDE)
 # and, near peaks, blends toward the elevation gradient on top of that; ocean is a blend of
 # the pelagic-province color and the hypsometric depth shade -- far too much color spread for
-# the frontend to tell which class a pixel is from its RGB alone. So the per-pixel class id
-# rides in the render's *alpha* channel instead: alpha = 255 - code, where code is 0 for a
-# gap between cells, biome_id + 1 (1..len(BIOME_NAMES), Köppen land classes then pelagic ocean
-# classes) for a classified cell, or one of the two overlay codes below for lake / glacier
-# cover. frontend/src/legendData.ts mirrors this mapping by hand (same precedent as its
-# BIOME_RGB_ENTRIES) and MapCanvas.tsx reads the id straight from alpha -- exact, no RGB
-# tolerance match -- then resets alpha to opaque before display (the ~212..255 spread is a
-# data channel, never meant to actually composite). The alpha buffer is filled at cell
-# resolution and left un-blurred (unlike the RGB image) so ids stay crisp at boundaries.
+# the frontend to tell which class a pixel is from its RGB alone. The Biome view's own colors
+# now blend toward a boundary cell's runner-up class too (see biomes.smooth_biome_field_blend),
+# so neither view's RGB alone reliably identifies a pixel's class. Both carry the per-pixel
+# *dominant* (>50% share, see MIN_DOMINANT_SHARE) class id in the render's alpha channel
+# instead: alpha = 255 - code, where code is 0 for a gap between cells, biome_id + 1
+# (1..len(BIOME_NAMES), Köppen land classes then pelagic ocean classes) for a classified cell,
+# or one of the two overlay codes below for lake / glacier cover (Combined only -- the Biome
+# view has no lake/glacier overlay). frontend/src/legendData.ts mirrors this mapping by hand
+# (same precedent as its BIOME_RGB_ENTRIES) and MapCanvas.tsx reads the id straight from alpha
+# -- exact, no RGB tolerance match -- then resets alpha to opaque before display (the
+# ~212..255 spread is a data channel, never meant to actually composite). The alpha buffer is
+# filled at cell resolution and left un-blurred (unlike the RGB image) so ids stay crisp at
+# boundaries -- a blended pixel's *color* fades gradually, but which single class owns it for
+# click-to-highlight purposes never does.
 COMBINED_LAKE_ID_CODE = len(biomes.BIOME_NAMES) + 1
 COMBINED_GLACIER_ID_CODE = len(biomes.BIOME_NAMES) + 2
 
@@ -1428,19 +1433,34 @@ COMBINED_GLACIER_ID_CODE = len(biomes.BIOME_NAMES) + 2
 OCEAN_PELAGIC_RELIEF_BLEND = 0.5
 
 
+def _biome_blend_rgb(winner_ids: np.ndarray, winner_share: np.ndarray, runner_up_ids: np.ndarray) -> np.ndarray:
+    """Flat (N, 3) float RGB: `winner_share` of winner_ids' own BIOME_COLORS entry plus the
+    rest of runner_up_ids' -- the actual boundary-blending step (see
+    biomes.smooth_biome_field_blend), shared by the Biome and Combined views. `winner_ids` /
+    `runner_up_ids` any shape, `winner_share` the same shape, broadcasting against the (..., 3)
+    color arrays via a trailing axis."""
+    winner_rgb = biomes.BIOME_COLORS[winner_ids].astype(float)
+    runner_up_rgb = biomes.BIOME_COLORS[runner_up_ids].astype(float)
+    share = winner_share[..., None]
+    return winner_rgb * share + runner_up_rgb * (1.0 - share)
+
+
 def _render_biome_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
-    """"Biome": each cell's biome classification shown directly as a flat color mosaic (no
-    relief shading or ocean hypsometry -- that's the Combined view). Rendered on the same fine
-    _biome_fields grid the Combined view uses (biome_grid_dimensions, scaled by
-    World.climate_density), so at "Very High" detail it resolves biome boundaries as sharply
-    as the Elevation/Points views resolve terrain -- unlike the CLIMATE_VIEWS renderer this
-    used to share, which resampled onto the atmosphere-CFD HEALPix grid (capped at
-    World.fluid_density == "High", visibly coarser than everything else). Biomes are
-    classified fresh on this grid (biomes.smooth_biome_field -- classify_biomes plus the
-    stateless boundary-cleanup pass, so cell-scale flicker along a band cutoff doesn't read
-    as a dithered smear here), matching _render_combined_view, rather than upsampling
-    climate.py's own coarser biome_ids. Left un-blurred: a viewer needs to read each cell's
-    exact color, and MapCanvas.tsx's legend highlight does an exact RGB match against it."""
+    """"Biome": each cell's biome classification shown as a color mosaic (no relief shading or
+    ocean hypsometry -- that's the Combined view), blended toward its runner-up class near a
+    boundary rather than snapping hard between the two (see biomes.smooth_biome_field_blend and
+    _biome_blend_rgb). Rendered on the same fine _biome_fields grid the Combined view uses
+    (biome_grid_dimensions, scaled by World.climate_density), so at "Very High" detail it
+    resolves biome boundaries as sharply as the Elevation/Points views resolve terrain --
+    unlike the CLIMATE_VIEWS renderer this used to share, which resampled onto the
+    atmosphere-CFD HEALPix grid (capped at World.fluid_density == "High", visibly coarser than
+    everything else). Biomes are classified fresh on this grid, matching _render_combined_view,
+    rather than upsampling climate.py's own coarser biome_ids.
+
+    Output is RGBA like Combined -- see COMBINED_LAKE_ID_CODE's comment for why the dominant
+    class id rides in alpha rather than RGB now that RGB itself blends across a boundary. A
+    light post-fill blur (see CELL_BLUR_RADIUS_PX) further softens the cell-grid edges on top
+    of the per-cell color blend; the alpha id buffer stays crisp."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1450,17 +1470,30 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.smooth_biome_field(
+    winner_ids, winner_share, runner_up_ids = biomes.smooth_biome_field_blend(
         display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
         lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=_glacier_depth,
     )
+    winner_ids = winner_ids.reshape(-1)
+    winner_share = winner_share.reshape(-1)
+    runner_up_ids = runner_up_ids.reshape(-1)
+    colors = np.clip(np.round(_biome_blend_rgb(winner_ids, winner_share, runner_up_ids)), 0, 255).astype(np.uint8)
+
+    id_code = winner_ids + 1
+    cell_alpha = (255 - id_code).astype(np.uint8)
 
     centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
         lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
     )
-    _fill_rects(pixels, centers, half_w, half_h, biomes.BIOME_COLORS[biome_ids].reshape(-1, 3))
+    _fill_rects(pixels, centers, half_w, half_h, colors)
 
-    return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
+    _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
+
+    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
+    image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
+
+    return _encode_image(image)
 
 
 def _render_combined_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -1474,13 +1507,15 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     toward that same hypsometric shade at high elevation for a further cue at real peaks (see
     RELIEF_BLEND_MAX); lakes/glaciers are overlaid the same way the Elevation view itself
     draws them, and rivers are drawn on top the same way too (see _draw_rivers), all at this
-    grid's own resolution. Biomes come from biomes.smooth_biome_field (classification plus
-    the stateless boundary-cleanup pass, same as the Biome view).
+    grid's own resolution. Biomes come from biomes.smooth_biome_field_blend (classification
+    plus the stateless boundary-cleanup pass, same as the Biome view), and land/ocean color is
+    blended toward a boundary cell's runner-up class the same way the Biome view is (see
+    _biome_blend_rgb) before any of the shading below is applied on top.
 
-    Output is RGBA: the alpha channel carries a per-pixel biome/lake/glacier id (see
-    COMBINED_LAKE_ID_CODE) so the frontend's click-to-highlight can identify a land cell
-    despite the wide shaded-relief color spread. Alpha is a data channel, not real
-    transparency -- the client resets it to opaque before display."""
+    Output is RGBA: the alpha channel carries a per-pixel *dominant* (>50% share) biome/lake/
+    glacier id (see COMBINED_LAKE_ID_CODE) so the frontend's click-to-highlight can identify a
+    land cell despite the wide shaded-relief color spread and the boundary blend. Alpha is a
+    data channel, not real transparency -- the client resets it to opaque before display."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1490,11 +1525,12 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
     slope = biomes.grid_slope(elevation_m, lat_deg)
-    biome_ids = biomes.smooth_biome_field(
+    winner_ids, winner_share, runner_up_ids = biomes.smooth_biome_field_blend(
         display_temp, precip, elevation_m, slope, is_ocean, world.sea_level_m,
         lat_deg=lat_deg, axial_tilt_deg=world.axial_tilt_deg, glacier_depth_m=glacier_depth,
-    ).reshape(-1)
-    biome_rgb = biomes.BIOME_COLORS[biome_ids].astype(float)
+    )
+    biome_ids = winner_ids.reshape(-1)
+    biome_rgb = _biome_blend_rgb(biome_ids, winner_share.reshape(-1), runner_up_ids.reshape(-1))
     terrain_rgb = elevation_colors(elevation_m.reshape(-1), world.sea_level_m).astype(float)
 
     shade = biomes.biome_relative_shade_factor(biome_ids, elevation_m.reshape(-1))[:, None]

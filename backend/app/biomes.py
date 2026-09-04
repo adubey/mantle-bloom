@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import numpy as np
 from scipy.ndimage import distance_transform_edt
+from scipy.special import erf
 from scipy.stats import rankdata
 
 from .elevation_lines import PLANET_RADIUS_KM
@@ -383,6 +384,81 @@ def _seasonal_extremes(
 
 
 # ---------------------------------------------------------------------------------------
+# Soft classification -- blended boundaries
+# ---------------------------------------------------------------------------------------
+# classify_koppen/classify_pelagic below are exact decision trees: every comparison is a hard
+# `<`/`>=`, so two adjacent cells straddling a threshold by a hair's breadth still get fully
+# different classes -- the sharp-edged look this section exists to soften. classify_koppen_soft
+# and classify_pelagic_soft mirror those two functions structurally (same variable names, same
+# condition order) but replace every hard comparison with `_soft_lt`/`_soft_ge` -- a Gaussian
+# (erf) step centered on the original threshold, 0.5 exactly at the boundary, saturating to
+# 0/1 within roughly its `scale` (a per-comparison blend half-width, tuned like every other
+# constant in this module "by rough order-of-magnitude reasoning" for a blend zone that reads
+# as a gradient over a few grid cells, not a wide fuzzing-together of unrelated regions) -- and
+# every `&`/`~` with fuzzy-AND (product) / fuzzy-NOT (1 - x). `_soft_cascade` then replays
+# np.select's own first-match-wins precedence in this fuzzy setting: each branch, tried in the
+# same order, claims `membership * (mass no earlier branch already claimed)`, so the returned
+# per-class weights always sum to 1 and collapse exactly onto the hard classifier's own choice
+# whenever every comparison is confidently 0 or 1 (no blend zone nearby). Consumed only by
+# render_image.py's Biome/Combined views (see smooth_biome_field_blend below) for display
+# color -- every other caller (stats.py, climate.py, geology.py, geodesic.py) keeps reading the
+# plain hard classification, unaffected.
+
+_SOFT_TEMP_BLEND_C = 1.4            # temperature-threshold comparisons (deg C)
+_SOFT_SHARE_BLEND = 0.04            # summer_share-type fraction comparisons (unitless 0..1)
+_SOFT_MONTHS_BLEND = 0.5            # months_10-type month-count comparisons (months)
+_SOFT_LAT_BLEND_DEG = 1.5           # latitude-band comparisons (deg)
+_SOFT_CONTINENTALITY_BLEND = 0.05   # continentality comparisons (unitless 0..1)
+_SOFT_PRECIP_MONTH_BLEND_MM = 12.0  # single-month precipitation comparisons (mm)
+# Annual/aridity-threshold precipitation comparisons scale with the threshold itself (a desert
+# cutoff of 50mm and one of 1500mm shouldn't blend over the same fixed mm width) -- a fraction
+# of the threshold, floored so a near-zero threshold still gets a sane minimum blend width.
+_SOFT_PRECIP_FRACTION = 0.08
+_SOFT_PRECIP_FLOOR_MM = 20.0
+_SOFT_SHELF_DIST_BLEND_RAD = np.radians(0.4)  # pelagic shelf-distance comparison
+
+# Winner's blend share is always clamped to at least this far past 0.5 -- purely a tie guard
+# (an erf step can land exactly 0.5 at a threshold hit dead-on, e.g. round synthetic/test
+# inputs), not a visible floor: real boundary cells land anywhere down to 0.5 + this.
+MIN_DOMINANT_SHARE = 0.5 + 1e-4
+
+
+def _soft_lt(x: np.ndarray, threshold: np.ndarray | float, scale: np.ndarray | float) -> np.ndarray:
+    """Fuzzy `x < threshold` in [0, 1]: a Gaussian (erf) step of half-width `scale`, 1 well
+    below the threshold, 0 well above, exactly 0.5 at it."""
+    scale = np.maximum(np.asarray(scale, dtype=float), 1e-9)
+    return 0.5 * (1.0 + erf((np.asarray(threshold, dtype=float) - np.asarray(x, dtype=float)) / (scale * np.sqrt(2.0))))
+
+
+def _soft_ge(x: np.ndarray, threshold: np.ndarray | float, scale: np.ndarray | float) -> np.ndarray:
+    """Fuzzy `x >= threshold` -- the complement of `_soft_lt`."""
+    return 1.0 - _soft_lt(x, threshold, scale)
+
+
+def _soft_precip_scale(threshold: np.ndarray) -> np.ndarray:
+    return np.maximum(_SOFT_PRECIP_FRACTION * np.abs(np.asarray(threshold, dtype=float)), _SOFT_PRECIP_FLOOR_MM)
+
+
+def _soft_cascade(soft_condlist: list[np.ndarray], choicelist: list[int], n_classes: int, default_choice: int) -> np.ndarray:
+    """Fuzzy generalization of `np.select(condlist, choicelist, default)`: `soft_condlist`
+    entries are per-branch membership degrees in [0, 1], tried in the same order np.select
+    would use. Each branch claims `remaining * membership` of the still-unclaimed probability
+    mass (`remaining` starts at 1 and shrinks by `1 - membership` after every branch), so
+    weights always sum to 1 per cell and the result reduces to np.select's own hard choice the
+    moment every membership is exactly 0 or 1. Returns an (n_classes, *shape) weights array."""
+    shape = soft_condlist[0].shape
+    weights = np.zeros((n_classes,) + shape, dtype=float)
+    remaining = np.ones(shape, dtype=float)
+    for cond, choice in zip(soft_condlist, choicelist):
+        cond = np.clip(cond, 0.0, 1.0)
+        take = cond * remaining
+        weights[choice] += take
+        remaining = remaining * (1.0 - cond)
+    weights[default_choice] += remaining
+    return weights
+
+
+# ---------------------------------------------------------------------------------------
 # Köppen classification
 # ---------------------------------------------------------------------------------------
 
@@ -499,6 +575,122 @@ def classify_koppen(
     return np.select(condlist, choicelist, default=koppen_index("Cfc")).astype(np.int64)
 
 
+def classify_koppen_soft(
+    t_annual: np.ndarray,
+    precip_mm: np.ndarray,
+    lat_deg: np.ndarray,
+    continentality: np.ndarray | None = None,
+    axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
+) -> np.ndarray:
+    """Fuzzy sibling of classify_koppen: same decision tree, same condition order, every hard
+    comparison replaced by a soft one (see the "Soft classification" section above). Returns an
+    (len(BIOME_NAMES), *t_annual.shape) weights array -- zero outside the Köppen (land) rows,
+    since it shares BIOME_NAMES' global indexing with classify_pelagic_soft so the two can just
+    be added together (see classify_biomes_soft)."""
+    t_annual = np.asarray(t_annual, dtype=float)
+    precip_mm = np.asarray(precip_mm, dtype=float)
+    lat_deg = np.asarray(lat_deg, dtype=float)
+    if continentality is None:
+        continentality = np.zeros_like(t_annual)
+    continentality = np.asarray(continentality, dtype=float)
+
+    (
+        t_cold, t_warm, amplitude,
+        driest_month, wettest_summer_month, driest_summer_month, wettest_winter_month, summer_share,
+    ) = _seasonal_extremes(t_annual, precip_mm, lat_deg, continentality, axial_tilt_deg)
+    TC = _SOFT_TEMP_BLEND_C
+
+    # --- Arid (B) dryness threshold -- pth_offset's own 3-way selection softened too, so the
+    # aridity threshold itself doesn't jump discontinuously at summer_share == 0.7 / 0.3. ---
+    w_wet = _soft_ge(summer_share, 0.7, _SOFT_SHARE_BLEND)
+    w_dry = _soft_ge(0.3, summer_share, _SOFT_SHARE_BLEND)
+    w_even = np.clip(1.0 - w_wet - w_dry, 0.0, 1.0)
+    pth_offset = w_wet * 280.0 + w_even * 140.0 + w_dry * 0.0
+    pth = 20.0 * t_annual + pth_offset
+    is_b = _soft_lt(precip_mm, pth, _soft_precip_scale(pth))
+    is_bw = is_b * _soft_lt(precip_mm, 0.5 * pth, _soft_precip_scale(0.5 * pth))
+    is_hot = _soft_ge(t_annual, TROPICAL_TEMP_C, TC)
+
+    # --- Polar (E) ---
+    is_e = _soft_lt(t_warm, 10.0, TC)
+    is_ef = is_e * _soft_lt(t_warm, 0.0, TC)
+
+    # --- Tropical (A) ---
+    is_a = _soft_ge(t_cold, 18.0, TC) * (1.0 - is_b)
+    af = is_a * _soft_ge(driest_month, 60.0, _SOFT_PRECIP_MONTH_BLEND_MM)
+    am = is_a * (1.0 - af) * _soft_ge(driest_month, 100.0 - precip_mm / 25.0, _SOFT_PRECIP_MONTH_BLEND_MM)
+    a_dry = is_a * (1.0 - af) * (1.0 - am)
+    aw = a_dry * _soft_ge(summer_share, 0.5, _SOFT_SHARE_BLEND)
+    a_s = a_dry * (1.0 - aw)
+
+    # --- Second letter (s / w / f) for C and D ---
+    lat_band = _soft_ge(np.abs(lat_deg), 27.0, _SOFT_LAT_BLEND_DEG) * _soft_lt(np.abs(lat_deg), 46.0, _SOFT_LAT_BLEND_DEG)
+    mediterranean_band = lat_band * _soft_lt(continentality, 0.4, _SOFT_CONTINENTALITY_BLEND)
+    summer_dry = (
+        mediterranean_band
+        * _soft_lt(precip_mm, 900.0, _soft_precip_scale(900.0))
+        * _soft_lt(summer_share, 0.45, _SOFT_SHARE_BLEND)
+        * _soft_lt(driest_summer_month, 40.0, _SOFT_PRECIP_MONTH_BLEND_MM)
+        * _soft_lt(driest_summer_month, wettest_winter_month / 3.0, _SOFT_PRECIP_MONTH_BLEND_MM)
+    )
+    winter_dry = (
+        _soft_lt(driest_month, wettest_summer_month / 10.0, _SOFT_PRECIP_MONTH_BLEND_MM)
+        * _soft_ge(summer_share, 0.62, _SOFT_SHARE_BLEND)
+    )
+
+    # --- Third letter (a / b / c / d) for C and D ---
+    warm_a = _soft_ge(t_warm, 22.0, TC)
+    months_10 = _months_above(t_annual, amplitude, 10.0)
+    warm_b = (1.0 - warm_a) * _soft_ge(months_10, 4.0, _SOFT_MONTHS_BLEND)
+    very_cold_d = _soft_lt(t_cold, -38.0, TC)
+
+    is_cd = (1.0 - is_a) * (1.0 - is_b) * (1.0 - is_e) * _soft_ge(t_warm, 10.0, TC)
+    is_d = is_cd * _soft_lt(t_cold, 0.0, TC)
+    is_c = is_cd * (1.0 - is_d)
+
+    def third(is_grp):
+        not_warm_a = 1.0 - warm_a
+        return {
+            "a": is_grp * warm_a,
+            "b": is_grp * not_warm_a * warm_b,
+            "c": is_grp * not_warm_a * (1.0 - warm_b),
+        }
+
+    c_s = is_c * summer_dry
+    c_w = is_c * (1.0 - summer_dry) * winter_dry
+    c_f = is_c * (1.0 - summer_dry) * (1.0 - winter_dry)
+    d_s = is_d * summer_dry
+    d_w = is_d * (1.0 - summer_dry) * winter_dry
+    d_f = is_d * (1.0 - summer_dry) * (1.0 - winter_dry)
+
+    cs, cw, cf = third(c_s), third(c_w), third(c_f)
+    ds, dw, df = third(d_s), third(d_w), third(d_f)
+
+    soft_condlist = [
+        is_bw * is_hot, is_bw, is_b * is_hot, is_b,
+        is_ef, is_e,
+        af, am, aw, a_s,
+        cs["a"], cs["b"], cs["c"],
+        cw["a"], cw["b"], cw["c"],
+        cf["a"], cf["b"], cf["c"],
+        ds["a"], ds["b"], ds["c"] * (1.0 - very_cold_d), ds["c"] * very_cold_d,
+        dw["a"], dw["b"], dw["c"] * (1.0 - very_cold_d), dw["c"] * very_cold_d,
+        df["a"], df["b"], df["c"] * (1.0 - very_cold_d), df["c"] * very_cold_d,
+    ]
+    choicelist = [
+        koppen_index("BWh"), koppen_index("BWk"), koppen_index("BSh"), koppen_index("BSk"),
+        koppen_index("EF"), koppen_index("ET"),
+        koppen_index("Af"), koppen_index("Am"), koppen_index("Aw"), koppen_index("As"),
+        koppen_index("Csa"), koppen_index("Csb"), koppen_index("Csc"),
+        koppen_index("Cwa"), koppen_index("Cwb"), koppen_index("Cwc"),
+        koppen_index("Cfa"), koppen_index("Cfb"), koppen_index("Cfc"),
+        koppen_index("Dsa"), koppen_index("Dsb"), koppen_index("Dsc"), koppen_index("Dsd"),
+        koppen_index("Dwa"), koppen_index("Dwb"), koppen_index("Dwc"), koppen_index("Dwd"),
+        koppen_index("Dfa"), koppen_index("Dfb"), koppen_index("Dfc"), koppen_index("Dfd"),
+    ]
+    return _soft_cascade(soft_condlist, choicelist, len(BIOME_NAMES), koppen_index("Cfc"))
+
+
 # ---------------------------------------------------------------------------------------
 # Pelagic (ocean) classification
 # ---------------------------------------------------------------------------------------
@@ -566,6 +758,65 @@ def classify_pelagic(
     return np.select(condlist, choicelist, default=p("Temperate Open Ocean")).astype(np.int64)
 
 
+def classify_pelagic_soft(
+    ocean_temp_c: np.ndarray,
+    lat_deg: np.ndarray,
+    dist_to_land_rad: np.ndarray | None = None,
+    has_sea_ice: np.ndarray | None = None,
+) -> np.ndarray:
+    """Fuzzy sibling of classify_pelagic (see classify_koppen_soft's own docstring for the
+    general technique). Returns an (len(BIOME_NAMES), *ocean_temp_c.shape) weights array, zero
+    outside the pelagic rows."""
+    sst = np.asarray(ocean_temp_c, dtype=float)
+    lat = np.abs(np.asarray(lat_deg, dtype=float))
+    if dist_to_land_rad is None:
+        dist_to_land_rad = np.full(sst.shape, np.inf)
+    else:
+        dist_to_land_rad = np.asarray(dist_to_land_rad, dtype=float)
+    # has_sea_ice is a discrete simulation flag (glacier cover present or not), not a
+    # continuous field -- combined with the soft SST cutoff via a fuzzy-OR (probabilistic sum)
+    # rather than softened itself.
+    ice_flag = np.zeros(sst.shape, dtype=float) if has_sea_ice is None else np.asarray(has_sea_ice, dtype=float)
+
+    sst_ice = _soft_lt(sst, -1.0, _SOFT_TEMP_BLEND_C)
+    is_ice = ice_flag + sst_ice - ice_flag * sst_ice
+    is_shelf = _soft_lt(dist_to_land_rad, SHELF_RANGE_RAD, _SOFT_SHELF_DIST_BLEND_RAD)
+    e0, e1, e2, e3 = _PELAGIC_SST_EDGES
+    TC = _SOFT_TEMP_BLEND_C
+    polar = _soft_lt(sst, e0, TC)
+    cold_temp = _soft_ge(sst, e0, TC) * _soft_lt(sst, e1, TC)
+    temp = _soft_ge(sst, e1, TC) * _soft_lt(sst, e2, TC)
+    subtropical = _soft_ge(sst, e2, TC) * _soft_lt(sst, e3, TC)
+    tropical = _soft_ge(sst, e2, TC)
+
+    p = pelagic_index
+    soft_condlist = [
+        is_ice,
+        polar,
+        cold_temp * is_shelf,
+        cold_temp,
+        temp * is_shelf,
+        temp,
+        tropical * is_shelf,
+        tropical * _soft_lt(lat, _EQUATORIAL_LAT_DEG, _SOFT_LAT_BLEND_DEG),
+        subtropical,
+        tropical,
+    ]
+    choicelist = [
+        p("Polar Sea Ice"),
+        p("Polar Ocean"),
+        p("Cold-Temperate Shelf"),
+        p("Cold-Temperate Open Ocean"),
+        p("Temperate Shelf"),
+        p("Temperate Open Ocean"),
+        p("Tropical Coastal Waters"),
+        p("Equatorial Divergence"),
+        p("Subtropical Gyre"),
+        p("Tropical Open Ocean"),
+    ]
+    return _soft_cascade(soft_condlist, choicelist, len(BIOME_NAMES), p("Temperate Open Ocean"))
+
+
 # ---------------------------------------------------------------------------------------
 # Combined entry point
 # ---------------------------------------------------------------------------------------
@@ -604,6 +855,32 @@ def classify_biomes(
     land_ids = classify_koppen(temp, precip, lat_deg, continentality, axial_tilt_deg)
     ocean_ids = classify_pelagic(temp, lat_deg, dist_to_land_rad, has_sea_ice)
     return np.where(is_ocean, ocean_ids, land_ids).astype(np.int64)
+
+
+def classify_biomes_soft(
+    temperature_c: np.ndarray,
+    precipitation_mm: np.ndarray,
+    is_ocean: np.ndarray,
+    *,
+    lat_deg: np.ndarray,
+    axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
+    continentality: np.ndarray | None = None,
+    dist_to_land_rad: np.ndarray | None = None,
+    has_sea_ice: np.ndarray | None = None,
+) -> np.ndarray:
+    """Fuzzy sibling of classify_biomes: (len(BIOME_NAMES), *temperature_c.shape) per-cell
+    class-membership weights, summing to 1 along axis 0 -- land cells from
+    classify_koppen_soft, ocean from classify_pelagic_soft, `is_ocean` settling the split same
+    as classify_biomes. Feeds smooth_biome_field_blend's display-color blending only; nothing
+    else needs a soft classification (see the "Soft classification" section's own docstring)."""
+    temp = np.asarray(temperature_c, dtype=float)
+    precip = np.asarray(precipitation_mm, dtype=float)
+    is_ocean = np.asarray(is_ocean)
+    lat_deg = np.broadcast_to(np.asarray(lat_deg, dtype=float), temp.shape)
+
+    land_weights = classify_koppen_soft(temp, precip, lat_deg, continentality, axial_tilt_deg)
+    ocean_weights = classify_pelagic_soft(temp, lat_deg, dist_to_land_rad, has_sea_ice)
+    return np.where(is_ocean[None, ...], ocean_weights, land_weights)
 
 
 # ---------------------------------------------------------------------------------------
@@ -670,10 +947,12 @@ def _disagreeing_neighbour_count(biome_ids: np.ndarray, is_ocean: np.ndarray) ->
     return count
 
 
-def _neighbour_vote(biome_ids: np.ndarray, eligible: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
+def _neighbour_vote(biome_ids: np.ndarray, eligible: np.ndarray, is_ocean: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """One majority-vote pass: each `eligible` land cell adopts the most common land class
     among its 8 neighbours when at least BIOME_VOTE_MIN_NEIGHBOUR_FRACTION of its valid
-    (non-ocean) neighbours agree and it differs from the cell's current class."""
+    (non-ocean) neighbours agree and it differs from the cell's current class. Returns
+    (new_ids, changed) -- `changed` flags exactly the cells this pass actually overrode, for
+    smooth_biome_field_blend's benefit (see its own docstring)."""
     stack = np.stack([np.roll(np.roll(biome_ids, dy, axis=0), dx, axis=1) for dy, dx in _NEIGHBOUR_OFFSETS])
     ocean_stack = np.stack([np.roll(np.roll(is_ocean, dy, axis=0), dx, axis=1) for dy, dx in _NEIGHBOUR_OFFSETS])
     stack = np.where(ocean_stack, np.int16(-1), stack.astype(np.int16))
@@ -694,26 +973,25 @@ def _neighbour_vote(biome_ids: np.ndarray, eligible: np.ndarray, is_ocean: np.nd
 
     threshold = np.ceil(BIOME_VOTE_MIN_NEIGHBOUR_FRACTION * valid).astype(np.int16)
     take = eligible & ~is_ocean & (valid > 0) & (best_count >= threshold) & (best_biome != biome_ids)
-    return np.where(take, best_biome.astype(biome_ids.dtype), biome_ids)
+    return np.where(take, best_biome.astype(biome_ids.dtype), biome_ids), take
 
 
-def smooth_biome_field(
+def _smooth_biome_classify(
     temperature_c: np.ndarray,
     precipitation_mm: np.ndarray,
     elevation_m: np.ndarray,
     slope: np.ndarray,
     is_ocean: np.ndarray,
-    sea_level_m: float = 0.0,
-    *,
+    sea_level_m: float,
     lat_deg: np.ndarray,
-    axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
-    glacier_depth_m: np.ndarray | None = None,
-) -> np.ndarray:
-    """classify_biomes plus the stateless boundary-cleanup pass -- this is the classification
-    the Biome/Combined map views and /world/stats use, while `classify_biomes` stays the raw
-    per-cell primitive. Inputs must all be the same 2D (H, W) grid; `lat_deg` may be a (H,)
-    row vector or a full grid. Computes continentality and coast distance from `is_ocean`
-    itself, and sea-ice cover from `glacier_depth_m` if given."""
+    axial_tilt_deg: float,
+    glacier_depth_m: np.ndarray | None,
+):
+    """Shared implementation behind smooth_biome_field and smooth_biome_field_blend: classify,
+    then run the neighbour-vote cleanup. Returns (biome_ids, overridden, continentality,
+    dist_to_land_rad, has_sea_ice, lat_grid) -- `overridden` flags cells the vote pass actually
+    changed (union across BIOME_VOTE_ITERATIONS passes), the rest are classify_biomes_soft's
+    own inputs, reused so the blend function scores the exact same cell the hard id came from."""
     temperature_c = np.asarray(temperature_c)
     precipitation_mm = np.asarray(precipitation_mm)
     elevation_m = np.asarray(elevation_m)
@@ -740,6 +1018,79 @@ def smooth_biome_field(
 
     land = ~is_ocean
     eligible = land & (_disagreeing_neighbour_count(biome_ids, is_ocean) >= BIOME_RAGGED_MIN_DISAGREEING_NEIGHBOURS)
+    overridden = np.zeros(biome_ids.shape, dtype=bool)
     for _ in range(BIOME_VOTE_ITERATIONS):
-        biome_ids = _neighbour_vote(biome_ids, eligible, is_ocean)
+        biome_ids, changed = _neighbour_vote(biome_ids, eligible, is_ocean)
+        overridden |= changed
+    return biome_ids, overridden, continentality, dist_to_land_rad, has_sea_ice, lat_grid
+
+
+def smooth_biome_field(
+    temperature_c: np.ndarray,
+    precipitation_mm: np.ndarray,
+    elevation_m: np.ndarray,
+    slope: np.ndarray,
+    is_ocean: np.ndarray,
+    sea_level_m: float = 0.0,
+    *,
+    lat_deg: np.ndarray,
+    axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
+    glacier_depth_m: np.ndarray | None = None,
+) -> np.ndarray:
+    """classify_biomes plus the stateless boundary-cleanup pass -- this is the classification
+    the Biome/Combined map views and /world/stats use, while `classify_biomes` stays the raw
+    per-cell primitive. Inputs must all be the same 2D (H, W) grid; `lat_deg` may be a (H,)
+    row vector or a full grid. Computes continentality and coast distance from `is_ocean`
+    itself, and sea-ice cover from `glacier_depth_m` if given."""
+    biome_ids, _overridden, _cont, _dist, _ice, _lat_grid = _smooth_biome_classify(
+        temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
+        lat_deg, axial_tilt_deg, glacier_depth_m,
+    )
     return biome_ids
+
+
+def smooth_biome_field_blend(
+    temperature_c: np.ndarray,
+    precipitation_mm: np.ndarray,
+    elevation_m: np.ndarray,
+    slope: np.ndarray,
+    is_ocean: np.ndarray,
+    sea_level_m: float = 0.0,
+    *,
+    lat_deg: np.ndarray,
+    axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG,
+    glacier_depth_m: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Like smooth_biome_field, but also returns what render_image.py's Biome/Combined views
+    need to paint a blended boundary instead of a flat one: (winner_ids, winner_share,
+    runner_up_ids). `winner_ids` is *exactly* smooth_biome_field's own return (same hard
+    classification, same neighbour-vote cleanup) -- click-to-highlight and every other consumer
+    stay in lock-step with the un-blended classification, unaffected by any of this.
+
+    `winner_share` is winner_ids' fraction of a two-way blend against `runner_up_ids` (its
+    nearest rival by classify_biomes_soft's continuous membership, see that function): always
+    in (0.5, 1] -- never <= 0.5, so a caller painting `winner_share` of winner's color and the
+    rest of runner-up's never has to break a tie (see MIN_DOMINANT_SHARE) -- while still
+    reaching arbitrarily close to a 50/50 blend right at a genuine boundary. A cell the
+    neighbour-vote pass actually overrode gets a flat winner_share of 1.0 instead: that pass
+    exists specifically to erase noisy speckle by imposing the surrounding consensus, and
+    blending such a cell toward its own (outvoted, noise-driven) original soft weights would
+    undo exactly that cleanup."""
+    biome_ids, overridden, continentality, dist_to_land_rad, has_sea_ice, lat_grid = _smooth_biome_classify(
+        temperature_c, precipitation_mm, elevation_m, slope, is_ocean, sea_level_m,
+        lat_deg, axial_tilt_deg, glacier_depth_m,
+    )
+
+    weights = classify_biomes_soft(
+        temperature_c, precipitation_mm, is_ocean, lat_deg=lat_grid, axial_tilt_deg=axial_tilt_deg,
+        continentality=continentality, dist_to_land_rad=dist_to_land_rad, has_sea_ice=has_sea_ice,
+    )
+    winner_w = np.take_along_axis(weights, biome_ids[None, ...], axis=0)[0]
+    runner_up_pool = weights.copy()
+    np.put_along_axis(runner_up_pool, biome_ids[None, ...], -1.0, axis=0)
+    runner_up_ids = np.argmax(runner_up_pool, axis=0).astype(biome_ids.dtype)
+    runner_up_w = np.take_along_axis(weights, runner_up_ids[None, ...], axis=0)[0]
+
+    denom = np.maximum(winner_w + runner_up_w, 1e-9)
+    winner_share = np.where(overridden, 1.0, np.clip(winner_w / denom, MIN_DOMINANT_SHARE, 1.0))
+    return biome_ids, winner_share, runner_up_ids

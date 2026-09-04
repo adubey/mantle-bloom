@@ -156,12 +156,14 @@ const PRECIPITATION_GRADIENT: LegendGradient = {
 
 // biomes.BIOME_NAMES / biomes.BIOME_COLORS, in the same order (the 31 Köppen-Geiger land
 // classes -- descriptive names, internal 3rd-level detail -- then the 10 pelagic ocean
-// classes). Kept as raw [r, g, b] tuples (not just CSS strings) and exported, so
-// MapCanvas.tsx's legend-click-to-highlight can compare them directly against decoded canvas
-// pixel data: the Biome view draws every pixel as exactly one of these colors (see backend
-// app/render_image.py's _render_biome_view -- no coastline/graticule overlay), so an exact
-// RGB match picks out a clicked group's cells with no server round-trip. Hand-synced with
-// biomes.py, same precedent this file always had with render_image.py's color constants.
+// classes). Kept as raw [r, g, b] tuples (not just CSS strings) and exported for each legend
+// row's own swatch color (see groupSwatchColor) and for combinedIdCode's index lookup below --
+// not for pixel matching: both the Biome and Combined views now blend a boundary cell's color
+// toward its runner-up class (see backend app/render_image.py's _biome_blend_rgb), so a pixel
+// is no longer reliably any single one of these colors. Both views instead carry the
+// *dominant* class id in the render's alpha channel (see combinedIdCode / highlightTargetFor
+// below) for click-to-highlight. Hand-synced with biomes.py, same precedent this file always
+// had with render_image.py's color constants.
 export const BIOME_RGB_ENTRIES: [string, [number, number, number]][] = [
   ["Tropical Rainforest", [26, 51, 21]],
   ["Tropical Monsoon", [34, 66, 29]],
@@ -419,17 +421,20 @@ const OVERLAP_AGE_GRADIENT: LegendGradient = {
   ],
 };
 
-// Combined mode's per-pixel class id, carried in the render's alpha channel (see backend
-// app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 - code, where code is a
-// class's index in BIOME_RGB_ENTRIES + 1 (that order matches backend biomes.BIOME_NAMES, same
-// hand-sync precedent as BIOME_RGB_ENTRIES itself -- every classified cell now carries one,
-// land Köppen and ocean pelagic alike), or one of the two overlay codes below, or 0 for a gap
-// between cells. MapCanvas.tsx reads this straight off each pixel's alpha byte -- exact, no
-// RGB match -- so Combined's colors are free to span a wide shaded-relief range.
+// Biome and Combined's shared per-pixel *dominant* class id, carried in the render's alpha
+// channel (see backend app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 -
+// code, where code is a class's index in BIOME_RGB_ENTRIES + 1 (that order matches backend
+// biomes.BIOME_NAMES, same hand-sync precedent as BIOME_RGB_ENTRIES itself -- every classified
+// cell carries one, land Köppen and ocean pelagic alike), one of the two lake/glacier overlay
+// codes below (Combined only), or 0 for a gap between cells. MapCanvas.tsx reads this straight
+// off each pixel's alpha byte -- exact, no RGB match -- so both views' colors are free to
+// blend across a boundary (and Combined's to additionally span a wide shaded-relief range)
+// with click-to-highlight still picking out a single, never-tied dominant class per pixel (see
+// biomes.MIN_DOMINANT_SHARE).
 const COMBINED_LAKE_ID_CODE = BIOME_RGB_ENTRIES.length + 1;
 const COMBINED_GLACIER_ID_CODE = BIOME_RGB_ENTRIES.length + 2;
 
-function combinedIdCode(label: string): number | null {
+function biomeIdCode(label: string): number | null {
   const idx = BIOME_RGB_ENTRIES.findIndex(([l]) => l === label);
   return idx < 0 ? null : idx + 1;
 }
@@ -445,9 +450,10 @@ export interface PaletteEntry {
 
 // Two ways to pick out a clicked swatch's pixels (see MapCanvas.tsx's applyHighlight):
 //   - `palette` + `tolerance`: nearest-neighbor RGB match across every classifiable label
-//     (Biome view -- every pixel is exactly one of BIOME_RGB_ENTRIES, tolerance 0).
-//   - `idCodes`: exact match on the per-pixel id carried in the alpha channel (Combined view
-//     -- see combinedIdCode above). When set, `palette`/`tolerance` are unused.
+//     (the elevReason debug view -- every pixel is exactly one of ELEV_REASON_RGB_ENTRIES,
+//     tolerance 0).
+//   - `idCodes`: exact match on the per-pixel dominant-class id carried in the alpha channel
+//     (Biome and Combined -- see biomeIdCode above). When set, `palette`/`tolerance` are unused.
 export interface HighlightTarget {
   selected: string;
   palette: PaletteEntry[];
@@ -455,18 +461,18 @@ export interface HighlightTarget {
   idCodes?: number[];
 }
 
-// Resolves a clicked legend group label to a HighlightTarget for the two clickable views (see
-// Legend.tsx). A legend row is a 1st/2nd-level group covering several internal classes, so a
-// click highlights every member: Biome matches on the members' exact fixed pixel colors,
-// Combined on the members' alpha-channel id codes. The "Sea Ice" group also folds in the
-// glacier overlay code (glaciated ocean paints over Polar-Sea-Ice cells with nearly the same
-// colour).
+// Resolves a clicked legend group label to a HighlightTarget for the three clickable views
+// (see Legend.tsx). A legend row is a 1st/2nd-level group covering several internal classes,
+// so a click highlights every member: Biome and Combined both match on the members'
+// alpha-channel id codes (see biomeIdCode above -- both views carry the same dominant-class
+// coding). The "Sea Ice" group also folds in Combined's glacier overlay code (glaciated ocean
+// paints over Polar-Sea-Ice cells with nearly the same colour); the Biome view has no such
+// overlay.
 export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
   if (view === "elevReason") {
     // The "Last elevation change" view draws every cell as exactly one _ELEV_REASON_RGB
     // colour (the coastline overlay aside, which matches no entry) -- nearest-neighbour
-    // across the whole palette at tolerance 0, same as the Biome view. "Coastline" isn't a
-    // process class, so it stays a plain read-only row.
+    // across the whole palette at tolerance 0 (it has no alpha-encoded id).
     if (label === "Coastline") return null;
     const palette: PaletteEntry[] = ELEV_REASON_RGB_ENTRIES.map(([l, c]) => ({ label: l, colors: [c] }));
     return { selected: label, palette, tolerance: 0 };
@@ -481,20 +487,11 @@ export function highlightTargetFor(view: MapView, label: string): HighlightTarge
   const group = groupFor(label);
   if (!group) return null;
 
-  if (view === "biome") {
-    // Nearest-neighbour match across every group, so one group's highlight can't bleed into a
-    // neighbour whose colour lands nearby -- `selected` picks out this group's members.
-    const palette: PaletteEntry[] = BIOME_GROUPS.map((g) => ({
-      label: g.label,
-      colors: g.members.map((m) => RGB_BY_LABEL.get(m)!),
-    }));
-    return { selected: label, palette, tolerance: 0 };
-  }
-  if (view === "combined") {
+  if (view === "biome" || view === "combined") {
     const idCodes = group.members
-      .map((m) => combinedIdCode(m))
+      .map((m) => biomeIdCode(m))
       .filter((c): c is number => c !== null);
-    if (label === "Sea Ice") idCodes.push(COMBINED_GLACIER_ID_CODE);
+    if (view === "combined" && label === "Sea Ice") idCodes.push(COMBINED_GLACIER_ID_CODE);
     if (idCodes.length === 0) return null;
     return { selected: label, palette: [], tolerance: 0, idCodes };
   }
