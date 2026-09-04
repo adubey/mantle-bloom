@@ -116,6 +116,13 @@ class World:
     # a plain-int default so an old pickle falls through to 0.
     faults: list = field(default_factory=list)
     next_fault_id: int = 0
+    # Boundary faults (see faults.generate_boundary_faults) -- `faults.Fault` traces laid
+    # along every live plate-boundary segment, classified by that segment's motion
+    # (convergent -> reverse, divergent -> normal, transform -> strike-slip). Rebuilt from
+    # scratch every step against the current geometry, so unlike `faults` they are never
+    # aged, retired, culled, or re-homed. They feed the same relief / earthquake / rendering
+    # / fault_influence path as intraplate faults. `default_factory` -> backfilled on load.
+    boundary_faults: list = field(default_factory=list)
     # Fault systems (see faults.FaultSystem) -- a first-class zone above the individual
     # trace: one long curving master lineament plus the strand family (`Fault`s carrying its
     # `system_id`) scattered along its belt. Same local-frame storage, same

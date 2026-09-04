@@ -207,6 +207,7 @@ def test_reverse_fault_uplifts_and_normal_fault_drops_its_hanging_wall():
     # sign of the relief it applies, isolated from the spawn model.
     world = generate_world(seed=2, num_plates=6)
     step_world(world, 1_000_000)
+    world.boundary_faults = []  # isolate the hand-placed fault from the step's boundary mesh
     plate = max(world.plates, key=lambda p: p.node_count())
 
     def relief_delta(kind: str) -> np.ndarray:
@@ -314,6 +315,62 @@ def test_faults_spawn_boundary_hugging():
     dist = np.array([f.birth_distance_from_boundary_km for f in world.faults])
     assert np.median(dist) < 400.0  # boundary-hugging, not scattered through the interior
     assert np.any(dist > 500.0)  # but a genuine stable-interior tail survives
+
+
+# --------------------------------------------------------------------------- boundary faults
+
+
+def test_boundary_faults_line_the_plate_boundaries():
+    """generate_boundary_faults lays a fault family along essentially every plate boundary --
+    the whole point of the feature (the Poisson intraplate spawner can't)."""
+    world = generate_world(seed=4, num_plates=6)
+    step_world(world, 1_000_000)
+    bf = world.boundary_faults
+    assert len(bf) > 50
+    assert all(f.boundary for f in bf)
+    assert all(np.isinf(f.lifespan_myr) for f in bf)  # never aged / retired
+
+    # Every plate with a neighbour carries boundary faults, and the summed trace length is a
+    # large multiple of a single traverse of the boundary (master + strands, both flanks).
+    from scipy.spatial import cKDTree
+
+    outline = np.concatenate([p.get_bounding_polygon() for p in world.plates], axis=0)
+    traces = np.concatenate([f.world_polyline for f in bf], axis=0)
+    d, _ = cKDTree(traces).query(outline)
+    within_100km = float(np.mean(d * 6371.0 < 100.0))
+    assert within_100km > 0.75  # most of the boundary is close to a boundary-fault trace
+
+
+def test_boundary_faults_are_regenerated_not_accumulated():
+    """They track the moving boundary, so each step throws the previous set away -- the count
+    stays bounded rather than growing without limit."""
+    world = generate_world(seed=7, num_plates=6)
+    counts = []
+    for _ in range(6):
+        step_world(world, 1_000_000)
+        counts.append(len(world.boundary_faults))
+    assert min(counts) > 20
+    assert max(counts) < 4 * (sum(counts) / len(counts))  # no monotonic blow-up
+
+
+def test_boundary_fault_regime_matches_the_boundary_motion():
+    """A converging stretch gets reverse faults, a diverging stretch normal faults."""
+    world = generate_world(seed=4, num_plates=6)
+    for _ in range(3):
+        step_world(world, 1_000_000)
+    kinds = {f.kind for f in world.boundary_faults}
+    # A 6-plate world in its first few Myr always has both a converging and a diverging edge.
+    assert _KIND_REVERSE in kinds and _KIND_NORMAL in kinds
+
+
+def test_boundary_faults_survive_a_save_load_roundtrip(tmp_path):
+    world = generate_world(seed=4, num_plates=6)
+    step_world(world, 1_000_000)
+    save = tmp_path / "w.mbworld"
+    save.write_bytes(persistence.save_world_bytes(world))
+    loaded = persistence.load_world_bytes(save.read_bytes())
+    assert len(loaded.boundary_faults) == len(world.boundary_faults)
+    step_world(loaded, 1_000_000)  # and still steps
 
 
 # --------------------------------------------------------------------------- topology reconciliation

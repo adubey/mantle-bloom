@@ -217,6 +217,43 @@ MAX_SCARS_PER_PLATE = 40
 # raises the plate's mean weight (more fault systems spawn) and pulls seeds into the overlap.
 OVERLAP_STRESS_WEIGHT = 1.5
 
+# --- Boundary faults (see generate_boundary_faults / World.boundary_faults) ---
+# A plate boundary *is* a fault zone: a subduction megathrust, a mid-ocean-ridge normal-fault
+# swarm + its transforms, a continental transform like the San Andreas. The intraplate
+# spawner above is a slow Poisson process (~1 event/Myr planet-wide) and can never line the
+# ~300,000 km of plate boundary a world carries, so boundary faults are generated
+# deterministically instead: every step, walk each plate's outline, classify each stretch by
+# the local closing rate, and lay a fault family tracking it. Rebuilt from scratch each step
+# (they follow the moving boundary), so no ageing / lifespan / scar / reconcile.
+#
+# A boundary outline vertex counts as "on a shared boundary" if the nearest other-plate node
+# is within this many line-spacings (a keyhole seam / hole edge sits much further out).
+BOUNDARY_FAULT_NEIGHBOUR_REACH_MULT = 2.0
+# Split a classified boundary run into fault traces this long (arc length); runs shorter than
+# the min are skipped (too short to read as a fault family / not worth the relief query).
+BOUNDARY_FAULT_SEGMENT_KM = 350.0
+BOUNDARY_FAULT_MIN_SEGMENT_KM = 90.0
+BOUNDARY_FAULT_NODE_KM = 45.0  # ~1 trace node per this many km of boundary
+BOUNDARY_FAULT_MAX_NODES = 24
+# Sub-parallel strands offset into the plate interior from the master (which rides the
+# boundary itself). Total traces per segment = 1 master + this many strands.
+BOUNDARY_FAULT_STRAND_COUNT = 2
+BOUNDARY_FAULT_STRAND_SPACING_KM = 40.0
+# Slip rate scales with |closing rate|: this is the closing rate (m/Myr) mapped to
+# SLIP_RATE_REF_M_PER_MYR; faster/slower boundaries scale from there, clamped to the same
+# SLIP_RATE_MIN/MAX band lone faults use.
+BOUNDARY_FAULT_CLOSING_REF_M_PER_MYR = 30_000.0  # ~3 cm/yr
+# Boundary faults apply their own per-regime relief at this fraction of the intraplate rate:
+# the (now fault_influence-gated) deform() bands still carry the bulk of boundary uplift, so
+# a full-rate fault relief layer on top double-counts it (the trap commit 9fd9287 hit at 3x
+# and cut back to 1x). Tuned against the hypsometry regression -- raise for more fault-driven
+# relief, lower if emax pins at MAX_ELEVATION_M.
+BOUNDARY_FAULT_RELIEF_SCALE = 0.3
+# Cap boundary-fault ruptures written to World.earthquakes per step (they are numerous) --
+# keep the largest this many; the rest are dropped (the retained set still drives the "Fault
+# lines" overlay and erosion's seismic burst).
+BOUNDARY_FAULT_MAX_QUAKES_PER_STEP = 40
+
 # --- Fault-deformation mode (World.fault_deformation_mode; see LithospherePlate.deform) ---
 FAULT_DEFORMATION_MODES = ("boundary", "fault", "both")
 # In "fault" mode (the default), boundary thickening in LithospherePlate.deform is multiplied
@@ -308,6 +345,11 @@ class Fault:
     # OVERLAP_STRESS_WEIGHT) -- a plain-default field an older pickle reads as False. Drives
     # a higher rupture rate in _generate_earthquakes.
     born_in_overlap: bool = False
+    # True for a *boundary fault*: a trace laid along a live plate-boundary segment by
+    # `generate_boundary_faults` and stored in `World.boundary_faults`, regenerated from
+    # scratch every step (it tracks the moving boundary) rather than aged / retired / re-homed
+    # like an intraplate fault. A plain-default field an older pickle reads as False.
+    boundary: bool = False
     age_myr: float = 0.0
     cumulative_offset_m: float = 0.0
     active: bool = True
@@ -387,6 +429,169 @@ def system_world_points(system: FaultSystem, plate: Plate) -> np.ndarray:
     return geometry.to_world(plate.frame, geometry.local_xyz(system.master_local_phi, system.master_local_theta))
 
 
+def _all_faults(world: "World") -> list:
+    """Every fault trace the relief / earthquake / rendering / `fault_influence` path should
+    see: the persistent intraplate `world.faults` plus this step's regenerated
+    `world.boundary_faults` (see `generate_boundary_faults`)."""
+    return world.faults + world.boundary_faults
+
+
+# --------------------------------------------------------------------------- boundary faults
+
+
+_BOUNDARY_REGIME_KIND = {1: _KIND_REVERSE, 2: _KIND_NORMAL, 3: _KIND_STRIKE_SLIP}
+_BOUNDARY_DIP_DEG = {_KIND_REVERSE: DIP_REVERSE_DEG, _KIND_NORMAL: DIP_NORMAL_DEG, _KIND_STRIKE_SLIP: DIP_STRIKE_SLIP_DEG}
+
+
+def _polyline_length_km_world(pts_xyz: np.ndarray) -> float:
+    seg = np.arccos(np.clip(np.sum(pts_xyz[:-1] * pts_xyz[1:], axis=-1), -1.0, 1.0))
+    return float(np.sum(seg) * PLANET_RADIUS_KM)
+
+
+def _resample_polyline(pts: np.ndarray, n: int) -> np.ndarray:
+    """Down-sample an ordered (m, 3) unit polyline to `n` points, evenly spaced by index."""
+    if len(pts) <= n:
+        return pts
+    idx = np.linspace(0.0, len(pts) - 1, n)
+    lo = np.floor(idx).astype(int)
+    hi = np.minimum(lo + 1, len(pts) - 1)
+    frac = (idx - lo)[:, None]
+    return geometry.normalize(pts[lo] * (1.0 - frac) + pts[hi] * frac)
+
+
+def _make_boundary_fault(
+    world: "World", plate: Plate, world_pts: np.ndarray, kind: str,
+    slip_rate: float, dip_deg: float, strike_sense: int, dip_dir_world: np.ndarray,
+) -> Fault:
+    """One boundary-fault trace from an ordered world-space polyline. Geometry is stored in
+    the plate's local frame (same as every other `Fault`); `lifespan_myr` is +inf and the
+    trace is thrown away and rebuilt next step, so it is never aged or retired."""
+    local = geometry.to_local(plate.frame, geometry.normalize(world_pts))
+    phi, theta = geometry.xyz_to_latlon(local)
+    dip_dir_local = geometry.to_local(plate.frame, geometry.normalize(dip_dir_world))
+    fault = Fault(
+        fault_id=world.next_fault_id,
+        plate_id=plate.plate_id,
+        kind=kind,
+        local_phi=phi,
+        local_theta=theta,
+        slip_rate_m_per_myr=float(slip_rate),
+        dip_deg=float(dip_deg),
+        strike_sense=int(strike_sense),
+        dip_dir_local=dip_dir_local,
+        lifespan_myr=float("inf"),
+        birth_years=world.elapsed_years,
+        birth_distance_from_boundary_km=0.0,
+        boundary=True,
+    )
+    fault.world_polyline = geometry.to_world(plate.frame, geometry.local_xyz(phi, theta))
+    world.next_fault_id += 1
+    return fault
+
+
+def _emit_boundary_fault_run(
+    world: "World", plate: Plate, run_pts: np.ndarray, regime: int,
+    closing_rad_per_yr: float, centroid: np.ndarray,
+) -> None:
+    """Lay a fault family (a master trace on the boundary + a few sub-parallel strands
+    stepped into the plate interior) along one classified boundary run."""
+    if _polyline_length_km_world(run_pts) < BOUNDARY_FAULT_MIN_SEGMENT_KM:
+        return
+    kind = _BOUNDARY_REGIME_KIND[regime]
+    dip_deg = _BOUNDARY_DIP_DEG[kind]
+    closing_m_per_myr = abs(closing_rad_per_yr) * PLANET_RADIUS_KM * 1.0e9
+    frac = float(np.clip(closing_m_per_myr / BOUNDARY_FAULT_CLOSING_REF_M_PER_MYR, 0.0, 1.0))
+    slip_rate = SLIP_RATE_MIN_M_PER_MYR + (SLIP_RATE_MAX_M_PER_MYR - SLIP_RATE_MIN_M_PER_MYR) * frac
+    strand_off_rad = BOUNDARY_FAULT_STRAND_SPACING_KM / PLANET_RADIUS_KM
+
+    n_chunks = max(1, int(round(_polyline_length_km_world(run_pts) / BOUNDARY_FAULT_SEGMENT_KM)))
+    bounds = np.linspace(0, len(run_pts), n_chunks + 1).astype(int)
+    for c in range(n_chunks):
+        a, b = int(bounds[c]), int(bounds[c + 1])
+        if b - a < 2:
+            a, b = max(a - 1, 0), min(b + 1, len(run_pts))
+        chunk = run_pts[a:b]
+        if len(chunk) < 2:
+            continue
+        chunk_km = _polyline_length_km_world(chunk)
+        n_nodes = int(np.clip(round(chunk_km / BOUNDARY_FAULT_NODE_KM) + 1, FAULT_NODES_MIN, BOUNDARY_FAULT_MAX_NODES))
+        master = _resample_polyline(chunk, n_nodes)
+        # `inward`: unit tangent-plane vector at each node pointing toward the plate centroid
+        # -- strands step off the boundary into the plate interior along it.
+        to_c = centroid[None, :] - master
+        inward = geometry.normalize(to_c - np.sum(to_c * master, axis=-1, keepdims=True) * master)
+        mid = len(master) // 2
+        world.boundary_faults.append(
+            _make_boundary_fault(world, plate, master, kind, slip_rate, dip_deg, 1, inward[mid])
+        )
+        for k in range(BOUNDARY_FAULT_STRAND_COUNT):
+            strand = geometry.normalize(master + (k + 1) * strand_off_rad * inward)
+            sense = 1 if k % 2 == 0 else -1
+            world.boundary_faults.append(
+                _make_boundary_fault(world, plate, strand, kind, slip_rate, dip_deg, sense, sense * inward[mid])
+            )
+
+
+def generate_boundary_faults(world: "World") -> None:
+    """Rebuild `world.boundary_faults` from scratch: walk every plate's outline, classify
+    each stretch by the local closing rate against the nearest other plate (convergent ->
+    reverse, divergent -> normal, transform -> strike-slip), and lay a fault family along
+    each run. See the BOUNDARY_FAULT_* constants and `docs/simulation-model.md#faults`."""
+    world.boundary_faults = []
+    if len(world.plates) < 2:
+        return
+    spacing_rad = line_spacing_rad(world.node_density)
+    reach_rad = BOUNDARY_FAULT_NEIGHBOUR_REACH_MULT * spacing_rad
+    thr = boundary.TRANSFORM_RATE_THRESHOLD
+    omega_by_id = {p.plate_id: np.asarray(p.omega, dtype=float) for p in world.plates}
+
+    for plate in world.plates:
+        outline = plate.get_bounding_polygon()
+        if outline is None or len(outline) < 4:
+            continue
+        pts_list: list[np.ndarray] = []
+        owner_list: list[np.ndarray] = []
+        for other in world.plates:
+            if other.plate_id == plate.plate_id:
+                continue
+            npts = other.all_points_and_elevation()[0]
+            if len(npts):
+                pts_list.append(npts)
+                owner_list.append(np.full(len(npts), other.plate_id))
+        if not pts_list:
+            continue
+        other_pts = np.concatenate(pts_list, axis=0)
+        other_owner = np.concatenate(owner_list, axis=0)
+
+        d, idx = cKDTree(other_pts).query(outline, workers=query_workers(len(outline)))
+        nn_owner = other_owner[idx]
+        nn_pt = other_pts[idx]
+        near = d <= reach_rad
+        nn_omega = np.stack([omega_by_id[int(o)] for o in nn_owner], axis=0)
+        closing = boundary.closing_rate(outline, omega_by_id[plate.plate_id], nn_omega, nn_pt)
+
+        regime = np.zeros(len(outline), dtype=np.int8)
+        regime[near & (closing > thr)] = 1
+        regime[near & (closing < -thr)] = 2
+        regime[near & (np.abs(closing) <= thr)] = 3
+
+        centroid = geometry.normalize(outline.mean(axis=0))
+
+        m = len(outline)
+        i = 0
+        while i < m:
+            if regime[i] == 0:
+                i += 1
+                continue
+            j = i
+            while j + 1 < m and regime[j + 1] == regime[i] and nn_owner[j + 1] == nn_owner[i]:
+                j += 1
+            run = outline[i : j + 1]
+            run_closing = float(np.mean(np.abs(closing[i : j + 1])))
+            _emit_boundary_fault_run(world, plate, run, int(regime[i]), run_closing, centroid)
+            i = j + 1
+
+
 # --------------------------------------------------------------------------- step entry point
 
 
@@ -430,6 +635,11 @@ def update_faults(world: "World", years: float) -> None:
 
     _cull_scars(world)
     _cull_inactive_systems(world)
+
+    # Boundary faults: rebuilt from scratch every step against the current geometry, so this
+    # comes after the intraplate spawn/cull and before the relief / earthquake passes, which
+    # both walk `_all_faults(world)`.
+    generate_boundary_faults(world)
 
     for plate in world.plates:
         _apply_plate_fault_relief(world, plate, years_myr)
@@ -964,7 +1174,7 @@ def fault_influence(
         return np.ones(0)
     traces = [
         f.world_polyline
-        for f in world.faults
+        for f in _all_faults(world)
         if f.plate_id == plate.plate_id and f.active and f.world_polyline is not None
     ]
     if not traces:
@@ -978,7 +1188,7 @@ def fault_influence(
 def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) -> None:
     if not hasattr(plate, "lines"):
         return
-    active = [f for f in world.faults if f.plate_id == plate.plate_id and f.active]
+    active = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active]
     if not active:
         return
     own_points = plate.all_points_and_elevation()[0]
@@ -1001,7 +1211,11 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) ->
         d, _ = cKDTree(trace).query(pts)
         taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
         slip_norm = float(np.clip(fault.slip_rate_m_per_myr / SLIP_RATE_REF_M_PER_MYR, 0.2, 3.0))
-        mag = taper * slip_norm * years_myr * rate_scale
+        # Boundary faults carry only a fraction of the intraplate relief rate: the
+        # fault_influence-gated deform() bands already do the bulk of boundary uplift, so a
+        # full-rate layer on top double-counts it (see BOUNDARY_FAULT_RELIEF_SCALE).
+        fault_scale = BOUNDARY_FAULT_RELIEF_SCALE if fault.boundary else 1.0
+        mag = taper * slip_norm * years_myr * rate_scale * fault_scale
 
         if fault.kind == _KIND_REVERSE:
             contrib = REVERSE_UPLIFT_M_PER_MYR * mag
@@ -1014,7 +1228,14 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) ->
             contrib = (STRIKE_SLIP_RIDGE_M_PER_MYR + fault.strike_sense * STRIKE_SLIP_BEND_M_PER_MYR) * mag
 
         delta[affected] += contrib
-        reason[affected] = _KIND_REASON[fault.kind]
+        # A boundary *reverse* fault sits exactly on a collision / subduction front, where
+        # deform() already stamps the richer ELEV_CHANGE_COLLISION / _SUBDUCTION_ARC / _TRENCH
+        # code (which also carries the oceanic-vs-continental distinction) -- relabelling it
+        # "Fault: reverse" would only lose information. Boundary normal / strike-slip faults
+        # *do* stamp, since that is the new, useful story along rifts and transforms (the
+        # divergent band would otherwise just read "Divergent rift / ridge" everywhere).
+        if not (fault.boundary and fault.kind == _KIND_REVERSE):
+            reason[affected] = _KIND_REASON[fault.kind]
 
     if not np.any(delta):
         return
@@ -1066,14 +1287,13 @@ def _generate_earthquakes(world: "World", years_myr: float) -> None:
     Deterministic per `(seed, round(elapsed_years), fault_id, _QUAKE_SEED_TAG)` so a replayed
     session produces identical earthquakes."""
     by_id = plate_by_id(world)
-    step_quakes: list[Earthquake] = []
-    for fault in world.faults:
+
+    def build_quake(fault: Fault, rng: np.random.Generator) -> Earthquake | None:
         if not fault.active or fault.slip_rate_m_per_myr * years_myr < MIN_STEP_SLIP_FOR_QUAKE_M:
-            continue
+            return None
         plate = by_id.get(fault.plate_id)
         if plate is None:
-            continue
-        rng = np.random.default_rng((world.seed, round(world.elapsed_years), fault.fault_id, _QUAKE_SEED_TAG))
+            return None
         trace = fault.world_polyline
         if trace is None or len(trace) == 0:
             trace = fault_world_points(fault, plate)
@@ -1083,8 +1303,8 @@ def _generate_earthquakes(world: "World", years_myr: float) -> None:
         )
         epicenter = trace[int(rng.integers(len(trace)))]
         epicenter = epicenter / max(float(np.linalg.norm(epicenter)), 1e-12)
-        quake = Earthquake(
-            earthquake_id=world.next_earthquake_id,
+        return Earthquake(
+            earthquake_id=-1,  # assigned when actually retained, below
             fault_id=fault.fault_id,
             plate_id=fault.plate_id,
             kind=fault.kind,
@@ -1093,9 +1313,33 @@ def _generate_earthquakes(world: "World", years_myr: float) -> None:
             slip_m=fault.slip_rate_m_per_myr * years_myr,
             birth_years=world.elapsed_years,
         )
-        world.earthquakes.append(quake)
+
+    step_quakes: list[Earthquake] = []
+    for fault in world.faults:
+        # `fault_id` is a stable monotonic counter for intraplate faults -> replay-identical.
+        q = build_quake(fault, np.random.default_rng((world.seed, round(world.elapsed_years), fault.fault_id, _QUAKE_SEED_TAG)))
+        if q is not None:
+            step_quakes.append(q)
+
+    # Boundary faults are regenerated (and re-id'd) every step, so key the RNG off the trace
+    # midpoint's quantized position instead -- stable across a replay since generation is
+    # deterministic. They are numerous, so keep only the largest per step.
+    boundary_quakes: list[Earthquake] = []
+    for fault in world.boundary_faults:
+        poly = fault.world_polyline
+        if poly is None or len(poly) == 0:
+            continue
+        key = int(np.abs(np.round(poly[len(poly) // 2] * 1000.0)).astype(np.int64).sum())
+        q = build_quake(fault, np.random.default_rng((world.seed, round(world.elapsed_years), _QUAKE_SEED_TAG, key)))
+        if q is not None:
+            boundary_quakes.append(q)
+    boundary_quakes.sort(key=lambda q: q.magnitude, reverse=True)
+    step_quakes.extend(boundary_quakes[:BOUNDARY_FAULT_MAX_QUAKES_PER_STEP])
+
+    for quake in step_quakes:
+        quake.earthquake_id = world.next_earthquake_id
         world.next_earthquake_id += 1
-        step_quakes.append(quake)
+        world.earthquakes.append(quake)
 
     # One console line per step at most: the step's largest, if it's a major event.
     if step_quakes:

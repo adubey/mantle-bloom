@@ -51,6 +51,8 @@ def _backfill_added_fields(world: World) -> None:
         world.overlap_progress = {}
     if not hasattr(world, "faults"):
         world.faults = []
+    if not hasattr(world, "boundary_faults"):
+        world.boundary_faults = []
     if not hasattr(world, "fault_systems"):
         world.fault_systems = []
     if not hasattr(world, "earthquakes"):

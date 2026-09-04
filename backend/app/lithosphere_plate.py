@@ -26,6 +26,7 @@ from .elevation_lines import (
     ELEV_CHANGE_NEW_CRUST,
     ELEV_CHANGE_RIFT,
     ELEV_CHANGE_SUBDUCTION_ARC,
+    ELEV_CHANGE_TRANSFORM,
     ELEV_CHANGE_TRENCH,
     ELEV_CHANGE_VOLCANO,
     ElevationLine,
@@ -53,6 +54,14 @@ from . import bathymetry, lithosphere, rheology, terrain_noise, torque
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
+
+# Transform (strike-slip) boundary pressure-ridge uplift, applied as a direct elevation delta
+# on the transform band in deform() (there is no net crustal shortening at a strike-slip
+# contact, so it does not go through Hc/Hm). Gentler than either convergent case -- real
+# transform relief is local pressure ridges / transtensional sags, not an orogen. Half v1's
+# plates.TRANSFORM_UPLIFT_RATE_M_PER_MYR (200) since here it is not distance-tapered, only
+# fault_influence-gated.
+TRANSFORM_UPLIFT_RATE_M_PER_MYR = 100.0
 
 # A continental line's *contested* end is allowed to retreat -- one node per step -- whether
 # the overriding neighbour is oceanic (a passive margin / accretion front: the ocean slab
@@ -306,8 +315,13 @@ class LithospherePlate(PlateWithLines):
 
         neighbours = self.get_neighbours(other_plates, threshold_rad=reach_rad)
         inputs = torque.gather_boundary_force_inputs(self, neighbours, spacing_rad, reach_rad)
-        contested_all, divergent_all = torque.classify_boundary_nodes(self, neighbours, inputs, reach_rad)
-        transform_all = ~contested_all & ~divergent_all & np.isfinite(inputs.dist_to_neighbor)
+        # Motion-based: `convergent_all` is the whole converging band (not just the nodes
+        # that already overlap a neighbour polygon), so a boundary builds an orogen before
+        # any overlap accumulates; `contested_all` (the geometric overlap subset, folded into
+        # `convergent_all`) still gates node deletion / continental retreat below.
+        convergent_all, divergent_all, transform_all, contested_all = torque.classify_boundary_nodes(
+            self, neighbours, inputs, reach_rad
+        )
 
         # Fault-localised deformation (World.fault_deformation_mode == "fault"): scale this
         # step's convergent thickening and divergent thinning by proximity to an active fault
@@ -400,7 +414,9 @@ class LithospherePlate(PlateWithLines):
             offset += n
 
             contested = contested_all[sl]
+            convergent = convergent_all[sl]
             divergent = divergent_all[sl]
+            transform = transform_all[sl]
             shrinkable = shrinkable_all[sl]
             accrete = accrete_all[sl]
             closing_rate = closing_rate_all[sl]
@@ -436,16 +452,20 @@ class LithospherePlate(PlateWithLines):
             rho_c = self.crust_density()
             elevation_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
 
-            # The band that plastically thickens: the contested nodes at
+            # The band that plastically thickens: the whole converging band at
             # `orogen_contested_strength`, plus (reach knob > 1) a dilated near-field ring at
             # a faded rate. `orogen_strength` is the per-node multiplier handed to
             # apply_convergent_deformation; > 0 exactly on the nodes that thicken.
+            # `apply_convergent_deformation` still gates on each node's own closing rate
+            # (below yield / not actually closing -> zero strain), so a node that is
+            # `convergent` only via the `contested` deep-overlap fold and is no longer
+            # actively closing simply thickens at zero.
             near_field = (
-                _dilate_1d(contested, orogen_dilation_nodes) & ~contested & ~divergent
+                _dilate_1d(convergent, orogen_dilation_nodes) & ~convergent & ~divergent
                 if orogen_dilation_nodes > 0
                 else np.zeros(n, dtype=bool)
             )
-            orogen_strength = np.where(contested, orogen_contested_strength, 0.0)
+            orogen_strength = np.where(convergent, orogen_contested_strength, 0.0)
             orogen_strength[near_field] = orogen_amount * COLLISION_REACH_NEAR_FIELD_FACTOR
             # "fault" mode: concentrate the shortening onto fault traces (no-op / all-ones
             # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
@@ -515,26 +535,43 @@ class LithospherePlate(PlateWithLines):
                 rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, line_index))
                 volcano_remaining[melting] = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=int(melting.sum()))
 
+            # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
+            # bump on the transform band, kept as a direct elevation delta (like erosion's
+            # own contributions) rather than an Hc change -- a strike-slip contact shoulders
+            # up local relief without net crustal shortening. Gated by `fault_influence` in
+            # "fault" mode so it tracks the boundary strike-slip fault families rather than
+            # smearing along the whole polygon edge.
+            transform_uplift = np.zeros(n)
+            transform_uplift[transform] = (
+                TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * fault_influence[transform]
+            )
+
             elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
-            new_elevation = rheology.clip_elevation_bounds(line.elevation + (elevation_after - elevation_before))
+            new_elevation = rheology.clip_elevation_bounds(
+                line.elevation + (elevation_after - elevation_before) + transform_uplift
+            )
 
             # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
             # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
             # node this step, gated on ELEV_CHANGE_MIN_DELTA_M so a node barely grazed by a
-            # fading boundary force keeps its older provenance. This engine (unlike v1's
-            # plates.deform) has no separate transform-uplift term, so contested convergence
-            # and divergent thinning/melting are the only structural codes it emits.
+            # fading boundary force keeps its older provenance. The masks partition the
+            # near-boundary band by motion (convergent / divergent / transform), so a plain
+            # per-mask assignment needs no priority order. `faults._apply_plate_fault_relief`
+            # runs after this pass and overwrites these with a FAULT_* code wherever a
+            # boundary fault of the matching regime moved the node -- that is what paints the
+            # fault families along every boundary in the elevReason view.
             reason = line.elev_change_reason.copy()
             moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
             if self.crust_type == "continental":
                 # near_field (the reach knob's dilated ring) is continent-continent orogenic
-                # belt too, so it carries the same COLLISION provenance as the contested core.
-                reason[(contested | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
-                reason[contested & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
+                # belt too, so it carries the same COLLISION provenance as the converging core.
+                reason[(convergent | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
+                reason[convergent & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
                 reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
             else:
-                reason[contested & moved] = ELEV_CHANGE_TRENCH
+                reason[convergent & moved] = ELEV_CHANGE_TRENCH
             reason[divergent & moved] = ELEV_CHANGE_RIFT
+            reason[transform & moved] = ELEV_CHANGE_TRANSFORM
             reason[melting] = ELEV_CHANGE_VOLCANO
 
             updated_line = line.replace(

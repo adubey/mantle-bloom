@@ -280,14 +280,20 @@ export default function PlatesAndFaults({
       const onSelectedPlate = fault.plate_id === selectedPlateId;
       const muted = hk != null && fault.kind !== hk;
       const isolated = hk != null && fault.kind === hk;
-      const alpha = (fault.active ? (onSelectedPlate ? 1.0 : ACTIVE_ALPHA) : SCAR_ALPHA) * (muted ? 0.1 : 1);
-      const w = fault.active ? lineWidth * (onSelectedPlate ? 2.6 : 2) : lineWidth * 1.3;
+      // Boundary faults (faults.generate_boundary_faults) line every plate edge and are
+      // numerous -- draw them a touch lighter/thinner and skip the midpoint dot so they read
+      // as the boundary fault mesh rather than crowding out the persistent intraplate faults.
+      const bf = fault.boundary;
+      const alpha =
+        (fault.active ? (onSelectedPlate ? 1.0 : ACTIVE_ALPHA) : SCAR_ALPHA) * (muted ? 0.1 : 1) * (bf ? 0.65 : 1);
+      const w = (fault.active ? lineWidth * (onSelectedPlate ? 2.6 : 2) : lineWidth * 1.3) * (bf ? 0.6 : 1);
       const dash = fault.active ? [] : [lineWidth * 3, lineWidth * 3];
       const edges = traceEdges(fault.trace);
       if (isolated) {
         strokeEdges(edges, `rgba(255, 255, 255, ${fault.active ? 0.5 : 0.25})`, w + lineWidth * 2.6, dash);
       }
       strokeEdges(edges, `rgba(${KIND_RGB[fault.kind]}, ${alpha})`, muted ? Math.max(1, w * 0.7) : w, dash);
+      if (bf) return;
       const [mx, my] = projectPoint(fault.trace[Math.floor(fault.trace.length / 2)] as Vec3);
       const r = 2.6 * pixelScale;
       ctx.fillStyle = `rgba(${KIND_RGB[fault.kind]}, ${alpha})`;

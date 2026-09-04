@@ -544,6 +544,20 @@ plates 9/1 envelope overlap drops from ~15% to a bounded ~2-3% on the first step
 there.) A stricter, exactly-zero invariant would need either a self-intersection-safe polygon
 construction or a supplementary node-cloud distance guard; not pursued for v1.
 
+**Boundary classification is motion-based (torque engine, 2026-09).** `torque.classify_boundary_nodes`
+used to be purely geometric: `contested` meant "currently inside a neighbour polygon" and
+*everything else* in the near-boundary band was `divergent`. That thin, transient overlap
+line was the only thing that read as convergent -- a boundary that was genuinely converging
+but hadn't visibly overlapped yet was inert (no uplift, stamped "Divergent rift/ridge"), and
+transform boundaries were lumped in with divergence, so the "Last elevation change" view ran
+~175:1 divergent-to-convergent when the actual closing rates were roughly balanced. It now
+partitions the band by the **sign of the closing rate** it already computes
+(`rheology.normal_closing_rate_m_per_s`): `> +BOUNDARY_TRANSFORM_RATE_M_PER_S` → convergent
+(builds an orogen before any overlap), `< −` → divergent, in between → transform (which
+finally has its own gentle pressure-ridge uplift term, `TRANSFORM_UPLIFT_RATE_M_PER_MYR`).
+Geometric `contested` is kept, folded into `convergent`, and is still the *only* trigger for
+node deletion / continental retreat -- those must stay overlap-driven.
+
 **Deep interpenetration is classified too (torque engine, 2026).** The polygon-containment
 test used to run only on nodes within `reach_rad` (~3 spacings) of a neighbour node, so a
 plate that had slid *deep* over another had its deep-interior overlapping nodes classified
@@ -858,21 +872,37 @@ should read as ice-covered, not lava-red).
 <a id="faults"></a>
 ## Faults (intraplate) (`faults.py`)
 
-By default an **additive** layer for fault lines that are *not* plate boundaries. `deform()`
-already carries all the deformation that happens *at* a plate edge, and classifies it
-geometrically (contested territory → convergent, uncontested-but-near → transform, wider →
-divergent). That model has no notion of a fault sitting inside a plate, away from any edge --
-yet real faults nucleate at a wide range of distances from boundaries (most within ~200 km,
-but stable-continental-region faults sit well over 1000 km away -- the New Madrid seismic
-zone is ~1500 km from the nearest boundary), come in sub-parallel families (Basin-and-Range
-horst/graben trains, en echelon step-overs), and stay individually active for a few to a few
-tens of Myr before locking up and surviving as inert scars. `faults.py` adds exactly that.
+Two kinds of fault trace live here: **boundary faults** laid along every live plate-boundary
+segment, and **intraplate faults** that nucleate away from any edge.
+
+**Boundary faults (`generate_boundary_faults` → `World.boundary_faults`).** A plate boundary
+*is* a fault zone -- a subduction megathrust, a mid-ocean-ridge normal-fault swarm and its
+transforms, a continental transform like the San Andreas. Every step, `generate_boundary_faults`
+walks each plate's outline, classifies each stretch by the local closing rate against the
+nearest other plate (`boundary.closing_rate`: converging past `TRANSFORM_RATE_THRESHOLD` →
+reverse, opening → normal, near-zero → strike-slip), and lays a fault **family** (a master
+trace on the boundary plus a few sub-parallel strands stepped into the interior) along each
+run. They are **rebuilt from scratch every step** -- they track the moving boundary -- so
+unlike intraplate faults they are never aged, retired, culled, or re-homed
+(`lifespan_myr` is `+inf`, `boundary = True`). They feed the same relief / earthquake /
+rendering / `fault_influence` path as intraplate faults (`_all_faults(world)`), at a reduced
+relief rate (`BOUNDARY_FAULT_RELIEF_SCALE`) so they don't double-count the `fault_influence`-
+gated `deform()` bands. This is what puts fault structure along the whole length of every
+boundary -- the Poisson intraplate spawner below (~1 event/Myr planet-wide) never could.
+
+**Intraplate faults.** Real faults also nucleate at a wide range of distances from
+boundaries (most within ~200 km, but stable-continental-region faults sit well over 1000 km
+away -- the New Madrid seismic zone is ~1500 km from the nearest boundary), come in
+sub-parallel families (Basin-and-Range horst/graben trains, en echelon step-overs), and stay
+individually active for a few to a few tens of Myr before locking up and surviving as inert
+scars. The spawn/age/retire/scar machinery below covers those.
+
 In the **default** `World.fault_deformation_mode == "fault"` the layer is load-bearing: it
-gates `deform()`'s own boundary thickening onto the fault traces (which spawn
-boundary-hugging) -- see **Deformation mode** below. In `"boundary"` mode it is instead a
-purely **additive** layer that **never touches `deform()`'s own boundary classification** --
-the two independent, the same way [volcanism](#volcanism) rides on top of `deform()` rather
-than replacing any of it.
+gates `deform()`'s own boundary thickening / transform uplift / divergent thinning onto the
+fault traces (now dense along every boundary) -- see **Deformation mode** below. In
+`"boundary"` mode it is instead a purely **additive** layer that **never touches `deform()`'s
+own boundary classification** -- the two independent, the same way [volcanism](#volcanism)
+rides on top of `deform()` rather than replacing any of it.
 
 `update_faults` runs once per step from `world.step_world`, inside the
 `simulate_plate_movement` block, right after the `deform()` loop and before
@@ -982,17 +1012,17 @@ culled first; active faults are never culled.
 **Deformation mode (`World.fault_deformation_mode`).** A live Controls select, three values:
 
 - **`"fault"`** (default) -- `LithospherePlate.deform` multiplies its own convergent
-  (`orogen_strength`) and divergent thickening by `faults.fault_influence()`: 1.0 within
-  `FAULT_DEFORM_REACH_KM` (80 km) of an active fault trace on that plate, tapering to
-  `FAULT_DEFORM_FLOOR` (0.06) far from one (never 0 -- a fresh contested zone still deforms
-  while overlap spawning fills it with faults). The arc band is left alone (a volcanic arc is
-  a genuinely broad swath). Alongside, `_apply_plate_fault_relief` widens its reach by
-  `FAULT_RELIEF_MODE_REACH_SCALE` (1.6×); `FAULT_RELIEF_MODE_RATE_SCALE` stays 1.0 -- a >1
-  rate double-counts the boundary bands (which faults hugging the boundary barely gate right
-  at the contact) and pinned hypsometry at `MAX_ELEVATION_M`. Because faults spawn
-  boundary-hugging (`SPAWN_PLACE_*`), the converging edge still deforms -- as a *segmented*
-  belt tracking the fault families (ridges where they are, saddles in the gaps) rather than
-  one smooth polygon-edge swell.
+  (`orogen_strength`), transform, and divergent deformation by `faults.fault_influence()`:
+  1.0 within `FAULT_DEFORM_REACH_KM` (80 km) of an active fault trace on that plate, tapering
+  to `FAULT_DEFORM_FLOOR` (0.06) far from one (never 0). With **boundary faults** now lining
+  every boundary (`generate_boundary_faults`), `fault_influence` genuinely localises the
+  bands onto the fault families along the whole edge -- the "sparse-fault worlds ≈ boundary
+  mode" caveat that used to apply is gone. The arc band is left alone (a volcanic arc is a
+  genuinely broad swath). Alongside, `_apply_plate_fault_relief` widens its reach by
+  `FAULT_RELIEF_MODE_REACH_SCALE` (1.6×); `FAULT_RELIEF_MODE_RATE_SCALE` stays 1.0, and
+  boundary faults carry only `BOUNDARY_FAULT_RELIEF_SCALE` of that -- a full-rate fault
+  relief layer on top of the (now un-gated-at-the-contact) bands double-counts them and
+  pinned hypsometry at `MAX_ELEVATION_M`.
 - **`"boundary"`** -- everything above; `deform()`'s smooth distance-band thickening at the
   polygon edge is untouched. Bit-identical to a pre-field pickle stepped in this mode.
 - **`"both"`** -- the boundary bands at full strength *and* the widened fault relief layer.
@@ -1008,7 +1038,9 @@ that's kept. `magnitude` is `QUAKE_MW_BASE + QUAKE_MW_LENGTH_COEFF·log10(len_km
 QUAKE_MW_SLIP_COEFF·log10(slip_rate) + (OVERLAP_QUAKE_MW_BONUS if born_in_overlap) + jitter`,
 clamped to `[QUAKE_MW_MIN, QUAKE_MW_MAX]`. The epicentre is a node drawn along the trace (a
 fixed true-world-frame point -- never re-homed). Deterministic per
-`(seed, round(elapsed_years), fault_id, _QUAKE_SEED_TAG)`. Each step's largest, if
+`(seed, round(elapsed_years), fault_id, _QUAKE_SEED_TAG)` for intraplate faults; boundary
+faults are re-id'd every step so their RNG keys off the trace-midpoint position instead, and
+only the largest `BOUNDARY_FAULT_MAX_QUAKES_PER_STEP` are retained (they are numerous). Each step's largest, if
 `>= EARTHQUAKE_LOG_MIN_MW` (7.5), is logged to the event console; the rest live only on the
 "Plates & Faults" activity overlay. `update_faults` prunes anything older than `EARTHQUAKE_RETAIN_MYR`
 (5 Myr) at the top of the step. `erosion.py`'s seismic-erosion term is multiplied by
@@ -1019,8 +1051,9 @@ fades over the retention window. Exposed via `GET /world/earthquakes`.
 **Persistence.** `World.faults` (a list of `Fault` dataclasses) and `World.next_fault_id`
 (the monotonic id source) -- `faults` is a `default_factory` field backfilled to `[]` on load
 of an older save (`persistence._backfill_added_fields`); `next_fault_id` is a plain-int
-default a pre-field pickle falls through to. Same story for `World.earthquakes` /
-`next_earthquake_id`. `fault_deformation_mode` is a plain-str default (`"boundary"`), so an
+default a pre-field pickle falls through to. Same story for `World.boundary_faults` (also
+backfilled to `[]`, though it is rebuilt on the first step regardless) and `World.earthquakes`
+/ `next_earthquake_id`. `fault_deformation_mode` is a plain-str default (`"fault"`), so an
 old pickle falls through with no backfill entry.
 
 <a id="reassignment"></a>

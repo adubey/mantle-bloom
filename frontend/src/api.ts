@@ -143,10 +143,14 @@ export interface FaultSummary {
   trace: [number, number, number][];
   // false once the fault has locked up and survives only as an inert scar (see faults.py).
   active: boolean;
+  // true for a *boundary fault*: a trace laid along a live plate-boundary segment
+  // (faults.generate_boundary_faults), regenerated every step -- so it has no meaningful
+  // age/lifespan and its fault_id is not stable across steps.
+  boundary: boolean;
   slip_rate_m_per_myr: number;
   cumulative_offset_m: number;
   age_myr: number;
-  lifespan_myr: number;
+  lifespan_myr: number | null;
   dip_deg: number;
   length_km: number;
   // Non-null for a member of a tight sub-parallel fault family (Basin-and-Range-style) --

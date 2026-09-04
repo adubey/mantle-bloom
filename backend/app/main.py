@@ -789,16 +789,20 @@ def _fault_summary(fault, plate, other_plate_tree) -> dict:
         dist_rad = float(other_plate_tree.query(mid)[0])
     else:
         dist_rad = 0.0
+    lifespan = float(fault.lifespan_myr)
     return {
         "fault_id": fault.fault_id,
         "plate_id": fault.plate_id,
         "kind": fault.kind,
         "trace": _round_coords(trace),
         "active": bool(fault.active),
+        # A boundary fault (see faults.generate_boundary_faults) is regenerated every step
+        # tracking its plate-boundary segment -- no age / lifespan / scar.
+        "boundary": bool(getattr(fault, "boundary", False)),
         "slip_rate_m_per_myr": round(float(fault.slip_rate_m_per_myr), 1),
         "cumulative_offset_m": round(float(fault.cumulative_offset_m), 1),
         "age_myr": round(float(fault.age_myr), 2),
-        "lifespan_myr": round(float(fault.lifespan_myr), 2),
+        "lifespan_myr": None if not np.isfinite(lifespan) else round(lifespan, 2),
         "dip_deg": round(float(fault.dip_deg), 1),
         "length_km": round(float(fault.length_km()), 1),
         "set_id": fault.set_id,
@@ -850,7 +854,7 @@ def list_faults() -> dict:
         trees = _other_plate_trees(world)
         summaries = [
             _fault_summary(fault, by_id[fault.plate_id], trees.get(fault.plate_id))
-            for fault in world.faults
+            for fault in (*world.faults, *world.boundary_faults)
             if fault.plate_id in by_id
         ]
         systems = [

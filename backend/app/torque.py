@@ -330,16 +330,50 @@ def integrate_omega(
 
 BOUNDARY_FORCE_REACH_MULTIPLIER = 3.0  # multiples of spacing_rad -- how boundary-local slab-pull/ridge-push/collision are
 
+# Motion-based boundary classification (see classify_boundary_nodes). A near-boundary node
+# whose closing rate is within +-this of zero is a transform (strike-slip) contact; faster
+# than this and converging -> convergent, faster and opening -> divergent. 1 cm/yr in real
+# m/s -- the same physical threshold `boundary.TRANSFORM_RATE_THRESHOLD` (1 cm/yr in rad/yr)
+# expresses for merge_split's own closing-rate test, restated in the m/s units
+# `rheology.normal_closing_rate_m_per_s` returns.
+BOUNDARY_TRANSFORM_RATE_M_PER_S = 0.01 / SECONDS_PER_YEAR
 
-def classify_boundary_nodes(plate, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float) -> tuple[np.ndarray, np.ndarray]:
-    """(contested, divergent) for this plate's own nodes -- the same geometric test
-    `rheology.py`'s deform() pass uses (a node is contested if it currently falls inside some
-    neighbour's polygon), computed independently here since `shift()` runs *before*
-    `deform()` each step and needs its own boundary read of the *pre-rotation* configuration
-    to decide this step's driving forces."""
+
+def boundary_closing_rate_m_per_s(plate, inputs: BoundaryForceInputs) -> np.ndarray:
+    """Per own-node relative closing rate against the nearest neighbour plate, in real m/s
+    (positive = converging). Thin wrapper over `rheology.normal_closing_rate_m_per_s` so
+    `classify_boundary_nodes` here and `LithospherePlate.deform` share one call/convention."""
+    from . import rheology
+
+    n = len(inputs.own_points)
+    if n == 0:
+        return np.zeros(0)
+    return rheology.normal_closing_rate_m_per_s(
+        np.asarray(plate.omega, dtype=float), inputs.neighbor_omega, inputs.own_points, inputs.direction_to_neighbor
+    )
+
+
+def classify_boundary_nodes(
+    plate, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """(convergent, divergent, transform, contested) for this plate's own nodes.
+
+    `contested` is the geometric test (a node currently falls inside some neighbour's
+    polygon) -- still the trigger for node deletion / continental retreat, and still widened
+    by the bounding-sphere prefilter so a plate that has slid *deep* over a neighbour is
+    caught (see below). The other three partition this plate's near-boundary band
+    (`dist_to_neighbor <= reach_rad`) by the *sign and size* of the relative closing rate
+    (`boundary_closing_rate_m_per_s`), not by geometry: a boundary that is genuinely
+    converging builds an orogen before any polygon overlap accumulates, and a transform
+    contact is finally its own class rather than being lumped in with divergence. `contested`
+    is folded into `convergent` so a deep overrun still thickens / subducts.
+
+    Computed independently of `deform()` since `shift()` runs *before* `deform()` each step
+    and needs its own read of the *pre-rotation* configuration to size this step's forces."""
     n = len(inputs.own_points)
     if n == 0 or not neighbours:
-        return np.zeros(n, dtype=bool), np.zeros(n, dtype=bool)
+        z = np.zeros(n, dtype=bool)
+        return z, z.copy(), z.copy(), z.copy()
     own_points = inputs.own_points
 
     # `near` (within reach_rad of a neighbour node) is the ordinary boundary-local band.
@@ -371,10 +405,16 @@ def classify_boundary_nodes(plate, neighbours: list, inputs: BoundaryForceInputs
             if np.all(consider_contested):
                 break
         contested[consider] = consider_contested
-    # Only the boundary-local band (not the deep-overlap extension above) can be divergent --
-    # an uncontested deep-interior node is just interior, not an opening rift.
-    divergent = (inputs.dist_to_neighbor <= reach_rad) & ~contested
-    return contested, divergent
+
+    # Motion partition of the near-boundary band (not the deep-overlap extension above -- an
+    # uncontested deep-interior node is just interior, not an active boundary).
+    band = inputs.dist_to_neighbor <= reach_rad
+    closing = boundary_closing_rate_m_per_s(plate, inputs)
+    thr = BOUNDARY_TRANSFORM_RATE_M_PER_S
+    convergent = (band & (closing > thr)) | contested
+    divergent = band & ~convergent & (closing < -thr)
+    transform = band & ~convergent & ~divergent
+    return convergent, divergent, transform, contested
 
 
 def shift_plate(plate, world, other_plates: list, years: float) -> float:
@@ -390,7 +430,7 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
 
     neighbours = plate.get_neighbours(other_plates)
     inputs = gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
-    contested, divergent = classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
+    _convergent, divergent, _transform, contested = classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
     collision_mask = contested & (plate.crust_type == "continental") & ~inputs.neighbor_is_oceanic
     subducting = subducting_boundary_mask(plate, inputs, reach_rad)
 
