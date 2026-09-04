@@ -41,7 +41,9 @@ function fmtMyr(years: number): string {
 export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, onStartAnimation }: Props) {
   const [numFrames, setNumFrames] = useState(DEFAULT_NUM_FRAMES);
   const [stepsPerFrame, setStepsPerFrame] = useState(DEFAULT_STEPS_PER_FRAME);
-  const [unbounded, setUnbounded] = useState(false);
+  // Defaults to on -- most recordings are "run until I've seen enough", not a pre-planned
+  // frame count, so the common case shouldn't require touching the checkbox.
+  const [unbounded, setUnbounded] = useState(true);
   const yearsPerFrame = stepsPerFrame * stepYears;
 
   const isInspectorView = INSPECTOR_VIEWS.includes(mapView);
@@ -111,7 +113,7 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
               Recording renders in the background as the world steps forward, using the
               current map view and orientation. The main map doubles as the live preview while
               it runs; other controls are paused until you press Stop (⏹) or it finishes on
-              its own, then you can save the MP4.
+              its own, then a dialog lets you save or discard the MP4.
             </div>
             <button
               onClick={() => onStartAnimation({ numFrames, yearsPerFrame, unbounded })}

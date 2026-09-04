@@ -653,7 +653,8 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     world's current state plus `req.num_frames - 1` more, each `req.years_per_frame` further
     along (see render_image.stream_animation_mp4 for the encoding details). Each response
     line is one JSON object: `{"type": "progress", "frame": n, "total": N, "image_base64":
-    <that frame's PNG>}` as each frame finishes, then a final `{"type": "done",
+    <that frame's PNG>, "elapsed_years": <world.elapsed_years after this frame>}` as each
+    frame finishes, then a final `{"type": "done",
     "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
     "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
     the stream has started.
@@ -692,12 +693,13 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                 stop_event=_animation_stop_event,
             ):
                 if message[0] == "progress":
-                    _, frame, total, frame_png = message
+                    _, frame, total, frame_png, elapsed_years = message
                     yield json.dumps({
                         "type": "progress",
                         "frame": frame,
                         "total": total,
                         "image_base64": base64.b64encode(frame_png).decode("ascii"),
+                        "elapsed_years": elapsed_years,
                     }) + "\n"
                 else:
                     _, mp4_bytes, stopped_early = message

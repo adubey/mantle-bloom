@@ -129,6 +129,10 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
     progress = [m for m in messages if m[0] == "progress"]
     assert [m[1] for m in progress] == [1, 2, 3]  # frames 1-3 completed, then the loop broke
     assert all(m[2] == 10 for m in progress)  # `total` still reports the requested ceiling
+    # elapsed_years climbs by one step per frame after the first (frame 1 is the unstepped
+    # starting state), and never goes backward.
+    assert [m[4] for m in progress] == sorted(m[4] for m in progress)
+    assert progress[-1][4] > progress[0][4]
 
     done = messages[-1]
     assert done[0] == "done"

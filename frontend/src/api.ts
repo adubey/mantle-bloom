@@ -618,6 +618,9 @@ export interface AnimateProgress {
   frame: number;
   total: number;
   imageBase64?: string;
+  // world.elapsed_years after this frame's step, so the caller can drive a live elapsed-time
+  // display off the stream instead of it sitting frozen until the run's final `done` message.
+  elapsedYears: number;
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
@@ -714,6 +717,7 @@ export async function animateWorld(
           frame: msg.frame as number,
           total: msg.total as number,
           imageBase64: msg.image_base64 as string | undefined,
+          elapsedYears: msg.elapsed_years as number,
         });
       } else if (msg.type === "error") {
         throw new Error(String(msg.detail));
