@@ -2,18 +2,6 @@ import { useCallback, useRef, useState } from "react";
 import type { MapView, WorldSummary } from "./api";
 import { exportHexGrid, loadWorld, saveWorld } from "./api";
 
-// How many simulation steps each animation frame advances the world -- the real years each
-// frame covers is this times the app's current "Years per step" (see App.tsx's
-// STEP_YEARS_OPTIONS), so the animation and the Step button move the world in the same unit.
-// A few sane presets, not a free-form input, same reasoning App.tsx's own STEP_YEARS_OPTIONS
-// uses. 1 (one step per frame) is the default so a fresh animation reads as a smooth
-// progression rather than jumping many steps at a time.
-const STEPS_PER_FRAME_OPTIONS = [1, 10, 100];
-const DEFAULT_STEPS_PER_FRAME = 1;
-const DEFAULT_NUM_FRAMES = 20;
-// Matching backend app/main.py's MAX_ANIMATION_FRAMES.
-const MAX_NUM_FRAMES = 240;
-
 // Matching backend app/geodesic.py's FREQUENCY_CHOICES/tile_count (10*frequency**2 + 2).
 const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
   { frequency: 8, label: "Low (~642 tiles)" },
@@ -22,15 +10,10 @@ const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
 ];
 const DEFAULT_HEX_FREQUENCY = 16;
 
-const INSPECTOR_VIEWS: MapView[] = ["plateInspector", "riverInspector", "lakeInspector", "platesAndFaults"];
-
 interface Props {
   hasWorld: boolean;
   seed: number | null;
   elapsedYears: number | null;
-  // The app's current "Years per step" (see App.tsx's STEP_YEARS_OPTIONS) -- one animation
-  // frame advances the world by `stepsPerFrame * stepYears` real years.
-  stepYears: number;
   mapView: MapView;
   // The DOM node wrapping whichever map view component is currently mounted (MapCanvas /
   // PlateInspector / RiverInspector / LakeInspector all draw onto their own <canvas> inside
@@ -42,9 +25,6 @@ interface Props {
   // A load replaces the live world -- the caller runs the same full refresh sequence it
   // already runs after generateWorld.
   onWorldReplaced: (summary: WorldSummary) => Promise<void>;
-  // "Start Animation" -- the caller closes this modal and runs the whole animation in the
-  // background off the current map view (see App.tsx's handleStartAnimation).
-  onStartAnimation: (opts: { numFrames: number; yearsPerFrame: number }) => void;
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -56,28 +36,14 @@ function downloadBlob(blob: Blob, filename: string): void {
   URL.revokeObjectURL(url);
 }
 
-function fmtMyr(years: number): string {
-  // Steps per frame can be as fine as one 10,000-year step, so a plain "0.0 Myr" is possible
-  // -- fall back to kyr below a million years so the number stays readable.
-  if (years < 1e6) return `${Math.round(years / 1e3).toLocaleString()} kyr`;
-  return `${(years / 1e6).toFixed(1)} Myr`;
-}
-
 export default function FileModal({
-  hasWorld, seed, elapsedYears, stepYears, mapView, mapWrapperRef,
-  onClose, onWorldReplaced, onStartAnimation,
+  hasWorld, seed, elapsedYears, mapView, mapWrapperRef,
+  onClose, onWorldReplaced,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [numFrames, setNumFrames] = useState(DEFAULT_NUM_FRAMES);
-  const [stepsPerFrame, setStepsPerFrame] = useState(DEFAULT_STEPS_PER_FRAME);
-  const yearsPerFrame = stepsPerFrame * stepYears;
-  // Two-step "Start Animation": the button flips this on, then a short explainer + Start/Cancel.
-  const [confirmingAnimation, setConfirmingAnimation] = useState(false);
   const [hexFrequency, setHexFrequency] = useState(DEFAULT_HEX_FREQUENCY);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isInspectorView = INSPECTOR_VIEWS.includes(mapView);
 
   const runAction = useCallback(async (name: string, action: () => Promise<void>) => {
     setBusy(name);
@@ -173,78 +139,6 @@ export default function FileModal({
           <button onClick={handleSaveImage} disabled={!hasWorld || busy !== null} style={{ width: "100%", fontSize: 12 }}>
             {busy === "image" ? "Saving..." : "Save Image of Current View"}
           </button>
-        </fieldset>
-
-        <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, marginBottom: 12 }}>
-          <legend style={{ fontSize: 11 }}>Animation</legend>
-          {isInspectorView ? (
-            <div style={{ fontSize: 11, opacity: 0.6 }}>
-              Switch to a map view (not an Inspector) to make an animation.
-            </div>
-          ) : (
-            <>
-              <label style={{ display: "block", marginBottom: 6 }}>
-                Frames (incl. current): {numFrames}
-                <input
-                  type="range" min={2} max={MAX_NUM_FRAMES} value={numFrames}
-                  onChange={(e) => setNumFrames(Number(e.target.value))}
-                  disabled={confirmingAnimation}
-                  style={{ width: "100%" }}
-                />
-              </label>
-              <label style={{ display: "block", marginBottom: 6 }}>
-                Steps per frame
-                <select
-                  value={stepsPerFrame}
-                  onChange={(e) => setStepsPerFrame(Number(e.target.value))}
-                  disabled={confirmingAnimation}
-                  style={{ width: "100%", fontSize: 12 }}
-                >
-                  {STEPS_PER_FRAME_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s.toLocaleString()}</option>
-                  ))}
-                </select>
-              </label>
-              <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 6 }}>
-                {fmtMyr(yearsPerFrame)} per frame ({stepsPerFrame.toLocaleString()} × {stepYears.toLocaleString()} yr/step).
-                Permanently advances the world by {fmtMyr((numFrames - 1) * yearsPerFrame)}, same
-                as clicking Step {((numFrames - 1) * stepsPerFrame).toLocaleString()} times -- not a preview.
-              </div>
-              {confirmingAnimation ? (
-                <>
-                  <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 6 }}>
-                    The animation renders in the background as the world steps forward, using
-                    the current map view and orientation. The main map doubles as the live
-                    animation step while it runs; other controls are paused until it finishes,
-                    then you can save the MP4.
-                  </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <button
-                      onClick={() => {
-                        setConfirmingAnimation(false);
-                        onStartAnimation({ numFrames, yearsPerFrame });
-                      }}
-                      disabled={!hasWorld || busy !== null}
-                      style={{ flex: 1, fontSize: 12 }}
-                    >
-                      Start
-                    </button>
-                    <button onClick={() => setConfirmingAnimation(false)} style={{ flex: 1, fontSize: 12 }}>
-                      Cancel
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <button
-                  onClick={() => setConfirmingAnimation(true)}
-                  disabled={!hasWorld || busy !== null}
-                  style={{ width: "100%", fontSize: 12 }}
-                >
-                  Start Animation
-                </button>
-              )}
-            </>
-          )}
         </fieldset>
 
         <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8 }}>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchEarthquakes, fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateWorld, renderWorld, stepWorld, updateControls,
+  animateWorld, fetchEarthquakes, fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
@@ -17,6 +17,7 @@ import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
 import FileModal from "./FileModal";
+import AnimationModal from "./AnimationModal";
 import Legend from "./Legend";
 import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION } from "./rotation";
@@ -334,6 +335,9 @@ export default function App() {
   const [tuning, setTuning] = useState<TuningMultipliers>(DEFAULT_TUNING);
   const [showControlsModal, setShowControlsModal] = useState(false);
   const [showFileModal, setShowFileModal] = useState(false);
+  // The Record toolbar button's dialog (see AnimationModal.tsx) -- separate from showFileModal
+  // now that recording isn't nested inside "File...".
+  const [showAnimationModal, setShowAnimationModal] = useState(false);
   // The div wrapping whichever map view component is currently mounted -- see
   // FileModal.tsx's own "Save Image" comment for why it reads the live <canvas> straight
   // out of this DOM node rather than a ref threaded through four separate components.
@@ -342,16 +346,18 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Background animation (see FileModal's "Start Animation" and handleStartAnimation below).
-  // `animation` is non-null only while a run is in flight -- it holds the live frame count for
-  // the sidebar progress bar; `animationResult` holds the finished MP4 (+ world summary) until
-  // the user saves or dismisses it. The run streams each frame's PNG straight onto the main
-  // map, and holds the server's world lock throughout, so every world-mutating / rendering
-  // control is disabled while `animation` is set (see `animating`). `animCancelRef` carries
-  // the AbortController that the sidebar "Cancel" button trips.
-  const [animation, setAnimation] = useState<{ frame: number; total: number } | null>(null);
+  // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
+  // below. `animation` is non-null only while a run is in flight -- it holds the live frame
+  // count for the sidebar progress display; `unbounded` mirrors AnimationModal's "keep going
+  // until Stop is pressed" so the sidebar knows not to render `total` as the run's real
+  // endpoint. `animationResult` holds the finished MP4 (+ world summary) until the user saves
+  // or dismisses it. The run streams each frame's PNG straight onto the main map, and holds
+  // the server's world lock throughout, so every world-mutating / rendering control is
+  // disabled while `animation` is set (see `animating`). The toolbar's "Stop" button goes
+  // through api.ts's stopAnimation() rather than aborting the request, so the stream ends
+  // cleanly and still returns the video (see handleStopAnimation below).
+  const [animation, setAnimation] = useState<{ frame: number; total: number; unbounded: boolean } | null>(null);
   const [animationResult, setAnimationResult] = useState<AnimateResponse | null>(null);
-  const animCancelRef = useRef<AbortController | null>(null);
   const animating = animation !== null;
 
   // Two refresh() calls can be in flight at once -- e.g. changing map mode while a step is
@@ -612,25 +618,24 @@ export default function App() {
     await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
   }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
 
-  // FileModal's "Start Animation" -- close the File dialog and run the whole animation in the
-  // background. Each streamed frame's PNG is painted straight onto the main map (the run holds
-  // the server world lock, so a normal render would 503 -- see api.ts/main.py), so the main
-  // display doubles as the animation preview; the sidebar shows progress + a Cancel button,
-  // and every world-mutating control is disabled until it finishes (see `animating`).
+  // The Record toolbar button's AnimationModal -- run the whole recording in the background.
+  // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
+  // world lock, so a normal render would 503 -- see api.ts/main.py), so the main display
+  // doubles as the animation preview; the sidebar shows progress, and every world-mutating
+  // control is disabled until it finishes or the toolbar's Stop button ends it (see
+  // `animating`, handleStopAnimation).
   const handleStartAnimation = useCallback(
-    async ({ numFrames, yearsPerFrame }: { numFrames: number; yearsPerFrame: number }) => {
-      setShowFileModal(false);
+    async ({ numFrames, yearsPerFrame, unbounded }: { numFrames: number; yearsPerFrame: number; unbounded: boolean }) => {
+      setShowAnimationModal(false);
       setError(null);
       setAnimationResult(null);
-      setAnimation({ frame: 0, total: numFrames });
-      const ctrl = new AbortController();
-      animCancelRef.current = ctrl;
+      setAnimation({ frame: 0, total: numFrames, unbounded });
       const view = mapViewRef.current;
       try {
         const result = await animateWorld(
           projection, view, RENDER_WIDTH, RENDER_HEIGHT, rotation, yearsPerFrame, numFrames,
           (p) => {
-            setAnimation({ frame: p.frame, total: p.total });
+            setAnimation({ frame: p.frame, total: p.total, unbounded });
             if (p.imageBase64) {
               // Paint the frame onto the main map. renderRequestIdRef is bumped so any
               // pre-animation refresh() still in flight can't clobber it afterward.
@@ -638,27 +643,29 @@ export default function App() {
               setRenderData({ projection, elapsed_years: 0, image_base64: p.imageBase64 });
             }
           },
-          ctrl.signal,
         );
+        // Reached whether the run finished on its own or the toolbar's Stop button ended it
+        // early (see api.ts's stopAnimation -- the stream still finishes cleanly and returns
+        // the video either way, so both cases resolve here rather than throwing).
         setAnimationResult(result);
         await handleWorldAdvanced(result);
       } catch (e) {
-        if (ctrl.signal.aborted) {
-          // User pressed Cancel -- the world is left wherever the last completed frame put it.
-          await handleWorldAdvanced(await fetchWorldSummary().catch(() => null) ?? summary!);
-        } else {
-          setError(String(e));
-        }
+        setError(String(e));
       } finally {
         setAnimation(null);
-        animCancelRef.current = null;
       }
     },
-    [projection, rotation, handleWorldAdvanced, summary],
+    [projection, rotation, handleWorldAdvanced],
   );
 
-  const handleCancelAnimation = useCallback(() => {
-    animCancelRef.current?.abort(new DOMException("animation cancelled", "AbortError"));
+  // The toolbar's "Stop" button while recording -- asks the server to end the animation
+  // cleanly after its current frame (see api.ts's stopAnimation) so it still finishes with a
+  // complete, saveable video rather than being abandoned mid-run. Fire-and-forget: the
+  // animateWorld() call above is what actually resolves once the stream's final "done"
+  // message arrives; a failure to even deliver the stop request surfaces as `error` so it
+  // isn't silently swallowed.
+  const handleStopAnimation = useCallback(() => {
+    stopAnimation().catch((e) => setError(String(e)));
   }, []);
 
   const handleSaveAnimation = useCallback(async () => {
@@ -796,12 +803,41 @@ export default function App() {
                 ))}
               </select>
             </label>
+            {/* Play / Stop / Record -- the classic tape-deck order. Play advances the world
+                continuously (one step every PLAY_INTERVAL_MS, sized by "Years per step"
+                above) until Stop is pressed; Record opens AnimationModal to configure and
+                start a video recording, which Stop also ends (cleanly -- see
+                handleStopAnimation). Stop is only enabled while one of the two is running. */}
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={handleStep} disabled={busy || stepping || !summary || animating} style={{ flex: 1, fontSize: 12 }}>
-                Step
+              <button
+                onClick={() => setPlaying(true)}
+                disabled={busy || stepping || !summary || animating || playing}
+                title="Play"
+                aria-label="Play"
+                style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
+              >
+                ▶
               </button>
-              <button onClick={() => setPlaying((p) => !p)} disabled={busy || !summary || animating} style={{ flex: 1, fontSize: 12 }}>
-                {playing ? "Pause" : "Play"}
+              <button
+                onClick={() => (animating ? handleStopAnimation() : setPlaying(false))}
+                disabled={!playing && !animating}
+                title="Stop"
+                aria-label="Stop"
+                style={{ flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0" }}
+              >
+                ⏹
+              </button>
+              <button
+                onClick={() => setShowAnimationModal(true)}
+                disabled={busy || !summary || animating || playing}
+                title="Record animation"
+                aria-label="Record animation"
+                style={{
+                  flex: 1, fontSize: 15, lineHeight: 1, padding: "4px 0",
+                  color: busy || !summary || animating || playing ? undefined : "#ff5f56",
+                }}
+              >
+                ⏺
               </button>
             </div>
           </fieldset>
@@ -863,24 +899,29 @@ export default function App() {
             <fieldset style={{ border: "1px solid #3a4d8f", borderRadius: 6, padding: 8, fontSize: 12 }}>
               <legend style={{ fontSize: 11 }}>Animation</legend>
               {animation ? (
-                <>
-                  <div style={{ height: 6, borderRadius: 3, background: "#2a3050", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${(animation.frame / animation.total) * 100}%`,
-                        background: "#5b8cff",
-                        transition: "width 0.2s linear",
-                      }}
-                    />
+                animation.unbounded ? (
+                  <div style={{ fontSize: 11, opacity: 0.7 }}>
+                    Recording frame {animation.frame}… the map is stepping in the background.
+                    Press ⏹ Stop above when ready to finish.
                   </div>
-                  <div style={{ fontSize: 11, opacity: 0.7, margin: "4px 0 6px" }}>
-                    Rendering frame {animation.frame} of {animation.total}… the map is stepping in the background.
-                  </div>
-                  <button onClick={handleCancelAnimation} style={{ width: "100%", fontSize: 12 }}>
-                    Cancel
-                  </button>
-                </>
+                ) : (
+                  <>
+                    <div style={{ height: 6, borderRadius: 3, background: "#2a3050", overflow: "hidden" }}>
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${(animation.frame / animation.total) * 100}%`,
+                          background: "#5b8cff",
+                          transition: "width 0.2s linear",
+                        }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 11, opacity: 0.7, margin: "4px 0 0" }}>
+                      Rendering frame {animation.frame} of {animation.total}… the map is
+                      stepping in the background. Press ⏹ Stop above to finish early.
+                    </div>
+                  </>
+                )
               ) : (
                 <>
                   <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>Animation ready.</div>
@@ -1348,11 +1389,19 @@ export default function App() {
           hasWorld={!!summary}
           seed={summary?.seed ?? null}
           elapsedYears={summary?.elapsed_years ?? null}
-          stepYears={stepYears}
           mapView={mapView}
           mapWrapperRef={mapWrapperRef}
           onClose={() => setShowFileModal(false)}
           onWorldReplaced={handleWorldReplaced}
+        />
+      )}
+
+      {showAnimationModal && (
+        <AnimationModal
+          hasWorld={!!summary}
+          stepYears={stepYears}
+          mapView={mapView}
+          onClose={() => setShowAnimationModal(false)}
           onStartAnimation={handleStartAnimation}
         />
       )}

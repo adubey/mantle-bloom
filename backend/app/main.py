@@ -43,8 +43,10 @@ from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, gene
 MAX_RENDER_DIMENSION_PX = 4000
 # Each animation frame costs a full step_world + render, so this bounds worst-case request
 # time for POST /world/animate the same way MAX_RENDER_DIMENSION_PX bounds /world/render's
-# own worst case.
-MAX_ANIMATION_FRAMES = 240
+# own worst case. Also doubles as the safety ceiling for "keep going until Stop is pressed"
+# (see _animation_stop_event below) -- that mode is meant to be ended by the user, not by
+# this cap, but the cap still applies underneath so a forgotten run can't loop forever.
+MAX_ANIMATION_FRAMES = 480
 
 app = FastAPI(title="mantle-bloom")
 
@@ -77,6 +79,15 @@ _state: dict[str, World | None] = {"world": None}
 # wait the brief window out -- a render especially is called far too often, and is far too
 # cheap, to fail every time it lands during a step (see the render route's own docstring).
 _world_lock = threading.Lock()
+
+# Set by POST /world/animate/stop, checked once per frame inside stream_animation_mp4 (see
+# animate() below): lets the frontend's "Stop" button end an in-progress animation *cleanly*
+# -- the stream finishes its current frame, flushes the encoder, and still returns the video
+# up to that point -- rather than the client just aborting the connection, which drops the
+# video entirely (the "keep going until Stop is pressed" mode relies on this to be worth
+# anything). Cleared at the start of every new animate() call, not after it, so a stop
+# request that arrives after the stream has already ended has no effect on the next run.
+_animation_stop_event = threading.Event()
 
 
 @contextmanager
@@ -647,10 +658,15 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     if not _world_lock.acquire(blocking=False):
         raise HTTPException(status_code=503, detail="a step or animation is already in progress")
 
+    # Clear any stale signal from a previous run (e.g. a stop request that arrived after that
+    # run had already finished on its own) so this fresh run starts unsignaled.
+    _animation_stop_event.clear()
+
     def _stream():
         try:
             for message in render_image.stream_animation_mp4(
-                world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
+                world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames,
+                stop_event=_animation_stop_event,
             ):
                 if message[0] == "progress":
                     _, frame, total, frame_png = message
@@ -661,11 +677,12 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                         "image_base64": base64.b64encode(frame_png).decode("ascii"),
                     }) + "\n"
                 else:
-                    _, mp4_bytes = message
+                    _, mp4_bytes, stopped_early = message
                     yield json.dumps({
                         "type": "done",
                         "mime": "video/mp4",
                         "video_base64": base64.b64encode(mp4_bytes).decode("ascii"),
+                        "stopped_early": stopped_early,
                         **_summary(world),
                     }) + "\n"
         except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
@@ -674,6 +691,19 @@ def animate(req: AnimateRequest) -> StreamingResponse:
             _world_lock.release()
 
     return StreamingResponse(_stream(), media_type="application/x-ndjson")
+
+
+@app.post("/world/animate/stop")
+def animate_stop() -> dict:
+    """Signals an in-progress POST /world/animate stream (the "Stop" toolbar button while
+    recording -- see App.tsx) to end cleanly after its current frame: the stream still
+    flushes the encoder and returns the video made so far, unlike the client just aborting
+    the connection, which drops the video entirely. This is what makes "keep going until
+    Stop is pressed" mode useful -- without it, stopping would lose the recording. A no-op
+    (still 200) if no animation is currently running or it already finished; the signal is
+    cleared at the start of each new animate() run, not here, so it can't leak into one."""
+    _animation_stop_event.set()
+    return {"status": "ok"}
 
 
 @app.post("/world/controls")
