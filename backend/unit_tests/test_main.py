@@ -72,6 +72,10 @@ def test_stranded_basins_before_generate_returns_404(client):
     assert client.get("/world/stranded_basins").status_code == 404
 
 
+def test_volcanoes_before_generate_returns_404(client):
+    assert client.get("/world/volcanoes").status_code == 404
+
+
 def test_save_before_generate_returns_404(client):
     assert client.get("/world/save").status_code == 404
 
@@ -534,10 +538,6 @@ def test_faults_returns_well_formed_entries_after_stepping(client):
     lat = math.degrees(math.asin(max(-1.0, min(1.0, mid[2]))))
     lon = math.degrees(math.atan2(mid[1], mid[0]))
     assert client.get("/world/fault_at", params={"lat_deg": lat, "lon_deg": lon}).json()["fault_id"] == f["fault_id"]
-
-
-def test_volcanoes_before_generate_returns_404(client):
-    assert client.get("/world/volcanoes").status_code == 404
 
 
 def test_volcanoes_returns_well_formed_entries(client):
