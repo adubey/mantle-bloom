@@ -1088,6 +1088,22 @@ version of the per-turn node density / spacing upkeep (`elevation_lines.py`,
 view). See `docs/simulation-model.md#faults`. The layer is additive -- it never touches
 `deform()`'s own boundary classification -- so it can be tuned or reverted in isolation.
 
+**6. Faults along every plate boundary + motion-based boundary classification. DONE (2026-09).**
+`faults.generate_boundary_faults` now lays a fault family along every classified stretch of
+every plate boundary each step (`World.boundary_faults`, rebuilt from scratch -- they track
+the moving edge, so no ageing / scars / reconcile), classified by the local closing rate:
+convergent → reverse, divergent → normal, transform → strike-slip. This is what makes the
+"Last elevation change" view show fault structure along the boundaries and gives
+`fault_influence` something dense to gate on (see 3a -- now moot). In the same change,
+`torque.classify_boundary_nodes` switched from geometric (`contested` overlap = the only
+"convergent") to **motion-based** (closing-rate sign over the near-boundary band), so a
+converging boundary builds an orogen before it visibly overlaps and transform boundaries are
+their own class with a real (gentle) `TRANSFORM_UPLIFT_RATE_M_PER_MYR` term. Geometric
+`contested` is kept only as the node-deletion / continental-retreat trigger.
+Open follow-ons: boundary-fault `fault_id`s churn every step, so the "Plates & Faults" click
+inspector can't reliably target one; `BOUNDARY_FAULT_RELIEF_SCALE` (0.3) and the transform
+rate are eyeballed and fold into item 3's calibration sweep.
+
 **1. Trace and fault-system lengths. DONE (2026-09).** Added `FaultSystem` as a first-class
 object one level above the lone fault (`World.fault_systems`, `SYSTEM_SPAWN_FRACTION` = 0.18
 of spawns): a long, gently curving master lineament (`SYSTEM_LENGTH_*`, to
@@ -1136,13 +1152,13 @@ against a target fault density or a hypsometry budget. Worth a sweep: fault coun
 / hypsography numbers the [land-fraction decline](#land-fraction-slowly-declines-over-a-long-run)
 work cares about.
 
-**3a. Sparse-fault worlds: `"fault"` mode ≈ `"boundary"` mode.** With only ~20 active faults
-(a low-spawn seed), the boundary-hugging traces cover the few short contested zones densely
-enough that `fault_influence` ≈ 1 along them, so the gating is a near no-op and hypsometry
-tracks `"boundary"` mode to within a few percent. Fault-rich seeds show the segmented belt
-clearly. Acceptable for now (the mode is meant to *resemble* boundary deformation), but if a
-starker always-on difference is wanted, the lever is a lower `FAULT_DEFORM_FLOOR` plus a
-tighter `FAULT_DEFORM_REACH_KM`, paid for with a small `FAULT_RELIEF_MODE_RATE_SCALE` bump.
+**3a. Sparse-fault worlds: `"fault"` mode ≈ `"boundary"` mode. MOOT (2026-09, item 6).**
+Boundary faults (`generate_boundary_faults`) now line every boundary regardless of the
+intraplate spawn rate, so `fault_influence` gates the bands onto real fault families
+everywhere -- there is no longer a "sparse-fault seed" where the mode collapses to
+`"boundary"`. The original text: with only ~20 active intraplate faults the boundary-hugging
+traces covered the few short contested zones densely enough that `fault_influence` ≈ 1 along
+them, so the gating was a near no-op.
 
 **4. No live tuning knob.** Unlike the geomorphic budget, none of the fault *constants* are
 exposed in the Controls window (still true). `World.fault_deformation_mode` -- the

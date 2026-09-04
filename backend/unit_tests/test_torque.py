@@ -150,10 +150,75 @@ def test_classify_boundary_nodes_flags_deep_interior_overlap():
 
     class SelfPlate:
         crust_type = "continental"
+        omega = np.zeros(3)
 
-    contested, divergent = torque.classify_boundary_nodes(SelfPlate(), [FakeNeighbour()], inputs, reach_rad)
+    convergent, divergent, transform, contested = torque.classify_boundary_nodes(
+        SelfPlate(), [FakeNeighbour()], inputs, reach_rad
+    )
     assert bool(contested[0]) and not bool(contested[1])
-    assert not divergent.any()  # a deep-interior overlap is contested, never divergent
+    assert bool(convergent[0])  # a deep-interior overlap folds into convergent (thickens / subducts)
+    assert not divergent.any()  # ... and is never divergent
+    assert not transform.any()  # ... nor transform -- it is outside the near-boundary band entirely
+
+
+def test_classify_boundary_nodes_is_motion_based_not_geometric():
+    """A node in the near-boundary band that is not overlapping any polygon is classified by
+    the *sign* of its closing rate: converging -> convergent (builds an orogen before any
+    overlap accumulates), opening -> divergent, near-zero -> transform."""
+    # Two nodes on the equator, a neighbour node just east of each (within reach_rad).
+    own = geometry.normalize(np.array([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]))
+    reach_rad = 0.06
+    nb = geometry.normalize(np.array([[np.cos(0.03), np.sin(0.03), 0.0]] * 2))
+    direction = geometry.normalize(nb - own)
+    inputs = torque.BoundaryForceInputs(
+        own_points=own,
+        own_hc=np.full(2, 35_000.0),
+        own_hm=np.full(2, 100_000.0),
+        dist_to_neighbor=np.array([0.03, 0.03]),
+        direction_to_neighbor=direction,
+        neighbor_is_oceanic=np.zeros(2, dtype=bool),
+        neighbor_omega=np.zeros((2, 3)),
+    )
+
+    class Neighbour:
+        crust_type = "continental"
+        plate_id = 1
+
+        def all_points_and_elevation(self):
+            return nb, np.zeros(2)
+
+        def contains_batch(self, pts):
+            return np.zeros(len(pts), dtype=bool)  # never overlapping
+
+    # Self spinning about +z so its equatorial material moves +y, toward the neighbour -> both
+    # nodes converge.
+    fast = 5.0 * torque.BOUNDARY_TRANSFORM_RATE_M_PER_S * torque.SECONDS_PER_YEAR / lithosphere.PLANET_RADIUS_M
+
+    class SelfPlate:
+        crust_type = "continental"
+        omega = np.array([0.0, 0.0, fast])
+
+    convergent, divergent, transform, contested = torque.classify_boundary_nodes(
+        SelfPlate(), [Neighbour()], inputs, reach_rad
+    )
+    assert convergent.all() and not contested.any()  # converging, though nothing overlaps
+    assert not divergent.any() and not transform.any()
+
+    class SelfPlateOpening(SelfPlate):
+        omega = np.array([0.0, 0.0, -fast])  # equatorial material moves -y, away
+
+    convergent, divergent, transform, _ = torque.classify_boundary_nodes(
+        SelfPlateOpening(), [Neighbour()], inputs, reach_rad
+    )
+    assert divergent.all() and not convergent.any() and not transform.any()
+
+    class SelfPlateStill(SelfPlate):
+        omega = np.zeros(3)  # no relative motion -> transform
+
+    convergent, divergent, transform, _ = torque.classify_boundary_nodes(
+        SelfPlateStill(), [Neighbour()], inputs, reach_rad
+    )
+    assert transform.all() and not convergent.any() and not divergent.any()
 
 
 def test_basal_drag_coefficients_reproduce_the_plain_torque():

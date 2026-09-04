@@ -512,6 +512,13 @@ def test_faults_returns_well_formed_entries_after_stepping(client):
     assert f["length_km"] > 0.0
     assert "system_id" in f
 
+    # Boundary faults (faults.generate_boundary_faults) come through the same list, flagged
+    # `boundary` and with a null lifespan (never aged / retired).
+    boundary_faults = [x for x in body["faults"] if x["boundary"]]
+    assert len(boundary_faults) > 20, "boundary faults should line the plate boundaries"
+    assert all(x["lifespan_myr"] is None for x in boundary_faults)
+    assert all(not x["boundary"] or x["kind"] in {"normal", "reverse", "strike_slip"} for x in body["faults"])
+
     # Fault systems: well-formed, and every strand's system_id points at a real system.
     systems = body["fault_systems"]
     system_ids = {s["system_id"] for s in systems}
