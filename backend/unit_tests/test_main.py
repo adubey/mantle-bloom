@@ -666,6 +666,9 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
     assert all(m["total"] == 3 for m in progress)
     # Each progress tick carries that frame's own PNG so the client can paint it live.
     assert all(Image.open(io.BytesIO(base64.b64decode(m["image_base64"]))).size == (200, 110) for m in progress)
+    # ...and its own elapsed_years, so the client can drive a live counter off the stream
+    # instead of it sitting frozen until the final "done" message.
+    assert [m["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
 
     done = messages[-1]
     assert done["type"] == "done"

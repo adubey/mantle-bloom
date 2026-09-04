@@ -2138,8 +2138,11 @@ def stream_animation_mp4(
     ceiling (so an unattended run can't loop forever), just one the caller isn't expected to
     reach.
 
-    Yields `("progress", frames_done, num_frames, frame_png_bytes)` as each frame finishes
-    encoding, then a final `("done", mp4_bytes, stopped_early)` carrying the complete video
+    Yields `("progress", frames_done, num_frames, frame_png_bytes, elapsed_years)` as each
+    frame finishes encoding -- `elapsed_years` is `world.elapsed_years` *after* that frame's
+    step, so a caller can drive a live elapsed-time counter off the stream instead of it
+    sitting frozen until the whole run (and its final world summary) completes -- then a
+    final `("done", mp4_bytes, stopped_early)` carrying the complete video
     and whether `stop_event` was what ended the run short of `num_frames`. Streaming
     frame-by-frame lets the caller show a real progress bar -- and paint each frame onto the
     live map -- instead of blocking the client on one opaque request that can take minutes on
@@ -2177,7 +2180,7 @@ def stream_animation_mp4(
         # The frame's own PNG rides along with the progress tick so the frontend can paint it
         # straight onto the main map -- the animation runs in the background while the world
         # is locked, so a normal /world/render for the same state would 503 (see main.py).
-        yield ("progress", i + 1, num_frames, png_bytes)
+        yield ("progress", i + 1, num_frames, png_bytes, world.elapsed_years)
 
     for packet in stream.encode():  # flush libx264's remaining buffered frames
         container.mux(packet)
