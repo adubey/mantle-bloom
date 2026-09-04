@@ -34,6 +34,7 @@ from . import (
     render_image,
     stats,
     stranded_basins,
+    worldsketch,
 )
 from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
 
@@ -103,6 +104,14 @@ def _reject_if_busy(detail: str):
         _world_lock.release()
 
 
+class SketchRequest(BaseModel):
+    # A PNG (see worldsketch.py's module docstring for the ink convention: near-black strokes
+    # = coastline, blue-ish = rivers, brown/orange-ish = mountains, everything else unmarked),
+    # base64-encoded so it rides along in the same JSON body as the rest of GenerateRequest --
+    # produced either by the "Draw a map" in-app tool or a "Load an image" file picker.
+    image_base64: str
+
+
 class GenerateRequest(BaseModel):
     seed: int = 0
     # Optional: the world tiles itself into a plausible plate count when omitted (see
@@ -139,6 +148,13 @@ class GenerateRequest(BaseModel):
     # climate.FLUID_DENSITY_CHOICES below -- a smaller, lower-capped set than
     # climate_density's own, see that constant's own comment for why.
     fluid_density: float = 1.0
+    # The "Human-made" Generate World tab's drawn-or-loaded coastline (see worldsketch.py) --
+    # when present, land/sea (and, where painted, mountains/rivers) come from this image
+    # instead of the usual noise-driven generation, and plate sites/boundaries are fit to its
+    # landmasses rather than scattered uniformly at random (see
+    # lithosphere_plate.generate_plates's own `sketch` param). `land_fraction` above is
+    # ignored when this is set -- the drawing decides land extent directly.
+    sketch: SketchRequest | None = None
 
 
 class StepRequest(BaseModel):
@@ -513,6 +529,12 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.FLUID_DENSITY_CHOICES}"
         )
+    sketch_masks = None
+    if req.sketch is not None:
+        try:
+            sketch_masks = worldsketch.parse_sketch_image(base64.b64decode(req.sketch.image_base64))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"invalid sketch image: {exc}") from exc
     with _world_lock:
         world = generate_world(
             req.seed,
@@ -525,6 +547,7 @@ def generate(req: GenerateRequest) -> dict:
             initial_soil_maturity=req.initial_soil_maturity,
             climate_density=req.climate_density,
             fluid_density=req.fluid_density,
+            sketch=sketch_masks,
         )
         _state["world"] = world
     return _summary(world)

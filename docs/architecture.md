@@ -270,6 +270,10 @@ faults.py            every-step intraplate fault-line lifecycle (stress-weighted
                      boundary classification; re-homed across merges/splits by
                      reconcile_faults from world.step_world; backs the "Plates & Faults" map
                      view (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
+worldsketch.py       parses a drawn/loaded coastline image (Generate World's "Human-made" tab)
+                     into land/mountain/river masks + plate seed sites -- see
+                     simulation-model.md#worldsketch. Consumed by lithosphere_plate.py's
+                     generate_plates (its `sketch` param), not part of the per-step pipeline
 world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every

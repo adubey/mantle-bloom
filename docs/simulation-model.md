@@ -5,6 +5,7 @@
 - [Why not a grid](#why-not-a-grid)
 - [Plate-local frames](#plate-local-frames)
 - [Initial plate generation](#initial-plate-generation)
+- [Human-made worlds (sketch-driven generation)](#worldsketch)
 - [Mantle flow](#mantle-flow)
 - [Plate motion: shift and deform](#boundary-evolution)
 - [Line regularization](#line-regularization)
@@ -185,6 +186,61 @@ continuous performance cost, not just a one-time generation cost -- confirmed di
 several times slower per-step time (not just 4x, since the polygon-containment classification
 `deform()` runs against every near-boundary node is closer to `O(n log n)` than linear) --
 which the UI surfaces as a short note when 4x is selected.
+
+<a id="worldsketch"></a>
+## Human-made worlds (sketch-driven generation) (`worldsketch.py`)
+
+The Generate World dialog's "Human-made" tab (alongside the default "Random" tab, which is
+everything above unchanged) lets the user draw a coastline in-app (`SketchEditor.tsx`, a
+full-screen canvas: a coast pen, an eraser, and optional river/mountain pens) or load a
+coastline image drawn elsewhere, instead of generating land/sea from noise. Both paths hand
+the backend the same kind of PNG (`POST /world/generate`'s `sketch.image_base64`) under one
+shared convention: a mostly-white image, the coastline drawn as a near-black outline (strokes,
+not filled regions), with an optional blue-ish river stroke and brown/orange-ish mountain
+stroke. Land vs. sea is therefore never painted directly -- `worldsketch.parse_sketch_image`
+resolves it by flood-filling the white area on either side of the coastline, seeded from the
+image's four corners as presumed ocean (a hand-drawn or loaded world map conventionally leaves
+its corners as open ocean). Small pen gaps in the coastline are closed by a light dilation
+first, so a rough, not-quite-closed sketch doesn't leak land into ocean or vice versa; a
+landmass or ocean that wraps the antimeridian is kept as one connected region by padding the
+working grid across that seam before labeling (latitude/the poles are not periodic and are
+left unpadded). Everything is resampled onto a fixed working equirectangular grid
+(`SKETCH_GRID_W x SKETCH_GRID_H`, 0.5 degree cells) independent of the source canvas/image's
+own resolution or aspect ratio.
+
+`lithosphere_plate.generate_plates`'s `sketch` parameter (a `worldsketch.SketchMasks`) then
+replaces two independent pieces of the usual random generation:
+
+- **Plate sites.** `worldsketch.sketch_plate_sites` -- not `build_plate_tiling`'s usual random
+  scatter -- places plate seeds so boundaries fall in open ocean and across drawn landmasses,
+  the "plate boundaries that fit the map" the feature is named for: `continental_fraction *
+  num_plates` continental plate slots are divided across `worldsketch.landmasses` (connected
+  components of the drawn land) by area share, each landmass's share placed via
+  `scipy.cluster.vq.kmeans2` over its member cells (so a large hand-drawn continent assigned
+  several plates is pre-partitioned into plausible sub-regions before Voronoi tiling ever
+  runs, the way Earth's own continents straddle more than one plate); the remaining slots are
+  oceanic sites, greedy farthest-point-sampled over every non-land cell so they spread out
+  across open ocean instead of clustering. Every landmass is guaranteed at least one plate
+  (an island never silently vanishes into a neighboring oceanic plate's territory), which can
+  push the final plate count slightly above the requested one -- the same tolerance
+  `generate_plates` already has for bumping plate count up to satisfy `MIN_OCEANIC_PLATES`.
+  `build_plate_tiling` accepts these as an explicit `primary_sites` override (still growing
+  the usual `EXTRA_SITES_PER_PLATE` extras onto them the normal Prim-style way, so outlines
+  keep their usual lumpiness); `primary_sites=None`, every caller before this option existed,
+  reproduces the exact same random placement as always.
+- **Continental elevation.** Each continental plate's `hc_at` closure reads land/sea straight
+  off `sketch.sample_land` instead of a noise-quantile `land_threshold` -- comfortably above
+  or below the isostatic reference either way, so the sketch (not the noise field) decides the
+  coastline -- while still layering `terrain_noise.ContinentalRelief`'s usual `sample()`
+  texture (at reduced weight) and land-gated `uplift()` (orogenic belts/plateaus) on top for
+  natural-looking local variation. A painted mountain stroke adds a flat extra uplift bonus on
+  its land nodes; a painted river stroke carves a shallow, clipped-so-it-stays-on-land channel
+  -- a hint for `hydrology.py`'s per-step flow routing to find once the world is stepped, not a
+  persisted river (nothing about a river is a generation-time concept elsewhere in this
+  codebase either -- see [Hydrology](#hydrology)). `land_fraction` is ignored when a sketch is
+  given (the drawing decides land extent directly); oceanic `hc_at` is untouched either way --
+  sketch masks only ever bias continental crust, the same way `land_fraction` already only
+  touches the continental formula.
 
 <a id="mantle-flow"></a>
 ## Mantle flow (`mantle.py`)

@@ -50,7 +50,7 @@ from .plates import (
     _land_noise_threshold,
     _row_median_step,
 )
-from . import bathymetry, lithosphere, rheology, terrain_noise, torque
+from . import bathymetry, lithosphere, rheology, terrain_noise, torque, worldsketch
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -1111,6 +1111,27 @@ _PLATEAU_RELIEF_UNITS = _PLATEAU_INTERNAL_RELIEF_M / 2000.0
 _UPLIFT_SEA_MARGIN = 0.05
 _UPLIFT_SEA_RAMP = 0.35
 
+# The `sketch` path's own continental hc_at (see generate_plates) -- replaces the noise-quantile
+# `land_threshold` with a direct land/sea call from the drawn coastline (worldsketch.SketchMasks).
+# `_SKETCH_LAND_OFFSET_UNITS`/`_SKETCH_SEA_OFFSET_UNITS` stand in for `(sample - land_threshold)`
+# in the ordinary formula -- comfortably positive on drawn land, comfortably negative at sea (well
+# outside `_UPLIFT_SEA_MARGIN` + `_UPLIFT_SEA_RAMP`'s ~0.40 band either way, so the uplift gate
+# below reads land as land regardless of the noise texture riding on top of it), so the sketch --
+# not the noise field -- decides the coastline. `_SKETCH_TEXTURE_WEIGHT` still lets
+# `relief.sample()` show through at reduced strength for natural-looking local variation on each
+# side. `_SKETCH_MOUNTAIN_BONUS_M`/`_SKETCH_RIVER_CARVE_M` are flat elevation-equivalent nudges
+# (same "units = m / 2000" convention `_OROGENIC_RELIEF_M` etc. already use) applied only to
+# painted-and-land nodes; the river carve is capped so it can never drop a node below the "land"
+# side of the sketch (a drawn river is a hint for hydrology.py to find once the world is stepped,
+# not a persisted river -- rivers/lakes have no such concept at generation time).
+_SKETCH_LAND_OFFSET_UNITS = 0.55
+_SKETCH_SEA_OFFSET_UNITS = -0.55
+_SKETCH_TEXTURE_WEIGHT = 0.35
+_SKETCH_MOUNTAIN_BONUS_M = 1800.0
+_SKETCH_RIVER_CARVE_M = 250.0
+_SKETCH_MOUNTAIN_BONUS_UNITS = _SKETCH_MOUNTAIN_BONUS_M / 2000.0
+_SKETCH_RIVER_CARVE_UNITS = _SKETCH_RIVER_CARVE_M / 2000.0
+
 # RNG tag distinguishing the terrain-noise stream from every other `(seed, plate_id, ...)`
 # stream a plate draws (fault noise uses 9001, etc). numpy's SeedSequence only accepts
 # integers, so this is an int, not the string "terrain".
@@ -1158,16 +1179,40 @@ class PlateTiling:
         return self.site_xyz[plate_id]
 
 
-def build_plate_tiling(rng: np.random.Generator, num_plates: int, extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE) -> PlateTiling:
+def build_plate_tiling(
+    rng: np.random.Generator,
+    num_plates: int,
+    extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE,
+    primary_sites: np.ndarray | None = None,
+) -> PlateTiling:
     """Place `num_plates` primary sites plus `num_plates * extra_sites_per_plate` extra sites
     uniformly on the sphere, then hand every extra site to a plate by region-growing: each
     round, the still-unassigned site closest (angularly) to any already-assigned site joins
     that site's plate. Prim-style growth keeps each plate's set of sites a compact cluster,
     so the union of their Voronoi cells stays a single lumpy blob rather than scattering
-    disconnected islands across the sphere. Deterministic in `rng`."""
+    disconnected islands across the sphere. Deterministic in `rng`.
+
+    `primary_sites`, when given (unit vectors, shape `(num_plates, 3)`), replaces the usual
+    random primary placement -- used by `generate_plates`'s `sketch` path
+    (`worldsketch.sketch_plate_sites`) to seed plates from a drawn/loaded coastline's
+    landmasses and open ocean instead of scattering them uniformly at random. `None` (every
+    caller before this parameter existed) draws primaries the same single `rng.normal` call as
+    always, so that path is unchanged."""
     num_extra = max(0, num_plates * extra_sites_per_plate)
-    site_xyz = rng.normal(size=(num_plates + num_extra, 3))
-    site_xyz /= np.linalg.norm(site_xyz, axis=-1, keepdims=True)
+    if primary_sites is None:
+        site_xyz = rng.normal(size=(num_plates + num_extra, 3))
+        site_xyz /= np.linalg.norm(site_xyz, axis=-1, keepdims=True)
+    else:
+        primaries = np.asarray(primary_sites, dtype=float)
+        if len(primaries) != num_plates:
+            raise ValueError(f"primary_sites must have exactly num_plates={num_plates} rows, got {len(primaries)}")
+        primaries = primaries / np.linalg.norm(primaries, axis=-1, keepdims=True)
+        if num_extra > 0:
+            extra_xyz = rng.normal(size=(num_extra, 3))
+            extra_xyz /= np.linalg.norm(extra_xyz, axis=-1, keepdims=True)
+            site_xyz = np.concatenate([primaries, extra_xyz], axis=0)
+        else:
+            site_xyz = primaries
 
     site_plate = np.full(len(site_xyz), -1, dtype=int)
     site_plate[:num_plates] = np.arange(num_plates)
@@ -1191,6 +1236,7 @@ def generate_plates(
     land_fraction: float | None = None,
     node_density: float = 1.0,
     extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE,
+    sketch: worldsketch.SketchMasks | None = None,
 ) -> list[LithospherePlate]:
     """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
     each plate owns the union of several adjacent Voronoi cells (see `build_plate_tiling` and
@@ -1201,7 +1247,19 @@ def generate_plates(
     `terrain_noise.py` -- a low-frequency `sample()` that decides land/sea exactly as v1's
     single noise did, plus a land-gated non-negative `uplift()` carrying orogenic belts and
     plateaus; `_HC_NOISE_AMPLITUDE_*`/`_OROGENIC_*`/`_PLATEAU_*` above set the amplitudes),
-    with `elevation` itself computed once via isostasy at the end."""
+    with `elevation` itself computed once via isostasy at the end.
+
+    `sketch` (the "Human-made" Generate World tab, see `worldsketch.py`), when given, replaces
+    two independent pieces of the usual random generation rather than running alongside it:
+    plate *sites* come from `worldsketch.sketch_plate_sites` (landmasses -> continental sites,
+    open ocean -> farthest-point-sampled oceanic sites) instead of `build_plate_tiling`'s own
+    random placement, and each continental plate's `hc_at` reads land/sea (and, where painted,
+    mountain/river) straight off the sketch instead of a noise-quantile threshold -- see the
+    `_SKETCH_*` constants above. `land_fraction` is ignored in this case (the drawing decides
+    land extent directly); `continental_fraction` keeps its meaning, now controlling how many
+    plate slots the drawn landmasses are split across vs. pure ocean. Oceanic `hc_at` is
+    untouched either way -- sketch masks only ever bias continental crust, the same way
+    `land_fraction` already only touches the continental formula."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -1212,14 +1270,20 @@ def generate_plates(
         num_continents = round(continental_fraction * num_plates)
         num_plates = max(num_plates, num_continents + MIN_OCEANIC_PLATES)
 
-    tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate)
-    seed_xyz = tiling.site_xyz
-
-    if num_continents is None:
-        crust_types = ["continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)]
+    if sketch is not None:
+        target_continents = num_continents if num_continents is not None else round(CONTINENTAL_FRACTION * num_plates)
+        site_xyz, crust_types = worldsketch.sketch_plate_sites(sketch, num_plates, target_continents, rng)
+        num_plates = len(site_xyz)
+        tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate, primary_sites=site_xyz)
     else:
-        continental_indices = set(rng.choice(num_plates, size=num_continents, replace=False).tolist())
-        crust_types = ["continental" if i in continental_indices else "oceanic" for i in range(num_plates)]
+        tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate)
+        if num_continents is None:
+            crust_types = ["continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)]
+        else:
+            continental_indices = set(rng.choice(num_plates, size=num_continents, replace=False).tolist())
+            crust_types = ["continental" if i in continental_indices else "oceanic" for i in range(num_plates)]
+
+    seed_xyz = tiling.site_xyz
 
     # Per-site crust type (each site inherits its owning plate's) -- `_land_noise_threshold`
     # and the `is_owned` test below both index by nearest *site*, not nearest plate.
@@ -1229,7 +1293,9 @@ def generate_plates(
     # Composite relief fields (see terrain_noise.py) -- the last consumers of `rng`, drawn in
     # a fixed order so a given seed reproduces the same terrain. `relief.sample()` stands in
     # for the old single `SphereNoise` (same std, same land/sea decision); `relief.uplift()`
-    # adds the orogenic belts and plateaus, land-gated in `hc_at` below.
+    # adds the orogenic belts and plateaus, land-gated in `hc_at` below. Still drawn even in
+    # the `sketch` path -- the sketch's own hc_at still layers this texture on top (see
+    # `_SKETCH_TEXTURE_WEIGHT`), and skipping the draw would shift every later `rng` call.
     relief = terrain_noise.ContinentalRelief(
         rng,
         orogenic_units=_OROGENIC_RELIEF_UNITS,
@@ -1239,7 +1305,7 @@ def generate_plates(
     ocean_relief = terrain_noise.OceanicRelief(rng)
 
     land_threshold = None
-    if land_fraction is not None:
+    if sketch is None and land_fraction is not None:
         land_fraction = max(0.0, min(land_fraction, 1.0))
         land_threshold = _land_noise_threshold(
             owner_tree, site_crust_types, relief, land_fraction, _continental_sealevel_noise_offset()
@@ -1258,12 +1324,31 @@ def generate_plates(
             return tiling.site_plate[nearest_idx] == _i
 
         if crust_type == "continental":
-            _lt = 0.0 if land_threshold is None else land_threshold
+            if sketch is not None:
 
-            def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp, _lt: float = _lt) -> np.ndarray:
-                s = relief.sample(world_pts)
-                gate = np.clip((s - _lt - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
-                return _hc0 + _amp * (s - _lt) + _amp * gate * relief.uplift(world_pts)
+                def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp, _sketch: worldsketch.SketchMasks = sketch) -> np.ndarray:
+                    s = relief.sample(world_pts)
+                    is_land = _sketch.sample_land(world_pts)
+                    base_units = np.where(is_land, _SKETCH_LAND_OFFSET_UNITS, _SKETCH_SEA_OFFSET_UNITS)
+                    combined = base_units + _SKETCH_TEXTURE_WEIGHT * s
+                    hc = _hc0 + _amp * combined
+                    gate = np.clip((combined - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
+                    hc = hc + _amp * gate * relief.uplift(world_pts)
+                    mountain = _sketch.sample_mountain(world_pts) & is_land
+                    if np.any(mountain):
+                        hc = hc + np.where(mountain, _amp * _SKETCH_MOUNTAIN_BONUS_UNITS, 0.0)
+                    river = _sketch.sample_river(world_pts) & is_land
+                    if np.any(river):
+                        min_hc = _hc0 + _amp * (_SKETCH_LAND_OFFSET_UNITS * 0.25)
+                        hc = np.where(river, np.maximum(hc - _amp * _SKETCH_RIVER_CARVE_UNITS, min_hc), hc)
+                    return hc
+            else:
+                _lt = 0.0 if land_threshold is None else land_threshold
+
+                def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp, _lt: float = _lt) -> np.ndarray:
+                    s = relief.sample(world_pts)
+                    gate = np.clip((s - _lt - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
+                    return _hc0 + _amp * (s - _lt) + _amp * gate * relief.uplift(world_pts)
         else:
 
             def hc_at(world_pts: np.ndarray, _hc0: float = hc0, _amp: float = hc_amp) -> np.ndarray:

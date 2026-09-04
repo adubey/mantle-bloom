@@ -68,6 +68,14 @@ a coarser (faster) resolution, or vice versa -- see
 [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
 Replaces whatever world previously existed.
 
+`sketch` (the Generate World dialog's "Human-made" tab) is optional and omitted by the
+"Random" tab entirely -- `{"image_base64": "<a PNG>"}`, the drawn or loaded coastline (see
+[simulation-model.md#worldsketch](simulation-model.md#worldsketch) for the ink convention and
+what it changes). When present, land/sea for continental crust comes from this image instead
+of noise (`land_fraction` above is then ignored), and plate sites/boundaries are fit to its
+landmasses and open ocean rather than scattered at random. `400` if the bytes aren't a
+decodable image.
+
 `generate_world` also immediately seeds this new world's permanent
 `World.atmosphere_cfd_state` (`atmosphere_cfd.init_atmosphere_cfd`) -- the atmospheric wind
 solve is always on, not a mode entered later, see
