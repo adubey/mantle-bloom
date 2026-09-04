@@ -136,14 +136,18 @@ class World:
     next_earthquake_id: int = 0
     # Which model applies plate-boundary deformation (uplift / rift / transform). Live-
     # adjustable via POST /world/controls, same pattern as `wind_model`:
-    #   "boundary" (default) -- LithospherePlate.deform's smooth distance-band thickening at
-    #     the polygon edge, exactly as before this field existed (bit-identical old saves).
-    #   "fault" -- that boundary thickening is gated to proximity to an active fault trace
-    #     (faults.fault_influence), and faults.py's own relief layer is scaled up to carry
-    #     the deformation the bands give up, so transformation localises onto fault lines.
+    #   "fault" (default) -- that boundary thickening is gated to proximity to an active fault
+    #     trace (faults.fault_influence), and faults.py's own relief layer is scaled up to
+    #     carry the deformation the bands give up, so transformation localises onto fault
+    #     lines. Faults spawn boundary-hugging (see faults.SPAWN_PLACE_*), so the collision
+    #     zone still deforms -- just as a family of fault-tracking ridges rather than one
+    #     smooth swell.
+    #   "boundary" -- LithospherePlate.deform's smooth distance-band thickening at the polygon
+    #     edge, exactly as before the faults rework (bit-identical to a pre-field pickle
+    #     stepped in "boundary" mode).
     #   "both" -- boundary bands at full strength *and* the scaled-up fault relief layer.
     # See faults.FAULT_DEFORMATION_MODES and LithospherePlate.deform.
-    fault_deformation_mode: str = "boundary"
+    fault_deformation_mode: str = "fault"
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs

@@ -129,6 +129,11 @@ def _stepped_crust_and_relief(seed: int, steps: int, **knobs) -> tuple[float, fl
     from app import plates as plates_mod
 
     world = generate_world(seed=seed, num_plates=8)
+    # The collision-uplift knobs act on deform()'s smooth boundary-band thickening
+    # (orogen_strength / the dilated near-field ring). In the default "fault" mode that band
+    # is gated onto fault traces, which mutes the *reach* knob's extra near-field crust in
+    # particular -- so isolate these knob tests to the mechanism they're about.
+    world.fault_deformation_mode = "boundary"
     for name, value in knobs.items():
         setattr(world, name, value)
     for _ in range(steps):

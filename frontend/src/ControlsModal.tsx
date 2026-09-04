@@ -336,15 +336,15 @@ export default function ControlsModal({
                 onChange={(e) => onFaultDeformationModeChange(e.target.value)}
                 style={selectStyle}
               >
+                <option value="fault">Along fault lines (default)</option>
                 <option value="boundary">Boundary bands (classic)</option>
-                <option value="fault">Along fault lines</option>
                 <option value="both">Both (superimposed)</option>
               </select>
               <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
                 {faultDeformationMode === "boundary"
-                  ? "Uplift / rifting apply as smooth bands at the plate-polygon edge -- unchanged from before intraplate faults drove deformation."
+                  ? "Uplift / rifting apply as smooth bands at the plate-polygon edge -- the pre-faults-rework behaviour."
                   : faultDeformationMode === "fault"
-                    ? "Boundary uplift / rifting concentrates onto active fault traces, and the fault relief layer is scaled up to carry it. Fault families blanket overlap zones."
+                    ? "Boundary uplift / rifting concentrates onto active fault traces, and the fault relief layer is scaled up to carry it. Faults spawn boundary-hugging, so the collision zone reads as fault-tracking ridges rather than one smooth swell."
                     : "Boundary bands at full strength plus the scaled-up fault relief layer on top."}
               </div>
             </div>

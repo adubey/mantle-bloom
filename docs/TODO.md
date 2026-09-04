@@ -1113,14 +1113,20 @@ valley, a ridge crest) exactly where they were. Real strike-slip offset of pre-e
 features is the visually recognisable thing about a fault like the San Andreas. Doing that
 properly (moving nodes tangent to the trace by the along-strike slip) is still open.
 
-What *did* land: `World.fault_deformation_mode` (`"boundary"` default / `"fault"` / `"both"`,
-Controls window). In `"fault"` mode `LithospherePlate.deform` gates its own
+What *did* land: `World.fault_deformation_mode` (`"fault"` **default** / `"boundary"` /
+`"both"`, Controls window). In `"fault"` mode `LithospherePlate.deform` gates its own
 convergent/divergent thickening by `faults.fault_influence()` (distance to an active fault
-trace) and `_apply_plate_fault_relief` scales its rates/reach up, so plate-boundary
-deformation localises onto fault lines instead of a smooth band at the polygon edge. Faults
-now also spawn wherever two plates' node clouds overlap (`OVERLAP_STRESS_WEIGHT` lifts the
-spawn weight on overlapped nodes), so a stalled collision / bodily overlap gets blanketed
-with fault families for the mode to act on. See `docs/simulation-model.md#faults`.
+trace, `FAULT_DEFORM_REACH_KM` 80 km / floor 0.06) and `_apply_plate_fault_relief` widens
+its reach, so plate-boundary deformation reads as a segmented belt tracking the fault
+families instead of a smooth band at the polygon edge. For that to work faults have to be
+*on* the boundary: seed placement is now a separate, sharply boundary-peaked kernel
+(`SPAWN_PLACE_DECAY_LEN_KM` 200 km / floor 0.004) decoupled from the broader stress weight
+that sets the spawn *count* -- without it the plate's huge interior-node count dragged the
+median seed ~600 km off the boundary. Faults also spawn wherever two plates' node clouds
+overlap (`OVERLAP_STRESS_WEIGHT` lifts both weights on overlapped nodes). `FAULT_RELIEF_MODE_RATE_SCALE`
+was dropped 3→1: with faults hugging the contact it barely gets gated there, so a >1 rate
+double-counted the bands and pinned hypsometry at `MAX_ELEVATION_M`. See
+`docs/simulation-model.md#faults`.
 
 **3. Spawn rate / relief magnitudes are eyeballed, not calibrated.** `BASE_SPAWN_RATE_PER_MYR`
 (3.0 systems/Myr sphere-wide at full stress) and the per-regime `*_M_PER_MYR` relief
@@ -1129,6 +1135,14 @@ against a target fault density or a hypsometry budget. Worth a sweep: fault coun
 `elapsed_years` across seeds, and whether the cumulative fault relief moves the land-fraction
 / hypsography numbers the [land-fraction decline](#land-fraction-slowly-declines-over-a-long-run)
 work cares about.
+
+**3a. Sparse-fault worlds: `"fault"` mode ≈ `"boundary"` mode.** With only ~20 active faults
+(a low-spawn seed), the boundary-hugging traces cover the few short contested zones densely
+enough that `fault_influence` ≈ 1 along them, so the gating is a near no-op and hypsometry
+tracks `"boundary"` mode to within a few percent. Fault-rich seeds show the segmented belt
+clearly. Acceptable for now (the mode is meant to *resemble* boundary deformation), but if a
+starker always-on difference is wanted, the lever is a lower `FAULT_DEFORM_FLOOR` plus a
+tighter `FAULT_DEFORM_REACH_KM`, paid for with a small `FAULT_RELIEF_MODE_RATE_SCALE` bump.
 
 **4. No live tuning knob.** Unlike the geomorphic budget, none of the fault *constants* are
 exposed in the Controls window (still true). `World.fault_deformation_mode` -- the

@@ -317,7 +317,7 @@ class LithospherePlate(PlateWithLines):
         # spawned in a fresh contested zone -- Piece-1 overlap spawning fills those in within
         # a step or two. Deliberately NOT applied to the arc band below: a volcanic arc is a
         # genuinely broad magmatic swath, not a fault-localised structure.
-        if getattr(world, "fault_deformation_mode", "boundary") == "fault":
+        if getattr(world, "fault_deformation_mode", "fault") == "fault":
             from . import faults
 
             fault_influence_all = faults.fault_influence(world, self, own_points)

@@ -259,10 +259,36 @@ def test_fault_influence_tapers_from_one_to_floor_and_is_all_ones_without_faults
     assert np.all(np.diff(infl) <= 1e-9)  # monotonically decreasing with distance
 
 
-def test_boundary_mode_is_the_default_and_leaves_deform_bit_identical():
+def test_fault_mode_is_the_default_and_differs_from_boundary_mode():
     a = generate_world(seed=4, num_plates=6)
-    assert a.fault_deformation_mode == "boundary"
+    assert a.fault_deformation_mode == "fault"
     b = generate_world(seed=4, num_plates=6)
+    b.fault_deformation_mode = "boundary"
+
+    def elev(w):
+        return np.concatenate([ln.elevation for p in w.plates for ln in p.lines])
+
+    # First step: same node count (topology hasn't diverged yet), fault-localised gating of
+    # the boundary thickening already perturbs the field.
+    step_world(a, 1_000_000)
+    step_world(b, 1_000_000)
+    ea, eb = elev(a), elev(b)
+    assert ea.shape == eb.shape
+    assert not np.array_equal(ea, eb)
+
+    # Over more steps the perturbation compounds (and can even flip a merge/split), so compare
+    # a shape-agnostic summary rather than the raw arrays.
+    for _ in range(9):
+        step_world(a, 1_000_000)
+        step_world(b, 1_000_000)
+    assert abs(float(elev(a).mean()) - float(elev(b).mean())) > 1.0  # >1 m mean shift
+
+
+def test_boundary_mode_deform_is_deterministic():
+    a = generate_world(seed=4, num_plates=6)
+    a.fault_deformation_mode = "boundary"
+    b = generate_world(seed=4, num_plates=6)
+    b.fault_deformation_mode = "boundary"
     for _ in range(6):
         step_world(a, 1_000_000)
         step_world(b, 1_000_000)
@@ -278,6 +304,16 @@ def test_fault_mode_still_steps_cleanly_and_localises_relief():
         step_world(world, 1_000_000)
     assert world.plates  # didn't blow up
     assert any(f.active for f in world.faults)
+
+
+def test_faults_spawn_boundary_hugging():
+    """Most fault activity sits within a few hundred km of a plate boundary -- the
+    SPAWN_PLACE_* kernel (not the broader stress weight) drives seed placement."""
+    world = _run(seed=4, steps=12)
+    assert len(world.faults) > 10
+    dist = np.array([f.birth_distance_from_boundary_km for f in world.faults])
+    assert np.median(dist) < 400.0  # boundary-hugging, not scattered through the interior
+    assert np.any(dist > 500.0)  # but a genuine stable-interior tail survives
 
 
 # --------------------------------------------------------------------------- topology reconciliation
