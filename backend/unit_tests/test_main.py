@@ -824,9 +824,9 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
 
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
-    assert world.fault_deformation_mode == "boundary"
+    assert world.fault_deformation_mode == "fault"
 
-    for mode in ("fault", "both", "boundary"):
+    for mode in ("boundary", "both", "fault"):
         resp = client.post("/world/controls", json={"fault_deformation_mode": mode})
         assert resp.status_code == 200
         assert resp.json()["fault_deformation_mode"] == mode

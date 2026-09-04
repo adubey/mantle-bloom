@@ -90,9 +90,19 @@ _FAULT_SEED_TAG = 7331
 BASE_SPAWN_RATE_PER_MYR = 3.0
 # Stress weight vs distance from the nearest cross-plate boundary: exp(-d / DECAY_LEN) with a
 # floor, so faulting concentrates near boundaries but never drops to zero in the deep
-# interior (real intraplate seismicity).
+# interior (real intraplate seismicity). This weight drives *how many* faults a plate spawns
+# (its mean sets `expected` below); *where* each one seeds is the separate, much tighter
+# SPAWN_PLACE_* kernel.
 SPAWN_DECAY_LEN_KM = 500.0
 SPAWN_INTERIOR_FLOOR = 0.03
+# Seed-placement kernel -- exp(-d / PLACE_DECAY) + a small floor, same shape as the stress
+# weight but far more sharply boundary-peaked, used *only* to pick which node each fault
+# seeds on (not the count). A plate has vastly more interior nodes than near-boundary ones,
+# so the gentle stress-weight profile above still drops the majority of seeds deep in the
+# interior; real fault activity overwhelmingly hugs the plate boundary (most within ~200 km).
+# The floor keeps a genuine stable-continental-interior tail (New Madrid ~1500 km out).
+SPAWN_PLACE_DECAY_LEN_KM = 200.0
+SPAWN_PLACE_INTERIOR_FLOOR = 0.004
 
 # Segment length: lognormal, a few km to ~200 km. NOTE: this (and the fault-set spread
 # below) is known to be far too short -- real faults run to ~1300 km and fault *systems* to
@@ -209,16 +219,23 @@ OVERLAP_STRESS_WEIGHT = 1.5
 
 # --- Fault-deformation mode (World.fault_deformation_mode; see LithospherePlate.deform) ---
 FAULT_DEFORMATION_MODES = ("boundary", "fault", "both")
-# In "fault" mode, boundary thickening in LithospherePlate.deform is multiplied by
-# fault_influence(): 1.0 within FAULT_DEFORM_REACH_KM of an active fault trace, tapering to
+# In "fault" mode (the default), boundary thickening in LithospherePlate.deform is multiplied
+# by fault_influence(): 1.0 within FAULT_DEFORM_REACH_KM of an active fault trace, tapering to
 # FAULT_DEFORM_FLOOR far from one (never 0 -- a contested zone with no fault yet still
-# deforms while Piece-1 spawning fills it in).
-FAULT_DEFORM_REACH_KM = 120.0
-FAULT_DEFORM_FLOOR = 0.15
-# In "fault"/"both" mode faults.py's own relief layer is scaled up to carry the deformation
-# the smooth boundary bands give up -- rates toward plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR
-# (800), reach wider. Exactly 1.0 in "boundary" mode (bit-identical to before this existed).
-FAULT_RELIEF_MODE_RATE_SCALE = 3.0
+# deforms while Piece-1 spawning fills it in). Faults spawn boundary-hugging (SPAWN_PLACE_*),
+# so a converging edge collects fault families along it within a step or two: the reach is
+# kept tight and the floor low so the orogen reads as a *segmented* belt tracking those fault
+# traces -- ridges where the fault families are, saddles in the gaps -- rather than one
+# continuous polygon-edge swell.
+FAULT_DEFORM_REACH_KM = 80.0
+FAULT_DEFORM_FLOOR = 0.06
+# In "fault"/"both" mode faults.py's own relief layer widens (REACH_SCALE) to spread the
+# now-concentrated deformation over a plausible belt width. RATE_SCALE stays at 1.0: with
+# faults hugging the boundary, fault_influence() barely gates the bands right at the contact
+# (a fault is nearly always within reach there), so a >1 rate here just double-counts the
+# boundary thickening and drove hypsometry hot (emax pinned at MAX_ELEVATION_M). Both exactly
+# 1.0 in "boundary" mode (bit-identical to a pre-field pickle stepped there).
+FAULT_RELIEF_MODE_RATE_SCALE = 1.0
 FAULT_RELIEF_MODE_REACH_SCALE = 1.6
 
 # --- Earthquakes (see Earthquake / _generate_earthquakes) ---
@@ -567,8 +584,16 @@ def _maybe_spawn_faults(world: "World", plate: Plate, total_nodes: int, years_my
     # weight (`expected` below -> more fault systems) and pulls seeds into the overlap.
     overlap_tol_rad = OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
     overlap_mask = dist < overlap_tol_rad
+
+    # Seed-placement kernel: same idea as `weight` but far more sharply boundary-peaked (see
+    # SPAWN_PLACE_*). `weight` still sets the count; this decides which node each fault seeds
+    # on, so faults hug the plate boundary instead of scattering through the interior the
+    # gentle stress profile would allow. Overlap nodes are pulled in here too.
+    place = np.exp(-dist_km / SPAWN_PLACE_DECAY_LEN_KM)
+    place = SPAWN_PLACE_INTERIOR_FLOOR + (1.0 - SPAWN_PLACE_INTERIOR_FLOOR) * np.clip(place, 0.0, 1.0)
     if np.any(overlap_mask):
         weight[overlap_mask] = np.maximum(weight[overlap_mask], OVERLAP_STRESS_WEIGHT)
+        place[overlap_mask] = np.maximum(place[overlap_mask], OVERLAP_STRESS_WEIGHT)
 
     area_frac = len(own_points) / total_nodes
     expected = BASE_SPAWN_RATE_PER_MYR * area_frac * float(np.mean(weight)) * years_myr
@@ -576,7 +601,7 @@ def _maybe_spawn_faults(world: "World", plate: Plate, total_nodes: int, years_my
     if n_spawn == 0:
         return
 
-    probs = weight / weight.sum()
+    probs = place / place.sum()
     seeds = rng.choice(len(own_points), size=n_spawn, p=probs)
     for seed_idx in seeds:
         spawn = _spawn_fault_system if rng.random() < SYSTEM_SPAWN_FRACTION else _spawn_one_or_set
@@ -916,10 +941,10 @@ def _cull_inactive_systems(world: "World") -> None:
 
 def _relief_mode_scales(world: "World") -> tuple[float, float]:
     """(rate_scale, reach_scale) for `_apply_plate_fault_relief`, keyed off
-    `world.fault_deformation_mode`. Both 1.0 in the default "boundary" mode -- bit-identical
-    to before the mode existed. In "fault"/"both" mode the fault-relief layer is scaled up to
-    carry the deformation the smooth boundary bands give up (see FAULT_RELIEF_MODE_*)."""
-    if getattr(world, "fault_deformation_mode", "boundary") in ("fault", "both"):
+    `world.fault_deformation_mode`. Both 1.0 in "boundary" mode -- bit-identical to a
+    pre-mode pickle. In "fault"/"both" mode the fault-relief layer widens (see
+    FAULT_RELIEF_MODE_*); the rate stays 1.0 to avoid double-counting the boundary bands."""
+    if getattr(world, "fault_deformation_mode", "fault") in ("fault", "both"):
         return FAULT_RELIEF_MODE_RATE_SCALE, FAULT_RELIEF_MODE_REACH_SCALE
     return 1.0, 1.0
 

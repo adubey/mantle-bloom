@@ -866,11 +866,13 @@ yet real faults nucleate at a wide range of distances from boundaries (most with
 but stable-continental-region faults sit well over 1000 km away -- the New Madrid seismic
 zone is ~1500 km from the nearest boundary), come in sub-parallel families (Basin-and-Range
 horst/graben trains, en echelon step-overs), and stay individually active for a few to a few
-tens of Myr before locking up and surviving as inert scars. `faults.py` adds exactly that,
-and in the default `World.fault_deformation_mode == "boundary"` **never touches `deform()`'s
-own boundary classification** -- the two layers are independent, the same way
-[volcanism](#volcanism) rides on top of `deform()` rather than replacing any of it. In
-`"fault"` / `"both"` mode the layer becomes load-bearing -- see **Deformation mode** below.
+tens of Myr before locking up and surviving as inert scars. `faults.py` adds exactly that.
+In the **default** `World.fault_deformation_mode == "fault"` the layer is load-bearing: it
+gates `deform()`'s own boundary thickening onto the fault traces (which spawn
+boundary-hugging) -- see **Deformation mode** below. In `"boundary"` mode it is instead a
+purely **additive** layer that **never touches `deform()`'s own boundary classification** --
+the two independent, the same way [volcanism](#volcanism) rides on top of `deform()` rather
+than replacing any of it.
 
 `update_faults` runs once per step from `world.step_world`, inside the
 `simulate_plate_movement` block, right after the `deform()` loop and before
@@ -885,15 +887,20 @@ dashed and dim, and applies no further relief.
 
 **2. Stress-weighted Poisson spawn, per plate.** For each own-node, the distance to the
 nearest cross-plate boundary node gives a stress weight `exp(-d / SPAWN_DECAY_LEN_KM)` (500
-km) floored at `SPAWN_INTERIOR_FLOOR` (0.03) -- so faulting concentrates near boundaries but
-never drops to zero in the deep interior (real intraplate seismicity). A node that sits
-*within* `OVERLAP_TOLERANCE_MULT` line-spacings of another plate's node -- a genuine **point
-overlap**, not a normal shared boundary: a stalled collision, a plate drifting bodily over
-one it can't merge with -- has its weight lifted to `OVERLAP_STRESS_WEIGHT` (1.5, i.e. more
-stressed than a clean convergent edge). The expected count is `BASE_SPAWN_RATE_PER_MYR` (3.0
-fault *systems*/Myr over the whole sphere at full stress) scaled by the plate's area fraction
-and its mean stress weight, then `rng.poisson` -- so a broad overlap both raises the count
-and pulls the seeds into itself. Overlap-born traces carry `born_in_overlap = True` (a higher
+km) floored at `SPAWN_INTERIOR_FLOOR` (0.03). That weight sets *how many* faults the plate
+spawns: the expected count is `BASE_SPAWN_RATE_PER_MYR` (3.0 fault *systems*/Myr over the
+whole sphere at full stress) scaled by the plate's area fraction and its **mean** stress
+weight, then `rng.poisson`. *Where* each one seeds is a separate, far more sharply
+boundary-peaked kernel -- `exp(-d / SPAWN_PLACE_DECAY_LEN_KM)` (200 km) + `SPAWN_PLACE_INTERIOR_FLOOR`
+(0.004) -- because a plate has vastly more interior nodes than near-boundary ones, so the
+gentle stress profile alone still drops the majority of seeds deep in the interior, whereas
+real fault activity overwhelmingly hugs the boundary (most within ~200 km). The tiny place
+floor keeps a genuine stable-continental-interior tail (New Madrid ~1500 km out). A node that
+sits *within* `OVERLAP_TOLERANCE_MULT` line-spacings of another plate's node -- a genuine
+**point overlap**, not a normal shared boundary: a stalled collision, a plate drifting bodily
+over one it can't merge with -- has *both* weights lifted to `OVERLAP_STRESS_WEIGHT` (1.5,
+i.e. more stressed than a clean convergent edge), so a broad overlap both raises the count and
+pulls the seeds into itself. Overlap-born traces carry `born_in_overlap = True` (a higher
 earthquake rate, below). Deterministic per
 `(seed, round(elapsed_years), plate_id, _FAULT_SEED_TAG)`, the same convention
 [volcanism](#volcanism) uses, so a replayed session spawns identical faults.
@@ -974,18 +981,21 @@ culled first; active faults are never culled.
 
 **Deformation mode (`World.fault_deformation_mode`).** A live Controls select, three values:
 
-- **`"boundary"`** (default) -- everything above; `deform()`'s smooth distance-band
-  thickening at the polygon edge is untouched. Bit-identical to before this field existed.
-- **`"fault"`** -- `LithospherePlate.deform` multiplies its own convergent (`orogen_strength`)
-  and divergent thickening by `faults.fault_influence()`: 1.0 within `FAULT_DEFORM_REACH_KM`
-  (120 km) of an active fault trace on that plate, tapering to `FAULT_DEFORM_FLOOR` (0.15)
-  far from one (never 0 -- a fresh contested zone still deforms while Piece-1 overlap
-  spawning fills it with faults). The arc band is left alone (a volcanic arc is a genuinely
-  broad swath). Alongside, `_apply_plate_fault_relief` scales its own rates by
-  `FAULT_RELIEF_MODE_RATE_SCALE` (3×) and reach by `FAULT_RELIEF_MODE_REACH_SCALE` (1.6×) to
-  carry the deformation the bands gave up. Net effect: uplift / rifting reads as
-  fault-localised ridges and valleys threading the collision zone rather than one smooth swell.
-- **`"both"`** -- the boundary bands at full strength *and* the scaled-up fault relief layer.
+- **`"fault"`** (default) -- `LithospherePlate.deform` multiplies its own convergent
+  (`orogen_strength`) and divergent thickening by `faults.fault_influence()`: 1.0 within
+  `FAULT_DEFORM_REACH_KM` (80 km) of an active fault trace on that plate, tapering to
+  `FAULT_DEFORM_FLOOR` (0.06) far from one (never 0 -- a fresh contested zone still deforms
+  while overlap spawning fills it with faults). The arc band is left alone (a volcanic arc is
+  a genuinely broad swath). Alongside, `_apply_plate_fault_relief` widens its reach by
+  `FAULT_RELIEF_MODE_REACH_SCALE` (1.6×); `FAULT_RELIEF_MODE_RATE_SCALE` stays 1.0 -- a >1
+  rate double-counts the boundary bands (which faults hugging the boundary barely gate right
+  at the contact) and pinned hypsometry at `MAX_ELEVATION_M`. Because faults spawn
+  boundary-hugging (`SPAWN_PLACE_*`), the converging edge still deforms -- as a *segmented*
+  belt tracking the fault families (ridges where they are, saddles in the gaps) rather than
+  one smooth polygon-edge swell.
+- **`"boundary"`** -- everything above; `deform()`'s smooth distance-band thickening at the
+  polygon edge is untouched. Bit-identical to a pre-field pickle stepped in this mode.
+- **`"both"`** -- the boundary bands at full strength *and* the widened fault relief layer.
 
 `deform()` runs before `update_faults`, so `"fault"` mode acts on *last* step's fault set
 (fine -- faults persist step to step).

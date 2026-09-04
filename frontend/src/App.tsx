@@ -90,11 +90,13 @@ const DEFAULT_SIMULATE_CLIMATE_BIOMES = true;
 // (ABL) wind: it reproduces ~85-90% of the CFD biome map for a fraction of the per-step cost,
 // so it's the better starting point; switch to "cfd" in Controls for the full shallow-water solve.
 const DEFAULT_WIND_MODEL = "diagnostic";
-// Matching backend app/world.py's World.fault_deformation_mode default. "boundary" is the
-// pre-faults-rework behaviour (smooth uplift/rift bands at the polygon edge); "fault"
-// localises that deformation onto fault lines; "both" runs the boundary bands plus the
-// scaled-up fault relief. See faults.py / LithospherePlate.deform.
-const DEFAULT_FAULT_DEFORMATION_MODE = "boundary";
+// Matching backend app/world.py's World.fault_deformation_mode default. "fault" localises
+// plate-boundary deformation onto fault lines (faults spawn boundary-hugging, so the
+// collision zone still deforms -- as fault-tracking ridges rather than one smooth swell);
+// "boundary" is the pre-faults-rework behaviour (smooth uplift/rift bands at the polygon
+// edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
+// LithospherePlate.deform.
+const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
