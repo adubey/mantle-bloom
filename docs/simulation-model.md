@@ -2914,8 +2914,7 @@ this module evaporates, since climate.py runs *before* this module each step).
 layer beyond the same `LAKE_COLOR_RGB`-style baking treatment lakes get (mantle-bloom has no
 SNOW biome, so this uses its own `GLACIER_COLOR_RGB`, distinct from both `LAKE_COLOR_RGB` and
 `elevation_colors`' own high-peak white/gray stops, applied the same nearest-neighbor-grid-resample way as lakes via
-`plates.collect_all_glacier_depth`), no glacial eustatic sea-level coupling (glaciation is
-purely local/per-node here), no seasonal accumulation/ablation cycle. Interior/convergence
+`plates.collect_all_glacier_depth`), no seasonal accumulation/ablation cycle. Interior/convergence
 ice depth is bounded three ways -- the ice-surface spill redirect (drains overfull closed
 basins toward the ocean), the depth-squared basal melt (a soft equilibrium in the
 low-thousands of metres), and `GLACIER_MAX_DEPTH_M` (a hard ~5 km backstop, excess shed to
@@ -2928,6 +2927,27 @@ latitudes, visually distinct from both lakes and high-elevation terrain on the r
 population size and total ice depth fluctuate across steps as plates rotate glaciated nodes
 in and out of genuinely cold regions, rather than growing monotonically or vanishing
 outright.
+
+**Ice ages** (`World.ice_age_period_years`, the Controls → Climate "Ice Age Frequency"
+slider; 0 disables). A raised-cosine glacial intensity in `[0, 1]`
+(`climate.ice_age_glacial_intensity`) driven purely by `elapsed_years` -- 0 at generation and
+at every whole multiple of the period, 1 at the half-period glacial maximum -- scales a
+uniform cooling of up to `climate.ICE_AGE_MAX_COOLING_C` applied to *both* temperature
+baselines in `compute_climate`, so air temperature, biomes, hydrology's freeze / glacier
+growth and erosion all feel it through fields they already read -- the cooling spreads the
+existing per-node freeze (rivers stop, standing lakes turn to ice, precipitation falls as
+snow) across a much wider area, and `hydrology.compute_hydrology`'s `is_frozen` mask also
+picks up *any* node already carrying a real ice cap (`GLACIER_VISIBLE_DEPTH_M` of ice), so
+water and snowfall stay frozen on top of an ice sheet even on a step whose temperature briefly
+ticks above 0. Two further effects switch on
+in a deep glacial phase: hydrology lets ice pile up over freezing polar *ocean* nodes instead
+of calving at the coast (`hydrology.SEA_ICE_FORMATION_TEMP_C`, gated at intensity ≥
+`hydrology.ICE_AGE_SEA_ICE_MIN_INTENSITY`, with a little hysteresis for a cap that already
+exists) -- a floating polar ice cap that retreats when the
+age passes; and **glacial eustasy** returns -- `eustasy.trapped_water_column_m` debits the
+liquid-water equivalent of all `glacier_depth` plus every visible lake's `lake_depth` from the
+conserved total surface-water budget, so the ocean's share (and the shoreline) falls as the
+ice sheets grow and rises again as they melt.
 
 <a id="river-inspector"></a>
 ## River Inspector

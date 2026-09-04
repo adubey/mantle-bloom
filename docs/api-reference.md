@@ -140,11 +140,13 @@ Request body (all fields optional, independently settable -- the "Controls" wind
 only whichever control the user touched):
 
 ```json
-{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd", "fault_deformation_mode": "fault" }
+{ "sea_level_m": 500.0, "solar_multiplier": 1.1, "ice_age_period_years": 300000, "simulate_plate_movement": true, "simulate_climate_biomes": true, "wind_model": "cfd", "fault_deformation_mode": "fault" }
 ```
 
 Live-adjusts `World.sea_level_m` (default `0.0`), `World.solar_multiplier` (default `1.0`,
-scales `climate.SUNLIGHT`), `World.simulate_plate_movement`,
+scales `climate.SUNLIGHT`), `World.ice_age_period_years` (default `0.0` = disabled; the full
+period in years of a glacial↔interglacial temperature cycle -- see
+simulation-model.md#glaciation, negative is clamped to `0`), `World.simulate_plate_movement`,
 `World.simulate_climate_biomes` (both default `true`), `World.wind_model`
 (`"diagnostic"` default, or `"cfd"` -- a `400` for any other value), and/or
 `World.fault_deformation_mode` (`"boundary"` default, or `"fault"` / `"both"`) on the

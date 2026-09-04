@@ -408,6 +408,7 @@ export type TuningMultipliers = Record<TuningKey, number>;
 export type ControlsState = {
   sea_level_m: number;
   solar_multiplier: number;
+  ice_age_period_years: number;
   simulate_plate_movement: boolean;
   simulate_climate_biomes: boolean;
   wind_model: string;
@@ -417,6 +418,7 @@ export type ControlsState = {
 export function updateControls(controls: {
   seaLevelM?: number;
   solarMultiplier?: number;
+  iceAgePeriodYears?: number;
   simulatePlateMovement?: boolean;
   simulateClimateBiomes?: boolean;
   windModel?: string;
@@ -429,6 +431,7 @@ export function updateControls(controls: {
     body: JSON.stringify({
       sea_level_m: controls.seaLevelM,
       solar_multiplier: controls.solarMultiplier,
+      ice_age_period_years: controls.iceAgePeriodYears,
       simulate_plate_movement: controls.simulatePlateMovement,
       simulate_climate_biomes: controls.simulateClimateBiomes,
       wind_model: controls.windModel,

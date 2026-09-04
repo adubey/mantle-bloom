@@ -71,3 +71,53 @@ def test_set_sea_level_via_water_budget_is_conserved_across_a_step():
     # Nothing moved (both sims off), so the level and the budget both hold.
     assert abs(world.sea_level_m - 120.0) < 1.0
     assert abs(world.ocean_water_column_m - budget) < 1e-6
+
+
+def _pile_ice_everywhere(world, depth_m):
+    for plate in world.plates:
+        for i, line in enumerate(plate.lines):
+            gd = line.glacier_depth.copy()
+            gd[:] = depth_m
+            plate.replace_line(i, line.replace(glacier_depth=gd))
+
+
+def test_trapped_ice_lowers_sea_level_and_total_budget_is_conserved():
+    """Water frozen into ice caps/glaciers is debited from the ocean's share of the conserved
+    total budget -- so the shoreline falls as the ice grows (glacio-eustasy), while the total
+    surface-water budget itself doesn't change."""
+    world = generate_world(seed=321, num_plates=8, continental_fraction=0.5, node_density=0.3)
+    eustasy.update_sea_level(world)
+    sea_before = world.sea_level_m
+    total_before = world.ocean_water_column_m
+    assert eustasy.trapped_water_column_m(world) == 0.0
+
+    _pile_ice_everywhere(world, 400.0)
+    eustasy.update_sea_level(world)
+
+    assert eustasy.trapped_water_column_m(world) > 0.0
+    assert world.sea_level_m < sea_before - 50.0  # ice locked up ocean water -> lower stand
+    assert world.ocean_water_column_m == total_before  # the *total* budget is untouched
+    # The ocean's own column plus what's trapped still sums back to the conserved total.
+    assert eustasy.water_column_for_sea_level(world, world.sea_level_m) + eustasy.trapped_water_column_m(world) == \
+        pytest.approx(world.ocean_water_column_m, abs=5.0)
+
+    # Melt it all back off -> sea level returns to where it started.
+    _pile_ice_everywhere(world, 0.0)
+    eustasy.update_sea_level(world)
+    assert abs(world.sea_level_m - sea_before) < 1.0
+
+
+def test_set_sea_level_via_water_budget_folds_in_trapped_water():
+    world = generate_world(seed=654, num_plates=8, continental_fraction=0.5, node_density=0.3)
+    _pile_ice_everywhere(world, 300.0)
+
+    eustasy.set_sea_level_via_water_budget(world, 0.0)
+    trapped = eustasy.trapped_water_column_m(world)
+    assert trapped > 0.0
+    # The stored budget is ocean-at-0 *plus* the currently-trapped water.
+    assert world.ocean_water_column_m == pytest.approx(
+        eustasy.water_column_for_sea_level(world, 0.0) + trapped, abs=1.0
+    )
+    # Re-solving against that budget reproduces the requested level (ice unchanged).
+    eustasy.update_sea_level(world)
+    assert abs(world.sea_level_m) < 1.0

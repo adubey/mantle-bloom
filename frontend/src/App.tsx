@@ -75,6 +75,8 @@ const DEFAULT_PLATES = 14;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
+// Matching backend app/world.py's World.ice_age_period_years default -- 0 == no ice-age cycle.
+const DEFAULT_ICE_AGE_PERIOD_YEARS = 0;
 // Every geomorphic-budget tuning knob defaults to 1.0 (untuned) -- matches every
 // *_multiplier default on backend app/world.py's World.
 const DEFAULT_TUNING: TuningMultipliers = Object.fromEntries(
@@ -305,6 +307,9 @@ export default function App() {
   // too (unlike the others) via /world/controls.
   const [seaLevelM, setSeaLevelM] = useState(DEFAULT_SEA_LEVEL_M);
   const [solarMultiplier, setSolarMultiplier] = useState(DEFAULT_SOLAR_MULTIPLIER);
+  // Full period (years) of the glacial<->interglacial cycle; 0 == disabled. Live-adjustable
+  // via Controls like seaLevelM/solarMultiplier. See backend app/world.py's World.ice_age_period_years.
+  const [iceAgePeriodYears, setIceAgePeriodYears] = useState(DEFAULT_ICE_AGE_PERIOD_YEARS);
   // Same live-adjustable-via-Controls pattern as seaLevelM/solarMultiplier above -- lets the
   // user run plate tectonics only, climate & biomes only, or (the default) both together. See
   // backend app/world.py's World.simulate_plate_movement/World.simulate_climate_biomes.
@@ -425,6 +430,7 @@ export default function App() {
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
       setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
+      setIceAgePeriodYears(DEFAULT_ICE_AGE_PERIOD_YEARS);
       setSimulatePlateMovement(DEFAULT_SIMULATE_PLATE_MOVEMENT);
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setWindModel(DEFAULT_WIND_MODEL);
@@ -452,6 +458,7 @@ export default function App() {
   const pendingControlsRef = useRef<{
     seaLevelM?: number;
     solarMultiplier?: number;
+    iceAgePeriodYears?: number;
     simulatePlateMovement?: boolean;
     simulateClimateBiomes?: boolean;
     windModel?: string;
@@ -504,6 +511,11 @@ export default function App() {
   const handleSolarMultiplierChange = useCallback((v: number) => {
     setSolarMultiplier(v);
     pushControls({ solarMultiplier: v });
+  }, [pushControls]);
+
+  const handleIceAgePeriodChange = useCallback((v: number) => {
+    setIceAgePeriodYears(v);
+    pushControls({ iceAgePeriodYears: v });
   }, [pushControls]);
 
   const handleWindModelChange = useCallback((v: string) => {
@@ -559,6 +571,7 @@ export default function App() {
       const controls = await updateControls({});
       setSeaLevelM(controls.sea_level_m);
       setSolarMultiplier(controls.solar_multiplier);
+      setIceAgePeriodYears(controls.ice_age_period_years);
       setSimulatePlateMovement(controls.simulate_plate_movement);
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setWindModel(controls.wind_model);
@@ -1228,6 +1241,7 @@ export default function App() {
         <ControlsModal
           seaLevelM={seaLevelM}
           solarMultiplier={solarMultiplier}
+          iceAgePeriodYears={iceAgePeriodYears}
           simulatePlateMovement={simulatePlateMovement}
           simulateClimateBiomes={simulateClimateBiomes}
           windModel={windModel}
@@ -1235,6 +1249,7 @@ export default function App() {
           tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
+          onIceAgePeriodChange={handleIceAgePeriodChange}
           onSimulatePlateMovementChange={handleSimulatePlateMovementChange}
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
           onWindModelChange={handleWindModelChange}

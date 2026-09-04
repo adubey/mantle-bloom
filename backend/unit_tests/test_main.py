@@ -752,6 +752,25 @@ def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client)
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
 
+def test_controls_ice_age_frequency_round_trip(client):
+    from app import main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+    assert world.ice_age_period_years == 0.0
+    assert client.post("/world/controls", json={}).json()["ice_age_period_years"] == 0.0
+
+    resp = client.post("/world/controls", json={"ice_age_period_years": 300_000})
+    assert resp.status_code == 200
+    assert resp.json()["ice_age_period_years"] == 300_000
+    assert world.ice_age_period_years == 300_000
+
+    # A negative period is clamped to 0 (disabled), not an error.
+    resp = client.post("/world/controls", json={"ice_age_period_years": -5})
+    assert resp.status_code == 200
+    assert world.ice_age_period_years == 0.0
+
+
 def test_controls_wind_model_toggle_and_validation(client):
     from app import main
 
