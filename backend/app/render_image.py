@@ -2057,8 +2057,9 @@ def stream_animation_mp4(
     years_per_frame: float,
     num_frames: int,
     step_fn=step_world,
+    stop_event=None,
 ):
-    """Generator driving the "File > Make Animation" action. Renders `world`'s progress in
+    """Generator driving the "Record" toolbar action. Renders `world`'s progress in
     `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
     each of the `num_frames - 1` frames after it is `years_per_frame` further along, calling
     `step_fn` (defaulting to `step_world`) for real between frames. So this permanently
@@ -2066,11 +2067,21 @@ def stream_animation_mp4(
     `/world/animate` -- deliberately not a side-effect-free preview, same "the map really did
     move forward" semantics manually clicking Step that many times would have).
 
+    `stop_event` (a `threading.Event`, checked once per frame -- see main.py's
+    `_animation_stop_event` / POST /world/animate/stop) lets a caller end the run early
+    without losing the video: once set, the loop finishes the frame already in progress, then
+    breaks *before* stepping the world for the next one, so the encoder still gets flushed and
+    a complete (just shorter) MP4 comes back. This is what backs the frontend's "keep going
+    until Stop is pressed" animation mode -- `num_frames` there is still a real, finite
+    ceiling (so an unattended run can't loop forever), just one the caller isn't expected to
+    reach.
+
     Yields `("progress", frames_done, num_frames, frame_png_bytes)` as each frame finishes
-    encoding, then a final `("done", mp4_bytes)` carrying the complete video. Streaming
+    encoding, then a final `("done", mp4_bytes, stopped_early)` carrying the complete video
+    and whether `stop_event` was what ended the run short of `num_frames`. Streaming
     frame-by-frame lets the caller show a real progress bar -- and paint each frame onto the
     live map -- instead of blocking the client on one opaque request that can take minutes on
-    a big world (240 frames, each a full step_world + render).
+    a big world (up to num_frames frames, each a full step_world + render).
 
     MP4 replaces the animated GIF this used to emit: an order of magnitude smaller on the
     wire for the same frames, and no 256-color quantization (the GIF path had to quantize
@@ -2087,8 +2098,12 @@ def stream_animation_mp4(
     # begin playback before the whole blob has arrived.
     stream.options = {"crf": ANIMATION_CRF, "movflags": "+faststart"}
 
+    stopped_early = False
     for i in range(num_frames):
         if i > 0:
+            if stop_event is not None and stop_event.is_set():
+                stopped_early = True
+                break
             step_fn(world, years_per_frame)
         png_bytes = render_png(world, projection, view, width, height, view_rotation)
         frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
@@ -2105,4 +2120,4 @@ def stream_animation_mp4(
     for packet in stream.encode():  # flush libx264's remaining buffered frames
         container.mux(packet)
     container.close()
-    yield ("done", buf.getvalue())
+    yield ("done", buf.getvalue(), stopped_early)

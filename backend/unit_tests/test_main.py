@@ -692,6 +692,33 @@ def test_animate_rejects_unknown_view(client):
     assert resp.status_code == 400
 
 
+def test_animate_stop_is_a_no_op_when_nothing_is_running(client):
+    # No animation in flight (not even a world yet) -- the "Stop" toolbar button should never
+    # itself be the thing that errors.
+    resp = client.post("/world/animate/stop")
+    assert resp.status_code == 200
+
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post("/world/animate/stop")
+    assert resp.status_code == 200
+
+
+def test_animate_clears_a_stale_stop_signal_from_a_previous_call(client):
+    # A stop request that arrives after its run already finished shouldn't truncate the
+    # *next* run -- animate() clears the signal itself at the start of each call, so this
+    # doesn't depend on ordering against a previous test.
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    client.post("/world/animate/stop")  # simulate a stray/late stop signal
+    resp = client.post(
+        "/world/animate",
+        json={"width": 64, "height": 64, "years_per_frame": 1_000_000, "num_frames": 3},
+    )
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    progress = [m for m in messages if m["type"] == "progress"]
+    assert [m["frame"] for m in progress] == [1, 2, 3]  # ran to completion, not truncated
+    assert messages[-1]["stopped_early"] is False
+
+
 def test_export_hexgrid_returns_the_requested_tile_count(client):
     client.post("/world/generate", json={"seed": 11, "num_plates": 8})
     resp = client.post("/world/export_hexgrid", json={"frequency": 8})

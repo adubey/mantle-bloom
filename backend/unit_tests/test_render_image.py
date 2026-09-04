@@ -1,5 +1,8 @@
 import base64
 import io
+import threading
+
+import av
 import numpy as np
 from PIL import Image
 from app import climate, geometry, hydrology, render_image
@@ -81,6 +84,48 @@ def test_render_png_is_decodable_at_requested_size():
         image = Image.open(io.BytesIO(png))
         assert image.format == "PNG"
         assert image.size == (320, 180)
+
+
+def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_video():
+    world = _world()
+    stop_event = threading.Event()
+
+    # Fire the stop signal after the 2nd frame's step -- stream_animation_mp4 checks
+    # `stop_event` right before stepping for the *next* frame, so this should stop the run
+    # after frame 3 (frame 1 is unstepped, frames 2 and 3 each call step_fn once) rather than
+    # reaching the requested 10.
+    steps_taken = []
+
+    def _counting_step(w, years):
+        steps_taken.append(years)
+        step_world(w, years)
+        if len(steps_taken) == 2:
+            stop_event.set()
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 10,
+        step_fn=_counting_step, stop_event=stop_event,
+    ))
+
+    progress = [m for m in messages if m[0] == "progress"]
+    assert [m[1] for m in progress] == [1, 2, 3]  # frames 1-3 completed, then the loop broke
+    assert all(m[2] == 10 for m in progress)  # `total` still reports the requested ceiling
+
+    done = messages[-1]
+    assert done[0] == "done"
+    assert done[2] is True  # stopped_early
+    with av.open(io.BytesIO(done[1])) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 3
+
+
+def test_stream_animation_mp4_runs_to_completion_when_never_stopped():
+    world = _world()
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 3,
+    ))
+    done = messages[-1]
+    assert done[0] == "done"
+    assert done[2] is False  # stopped_early
 
 
 def test_geomorph_colors_diverge_around_zero():

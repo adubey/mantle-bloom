@@ -597,9 +597,13 @@ export interface AnimateResponse extends WorldSummary {
   // The video's MIME type (currently always "video/mp4" -- H.264, see backend
   // app/render_image.py's stream_animation_mp4).
   mime: string;
+  // True if this run ended because stopAnimation() was called rather than reaching the
+  // requested `numFrames` on its own -- see backend main.py's `stopped_early`. Distinguishes
+  // "you pressed Stop" from "keep going" mode running out its (generous) safety ceiling.
+  stoppedEarly: boolean;
 }
 
-// Progress during a Start Animation run -- `frame` of `total` frames rendered so far, plus
+// Progress during a Record run -- `frame` of `total` frames rendered so far, plus
 // that frame's own rendered PNG (base64, same shape as RenderResponse.image_base64) so the
 // caller can paint it straight onto the live map while the run holds the world lock.
 export interface AnimateProgress {
@@ -609,10 +613,10 @@ export interface AnimateProgress {
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
-// /world/animate), and up to MAX_ANIMATION_FRAMES=240 of those run back-to-back server-side
+// /world/animate), and up to MAX_ANIMATION_FRAMES=480 of those run back-to-back server-side
 // before the video is complete -- by far the slowest request the app makes, and one that's
 // only gotten slower as the simulation itself has picked up more per-step work (erosion,
-// sediment redistribution, coastline stabilization, ...). A big/slow world's 240-frame worst
+// sediment redistribution, coastline stabilization, ...). A big/slow world's 480-frame worst
 // case genuinely can run past any fixed whole-request deadline (the old 15-min total cap was
 // aborting healthy runs mid-render), so instead of bounding the whole run we bound only the
 // gap *between* stream lines: the endpoint sends a `{type: "progress"}` line after every
@@ -621,20 +625,25 @@ export interface AnimateProgress {
 // being slow.
 const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
-// "Start Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
-// starting from the world's current state (frame 0) and stepping it forward by
+// The "Record" toolbar action -- renders `numFrames` frames of `view`/`projection`'s
+// progress, starting from the world's current state (frame 0) and stepping it forward by
 // `yearsPerFrame` real years between each subsequent frame, encoded as an H.264/MP4 video.
-// **This permanently advances the world** by `(numFrames - 1) * yearsPerFrame` years, the
-// same as calling stepWorld that many times -- not a side-effect-free preview (see backend
-// app/main.py's /world/animate). The caller should run the same post-step refresh sequence
-// it runs after stepWorld.
+// **This permanently advances the world** by up to `(numFrames - 1) * yearsPerFrame` years,
+// the same as calling stepWorld that many times -- not a side-effect-free preview (see
+// backend app/main.py's /world/animate). The caller should run the same post-step refresh
+// sequence it runs after stepWorld.
 //
 // The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total,
 // image_base64}` per frame (surfaced via `onProgress` -- the image lets the caller paint the
-// live map), then a final `{type: "done", ...}` carrying the video. A mid-stream
-// `{type: "error"}` line (rendering blew up after the response already 200'd) is re-thrown
-// here like any other failure. The run is aborted if the stream goes silent for
-// ANIMATE_IDLE_TIMEOUT_MS, or if the caller aborts `cancelSignal` (a user "Cancel").
+// live map), then a final `{type: "done", ...}` carrying the video, whether it ran to
+// `numFrames` or was ended early by stopAnimation() below (either way this resolves normally
+// with a complete video -- see `stoppedEarly` on the result). A mid-stream `{type: "error"}`
+// line (rendering blew up after the response already 200'd) is re-thrown here like any other
+// failure. `cancelSignal` is a harder escape hatch than stopAnimation() -- aborting it (or the
+// stream going silent for ANIMATE_IDLE_TIMEOUT_MS) drops the connection outright and this
+// call rejects, losing whatever video was in progress; the toolbar's "Stop" button
+// deliberately doesn't use it, going through stopAnimation() instead so the run still
+// finishes cleanly.
 export async function animateWorld(
   projection: Projection,
   view: MapView,
@@ -658,7 +667,7 @@ export async function animateWorld(
     );
   };
   rearmIdleTimer();
-  // A user "Cancel" folds into the same abort path as the idle watchdog.
+  // An explicit `cancelSignal` abort folds into the same path as the idle watchdog.
   if (cancelSignal) {
     if (cancelSignal.aborted) idleAbort.abort(new DOMException("animation cancelled", "AbortError"));
     else cancelSignal.addEventListener("abort", () => idleAbort.abort(new DOMException("animation cancelled", "AbortError")));
@@ -708,6 +717,7 @@ export async function animateWorld(
           events: msg.events as WorldEvent[],
           videoBase64: msg.video_base64 as string,
           mime: msg.mime as string,
+          stoppedEarly: Boolean(msg.stopped_early),
         };
       }
     };
@@ -728,6 +738,16 @@ export async function animateWorld(
   } finally {
     clearTimeout(idleTimer);
   }
+}
+
+// The toolbar's "Stop" button while an animation is recording -- asks the server to end the
+// in-progress /world/animate run cleanly after its current frame (see backend main.py's
+// POST /world/animate/stop) so animateWorld's stream still resolves normally with a complete
+// (just shorter) video, rather than the caller aborting the connection and losing it. This is
+// what makes the animation dialog's "keep going until Stop is pressed" mode useful. A no-op
+// if no animation is running.
+export function stopAnimation(): Promise<void> {
+  return fetch(`${API_BASE}/world/animate/stop`, { method: "POST" }).then(() => undefined);
 }
 
 // "File > Export Hex Grid" data -- a geodesic-icosahedron hex/pentagon tiling of the sphere
