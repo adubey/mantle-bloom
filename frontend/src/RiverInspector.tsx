@@ -21,6 +21,8 @@ interface Props {
   onSelectRiver: (id: number | null) => void;
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
+  // Inert rotate-drag + click while a background animation holds the world lock (see App.tsx).
+  interactionDisabled?: boolean;
 }
 
 const BACKGROUND = "#0b1020";
@@ -56,7 +58,7 @@ const COASTLINE_HALO_RGB = "15, 15, 15";
 // PlateInspector (see rotationDrag.ts) plus click-to-select and Tab/Shift+Tab to cycle rivers.
 export default function RiverInspector({
   rivers, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
-  selectedRiverId, onSelectRiver, onRotationPreview, onRotationCommitted,
+  selectedRiverId, onSelectRiver, onRotationPreview, onRotationCommitted, interactionDisabled,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -177,6 +179,7 @@ export default function RiverInspector({
     onRotationPreview,
     onRotationCommitted,
     onClick: handleClick,
+    disabled: interactionDisabled,
   });
 
   useEffect(() => {

@@ -2268,6 +2268,12 @@ def collect_all_is_volcano(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "is_volcano")
 
 
+def collect_all_volcano_active_years_remaining(plate_list: list[Plate]) -> np.ndarray:
+    """Per-node countdown to dormancy for volcano nodes (0 elsewhere) -- see volcanism.py.
+    Used by GET /world/volcanoes to flag which volcanoes are still erupting-capable."""
+    return _collect_all(plate_list, "volcano_active_years_remaining")
+
+
 def collect_all_overlap_onset_years(plate_list: list[Plate]) -> np.ndarray:
     """Used by render_image.py's `overlapAge` debug view -- see
     merge_split.update_overlap_tracking / ElevationLine.overlap_onset_years."""

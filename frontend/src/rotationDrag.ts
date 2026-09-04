@@ -49,10 +49,13 @@ export interface UseRotationDragOptions {
   // click listener specifically so a completed drag's terminating mouseup can never also be
   // mistaken for a click on whatever happens to be under the release point.
   onClick?: (backingX: number, backingY: number) => void;
+  // When true, the gesture is inert -- no rotate-drag, no click. Used while a background
+  // animation holds the world lock (see App.tsx): a rotation/click there would only 503.
+  disabled?: boolean;
 }
 
 export function useRotationDrag(options: UseRotationDragOptions): void {
-  const { elementRef, width, height, displayWidth, displayHeight, projection, rotation, onFrame, onRotationCommitted, onRotationPreview, onClick } =
+  const { elementRef, width, height, displayWidth, displayHeight, projection, rotation, onFrame, onRotationCommitted, onRotationPreview, onClick, disabled } =
     options;
 
   // Interaction state lives in refs, not React state -- none of it should trigger a
@@ -85,7 +88,7 @@ export function useRotationDrag(options: UseRotationDragOptions): void {
 
   useEffect(() => {
     const element = elementRef.current;
-    if (!element) return;
+    if (!element || disabled) return;
 
     const toBackingPixels = (clientX: number, clientY: number) => {
       const rect = element.getBoundingClientRect();
@@ -191,5 +194,5 @@ export function useRotationDrag(options: UseRotationDragOptions): void {
     // render (very likely: onRotationPreview typically drives a parent state update on every
     // mousemove) never tears down and rebuilds the drag's window-level listeners mid-drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elementRef, width, height, displayWidth, displayHeight, projection, rotation]);
+  }, [elementRef, width, height, displayWidth, displayHeight, projection, rotation, disabled]);
 }

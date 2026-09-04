@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import type { AnimateResponse, MapView, Projection, WorldSummary } from "./api";
-import { animateWorld, exportHexGrid, loadWorld, saveWorld } from "./api";
-import type { Mat3 } from "./rotation";
+import type { MapView, WorldSummary } from "./api";
+import { exportHexGrid, loadWorld, saveWorld } from "./api";
 
 // How many simulation steps each animation frame advances the world -- the real years each
 // frame covers is this times the app's current "Years per step" (see App.tsx's
@@ -23,7 +22,7 @@ const HEX_FREQUENCY_OPTIONS: { frequency: number; label: string }[] = [
 ];
 const DEFAULT_HEX_FREQUENCY = 16;
 
-const INSPECTOR_VIEWS: MapView[] = ["plateInspector", "riverInspector", "lakeInspector"];
+const INSPECTOR_VIEWS: MapView[] = ["plateInspector", "riverInspector", "lakeInspector", "platesAndFaults"];
 
 interface Props {
   hasWorld: boolean;
@@ -32,11 +31,7 @@ interface Props {
   // The app's current "Years per step" (see App.tsx's STEP_YEARS_OPTIONS) -- one animation
   // frame advances the world by `stepsPerFrame * stepYears` real years.
   stepYears: number;
-  projection: Projection;
   mapView: MapView;
-  rotation: Mat3;
-  renderWidth: number;
-  renderHeight: number;
   // The DOM node wrapping whichever map view component is currently mounted (MapCanvas /
   // PlateInspector / RiverInspector / LakeInspector all draw onto their own <canvas> inside
   // it) -- "Save Image" reads straight from that canvas's own pixels
@@ -44,10 +39,12 @@ interface Props {
   // interfaces, so it works uniformly across every view, not just the PNG-backed ones.
   mapWrapperRef: React.RefObject<HTMLDivElement | null>;
   onClose: () => void;
-  // A load or a completed animation both replace/advance the live world -- the caller runs
-  // the same full refresh sequence it already runs after generateWorld/stepWorld.
+  // A load replaces the live world -- the caller runs the same full refresh sequence it
+  // already runs after generateWorld.
   onWorldReplaced: (summary: WorldSummary) => Promise<void>;
-  onWorldAdvanced: (summary: WorldSummary) => Promise<void>;
+  // "Start Animation" -- the caller closes this modal and runs the whole animation in the
+  // background off the current map view (see App.tsx's handleStartAnimation).
+  onStartAnimation: (opts: { numFrames: number; yearsPerFrame: number }) => void;
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -67,18 +64,16 @@ function fmtMyr(years: number): string {
 }
 
 export default function FileModal({
-  hasWorld, seed, elapsedYears, stepYears, projection, mapView, rotation, renderWidth, renderHeight, mapWrapperRef,
-  onClose, onWorldReplaced, onWorldAdvanced,
+  hasWorld, seed, elapsedYears, stepYears, mapView, mapWrapperRef,
+  onClose, onWorldReplaced, onStartAnimation,
 }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [numFrames, setNumFrames] = useState(DEFAULT_NUM_FRAMES);
   const [stepsPerFrame, setStepsPerFrame] = useState(DEFAULT_STEPS_PER_FRAME);
   const yearsPerFrame = stepsPerFrame * stepYears;
-  const [animation, setAnimation] = useState<AnimateResponse | null>(null);
-  // Frames rendered so far during an in-flight Make Animation run, for the progress bar --
-  // null when no run is active (see api.ts's animateWorld, which streams one update per frame).
-  const [animProgress, setAnimProgress] = useState<{ frame: number; total: number } | null>(null);
+  // Two-step "Start Animation": the button flips this on, then a short explainer + Start/Cancel.
+  const [confirmingAnimation, setConfirmingAnimation] = useState(false);
   const [hexFrequency, setHexFrequency] = useState(DEFAULT_HEX_FREQUENCY);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -103,7 +98,6 @@ export default function FileModal({
 
   const handleLoadFileChosen = useCallback((file: File) => runAction("load", async () => {
     const summary = await loadWorld(file);
-    setAnimation(null);
     await onWorldReplaced(summary);
     onClose();
   }), [runAction, onWorldReplaced, onClose]);
@@ -115,26 +109,6 @@ export default function FileModal({
     const blob = await (await fetch(dataUrl)).blob();
     downloadBlob(blob, `mantle-bloom-seed${seed}-${mapView}-${Math.round(elapsedYears ?? 0)}y.png`);
   }), [runAction, mapWrapperRef, seed, mapView, elapsedYears]);
-
-  const handleMakeAnimation = useCallback(() => runAction("animate", async () => {
-    setAnimProgress({ frame: 0, total: numFrames });
-    try {
-      const result = await animateWorld(
-        projection, mapView, renderWidth, renderHeight, rotation, yearsPerFrame, numFrames,
-        (p) => setAnimProgress(p),
-      );
-      setAnimation(result);
-      await onWorldAdvanced(result);
-    } finally {
-      setAnimProgress(null);
-    }
-  }), [runAction, projection, mapView, renderWidth, renderHeight, rotation, yearsPerFrame, numFrames, onWorldAdvanced]);
-
-  const handleSaveAnimation = useCallback(() => runAction("saveAnimation", async () => {
-    if (!animation) return;
-    const blob = await (await fetch(`data:${animation.mime};base64,${animation.videoBase64}`)).blob();
-    downloadBlob(blob, `mantle-bloom-seed${seed}-animation-${Math.round(animation.elapsed_years)}y.mp4`);
-  }), [runAction, animation, seed]);
 
   const handleExportHexGrid = useCallback(() => runAction("export", async () => {
     const result = await exportHexGrid(hexFrequency);
@@ -214,6 +188,7 @@ export default function FileModal({
                 <input
                   type="range" min={2} max={MAX_NUM_FRAMES} value={numFrames}
                   onChange={(e) => setNumFrames(Number(e.target.value))}
+                  disabled={confirmingAnimation}
                   style={{ width: "100%" }}
                 />
               </label>
@@ -222,6 +197,7 @@ export default function FileModal({
                 <select
                   value={stepsPerFrame}
                   onChange={(e) => setStepsPerFrame(Number(e.target.value))}
+                  disabled={confirmingAnimation}
                   style={{ width: "100%", fontSize: 12 }}
                 >
                   {STEPS_PER_FRAME_OPTIONS.map((s) => (
@@ -234,40 +210,38 @@ export default function FileModal({
                 Permanently advances the world by {fmtMyr((numFrames - 1) * yearsPerFrame)}, same
                 as clicking Step {((numFrames - 1) * stepsPerFrame).toLocaleString()} times -- not a preview.
               </div>
-              <button onClick={handleMakeAnimation} disabled={!hasWorld || busy !== null} style={{ width: "100%", fontSize: 12, marginBottom: 6 }}>
-                {busy === "animate" ? "Simulating..." : "Make Animation"}
-              </button>
-              {animProgress && (
-                <div style={{ marginBottom: 6 }}>
-                  <div style={{ height: 6, borderRadius: 3, background: "#2a3050", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${(animProgress.frame / animProgress.total) * 100}%`,
-                        background: "#5b8cff",
-                        transition: "width 0.2s linear",
-                      }}
-                    />
-                  </div>
-                  <div style={{ fontSize: 11, opacity: 0.6, marginTop: 3 }}>
-                    Rendering frame {animProgress.frame} of {animProgress.total}...
-                  </div>
-                </div>
-              )}
-              {animation && (
+              {confirmingAnimation ? (
                 <>
-                  <video
-                    src={`data:${animation.mime};base64,${animation.videoBase64}`}
-                    controls
-                    autoPlay
-                    loop
-                    muted
-                    style={{ width: "100%", borderRadius: 4, marginBottom: 6 }}
-                  />
-                  <button onClick={handleSaveAnimation} disabled={busy !== null} style={{ width: "100%", fontSize: 12 }}>
-                    {busy === "saveAnimation" ? "Saving..." : "Save Animation (MP4)"}
-                  </button>
+                  <div style={{ fontSize: 11, opacity: 0.75, marginBottom: 6 }}>
+                    The animation renders in the background as the world steps forward, using
+                    the current map view and orientation. The main map doubles as the live
+                    animation step while it runs; other controls are paused until it finishes,
+                    then you can save the MP4.
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      onClick={() => {
+                        setConfirmingAnimation(false);
+                        onStartAnimation({ numFrames, yearsPerFrame });
+                      }}
+                      disabled={!hasWorld || busy !== null}
+                      style={{ flex: 1, fontSize: 12 }}
+                    >
+                      Start
+                    </button>
+                    <button onClick={() => setConfirmingAnimation(false)} style={{ flex: 1, fontSize: 12 }}>
+                      Cancel
+                    </button>
+                  </div>
                 </>
+              ) : (
+                <button
+                  onClick={() => setConfirmingAnimation(true)}
+                  disabled={!hasWorld || busy !== null}
+                  style={{ width: "100%", fontSize: 12 }}
+                >
+                  Start Animation
+                </button>
               )}
             </>
           )}

@@ -24,6 +24,8 @@ interface Props {
   onSelect: (kind: LakeAtResponse["kind"], basin: LakeSummary | null) => void;
   onRotationPreview: (latDeg: number, lonDeg: number) => void;
   onRotationCommitted: (rotation: Mat3) => void;
+  // Inert rotate-drag + click while a background animation holds the world lock (see App.tsx).
+  interactionDisabled?: boolean;
 }
 
 const BACKGROUND = "#0b1020";
@@ -62,7 +64,7 @@ const MARKER_RADIUS_PX = 6;
 // enumerable identity to cycle through -- see this module's own Tab handler).
 export default function LakeInspector({
   lakes, coastlineSegments, width, height, displayWidth, displayHeight, projection, rotation,
-  selectedBasin, onSelect, onRotationPreview, onRotationCommitted,
+  selectedBasin, onSelect, onRotationPreview, onRotationCommitted, interactionDisabled,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -174,6 +176,7 @@ export default function LakeInspector({
     onRotationPreview,
     onRotationCommitted,
     onClick: handleClick,
+    disabled: interactionDisabled,
   });
 
   useEffect(() => {

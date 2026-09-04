@@ -84,7 +84,7 @@ RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
 # A light Gaussian blur of just the river-line mask before compositing the fixed river color
 # in by the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
-# COMBINED_BLUR_RADIUS_PX already uses for cell edges (see that constant's own comment), just
+# CELL_BLUR_RADIUS_PX already uses for cell edges (see that constant's own comment), just
 # applied to a line mask instead of the filled-cell raster. Blurring only the (single-channel)
 # mask and then blending a flat color by it, rather than Gaussian-blurring the drawn RGBA line
 # directly, avoids the dark fringing a naive blur would produce against a transparent
@@ -1280,15 +1280,16 @@ RELIEF_BLEND_MAX = 0.55
 # ELEVATION_GRADIENT's own high-mountain stop, so full blend only kicks in near real peaks.
 RELIEF_ELEVATION_RANGE_M = 6000.0
 
-# Combined is the only view built from flat per-cell rectangles (_fill_rects) meant to read
-# as a continuous true-color image rather than a legible data mosaic (Biome/Temperature/etc.
-# lean into their own hard cell edges -- a viewer needs to tell one cell's exact color from
-# its neighbor's). A light post-fill Gaussian blur softens those cell-edge jaggies into
-# smooth coastlines/biome boundaries -- cheap anti-aliasing, scaled by pixel_scale so it looks
-# the same relative amount of soft at any requested resolution. Applied before rivers are drawn
-# so their own lines stay crisp on top, and only ever to the RGB channels -- the alpha id
-# buffer (see COMBINED_LAKE_ID_CODE below) is left un-blurred so biome ids stay exact.
-COMBINED_BLUR_RADIUS_PX = 1.0
+# The Combined ("Elevation & Biome") and Elevation views are both built from flat per-cell
+# rectangles (_fill_rects) meant to read as a continuous true-color / hypsometric image
+# rather than a legible data mosaic (Biome/Temperature/etc. lean into their own hard cell
+# edges -- a viewer needs to tell one cell's exact color from its neighbor's). A light
+# post-fill Gaussian blur softens those cell-edge jaggies into smooth coastlines/contours --
+# cheap anti-aliasing, scaled by pixel_scale so it looks the same relative amount of soft at
+# any requested resolution. Applied before rivers are drawn so their own lines stay crisp on
+# top. For Combined it's applied only to the RGB channels -- the alpha id buffer (see
+# COMBINED_LAKE_ID_CODE below) is left un-blurred so biome ids stay exact.
+CELL_BLUR_RADIUS_PX = 1.0
 
 # Combined's land shading spans a wide brightness range (see biomes.BIOME_SHADE_AMPLITUDE)
 # and, near peaks, blends toward the elevation gradient on top of that; ocean is a blend of
@@ -1417,7 +1418,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     alpha_buf = np.full((height, width, 1), 255, dtype=np.uint8)
     _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
 
-    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=COMBINED_BLUR_RADIUS_PX * pixel_scale))
+    image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
     image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
     image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
 
@@ -1989,6 +1990,12 @@ def render_png(world: World, projection: str, view: str, width: int, height: int
             _fill_rects(pixels, centers, dot_radius, dot_radius, colors)
 
     image = Image.fromarray(pixels, mode="RGB")
+    if view == "elevation":
+        # Same cheap post-fill anti-aliasing the Combined view uses (see CELL_BLUR_RADIUS_PX):
+        # the hypsometric raster reads as a continuous surface, so softening the cell-grid
+        # jaggies -- before rivers/graticule go on top -- makes coastlines and contours match
+        # what "Elevation & Biome" shows. "plates" stays un-blurred: it's a categorical mosaic.
+        image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
     image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
     draw = ImageDraw.Draw(image)
 
@@ -2059,10 +2066,11 @@ def stream_animation_mp4(
     `/world/animate` -- deliberately not a side-effect-free preview, same "the map really did
     move forward" semantics manually clicking Step that many times would have).
 
-    Yields `("progress", frames_done, num_frames)` as each frame finishes encoding, then a
-    final `("done", mp4_bytes)` carrying the complete video. Streaming frame-by-frame lets
-    the caller show a real progress bar instead of blocking the client on one opaque request
-    that can take minutes on a big world (240 frames, each a full step_world + render).
+    Yields `("progress", frames_done, num_frames, frame_png_bytes)` as each frame finishes
+    encoding, then a final `("done", mp4_bytes)` carrying the complete video. Streaming
+    frame-by-frame lets the caller show a real progress bar -- and paint each frame onto the
+    live map -- instead of blocking the client on one opaque request that can take minutes on
+    a big world (240 frames, each a full step_world + render).
 
     MP4 replaces the animated GIF this used to emit: an order of magnitude smaller on the
     wire for the same frames, and no 256-color quantization (the GIF path had to quantize
@@ -2089,7 +2097,10 @@ def stream_animation_mp4(
         av_frame = av.VideoFrame.from_ndarray(np.asarray(frame_img), format="rgb24")
         for packet in stream.encode(av_frame):
             container.mux(packet)
-        yield ("progress", i + 1, num_frames)
+        # The frame's own PNG rides along with the progress tick so the frontend can paint it
+        # straight onto the main map -- the animation runs in the background while the world
+        # is locked, so a normal /world/render for the same state would 503 (see main.py).
+        yield ("progress", i + 1, num_frames, png_bytes)
 
     for packet in stream.encode():  # flush libx264's remaining buffered frames
         container.mux(packet)

@@ -615,9 +615,9 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     rendering an H.264/MP4 video of `view`/`projection`'s progress -- one frame for the
     world's current state plus `req.num_frames - 1` more, each `req.years_per_frame` further
     along (see render_image.stream_animation_mp4 for the encoding details). Each response
-    line is one JSON object: `{"type": "progress", "frame": n, "total": N}` as each frame
-    finishes, then a final `{"type": "done", "video_base64": ..., "mime": "video/mp4",
-    ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
+    line is one JSON object: `{"type": "progress", "frame": n, "total": N, "image_base64":
+    <that frame's PNG>}` as each frame finishes, then a final `{"type": "done",
+    "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
     "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
     the stream has started.
 
@@ -650,8 +650,13 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                 world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames
             ):
                 if message[0] == "progress":
-                    _, frame, total = message
-                    yield json.dumps({"type": "progress", "frame": frame, "total": total}) + "\n"
+                    _, frame, total, frame_png = message
+                    yield json.dumps({
+                        "type": "progress",
+                        "frame": frame,
+                        "total": total,
+                        "image_base64": base64.b64encode(frame_png).decode("ascii"),
+                    }) + "\n"
                 else:
                     _, mp4_bytes = message
                     yield json.dumps({
@@ -873,6 +878,28 @@ def list_earthquakes() -> dict:
             for q in world.earthquakes
         ]
         return {"elapsed_years": elapsed, "earthquakes": quakes}
+
+
+@app.get("/world/volcanoes")
+def list_volcanoes() -> dict:
+    """Every current volcano node (see volcanism.py / elevation_lines.is_volcano) as plain
+    JSON, for the "Plates & Faults" view's overlay -- un-rotated/true-frame world positions,
+    the client projects and draws them itself. `active` is true while the node still has
+    eruption potential (`volcano_active_years_remaining > 0`). `404` if no world yet."""
+    world = _require_world()
+    with _world_lock:
+        collected = plates.collect_all_points(world.plates)
+        if collected is None:
+            return {"elapsed_years": world.elapsed_years, "volcanoes": []}
+        points, _elev, _owner = collected
+        is_volcano = plates.collect_all_is_volcano(world.plates)
+        active_remaining = plates.collect_all_volcano_active_years_remaining(world.plates)
+        idx = np.flatnonzero(is_volcano)
+        volcanoes = [
+            {"position": _round_coords(points[i]), "active": bool(active_remaining[i] > 0)}
+            for i in idx
+        ]
+        return {"elapsed_years": world.elapsed_years, "volcanoes": volcanoes}
 
 
 @app.get("/world/fault_at")

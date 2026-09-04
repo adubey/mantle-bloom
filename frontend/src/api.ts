@@ -16,7 +16,6 @@ export type Projection = "behrmann" | "eckert4";
 // draw raw coordinate data it fetched.
 export type MapView =
   | "elevation"
-  | "plates"
   | "platesDetail"
   | "speckle"
   | "temperature"
@@ -34,7 +33,7 @@ export type MapView =
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector"
-  | "faultInspector";
+  | "platesAndFaults";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -199,6 +198,18 @@ export interface EarthquakeSummary {
 export interface EarthquakesResponse {
   elapsed_years: number;
   earthquakes: EarthquakeSummary[];
+}
+
+export interface VolcanoSummary {
+  // A single *true* world-space point (see Segment for the frame convention).
+  position: [number, number, number];
+  // Still has eruption potential (volcano_active_years_remaining > 0) vs. a dormant cone.
+  active: boolean;
+}
+
+export interface VolcanoesResponse {
+  elapsed_years: number;
+  volcanoes: VolcanoSummary[];
 }
 
 export interface RiversResponse {
@@ -542,6 +553,10 @@ export function fetchEarthquakes(): Promise<EarthquakesResponse> {
   return fetch(`${API_BASE}/world/earthquakes`).then(asJson<EarthquakesResponse>);
 }
 
+export function fetchVolcanoes(): Promise<VolcanoesResponse> {
+  return fetch(`${API_BASE}/world/volcanoes`).then(asJson<VolcanoesResponse>);
+}
+
 // The Fault Line Inspector's click hit-test -- same true-frame contract as fetchPlateAt.
 export function fetchFaultAt(latDeg: number, lonDeg: number): Promise<{ fault_id: number | null }> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
@@ -577,10 +592,13 @@ export interface AnimateResponse extends WorldSummary {
   mime: string;
 }
 
-// Progress during a Make Animation run -- `frame` of `total` frames rendered so far.
+// Progress during a Start Animation run -- `frame` of `total` frames rendered so far, plus
+// that frame's own rendered PNG (base64, same shape as RenderResponse.image_base64) so the
+// caller can paint it straight onto the live map while the run holds the world lock.
 export interface AnimateProgress {
   frame: number;
   total: number;
+  imageBase64?: string;
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
@@ -596,7 +614,7 @@ export interface AnimateProgress {
 // being slow.
 const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
-// "File > Make Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
+// "Start Animation" -- renders `numFrames` frames of `view`/`projection`'s progress,
 // starting from the world's current state (frame 0) and stepping it forward by
 // `yearsPerFrame` real years between each subsequent frame, encoded as an H.264/MP4 video.
 // **This permanently advances the world** by `(numFrames - 1) * yearsPerFrame` years, the
@@ -604,12 +622,12 @@ const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 // app/main.py's /world/animate). The caller should run the same post-step refresh sequence
 // it runs after stepWorld.
 //
-// The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total}` per
-// frame (surfaced via `onProgress`, for a progress bar), then a final `{type: "done", ...}`
-// carrying the video. A mid-stream `{type: "error"}` line (rendering blew up after the
-// response already 200'd) is re-thrown here like any other failure. The run is aborted only
-// if the stream goes silent for ANIMATE_IDLE_TIMEOUT_MS -- an actively-progressing render,
-// however long in total, keeps resetting that window.
+// The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total,
+// image_base64}` per frame (surfaced via `onProgress` -- the image lets the caller paint the
+// live map), then a final `{type: "done", ...}` carrying the video. A mid-stream
+// `{type: "error"}` line (rendering blew up after the response already 200'd) is re-thrown
+// here like any other failure. The run is aborted if the stream goes silent for
+// ANIMATE_IDLE_TIMEOUT_MS, or if the caller aborts `cancelSignal` (a user "Cancel").
 export async function animateWorld(
   projection: Projection,
   view: MapView,
@@ -619,6 +637,7 @@ export async function animateWorld(
   yearsPerFrame: number,
   numFrames: number,
   onProgress?: (progress: AnimateProgress) => void,
+  cancelSignal?: AbortSignal,
 ): Promise<AnimateResponse> {
   // Idle watchdog: abort the fetch if no bytes arrive for ANIMATE_IDLE_TIMEOUT_MS. Rearmed
   // on every chunk (see the read loop below), so an actively-streaming run never trips it.
@@ -632,6 +651,11 @@ export async function animateWorld(
     );
   };
   rearmIdleTimer();
+  // A user "Cancel" folds into the same abort path as the idle watchdog.
+  if (cancelSignal) {
+    if (cancelSignal.aborted) idleAbort.abort(new DOMException("animation cancelled", "AbortError"));
+    else cancelSignal.addEventListener("abort", () => idleAbort.abort(new DOMException("animation cancelled", "AbortError")));
+  }
 
   try {
     const resp = await fetch(`${API_BASE}/world/animate`, {
@@ -662,7 +686,11 @@ export async function animateWorld(
       if (!line.trim()) return;
       const msg = JSON.parse(line) as Record<string, unknown>;
       if (msg.type === "progress") {
-        onProgress?.({ frame: msg.frame as number, total: msg.total as number });
+        onProgress?.({
+          frame: msg.frame as number,
+          total: msg.total as number,
+          imageBase64: msg.image_base64 as string | undefined,
+        });
       } else if (msg.type === "error") {
         throw new Error(String(msg.detail));
       } else if (msg.type === "done") {

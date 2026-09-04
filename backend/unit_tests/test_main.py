@@ -529,6 +529,24 @@ def test_faults_returns_well_formed_entries_after_stepping(client):
     assert client.get("/world/fault_at", params={"lat_deg": lat, "lon_deg": lon}).json()["fault_id"] == f["fault_id"]
 
 
+def test_volcanoes_before_generate_returns_404(client):
+    assert client.get("/world/volcanoes").status_code == 404
+
+
+def test_volcanoes_returns_well_formed_entries(client):
+    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    # Empty (or at least well-formed) right after generate; degrade-to-empty like /world/faults.
+    body = client.get("/world/volcanoes").json()
+    assert body["volcanoes"] == []
+    for _ in range(30):
+        client.post("/world/step", json={"years": 5_000_000})
+    body = client.get("/world/volcanoes").json()
+    assert body["volcanoes"], "expected some volcano nodes after 150 Myr of subduction"
+    for v in body["volcanoes"]:
+        assert len(v["position"]) == 3 and all(isinstance(c, float) for c in v["position"])
+        assert isinstance(v["active"], bool)
+
+
 def test_stranded_basins_is_empty_before_the_first_step(client):
     client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/stranded_basins")
@@ -639,6 +657,8 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
     progress = [m for m in messages if m["type"] == "progress"]
     assert [m["frame"] for m in progress] == [1, 2, 3]
     assert all(m["total"] == 3 for m in progress)
+    # Each progress tick carries that frame's own PNG so the client can paint it live.
+    assert all(Image.open(io.BytesIO(base64.b64decode(m["image_base64"]))).size == (200, 110) for m in progress)
 
     done = messages[-1]
     assert done["type"] == "done"

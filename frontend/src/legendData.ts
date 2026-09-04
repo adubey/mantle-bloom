@@ -342,26 +342,34 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
 // Hand-synced with backend render_image.py's _ELEV_REASON_RGB and elevation_lines.py's
 // ELEV_CHANGE_LABELS (index == ELEV_CHANGE_* code) -- the "Last elevation change" debug view
 // (_render_elev_reason_view): one flat colour per process that last moved a node's elevation.
-const ELEV_REASON_ENTRIES: LegendSymbol[] = [
-  { kind: "square", color: rgb(112, 112, 120), label: "Unchanged since generation" },
-  { kind: "square", color: rgb(150, 28, 28), label: "Continental collision uplift" },
-  { kind: "square", color: rgb(198, 120, 110), label: "Far-field collision uplift" },
-  { kind: "square", color: rgb(214, 118, 40), label: "Subduction-arc uplift" },
-  { kind: "square", color: rgb(86, 44, 110), label: "Oceanic trench subsidence" },
-  { kind: "square", color: rgb(198, 160, 30), label: "Transform pressure ridge" },
-  { kind: "square", color: rgb(22, 150, 130), label: "Divergent rift / ridge" },
-  { kind: "square", color: rgb(24, 110, 96), label: "New crust at spreading edge" },
-  { kind: "square", color: rgb(232, 50, 40), label: "Volcanic eruption" },
-  { kind: "square", color: rgb(150, 90, 50), label: "Erosion (worn down)" },
-  { kind: "square", color: rgb(60, 140, 200), label: "Sediment deposition" },
-  { kind: "square", color: rgb(122, 190, 226), label: "Coastal planation / infill" },
-  { kind: "square", color: rgb(28, 80, 140), label: "Submarine erosion / sediment" },
-  { kind: "square", color: rgb(212, 232, 244), label: "Glacial flattening" },
-  { kind: "square", color: rgb(70, 200, 176), label: "Lake / basin siltation" },
-  { kind: "square", color: rgb(120, 190, 90), label: "Fault: normal (graben)" },
-  { kind: "square", color: rgb(176, 60, 90), label: "Fault: reverse (thrust)" },
-  { kind: "square", color: rgb(230, 190, 70), label: "Fault: strike-slip" },
+// Kept as raw [label, [r, g, b]] tuples (like BIOME_RGB_ENTRIES) so Legend-click-to-highlight
+// can exact-RGB-match a clicked swatch against the view's decoded pixels -- that view draws
+// every cell as exactly one of these colours (coastline overlay aside), so tolerance 0 picks
+// a process's cells out with no server round-trip.
+export const ELEV_REASON_RGB_ENTRIES: [string, [number, number, number]][] = [
+  ["Unchanged since generation", [112, 112, 120]],
+  ["Continental collision uplift", [150, 28, 28]],
+  ["Far-field collision uplift", [198, 120, 110]],
+  ["Subduction-arc uplift", [214, 118, 40]],
+  ["Oceanic trench subsidence", [86, 44, 110]],
+  ["Transform pressure ridge", [198, 160, 30]],
+  ["Divergent rift / ridge", [22, 150, 130]],
+  ["New crust at spreading edge", [24, 110, 96]],
+  ["Volcanic eruption", [232, 50, 40]],
+  ["Erosion (worn down)", [150, 90, 50]],
+  ["Sediment deposition", [60, 140, 200]],
+  ["Coastal planation / infill", [122, 190, 226]],
+  ["Submarine erosion / sediment", [28, 80, 140]],
+  ["Glacial flattening", [212, 232, 244]],
+  ["Lake / basin siltation", [70, 200, 176]],
+  ["Fault: normal (graben)", [120, 190, 90]],
+  ["Fault: reverse (thrust)", [176, 60, 90]],
+  ["Fault: strike-slip", [230, 190, 70]],
 ];
+
+const ELEV_REASON_ENTRIES: LegendSymbol[] = ELEV_REASON_RGB_ENTRIES.map(
+  ([label, [r, g, b]]) => ({ kind: "square", color: rgb(r, g, b), label }),
+);
 
 // render_image.py's geomorph_colors stops (_GEOMORPH_STOP_M / _GEOMORPH_STOP_RGB) -- this
 // step's net per-node elevation change in metres, a diverging scale centred on 0 (warm =
@@ -448,6 +456,15 @@ export interface HighlightTarget {
 // glacier overlay code (glaciated ocean paints over Polar-Sea-Ice cells with nearly the same
 // colour).
 export function highlightTargetFor(view: MapView, label: string): HighlightTarget | null {
+  if (view === "elevReason") {
+    // The "Last elevation change" view draws every cell as exactly one _ELEV_REASON_RGB
+    // colour (the coastline overlay aside, which matches no entry) -- nearest-neighbour
+    // across the whole palette at tolerance 0, same as the Biome view. "Coastline" isn't a
+    // process class, so it stays a plain read-only row.
+    if (label === "Coastline") return null;
+    const palette: PaletteEntry[] = ELEV_REASON_RGB_ENTRIES.map(([l, c]) => ({ label: l, colors: [c] }));
+    return { selected: label, palette, tolerance: 0 };
+  }
   if (view === "combined" && label === "Lake") {
     return { selected: label, palette: [], tolerance: 0, idCodes: [COMBINED_LAKE_ID_CODE] };
   }
@@ -490,13 +507,20 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "square", color: GLACIER_COLOR, label: "Glacier (ice cover)" },
         ],
       };
-    case "plates":
+    case "platesAndFaults":
+      // Colours match PlatesAndFaults.tsx's KIND_RGB / EARTHQUAKE_RGB / VOLCANO_RGB and the
+      // _ELEV_REASON_RGB fault stops. Plate outlines are drawn in each plate's own palette
+      // colour, so the legend just names the boundary symbol generically.
       return {
-        title: "Plates",
+        title: "Plates & Faults",
         symbols: [
-          { kind: "line", color: SYMBOL_COLOR, label: "Plate boundary" },
-          { kind: "circle", color: SYMBOL_COLOR, outline: "#ffffff", label: "Euler pole" },
-          { kind: "arc", color: SYMBOL_COLOR, label: "Rotation (rate & direction)" },
+          { kind: "line", color: SYMBOL_COLOR, label: "Plate outline" },
+          { kind: "line", color: rgb(176, 60, 90), label: "Fault: reverse (thrust)" },
+          { kind: "line", color: rgb(120, 190, 90), label: "Fault: normal (graben)" },
+          { kind: "line", color: rgb(230, 190, 70), label: "Fault: strike-slip" },
+          { kind: "circle", color: rgb(255, 180, 70), label: "Recent earthquake (size ∝ magnitude)" },
+          { kind: "circle", color: rgb(255, 120, 40), label: "Volcano (filled = active)" },
+          COASTLINE_SYMBOL,
         ],
       };
     case "platesDetail":
@@ -598,19 +622,6 @@ export function legendFor(view: MapView): LegendSpec | null {
         symbols: [
           { kind: "square", color: SPECKLE_LAND_COLOR, label: "Land backdrop" },
           { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },
-          COASTLINE_SYMBOL,
-        ],
-      };
-    case "faultInspector":
-      // Colors match render_image.py's _ELEV_REASON_RGB fault stops (codes 15/16/17) and
-      // FaultInspector.tsx's KIND_RGB. See backend app/faults.py.
-      return {
-        title: "Intraplate fault lines",
-        symbols: [
-          { kind: "line", color: rgb(176, 60, 90), label: "Reverse (thrust) — shortening" },
-          { kind: "line", color: rgb(120, 190, 90), label: "Normal (graben) — extension" },
-          { kind: "line", color: rgb(230, 190, 70), label: "Strike-slip — wrench" },
-          { kind: "circle", color: rgb(255, 180, 70), label: "Recent earthquake (size ∝ magnitude)" },
           COASTLINE_SYMBOL,
         ],
       };

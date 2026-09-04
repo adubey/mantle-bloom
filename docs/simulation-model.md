@@ -29,7 +29,7 @@
 - [Glaciation](#glaciation)
 - [River Inspector](#river-inspector)
 - [Lake Inspector](#lake-inspector)
-- [Fault Line Inspector](#fault-inspector)
+- [Plates & Faults view](#fault-inspector)
 - [Coastline](#coastline)
 - [Known simplifications](#known-simplifications)
 
@@ -1000,7 +1000,7 @@ clamped to `[QUAKE_MW_MIN, QUAKE_MW_MAX]`. The epicentre is a node drawn along t
 fixed true-world-frame point -- never re-homed). Deterministic per
 `(seed, round(elapsed_years), fault_id, _QUAKE_SEED_TAG)`. Each step's largest, if
 `>= EARTHQUAKE_LOG_MIN_MW` (7.5), is logged to the event console; the rest live only on the
-"Fault lines" overlay. `update_faults` prunes anything older than `EARTHQUAKE_RETAIN_MYR`
+"Plates & Faults" activity overlay. `update_faults` prunes anything older than `EARTHQUAKE_RETAIN_MYR`
 (5 Myr) at the top of the step. `erosion.py`'s seismic-erosion term is multiplied by
 `_earthquake_erosion_multiplier` -- `1 + Σ EARTHQUAKE_EROSION_PEAK_BOOST·10^(Mw −
 EARTHQUAKE_EROSION_MW_REF)·recency·taper` over nearby epicentres, a landsliding burst that
@@ -3074,20 +3074,22 @@ this basin drain out" is visible at a glance rather than only in the sidebar tex
 (matching `/world/rivers`' own precedent) but the frontend only needs to fetch it once.
 
 <a id="fault-inspector"></a>
-## Fault Line Inspector
+## Plates & Faults view
 
-A fifth interactive map mode, same "raw JSON, client renders it" philosophy as
-[River Inspector](#river-inspector) / [Lake Inspector](#lake-inspector): `GET /world/faults`
-returns every intraplate fault (see [Faults](#faults)) as a true-frame trace polyline plus
-its type / motion / age metadata, and `frontend/src/FaultInspector.tsx` renders and drives
-the interaction entirely client-side -- the same `rotationDrag.ts` gesture (rotation shared
-with `MapCanvas` via one lifted `App.tsx` state), plus click-to-select and Tab/Shift+Tab to
-cycle faults.
+An interactive map mode, same "raw JSON, client renders it" philosophy as
+[River Inspector](#river-inspector) / [Lake Inspector](#lake-inspector). It merges the old
+PNG "Plates" view and the standalone "Fault lines" inspector into one canvas
+(`frontend/src/PlatesAndFaults.tsx`): plate outlines / bounding ellipses / node points from
+`GET /world/plates` with click-to-select + Tab/Shift+Tab cycling and a metadata sidebar
+(speed, Euler pole, ...), the intraplate faults + fault systems from `GET /world/faults`
+drawn over them (display-only -- selecting a plate emphasises its own strands), and an
+earthquake (`GET /world/earthquakes`) + volcano (`GET /world/volcanoes`) activity overlay
+toggled together from the sidebar. The same `rotationDrag.ts` gesture, rotation shared with
+`MapCanvas` via one lifted `App.tsx` state. The dedicated "Plate Inspector" map mode
+(plates only, no faults/overlay) is still available separately.
 
-**`fault_id` *is* stable across a step here**, unlike `river_id` / `lake_id`. Faults carry a
-persistent identity for their whole lifetime (a monotonic `World.next_fault_id` counter, an
-`is_volcano`-style lifecycle rather than a regroup-from-scratch-every-call one), so `App.tsx`
-resets `selectedFaultId` only on generate, like `selectedPlateId` -- not on every step.
+**`fault_id` is stable across a step**, unlike `river_id` / `lake_id`: faults carry a
+persistent identity for their whole lifetime (a monotonic `World.next_fault_id` counter).
 
 **`distance_from_boundary_km`** is recomputed live per call (nearest cross-plate node via one
 `cKDTree` per plate, built once per `/world/faults` call), separate from the stored

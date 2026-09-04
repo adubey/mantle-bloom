@@ -15,7 +15,7 @@
   "rotate the planet" drag gesture and preview it live client-side (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)) — and the
   Plate Inspector (`PlateInspector.tsx`), River Inspector (`RiverInspector.tsx`), Lake
-  Inspector (`LakeInspector.tsx`), and Fault Line Inspector (`FaultInspector.tsx`) views,
+  Inspector (`LakeInspector.tsx`), and Plates & Faults (`PlatesAndFaults.tsx`) views,
   which each render and drive their whole interaction
   client-side from raw JSON rather than a baked PNG (see
   [simulation-model.md#plate-inspector](simulation-model.md#plate-inspector),
@@ -85,12 +85,17 @@ mode/endpoint (see simulation-model.md#mode-toggle):
     oceanCurrents/humidity/precipitation/biome views are diagnostic climate.py fields -- see
     climate.py's own module docstring)
 
-When the "Plate Inspector" map view is active, the browser instead (also on every
-generate/step, but never on a projection/rotation-only change) fetches:
+When the "Plate Inspector" or "Plates & Faults" map view is active, the browser instead
+(also on every generate/step, but never on a projection/rotation-only change) fetches:
   GET /world/plates
   → every plate's outline + metadata as JSON, not a PNG -- see api-reference.md and
     simulation-model.md#plate-inspector. Clicking a plate sends its unprojected true
     lat/lon to GET /world/plate_at, a nearest-node lookup answering "which plate is here."
+  "Plates & Faults" also fetches GET /world/faults, GET /world/earthquakes and
+    GET /world/volcanoes (fault traces + fault systems, recent earthquake epicentres, and
+    current volcano vents) and draws them over the plates; a sidebar toggle hides the
+    earthquake + volcano overlay. Faults are display-only there -- plate selection is what
+    click/Tab drives.
 
 When the "River Inspector" map view is active, the browser instead fetches (same cadence):
   GET /world/rivers
@@ -113,14 +118,11 @@ When the "Lake Inspector" map view is active, the browser instead fetches (same 
     to GET /world/lake_at, which always resolves to something informative: a lake, a dry but
     real basin, "drains straight to the ocean, no basin here," or open ocean.
 
-When the "Fault lines" map view is active, the browser instead fetches (same cadence):
-  GET /world/faults
-  → every intraplate fault (see faults.py / simulation-model.md#faults) as a true-frame
-    trace polyline + type/motion/age metadata, plus the shared coastline_segments, as JSON,
-    not a PNG -- see api-reference.md and simulation-model.md#fault-inspector. Unlike
-    river_id/lake_id, fault_id is a stable identity for the fault's whole lifetime, so the
-    selection survives a step. Empty before the first step. Clicking a fault sends its
-    unprojected true lat/lon to GET /world/fault_at, a nearest-trace hit-test.
+GET /world/faults (see faults.py / simulation-model.md#faults) returns every intraplate
+fault as a true-frame trace polyline + type/motion/age metadata plus the fault systems and
+the shared coastline_segments, as JSON not a PNG -- see api-reference.md. It backs the
+"Plates & Faults" view (above). GET /world/fault_at is a nearest-trace hit-test (currently
+unused by the frontend since faults aren't selectable there).
 ```
 
 The frontend never holds simulation state, and holds only one small piece of *rendering*
@@ -266,8 +268,8 @@ faults.py            every-step intraplate fault-line lifecycle (stress-weighted
                      master lineament + a wide strand family, one level above the lone
                      trace) -- an *additive* layer that never touches deform()'s own
                      boundary classification; re-homed across merges/splits by
-                     reconcile_faults from world.step_world; backs the "Fault lines" map view
-                     (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
+                     reconcile_faults from world.step_world; backs the "Plates & Faults" map
+                     view (GET /world/faults, /world/fault_at) -- see simulation-model.md#faults
 world.py             World/Plate orchestration: generate_world, step_world
 climate.py           temperature/wind/currents/humidity/precipitation, computed fresh on
                      their own fixed equirectangular grid -- every render, and now every
