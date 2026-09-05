@@ -223,10 +223,25 @@ is still entirely open.
    shattered every plate within ~30 My). A 200-step repro now oscillates 15-26 plates in a
    genuine churn (splits + merges + consumption). **Still open:** the k-means cluster-quality
    problem above -- a daughter's euler pole is still fit from spatially-intermingled velocity
-   clusters, so the cut geometry can still be poor; and there is still no mechanism to spawn a
-   *new* plate for a large region a consumed oceanic plate vacated (the old `gaps.py`
-   fallback, never ported). Plate count held healthy in the repro without it, so a spawn net
-   was not added.
+   clusters, so the cut geometry can still be poor.
+
+   **The "no mechanism to spawn a new plate for a large vacated region" half is FIXED
+   2026-09-04.** Confirmed on the 399 My save below that this does matter on long enough
+   runs even though the <=200-step repro stayed healthy without it: a new `gaps.py` (the old
+   fallback of the same name, ported to the current `LithospherePlate` engine) sweeps the
+   whole-sphere lattice on the same cadence as `merge_split.defragment_plates`
+   (`world.step_world`, every `gaps.GAP_FILL_INTERVAL_STEPS` steps), finds any connected
+   region at least `gaps.MIN_GAP_NODES` (scaled by `node_density`, same reasoning as
+   `SPLIT_MIN_NODES`) large that no plate's lines currently reach, and spawns a new oceanic
+   plate over it via `lithosphere_plate.new_plate` (extended with an `is_owned` predicate so
+   it claims only that region, not the whole sphere). Deliberately *only* spawns -- it does
+   not also try to absorb a gap into a single dominant bordering plate the way the pre-
+   refactor module did, to avoid handing continental plates an easy way to feed the
+   continental-growth ratchet (directions 1-2 above); ordinary per-step boundary growth
+   already does gradual absorption at a plate's own edge once the new plate gives it a real
+   neighbour again. `unit_tests/test_gaps.py` pins it (no-op on a freshly-generated world,
+   spawns near-full replacement crust for a removed plate's vacated footprint, ignores a
+   gap below `MIN_GAP_NODES`).
 
 ### Node-count creep: continental boundaries grow but never retreat (2026-09-01 investigation)
 
@@ -1256,3 +1271,116 @@ after `EARTHQUAKE_RETAIN_MYR` (~5 Myr). `erosion.py` reads them for a local seis
 burst (`_earthquake_erosion_multiplier`, `EARTHQUAKE_EROSION_*`); `GET /world/earthquakes`
 and the fading epicentre overlay in the "Fault lines" view expose them. The largest event
 each step (if `>= EARTHQUAKE_LOG_MIN_MW`) is logged to the event console.
+
+---
+
+## Very-long-run collapse (399 My): confirms the "still open" items above are the live bottleneck
+
+**Context.** `~/Downloads/mantle-bloom-seed920135003-399300000y.mbworld` (132 steps, ~3 Myr/
+step, `node_density=4`) is the longest-run save inspected so far (prior investigations above
+top out around 254.8 My). Five symptoms were reported against it (missing elevation over
+most of the world, plate 0 overlapping several small oceanic plates, plates 0/1 being huge,
+diagonal-stripe artifacts on the elevation/biome maps, and lakes appearing inside the ocean).
+Loading it and cross-checking against the "Plate geometry degrades on long runs" section
+above shows these are the *same, already-tracked* still-open gaps, just further along:
+
+1. **~42% of the sphere has zero elevation nodes.** Rasterizing every plate's
+   `all_points_and_elevation()` onto a 1x1 degree grid: 27,576 / 64,800 cells empty. The
+   `plates` render view (nearest-plate-by-frame ownership) still fills the whole sphere with
+   no gaps, but `platesDetail` (actual node clouds) shows enormous dead zones -- so plates 0/1
+   still nominally *own* most of the globe by Voronoi territory, they just have no populated
+   rows there. This is exactly item 6's open half ("there is still no mechanism to spawn a new
+   plate for a large region a consumed oceanic plate vacated (the old `gaps.py` fallback,
+   never ported)") plus mechanism 4 ("periodic conservative continental re-lattice", also
+   still open) -- both were left unaddressed because the churn repros tested (<=180 steps)
+   stayed healthy without them. At 132 steps the oceanic fleet has been ground down to 7 tiny
+   plates (361-6,850 nodes each, 10,932 nodes total, vs 83,166 continental) and nothing
+   refills the vacated ocean floor. **The spawn half is fixed 2026-09-04** -- see item 6's
+   update above. On this exact save, `gaps.fill_gaps` finds one dominant 40,474-lattice-point
+   void (plus a handful of <=101-point residuals well under `MIN_GAP_NODES`, left alone) and
+   fills it with a new 43,004-node oceanic plate 23, dropping empty 1x1-degree coverage from
+   42.5% to 13.5% in one pass -- the residual is mostly ordinary sparse polar-lattice
+   coverage, not further void. The re-lattice mechanism (4) remains open for the continental
+   side of the ratchet.
+2. **Plate 0 overlaps 6 different oceanic plates (3, 7, 11, 16, 20, 22); plate 1 overlaps 2
+   more (17, 21).** `merge_split._deep_continental_overlap_fractions` /
+   `update_overlap_progress` / `pop_ready_forced_merge` only ever look at *continental-
+   continental* pairs (`if pid_a not in continental: continue`, both sides) -- there is no
+   forced-resolution backstop for a continental-oceanic overlap that's stalled the same way,
+   only the per-step retreat/subduction path. These are exactly the 7 surviving oceanic
+   remnants from (1): they're wedged against the one continental landmass because that's the
+   only place they still have any territory, and whatever is throttling their subduction
+   retreat (per-step `n_distance_cap`, or simply not being detected as `contested` against
+   such a large neighbour) hasn't finished consuming them after 132 steps. Worth an offline
+   `plate_diagnostics.py` pass on this save to see whether these nodes are even reaching
+   `torque.classify_boundary_nodes`'s `contested` mask, or falling through some other gap.
+3. **Plates 0 (21,503 nodes) and 1 (61,706 nodes) are supercontinent-scale but *not* stuck --
+   they're recent merge products.** `plate.age_steps` is 18 and 15 respectively (`reset_age()`
+   fires on merge), against `SPLIT_MIN_AGE_STEPS = 20`; both already clear
+   `maybe_split_plate`'s residual-fit and pole-separation gates by 3-6 orders of magnitude
+   (checked directly: `_fit_residual_rms` ~5.4e-9 vs a ~1.4e-9/9.2e-10 threshold). So this
+   looks less like "should have split and didn't" and more like a snapshot mid-cycle, 2-5
+   steps from being eligible to rift again -- consistent with the documented 15-26-plate
+   merge/split oscillation, just caught at the "just merged" end of it. The still-open
+   k-means split-cluster-quality problem (poles fit from spatially-intermingled velocity
+   clusters) is the likely reason two plates this size keep re-forming via merge in the first
+   place, rather than cutting cleanly the first time.
+4. **The diagonal-stripe artifacts on the elevation/biome/platesDetail renders** are the
+   documented "streaking" (item 3 in the plate-geometry section): a triangular tongue grown by
+   repeated row-end extension, its staircase edge rendered as a long regular sawtooth. Not a
+   new bug -- just visually worse here because of how much small-plate clutter (2) is packed
+   into the one populated corner of the map.
+5. **Lakes rendered inside open ocean -- new hypothesis, not yet confirmed.** Not investigated
+   deeply (deferred per request), but `hydrology.connected_ocean_mask` classifies "ocean" as
+   the single largest connected below-sea-level component of the actual node k-NN graph (plus
+   any second component within `SECOND_OCEAN_SIZE_FRACTION` of its size) -- anything smaller
+   is treated as an ordinary endorheic basin and handed to `lakes.py`. A below-sea-level patch
+   on the far side of one of (1)'s node-cloud gaps would be topologically severed from the
+   main ocean in that k-NN graph even though it's geographically part of the same sea, so it
+   would misclassify as a giant "lake" rather than ocean. If so, this is a downstream symptom
+   of (1) rather than an independent bug in `lakes.py` itself -- worth checking first before
+   touching lake code directly.
+
+**Net read:** nothing here is a new bug distinct from what this doc already tracks; it's
+confirmation that (6)'s new-plate-spawn gap and mechanism (4)'s re-lattice were the load-bearing
+missing pieces once a world runs long enough, and a plausible (unconfirmed) mechanism linking
+the lake-in-ocean report to the same node-cloud gaps. (6)'s spawn gap is now fixed (`gaps.py`,
+2026-09-04); mechanism (4), items 2/3 (the small-oceanic-plate overlaps and the resulting
+supercontinent-scale plates 0/1), and the lake-in-ocean hypothesis are all still open --
+plausible next candidates now that the dominant void itself no longer masks them on a
+re-run of this save.
+
+---
+
+## `gaps.py`'s plate-spawn is a stopgap, not the real fix
+
+**Status: known hack, flagged at merge time (2026-09-04).** `gaps.fill_gaps` (see the
+"Very-long-run collapse" section above and item 6 further up) closes the immediate
+coverage hole, but the mechanism itself doesn't match how new ocean floor actually forms.
+
+**Why it's a hack.** Real ocean floor is produced *continuously*, along a mid-ocean ridge,
+as two already-existing oceanic plates pull apart and decompression melting accretes new
+crust onto both of their own divergent edges -- new sea floor is always born attached to a
+plate that's already there and already moving. `gaps.py` instead runs as a periodic,
+whole-sphere patch: it notices a big enough hole *after the fact* (every
+`GAP_FILL_INTERVAL_STEPS`), then conjures an entire fully-formed plate into existence out of
+nothing, with an Euler pole fit post-hoc from the local mantle-flow field rather than
+inherited from ridge-push off any real neighbour. It works (see the fixed save,
+node coverage 42.5% -> 13.5% empty in one pass) but it's a bookkeeping fix for a modeling
+gap, not a simulation of the actual process -- an artifact of `deform()`'s own per-step
+boundary growth only ever extending a line from a node that already exists (see `gaps.py`'s
+own module docstring), so a region with *no* nearby line at all has structurally no way to
+ever grow back on its own.
+
+**Direction.** The real fix is upstream of `gaps.py` entirely: give `LithospherePlate.deform()`
+(or a sibling mechanism) a way to originate new oceanic crust directly at a divergent
+boundary -- i.e. model mid-ocean-ridge spreading itself, rather than letting the void get big
+enough that a whole-sphere sweep has to notice it later. That would mean an oceanic plate's
+own divergent edge can always keep pace with its neighbour's retreat (no ordinary rift ever
+outruns per-step growth in the first place), and the only remaining role for something like
+`gaps.py` would be a true edge case (e.g. a divergent boundary between two plates that both
+fully vanished the same step) rather than the routine, sizable voids seen on long runs today.
+Whoever picks this up should start from `_grow_or_shrink_line_for_deform` /
+`_claim_adjacent_territory` in `lithosphere_plate.py` -- the existing per-line growth this
+would need to extend -- and treat `gaps.py` as the thing this work should let shrink back to
+a rare fallback, not as the permanent mechanism.

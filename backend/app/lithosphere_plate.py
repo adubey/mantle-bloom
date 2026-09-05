@@ -1458,12 +1458,26 @@ def generate_plates(
     return plates
 
 
-def new_plate(plate_id: int, frame: np.ndarray, crust_type: str, spacing_rad: float, seed: int) -> LithospherePlate:
-    """A brand-new `LithospherePlate` covering `frame`'s entire local lattice at
-    `spacing_rad`, seeded with reference Hc/Hm plus the same composite relief field
-    `generate_plates` uses (see `terrain_noise.py`) -- the v2 analogue of
+def new_plate(
+    plate_id: int,
+    frame: np.ndarray,
+    crust_type: str,
+    spacing_rad: float,
+    seed: int,
+    is_owned=None,
+) -> LithospherePlate:
+    """A brand-new `LithospherePlate` seeded with reference Hc/Hm plus the same composite
+    relief field `generate_plates` uses (see `terrain_noise.py`) -- the v2 analogue of
     `plates.generate_plates`' own per-plate initial-line construction. Keyed off
-    `(seed, plate_id, _TERRAIN_SEED_TAG)` so the crust stays attached to this plate."""
+    `(seed, plate_id, _TERRAIN_SEED_TAG)` so the crust stays attached to this plate.
+
+    `is_owned` (default: every node in `frame`'s entire local lattice) restricts which nodes
+    of that lattice actually become part of the plate -- see `gaps.py`'s use of this to carve
+    out just one uncovered region rather than claiming the whole sphere."""
+    if is_owned is None:
+
+        def is_owned(world_pts: np.ndarray) -> np.ndarray:
+            return np.ones(len(world_pts), dtype=bool)
     hc0, hm0 = lithosphere.reference_thickness(crust_type)
     rng = np.random.default_rng((seed, plate_id, _TERRAIN_SEED_TAG))
     if crust_type == "continental":
@@ -1485,9 +1499,6 @@ def new_plate(plate_id: int, frame: np.ndarray, crust_type: str, spacing_rad: fl
 
         def hc_at(world_pts: np.ndarray) -> np.ndarray:
             return hc0 + amp * ocean_relief.sample(world_pts)
-
-    def is_owned(world_pts: np.ndarray) -> np.ndarray:
-        return np.ones(len(world_pts), dtype=bool)
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         return np.zeros(len(world_pts))
