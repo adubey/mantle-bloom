@@ -966,7 +966,7 @@ export default function App() {
                 <option value="overlapAge">Plate overlap age</option>
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
-                <option value="lakeInspector">Lakes</option>
+                <option value="lakeInspector">Lake Inspector</option>
               </optgroup>
             </select>
             <select
@@ -1142,6 +1142,20 @@ export default function App() {
                       - flow {r.flow_rate.toFixed(1)}, {r.num_nodes} nodes
                     </div>
                   ))}
+                  <div style={{ marginTop: 6 }}>
+                    outflowing river:{" "}
+                    {selectedBasin.outflow_river
+                      ? ""
+                      : selectedBasin.is_spilling
+                        ? "not yet a real channel"
+                        : "none -- not currently spilling"}
+                  </div>
+                  {selectedBasin.outflow_river && (
+                    <div style={{ paddingLeft: 8, opacity: 0.8 }}>
+                      - ends at {selectedBasin.outflow_river.mouth_type}, flow{" "}
+                      {selectedBasin.outflow_river.flow_rate.toFixed(1)}, {selectedBasin.outflow_river.num_nodes} nodes
+                    </div>
+                  )}
                 </div>
               ) : selectedBasinKind === "ocean" ? (
                 <div style={{ opacity: 0.6 }}>That's open ocean.</div>

@@ -175,6 +175,20 @@ SECOND_OCEAN_MIN_NODE_COUNT = 500
 # precipitation would, so erosion.py's existing river-erosion/channel-width formulas pick it
 # up completely unchanged -- both channel_depth and channel_width grow from it automatically,
 # "digging a deep channel out" without needing a second, parallel erosion pathway.
+#
+# This same term is *also* added directly at the lake's own rim node (`rim_breach_source`
+# below, keyed by `lakes.compute_spill_routing`'s own `rim_node_idx`) -- not just at the sink
+# it's routed from. The sink's own flow_target jumps straight to `spill_target` (the far side
+# of the boundary edge, outside the lake), never actually passing through the lake's own rim
+# member (`outlet_node_idx`) at all -- so a dam whose *lake-side* rim happens to be the higher
+# of the two boundary nodes (confirmed directly: a small synthetic basin reproduces this,
+# roughly a coin flip which side is higher) never received one erosive drop from this
+# mechanism, and so never wore down -- the lake could spill for the rest of the run without
+# its actual cap (`max_depth`, recomputed fresh from `elevation` every step -- see lakes.py's
+# own docstring) ever dropping. A real spillway erodes right at the pinch point, whichever
+# side of it happens to be taller; injecting the same source at both nodes erodes the true
+# bottleneck regardless of which one that is, which is what actually lets a long-spilling lake
+# grind its own rim down and, eventually, drain.
 LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 
 # Glaciers use flat per-Myr rates (linear in dt_myr), not an exponential-decay formula like
@@ -825,7 +839,7 @@ def compute_hydrology(
     # known) -- the exact same `forest` object threaded through both, rather than paying for a
     # second, redundant `build_lake_hierarchy` call and risking the two disagreeing.
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
-    filled_elevation, spill_target = lakes.compute_spill_routing(forest, elevation, lake_depth_adjusted)
+    filled_elevation, spill_target, rim_node_idx = lakes.compute_spill_routing(forest, elevation, lake_depth_adjusted)
 
     flow_target, should_spill = _compute_flow_direction(
         elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen
@@ -877,16 +891,33 @@ def compute_hydrology(
     lake_component_size = _lake_component_sizes(lake_depth_adjusted > LAKE_MIN_VISIBLE_DEPTH_M, neighbor_idx)
     lake_breach_source = np.where(should_spill, LAKE_BREACH_EROSION_COEFFICIENT * lake_component_size, 0.0)
 
+    # ...and, just as importantly, at the governing rim's own lake-side member too
+    # (`rim_node_idx`, from `compute_spill_routing`) -- not only at the sink it's routed from.
+    # See LAKE_BREACH_EROSION_COEFFICIENT's own comment for why a sink-only surge leaves the
+    # true dam untouched whenever the lake's own rim happens to be the higher of the boundary
+    # edge's two members. `np.add.at` (not a plain indexed assignment) since a merged, multi-
+    # leaf lake's several original sinks can all share one governing rim node, and their
+    # surges should sum there rather than overwrite each other. Excludes the (real, if
+    # degenerate) case of a single-node lake whose only member is both its own sink *and* its
+    # own rim -- there the sink and rim terms would land on the exact same node, doubling the
+    # surge for no physical reason rather than covering two genuinely different points.
+    rim_breach_source = np.zeros(n)
+    spilling_idx = np.nonzero(should_spill)[0]
+    has_rim = (rim_node_idx[spilling_idx] >= 0) & (rim_node_idx[spilling_idx] != spilling_idx)
+    np.add.at(rim_breach_source, rim_node_idx[spilling_idx[has_rim]], lake_breach_source[spilling_idx[has_rim]])
+    is_rim_breach = rim_breach_source > 0.0
+
     # River evaporation (see RIVER_EVAPORATION_* above) -- excluded at an already-frozen node
     # (its flow_target is already forced closed, see _compute_flow_direction) and, deliberately,
-    # at a should_spill node: the breach term above models a lake's own concentrated overflow
-    # surge, sized purely from its surface area, not an ordinary trickle that should also lose a
-    # further fraction to evaporation in the very same step it's cut loose.
+    # at a should_spill node or its own rim: the breach term above models a lake's own
+    # concentrated overflow surge, sized purely from its surface area, not an ordinary trickle
+    # that should also lose a further fraction to evaporation in the very same step it's cut
+    # loose.
     years_myr = years / 1_000_000.0
     river_evap_fraction = np.clip(temperature_at_nodes / RIVER_EVAPORATION_REFERENCE_TEMP_C, 0.0, 1.0) * RIVER_EVAPORATION_RATE_PER_MYR * years_myr
-    river_evap_fraction = np.where(is_frozen | is_ocean | should_spill, 0.0, np.clip(river_evap_fraction, 0.0, RIVER_EVAPORATION_MAX_FRACTION))
+    river_evap_fraction = np.where(is_frozen | is_ocean | should_spill | is_rim_breach, 0.0, np.clip(river_evap_fraction, 0.0, RIVER_EVAPORATION_MAX_FRACTION))
 
-    water_source = liquid_precip + melt + lake_breach_source
+    water_source = liquid_precip + melt + lake_breach_source + rim_breach_source
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
 
     # A river blocked by its own freeze doesn't just vanish -- its water piles up as ice right

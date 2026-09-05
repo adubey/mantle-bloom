@@ -2926,6 +2926,20 @@ that a several-hundred-node lake's breach source (in the low millions) dwarfs th
 millimeters of ordinary precipitation reaching that same point, carving its spillway down
 hard rather than leaving a shallow, precipitation-scale groove.
 
+That same surge is also added directly at the lake's own rim member (`Lake.outlet_node_idx`,
+exposed by `lakes.compute_spill_routing` as `rim_node_idx` alongside `spill_target`) -- not
+only at the sink it's routed from. The sink's own `flow_target` jumps straight to
+`spill_target` (the node on the *far* side of the governing boundary edge, outside the lake
+entirely), never actually passing through the lake's own rim member at all, and which of the
+edge's two members is the higher one -- the real bottleneck a spillway has to cut through -- is
+roughly a coin flip (confirmed directly with a small synthetic basin). A sink-only surge left
+the true dam untouched, and its `max_depth` fixed, whenever the lake's own rim happened to be
+that higher side: the lake could spill for the rest of a run without its cap ever dropping,
+since `build_lake_hierarchy` recomputes that cap fresh from `elevation` every step. Injecting
+the same term at both members erodes the true bottleneck regardless of which side it's on,
+which is what actually lets a long-spilling lake grind its rim down and, given enough
+simulated time, drain.
+
 **Channel width** (`channel_width`, grown in `erosion.py` alongside `channel_depth`) is a
 mantle-bloom addition: standard hydraulic-geometry scaling (width ~
 discharge^0.5, the same discharge exponent `RIVER_EROSION_COEFFICIENT`'s own stream-power law
@@ -3242,7 +3256,12 @@ river out of it would source from, `null` for an unresolved closed/endorheic bas
 known spill (a legitimate state, not missing data), plus every `RiverInfo` (see
 [River Inspector](#river-inspector)) whose own mouth lands somewhere in the basin, regardless
 of that river's own `mouth_type` label -- both `"lake"` and `"other"` read as "a river that
-ends here" from the basin's own point of view.
+ends here" from the basin's own point of view. A basin's own *outflow* is looked up the
+opposite way -- by which river network (if any) owns the node just outside the governing rim
+(`Lake.outlet_target_idx`), since that's where the basin's own water actually exits, not where
+some other river happens to end -- and reported as a full `RiverSummary`-shaped
+`outflow_river`, `null` whenever there's no live outflow to show (closed basin, not currently
+spilling, or a spill too fresh to have grown its own river network yet).
 
 **Rendering** is a point cloud, not traced shapes: each lake's own wet members (and, for a
 selected dry basin, its whole catchment) are drawn as dots, dim for every lake and bright for
@@ -3250,7 +3269,10 @@ the selected basin, mirroring Plate Inspector's dim/bright split -- there's no n
 outline for a scattered k-NN node group the way a plate's own boundary line already gives one
 for free. The selected basin's floor and outlet (and every inflowing river's own mouth) each
 draw a ring, the same drawing primitive River Inspector's mouth marker uses, so "where would
-this basin drain out" is visible at a glance rather than only in the sidebar text. The same
+this basin drain out" is visible at a glance rather than only in the sidebar text. When the
+basin actually has a live `outflow_river`, its full segment path is drawn too -- River
+Inspector's own river color, at its own "selected" line width -- so a spilling lake's actual
+outflow reads as a real river leaving the basin, not just another ring at the rim. The same
 `coastline_segments` River Inspector already fetches is reused rather than a second copy, since
 `/world/lakes` computes the identical boundary -- both endpoints expose it independently
 (matching `/world/rivers`' own precedent) but the frontend only needs to fetch it once.

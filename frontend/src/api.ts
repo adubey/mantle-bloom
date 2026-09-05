@@ -228,9 +228,22 @@ export interface RiversResponse {
 // A river feeding into a lake/basin (see LakeSummary.inflow_rivers below) -- a small inline
 // summary, not a full RiverSummary, since the Lake Inspector only needs to say "a river ends
 // here, this big" rather than draw that river's own full path (that's what the River
-// Inspector's own map mode is for).
+// Inspector's own map mode is for). Contrast OutflowRiver below, which *does* need a full path.
 export interface InflowRiver {
   mouth_xyz: [number, number, number];
+  flow_rate: number;
+  num_nodes: number;
+}
+
+// The river actually carrying a lake's current spill outward (see LakeSummary.outflow_river
+// below) -- unlike InflowRiver, the Lake Inspector draws this one's whole path (see
+// LakeInspector.tsx), so it needs the same real geometry RiverSummary carries, not just a
+// one-line summary. Deliberately the same shape as RiverSummary minus `river_id`/`speed`/
+// `num_tributaries`, which mean nothing outside the River Inspector's own ranked list.
+export interface OutflowRiver {
+  segments: Segment[];
+  mouth_xyz: [number, number, number];
+  mouth_type: "ocean" | "lake" | "other";
   flow_rate: number;
   num_nodes: number;
 }
@@ -259,6 +272,11 @@ export interface LakeSummary {
   water_elevation_m: number | null;
   is_spilling: boolean;
   inflow_rivers: InflowRiver[];
+  // `null` whenever there's no live outflow to show: a closed/endorheic basin, a resolved rim
+  // that isn't currently spilling, or (a real, narrow gap right after a lake first breaches)
+  // a spilling rim whose flow hasn't yet grown into its own river network -- see backend app/
+  // main.py's `_lake_basin_summary` docstring.
+  outflow_river: OutflowRiver | null;
 }
 
 export interface LakesResponse {

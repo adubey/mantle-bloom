@@ -314,6 +314,43 @@ def test_compute_hydrology_spilling_lake_erodes_its_outlet_from_its_own_surface_
     assert fields.flow_accum[10] < hydrology.LAKE_BREACH_EROSION_COEFFICIENT * 1.1
 
 
+def test_compute_hydrology_spilling_lake_also_erodes_its_own_rim_when_that_is_the_higher_side():
+    # The multi-node counterpart to the test above: a two-node basin (floor 10, shore/rim 11)
+    # behind a barrier, engineered so the basin's *own* rim member (11, elevation 210) is the
+    # higher side of the governing boundary edge -- higher than the far side outside the lake
+    # (15, elevation 200) that `max_depth` would otherwise appear to come from (confirmed
+    # directly: `lakes.build_lake_hierarchy` on this exact layout gives max_depth=210 via
+    # outlet_node_idx=11, not 200 via outlet_target_idx=15). Before the rim_node_idx fix, the
+    # breach surge only ever rode `spill_target` from the sink (10) to the far side (15) --
+    # bypassing 11 entirely -- so the *actual* dam (11) never got a drop of erosive flow no
+    # matter how long the lake spilled. lake_depth[10]=170 puts the sink's water surface at
+    # 50+170=220, over the 210 cap, so it's actively spilling this step.
+    d = 0.002
+    elevation = np.array(
+        [500.0, 480.0, 460.0, 440.0, 420.0, 400.0, 380.0, 360.0, 340.0, 320.0]
+        + [50.0, 210.0]
+        + [250.0, 300.0, 260.0, 200.0, 150.0, 100.0, 50.0, 20.0]
+        + [-10.0, -50.0, -100.0, -150.0, -200.0, -250.0, -300.0]
+    )
+    n = len(elevation)
+    theta = d * np.arange(n)
+    lake_depth = np.zeros(n)
+    lake_depth[10] = 170.0
+    plate = _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
+    world = World(seed=0, plates=[plate])
+
+    precipitation_at_nodes = np.full(n, 10.0)  # small -- the breach term should dominate
+    temperature_at_nodes = np.full(n, 15.0)
+    fields = hydrology.compute_hydrology(world, precipitation_at_nodes, temperature_at_nodes, years=1_000_000)
+
+    # Both sides of the true bottleneck now carry roughly one component-size's worth of
+    # LAKE_BREACH_EROSION_COEFFICIENT -- the lake's own rim (11, previously untouched) just as
+    # much as the far side (15, which already worked before this fix).
+    assert fields.flow_accum[11] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+    assert fields.flow_accum[11] < hydrology.LAKE_BREACH_EROSION_COEFFICIENT * 1.1
+    assert fields.flow_accum[15] >= hydrology.LAKE_BREACH_EROSION_COEFFICIENT
+
+
 def test_compute_flow_direction_prefers_an_existing_channel_over_the_literal_steepest_neighbor():
     # Node 0's two downhill candidates: node 1 (elevation 20, steeper, no channel) and node 2
     # (elevation 25, less steep, but already has a real established channel).

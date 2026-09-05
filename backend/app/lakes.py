@@ -498,11 +498,29 @@ def _prev_level(lake: Lake, elevation: np.ndarray, prev_lake_depth: np.ndarray) 
 
 def compute_spill_routing(
     forest: list[Lake], elevation: np.ndarray, prev_lake_depth: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Per-node `(filled_elevation, spill_target)`, the pair `hydrology._compute_flow_direction`
-    consults at a sink node to decide whether it should redirect: `filled_elevation` the
-    elevation a sink's water surface must reach before it escapes its basin, `spill_target` the
-    one-hop neighbor to escape toward once it does. Formerly computed by an entirely separate,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-node `(filled_elevation, spill_target, rim_node_idx)`, the triple
+    `hydrology._compute_flow_direction`/`hydrology.compute_hydrology` consult at a sink node to
+    decide whether it should redirect, and where: `filled_elevation` the elevation a sink's
+    water surface must reach before it escapes its basin, `spill_target` the one-hop neighbor to
+    escape toward once it does, `rim_node_idx` the governing basin's own `outlet_node_idx` --
+    the member on *this* lake's own side of that same boundary edge, as opposed to
+    `spill_target`/`outlet_target_idx` which sits on the far side, outside the lake entirely.
+
+    **Why callers need both sides of one edge, not just `spill_target`.** The boundary edge's
+    weight (`max_depth`) is `max(elevation[outlet_node_idx], elevation[outlet_target_idx])` --
+    whichever of the *two* is higher is the actual dam a lake's overflow has to cut through, and
+    it's roughly a coin flip which side that turns out to be (confirmed directly: a small
+    synthetic 6-node basin with the lake's own rim node higher than the far side reproduces
+    exactly this). `spill_target` alone only ever exposes the far side, so a breach-erosion term
+    keyed only off it silently never touches the dam on the *near* side whenever that's the
+    higher one -- a real lake behind a rim like that would spill and erode its outflow channel
+    forever downstream of the rim while the rim itself never wears down, so the lake could never
+    actually drain. Exposing `rim_node_idx` alongside `spill_target` lets a caller erode *both*
+    members of the governing edge, so the true bottleneck erodes regardless of which side it's
+    on -- see hydrology.compute_hydrology's own `rim_breach_source` for where this is used.
+
+    Formerly computed by an entirely separate,
     independent priority-flood over bare terrain (`hydrology._basin_spill_kernel`) that never
     agreed exactly with *this* module's own catchment+Kruskal hierarchy -- the two usually
     landed close but were evaluated differently and could drift apart step to step (confirmed
@@ -520,8 +538,8 @@ def compute_spill_routing(
     `Lake.sink_node_idx` -- is ever overwritten below; see this module's own docstring for why
     a `_catchment_roots` catchment root is always exactly a `_compute_flow_direction` sink node.
     A leaf whose chain never reaches the ocean (`max_depth is None`, a genuine closed/endorheic
-    basin) gets `filled_elevation = inf`/`spill_target = -1`, matching the old kernel's own
-    "unreachable" convention -- it never spills, however full it gets.
+    basin) gets `filled_elevation = inf`/`spill_target = -1`/`rim_node_idx = -1`, matching the
+    old kernel's own "unreachable" convention -- it never spills, however full it gets.
 
     **Which rim currently governs a sink is decided the same way `_resolve` decides "is this
     lake one connected body yet," and deliberately reuses that exact test (`_prev_level` against
@@ -534,7 +552,7 @@ def compute_spill_routing(
     was swallowed. Walking down from each root, the first node found to already be one merged
     body (a leaf, trivially, or a parent whose children were already united as of last step) is
     exactly that governing rim: everything in its subtree writes that same `(max_depth,
-    outlet_target_idx)` pair. A node still short of that (a parent whose children were *not*
+    outlet_target_idx, outlet_node_idx)` triple. A node still short of that (a parent whose children were *not*
     yet one body last step) recurses into its children independently instead, since they may
     each still be governed by their own, still-separate, shallower rims. Because the walk always
     stops at the *first* such node encountered from the root down, and a parent's own
@@ -550,8 +568,9 @@ def compute_spill_routing(
     n = len(elevation)
     filled_elevation = elevation.copy()
     spill_target = np.full(n, -1, dtype=np.int64)
+    rim_node_idx = np.full(n, -1, dtype=np.int64)
 
-    def write_subtree(node: Lake, filled_value: float, target: int) -> None:
+    def write_subtree(node: Lake, filled_value: float, target: int, rim: int) -> None:
         leaves = [node]
         while leaves:
             cur = leaves.pop()
@@ -560,6 +579,7 @@ def compute_spill_routing(
             else:
                 filled_elevation[cur.sink_node_idx] = filled_value
                 spill_target[cur.sink_node_idx] = target
+                rim_node_idx[cur.sink_node_idx] = rim
 
     stack: list[Lake] = list(forest)
     while stack:
@@ -568,9 +588,14 @@ def compute_spill_routing(
         if node.children and not already_merged:
             stack.extend(node.children)
             continue
-        write_subtree(node, node.max_depth if node.max_depth is not None else np.inf, node.outlet_target_idx)
+        write_subtree(
+            node,
+            node.max_depth if node.max_depth is not None else np.inf,
+            node.outlet_target_idx,
+            node.outlet_node_idx,
+        )
 
-    return filled_elevation, spill_target
+    return filled_elevation, spill_target, rim_node_idx
 
 
 def _resolve(
