@@ -1190,6 +1190,47 @@ def fault_influence(
     return np.clip(1.0 - d / reach_rad, floor, 1.0)
 
 
+def fault_tangent_components(world: "World", plate: Plate, phi: float, theta: float) -> tuple[float, float] | None:
+    """(sep_theta, sep_phi): this plate's own rift separation direction at plate-local
+    (phi, theta), from the nearest active fault trace's own tangent -- swapped, since a fault
+    opens *across* its own strike, not along it (a fault running along theta, i.e. `d_phi ~ 0`,
+    means the ground actually pulls apart along phi, so `sep_phi` should be the large
+    component). `None` if this plate has no active fault at all, so the caller
+    (`lithosphere_plate.py`'s rift-stretch wiring) can fall back to
+    `geometry.local_separation_components` against `direction_to_neighbor` instead -- the same
+    "no fault yet" fallback shape `fault_influence` above already uses.
+
+    Compares in physical (arc-length) units, not raw (phi, theta): a theta step's physical
+    length is `cos(phi)` times its angular size (see `elevation_lines.line_spacing_rad`'s own
+    `dtheta = spacing / cos(phi)`), so both the nearest-point search and the tangent itself
+    scale `local_theta` by `cos(phi)` before comparing against `local_phi`, which needs no such
+    correction. Not normalized -- `rheology.stretch_components` (every caller) normalizes."""
+    candidates = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active and len(f.local_phi) >= 2]
+    if not candidates:
+        return None
+    cos_p = np.cos(phi)
+    best_dist_sq = np.inf
+    best_tangent: tuple[float, float] | None = None
+    for fault in candidates:
+        dist_sq = (fault.local_phi - phi) ** 2 + ((fault.local_theta - theta) * cos_p) ** 2
+        idx = int(np.argmin(dist_sq))
+        if dist_sq[idx] >= best_dist_sq:
+            continue
+        lo, hi = max(idx - 1, 0), min(idx + 1, len(fault.local_phi) - 1)
+        if lo == hi:
+            continue
+        tangent_phi = fault.local_phi[hi] - fault.local_phi[lo]
+        tangent_theta = (fault.local_theta[hi] - fault.local_theta[lo]) * cos_p
+        if tangent_phi == 0.0 and tangent_theta == 0.0:
+            continue
+        best_dist_sq = dist_sq[idx]
+        best_tangent = (tangent_theta, tangent_phi)
+    if best_tangent is None:
+        return None
+    tangent_theta, tangent_phi = best_tangent
+    return tangent_phi, tangent_theta  # swapped: separation runs across the fault's own strike
+
+
 def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) -> None:
     if not hasattr(plate, "lines"):
         return
