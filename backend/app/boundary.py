@@ -1,6 +1,7 @@
 """Shared boundary-motion primitives that survive the move to polygon-based deformation.
 
-Per-step boundary evolution itself now lives on `PlateWithLines.deform` (see plates.py) --
+Per-step boundary evolution itself now lives on `LithospherePlate.deform` (see
+lithosphere_plate.py) --
 classification is by *geometry* (did a plate's rotated territory end up overlapping a
 neighbor's, or open up unclaimed space) rather than by the *velocity* decomposition this
 module used to compute directly. What's left here is `closing_rate` (still needed by

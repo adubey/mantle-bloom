@@ -438,7 +438,7 @@ def classify_boundary_nodes(
 def shift_plate(plate, world, other_plates: list, years: float) -> float:
     """`LithospherePlate.shift`'s real implementation: gather this step's driving/resisting
     torques from the plate's *current* (pre-rotation) boundary configuration, integrate omega,
-    then rotate rigidly -- same `D` (max node displacement) contract as `PlateWithLines.shift`."""
+    then rotate rigidly -- same `D` (max node displacement) contract as `LithospherePlate.shift`."""
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
 

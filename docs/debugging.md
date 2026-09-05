@@ -290,7 +290,7 @@ actively flattened now. Collision / subduction-arc / rift belts are where relief
 being made -- if those are thin or absent while the continents are large and quiescent, the
 tectonic engine has stalled and nothing is replacing the relief erosion removes.
 
-Provenance is written by `plates`/`lithosphere_plate.deform` (tectonic codes, re-stamped
+Provenance is written by `lithosphere_plate.deform` (tectonic codes, re-stamped
 every step a belt stays active), `volcanism` (eruptions), and `erosion` (geomorphic codes).
 A structural code is **sticky**: erosion only overrides it when this step's net geomorphic
 change is itself large (`ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR`, ~100 m/Myr), so ordinary

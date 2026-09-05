@@ -51,9 +51,9 @@ Browser then fetches, for whichever projection/map view/resolution/rotation is s
 Time-stepping:
   POST /world/step  { years }
   → world.step_world(world, years): every plate refits its Euler pole and rotates
-    (`Plate.shift`), then every plate reconciles its actual footprint against the sphere
-    minus every other live plate's own territory (`Plate.deform`, in a freshly randomized
-    order each turn) -- collision/subduction uplift or trench elevation where a plate's
+    (`LithospherePlate.shift`), then every plate reconciles its actual footprint against the
+    sphere minus every other live plate's own territory (`LithospherePlate.deform`, in a
+    freshly randomized order each turn) -- collision/subduction uplift or trench elevation where a plate's
     rotated territory now overlaps a neighbor's, rift fill (or, occasionally, a fresh
     volcano) where it opens unclaimed space, transform uplift where it's merely close --
     see simulation-model.md#boundary-evolution. Then topology changes (at most one collision
@@ -152,7 +152,7 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
 - `elapsed_years`, `next_plate_id` (a monotonically increasing counter so a plate created by
   a split never collides with an existing id, even after other plates have been removed).
   Line regularization and gap-filling no longer run on a periodic cadence (both happen
-  inline inside every `Plate.deform()` call now -- see
+  inline inside every `LithospherePlate.deform()` call now -- see
   simulation-model.md#boundary-evolution), so the counters that used to gate them
   (`steps_since_regularize`, `steps_since_reassign`) are gone.
 - `steps_taken` -- a plain `step_world` call count (not a year count -- step sizes vary and
@@ -236,16 +236,18 @@ elevation_lines.py  ElevationLine data structure, node density/spacing (TARGET_L
                     merge, and periodic line-spacing regularization (formerly line_regrid.py)
 rtree_index.py      minimal bulk-loaded (STR-packed) R-tree over 2D points -- box/nearest-
                     neighbor queries, used by PlateWithRTree
-plates.py          Plate/PlateWithLines/PlateWithRTree data structures, initial plate
-                    generation (nearest-seed tiling), the live per-plate outline used by the
-                    "Plates" map view and by `deform()`'s own contested/open classification,
+plates.py          Plate (ABC) / PlateWithLines data structures -- identity, territory,
+                    the plate-local lattice, the per-row outline / row-lookup fast path,
+                    node iteration and field access -- plus initial plate generation
+                    (nearest-seed tiling), the live per-plate outline used by the "Plates"
+                    map view and by `deform()`'s own contested/open classification, and
                     the Plate Inspector's bounding-ellipse fit and nearest-plate click
-                    hit-test, and -- on `PlateWithLines` -- `shift()`/`deform()` themselves:
-                    per-turn Euler-pole refit + rotation, polygon-containment boundary
-                    classification, elevation deltas, line growth/shrinkage (capped by that
-                    turn's own max node displacement, not a periodic cadence), overstretched-
-                    rift volcano spawning, claiming adjacent territory, and inline line
-                    regularization (`PlateWithRTree`'s own versions are still a TODO)
+                    hit-test. The tectonic engine itself -- `shift()`/`deform()`, per-turn
+                    Euler-pole refit + rotation, polygon-containment boundary
+                    classification, elevation/Hc/Hm deltas, line growth/shrinkage, over-
+                    stretched-rift volcano spawning, claiming adjacent territory, and
+                    inline line regularization -- lives on `LithospherePlate`
+                    (lithosphere_plate.py)
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
 boundary.py         `closing_rate` (used only by merge_split.py now, to confirm two

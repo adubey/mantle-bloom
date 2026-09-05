@@ -1,7 +1,7 @@
 """Volcanic eruption lifecycle for existing volcano nodes.
 
-Volcanic fields themselves are now created directly by `PlateWithLines.deform` (see
-plates.py) when a rift boundary has stretched too thin to keep filling with plain
+Volcanic fields themselves are now created directly by `LithospherePlate.deform` (see
+lithosphere_plate.py) when a rift boundary has stretched too thin to keep filling with plain
 ridge/rift crust -- detection/spawning/merging/isolated-growth of whole volcanic-field
 *plates* used to live here as a periodic clean-up pass, but that's subsumed by deform()'s
 own per-turn rift handling now (see docs/simulation-model.md and the plan this replaced).

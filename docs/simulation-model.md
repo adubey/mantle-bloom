@@ -161,8 +161,8 @@ nodes needs half the spacing, not a quarter; conversely 0.5x, the coarsest optio
 spacing). Stored on `World.node_density`, set once at generation and
 read for that world's entire life, not just at the moment it's generated: every later module
 that builds new elevation-line nodes or derives a distance/count threshold from
-`TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s line regularization, `plates.py`'s
-`PlateWithLines.deform` (per-turn growth/shrink/claim thresholds -- see [Plate motion: shift
+`TARGET_LINE_SPACING_RAD` -- `elevation_lines.py`'s line regularization, `lithosphere_plate.py`'s
+`LithospherePlate.deform` (per-turn growth/shrink/claim thresholds -- see [Plate motion: shift
 and deform](#boundary-evolution)), `merge_split.py`'s plate-merge contact distance,
 split-size floor, and defragmentation connect-radius / fragment-size floor -- calls
 `line_spacing_rad(world.node_density)` (or scales its own reference constant by the same
@@ -982,7 +982,7 @@ muted oceanic/continental tones, so a mixed-composition patch is directly visibl
 verification.
 
 <a id="volcanism"></a>
-## Volcanism (`volcanism.py`, plus `plates.py`'s own `PlateWithLines.deform`)
+## Volcanism (`volcanism.py`, plus `lithosphere_plate.py`'s own `LithospherePlate.deform`)
 
 New continental crust forming where plates are separating. This used to be two halves in one
 module: a periodic whole-sphere *detection* pass that spawned brand-new "volcanic field"
@@ -2275,7 +2275,7 @@ lattice.
 **Slope is the one genuinely new piece of math.** climate.py's grid gets slope for free
 from neighbor-index differences; an irregular node cloud has no such structure. This reuses
 the same whole-world cKDTree pattern (build once, query `SLOPE_NEIGHBOR_COUNT=4`
-nearest neighbors per node) `PlateWithLines.deform` uses for its own per-plate distance
+nearest neighbors per node) `LithospherePlate.deform` uses for its own per-plate distance
 queries: for each node, the elevation drop to the *lowest* of
 its nearest neighbors (0 if the node is already a local minimum -- the "slope to lowest
 neighbor" definition), divided by the real great-circle distance to that
@@ -2494,8 +2494,7 @@ erosion shows up as a surface elevation change; the rest is isostatic. Without t
 coastal + submarine erosion exporting continental crust to the deep ocean planed every
 continent flat over a few hundred Myr once orogeny slowed (`docs/TODO.md`); with it, `elevation`
 also stays a faithful readout of `isostatic_elevation(Hc, Hm)` between tectonic events rather
-than drifting away from it. v1 `PlateWithLines` carries no `Hc` -- those nodes keep the bare
-one-for-one response.
+than drifting away from it.
 
 **Cadence: every step, no lag on climate -- but a deliberate change from erosion's own
 earlier no-hydrology version regarding flow routing.** This module still calls
@@ -2640,8 +2639,8 @@ non-conservative shelf-building / shelf-starving source -- the same character as
 
 **Collision uplift is in the real engine.** The live mountain-building path is
 `LithospherePlate.deform` -> `rheology.apply_convergent_deformation` (thicken `Hc`/`Hm`, then
-read isostasy), **not** the `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` code in
-`PlateWithLines.deform`, which is dead for any generated world. The *amount* knob is a
+read isostasy), **not** a direct `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` elevation
+delta (the removed v1 `PlateWithLines.deform` did that). The *amount* knob is a
 `strength` multiplier on the plastic thickening; the *reach* knob widens the node band that
 thickens (a near-field ring at `COLLISION_REACH_NEAR_FIELD_FACTOR` of the contested rate,
 `COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` (200 km) wider per unit of multiplier).
@@ -2657,8 +2656,8 @@ km figure first, then dividing by this step's *actual* `spacing_rad` to get the 
 the belt now reads the same width across every `node_density` / detail-level setting.
 
 **Far-field collision uplift is now live.** `ELEV_CHANGE_COLLISION_FAR_FIELD` has existed in
-the "Last elevation change" legend since v1 (`plates.py`'s `PlateWithLines.deform`, dead code
-for any generated world -- see above), but the live `LithospherePlate.deform` never applied an
+the "Last elevation change" legend since the removed v1 `PlateWithLines.deform`, but the live
+`LithospherePlate.deform` originally never applied an
 equivalent term, so the legend swatch could never actually paint. `LithospherePlate.deform` now
 carries its own far-field band (`FAR_FIELD_INNER_KM`/`FAR_FIELD_OUTER_KM`, 300-1000 km, rate
 `FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR` = 60 m/Myr, applied as a direct elevation delta rather than
@@ -2721,7 +2720,7 @@ fall, real soil erodes) and `coal_deposit_m`/`oil_gas_deposit_m`/`mineral_deposi
 (monotonically non-decreasing, the same self-reinforcing convention `silt_depth`/
 `channel_depth` already establish -- buried peat/hydrocarbons/ore aren't un-buried by a later
 climate shift). Threaded through every explicit `ElevationLine` reconstruction site the same
-way `channel_depth`/`is_volcano` already are (`PlateWithLines.deform`'s own growth/shrink,
+way `channel_depth`/`is_volcano` already are (`LithospherePlate.deform`'s own growth/shrink,
 `elevation_lines.py`'s regularize interpolation, `merge_split.py`'s split) -- every other
 mutation site already uses `dataclasses.replace`, which copies them automatically (see
 `plates.ElevationLine`'s own docstring).
@@ -2992,7 +2991,7 @@ exact shape shifting from ordinary terrain churn even when nothing physical abou
 changed.
 
 **Lakes accumulate silt.** `silt_depth` (a new persistent per-node array, threaded through
-`PlateWithLines.deform`/`elevation_lines.py`/`merge_split.py` exactly like `lake_depth`) is a
+`LithospherePlate.deform`/`elevation_lines.py`/`merge_split.py` exactly like `lake_depth`) is a
 small, ~100x-slower-than-water-growth fraction of the same inflow, settling permanently
 (monotonically -- silt never erodes back away) on a lake's own bed. `erosion.py` folds each
 step's `silt_deposited` straight into real terrain `elevation` (like every other deposition
@@ -3503,7 +3502,7 @@ than an oversight:
   traced as a *staircase* from each line's current endpoints, stepping at the midpoint phi
   between adjacent rows so a straight diagonal never cuts across a concave notch between two
   rows with very different theta extents (an earlier, smoother scanline version did exactly
-  that, and -- since `PlateWithLines.deform` now uses this same polygon to decide
+  that, and -- since `LithospherePlate.deform` now uses this same polygon to decide
   contested/open territory every turn, see [Plate motion: shift and
   deform](#boundary-evolution) -- confirmed directly to cause real over-claiming, not just a
   cosmetic smoothing). Since the split-row work below, the outline is traced as the exact
