@@ -360,6 +360,7 @@ def generate_world(
     climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
     fluid_density: float = 1.0,
     extra_sites_per_plate: int = lithosphere_plate.EXTRA_SITES_PER_PLATE,
+    voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
 ) -> World:
     """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
@@ -385,7 +386,10 @@ def generate_world(
     own comment for why it's a separate knob from climate_density rather than reusing it.
     `extra_sites_per_plate` controls how many adjacent Voronoi cells each plate fuses at
     generation (see lithosphere_plate.build_plate_tiling) -- higher means lumpier, less
-    convex initial plate outlines; 0 is the old one-cell-per-plate tiling. `sketch` (the
+    convex initial plate outlines; 0 is the old one-cell-per-plate tiling. `voronoi_points`
+    (the UI's "Voronoi points" Advanced-settings slider) is the total seed-point count and,
+    when given, overrides `extra_sites_per_plate` -- see lithosphere_plate.generate_plates.
+    `sketch` (the
     "Human-made" Generate World tab, see worldsketch.py) replaces noise-driven land/sea and
     random plate-site placement with a drawn/loaded coastline -- see
     lithosphere_plate.generate_plates's own `sketch` param for what it changes; `None` (every
@@ -397,6 +401,7 @@ def generate_world(
         land_fraction,
         node_density,
         extra_sites_per_plate=extra_sites_per_plate,
+        voronoi_points=voronoi_points,
         sketch=sketch,
     )
     rng = np.random.default_rng(seed)

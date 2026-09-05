@@ -82,12 +82,21 @@ const FLUID_DETAIL_CHOICES: { value: number; label: string }[] = [
   { value: 0.5, label: "Low" },
 ];
 const DEFAULT_FLUID_DETAIL = 2;
-// Matching backend app/plates.py's MIN_AUTO_PLATES/MAX_AUTO_PLATES -- the same range the
-// world's own "Auto" (seed-based) plate count is drawn from, so an explicit slider value
-// always lands somewhere the auto behavior could plausibly have picked too.
+// MIN_PLATES matches backend app/plates.py's MIN_AUTO_PLATES; the manual slider deliberately
+// runs past the auto (seed-based) MAX_AUTO_PLATES (20) up to 40, so a hand-picked value can be
+// denser than "Auto" would ever choose. The backend puts no upper clamp on an explicit
+// num_plates; ids past 20 just wrap the 20-colour PLATE_PALETTE (cosmetic only).
 const MIN_PLATES = 8;
-const MAX_PLATES = 20;
+const MAX_PLATES = 40;
 const DEFAULT_PLATES = 14;
+// The Advanced-settings "Voronoi points" slider -- the total number of Voronoi seed points the
+// plate tiling scatters before merging cells down to the chosen plate count (see backend
+// lithosphere_plate.generate_plates' voronoi_points param). The default keeps the backend's
+// historical feel (EXTRA_SITES_PER_PLATE = 2, i.e. ~3x the plate count at 14 plates); higher
+// makes plate outlines lumpier and less convex, lower makes them smoother.
+const MIN_VORONOI_POINTS = 8;
+const MAX_VORONOI_POINTS = 200;
+const DEFAULT_VORONOI_POINTS = 42;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
@@ -214,6 +223,7 @@ export default function App() {
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
+  const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -509,7 +519,7 @@ export default function App() {
         generateMode === "human" && sketchImageDataUrl ? sketchImageDataUrl.split(",", 2)[1] ?? null : null;
       const s = await generateWorld(
         seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, sketchBase64,
+        climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
       );
       setSummary(s);
       setSelectedPlateId(null);
@@ -533,7 +543,7 @@ export default function App() {
       setBusy(false);
     }
   }, [
-    seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates,
+    seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
     generateMode, sketchImageDataUrl, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
   ]);
 
@@ -1508,6 +1518,13 @@ export default function App() {
           numPlates={numPlates}
           minPlates={MIN_PLATES}
           maxPlates={MAX_PLATES}
+          voronoiPoints={voronoiPoints}
+          minVoronoiPoints={MIN_VORONOI_POINTS}
+          maxVoronoiPoints={MAX_VORONOI_POINTS}
+          effectivePlateCount={autoPlates ? DEFAULT_PLATES : numPlates}
+          generateMode={generateMode}
+          sketchImageDataUrl={sketchImageDataUrl}
+          seed={seed}
           axialTiltDeg={axialTiltDeg}
           initialSoilMaturityPercent={initialSoilMaturityPercent}
           fluidDensity={fluidDensity}
@@ -1516,6 +1533,7 @@ export default function App() {
           onContinentalPercentChange={setContinentalPercent}
           onAutoPlatesChange={setAutoPlates}
           onNumPlatesChange={setNumPlates}
+          onVoronoiPointsChange={setVoronoiPoints}
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
           onFluidDensityChange={setFluidDensity}

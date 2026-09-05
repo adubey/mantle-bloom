@@ -117,6 +117,11 @@ class GenerateRequest(BaseModel):
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
+    # The UI's "Voronoi points" Advanced-settings slider -- the total number of Voronoi seed
+    # points the plate tiling scatters before merging cells down to `num_plates` plates.
+    # Optional; when omitted the tiling uses its fixed per-plate default (see
+    # lithosphere_plate.EXTRA_SITES_PER_PLATE). More points -> lumpier plate outlines.
+    voronoi_points: int | None = None
     # The UI's "continental plates" and "initial land" sliders (0 to 1) -- optional (each
     # falls back to its own default behavior, see plates.generate_plates) but the frontend
     # always sends both.
@@ -571,6 +576,8 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.FLUID_DENSITY_CHOICES}"
         )
+    if req.voronoi_points is not None and not 1 <= req.voronoi_points <= 500:
+        raise HTTPException(status_code=400, detail="voronoi_points must be between 1 and 500")
     sketch_masks = None
     if req.sketch is not None:
         try:
@@ -581,6 +588,7 @@ def generate(req: GenerateRequest) -> dict:
         world = generate_world(
             req.seed,
             num_plates=req.num_plates,
+            voronoi_points=req.voronoi_points,
             continental_fraction=req.continental_fraction,
             land_fraction=req.land_fraction,
             num_mantle_centers=req.num_mantle_centers,

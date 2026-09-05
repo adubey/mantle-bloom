@@ -362,6 +362,10 @@ async function asBlob(resp: Response): Promise<Blob> {
 // `numPlates`: the "Number of plates" slider (see backend app/plates.py's MIN_AUTO_PLATES/
 // MAX_AUTO_PLATES) -- `null`/omitted means "Auto," the world's original behavior of tiling
 // itself into a plausible plate count drawn from the seed alone (see plates.generate_plates).
+// voronoiPoints is the Advanced-settings "Voronoi points" slider -- the total number of
+// Voronoi seed points scattered before the tiling merges cells down to numPlates plates (the
+// server turns it into a per-plate extra-site count once the final plate count is known, see
+// lithosphere_plate.generate_plates). More points -> lumpier, less convex plate outlines.
 // continentalFraction/landFraction are the dialog's two sliders (0 to 1): the fraction of
 // plates made continental, and the fraction of the whole sphere that starts above sea level
 // (independent of the first -- see plates.py's _land_noise_threshold for how the two
@@ -398,6 +402,7 @@ export function generateWorld(
   climateDensity: number,
   fluidDensity: number,
   numPlates: number | null,
+  voronoiPoints: number,
   sketchImageBase64: string | null = null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
@@ -406,6 +411,7 @@ export function generateWorld(
     body: JSON.stringify({
       seed,
       num_plates: numPlates,
+      voronoi_points: voronoiPoints,
       continental_fraction: continentalFraction,
       land_fraction: landFraction,
       axial_tilt_deg: axialTiltDeg,

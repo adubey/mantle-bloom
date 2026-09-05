@@ -1,3 +1,5 @@
+import VoronoiPreview from "./VoronoiPreview";
+
 interface Props {
   landPercent: number;
   continentalPercent: number;
@@ -5,6 +7,22 @@ interface Props {
   numPlates: number;
   minPlates: number;
   maxPlates: number;
+  // The "Voronoi points" slider -- the total number of Voronoi seed points the plate tiling
+  // scatters before merging cells down to the plate count (see backend
+  // lithosphere_plate.generate_plates' voronoi_points param). Applies to both Random and
+  // Human-made generation.
+  voronoiPoints: number;
+  minVoronoiPoints: number;
+  maxVoronoiPoints: number;
+  // The plate count the Human-made Voronoi preview should merge down to -- the explicit
+  // `numPlates` when "Auto" is off, or App.tsx's DEFAULT_PLATES stand-in when it's on (the
+  // real auto count is only known seed-side at generation time).
+  effectivePlateCount: number;
+  // "random" | "human" and the current sketch, both only used to decide whether -- and what --
+  // to show in the Voronoi preview below the slider.
+  generateMode: "random" | "human";
+  sketchImageDataUrl: string | null;
+  seed: number;
   axialTiltDeg: number;
   initialSoilMaturityPercent: number;
   fluidDensity: number;
@@ -16,6 +34,7 @@ interface Props {
   onContinentalPercentChange: (v: number) => void;
   onAutoPlatesChange: (v: boolean) => void;
   onNumPlatesChange: (v: number) => void;
+  onVoronoiPointsChange: (v: number) => void;
   onAxialTiltDegChange: (v: number) => void;
   onInitialSoilMaturityPercentChange: (v: number) => void;
   onFluidDensityChange: (v: number) => void;
@@ -33,6 +52,13 @@ export default function AdvancedSettingsModal({
   numPlates,
   minPlates,
   maxPlates,
+  voronoiPoints,
+  minVoronoiPoints,
+  maxVoronoiPoints,
+  effectivePlateCount,
+  generateMode,
+  sketchImageDataUrl,
+  seed,
   axialTiltDeg,
   initialSoilMaturityPercent,
   fluidDensity,
@@ -41,11 +67,14 @@ export default function AdvancedSettingsModal({
   onContinentalPercentChange,
   onAutoPlatesChange,
   onNumPlatesChange,
+  onVoronoiPointsChange,
   onAxialTiltDegChange,
   onInitialSoilMaturityPercentChange,
   onFluidDensityChange,
   onClose,
 }: Props) {
+  const showVoronoiPreview = generateMode === "human" && sketchImageDataUrl != null;
+
   return (
     <div
       onClick={onClose}
@@ -126,6 +155,39 @@ export default function AdvancedSettingsModal({
               style={{ width: "100%" }}
             />
           </label>
+        )}
+
+        <label style={{ display: "block", marginBottom: showVoronoiPreview ? 8 : 16 }}>
+          Voronoi points: {voronoiPoints}
+          <input
+            type="range"
+            min={minVoronoiPoints}
+            max={maxVoronoiPoints}
+            value={voronoiPoints}
+            onChange={(e) => onVoronoiPointsChange(Number(e.target.value))}
+            style={{ width: "100%" }}
+          />
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+            Total Voronoi seed points scattered before the tiling merges them down to the plate
+            count. More points give lumpier, more organic plate outlines; fewer give smoother,
+            more convex ones.
+          </div>
+        </label>
+
+        {showVoronoiPreview && (
+          <div style={{ marginBottom: 16 }}>
+            <VoronoiPreview
+              sketchImageDataUrl={sketchImageDataUrl!}
+              seed={seed}
+              numPoints={voronoiPoints}
+              plateCount={effectivePlateCount}
+              continentalPercent={continentalPercent}
+            />
+            <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+              Approximate preview of how the plates split over your drawn coastline -- the
+              generated world's plates won't match this exactly.
+            </div>
+          </div>
         )}
 
         <label style={{ display: "block", marginBottom: 16 }}>

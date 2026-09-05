@@ -9,7 +9,9 @@ import type { MapView } from "./api";
 // rather than jumping many steps at a time.
 const STEPS_PER_FRAME_OPTIONS = [1, 10, 100];
 const DEFAULT_STEPS_PER_FRAME = 1;
-const DEFAULT_NUM_FRAMES = 20;
+// Defaults to the max (see MAX_NUM_FRAMES) -- a bounded recording is almost always "record a
+// good long run", so start the slider at the ceiling rather than a short clip.
+const DEFAULT_NUM_FRAMES = 480;
 // Matching backend app/main.py's MAX_ANIMATION_FRAMES -- also the safety ceiling underneath
 // "keep going until Stop is pressed" (see the `unbounded` checkbox below).
 const MAX_NUM_FRAMES = 480;
