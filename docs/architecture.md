@@ -256,6 +256,14 @@ merge_split.py       plate consumption, sustained-collision continental merging 
                      at most one per step), mantle-flow-driven splitting, periodic geometric
                      defragmentation (severed-lobe / stranded-node cleanup deform() can't do),
                      event log messages
+gaps.py              whole-sphere coverage maintenance, periodic (world.step_world, same
+                     cadence as merge_split's defragmentation): finds any region no plate's
+                     lines currently reach -- e.g. ocean floor a fully-subducted plate
+                     vacated with no neighbour left nearby to grow into it -- and spawns a
+                     new oceanic plate to cover it (`lithosphere_plate.new_plate`).
+                     deform()'s own per-step boundary growth only ever extends a line from
+                     an existing node, so it structurally can't reach a region with no
+                     nearby line at all; this is the periodic backstop for that gap
 volcanism.py          every-step eruption lifecycle for existing volcano nodes (active-years
                      countdown, per-step eruption roll, elevation/mineral_deposit_m growth) --
                      volcanic-field *creation* now happens inline inside `deform()`'s own

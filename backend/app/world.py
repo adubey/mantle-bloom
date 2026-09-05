@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, geology, hydrology, mantle, merge_split, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, hydrology, mantle, merge_split, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -512,6 +512,13 @@ def step_world(world: World, years: float) -> None:
         # against this step's final geometry (see merge_split.update_overlap_tracking /
         # docs/debugging.md).
         merge_split.update_overlap_tracking(world, years)
+        # Whole-sphere coverage maintenance: spawn new oceanic crust into any region no plate
+        # has reached in a long time (see gaps.py) -- e.g. ocean floor a fully-subducted
+        # plate vacated with no neighbour left nearby to grow into it. Gated to the same
+        # cadence as defragment_plates above (a whole-world pass, not needed every step).
+        if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
+            for message in gaps.fill_gaps(world):
+                world.log_event(message)
 
     erosion_result = None
     if world.simulate_climate_biomes:
