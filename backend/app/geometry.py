@@ -354,3 +354,31 @@ def to_local(frame: np.ndarray, world_xyz: np.ndarray) -> np.ndarray:
 def to_world(frame: np.ndarray, local_xyz_vec: np.ndarray) -> np.ndarray:
     """Plate-local unit vectors (..., 3) -> world unit vectors, given local frame `frame`."""
     return local_xyz_vec @ frame.T
+
+
+def local_separation_components(
+    frame: np.ndarray, phi: np.ndarray, theta: np.ndarray, direction_world: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """A world-frame direction vector (e.g. `torque.BoundaryForceInputs.direction_to_neighbor`),
+    at each node's own plate-local (phi, theta), projected onto that node's own local tangent
+    basis and returned as (component along theta_hat, component along phi_hat) -- not
+    normalized to unit length (the caller, `rheology.stretch_components`, normalizes).
+
+    theta_hat = d(local_xyz)/dtheta / cos(phi) = (-sin theta, cos theta, 0): the direction
+    increasing theta moves a point, at fixed phi. phi_hat = d(local_xyz)/dphi (already unit
+    length) = (-sin phi cos theta, -sin phi sin theta, cos phi): the direction increasing phi
+    moves a point, at fixed theta. Both are exact tangent-plane basis vectors for the
+    `local_xyz` convention this module's own docstring defines, so this needs no lookup table
+    or finite-difference approximation -- see `lithosphere_plate.py`'s boundary-mode use for why
+    a node's own separation direction, decomposed this way, stands in for "the line that would
+    pass through most of the empty space" without needing to fit one."""
+    phi = np.asarray(phi, dtype=float)
+    theta = np.asarray(theta, dtype=float)
+    direction_local = to_local(frame, direction_world)
+    sin_p, cos_p = np.sin(phi), np.cos(phi)
+    sin_t, cos_t = np.sin(theta), np.cos(theta)
+    theta_hat = np.stack([-sin_t, cos_t, np.zeros_like(theta)], axis=-1)
+    phi_hat = np.stack([-sin_p * cos_t, -sin_p * sin_t, cos_p], axis=-1)
+    sep_theta = np.sum(direction_local * theta_hat, axis=-1)
+    sep_phi = np.sum(direction_local * phi_hat, axis=-1)
+    return sep_theta, sep_phi

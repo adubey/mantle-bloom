@@ -127,6 +127,50 @@ def apply_convergent_deformation(
     return new_hc, new_hm
 
 
+def stretch_components(sep_theta: np.ndarray, sep_phi: np.ndarray, gap_rad: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(theta_gap, phi_gap): `gap_rad` of required rift-closing stretch, decomposed along a
+    node's own local (theta, phi) tangent basis by the local separation direction
+    `(sep_theta, sep_phi)` -- not necessarily unit length (a fault tangent or a raw
+    `direction_to_neighbor` projection, either one, in either mode), normalized here.
+
+    This is a plain vector decomposition, not a physical law of its own: `gap_rad` closing
+    distance in the direction `(sep_theta, sep_phi)` points has that much of it running along
+    this node's own theta axis and that much along its phi axis, by definition of what a
+    component *is*. `lithosphere_plate.py` feeds `theta_gap` to its own line-end stretch
+    (`_grow_or_shrink_line_for_deform`) and `phi_gap` to its own new-row claim
+    (`_claim_adjacent_territory`) -- see each call site for why a fault/boundary's orientation
+    relative to a *row* (not the fault's own absolute heading) is what decides which of the two
+    existing growth mechanisms should absorb how much of a given gap."""
+    norm = np.hypot(sep_theta, sep_phi)
+    norm = np.where(norm < 1e-12, 1.0, norm)
+    return gap_rad * np.abs(sep_theta) / norm, gap_rad * np.abs(sep_phi) / norm
+
+
+def apply_stretch_thinning(
+    hc_m: np.ndarray, hm_m: np.ndarray, old_spacing_rad: np.ndarray, extra_gap_rad: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(new_hc, new_hm, melting_mask): a column whose own footprint just widened from
+    `old_spacing_rad` to `old_spacing_rad + extra_gap_rad` -- closing a rift by stretching the
+    *existing* crust to cover the new ground, rather than growing fresh nodes into it -- thins
+    by that same ratio. Same mass/area-conservation idea as real crustal extension's beta
+    factor (a column of fixed cross-sectional volume, spread over more footprint, is thinner by
+    exactly the ratio its footprint grew): `new_hc = hc * old_spacing / new_spacing`. Floored at
+    the same `MIN_CRUSTAL_THICKNESS_M`/`MIN_MANTLE_LITHOSPHERE_THICKNESS_M` this module's other
+    thinning path (`apply_divergent_deformation`) never lets Hc/Hm integrate through, and
+    `melting_mask` marks nodes whose Hc just crossed below `RIFT_CRITICAL_THICKNESS_M` in the
+    same was-above-and-now-below convention, so a caller can feed it through the exact same
+    decompression-melting eruption path an ordinary divergent rift already uses -- stretch-thinning
+    is still thinning, and thin-enough crust still erupts."""
+    new_spacing = old_spacing_rad + extra_gap_rad
+    safe_spacing = np.where(new_spacing < 1e-12, 1.0, new_spacing)
+    ratio = np.where(new_spacing < 1e-12, 1.0, old_spacing_rad / safe_spacing)
+    was_above = hc_m >= RIFT_CRITICAL_THICKNESS_M
+    new_hc = np.clip(hc_m * ratio, lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
+    new_hm = np.clip(hm_m * ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, None)
+    melting = was_above & (new_hc < RIFT_CRITICAL_THICKNESS_M)
+    return new_hc, new_hm, melting
+
+
 def apply_divergent_deformation(hc_m: np.ndarray, hm_m: np.ndarray, closing_rate_m_per_s: np.ndarray, years_myr: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Uncontested, extensional (opening) boundary nodes: crust thins under tension. Returns
     (new_hc, new_hm, decompression_melting_mask) -- the mask marks nodes whose Hc just

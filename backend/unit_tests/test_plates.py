@@ -1000,27 +1000,37 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
             return float(line.theta[-1] - line.theta[0])
 
         before = main_span()
-        # One step, with a wide max_distance so an unsuppressed end can take several nodes --
-        # a later step would see `_claim_adjacent_territory` dilute the compact plate too (the
-        # ratchet this gate exists to bound), so measure the first step alone.
+        # One step -- a later step would see `_claim_adjacent_territory` dilute the compact
+        # plate too (the ratchet this gate exists to bound), so measure the first step alone.
+        # max_distance itself no longer bounds a single step's growth here: an ordinary
+        # (non-arc) open end now stretches its own end node by up to
+        # `(IRREGULARITY_TOLERANCE - 1) * dtheta` per step (see
+        # LithospherePlate._grow_or_shrink_line_for_deform's `_stretch_end`) rather than
+        # appending up to `max_extend_nodes` fresh nodes, so growth is deliberately smaller and
+        # gradual per step regardless of how wide `max_distance` allows the gap estimate to be.
         plate.deform(world, [], years=200_000, max_distance=5 * spacing)
         return main_span() - before
 
     # Diluted lattice (main row at the oceanic reference column): ~40 nodes vs ~8 genuine
     # continental -> well past CONTINENTAL_AREA_BUDGET_MULT -> the open end grows nothing.
     assert _main_span_growth(REFERENCE_HC_OCEANIC_M) < 0.5 * spacing
-    # Genuine continental thickness everywhere -> within budget -> the open end still grows.
-    assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 3 * spacing
+    # Genuine continental thickness everywhere -> within budget -> the open end still grows
+    # (by the new stretch mechanism's own, deliberately small, per-step amount).
+    assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 0.8 * spacing
 
 
 def test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor():
     """A continental plate's *leading* edge advancing into space a subducting oceanic slab is
-    vacating grows juvenile arc / accreted-terrane crust (the thicker ARC_MARGIN_SEED_*
-    column, stamped as a subduction arc), not the drowned oceanic reference column
-    `growth_seed_thickness` seeds everywhere else. The active-margin signal here is the
-    subduction-arc provenance stamp a recent convergent step left on the leading nodes."""
-    from app.elevation_lines import ELEV_CHANGE_NEW_CRUST, ELEV_CHANGE_SUBDUCTION_ARC
-    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HC_OCEANIC_M, REFERENCE_HM_CONTINENTAL_M
+    vacating still grows juvenile arc / accreted-terrane crust (the thicker ARC_MARGIN_SEED_*
+    column, stamped as a subduction arc, via the old node-appending growth this active-margin
+    case is deliberately kept on) -- distinct from an *ordinary* open end (no active-margin
+    signal), which now stretches and thins its own existing crust in place
+    (`LithospherePlate._grow_or_shrink_line_for_deform`'s `_stretch_end`, stamped rift/volcano
+    provenance) rather than appending a fresh flat oceanic-reference node. The active-margin
+    signal here is the subduction-arc provenance stamp a recent convergent step left on the
+    leading nodes."""
+    from app.elevation_lines import ELEV_CHANGE_NEW_CRUST, ELEV_CHANGE_RIFT, ELEV_CHANGE_SUBDUCTION_ARC, ELEV_CHANGE_VOLCANO
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
     from app.lithosphere_plate import ARC_MARGIN_SEED_HC_M, LithospherePlate
     from app.world import World
 
@@ -1050,12 +1060,17 @@ def test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor():
     ocean_hc, ocean_reason = _grown_high_end(mark_active_margin=False)
     arc_hc, arc_reason = _grown_high_end(mark_active_margin=True)
 
-    # Baseline: new margin nodes seeded at (or near, after regularize blends toward the old
-    # continental interior) the oceanic reference column, stamped plain new crust.
-    assert ocean_hc.mean() < 0.5 * (REFERENCE_HC_OCEANIC_M + REFERENCE_HC_CONTINENTAL_M)
-    assert (ocean_reason == ELEV_CHANGE_NEW_CRUST).any()
-    # Active margin: markedly thicker juvenile crust, stamped as a subduction arc.
-    assert arc_hc.mean() > ocean_hc.mean() + 5_000.0
+    # Baseline (no active-margin signal): the ordinary end-stretch thins the existing
+    # continental column in place -- strictly below where it started, not seeded at a flat
+    # oceanic reference or left untouched -- and its provenance is rift/volcanic, never
+    # "new crust" (that stamp is arc-growth's own, below).
+    assert ocean_hc.mean() < REFERENCE_HC_CONTINENTAL_M
+    assert not (ocean_reason == ELEV_CHANGE_NEW_CRUST).any()
+    assert np.isin(ocean_reason, [ELEV_CHANGE_RIFT, ELEV_CHANGE_VOLCANO]).all()
+    # Active margin: markedly thicker juvenile crust than the thinned ordinary case, stamped
+    # as a subduction arc, still via the old flat-seed append (this case is untouched by the
+    # rift-stretch change).
+    assert arc_hc.mean() > ocean_hc.mean()
     assert arc_hc.max() >= ARC_MARGIN_SEED_HC_M - 1e-6 or arc_hc.mean() > 20_000.0
     assert (arc_reason == ELEV_CHANGE_SUBDUCTION_ARC).any()
 

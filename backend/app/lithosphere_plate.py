@@ -33,6 +33,7 @@ from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_OCEANIC,
     ElevationLine,
+    IRREGULARITY_TOLERANCE,
     PLANET_RADIUS_KM,
     build_lines_from_lattice,
     line_spacing_rad,
@@ -60,6 +61,17 @@ from . import bathymetry, lithosphere, rheology, terrain_noise, torque, worldske
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
+
+# `_claim_adjacent_territory`'s own mass-conservation share (the phi/between-row half of
+# rift-stretch closing -- see `_grow_or_shrink_line_for_deform`'s theta/within-row half for
+# the other): rather than seed a brand-new row at the full oceanic reference column "for
+# free," the volume it would otherwise get is drawn down across this many of the plate's own
+# existing outermost rows on that side *plus* the new row itself, in proportion to how much of
+# a full row-spacing's worth of genuine phi-direction separation is behind the claim (see
+# rheology.stretch_components' own phi_gap). A small constant, not node-count-scaled, like
+# CONTINENTAL_CONTESTED_RETREAT_MIN_RUN above -- this is about how many *rows* share a
+# stretching event's mass deficit, not a distance or a per-node budget.
+K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION = 2
 
 # A plate whose boundary is more deeply/widely overlapping a neighbour right now should
 # crumple faster than one barely grazing -- on top of (not instead of) the existing
@@ -204,6 +216,46 @@ def growth_seed_thickness() -> tuple[float, float]:
     continental rifting is untouched, since that thins *existing* crust
     (`rheology.apply_divergent_deformation`) rather than growing new nodes here."""
     return lithosphere.REFERENCE_HC_OCEANIC_M, lithosphere.YOUNG_RIDGE_HM_M
+
+
+def _erupt_melted_nodes(
+    world: "World",  # noqa: F821
+    plate_id: int,
+    line_index: int,
+    hc: np.ndarray,
+    hm: np.ndarray,
+    crust_type_code: np.ndarray,
+    is_volcano: np.ndarray,
+    volcano_remaining: np.ndarray,
+    melting: np.ndarray,
+    prior_elevation: np.ndarray,
+) -> None:
+    """In-place: any node flagged `melting` (its Hc just crossed below
+    `RIFT_CRITICAL_THICKNESS_M` -- from ordinary divergent thinning
+    (`rheology.apply_divergent_deformation`) or from rift-stretch thinning
+    (`rheology.apply_stretch_thinning`) alike, thinning is thinning) erupts fresh crust in
+    place, typed by whether it was still standing above sea level (`prior_elevation > 0`,
+    this node's elevation *before* today's melting event) at the moment it melted through --
+    the bimodal continental-rift-volcanism vs. ordinary mid-ocean-ridge distinction `deform()`'s
+    own module-level docstring describes. Mutates hc/hm/crust_type_code/is_volcano/
+    volcano_remaining in place; the caller still owns recomputing elevation from the resulting
+    hc/hm afterward (isostasy needs each melted node's own new crust_type_code-driven density,
+    which can now vary node to node)."""
+    if not np.any(melting):
+        return
+    from .elevation_lines import VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
+
+    melt_land = melting & (prior_elevation > 0.0)
+    melt_ocean = melting & ~melt_land
+    hc[melt_land] = lithosphere.REFERENCE_HC_CONTINENTAL_M
+    hm[melt_land] = lithosphere.REFERENCE_HM_CONTINENTAL_M
+    crust_type_code[melt_land] = CRUST_TYPE_CONTINENTAL
+    hc[melt_ocean] = lithosphere.REFERENCE_HC_OCEANIC_M
+    hm[melt_ocean] = lithosphere.YOUNG_RIDGE_HM_M
+    crust_type_code[melt_ocean] = CRUST_TYPE_OCEANIC
+    is_volcano[melting] = True
+    rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate_id, line_index))
+    volcano_remaining[melting] = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=int(melting.sum()))
 
 
 def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
@@ -620,31 +672,17 @@ class LithospherePlate(PlateWithLines):
             is_volcano = line.is_volcano.copy()
             volcano_remaining = line.volcano_active_years_remaining.copy()
             crust_type_code = line.crust_type_code.copy()
-            if np.any(melting):
-                # Decompression melting (spec 2.3): a rift that just thinned past the
-                # critical threshold erupts fresh crust in place -- same one-guaranteed-
-                # eruption convention v1's stretch-volcano growth used. The erupted material's
-                # type depends on where it surfaces: still standing above sea level (this
-                # node's *pre-melt* elevation, i.e. this line's own elevation before today's
-                # deform() pass touched it) is continental-type magmatism -- real continental
-                # rifts stay bimodal-volcanic land for a long stretch before a true ocean
-                # opens (the East African Rift, well before the Red Sea stage) -- while a
-                # node already at or below sea level (a drowned margin, or an ordinary oceanic
-                # ridge) erupts ordinary mid-ocean-ridge oceanic crust. See
-                # docs/simulation-model.md's "Magma-typed decompression melting".
-                from .elevation_lines import VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
-
-                melt_land = melting & (line.elevation > 0.0)
-                melt_ocean = melting & ~melt_land
-                hc[melt_land] = lithosphere.REFERENCE_HC_CONTINENTAL_M
-                hm[melt_land] = lithosphere.REFERENCE_HM_CONTINENTAL_M
-                crust_type_code[melt_land] = CRUST_TYPE_CONTINENTAL
-                hc[melt_ocean] = lithosphere.REFERENCE_HC_OCEANIC_M
-                hm[melt_ocean] = lithosphere.YOUNG_RIDGE_HM_M
-                crust_type_code[melt_ocean] = CRUST_TYPE_OCEANIC
-                is_volcano[melting] = True
-                rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, line_index))
-                volcano_remaining[melting] = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=int(melting.sum()))
+            # Decompression melting (spec 2.3): a rift that just thinned past the critical
+            # threshold erupts fresh crust in place -- same one-guaranteed-eruption convention
+            # v1's stretch-volcano growth used. The erupted material's type depends on where it
+            # surfaces: still standing above sea level (this node's *pre-melt* elevation, i.e.
+            # this line's own elevation before today's deform() pass touched it) is
+            # continental-type magmatism -- real continental rifts stay bimodal-volcanic land
+            # for a long stretch before a true ocean opens (the East African Rift, well before
+            # the Red Sea stage) -- while a node already at or below sea level (a drowned
+            # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
+            # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
+            _erupt_melted_nodes(world, self.plate_id, line_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, line.elevation)
 
             # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
             # bump on the transform band, kept as a direct elevation delta (like erosion's
@@ -720,6 +758,7 @@ class LithospherePlate(PlateWithLines):
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
                 inputs.dist_to_neighbor[sl],
+                inputs.direction_to_neighbor[sl],
                 contested,
                 shrinkable,
                 accrete,
@@ -755,10 +794,36 @@ class LithospherePlate(PlateWithLines):
         first_contested = np.argmax(contested) if np.any(contested) else len(contested)
         return int(first_contested)
 
+    def _separation_components(self, world: "World", phi: float, theta: float, direction_world: np.ndarray) -> tuple[float, float]:  # noqa: F821
+        """(sep_theta, sep_phi): this node's own local rift-separation direction, decomposed
+        along its row's own (theta, phi) tangent basis -- see rheology.stretch_components for
+        what the caller does with it. "fault" mode prefers the nearest active fault's own
+        tangent (faults.fault_tangent_components, swapped -- a fault opens *across* its own
+        strike); every other mode, or a "fault"-mode plate with no active fault there yet,
+        falls back to this node's own `direction_to_neighbor` projected into the same local
+        basis (geometry.local_separation_components) -- the separation direction is normal to
+        a rift's own trend, so this stands in for "the line that would pass through most of
+        the empty space" without needing to fit one."""
+        if getattr(world, "fault_deformation_mode", "fault") == "fault":
+            from . import faults
+
+            tangent = faults.fault_tangent_components(world, self, phi, theta)
+            if tangent is not None:
+                return tangent
+        if float(np.linalg.norm(direction_world)) < 1e-9:
+            # No neighbour close enough to have a meaningful direction toward at all (a
+            # genuinely isolated plate/stretch of open water, `direction_world` left at zero
+            # by torque.gather_boundary_force_inputs) -- fall back to this row's own theta
+            # direction, matching ordinary end growth's long-standing behaviour when there is
+            # nothing nearby to orient a stretch against.
+            return 1.0, 0.0
+        return geometry.local_separation_components(self.frame, phi, theta, direction_world)
+
     def _grow_or_shrink_line_for_deform(
         self,
         line: ElevationLine,
         dist: np.ndarray,
+        direction: np.ndarray,
         contested: np.ndarray,
         shrinkable: np.ndarray,
         accrete: np.ndarray,
@@ -785,13 +850,20 @@ class LithospherePlate(PlateWithLines):
         `accrete` marks end nodes whose crustal/mantle-lithosphere volume must be conserved
         when they retreat (a continental suture -- see `_redistribute_accreted_column`);
         elsewhere retreat drops the column (oceanic subduction, or a continental passive
-        margin against an oceanic slab)."""
+        margin against an oceanic slab).
+
+        `direction` (world-frame, this plate's own `torque.BoundaryForceInputs.
+        direction_to_neighbor`, one per node) feeds the end-growth branch's own rift-stretch
+        decomposition (`rheology.stretch_components` via `self._separation_components`) --
+        see that branch's own comment for why growth now stretches an existing end node
+        rather than always appending fresh ones."""
         theta = line.theta.copy()
         elevation = line.elevation.copy()
         contested = contested.copy()
         shrinkable = shrinkable.copy()
         accrete = accrete.copy()
         dist = dist.copy()
+        direction = direction.copy()
         rho_c = self.crust_density()
         persistent_fields = {name: getattr(line, name).copy() for name in ElevationLine.OPTIONAL_FIELDS}
         if len(theta) == 0:
@@ -834,6 +906,7 @@ class LithospherePlate(PlateWithLines):
                 accrete_removed = accrete[-n_remove:].copy()
                 theta, elevation = theta[:-n_remove], elevation[:-n_remove]
                 contested, shrinkable, accrete, dist = contested[:-n_remove], shrinkable[:-n_remove], accrete[:-n_remove], dist[:-n_remove]
+                direction = direction[:-n_remove]
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
                 _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, accrete_removed, from_high=True)
 
@@ -847,6 +920,7 @@ class LithospherePlate(PlateWithLines):
                 accrete_removed = accrete[:n_remove].copy()
                 theta, elevation = theta[n_remove:], elevation[n_remove:]
                 contested, shrinkable, accrete, dist = contested[n_remove:], shrinkable[n_remove:], accrete[n_remove:], dist[n_remove:]
+                direction = direction[n_remove:]
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
                 _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, accrete_removed, from_high=False)
 
@@ -878,6 +952,7 @@ class LithospherePlate(PlateWithLines):
             if not keep.all():
                 theta, elevation = theta[keep], elevation[keep]
                 contested, shrinkable, accrete, dist = contested[keep], shrinkable[keep], accrete[keep], dist[keep]
+                direction = direction[keep]
                 persistent_fields = {name: values[keep] for name, values in persistent_fields.items()}
 
         # Brand-new areal crust at a growing end is normally oceanic regardless of this
@@ -909,31 +984,101 @@ class LithospherePlate(PlateWithLines):
                 out[name] = fill
             return out
 
+        def _stretch_end(index: int, sign: float, dist_end: float, direction_end: np.ndarray) -> None:
+            """Close the ordinary (non-arc) share of a gap by stretching this row's own end
+            node outward rather than appending brand-new full-thickness nodes -- see
+            rheology.stretch_components/apply_stretch_thinning and this plate's own
+            _separation_components. Only the theta-attributable share of the gap (how much of
+            it runs along this row's own theta axis, vs. across to a neighbouring row -- see
+            _claim_adjacent_territory for that other share) is closed here; capped per step at
+            `(IRREGULARITY_TOLERANCE - 1) * dtheta`, *not* `max_extend_nodes`/`ring_room()`'s
+            much larger per-step allowance (confirmed as a real bug: stretching the endpoint by
+            several node-spacings in one jump leaves a gap past `CONTIGUOUS_RUN_GAP_MULT` to
+            its inward neighbour, so `split_into_contiguous_runs` -- called on every result
+            below -- reads the stretched node as a disconnected one-node fragment rather than
+            part of a row that merely needs re-densifying). Staying inside
+            `IRREGULARITY_TOLERANCE` instead means `needs_regularizing`/`regularize_line`
+            (called every deform() pass, see below) always see this as "irregular, resample
+            it," never "disconnected, split it" -- so a wide gap now closes the same way it did
+            before this change: gradually, one bounded step at a time, just via repeated
+            stretch-and-resample instead of repeated append. `regularize_line`'s own resample
+            carries the now-thinned Hc/Hm through via interpolation exactly like every other
+            persistent field already does -- so "no new points are created" here still ends up
+            at target density, just one pass later, with the thinning already baked in."""
+            # Clamp to a finite gap estimate *before* decomposing it -- `dist_end` is `inf`
+            # whenever nothing is within `reach_rad` at all (an isolated end, or simply no
+            # neighbour close enough yet), and `inf * 0.0` (a separation direction with an
+            # exactly-zero component along one axis) is `nan`, not `0.0` -- the same
+            # gap_estimate clamp the old node-appending growth always applied before this
+            # change (see the arc branch just above, `gap_estimate = min(dist_end, ...)`).
+            gap_estimate = min(dist_end, (n_distance_cap + 1) * spacing_rad)
+            sep_theta, sep_phi = self._separation_components(world, line.phi, float(theta[index]), direction_end)
+            theta_gap, _ = rheology.stretch_components(sep_theta, sep_phi, gap_estimate)
+            theta_gap = min(theta_gap, (IRREGULARITY_TOLERANCE - 1.0) * dtheta, max(ring_room(), 0) * dtheta)
+            if theta_gap <= 0.0:
+                return
+            candidate = np.array([theta[index] + sign * theta_gap])
+            if self._count_open_prefix(candidate, line.phi, neighbours) == 0:
+                return
+            prior_elevation = float(elevation[index])
+            new_hc, new_hm, melt = rheology.apply_stretch_thinning(
+                persistent_fields["crustal_thickness_m"][index, None],
+                persistent_fields["mantle_lithosphere_thickness_m"][index, None],
+                np.array([dtheta]),
+                np.array([theta_gap]),
+            )
+            persistent_fields["crustal_thickness_m"][index] = new_hc[0]
+            persistent_fields["mantle_lithosphere_thickness_m"][index] = new_hm[0]
+            _erupt_melted_nodes(
+                world,
+                self.plate_id,
+                line_index,
+                persistent_fields["crustal_thickness_m"][index, None],
+                persistent_fields["mantle_lithosphere_thickness_m"][index, None],
+                persistent_fields["crust_type_code"][index, None],
+                persistent_fields["is_volcano"][index, None],
+                persistent_fields["volcano_active_years_remaining"][index, None],
+                melt,
+                np.array([prior_elevation]),
+            )
+            theta[index] = candidate[0]
+            node_rho_c = lithosphere.node_crust_density(persistent_fields["crust_type_code"][index, None], self.crust_type)
+            elevation[index] = lithosphere.isostatic_elevation(
+                persistent_fields["crustal_thickness_m"][index, None], persistent_fields["mantle_lithosphere_thickness_m"][index, None], node_rho_c
+            )[0]
+            persistent_fields["elev_change_reason"][index] = ELEV_CHANGE_VOLCANO if melt[0] else ELEV_CHANGE_RIFT
+
         if not suppress_growth and not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
-            gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
-            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
-            candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
-            n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
-            if n_new > 0:
-                hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(arc_end_high)
-                new_theta = candidate_theta[:n_new]
-                theta = np.append(theta, new_theta)
-                elevation = np.append(elevation, np.full(n_new, elev_seed))
-                for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
-                    persistent_fields[name] = np.append(persistent_fields[name], fill)
+            if arc_end_high:
+                gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
+                n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
+                candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
+                n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
+                if n_new > 0:
+                    hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(True)
+                    new_theta = candidate_theta[:n_new]
+                    theta = np.append(theta, new_theta)
+                    elevation = np.append(elevation, np.full(n_new, elev_seed))
+                    for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
+                        persistent_fields[name] = np.append(persistent_fields[name], fill)
+            else:
+                _stretch_end(-1, 1.0, dist[-1], direction[-1])
 
         if not suppress_growth and not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
-            gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
-            n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
-            candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
-            n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
-            if n_new > 0:
-                hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(arc_end_low)
-                new_theta = candidate_theta[:n_new][::-1]
-                theta = np.insert(theta, 0, new_theta)
-                elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
-                for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
-                    persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
+            if arc_end_low:
+                gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
+                n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
+                candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
+                n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
+                if n_new > 0:
+                    hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(True)
+                    new_theta = candidate_theta[:n_new][::-1]
+                    theta = np.insert(theta, 0, new_theta)
+                    elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
+                    for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
+                        persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
+            else:
+                _stretch_end(0, -1.0, dist[0], direction[0])
 
         result = ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)
         return split_into_contiguous_runs(result, dtheta)
@@ -999,7 +1144,18 @@ class LithospherePlate(PlateWithLines):
         (oceanic reference, see `growth_seed_thickness`) plus `terrain_noise.FractalTexture`
         on Hc (an extension of an already-shaped plate, so texture rather than a fresh
         orogen), rather than a flat elevation baseline. Keyed off `(world.seed, plate_id,
-        _TERRAIN_SEED_TAG)` so the texture stays attached to this plate as it grows."""
+        _TERRAIN_SEED_TAG)` so the texture stays attached to this plate as it grows.
+
+        Gated on genuine phi-direction separation (`rheology.stretch_components`' `phi_gap`,
+        evaluated at the candidate row's own midpoint via this plate's own
+        `_separation_components`) rather than firing unconditionally whenever the ground ahead
+        happens to be open -- a purely theta-aligned gap is `_grow_or_shrink_line_for_deform`'s
+        own end-stretch to close, not this row-claim's. When it does fire, the new row is not
+        seeded at the full reference column "for free": that volume is instead drawn down
+        across the new row *and* `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` of this plate's own
+        existing outermost rows on that side, in proportion to `phi_gap`'s own share of one
+        full row spacing -- mass conservation, the phi-direction counterpart of the theta case's
+        own stretch-thinning."""
         lines_with_nodes = [line for line in self.lines if len(line) > 0]
         if not lines_with_nodes:
             return
@@ -1018,7 +1174,10 @@ class LithospherePlate(PlateWithLines):
         texture = terrain_noise.FractalTexture(
             np.random.default_rng((world.seed, self.plate_id, _TERRAIN_SEED_TAG))
         )
+        neighbour_trees = [tree for p in neighbours if p.node_count() > 0 for tree in [p.get_node_kdtree()] if tree is not None]
+        line_index_by_id = {id(row): i for i, row in enumerate(self.lines)}
         new_lines: list[ElevationLine] = []
+        thinned: dict[int, ElevationLine] = {}
 
         for reference, direction in ((ordered[0], -1), (ordered[-1], 1)):
             new_phi = reference.phi + direction * spacing_rad
@@ -1037,9 +1196,45 @@ class LithospherePlate(PlateWithLines):
 
             theta_open = theta_candidates[open_mask]
             n_open = int(open_mask.sum())
-            hc_open = np.full(n_open, hc0) + amp * texture.sample(world_pts[open_mask])
-            hm_open = np.full(n_open, hm0)
+            world_open = world_pts[open_mask]
+
+            # How far, and in what direction, does a genuine gap actually extend here? --
+            # the same nearest-neighbour-node query torque.gather_boundary_force_inputs uses
+            # for a live node, evaluated fresh at this not-yet-existing row's own midpoint (one
+            # representative point stands in for the whole candidate row, matching how coarse
+            # a once-per-step per-plate-edge check this already was before this change).
+            rep_world = world_open[n_open // 2]
+            best_dist, direction_world = np.inf, np.zeros(3)
+            for tree in neighbour_trees:
+                d, idx = tree.query(rep_world)
+                if d < best_dist:
+                    best_dist, direction_world = float(d), geometry.normalize(tree.data[idx] - rep_world)
+            sep_theta, sep_phi = self._separation_components(world, new_phi, float(theta_open[n_open // 2]), direction_world)
+            gap_estimate = min(best_dist, spacing_rad) if np.isfinite(best_dist) else spacing_rad
+            _, phi_gap = rheology.stretch_components(sep_theta, sep_phi, gap_estimate)
+            if phi_gap <= 0.0:
+                continue
+
+            neighbour_rows = ordered[:K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION] if direction < 0 else ordered[-K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION:]
+            share_count = len(neighbour_rows) + 1  # + the new row itself
+            stretch_fraction = float(np.clip(phi_gap / spacing_rad, 0.0, 1.0))
+            thin_ratio = 1.0 - stretch_fraction * (share_count - 1) / share_count
+
+            hc_open = np.full(n_open, hc0 * thin_ratio) + amp * texture.sample(world_open)
+            hm_open = np.full(n_open, hm0 * thin_ratio)
             elevation_open = lithosphere.isostatic_elevation(hc_open, hm_open, self.crust_density())
+            crust_type_open = np.zeros(n_open, dtype=np.int8)
+            is_volcano_open = np.zeros(n_open, dtype=bool)
+            volcano_remaining_open = np.zeros(n_open)
+            melting_new = hc_open < rheology.RIFT_CRITICAL_THICKNESS_M
+            _erupt_melted_nodes(
+                world, self.plate_id, len(self.lines) + len(new_lines),
+                hc_open, hm_open, crust_type_open, is_volcano_open, volcano_remaining_open,
+                melting_new, elevation_open,
+            )
+            elevation_open = lithosphere.isostatic_elevation(
+                hc_open, hm_open, lithosphere.node_crust_density(crust_type_open, self.crust_type)
+            )
             new_lines.append(
                 ElevationLine(
                     phi=new_phi,
@@ -1047,12 +1242,46 @@ class LithospherePlate(PlateWithLines):
                     elevation=elevation_open,
                     crustal_thickness_m=hc_open,
                     mantle_lithosphere_thickness_m=hm_open,
+                    crust_type_code=crust_type_open,
+                    is_volcano=is_volcano_open,
+                    volcano_active_years_remaining=volcano_remaining_open,
                     elev_change_reason=np.full(n_open, ELEV_CHANGE_NEW_CRUST, dtype=float),
                 )
             )
 
-        if new_lines:
-            self.set_lines(list(self.lines) + new_lines)
+            # Pull the same fractional share out of the existing rows nearest this claim --
+            # thinned in place (a row already thinned by the *other* phi extreme's own claim
+            # this same call keeps compounding, which is fine: two genuine gaps opening on
+            # both sides of a small plate in the same step really should thin it from both).
+            for original_row in neighbour_rows:
+                row = thinned.get(id(original_row), original_row)
+                new_hc_row = row.crustal_thickness_m * thin_ratio
+                new_hm_row = row.mantle_lithosphere_thickness_m * thin_ratio
+                melting_row = (row.crustal_thickness_m >= rheology.RIFT_CRITICAL_THICKNESS_M) & (
+                    new_hc_row < rheology.RIFT_CRITICAL_THICKNESS_M
+                )
+                crust_type_row = row.crust_type_code.copy()
+                is_volcano_row = row.is_volcano.copy()
+                volcano_remaining_row = row.volcano_active_years_remaining.copy()
+                _erupt_melted_nodes(
+                    world, self.plate_id, line_index_by_id.get(id(original_row), -1),
+                    new_hc_row, new_hm_row, crust_type_row, is_volcano_row, volcano_remaining_row,
+                    melting_row, row.elevation,
+                )
+                new_elevation_row = lithosphere.isostatic_elevation(
+                    new_hc_row, new_hm_row, lithosphere.node_crust_density(crust_type_row, self.crust_type)
+                )
+                thinned[id(original_row)] = row.replace(
+                    crustal_thickness_m=new_hc_row,
+                    mantle_lithosphere_thickness_m=new_hm_row,
+                    crust_type_code=crust_type_row,
+                    is_volcano=is_volcano_row,
+                    volcano_active_years_remaining=volcano_remaining_row,
+                    elevation=new_elevation_row,
+                )
+
+        if new_lines or thinned:
+            self.set_lines([thinned.get(id(line), line) for line in self.lines] + new_lines)
 
     # -- Merge/split: carry Hc/Hm through, not just elevation -------------------------------
 
