@@ -61,6 +61,16 @@ ABYSSAL_PLAIN_REFERENCE_ELEVATION_M = float(
 # lithospheric differential-stress magnitude.
 COLLISION_FRICTION_REFERENCE_PA = 5e7
 
+# A pair that's barely grazing (a handful of contested nodes out of thousands) shouldn't brake
+# as hard as one where most of this plate's own boundary band is currently overlapping a
+# neighbour -- real collisional resistance scales with how much of the margin is actually
+# jammed, not just a fixed per-node stress. `overlap_severity` (collision_mask's own fraction
+# of this plate's boundary-band nodes, see shift_plate) scales the reference stress up to
+# 1 + this factor at severity 1.0 (the whole band contested) -- a deep, sustained pile-up
+# brakes several times harder than a light graze, on top of the torque already summing over
+# more nodes.
+OVERLAP_FRICTION_SEVERITY_GAIN = 2.0
+
 # Boundary-line integrals (slab-pull/ridge-push) treat each contributing node as owning one
 # `spacing_rad * PLANET_RADIUS_M`-long stretch of the boundary -- consistent with how deform()
 # already treats a line's own node spacing as the physical along-boundary resolution.
@@ -82,6 +92,7 @@ class BoundaryForceInputs:
     own_points: np.ndarray  # (N, 3) unit vectors, this plate's own nodes
     own_hc: np.ndarray
     own_hm: np.ndarray
+    own_crust_type_codes: np.ndarray  # (N,) int8, elevation_lines.CRUST_TYPE_* -- see lithosphere.node_crust_density
     dist_to_neighbor: np.ndarray  # (N,) angular distance (rad) to nearest other-plate node, +inf if none
     direction_to_neighbor: np.ndarray  # (N, 3) unit vector from own node toward that nearest neighbour point
     neighbor_is_oceanic: np.ndarray  # (N,) bool
@@ -92,13 +103,14 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
     own_points, _ = plate.all_points_and_elevation()
     own_hc = plate.collect("crustal_thickness_m")
     own_hm = plate.collect("mantle_lithosphere_thickness_m")
+    own_crust_type_codes = plate.collect("crust_type_code")
     n = len(own_points)
     if n == 0:
         empty3 = np.zeros((0, 3))
-        return BoundaryForceInputs(empty3, np.zeros(0), np.zeros(0), np.full(0, np.inf), empty3, np.zeros(0, dtype=bool), empty3)
+        return BoundaryForceInputs(empty3, np.zeros(0), np.zeros(0), np.zeros(0, dtype=np.int8), np.full(0, np.inf), empty3, np.zeros(0, dtype=bool), empty3)
 
     no_neighbour = BoundaryForceInputs(
-        own_points, own_hc, own_hm, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3))
+        own_points, own_hc, own_hm, own_crust_type_codes, np.full(n, np.inf), np.zeros((n, 3)), np.zeros(n, dtype=bool), np.zeros((n, 3))
     )
     if not neighbours:
         return no_neighbour
@@ -140,7 +152,7 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
         neighbor_is_oceanic[owned] = neighbour.crust_type == "oceanic"
         neighbor_omega[owned] = neighbour.omega
     dist = np.where(best_dist <= reach_rad, best_dist, np.inf)
-    return BoundaryForceInputs(own_points, own_hc, own_hm, dist, direction, neighbor_is_oceanic, neighbor_omega)
+    return BoundaryForceInputs(own_points, own_hc, own_hm, own_crust_type_codes, dist, direction, neighbor_is_oceanic, neighbor_omega)
 
 
 def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
@@ -215,7 +227,8 @@ def ridge_push_torque(plate, inputs: BoundaryForceInputs, divergent_mask: np.nda
     if not np.any(divergent_mask):
         return np.zeros(3)
     ds = spacing_rad * lithosphere.PLANET_RADIUS_M
-    z = lithosphere.isostatic_elevation(inputs.own_hc[divergent_mask], inputs.own_hm[divergent_mask], lithosphere.crust_density(plate.crust_type))
+    rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes[divergent_mask], plate.crust_type)
+    z = lithosphere.isostatic_elevation(inputs.own_hc[divergent_mask], inputs.own_hm[divergent_mask], rho_c)
     e_r = np.clip(z - ABYSSAL_PLAIN_REFERENCE_ELEVATION_M, 0.0, None)
     force_mag = 0.5 * lithosphere.GRAVITY_M_S2 * (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER) * e_r**2 * ds
     direction = -inputs.direction_to_neighbor[divergent_mask]
@@ -273,11 +286,15 @@ def basal_drag_torque(plate, world, spacing_rad: float) -> np.ndarray:
     return b - k @ plate.omega
 
 
-def collision_friction_torque(plate, inputs: BoundaryForceInputs, collision_mask: np.ndarray, spacing_rad: float) -> np.ndarray:
+def collision_friction_torque(
+    plate, inputs: BoundaryForceInputs, collision_mask: np.ndarray, spacing_rad: float, overlap_severity: float = 0.0
+) -> np.ndarray:
     """A resistive torque at continent-continent contested nodes (`collision_mask`),
     proportional to `COLLISION_FRICTION_REFERENCE_PA` and opposing this plate's own local
     velocity relative to the colliding neighbour there -- keeps two head-on continents from
-    accelerating straight through each other indefinitely."""
+    accelerating straight through each other indefinitely. `overlap_severity` (see
+    OVERLAP_FRICTION_SEVERITY_GAIN) scales the reference stress up for a deeper/wider overlap,
+    on top of the torque already summing over more nodes for a bigger contested band."""
     if not np.any(collision_mask):
         return np.zeros(3)
     own_points = inputs.own_points[collision_mask]
@@ -289,7 +306,8 @@ def collision_friction_torque(plate, inputs: BoundaryForceInputs, collision_mask
     # Resistive stress scales with how fast the two plates are actually converging here (no
     # friction to overcome if they're not moving relative to each other), capped so a fast
     # collision doesn't blow up the resistive force past the reference stress scale itself.
-    force = -COLLISION_FRICTION_REFERENCE_PA * lithosphere.node_area_m2(spacing_rad) * np.minimum(speed, 1.0)[:, None] * relative_dir
+    reference_pa = COLLISION_FRICTION_REFERENCE_PA * (1.0 + OVERLAP_FRICTION_SEVERITY_GAIN * overlap_severity)
+    force = -reference_pa * lithosphere.node_area_m2(spacing_rad) * np.minimum(speed, 1.0)[:, None] * relative_dir
     r = own_points * lithosphere.PLANET_RADIUS_M
     return np.cross(r, force).sum(axis=0)
 
@@ -434,13 +452,23 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     collision_mask = contested & (plate.crust_type == "continental") & ~inputs.neighbor_is_oceanic
     subducting = subducting_boundary_mask(plate, inputs, reach_rad)
 
-    rho_c = lithosphere.crust_density(plate.crust_type)
+    rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes, plate.crust_type)
     inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad)
+
+    # A deeper/wider overlap should brake a collision harder, not just proportionally more
+    # (more contested nodes already sum to a bigger torque) -- see collision_friction_torque's
+    # own OVERLAP_FRICTION_SEVERITY_GAIN comment. Normalized against the near-boundary *band*
+    # (not the whole plate -- a huge plate's boundary is a small fraction of its own node
+    # count, which would dilute this to near-zero for exactly the large-plate case that
+    # matters) so it reads as "how much of the active margin is jammed," not "how much of the
+    # plate."
+    band = inputs.dist_to_neighbor <= reach_rad
+    overlap_severity = float(collision_mask.sum()) / max(1, int(band.sum()))
 
     explicit_torque = (
         slab_pull_torque(plate, inputs, subducting, spacing_rad)
         + ridge_push_torque(plate, inputs, divergent, spacing_rad)
-        + collision_friction_torque(plate, inputs, collision_mask, spacing_rad)
+        + collision_friction_torque(plate, inputs, collision_mask, spacing_rad, overlap_severity)
     )
     drag_b, drag_k = basal_drag_coefficients(plate, world, spacing_rad)
     drag_k = drag_k + slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)

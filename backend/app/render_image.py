@@ -64,7 +64,7 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # "overlapAge" is node-cloud-derived from ElevationLine.overlap_onset_years (the year each
 # still-overlapping node first went over another plate -- merge_split.update_overlap_tracking),
 # its own dispatch branch (_render_overlap_age_view). See docs/debugging.md.
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge")
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -490,6 +490,27 @@ _ELEV_REASON_RGB = np.array(
 def elev_reason_colors(codes: np.ndarray) -> np.ndarray:
     idx = np.clip(np.round(np.asarray(codes)).astype(int), 0, len(_ELEV_REASON_RGB) - 1)
     return _ELEV_REASON_RGB[idx]
+
+
+# Per-node crust-type debug view (see _render_crust_type_view). Ordinary oceanic/continental
+# nodes get the same muted land/ocean tones every other debug view's coastline reference
+# uses; the two "anomaly" categories (a node whose own composition disagrees with the plate
+# it sits on -- see plates.CRUST_TYPE_VIEW_*) get bright, unmissable highlight colours, since
+# they're the rare, diagnostically interesting case this view exists to surface.
+_CRUST_TYPE_RGB = np.array(
+    [
+        (28, 60, 120),    # 0 OCEANIC (ordinary) -- muted blue
+        (90, 130, 60),    # 1 CONTINENTAL (ordinary) -- muted green
+        (255, 140, 0),    # 2 OCEANIC_ANOMALY (oceanic node on a continental plate) -- bright orange
+        (230, 30, 220),   # 3 CONTINENTAL_ANOMALY (continental node on an oceanic plate) -- bright magenta
+    ],
+    dtype=np.uint8,
+)
+
+
+def crust_type_colors(codes: np.ndarray) -> np.ndarray:
+    idx = np.clip(np.round(np.asarray(codes)).astype(int), 0, len(_CRUST_TYPE_RGB) - 1)
+    return _CRUST_TYPE_RGB[idx]
 
 
 # Overlap Age debug view (see _render_overlap_age_view): how long (Myr) each node has been
@@ -1906,6 +1927,43 @@ def _render_elev_reason_view(world: World, projection: str, width: int, height: 
     return _encode_image(image)
 
 
+def _render_crust_type_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "crustType" (see DEBUG_VIEWS): every node coloured by its own effective crust
+    type (elevation_lines.ElevationLine.crust_type_code, resolved against its owning plate's
+    nominal crust_type -- see plates.collect_all_crust_type_view_codes), with the rare nodes
+    whose own composition actually *disagrees* with their plate highlighted in bright colours.
+    Those are exactly the places rift decompression melting or gap-fill (docs/
+    simulation-model.md) laid down crust of a different type than the plate they sit on -- a
+    drowned continental margin that melted through to real oceanic crust, a volcanic island on
+    an oceanic plate, or a gap-fill patch adopted from a bordering coastline. Same
+    nearest-node-resampled-onto-the-biome-grid technique as "elevReason"."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    flat_xyz = world_xyz.reshape(-1, 3)
+
+    node_cloud = _node_cloud_and_tree(world) if world.plates else None
+    if node_cloud is None:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    _all_points, _all_elev, _owner, tree = node_cloud
+    codes = plates.collect_all_crust_type_view_codes(world.plates)
+    _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
+    colors = crust_type_colors(codes[idx])
+
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    return _encode_image(image)
+
+
 def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray]:
     """Selects which river segments the general-purpose map views draw, and how wide each is.
 
@@ -2076,6 +2134,8 @@ def render_png(
         return _render_elev_reason_view(world, projection, width, height, view_rotation)
     if view == "overlapAge":
         return _render_overlap_age_view(world, projection, width, height, view_rotation)
+    if view == "crustType":
+        return _render_crust_type_view(world, projection, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

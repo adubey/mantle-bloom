@@ -1,5 +1,6 @@
-"""Whole-sphere coverage maintenance: spawn new oceanic crust into any region no plate
-currently covers.
+"""Whole-sphere coverage maintenance: spawn new crust into any region no plate currently
+covers -- oceanic almost everywhere, continental only where a gap point genuinely borders a
+still-standing continental coastline (see GAP_LAND_ADOPTION_RADIUS_MULT).
 
 `LithospherePlate.deform()`'s per-step boundary growth only ever extends a line from an
 *existing* node -- a plate can spread into space right next to its own current edge, but
@@ -14,15 +15,22 @@ nodes, all of it sphere area no live plate's lines reached.
 
 This module finds those genuinely-uncovered regions periodically (same cadence as
 `merge_split.defragment_plates` -- a whole-world k-d-tree pass, cheap but not free) and fills
-each big-enough one with a brand-new oceanic plate (new crust forming in open water, the
-same crust type any mid-ocean ridge produces). It deliberately does *not* try to instead grow
-an existing neighbouring plate into the gap -- besides needing a partition/absorption scheme
-of its own (the pre-refactor `gaps.py` this replaces did that too, "if bordered mainly by one
+each big-enough one with a brand-new plate. It deliberately does *not* try to instead grow an
+existing neighbouring plate into the gap -- besides needing a partition/absorption scheme of
+its own (the pre-refactor `gaps.py` this replaces did that too, "if bordered mainly by one
 plate, absorb it into that plate," never ported to this engine -- see docs/TODO.md), handing
 a large freshly-vacated region to whichever plate happens to be nearest would feed exactly
 the continental-growth ratchet already tracked there. A brand-new plate is neutral: it can
 still merge, subduct, or get absorbed by ordinary boundary growth like any other plate once
 it has a real neighbour again.
+
+The new plate's own composition is decided per node, not blanket-oceanic: real new crust in
+open water is oceanic (the same crust type any mid-ocean ridge produces), but a gap point
+right at a still-standing continental coastline -- e.g. a fully-subducted marginal sea
+landlocked by continent -- comes back continental instead (see `_spawn_plate_from_gap`'s own
+`node_is_continental`). The spawned plate's own `crust_type` label is the majority of what it
+actually ended up with (`elevation_lines.majority_crust_type`), so it is oceanic in practice
+for all but that rare landlocked case.
 
 Known stopgap, not the real fix -- see docs/TODO.md ("`gaps.py`'s plate-spawn is a stopgap,
 not the real fix"): conjuring a whole fully-formed plate into existence after the fact isn't
@@ -42,7 +50,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle
-from .elevation_lines import iter_local_lattice, line_spacing_rad
+from .elevation_lines import effective_is_continental_from_codes, iter_local_lattice, line_spacing_rad
 from .lithosphere_plate import LithospherePlate, new_plate
 
 if TYPE_CHECKING:
@@ -73,23 +81,50 @@ MIN_GAP_NODES = 500
 # since nothing here is carried forward as persistent state.
 _GLOBAL_FRAME = np.eye(3)
 
+# A gap point adopts the *continental* type only if the nearest pre-existing node is itself
+# continental, still above sea level, and within this many line-spacings -- hugging a real
+# coastline (e.g. a fully-subducted marginal sea landlocked by continent), not reaching all
+# the way across an ocean basin to a far-off continent. Every other gap point (the
+# overwhelming majority -- gaps are, per this module's own docstring, almost always open
+# ocean a fully-subducted plate vacated) stays oceanic, exactly as before this field existed.
+GAP_LAND_ADOPTION_RADIUS_MULT = 3.0
 
-def _existing_node_tree(world: "World") -> cKDTree | None:
-    chunks = []
+
+class _ExistingNodeContext:
+    """Every currently-live node's position plus enough context to decide a newly-upwelled
+    gap point's own crust type by what actually borders it -- see `_spawn_plate_from_gap`."""
+
+    def __init__(self, tree: cKDTree, is_continental: np.ndarray, elevation: np.ndarray) -> None:
+        self.tree = tree
+        self.is_continental = is_continental
+        self.elevation = elevation
+
+
+def _existing_node_tree(world: "World") -> _ExistingNodeContext | None:
+    point_chunks = []
+    continental_chunks = []
+    elevation_chunks = []
     for plate in world.plates:
-        pts, _ = plate.all_points_and_elevation()
-        if len(pts) > 0:
-            chunks.append(pts)
-    if not chunks:
+        pts, elev = plate.all_points_and_elevation()
+        if len(pts) == 0:
+            continue
+        point_chunks.append(pts)
+        elevation_chunks.append(elev)
+        continental_chunks.append(effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental"))
+    if not point_chunks:
         return None
-    return cKDTree(np.concatenate(chunks, axis=0))
+    return _ExistingNodeContext(
+        cKDTree(np.concatenate(point_chunks, axis=0)),
+        np.concatenate(continental_chunks, axis=0),
+        np.concatenate(elevation_chunks, axis=0),
+    )
 
 
-def _find_gap_points(existing_tree: cKDTree, spacing_rad: float) -> np.ndarray:
+def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float) -> np.ndarray:
     coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
     chunks = []
     for _, _, world_pts in iter_local_lattice(_GLOBAL_FRAME, spacing_rad=spacing_rad):
-        dist, _ = existing_tree.query(world_pts)
+        dist, _ = existing_tree.tree.query(world_pts)
         uncovered = dist > coverage_radius_rad
         if np.any(uncovered):
             chunks.append(world_pts[uncovered])
@@ -110,17 +145,32 @@ def _cluster(points: np.ndarray, radius_rad: float) -> np.ndarray:
     return labels
 
 
-def _spawn_plate_from_gap(world: "World", cluster_points: np.ndarray, spacing_rad: float) -> LithospherePlate:
+def _spawn_plate_from_gap(
+    world: "World", cluster_points: np.ndarray, spacing_rad: float, existing_context: _ExistingNodeContext
+) -> LithospherePlate:
     centroid = geometry.normalize(cluster_points.mean(axis=0))
     frame = geometry.plate_frame_from_seed(centroid)
     cluster_tree = cKDTree(cluster_points)
     coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
+    land_adoption_radius_rad = GAP_LAND_ADOPTION_RADIUS_MULT * spacing_rad
 
     def is_owned(world_pts: np.ndarray) -> np.ndarray:
         dist, _ = cluster_tree.query(world_pts)
         return dist < coverage_radius_rad
 
-    plate = new_plate(world.next_plate_id, frame, "oceanic", spacing_rad, world.seed, is_owned=is_owned)
+    def node_is_continental(world_pts: np.ndarray) -> np.ndarray:
+        # A new gap node adopts continental type only where it's genuinely hugging a real,
+        # still-standing coastline -- the nearest *pre-existing* node (not the nearest gap
+        # point) is itself continental, still above sea level, and close by. Everywhere else
+        # in the gap -- the overwhelming majority of one, per this module's own docstring --
+        # stays oceanic, matching the behaviour before this rule existed.
+        dist, idx = existing_context.tree.query(world_pts)
+        borders_land = existing_context.is_continental[idx] & (existing_context.elevation[idx] > 0.0)
+        return borders_land & (dist <= land_adoption_radius_rad)
+
+    plate = new_plate(
+        world.next_plate_id, frame, "oceanic", spacing_rad, world.seed, is_owned=is_owned, node_is_continental=node_is_continental
+    )
     world.next_plate_id += 1
 
     points, _ = plate.all_points_and_elevation()
@@ -132,15 +182,18 @@ def _spawn_plate_from_gap(world: "World", cluster_points: np.ndarray, spacing_ra
 
 def fill_gaps(world: "World") -> list[str]:
     """Find every sphere region no live plate currently covers and, for each one at least
-    `MIN_GAP_NODES` (scaled by `world.node_density`) large, spawn a new oceanic plate to
-    cover it. Mutates `world.plates`/`world.next_plate_id` in place; returns event strings
-    for the UI's console."""
-    existing_tree = _existing_node_tree(world)
-    if existing_tree is None:
+    `MIN_GAP_NODES` (scaled by `world.node_density`) large, spawn a new plate to cover it --
+    oceanic almost everywhere (real gaps are overwhelmingly open water a fully-subducted
+    plate vacated), except nodes genuinely hugging a still-standing continental coastline
+    (see GAP_LAND_ADOPTION_RADIUS_MULT), which come back continental. Mutates
+    `world.plates`/`world.next_plate_id` in place; returns event strings for the UI's
+    console."""
+    existing_context = _existing_node_tree(world)
+    if existing_context is None:
         return []
 
     spacing_rad = line_spacing_rad(world.node_density)
-    gap_points = _find_gap_points(existing_tree, spacing_rad)
+    gap_points = _find_gap_points(existing_context, spacing_rad)
     if len(gap_points) == 0:
         return []
 
@@ -152,12 +205,12 @@ def fill_gaps(world: "World") -> list[str]:
         cluster_points = gap_points[labels == label]
         if len(cluster_points) < min_gap_nodes:
             continue
-        plate = _spawn_plate_from_gap(world, cluster_points, spacing_rad)
+        plate = _spawn_plate_from_gap(world, cluster_points, spacing_rad, existing_context)
         if plate.node_count() == 0:
             continue
         world.plates.append(plate)
+        where = "in open water no plate had reached in a long time" if plate.crust_type == "oceanic" else "over a long-vacated, landlocked gap"
         events.append(
-            f"New oceanic crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) "
-            "in open water no plate had reached in a long time."
+            f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where}."
         )
     return events

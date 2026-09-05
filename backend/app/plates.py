@@ -503,12 +503,20 @@ class Plate(abc.ABC):
         crust_type: str,
         omega: np.ndarray | None = None,
         age_steps: int = 0,
+        internal_stress: float = 0.0,
     ) -> None:
         self._plate_id = plate_id
         self._frame = frame
         self._crust_type = crust_type
         self._omega = omega if omega is not None else np.zeros(3)
         self._age_steps = age_steps
+        # Accumulated breakup pressure -- see merge_split.accumulate_plate_stress (background,
+        # size-driven accumulation plus an overlap-driven top-up biased toward whichever plate
+        # in an overlapping pair is the larger one) and maybe_split_plate (folds this into the
+        # existing size-based split-gate relaxation). Reset to 0 on a successful split, halved
+        # on a failed rift -- see reset_age's own precedent for "a topology event releases
+        # accumulated pressure."
+        self._internal_stress = internal_stress
         # Lazily (re)computed by get_bounding_polygon() below -- None means "stale, recompute
         # on next call," not "empty polygon" (an empty plate's real outline is a valid
         # np.zeros((0, 3)), which must stay distinguishable from "not computed yet").
@@ -577,6 +585,29 @@ class Plate(abc.ABC):
 
     def reset_age(self) -> None:
         self._age_steps = 0
+
+    @property
+    def internal_stress(self) -> float:
+        """Accumulated breakup pressure -- see merge_split.accumulate_plate_stress /
+        maybe_split_plate. Dimensionless (a relaxation-time-scaled accumulator, not a literal
+        Pa stress -- see that module's own comment); 0.0 for a quiet, small, non-overlapped
+        plate, and for every plate on a save written before this field existed (see
+        __getattr__)."""
+        return self._internal_stress
+
+    def set_internal_stress(self, value: float) -> None:
+        self._internal_stress = value
+
+    def __getattr__(self, name: str):
+        """A `Plate` unpickled from a save written before `internal_stress` existed has no
+        `_internal_stress` in its restored `__dict__` (pickle bypasses `__init__` entirely) --
+        default it to 0.0, the same "quiet, unstressed plate" reading a fresh Plate.__init__
+        gives, rather than raising. Mirrors ElevationLine.__getattr__'s own precedent for the
+        same class of backward-compatibility gap."""
+        if name == "_internal_stress":
+            object.__setattr__(self, name, 0.0)
+            return 0.0
+        raise AttributeError(name)
 
     @abc.abstractmethod
     def node_count(self) -> int: ...
@@ -1170,8 +1201,9 @@ class PlateWithLines(Plate):
         lines: list[ElevationLine] | None = None,
         omega: np.ndarray | None = None,
         age_steps: int = 0,
+        internal_stress: float = 0.0,
     ) -> None:
-        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps)
+        super().__init__(plate_id, frame, crust_type, omega=omega, age_steps=age_steps, internal_stress=internal_stress)
         self._lines: list[ElevationLine] = list(lines) if lines is not None else []
         # Lazily (re)built by _get_row_lookup() below, invalidated in lockstep with the
         # bounding-polygon cache (same rotate()/set_lines()/replace_line() call sites) --
@@ -1548,14 +1580,20 @@ class PlateWithLines(Plate):
                     lines.extend(split_into_contiguous_runs(line.masked(sub), _row_median_step(line)))
             if not lines:
                 continue
+            # A fragment's own crust_type is the majority of what its nodes actually are, not
+            # a blind copy of the parent's -- see elevation_lines.majority_crust_type. A no-op
+            # for every plate that's never had a magma-typing event (rift decompression
+            # melting or gap-fill), which is every fragment before that feature existed.
+            fragment_crust_type = elevation_lines.majority_crust_type(lines, self._crust_type)
             plates.append(
                 type(self)(
                     plate_id=pid,
                     frame=self._frame.copy(),
-                    crust_type=self._crust_type,
+                    crust_type=fragment_crust_type,
                     lines=lines,
                     omega=self._omega.copy(),
                     age_steps=self._age_steps if k == 0 else 0,
+                    internal_stress=self._internal_stress if k == 0 else 0.0,
                 )
             )
         return plates
@@ -2326,6 +2364,41 @@ def collect_all_oil_gas_deposit(plate_list: list[Plate]) -> np.ndarray:
 
 def collect_all_mineral_deposit(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "mineral_deposit_m")
+
+
+# Categories for render_image.py's "crustType" debug view -- resolved per-plate (unlike the
+# plain _collect_all helpers above, a raw crust_type_code is meaningless without its owning
+# plate's own crust_type to resolve CRUST_TYPE_INHERIT against, see
+# elevation_lines.effective_is_continental_from_codes), so this can't just be another
+# `_collect_all(plate_list, "crust_type_code")` one-liner.
+CRUST_TYPE_VIEW_OCEANIC = 0  # oceanic, matches its plate's own nominal type (the common case)
+CRUST_TYPE_VIEW_CONTINENTAL = 1  # continental, matches its plate's own nominal type
+CRUST_TYPE_VIEW_OCEANIC_ANOMALY = 2  # oceanic node on a nominally continental plate
+CRUST_TYPE_VIEW_CONTINENTAL_ANOMALY = 3  # continental node on a nominally oceanic plate
+
+
+def collect_all_crust_type_view_codes(plate_list: list[Plate]) -> np.ndarray:
+    """Every node's CRUST_TYPE_VIEW_* category -- see the constants above. The two "anomaly"
+    categories are exactly the nodes a magma-typing event (rift decompression melting,
+    gap-fill) stamped a different composition than the plate they sit on, e.g. a drowned
+    continental margin that finally melted through to real oceanic crust, or a volcanic island
+    breaching the surface on an oceanic plate -- everywhere else this is a no-op reading of
+    the plate's own nominal crust_type."""
+    chunks = []
+    for p in plate_list:
+        n = p.node_count()
+        if n == 0:
+            continue
+        plate_is_continental = p.crust_type == "continental"
+        is_continental = elevation_lines.effective_is_continental_from_codes(p.collect("crust_type_code"), plate_is_continental)
+        anomaly = is_continental != plate_is_continental
+        codes = np.where(
+            anomaly,
+            CRUST_TYPE_VIEW_OCEANIC_ANOMALY if plate_is_continental else CRUST_TYPE_VIEW_CONTINENTAL_ANOMALY,
+            CRUST_TYPE_VIEW_CONTINENTAL if plate_is_continental else CRUST_TYPE_VIEW_OCEANIC,
+        )
+        chunks.append(codes)
+    return np.concatenate(chunks, axis=0) if chunks else np.zeros(0, dtype=np.int8)
 
 
 def nearest_plate_id(plate_list: list[Plate], query_xyz: np.ndarray) -> int | None:

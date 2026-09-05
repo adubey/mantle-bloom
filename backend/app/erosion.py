@@ -1314,7 +1314,7 @@ def apply_erosion(
     prior_hc = collect_all_crustal_thickness(plates_in_order)
     prior_hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
     rho_c_per_node = np.concatenate(
-        [np.full(p.node_count(), lithosphere.crust_density(p.crust_type)) for p in plates_in_order]
+        [lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order]
     )
     has_column = prior_hc > 0.0
     new_crustal_thickness = np.where(

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from .elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
+from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, MAX_ELEVATION_M, MIN_ELEVATION_M, PLANET_RADIUS_KM
 
 if TYPE_CHECKING:
     from .lithosphere_plate import LithospherePlate
@@ -75,6 +75,19 @@ def reference_thickness(crust_type: str) -> tuple[float, float]:
 
 def crust_density(crust_type: str) -> float:
     return RHO_CONTINENTAL_CRUST if crust_type == "continental" else RHO_OCEANIC_CRUST
+
+
+def node_crust_density(crust_type_codes: np.ndarray, plate_crust_type: str) -> np.ndarray:
+    """Per-node crust density, resolving `ElevationLine.crust_type_code`
+    (elevation_lines.CRUST_TYPE_*) against this plate's own nominal `crust_type` -- the
+    array counterpart of `crust_density` above. For a plate that has never had a magma-typing
+    event (every code still CRUST_TYPE_INHERIT, the overwhelming common case) this is
+    identical to `np.full(n, crust_density(plate_crust_type))`, so every existing calibrated
+    isostasy/inertia number is unchanged; it only actually varies node-to-node once a rift
+    (lithosphere_plate.py) or a gap-fill (gaps.py) has stamped an explicit code."""
+    plate_is_continental = plate_crust_type == "continental"
+    is_continental = np.where(crust_type_codes == CRUST_TYPE_INHERIT, plate_is_continental, crust_type_codes == CRUST_TYPE_CONTINENTAL)
+    return np.where(is_continental, RHO_CONTINENTAL_CRUST, RHO_OCEANIC_CRUST)
 
 
 #  Eq. 1/2, taken completely literally (elevation measured from the asthenosphere's own
@@ -139,9 +152,12 @@ def sync_line_elevation(line, rho_c: float):
 
 def sync_plate_elevation(plate: "LithospherePlate") -> None:
     """`sync_line_elevation` over every line on `plate`, written back via `set_lines` --
-    the one call site that makes `elevation` track Hc/Hm after a batch of lines change."""
-    rho_c = crust_density(plate.crust_type)
-    plate.set_lines([sync_line_elevation(line, rho_c) for line in plate.lines])
+    the one call site that makes `elevation` track Hc/Hm after a batch of lines change.
+    Density is per-node (`node_crust_density`, resolving each line's own `crust_type_code`
+    against this plate's nominal `crust_type`) rather than one scalar for the whole plate, so
+    a rift-typed or gap-filled patch whose composition genuinely differs from its plate isn't
+    isostatically floated as if it were the plate's own usual crust."""
+    plate.set_lines([sync_line_elevation(line, node_crust_density(line.crust_type_code, plate.crust_type)) for line in plate.lines])
 
 
 def node_area_m2(spacing_rad: float) -> float:

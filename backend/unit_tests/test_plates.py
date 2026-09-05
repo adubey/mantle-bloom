@@ -1356,3 +1356,79 @@ def test_outline_world_still_one_contiguous_array_and_excludes_the_hole():
         ocean.frame, geometry.local_xyz(np.array([edge_row.phi]), np.array([float(np.median(edge_row.theta))]))
     )
     assert ocean.contains_batch(solid_pt)[0]
+
+
+def _melt_test_plates(elevation: float):
+    """Two plates spreading apart at the equator (mirrors test_boundary.py's own "self spins
+    -z away from an eastward neighbour" divergent geometry), with the near-boundary end
+    already just above RIFT_CRITICAL_THICKNESS_M so one real divergent step thins it past the
+    threshold and triggers decompression melting there. `elevation` is the boundary end's
+    *pre-melt* elevation -- the thing that decides whether the erupted material comes back
+    continental (still land) or oceanic (at/below sea level), see LithospherePlate.deform."""
+    from app import mantle
+    from app.lithosphere import reference_thickness
+    from app.lithosphere_plate import LithospherePlate
+
+    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
+
+    def _plate(pid, crust_type, theta_lo, theta_hi, omega_z, hc):
+        theta = np.linspace(theta_lo, theta_hi, 20)
+        line = ElevationLine(
+            phi=0.0,
+            theta=theta,
+            elevation=np.full(20, elevation if pid == 0 else -3000.0),
+            crustal_thickness_m=np.full(20, hc),
+            mantle_lithosphere_thickness_m=np.full(20, reference_thickness(crust_type)[1]),
+        )
+        filler = ElevationLine(
+            phi=-0.6,
+            theta=np.linspace(-0.2, 0.2, 8),
+            elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, reference_thickness(crust_type)[0]),
+            mantle_lithosphere_thickness_m=np.full(8, reference_thickness(crust_type)[1]),
+        )
+        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, omega=np.array([0.0, 0.0, omega_z]), lines=[line, filler])
+
+    # Hc just above the melting threshold (rheology.RIFT_CRITICAL_THICKNESS_M, 5000m) -- a
+    # single divergent step's thinning is enough to cross it.
+    west = _plate(0, "continental", -0.5, -0.02, -rate, hc=5050.0)
+    east = _plate(1, "oceanic", 0.02, 0.5, rate, hc=reference_thickness("oceanic")[0])
+    return west, east
+
+
+def test_decompression_melting_above_sea_level_erupts_continental_crust():
+    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, ELEV_CHANGE_VOLCANO
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M
+    from app.world import World
+
+    west, east = _melt_test_plates(elevation=500.0)  # still standing above sea level
+    world = World(seed=0, plates=[west, east], mantle_centers=[], node_density=1.0)
+    spacing = line_spacing_rad(1.0)
+    west.deform(world, [east], years=300_000, max_distance=1.5 * spacing)
+
+    line = next(ln for ln in west.lines if abs(ln.phi - 0.0) < 1e-6)
+    assert line.crustal_thickness_m[-1] == REFERENCE_HC_CONTINENTAL_M
+    assert line.crust_type_code[-1] == CRUST_TYPE_CONTINENTAL
+    assert line.elev_change_reason[-1] == ELEV_CHANGE_VOLCANO
+    # A fresh continental reference column floats near ordinary dry land, not the deep abyss.
+    assert line.elevation[-1] > 0.0
+    # Untouched, far-from-the-boundary nodes are unaffected.
+    assert line.crustal_thickness_m[0] == 5050.0
+
+
+def test_decompression_melting_at_or_below_sea_level_erupts_oceanic_crust():
+    from app.elevation_lines import CRUST_TYPE_OCEANIC, ELEV_CHANGE_VOLCANO
+    from app.lithosphere import REFERENCE_HC_OCEANIC_M
+    from app.world import World
+
+    west, east = _melt_test_plates(elevation=-2000.0)  # a drowned, already-submerged margin
+    world = World(seed=0, plates=[west, east], mantle_centers=[], node_density=1.0)
+    spacing = line_spacing_rad(1.0)
+    west.deform(world, [east], years=300_000, max_distance=1.5 * spacing)
+
+    line = next(ln for ln in west.lines if abs(ln.phi - 0.0) < 1e-6)
+    assert line.crustal_thickness_m[-1] == REFERENCE_HC_OCEANIC_M
+    assert line.crust_type_code[-1] == CRUST_TYPE_OCEANIC
+    assert line.elev_change_reason[-1] == ELEV_CHANGE_VOLCANO
+    # A fresh oceanic reference column floats at abyssal depth, not dry land.
+    assert line.elevation[-1] < -3000.0

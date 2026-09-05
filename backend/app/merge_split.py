@@ -136,6 +136,39 @@ SPLIT_MIN_AGE_STEPS = 20
 # freshly-generated plate within the first ~30 Myr (they all start near radius 1.3-1.5).
 SPLIT_SIZE_CERTAIN_RIFT_RAD = 2.2
 
+# --- Accumulated breakup stress (Plate.internal_stress) -----------------------------------
+#
+# SPLIT_SIZE_CERTAIN_RIFT_RAD above already relaxes the split gates by a plate's *current*
+# size, but that is a snapshot -- it says nothing about how long a plate has *stayed* large,
+# or about the extra pressure a sustained territorial overlap piles onto whichever plate in
+# the pair is the bigger one ("if one of the plates is particularly large, it increases the
+# pressure to split that plate"). `Plate.internal_stress` is a real accumulator: it rises
+# every step in proportion to a plate's own angular radius (a bigger footprint both spans more
+# genuinely different mantle-flow regimes and carries more differential force between its
+# quietly-interior center and its actively-forced edges) and, on top of that, in proportion to
+# how much of the plate is currently overlapping a neighbour -- weighted so the *larger* plate
+# of an overlapping pair accumulates the lion's share, not the smaller one it's crushing.
+# Decays exponentially (real crust viscously relaxes accumulated strain) so a plate that
+# shrinks back down or sheds its overlap cools off again rather than carrying stress forever.
+#
+# Dimensionless (a relaxation-time-scaled accumulator tuned directly against
+# SPLIT_SIZE_CERTAIN_RIFT_RAD's own units, not a literal Pa stress) -- `accumulate_plate_stress`
+# below is the one place that reads/writes it every step; `maybe_split_plate` is the one place
+# that turns it into split-gate relaxation.
+STRESS_DECAY_PER_MYR = 0.02  # viscous relaxation half-life ~35 Myr absent any renewed forcing
+BASE_STRESS_RATE_PER_MYR_PER_RAD = 0.05  # background size-driven accumulation
+OVERLAP_STRESS_RATE_PER_MYR = 1.5  # overlap-driven top-up at full (100%-overlapped) severity
+# The accumulated-stress analogue of SPLIT_SIZE_CERTAIN_RIFT_RAD: at this much accumulated
+# stress, `maybe_split_plate` relaxes the flow-fit/pole-separation gates all the way to zero
+# (rifting probability effectively 100%) regardless of the plate's *current* instantaneous
+# radius -- a plate that has stayed large and kept getting shoved by an overlap for a long
+# stretch should eventually rift even if its size alone hasn't crossed SPLIT_SIZE_CERTAIN_RIFT_RAD.
+STRESS_CERTAIN_RIFT = 3.0
+# A failed rift (RIFT_SUCCESS_PROBABILITY) didn't fully break the plate up, but it did relieve
+# some of the accumulated pressure that drove the attempt -- halved, not zeroed, since the
+# underlying size/overlap forcing that built the stress up is usually still there next step.
+FAILED_RIFT_STRESS_RELIEF = 0.5
+
 # Rift failure. Continental rifts routinely *arrest* before breakup -- the extension localizes
 # elsewhere, or the driving stress relaxes -- leaving a thinned but intact continental sag
 # basin (an aulacogen: the North Sea, the Benue Trough, the failed arm of a triple junction),
@@ -385,6 +418,42 @@ def update_overlap_progress(world: "World", years: float, overlap: dict[int, dic
             del world.overlap_progress[pair]
 
 
+def accumulate_plate_stress(world: "World", years: float, overlap: dict[int, dict]) -> None:
+    """Advance every plate's `internal_stress` (see the constants' own comment above) by
+    `years`: exponential decay, plus a background rate proportional to the plate's own
+    current angular radius, plus (for whichever plates are currently overlapping anyone --
+    not continental-only, since an oceanic plate can pile up on a continent too) an
+    overlap-driven top-up weighted by `relative_largeness` -- `own_nodes / (own_nodes +
+    overlapping_neighbours'_nodes)`, so a plate that is the *bigger* one in its own overlap(s)
+    accumulates most of the extra pressure, not the smaller plate it's overriding.
+
+    Reuses the `overlap` read `update_overlap_tracking` already computed this step for the
+    `overlapAge` diagnostic -- no separate whole-sphere pass. `maybe_split_plate` is the one
+    place this accumulator is actually read."""
+    years_myr = years / 1e6
+    decay = float(np.exp(-STRESS_DECAY_PER_MYR * years_myr))
+    plates_by_id = {p.plate_id: p for p in world.plates}
+    for plate in world.plates:
+        n = plate.node_count()
+        if n == 0:
+            plate.set_internal_stress(plate.internal_stress * decay)
+            continue
+        points, _ = plate.all_points_and_elevation()
+        _, radius = geometry.bounding_sphere(points)
+
+        info = overlap.get(plate.plate_id)
+        if info is not None:
+            overlap_frac = float(np.count_nonzero(info["overlap_mask"])) / n
+            neighbour_nodes = sum(plates_by_id[pid].node_count() for pid in info["by_partner"] if pid in plates_by_id)
+            relative_largeness = n / max(1, n + neighbour_nodes)
+        else:
+            overlap_frac = 0.0
+            relative_largeness = 0.0
+
+        rate = BASE_STRESS_RATE_PER_MYR_PER_RAD * radius + OVERLAP_STRESS_RATE_PER_MYR * overlap_frac * relative_largeness
+        plate.set_internal_stress(plate.internal_stress * decay + rate * years_myr)
+
+
 def pop_ready_forced_merge(world: "World") -> tuple[int, int] | None:
     """The continental pair that has sustained a deep overlap longest past
     `FORCED_MERGE_SUSTAINED_YEARS`, as `(id_keep, id_absorb)` with `id_keep` the larger plate
@@ -452,11 +521,18 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     velocities = mantle.flow_at(points, world.mantle_centers)
 
     # See SPLIT_SIZE_CERTAIN_RIFT_RAD's own comment: the bigger this plate already is, the
-    # less additional mantle-flow evidence it should take to justify cutting it.
+    # less additional mantle-flow evidence it should take to justify cutting it. Accumulated
+    # breakup stress (see the constants' own comment) is an independent, time-integrated
+    # signal on top of that instantaneous-size one -- a plate that has *stayed* large, or been
+    # shoved by a sustained overlap as the larger party, relaxes the same two gates even if its
+    # current radius alone hasn't crossed SPLIT_SIZE_CERTAIN_RIFT_RAD. Whichever signal is
+    # further along wins; either can independently push relaxation to 1.0 (certain rift).
     _, radius_rad = geometry.bounding_sphere(points)
     size_frac = min(1.0, radius_rad / SPLIT_SIZE_CERTAIN_RIFT_RAD)
-    residual_threshold = SPLIT_RMS_RESIDUAL_THRESHOLD * (1.0 - size_frac)
-    pole_separation_threshold = SPLIT_MIN_POLE_SEPARATION * (1.0 - size_frac)
+    stress_frac = min(1.0, plate.internal_stress / STRESS_CERTAIN_RIFT)
+    relax = max(size_frac, stress_frac)
+    residual_threshold = SPLIT_RMS_RESIDUAL_THRESHOLD * (1.0 - relax)
+    pole_separation_threshold = SPLIT_MIN_POLE_SEPARATION * (1.0 - relax)
 
     if _fit_residual_rms(points, velocities, plate.omega) < residual_threshold:
         return None
@@ -495,6 +571,9 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         if callable(failed_rift):
             failed_rift(cut_normal, line_spacing_rad(world.node_density))
         plate.reset_age()
+        # The attempt released some, but not all, of the accumulated pressure that drove it --
+        # see FAILED_RIFT_STRESS_RELIEF's own comment.
+        plate.set_internal_stress(plate.internal_stress * FAILED_RIFT_STRESS_RELIEF)
         world.log_event(f"Plate {plate.plate_id} began rifting but the rift failed, leaving an aulacogen basin.")
         return None
     world.next_plate_id += 1
@@ -502,6 +581,11 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     plate_a, plate_b = split_result
     plate_a.set_omega(mantle.clamp_rate(pole_a))
     plate_b.set_omega(mantle.clamp_rate(pole_b))
+    # A completed rift fully releases the accumulated breakup pressure that drove it -- both
+    # daughters start fresh, the same "topology event resets accumulated state" precedent
+    # reset_age already sets for age_steps.
+    plate_a.set_internal_stress(0.0)
+    plate_b.set_internal_stress(0.0)
     return plate_a, plate_b
 
 
@@ -558,8 +642,10 @@ def update_overlap_tracking(world: "World", years: float) -> None:
       every node no longer overlapping anything.
     - `update_overlap_progress`: advance `World.overlap_progress`, the sustained-deep-overlap
       timer the forced continental merge (`pop_ready_forced_merge`) consumes.
+    - `accumulate_plate_stress`: advance every plate's `Plate.internal_stress`, the breakup-
+      pressure accumulator `maybe_split_plate` reads.
 
-    Both go through the one `plates.compute_node_overlap` read the Plate Inspector /
+    All three go through the one `plates.compute_node_overlap` read the Plate Inspector /
     `plate_diagnostics.py` overlap view also uses, so "15% of plate 21 is on plate 0" and
     "...since 178 My" are the same underlying node set. Mirrors
     `stranded_basins.reconcile_world_tracks` / `World.collision_progress` -- lightweight
@@ -567,6 +653,7 @@ def update_overlap_tracking(world: "World", years: float) -> None:
     tol = plates_mod.OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density)
     overlap = plates_mod.compute_node_overlap(world.plates, tol)
     update_overlap_progress(world, years, overlap)
+    accumulate_plate_stress(world, years, overlap)
     for plate in world.plates:
         n = plate.node_count()
         if n == 0:

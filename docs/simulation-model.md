@@ -10,7 +10,8 @@
 - [Plate motion: shift and deform](#boundary-evolution)
 - [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
-- [Whole-sphere coverage (subsumed into deform)](#gap-filling)
+- [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback](#gap-filling)
+  - [Per-node crust type](#per-node-crust-type)
 - [Volcanism](#volcanism)
 - [Faults (intraplate)](#faults)
 - [Boundary point reassignment (subsumed into deform)](#reassignment)
@@ -824,6 +825,46 @@ routine per-step motion.
   clearing its identical cooldown on the same step) staggers its rifts over time instead of
   shattering all at once. A 200-step reproduction goes from 12 plates decaying to 9, to a
   healthy churn oscillating ~18-26.
+
+  **Accumulated breakup stress (`Plate.internal_stress`, `merge_split.accumulate_plate_stress`,
+  2026-09).** `SPLIT_SIZE_CERTAIN_RIFT_RAD` above relaxes the split gates by a plate's
+  *current* angular radius -- a snapshot, not a memory of how long it's stayed large or how
+  hard it's been shoved. `internal_stress` is a real, persisted-per-plate accumulator: every
+  step it rises in proportion to the plate's own radius (`BASE_STRESS_RATE_PER_MYR_PER_RAD`
+  -- a bigger footprint both spans more genuinely different mantle-flow regimes and carries
+  more differential force between its quiet interior and its actively-forced edges) plus, on
+  top of that, in proportion to how much of the plate is currently overlapping any neighbour
+  (`OVERLAP_STRESS_RATE_PER_MYR`), weighted by `relative_largeness = own_nodes / (own_nodes +
+  overlapping_neighbours'_nodes)` so the *larger* plate of an overlapping pair accumulates most
+  of that top-up, not the smaller one it's overriding -- the direct answer to "if one of the
+  plates is particularly large, it increases the pressure to split that plate." It decays
+  exponentially (`STRESS_DECAY_PER_MYR`) absent renewed forcing, so a plate that shrinks back
+  or sheds its overlap cools off again. `maybe_split_plate` folds `min(1.0, internal_stress /
+  STRESS_CERTAIN_RIFT)` into the same relaxation `size_frac` already drives (whichever signal
+  is further along wins), so a plate that has *stayed* large or *stayed* overlapped can
+  eventually rift even if its instantaneous radius alone never crosses
+  `SPLIT_SIZE_CERTAIN_RIFT_RAD`. Reset to 0 on both daughters on a completed rift (the pressure
+  that drove it is released); halved, not zeroed, on a failed rift (`FAILED_RIFT_STRESS_RELIEF`
+  -- the attempt relieved some pressure, but the underlying size/overlap forcing is usually
+  still there next step). Computed alongside `update_overlap_progress` in
+  `merge_split.update_overlap_tracking`, reusing the same whole-sphere `compute_node_overlap`
+  read the `overlapAge` view already needs -- no separate pass.
+
+  **Overlap severity also scales uplift and slowdown directly (2026-09).** Two more local,
+  already-available-fraction severity signals, both scoped to continent-continent collision
+  (an oceanic overlap already resolves quickly via subduction deletion, so "slows the plate
+  down" doesn't apply the same way there): in `LithospherePlate.deform`, the near-field
+  contested-band thickening rate (`orogen_contested_strength`) is scaled by `1 +
+  OVERLAP_UPLIFT_SEVERITY_GAIN * overlap_severity`, where `overlap_severity` is the fraction of
+  this plate's own near-boundary band currently classified contested (not the whole plate --
+  a huge plate's boundary is a small fraction of its own node count, which would dilute this
+  to near-zero for exactly the large-plate case that matters) -- a deeper, wider overlap
+  crumples faster, on top of the existing distance-decay shape within the belt. Symmetrically,
+  in `torque.shift_plate`, `collision_friction_torque`'s resistive stress
+  (`COLLISION_FRICTION_REFERENCE_PA`) is scaled by `1 + OVERLAP_FRICTION_SEVERITY_GAIN *
+  overlap_severity` (the same band-normalized fraction) -- a deep pile-up brakes both plates
+  several times harder than a light graze, not just proportionally more from summing over more
+  contested nodes.
 - **Defragmentation.** `deform()` only ever grows or shrinks a line's *ends*, and never
   deletes its last node -- so subduction or transform shear can carve one plate's node
   cloud into two (or more) fully disconnected landmasses, still carried as a single
@@ -854,29 +895,91 @@ routine per-step motion.
   comb stops polluting neighbour polygons and collision detection first.
 
 <a id="gap-filling"></a>
-## Whole-sphere coverage (subsumed into `deform()`)
+## Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback (`gaps.py`)
 
-This used to be a separate periodic pass (`gaps.py`'s `fill_gaps`, since removed): a
-whole-sphere lattice sweep every `elevation_lines.REGULARIZE_INTERVAL_STEPS` calls, finding
-every point farther than a coverage radius from any plate's nearest node and resolving each
-cluster by absorbing it into a dominant (or young) bordering plate, or spawning a brand new
-plate if no plate dominated.
+Ordinary per-step boundary growth (`deform()`'s end-growth / `_claim_adjacent_territory`, see
+[Plate motion: shift and deform](#boundary-evolution)) keeps pace with almost every gap that
+opens next to a live plate. Two mechanisms handle the two regimes a gap can actually be in:
 
-In the polygon-based model, "an uncovered gap" and "unclaimed territory" are the same
-concept `deform()` already computes every turn for every plate (the sphere minus every other
-live plate's own bounding polygon -- see [Plate motion: shift and
-deform](#boundary-evolution)), so there's no separate detection pass left to run: a plate
-growing toward its own pole, or reclaiming ground a subducted neighbor just vacated, is just
-the ordinary "claiming adjacent territory" sub-step of `deform()`, described there.
+**Local: a plate thins, and once too thin, magma flows up (`lithosphere_plate.py`'s own
+`deform()`, `rheology.apply_divergent_deformation`).** A divergent (opening) boundary node
+doesn't just relax toward the ridge/rift target elevation -- its crustal column (`Hc`)
+genuinely thins under extension every step it stays divergent. Once `Hc` drops below
+`rheology.RIFT_CRITICAL_THICKNESS_M` (the spec's literal ~5 km decompression-melting
+trigger), that node "melts": its `Hc`/`Hm` reset to a fresh reference column and it becomes a
+volcano (`is_volcano=True`, one guaranteed eruption -- see [Volcanism](#volcanism)). **The
+erupted material's type depends on where it actually surfaces**, not on the plate's own
+nominal `crust_type`: a node still standing above sea level at the moment it melts (its own
+*pre-melt* `elevation`) gets a fresh continental-reference column -- real continental rifts
+stay bimodal-volcanic land for a long stretch before a true ocean opens (the East African
+Rift, well before the Red Sea stage) -- while a node already at or below sea level (a drowned
+margin, or an ordinary mid-ocean ridge) gets the usual oceanic-reference column. Either way
+the node's own `ElevationLine.crust_type_code` is stamped explicitly to match (see
+[Per-node crust type](#per-node-crust-type)), so a continental plate that melts through to
+real ocean floor is no longer isostatically floated as if it were still continental crust,
+and vice versa for a volcanic island breaching the surface on an oceanic plate. This is the
+direct, per-step answer to "a gap should close by the plate thinning, and once too thin,
+magma flows up" -- it is what keeps almost every ordinary rift from ever outrunning growth in
+the first place, rather than a periodic sweep noticing a hole after the fact.
 
-**One real behavior this doesn't reproduce**: the old pass's "no plate dominates the gap's
-border -> spawn a brand new plate" fallback. `deform()`'s claim step only ever grows an
-*existing* plate into a whole new row adjacent to its own current phi extremes -- it has no
-mechanism to spawn an entirely new plate for a gap that borders no existing plate's reach at
-all. In practice this should be rare (the sphere starts fully tiled with no gaps by
-construction, see [Initial plate generation](#initial-plate-generation), so a gap can only
-open next to whichever plates used to border the space that vacated it), but it's a known,
-not-yet-addressed gap in coverage rather than a deliberately preserved behavior.
+**Whole-sphere fallback (`gaps.py`'s `fill_gaps`).** Once every plate bordering a stretch of
+open ocean has been fully subducted and removed (`merge_split.remove_defunct_plates`), that
+sphere area has no plate left anywhere near it to thin/melt from -- there is nothing there to
+grow. `fill_gaps` runs a whole-sphere lattice sweep on the same cadence as
+`merge_split.defragment_plates` (`gaps.GAP_FILL_INTERVAL_STEPS`), finds every connected region
+at least `gaps.MIN_GAP_NODES` large that no live plate's lines currently reach, and spawns a
+new plate to cover it -- oceanic almost everywhere (real gaps are overwhelmingly open water a
+fully-subducted plate vacated), except nodes genuinely hugging a still-standing continental
+coastline: for each gap point, if the *nearest pre-existing node* is continental, still above
+sea level, and within `gaps.GAP_LAND_ADOPTION_RADIUS_MULT` line-spacings, the new node comes
+back continental too (`gaps.GAP_LAND_ADOPTION_RADIUS_MULT = 3.0`, hugging a real coastline --
+e.g. a fully-subducted marginal sea landlocked by continent -- not reaching all the way across
+an ocean basin to a far-off continent). Deliberately spawn-only, not absorb-into-a-neighbour,
+to avoid feeding the continental-growth ratchet ([Node-count creep](TODO.md#node-count-creep-
+continental-boundaries-grow-but-never-retreat-2026-09-01-investigation)). The new plate's own
+`crust_type` label is the majority of what its nodes actually ended up being (see
+[Per-node crust type](#per-node-crust-type)), not a hardcoded "oceanic" -- it is oceanic in
+practice for all but the rare landlocked case. Known stopgap, not the real fix: the local
+thinning-then-melting mechanism above should, over time, make this whole-sphere sweep an
+increasingly rare fallback rather than a routine occurrence -- see `gaps.py`'s own module
+docstring and [TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix).
+
+<a id="per-node-crust-type"></a>
+### Per-node crust type
+
+A plate's `crust_type` ("oceanic"/"continental") is the usual, plate-wide answer to "what is
+this crust made of" -- but real crust is genuinely composite, and the two magma-typing events
+above (rift melting, gap-fill) are exactly the places a single node's own composition can
+diverge from the plate it sits on. `ElevationLine.crust_type_code` (`elevation_lines.py`)
+carries that per-node: `CRUST_TYPE_INHERIT` (0, the default every node gets -- including every
+node on every save written before this field existed) means "same as the owning plate,"
+resolved by `elevation_lines.effective_is_continental`; `CRUST_TYPE_OCEANIC`/
+`CRUST_TYPE_CONTINENTAL` are explicit overrides, stamped only by the two events above.
+Ordinary generation, boundary growth, merge, and split never stamp an explicit code, so every
+existing calibrated isostasy/inertia number is unchanged for every node except the ones this
+feature is actually about.
+
+Where it's more than a label: `lithosphere.node_crust_density` resolves a node's effective
+crust density from its own code (falling back to the plate's nominal `crust_type`), and this
+-- not a single plate-wide density -- is what `lithosphere.sync_plate_elevation` (isostatic
+elevation) and `torque.py`'s moment-of-inertia / ridge-push calculations actually use. A
+continental plate's margin that melted through to real oceanic crust is therefore floated at
+oceanic density, not continental, and its mass properly contributes to the plate's own inertia
+as what it actually is.
+
+**A new plate's own `crust_type` is a majority vote, not a copy.** Per
+`elevation_lines.majority_crust_type`, every place a *new* plate is assembled from an existing
+one's nodes -- `LithospherePlate.split()`'s two daughters, `Plate.defragment()`'s fragments,
+and `gaps.py`'s freshly-spawned plate -- labels itself by the actual majority of its own
+nodes' effective type, falling back to the parent/nominal type unchanged when every node is
+still `CRUST_TYPE_INHERIT` (the common case, a total no-op). A `merge_plates` fusion is left
+alone -- it keeps one of the two existing plates' identity rather than creating a new one.
+
+A debug render view, `"crustType"` (`render_image.py`, see `DEBUG_VIEWS`), colours every node
+by its effective type, with the rare "anomaly" nodes -- an explicit code that actually
+disagrees with the plate it sits on -- in bright highlight colours distinct from the ordinary
+muted oceanic/continental tones, so a mixed-composition patch is directly visible for
+verification.
 
 <a id="volcanism"></a>
 ## Volcanism (`volcanism.py`, plus `plates.py`'s own `PlateWithLines.deform`)

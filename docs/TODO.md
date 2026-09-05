@@ -196,6 +196,16 @@ geometry is visibly bad in the Plate Inspector. **Open follow-ups, most impactfu
    (`_redistribute_accreted_column`, mechanism 3 below -- **done 2026-09-02**), so the overlap
    crumples into an orogen.
 
+   **Overlap severity now also scales directly, 2026-09-04.** Beyond the mechanisms above
+   (which resolve the overlap over time), a *currently* overlapping pair now feels a
+   proportionally stronger force while it lasts: the near-field contested-band uplift rate and
+   `torque.collision_friction_torque`'s resistive braking are both scaled up by how much of
+   the plate's own near-boundary band is contested right now (`OVERLAP_UPLIFT_SEVERITY_GAIN` /
+   `OVERLAP_FRICTION_SEVERITY_GAIN`), and the same severity feeds `Plate.internal_stress`
+   (direction 7 further down) so a large plate stuck in a deep overlap is pushed toward
+   rifting, not just toward merging or crumpling in place. See docs/simulation-model.md's
+   "Accumulated breakup stress" subsection.
+
 5. **Node-count blowup persists** (the original headline symptom): ~140k nodes at 85 My for
    `node_density=4` vs a clean-tiling estimate of ~130k *at 1x* -- consistent with the
    ~15-75%-over range the 2026-08-30 table recorded, i.e. not fixed, just no longer
@@ -241,7 +251,24 @@ is still entirely open.
    already does gradual absorption at a plate's own edge once the new plate gives it a real
    neighbour again. `unit_tests/test_gaps.py` pins it (no-op on a freshly-generated world,
    spawns near-full replacement crust for a removed plate's vacated footprint, ignores a
-   gap below `MIN_GAP_NODES`).
+   gap below `MIN_GAP_NODES`). **2026-09-04 addendum:** the spawned plate is no longer
+   unconditionally oceanic -- see docs/TODO.md's "`gaps.py`'s plate-spawn is a stopgap"
+   section's own 2026-09-04 addendum.
+
+7. **Large plates had no independent pressure to break apart beyond their own instantaneous
+   size.** **Addressed 2026-09-04.** `SPLIT_SIZE_CERTAIN_RIFT_RAD` (direction 6 above) only
+   ever reads a plate's *current* angular radius -- a plate that has stayed large for a long
+   stretch, or that keeps getting shoved by a sustained territorial overlap, got no extra
+   credit toward rifting beyond whatever that snapshot already gave it. `Plate.internal_stress`
+   (`merge_split.accumulate_plate_stress`) is a real, persisted accumulator: it rises with a
+   plate's own radius every step, plus an overlap-driven top-up weighted toward whichever plate
+   in an overlapping pair is the *larger* one (`relative_largeness`), and decays without
+   renewed forcing. `maybe_split_plate` relaxes the same residual/pole-separation gates by
+   whichever of size-based or stress-based relaxation is further along. See
+   docs/simulation-model.md's "Accumulated breakup stress" subsection for the full mechanism
+   and constants; `unit_tests/test_merge_split.py`'s
+   `test_accumulated_stress_alone_can_push_a_weak_split_over_the_gate` isolates it from the
+   pre-existing size-based path.
 
 ### Node-count creep: continental boundaries grow but never retreat (2026-09-01 investigation)
 
@@ -1384,3 +1411,21 @@ Whoever picks this up should start from `_grow_or_shrink_line_for_deform` /
 `_claim_adjacent_territory` in `lithosphere_plate.py` -- the existing per-line growth this
 would need to extend -- and treat `gaps.py` as the thing this work should let shrink back to
 a rare fallback, not as the permanent mechanism.
+
+**Partially addressed 2026-09-04 -- the type decision, not the underlying mechanism.** This
+stopgap's own hardcoded "oceanic" -- regardless of where the gap actually sits -- is fixed:
+`_spawn_plate_from_gap` now decides per-node type by real local context (continental only
+where a gap point genuinely hugs a still-standing continental coastline, see
+`GAP_LAND_ADOPTION_RADIUS_MULT`; oceanic everywhere else, unchanged from before), and the
+spawned plate's own `crust_type` label is the actual majority of what it ended up with, not a
+hardcoded constant (see docs/simulation-model.md#per-node-crust-type). Separately, the *local*
+decompression-melting mechanism this section's own "Direction" gestures at
+(`rheology.apply_divergent_deformation` + `LithospherePlate.deform`'s existing melting
+handling) now also decides oceanic-vs-continental by whether the melting node was still above
+sea level, rather than always resetting to the oceanic reference regardless of context -- see
+docs/simulation-model.md's "Whole-sphere coverage" section. **Still open, unchanged by this
+work:** `gaps.py` itself is still exactly the periodic, whole-sphere, conjure-a-fully-formed-
+plate stopgap described above -- nothing here touches its cadence, its post-hoc Euler-pole
+fit, or its fundamental "notices a hole after the fact" character. The real fix this section
+calls for (ordinary end-growth structurally never able to outrun a large-enough rift) is still
+entirely open.

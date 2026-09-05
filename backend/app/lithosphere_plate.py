@@ -30,10 +30,13 @@ from .elevation_lines import (
     ELEV_CHANGE_TRANSFORM,
     ELEV_CHANGE_TRENCH,
     ELEV_CHANGE_VOLCANO,
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_OCEANIC,
     ElevationLine,
     PLANET_RADIUS_KM,
     build_lines_from_lattice,
     line_spacing_rad,
+    majority_crust_type,
     needs_regularizing,
     regularize_line,
     split_into_contiguous_runs,
@@ -57,6 +60,14 @@ from . import bathymetry, lithosphere, rheology, terrain_noise, torque, worldske
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
+
+# A plate whose boundary is more deeply/widely overlapping a neighbour right now should
+# crumple faster than one barely grazing -- on top of (not instead of) the existing
+# distance-decay shape within the belt. `contested_all.mean()` (this plate's own fraction of
+# near-boundary-band nodes currently classified contested) is a free, already-computed
+# per-step severity signal; at severity 1.0 (the whole band contested -- a deep pile-up) the
+# near-field contested-band strength is tripled.
+OVERLAP_UPLIFT_SEVERITY_GAIN = 2.0
 
 # Transform (strike-slip) boundary pressure-ridge uplift, applied as a direct elevation delta
 # on the transform band in deform() (there is no net crustal shortening at a strike-slip
@@ -328,6 +339,10 @@ class LithospherePlate(PlateWithLines):
     def crust_density(self) -> float:
         return lithosphere.crust_density(self.crust_type)
 
+    def node_crust_density(self) -> np.ndarray:
+        """Per-node counterpart of `crust_density()` -- see `lithosphere.node_crust_density`."""
+        return lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
+
     # -- Motion: torque.py's real implementation -----------------------------------------
 
     def shift(self, world: "World", years: float) -> float:  # noqa: F821 (World only for typing)
@@ -439,7 +454,15 @@ class LithospherePlate(PlateWithLines):
         # own baseline collision belt already carries one at the knob's untuned value).
         orogen_amount = world.collision_uplift_multiplier
         orogen_reach = world.collision_uplift_reach_multiplier
-        orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0)
+        # How much of this plate's own active margin is currently jammed in overlap right now
+        # -- normalized against the near-boundary band, not the whole plate (a huge plate's
+        # boundary is a small fraction of its own node count, which would dilute this to
+        # near-zero for exactly the large-plate case that matters). A deeper/wider overlap
+        # should crumple faster than a light graze, on top of the existing distance-decay
+        # shape within the belt -- see OVERLAP_UPLIFT_SEVERITY_GAIN.
+        band_all = inputs.dist_to_neighbor <= reach_rad
+        overlap_severity = float(np.count_nonzero(contested_all)) / max(1, int(np.count_nonzero(band_all)))
+        orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0) * (1.0 + OVERLAP_UPLIFT_SEVERITY_GAIN * overlap_severity)
         orogen_dilation_nodes = (
             round(orogen_reach * COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT / (spacing_rad * PLANET_RADIUS_KM))
             if orogen_reach > 0.0 and self.crust_type == "continental"
@@ -596,14 +619,29 @@ class LithospherePlate(PlateWithLines):
 
             is_volcano = line.is_volcano.copy()
             volcano_remaining = line.volcano_active_years_remaining.copy()
+            crust_type_code = line.crust_type_code.copy()
             if np.any(melting):
                 # Decompression melting (spec 2.3): a rift that just thinned past the
-                # critical threshold erupts fresh oceanic crust in place -- same one-
-                # guaranteed-eruption convention v1's stretch-volcano growth used.
-                from .elevation_lines import ERUPTION_ELEVATION_M, VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
+                # critical threshold erupts fresh crust in place -- same one-guaranteed-
+                # eruption convention v1's stretch-volcano growth used. The erupted material's
+                # type depends on where it surfaces: still standing above sea level (this
+                # node's *pre-melt* elevation, i.e. this line's own elevation before today's
+                # deform() pass touched it) is continental-type magmatism -- real continental
+                # rifts stay bimodal-volcanic land for a long stretch before a true ocean
+                # opens (the East African Rift, well before the Red Sea stage) -- while a
+                # node already at or below sea level (a drowned margin, or an ordinary oceanic
+                # ridge) erupts ordinary mid-ocean-ridge oceanic crust. See
+                # docs/simulation-model.md's "Magma-typed decompression melting".
+                from .elevation_lines import VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
 
-                hc[melting] = lithosphere.REFERENCE_HC_OCEANIC_M
-                hm[melting] = lithosphere.YOUNG_RIDGE_HM_M
+                melt_land = melting & (line.elevation > 0.0)
+                melt_ocean = melting & ~melt_land
+                hc[melt_land] = lithosphere.REFERENCE_HC_CONTINENTAL_M
+                hm[melt_land] = lithosphere.REFERENCE_HM_CONTINENTAL_M
+                crust_type_code[melt_land] = CRUST_TYPE_CONTINENTAL
+                hc[melt_ocean] = lithosphere.REFERENCE_HC_OCEANIC_M
+                hm[melt_ocean] = lithosphere.YOUNG_RIDGE_HM_M
+                crust_type_code[melt_ocean] = CRUST_TYPE_OCEANIC
                 is_volcano[melting] = True
                 rng = np.random.default_rng((world.seed, round(world.elapsed_years), self.plate_id, line_index))
                 volcano_remaining[melting] = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=int(melting.sum()))
@@ -630,6 +668,20 @@ class LithospherePlate(PlateWithLines):
             new_elevation = rheology.clip_elevation_bounds(
                 line.elevation + (elevation_after - elevation_before) + transform_uplift + far_field_uplift
             )
+            if np.any(melting):
+                # The delta above used this plate's single nominal `rho_c` for both
+                # `elevation_before`/`elevation_after` -- fine for every ordinary node, whose
+                # crust_type_code is still CRUST_TYPE_INHERIT, but wrong for a node that just
+                # melted into the *other* type (e.g. a continental plate's drowned margin
+                # melting through to real oceanic crust): its fresh Hc/Hm reference column
+                # should float at the density of what it actually is now, not the plate's own
+                # nominal density. This is a brand-new column with no prior erosion history to
+                # preserve (same "hard reset, not a delta" character the Hc/Hm reset above
+                # already has), so read it exactly rather than folding it into the delta.
+                melt_rho_c = lithosphere.node_crust_density(crust_type_code[melting], self.crust_type)
+                new_elevation[melting] = rheology.clip_elevation_bounds(
+                    lithosphere.isostatic_elevation(hc[melting], hm[melting], melt_rho_c)
+                )
 
             # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
             # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
@@ -663,6 +715,7 @@ class LithospherePlate(PlateWithLines):
                 is_volcano=is_volcano,
                 volcano_active_years_remaining=volcano_remaining,
                 elev_change_reason=reason,
+                crust_type_code=crust_type_code,
             )
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
@@ -1007,10 +1060,10 @@ class LithospherePlate(PlateWithLines):
         own_points, _ = self.all_points_and_elevation()
         other_points, _ = other.all_points_and_elevation()
         inertia_self = lithosphere.moment_of_inertia_tensor(
-            own_points, self.collect("crustal_thickness_m"), self.collect("mantle_lithosphere_thickness_m"), self.crust_density(), spacing_rad
+            own_points, self.collect("crustal_thickness_m"), self.collect("mantle_lithosphere_thickness_m"), self.node_crust_density(), spacing_rad
         )
         inertia_other = lithosphere.moment_of_inertia_tensor(
-            other_points, other.collect("crustal_thickness_m"), other.collect("mantle_lithosphere_thickness_m"), other.crust_density(), spacing_rad
+            other_points, other.collect("crustal_thickness_m"), other.collect("mantle_lithosphere_thickness_m"), other.node_crust_density(), spacing_rad
         )
         self._merge_nodes_with(other, spacing_rad, coverage_radius_rad, other_points_xyz)
         self.set_omega(torque.merge_omega(self, inertia_self, other, inertia_other))
@@ -1055,8 +1108,14 @@ class LithospherePlate(PlateWithLines):
         if sum(len(l) for l in lines_a) < min_nodes or sum(len(l) for l in lines_b) < min_nodes:
             return None
 
-        plate_a = LithospherePlate(plate_id=self.plate_id, frame=self.frame.copy(), crust_type=self.crust_type, lines=lines_a)
-        plate_b = LithospherePlate(plate_id=new_id, frame=self.frame.copy(), crust_type=self.crust_type, lines=lines_b)
+        # A daughter's own crust_type is the majority of what its nodes actually are, not a
+        # blind copy of the parent's -- see elevation_lines.majority_crust_type. A no-op
+        # (returns self.crust_type unchanged) unless this plate has ever had a magma-typing
+        # event (rift decompression melting) whose composition ended up lopsided across the cut.
+        crust_type_a = majority_crust_type(lines_a, self.crust_type)
+        crust_type_b = majority_crust_type(lines_b, self.crust_type)
+        plate_a = LithospherePlate(plate_id=self.plate_id, frame=self.frame.copy(), crust_type=crust_type_a, lines=lines_a)
+        plate_b = LithospherePlate(plate_id=new_id, frame=self.frame.copy(), crust_type=crust_type_b, lines=lines_b)
         return plate_a, plate_b
 
     def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
@@ -1465,6 +1524,7 @@ def new_plate(
     spacing_rad: float,
     seed: int,
     is_owned=None,
+    node_is_continental=None,
 ) -> LithospherePlate:
     """A brand-new `LithospherePlate` seeded with reference Hc/Hm plus the same composite
     relief field `generate_plates` uses (see `terrain_noise.py`) -- the v2 analogue of
@@ -1473,32 +1533,50 @@ def new_plate(
 
     `is_owned` (default: every node in `frame`'s entire local lattice) restricts which nodes
     of that lattice actually become part of the plate -- see `gaps.py`'s use of this to carve
-    out just one uncovered region rather than claiming the whole sphere."""
+    out just one uncovered region rather than claiming the whole sphere.
+
+    `node_is_continental` (default: every node matches `crust_type`) lets a caller seed a
+    genuinely mixed-composition plate node-by-node -- see `gaps.py`'s land-adjacent gap-fill,
+    which spawns continental nodes right at a coastline and oceanic ones everywhere else in
+    the same gap. Each node gets the reference thickness/relief/density of its *own* decided
+    type (`elevation_lines.CRUST_TYPE_OCEANIC`/`CONTINENTAL`, stamped explicitly since these
+    are the authoritative source of that node's real composition, not an inherited label), and
+    the plate's own `crust_type` is the majority of what actually got built
+    (`elevation_lines.majority_crust_type`) rather than the `crust_type` argument verbatim --
+    that argument is only the fallback/default when every node ends up the same type, which is
+    every caller before this parameter existed."""
     if is_owned is None:
 
         def is_owned(world_pts: np.ndarray) -> np.ndarray:
             return np.ones(len(world_pts), dtype=bool)
-    hc0, hm0 = lithosphere.reference_thickness(crust_type)
+    if node_is_continental is None:
+        _default_continental = crust_type == "continental"
+
+        def node_is_continental(world_pts: np.ndarray) -> np.ndarray:
+            return np.full(len(world_pts), _default_continental)
+
     rng = np.random.default_rng((seed, plate_id, _TERRAIN_SEED_TAG))
-    if crust_type == "continental":
-        relief = terrain_noise.ContinentalRelief(
-            rng,
-            orogenic_units=_OROGENIC_RELIEF_UNITS,
-            plateau_units=_PLATEAU_UPLIFT_UNITS,
-            plateau_relief_units=_PLATEAU_RELIEF_UNITS,
-        )
-        amp = _HC_NOISE_AMPLITUDE_CONTINENTAL_M
+    hc0_continental, hm0_continental = lithosphere.reference_thickness("continental")
+    hc0_oceanic, hm0_oceanic = lithosphere.reference_thickness("oceanic")
+    continental_relief = terrain_noise.ContinentalRelief(
+        rng,
+        orogenic_units=_OROGENIC_RELIEF_UNITS,
+        plateau_units=_PLATEAU_UPLIFT_UNITS,
+        plateau_relief_units=_PLATEAU_RELIEF_UNITS,
+    )
+    oceanic_relief = terrain_noise.OceanicRelief(rng)
 
-        def hc_at(world_pts: np.ndarray) -> np.ndarray:
-            s = relief.sample(world_pts)
+    def hc_at(world_pts: np.ndarray, is_continental: np.ndarray) -> np.ndarray:
+        hc = np.empty(len(world_pts))
+        if np.any(is_continental):
+            pts = world_pts[is_continental]
+            s = continental_relief.sample(pts)
             gate = np.clip((s - _UPLIFT_SEA_MARGIN) / _UPLIFT_SEA_RAMP, 0.0, 1.0)
-            return hc0 + amp * s + amp * gate * relief.uplift(world_pts)
-    else:
-        ocean_relief = terrain_noise.OceanicRelief(rng)
-        amp = _HC_NOISE_AMPLITUDE_OCEANIC_M
-
-        def hc_at(world_pts: np.ndarray) -> np.ndarray:
-            return hc0 + amp * ocean_relief.sample(world_pts)
+            hc[is_continental] = hc0_continental + _HC_NOISE_AMPLITUDE_CONTINENTAL_M * s + _HC_NOISE_AMPLITUDE_CONTINENTAL_M * gate * continental_relief.uplift(pts)
+        if not np.all(is_continental):
+            pts = world_pts[~is_continental]
+            hc[~is_continental] = hc0_oceanic + _HC_NOISE_AMPLITUDE_OCEANIC_M * oceanic_relief.sample(pts)
+        return hc
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         return np.zeros(len(world_pts))
@@ -1507,9 +1585,12 @@ def new_plate(
     hc_lines = []
     for line in lines:
         world_pts = line.world_xyz(frame)
-        hc = np.clip(hc_at(world_pts), lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
-        hm = np.full(len(line), hm0)
-        hc_lines.append(line.replace(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm))
-    plate = LithospherePlate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=hc_lines)
+        is_continental = node_is_continental(world_pts)
+        hc = np.clip(hc_at(world_pts, is_continental), lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
+        hm = np.where(is_continental, hm0_continental, hm0_oceanic)
+        code = np.where(is_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(np.int8)
+        hc_lines.append(line.replace(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm, crust_type_code=code))
+    majority = majority_crust_type(hc_lines, crust_type)
+    plate = LithospherePlate(plate_id=plate_id, frame=frame, crust_type=majority, lines=hc_lines)
     lithosphere.sync_plate_elevation(plate)
     return plate

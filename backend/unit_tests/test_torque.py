@@ -56,6 +56,7 @@ def test_subducting_mask_only_flags_a_converging_oceanic_boundary():
         own_points=points,
         own_hc=np.full(n, 7000.0),
         own_hm=np.full(n, 60_000.0),
+        own_crust_type_codes=np.zeros(n, dtype=np.int8),
         dist_to_neighbor=np.full(n, 0.001),
         direction_to_neighbor=direction,
         neighbor_is_oceanic=np.zeros(n, dtype=bool),
@@ -75,6 +76,7 @@ def test_slab_pull_is_zero_without_a_subducting_node():
         own_points=np.tile(np.array([1.0, 0.0, 0.0]), (n, 1)),
         own_hc=np.full(n, 7000.0),
         own_hm=np.full(n, 60_000.0),
+        own_crust_type_codes=np.zeros(n, dtype=np.int8),
         dist_to_neighbor=np.full(n, 0.001),
         direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
         neighbor_is_oceanic=np.zeros(n, dtype=bool),
@@ -98,6 +100,7 @@ def test_slab_pull_points_toward_subduction_direction():
         own_points=point,
         own_hc=np.array([7000.0]),
         own_hm=np.array([60_000.0]),
+        own_crust_type_codes=np.zeros(1, dtype=np.int8),
         dist_to_neighbor=np.array([0.001]),
         direction_to_neighbor=direction,
         neighbor_is_oceanic=np.array([False]),
@@ -142,6 +145,7 @@ def test_classify_boundary_nodes_flags_deep_interior_overlap():
         own_points=own,
         own_hc=np.full(2, 35_000.0),
         own_hm=np.full(2, 100_000.0),
+        own_crust_type_codes=np.zeros(2, dtype=np.int8),
         dist_to_neighbor=np.array([np.inf, np.inf]),
         direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (2, 1)),
         neighbor_is_oceanic=np.zeros(2, dtype=bool),
@@ -174,6 +178,7 @@ def test_classify_boundary_nodes_is_motion_based_not_geometric():
         own_points=own,
         own_hc=np.full(2, 35_000.0),
         own_hm=np.full(2, 100_000.0),
+        own_crust_type_codes=np.zeros(2, dtype=np.int8),
         dist_to_neighbor=np.array([0.03, 0.03]),
         direction_to_neighbor=direction,
         neighbor_is_oceanic=np.zeros(2, dtype=bool),
@@ -324,6 +329,7 @@ def test_slab_drag_keeps_a_subducting_plate_off_the_clamp():
         own_points=points,
         own_hc=np.full(n, lithosphere.REFERENCE_HC_OCEANIC_M),
         own_hm=np.full(n, lithosphere.REFERENCE_HM_OCEANIC_M),
+        own_crust_type_codes=np.zeros(n, dtype=np.int8),
         dist_to_neighbor=np.full(n, 0.001),
         direction_to_neighbor=np.tile(tangent, (n, 1)),
         neighbor_is_oceanic=np.ones(n, dtype=bool),
@@ -378,3 +384,37 @@ def test_merge_omega_conserves_angular_momentum():
     # merge_omega clamps the resulting rate (mantle.clamp_rate), so speed can change --
     # what must be conserved is *direction*, the part clamping doesn't touch.
     assert np.dot(geometry.normalize(l_before[None, :])[0], geometry.normalize(l_after[None, :])[0]) > 0.999
+
+
+def test_collision_friction_torque_brakes_harder_for_a_more_severe_overlap():
+    """`overlap_severity` (see OVERLAP_FRICTION_SEVERITY_GAIN) is a deliberate *extra* brake on
+    top of what more contested nodes already sum to -- confirmed here by holding the
+    contested-node geometry/velocity fixed and only varying the severity argument."""
+    n = 5
+    own_points = np.tile(np.array([1.0, 0.0, 0.0]), (n, 1))
+    collision_mask = np.ones(n, dtype=bool)
+    # A neighbour spinning the opposite way -> real relative motion at the contested nodes,
+    # so the resistive torque is nonzero to begin with.
+    inputs = torque.BoundaryForceInputs(
+        own_points=own_points,
+        own_hc=np.full(n, 35_000.0),
+        own_hm=np.full(n, 100_000.0),
+        own_crust_type_codes=np.zeros(n, dtype=np.int8),
+        dist_to_neighbor=np.full(n, 0.001),
+        direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
+        neighbor_is_oceanic=np.zeros(n, dtype=bool),
+        neighbor_omega=np.tile(np.array([0.0, 0.0, -0.02]), (n, 1)),
+    )
+
+    class FakePlate:
+        crust_type = "continental"
+        omega = np.array([0.0, 0.0, 0.02])
+
+    plate = FakePlate()
+    light = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
+    severe = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, overlap_severity=1.0)
+
+    assert np.linalg.norm(severe) > np.linalg.norm(light)
+    # Same geometry/velocities throughout -- the resistive force still opposes relative
+    # motion, it's just scaled up, not redirected.
+    assert np.dot(geometry.normalize(severe[None, :])[0], geometry.normalize(light[None, :])[0]) > 0.999

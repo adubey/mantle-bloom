@@ -157,6 +157,58 @@ ELEV_CHANGE_LABELS = (
 REGULARIZE_INTERVAL_STEPS = 5
 IRREGULARITY_TOLERANCE = 1.5  # regularize a line if any gap exceeds this multiple of target
 
+# --- Per-node crust type (`ElevationLine.crust_type_code`) -------------------------------
+#
+# A plate's `crust_type` ("oceanic"/"continental") is the *usual* case, but real crust is
+# genuinely composite: a rift can erupt continental-type magma while sitting on an oceanic
+# plate (a volcanic island breaching the surface) or oceanic-type magma while sitting on a
+# continental plate (a drowned continental margin finally thinning through to true seafloor),
+# and a plate spawned to fill a whole-sphere gap can straddle both if it borders a continent.
+# CRUST_TYPE_INHERIT (0, the zeros-default every ElevationLine field already gets -- see
+# __getattr__/with_new_nodes) means "same as the owning plate," which is both the safe
+# backward-compatible reading for a pre-existing save and the exactly-correct reading for
+# every node created by ordinary generation/growth/merge/split -- those are never stamped
+# otherwise, so nothing about their existing (calibrated) physics changes. Only decompression
+# melting (lithosphere_plate.py) and gap-fill (gaps.py) ever stamp an explicit value.
+CRUST_TYPE_INHERIT = 0
+CRUST_TYPE_OCEANIC = 1
+CRUST_TYPE_CONTINENTAL = 2
+
+
+def effective_is_continental_from_codes(codes: np.ndarray, plate_is_continental: bool) -> np.ndarray:
+    """Per-node bool: is this node's crust actually continental, resolving
+    CRUST_TYPE_INHERIT against the owning plate's own `crust_type` and taking an explicit
+    CRUST_TYPE_OCEANIC/CONTINENTAL code at face value. Takes a raw code array directly (e.g.
+    `Plate.collect("crust_type_code")`, already flattened across every line in node order) --
+    see `effective_is_continental` for the single-line convenience wrapper."""
+    return np.where(codes == CRUST_TYPE_INHERIT, plate_is_continental, codes == CRUST_TYPE_CONTINENTAL)
+
+
+def effective_is_continental(line: "ElevationLine", plate_is_continental: bool) -> np.ndarray:
+    """Per-node bool for one line's own nodes -- see `effective_is_continental_from_codes`."""
+    return effective_is_continental_from_codes(line.crust_type_code, plate_is_continental)
+
+
+def majority_crust_type(lines: list["ElevationLine"], fallback: str) -> str:
+    """The crust type a *new* plate assembled from `lines` should be labeled -- the majority
+    of its own nodes' effective type (see effective_is_continental), falling back to
+    `fallback` (the parent/nominal type) on a tie or if there are no nodes at all. `fallback`
+    also resolves every still-CRUST_TYPE_INHERIT node, so a plate that has never had a
+    magma-typing event (the common case) always returns `fallback` unchanged, regardless of
+    how many lines/nodes it has."""
+    plate_is_continental = fallback == "continental"
+    total = 0
+    continental = 0
+    for line in lines:
+        n = len(line)
+        if n == 0:
+            continue
+        total += n
+        continental += int(np.count_nonzero(effective_is_continental(line, plate_is_continental)))
+    if total == 0 or continental * 2 == total:
+        return fallback
+    return "continental" if continental * 2 > total else "oceanic"
+
 # Shared between volcanism.py (per-step eruption rolling for every existing volcano node)
 # and plates.py (PlateWithLines.deform spawning a brand-new volcano when a rift has
 # stretched too thin to keep filling with plain ridge/rift crust) -- kept here, rather than
@@ -302,6 +354,17 @@ class ElevationLine:
         # `elevation` as a cache it recomputes from these after every mutation.
         "crustal_thickness_m",  # Hc, meters
         "mantle_lithosphere_thickness_m",  # Hm, meters
+        # Per-node crust-type override -- see CRUST_TYPE_* below. 0 (CRUST_TYPE_INHERIT) is
+        # both the zeros-default `__getattr__` already gives a line missing this field (every
+        # pre-existing save, and every ordinary generation/growth/merge/split node) *and* the
+        # correct physical reading for those nodes: "same composition as the owning plate,"
+        # exactly what every one of those code paths already assumed before this field
+        # existed. Only stamped to an explicit CRUST_TYPE_OCEANIC/CONTINENTAL value at the two
+        # places a single node's own composition can genuinely diverge from its plate's
+        # nominal crust_type -- rift decompression melting (lithosphere_plate.py) and
+        # whole-sphere gap-fill (gaps.py) -- see effective_is_continental/majority_crust_type
+        # below and docs/simulation-model.md.
+        "crust_type_code",
     )
 
     def __init__(
@@ -327,6 +390,7 @@ class ElevationLine:
         overlap_onset_years: np.ndarray | None = None,
         crustal_thickness_m: np.ndarray | None = None,
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
+        crust_type_code: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -353,6 +417,9 @@ class ElevationLine:
         self._mantle_lithosphere_thickness_m = (
             mantle_lithosphere_thickness_m if mantle_lithosphere_thickness_m is not None else np.zeros_like(theta)
         )
+        self._crust_type_code = (
+            crust_type_code if crust_type_code is not None else np.zeros_like(theta, dtype=np.int8)
+        )
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -363,7 +430,13 @@ class ElevationLine:
         `AttributeError`, and `__getattr__` is never consulted for an attribute that already
         exists, so live lines pay nothing."""
         if name.startswith("_") and name[1:] in ElevationLine.OPTIONAL_FIELDS:
-            value = np.zeros_like(self._theta, dtype=bool if name == "_is_volcano" else float)
+            if name == "_is_volcano":
+                dtype = bool
+            elif name == "_crust_type_code":
+                dtype = np.int8
+            else:
+                dtype = float
+            value = np.zeros_like(self._theta, dtype=dtype)
             object.__setattr__(self, name, value)
             return value
         raise AttributeError(name)
@@ -451,6 +524,10 @@ class ElevationLine:
     @property
     def mantle_lithosphere_thickness_m(self) -> np.ndarray:
         return self._mantle_lithosphere_thickness_m
+
+    @property
+    def crust_type_code(self) -> np.ndarray:
+        return self._crust_type_code
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -909,6 +986,9 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # nearest-neighbour carry keeps a genuinely-stuck overlap's onset intact across the
     # regularize pass that runs every deform() call.
     new_overlap_onset_years = line.overlap_onset_years[nearest_original]
+    # crust_type_code is likewise categorical (CRUST_TYPE_INHERIT/OCEANIC/CONTINENTAL) --
+    # nearest-neighbour carry, same reasoning as elev_change_reason.
+    new_crust_type_code = line.crust_type_code[nearest_original]
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,
@@ -930,6 +1010,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         overlap_onset_years=new_overlap_onset_years,
         crustal_thickness_m=new_crustal_thickness_m,
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
+        crust_type_code=new_crust_type_code,
     )
 
 

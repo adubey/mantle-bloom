@@ -4,9 +4,9 @@ region no plate currently covers, e.g. one vacated by a fully-subducted plate)."
 import numpy as np
 from scipy.spatial import cKDTree
 
-from app import gaps
-from app.elevation_lines import line_spacing_rad
-from app.lithosphere_plate import generate_plates
+from app import gaps, geometry
+from app.elevation_lines import effective_is_continental_from_codes, line_spacing_rad
+from app.lithosphere_plate import generate_plates, new_plate
 from app.world import World
 
 
@@ -69,3 +69,68 @@ def test_fill_gaps_ignores_a_gap_smaller_than_the_minimum(monkeypatch):
 def test_fill_gaps_handles_a_world_with_no_plates():
     world = World(seed=1, plates=[], next_plate_id=0, mantle_centers=[])
     assert gaps.fill_gaps(world) == []
+
+
+def _lone_continental_island(seed=1, node_density=1.0, radius_rad=0.4):
+    """A single small continental plate covering a disk around the local north pole
+    (forced above sea level regardless of the noise field), with the rest of the sphere
+    left as one big uncovered gap -- lets a gap-fill test control exactly where "land" is
+    without depending on generate_plates' own random tiling."""
+    frame = np.eye(3)
+    spacing_rad = line_spacing_rad(node_density)
+
+    def is_owned(world_pts: np.ndarray) -> np.ndarray:
+        return geometry.angular_distance(world_pts, frame[:, 2]) < radius_rad
+
+    plate = new_plate(0, frame, "continental", spacing_rad, seed, is_owned=is_owned)
+    n = plate.node_count()
+    plate.set_fields_on_plate(elevation=np.full(n, 800.0))  # force unambiguous dry land
+    world = World(seed=seed, plates=[plate], next_plate_id=1, node_density=node_density, mantle_centers=[])
+    return world, spacing_rad
+
+
+def test_fill_gaps_adopts_continental_type_only_right_at_a_real_coastline():
+    world, spacing_rad = _lone_continental_island()
+    events = gaps.fill_gaps(world)
+    assert len(events) == 1
+
+    spawned = world.plates[-1]
+    assert spawned.node_count() > 0
+    points, _ = spawned.all_points_and_elevation()
+    is_continental = effective_is_continental_from_codes(spawned.collect("crust_type_code"), spawned.crust_type == "continental")
+
+    # Nodes right at the island's own coastline (just past the parent plate's coverage
+    # radius) adopt continental type; the antipodal deep-ocean interior of the gap does not
+    # -- a gap virtually never turns land except where it's genuinely landlocked by a
+    # still-standing coast (see gaps.GAP_LAND_ADOPTION_RADIUS_MULT).
+    dist_from_pole = geometry.angular_distance(points, np.array([0.0, 0.0, 1.0]))
+    near_coast = dist_from_pole < 0.4 + gaps.GAP_LAND_ADOPTION_RADIUS_MULT * spacing_rad
+    far_interior = dist_from_pole > np.pi - 0.3  # near the antipode of the island
+
+    assert np.any(is_continental[near_coast])
+    assert not np.any(is_continental[far_interior])
+    # The gap is overwhelmingly open ocean -- a small coastal fringe shouldn't flip the
+    # spawned plate's own majority-vote label.
+    assert spawned.crust_type == "oceanic"
+
+
+def test_fill_gaps_mid_ocean_gap_stays_all_oceanic():
+    """Regression guard: with no continental plate anywhere in the world, the new
+    land-adoption rule has nothing to adopt from and every gap node comes back oceanic,
+    exactly as before that rule existed."""
+    frame = np.eye(3)
+    node_density = 1.0
+    spacing_rad = line_spacing_rad(node_density)
+
+    def is_owned(world_pts: np.ndarray) -> np.ndarray:
+        return geometry.angular_distance(world_pts, frame[:, 2]) < 0.4
+
+    plate = new_plate(0, frame, "oceanic", spacing_rad, seed=1, is_owned=is_owned)
+    world = World(seed=1, plates=[plate], next_plate_id=1, node_density=node_density, mantle_centers=[])
+
+    events = gaps.fill_gaps(world)
+    assert len(events) == 1
+    spawned = world.plates[-1]
+    is_continental = effective_is_continental_from_codes(spawned.collect("crust_type_code"), spawned.crust_type == "continental")
+    assert not np.any(is_continental)
+    assert spawned.crust_type == "oceanic"

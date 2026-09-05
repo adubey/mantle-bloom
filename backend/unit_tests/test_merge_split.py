@@ -428,6 +428,121 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     assert total_after == total_before
 
 
+def _weak_flow_split_world(mult: float):
+    """Same engineered-divergence shape as test_maybe_split_plate_splits_under_engineered_
+    flow_divergence, but at a *weak* convection strength -- clears the mantle-flow-disagreement
+    check (kmeans still finds two opposite-signed velocity clusters) without actually clearing
+    SPLIT_RMS_RESIDUAL_THRESHOLD/SPLIT_MIN_POLE_SEPARATION at zero relaxation. A plate this
+    small and this weakly split is exactly the case SPLIT_SIZE_CERTAIN_RIFT_RAD's own
+    instantaneous-radius relaxation doesn't reach either -- isolating accumulated
+    Plate.internal_stress (see merge_split's own "Accumulated breakup stress" comment) as the
+    only thing that can still push it over the gate."""
+    seed_xyz = np.array([1.0, 0.0, 0.0])
+    frame = geometry.plate_frame_from_seed(seed_xyz)
+    theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
+    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
+
+    west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
+    east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
+    rate = mantle.MANTLE_FLOW_REFERENCE_RATE * mult
+    centers = [
+        mantle.ConvectionCenter(position=west_pt, strength=rate, falloff=0.3),
+        mantle.ConvectionCenter(position=east_pt, strength=-rate, falloff=0.3),
+    ]
+    world = World(seed=0, plates=[plate], mantle_centers=centers, next_plate_id=1, node_density=1.0)
+    points, _ = plate.all_points_and_elevation()
+    plate.set_omega(mantle.fit_euler_pole(points, mantle.flow_at(points, centers)))
+    return world, plate
+
+
+def test_maybe_split_plate_is_not_eligible_on_weak_flow_divergence_alone(monkeypatch):
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _weak_flow_split_world(mult=1.0)
+    assert plate.internal_stress == 0.0  # a fresh Plate starts unstressed
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+
+def test_accumulated_stress_alone_can_push_a_weak_split_over_the_gate(monkeypatch):
+    """The same plate/flow field as the previous (negative) test -- only `internal_stress`
+    differs -- now splits, because STRESS_CERTAIN_RIFT-level accumulated stress relaxes the
+    residual/pole-separation gates independently of the plate's own (here, small) angular
+    radius. Confirms `Plate.internal_stress` is a genuine second channel into the split gate,
+    not just cosmetic state."""
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 1.0)
+    world, plate = _weak_flow_split_world(mult=1.0)
+    plate.set_internal_stress(merge_split.STRESS_CERTAIN_RIFT)
+
+    result = merge_split.maybe_split_plate(world, plate)
+
+    assert result is not None
+    plate_a, plate_b = result
+    # A completed rift fully releases the pressure that drove it -- both daughters start over.
+    assert plate_a.internal_stress == 0.0
+    assert plate_b.internal_stress == 0.0
+
+
+def test_maybe_split_plate_with_failed_outcome_halves_accumulated_stress(monkeypatch):
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)  # every rift fails
+    world, plate = _engineered_split_world()
+    plate.set_internal_stress(2.0)
+
+    result = merge_split.maybe_split_plate(world, plate)
+
+    assert result is None
+    assert plate.internal_stress == 1.0  # halved, not zeroed -- see FAILED_RIFT_STRESS_RELIEF
+
+
+def test_accumulate_plate_stress_grows_with_plate_radius():
+    small = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6))
+    big = _test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-1.0, 1.0, 200), np.zeros(200))
+    world = World(seed=0, plates=[small, big], mantle_centers=[], next_plate_id=2, node_density=1.0)
+
+    merge_split.accumulate_plate_stress(world, years=1_000_000.0, overlap={})
+
+    assert small.internal_stress > 0.0  # background rate is strictly positive for any real plate
+    assert big.internal_stress > small.internal_stress
+
+
+def test_accumulate_plate_stress_decays_without_renewed_forcing():
+    plate = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6))
+    plate.set_internal_stress(10.0)
+    world = World(seed=0, plates=[plate], mantle_centers=[], next_plate_id=1, node_density=1.0)
+
+    merge_split.accumulate_plate_stress(world, years=50_000_000.0, overlap={})
+
+    # A small plate's own background accumulation is tiny -- over a long enough span with no
+    # overlap, decay should win out and the accumulator should fall, not keep climbing.
+    assert plate.internal_stress < 10.0
+
+
+def test_accumulate_plate_stress_from_overlap_favours_the_larger_plate_in_the_pair():
+    """Two plates overlapping each other by the same fraction of their own nodes -- the
+    *larger* one (relative_largeness > 0.5) should accumulate more of the overlap-driven
+    top-up than the smaller one it's overriding, not an equal split."""
+    small = _test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6))
+    big = _test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-1.0, 1.0, 200), np.zeros(200))
+    world = World(seed=0, plates=[small, big], mantle_centers=[], next_plate_id=2, node_density=1.0)
+
+    overlap = {
+        0: {"overlap_mask": np.ones(small.node_count(), dtype=bool), "by_partner": {1: small.node_count()}},
+        1: {"overlap_mask": np.ones(big.node_count(), dtype=bool), "by_partner": {0: big.node_count()}},
+    }
+    merge_split.accumulate_plate_stress(world, years=1_000_000.0, overlap=overlap)
+
+    # Isolate the overlap term: subtract off each plate's own from-radius background stress
+    # (computed the same way accumulate_plate_stress does) so only the overlap-driven,
+    # size-biased top-up is being compared.
+    def _background_only(p):
+        w = World(seed=0, plates=[p], mantle_centers=[], next_plate_id=1, node_density=1.0)
+        merge_split.accumulate_plate_stress(w, years=1_000_000.0, overlap={})
+        return p.internal_stress
+
+    small_overlap_component = small.internal_stress - _background_only(_test_plate(0, [1.0, 0.0, 0.0], "continental", np.linspace(-0.05, 0.05, 6), np.zeros(6)))
+    big_overlap_component = big.internal_stress - _background_only(_test_plate(1, [-1.0, 0.0, 0.0], "continental", np.linspace(-1.0, 1.0, 200), np.zeros(200)))
+    assert big_overlap_component > small_overlap_component
+
+
 def test_apply_topology_changes_splits_at_most_one_plate_per_call(monkeypatch):
     """Two independently split-eligible plates -> only one rifts this call, the same
     incremental-change rule the merge path uses (so a freshly-generated world staggers its

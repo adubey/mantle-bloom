@@ -1,13 +1,18 @@
 import numpy as np
 from app.elevation_lines import (
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
+    CRUST_TYPE_OCEANIC,
     ELEV_CHANGE_COLLISION,
     ELEV_CHANGE_VOLCANO,
     TARGET_LINE_SPACING_RAD,
     ElevationLine,
     _crumple_elevation,
+    effective_is_continental,
     iter_local_lattice,
     largest_contiguous_run,
     line_spacing_rad,
+    majority_crust_type,
     needs_regularizing,
     regularize_line,
 )
@@ -221,6 +226,71 @@ def test_needs_regularizing_flags_an_over_wound_ring():
     assert needs_regularizing(_wound_ring(1.45, revolutions=3.4, spacing_rad=spacing), spacing)
     # An ordinary near-full but sub-revolution ring is fine.
     assert not needs_regularizing(_wound_ring(1.45, revolutions=0.95, spacing_rad=spacing), spacing)
+
+
+def test_crust_type_code_defaults_to_inherit():
+    theta = np.array([0.0, 0.1, 0.2])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
+    assert line.crust_type_code.dtype == np.int8
+    assert np.all(line.crust_type_code == CRUST_TYPE_INHERIT)
+
+
+def test_crust_type_code_missing_optional_field_backfills_on_unpickle():
+    theta = np.array([0.0, 0.1, 0.2])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
+    del line.__dict__["_crust_type_code"]
+    assert line.crust_type_code.shape == theta.shape
+    assert np.all(line.crust_type_code == CRUST_TYPE_INHERIT)
+
+
+def test_effective_is_continental_resolves_inherit_against_the_plate():
+    theta = np.arange(4, dtype=float)
+    line = ElevationLine(
+        phi=0.0,
+        theta=theta,
+        elevation=np.zeros(4),
+        crust_type_code=np.array([CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT], dtype=np.int8),
+    )
+    # On a continental plate: INHERIT reads continental, explicit codes read at face value.
+    assert list(effective_is_continental(line, True)) == [True, False, True, True]
+    # On an oceanic plate: only INHERIT flips; the explicit codes are unchanged.
+    assert list(effective_is_continental(line, False)) == [False, False, True, False]
+
+
+def test_majority_crust_type_is_a_no_op_when_every_node_still_inherits():
+    theta = np.arange(10, dtype=float)
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(10))
+    assert majority_crust_type([line], "oceanic") == "oceanic"
+    assert majority_crust_type([line], "continental") == "continental"
+
+
+def test_majority_crust_type_picks_the_actual_majority():
+    theta = np.arange(10, dtype=float)
+    codes = np.array([CRUST_TYPE_CONTINENTAL] * 7 + [CRUST_TYPE_OCEANIC] * 3, dtype=np.int8)
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(10), crust_type_code=codes)
+    # Majority continental even though the plate's own nominal fallback is oceanic.
+    assert majority_crust_type([line], "oceanic") == "continental"
+
+
+def test_majority_crust_type_falls_back_on_a_tie_or_no_nodes():
+    theta = np.arange(4, dtype=float)
+    codes = np.array([CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC], dtype=np.int8)
+    tied_line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(4), crust_type_code=codes)
+    assert majority_crust_type([tied_line], "continental") == "continental"
+    assert majority_crust_type([], "oceanic") == "oceanic"
+
+
+def test_crust_type_code_rides_through_regularize_line_by_nearest_node():
+    theta = np.linspace(0.0, 0.6, 7)
+    codes = np.array(
+        [CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC],
+        dtype=np.int8,
+    )
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(7), crust_type_code=codes)
+    regularized = regularize_line(line, spacing_rad=TARGET_LINE_SPACING_RAD / 8)
+    assert len(regularized) != len(line)
+    assert set(np.unique(regularized.crust_type_code)) <= {CRUST_TYPE_OCEANIC, CRUST_TYPE_CONTINENTAL}
+    assert (regularized.crust_type_code == CRUST_TYPE_CONTINENTAL).sum() > 0
 
 
 def test_regularize_line_unwinds_an_over_wound_ring_to_one_revolution():
