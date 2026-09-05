@@ -190,13 +190,14 @@ def test_compute_spill_routing_single_lake_matches_its_own_max_depth():
     lake = forest[0]
     assert lake.sink_node_idx == 0 and lake.max_depth == 25.0
 
-    filled, spill = lakes.compute_spill_routing(forest, _SINK_ELEVATION, np.zeros(3))
+    filled, spill, rim = lakes.compute_spill_routing(forest, _SINK_ELEVATION, np.zeros(3))
     assert filled[0] == lake.max_depth == 25.0
     assert spill[0] == lake.outlet_target_idx == 1
+    assert rim[0] == lake.outlet_node_idx == 0  # a single-node catchment: its own sink is its own rim
     # An ordinary, never-a-sink node keeps its own bare elevation/-1 -- nothing downhill of it
     # ever needs a rim to escape past (see this function's own docstring).
-    assert filled[1] == _SINK_ELEVATION[1] and spill[1] == -1
-    assert filled[2] == _SINK_ELEVATION[2] and spill[2] == -1
+    assert filled[1] == _SINK_ELEVATION[1] and spill[1] == -1 and rim[1] == -1
+    assert filled[2] == _SINK_ELEVATION[2] and spill[2] == -1 and rim[2] == -1
 
 
 def test_compute_spill_routing_routes_both_original_sinks_to_the_parents_rim_once_merged():
@@ -207,17 +208,22 @@ def test_compute_spill_routing_routes_both_original_sinks_to_the_parents_rim_onc
     forest = lakes.build_lake_hierarchy(_MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS)
     root = forest[0]
     assert root.min_depth == 12.0 and root.max_depth == 30.0 and root.outlet_target_idx == 4
+    assert root.outlet_node_idx == 3  # the merged body's own rim member, on the far side from node 4
 
     already_merged_prev_depth = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # node 0 surface: 2+10=12
-    filled, spill = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, already_merged_prev_depth)
+    filled, spill, rim = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, already_merged_prev_depth)
     assert filled[0] == filled[3] == 30.0
     assert spill[0] == spill[3] == 4
+    # Both original sinks share the parent's own rim (node 3), not each leaf's individual one.
+    assert rim[0] == rim[3] == 3
 
     # Not yet merged (everything dry): each leaf's own, shallower saddle governs instead.
-    filled_dry, spill_dry = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, np.zeros(6))
+    filled_dry, spill_dry, rim_dry = lakes.compute_spill_routing(forest, _MERGE_ELEVATION, np.zeros(6))
     assert filled_dry[0] == filled_dry[3] == 12.0
     assert spill_dry[0] == 2  # leaf {0,1}'s own outlet_target_idx, toward node 2
     assert spill_dry[3] == 1  # leaf {2,3}'s own outlet_target_idx, toward node 1
+    assert rim_dry[0] == 1  # leaf {0,1}'s own outlet_node_idx
+    assert rim_dry[3] == 2  # leaf {2,3}'s own outlet_node_idx
 
 
 def test_compute_spill_routing_endorheic_basin_never_spills():
@@ -226,9 +232,10 @@ def test_compute_spill_routing_endorheic_basin_never_spills():
     neighbor_idx = np.array([[1, 2], [0, 2], [0, 1]])
 
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
-    filled, spill = lakes.compute_spill_routing(forest, elevation, np.zeros(3))
+    filled, spill, rim = lakes.compute_spill_routing(forest, elevation, np.zeros(3))
     assert np.isinf(filled[0])
     assert spill[0] == -1
+    assert rim[0] == -1
 
 
 def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():

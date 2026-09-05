@@ -54,12 +54,19 @@ const OUTLET_RING_COLOR = "rgba(255, 205, 70, 1.0)";
 const INFLOW_RING_COLOR = "rgba(120, 220, 190, 1.0)"; // matches RiverInspector's own "lake" mouth-ring color
 const MARKER_RADIUS_PX = 6;
 
+// Matches RiverInspector.tsx's own RIVER_RGB (in turn render_image.py's RIVER_COLOR_RGB) --
+// the selected basin's outflow reads as "a river," the same color everywhere else in this
+// codebase draws one, rather than inventing a fourth meaning for a color already spoken for.
+const OUTFLOW_RIVER_RGB = "77, 216, 230";
+
 // Renders every currently-visible lake (see backend app/main.py's GET /world/lakes) as an
 // interactive point-cloud display -- no server-baked PNG, same "raw JSON, client draws it"
 // philosophy as PlateInspector/RiverInspector. Every lake is always drawn, dim; the selected
 // basin (a lake from `lakes`, or a dry basin returned by a land click -- see LakeAtResponse) is
-// drawn last, bright, plus its own floor and outlet markers and a ring at every inflowing
-// river's mouth. Reuses the same long-press-drag rotate gesture as the other inspectors, plus
+// drawn last, bright, plus its own floor and outlet markers, a ring at every inflowing
+// river's mouth, and (when it's actively spilling and that spill has grown into a real river
+// network -- see api.ts's OutflowRiver) its own live outflow drawn as a full river path, not
+// just another ring. Reuses the same long-press-drag rotate gesture as the other inspectors, plus
 // click-to-select and Tab/Shift+Tab to cycle through `lakes` specifically (a dry basin has no
 // enumerable identity to cycle through -- see this module's own Tab handler).
 export default function LakeInspector({
@@ -152,6 +159,13 @@ export default function LakeInspector({
     if (selectedBasin) {
       const [rgb, alpha] = selectedBasin.is_lake ? [LAKE_RGB, SELECTED_LAKE_ALPHA] : [BASIN_RGB, SELECTED_BASIN_ALPHA];
       drawPoints(selectedBasin.member_xyz, `rgba(${rgb}, ${alpha})`);
+      // Drawn before the rings below (so the outlet marker still reads clearly on top of it)
+      // and bold -- the same "selected" line width RiverInspector.tsx's own drawOne uses -- so
+      // the basin's actual live outflow reads as a real river leaving the lake, not just an
+      // outlet marker with no channel drawn at all.
+      if (selectedBasin.outflow_river) {
+        strokeSegments(selectedBasin.outflow_river.segments, `rgba(${OUTFLOW_RIVER_RGB}, 0.95)`, lineWidth * 2.5);
+      }
       for (const river of selectedBasin.inflow_rivers) {
         drawRing(river.mouth_xyz, INFLOW_RING_COLOR);
       }

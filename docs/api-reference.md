@@ -552,7 +552,14 @@ been generated yet.
       "outlet_elevation_m": 1902.8,
       "water_elevation_m": 1902.8,
       "is_spilling": true,
-      "inflow_rivers": [{ "mouth_xyz": [0.36, -0.10, -0.93], "flow_rate": 812.4, "num_nodes": 9 }]
+      "inflow_rivers": [{ "mouth_xyz": [0.36, -0.10, -0.93], "flow_rate": 812.4, "num_nodes": 9 }],
+      "outflow_river": {
+        "segments": [[[0.37, -0.09, -0.93], [0.38, -0.08, -0.92]], ["..."]],
+        "mouth_xyz": [0.44, 0.02, -0.90],
+        "mouth_type": "ocean",
+        "flow_rate": 4108.2,
+        "num_nodes": 14
+      }
     }
   ],
   "coastline_segments": [[[0.91, 0.28, -0.04], [0.90, 0.29, -0.03]], ["..."]]
@@ -575,6 +582,13 @@ been generated yet.
 - `inflow_rivers` is every `RiverInfo` (see `/world/rivers`) whose own mouth lands somewhere in
   this basin, as a small inline summary rather than a full `RiverSummary` -- the River
   Inspector's own map mode is what draws a river's full path.
+- `outflow_river` is, unlike an inflow, found by which river network (if any) owns the node
+  just *outside* the rim on the far side (`Lake.outlet_target_idx`) -- the same full shape
+  `/world/rivers` returns (minus `river_id`/`speed`/`num_tributaries`, meaningless outside that
+  view's own ranked list), since the Lake Inspector draws this one's whole path. `null` when
+  there's no live outflow to show: a closed/endorheic basin with no known spill, a resolved rim
+  that isn't currently `is_spilling`, or a spilling rim whose flow hasn't yet cleared
+  `hydrology.RIVER_FLOW_PERCENTILE` to register as its own river network yet.
 - `coastline_segments` is the same land/lake-vs-ocean boundary `/world/rivers` returns, included
   here for the same reason: this view draws no filled backdrop of its own.
 

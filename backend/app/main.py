@@ -435,6 +435,18 @@ def _smallest_lake_containing(forest: list[lakes.Lake], wet_set: set[int]) -> la
     return None
 
 
+def _river_by_node(rivers: list[hydrology.RiverInfo]) -> dict[int, tuple[int, hydrology.RiverInfo]]:
+    """Every river-network member node mapped to `(river_id, river)` -- built once per request
+    (same "compute the list, then look members up in it" shape as `_leaf_lakes_by_node`) so
+    `_lake_basin_summary`'s outflow-river lookup (see its own docstring) doesn't re-scan every
+    river's `member_idx` for every basin in a `/world/lakes` call."""
+    by_node: dict[int, tuple[int, hydrology.RiverInfo]] = {}
+    for river_id, river in enumerate(rivers):
+        for member in river.member_idx.tolist():
+            by_node[member] = (river_id, river)
+    return by_node
+
+
 def _lake_components_sorted(fields: hydrology.HydrologyFields) -> list[np.ndarray]:
     """Every currently-visible lake's node group (`hydrology.lake_components`), in a fixed,
     deterministic order (by each component's own lowest node index) -- so the index into this
@@ -447,7 +459,12 @@ def _lake_components_sorted(fields: hydrology.HydrologyFields) -> list[np.ndarra
 
 
 def _lake_basin_summary(
-    fields: hydrology.HydrologyFields, lake: lakes.Lake, lake_id: int | None, rivers: list[hydrology.RiverInfo], is_lake: bool
+    fields: hydrology.HydrologyFields,
+    lake: lakes.Lake,
+    lake_id: int | None,
+    rivers: list[hydrology.RiverInfo],
+    river_by_node: dict[int, tuple[int, hydrology.RiverInfo]],
+    is_lake: bool,
 ) -> dict:
     """One basin's full inspector payload, for both a currently-wet lake (`is_lake=True`, `lake`
     is whatever `_smallest_lake_containing` resolved) and a dry, never-flooded basin
@@ -464,7 +481,19 @@ def _lake_basin_summary(
     lakes.py's own docstring), not a bug. Rivers "feeding into" this basin are simply every
     `RiverInfo` whose own mouth lands on one of this basin's members, regardless of that
     river's own `mouth_type` label ("lake", or "other" for a river dead-ending in a currently-dry
-    sink) -- from this basin's own point of view both are equally "a river that ends here"."""
+    sink) -- from this basin's own point of view both are equally "a river that ends here".
+
+    The river actually carrying this basin's *outflow* is different in kind, not just
+    direction, from an inflow: an inflow is identified by its mouth landing somewhere inside
+    `members` (this basin is wherever it ends), but a basin's own outflow starts just *outside*
+    `members` -- at `lake.outlet_target_idx`, the node on the far side of the governing rim
+    (see lakes.py's own `compute_spill_routing` docstring) -- so it's found by which river
+    network (if any) that specific node belongs to, via `river_by_node`. `None` whenever
+    there's no live outflow to show at all: a closed/endorheic basin with no known spill
+    (`outlet_target_idx == -1`), a resolved rim that isn't currently `is_spilling` (nothing is
+    actually flowing out this step), or -- a real, if narrow, gap right at the moment a lake
+    first breaches -- a spilling rim whose own flow hasn't yet cleared
+    `hydrology.RIVER_FLOW_PERCENTILE` to register as its own river network at all."""
     members = lake.members
 
     # `lake.members` is the *geometric* catchment -- every node on the way down to this basin's
@@ -503,6 +532,17 @@ def _lake_basin_summary(
         if river.mouth_idx in member_set
     ]
 
+    # See this function's own docstring for why an outflow is looked up by river membership at
+    # `outlet_target_idx`, not by mouth like an inflow -- and why `None` covers three distinct,
+    # all-legitimate cases (no known spill at all, a resolved-but-dry rim, and a spilling rim
+    # too fresh to have grown its own river network yet).
+    outflow_river = None
+    if is_spilling and lake.outlet_target_idx >= 0:
+        found = river_by_node.get(lake.outlet_target_idx)
+        if found is not None:
+            river_id, river = found
+            outflow_river = _river_summary(fields, river, river_id)
+
     return {
         "lake_id": lake_id,
         "is_lake": is_lake,
@@ -515,6 +555,7 @@ def _lake_basin_summary(
         "water_elevation_m": None if water_elevation is None else float(water_elevation),
         "is_spilling": bool(is_spilling),
         "inflow_rivers": inflow_rivers,
+        "outflow_river": outflow_river,
     }
 
 
@@ -1120,12 +1161,13 @@ def list_lakes() -> dict:
     forest = fields.lake_forest
     components = _lake_components_sorted(fields)
     rivers = hydrology.group_rivers(fields)
+    river_by_node = _river_by_node(rivers)
     result = []
     for lake_id, members in enumerate(components):
         lake_obj = _smallest_lake_containing(forest, set(members.tolist()))
         if lake_obj is None:
             continue  # defensive only -- every wet node belongs to some catchment by construction
-        result.append(_lake_basin_summary(fields, lake_obj, lake_id, rivers, is_lake=True))
+        result.append(_lake_basin_summary(fields, lake_obj, lake_id, rivers, river_by_node, is_lake=True))
     return {"elapsed_years": world.elapsed_years, "lakes": result, "coastline_segments": _coastline_segments_json(world)}
 
 
@@ -1169,14 +1211,15 @@ def lake_at(lat_deg: float, lon_deg: float) -> dict:
         return {"kind": "no_basin", "basin": None}
 
     rivers = hydrology.group_rivers(fields)
+    river_by_node = _river_by_node(rivers)
     if fields.lake_depth[node_idx] > hydrology.LAKE_MIN_VISIBLE_DEPTH_M:
         components = _lake_components_sorted(fields)
         lake_id, members = next((i, m) for i, m in enumerate(components) if node_idx in m.tolist())
         lake_obj = _smallest_lake_containing(forest, set(members.tolist())) or leaf
-        basin = _lake_basin_summary(fields, lake_obj, lake_id, rivers, is_lake=True)
+        basin = _lake_basin_summary(fields, lake_obj, lake_id, rivers, river_by_node, is_lake=True)
         return {"kind": "lake", "basin": basin}
 
-    basin = _lake_basin_summary(fields, leaf, None, rivers, is_lake=False)
+    basin = _lake_basin_summary(fields, leaf, None, rivers, river_by_node, is_lake=False)
     return {"kind": "basin", "basin": basin}
 
 
