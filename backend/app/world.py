@@ -459,8 +459,8 @@ def step_world(world: World, years: float) -> None:
     """Advance the world by `years`.
 
     Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
-    `Plate.shift(world, years)` for every plate (refit Euler pole from torque balance, rotate
-    rigidly), then `Plate.deform(world, other_plates, years, D)` for every plate in a freshly
+    `LithospherePlate.shift(world, years)` for every plate (refit Euler pole from torque
+    balance, rotate rigidly), then `LithospherePlate.deform(world, other_plates, years, D)` for every plate in a freshly
     randomized order each turn (Mohr-Coulomb yield/isostasy -- see lithosphere_plate.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.

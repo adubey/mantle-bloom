@@ -544,14 +544,14 @@ caps over mid-row carving/splitting.
 **Fixed here (2026-09-01): the v1 pole-winding guards were never ported to the v2 engine.**
 "Bug 1" (below) added a `ring_room()` one-revolution cap in
 `_grow_or_shrink_line_for_deform` and a `POLE_CAP_MARGIN_MULT` clearance in
-`_claim_adjacent_territory` -- but only to `plates.PlateWithLines`. The running
+`_claim_adjacent_territory` -- but only to the v1 `plates.PlateWithLines`. The running
 `lithosphere_plate.LithospherePlate` overrides of both still used `max_phi_limit = pi/2 -
 spacing/2` (marches onto the pole) and had no revolution cap at all, leaning entirely on
 `regularize_line`'s after-the-fact unwind (rows over-wound past 2*pi and were unwound again
 every step -- churn, wasted RNG draws, near-pole 1-3 node rings). Both guards are now ported
 (`ring_room()` + `POLE_CAP_MARGIN_MULT`), with `test_lithosphere_deform_never_winds_a_row_
 past_a_full_revolution` / `test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_
-the_local_pole` mirroring the v1 tests. Effect on the headline node count is small at the
+the_local_pole` mirroring the (since-removed) v1 tests. Effect on the headline node count is small at the
 seeds checked (pole winding was a minor contributor next to the continental ratchet -- max
 row span 185 deg -> 147 deg, near-pole nodes ~halved), but it removes the per-step
 regularize churn and brings the two engines back to parity.
@@ -570,7 +570,7 @@ all assume each line is a single contiguous arc from `theta[0]` to `theta[-1]` -
 daughter's envelope claimed the gap (every sibling node in it read as contested), and the
 next `regularize_line` pass resampled straight across the gap, growing fresh nodes through
 the sibling. Fix: `elevation_lines.largest_contiguous_run` reduces every masked row to its
-longest gap-free arc; wired into `PlateWithLines.split` / `LithospherePlate.split` /
+longest gap-free arc; wired into `LithospherePlate.split` /
 `_plates_from_node_masks` (partition time) and `regularize_line` (so worlds saved before this
 self-heal instead of getting worse each pass). Dropped slivers along the cut are re-grown by
 ordinary gap-fill/deform. Not addressed: the quality of the velocity-space k-means clusters
@@ -618,10 +618,10 @@ randomized-order effect). Nearly all the damage happens in the 90 -> 159 My wind
 
 1. **Pole winding / no periodic-theta guard (causes the concentric circles, the 36-style
    holes, and most of the node-count blowup).**
-   - `PlateWithLines._claim_adjacent_territory` (`plates.py` ~L1617) adds new phi rows
+   - `LithospherePlate._claim_adjacent_territory` (`lithosphere_plate.py`) adds new phi rows
      outward all the way to `max_phi_limit = pi/2 - spacing/2` -- it will march a plate
      right onto its own local pole whenever the space is open.
-   - `_grow_or_shrink_line_for_deform` (`plates.py` ~L1523) then extends those near-pole
+   - `_grow_or_shrink_line_for_deform` (`lithosphere_plate.py`) then extends those near-pole
      rows with `dtheta = spacing_rad / max(np.cos(line.phi), 1e-3)`. Near the pole
      `cos(phi) -> 0`, floored at `1e-3`, so **each inserted node jumps ~9.8 rad (~561 deg)
      in theta**. Nothing checks whether the row has already closed a 2*pi loop, and the
@@ -875,7 +875,7 @@ shape/width fix for this specific complaint, not a reversal of the decline docum
 **Insufficient volcanism -- confirmed, more severe than expected, fixed.** Trigger save: 112
 volcano nodes ever spawned across 188 My / 24 plates, 0 still active, only 17 above sea level,
 mean elevation of every volcano node -4583 m. Volcano nodes only ever spawn where
-`PlateWithLines.deform` finds a rift boundary stretched too thin (`volcanism.py`'s own
+`LithospherePlate.deform` finds a rift boundary stretched too thin (`volcanism.py`'s own
 docstring) -- never at a convergent (arc) or intraplate (hotspot) setting, Earth's two dominant
 land-building volcanic regimes; no code changes for that here, it's a materially bigger change
 than this pass's scope. What *is* fixed: `ERUPTION_ELEVATION_M` 100 -> 300 m,
@@ -1197,7 +1197,7 @@ codebase tracks follow-ups here, not inline. The items below are the loose ends 
 **Where:** `plates.py` (`PlateWithRTree`), noted in `docs/architecture.md` (plates.py entry:
 "inline line regularization (`PlateWithRTree`'s own versions are still a TODO)").
 
-`PlateWithLines.deform()` does inline line growth/shrinkage and regularization per turn.
+`LithospherePlate.deform()` does inline line growth/shrinkage and regularization per turn.
 `PlateWithRTree` -- the R-tree-backed variant -- doesn't carry equivalent regularization
 logic. If `PlateWithRTree` is meant to become a drop-in replacement, it needs its own
 version of the per-turn node density / spacing upkeep (`elevation_lines.py`,

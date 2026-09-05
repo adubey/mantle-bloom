@@ -6,7 +6,7 @@ from app.world import generate_world, step_world
 def test_regularization_runs_every_step_not_periodically():
     # node_density=0.5 (the coarsest choice, an eighth of the default 4.0, see
     # plates.NODE_DENSITY_CHOICES) -- this test only checks line spacing, not node positions.
-    # Unlike the old periodic (every REGULARIZE_INTERVAL_STEPS) cadence, PlateWithLines.deform
+    # Unlike the old periodic (every REGULARIZE_INTERVAL_STEPS) cadence, LithospherePlate.deform
     # now calls elevation_lines.regularize_line itself at the end of every single call -- so
     # no line should ever need regularizing right after a step, not just every 5th one.
     world = generate_world(seed=30, num_plates=8, node_density=0.5)

@@ -1,6 +1,6 @@
 """Intraplate fault lines -- a first-class tectonic feature that is *not* a plate boundary.
 
-Plate boundaries carry their own deformation in `PlateWithLines.deform` (plates.py):
+Plate boundaries carry their own deformation in `LithospherePlate.deform` (lithosphere_plate.py):
 classification there is geometric (contested territory -> convergent, uncontested-but-near
 -> transform, wider -> divergent). That model has no notion of a fault line sitting *inside*
 a plate, away from any edge -- yet in reality faults nucleate at a wide range of distances

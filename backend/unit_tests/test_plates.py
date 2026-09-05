@@ -649,76 +649,13 @@ def test_has_negligible_territory_false_for_a_plate_with_real_rows():
     assert not _lobed_plate([0.0]).has_negligible_territory()
 
 
-# -- pole cap / theta-winding guard ---------------------------------------------------
+# -- pole cap / theta-winding guard --------------------------------------------------
 #
 # A row is a circle of local latitude, so its theta extent can't physically exceed a full
-# 2*pi revolution. Nothing treats theta as periodic, so before the guard in
-# _grow_or_shrink_line_for_deform a plate that grew to encircle its own local pole -- where
-# the "gap to nearest neighbour" is wide open forever, the cap belonging to nobody -- just
-# kept winding the same ring, covering the same ground dozens of times (concentric-circle /
-# hole artifacts in the Plate Inspector, unbounded overlap + node count on long runs).
-
-
-def test_deform_never_winds_a_row_past_a_full_revolution():
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    # An isolated plate hugging its own local pole (frame = identity, so local phi is world
-    # latitude): near-pole rows plus a mid-latitude row for contrast. No neighbours, so every
-    # end is "wide open" every step.
-    near_pole_phis = [np.pi / 2 - k * spacing for k in (8, 7, 6, 5, 4)]
-    lines = [
-        ElevationLine(phi=phi, theta=np.linspace(-0.5, 0.5, 6), elevation=np.zeros(6))
-        for phi in [0.3] + near_pole_phis
-    ]
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=lines)
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-
-    for _ in range(25):
-        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
-
-    for line in plate.lines:
-        span = float(line.theta[-1] - line.theta[0])
-        assert span <= 2.0 * np.pi + spacing, f"row at phi={line.phi:.3f} wound to {span:.2f} rad"
-        assert np.all(np.diff(line.theta) > 0)  # still a sorted, contiguous span
-
-    # A near-pole row *did* close its loop (the guard caps it, it isn't just slow growth).
-    assert any(
-        line.theta[-1] - line.theta[0] > 2.0 * np.pi - 3 * (spacing / max(np.cos(line.phi), 1e-3))
-        for line in plate.lines
-        if line.phi > 1.0
-    )
-    # ... and the mid-latitude row is still an ordinary partial arc, untouched by the cap.
-    mid = min(plate.lines, key=lambda ln: ln.phi)
-    assert mid.theta[-1] - mid.theta[0] < 2.0 * np.pi
-
-
-def test_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
-    from app.plates import POLE_CAP_MARGIN_MULT
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-    # A plate whose poleward rows already sit just inside the pole-cap margin: claim should
-    # refuse to add a new row past it, however open the space is.
-    phis = [np.pi / 2 - k * spacing for k in (POLE_CAP_MARGIN_MULT + 2, POLE_CAP_MARGIN_MULT + 1)]
-    lines = [
-        ElevationLine(phi=phi, theta=np.linspace(-0.3, 0.3, 20), elevation=np.zeros(20))
-        for phi in phis
-    ]
-    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="oceanic", lines=lines)
-    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
-
-    for _ in range(10):
-        plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
-
-    assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
-
-
-# The v2 engine (LithospherePlate) overrides both _grow_or_shrink_line_for_deform and
-# _claim_adjacent_territory, and originally shipped without either pole-winding guard -- it
-# relied entirely on regularize_line's after-the-fact unwind, so rows still over-wound by up
-# to a revolution every step. These mirror the two PlateWithLines tests above for the class
-# that actually runs.
+# 2*pi revolution -- nothing here treats theta as periodic, so a plate that grew to encircle
+# its own local pole would otherwise keep winding the same ring every step (concentric-circle
+# artifacts in the Plate Inspector, unbounded overlap + node count on long runs). LithospherePlate's
+# _grow_or_shrink_line_for_deform / _claim_adjacent_territory guard against both.
 
 
 def _lithosphere_polar_plate(near_pole_phis, theta, crust_type="oceanic"):
@@ -1224,57 +1161,6 @@ def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole
     assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
 
 
-# -- split / defragment keep every row one contiguous arc -----------------------------
-#
-# A great circle can cut a row so one side's nodes land in its interior, leaving the other
-# side holding two arcs with a gap. Carrying that row whole makes outline_world / the
-# row-lookup fast path claim the gap -- i.e. the sibling's own territory -- which is the
-# "split/defragmentation produces overlapping siblings" long-run degradation.
-
-
-def _round_plate() -> PlateWithLines:
-    spacing = line_spacing_rad(1.0)
-    lines = []
-    for r in range(-40, 41):
-        phi = r * spacing
-        if abs(phi) > 0.85:
-            continue
-        half_width = np.sqrt(max(0.85**2 - phi**2, 0.0))
-        dtheta = spacing / max(np.cos(phi), 1e-3)
-        theta = np.arange(-half_width, half_width, dtheta)
-        if len(theta) < 3:
-            continue
-        lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.zeros(len(theta))))
-    return PlateWithLines(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=lines)
-
-
-def test_split_yields_disjoint_daughters_when_a_cut_strands_a_row():
-    plate = _round_plate()
-    spacing = line_spacing_rad(1.0)
-    # A cut plane tilted just off this plate's own pole: the mid rows keep both their ends on
-    # the positive side with the negative side biting a lens out of their interior, so the
-    # positive daughter is left holding two arcs per stranded row.
-    cut_normal = geometry.normalize(np.array([-0.2, 0.0, 1.0]))
-
-    result = plate.split(new_id=2, cut_normal=cut_normal, min_nodes=1)
-    assert result is not None
-    a, b = result
-
-    # No row of either daughter carries an interior gap wider than a couple of node steps.
-    for daughter in (a, b):
-        for line in daughter.lines:
-            if len(line) < 2:
-                continue
-            dtheta = spacing / max(np.cos(line.phi), 1e-3)
-            assert np.all(np.diff(line.theta) < 4.0 * dtheta)
-
-    # And neither daughter's envelope claims any of the other's nodes.
-    pa, _ = a.all_points_and_elevation()
-    pb, _ = b.all_points_and_elevation()
-    assert not np.any(a.contains_batch(pb))
-    assert not np.any(b.contains_batch(pa))
-
-
 # -- interior subduction: an overridden mid-row patch is carved out and keyholed -----------
 #
 # deform()'s end-only shrink can't reach a run of overridden nodes stranded in the *middle*
@@ -1295,39 +1181,6 @@ def _oceanic_slab(plate_id: int, frame: np.ndarray, half_theta: float = 0.6) -> 
             continue
         lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.full(len(theta), -3800.0)))
     return PlateWithLines(plate_id=plate_id, frame=frame, crust_type="oceanic", lines=lines)
-
-
-def test_deform_carves_interior_override_into_two_arcs_and_keyholes_it():
-    from app.plates import _row_intervals
-    from app.world import World
-
-    # A continental plate whose territory sits squarely over the middle of an oceanic plate's
-    # rows -- a neighbour's lobe planted in the interior, the frozen-overlap geometry.
-    ocean = _oceanic_slab(1, np.eye(3))
-    cont_frame = geometry.rotation_matrix(np.array([0.0, 1.0, 0.0]), 0.25)
-    cont = _oceanic_slab(2, cont_frame, half_theta=0.18)
-    cont._crust_type = "continental"
-    world = World(seed=0, plates=[ocean, cont], mantle_centers=[], node_density=1.0)
-
-    assert all(len(ivs) == 1 for _phi, ivs in _row_intervals(list(ocean.lines)))
-    cont_pts, _ = cont.all_points_and_elevation()
-    assert ocean.contains_batch(cont_pts).mean() > 0.5  # lobe starts squarely inside
-
-    for _ in range(3):
-        ocean.deform(world, [cont], years=1_000_000, max_distance=5 * line_spacing_rad(1.0))
-
-    rows = _row_intervals([ln for ln in ocean.lines if len(ln) > 0])
-    split_rows = [ivs for _phi, ivs in rows if len(ivs) > 1]
-    assert split_rows, "expected some oceanic rows carved into two arcs"
-    # every ElevationLine stays a single contiguous arc
-    for line in ocean.lines:
-        if len(line) >= 2:
-            dtheta = line_spacing_rad(1.0) / max(np.cos(line.phi), 1e-3)
-            assert np.all(np.diff(line.theta) < 4.0 * dtheta)
-
-    # the continental lobe's own nodes are almost entirely out of the oceanic plate's
-    # polygon now -- the frozen overlap is gone.
-    assert ocean.contains_batch(cont_pts).mean() < 0.05
 
 
 def test_outline_world_still_one_contiguous_array_and_excludes_the_hole():

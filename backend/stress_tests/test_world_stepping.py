@@ -48,7 +48,7 @@ def test_plate_overlap_stays_bounded_over_many_steps():
 
 def test_node_density_persists_through_regularize_and_gap_fill():
     # The core correctness concern for a runtime density option: elevation_lines.py's own
-    # regularize pass (and PlateWithLines.deform's own claim-adjacent-territory/merge_split.py's
+    # regularize pass (and LithospherePlate.deform's own claim-adjacent-territory/merge_split.py's
     # merging) previously always rebuilt/resampled nodes at the module's default
     # TARGET_LINE_SPACING_RAD regardless of what density a world was actually generated at,
     # silently reverting a non-default density back to the reference one within a handful of

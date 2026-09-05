@@ -3,8 +3,28 @@ from scipy.spatial import cKDTree
 
 from app import geometry, mantle, merge_split
 from app import plates as plates_mod
+from app.lithosphere import reference_thickness
+from app.lithosphere_plate import LithospherePlate
 from app.plates import ElevationLine, PlateWithLines, line_spacing_rad, node_components
 from app.world import World, generate_world, step_world
+
+
+def _thick_line(phi, theta, elevation, crust_type="continental"):
+    """An `ElevationLine` carrying reference Hc/Hm for `crust_type` -- what a
+    `LithospherePlate` needs on every line, since its merge/split resample reads the
+    thickness columns. `elevation` may be a scalar (broadcast) or a per-node array."""
+    theta = np.asarray(theta, dtype=float)
+    elev = np.asarray(elevation, dtype=float)
+    if elev.ndim == 0:
+        elev = np.full(len(theta), float(elev))
+    hc0, hm0 = reference_thickness(crust_type)
+    return ElevationLine(
+        phi=phi,
+        theta=theta,
+        elevation=elev,
+        crustal_thickness_m=np.full(len(theta), hc0),
+        mantle_lithosphere_thickness_m=np.full(len(theta), hm0),
+    )
 
 
 def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation):
@@ -14,9 +34,9 @@ def _test_plate(plate_id, seed_xyz, crust_type, theta, elevation):
     reduced to a single line, see merge_split.remove_defunct_plates) would remove these
     synthetic single-line test plates before the test's own logic ever ran."""
     frame = geometry.plate_frame_from_seed(seed_xyz)
-    line = ElevationLine(phi=0.0, theta=np.asarray(theta, dtype=float), elevation=np.asarray(elevation, dtype=float))
-    filler = ElevationLine(phi=1.0, theta=np.array([0.0, 0.1]), elevation=np.zeros(2))
-    return PlateWithLines(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
+    line = _thick_line(0.0, theta, elevation, crust_type)
+    filler = _thick_line(1.0, np.array([0.0, 0.1]), np.zeros(2), crust_type)
+    return LithospherePlate(plate_id=plate_id, frame=frame, crust_type=crust_type, lines=[line, filler])
 
 
 def _converging_omega_pair(rate_cm_per_yr=5.0):
@@ -392,8 +412,8 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     frame = geometry.plate_frame_from_seed(seed_xyz)
     # Comfortably more than 2 * SPLIT_MIN_NODES, so each half still clears the threshold.
     theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
-    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
+    line = _thick_line(0.0, theta, 0.0, "continental")
+    plate = LithospherePlate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
 
     # Two strong, oppositely-signed convection centers straddling the plate so its two
     # halves get pushed in genuinely different directions -- a single rigid rotation can't
@@ -440,8 +460,8 @@ def _weak_flow_split_world(mult: float):
     seed_xyz = np.array([1.0, 0.0, 0.0])
     frame = geometry.plate_frame_from_seed(seed_xyz)
     theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
-    plate = PlateWithLines(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
+    line = _thick_line(0.0, theta, 0.0, "continental")
+    plate = LithospherePlate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
 
     west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
     east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
@@ -555,11 +575,11 @@ def test_apply_topology_changes_splits_at_most_one_plate_per_call(monkeypatch):
         seed_xyz = np.array(base, dtype=float)
         frame = geometry.plate_frame_from_seed(seed_xyz)
         theta = np.linspace(-0.5, 0.5, 4 * merge_split.SPLIT_MIN_NODES)
-        line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros_like(theta))
+        line = _thick_line(0.0, theta, 0.0, "continental")
         # A second real row so remove_defunct_plates doesn't prune the plate as "one line
         # left" before the split loop is even reached (see _test_plate's own note).
-        filler = ElevationLine(phi=0.05, theta=theta.copy(), elevation=np.zeros_like(theta))
-        plate = PlateWithLines(
+        filler = _thick_line(0.05, theta.copy(), 0.0, "continental")
+        plate = LithospherePlate(
             plate_id=i, frame=frame, crust_type="continental", lines=[line, filler], age_steps=merge_split.SPLIT_MIN_AGE_STEPS
         )
         west = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])

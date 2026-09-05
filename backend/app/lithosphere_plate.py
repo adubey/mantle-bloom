@@ -6,10 +6,11 @@ consumers only ever reads `Plate`'s abstract interface (`all_points_and_elevatio
 `contains_batch`, ...), never `shift`/`deform`'s own internals. See the plan's "Why subclass
 PlateWithLines" section.
 
-Overridden here: `shift` (torque integration, torque.py), `deform` (Mohr-Coulomb/isostasy,
-rheology.py + lithosphere.py), `merge_with`/`_merge_nodes_with`/`split`/`grow_into` (carrying
-Hc/Hm through the representation's own resample/partition operations, which
-`PlateWithLines`'s versions don't know about).
+Defined here: `shift` (torque integration, torque.py), `deform` (Mohr-Coulomb/isostasy,
+rheology.py + lithosphere.py), `merge_with`/`_merge_nodes_with`/`split` (carrying
+Hc/Hm through the representation's own resample/partition operations). `PlateWithLines`
+itself now carries only the geometry/representation half of the interface -- the tectonic
+deformation engine lives entirely on this subclass.
 """
 
 from __future__ import annotations
@@ -1306,17 +1307,6 @@ class LithospherePlate(PlateWithLines):
         old_hm = np.concatenate([self.collect("mantle_lithosphere_thickness_m"), other.collect("mantle_lithosphere_thickness_m")])
         exclude_tree = cKDTree(other_points_xyz) if len(other_points_xyz) else None
         self.set_lines(_lines_from_resample(self.frame, old_points, old_hc, old_hm, coverage_radius_rad, spacing_rad, exclude_tree))
-        lithosphere.sync_plate_elevation(self)
-
-    def grow_into(self, new_points_xyz: np.ndarray, new_elevation: np.ndarray, coverage_radius_rad: float, spacing_rad: float) -> None:
-        old_points, _ = self.all_points_and_elevation()
-        old_hc = self.collect("crustal_thickness_m")
-        old_hm = self.collect("mantle_lithosphere_thickness_m")
-        hc0, hm0 = lithosphere.reference_thickness(self.crust_type)
-        combined_points = np.concatenate([old_points, new_points_xyz], axis=0)
-        combined_hc = np.concatenate([old_hc, np.full(len(new_points_xyz), hc0)])
-        combined_hm = np.concatenate([old_hm, np.full(len(new_points_xyz), hm0)])
-        self.set_lines(_lines_from_resample(self.frame, combined_points, combined_hc, combined_hm, coverage_radius_rad, spacing_rad))
         lithosphere.sync_plate_elevation(self)
 
     def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["LithospherePlate", "LithospherePlate"] | None:
