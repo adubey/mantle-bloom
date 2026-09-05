@@ -103,6 +103,27 @@ def test_build_plate_tiling_extra_sites_zero_recovers_one_cell_per_plate():
     assert np.array_equal(tiling.site_plate, np.arange(6))
 
 
+def test_voronoi_points_changes_the_tiling_but_not_the_plate_count():
+    # `voronoi_points` is the total seed-point count; generate_plates turns it into a per-plate
+    # extra-site count once the final plate count is known, then merges cells down to the
+    # requested plate count. Different point counts -> different (lumpier vs. smoother) plate
+    # outlines, same plate count.
+    sparse = generate_plates(seed=1, num_plates=8, voronoi_points=8)
+    dense = generate_plates(seed=1, num_plates=8, voronoi_points=120)
+    assert len(sparse) == len(dense) == 8
+
+    def outline_signature(plates):
+        return [tuple(np.round(p.outline_world(), 4).ravel().tolist()) for p in plates]
+
+    assert outline_signature(sparse) != outline_signature(dense)
+
+
+def test_voronoi_points_is_deterministic():
+    a = generate_plates(seed=5, num_plates=7, voronoi_points=60)
+    b = generate_plates(seed=5, num_plates=7, voronoi_points=60)
+    assert [p.outline_world().tolist() for p in a] == [p.outline_world().tolist() for p in b]
+
+
 def test_lines_are_evenly_spaced_in_phi():
     # node_density pinned to 1.0 (not DEFAULT_NODE_DENSITY): the spacing check below compares
     # against the reference TARGET_LINE_SPACING_RAD, which only holds at density 1.0 -- at any

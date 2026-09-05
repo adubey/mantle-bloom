@@ -1849,6 +1849,7 @@ def generate_plates(
     land_fraction: float | None = None,
     node_density: float = 1.0,
     extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE,
+    voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
 ) -> list[LithospherePlate]:
     """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
@@ -1872,7 +1873,14 @@ def generate_plates(
     land extent directly); `continental_fraction` keeps its meaning, now controlling how many
     plate slots the drawn landmasses are split across vs. pure ocean. Oceanic `hc_at` is
     untouched either way -- sketch masks only ever bias continental crust, the same way
-    `land_fraction` already only touches the continental formula."""
+    `land_fraction` already only touches the continental formula.
+
+    `voronoi_points` (the UI's "Voronoi points" Advanced-settings slider), when given, is the
+    *total* number of Voronoi seed points to scatter -- it overrides `extra_sites_per_plate`,
+    which is derived once the final plate count is known as
+    `round(voronoi_points / num_plates) - 1` (clamped at 0). More points -> lumpier, less
+    convex plate outlines; `voronoi_points <= num_plates` recovers the one-cell-per-plate
+    tiling. `None` keeps `extra_sites_per_plate` as passed."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -1887,8 +1895,12 @@ def generate_plates(
         target_continents = num_continents if num_continents is not None else round(CONTINENTAL_FRACTION * num_plates)
         site_xyz, crust_types = worldsketch.sketch_plate_sites(sketch, num_plates, target_continents, rng)
         num_plates = len(site_xyz)
+        if voronoi_points is not None:
+            extra_sites_per_plate = max(0, round(voronoi_points / max(num_plates, 1)) - 1)
         tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate, primary_sites=site_xyz)
     else:
+        if voronoi_points is not None:
+            extra_sites_per_plate = max(0, round(voronoi_points / max(num_plates, 1)) - 1)
         tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate)
         if num_continents is None:
             crust_types = ["continental" if rng.random() < CONTINENTAL_FRACTION else "oceanic" for _ in range(num_plates)]
