@@ -264,6 +264,27 @@ def line_spacing_rad(node_density: float) -> float:
     return TARGET_LINE_SPACING_RAD / np.sqrt(node_density)
 
 
+# Shared geometry-tolerance constants for "is this lattice point already covered by real
+# crust" / "is this node still part of the same contiguous patch" checks -- kept in one place
+# (rather than each caller defining its own copy) so gaps.py's whole-sphere sweep,
+# merge_split.py's defragmentation pass, and LithospherePlate's own local divergent-boundary
+# growth all agree on the same tolerances.
+
+# A lattice point counts as "covered" if some real node sits within this multiple of line
+# spacing of it -- comfortably more than one spacing so ordinary per-step catch-up growth
+# isn't mistaken for a genuine void, but tight enough that a real neighbouring patch is never
+# missed. See gaps.py's own module docstring for the whole-sphere case this was written for.
+COVERAGE_RADIUS_MULT = 1.5
+
+# Two nodes count as connected (the same contiguous patch) if they're within this multiple of
+# line spacing of each other -- one row-step is ~1x spacing in phi and >= 1x in theta, a
+# diagonal neighbour ~1.4x, so 2.5x comfortably links a genuinely contiguous patch while still
+# separating two lobes across a real (>~300km) subduction gap. Validated against real saved
+# worlds by merge_split.py's defragmentation pass: every healthy plate comes back as a single
+# component at this radius.
+DEFRAG_CONNECT_RADIUS_MULT = 2.5
+
+
 class ElevationLine:
     """A fixed plate-local latitude `phi` holding elevation (and other persistent, land-only
     or lake/volcano/soil/resource) samples at plate-local longitude nodes `theta`.

@@ -50,7 +50,12 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import geometry, mantle
-from .elevation_lines import effective_is_continental_from_codes, iter_local_lattice, line_spacing_rad
+from .elevation_lines import (
+    COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
+    effective_is_continental_from_codes,
+    iter_local_lattice,
+    line_spacing_rad,
+)
 from .lithosphere_plate import LithospherePlate, new_plate
 
 if TYPE_CHECKING:
@@ -61,10 +66,10 @@ if TYPE_CHECKING:
 # merge_split.DEFRAG_INTERVAL_STEPS, which world.step_world calls it alongside.
 GAP_FILL_INTERVAL_STEPS = 4
 
-# A node is "covered" if some existing plate has a node within this of it -- comfortably
-# more than one line spacing so ordinary per-step catch-up growth (deform() closing a
-# freshly-opened one-node-wide divergent gap) is never mistaken for a genuine void.
-COVERAGE_RADIUS_MULT = 1.5
+# "Covered" (see elevation_lines.COVERAGE_RADIUS_MULT, shared with LithospherePlate's own
+# local divergent-boundary growth so both agree on the same tolerance) -- re-exported under
+# this module's own name since callers/tests already refer to it as gaps.COVERAGE_RADIUS_MULT.
+COVERAGE_RADIUS_MULT = _SHARED_COVERAGE_RADIUS_MULT
 # Two uncovered lattice points within this of each other belong to the same gap cluster --
 # a bit looser than COVERAGE_RADIUS_MULT so one contiguous void isn't sliced into several
 # clusters at its own lattice resolution.

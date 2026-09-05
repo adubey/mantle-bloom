@@ -25,7 +25,7 @@ from scipy.spatial import cKDTree
 
 from . import geometry, mantle, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .elevation_lines import TARGET_LINE_SPACING_RAD, line_spacing_rad
+from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
 
 if TYPE_CHECKING:
@@ -199,12 +199,10 @@ FAILED_RIFT_BAND_MULT = 2.5
 # Plate) or leave a comb of stranded one-node rows behind; maybe_split_plate only cuts on
 # mantle-flow disagreement, not geometry, so neither case is caught. This pass finds them.
 #
-# Two nodes count as connected if they're within this multiple of the world's own line
-# spacing -- one row-step is ~1x spacing in phi and >= 1x in theta, a diagonal neighbour
-# ~1.4x, so 2.5x comfortably links a genuinely contiguous patch while still separating two
-# lobes across a real (>~300km) subduction gap. Validated against real saved worlds: every
-# healthy plate comes back as a single component at this radius.
-DEFRAG_CONNECT_RADIUS_MULT = 2.5
+# Connectivity radius (see elevation_lines.DEFRAG_CONNECT_RADIUS_MULT, shared with
+# LithospherePlate's own local divergent-boundary growth so new nodes it adds are guaranteed
+# to survive this same connected-components check) -- re-exported under this module's own
+# name since callers/tests already refer to it as merge_split.DEFRAG_CONNECT_RADIUS_MULT.
 # A component smaller than this becomes stranded crust and is dropped rather than promoted
 # to its own plate. A node count, not a distance -- scales with node_density directly (an
 # area), same reasoning as SPLIT_MIN_NODES.

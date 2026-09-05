@@ -922,6 +922,33 @@ direct, per-step answer to "a gap should close by the plate thinning, and once t
 magma flows up" -- it is what keeps almost every ordinary rift from ever outrunning growth in
 the first place, rather than a periodic sweep noticing a hole after the fact.
 
+**Triple junctions: a real neighbour, up to CORNER_NOTCH_NEIGHBOUR_REACH_MULT away, is enough
+to keep claiming.** The two ordinary per-step growth ops are each confined to one axis of a
+plate's own local (theta, phi) lattice -- `_grow_or_shrink_line_for_deform`'s `_stretch_end`
+moves a row's own end node along that row's theta axis, and `_claim_adjacent_territory` claims
+a new phi row. Where three independently-oriented plate grids all recede from a shared point,
+the gap between them is a diagonal wedge neither axis-aligned op can ever fully reach on its
+own, and (confirmed by stepping a real triple-junction save forward) that wedge widens every
+step regardless of how far either op's own per-step caps are loosened -- a structural gap, not
+a tuning one. Two changes close most of it: `_claim_adjacent_territory` now loops up to
+`MAX_CLAIM_ROWS_PER_STEP` rows per direction (instead of exactly one) with each row trimmed to
+only its genuinely open runs (a real coverage/proximity test, not the old "not inside a
+neighbour's polygon" one), so a converging wedge narrows or widens row by row instead of
+insisting on full-width rectangular strips; and a new `_fill_corner_notch` sweeps a narrow
+window of this plate's own local lattice (`CORNER_NOTCH_WINDOW_ROWS` rows past its current
+phi extent) for the sub-row diagonal residual even that leaves behind, claiming any lattice
+point that's genuinely uncovered, close enough to this plate's own edge to survive
+`merge_split.defragment_plates`'s connected-components check, and within
+`CORNER_NOTCH_NEIGHBOUR_REACH_MULT` of a real neighbour (without that last guard, a lone
+plate's entire open perimeter looks claimable, growing it outward forever with nothing to
+stop it). Every node either op originates is seeded thin and routed through the same
+`_erupt_melted_nodes` decompression-melting path as the local mechanism above -- mechanically
+a real eruption, never a distinct silent "spawn". On the real save that motivated this, the
+fix turns a triple-junction void that grew without bound into one that stays roughly steady
+state as the three plates keep separating -- production genuinely keeping pace with opening,
+though not (yet) shrinking it to nothing; see
+[TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix) for what's still open.
+
 **Whole-sphere fallback (`gaps.py`'s `fill_gaps`).** Once every plate bordering a stretch of
 open ocean has been fully subducted and removed (`merge_split.remove_defunct_plates`), that
 sphere area has no plate left anywhere near it to thin/melt from -- there is nothing there to

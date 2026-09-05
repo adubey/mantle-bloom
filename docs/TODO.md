@@ -1429,3 +1429,27 @@ plate stopgap described above -- nothing here touches its cadence, its post-hoc 
 fit, or its fundamental "notices a hole after the fact" character. The real fix this section
 calls for (ordinary end-growth structurally never able to outrun a large-enough rift) is still
 entirely open.
+
+**Partially addressed 2026-09-05 -- triple junctions specifically, not every large rift.**
+Confirmed on a real save (seed 300909517, 14.2 My) that a small triangular void between three
+mutually-diverging plates (4, 8, 21) grew every step without bound, even with the continental
+area budget, the per-step stretch cap, and the boundary-force reach radius all independently
+loosened -- ruling out a parameter tweak. Root cause: `_stretch_end` and
+`_claim_adjacent_territory` are each confined to one axis of a plate's own local lattice, and a
+triple junction's gap is diagonal to all three plates' grids simultaneously, structurally
+invisible to either. Fixed: (1) `_stretch_end` (mass-conserving thinning, not area growth) is
+no longer gated by the continental area budget -- only the free-area-adding arc-append branch
+still is; (2) `_claim_adjacent_territory` now loops up to `MAX_CLAIM_ROWS_PER_STEP` rows per
+direction with each row trimmed to its genuinely open runs (real coverage/proximity, not
+polygon containment), instead of exactly one full-width row per call; (3) a new
+`_fill_corner_notch` claims the remaining sub-row diagonal residual via a narrow local-lattice
+window, gated on a real nearby neighbour so a lone plate can't grow its whole perimeter
+unboundedly. All new/claimed nodes route through the same decompression-melting eruption path
+as ordinary rifting -- real magma upwelling, not a free area grant. Result on the same save:
+the void's growth rate drops from unbounded (+47 nodes/700 ky, still accelerating) to roughly
+steady-state (net flat to a slow residual grind, an order of magnitude smaller) -- production
+now genuinely keeps pace with opening at this junction, though doesn't (yet) fully close the
+backlog. **Still open:** the residual slow growth (traced to `torque`'s classify/reach math and
+this fix's own window/reach constants, not re-tuned further this pass), and the general "any
+large rift, not just a 3-plate junction" case this section's own "Direction" describes remains
+the underlying, still-unaddressed mechanism `gaps.py` is a stopgap for.

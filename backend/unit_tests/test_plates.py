@@ -896,9 +896,17 @@ def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accr
 def test_lithosphere_continental_volume_budget_suppresses_growth():
     """A continental plate whose node footprint has outrun its crustal volume -- most of its
     lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new
-    areal crust this step (neither end-growth nor a claimed new row), so it thins/drowns back
+    *areal* crust this step: `_claim_adjacent_territory` (a claimed new row) and
+    `_fill_corner_notch` (a claimed sub-row notch) are both skipped, so it thins/drowns back
     toward budget instead of tiling drowned margin outward forever. A plate at genuine
-    continental thickness everywhere is within budget and still grows normally."""
+    continental thickness everywhere is within budget and both run normally.
+
+    This is no longer measurable via the row's own theta span, though: `_stretch_end` (an
+    open end's own existing node stretching/thinning in place, mass-conserving, not areal) is
+    deliberately *not* gated by this budget any more (see
+    `LithospherePlate._grow_or_shrink_line_for_deform`'s own comment on why) and grows the row
+    regardless of budget status -- so this spies on the two gated calls directly instead of
+    inferring suppression from an outcome `_stretch_end` now also produces either way."""
     from app.lithosphere import (
         REFERENCE_HC_CONTINENTAL_M,
         REFERENCE_HC_OCEANIC_M,
@@ -928,6 +936,29 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
         )
         return LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[main, core])
 
+    def _areal_growth_attempted(main_hc: float) -> bool:
+        plate = _continent(main_hc)
+        world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+        called = {"claim": False, "notch": False}
+        orig_claim, orig_notch = LithospherePlate._claim_adjacent_territory, LithospherePlate._fill_corner_notch
+
+        def spy_claim(self, *a, **k):
+            called["claim"] = True
+            return orig_claim(self, *a, **k)
+
+        def spy_notch(self, *a, **k):
+            called["notch"] = True
+            return orig_notch(self, *a, **k)
+
+        LithospherePlate._claim_adjacent_territory = spy_claim
+        LithospherePlate._fill_corner_notch = spy_notch
+        try:
+            plate.deform(world, [], years=200_000, max_distance=5 * spacing)
+        finally:
+            LithospherePlate._claim_adjacent_territory = orig_claim
+            LithospherePlate._fill_corner_notch = orig_notch
+        return called["claim"] or called["notch"]
+
     def _main_span_growth(main_hc: float) -> float:
         plate = _continent(main_hc)
         world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
@@ -937,22 +968,20 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
             return float(line.theta[-1] - line.theta[0])
 
         before = main_span()
-        # One step -- a later step would see `_claim_adjacent_territory` dilute the compact
-        # plate too (the ratchet this gate exists to bound), so measure the first step alone.
-        # max_distance itself no longer bounds a single step's growth here: an ordinary
-        # (non-arc) open end now stretches its own end node by up to
-        # `(IRREGULARITY_TOLERANCE - 1) * dtheta` per step (see
-        # LithospherePlate._grow_or_shrink_line_for_deform's `_stretch_end`) rather than
-        # appending up to `max_extend_nodes` fresh nodes, so growth is deliberately smaller and
-        # gradual per step regardless of how wide `max_distance` allows the gap estimate to be.
         plate.deform(world, [], years=200_000, max_distance=5 * spacing)
         return main_span() - before
 
     # Diluted lattice (main row at the oceanic reference column): ~40 nodes vs ~8 genuine
-    # continental -> well past CONTINENTAL_AREA_BUDGET_MULT -> the open end grows nothing.
-    assert _main_span_growth(REFERENCE_HC_OCEANIC_M) < 0.5 * spacing
-    # Genuine continental thickness everywhere -> within budget -> the open end still grows
-    # (by the new stretch mechanism's own, deliberately small, per-step amount).
+    # continental -> well past CONTINENTAL_AREA_BUDGET_MULT -> the areal-growth calls are
+    # skipped entirely.
+    assert not _areal_growth_attempted(REFERENCE_HC_OCEANIC_M)
+    # Genuine continental thickness everywhere -> within budget -> they run (whether either
+    # actually finds a claimable gap in this single-plate, no-neighbour fixture is a separate
+    # question from whether the budget gate let them try).
+    assert _areal_growth_attempted(REFERENCE_HC_CONTINENTAL_M)
+    # `_stretch_end` itself grows the row's own theta span regardless of budget status, in
+    # both cases -- the mass-conserving path this budget was never meant to gate.
+    assert _main_span_growth(REFERENCE_HC_OCEANIC_M) > 0.8 * spacing
     assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 0.8 * spacing
 
 
@@ -1232,7 +1261,17 @@ def _melt_test_plates(elevation: float):
     already just above RIFT_CRITICAL_THICKNESS_M so one real divergent step thins it past the
     threshold and triggers decompression melting there. `elevation` is the boundary end's
     *pre-melt* elevation -- the thing that decides whether the erupted material comes back
-    continental (still land) or oceanic (at/below sea level), see LithospherePlate.deform."""
+    continental (still land) or oceanic (at/below sea level), see LithospherePlate.deform.
+
+    A stationary "wall" plate pins west's own *far* end (its low-theta end has no other
+    neighbour, and is now also a legitimate `_stretch_end` target since suppress_growth no
+    longer blocks it -- see lithosphere_plate.py's own comment on that): sitting right up
+    against it, within extend_threshold_rad, so `dist[0] <= extend_threshold_rad` and
+    `_stretch_end` never fires there. Without it, the far end would also stretch (and, being
+    a fresh 20-node row with no growth history, immediately trigger a regularize_line resample
+    that interpolates every field across the whole row) -- isolating this fixture's melting
+    event to the boundary end it's meant to test, same as before suppress_growth applied to
+    _stretch_end at all."""
     from app import mantle
     from app.lithosphere import reference_thickness
     from app.lithosphere_plate import LithospherePlate
@@ -1261,42 +1300,63 @@ def _melt_test_plates(elevation: float):
     # single divergent step's thinning is enough to cross it.
     west = _plate(0, "continental", -0.5, -0.02, -rate, hc=5050.0)
     east = _plate(1, "oceanic", 0.02, 0.5, rate, hc=reference_thickness("oceanic")[0])
-    return west, east
+    wall = _plate(2, "continental", -0.52, -0.51, 0.0, hc=reference_thickness("continental")[0])
+    return west, east, wall
 
 
 def test_decompression_melting_above_sea_level_erupts_continental_crust():
-    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, ELEV_CHANGE_VOLCANO
+    from app.elevation_lines import CRUST_TYPE_CONTINENTAL, ELEV_CHANGE_RIFT
     from app.lithosphere import REFERENCE_HC_CONTINENTAL_M
     from app.world import World
 
-    west, east = _melt_test_plates(elevation=500.0)  # still standing above sea level
-    world = World(seed=0, plates=[west, east], mantle_centers=[], node_density=1.0)
+    west, east, wall = _melt_test_plates(elevation=500.0)  # still standing above sea level
+    world = World(seed=0, plates=[west, east, wall], mantle_centers=[], node_density=1.0)
     spacing = line_spacing_rad(1.0)
-    west.deform(world, [east], years=300_000, max_distance=1.5 * spacing)
+    west.deform(world, [east, wall], years=300_000, max_distance=1.5 * spacing)
 
     line = next(ln for ln in west.lines if abs(ln.phi - 0.0) < 1e-6)
-    assert line.crustal_thickness_m[-1] == REFERENCE_HC_CONTINENTAL_M
+    # The boundary end erupts to the full reference column, then -- still separating from
+    # `east` by more than extend_threshold_rad this same step -- immediately stretches by
+    # `_grow_or_shrink_line_for_deform`'s own per-step cap ((IRREGULARITY_TOLERANCE-1)/
+    # IRREGULARITY_TOLERANCE = 1/3), landing at 2/3 of the reference column rather than the
+    # reference column itself: a real, intended two-phase interaction (erupt, then keep
+    # stretching the same step), not a partial eruption.
+    assert line.crustal_thickness_m[-1] == pytest.approx(REFERENCE_HC_CONTINENTAL_M * 2.0 / 3.0)
     assert line.crust_type_code[-1] == CRUST_TYPE_CONTINENTAL
-    assert line.elev_change_reason[-1] == ELEV_CHANGE_VOLCANO
-    # A fresh continental reference column floats near ordinary dry land, not the deep abyss.
-    assert line.elevation[-1] > 0.0
-    # Untouched, far-from-the-boundary nodes are unaffected.
-    assert line.crustal_thickness_m[0] == 5050.0
+    # The eruption's own ELEV_CHANGE_VOLCANO stamp is overwritten by the immediately-following
+    # stretch this same step (which doesn't itself cross the melting threshold a second time) --
+    # crust_type_code and the exact 2/3-of-reference thickness above are what actually pin the
+    # eruption having happened; this reason code reflects the *last* thing that touched the
+    # node this step, which really was ordinary rift stretching.
+    assert line.elev_change_reason[-1] == ELEV_CHANGE_RIFT
+    # The immediately-following stretch thins the freshly erupted column enough to isostatically
+    # submerge it (real rifting can turn land into a shallow sea) -- shallower than the oceanic
+    # variant's abyssal depth below, not the dry land a bare eruption alone would leave it at.
+    assert -3000.0 < line.elevation[-1] < 0.0
+    # Far-from-the-boundary nodes are essentially unaffected -- the `wall` plate pins this end
+    # close enough to block `_stretch_end` there, but still close enough to register as
+    # ordinary boundary-adjacent for the ordinary per-step thickness update, hence "close to",
+    # not exactly, its untouched starting value.
+    assert line.crustal_thickness_m[0] == pytest.approx(5050.0, abs=100.0)
 
 
 def test_decompression_melting_at_or_below_sea_level_erupts_oceanic_crust():
-    from app.elevation_lines import CRUST_TYPE_OCEANIC, ELEV_CHANGE_VOLCANO
+    from app.elevation_lines import CRUST_TYPE_OCEANIC, ELEV_CHANGE_RIFT
     from app.lithosphere import REFERENCE_HC_OCEANIC_M
     from app.world import World
 
-    west, east = _melt_test_plates(elevation=-2000.0)  # a drowned, already-submerged margin
-    world = World(seed=0, plates=[west, east], mantle_centers=[], node_density=1.0)
+    west, east, wall = _melt_test_plates(elevation=-2000.0)  # a drowned, already-submerged margin
+    world = World(seed=0, plates=[west, east, wall], mantle_centers=[], node_density=1.0)
     spacing = line_spacing_rad(1.0)
-    west.deform(world, [east], years=300_000, max_distance=1.5 * spacing)
+    west.deform(world, [east, wall], years=300_000, max_distance=1.5 * spacing)
 
     line = next(ln for ln in west.lines if abs(ln.phi - 0.0) < 1e-6)
-    assert line.crustal_thickness_m[-1] == REFERENCE_HC_OCEANIC_M
+    # See the continental-crust variant of this test for why 2/3 of the reference column, not
+    # the reference column itself: erupt, then one more capped stretch the same step.
+    assert line.crustal_thickness_m[-1] == pytest.approx(REFERENCE_HC_OCEANIC_M * 2.0 / 3.0)
     assert line.crust_type_code[-1] == CRUST_TYPE_OCEANIC
-    assert line.elev_change_reason[-1] == ELEV_CHANGE_VOLCANO
+    # See the continental-crust variant of this test for why RIFT, not VOLCANO, survives as
+    # the final reason code even though a real eruption happened this same step.
+    assert line.elev_change_reason[-1] == ELEV_CHANGE_RIFT
     # A fresh oceanic reference column floats at abyssal depth, not dry land.
     assert line.elevation[-1] < -3000.0

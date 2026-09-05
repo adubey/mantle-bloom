@@ -33,6 +33,8 @@ from .elevation_lines import (
     ELEV_CHANGE_VOLCANO,
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_OCEANIC,
+    COVERAGE_RADIUS_MULT,
+    DEFRAG_CONNECT_RADIUS_MULT,
     ElevationLine,
     IRREGULARITY_TOLERANCE,
     PLANET_RADIUS_KM,
@@ -73,6 +75,44 @@ MAX_EXTEND_NODES_PER_STEP = 400
 # CONTINENTAL_CONTESTED_RETREAT_MIN_RUN above -- this is about how many *rows* share a
 # stretching event's mass deficit, not a distance or a per-node budget.
 K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION = 2
+
+# `_claim_adjacent_territory` used to claim exactly one new row per call, regardless of how
+# much genuine phi-direction separation was actually behind it -- fine for an ordinary
+# two-plate rift (next step's call claims the next row in turn), but at a triple junction,
+# where three independently-oriented plate grids are all receding from a shared point, one row
+# per plate per step structurally cannot keep pace with three-way divergence (confirmed on a
+# real save: the void between three plates widened every step even with every other growth
+# knob loosened). Looping lets one call claim as many rows as the actual gap calls for, capped
+# so a single pathological step can't claim an unbounded amount -- same node-count-budget
+# shape as MAX_EXTEND_NODES_PER_STEP, not a distance.
+MAX_CLAIM_ROWS_PER_STEP = 4
+MAX_CLAIM_NODES_PER_STEP = 400
+
+# `_fill_corner_notch`'s own window and safety valve. Both `_stretch_end` (theta-aligned) and
+# the generalized `_claim_adjacent_territory` (phi-aligned, whole rows) are still confined to
+# this plate's own local (theta, phi) grid axes -- a genuinely diagonal sub-row notch, the
+# shape three independently-oriented plate grids leave at a triple junction, is invisible to
+# both. This is a small, tightly-windowed fallback for exactly that residual, not a general
+# lattice scan: only phi rows within this many `spacing_rad` of this plate's own current phi
+# extent are ever swept (cheap, local -- never a whole-plate or whole-sphere pass like
+# gaps.py's). Confirmed against a real triple-junction save: the deepest corner of a genuine
+# 3-plate void can sit up to ~5x spacing from the nearest of the 3 plates, so this needs to be
+# wide enough to make iterative progress (each step's claim only reaches this far past the
+# *current* edge, but the edge itself advances every step) rather than stalling just short.
+CORNER_NOTCH_WINDOW_ROWS = 5
+# How far a real neighbour may sit from a candidate notch point and still justify claiming it
+# -- see the "requires a real neighbour" guard in _fill_corner_notch's own docstring for why
+# this exists at all (without it, a lone plate's every open perimeter point looks claimable).
+# Wider than CORNER_NOTCH_WINDOW_ROWS's own window since the neighbour that makes a deep
+# interior notch-point genuine can itself be one of the *other* plates at the same junction,
+# not necessarily the closest one to this exact point.
+CORNER_NOTCH_NEIGHBOUR_REACH_MULT = 6.0
+# A node count, not a distance -- comparable in scale to merge_split.DEFRAG_FRAGMENT_MIN_NODES,
+# since this path has weaker geometric guarantees than the row-based claim above and should
+# stay a rare corner cleanup, never a bulk grower. The real limit is geometric (only points
+# within DEFRAG_CONNECT_RADIUS_MULT of this plate's own current edge are ever candidates at
+# all); this is defense in depth, not the physical constraint.
+MAX_CORNER_FILL_NODES_PER_STEP = 200
 
 # A plate whose boundary is more deeply/widely overlapping a neighbour right now should
 # crumple faster than one barely grazing -- on top of (not instead of) the existing
@@ -782,6 +822,7 @@ class LithospherePlate(PlateWithLines):
         self.set_lines(new_lines)
         if not suppress_growth:
             self._claim_adjacent_territory(world, neighbours, spacing_rad)
+            self._fill_corner_notch(world, neighbours, spacing_rad)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):
@@ -1049,35 +1090,44 @@ class LithospherePlate(PlateWithLines):
             )[0]
             persistent_fields["elev_change_reason"][index] = ELEV_CHANGE_VOLCANO if melt[0] else ELEV_CHANGE_RIFT
 
-        if not suppress_growth and not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
+        # `suppress_growth` (the continental area-budget gate) only applies to the arc-seed
+        # append branch below, which conjures brand-new full-thickness nodes for free. The
+        # `_stretch_end` branch is mass-conserving (rheology.apply_stretch_thinning thins the
+        # existing column by exact footprint conservation) until it crosses
+        # RIFT_CRITICAL_THICKNESS_M, at which point it erupts via the same decompression-
+        # melting/magma-upwelling path (_erupt_melted_nodes) ordinary divergent thinning
+        # already uses -- not an unpaid-for area grab, so it shouldn't need this gate at all.
+        if not contested[-1] and dist[-1] > extend_threshold_rad and ring_room() > 0:
             if arc_end_high:
-                gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
-                n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
-                candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
-                n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
-                if n_new > 0:
-                    hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(True)
-                    new_theta = candidate_theta[:n_new]
-                    theta = np.append(theta, new_theta)
-                    elevation = np.append(elevation, np.full(n_new, elev_seed))
-                    for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
-                        persistent_fields[name] = np.append(persistent_fields[name], fill)
+                if not suppress_growth:
+                    gap_estimate = min(dist[-1], (n_distance_cap + 1) * spacing_rad)
+                    n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
+                    candidate_theta = theta[-1] + dtheta * np.arange(1, n_candidates + 1)
+                    n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
+                    if n_new > 0:
+                        hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(True)
+                        new_theta = candidate_theta[:n_new]
+                        theta = np.append(theta, new_theta)
+                        elevation = np.append(elevation, np.full(n_new, elev_seed))
+                        for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
+                            persistent_fields[name] = np.append(persistent_fields[name], fill)
             else:
                 _stretch_end(-1, 1.0, dist[-1], direction[-1])
 
-        if not suppress_growth and not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
+        if not contested[0] and dist[0] > extend_threshold_rad and ring_room() > 0:
             if arc_end_low:
-                gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
-                n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
-                candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
-                n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
-                if n_new > 0:
-                    hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(True)
-                    new_theta = candidate_theta[:n_new][::-1]
-                    theta = np.insert(theta, 0, new_theta)
-                    elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
-                    for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
-                        persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
+                if not suppress_growth:
+                    gap_estimate = min(dist[0], (n_distance_cap + 1) * spacing_rad)
+                    n_candidates = min(max(int(gap_estimate / spacing_rad), 1), n_distance_cap, max_extend_nodes, ring_room())
+                    candidate_theta = theta[0] - dtheta * np.arange(1, n_candidates + 1)
+                    n_new = self._count_open_prefix(candidate_theta, line.phi, neighbours)
+                    if n_new > 0:
+                        hc_seed, hm_seed, elev_seed, reason_seed = _end_seed(True)
+                        new_theta = candidate_theta[:n_new][::-1]
+                        theta = np.insert(theta, 0, new_theta)
+                        elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
+                        for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
+                            persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
             else:
                 _stretch_end(0, -1.0, dist[0], direction[0])
 
@@ -1139,9 +1189,45 @@ class LithospherePlate(PlateWithLines):
             return new_lines
         return [ln for ln in new_lines if round(float(ln.phi), 6) not in drop_phis]
 
+    def _seed_and_erupt_new_nodes(
+        self, world: "World", line_index: int, world_pts: np.ndarray, thin_ratio: float,  # noqa: F821
+        hc0: float, hm0: float, amp: float, texture: "terrain_noise.FractalTexture"
+    ) -> dict[str, np.ndarray]:
+        """Brand-new nodes carry no prior column to conserve, so -- exactly like ordinary
+        divergent thinning and `_grow_or_shrink_line_for_deform`'s `_stretch_end` -- they are
+        seeded thin (`thin_ratio` share of the oceanic reference column, `growth_seed_thickness`)
+        and run straight through `_erupt_melted_nodes`, the same decompression-melting/magma-
+        upwelling path every other new-crust event in `deform()` uses. This makes every node
+        this produces a real eruption (typed, `is_volcano`-stamped, timed) rather than a
+        distinct silent "spawn" concept -- shared by `_claim_adjacent_territory` and
+        `_fill_corner_notch`, the two callers that ever originate genuinely new areal crust."""
+        n = len(world_pts)
+        hc = np.full(n, hc0 * thin_ratio) + amp * texture.sample(world_pts)
+        hm = np.full(n, hm0 * thin_ratio)
+        elevation = lithosphere.isostatic_elevation(hc, hm, self.crust_density())
+        crust_type_code = np.zeros(n, dtype=np.int8)
+        is_volcano = np.zeros(n, dtype=bool)
+        volcano_remaining = np.zeros(n)
+        melting = hc < rheology.RIFT_CRITICAL_THICKNESS_M
+        _erupt_melted_nodes(
+            world, self.plate_id, line_index,
+            hc, hm, crust_type_code, is_volcano, volcano_remaining,
+            melting, elevation,
+        )
+        elevation = lithosphere.isostatic_elevation(hc, hm, lithosphere.node_crust_density(crust_type_code, self.crust_type))
+        return {
+            "elevation": elevation,
+            "crustal_thickness_m": hc,
+            "mantle_lithosphere_thickness_m": hm,
+            "crust_type_code": crust_type_code,
+            "is_volcano": is_volcano,
+            "volcano_active_years_remaining": volcano_remaining,
+            "elev_change_reason": np.full(n, ELEV_CHANGE_NEW_CRUST, dtype=float),
+        }
+
     def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
-        """Same shape as `PlateWithLines._claim_adjacent_territory` -- a brand-new phi row
-        just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm
+        """Same shape as `PlateWithLines._claim_adjacent_territory` -- one or more brand-new
+        phi rows just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm
         (oceanic reference, see `growth_seed_thickness`) plus `terrain_noise.FractalTexture`
         on Hc (an extension of an already-shaped plate, so texture rather than a fresh
         orogen), rather than a flat elevation baseline. Keyed off `(world.seed, plate_id,
@@ -1156,7 +1242,20 @@ class LithospherePlate(PlateWithLines):
         across the new row *and* `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` of this plate's own
         existing outermost rows on that side, in proportion to `phi_gap`'s own share of one
         full row spacing -- mass conservation, the phi-direction counterpart of the theta case's
-        own stretch-thinning."""
+        own stretch-thinning.
+
+        Loops up to `MAX_CLAIM_ROWS_PER_STEP` rows per direction (bounded overall by
+        `MAX_CLAIM_NODES_PER_STEP`), re-deriving the reference row each iteration, instead of
+        claiming exactly one row and waiting for next step's call to claim the next: one row per
+        plate per step structurally cannot keep pace with a fast-widening gap (see
+        MAX_CLAIM_ROWS_PER_STEP's own comment). "Open" is a real coverage/proximity check
+        (`COVERAGE_RADIUS_MULT * spacing_rad` against every neighbour's own node cloud, the
+        same tolerance gaps.py's whole-sphere sweep uses) rather than `_contested_by_any`'s
+        weaker "not inside a neighbour's polygon", and each candidate row is split into however
+        many contiguous open runs it actually has (`split_into_contiguous_runs`) instead of
+        always claiming the full old row's theta span with holes in it -- what lets a
+        triple-junction wedge narrow or widen row by row instead of insisting on full-width
+        rectangular strips."""
         lines_with_nodes = [line for line in self.lines if len(line) > 0]
         if not lines_with_nodes:
             return
@@ -1175,114 +1274,269 @@ class LithospherePlate(PlateWithLines):
         texture = terrain_noise.FractalTexture(
             np.random.default_rng((world.seed, self.plate_id, _TERRAIN_SEED_TAG))
         )
-        neighbour_trees = [tree for p in neighbours if p.node_count() > 0 for tree in [p.get_node_kdtree()] if tree is not None]
+        neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
+        neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
+        coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
         line_index_by_id = {id(row): i for i, row in enumerate(self.lines)}
         new_lines: list[ElevationLine] = []
         thinned: dict[int, ElevationLine] = {}
 
-        for reference, direction in ((ordered[0], -1), (ordered[-1], 1)):
-            new_phi = reference.phi + direction * spacing_rad
-            if abs(new_phi) > max_phi_limit:
-                continue
-            dtheta = spacing_rad / max(np.cos(new_phi), 1e-3)
-            span = reference.theta[-1] - reference.theta[0]
-            n_cols = max(int(round(span / dtheta)) + 1, 1)
-            theta_candidates = reference.theta[0] + dtheta * np.arange(n_cols)
-            world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_cols, new_phi), theta_candidates))
+        def is_open(world_pts: np.ndarray) -> np.ndarray:
+            if neighbour_tree is None:
+                return np.ones(len(world_pts), dtype=bool)
+            dist, _ = neighbour_tree.query(world_pts)
+            return dist > coverage_radius_rad
 
-            contested = _contested_by_any(world_pts, neighbours)
-            open_mask = ~contested
-            if not np.any(open_mask):
-                continue
+        for direction in (-1, 1):
+            reference = ordered[0] if direction < 0 else ordered[-1]
+            # Rolling window of the K rows nearest the *current* frontier, for mass-
+            # conservation draw-down -- starts as the plate's own original outermost K rows,
+            # then shifts outward to include each newly claimed row in turn (dropping whichever
+            # row is now farthest from the frontier). Recomputing this from the ORIGINAL
+            # `ordered` on every loop iteration instead (a real bug caught by
+            # test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion)
+            # would draw the *same* original edge down once per row claimed this call --
+            # correct for one row, but a multi-row claim would over-thin that edge N-fold for
+            # no physical reason, since only the newest row's own gap should charge against
+            # rows actually near it.
+            recent_rows = ordered[:K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION] if direction < 0 else ordered[-K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION:]
+            rows_claimed = 0
+            nodes_claimed = 0
+            while rows_claimed < MAX_CLAIM_ROWS_PER_STEP and nodes_claimed < MAX_CLAIM_NODES_PER_STEP:
+                new_phi = reference.phi + direction * spacing_rad
+                if abs(new_phi) > max_phi_limit:
+                    break
+                dtheta = spacing_rad / max(np.cos(new_phi), 1e-3)
+                span = reference.theta[-1] - reference.theta[0]
+                n_cols = max(int(round(span / dtheta)) + 1, 1)
+                theta_candidates = reference.theta[0] + dtheta * np.arange(n_cols)
+                world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_cols, new_phi), theta_candidates))
 
-            theta_open = theta_candidates[open_mask]
-            n_open = int(open_mask.sum())
-            world_open = world_pts[open_mask]
+                open_mask = is_open(world_pts)
+                if not np.any(open_mask):
+                    break
 
-            # How far, and in what direction, does a genuine gap actually extend here? --
-            # the same nearest-neighbour-node query torque.gather_boundary_force_inputs uses
-            # for a live node, evaluated fresh at this not-yet-existing row's own midpoint (one
-            # representative point stands in for the whole candidate row, matching how coarse
-            # a once-per-step per-plate-edge check this already was before this change).
-            rep_world = world_open[n_open // 2]
-            best_dist, direction_world = np.inf, np.zeros(3)
-            for tree in neighbour_trees:
-                d, idx = tree.query(rep_world)
-                if d < best_dist:
-                    best_dist, direction_world = float(d), geometry.normalize(tree.data[idx] - rep_world)
-            sep_theta, sep_phi = self._separation_components(world, new_phi, float(theta_open[n_open // 2]), direction_world)
-            gap_estimate = min(best_dist, spacing_rad) if np.isfinite(best_dist) else spacing_rad
-            _, phi_gap = rheology.stretch_components(sep_theta, sep_phi, gap_estimate)
-            if phi_gap <= 0.0:
-                continue
+                # Real coverage, not `_contested_by_any`'s polygon test, so a candidate row
+                # against a diagonal neighbour boundary comes back with only its genuinely
+                # uncovered stretch open -- probe_line lets split_into_contiguous_runs find
+                # every contiguous open run instead of one all-or-nothing span.
+                probe_line = ElevationLine(phi=new_phi, theta=theta_candidates, elevation=np.zeros(n_cols))
+                probe_line = probe_line.masked(open_mask)
+                runs = split_into_contiguous_runs(probe_line, dtheta)
+                if not runs:
+                    break
 
-            neighbour_rows = ordered[:K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION] if direction < 0 else ordered[-K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION:]
-            share_count = len(neighbour_rows) + 1  # + the new row itself
-            stretch_fraction = float(np.clip(phi_gap / spacing_rad, 0.0, 1.0))
-            thin_ratio = 1.0 - stretch_fraction * (share_count - 1) / share_count
+                # How far, and in what direction, does a genuine gap actually extend here? --
+                # the same nearest-neighbour-node query torque.gather_boundary_force_inputs
+                # uses for a live node, evaluated fresh at the largest run's own midpoint (one
+                # representative point stands in for the whole candidate row, matching how
+                # coarse a once-per-step per-plate-edge check this already was).
+                largest_run = max(runs, key=len)
+                rep_theta = float(largest_run.theta[len(largest_run) // 2])
+                rep_world = geometry.to_world(self.frame, geometry.local_xyz(np.array([new_phi]), np.array([rep_theta])))[0]
+                if neighbour_tree is not None:
+                    best_dist, idx = neighbour_tree.query(rep_world)
+                    direction_world = geometry.normalize(neighbour_tree.data[idx] - rep_world)
+                else:
+                    best_dist, direction_world = np.inf, np.zeros(3)
+                sep_theta, sep_phi = self._separation_components(world, new_phi, rep_theta, direction_world)
+                gap_estimate = min(float(best_dist), spacing_rad) if np.isfinite(best_dist) else spacing_rad
+                _, phi_gap = rheology.stretch_components(sep_theta, sep_phi, gap_estimate)
+                if phi_gap <= 0.0:
+                    break
 
-            hc_open = np.full(n_open, hc0 * thin_ratio) + amp * texture.sample(world_open)
-            hm_open = np.full(n_open, hm0 * thin_ratio)
-            elevation_open = lithosphere.isostatic_elevation(hc_open, hm_open, self.crust_density())
-            crust_type_open = np.zeros(n_open, dtype=np.int8)
-            is_volcano_open = np.zeros(n_open, dtype=bool)
-            volcano_remaining_open = np.zeros(n_open)
-            melting_new = hc_open < rheology.RIFT_CRITICAL_THICKNESS_M
-            _erupt_melted_nodes(
-                world, self.plate_id, len(self.lines) + len(new_lines),
-                hc_open, hm_open, crust_type_open, is_volcano_open, volcano_remaining_open,
-                melting_new, elevation_open,
-            )
-            elevation_open = lithosphere.isostatic_elevation(
-                hc_open, hm_open, lithosphere.node_crust_density(crust_type_open, self.crust_type)
-            )
-            new_lines.append(
-                ElevationLine(
-                    phi=new_phi,
-                    theta=theta_open,
-                    elevation=elevation_open,
-                    crustal_thickness_m=hc_open,
-                    mantle_lithosphere_thickness_m=hm_open,
-                    crust_type_code=crust_type_open,
-                    is_volcano=is_volcano_open,
-                    volcano_active_years_remaining=volcano_remaining_open,
-                    elev_change_reason=np.full(n_open, ELEV_CHANGE_NEW_CRUST, dtype=float),
-                )
-            )
+                share_count = len(recent_rows) + 1  # + the new row itself
+                stretch_fraction = float(np.clip(phi_gap / spacing_rad, 0.0, 1.0))
+                thin_ratio = 1.0 - stretch_fraction * (share_count - 1) / share_count
 
-            # Pull the same fractional share out of the existing rows nearest this claim --
-            # thinned in place (a row already thinned by the *other* phi extreme's own claim
-            # this same call keeps compounding, which is fine: two genuine gaps opening on
-            # both sides of a small plate in the same step really should thin it from both).
-            for original_row in neighbour_rows:
-                row = thinned.get(id(original_row), original_row)
-                new_hc_row = row.crustal_thickness_m * thin_ratio
-                new_hm_row = row.mantle_lithosphere_thickness_m * thin_ratio
-                melting_row = (row.crustal_thickness_m >= rheology.RIFT_CRITICAL_THICKNESS_M) & (
-                    new_hc_row < rheology.RIFT_CRITICAL_THICKNESS_M
-                )
-                crust_type_row = row.crust_type_code.copy()
-                is_volcano_row = row.is_volcano.copy()
-                volcano_remaining_row = row.volcano_active_years_remaining.copy()
-                _erupt_melted_nodes(
-                    world, self.plate_id, line_index_by_id.get(id(original_row), -1),
-                    new_hc_row, new_hm_row, crust_type_row, is_volcano_row, volcano_remaining_row,
-                    melting_row, row.elevation,
-                )
-                new_elevation_row = lithosphere.isostatic_elevation(
-                    new_hc_row, new_hm_row, lithosphere.node_crust_density(crust_type_row, self.crust_type)
-                )
-                thinned[id(original_row)] = row.replace(
-                    crustal_thickness_m=new_hc_row,
-                    mantle_lithosphere_thickness_m=new_hm_row,
-                    crust_type_code=crust_type_row,
-                    is_volcano=is_volcano_row,
-                    volcano_active_years_remaining=volcano_remaining_row,
-                    elevation=new_elevation_row,
-                )
+                for run in runs:
+                    world_run = geometry.to_world(self.frame, geometry.local_xyz(np.full(len(run), new_phi), run.theta))
+                    seeded = self._seed_and_erupt_new_nodes(
+                        world, len(self.lines) + len(new_lines), world_run, thin_ratio, hc0, hm0, amp, texture
+                    )
+                    new_row = ElevationLine(phi=new_phi, theta=run.theta, **seeded)
+                    new_lines.append(new_row)
+                    # A row claimed this call can itself become a `recent_rows` mass-
+                    # conservation source in a later iteration (see below) -- give it a stable
+                    # index too, not just the rows that existed before this call.
+                    line_index_by_id[id(new_row)] = len(self.lines) + len(new_lines) - 1
+                    nodes_claimed += len(run)
+                rows_claimed += 1
+
+                # Pull the same fractional share out of the existing rows nearest this claim --
+                # thinned in place (a row already thinned by an earlier iteration, or by the
+                # *other* phi extreme's own claim this same call, keeps compounding, which is
+                # fine: repeated genuine gaps opening on the same side really should thin it
+                # further each time).
+                for original_row in recent_rows:
+                    row = thinned.get(id(original_row), original_row)
+                    new_hc_row = row.crustal_thickness_m * thin_ratio
+                    new_hm_row = row.mantle_lithosphere_thickness_m * thin_ratio
+                    melting_row = (row.crustal_thickness_m >= rheology.RIFT_CRITICAL_THICKNESS_M) & (
+                        new_hc_row < rheology.RIFT_CRITICAL_THICKNESS_M
+                    )
+                    crust_type_row = row.crust_type_code.copy()
+                    is_volcano_row = row.is_volcano.copy()
+                    volcano_remaining_row = row.volcano_active_years_remaining.copy()
+                    _erupt_melted_nodes(
+                        world, self.plate_id, line_index_by_id.get(id(original_row), -1),
+                        new_hc_row, new_hm_row, crust_type_row, is_volcano_row, volcano_remaining_row,
+                        melting_row, row.elevation,
+                    )
+                    new_elevation_row = lithosphere.isostatic_elevation(
+                        new_hc_row, new_hm_row, lithosphere.node_crust_density(crust_type_row, self.crust_type)
+                    )
+                    thinned[id(original_row)] = row.replace(
+                        crustal_thickness_m=new_hc_row,
+                        mantle_lithosphere_thickness_m=new_hm_row,
+                        crust_type_code=crust_type_row,
+                        is_volcano=is_volcano_row,
+                        volcano_active_years_remaining=volcano_remaining_row,
+                        elevation=new_elevation_row,
+                    )
+
+                # Continue outward from the widest surviving run -- the next row's own span is
+                # derived from its reference row's theta extent, and a fragmented claim narrows
+                # naturally toward whichever piece the gap actually left open.
+                reference = max(new_lines[-len(runs):], key=len)
+                # Shift the mass-conservation window outward: the row just claimed becomes the
+                # nearest neighbour to the *next* frontier, displacing whichever row is now
+                # farthest from it.
+                recent_rows = [reference] + recent_rows[: K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION - 1]
 
         if new_lines or thinned:
+            # `recent_rows` can include a `new_lines` entry from an earlier iteration of the
+            # same direction's loop (the row just claimed becomes a mass-conservation source
+            # for the next one) -- so `thinned` may hold an updated version of a *new* line,
+            # not just an original one. Apply it to both, or a later thinning pass on a
+            # just-claimed row would silently apply to nothing.
+            new_lines = [thinned.get(id(line), line) for line in new_lines]
             self.set_lines([thinned.get(id(line), line) for line in self.lines] + new_lines)
+
+    def _fill_corner_notch(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
+        """Small fallback for the sub-row diagonal residual `_stretch_end` (theta-axis-only)
+        and `_claim_adjacent_territory` (phi-axis-only, whole rows) structurally cannot reach:
+        the shape three independently-oriented plate grids leave open at a triple junction,
+        confirmed on a real save where that void kept widening every step even with every
+        other growth knob loosened (docs/TODO.md's "gaps.py's plate-spawn is a stopgap, not
+        the real fix"). This sweeps a narrow window of this plate's own local lattice
+        (CORNER_NOTCH_WINDOW_ROWS rows past its current phi extent either way -- cheap and
+        local, never a whole-plate/whole-sphere pass) and claims whichever lattice points are
+        both genuinely uncovered (not within COVERAGE_RADIUS_MULT of self or any neighbour --
+        the same real proximity test gaps.py's whole-sphere sweep and the generalized
+        `_claim_adjacent_territory` above use, not a polygon-containment approximation) and
+        close enough to this plate's own current edge (within DEFRAG_CONNECT_RADIUS_MULT) to
+        survive `merge_split.defragment_plates`'s own connected-components check rather than
+        being dropped or carved off as a stray fragment next defrag pass. Also requires a real
+        neighbour within CORNER_NOTCH_NEIGHBOUR_REACH_MULT -- a no-op with none -- since
+        "uncovered space right next to my own edge" with no
+        neighbour at all is just the rest of the sphere, not a junction squeeze; without this
+        gate a lone plate would grow its entire perimeter outward every step with nothing to
+        stop it (a real bug caught by test_lithosphere_deform_never_winds_a_row_past_a_full_revolution).
+
+        Every claimed node is brand-new, so -- exactly like `_claim_adjacent_territory` above
+        -- it carries no prior column to conserve: `_seed_and_erupt_new_nodes` seeds it thin
+        and runs it straight through the same decompression-melting/magma-upwelling eruption
+        path (`_erupt_melted_nodes`) every other new-crust event in `deform()` uses, so this is
+        mechanically indistinguishable from ordinary rift-eruption crust, never a distinct
+        silent "spawn" concept."""
+        # A triple-junction notch only exists where this plate is squeezed against a real
+        # neighbour -- without one, "uncovered space right next to my own edge" is just the
+        # rest of the sphere, and this method would otherwise grow this plate's entire
+        # perimeter outward every single step with nothing to stop it (confirmed as a real
+        # bug: a lone plate with no neighbours churned through regularize_line every step).
+        # `_stretch_end`/`_claim_adjacent_territory` don't need this guard -- both are already
+        # scoped to genuine per-node/per-row separation math -- but this method has no such
+        # gate of its own, so it needs an explicit one.
+        neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
+        if not neighbour_points:
+            return
+        own_points, _ = self.all_points_and_elevation()
+        lines_with_nodes = [line for line in self.lines if len(line) > 0]
+        if len(own_points) == 0 or not lines_with_nodes:
+            return
+
+        coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
+        connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * spacing_rad
+        # Candidates must also sit within ordinary boundary reach of that neighbour -- the same
+        # tolerance torque.gather_boundary_force_inputs uses to decide a node is boundary-
+        # adjacent at all -- so this stays "squeezed at a real junction", not "anywhere along my
+        # perimeter a neighbour happens to exist somewhere far off".
+        neighbour_reach_rad = CORNER_NOTCH_NEIGHBOUR_REACH_MULT * spacing_rad
+        self_tree = cKDTree(own_points)
+        neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0))
+
+        max_abs_phi = np.pi / 2 - spacing_rad / 2  # matches iter_local_lattice's own bound
+        max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
+        phis = np.array([line.phi for line in lines_with_nodes])
+        phi_lo = max(phis.min() - CORNER_NOTCH_WINDOW_ROWS * spacing_rad, -max_abs_phi)
+        phi_hi = min(phis.max() + CORNER_NOTCH_WINDOW_ROWS * spacing_rad, max_abs_phi)
+        # Align to the same phi grid iter_local_lattice uses, so a claimed row here can share a
+        # phi value with an existing/claimed row exactly (multiple lines per phi are legal --
+        # see ElevationLine's own docstring on interior-subduction carve-outs).
+        row_lo = int(np.floor((phi_lo + max_abs_phi) / spacing_rad))
+        row_hi = int(np.ceil((phi_hi + max_abs_phi) / spacing_rad))
+        phi_values = -max_abs_phi + spacing_rad * np.arange(row_lo, row_hi + 1)
+
+        hc0, hm0 = growth_seed_thickness()
+        amp = hc0 * 0.1
+        texture = terrain_noise.FractalTexture(
+            np.random.default_rng((world.seed, self.plate_id, _TERRAIN_SEED_TAG))
+        )
+        # Every corner-notch node is brand-new with no prior column, so it is seeded well below
+        # RIFT_CRITICAL_THICKNESS_M rather than at the full reference column -- comfortably
+        # clear of the +-amp texture noise `_seed_and_erupt_new_nodes` adds on top, so this
+        # guarantees (not just usually) that every node routes through `_erupt_melted_nodes`
+        # (the decompression-melting/magma-upwelling eruption path), same as this method's own
+        # docstring: mechanically a real eruption, never a silent full-thickness "spawn".
+        seed_thin_ratio = min(1.0, (0.3 * rheology.RIFT_CRITICAL_THICKNESS_M) / hc0)
+
+        new_lines: list[ElevationLine] = []
+        nodes_added = 0
+        for phi in phi_values:
+            if nodes_added >= MAX_CORNER_FILL_NODES_PER_STEP or abs(phi) > max_phi_limit:
+                continue
+            dtheta = spacing_rad / max(np.cos(phi), 1e-3)
+            # A theta *window* around the nearest existing line's own current theta extent --
+            # never the full 2*pi ring. Near a pole a ring's real 3D circumference shrinks, so
+            # a plain Euclidean coverage/connect-radius test alone would read theta values far
+            # from this plate's actual footprint as spuriously "near", and a full-ring sweep
+            # there could claim (or appear to claim, alongside `_stretch_end`'s own separately
+            # ring_room()-capped closing of that same row) most of a ring in one call -- exactly
+            # the near-pole winding pathology ring_room() exists to prevent elsewhere. Bounding
+            # the window to the plate's own nearby footprint plus a small margin keeps this
+            # fallback's worst case a small notch, structurally, regardless of pole distance.
+            nearest = min(lines_with_nodes, key=lambda ln: abs(ln.phi - phi))
+            margin = CORNER_NOTCH_WINDOW_ROWS * dtheta
+            theta_lo, theta_hi = float(nearest.theta[0]) - margin, float(nearest.theta[-1]) + margin
+            n_theta = max(int(np.round((theta_hi - theta_lo) / dtheta)) + 1, 1)
+            n_theta = min(n_theta, max(int(np.round(2.0 * np.pi / dtheta)), 1))
+            theta_candidates = theta_lo + dtheta * np.arange(n_theta)
+            world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_theta, phi), theta_candidates))
+
+            self_dist, _ = self_tree.query(world_pts)
+            near_self = self_dist <= connect_radius_rad
+            covered_by_self = self_dist <= coverage_radius_rad
+            neighbour_dist, _ = neighbour_tree.query(world_pts)
+            covered_by_neighbour = neighbour_dist <= coverage_radius_rad
+            near_neighbour = neighbour_dist <= neighbour_reach_rad
+            candidate_mask = near_self & near_neighbour & ~covered_by_self & ~covered_by_neighbour
+            if not np.any(candidate_mask):
+                continue
+
+            probe_line = ElevationLine(phi=phi, theta=theta_candidates, elevation=np.zeros(n_theta)).masked(candidate_mask)
+            for run in split_into_contiguous_runs(probe_line, dtheta):
+                if nodes_added >= MAX_CORNER_FILL_NODES_PER_STEP or len(run) == 0:
+                    continue
+                world_run = geometry.to_world(self.frame, geometry.local_xyz(np.full(len(run), phi), run.theta))
+                seeded = self._seed_and_erupt_new_nodes(
+                    world, len(self.lines) + len(new_lines), world_run, seed_thin_ratio, hc0, hm0, amp, texture
+                )
+                new_lines.append(ElevationLine(phi=float(phi), theta=run.theta, **seeded))
+                nodes_added += len(run)
+
+        if new_lines:
+            self.set_lines(list(self.lines) + new_lines)
 
     # -- Merge/split: carry Hc/Hm through, not just elevation -------------------------------
 
