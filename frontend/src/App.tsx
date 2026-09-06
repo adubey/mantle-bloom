@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchEarthquakes, fetchFaults, fetchLakes, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
+  animateWorld, fetchCornerNotchLog, fetchDebugScenarios, fetchEarthquakes, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
+  AnimateResponse, CornerNotchLogEntry, DebugScenario, EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import SketchEditor from "./SketchEditor";
@@ -14,6 +14,7 @@ import RiverInspector from "./RiverInspector";
 import LakeInspector from "./LakeInspector";
 import PlatesAndFaults from "./PlatesAndFaults";
 import EventConsole from "./EventConsole";
+import CornerNotchLogPanel from "./CornerNotchLogPanel";
 import StatsModal from "./StatsModal";
 import ControlsModal from "./ControlsModal";
 import AdvancedSettingsModal from "./AdvancedSettingsModal";
@@ -122,6 +123,8 @@ const DEFAULT_WIND_MODEL = "diagnostic";
 // edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
 // LithospherePlate.deform.
 const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
+// Off by default for an ordinarily-generated/loaded world -- see World.debug_diagnostics.
+const DEFAULT_DEBUG_DIAGNOSTICS = false;
 
 function randomSeed(): number {
   return Math.floor(Math.random() * 1_000_000_000);
@@ -150,7 +153,7 @@ const VIEW_COOKIE_NAME = "mantle-bloom-view";
 const MAP_VIEW_CHOICES = new Set<MapView>([
 
   "elevation", "platesDetail", "speckle", "temperature", "wind", "oceanCurrents", "humidity", "precipitation", "biome", "combined",
-  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults",
+  "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
 
@@ -189,9 +192,26 @@ export default function App() {
   // source); handleGenerate strips its `data:image/png;base64,` prefix before sending. Neither
   // resets on a successful Generate, so re-opening the dialog to tweak the seed/detail keeps
   // the same drawing around rather than discarding it.
-  const [generateMode, setGenerateMode] = useState<"random" | "human">("random");
+  const [generateMode, setGenerateMode] = useState<"random" | "human" | "debug">("random");
   const [sketchImageDataUrl, setSketchImageDataUrl] = useState<string | null>(null);
   const [showSketchEditor, setShowSketchEditor] = useState(false);
+  // "Debugging Worlds" tab (see backend debug_worlds.py) -- tiny scripted plate scenarios for
+  // fast iteration on the gap-filling problem. The scenario list is fetched once (static,
+  // server-authoritative so the frontend never hardcodes it) and the picker defaults to
+  // whichever comes first.
+  const [debugScenarios, setDebugScenarios] = useState<DebugScenario[]>([]);
+  const [debugScenario, setDebugScenario] = useState<string>("");
+  useEffect(() => {
+    fetchDebugScenarios()
+      .then((r) => {
+        setDebugScenarios(r.scenarios);
+        setDebugScenario((cur) => cur || r.scenarios[0]?.name || "");
+      })
+      .catch(() => {
+        // Best-effort -- if this fails the "Debugging Worlds" tab just shows an empty picker;
+        // every other Generate World tab is unaffected.
+      });
+  }, []);
   // "Load an image" (Human-made tab) -- a hidden file input triggered by a plain button, read
   // via FileReader straight to a data URL, same shape SketchEditor's own "Done" produces.
   const loadImageInputRef = useRef<HTMLInputElement>(null);
@@ -366,6 +386,36 @@ export default function App() {
     probeRequestIdRef.current++;
     setProbe(null);
   }, [mapView, projection, rotation, renderData]);
+  // The "Added/Removed Points" (nodeAge) view's own click-to-inspect popup -- same shape and
+  // lifecycle as `probe` above, kept as a separate state (rather than widening PointSample's
+  // union) since the two views' popups show entirely different fields.
+  const [nodeProbe, setNodeProbe] = useState<
+    | { displayX: number; displayY: number; latDeg: number; lonDeg: number; status: "loading" | "ok" | "error"; result: NodeAtResponse | null }
+    | null
+  >(null);
+  const nodeProbeRequestIdRef = useRef(0);
+  const handleNodeProbe = useCallback(
+    (next: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => {
+      const requestId = ++nodeProbeRequestIdRef.current;
+      if (!next) {
+        setNodeProbe(null);
+        return;
+      }
+      setNodeProbe({ ...next, status: "loading", result: null });
+      fetchNodeAt(next.latDeg, next.lonDeg)
+        .then((result) => {
+          if (requestId === nodeProbeRequestIdRef.current) setNodeProbe({ ...next, status: "ok", result });
+        })
+        .catch(() => {
+          if (requestId === nodeProbeRequestIdRef.current) setNodeProbe({ ...next, status: "error", result: null });
+        });
+    },
+    [],
+  );
+  useEffect(() => {
+    nodeProbeRequestIdRef.current++;
+    setNodeProbe(null);
+  }, [mapView, projection, rotation, renderData]);
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs, built entirely client-side since the backend endpoint itself is stateless (see
@@ -394,6 +444,13 @@ export default function App() {
   // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
   // Live-adjustable via Controls like windModel.
   const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
+  // Gate for the verbose _fill_corner_notch decision log -- see backend World.debug_diagnostics
+  // / GET /world/corner_notch_log. Live-adjustable via Controls like windModel.
+  const [debugDiagnostics, setDebugDiagnostics] = useState(DEFAULT_DEBUG_DIAGNOSTICS);
+  // The corner-notch log itself, refreshed alongside faultsData (see refreshCornerNotchLog) --
+  // populated regardless of debugDiagnostics' current value (cheap to fetch; stays empty when
+  // off), so toggling the flag on mid-session shows entries from the very next step.
+  const [cornerNotchLog, setCornerNotchLog] = useState<CornerNotchLogEntry[]>([]);
   // Geomorphic-budget tuning knobs (see DEFAULT_TUNING / backend World's *_multiplier
   // group) -- one object of dimensionless multipliers, live-adjustable via Controls, reset
   // to all-1.0 on a fresh Generate and synced from the loaded world on Load.
@@ -493,6 +550,17 @@ export default function App() {
     }
   }, []);
 
+  // Best-effort, same spirit as recordStats -- a failed fetch here shouldn't surface as the
+  // main error line or block generate/step, since this is a debug-only side panel.
+  const refreshCornerNotchLog = useCallback(async () => {
+    try {
+      const log = await fetchCornerNotchLog();
+      setCornerNotchLog(log.entries);
+    } catch {
+      // ignored -- see comment above
+    }
+  }, []);
+
   // Stats are a secondary/best-effort feature -- a failed fetch here (e.g. a transient
   // network blip) shouldn't surface as the main error line or block generate/step, unlike
   // refresh/refreshPlates above which are core to the map actually updating.
@@ -517,10 +585,13 @@ export default function App() {
       // toDataURL / the file-picker's FileReader) both produce.
       const sketchBase64 =
         generateMode === "human" && sketchImageDataUrl ? sketchImageDataUrl.split(",", 2)[1] ?? null : null;
-      const s = await generateWorld(
-        seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-        climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
-      );
+      const s =
+        generateMode === "debug"
+          ? await generateDebugWorld(debugScenario, seed)
+          : await generateWorld(
+              seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
+              climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
+            );
       setSummary(s);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
@@ -535,8 +606,11 @@ export default function App() {
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
+      // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
+      // match that here rather than resetting to the ordinary default.
+      setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
       setTuning(DEFAULT_TUNING);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -544,7 +618,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats,
+    generateMode, sketchImageDataUrl, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats,
   ]);
 
 
@@ -563,6 +637,7 @@ export default function App() {
     simulateClimateBiomes?: boolean;
     windModel?: string;
     faultDeformationMode?: string;
+    debugDiagnostics?: boolean;
     tuning?: Partial<TuningMultipliers>;
   }>({});
   const pushControls = useCallback((next: typeof pendingControlsRef.current) => {
@@ -628,6 +703,11 @@ export default function App() {
     pushControls({ faultDeformationMode: v });
   }, [pushControls]);
 
+  const handleDebugDiagnosticsChange = useCallback((v: boolean) => {
+    setDebugDiagnostics(v);
+    pushControls({ debugDiagnostics: v });
+  }, [pushControls]);
+
   const handleStep = useCallback(async () => {
     if (!summary) return;
     setStepping(true);
@@ -640,7 +720,7 @@ export default function App() {
       setSelectedBasinKind(null);
       // mapViewRef.current, not mapView -- see the ref's own comment above.
       await Promise.all([
-        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats(),
+        refresh(projection, mapViewRef.current, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats(),
       ]);
     } catch (e) {
       setError(String(e));
@@ -648,7 +728,7 @@ export default function App() {
     } finally {
       setStepping(false);
     }
-  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+  }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
 
   // FileModal's "Load World" -- a loaded world fully replaces the current one, same as a
   // fresh Generate (see handleGenerate above), plus syncing every live Controls value
@@ -675,14 +755,15 @@ export default function App() {
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
+      setDebugDiagnostics(controls.debug_diagnostics);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
-      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
+      await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
     } catch (e) {
       setError(String(e));
     } finally {
       setBusy(false);
     }
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
 
   // Post-animation refresh -- an animation run already advanced the world for real (see
   // api.ts's animateWorld), so this just runs the same post-step refresh handleStep does.
@@ -691,8 +772,8 @@ export default function App() {
     setSelectedRiverId(null);
     setSelectedBasin(null);
     setSelectedBasinKind(null);
-    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), recordStats()]);
-  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, recordStats]);
+    await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
+  }, [projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
 
   // The Record toolbar button's AnimationModal -- run the whole recording in the background.
   // Each streamed frame's PNG is painted straight onto the main map (the run holds the server
@@ -974,6 +1055,7 @@ export default function App() {
                 <option value="geomorph">Erosion &amp; Deposition</option>
                 <option value="elevReason">Last elevation change</option>
                 <option value="overlapAge">Plate overlap age</option>
+                <option value="nodeAge">Added/removed points</option>
                 <option value="plateInspector">Plate Inspector</option>
                 <option value="riverInspector">Rivers</option>
                 <option value="lakeInspector">Lake Inspector</option>
@@ -1189,6 +1271,9 @@ export default function App() {
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
 
           <EventConsole events={summary?.events ?? []} />
+          <div style={{ marginTop: 8 }}>
+            <CornerNotchLogPanel entries={cornerNotchLog} enabled={debugDiagnostics} />
+          </div>
         </div>
 
         <div>
@@ -1277,7 +1362,13 @@ export default function App() {
               onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
               onRotationCommitted={(newRotation) => setRotation(newRotation)}
               highlightTarget={highlightTarget}
-              onProbe={mapView === "combined" || mapView === "elevation" || mapView === "biome" ? handleProbe : undefined}
+              onProbe={
+                mapView === "nodeAge"
+                  ? handleNodeProbe
+                  : mapView === "combined" || mapView === "elevation" || mapView === "biome"
+                    ? handleProbe
+                    : undefined
+              }
               alphaEncodedIds={mapView === "combined" || mapView === "biome"}
               interactionDisabled={animating}
             />
@@ -1326,6 +1417,83 @@ export default function App() {
                   <span>{probe.sample.temperature_c.toFixed(1)} °C</span>
                   <span style={{ opacity: 0.55 }}>Plate</span>
                   <span>{probe.sample.plate_id ?? "—"}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {nodeProbe && (
+            <div
+              style={{
+                position: "absolute",
+                left: Math.max(4, Math.min(nodeProbe.displayX + 12, DISPLAY_WIDTH - 200)),
+                top: Math.max(4, Math.min(nodeProbe.displayY + 12, DISPLAY_HEIGHT - 170)),
+                width: 188,
+                background: "#151a2e",
+                border: "1px solid #333",
+                borderRadius: 6,
+                padding: "8px 10px",
+                fontSize: 11,
+                lineHeight: 1.6,
+                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
+                zIndex: 10,
+              }}
+            >
+              <button
+                type="button"
+                title="Close"
+                onClick={() => handleNodeProbe(null)}
+                style={{
+                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
+                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
+                  fontSize: 14, lineHeight: "18px",
+                }}
+              >
+                ×
+              </button>
+              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(nodeProbe.latDeg, nodeProbe.lonDeg)}</div>
+              {nodeProbe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
+              {nodeProbe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
+              {nodeProbe.status === "ok" && nodeProbe.result && (
+                <div>
+                  {nodeProbe.result.node && (
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
+                      <span style={{ opacity: 0.55 }}>Plate</span>
+                      <span>{nodeProbe.result.node.plate_id}</span>
+                      <span style={{ opacity: 0.55 }}>Phi</span>
+                      <span>{nodeProbe.result.node.phi.toFixed(4)} rad</span>
+                      <span style={{ opacity: 0.55 }}>Theta</span>
+                      <span>{nodeProbe.result.node.theta.toFixed(4)} rad</span>
+                      <span style={{ opacity: 0.55 }}>Elevation</span>
+                      <span>{Math.round(nodeProbe.result.node.elevation_m).toLocaleString()} m</span>
+                      <span style={{ opacity: 0.55 }}>Created</span>
+                      <span>
+                        {nodeProbe.result.node.node_created_years < 0
+                          ? "predates tracking"
+                          : `${(nodeProbe.result.node.node_created_years / 1e6).toFixed(1)} My`}
+                      </span>
+                    </div>
+                  )}
+                  {nodeProbe.result.removed && (
+                    <div
+                      style={{
+                        marginTop: nodeProbe.result.node ? 6 : 0,
+                        paddingTop: nodeProbe.result.node ? 6 : 0,
+                        borderTop: nodeProbe.result.node ? "1px solid #333" : "none",
+                        display: "grid",
+                        gridTemplateColumns: "auto 1fr",
+                        columnGap: 8,
+                        rowGap: 1,
+                      }}
+                    >
+                      <span style={{ opacity: 0.55 }}>Removed</span>
+                      <span>{(nodeProbe.result.removed.removed_years / 1e6).toFixed(1)} My ago</span>
+                      <span style={{ opacity: 0.55 }}>From plate</span>
+                      <span>{nodeProbe.result.removed.plate_id}</span>
+                    </div>
+                  )}
+                  {!nodeProbe.result.node && !nodeProbe.result.removed && (
+                    <div style={{ opacity: 0.7 }}>No recent activity here.</div>
+                  )}
                 </div>
               )}
             </div>
@@ -1383,7 +1551,7 @@ export default function App() {
             <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
 
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
-              {(["random", "human"] as const).map((mode) => (
+              {(["random", "human", "debug"] as const).map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -1399,7 +1567,7 @@ export default function App() {
                     borderBottom: generateMode === mode ? "2px solid #5b8cff" : "2px solid transparent",
                   }}
                 >
-                  {mode === "random" ? "Random" : "Human-made"}
+                  {mode === "random" ? "Random" : mode === "human" ? "Human-made" : "Debugging Worlds"}
                 </button>
               ))}
             </div>
@@ -1452,6 +1620,31 @@ export default function App() {
               </div>
             )}
 
+            {generateMode === "debug" && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block" }}>
+                  Scenario
+                  <select
+                    value={debugScenario}
+                    onChange={(e) => setDebugScenario(e.target.value)}
+                    style={{ width: "100%", marginTop: 4 }}
+                  >
+                    {debugScenarios.map((s) => (
+                      <option key={s.name} value={s.name}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
+                  Tiny, low-resolution plate configurations with pinned (scripted, not
+                  torque-driven) motion, for fast iteration on the plate-boundary gap-filling
+                  problem -- see docs/debugging.md. Debug diagnostics (the corner-notch decision
+                  log) start on automatically.
+                </div>
+              </div>
+            )}
+
             <label style={{ display: "block", marginBottom: 16 }}>
               Seed
               <div style={{ display: "flex", gap: 6 }}>
@@ -1472,36 +1665,47 @@ export default function App() {
               </div>
             </label>
 
-            <label style={{ display: "block", marginBottom: 16 }}>
-              Detail
-              <select
-                value={detail}
-                onChange={(e) => setDetail(Number(e.target.value))}
-                style={{ width: "100%", marginTop: 4 }}
-              >
-                {DETAIL_CHOICES.map((d) => (
-                  <option key={d.value} value={d.value}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
-                Elevation point density and climate & biome resolution together. Higher is
-                sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
-                Biome/Elevation &amp; Biome/Resources/Soil Quality maps and more elevation-line nodes -- but
-                simulation steps and rendering both run slower. Lower runs faster but coarser.
-              </div>
-            </label>
+            {generateMode !== "debug" && (
+              <label style={{ display: "block", marginBottom: 16 }}>
+                Detail
+                <select
+                  value={detail}
+                  onChange={(e) => setDetail(Number(e.target.value))}
+                  style={{ width: "100%", marginTop: 4 }}
+                >
+                  {DETAIL_CHOICES.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Elevation point density and climate & biome resolution together. Higher is
+                  sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
+                  Biome/Elevation &amp; Biome/Resources/Soil Quality maps and more elevation-line nodes -- but
+                  simulation steps and rendering both run slower. Lower runs faster but coarser.
+                </div>
+              </label>
+            )}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "space-between" }}>
-              <button type="button" onClick={() => setShowAdvancedSettings(true)} disabled={busy}>
-                Advanced settings
-              </button>
-              <div style={{ display: "flex", gap: 8 }}>
+              {generateMode !== "debug" && (
+                <button type="button" onClick={() => setShowAdvancedSettings(true)} disabled={busy}>
+                  Advanced settings
+                </button>
+              )}
+              <div style={{ display: "flex", gap: 8, marginLeft: generateMode === "debug" ? "auto" : undefined }}>
                 <button onClick={() => setShowGenerateDialog(false)} disabled={busy}>
                   Cancel
                 </button>
-                <button onClick={handleGenerate} disabled={busy || (generateMode === "human" && !sketchImageDataUrl)}>
+                <button
+                  onClick={handleGenerate}
+                  disabled={
+                    busy ||
+                    (generateMode === "human" && !sketchImageDataUrl) ||
+                    (generateMode === "debug" && !debugScenario)
+                  }
+                >
                   Generate
                 </button>
               </div>
@@ -1552,6 +1756,7 @@ export default function App() {
           simulateClimateBiomes={simulateClimateBiomes}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
+          debugDiagnostics={debugDiagnostics}
           tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
           onSolarMultiplierChange={handleSolarMultiplierChange}
@@ -1560,6 +1765,7 @@ export default function App() {
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
+          onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
           onClose={() => setShowControlsModal(false)}

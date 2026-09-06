@@ -228,6 +228,9 @@ def remove_defunct_plates(world: "World") -> None:
     method, see plates.py) -- `PlateWithLines` still means "at most one line left" by it,
     just expressed through the abstract interface now instead of reaching into `.lines`
     directly, so this works for any `Plate` subclass, not just that one."""
+    defunct = [p for p in world.plates if p.node_count() == 0 or p.has_negligible_territory()]
+    for plate in defunct:
+        world.record_removed_points(plate.all_points_and_elevation()[0], plate.plate_id)
     world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
 
 
@@ -493,6 +496,10 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p.plate_id not in (id_keep, id_absorb)]
     other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
 
+    # The absorbed plate's own separate identity ends here, whether or not the fused resample
+    # happens to re-adopt a given point at the same lattice position -- see
+    # World.removed_points_log's own comment.
+    world.record_removed_points(absorb.all_points_and_elevation()[0], absorb.plate_id)
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
 
@@ -599,7 +606,7 @@ def defragment_plates(world: "World") -> list[str]:
     new_plates: list[Plate] = []
     for plate in world.plates:
         before = plate.node_count()
-        result = plate.defragment(world.next_plate_id, connect_radius_rad, min_fragment_nodes)
+        result = plate.defragment(world.next_plate_id, connect_radius_rad, min_fragment_nodes, world)
         if result is None:
             new_plates.append(plate)
             continue

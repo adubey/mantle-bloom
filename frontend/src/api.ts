@@ -30,6 +30,7 @@ export type MapView =
   | "geomorph"
   | "elevReason"
   | "overlapAge"
+  | "nodeAge"
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector"
@@ -424,6 +425,28 @@ export function generateWorld(
   }).then(asJson<WorldSummary>);
 }
 
+export interface DebugScenario {
+  name: string;
+  label: string;
+}
+
+// The "Debugging Worlds" Generate World tab's scenario picker options -- see backend
+// debug_worlds.py's DEBUG_SCENARIOS / DEBUG_SCENARIO_LABELS.
+export function fetchDebugScenarios(): Promise<{ scenarios: DebugScenario[] }> {
+  return fetch(`${API_BASE}/world/debug_scenarios`).then(asJson<{ scenarios: DebugScenario[] }>);
+}
+
+// Generates one of the tiny, hand-scripted plate configurations above -- see
+// backend debug_worlds.py. Unlike generateWorld, there's no plate count/land fraction/etc to
+// choose: each scenario name is its own complete, fixed configuration.
+export function generateDebugWorld(scenario: string, seed: number): Promise<WorldSummary> {
+  return fetch(`${API_BASE}/world/generate_debug`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario, seed }),
+  }).then(asJson<WorldSummary>);
+}
+
 // The geomorphic-budget tuning knobs (backend world.TUNING_MULTIPLIER_FIELDS) -- all
 // dimensionless multipliers, 1.0 == the model's untuned behaviour. Kept as one list so the
 // request body, the response type and the Controls UI all stay in sync from a single source.
@@ -461,6 +484,9 @@ export type ControlsState = {
   simulate_climate_biomes: boolean;
   wind_model: string;
   fault_deformation_mode: string;
+  // Gate for the verbose _fill_corner_notch decision log (see fetchCornerNotchLog) -- on by
+  // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
+  debug_diagnostics: boolean;
 } & TuningMultipliers;
 
 export function updateControls(controls: {
@@ -471,6 +497,7 @@ export function updateControls(controls: {
   simulateClimateBiomes?: boolean;
   windModel?: string;
   faultDeformationMode?: string;
+  debugDiagnostics?: boolean;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
   return fetch(`${API_BASE}/world/controls`, {
@@ -484,9 +511,33 @@ export function updateControls(controls: {
       simulate_climate_biomes: controls.simulateClimateBiomes,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
+      debug_diagnostics: controls.debugDiagnostics,
       ...controls.tuning,
     }),
   }).then(asJson<ControlsState>);
+}
+
+export interface CornerNotchLogEntry {
+  plate_id: number;
+  outcome: "no_neighbours" | "no_own_lines" | "no_candidate_rows" | "hop_no_progress" | "claimed" | "no_claim";
+  nodes_added: number;
+  elapsed_years: number;
+  // Present only on some outcomes -- see backend LithospherePlate._fill_corner_notch.
+  hop?: number;
+  hops_used?: number;
+  rows_considered?: number;
+  window_rad?: number;
+  phi_lo?: number;
+  phi_hi?: number;
+  max_corner_fill_nodes?: number;
+}
+
+// The debug-only structured decision log for LithospherePlate._fill_corner_notch (see
+// World.corner_notch_log / World.debug_diagnostics) -- empty unless debug_diagnostics is on.
+export function fetchCornerNotchLog(): Promise<{ debug_diagnostics: boolean; entries: CornerNotchLogEntry[] }> {
+  return fetch(`${API_BASE}/world/corner_notch_log`).then(
+    asJson<{ debug_diagnostics: boolean; entries: CornerNotchLogEntry[] }>,
+  );
 }
 
 // The backend rejects an overlapping /world/step with 503 (see backend app/main.py's
@@ -565,6 +616,36 @@ export interface PointSample {
 export function fetchPointSample(latDeg: number, lonDeg: number): Promise<PointSample> {
   const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
   return fetch(`${API_BASE}/world/sample_at?${params}`).then(asJson<PointSample>);
+}
+
+export interface NodeAtResponse {
+  lat_deg: number;
+  lon_deg: number;
+  // null only if the world has no live nodes at all (shouldn't happen via the API).
+  node: {
+    plate_id: number;
+    phi: number; // plate-local latitude, radians
+    theta: number; // plate-local longitude, radians
+    elevation_m: number;
+    // world.elapsed_years this node was created; -1 = predates creation-time tracking (a
+    // genesis node from initial world generation). See ElevationLine.node_created_years.
+    node_created_years: number;
+  } | null;
+  // The nearest World.removed_points_log entry, only if one sits within the backend's own
+  // match radius of the click -- independent of `node` (a removed point has no live node to
+  // report instead, so both can be present, or just one, or neither).
+  removed: {
+    removed_years: number;
+    plate_id: number;
+    distance_rad: number;
+  } | null;
+}
+
+// The "Added/Removed Points" (nodeAge) debug view's click-to-inspect popup -- same true-frame
+// contract as fetchPlateAt/fetchPointSample.
+export function fetchNodeAt(latDeg: number, lonDeg: number): Promise<NodeAtResponse> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/node_at?${params}`).then(asJson<NodeAtResponse>);
 }
 
 export function fetchStats(): Promise<WorldStats> {

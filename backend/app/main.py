@@ -21,6 +21,7 @@ from . import (
     biomes,
     climate,
     coastline,
+    debug_worlds,
     eustasy,
     faults,
     geodesic,
@@ -220,6 +221,10 @@ class ControlsRequest(BaseModel):
     collision_uplift_reach_multiplier: float | None = None
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
+    # Gate for the verbose _fill_corner_notch decision log (see World.debug_diagnostics /
+    # World.corner_notch_log / GET /world/corner_notch_log) -- on by default for a "Debugging
+    # Worlds" tab world, off/toggleable here for any other loaded save.
+    debug_diagnostics: bool | None = None
 
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
@@ -603,6 +608,42 @@ def generate(req: GenerateRequest) -> dict:
     return _summary(world)
 
 
+class GenerateDebugRequest(BaseModel):
+    scenario: str
+    seed: int = 0
+
+
+@app.post("/world/generate_debug")
+def generate_debug(req: GenerateDebugRequest) -> dict:
+    """The "Debugging Worlds" Generate World tab -- tiny, hand-scripted plate configurations
+    with pinned motion (see debug_worlds.py), for fast iteration on the gap-filling problem
+    independent of any real save. Unlike `/world/generate`, there's no Voronoi tiling, plate
+    count, or land/continental fraction to choose -- each scenario name is its own complete,
+    fixed configuration; only `seed` (for the per-node terrain texture, see
+    `lithosphere_plate.new_plate`) varies. `400` for an unknown scenario name."""
+    if req.scenario not in debug_worlds.DEBUG_SCENARIOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown scenario {req.scenario!r}; choices are {sorted(debug_worlds.DEBUG_SCENARIOS)}",
+        )
+    with _world_lock:
+        world = debug_worlds.generate_debug_world(req.scenario, req.seed)
+        _state["world"] = world
+    return _summary(world)
+
+
+@app.get("/world/debug_scenarios")
+def debug_scenarios() -> dict:
+    """The "Debugging Worlds" tab's scenario picker options -- name plus a short human label
+    (debug_worlds.DEBUG_SCENARIO_LABELS), so the frontend doesn't hardcode the list."""
+    return {
+        "scenarios": [
+            {"name": name, "label": debug_worlds.DEBUG_SCENARIO_LABELS[name]}
+            for name in debug_worlds.DEBUG_SCENARIOS
+        ]
+    }
+
+
 @app.get("/world/summary")
 def get_summary() -> dict:
     """The current world's summary (same shape /world/generate and /world/step return) --
@@ -843,6 +884,8 @@ def set_controls(req: ControlsRequest) -> dict:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
             world.fault_deformation_mode = req.fault_deformation_mode
+        if req.debug_diagnostics is not None:
+            world.debug_diagnostics = req.debug_diagnostics
         for name, value in tuning_updates.items():
             setattr(world, name, float(value))
         world.climate_cache = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density))
@@ -854,8 +897,24 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
+        "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},
     }
+
+
+@app.get("/world/corner_notch_log")
+def corner_notch_log() -> dict:
+    """The verbose, structured decision log for `LithospherePlate._fill_corner_notch` (see
+    `World.corner_notch_log` / `World.debug_diagnostics`, toggled via `POST /world/controls`)
+    -- empty unless `debug_diagnostics` is on, in which case one entry per plate per step
+    records whether/why the notch-filler added points (`outcome`: `no_neighbours`,
+    `no_own_lines`, `no_candidate_rows`, `hop_no_progress`, `claimed`, or `no_claim`), plus
+    `nodes_added` and the window geometry that call used. Deliberately separate from
+    `GET /world/summary`'s `events` -- this is debug-only, per-plate-per-step volume, never
+    meant for the always-on Event Console (see docs/debugging.md). `404` if no world has been
+    generated yet."""
+    world = _require_world()
+    return {"debug_diagnostics": world.debug_diagnostics, "entries": world.corner_notch_log}
 
 
 @app.get("/world/plates")
@@ -895,6 +954,68 @@ def plate_at(lat_deg: float, lon_deg: float) -> dict:
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
     query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
     return {"plate_id": plates.nearest_plate_id(world.plates, query_xyz)}
+
+
+# A click near a genuinely removed point should register as "there was something here" even
+# though the click itself is unlikely to land exactly on the old node's position -- this is
+# the same order of magnitude as gaps.CLUSTER_RADIUS_MULT's own line-spacing multiple, just
+# expressed as a flat angular radius since /world/node_at has no single plate's spacing to
+# scale against (a removed point's own owning plate may no longer even exist).
+_REMOVED_POINT_MATCH_RAD = 0.02  # ~127 km at PLANET_RADIUS_KM
+
+
+@app.get("/world/node_at")
+def node_at(lat_deg: float, lon_deg: float) -> dict:
+    """The "Added/Removed Points" (`nodeAge`) debug view's click-to-inspect popup: the single
+    live `ElevationLine` node nearest (lat_deg, lon_deg) -- its owning plate, plate-local
+    `phi`/`theta`, elevation, and `node_created_years` -- plus, independently, the nearest
+    `World.removed_points_log` entry if one sits within `_REMOVED_POINT_MATCH_RAD` of the
+    click (a removed point has no live node to report instead, so this is reported alongside,
+    not merged with, whatever live node was also found).
+
+    Unlike `/world/sample_at` (which reads the climate grid), this reports the actual nearest
+    node's own plate-local coordinates -- recovered by inverse-transforming its world position
+    through its owning plate's frame, which round-trips exactly to the value the node was
+    created with (see `ElevationLine`'s own phi/theta convention, geometry.py's module
+    docstring). `node` is `null` if no world has any live nodes yet (shouldn't happen via the
+    API, but see `plates.nearest_node_index`'s own docstring). `400` for non-finite input,
+    `404` if no world has been generated yet."""
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+    with _world_lock:
+        node_info = None
+        idx = plates.nearest_node_index(world.plates, query_xyz)
+        if idx is not None:
+            points, elevation, owner = plates.collect_all_points(world.plates)
+            plate_id = int(owner[idx])
+            plate = next((p for p in world.plates if p.plate_id == plate_id), None)
+            if plate is not None:
+                phi, theta = geometry.xyz_to_latlon(geometry.to_local(plate.frame, points[idx]))
+                created = plates.collect_all_node_created_years(world.plates)
+                node_info = {
+                    "plate_id": plate_id,
+                    "phi": float(phi),
+                    "theta": float(theta),
+                    "elevation_m": float(elevation[idx]),
+                    "node_created_years": float(created[idx]),
+                }
+
+        removed_info = None
+        if world.removed_points_log:
+            removed_xyz = np.array([point for point, _, _ in world.removed_points_log])
+            dist_rad = geometry.angular_distance(removed_xyz, query_xyz)
+            best = int(np.argmin(dist_rad))
+            if dist_rad[best] < _REMOVED_POINT_MATCH_RAD:
+                _, removed_years, removed_plate_id = world.removed_points_log[best]
+                removed_info = {
+                    "removed_years": float(removed_years),
+                    "plate_id": int(removed_plate_id),
+                    "distance_rad": float(dist_rad[best]),
+                }
+
+    return {"lat_deg": lat_deg, "lon_deg": lon_deg, "node": node_info, "removed": removed_info}
 
 
 def _fault_summary(fault, plate, other_plate_tree) -> dict:

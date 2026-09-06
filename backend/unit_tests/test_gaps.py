@@ -134,3 +134,64 @@ def test_fill_gaps_mid_ocean_gap_stays_all_oceanic():
     is_continental = effective_is_continental_from_codes(spawned.collect("crust_type_code"), spawned.crust_type == "continental")
     assert not np.any(is_continental)
     assert spawned.crust_type == "oceanic"
+
+
+# -- gap-age tracking (world.gap_tracks) --------------------------------------------------
+
+
+def test_reconcile_gap_tracks_is_a_no_op_on_a_freshly_generated_world():
+    world = _small_world()
+    gaps.reconcile_gap_tracks(world)
+    assert world.gap_tracks == []
+
+
+def test_reconcile_gap_tracks_persists_first_seen_years_and_accumulates_steps_seen():
+    world = _small_world()
+    world.plates.pop(1)  # opens a real, stable gap -- nothing refills it between calls
+    world.elapsed_years = 1_000_000.0
+
+    gaps.reconcile_gap_tracks(world)
+    assert len(world.gap_tracks) == 1
+    track = world.gap_tracks[0]
+    assert track.first_seen_years == 1_000_000.0
+    assert track.steps_seen == 1
+
+    world.elapsed_years = 5_000_000.0
+    gaps.reconcile_gap_tracks(world)
+    assert len(world.gap_tracks) == 1
+    track = world.gap_tracks[0]
+    # Same gap, re-identified by centroid proximity -- first_seen_years is carried forward,
+    # not reset, and steps_seen accumulates.
+    assert track.first_seen_years == 1_000_000.0
+    assert track.last_seen_years == 5_000_000.0
+    assert track.steps_seen == 2
+
+
+def test_reconcile_gap_tracks_drops_a_track_once_the_gap_heals():
+    world = _small_world()
+    removed = world.plates.pop(1)
+    world.elapsed_years = 1_000_000.0
+    gaps.reconcile_gap_tracks(world)
+    assert len(world.gap_tracks) == 1
+
+    # Heal the gap the same way fill_gaps would -- put a plate back over the vacated ground.
+    world.plates.append(removed)
+    world.elapsed_years = 2_000_000.0
+    gaps.reconcile_gap_tracks(world)
+    assert world.gap_tracks == []
+
+
+def test_reconcile_gap_tracks_surfaces_a_cluster_smaller_than_min_gap_nodes(monkeypatch):
+    """The whole point of a separate, much lower GAP_AGE_MIN_CLUSTER_NODES floor: age-tracking
+    must never hide a small persistent notch just because it's too small for fill_gaps to ever
+    spawn a new plate over (MIN_GAP_NODES) -- same fixture as
+    test_fill_gaps_ignores_a_gap_smaller_than_the_minimum, but checking the tracker instead."""
+    world = _small_world()
+    removed = world.plates.pop(1)
+    monkeypatch.setattr(gaps, "MIN_GAP_NODES", removed.node_count() * 10)
+
+    gaps.reconcile_gap_tracks(world)
+    assert len(world.gap_tracks) >= 1
+    # fill_gaps itself declines under the same raised floor -- confirms the two floors are
+    # genuinely independent (GAP_AGE_MIN_CLUSTER_NODES doesn't move just because MIN_GAP_NODES did).
+    assert gaps.fill_gaps(world) == []

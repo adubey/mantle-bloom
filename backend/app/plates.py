@@ -38,6 +38,7 @@ from .elevation_lines import (
 
 if TYPE_CHECKING:
     from . import terrain_noise
+    from .world import World
 
 CONTINENTAL_FRACTION = 0.4
 BASE_CONTINENTAL_M = 200.0
@@ -519,7 +520,7 @@ class Plate(abc.ABC):
         return self.node_count() < OUTLINE_MIN_NODES_FOR_HULL
 
     def defragment(
-        self, next_id: int, connect_radius_rad: float, min_fragment_nodes: int
+        self, next_id: int, connect_radius_rad: float, min_fragment_nodes: int, world: "World"  # noqa: F821
     ) -> tuple[list["Plate"], int] | None:
         """Reconcile "one `Plate` object" with "one contiguous patch of crust."
 
@@ -543,7 +544,9 @@ class Plate(abc.ABC):
         / `remove_defunct_plates` to prune). Otherwise returns
         `(replacement_plates, n_new_ids_consumed)`, where `replacement_plates[0]` reuses
         this plate's own id and `next_id, next_id + 1, ...` are consumed for the rest, in
-        descending component-size order. `next_id` is `World.next_plate_id`."""
+        descending component-size order. `next_id` is `World.next_plate_id`. `world` is used
+        only to record any stranded/dropped nodes into `World.removed_points_log` (see the
+        "Added/Removed Points" debug view) -- never mutated otherwise."""
         points, _ = self.all_points_and_elevation()
         if len(points) < 2:
             return None
@@ -556,7 +559,8 @@ class Plate(abc.ABC):
         # Largest component first, so it's the one that keeps this plate's identity.
         order = np.argsort(counts)[::-1]
         kept = [int(component_ids[i]) for i in order if counts[i] >= min_fragment_nodes]
-        dropped_nodes = len(points) - int(counts[np.isin(component_ids, kept)].sum())
+        dropped_mask = ~np.isin(labels, kept)
+        dropped_nodes = int(dropped_mask.sum())
         # No component big enough to anchor a plate -- the whole thing is debris. Leave it
         # for merge_split.remove_defunct_plates / has_negligible_territory to prune; defrag
         # never deletes a whole plate itself (that path is fragile against small synthetic
@@ -565,6 +569,9 @@ class Plate(abc.ABC):
             return None
         if len(kept) == 1 and dropped_nodes == 0:
             return None
+
+        if dropped_nodes > 0:
+            world.record_removed_points(points[dropped_mask], self.plate_id)
 
         n_new_ids = len(kept) - 1
         masks = [labels == cid for cid in kept]
@@ -1527,6 +1534,13 @@ def collect_all_overlap_onset_years(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "overlap_onset_years")
 
 
+def collect_all_node_created_years(plate_list: list[Plate]) -> np.ndarray:
+    """Every live node's `world.elapsed_years` at creation (-1.0 = predates tracking / a
+    genesis node from initial world generation) -- used by render_image.py's `nodeAge` debug
+    view. See ElevationLine.node_created_years."""
+    return _collect_all(plate_list, "node_created_years")
+
+
 def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "elevation")
 
@@ -1620,6 +1634,23 @@ def nearest_plate_id(plate_list: list[Plate], query_xyz: np.ndarray) -> int | No
     points, _, owner = collected
     _, idx = cKDTree(points).query(query_xyz)
     return int(owner[idx])
+
+
+def nearest_node_index(plate_list: list[Plate], query_xyz: np.ndarray) -> int | None:
+    """The index of the single node nearest `query_xyz`, in the same concatenated per-plate/
+    per-node order every `collect_all_*` function uses -- so this index can be reused directly
+    against `collect_all_points`/`collect_all_elevation`/`collect_all_node_created_years`/etc
+    without a second lookup. `GET /world/node_at`'s click-to-inspect hit-test (see
+    `docs/debugging.md`'s "Added/Removed Points" view) -- `nearest_plate_id` above answers
+    "which plate" alone; this answers "which node exactly," so a caller wanting both per-node
+    fields *and* plate ownership needn't repeat the same k-d tree build twice. `None` if every
+    plate is empty."""
+    collected = collect_all_points(plate_list)
+    if collected is None:
+        return None
+    points, _, _owner = collected
+    _, idx = cKDTree(points).query(query_xyz)
+    return int(idx)
 
 
 def base_elevation(crust_type: str) -> float:

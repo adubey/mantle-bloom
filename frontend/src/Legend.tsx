@@ -172,8 +172,14 @@ export default function Legend({
             <GradientBar gradient={spec.gradient} />
           </div>
         )}
+        {spec.gradients?.map(({ label, gradient }) => (
+          <div key={label} style={{ flex: "1 1 260px", minWidth: 200, maxWidth: 420 }}>
+            <div style={{ fontSize: 10, opacity: 0.65, marginBottom: 1 }}>{label}</div>
+            <GradientBar gradient={gradient} />
+          </div>
+        ))}
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient ? 2 : 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient || spec.gradients ? 2 : 8 }}>
         {spec.symbols.map((sym) => {
           const terrainToggle = mapView === "elevation" ? TERRAIN_TOGGLES[sym.label] : undefined;
           if (terrainToggle) {

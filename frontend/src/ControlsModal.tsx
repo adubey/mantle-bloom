@@ -9,6 +9,7 @@ interface Props {
   simulateClimateBiomes: boolean;
   windModel: string;
   faultDeformationMode: string;
+  debugDiagnostics: boolean;
   tuning: TuningMultipliers;
   onSeaLevelChange: (v: number) => void;
   onSolarMultiplierChange: (v: number) => void;
@@ -17,6 +18,7 @@ interface Props {
   onSimulateClimateBiomesChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
   onFaultDeformationModeChange: (v: string) => void;
+  onDebugDiagnosticsChange: (v: boolean) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
   onClose: () => void;
@@ -105,6 +107,7 @@ export default function ControlsModal({
   simulateClimateBiomes,
   windModel,
   faultDeformationMode,
+  debugDiagnostics,
   tuning,
   onSeaLevelChange,
   onSolarMultiplierChange,
@@ -113,6 +116,7 @@ export default function ControlsModal({
   onSimulateClimateBiomesChange,
   onWindModelChange,
   onFaultDeformationModeChange,
+  onDebugDiagnosticsChange,
   onTuningChange,
   onTuningReset,
   onClose,
@@ -366,6 +370,22 @@ export default function ControlsModal({
                   polygon-edge bands, not fault traces, so this knob has no effect.
                 </div>
               )}
+            </div>
+
+            <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={debugDiagnostics}
+                  onChange={(e) => onDebugDiagnosticsChange(e.target.checked)}
+                />
+                Log corner-notch decisions
+              </label>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+                Records where/why each plate's boundary-gap fallback (the triple-junction /
+                diagonal-residual closer) adds or skips points, every step. Debug-only --
+                separate from the Event Console, viewable in the corner-notch log panel.
+              </div>
             </div>
 
             <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>

@@ -56,3 +56,82 @@ def test_step_world_at_doubled_climate_density_does_not_crash_and_uses_the_finer
     step_world(world, years=1_000_000)
     assert world.climate_cache is not None
     assert world.climate_cache.elevation_m.shape == climate.grid_dimensions(2.0)
+
+
+def test_pinned_omega_overrides_the_real_torque_balance():
+    """World.pinned_omegas (the "Debugging Worlds" tab's scripted-motion mechanism) should
+    make LithospherePlate.shift use the pinned value verbatim, bypassing torque.shift_plate's
+    own torque-balance recompute entirely -- not just happen to produce the same result."""
+    world = generate_world(seed=10, num_plates=8)
+    pinned_plate = world.plates[0]
+    pinned_omega = np.array([0.0, 0.0, 0.05])
+    world.pinned_omegas[pinned_plate.plate_id] = pinned_omega
+
+    step_world(world, years=1_000_000)
+
+    assert np.allclose(pinned_plate.omega, pinned_omega)
+    # Every other plate still goes through the real torque balance and (almost certainly)
+    # doesn't land on this exact hand-picked value.
+    others = [p for p in world.plates if p.plate_id != pinned_plate.plate_id]
+    assert any(not np.allclose(p.omega, pinned_omega) for p in others)
+
+
+def test_pinned_omegas_backfilled_on_load_of_an_older_save():
+    from app import persistence
+
+    world = generate_world(seed=10, num_plates=4)
+    del world.__dict__["pinned_omegas"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.pinned_omegas == {}
+
+
+def test_step_world_reconciles_gap_tracks_alongside_fill_gaps():
+    from app import gaps
+
+    world = generate_world(seed=10, num_plates=8)
+    assert world.gap_tracks == []
+    for _ in range(gaps.GAP_FILL_INTERVAL_STEPS):
+        step_world(world, years=1_000_000)
+    # Ordinary boundary-growth catch-up lag can leave small (sub-MIN_GAP_NODES) transient
+    # slivers even on a healthy world -- GAP_AGE_MIN_CLUSTER_NODES is deliberately far below
+    # MIN_GAP_NODES so the tracker surfaces those too (see gaps.py's own module docstring on
+    # "ordinary catch-up lag" vs a genuine void). The real health signal is that none of them
+    # are big enough for fill_gaps to react to.
+    assert isinstance(world.gap_tracks, list)
+    assert all(track.node_count < gaps.MIN_GAP_NODES for track in world.gap_tracks)
+
+
+def test_record_removed_points_is_a_noop_for_an_empty_array():
+    world = generate_world(seed=10, num_plates=4)
+    world.record_removed_points(np.zeros((0, 3)), plate_id=0)
+    assert world.removed_points_log == []
+
+
+def test_record_removed_points_appends_with_current_elapsed_years():
+    from app.world import World
+
+    world = World(seed=0, plates=[], mantle_centers=[])
+    world.elapsed_years = 5_000_000.0
+    points = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    world.record_removed_points(points, plate_id=3)
+    assert len(world.removed_points_log) == 2
+    for point, removed_years, plate_id in world.removed_points_log:
+        assert removed_years == 5_000_000.0
+        assert plate_id == 3
+    np.testing.assert_array_equal(np.array([p for p, _, _ in world.removed_points_log]), points)
+
+
+def test_record_removed_points_caps_the_log_evicting_oldest_first():
+    from app.world import MAX_REMOVED_POINTS_LOG, World
+
+    world = World(seed=0, plates=[], mantle_centers=[])
+    over_cap = MAX_REMOVED_POINTS_LOG + 50
+    for i in range(over_cap):
+        world.elapsed_years = float(i)
+        world.record_removed_points(np.array([[float(i), 0.0, 0.0]]), plate_id=0)
+    assert len(world.removed_points_log) == MAX_REMOVED_POINTS_LOG
+    # Oldest entries (elapsed_years 0..49) were evicted; the most recent ones survive.
+    surviving_years = {removed_years for _, removed_years, _ in world.removed_points_log}
+    assert min(surviving_years) == float(over_cap - MAX_REMOVED_POINTS_LOG)
+    assert max(surviving_years) == float(over_cap - 1)

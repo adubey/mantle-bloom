@@ -368,6 +368,17 @@ class ElevationLine:
         # nodes, since when" instead of a bare current-fraction number. Same lightweight
         # first-seen-per-key tracker role World.collision_progress plays for plate pairs.
         "overlap_onset_years",
+        # `world.elapsed_years` at which this node was first created by rift eruption /
+        # boundary growth / the corner-notch fallback (see lithosphere_plate.py's
+        # `_seed_and_erupt_new_nodes`, the one choke point every node-creation call site funnels
+        # through). Unlike overlap_onset_years, this is write-once and permanent -- a node's
+        # birth date never reverts or re-stamps. The sentinel is -1.0, not 0.0: year 0 is a
+        # legitimate real creation time (nothing stamps this during initial world generation, so
+        # a freshly generated plate's own starting nodes correctly read as "predates tracking"
+        # rather than falsely "created at year 0"). Diagnostic only -- surfaced by the "Added/
+        # Removed Points" (`nodeAge`) debug render view and `GET /world/node_at`; nothing in the
+        # physics reads it back. See docs/debugging.md.
+        "node_created_years",
         # V2 only (see v2/lithosphere.py) -- the 3D lithospheric column state Airy isostasy
         # derives `elevation` from (v2/lithosphere.isostatic_elevation). Zero/unused for every
         # v1 line. Kept here rather than as a v2-only subclass field so a single ElevationLine
@@ -409,6 +420,7 @@ class ElevationLine:
         divergent_age_myr: np.ndarray | None = None,
         elev_change_reason: np.ndarray | None = None,
         overlap_onset_years: np.ndarray | None = None,
+        node_created_years: np.ndarray | None = None,
         crustal_thickness_m: np.ndarray | None = None,
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
         crust_type_code: np.ndarray | None = None,
@@ -434,6 +446,10 @@ class ElevationLine:
         self._divergent_age_myr = divergent_age_myr if divergent_age_myr is not None else np.zeros_like(theta)
         self._elev_change_reason = elev_change_reason if elev_change_reason is not None else np.zeros_like(theta)
         self._overlap_onset_years = overlap_onset_years if overlap_onset_years is not None else np.zeros_like(theta)
+        # -1.0 sentinel, not 0.0 -- see OPTIONAL_FIELDS' own comment on node_created_years.
+        self._node_created_years = (
+            node_created_years if node_created_years is not None else np.full_like(theta, -1.0)
+        )
         self._crustal_thickness_m = crustal_thickness_m if crustal_thickness_m is not None else np.zeros_like(theta)
         self._mantle_lithosphere_thickness_m = (
             mantle_lithosphere_thickness_m if mantle_lithosphere_thickness_m is not None else np.zeros_like(theta)
@@ -457,7 +473,12 @@ class ElevationLine:
                 dtype = np.int8
             else:
                 dtype = float
-            value = np.zeros_like(self._theta, dtype=dtype)
+            if name == "_node_created_years":
+                # -1.0 sentinel ("predates tracking"), not the generic zeros default -- see
+                # OPTIONAL_FIELDS' own comment on node_created_years.
+                value = np.full_like(self._theta, -1.0, dtype=dtype)
+            else:
+                value = np.zeros_like(self._theta, dtype=dtype)
             object.__setattr__(self, name, value)
             return value
         raise AttributeError(name)
@@ -539,6 +560,10 @@ class ElevationLine:
         return self._overlap_onset_years
 
     @property
+    def node_created_years(self) -> np.ndarray:
+        return self._node_created_years
+
+    @property
     def crustal_thickness_m(self) -> np.ndarray:
         return self._crustal_thickness_m
 
@@ -595,7 +620,14 @@ class ElevationLine:
         """A new line with `theta`/`elevation` nodes appended at the end -- every
         OPTIONAL_FIELDS value for the new nodes starts at zero/False, no history to carry.
         The result is unsorted by theta; follow with `.masked(np.argsort(new_line.theta))`
-        if ascending order matters to the caller."""
+        if ascending order matters to the caller.
+
+        No current call site uses this method (every real node-creation path builds a fresh
+        `ElevationLine` directly instead, see `lithosphere_plate._seed_and_erupt_new_nodes`).
+        `node_created_years` is the one OPTIONAL_FIELDS member a zero-fill is wrong for -- 0.0
+        reads as "created at year 0," not "unknown" (see its own comment on OPTIONAL_FIELDS,
+        sentinel -1.0) -- so a caller adding a real call site here must pass
+        `node_created_years` explicitly rather than relying on this method's generic fill."""
         n = len(theta)
         kwargs = {
             name: np.concatenate([getattr(self, name), np.zeros(n, dtype=getattr(self, name).dtype)])
@@ -674,6 +706,9 @@ class ElevationPoint(Protocol):
 
     def get_overlap_onset_years(self) -> float: ...
     def set_overlap_onset_years(self, value: float) -> None: ...
+
+    def get_node_created_years(self) -> float: ...
+    def set_node_created_years(self, value: float) -> None: ...
 
 
 def _point_field_getter(name: str):
@@ -1007,6 +1042,10 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # nearest-neighbour carry keeps a genuinely-stuck overlap's onset intact across the
     # regularize pass that runs every deform() call.
     new_overlap_onset_years = line.overlap_onset_years[nearest_original]
+    # node_created_years is a permanent, write-once birth timestamp -- nearest-neighbour carry,
+    # same reasoning as overlap_onset_years (averaging two birth years with np.interp would
+    # invent a meaningless in-between date).
+    new_node_created_years = line.node_created_years[nearest_original]
     # crust_type_code is likewise categorical (CRUST_TYPE_INHERIT/OCEANIC/CONTINENTAL) --
     # nearest-neighbour carry, same reasoning as elev_change_reason.
     new_crust_type_code = line.crust_type_code[nearest_original]
@@ -1029,6 +1068,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         mineral_deposit_m=new_mineral_deposit_m,
         elev_change_reason=new_elev_change_reason,
         overlap_onset_years=new_overlap_onset_years,
+        node_created_years=new_node_created_years,
         crustal_thickness_m=new_crustal_thickness_m,
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
         crust_type_code=new_crust_type_code,

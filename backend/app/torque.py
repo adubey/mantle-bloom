@@ -435,10 +435,25 @@ def classify_boundary_nodes(
     return convergent, divergent, transform, contested
 
 
+def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, years: float) -> float:
+    """Shared tail of `shift_plate`'s real torque-balance path and `LithospherePlate.shift`'s
+    pinned-omega override (see `World.pinned_omegas`): set `omega`, rotate rigidly by it over
+    `years`, and report the same `D` (max node displacement) contract every `shift`
+    implementation returns. `old_points` is the plate's own pre-rotation node cloud (the
+    caller already has it -- both callers need it for their own zero-node early-out too, so
+    it's a parameter rather than refetched here)."""
+    plate.set_omega(omega)
+    increment = geometry.rotation_matrix_from_omega(plate.omega, years)
+    plate.rotate(increment)
+    new_points, _ = plate.all_points_and_elevation()
+    return float(geometry.angular_distance(old_points, new_points).max())
+
+
 def shift_plate(plate, world, other_plates: list, years: float) -> float:
-    """`LithospherePlate.shift`'s real implementation: gather this step's driving/resisting
-    torques from the plate's *current* (pre-rotation) boundary configuration, integrate omega,
-    then rotate rigidly -- same `D` (max node displacement) contract as `LithospherePlate.shift`."""
+    """`LithospherePlate.shift`'s real (non-pinned) implementation: gather this step's
+    driving/resisting torques from the plate's *current* (pre-rotation) boundary
+    configuration, integrate omega, then rotate rigidly -- see `apply_omega_and_rotate` for
+    the shared tail with the pinned-omega override."""
     spacing_rad = line_spacing_rad(world.node_density)
     reach_rad = BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
 
@@ -473,13 +488,7 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     drag_b, drag_k = basal_drag_coefficients(plate, world, spacing_rad)
     drag_k = drag_k + slab_drag_coefficient_matrix(inputs, subducting, spacing_rad)
     new_omega = integrate_omega(plate, explicit_torque, drag_b, drag_k, inertia, years)
-    plate.set_omega(new_omega)
-
-    increment = geometry.rotation_matrix_from_omega(plate.omega, years)
-    plate.rotate(increment)
-
-    new_points, _ = plate.all_points_and_elevation()
-    return float(geometry.angular_distance(old_points, new_points).max())
+    return apply_omega_and_rotate(plate, old_points, new_omega, years)
 
 
 def merge_omega(plate_a, inertia_a: np.ndarray, plate_b, inertia_b: np.ndarray) -> np.ndarray:

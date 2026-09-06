@@ -47,6 +47,8 @@ def _backfill_added_fields(world: World) -> None:
     Only mutable-default fields need listing here."""
     if not hasattr(world, "stranded_basin_tracks"):
         world.stranded_basin_tracks = []
+    if not hasattr(world, "gap_tracks"):
+        world.gap_tracks = []
     if not hasattr(world, "overlap_progress"):
         world.overlap_progress = {}
     if not hasattr(world, "faults"):
@@ -57,6 +59,12 @@ def _backfill_added_fields(world: World) -> None:
         world.fault_systems = []
     if not hasattr(world, "earthquakes"):
         world.earthquakes = []
+    if not hasattr(world, "removed_points_log"):
+        world.removed_points_log = []
+    if not hasattr(world, "corner_notch_log"):
+        world.corner_notch_log = []
+    if not hasattr(world, "pinned_omegas"):
+        world.pinned_omegas = {}
     # Eustatic sea level (eustasy.py): a save written before this existed has a fixed
     # sea_level_m and no water budget -- snapshot the budget from that save's own hypsometry
     # + sea level so loading it doesn't jump the shoreline, then let it be conserved onward.

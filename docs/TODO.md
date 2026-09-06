@@ -1168,6 +1168,19 @@ numbers the program didn't surface. **Landed** (all 2026-08-31 unless noted; see
 - **`ElevationLine.overlap_onset_years` + `GET /world/render?view=overlapAge`** (2026-09-01)
   -- when each node first started overlapping another plate; `since_years` on the plates
   endpoint / inspector / `plate_diagnostics`.
+- **Corner-notch gap-debugging tooling** (2026-09-06, chasing the seed349206221 save's
+  persistent gaps at plates 12/13/15/0, 5/14, 9/7) -- `ElevationLine.node_created_years`
+  (permanent per-node birth timestamp) + `World.removed_points_log` (capped removed-node
+  history) feed a new `GET /world/render?view=nodeAge` ("Added/Removed Points") view and
+  `GET /world/node_at` click-to-inspect (phi/theta/elevation/creation age); `gaps.GapTrack` +
+  `World.gap_tracks` (`stranded_basins.py`-style centroid-proximity reconciliation) add a
+  gap-age layer to the existing `overlapAge` view; `World.corner_notch_log` /
+  `World.debug_diagnostics` give `_fill_corner_notch` a structured, opt-in decision log
+  (`GET /world/corner_notch_log`) separate from the Event Console; and a new "Debugging
+  Worlds" Generate World tab (`debug_worlds.py`, `POST /world/generate_debug`) builds tiny
+  scripted plate scenarios with pinned (non-torque-driven) motion for fast iteration,
+  including the exact mixed-divergent/convergent triple-junction shape `_fill_corner_notch`'s
+  own docstring calls out. See `docs/debugging.md` for the full writeup of each piece.
 
 **Still worth building:**
 

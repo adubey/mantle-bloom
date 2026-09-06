@@ -58,6 +58,33 @@ def test_loading_a_world_pickled_before_steps_taken_existed_defaults_to_zero():
     assert loaded.steps_taken == 0
 
 
+def test_loading_a_world_pickled_before_removed_points_log_existed_defaults_to_empty():
+    # World.removed_points_log is a `default_factory=list` field -- unlike a plain-default
+    # field (steps_taken), pickle restores __dict__ directly and never calls __init__, so an
+    # old save's __dict__ has no such key at all until persistence backfills it.
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["removed_points_log"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.removed_points_log == []
+
+
+def test_loading_a_world_pickled_before_gap_tracks_existed_defaults_to_empty():
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["gap_tracks"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.gap_tracks == []
+
+
+def test_loading_a_world_pickled_before_corner_notch_log_existed_defaults_to_empty():
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["corner_notch_log"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.corner_notch_log == []
+
+
 def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
     # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).

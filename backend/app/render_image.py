@@ -64,7 +64,12 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # "overlapAge" is node-cloud-derived from ElevationLine.overlap_onset_years (the year each
 # still-overlapping node first went over another plate -- merge_split.update_overlap_tracking),
 # its own dispatch branch (_render_overlap_age_view). See docs/debugging.md.
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType")
+# "nodeAge" ("Added/Removed Points") composites two independent node-cloud layers: live nodes
+# coloured by how recently they were created (ElevationLine.node_created_years) and no-longer-
+# live nodes coloured by how recently they were removed (World.removed_points_log, since a
+# removed node has no live ElevationLine to carry a field on). Its own dispatch branch
+# (_render_node_age_view). See docs/debugging.md.
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -531,9 +536,68 @@ _OVERLAP_AGE_STOP_RGB = np.array(
     dtype=float,
 )
 
+# Gap-age layer, composited into the same "overlapAge" view alongside (never instead of) the
+# overlap-age dots above -- see _render_overlap_age_view and gaps.GapTrack. Deliberately a
+# disjoint cool teal/blue ramp so "this plate is stuck on top of another" (warm, above) and
+# "there is a persistent uncovered gap here" (cool, below) are never visually confusable at a
+# glance. Same 60 Myr clamp as the overlap-age ramp, for the same "healthy world" reasoning.
+_GAP_AGE_STOP_MYR = np.array([0.0, 2.0, 10.0, 30.0, 60.0], dtype=float)
+_GAP_AGE_STOP_RGB = np.array(
+    [
+        (200, 245, 240),  # brand-new gap -- pale teal
+        (120, 220, 210),  # a few Myr -- teal
+        (50, 170, 190),   # ~10 Myr -- cyan-blue
+        (20, 100, 160),   # ~30 Myr -- deep blue
+        (10, 40, 100),    # 60+ Myr stuck -- navy
+    ],
+    dtype=float,
+)
+
 
 def overlap_age_colors(age_myr: np.ndarray) -> np.ndarray:
     return _interp_colors(age_myr, _OVERLAP_AGE_STOP_MYR, _OVERLAP_AGE_STOP_RGB)
+
+
+def gap_age_colors(age_myr: np.ndarray) -> np.ndarray:
+    return _interp_colors(age_myr, _GAP_AGE_STOP_MYR, _GAP_AGE_STOP_RGB)
+
+
+# "Added/Removed Points" (nodeAge) debug view (see _render_node_age_view): two independent
+# sequential ramps composited over the same muted backdrop overlapAge uses -- warm for how
+# recently a still-live node was created (ElevationLine.node_created_years), cool/blue for how
+# long ago a now-gone node was removed (World.removed_points_log). Deliberately disjoint from
+# _OVERLAP_AGE_STOP_RGB's own yellow-orange-magenta ramp so the two debug views are never
+# confusable even glanced at side by side. Both clamped at 20 Myr -- older activity is exactly
+# as uninteresting to this view as "no recent activity at all", so it fades to backdrop instead
+# of a saturated top-of-ramp colour that would otherwise read as "still happening now".
+_NODE_ADDED_STOP_MYR = np.array([0.0, 1.0, 5.0, 20.0], dtype=float)
+_NODE_ADDED_STOP_RGB = np.array(
+    [
+        (255, 250, 200),  # just added -- pale warm
+        (255, 200, 90),   # ~1 Myr -- amber
+        (230, 120, 30),   # ~5 Myr -- burnt orange
+        (150, 60, 10),    # 20 Myr -- dark rust
+    ],
+    dtype=float,
+)
+_NODE_REMOVED_STOP_MYR = np.array([0.0, 1.0, 5.0, 20.0], dtype=float)
+_NODE_REMOVED_STOP_RGB = np.array(
+    [
+        (210, 240, 255),  # just removed -- pale cool
+        (120, 200, 240),  # ~1 Myr -- sky blue
+        (50, 120, 210),   # ~5 Myr -- deep blue
+        (20, 40, 110),    # 20 Myr -- navy
+    ],
+    dtype=float,
+)
+
+
+def node_added_colors(age_myr: np.ndarray) -> np.ndarray:
+    return _interp_colors(age_myr, _NODE_ADDED_STOP_MYR, _NODE_ADDED_STOP_RGB)
+
+
+def node_removed_colors(age_myr: np.ndarray) -> np.ndarray:
+    return _interp_colors(age_myr, _NODE_REMOVED_STOP_MYR, _NODE_REMOVED_STOP_RGB)
 
 
 def plate_colors(plate_ids: np.ndarray) -> np.ndarray:
@@ -1796,12 +1860,17 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
 
 def _render_overlap_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders the "overlapAge" debug view (see docs/debugging.md): a muted land/ocean
-    backdrop (same full-sphere grid as the Elevation view) overlaid with one dot per node
-    that is *currently* sitting on top of another plate's territory, coloured by how long it
-    has been -- `world.elapsed_years - ElevationLine.overlap_onset_years`, stamped by
-    merge_split.update_overlap_tracking. Answers "where is the overlap, and since when" that
-    the Plate Inspector's single per-pair fraction can't. All-backdrop (no dots) is the
-    healthy case, and also what a save predating the onset field shows until it is stepped."""
+    backdrop (same full-sphere grid as the Elevation view) overlaid with two independent dot
+    layers. The first, warm (yellow -> magenta), is one dot per node that is *currently*
+    sitting on top of another plate's territory, coloured by how long it has been --
+    `world.elapsed_years - ElevationLine.overlap_onset_years`, stamped by
+    merge_split.update_overlap_tracking. The second, cool (teal -> navy), is one dot per
+    `world.gap_tracks` entry -- a still-uncovered lattice cluster, coloured by how long it's
+    persisted (`gaps.reconcile_gap_tracks`) -- deliberately a disjoint hue from the first so
+    "stuck overlap" and "persistent gap" are never confusable at a glance even though both can
+    appear on the same map. Answers "where is the trouble, and since when" that the Plate
+    Inspector's single per-pair fraction can't. All-backdrop (no dots of either colour) is the
+    healthy case, and also what a save predating these fields shows until it is stepped."""
     pixel_scale = width / REFERENCE_WIDTH_PX
     padding_px = PADDING_PX * pixel_scale
     blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
@@ -1816,7 +1885,10 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
-    all_xy = np.concatenate([xy, node_xy], axis=0)
+    gap_xyz = np.array([t.centroid_xyz for t in world.gap_tracks]) if world.gap_tracks else np.zeros((0, 3))
+    gap_xy = _project_points(projection, _rotate(gap_xyz, view_rotation)) if len(gap_xyz) else np.zeros((0, 2))
+
+    all_xy = np.concatenate([xy, node_xy] + ([gap_xy] if len(gap_xy) else []), axis=0)
     min_x, min_y = all_xy.min(axis=0)
     max_x, max_y = all_xy.max(axis=0)
     data_w = max(max_x - min_x, 1e-9)
@@ -1839,10 +1911,87 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
         r = NODE_DOT_RADIUS_PX * pixel_scale
         _fill_rects(pixels, dot_centers, r, r, overlap_age_colors(age_myr))
 
+    if len(gap_xyz):
+        gap_age_myr = np.array([(world.elapsed_years - t.first_seen_years) / 1e6 for t in world.gap_tracks])
+        gap_centers = _to_pixels(scale, offset_x, offset_y, gap_xy)
+        # One dot per gap *cluster* centroid, not per uncovered lattice point -- cheap (no
+        # extra whole-sphere sweep at render time) and enough to place a persistent notch at a
+        # glance; a bit larger than an ordinary node dot since it stands in for a whole
+        # cluster, not a single node.
+        r_gap = NODE_DOT_RADIUS_PX * pixel_scale * 1.5
+        _fill_rects(pixels, gap_centers, r_gap, r_gap, gap_age_colors(gap_age_myr))
+
     image = Image.fromarray(pixels, mode="RGB")
     draw = ImageDraw.Draw(image)
     _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
     return _encode_image(image)
+
+
+def _render_node_age_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders the "nodeAge" ("Added/Removed Points") debug view (see docs/debugging.md): the
+    same muted land/ocean backdrop as overlapAge, overlaid with two independent dot layers --
+    warm dots for still-live nodes created recently (`ElevationLine.node_created_years`, via
+    `plates.collect_all_node_created_years`; the -1.0 "predates tracking" sentinel and anything
+    past `_NODE_ADDED_STOP_MYR`'s top stop are left as plain backdrop), and cool dots for
+    `World.removed_points_log` entries -- nodes no longer part of any plate, drawn at their
+    last known position rather than resampled onto the render grid the way a live node is.
+    All-backdrop (no dots) means nothing has been created or removed recently, which is the
+    common case between bursts of boundary activity, not necessarily unhealthy the way an
+    empty overlapAge is."""
+    pixel_scale = width / REFERENCE_WIDTH_PX
+    padding_px = PADDING_PX * pixel_scale
+    blank = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+
+    grid = _render_grid_arrays(world, projection, view_rotation) if world.plates else None
+    collected = plates.collect_all_points(world.plates) if world.plates else None
+    if grid is None or collected is None:
+        return _encode_image(Image.fromarray(blank, mode="RGB"))
+
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, half_w, half_h = grid
+    all_points, _all_elevation, _ = collected
+    created = plates.collect_all_node_created_years(world.plates)
+    node_xy = _project_points(projection, _rotate(all_points, view_rotation))
+
+    removed_points = np.array([p for p, _, _ in world.removed_points_log]) if world.removed_points_log else np.zeros((0, 3))
+    removed_years = np.array([t for _, t, _ in world.removed_points_log]) if world.removed_points_log else np.zeros(0)
+    removed_xy = _project_points(projection, _rotate(removed_points, view_rotation)) if len(removed_points) else np.zeros((0, 2))
+
+    all_xy = np.concatenate([xy, node_xy] + ([removed_xy] if len(removed_xy) else []), axis=0)
+    min_x, min_y = all_xy.min(axis=0)
+    max_x, max_y = all_xy.max(axis=0)
+    data_w = max(max_x - min_x, 1e-9)
+    data_h = max(max_y - min_y, 1e-9)
+    scale = min((width - 2 * padding_px) / data_w, (height - 2 * padding_px) / data_h)
+    offset_x = width / 2 - scale * (min_x + max_x) / 2
+    offset_y = height / 2 + scale * (min_y + max_y) / 2
+
+    pixels = blank.copy()
+    centers = _to_pixels(scale, offset_x, offset_y, xy)
+    backdrop = np.where(
+        (elev <= world.sea_level_m)[:, None], SPECKLE_OCEAN_BACKDROP_RGB, SPECKLE_LAND_BACKDROP_RGB
+    )
+    _fill_rects(pixels, centers, half_w * scale * CELL_OVERLAP_FACTOR, half_h * scale * CELL_OVERLAP_FACTOR, backdrop)
+
+    r = NODE_DOT_RADIUS_PX * pixel_scale
+    added_mask = (created >= 0.0) & ((world.elapsed_years - created) <= _NODE_ADDED_STOP_MYR[-1] * 1e6)
+    if np.any(added_mask):
+        age_myr = (world.elapsed_years - created[added_mask]) / 1e6
+        dot_centers = _to_pixels(scale, offset_x, offset_y, node_xy[added_mask])
+        _fill_rects(pixels, dot_centers, r, r, node_added_colors(age_myr))
+
+    if len(removed_points):
+        recent = (world.elapsed_years - removed_years) <= _NODE_REMOVED_STOP_MYR[-1] * 1e6
+        if np.any(recent):
+            age_myr = (world.elapsed_years - removed_years[recent]) / 1e6
+            dot_centers = _to_pixels(scale, offset_x, offset_y, removed_xy[recent])
+            _fill_rects(pixels, dot_centers, r, r, node_removed_colors(age_myr))
+
+    image = Image.fromarray(pixels, mode="RGB")
+    draw = ImageDraw.Draw(image)
+    _draw_coastline(draw, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    return _encode_image(image)
+
+
 def _render_geomorph_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     """Renders "geomorph" (see VIEWS): every node coloured by its net elevation change over
     the last step -- erosion.ErosionResult.net_elevation_change_m off World.erosion_cache,
@@ -2136,6 +2285,8 @@ def render_png(
         return _render_overlap_age_view(world, projection, width, height, view_rotation)
     if view == "crustType":
         return _render_crust_type_view(world, projection, width, height, view_rotation)
+    if view == "nodeAge":
+        return _render_node_age_view(world, projection, width, height, view_rotation)
 
     if not world.plates:
         return _encode_image(Image.fromarray(blank, mode="RGB"))

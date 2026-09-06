@@ -586,10 +586,13 @@ def test_node_components_empty_input():
 
 
 def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
+    from app.world import World
+
     plate = _lobed_plate([(0.0, 10), (0.6, 6)], plate_id=7, omega=np.array([0.1, 0.2, 0.3]), age_steps=9)
     before = plate.node_count()
+    world = World(seed=0, plates=[plate], mantle_centers=[])
 
-    result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50)
+    result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world)
     assert result is not None
     replacements, consumed = result
 
@@ -609,34 +612,48 @@ def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
 
 
 def test_defragment_sheds_stranded_nodes_without_splitting():
+    from app.world import World
+
     # second lobe is 12 nodes (1 per row), well below min_fragment_nodes -- dropped, not
     # promoted to its own plate, and no new id is consumed.
     plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=3)
     before = plate.node_count()
+    world = World(seed=0, plates=[plate], mantle_centers=[])
 
-    result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50)
+    result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world)
     assert result is not None
     replacements, consumed = result
 
     assert consumed == 0
     assert [p.plate_id for p in replacements] == [3]
     assert replacements[0].node_count() == before - 12
+    # The 12 shed nodes are recorded, not silently discarded -- see World.removed_points_log.
+    assert len(world.removed_points_log) == 12
+    assert all(plate_id == 3 for _, _, plate_id in world.removed_points_log)
 
 
 def test_defragment_leaves_a_contiguous_plate_alone():
+    from app.world import World
+
     plate = _lobed_plate([0.0])
-    assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50) is None
+    world = World(seed=0, plates=[plate], mantle_centers=[])
+    assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world) is None
 
 
 def test_defragment_leaves_an_all_debris_plate_for_the_territory_check():
+    from app.world import World
+
     # three lobes, none reaching min_fragment_nodes: defrag declines (returns None) rather
     # than deleting a whole plate itself -- has_negligible_territory / remove_defunct_plates
     # own that call.
     plate = _lobed_plate([(0.0, 2), (0.6, 2), (1.2, 2)], rows=10)
-    assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50) is None
+    world = World(seed=0, plates=[plate], mantle_centers=[])
+    assert plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world) is None
 
 
 def test_defragment_partition_carries_each_nodes_own_fields_to_the_right_fragment():
+    from app.world import World
+
     plate = _lobed_plate([0.0, 0.6], plate_id=4)
     points, _ = plate.all_points_and_elevation()
     marker = np.arange(len(points), dtype=float)  # a distinct value per node
@@ -646,8 +663,9 @@ def test_defragment_partition_carries_each_nodes_own_fields_to_the_right_fragmen
         plate.replace_line(i, line.replace(channel_depth=marker[offset : offset + k]))
         offset += k
 
+    world = World(seed=0, plates=[plate], mantle_centers=[])
     replacements, _ = plate.defragment(
-        next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50
+        next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world
     )
     recombined = np.concatenate([p.collect("channel_depth") for p in replacements])
     assert sorted(recombined.tolist()) == sorted(marker.tolist())
@@ -1214,6 +1232,96 @@ def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole
         plate.deform(world, [], years=1_000_000, max_distance=5 * spacing)
 
     assert max(ln.phi for ln in plate.lines) <= np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing + 1e-9
+
+
+def test_fill_corner_notch_logs_no_neighbours_outcome_when_diagnostics_on():
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 20))
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0, debug_diagnostics=True)
+
+    plate._fill_corner_notch(world, [], spacing, years=1_000_000)
+
+    assert len(world.corner_notch_log) == 1
+    entry = world.corner_notch_log[0]
+    assert entry["plate_id"] == plate.plate_id
+    assert entry["outcome"] == "no_neighbours"
+    assert entry["nodes_added"] == 0
+    assert entry["elapsed_years"] == world.elapsed_years
+
+
+def test_fill_corner_notch_logs_nothing_when_diagnostics_off():
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 20))
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    assert world.debug_diagnostics is False
+
+    plate._fill_corner_notch(world, [], spacing, years=1_000_000)
+
+    assert world.corner_notch_log == []
+
+
+def test_fill_corner_notch_logs_a_real_call_during_ordinary_generation():
+    """End-to-end: a real generated world's plates already tile the sphere with no gaps, so
+    every neighbouring pair's own `_fill_corner_notch` call should log a real, recognizable
+    outcome (most commonly `no_candidate_rows` -- nothing uncovered to claim) rather than
+    silently doing nothing."""
+    from app.world import World
+
+    plates_list = generate_plates(seed=5, num_plates=6, node_density=1.0)
+    world = World(seed=5, plates=plates_list, next_plate_id=len(plates_list), mantle_centers=[], node_density=1.0, debug_diagnostics=True)
+    spacing = line_spacing_rad(1.0)
+
+    plate = plates_list[0]
+    neighbours = [p for p in plates_list if p.plate_id != plate.plate_id]
+    plate._fill_corner_notch(world, neighbours, spacing, years=1_000_000)
+
+    # A stalled hop (hop_no_progress) is always followed by exactly one final outcome entry
+    # (claimed/no_claim) summarizing the call as a whole -- so 1 or 2 entries, never 0.
+    assert 1 <= len(world.corner_notch_log) <= 2
+    known_outcomes = {"no_own_lines", "no_candidate_rows", "hop_no_progress", "claimed", "no_claim"}
+    assert all(entry["outcome"] in known_outcomes for entry in world.corner_notch_log)
+    assert world.corner_notch_log[-1]["outcome"] in {"no_own_lines", "no_candidate_rows", "claimed", "no_claim"}
+
+
+def test_corner_notch_log_caps_length():
+    from app.world import MAX_CORNER_NOTCH_LOG_LENGTH, World
+
+    world = World(seed=0, plates=[], mantle_centers=[], debug_diagnostics=True)
+    over_cap = MAX_CORNER_NOTCH_LOG_LENGTH + 20
+    for i in range(over_cap):
+        world.log_corner_notch({"plate_id": 0, "outcome": "no_neighbours", "nodes_added": 0, "seq": i})
+    assert len(world.corner_notch_log) == MAX_CORNER_NOTCH_LOG_LENGTH
+    # Oldest entries evicted first -- the surviving ones are the most recent.
+    surviving_seqs = [e["seq"] for e in world.corner_notch_log]
+    assert min(surviving_seqs) == over_cap - MAX_CORNER_NOTCH_LOG_LENGTH
+    assert max(surviving_seqs) == over_cap - 1
+
+
+def test_seed_and_erupt_new_nodes_stamps_node_created_years():
+    """`_seed_and_erupt_new_nodes` is the one choke point every node-creation call site
+    (`_claim_adjacent_territory`, `_fill_corner_notch`) funnels through -- it should stamp
+    every brand-new node's `node_created_years` at exactly `world.elapsed_years`, the real
+    creation time, not the 0.0/-1.0 defaults any other field falls back to."""
+    from app import terrain_noise
+    from app.lithosphere_plate import _TERRAIN_SEED_TAG, LithospherePlate, growth_seed_thickness
+    from app.world import World
+
+    plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 5))
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    world.elapsed_years = 12_345_000.0
+
+    hc0, hm0 = growth_seed_thickness()
+    texture = terrain_noise.FractalTexture(np.random.default_rng((world.seed, plate.plate_id, _TERRAIN_SEED_TAG)))
+    world_pts = geometry.to_world(plate.frame, geometry.local_xyz(np.zeros(4), np.linspace(0.4, 0.7, 4)))
+
+    seeded = plate._seed_and_erupt_new_nodes(world, 0, world_pts, thin_ratio=0.3, hc0=hc0, hm0=hm0, amp=hc0 * 0.1, texture=texture)
+
+    assert "node_created_years" in seeded
+    assert np.all(seeded["node_created_years"] == world.elapsed_years)
 
 
 # -- interior subduction: an overridden mid-row patch is carved out and keyholed -----------

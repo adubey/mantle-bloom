@@ -452,6 +452,17 @@ class LithospherePlate(PlateWithLines):
     # -- Motion: torque.py's real implementation -----------------------------------------
 
     def shift(self, world: "World", years: float) -> float:  # noqa: F821 (World only for typing)
+        # Debug-world-only escape hatch (see World.pinned_omegas): a scripted "Debugging
+        # Worlds" scenario wants a plate to move exactly as configured every step, not
+        # whatever the real torque balance (ridge-push/slab-pull/basal-drag against
+        # world.mantle_centers) happens to settle it to -- empty for every ordinarily
+        # generated world, so this is a no-op there.
+        pinned = world.pinned_omegas.get(self.plate_id)
+        if pinned is not None:
+            old_points, _ = self.all_points_and_elevation()
+            if len(old_points) == 0:
+                return 0.0
+            return torque.apply_omega_and_rotate(self, old_points, np.asarray(pinned, dtype=float), years)
         other_plates = [p for p in world.plates if p.plate_id != self.plate_id]
         return torque.shift_plate(self, world, other_plates, years)
 
@@ -959,6 +970,8 @@ class LithospherePlate(PlateWithLines):
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][-n_remove:].copy()
                 accrete_removed = accrete[-n_remove:].copy()
+                removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_remove, line.phi), theta[-n_remove:]))
+                world.record_removed_points(removed_world, self.plate_id)
                 theta, elevation = theta[:-n_remove], elevation[:-n_remove]
                 contested, shrinkable, accrete, dist = contested[:-n_remove], shrinkable[:-n_remove], accrete[:-n_remove], dist[:-n_remove]
                 direction = direction[:-n_remove]
@@ -973,6 +986,8 @@ class LithospherePlate(PlateWithLines):
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][:n_remove].copy()
                 accrete_removed = accrete[:n_remove].copy()
+                removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_remove, line.phi), theta[:n_remove]))
+                world.record_removed_points(removed_world, self.plate_id)
                 theta, elevation = theta[n_remove:], elevation[n_remove:]
                 contested, shrinkable, accrete, dist = contested[n_remove:], shrinkable[n_remove:], accrete[n_remove:], dist[n_remove:]
                 direction = direction[n_remove:]
@@ -1005,6 +1020,8 @@ class LithospherePlate(PlateWithLines):
                 keep[start : start + take] = False
                 budget -= take
             if not keep.all():
+                removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full((~keep).sum(), line.phi), theta[~keep]))
+                world.record_removed_points(removed_world, self.plate_id)
                 theta, elevation = theta[keep], elevation[keep]
                 contested, shrinkable, accrete, dist = contested[keep], shrinkable[keep], accrete[keep], dist[keep]
                 direction = direction[keep]
@@ -1034,6 +1051,13 @@ class LithospherePlate(PlateWithLines):
                     fill = np.full(n_new, hm_seed)
                 elif name == "elev_change_reason":
                     fill = np.full(n_new, reason_seed, dtype=values.dtype)
+                elif name == "node_created_years":
+                    # These are genuinely brand-new arc-margin nodes (see the arc_end_high/
+                    # arc_end_low append branches below) -- a zero-fill would misread as
+                    # "created at year 0" rather than the -1.0 "unknown" sentinel, so stamp the
+                    # real creation time explicitly, same as _seed_and_erupt_new_nodes does for
+                    # its own two callers.
+                    fill = np.full(n_new, world.elapsed_years, dtype=values.dtype)
                 else:
                     fill = np.zeros(n_new, dtype=values.dtype)
                 out[name] = fill
@@ -1236,6 +1260,7 @@ class LithospherePlate(PlateWithLines):
             "is_volcano": is_volcano,
             "volcano_active_years_remaining": volcano_remaining,
             "elev_change_reason": np.full(n, ELEV_CHANGE_NEW_CRUST, dtype=float),
+            "node_created_years": np.full(n, world.elapsed_years, dtype=float),
         }
 
     def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
@@ -1477,10 +1502,12 @@ class LithospherePlate(PlateWithLines):
         # own, so it needs an explicit one.
         neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
         if not neighbour_points:
+            world.log_corner_notch({"plate_id": self.plate_id, "outcome": "no_neighbours", "nodes_added": 0})
             return
         own_points, _ = self.all_points_and_elevation()
         lines_with_nodes = [line for line in self.lines if len(line) > 0]
         if len(own_points) == 0 or not lines_with_nodes:
+            world.log_corner_notch({"plate_id": self.plate_id, "outcome": "no_own_lines", "nodes_added": 0})
             return
 
         coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
@@ -1560,6 +1587,10 @@ class LithospherePlate(PlateWithLines):
             max_row_span = max(max_row_span, n_theta)
 
         if not rows:
+            world.log_corner_notch({
+                "plate_id": self.plate_id, "outcome": "no_candidate_rows", "nodes_added": 0,
+                "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
+            })
             return
 
         # `MIN_CORNER_FILL_NODES_PER_STEP` is a floor, not the cap -- the real per-step budget
@@ -1608,11 +1639,27 @@ class LithospherePlate(PlateWithLines):
                     hop_progress = True
 
             if not hop_progress:
+                world.log_corner_notch({
+                    "plate_id": self.plate_id, "outcome": "hop_no_progress", "hop": _hop,
+                    "nodes_added": nodes_added, "rows_considered": len(rows),
+                })
                 break
             all_self_points = np.concatenate([all_self_points, *hop_points], axis=0)
 
         if new_lines:
             self.set_lines(list(self.lines) + new_lines)
+            world.log_corner_notch({
+                "plate_id": self.plate_id, "outcome": "claimed", "nodes_added": nodes_added,
+                "hops_used": _hop + 1, "rows_considered": len(rows),
+                "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
+                "max_corner_fill_nodes": int(max_corner_fill_nodes),
+            })
+        else:
+            world.log_corner_notch({
+                "plate_id": self.plate_id, "outcome": "no_claim", "nodes_added": 0,
+                "rows_considered": len(rows),
+                "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
+            })
 
     # -- Merge/split: carry Hc/Hm through, not just elevation -------------------------------
 

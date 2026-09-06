@@ -18,9 +18,11 @@ interface Props {
   // `numPlates` when "Auto" is off, or App.tsx's DEFAULT_PLATES stand-in when it's on (the
   // real auto count is only known seed-side at generation time).
   effectivePlateCount: number;
-  // "random" | "human" and the current sketch, both only used to decide whether -- and what --
-  // to show in the Voronoi preview below the slider.
-  generateMode: "random" | "human";
+  // The current sketch and Generate World tab, used to decide whether -- and what -- to show
+  // in the Voronoi preview below the slider (only ever "human" with a sketch). Widened to
+  // accept "debug" too since App.tsx passes its own generateMode verbatim even though the
+  // "Advanced settings" button is hidden entirely in that tab (see App.tsx).
+  generateMode: "random" | "human" | "debug";
   sketchImageDataUrl: string | null;
   seed: number;
   axialTiltDeg: number;

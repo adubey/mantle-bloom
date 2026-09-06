@@ -332,6 +332,156 @@ classified and a deep overlap just sat.
 
 ---
 
+## `nodeAge` render view ("Added/Removed Points")
+
+`GET /world/render?view=nodeAge` (Map View dropdown: **Debug > Added/removed points**) draws
+the same muted land/ocean backdrop as `overlapAge`, overlaid with two independent dot layers:
+warm dots (pale yellow -> amber -> burnt orange -> dark rust) for still-live nodes created
+recently, and cool dots (pale blue -> sky blue -> deep blue -> navy) for nodes no longer part
+of any plate that were removed recently (`render_image._render_node_age_view` /
+`node_added_colors` / `node_removed_colors`). Both ramps are clamped at 20 Myr -- older
+activity fades to plain backdrop rather than pinning at a saturated top-of-ramp colour that
+would misleadingly read as "still happening now." Answers "where has the lattice actually
+been changing, and in which direction" -- exactly the question a persistent gap raises: is
+either side even *trying* to grow into it, or has activity nearby gone quiet?
+
+**Added** comes from `ElevationLine.node_created_years`, a permanent, write-once per-node
+timestamp stamped once at
+`lithosphere_plate.LithospherePlate._seed_and_erupt_new_nodes` -- the one choke point every
+node-creation call site (`_claim_adjacent_territory`, `_fill_corner_notch`, the arc-margin
+append branch in `_grow_or_shrink_line_for_deform`) funnels through, so this view is
+comprehensive across every place brand-new crust actually originates, not just one code path.
+Unlike `overlap_onset_years`, it never reverts: a node's birth date is permanent, carried
+through `regularize_line`'s resample by nearest-neighbour (never interpolated -- averaging two
+birth years would invent a meaningless date). The sentinel is `-1.0`, not `0.0` -- a save's
+initial genesis nodes (from generation, not from a tracked creation event) read as "predates
+tracking," not "created at year 0," and a save written before this field existed backfills the
+same way. `plates.collect_all_node_created_years` is the accessor.
+
+**Removed** has no live node to carry a field on, so it comes from a short-lived side buffer
+instead: `World.removed_points_log`, a `(world_xyz, removed_years, plate_id)` list appended to
+by `World.record_removed_points` at every node-removal site --
+`_grow_or_shrink_line_for_deform`'s end-retreat and interior-subduction carve, `merge_split.
+merge_plates` (the absorbed plate's own points, recorded before the fused resample), `Plate.
+defragment` (stranded fragments shed below `min_fragment_nodes`), and `merge_split.
+remove_defunct_plates` (a whole plate's points, when it's dropped). Capped by count
+(`MAX_REMOVED_POINTS_LOG`, 20,000), not age -- subduction removes nodes essentially every step
+on a full-size save, so an age-based window would grow unboundedly at high `node_density`.
+Backfills to an empty list on a save written before this field existed.
+
+All-backdrop (no dots of either colour) means nothing has been created or removed recently --
+the common case between bursts of boundary activity, *not* necessarily unhealthy the way an
+empty `overlapAge` is (that view's empty case specifically means "no stuck overlaps," a
+positive signal; this one's empty case just means "quiet right now").
+
+### Click-to-inspect -- `GET /world/node_at`
+
+Clicking a point on the `nodeAge` view calls `GET /world/node_at?lat_deg&lon_deg`, which --
+unlike `/world/sample_at` (climate-grid lookup) -- reports the actual nearest live
+`ElevationLine` node's own plate-local `phi`/`theta` (recovered by inverse-transforming its
+world position through its owning plate's frame, which round-trips exactly to the node's own
+creation-time value), elevation, and `node_created_years`, plus -- independently, since a
+removed point has no live node to report instead -- the nearest `removed_points_log` entry if
+one sits within `_REMOVED_POINT_MATCH_RAD` (~127 km) of the click. `plates.nearest_node_index`
+is the shared hit-test helper (mirrors `nearest_plate_id`, but returns the node's own index
+into the `collect_all_points` order rather than just its owning plate id, so a caller wanting
+both plate ownership and per-node fields needn't build the k-d tree twice).
+
+---
+
+## Corner-notch decision log (`_fill_corner_notch`)
+
+`GET /world/corner_notch_log` (Controls window -> Tectonics tab -> "Log corner-notch
+decisions" to enable; the panel sits below the Event Console) exposes a verbose, structured,
+per-call record of what `lithosphere_plate.LithospherePlate._fill_corner_notch` -- the
+triple-junction/diagonal-residual gap-filling fallback `_stretch_end` and
+`_claim_adjacent_territory` structurally can't reach -- actually decided each time it ran, and
+why. Deliberately **not** part of the always-on Event Console: this can fire once per plate
+per step, far higher volume than that log is meant to carry (the same reasoning behind
+`lakes.summarize_lake_events`'s own aggregation, just solved here by giving the verbose detail
+its own separate, off-by-default channel instead of collapsing it).
+
+Gated by `World.debug_diagnostics` (`bool`, off by default, toggleable via
+`POST /world/controls`'s `debug_diagnostics` field or the Controls checkbox) -- while off,
+`World.log_corner_notch` is a no-op and nothing is recorded, so there's no cost on an ordinary
+play session. Entries land in `World.corner_notch_log`, capped by count
+(`MAX_CORNER_NOTCH_LOG_LENGTH`, 2000) like `World.events`.
+
+### Reading an entry
+
+Every entry carries `plate_id`, `outcome`, `nodes_added`, and `elapsed_years`; most also carry
+enough of the call's own geometry to place it:
+
+| `outcome` | Meaning |
+|---|---|
+| `no_neighbours` | Early return -- no real neighbour plate nearby at all, so "uncovered space next to my own edge" would just be the rest of the sphere (the guard that stops a lone plate from growing its entire perimeter every step). |
+| `no_own_lines` | Early return -- this plate has no nodes/lines to notch-fill from. |
+| `no_candidate_rows` | The scanned window (`window_rad`, `phi_lo`/`phi_hi`) found no lattice point that's both near a neighbour and not already covered by anyone -- the healthy, common case for an already-well-tiled boundary. |
+| `hop_no_progress` | One frontier-hop (`hop`) in the connect-radius walk claimed nothing -- the walk stops here even if `window_rad` isn't fully covered yet. Always followed by one final `claimed`/`no_claim` entry for the same call. |
+| `claimed` | Ended with `nodes_added > 0` new nodes appended -- `hops_used`, `rows_considered`, and `max_corner_fill_nodes` describe how much of the window's own budget was actually used. |
+| `no_claim` | Candidate rows existed but nothing was ever claimed (every hop stalled immediately). |
+
+A call that stalls mid-walk logs **two** entries (`hop_no_progress` then `claimed`/`no_claim`)
+-- both describe the same call, the first explaining *when* it gave up, the second summarizing
+the net result.
+
+### Using it on a real save
+
+Load a save, enable diagnostics, then step it -- the panel fills in per-plate-per-step, so
+watching a specific known-bad junction's plate ids (e.g. this project's own seed349206221
+save, plates 12/13/15/0) across several steps shows directly whether `_fill_corner_notch` is
+even attempting that boundary (`no_neighbours`/`no_own_lines` would mean it never gets that
+far), finding nothing to claim (`no_candidate_rows`/`no_claim`), or claiming a window that
+turns out too small (`claimed` with a low `nodes_added` relative to the gap's real size) --
+each a different next step for a fix, instead of guessing blind from the rendered map alone.
+
+---
+
+## "Debugging Worlds" tab -- scripted plate scenarios
+
+Generate World's third tab (`POST /world/generate_debug`, `backend/app/debug_worlds.py`) builds
+tiny, low-resolution (`node_density=0.5`, the coarsest real choice), hand-placed plate
+configurations for fast iteration on the gap-filling problem, independent of any real save's
+history. `GET /world/debug_scenarios` lists the current options; picking one and pressing
+Generate replaces the current world exactly like the Random/Human-made tabs, with
+`debug_diagnostics` already on (see the corner-notch log above).
+
+Each plate's motion is **pinned**, not torque-driven: `World.pinned_omegas` (`plate_id ->` a
+fixed angular velocity) makes `LithospherePlate.shift` use that value verbatim every step,
+bypassing `torque.shift_plate`'s own ridge-push/slab-pull/basal-drag recompute entirely for
+that plate (`torque.apply_omega_and_rotate` is the shared rotate-and-report tail both the real
+and pinned paths use). This is what makes a scenario reliable to iterate on: "these two plates
+diverge" stays true step after step, rather than however the force balance against an
+otherwise-irrelevant `mantle_centers` field happens to settle it. `pinned_omegas` is empty for
+every ordinarily-generated world -- this is purely a debug-world mechanism.
+
+A scenario is a set of seed lat/lons, each plate's crust type, and a list of pairwise
+`(plate_i, plate_j, "divergent" | "convergent")` boundary relationships;
+`debug_worlds._omegas_from_relationships` converts that into each plate's own single rotation
+(the sum of its own boundaries' tangential "push" contributions, converted to a rotation axis
+via `omega = cross(seed_xyz, tangent_direction)`) so a plate sitting at a junction of several
+boundaries gets one rotation reflecting all of them at once, the same way a real plate's
+motion is a net result of every boundary force acting on it -- just picked directly here
+instead of emerging from `torque.py`'s force balance.
+
+Current scenarios (`debug_worlds.DEBUG_SCENARIOS`):
+
+| Scenario | Layout | Purpose |
+|---|---|---|
+| `two_plate_divergent` | 2 plates, straight rift | Baseline: ordinary end-growth (`_stretch_end`) should close this alone -- `_fill_corner_notch` should log mostly `no_claim`/`no_candidate_rows`, never a real gap. |
+| `two_plate_convergent` | 2 plates, closing boundary | Subduction/collision baseline. |
+| `triple_junction_mixed` | 3 plates, one junction, 2 divergent legs + 1 convergent | **The exact case `_fill_corner_notch`'s own docstring calls out** (confirmed on a real save, seed 430031492) -- confirmed (see `test_triple_junction_mixed_scenario_exercises_fill_corner_notch`) to drive real `claimed` activity within a handful of steps. Start here. |
+| `four_plate_grid` | 4 plates, 2x2, all edges divergent | Four simultaneous triple-junction-like corners at once, around one shared center point. |
+| `five_plate_irregular` | 5 plates, irregular ring, mixed relationships | Closest single scenario to a real save's messiness while staying small enough to iterate on quickly. |
+
+Workflow for chasing a specific corner-notch failure mode: generate `triple_junction_mixed`,
+step it a handful of times (Play/Stop, small "Years per step" for fine-grained observation),
+and watch the "Added/Removed Points" and "Plate overlap age" views alongside the corner-notch
+log panel together -- the combination this whole diagnostic suite was built to let you read at
+once, rather than switching between four separate tools with no shared time axis.
+
+---
+
 ## River & Lake Inspectors
 
 `GET /world/rivers` / `GET /world/lakes` and their map views

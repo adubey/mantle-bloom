@@ -293,6 +293,44 @@ def test_crust_type_code_rides_through_regularize_line_by_nearest_node():
     assert (regularized.crust_type_code == CRUST_TYPE_CONTINENTAL).sum() > 0
 
 
+def test_node_created_years_defaults_to_legacy_sentinel_not_zero():
+    # -1.0, not 0.0 -- 0.0 is a legitimate real creation year (world genesis), so it can't
+    # double as "unknown/predates tracking" the way it does for every other OPTIONAL_FIELDS
+    # member.
+    theta = np.array([0.0, 0.1, 0.2])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
+    assert np.all(line.node_created_years == -1.0)
+
+
+def test_node_created_years_missing_optional_field_backfills_to_sentinel_on_unpickle():
+    theta = np.array([0.0, 0.1, 0.2])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
+    del line.__dict__["_node_created_years"]
+    assert line.node_created_years.shape == theta.shape
+    assert np.all(line.node_created_years == -1.0)
+
+
+def test_node_created_years_is_write_once_through_replace_and_masked():
+    theta = np.array([0.0, 0.1, 0.2, 0.3])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(4))
+    stamped = line.replace(node_created_years=np.array([-1.0, 5_000_000.0, 5_000_000.0, -1.0]))
+    assert stamped.node_created_years[1] == 5_000_000.0
+    kept = stamped.masked(np.array([1, 2]))
+    assert list(kept.node_created_years) == [5_000_000.0, 5_000_000.0]
+
+
+def test_regularize_line_carries_node_created_years_by_nearest_node_not_interpolated():
+    theta = np.linspace(0.0, 0.6, 7)
+    created = np.array([-1.0, -1.0, 3_000_000.0, 3_000_000.0, 3_000_000.0, -1.0, -1.0])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(7), node_created_years=created)
+    regularized = regularize_line(line, spacing_rad=TARGET_LINE_SPACING_RAD / 8)
+    assert len(regularized) != len(line)
+    # nearest-neighbour carry, never np.interp -- the value set is unchanged, no invented
+    # in-between years appear.
+    assert set(np.unique(regularized.node_created_years)) <= {-1.0, 3_000_000.0}
+    assert (regularized.node_created_years == 3_000_000.0).sum() > 0
+
+
 def test_regularize_line_unwinds_an_over_wound_ring_to_one_revolution():
     spacing = line_spacing_rad(1.0)
     wound = _wound_ring(1.45, revolutions=4.0, spacing_rad=spacing)

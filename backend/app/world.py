@@ -18,6 +18,17 @@ DEFAULT_AXIAL_TILT_DEG = 23.5
 # Bounds how large World.events can grow over a long play session -- the UI's console only
 # ever needs recent history, not an unbounded transcript.
 MAX_EVENT_LOG_LENGTH = 200
+# Bounds World.removed_points_log the same way -- a count cap, not an age cap, since
+# subduction/defragmentation/merge remove nodes essentially every step on a full-size save
+# and an age-based retention window would grow unboundedly at high node_density. Sized well
+# past MAX_EVENT_LOG_LENGTH since removal is per-node, not per-event -- see
+# World.record_removed_points and the "Added/Removed Points" (`nodeAge`) debug render view.
+MAX_REMOVED_POINTS_LOG = 20_000
+# Bounds World.corner_notch_log -- one entry per plate per step while World.debug_diagnostics
+# is on, so a longer debugging session can still build up a lot of entries. More generous than
+# MAX_EVENT_LOG_LENGTH since this is meant for an active debugging session (see
+# World.log_corner_notch), not indefinite retention.
+MAX_CORNER_NOTCH_LOG_LENGTH = 2_000
 
 # The dimensionless geomorphic-budget tuning knobs on World (see the field group below),
 # named once here so main.py's /world/controls route can validate/apply/echo them without
@@ -109,6 +120,52 @@ class World:
     # `default_factory` field, so an older save without it is backfilled on load (see
     # persistence._backfill_added_fields).
     stranded_basin_tracks: list = field(default_factory=list)
+    # Cross-step memory for the gap-age diagnostic (docs/debugging.md's overlapAge section):
+    # one `gaps.GapTrack` per currently-uncovered lattice cluster, reconciled by centroid
+    # proximity at the same cadence as gaps.fill_gaps (see gaps.reconcile_gap_tracks) -- the
+    # same "lightweight per-key first-seen tracker" role stranded_basin_tracks plays for
+    # basins, since a gap cluster has no persistent identity across steps any more than a
+    # basin does. Diagnostic only, nothing in the physics reads it back. A `default_factory`
+    # field -> backfilled on load (see persistence._backfill_added_fields).
+    gap_tracks: list = field(default_factory=list)
+    # Cross-step memory for the "Added/Removed Points" debug view's removed-node half (the
+    # added half needs no cross-step state -- it reads straight off each live node's own
+    # ElevationLine.node_created_years). A node vanishes from every plate's own node cloud the
+    # instant it's removed (retreat, interior-subduction carve, merge absorption, defrag
+    # stripping, whole-plate subduction -- see World.record_removed_points' own call sites),
+    # so unlike every other per-node diagnostic field this can't ride along on the node itself
+    # -- it has to be its own short-lived history buffer here. Each entry is
+    # (world_xyz, removed_years, plate_id); capped by count, not age, see
+    # MAX_REMOVED_POINTS_LOG's own comment. `default_factory` -> backfilled on load (see
+    # persistence._backfill_added_fields).
+    removed_points_log: list[tuple[np.ndarray, float, int]] = field(default_factory=list)
+    # Gate for the verbose, structured `_fill_corner_notch` decision log below -- off by
+    # default (a plain-scalar field, so an old pickle falls through to False with no
+    # persistence backfill needed), on by default for a "Debugging Worlds" tab world, and
+    # toggleable for any other loaded save via POST /world/controls. Kept as an explicit flag
+    # rather than always logging: this runs once per plate per step, and the codebase's own
+    # precedent (lakes.summarize_lake_events, see docs/debugging.md) is that this volume of
+    # per-step diagnostic detail does not belong in the always-on Event Console -- see
+    # corner_notch_log's own comment for where it goes instead.
+    debug_diagnostics: bool = False
+    # Verbose, structured decision log for `LithospherePlate._fill_corner_notch` (see
+    # World.log_corner_notch) -- populated only while `debug_diagnostics` is True. Deliberately
+    # separate from `events` (the always-on Event Console): this can fire once per plate per
+    # step, far higher volume than that log is meant to carry, so it gets its own capped buffer
+    # and its own `GET /world/corner_notch_log` endpoint / panel instead of ever going through
+    # `log_event`. Capped by count like `events`, just a more generous ceiling since it's
+    # meant for an active debugging session, not indefinite retention. A `default_factory`
+    # field -> backfilled on load (see persistence._backfill_added_fields).
+    corner_notch_log: list[dict] = field(default_factory=list)
+    # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
+    # LithospherePlate.shift uses verbatim every step, bypassing torque.shift_plate's own
+    # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
+    # Worlds" tab's scripted-motion mechanism (see debug_worlds.py), so a tiny hand-built
+    # scenario moves exactly as scripted every step rather than however real ridge-push/
+    # slab-pull/basal-drag against world.mantle_centers happens to settle it. Empty for every
+    # ordinarily-generated world. A `default_factory` field -> backfilled on load (see
+    # persistence._backfill_added_fields).
+    pinned_omegas: dict[int, np.ndarray] = field(default_factory=dict)
     # Intraplate fault lines (see faults.py) -- a `faults.Fault` per trace, geometry stored
     # in the owning plate's local frame so it rotates with the crust. Grown/retired/applied
     # by faults.update_faults every step and re-homed across topology changes by
@@ -309,6 +366,37 @@ class World:
         if len(self.events) > MAX_EVENT_LOG_LENGTH:
             del self.events[: len(self.events) - MAX_EVENT_LOG_LENGTH]
 
+    def record_removed_points(self, points_xyz: np.ndarray, plate_id: int) -> None:
+        """Append one `removed_points_log` entry per point in `points_xyz` (world-frame, shape
+        (n, 3)) at the current `elapsed_years`, against `plate_id` -- the plate that owned them
+        just before they were dropped (retreat, interior-subduction carve, merge absorption,
+        defrag stripping, or the whole plate being removed as defunct). A no-op for an empty
+        array, so every call site can call this unconditionally rather than guarding on "did
+        anything actually get removed this call." See removed_points_log's own comment for why
+        this can't just be another ElevationLine field."""
+        if len(points_xyz) == 0:
+            return
+        for point in points_xyz:
+            self.removed_points_log.append((point, self.elapsed_years, plate_id))
+        overflow = len(self.removed_points_log) - MAX_REMOVED_POINTS_LOG
+        if overflow > 0:
+            del self.removed_points_log[:overflow]
+
+    def log_corner_notch(self, entry: dict) -> None:
+        """Append one structured decision record from `_fill_corner_notch` -- a no-op unless
+        `debug_diagnostics` is on, so a caller can build `entry` unconditionally without
+        worrying about cost on an ordinary (non-debugging) world; see this method's own
+        callers in lithosphere_plate.py for the exact guard-then-build pattern that keeps this
+        genuinely free when diagnostics are off. Stamps `elapsed_years` onto the entry itself
+        so a caller doesn't need to repeat it."""
+        if not self.debug_diagnostics:
+            return
+        entry["elapsed_years"] = self.elapsed_years
+        self.corner_notch_log.append(entry)
+        overflow = len(self.corner_notch_log) - MAX_CORNER_NOTCH_LOG_LENGTH
+        if overflow > 0:
+            del self.corner_notch_log[:overflow]
+
     def distance_from_land_approx(self, points: np.ndarray) -> np.ndarray:
         """Approximate distance from each given world-xyz point (shape (n, 3)) to the
         nearest land node (elevation > sea_level_m) anywhere in this world -- lazily builds
@@ -420,6 +508,18 @@ def generate_world(
     if initial_soil_maturity is not None:
         geology.seed_initial_soil(world.plates, seed, initial_soil_maturity)
 
+    n_continents = sum(1 for p in plates if p.crust_type == "continental")
+    finish_generation(world, f"World generated with {len(plates)} plates ({n_continents} continental).")
+    return world
+
+
+def finish_generation(world: World, log_message: str) -> None:
+    """Shared tail every world-generation path (`generate_world`, `debug_worlds.
+    generate_debug_world`) runs once `world.plates` is populated: bootstrap the permanent
+    atmosphere wind-solver state, snapshot the eustatic water budget from the flat starting
+    sea level, and log the one generation event. Pulled out of `generate_world` so the
+    "Debugging Worlds" tab's scripted scenarios get the exact same bootstrap without
+    duplicating it."""
     # See World.atmosphere_cfd_state's own comment for why it's populated here,
     # unconditionally, rather than lazily. `terrain` is the diagnostic bootstrap snapshot the
     # wind solver is seeded from (compute_wind's own latitude-banded field), before the state
@@ -432,9 +532,7 @@ def generate_world(
     # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
     eustasy.initialize_water_budget(world)
 
-    n_continents = sum(1 for p in plates if p.crust_type == "continental")
-    world.log_event(f"World generated with {len(plates)} plates ({n_continents} continental).")
-    return world
+    world.log_event(log_message)
 
 
 def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
@@ -524,6 +622,11 @@ def step_world(world: World, years: float) -> None:
         if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
             for message in gaps.fill_gaps(world):
                 world.log_event(message)
+            # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
+            # world.gap_tracks against this step's uncovered-lattice clusters at the same
+            # cadence as fill_gaps above, since both are the same whole-sphere sweep -- see
+            # gaps.reconcile_gap_tracks.
+            gaps.reconcile_gap_tracks(world)
 
     erosion_result = None
     if world.simulate_climate_biomes:

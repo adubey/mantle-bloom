@@ -42,6 +42,7 @@ primary mechanism.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -85,6 +86,21 @@ MIN_GAP_NODES = 500
 # lattice -- fine for a one-off detection query even though it has the usual pole bias,
 # since nothing here is carried forward as persistent state.
 _GLOBAL_FRAME = np.eye(3)
+
+# Gap-age tracking (see reconcile_gap_tracks/GapTrack): a gap cluster has no stable identity
+# across steps the way a plate id does, so -- same problem stranded_basins.py already solved
+# for endorheic basins -- persistence comes from matching this step's cluster centroids
+# against last step's by proximity, not by any persistent key. Tighter than
+# stranded_basins.MATCH_DISTANCE_RAD (0.08 rad): a gap cluster is typically a thin sliver along
+# a boundary rather than a basin's own compact catchment, so a looser gate risks fusing two
+# genuinely distinct nearby gaps (e.g. both sides of a triple junction) into one track.
+GAP_MATCH_DISTANCE_RAD = 0.05
+# Deliberately much lower than MIN_GAP_NODES (which gates a real plate *spawn*, an expensive
+# and disruptive act) -- age-tracking's whole point is to surface exactly the small, easy-to-
+# miss persistent notches (a stuck triple-junction corner, a thin sliver along a rift) that
+# never reach MIN_GAP_NODES and so never trigger a spawn. 1 is the floor, not a tuned value:
+# tracking must never hide a gap a spawn-gate would still (eventually) act on.
+GAP_AGE_MIN_CLUSTER_NODES = 1
 
 # A gap point adopts the *continental* type only if the nearest pre-existing node is itself
 # continental, still above sea level, and within this many line-spacings -- hugging a real
@@ -219,3 +235,75 @@ def fill_gaps(world: "World") -> list[str]:
             f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where}."
         )
     return events
+
+
+@dataclass
+class GapTrack:
+    """One entry in `world.gap_tracks`: the minimal cross-step memory a still-uncovered
+    lattice cluster needs, reconciled by centroid proximity each step -- same shape and same
+    reasoning as `stranded_basins.StrandedBasinTrack` (a gap cluster has no persistent identity
+    across steps any more than a stranded basin does). Diagnostic only, surfaced by the
+    `overlapAge` debug render view's gap-age layer (see docs/debugging.md); nothing in the
+    physics reads it back."""
+
+    centroid_xyz: np.ndarray  # (3,) unit vector
+    first_seen_years: float
+    last_seen_years: float
+    steps_seen: int
+    node_count: int
+
+
+def _nearest_gap_track(
+    prev_centroids: np.ndarray | None, used: np.ndarray, centroid: np.ndarray
+) -> int | None:
+    """Index of the closest not-yet-claimed previous track within `GAP_MATCH_DISTANCE_RAD` of
+    `centroid`, or `None` -- identical shape to `stranded_basins._nearest_track`."""
+    if prev_centroids is None or len(prev_centroids) == 0:
+        return None
+    dist = geometry.angular_distance(prev_centroids, centroid)
+    dist = np.where(used, np.inf, dist)
+    j = int(np.argmin(dist))
+    return j if dist[j] <= GAP_MATCH_DISTANCE_RAD else None
+
+
+def reconcile_gap_tracks(world: "World") -> None:
+    """Recompute this step's uncovered-lattice clusters (the same whole-sphere sweep
+    `fill_gaps` uses, but with no `MIN_GAP_NODES` floor -- see `GAP_AGE_MIN_CLUSTER_NODES`'s
+    own comment on why age-tracking needs a much lower one) and reconcile `world.gap_tracks`
+    by centroid proximity: a cluster matching a previous track keeps its `first_seen_years`
+    and bumps `steps_seen`; an unmatched cluster starts a fresh track; a track with no matching
+    cluster this step is dropped by omission. Same "replace wholesale" pattern as
+    `stranded_basins.reconcile_world_tracks`. Called at the same cadence as `fill_gaps`
+    (`GAP_FILL_INTERVAL_STEPS`) from `world.step_world`, right alongside it."""
+    existing_context = _existing_node_tree(world)
+    if existing_context is None:
+        world.gap_tracks = []
+        return
+
+    spacing_rad = line_spacing_rad(world.node_density)
+    gap_points = _find_gap_points(existing_context, spacing_rad)
+    if len(gap_points) == 0:
+        world.gap_tracks = []
+        return
+
+    labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
+    prev_tracks = world.gap_tracks
+    prev_centroids = np.array([t.centroid_xyz for t in prev_tracks]) if prev_tracks else None
+    used = np.zeros(len(prev_tracks), dtype=bool)
+
+    new_tracks: list[GapTrack] = []
+    for label in np.unique(labels):
+        cluster_points = gap_points[labels == label]
+        if len(cluster_points) < GAP_AGE_MIN_CLUSTER_NODES:
+            continue
+        centroid = geometry.normalize(cluster_points.mean(axis=0))
+        match = _nearest_gap_track(prev_centroids, used, centroid)
+        if match is None:
+            new_tracks.append(GapTrack(centroid, world.elapsed_years, world.elapsed_years, 1, len(cluster_points)))
+        else:
+            used[match] = True
+            old = prev_tracks[match]
+            new_tracks.append(
+                GapTrack(centroid, old.first_seen_years, world.elapsed_years, old.steps_seen + 1, len(cluster_points))
+            )
+    world.gap_tracks = new_tracks

@@ -283,6 +283,52 @@ def test_elev_reason_colors_are_flat_per_code_and_clamp_out_of_range():
     assert tuple(render_image.elev_reason_colors(np.array([999.0]))[0]) == tuple(colors[-1])
 
 
+def test_node_added_and_removed_colors_are_distinct_ramps():
+    # Deliberately disjoint from each other and from _OVERLAP_AGE_STOP_RGB -- warm for added,
+    # cool for removed, so the three debug views are never confusable at a glance.
+    fresh_added, old_added = render_image.node_added_colors(np.array([0.0, 999.0]))
+    fresh_removed, old_removed = render_image.node_removed_colors(np.array([0.0, 999.0]))
+    assert tuple(fresh_added) == tuple(render_image._NODE_ADDED_STOP_RGB[0].astype(int))
+    assert tuple(old_added) == tuple(render_image._NODE_ADDED_STOP_RGB[-1].astype(int))
+    assert tuple(fresh_removed) == tuple(render_image._NODE_REMOVED_STOP_RGB[0].astype(int))
+    assert tuple(old_removed) == tuple(render_image._NODE_REMOVED_STOP_RGB[-1].astype(int))
+    assert fresh_added[0] > fresh_added[2]  # added ramp reads warm (more red than blue)
+    assert fresh_removed[2] > fresh_removed[0]  # removed ramp reads cool (more blue than red)
+
+
+def test_overlap_age_view_renders_gap_age_dots_once_tracked():
+    from app import gaps
+
+    world = _world(seed=7, num_plates=8)
+    world.plates.pop(1)  # opens a real gap
+    gaps.reconcile_gap_tracks(world)
+    assert len(world.gap_tracks) >= 1
+
+    png = render_image.render_png(world, "behrmann", "overlapAge", 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).reshape(-1, 3)
+    # A freshly-tracked gap's age is exactly 0 -- the gap-age ramp's own first stop colour --
+    # so it must appear verbatim among the rendered pixels, not just "some new colour".
+    assert np.any(np.all(pixels == render_image._GAP_AGE_STOP_RGB[0].astype(int), axis=1))
+
+
+def test_node_age_view_renders_more_once_points_have_been_added_and_removed():
+    world = _world(seed=7, num_plates=8)
+    # Freshly generated: every node predates tracking (-1.0 sentinel) and nothing has been
+    # removed yet -- an all-backdrop render, same "healthy/quiet" convention overlapAge uses.
+    before = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "nodeAge", 320, 180))).convert("RGB"))
+
+    for _ in range(6):
+        step_world(world, years=1_000_000)
+
+    from app import plates as plates_module
+
+    created = plates_module.collect_all_node_created_years(world.plates)
+    assert np.any(created >= 0.0), "expected at least one node to have been created by boundary growth"
+
+    after = np.asarray(Image.open(io.BytesIO(render_image.render_png(world, "behrmann", "nodeAge", 320, 180))).convert("RGB"))
+    assert len(np.unique(after.reshape(-1, 3), axis=0)) > len(np.unique(before.reshape(-1, 3), axis=0))
+
+
 def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
     # Combined's per-pixel class id rides in alpha (see render_image.COMBINED_LAKE_ID_CODE's
     # comment): alpha = 255 - code, code 0 only for gaps between cells, biome_id + 1 for every

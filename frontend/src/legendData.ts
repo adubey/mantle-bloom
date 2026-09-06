@@ -45,6 +45,10 @@ export interface LegendGradient {
 export interface LegendSpec {
   title: string;
   gradient?: LegendGradient;
+  // For a view that needs more than one independent ramp at once (e.g. "nodeAge"'s separate
+  // added/removed ramps) -- rendered as one labeled GradientBar per entry, alongside (or
+  // instead of) the single `gradient` above.
+  gradients?: { label: string; gradient: LegendGradient }[];
   symbols: LegendSymbol[];
 }
 
@@ -422,6 +426,61 @@ const OVERLAP_AGE_GRADIENT: LegendGradient = {
   ],
 };
 
+// render_image.py's gap_age_colors stops (_GAP_AGE_STOP_MYR/_GAP_AGE_STOP_RGB) -- the
+// overlapAge view's second layer: how long (Myr) a still-uncovered lattice cluster
+// (gaps.GapTrack) has persisted. A disjoint cool teal/blue ramp so it's never confusable with
+// OVERLAP_AGE_GRADIENT's own warm yellow-to-magenta ramp even on the same map. Clamped at 60 Myr.
+const GAP_AGE_GRADIENT: LegendGradient = {
+  min: 0,
+  max: 60,
+  stops: [
+    { value: 0, color: rgb(200, 245, 240) },
+    { value: 2, color: rgb(120, 220, 210) },
+    { value: 10, color: rgb(50, 170, 190) },
+    { value: 30, color: rgb(20, 100, 160) },
+    { value: 60, color: rgb(10, 40, 100) },
+  ],
+  ticks: [
+    { value: 0, label: "0" },
+    { value: 30, label: "30 My" },
+    { value: 60, label: "60+ My" },
+  ],
+};
+
+// render_image.py's node_added_colors/node_removed_colors stops (_NODE_ADDED_STOP_*/
+// _NODE_REMOVED_STOP_*) -- the "Added/Removed Points" (nodeAge) debug view's two independent
+// ramps. Deliberately disjoint hues from OVERLAP_AGE_GRADIENT (and from each other) so all
+// three debug views stay visually unambiguous. Both clamped at 20 Myr.
+const NODE_ADDED_GRADIENT: LegendGradient = {
+  min: 0,
+  max: 20,
+  stops: [
+    { value: 0, color: rgb(255, 250, 200) },
+    { value: 1, color: rgb(255, 200, 90) },
+    { value: 5, color: rgb(230, 120, 30) },
+    { value: 20, color: rgb(150, 60, 10) },
+  ],
+  ticks: [
+    { value: 0, label: "0" },
+    { value: 20, label: "20+ My" },
+  ],
+};
+
+const NODE_REMOVED_GRADIENT: LegendGradient = {
+  min: 0,
+  max: 20,
+  stops: [
+    { value: 0, color: rgb(210, 240, 255) },
+    { value: 1, color: rgb(120, 200, 240) },
+    { value: 5, color: rgb(50, 120, 210) },
+    { value: 20, color: rgb(20, 40, 110) },
+  ],
+  ticks: [
+    { value: 0, label: "0" },
+    { value: 20, label: "20+ My" },
+  ],
+};
+
 // Biome and Combined's shared per-pixel *dominant* class id, carried in the render's alpha
 // channel (see backend app/render_image.py's COMBINED_LAKE_ID_CODE comment): alpha = 255 -
 // code, where code is a class's index in BIOME_RGB_ENTRIES + 1 (that order matches backend
@@ -644,8 +703,24 @@ export function legendFor(view: MapView): LegendSpec | null {
       return { title: "Last elevation change", symbols: [...ELEV_REASON_ENTRIES, COASTLINE_SYMBOL] };
     case "overlapAge":
       return {
-        title: "Plate overlap age (Myr on top of another plate)",
-        gradient: OVERLAP_AGE_GRADIENT,
+        title: "Plate overlap / gap age (Myr)",
+        gradients: [
+          { label: "Overlap", gradient: OVERLAP_AGE_GRADIENT },
+          { label: "Gap", gradient: GAP_AGE_GRADIENT },
+        ],
+        symbols: [
+          { kind: "square", color: SPECKLE_LAND_COLOR, label: "Land backdrop" },
+          { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },
+          COASTLINE_SYMBOL,
+        ],
+      };
+    case "nodeAge":
+      return {
+        title: "Added/Removed Points",
+        gradients: [
+          { label: "Added", gradient: NODE_ADDED_GRADIENT },
+          { label: "Removed", gradient: NODE_REMOVED_GRADIENT },
+        ],
         symbols: [
           { kind: "square", color: SPECKLE_LAND_COLOR, label: "Land backdrop" },
           { kind: "square", color: SPECKLE_OCEAN_COLOR, label: "Ocean backdrop" },

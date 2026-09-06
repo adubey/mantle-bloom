@@ -51,6 +51,14 @@ def test_sample_at_before_generate_returns_404(client):
     assert client.get("/world/sample_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
 
 
+def test_node_at_before_generate_returns_404(client):
+    assert client.get("/world/node_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
+
+
+def test_corner_notch_log_before_generate_returns_404(client):
+    assert client.get("/world/corner_notch_log").status_code == 404
+
+
 def test_lakes_before_generate_returns_404(client):
     assert client.get("/world/lakes").status_code == 404
 
@@ -231,6 +239,42 @@ def test_generate_returns_a_generation_event(client):
     assert "6 plates" in body["events"][0]["message"]
     assert "3 continental" in body["events"][0]["message"]
     assert body["events"][0]["elapsed_years"] == 0.0
+
+
+def test_debug_scenarios_lists_every_scenario_with_a_label(client):
+    from app import debug_worlds
+
+    resp = client.get("/world/debug_scenarios")
+    assert resp.status_code == 200
+    scenarios = resp.json()["scenarios"]
+    assert {s["name"] for s in scenarios} == set(debug_worlds.DEBUG_SCENARIOS)
+    assert all(isinstance(s["label"], str) and s["label"] for s in scenarios)
+
+
+def test_generate_debug_returns_summary_with_diagnostics_on(client):
+    from app import main
+
+    resp = client.post("/world/generate_debug", json={"scenario": "two_plate_divergent", "seed": 3})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["num_plates"] == 2
+    assert body["elapsed_years"] == 0.0
+    assert body["seed"] == 3
+    world = main._state["world"]
+    assert world.debug_diagnostics is True
+    assert len(world.pinned_omegas) == 2
+
+
+def test_generate_debug_unknown_scenario_returns_400(client):
+    resp = client.post("/world/generate_debug", json={"scenario": "not_a_real_scenario"})
+    assert resp.status_code == 400
+
+
+def test_generate_debug_replaces_previous_world(client):
+    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    resp = client.post("/world/generate_debug", json={"scenario": "four_plate_grid"})
+    assert resp.status_code == 200
+    assert resp.json()["num_plates"] == 4
 
 
 def test_generate_with_continental_fraction_gives_exact_count(client):
@@ -452,6 +496,68 @@ def test_sample_at_rejects_non_finite_query(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 8})
     assert client.get("/world/sample_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/sample_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_node_at_returns_the_owning_node_phi_theta_and_creation_year(client):
+    import numpy as np
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    plates = client.get("/world/plates").json()["plates"]
+    target = next(p for p in plates if p["num_points"] > 0)
+    x, y, z = target["outline"][0]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+
+    resp = client.get("/world/node_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"lat_deg", "lon_deg", "node", "removed"}
+    assert body["removed"] is None  # nothing has been removed yet on a freshly generated world
+
+    node = body["node"]
+    assert node["plate_id"] == target["plate_id"]
+    assert math.isfinite(node["phi"]) and math.isfinite(node["theta"])
+    # A freshly generated world's nodes all predate creation-time tracking (see
+    # ElevationLine.node_created_years' own -1.0 sentinel).
+    assert node["node_created_years"] == -1.0
+
+    # Round-trips through the owning plate's own frame back to (approximately) the query point.
+    world_xyz = np.array([
+        math.cos(node["phi"]) * math.cos(node["theta"]),
+        math.cos(node["phi"]) * math.sin(node["theta"]),
+        math.sin(node["phi"]),
+    ])
+    assert abs(np.linalg.norm(world_xyz) - 1.0) < 1e-9
+
+
+def test_node_at_rejects_non_finite_query(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    assert client.get("/world/node_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
+    assert client.get("/world/node_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_node_at_reports_a_nearby_removed_point(client):
+    import numpy as np
+    from app import geometry, main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    world = main._state["world"]
+    query_lat_deg, query_lon_deg = 10.0, 20.0
+    query_xyz = geometry.latlon_to_xyz(math.radians(query_lat_deg), math.radians(query_lon_deg))
+    world.elapsed_years = 7_000_000.0
+    world.record_removed_points(np.array([query_xyz]), plate_id=99)
+
+    resp = client.get("/world/node_at", params={"lat_deg": query_lat_deg, "lon_deg": query_lon_deg})
+    assert resp.status_code == 200
+    removed = resp.json()["removed"]
+    assert removed is not None
+    assert removed["plate_id"] == 99
+    assert removed["removed_years"] == 7_000_000.0
+    assert removed["distance_rad"] < 1e-6
+
+    # Far from any removed point, no false match.
+    far_resp = client.get("/world/node_at", params={"lat_deg": -query_lat_deg, "lon_deg": query_lon_deg + 180})
+    assert far_resp.json()["removed"] is None
 
 
 def test_rivers_and_river_at_are_empty_before_the_first_step(client):
@@ -826,6 +932,36 @@ def test_controls_ice_age_frequency_round_trip(client):
     resp = client.post("/world/controls", json={"ice_age_period_years": -5})
     assert resp.status_code == 200
     assert world.ice_age_period_years == 0.0
+
+
+def test_controls_debug_diagnostics_round_trip(client):
+    from app import main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    world = main._state["world"]
+    assert world.debug_diagnostics is False
+    assert client.post("/world/controls", json={}).json()["debug_diagnostics"] is False
+
+    resp = client.post("/world/controls", json={"debug_diagnostics": True})
+    assert resp.status_code == 200
+    assert resp.json()["debug_diagnostics"] is True
+    assert world.debug_diagnostics is True
+
+
+def test_corner_notch_log_stays_empty_until_diagnostics_enabled(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    resp = client.get("/world/corner_notch_log")
+    assert resp.status_code == 200
+    assert resp.json() == {"debug_diagnostics": False, "entries": []}
+
+    client.post("/world/controls", json={"debug_diagnostics": True})
+    client.post("/world/step", json={"years": 1_000_000})
+    resp = client.get("/world/corner_notch_log")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["debug_diagnostics"] is True
+    assert len(body["entries"]) > 0
+    assert all("outcome" in entry and "plate_id" in entry for entry in body["entries"])
 
 
 def test_controls_wind_model_toggle_and_validation(client):
