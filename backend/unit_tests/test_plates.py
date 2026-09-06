@@ -1152,8 +1152,13 @@ def test_lithosphere_contested_leading_row_is_dropped_after_sustained_override()
             for phi in phis
         ]
 
-    front_phi = 0.30
-    inner_phis = [0.10, 0.15, 0.20, 0.25]
+    # Grid-aligned to `spacing` (a real generated plate's rows are always exactly one
+    # `spacing_rad` apart) -- not just arbitrary values -- so `_fill_corner_notch`'s own
+    # local-lattice grid lines up with these rows exactly, matching a real plate's geometry and
+    # avoiding a sub-spacing sliver between the continent's own hand-built rows that only this
+    # synthetic setup would ever have room to insert a spurious intermediate row into.
+    front_phi = 14 * spacing
+    inner_phis = [10 * spacing, 11 * spacing, 12 * spacing, 13 * spacing]
     continent = LithospherePlate(
         plate_id=0, frame=np.eye(3), crust_type="continental",
         lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),

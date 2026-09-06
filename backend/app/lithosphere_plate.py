@@ -60,7 +60,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, lithosphere, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, lithosphere, mantle, rheology, terrain_noise, torque, worldsketch
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -91,28 +91,41 @@ MAX_CLAIM_NODES_PER_STEP = 400
 # `_fill_corner_notch`'s own window and safety valve. Both `_stretch_end` (theta-aligned) and
 # the generalized `_claim_adjacent_territory` (phi-aligned, whole rows) are still confined to
 # this plate's own local (theta, phi) grid axes -- a genuinely diagonal sub-row notch, the
-# shape three independently-oriented plate grids leave at a triple junction, is invisible to
-# both. This is a small, tightly-windowed fallback for exactly that residual, not a general
-# lattice scan: only phi rows within this many `spacing_rad` of this plate's own current phi
-# extent are ever swept (cheap, local -- never a whole-plate or whole-sphere pass like
-# gaps.py's). Confirmed against a real triple-junction save: the deepest corner of a genuine
-# 3-plate void can sit up to ~5x spacing from the nearest of the 3 plates, so this needs to be
-# wide enough to make iterative progress (each step's claim only reaches this far past the
-# *current* edge, but the edge itself advances every step) rather than stalling just short.
-CORNER_NOTCH_WINDOW_ROWS = 5
+# shape independently-oriented plate grids leave open at a triple junction *or* a curved
+# two-plate rift boundary, is invisible to both. `_fill_corner_notch` is meant to be the
+# generalized closer for that whole family, so its window has to cover whatever a boundary
+# could genuinely have opened up in one step, not a fixed, resolution-only row count -- a flat
+# constant here structurally falls behind on a fast-diverging boundary regardless of how
+# generous it is (confirmed on a real save, seed 430031492: a 2-plate rift's diagonal residual
+# sat up to ~8x spacing deep with the old CORNER_NOTCH_WINDOW_ROWS=5 window, so it could never
+# be fully reached no matter the per-step node budget). `mantle.MAX_PLATE_RATE * years` is the
+# simulation's own hard per-plate speed ceiling applied to this step's real duration -- the
+# worst-case distance *any* plate's edge could have advanced, not just this plate's actual
+# current speed, so this stays sufficient even for a plate that speeds up later. Since this
+# runs once per plate per step, both sides of a boundary reaching this far from their own edge
+# already sums to the worst-case *combined* divergence without needing to double it here. The
+# `CORNER_NOTCH_MIN_WINDOW_ROWS` floor keeps today's minimum footprint (a coarse world or a
+# near-zero `years` step should never shrink the window below the old baseline).
+CORNER_NOTCH_MIN_WINDOW_ROWS = 5
 # How far a real neighbour may sit from a candidate notch point and still justify claiming it
 # -- see the "requires a real neighbour" guard in _fill_corner_notch's own docstring for why
 # this exists at all (without it, a lone plate's every open perimeter point looks claimable).
-# Wider than CORNER_NOTCH_WINDOW_ROWS's own window since the neighbour that makes a deep
-# interior notch-point genuine can itself be one of the *other* plates at the same junction,
-# not necessarily the closest one to this exact point.
-CORNER_NOTCH_NEIGHBOUR_REACH_MULT = 6.0
-# A node count, not a distance -- comparable in scale to merge_split.DEFRAG_FRAGMENT_MIN_NODES,
-# since this path has weaker geometric guarantees than the row-based claim above and should
-# stay a rare corner cleanup, never a bulk grower. The real limit is geometric (only points
-# within DEFRAG_CONNECT_RADIUS_MULT of this plate's own current edge are ever candidates at
-# all); this is defense in depth, not the physical constraint.
-MAX_CORNER_FILL_NODES_PER_STEP = 200
+# Wider than the window itself (see `window_rad` in `_fill_corner_notch`) by one ordinary
+# boundary-adjacency reach, since the neighbour that makes a deep interior notch-point genuine
+# can itself be one of the *other* plates at the same junction, not necessarily the closest one
+# to this exact point.
+CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT = torque.BOUNDARY_FORCE_REACH_MULTIPLIER
+# A node count, not a distance -- comparable in scale to merge_split.DEFRAG_FRAGMENT_MIN_NODES
+# at the old fixed window size, since this path has weaker geometric guarantees than the
+# row-based claim above and was meant to stay a rare corner cleanup, never a bulk grower. Now
+# that the window itself scales with a step's worst-case opening (see above), this is kept as
+# a floor, not the cap: the real per-step budget scales with the window's own area so a
+# genuinely large single-step opening isn't starved by a resolution-only constant, while this
+# floor still bounds a call whose window collapses to the old minimum. The real limit stays
+# geometric (only points within DEFRAG_CONNECT_RADIUS_MULT of an already-connected point --
+# see the frontier-hop loop below -- are ever candidates at all); this is defense in depth,
+# not the physical constraint.
+MIN_CORNER_FILL_NODES_PER_STEP = 200
 
 # A plate whose boundary is more deeply/widely overlapping a neighbour right now should
 # crumple faster than one barely grazing -- on top of (not instead of) the existing
@@ -822,7 +835,7 @@ class LithospherePlate(PlateWithLines):
         self.set_lines(new_lines)
         if not suppress_growth:
             self._claim_adjacent_territory(world, neighbours, spacing_rad)
-            self._fill_corner_notch(world, neighbours, spacing_rad)
+            self._fill_corner_notch(world, neighbours, spacing_rad, years)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):
@@ -1413,41 +1426,55 @@ class LithospherePlate(PlateWithLines):
             new_lines = [thinned.get(id(line), line) for line in new_lines]
             self.set_lines([thinned.get(id(line), line) for line in self.lines] + new_lines)
 
-    def _fill_corner_notch(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
-        """Small fallback for the sub-row diagonal residual `_stretch_end` (theta-axis-only)
-        and `_claim_adjacent_territory` (phi-axis-only, whole rows) structurally cannot reach:
-        the shape three independently-oriented plate grids leave open at a triple junction,
-        confirmed on a real save where that void kept widening every step even with every
-        other growth knob loosened (docs/TODO.md's "gaps.py's plate-spawn is a stopgap, not
-        the real fix"). This sweeps a narrow window of this plate's own local lattice
-        (CORNER_NOTCH_WINDOW_ROWS rows past its current phi extent either way -- cheap and
-        local, never a whole-plate/whole-sphere pass) and claims whichever lattice points are
-        both genuinely uncovered (not within COVERAGE_RADIUS_MULT of self or any neighbour --
-        the same real proximity test gaps.py's whole-sphere sweep and the generalized
-        `_claim_adjacent_territory` above use, not a polygon-containment approximation) and
-        close enough to this plate's own current edge (within DEFRAG_CONNECT_RADIUS_MULT) to
-        survive `merge_split.defragment_plates`'s own connected-components check rather than
-        being dropped or carved off as a stray fragment next defrag pass. Also requires a real
-        neighbour within CORNER_NOTCH_NEIGHBOUR_REACH_MULT -- a no-op with none -- since
-        "uncovered space right next to my own edge" with no
-        neighbour at all is just the rest of the sphere, not a junction squeeze; without this
-        gate a lone plate would grow its entire perimeter outward every step with nothing to
-        stop it (a real bug caught by test_lithosphere_deform_never_winds_a_row_past_a_full_revolution).
+    def _fill_corner_notch(self, world: "World", neighbours: list, spacing_rad: float, years: float) -> None:  # noqa: F821
+        """Generalized fallback for the sub-row diagonal residual `_stretch_end`
+        (theta-axis-only) and `_claim_adjacent_territory` (phi-axis-only, whole rows)
+        structurally cannot reach: the shape independently-oriented plate grids leave open at
+        a triple junction, or along a curved two-plate rift boundary that isn't a clean
+        theta/phi-aligned edge (confirmed on a real save, seed 430031492: an ordinary 2-plate
+        divergent boundary's diagonal residual sat up to ~8x spacing deep, well past what a
+        fixed small window could ever reach). This is meant to be the general closer for that
+        whole family, not a rare-junction-only patch, so its reach and budget scale with
+        `mantle.MAX_PLATE_RATE * years` -- the worst-case distance *any* plate's edge could
+        genuinely have advanced this step -- rather than a flat, resolution-only row count.
+        Since this runs once per plate per step, both sides of a boundary each reaching this
+        far from their own edge already sums to the worst-case *combined* divergence without
+        doubling it here.
+
+        Claims whichever lattice points are both genuinely uncovered (not within
+        COVERAGE_RADIUS_MULT of self or any neighbour -- the same real proximity test gaps.py's
+        whole-sphere sweep and `_claim_adjacent_territory` above use, not a polygon-containment
+        approximation) and reachable from the plate's own already-connected body within
+        DEFRAG_CONNECT_RADIUS_MULT-sized hops -- never a single wider radius, since anything
+        claimed farther than that from an already-connected point would read as a disconnected
+        stray fragment to `merge_split.defragment_plates`'s own connected-components check and
+        get stripped right back off next defrag pass. Reaching a whole `window_rad`-deep notch
+        in one step therefore means walking the frontier outward one connect-radius hop at a
+        time -- each hop's newly-claimed nodes become part of the next hop's connected body --
+        rather than one flat sweep. Also requires a real neighbour within
+        `window_rad + CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT * spacing_rad` -- a no-op with
+        none -- since "uncovered space right next to my own edge" with no neighbour at all is
+        just the rest of the sphere, not a junction squeeze; without this gate a lone plate
+        would grow its entire perimeter outward every step with nothing to stop it (a real bug
+        caught by test_lithosphere_deform_never_winds_a_row_past_a_full_revolution).
 
         Every claimed node is brand-new, so -- exactly like `_claim_adjacent_territory` above
         -- it carries no prior column to conserve: `_seed_and_erupt_new_nodes` seeds it thin
         and runs it straight through the same decompression-melting/magma-upwelling eruption
         path (`_erupt_melted_nodes`) every other new-crust event in `deform()` uses, so this is
-        mechanically indistinguishable from ordinary rift-eruption crust, never a distinct
-        silent "spawn" concept."""
-        # A triple-junction notch only exists where this plate is squeezed against a real
-        # neighbour -- without one, "uncovered space right next to my own edge" is just the
-        # rest of the sphere, and this method would otherwise grow this plate's entire
-        # perimeter outward every single step with nothing to stop it (confirmed as a real
-        # bug: a lone plate with no neighbours churned through regularize_line every step).
-        # `_stretch_end`/`_claim_adjacent_territory` don't need this guard -- both are already
-        # scoped to genuine per-node/per-row separation math -- but this method has no such
-        # gate of its own, so it needs an explicit one.
+        mechanically indistinguishable from ordinary rift-eruption crust -- volcanic/cooled
+        magma, never a free area grant or a distinct silent "spawn" concept. Scaling the reach
+        and node budget up doesn't change this: every extra node claimed still pays the same
+        thin-seed/eruption cost individually, so mass conservation holds regardless of how much
+        a given step's window happens to cover."""
+        # A corner notch only exists where this plate is squeezed against a real neighbour --
+        # without one, "uncovered space right next to my own edge" is just the rest of the
+        # sphere, and this method would otherwise grow this plate's entire perimeter outward
+        # every single step with nothing to stop it (confirmed as a real bug: a lone plate with
+        # no neighbours churned through regularize_line every step). `_stretch_end`/
+        # `_claim_adjacent_territory` don't need this guard -- both are already scoped to
+        # genuine per-node/per-row separation math -- but this method has no such gate of its
+        # own, so it needs an explicit one.
         neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
         if not neighbour_points:
             return
@@ -1457,20 +1484,24 @@ class LithospherePlate(PlateWithLines):
             return
 
         coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
+        # Must match merge_split.defragment_plates's own connectivity radius exactly -- see this
+        # method's own docstring on why a deep claim has to happen in hops of this size rather
+        # than by widening the radius itself.
         connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * spacing_rad
-        # Candidates must also sit within ordinary boundary reach of that neighbour -- the same
-        # tolerance torque.gather_boundary_force_inputs uses to decide a node is boundary-
-        # adjacent at all -- so this stays "squeezed at a real junction", not "anywhere along my
-        # perimeter a neighbour happens to exist somewhere far off".
-        neighbour_reach_rad = CORNER_NOTCH_NEIGHBOUR_REACH_MULT * spacing_rad
-        self_tree = cKDTree(own_points)
+        window_rad = max(CORNER_NOTCH_MIN_WINDOW_ROWS * spacing_rad, mantle.MAX_PLATE_RATE * years)
+        # Candidates must also sit within ordinary boundary reach of that neighbour past the
+        # window itself -- the neighbour that makes a deep interior notch-point genuine can be
+        # one of the *other* plates at the same junction, not necessarily the closest one to
+        # this exact point -- so this stays "squeezed at a real junction", not "anywhere along
+        # my perimeter a neighbour happens to exist somewhere far off".
+        neighbour_reach_rad = window_rad + CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT * spacing_rad
         neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0))
 
         max_abs_phi = np.pi / 2 - spacing_rad / 2  # matches iter_local_lattice's own bound
         max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
         phis = np.array([line.phi for line in lines_with_nodes])
-        phi_lo = max(phis.min() - CORNER_NOTCH_WINDOW_ROWS * spacing_rad, -max_abs_phi)
-        phi_hi = min(phis.max() + CORNER_NOTCH_WINDOW_ROWS * spacing_rad, max_abs_phi)
+        phi_lo = max(phis.min() - window_rad, -max_abs_phi)
+        phi_hi = min(phis.max() + window_rad, max_abs_phi)
         # Align to the same phi grid iter_local_lattice uses, so a claimed row here can share a
         # phi value with an existing/claimed row exactly (multiple lines per phi are legal --
         # see ElevationLine's own docstring on interior-subduction carve-outs).
@@ -1491,10 +1522,14 @@ class LithospherePlate(PlateWithLines):
         # docstring: mechanically a real eruption, never a silent full-thickness "spawn".
         seed_thin_ratio = min(1.0, (0.3 * rheology.RIFT_CRITICAL_THICKNESS_M) / hc0)
 
-        new_lines: list[ElevationLine] = []
-        nodes_added = 0
+        # Per-row candidate lattice points and their neighbour-side tests depend only on the
+        # (fixed, this call) window/neighbour geometry, not on which hop below is running, so
+        # compute each row once and reuse it -- only the self-side test needs to be re-run as
+        # the connected frontier grows hop by hop.
+        rows = []
+        max_row_span = 0
         for phi in phi_values:
-            if nodes_added >= MAX_CORNER_FILL_NODES_PER_STEP or abs(phi) > max_phi_limit:
+            if abs(phi) > max_phi_limit:
                 continue
             dtheta = spacing_rad / max(np.cos(phi), 1e-3)
             # A theta *window* around the nearest existing line's own current theta extent --
@@ -1504,36 +1539,77 @@ class LithospherePlate(PlateWithLines):
             # there could claim (or appear to claim, alongside `_stretch_end`'s own separately
             # ring_room()-capped closing of that same row) most of a ring in one call -- exactly
             # the near-pole winding pathology ring_room() exists to prevent elsewhere. Bounding
-            # the window to the plate's own nearby footprint plus a small margin keeps this
-            # fallback's worst case a small notch, structurally, regardless of pole distance.
+            # the window to the plate's own nearby footprint plus a `window_rad` margin keeps
+            # this fallback's worst case a bounded notch, structurally, regardless of pole
+            # distance.
             nearest = min(lines_with_nodes, key=lambda ln: abs(ln.phi - phi))
-            margin = CORNER_NOTCH_WINDOW_ROWS * dtheta
+            margin = window_rad / max(np.cos(phi), 1e-3)
             theta_lo, theta_hi = float(nearest.theta[0]) - margin, float(nearest.theta[-1]) + margin
             n_theta = max(int(np.round((theta_hi - theta_lo) / dtheta)) + 1, 1)
             n_theta = min(n_theta, max(int(np.round(2.0 * np.pi / dtheta)), 1))
             theta_candidates = theta_lo + dtheta * np.arange(n_theta)
             world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_theta, phi), theta_candidates))
 
-            self_dist, _ = self_tree.query(world_pts)
-            near_self = self_dist <= connect_radius_rad
-            covered_by_self = self_dist <= coverage_radius_rad
             neighbour_dist, _ = neighbour_tree.query(world_pts)
-            covered_by_neighbour = neighbour_dist <= coverage_radius_rad
             near_neighbour = neighbour_dist <= neighbour_reach_rad
-            candidate_mask = near_self & near_neighbour & ~covered_by_self & ~covered_by_neighbour
-            if not np.any(candidate_mask):
+            covered_by_neighbour = neighbour_dist <= coverage_radius_rad
+            base_mask = near_neighbour & ~covered_by_neighbour
+            if not np.any(base_mask):
                 continue
+            rows.append((phi, dtheta, theta_candidates, world_pts, base_mask))
+            max_row_span = max(max_row_span, n_theta)
 
-            probe_line = ElevationLine(phi=phi, theta=theta_candidates, elevation=np.zeros(n_theta)).masked(candidate_mask)
-            for run in split_into_contiguous_runs(probe_line, dtheta):
-                if nodes_added >= MAX_CORNER_FILL_NODES_PER_STEP or len(run) == 0:
+        if not rows:
+            return
+
+        # `MIN_CORNER_FILL_NODES_PER_STEP` is a floor, not the cap -- the real per-step budget
+        # scales with the window's own area (rows swept x each row's own candidate span) so a
+        # genuinely large single-step opening isn't starved by a resolution-only constant. The
+        # frontier-hop connectivity gate below is still the real, geometric limiter.
+        max_corner_fill_nodes = max(MIN_CORNER_FILL_NODES_PER_STEP, int(np.ceil(len(rows) * max_row_span)))
+
+        # Walk the connected frontier outward in connect_radius_rad-sized hops (see docstring):
+        # each hop's newly-claimed nodes join `all_self_points` so the next hop can reach past
+        # them, letting the cumulative claim go as deep as `window_rad` while every individual
+        # node still lands within one ordinary connect radius of something already attached.
+        all_self_points = own_points
+        new_lines: list[ElevationLine] = []
+        nodes_added = 0
+        max_hops = max(1, int(np.ceil(window_rad / connect_radius_rad)))
+        for _hop in range(max_hops):
+            if nodes_added >= max_corner_fill_nodes:
+                break
+            self_tree = cKDTree(all_self_points)
+            hop_points: list[np.ndarray] = []
+            hop_progress = False
+            for phi, dtheta, theta_candidates, world_pts, base_mask in rows:
+                if nodes_added >= max_corner_fill_nodes:
+                    break
+                self_dist, _ = self_tree.query(world_pts)
+                near_self = self_dist <= connect_radius_rad
+                covered_by_self = self_dist <= coverage_radius_rad
+                candidate_mask = base_mask & near_self & ~covered_by_self
+                if not np.any(candidate_mask):
                     continue
-                world_run = geometry.to_world(self.frame, geometry.local_xyz(np.full(len(run), phi), run.theta))
-                seeded = self._seed_and_erupt_new_nodes(
-                    world, len(self.lines) + len(new_lines), world_run, seed_thin_ratio, hc0, hm0, amp, texture
-                )
-                new_lines.append(ElevationLine(phi=float(phi), theta=run.theta, **seeded))
-                nodes_added += len(run)
+
+                probe_line = ElevationLine(
+                    phi=phi, theta=theta_candidates, elevation=np.zeros(len(theta_candidates))
+                ).masked(candidate_mask)
+                for run in split_into_contiguous_runs(probe_line, dtheta):
+                    if nodes_added >= max_corner_fill_nodes or len(run) == 0:
+                        continue
+                    world_run = geometry.to_world(self.frame, geometry.local_xyz(np.full(len(run), phi), run.theta))
+                    seeded = self._seed_and_erupt_new_nodes(
+                        world, len(self.lines) + len(new_lines), world_run, seed_thin_ratio, hc0, hm0, amp, texture
+                    )
+                    new_lines.append(ElevationLine(phi=float(phi), theta=run.theta, **seeded))
+                    hop_points.append(world_run)
+                    nodes_added += len(run)
+                    hop_progress = True
+
+            if not hop_progress:
+                break
+            all_self_points = np.concatenate([all_self_points, *hop_points], axis=0)
 
         if new_lines:
             self.set_lines(list(self.lines) + new_lines)
