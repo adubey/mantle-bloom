@@ -648,6 +648,55 @@ export function fetchNodeAt(latDeg: number, lonDeg: number): Promise<NodeAtRespo
   return fetch(`${API_BASE}/world/node_at?${params}`).then(asJson<NodeAtResponse>);
 }
 
+// The "Points" (platesDetail) debug view's click-to-inspect + arrow-key navigation (see
+// App.tsx) -- the selected node's own plate-local phi/theta, its owning ElevationLine's
+// summary, and every node's world position on that line (so the client can draw the whole
+// line highlighted on the map, see MapCanvas.tsx's highlightLine prop). `line.line_index`/
+// `line.num_lines` order the owning plate's lines by ascending plate-local phi (see backend
+// plates.sorted_nonempty_lines) -- the stable order Shift+ArrowLeft/Right steps through.
+export interface ElevationPointResponse {
+  plate_id: number;
+  point: {
+    phi: number; // == line.phi -- a point's phi is always its line's own fixed phi
+    theta: number;
+    elevation_m: number;
+    node_created_years: number;
+    index: number; // this point's position within its line, 0 to line.num_points - 1
+  };
+  line: {
+    phi: number;
+    num_points: number;
+    line_index: number; // this line's position among the plate's lines, ascending phi
+    num_lines: number;
+  };
+  // Every node's world-space xyz on this line, in the same order as `point.index` indexes
+  // into -- length always equals line.num_points.
+  line_points_xyz: [number, number, number][];
+}
+
+// The click-to-inspect hit-test -- same true-frame contract as fetchPlateAt/fetchNodeAt.
+export function fetchElevationPointAt(latDeg: number, lonDeg: number): Promise<ElevationPointResponse> {
+  const params = new URLSearchParams({ lat_deg: String(latDeg), lon_deg: String(lonDeg) });
+  return fetch(`${API_BASE}/world/elevation_point_at?${params}`).then(asJson<ElevationPointResponse>);
+}
+
+// Direct lookup by index -- backs ArrowLeft/Right (steps pointIndex within the current line)
+// and Shift+ArrowLeft/Right (steps lineIndex) navigation without a fresh click. The server
+// clamps both indices into range, so the caller can pass a wrapped-around or just-stale index
+// (e.g. right after a step changed a line's length) without erroring first.
+export function fetchElevationPoint(
+  plateId: number,
+  lineIndex: number,
+  pointIndex: number,
+): Promise<ElevationPointResponse> {
+  const params = new URLSearchParams({
+    plate_id: String(plateId),
+    line_index: String(lineIndex),
+    point_index: String(pointIndex),
+  });
+  return fetch(`${API_BASE}/world/elevation_point?${params}`).then(asJson<ElevationPointResponse>);
+}
+
 export function fetchStats(): Promise<WorldStats> {
   return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
 }

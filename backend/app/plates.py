@@ -1653,6 +1653,44 @@ def nearest_node_index(plate_list: list[Plate], query_xyz: np.ndarray) -> int | 
     return int(idx)
 
 
+def line_and_point_for_flat_index(plate: "PlateWithLines", flat_index: int) -> tuple[ElevationLine, int]:
+    """The `(line, point_index)` a `flat_index` into `plate`'s own
+    `all_points_and_elevation()`/`collect(...)` concatenation (every non-empty line in
+    `plate.lines` order) refers to. Used to recover which `ElevationLine` a click landed on
+    once the owning plate is already known -- see `nearest_line_point` below."""
+    cum = 0
+    for line in plate.lines:
+        n = len(line)
+        if n == 0:
+            continue
+        if flat_index < cum + n:
+            return line, flat_index - cum
+        cum += n
+    raise IndexError(f"flat index {flat_index} out of range for plate {plate.plate_id}")
+
+
+def nearest_line_point(plate: "PlateWithLines", query_xyz: np.ndarray) -> tuple[ElevationLine, int] | None:
+    """The `(line, point_index)` of `plate`'s own node nearest `query_xyz` -- a per-plate
+    refinement of `nearest_node_index` once the owning plate is already known (see
+    `GET /world/elevation_point_at`), so the global concatenated index that function returns
+    never needs to be de-offset back out of `collect_all_points`'s whole-world ordering.
+    `None` if `plate` has no live nodes."""
+    points, _elevation = plate.all_points_and_elevation()
+    if len(points) == 0:
+        return None
+    _, idx = cKDTree(points).query(query_xyz)
+    return line_and_point_for_flat_index(plate, int(idx))
+
+
+def sorted_nonempty_lines(plate: "PlateWithLines") -> list[ElevationLine]:
+    """Every non-empty line on `plate`, ordered by ascending plate-local latitude `phi` --
+    `plate.lines` itself carries no such ordering guarantee, but the Points debug view's
+    click-to-inspect (`GET /world/elevation_point_at`) and arrow-key line navigation
+    (`GET /world/elevation_point`) both need one stable order to report/step a `line_index`
+    against."""
+    return sorted((line for line in plate.lines if len(line) > 0), key=lambda line: line.phi)
+
+
 def base_elevation(crust_type: str) -> float:
     return BASE_CONTINENTAL_M if crust_type == "continental" else BASE_OCEANIC_M
 

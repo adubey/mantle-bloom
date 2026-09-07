@@ -1018,6 +1018,84 @@ def node_at(lat_deg: float, lon_deg: float) -> dict:
     return {"lat_deg": lat_deg, "lon_deg": lon_deg, "node": node_info, "removed": removed_info}
 
 
+def _elevation_point_summary(plate, line, point_index: int, line_index: int, num_lines: int) -> dict:
+    """Shared payload for `GET /world/elevation_point_at` and `GET /world/elevation_point`
+    (the "Points" (`platesDetail`) debug view's click-to-inspect + arrow-key navigation): the
+    selected node's own plate-local `phi`/`theta`, its line's summary, and every node's world
+    position on that line -- lets the client both show phi/theta and draw the owning line's
+    full extent on the map (see `plates.sorted_nonempty_lines` for the `line_index`/
+    `num_lines` ordering)."""
+    return {
+        "plate_id": plate.plate_id,
+        "point": {
+            "phi": float(line.phi),
+            "theta": float(line.theta[point_index]),
+            "elevation_m": float(line.elevation[point_index]),
+            "node_created_years": float(line.node_created_years[point_index]),
+            "index": point_index,
+        },
+        "line": {
+            "phi": float(line.phi),
+            "num_points": len(line),
+            "line_index": line_index,
+            "num_lines": num_lines,
+        },
+        "line_points_xyz": [[float(x), float(y), float(z)] for x, y, z in line.world_xyz(plate.frame)],
+    }
+
+
+@app.get("/world/elevation_point_at")
+def elevation_point_at(lat_deg: float, lon_deg: float) -> dict:
+    """The "Points" (`platesDetail`) debug view's click-to-inspect + line-highlight: the
+    single live `ElevationLine` node nearest (lat_deg, lon_deg), plus its line's summary and
+    every node's world position on that line (see `_elevation_point_summary`). `line_index`/
+    `num_lines` order the owning plate's lines by ascending plate-local `phi` (see
+    `plates.sorted_nonempty_lines`) -- the same stable order arrow-key line navigation
+    (`GET /world/elevation_point`) steps through. `400` for non-finite input, `404` if no
+    world has been generated yet or no plate has any live nodes."""
+    world = _require_world()
+    if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
+        raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
+    query_xyz = geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg))
+    with _world_lock:
+        idx = plates.nearest_node_index(world.plates, query_xyz)
+        if idx is None:
+            raise HTTPException(status_code=404, detail="world has no live nodes")
+        points, _elevation, owner = plates.collect_all_points(world.plates)
+        plate_id = int(owner[idx])
+        plate = next((p for p in world.plates if p.plate_id == plate_id), None)
+        found = plates.nearest_line_point(plate, points[idx]) if plate is not None else None
+        if found is None:
+            raise HTTPException(status_code=404, detail="owning plate not found")
+        line, point_index = found
+        sorted_lines = plates.sorted_nonempty_lines(plate)
+        line_index = next(i for i, candidate in enumerate(sorted_lines) if candidate is line)
+        return _elevation_point_summary(plate, line, point_index, line_index, len(sorted_lines))
+
+
+@app.get("/world/elevation_point")
+def elevation_point(plate_id: int, line_index: int, point_index: int) -> dict:
+    """Direct lookup by index -- backs the "Points" debug view's arrow-key navigation
+    (ArrowLeft/Right steps `point_index` within the current line, Shift+ArrowLeft/Right steps
+    `line_index`) without needing a fresh click. `line_index` is clamped into
+    `[0, num_lines)` and `point_index` into the resulting line's `[0, num_points)`, so a
+    caller passing an index that just fell out of range (e.g. a step just ran and shrank a
+    line) lands on the nearest valid one rather than erroring. `404` if no world has been
+    generated yet, the plate doesn't exist, or it has no live nodes."""
+    world = _require_world()
+    with _world_lock:
+        plate = next((p for p in world.plates if p.plate_id == plate_id), None)
+        if plate is None:
+            raise HTTPException(status_code=404, detail=f"no plate {plate_id}")
+        sorted_lines = plates.sorted_nonempty_lines(plate)
+        if not sorted_lines:
+            raise HTTPException(status_code=404, detail=f"plate {plate_id} has no live nodes")
+        line_index = max(0, min(line_index, len(sorted_lines) - 1))
+        line = sorted_lines[line_index]
+        point_index = max(0, min(point_index, len(line) - 1))
+        return _elevation_point_summary(plate, line, point_index, line_index, len(sorted_lines))
+
+
 def _fault_summary(fault, plate, other_plate_tree) -> dict:
     """One fault's inspector payload -- trace in true world coords (rounded like
     `_plate_summary`'s points), plus its type/motion/age metadata and how far the trace

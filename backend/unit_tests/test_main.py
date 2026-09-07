@@ -59,6 +59,16 @@ def test_corner_notch_log_before_generate_returns_404(client):
     assert client.get("/world/corner_notch_log").status_code == 404
 
 
+def test_elevation_point_at_before_generate_returns_404(client):
+    assert client.get("/world/elevation_point_at", params={"lat_deg": 0, "lon_deg": 0}).status_code == 404
+
+
+def test_elevation_point_before_generate_returns_404(client):
+    assert client.get(
+        "/world/elevation_point", params={"plate_id": 0, "line_index": 0, "point_index": 0},
+    ).status_code == 404
+
+
 def test_lakes_before_generate_returns_404(client):
     assert client.get("/world/lakes").status_code == 404
 
@@ -558,6 +568,78 @@ def test_node_at_reports_a_nearby_removed_point(client):
     # Far from any removed point, no false match.
     far_resp = client.get("/world/node_at", params={"lat_deg": -query_lat_deg, "lon_deg": query_lon_deg + 180})
     assert far_resp.json()["removed"] is None
+
+
+def test_elevation_point_at_rejects_non_finite_query(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    assert client.get("/world/elevation_point_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
+    assert client.get("/world/elevation_point_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
+
+
+def test_elevation_point_at_returns_point_and_line_info(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    plates_data = client.get("/world/plates").json()["plates"]
+    target = next(p for p in plates_data if p["num_points"] > 0)
+    x, y, z = target["outline"][0]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+
+    resp = client.get("/world/elevation_point_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert set(body) == {"plate_id", "point", "line", "line_points_xyz"}
+    assert body["plate_id"] == target["plate_id"]
+
+    point, line = body["point"], body["line"]
+    assert math.isfinite(point["phi"]) and math.isfinite(point["theta"])
+    assert point["phi"] == line["phi"]  # a point's phi is always its line's own fixed phi
+    assert 0 <= point["index"] < line["num_points"]
+    assert 0 <= line["line_index"] < line["num_lines"]
+    assert len(body["line_points_xyz"]) == line["num_points"]
+
+    # The selected point's own entry in line_points_xyz should land back near the query.
+    px, py, pz = body["line_points_xyz"][point["index"]]
+    assert abs(px * px + py * py + pz * pz - 1.0) < 1e-6
+
+
+def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    plates_data = client.get("/world/plates").json()["plates"]
+    target = next(p for p in plates_data if p["num_points"] > 0)
+    x, y, z = target["outline"][0]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+    clicked = client.get("/world/elevation_point_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg}).json()
+
+    # Re-requesting the exact same (plate_id, line_index, point_index) is idempotent.
+    resp = client.get(
+        "/world/elevation_point",
+        params={
+            "plate_id": clicked["plate_id"],
+            "line_index": clicked["line"]["line_index"],
+            "point_index": clicked["point"]["index"],
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == clicked
+
+    # Wildly out-of-range indices clamp into range rather than erroring.
+    resp = client.get(
+        "/world/elevation_point",
+        params={"plate_id": clicked["plate_id"], "line_index": 10_000, "point_index": -10_000},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["line"]["line_index"] == body["line"]["num_lines"] - 1
+    assert body["point"]["index"] == 0
+
+
+def test_elevation_point_unknown_plate_returns_404(client):
+    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    resp = client.get(
+        "/world/elevation_point", params={"plate_id": 999_999, "line_index": 0, "point_index": 0},
+    )
+    assert resp.status_code == 404
 
 
 def test_rivers_and_river_at_are_empty_before_the_first_step(client):

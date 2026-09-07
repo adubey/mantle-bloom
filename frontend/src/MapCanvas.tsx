@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { Projection } from "./api";
 import type { HighlightTarget } from "./legendData";
-import type { Mat3 } from "./rotation";
+import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import {
   getGraticule, getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, xyzToLatLon,
 } from "./rotation";
@@ -38,6 +38,15 @@ interface Props {
   // map. A click outside the projected globe silhouette reports null (dismiss the popup).
   // Omitted on every other view, which leaves a click doing nothing, exactly as before.
   onProbe?: (probe: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => void;
+  // The "Points" (platesDetail) debug view's selected-point highlight (see App.tsx's
+  // pointProbe): every node on the selected ElevationLine, drawn as a small dot on top of
+  // the base frame, with `selectedIndex` drawn larger/brighter so the exact selected node
+  // stands out from the rest of its line. `null`/omitted draws nothing extra, same as before
+  // this feature existed. Unlike highlightTarget (a per-pixel dim filter on the *decoded*
+  // frame), these are actual points, always projected fresh through the current view
+  // rotation -- so, like the graticule, they're redrawn every drag frame at the live preview
+  // rotation, not baked into the image.
+  highlightLine?: { pointsXyz: [number, number, number][]; selectedIndex: number } | null;
   // Biome and Combined mode both encode a per-pixel *dominant* biome id in the PNG's alpha
   // channel (see backend render_image.py's COMBINED_LAKE_ID_CODE comment / legendData.ts) --
   // both views now blend a boundary cell's RGB toward its runner-up class, so RGB alone no
@@ -138,7 +147,7 @@ const CTX_OPTIONS: CanvasRenderingContext2DSettings = { willReadFrequently: true
 
 export default function MapCanvas({
   imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
-  onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds, interactionDisabled,
+  onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds, highlightLine, interactionDisabled,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
@@ -154,6 +163,52 @@ export default function MapCanvas({
   highlightTargetRef.current = highlightTarget;
   const alphaEncodedIdsRef = useRef(alphaEncodedIds);
   alphaEncodedIdsRef.current = alphaEncodedIds;
+  // Read from both the idle-path repaint (paintDecodedFrame) and the drag-preview path
+  // (drawGraticule) without either needing highlightLine/rotation in its own dependency
+  // array -- same "ref updated every render" trick as highlightTargetRef above.
+  const highlightLineRef = useRef(highlightLine);
+  highlightLineRef.current = highlightLine;
+  const rotationRef = useRef(rotation);
+  rotationRef.current = rotation;
+
+  // Draws highlightLine's points on top of whatever's already on the canvas, projected
+  // through `mat` (the committed `rotation` when idle, or the live drag `previewRotation`
+  // when dragging -- see drawGraticule below) -- same per-dot projection PlateInspector's
+  // own drawPoints uses, no antimeridian-seam handling needed since these are independent
+  // dots, not a stroked polyline.
+  const drawHighlightLine = (ctx: CanvasRenderingContext2D, transform: RenderTransform, mat: Mat3) => {
+    const line = highlightLineRef.current;
+    if (!line) return;
+    const pixelScale = width / 1100;
+    const projectPoint = (p: Vec3): [number, number] => {
+      const r = matApply(mat, p);
+      const lat = Math.asin(Math.min(1, Math.max(-1, r[2])));
+      const lon = Math.atan2(r[1], r[0]);
+      const [x, y] = project(projection, lat, lon);
+      return toPixels(transform, x, y);
+    };
+    const dotRadius = 1.6 * pixelScale;
+    ctx.fillStyle = "rgba(255, 214, 64, 0.75)";
+    line.pointsXyz.forEach((p, i) => {
+      if (i === line.selectedIndex) return; // drawn last, on top, in its own style
+      const [px, py] = projectPoint(p);
+      ctx.beginPath();
+      ctx.arc(px, py, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    const selected = line.pointsXyz[line.selectedIndex];
+    if (selected) {
+      const [px, py] = projectPoint(selected);
+      const selectedRadius = dotRadius * 2.4;
+      ctx.fillStyle = "#ff3b3b";
+      ctx.beginPath();
+      ctx.arc(px, py, selectedRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1, pixelScale);
+      ctx.stroke();
+    }
+  };
 
   // Draws the already-decoded frame plus, if a legend highlight is active, the dim-filter on
   // top of it -- shared by both the initial decode (below) and the highlight-toggle effect, so
@@ -172,7 +227,9 @@ export default function MapCanvas({
     ctx.drawImage(img, 0, 0, width, height);
     ctx.globalCompositeOperation = "source-over";
     applyHighlight(ctx, width, height, highlightTargetRef.current ?? null, alphaEncodedIdsRef.current ?? false);
-  }, [width, height]);
+    drawHighlightLine(ctx, getRenderTransform(projection, width, height), rotationRef.current);
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [width, height, projection]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -208,6 +265,14 @@ export default function MapCanvas({
     if (imageBase64 && imgRef.current?.complete) paintDecodedFrame();
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [highlightTarget]);
+
+  // Same "redraw the already-decoded frame in place" trick as the highlightTarget effect
+  // above, so stepping to a new point/line with the arrow keys (see App.tsx's pointProbe)
+  // repaints instantly rather than waiting on a fresh server render.
+  useEffect(() => {
+    if (imageBase64 && imgRef.current?.complete) paintDecodedFrame();
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlightLine]);
 
   const drawGraticule = (previewRotation: Mat3) => {
     const canvas = canvasRef.current;
@@ -260,6 +325,8 @@ export default function MapCanvas({
       }
       ctx.stroke();
     }
+
+    drawHighlightLine(ctx, transform, previewRotation);
   };
 
   // A plain click (routed through useRotationDrag so a completed rotate-drag's terminating

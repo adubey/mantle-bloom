@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchCornerNotchLog, fetchDebugScenarios, fetchEarthquakes, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
+  animateWorld, fetchCornerNotchLog, fetchDebugScenarios, fetchEarthquakes, fetchElevationPoint, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, CornerNotchLogEntry, DebugScenario, EarthquakeSummary, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
+  AnimateResponse, CornerNotchLogEntry, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import SketchEditor from "./SketchEditor";
@@ -416,6 +417,78 @@ export default function App() {
     nodeProbeRequestIdRef.current++;
     setNodeProbe(null);
   }, [mapView, projection, rotation, renderData]);
+  // The "Points" (platesDetail) debug view's click-to-inspect + arrow-key navigation (see
+  // MapCanvas.tsx's highlightLine prop and fetchElevationPointAt/fetchElevationPoint in
+  // api.ts). Kept as its own probe, same reasoning as nodeProbe above (a different view's
+  // popup shows entirely different fields) -- but unlike every other probe here, this one
+  // also drives a keyboard-navigable selection rather than being purely mouse-driven, so the
+  // full ElevationPointResponse (not just the fields the popup renders) is kept in state:
+  // arrow-key stepping below reads plate_id/line_index/point_index straight back out of it.
+  const [pointProbe, setPointProbe] = useState<
+    | {
+        displayX: number; displayY: number; latDeg: number; lonDeg: number;
+        status: "loading" | "ok" | "error"; result: ElevationPointResponse | null;
+      }
+    | null
+  >(null);
+  const pointProbeRequestIdRef = useRef(0);
+  // Focused right after a successful click (see handlePointProbe) so ArrowLeft/Right and
+  // Shift+ArrowLeft/Right work immediately without an extra click on the map first --
+  // same "focus on selection" pattern PlateInspector's own containerRef uses for Tab/Shift+Tab.
+  const pointContainerRef = useRef<HTMLDivElement>(null);
+  const handlePointProbe = useCallback(
+    (next: { displayX: number; displayY: number; latDeg: number; lonDeg: number } | null) => {
+      const requestId = ++pointProbeRequestIdRef.current;
+      if (!next) {
+        setPointProbe(null);
+        return;
+      }
+      setPointProbe({ ...next, status: "loading", result: null });
+      fetchElevationPointAt(next.latDeg, next.lonDeg)
+        .then((result) => {
+          if (requestId === pointProbeRequestIdRef.current) {
+            setPointProbe({ ...next, status: "ok", result });
+            pointContainerRef.current?.focus();
+          }
+        })
+        .catch(() => {
+          if (requestId === pointProbeRequestIdRef.current) setPointProbe({ ...next, status: "error", result: null });
+        });
+    },
+    [],
+  );
+  useEffect(() => {
+    pointProbeRequestIdRef.current++;
+    setPointProbe(null);
+  }, [mapView, projection, rotation, renderData]);
+  // ArrowLeft/Right steps to the previous/next point on the selected line (wrapping);
+  // Shift+ArrowLeft/Right steps to the previous/next line on the same plate instead, ordered
+  // by ascending phi (also wrapping) -- see backend plates.sorted_nonempty_lines -- keeping
+  // the same point_index (the server clamps it into the new line's own range, see
+  // GET /world/elevation_point). No-op with nothing selected, or outside the Points view.
+  const handlePointKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (mapView !== "platesDetail") return;
+      const result = pointProbe?.result;
+      if (!result) return;
+      const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (dir === 0) return;
+      e.preventDefault();
+      const requestId = ++pointProbeRequestIdRef.current;
+      const lineIndex = e.shiftKey
+        ? (result.line.line_index + dir + result.line.num_lines) % result.line.num_lines
+        : result.line.line_index;
+      const pointIndex = e.shiftKey
+        ? result.point.index
+        : (result.point.index + dir + result.line.num_points) % result.line.num_points;
+      fetchElevationPoint(result.plate_id, lineIndex, pointIndex).then((next) => {
+        if (requestId === pointProbeRequestIdRef.current) {
+          setPointProbe((cur) => (cur ? { ...cur, status: "ok", result: next } : cur));
+        }
+      });
+    },
+    [mapView, pointProbe],
+  );
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
   // tabs, built entirely client-side since the backend endpoint itself is stateless (see
@@ -1351,27 +1424,40 @@ export default function App() {
               interactionDisabled={animating}
             />
           ) : (
-            <MapCanvas
-              imageBase64={renderData?.image_base64 ?? null}
-              width={RENDER_WIDTH}
-              height={RENDER_HEIGHT}
-              displayWidth={DISPLAY_WIDTH}
-              displayHeight={DISPLAY_HEIGHT}
-              projection={projection}
-              rotation={rotation}
-              onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
-              onRotationCommitted={(newRotation) => setRotation(newRotation)}
-              highlightTarget={highlightTarget}
-              onProbe={
-                mapView === "nodeAge"
-                  ? handleNodeProbe
-                  : mapView === "combined" || mapView === "elevation" || mapView === "biome"
-                    ? handleProbe
-                    : undefined
-              }
-              alphaEncodedIds={mapView === "combined" || mapView === "biome"}
-              interactionDisabled={animating}
-            />
+            // tabIndex + onKeyDown: only the Points (platesDetail) view's ArrowLeft/Right and
+            // Shift+ArrowLeft/Right do anything (see handlePointKeyDown), but the container is
+            // always present/focusable, same as PlateInspector's own wrapper -- harmless on
+            // every other view since handlePointKeyDown no-ops when mapView isn't platesDetail.
+            <div ref={pointContainerRef} tabIndex={0} onKeyDown={handlePointKeyDown} style={{ outline: "none", display: "inline-block" }}>
+              <MapCanvas
+                imageBase64={renderData?.image_base64 ?? null}
+                width={RENDER_WIDTH}
+                height={RENDER_HEIGHT}
+                displayWidth={DISPLAY_WIDTH}
+                displayHeight={DISPLAY_HEIGHT}
+                projection={projection}
+                rotation={rotation}
+                onRotationPreview={(latDeg, lonDeg) => setCenterLatLon({ lat: latDeg, lon: lonDeg })}
+                onRotationCommitted={(newRotation) => setRotation(newRotation)}
+                highlightTarget={highlightTarget}
+                onProbe={
+                  mapView === "nodeAge"
+                    ? handleNodeProbe
+                    : mapView === "platesDetail"
+                      ? handlePointProbe
+                      : mapView === "combined" || mapView === "elevation" || mapView === "biome"
+                        ? handleProbe
+                        : undefined
+                }
+                highlightLine={
+                  mapView === "platesDetail" && pointProbe?.result
+                    ? { pointsXyz: pointProbe.result.line_points_xyz, selectedIndex: pointProbe.result.point.index }
+                    : null
+                }
+                alphaEncodedIds={mapView === "combined" || mapView === "biome"}
+                interactionDisabled={animating}
+              />
+            </div>
           )}
           {probe && (
             <div
@@ -1498,6 +1584,65 @@ export default function App() {
               )}
             </div>
           )}
+          {pointProbe && (
+            <div
+              style={{
+                position: "absolute",
+                left: Math.max(4, Math.min(pointProbe.displayX + 12, DISPLAY_WIDTH - 200)),
+                top: Math.max(4, Math.min(pointProbe.displayY + 12, DISPLAY_HEIGHT - 190)),
+                width: 188,
+                background: "#151a2e",
+                border: "1px solid #333",
+                borderRadius: 6,
+                padding: "8px 10px",
+                fontSize: 11,
+                lineHeight: 1.6,
+                boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
+                zIndex: 10,
+              }}
+            >
+              <button
+                type="button"
+                title="Close"
+                onClick={() => handlePointProbe(null)}
+                style={{
+                  position: "absolute", top: 3, right: 4, width: 18, height: 18, padding: 0,
+                  border: "none", background: "transparent", color: "#999", cursor: "pointer",
+                  fontSize: 14, lineHeight: "18px",
+                }}
+              >
+                ×
+              </button>
+              <div style={{ opacity: 0.6, marginBottom: 4 }}>{formatLatLon(pointProbe.latDeg, pointProbe.lonDeg)}</div>
+              {pointProbe.status === "loading" && <div style={{ opacity: 0.7 }}>Sampling…</div>}
+              {pointProbe.status === "error" && <div style={{ color: "#ff8080" }}>Couldn’t sample this point.</div>}
+              {pointProbe.status === "ok" && pointProbe.result && (
+                <div>
+                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1 }}>
+                    <span style={{ opacity: 0.55 }}>Plate</span>
+                    <span>{pointProbe.result.plate_id}</span>
+                    <span style={{ opacity: 0.55 }}>Phi</span>
+                    <span>{pointProbe.result.point.phi.toFixed(4)} rad</span>
+                    <span style={{ opacity: 0.55 }}>Theta</span>
+                    <span>{pointProbe.result.point.theta.toFixed(4)} rad</span>
+                    <span style={{ opacity: 0.55 }}>Elevation</span>
+                    <span>{Math.round(pointProbe.result.point.elevation_m).toLocaleString()} m</span>
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 6, paddingTop: 6, borderTop: "1px solid #333",
+                      display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1,
+                    }}
+                  >
+                    <span style={{ opacity: 0.55 }}>Point</span>
+                    <span>{pointProbe.result.point.index + 1} of {pointProbe.result.line.num_points}</span>
+                    <span style={{ opacity: 0.55 }}>Line</span>
+                    <span>{pointProbe.result.line.line_index + 1} of {pointProbe.result.line.num_lines}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           </div>
           <Legend
             mapView={mapView}
@@ -1519,7 +1664,9 @@ export default function App() {
                   ? "Click a plate to select it (its fault strands emphasise, and its Euler pole + a speed-scaled motion arc appear). Tab / Shift+Tab cycles plates. Click a fault type in the legend to isolate that regime. Toggle the earthquake & volcano overlay in the sidebar. Press and hold, then drag to rotate."
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
-                    : "Press and hold, then drag the map to rotate it."}
+                    : mapView === "platesDetail"
+                      ? "Click a point for its phi/theta and its ElevationLine. Left/Right steps along the line, Shift+Left/Right steps to the next/previous line. Press and hold, then drag to rotate."
+                      : "Press and hold, then drag the map to rotate it."}
           </p>
         </div>
       </div>
