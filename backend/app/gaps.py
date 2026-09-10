@@ -50,7 +50,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle
+from . import gap_fill_frontier, geometry, mantle
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
     effective_is_continental_from_codes,
@@ -81,6 +81,16 @@ CLUSTER_RADIUS_MULT = 2.0
 # be its own plate" is left alone as ordinary boundary-growth catch-up lag rather than
 # spawning a sliver plate at every busy divergent boundary every interval.
 MIN_GAP_NODES = 500
+
+# `fill_gaps_by_growing_neighbours`'s own "detect adjacent plates" gate: a plate with at least
+# one node within this multiple of spacing of a gap cluster is genuinely adjacent to it, not
+# just the nearest thing on an otherwise-empty sphere. Wider than CLUSTER_RADIUS_MULT (which
+# only has to bridge one lattice step to the *next* gap point) since this has to reach a real
+# plate's actual edge, which -- unlike the gap lattice itself -- was never guaranteed to sit
+# right at the cluster boundary; narrower than CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT-scale
+# reaches (lithosphere_plate.py), which are about a single step's worst-case motion rather than
+# "is there a plate here at all."
+ADJACENT_PLATE_REACH_MULT = 6.0
 
 # Sweeping in the identity frame reuses iter_local_lattice as a plain global lat/lon
 # lattice -- fine for a one-off detection query even though it has the usual pole bias,
@@ -234,6 +244,69 @@ def fill_gaps(world: "World") -> list[str]:
         events.append(
             f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where}."
         )
+    return events
+
+
+def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spacing_rad: float) -> list[LithospherePlate]:
+    """Live plates with at least one node within `ADJACENT_PLATE_REACH_MULT * spacing_rad` of
+    `cluster_points` -- "detect adjacent plates" for `fill_gaps_by_growing_neighbours`. Can
+    come back empty (the fully-vacated-region case `fill_gaps`'s own module docstring
+    describes), which its caller falls back to spawning a plate for, same as today."""
+    reach_rad = ADJACENT_PLATE_REACH_MULT * spacing_rad
+    adjacent = []
+    for plate in world.plates:
+        points, _ = plate.all_points_and_elevation()
+        if len(points) == 0:
+            continue
+        dist, _ = cKDTree(points).query(cluster_points, k=1, distance_upper_bound=reach_rad)
+        if np.any(np.isfinite(dist)):
+            adjacent.append(plate)
+    return adjacent
+
+
+def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
+    """`World.gap_fill_algorithm == "frontier"` alternative to `fill_gaps` -- same whole-sphere
+    gap *detection* (`_existing_node_tree`/`_find_gap_points`/`_cluster`, `MIN_GAP_NODES` floor,
+    all unchanged), but instead of always spawning a brand-new plate into each big-enough
+    cluster, first looks for plate(s) actually adjacent to it (`_adjacent_plates_to_cluster`)
+    and, when there are any, grows those *existing* plates into the cluster node by node
+    (`gap_fill_frontier.fill_gap_by_growing_plates` -- see that module's own docstring). Falls
+    back to `_spawn_plate_from_gap`, exactly as `fill_gaps` always does, only when a cluster has
+    no adjacent plate at all -- a fully-vacated region with nothing nearby to grow (this
+    module's own docstring's "known stopgap" case), where there is genuinely nothing to grow.
+    Mutates `world.plates`/`world.next_plate_id` (spawn fallback) or existing plates' own lines
+    (grow path) in place; returns event strings for the UI's console, same shape as `fill_gaps`."""
+    existing_context = _existing_node_tree(world)
+    if existing_context is None:
+        return []
+
+    spacing_rad = line_spacing_rad(world.node_density)
+    gap_points = _find_gap_points(existing_context, spacing_rad)
+    if len(gap_points) == 0:
+        return []
+
+    labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
+    min_gap_nodes = max(1, round(MIN_GAP_NODES * world.node_density))
+
+    events: list[str] = []
+    for label in np.unique(labels):
+        cluster_points = gap_points[labels == label]
+        if len(cluster_points) < min_gap_nodes:
+            continue
+        adjacent = _adjacent_plates_to_cluster(world, cluster_points, spacing_rad)
+        if not adjacent:
+            plate = _spawn_plate_from_gap(world, cluster_points, spacing_rad, existing_context)
+            if plate.node_count() == 0:
+                continue
+            world.plates.append(plate)
+            where = "in open water no plate had reached in a long time" if plate.crust_type == "oceanic" else "over a long-vacated, landlocked gap"
+            events.append(
+                f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where} (no adjacent plate to grow)."
+            )
+            continue
+        added = gap_fill_frontier.fill_gap_by_growing_plates(world, cluster_points, adjacent, spacing_rad)
+        for plate_id, n in added.items():
+            events.append(f"Plate {plate_id} grew by {n} nodes into a long-vacated gap.")
     return events
 
 

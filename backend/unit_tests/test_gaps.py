@@ -195,3 +195,66 @@ def test_reconcile_gap_tracks_surfaces_a_cluster_smaller_than_min_gap_nodes(monk
     # fill_gaps itself declines under the same raised floor -- confirms the two floors are
     # genuinely independent (GAP_AGE_MIN_CLUSTER_NODES doesn't move just because MIN_GAP_NODES did).
     assert gaps.fill_gaps(world) == []
+
+
+# -- fill_gaps_by_growing_neighbours (World.gap_fill_algorithm == "frontier") -------------
+
+
+def test_fill_gaps_by_growing_neighbours_is_a_no_op_on_a_freshly_generated_world():
+    world = _small_world()
+    assert gaps.fill_gaps_by_growing_neighbours(world) == []
+    assert len(world.plates) == 4
+
+
+def test_fill_gaps_by_growing_neighbours_grows_existing_adjacent_plates_not_a_new_one():
+    """The whole point of the "frontier" alternative: a removed plate's vacated territory is
+    absorbed by its real, still-live neighbours -- no new plate is spawned, unlike fill_gaps."""
+    world = _small_world()
+    removed = world.plates.pop(1)
+    removed_points, _ = removed.all_points_and_elevation()
+    n_plates_before = len(world.plates)
+    next_plate_id_before = world.next_plate_id
+
+    events = gaps.fill_gaps_by_growing_neighbours(world)
+
+    assert len(events) > 0
+    assert all("grew by" in e for e in events)
+    assert len(world.plates) == n_plates_before  # no new plate spawned
+    assert world.next_plate_id == next_plate_id_before
+
+    all_points = np.concatenate([p.all_points_and_elevation()[0] for p in world.plates], axis=0)
+    tree = cKDTree(all_points)
+    coverage_radius_rad = gaps.COVERAGE_RADIUS_MULT * line_spacing_rad(world.node_density)
+    dist, _ = tree.query(removed_points)
+    assert np.mean(dist < coverage_radius_rad) > 0.9  # near-full replacement, not a sliver
+
+
+def test_fill_gaps_by_growing_neighbours_falls_back_to_spawning_when_nothing_is_adjacent(monkeypatch):
+    """A gap cluster with no plate anywhere near it (this module's own "known stopgap" case --
+    e.g. every bordering plate that used to border it has itself fully vanished) has nothing to
+    grow, so this still spawns a new plate, exactly like fill_gaps always does. On a real
+    sphere a gap cluster's own boundary almost always touches *some* still-live plate within
+    ADJACENT_PLATE_REACH_MULT (that's the common case the two tests above exercise) -- this
+    directly forces the "found nothing nearby" branch instead of trying to construct that rare
+    geometry from scratch."""
+    world = _small_world()
+    world.plates.pop(1)
+    monkeypatch.setattr(gaps, "_adjacent_plates_to_cluster", lambda *a, **k: [])
+    n_before = world.next_plate_id
+
+    events = gaps.fill_gaps_by_growing_neighbours(world)
+
+    assert len(events) == 1
+    assert "no adjacent plate to grow" in events[0]
+    assert len(world.plates) == 4
+    assert world.next_plate_id == n_before + 1
+
+
+def test_fill_gaps_by_growing_neighbours_ignores_a_gap_smaller_than_the_minimum(monkeypatch):
+    world = _small_world()
+    removed = world.plates.pop(1)
+    monkeypatch.setattr(gaps, "MIN_GAP_NODES", removed.node_count() * 10)
+
+    events = gaps.fill_gaps_by_growing_neighbours(world)
+    assert events == []
+    assert len(world.plates) == 3

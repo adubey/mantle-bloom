@@ -530,6 +530,10 @@ export interface CornerNotchLogEntry {
   phi_lo?: number;
   phi_hi?: number;
   max_corner_fill_nodes?: number;
+  // Present only when World.gap_fill_algorithm == "frontier" -- see
+  // backend LithospherePlate._fill_corner_notch_frontier / gap_fill_frontier.py. Absent
+  // (undefined) for an ordinary "windowed"-mode entry, same as before this field existed.
+  algorithm?: "frontier";
 }
 
 // The debug-only structured decision log for LithospherePlate._fill_corner_notch (see

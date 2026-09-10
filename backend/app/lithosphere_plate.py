@@ -846,7 +846,13 @@ class LithospherePlate(PlateWithLines):
         self.set_lines(new_lines)
         if not suppress_growth:
             self._claim_adjacent_territory(world, neighbours, spacing_rad)
-            self._fill_corner_notch(world, neighbours, spacing_rad, years)
+            # World.gap_fill_algorithm ("frontier" default, "windowed" opt-out) -- see
+            # gap_fill_frontier.py's own module docstring. _stretch_end/_claim_adjacent_
+            # territory above are unaffected either way; only the residual-notch closer swaps.
+            if getattr(world, "gap_fill_algorithm", "frontier") == "frontier":
+                self._fill_corner_notch_frontier(world, neighbours, spacing_rad, years)
+            else:
+                self._fill_corner_notch(world, neighbours, spacing_rad, years)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):
@@ -1660,6 +1666,92 @@ class LithospherePlate(PlateWithLines):
                 "rows_considered": len(rows),
                 "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
             })
+
+    def _fill_corner_notch_frontier(self, world: "World", neighbours: list, spacing_rad: float, years: float) -> None:  # noqa: F821
+        """`World.gap_fill_algorithm == "frontier"` alternative to `_fill_corner_notch`, called
+        from the same place in `deform()` -- see `gap_fill_frontier.py`'s own module docstring
+        for the algorithm. Detecting *this* plate's own candidate notch points is identical to
+        `_fill_corner_notch` -- deliberately duplicated (not extracted into a shared helper)
+        rather than refactored out of that method, so switching `gap_fill_algorithm` back to
+        `"windowed"` is guaranteed bit-identical to before this method existed; see
+        `_fill_corner_notch`'s own docstring/comments for why each piece of this detection
+        window/neighbour-reach gate exists. Only what happens with those candidate points once
+        found differs: `gap_fill_frontier.fill_gap_by_growing_plates` grows *this plate's own
+        existing lines* into them node by node instead of always emitting brand-new ones.
+
+        Imports `gap_fill_frontier` locally (not at module scope) since that module itself
+        imports back from here (`_TERRAIN_SEED_TAG`, `_erupt_melted_nodes`,
+        `growth_seed_thickness`) -- same deferred-import shape `deform()`'s own `from . import
+        faults` already uses to avoid a circular top-level import."""
+        from . import gap_fill_frontier
+
+        neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
+        if not neighbour_points:
+            world.log_corner_notch({"plate_id": self.plate_id, "outcome": "no_neighbours", "nodes_added": 0, "algorithm": "frontier"})
+            return
+        own_points, _ = self.all_points_and_elevation()
+        lines_with_nodes = [line for line in self.lines if len(line) > 0]
+        if len(own_points) == 0 or not lines_with_nodes:
+            world.log_corner_notch({"plate_id": self.plate_id, "outcome": "no_own_lines", "nodes_added": 0, "algorithm": "frontier"})
+            return
+
+        coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
+        window_rad = max(CORNER_NOTCH_MIN_WINDOW_ROWS * spacing_rad, mantle.MAX_PLATE_RATE * years)
+        neighbour_reach_rad = window_rad + CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT * spacing_rad
+        neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0))
+
+        max_abs_phi = np.pi / 2 - spacing_rad / 2  # matches iter_local_lattice's own bound
+        max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
+        phis = np.array([line.phi for line in lines_with_nodes])
+        phi_lo = max(phis.min() - window_rad, -max_abs_phi)
+        phi_hi = min(phis.max() + window_rad, max_abs_phi)
+        row_lo = int(np.floor((phi_lo + max_abs_phi) / spacing_rad))
+        row_hi = int(np.ceil((phi_hi + max_abs_phi) / spacing_rad))
+        phi_values = -max_abs_phi + spacing_rad * np.arange(row_lo, row_hi + 1)
+
+        gap_chunks = []
+        for phi in phi_values:
+            if abs(phi) > max_phi_limit:
+                continue
+            dtheta = spacing_rad / max(np.cos(phi), 1e-3)
+            nearest = min(lines_with_nodes, key=lambda ln: abs(ln.phi - phi))
+            margin = window_rad / max(np.cos(phi), 1e-3)
+            theta_lo, theta_hi = float(nearest.theta[0]) - margin, float(nearest.theta[-1]) + margin
+            n_theta = max(int(np.round((theta_hi - theta_lo) / dtheta)) + 1, 1)
+            n_theta = min(n_theta, max(int(np.round(2.0 * np.pi / dtheta)), 1))
+            theta_candidates = theta_lo + dtheta * np.arange(n_theta)
+            world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_theta, phi), theta_candidates))
+
+            neighbour_dist, _ = neighbour_tree.query(world_pts)
+            near_neighbour = neighbour_dist <= neighbour_reach_rad
+            covered_by_neighbour = neighbour_dist <= coverage_radius_rad
+            base_mask = near_neighbour & ~covered_by_neighbour
+            if np.any(base_mask):
+                gap_chunks.append(world_pts[base_mask])
+
+        if not gap_chunks:
+            world.log_corner_notch({
+                "plate_id": self.plate_id, "outcome": "no_candidate_rows", "nodes_added": 0, "algorithm": "frontier",
+                "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
+            })
+            return
+
+        gap_points = np.concatenate(gap_chunks, axis=0)
+        # Cap the frontier walk to the same reach `_fill_corner_notch` allows itself --
+        # `ceil(window_rad / connect_radius)` hops -- rather than letting
+        # `fill_gap_by_growing_plates` auto-size from the candidate cloud's own (potentially
+        # much wider) bounding sphere. Without this the notch-filler outgrows a continental
+        # plate's leading edge faster than `_retreat_contested_leading_rows` can retreat it
+        # against a parallel suture (regression caught by
+        # test_lithosphere_contested_leading_row_is_dropped_after_sustained_override).
+        connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * spacing_rad
+        max_hops = max(1, int(np.ceil(window_rad / connect_radius_rad)))
+        added = gap_fill_frontier.fill_gap_by_growing_plates(world, gap_points, [self], spacing_rad, max_hops=max_hops)
+        nodes_added = added.get(self.plate_id, 0)
+        world.log_corner_notch({
+            "plate_id": self.plate_id, "outcome": "claimed" if nodes_added else "no_claim", "nodes_added": nodes_added,
+            "algorithm": "frontier", "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
+        })
 
     # -- Merge/split: carry Hc/Hm through, not just elevation -------------------------------
 
