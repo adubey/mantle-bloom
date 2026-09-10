@@ -213,6 +213,24 @@ class World:
     #   "both" -- boundary bands at full strength *and* the scaled-up fault relief layer.
     # See faults.FAULT_DEFORMATION_MODES and LithospherePlate.deform.
     fault_deformation_mode: str = "fault"
+    # Which mechanism closes a gap between plates -- live-adjustable via POST /world/controls,
+    # same pattern as fault_deformation_mode. See gap_fill_frontier.py's own module docstring
+    # for the algorithm and gap_fill_frontier.GAP_FILL_ALGORITHM_CHOICES for the choices:
+    #   "frontier" (default) -- gap_fill_frontier.fill_gap_by_growing_plates at both sites:
+    #     detects the same gap, detects the plate(s) genuinely adjacent to it, and grows those
+    #     *existing* plates into it node by node -- extending an existing line where one's
+    #     close enough, opening a new one where none is -- rather than either always emitting
+    #     disjoint new lines or conjuring a whole new plate. Chosen as the default (2026-09-09)
+    #     after comparing both on every Debugging Worlds scenario: consistently fewer, longer
+    #     lines per plate and far fewer stalled (hop_no_progress/no_claim) corner-notch calls
+    #     than "windowed" -- see docs/TODO.md's frontier-gap-fill addendum for the numbers.
+    #   "windowed" -- today's (pre-2026-09-09) LithospherePlate._fill_corner_notch (a per-plate,
+    #     per-step fixed geometric window; always emits brand-new ElevationLines) and
+    #     gaps.fill_gaps (a periodic whole-sphere sweep that spawns a brand-new plate into any
+    #     region no live plate is near). A plain-scalar default (same shape as
+    #     fault_deformation_mode), so this only changes behavior going forward -- an old save
+    #     predating this field now defaults to "frontier", not a frozen "windowed" past behavior.
+    gap_fill_algorithm: str = "frontier"
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
@@ -620,7 +638,10 @@ def step_world(world: World, years: float) -> None:
         # plate vacated with no neighbour left nearby to grow into it. Gated to the same
         # cadence as defragment_plates above (a whole-world pass, not needed every step).
         if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
-            for message in gaps.fill_gaps(world):
+            # World.gap_fill_algorithm ("frontier" default, "windowed" opt-out) -- see
+            # gap_fill_frontier.py's own module docstring.
+            fill_fn = gaps.fill_gaps_by_growing_neighbours if world.gap_fill_algorithm == "frontier" else gaps.fill_gaps
+            for message in fill_fn(world):
                 world.log_event(message)
             # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
             # world.gap_tracks against this step's uncovered-lattice clusters at the same

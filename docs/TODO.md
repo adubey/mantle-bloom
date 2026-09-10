@@ -1466,3 +1466,38 @@ backlog. **Still open:** the residual slow growth (traced to `torque`'s classify
 this fix's own window/reach constants, not re-tuned further this pass), and the general "any
 large rift, not just a 3-plate junction" case this section's own "Direction" describes remains
 the underlying, still-unaddressed mechanism `gaps.py` is a stopgap for.
+
+**2026-09-09 -- an opt-in alternative shipped at both sites, not yet the default.**
+`gap_fill_frontier.py` implements the "detect a gap, detect the plate(s) actually adjacent to
+it, grow those existing plates into it node by node" approach this section's own "Direction"
+gestures at -- selected via `World.gap_fill_algorithm` (`"windowed"` default, `"frontier"`
+opt-in) at both `_fill_corner_notch`'s call site and this section's own `gaps.fill_gaps`. See
+`docs/simulation-model.md#frontier-gap-fill` for the algorithm and `docs/debugging.md`'s
+"Comparing gap-fill algorithms on these scenarios" for how to A/B it on the Debugging Worlds
+scenarios. Deliberately does *not* replace `"windowed"` as the default yet -- this is a first
+implementation, not a validated one: it's only been run against the five small, hand-scripted
+Debugging Worlds scenarios (a handful of steps each) plus one synthetic whole-sphere
+vacated-plate fixture, never against a real long-running save. In particular, at the
+whole-sphere site it deliberately does the thing `fill_gaps`'s own module docstring says it
+avoids on purpose (absorbing a gap into a single dominant bordering plate rather than always
+spawning a neutral new one) -- whether that's actually an improvement or feeds the
+continental-growth ratchet this section already worries about needs a real long-run comparison
+before `"frontier"` should become the default, not just the small-scenario smoke test that
+shipped it. This section (the general "any large rift" case, and `gaps.py`'s own cadence/
+post-hoc-Euler-pole/notice-after-the-fact character at the whole-sphere site) otherwise remains
+exactly as open as the 2026-09-05 update above left it -- `"frontier"` is a second option
+alongside `"windowed"`, not a fix to either's own remaining gaps.
+
+**2026-09-09 (later the same day) -- promoted to the default.** After comparing both
+algorithms on all five Debugging Worlds scenarios (20 steps each) plus the synthetic
+whole-sphere vacated-plate fixture above, `"frontier"` consistently produced fewer, longer
+lines per plate (e.g. `five_plate_irregular`: 508 lines under `"windowed"` vs. 373 under
+`"frontier"`; `triple_junction_mixed`: 350 vs. 248) and almost never stalled
+(`hop_no_progress`) the way `"windowed"` routinely did on the multi-junction scenarios, while
+reaching full coverage on the whole-sphere fixture either way. `World.gap_fill_algorithm`'s
+default is now `"frontier"`; `"windowed"` remains available (`POST /world/controls`) as a
+fallback/comparison baseline. The validation-scope caveat directly above still applies
+unchanged -- this remains a small-scenario comparison, not a real long-run one -- so watch a
+real save's own gap-related metrics (node/line counts, `corner_notch_log`, whole-sphere event
+log) after this change lands, and the continental-growth-ratchet question for the whole-sphere
+site in particular is still genuinely open, not resolved by the scenario comparison.

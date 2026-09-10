@@ -24,8 +24,10 @@ def test_every_scenario_builds_plates_with_nodes_and_pinned_omegas(scenario):
 
 
 @pytest.mark.parametrize("scenario", sorted(debug_worlds.DEBUG_SCENARIOS))
-def test_every_scenario_steps_without_crashing(scenario):
+@pytest.mark.parametrize("gap_fill_algorithm", ["windowed", "frontier"])
+def test_every_scenario_steps_without_crashing(scenario, gap_fill_algorithm):
     world = debug_worlds.generate_debug_world(scenario, seed=2)
+    world.gap_fill_algorithm = gap_fill_algorithm
     for _ in range(3):
         step_world(world, years=1_000_000)
     assert world.elapsed_years == 3_000_000.0
@@ -65,13 +67,32 @@ def test_triple_junction_mixed_scenario_exercises_fill_corner_notch():
     """This is the exact scenario `_fill_corner_notch`'s own docstring calls out (a triple
     junction with mixed divergent/convergent legs) -- confirm the debug world actually drives
     real corner-notch activity, not just ordinary end-growth, so it's a genuine reproduction
-    of the problem this whole diagnostic suite exists to investigate."""
+    of the problem this whole diagnostic suite exists to investigate. Pins "windowed"
+    explicitly -- World.gap_fill_algorithm defaults to "frontier" (see the counterpart test
+    below), not this method, since 2026-09-09."""
     world = debug_worlds.generate_debug_world("triple_junction_mixed", seed=1)
+    world.gap_fill_algorithm = "windowed"
     for _ in range(10):
         step_world(world, years=1_000_000)
 
     outcomes = {entry["outcome"] for entry in world.corner_notch_log}
     assert "claimed" in outcomes, "expected the notch-filler to have claimed real nodes at some point"
+
+
+def test_triple_junction_mixed_scenario_exercises_fill_corner_notch_frontier():
+    """Same scenario/assertion as the "windowed" counterpart above, under
+    World.gap_fill_algorithm == "frontier" -- confirms the alternative notch-filler
+    (LithospherePlate._fill_corner_notch_frontier) logs the same "claimed" outcome shape to
+    world.corner_notch_log, so the existing decision-log panel/tooling works unmodified under
+    either algorithm."""
+    world = debug_worlds.generate_debug_world("triple_junction_mixed", seed=1)
+    world.gap_fill_algorithm = "frontier"
+    for _ in range(10):
+        step_world(world, years=1_000_000)
+
+    outcomes = {entry["outcome"] for entry in world.corner_notch_log}
+    assert "claimed" in outcomes, "expected the frontier notch-filler to have claimed real nodes at some point"
+    assert all(entry.get("algorithm") == "frontier" for entry in world.corner_notch_log)
 
 
 def test_pinned_omegas_backfilled_on_load_of_an_older_save():

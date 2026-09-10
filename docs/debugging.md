@@ -480,6 +480,32 @@ and watch the "Added/Removed Points" and "Plate overlap age" views alongside the
 log panel together -- the combination this whole diagnostic suite was built to let you read at
 once, rather than switching between four separate tools with no shared time axis.
 
+### Comparing gap-fill algorithms on these scenarios
+
+`World.gap_fill_algorithm` (`"frontier"` default since 2026-09-09, `"windowed"` still available
+-- see `simulation-model.md#frontier-gap-fill`) is a `POST /world/controls` field, so every scenario
+above can be re-run under the alternative algorithm without any other change: generate a
+scenario (or set it on an already-generated debug world via the Controls request), step it the
+same number of times under each setting, and compare. The corner-notch decision log panel
+reads either algorithm identically (`gap_fill_frontier`'s own entries carry `"algorithm":
+"frontier"` alongside the same `outcome`/`nodes_added` shape `_fill_corner_notch` already
+logs), so the same workflow above -- watch the log panel alongside "Added/Removed Points" --
+works unchanged for either. What to look at when comparing:
+
+- **Line count per plate** (`num_rows` in `GET /world/plates`) -- `"frontier"` extends a
+  plate's own existing lines where the grid allows instead of always emitting brand-new ones,
+  so a healthy comparison run should show `"frontier"` ending with materially *fewer* lines per
+  plate than `"windowed"` for the same scenario/step count, not just similar node totals.
+- **`corner_notch_log` outcome mix** -- both algorithms log the same outcome vocabulary; a
+  `"frontier"` run stuck on `no_claim`/`hop_no_progress` where `"windowed"` reaches `claimed`
+  (or vice versa) is the first thing to chase if the two diverge.
+- **Whole-sphere events** (`world.events`, or `GET /world/controls`'s echoed
+  `gap_fill_algorithm`) -- these tiny scripted scenarios don't naturally exercise
+  `gaps.fill_gaps`/`gaps.fill_gaps_by_growing_neighbours` (every plate starts adjacent to
+  every gap that can open here), so that half of the comparison needs a real or
+  synthetically-vacated-plate world instead -- see `unit_tests/test_gaps.py`'s
+  `fill_gaps_by_growing_neighbours` tests for the shape of that setup.
+
 ---
 
 ## River & Lake Inspectors

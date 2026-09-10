@@ -11,6 +11,7 @@
 - [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback](#gap-filling)
+  - [Frontier gap-fill: an opt-in alternative at both sites](#frontier-gap-fill)
   - [Per-node crust type](#per-node-crust-type)
 - [Volcanism](#volcanism)
 - [Faults (intraplate)](#faults)
@@ -970,6 +971,52 @@ practice for all but the rare landlocked case. Known stopgap, not the real fix: 
 thinning-then-melting mechanism above should, over time, make this whole-sphere sweep an
 increasingly rare fallback rather than a routine occurrence -- see `gaps.py`'s own module
 docstring and [TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix).
+
+<a id="frontier-gap-fill"></a>
+### Frontier gap-fill: the default at both sites since 2026-09-09 (`gap_fill_frontier.py`)
+
+`World.gap_fill_algorithm` (`"frontier"` default, `"windowed"` still available, live-adjustable
+via `POST /world/controls`) switches both of the above -- `_fill_corner_notch` and `fill_gaps`
+-- for a single alternative mechanism, `gap_fill_frontier.py`, at both call sites
+(`LithospherePlate._fill_corner_notch_frontier` in `deform()`,
+`gaps.fill_gaps_by_growing_neighbours` in `step_world`). Same
+three-step shape at either scale: **detect a gap** (identical detection to the algorithm it
+replaces at each site -- the corner-notch window/neighbour-reach math, or `gaps.py`'s own
+whole-sphere lattice sweep/cluster -- deliberately unchanged, so only the *fill* strategy
+differs), **detect the plate(s) adjacent to it** (the corner-notch site's own `self`; the
+whole-sphere site's `gaps._adjacent_plates_to_cluster`, any plate with a node within
+`gaps.ADJACENT_PLATE_REACH_MULT` of the cluster), then **iteratively grow those existing
+plates into it, one node at a time** (`gap_fill_frontier.fill_gap_by_growing_plates`): walk
+the connected frontier outward in `DEFRAG_CONNECT_RADIUS_MULT`-sized hops (same reach
+`_fill_corner_notch` already uses, so a claim can't outrun `merge_split.defragment_plates`'s
+own connectivity check); at each hop, every reachable gap point is assigned to whichever
+claimant's node cloud is nearest, then, per claimant/row, either **extends an existing line**
+by one node (a real "stretch" -- mass-conserving, drawing the new node's material down from
+that line's own nearest `K_STRETCH_SOURCE_NODES` end nodes, the same row-claim draw-down
+`_claim_adjacent_territory` already does for a whole new phi row, applied here at single-node
+granularity) or, where no line is close enough to extend, **opens a brand-new single-node
+line** -- a genuine magma eruption with nothing thinned in exchange, same seeding
+`_seed_and_erupt_new_nodes` always uses. Either way the claimed node still routes through
+`_erupt_melted_nodes`, typed oceanic vs. continental/volcanic by whether it was above or below
+sea level the instant it erupted -- the same invariant both algorithms it replaces already
+guarantee, never a free area grant.
+
+This is a real behavioral departure from `"windowed"`, not just a faster implementation of the
+same thing: at the whole-sphere site in particular, it grows a plate's own existing territory
+into a vacated region instead of spawning a new plate -- exactly the "absorb into a dominant
+bordering plate" behaviour `fill_gaps`'s own module docstring says it deliberately avoids (see
+that docstring, and [TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix)).
+Falls back to spawning a plate (`gaps._spawn_plate_from_gap`, unchanged) only when a cluster
+has no adjacent plate at all -- a genuinely isolated void with nothing nearby to grow, the one
+case both algorithms still handle identically. Promoted from opt-in to the default on
+2026-09-09 after comparing both on every Debugging Worlds scenario (`docs/TODO.md`'s
+frontier-gap-fill addendum has the numbers): consistently fewer, longer lines per plate and far
+fewer stalled (`hop_no_progress`/`no_claim`) corner-notch calls than `"windowed"`. That
+comparison covered only the small hand-scripted scenarios plus one synthetic whole-sphere
+fixture, not a real long-running save -- see `docs/debugging.md`'s "Debugging Worlds" section
+for the same workflow if a real save's behavior under `"frontier"` needs checking, and set
+`gap_fill_algorithm` back to `"windowed"` via `POST /world/controls` to compare against or
+fall back to the prior mechanism.
 
 <a id="per-node-crust-type"></a>
 ### Per-node crust type

@@ -24,6 +24,7 @@ from . import (
     debug_worlds,
     eustasy,
     faults,
+    gap_fill_frontier,
     geodesic,
     geometry,
     hydrology,
@@ -205,6 +206,9 @@ class ControlsRequest(BaseModel):
     simulate_climate_biomes: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
+    # Which mechanism closes a gap between plates -- see World.gap_fill_algorithm /
+    # gap_fill_frontier.py's own module docstring. "frontier" (default) or "windowed".
+    gap_fill_algorithm: str | None = None
     # Geomorphic-budget tuning knobs -- dimensionless multipliers, 1.0 == untuned (see
     # world.TUNING_MULTIPLIER_FIELDS and World's field group). Same "only the touched one is
     # sent" convention as the fields above; each is rejected below if negative.
@@ -229,6 +233,7 @@ class ControlsRequest(BaseModel):
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
+GAP_FILL_ALGORITHM_CHOICES = gap_fill_frontier.GAP_FILL_ALGORITHM_CHOICES
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
@@ -862,6 +867,11 @@ def set_controls(req: ControlsRequest) -> dict:
             status_code=400,
             detail=f"unknown fault_deformation_mode {req.fault_deformation_mode!r}; choices are {FAULT_DEFORMATION_MODE_CHOICES}",
         )
+    if req.gap_fill_algorithm is not None and req.gap_fill_algorithm not in GAP_FILL_ALGORITHM_CHOICES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown gap_fill_algorithm {req.gap_fill_algorithm!r}; choices are {GAP_FILL_ALGORITHM_CHOICES}",
+        )
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
         if value < 0.0:
@@ -884,6 +894,8 @@ def set_controls(req: ControlsRequest) -> dict:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
             world.fault_deformation_mode = req.fault_deformation_mode
+        if req.gap_fill_algorithm is not None:
+            world.gap_fill_algorithm = req.gap_fill_algorithm
         if req.debug_diagnostics is not None:
             world.debug_diagnostics = req.debug_diagnostics
         for name, value in tuning_updates.items():
@@ -897,6 +909,7 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
+        "gap_fill_algorithm": world.gap_fill_algorithm,
         "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},
     }

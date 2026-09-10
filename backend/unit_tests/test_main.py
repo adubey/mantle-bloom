@@ -1090,6 +1090,22 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
     assert client.post("/world/controls", json={"fault_deformation_mode": "nonsense"}).status_code == 400
 
 
+def test_controls_gap_fill_algorithm_toggle_and_validation(client):
+    from app import main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+    assert world.gap_fill_algorithm == "frontier"
+
+    for algorithm in ("windowed", "frontier"):
+        resp = client.post("/world/controls", json={"gap_fill_algorithm": algorithm})
+        assert resp.status_code == 200
+        assert resp.json()["gap_fill_algorithm"] == algorithm
+        assert world.gap_fill_algorithm == algorithm
+
+    assert client.post("/world/controls", json={"gap_fill_algorithm": "nonsense"}).status_code == 400
+
+
 def test_earthquakes_endpoint(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     assert client.get("/world/earthquakes").json()["earthquakes"] == []  # none before a step
