@@ -243,7 +243,7 @@ def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
     water_deposited = np.array([50.0, 0.0, 0.0])
     is_accumulating = np.zeros(3, dtype=bool)
 
-    depth, silt_deposited, forest, events = lakes.step_lakes(
+    depth, silt_deposited, _is_sea, forest, events = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth[0] > 0.0  # grew from inflow
@@ -256,7 +256,7 @@ def test_step_lakes_grows_at_a_sink_and_caps_at_the_spill_point():
 
     # A lake already sitting at its cap should stay pinned there, not evaporate back down.
     at_cap = np.array([15.0, 0.0, 0.0])
-    depth_at_cap, _, _, _ = lakes.step_lakes(
+    depth_at_cap, _, _, _, _ = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, at_cap, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth_at_cap[0] == 15.0
@@ -267,7 +267,7 @@ def test_step_lakes_evaporates_a_dry_spell_to_nothing():
     water_deposited = np.zeros(3)
     is_accumulating = np.zeros(3, dtype=bool)
 
-    depth, _, _, events = lakes.step_lakes(
+    depth, _, _, _, events = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=100_000_000, is_frozen=is_accumulating
     )
     assert depth[0] == 0.0
@@ -279,7 +279,7 @@ def test_step_lakes_freezes_a_lake_to_its_dry_floor_regardless_of_inflow():
     water_deposited = np.array([500.0, 0.0, 0.0])  # would otherwise grow it a lot
     is_accumulating = np.array([True, False, False])
 
-    depth, silt_deposited, _, _ = lakes.step_lakes(
+    depth, silt_deposited, _, _, _ = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert depth[0] == 0.0
@@ -295,7 +295,7 @@ def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
     water_deposited = np.array([100.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     is_accumulating = np.zeros(6, dtype=bool)
 
-    depth, _, forest, events = lakes.step_lakes(
+    depth, _, _is_sea, forest, events = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
     assert len(events) == 1 and events[0].kind == "merge" and "merged" in events[0].message
@@ -318,7 +318,7 @@ def test_step_lakes_splits_a_merged_lake_once_it_recedes_below_the_saddle():
     water_deposited = np.zeros(6)
     is_accumulating = np.zeros(6, dtype=bool)
 
-    depth, _, forest, events = lakes.step_lakes(
+    depth, _, _is_sea, forest, events = lakes.step_lakes(
         _MERGE_ELEVATION, _MERGE_IS_OCEAN, _MERGE_NEIGHBORS, prev_lake_depth, water_deposited, years=5_000_000, is_frozen=is_accumulating
     )
     assert len(events) == 1 and events[0].kind == "split" and "split" in events[0].message
@@ -346,7 +346,7 @@ def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in()
     floor_over_time = []
     depths_over_time = []
     for _ in range(400):
-        depth, silt_deposited, _, _ = lakes.step_lakes(
+        depth, silt_deposited, _, _, _ = lakes.step_lakes(
             elevation, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
         )
         elevation = elevation + silt_deposited  # erosion.py: new_elevation += hydro.silt_deposited
@@ -395,3 +395,142 @@ def test_summarize_lake_events_band_is_relative_to_the_current_sea_level():
     events = [_ev("merge", 108.0) for _ in range(5)]
     assert len(lakes.summarize_lake_events(events, sea_level_m=100.0)) == 1  # aggregated
     assert len(lakes.summarize_lake_events(events, sea_level_m=0.0)) == 5    # all "real"
+
+
+# -- lake-vs-sea tiers ----------------------------------------------------------------------
+#
+# `_classify_tier` is tested directly with an explicit `node_area_km2` rather than through a
+# realistic-sized world: `resolve_lakes` derives that value from `4*pi*R^2 / len(elevation)`,
+# so any tiny synthetic fixture (this file's 3-6 node arrays) would represent an enormous
+# real-world area per node and trivially cross SEA_MIN_FLOODED_AREA_KM2 the moment anything is
+# wet -- calling `_classify_tier`/`_water_balance`/`_resolve` directly with a chosen
+# `node_area_km2` decouples "does the tier logic work" from "how many nodes does this fixture
+# happen to have".
+
+
+def test_classify_tier_promotes_once_prior_flooded_extent_crosses_the_area_threshold():
+    members = np.array([0, 1, 2])
+    prev_lake_depth = np.array([5.0, 0.0, 3.0])  # 2 wet members (0 and 2)
+
+    below = (lakes.SEA_MIN_FLOODED_AREA_KM2 / 2.0) - 1.0
+    is_sea, tier_max_depth = lakes._classify_tier(members, prev_lake_depth, below)
+    assert is_sea is False
+    assert tier_max_depth == lakes.LAKE_MAX_DEPTH_M
+
+    above = (lakes.SEA_MIN_FLOODED_AREA_KM2 / 2.0) + 1.0
+    is_sea, tier_max_depth = lakes._classify_tier(members, prev_lake_depth, above)
+    assert is_sea is True
+    assert tier_max_depth == lakes.SEA_MAX_DEPTH_M
+
+
+def test_classify_tier_a_never_yet_flooded_lake_defaults_to_lake_tier():
+    # Bone dry last step -- even an enormous node_area_km2 can't promote it; it earns sea tier
+    # only after it's actually held this much water.
+    members = np.array([0, 1, 2])
+    is_sea, tier_max_depth = lakes._classify_tier(members, np.zeros(3), node_area_km2=1e12)
+    assert is_sea is False
+    assert tier_max_depth == lakes.LAKE_MAX_DEPTH_M
+
+
+def test_water_balance_caps_depth_at_the_lake_tier_ceiling_even_when_the_real_rim_allows_more():
+    lake = lakes._make_leaf(0, [0], [0.0], sink_node_idx=0)
+    lake.max_depth = None  # unbounded real rim -- the tier cap is the only thing that can bind
+    elevation = np.array([0.0])
+    water_deposited = np.array([1e9])  # huge inflow -- would blow past any real cap otherwise
+    out_silt = np.zeros(1)
+    out_is_sea = np.zeros(1, dtype=bool)
+
+    new_level = lakes._water_balance(
+        lake, 0.0, elevation, water_deposited, years_myr=1.0, is_frozen=False,
+        out_silt_deposited=out_silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=out_is_sea,
+    )
+    assert new_level == lakes.LAKE_MAX_DEPTH_M
+    assert not out_is_sea[0]
+
+
+def test_water_balance_sea_tier_gets_a_higher_ceiling_and_marks_is_sea():
+    lake = lakes._make_leaf(0, [0], [0.0], sink_node_idx=0)
+    lake.max_depth = None
+    elevation = np.array([0.0])
+    water_deposited = np.array([1e9])
+    out_silt = np.zeros(1)
+    out_is_sea = np.zeros(1, dtype=bool)
+
+    new_level = lakes._water_balance(
+        lake, 0.0, elevation, water_deposited, years_myr=1.0, is_frozen=False,
+        out_silt_deposited=out_silt, tier_max_depth=lakes.SEA_MAX_DEPTH_M, is_sea=True,
+        out_lake_is_sea=out_is_sea,
+    )
+    assert new_level == lakes.SEA_MAX_DEPTH_M
+    assert lakes.SEA_MAX_DEPTH_M > lakes.LAKE_MAX_DEPTH_M
+    assert out_is_sea[0]
+
+
+# Scaled-up version of _MERGE_ELEVATION (module-level fixture above): same shape/topology
+# (two catchments {0,1}/{2,3} meeting at a saddle before either reaches the ocean via node 4),
+# but with the saddle (2,500 m above the floor) deliberately placed *above* LAKE_MAX_DEPTH_M
+# (1,800 m) while the real rim to the ocean (5,000 m) stays well clear of both caps.
+_BIG_MERGE_ELEVATION = np.array([0.0, 2500.0, 2000.0, 100.0, 5000.0, -10.0])
+_BIG_MERGE_IS_OCEAN = np.array([False, False, False, False, False, True])
+_BIG_MERGE_NEIGHBORS = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 5], [4, 4]])
+
+
+def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
+    # Real-world motivation: this is the mechanism that doubles as the "smaller lakes should
+    # split up" fix (see lakes.py's own module docstring / _water_balance's docstring) -- a
+    # depth ceiling low enough to matter sits below some basins' own internal merge saddles, so
+    # a composite lake that only stayed merged because nothing capped its rise falls back below
+    # its own min_depth and splits, using the ordinary split mechanism build_lake_hierarchy
+    # already provides.
+    forest = lakes.build_lake_hierarchy(_BIG_MERGE_ELEVATION, _BIG_MERGE_IS_OCEAN, _BIG_MERGE_NEIGHBORS)
+    assert len(forest) == 1
+    root = forest[0]
+    assert root.min_depth == 2500.0 and root.max_depth == 5000.0  # sanity: real rim is nowhere near either cap
+
+    # Both original sub-basins already merged as of last step: node 0's surface at 0+2500=2500,
+    # node 3's at 100+2400=2500 -- both exactly at the shared saddle.
+    prev_lake_depth = np.zeros(6)
+    prev_lake_depth[0] = 2500.0
+    prev_lake_depth[3] = 2400.0
+    water_deposited = np.zeros(6)
+    out_lake_depth = np.zeros(6)
+    out_silt_deposited = np.zeros(6)
+    out_lake_is_sea = np.zeros(6, dtype=bool)
+    events: list[lakes.LakeEvent] = []
+
+    lakes._resolve(
+        root, _BIG_MERGE_ELEVATION, prev_lake_depth, water_deposited, years_myr=1.0,
+        is_frozen=np.zeros(6, dtype=bool), out_lake_depth=out_lake_depth,
+        out_silt_deposited=out_silt_deposited, out_lake_is_sea=out_lake_is_sea,
+        node_area_km2=100.0,  # small -- keeps this scenario at lake tier, not sea
+        events=events,
+    )
+
+    assert len(events) == 1 and events[0].kind == "split"
+    # Both children land at the tier-capped level (floor 0 + LAKE_MAX_DEPTH_M 1800 = 1800), not
+    # the stale old saddle (2500) -- see _resolve's own comment on why resetting to min_depth
+    # here (the *ordinary* organic-dip case's continuity approximation) would completely undo
+    # the cap and oscillate forever: the very next step's _prev_level check would read exactly
+    # min_depth again and re-merge into the same failing computation.
+    assert root.children[0].current_water_elevation == 1800.0
+    assert root.children[1].current_water_elevation == 1800.0
+    assert out_lake_depth[0] == 1800.0  # node 0's own floor is 0
+    assert out_lake_depth[3] == 1700.0  # node 3's own floor is 100 -> 1800 - 100
+    # The cap held it at lake tier throughout -- nothing here was ever big enough to promote.
+    assert not out_lake_is_sea.any()
+
+    # Confirm the fix actually breaks the oscillation: resolving *again* from this step's own
+    # output (as the next real step would) must NOT immediately re-merge into the same losing
+    # computation -- each child now resolves independently and keeps decaying, not bouncing
+    # back up to the old saddle.
+    forest2 = lakes.build_lake_hierarchy(_BIG_MERGE_ELEVATION, _BIG_MERGE_IS_OCEAN, _BIG_MERGE_NEIGHBORS)
+    events2: list[lakes.LakeEvent] = []
+    lakes._resolve(
+        forest2[0], _BIG_MERGE_ELEVATION, out_lake_depth, water_deposited, years_myr=1.0,
+        is_frozen=np.zeros(6, dtype=bool), out_lake_depth=np.zeros(6),
+        out_silt_deposited=np.zeros(6), out_lake_is_sea=np.zeros(6, dtype=bool),
+        node_area_km2=100.0, events=events2,
+    )
+    assert not any(e.kind == "split" for e in events2)  # no repeat split -- already independent
+    assert forest2[0].current_water_elevation < 1800.0  # genuinely decaying, not stuck at the cap

@@ -76,6 +76,12 @@ BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
 # should read as visibly distinct from the open ocean, not just "more blue."
 LAKE_COLOR_RGB = (58, 92, 122)
+# A basin large enough to classify sea tier (hydrology.HydrologyFields.is_sea, see
+# lakes._classify_tier) draws this instead of LAKE_COLOR_RGB -- more saturated and closer to
+# open-ocean blue than the muddy lake color, since it's meant to read as "basically a sea," but
+# with a distinct teal cast so it's still legible as its own enclosed body next to true open
+# ocean at a glance.
+SEA_COLOR_RGB = (42, 128, 140)
 # Fixed river overlay color (#4dd8e6); line width is not fixed -- see _draw_rivers and
 # _rivers_to_draw. A segment's width steps 1/2/3 px off its own flow_accum as a fraction of
 # its network's mouth flow (RIVER_WIDTH_TIER_FRACTIONS): flat along an unbranched reach (where
@@ -714,10 +720,14 @@ def _render_grid_arrays(
 ) -> tuple[np.ndarray, ...] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, and channel_width -- see
-    docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy,
-    elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width,
-    cell_half_width, cell_half_height) arrays, or None for an empty world.
+    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, and
+    is_sea -- see docs/simulation-model.md#render-image. Returns flat concatenated
+    (projected_xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth,
+    channel_width, is_sea, cell_half_width, cell_half_height) arrays, or None for an empty
+    world. Unlike the other per-node fields here, `is_sea` isn't a value persisted on the
+    plates themselves -- it's `lakes._classify_tier`'s own per-step read of the hydrology
+    cache, resampled per lattice chunk the same way `_biome_fields` resamples it for its own
+    grid (`hydrology.sample_is_sea`).
 
     `include_terrain_relief` (default `False`, every caller but the Elevation view's own
     "Mountains"/"Plains & Plateaus" toggles) appends one more array, each cell's
@@ -771,8 +781,8 @@ def _render_grid_arrays(
     # density where 100km was already the tighter bound.
     grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, hw_chunks, hh_chunks, terrain_chunks = (
-        [], [], [], [], [], [], [], [], [], [], [],
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, sea_chunks, hw_chunks, hh_chunks, terrain_chunks = (
+        [], [], [], [], [], [], [], [], [], [], [], [],
     )
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
@@ -786,6 +796,10 @@ def _render_grid_arrays(
         volcano_chunks.append(all_is_volcano[idx])
         channel_depth_chunks.append(all_channel_depth[idx])
         channel_width_chunks.append(all_channel_width[idx])
+        # Not a persisted per-node field like the others above (see HydrologyFields.is_sea's
+        # own comment) -- resampled straight from the hydrology cache per chunk, the same
+        # hydrology.sample_is_sea used for the Biome grid (_biome_fields).
+        sea_chunks.append(hydrology.sample_is_sea(world, world_pts, np.zeros(len(world_pts), dtype=bool)))
         if all_terrain_relief is not None:
             terrain_chunks.append(all_terrain_relief[idx])
 
@@ -815,6 +829,7 @@ def _render_grid_arrays(
         np.concatenate(volcano_chunks, axis=0),
         np.concatenate(channel_depth_chunks, axis=0),
         np.concatenate(channel_width_chunks, axis=0),
+        np.concatenate(sea_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
     )
@@ -886,8 +901,11 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     coarser, fixed-shape simulation grid (see climate.compute_climate_cached) rather than
     resimulated at this resolution. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3),
     elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
-    lake_depth, glacier_depth, channel_depth, channel_width), all (H, W) besides the first
-    three."""
+    lake_depth, glacier_depth, channel_depth, channel_width, is_sea), all (H, W) besides the
+    first three. Unlike lake_depth/glacier_depth/channel_depth, `is_sea` isn't a persisted
+    per-node field on the plates themselves -- it's `lakes._classify_tier`'s own per-step read,
+    resampled from the hydrology cache the same way `is_ocean` already is
+    (`hydrology.sample_is_sea`, same one-step-stale tolerance and all-False fallback)."""
     lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
     flat_xyz = world_xyz.reshape(-1, 3)
     shape = (grid_h, grid_w)
@@ -900,6 +918,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         glacier_depth = np.zeros(shape)
         channel_depth = np.zeros(shape)
         channel_width = np.zeros(shape)
+        is_sea = np.zeros(shape, dtype=bool)
     else:
         _all_points, all_elevation, _owner, tree = node_cloud
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
@@ -915,6 +934,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         # Connectivity-aware: an enclosed interior pit below sea level renders as lake/land, not
         # as ocean (and so no longer as an Intertidal Zone). See hydrology.connected_ocean_mask.
         is_ocean = hydrology.sample_is_ocean(world, world_xyz, elevation_m <= world.sea_level_m)
+        is_sea = hydrology.sample_is_sea(world, world_xyz, np.zeros(shape, dtype=bool))
 
     fields = climate.compute_climate_cached(world)
     air_temp = _bilinear_resample(fields.air_temperature_c, fields.lat_deg, fields.lon_deg, lat_deg, lon_deg)
@@ -923,7 +943,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
 
     return (
         lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip,
-        lake_depth, glacier_depth, channel_depth, channel_width,
+        lake_depth, glacier_depth, channel_depth, channel_width, is_sea,
     )
 
 
@@ -1512,6 +1532,7 @@ CELL_BLUR_RADIUS_PX = 1.0
 # click-to-highlight purposes never does.
 COMBINED_LAKE_ID_CODE = len(biomes.BIOME_NAMES) + 1
 COMBINED_GLACIER_ID_CODE = len(biomes.BIOME_NAMES) + 2
+COMBINED_SEA_ID_CODE = len(biomes.BIOME_NAMES) + 3
 
 # Combined's ocean color = the pelagic-province flat color blended toward the hypsometric
 # depth shade by this fraction, so deep basins still darken and shelves still lighten (the
@@ -1551,7 +1572,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width, _is_sea = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1606,7 +1627,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, channel_depth, channel_width = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, channel_depth, channel_width, is_sea = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1638,17 +1659,21 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     if np.any(channel_shade < 1.0):
         colors = colors * channel_shade[:, None]
     is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    is_sea_cell = is_lake & is_sea.reshape(-1)
     if np.any(is_lake):
-        colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=float), colors)
+        lake_rgb = np.where(is_sea_cell[:, None], np.array(SEA_COLOR_RGB, dtype=float), np.array(LAKE_COLOR_RGB, dtype=float))
+        colors = np.where(is_lake[:, None], lake_rgb, colors)
     is_glacier = glacier_depth.reshape(-1) > hydrology.GLACIER_VISIBLE_DEPTH_M
     if np.any(is_glacier):
         colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
     # Per-cell class id -> alpha (see COMBINED_LAKE_ID_CODE's comment): every classified cell
-    # (land Köppen or ocean pelagic) carries biome_id + 1; lake/glacier overlays win.
+    # (land Köppen or ocean pelagic) carries biome_id + 1; lake/sea/glacier overlays win, sea
+    # taking priority over the plain lake id wherever a lake cell is also sea-classified.
     id_code = biome_ids + 1
     id_code = np.where(is_lake, COMBINED_LAKE_ID_CODE, id_code)
+    id_code = np.where(is_sea_cell, COMBINED_SEA_ID_CODE, id_code)
     id_code = np.where(is_glacier, COMBINED_GLACIER_ID_CODE, id_code)
     cell_alpha = (255 - id_code).astype(np.uint8)
 
@@ -1823,7 +1848,7 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
     if grid is None or node_cloud is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h = grid
     all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
@@ -1880,7 +1905,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h = grid
     all_points, _all_elevation, _ = collected
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -1947,7 +1972,7 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h = grid
     all_points, _all_elevation, _ = collected
     created = plates.collect_all_node_created_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2342,7 +2367,7 @@ def render_png(
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h, *rest = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h, *rest = grid
         terrain_relief = rest[0] if rest else None
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
@@ -2384,7 +2409,9 @@ def render_png(
         # more physically current/visually dominant state there.
         is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
         if np.any(is_lake):
-            colors = np.where(is_lake[:, None], np.array(LAKE_COLOR_RGB, dtype=np.uint8), colors)
+            is_sea_cell = is_lake & is_sea
+            lake_rgb = np.where(is_sea_cell[:, None], np.array(SEA_COLOR_RGB, dtype=np.uint8), np.array(LAKE_COLOR_RGB, dtype=np.uint8))
+            colors = np.where(is_lake[:, None], lake_rgb, colors)
         if view != "elevation" and np.any(is_volcano):
             colors = np.where(is_volcano[:, None], np.array(VOLCANO_COLOR_RGB, dtype=np.uint8), colors)
         is_glacier = glacier_depth > hydrology.GLACIER_VISIBLE_DEPTH_M

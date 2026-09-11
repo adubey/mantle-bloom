@@ -30,6 +30,27 @@ roughening rate, and whether a cheap "fill depressions below N nodes / below M m
 relief straight into `elevation`" pre-pass belongs in erosion or terrain relaxation. Shares
 root cause with "stranded sub-sea-level basins" and the coastal-dither work below.
 
+**2026-09-10 addendum -- a related but distinct pathology fixed: giant lakes with no size
+ceiling at all.** Investigating a user report ("many giant lakes... not sure if this is
+realistic") on `~/Downloads/mantle-bloom-seed931964976-286400000y.mbworld` (286.4 My,
+node_density 4) turned up a different failure mode than this section's own caterpillar-tree
+depth issue: `stranded_basins.find_stranded_basins` reported **zero** basins on that save (not
+the unbounded/stranded case at all) -- instead, real, rim-bounded closed basins had simply been
+allowed to grow to unrealistic size over hundreds of My because nothing in `lakes.py` capped
+depth by physical plausibility. The worst: 1,612 flooded nodes, ~4.84M km^2, 4,626 m deep,
+sitting right at its own real spill point -- 13x the Caspian Sea's actual area, 4.5x Lake
+Baikal's actual depth. Fixed by `lakes._classify_tier` + a lake-vs-sea depth ceiling folded
+into `_water_balance`'s existing rim cap -- see
+[docs/simulation-model.md#lake-vs-sea-tiers](simulation-model.md#lake-vs-sea-tiers) for the
+full mechanism, constants, and why the same cap turns out to double as a real fix for *this*
+section's "smaller lakes should split apart instead of staying merged" complaint (a depth
+ceiling low enough to matter sits below some basins' own internal merge saddles, so a composite
+that only stayed merged because nothing capped its rise can fall back below its own `min_depth`
+and split on the next `_resolve` pass). **Not fixed by this:** the caterpillar-tree depth issue
+itself (thousands of genuinely tiny sub-resolution pits merging into one long chain) -- the new
+depth cap only bounds how *deep*/*large* a basin gets, not how many distinct small basins exist
+in a drainage network to begin with. Still worth the siltation investigation above.
+
 ---
 
 ## Diagnostic ("ABL") wind model: close the last ~5-10% gap to the CFD

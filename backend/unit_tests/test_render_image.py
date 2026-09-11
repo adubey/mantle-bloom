@@ -16,7 +16,7 @@ def _world(seed=1, num_plates=10, continental_fraction=0.4):
 
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
     world = _world()
-    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
 
     n = len(xy)
     assert n > 1000  # a real full-sphere sweep, not a token few points
@@ -88,10 +88,10 @@ def test_classify_terrain_relief_empty_world_returns_empty():
 def test_render_grid_arrays_terrain_relief_is_opt_in():
     world = _world(num_plates=8)
     default_grid = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
-    assert len(default_grid) == 10  # unaffected -- every existing caller's unpack still matches
+    assert len(default_grid) == 11  # unaffected -- every existing caller's unpack still matches
 
     full_grid = render_image._render_grid_arrays(world, "behrmann", np.eye(3), include_terrain_relief=True)
-    assert len(full_grid) == 11
+    assert len(full_grid) == 12
     terrain = full_grid[-1]
     elevation = full_grid[1]
     assert terrain.shape == elevation.shape
@@ -357,7 +357,7 @@ def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_re
     from app import biomes
 
     world = _world(seed=7, num_plates=12, continental_fraction=0.6)
-    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _channel_depth, _channel_width = render_image._biome_fields(
+    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _channel_depth, _channel_width, _is_sea = render_image._biome_fields(
         world, *render_image.biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -719,6 +719,35 @@ def test_speckle_view_draws_flagged_nodes_in_the_flag_color(monkeypatch):
     assert np.any(np.all(pixels == np.array(render_image.SPECKLE_FLAG_RGB), axis=-1))
 
 
+def test_combined_view_draws_sea_color_for_a_sea_tier_lake_not_plain_lake_color(monkeypatch):
+    # Force every node to read as "a lake" (plates.collect_all_lake_depth) and sea tier
+    # (hydrology.sample_is_sea) -- easy to find on the rendered image, and isolates the
+    # color-selection logic itself from needing a real, correctly-classified sea-scale basin.
+    world = _world()
+    all_points, _elev, _owner = render_image.plates.collect_all_points(world.plates)
+    lake_depth = np.full(len(all_points), 50.0)
+    monkeypatch.setattr(render_image.plates, "collect_all_lake_depth", lambda plates: lake_depth)
+    monkeypatch.setattr(render_image.hydrology, "sample_is_sea", lambda world, xyz, fallback: np.ones(fallback.shape, dtype=bool))
+
+    png = render_image.render_png(world, "behrmann", "combined", 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).reshape(-1, 3)
+    assert np.any(np.all(pixels == np.array(render_image.SEA_COLOR_RGB), axis=-1))
+    assert not np.any(np.all(pixels == np.array(render_image.LAKE_COLOR_RGB), axis=-1))
+
+
+def test_combined_view_draws_plain_lake_color_when_not_sea_tier(monkeypatch):
+    world = _world()
+    all_points, _elev, _owner = render_image.plates.collect_all_points(world.plates)
+    lake_depth = np.full(len(all_points), 50.0)
+    monkeypatch.setattr(render_image.plates, "collect_all_lake_depth", lambda plates: lake_depth)
+    monkeypatch.setattr(render_image.hydrology, "sample_is_sea", lambda world, xyz, fallback: np.zeros(fallback.shape, dtype=bool))
+
+    png = render_image.render_png(world, "behrmann", "combined", 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).reshape(-1, 3)
+    assert np.any(np.all(pixels == np.array(render_image.LAKE_COLOR_RGB), axis=-1))
+    assert not np.any(np.all(pixels == np.array(render_image.SEA_COLOR_RGB), axis=-1))
+
+
 def test_rotate_maps_a_known_point_to_its_expected_position():
     """The core operation the whole view-rotation feature rests on: a 180-degree rotation
     about the z-axis should send lat=0/lon=0 to lat=0/lon=180 (its antipode on the equator)."""
@@ -736,7 +765,7 @@ def test_render_grid_stays_gap_free_under_a_nontrivial_rotation():
     no-gaps assertions at a rotation that mixes all three axes, not just identity/90/180."""
     world = _world(seed=8)
     rotation = geometry.rotation_matrix(np.array([0.4, -0.5, 0.7]), 1.3)
-    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
     assert len(xy) > 1000
     assert np.all(half_w > 0)
     assert np.all(half_h > 0)
