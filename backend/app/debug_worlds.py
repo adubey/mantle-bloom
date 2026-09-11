@@ -98,15 +98,76 @@ def _build_plates(
     return plates, seeds_xyz
 
 
+# Every "collision" scenario below spends nearly all of its area on plain background ocean --
+# this many additional oceanic filler plates (roughly Earth's own major-plate count) tile
+# whatever the scenario's own explicit continental seeds don't claim, so the world reads as
+# mostly water with a couple of colliding landmasses in it, not a globe wall-to-wall with
+# continents.
+_OCEAN_FILLER_PLATE_COUNT = 18
+
+# Filler oceanic plates never appear in a scenario's own `relationships` list (they're
+# background, not what the scenario is testing) -- they instead all share this single fixed
+# small rotation about the world's polar axis, both giving `_build_debug_world`'s
+# `background_omega` a value and making the ocean visibly drift over a long run rather than
+# sitting frozen. Deliberately slow relative to `_DEBUG_WORLD_RATE` -- the point is an ambient
+# backdrop, not a second thing competing with the scenario's own colliding plates.
+_OCEAN_FILLER_OMEGA = np.array([0.0, 0.0, 1.0]) * (0.1 * mantle.MAX_PLATE_RATE)
+
+
+def _fibonacci_sphere_points(n: int) -> list[np.ndarray]:
+    """`n` unit vectors spread roughly evenly over the whole sphere via the Fibonacci lattice --
+    deterministic (no RNG), so a scenario's filler-plate layout is the same on every call
+    regardless of `seed` (which only ever affects per-node terrain texture, see `new_plate`)."""
+    golden_angle = np.pi * (3.0 - np.sqrt(5.0))
+    points = []
+    for i in range(n):
+        z = 1.0 - 2.0 * (i + 0.5) / n
+        r = np.sqrt(max(0.0, 1.0 - z * z))
+        theta = golden_angle * i
+        points.append(np.array([r * np.cos(theta), r * np.sin(theta), z]))
+    return points
+
+
+def _ocean_filler_seeds_latlon_deg(
+    avoid_xyz: list[np.ndarray], count: int = _OCEAN_FILLER_PLATE_COUNT, min_sep_deg: float = 10.0
+) -> list[tuple[float, float]]:
+    """`count` lat/lon-degree seed positions for background oceanic filler plates, spread over
+    the whole sphere by the Fibonacci lattice and skipping any candidate within `min_sep_deg` of
+    one of the scenario's own continental seeds (`avoid_xyz`) so the filler plates don't crowd
+    the continents' own Voronoi cells down to nothing. Oversamples the lattice 3x so `count`
+    still survives the filtering."""
+    min_cos = np.cos(np.radians(min_sep_deg))
+    chosen_xyz = []
+    for p in _fibonacci_sphere_points(count * 3):
+        if all(np.dot(p, a) < min_cos for a in avoid_xyz):
+            chosen_xyz.append(p)
+        if len(chosen_xyz) == count:
+            break
+    assert len(chosen_xyz) == count, "not enough oceanic filler seeds after avoiding the continental ones"
+    lat, lon = geometry.xyz_to_latlon(np.array(chosen_xyz))
+    return list(zip(np.degrees(lat).tolist(), np.degrees(lon).tolist()))
+
+
 def _build_debug_world(
     seed: int,
     seeds_latlon_deg: list[tuple[float, float]],
     crust_types: list[str],
     relationships: list[tuple[int, int, str]],
     scenario_message: str,
+    background_omega: np.ndarray | None = None,
 ) -> World:
+    """`background_omega`, when given, is the pinned omega for every seed that `relationships`
+    never mentions (background oceanic filler plates -- see `_ocean_filler_seeds_latlon_deg`)
+    rather than the `np.zeros(3)` `_omegas_from_relationships` would otherwise leave them with:
+    a plate the scenario isn't testing still needs *some* nonzero motion (`pinned_omegas` is
+    meant to fully replace the torque balance, not partially), so it gets a small shared drift
+    instead of sitting frozen."""
     plates, seeds_xyz = _build_plates(seed, seeds_latlon_deg, crust_types, DEBUG_WORLD_NODE_DENSITY)
     omegas = _omegas_from_relationships(seeds_xyz, relationships, _DEBUG_WORLD_RATE)
+
+    if background_omega is not None:
+        related = {i for i, j, _ in relationships} | {j for i, j, _ in relationships}
+        omegas = [omega if i in related else background_omega.copy() for i, omega in enumerate(omegas)]
 
     world = World(
         seed=seed,
@@ -192,12 +253,102 @@ def scenario_five_plate_irregular(seed: int) -> World:
     )
 
 
+def _build_collision_world(
+    seed: int,
+    continental_latlon_deg: list[tuple[float, float]],
+    relationships: list[tuple[int, int, str]],
+    scenario_message: str,
+) -> World:
+    """Shared builder for the "mostly ocean, with colliding continents in it" scenarios below:
+    `continental_latlon_deg`/`relationships` describe only the landmasses actually being
+    tested, and this adds `_OCEAN_FILLER_PLATE_COUNT` background oceanic plates around them
+    (see `_ocean_filler_seeds_latlon_deg`) so the world looks like a real one rather than a
+    handful of continents covering the whole sphere."""
+    continental_xyz = [
+        geometry.latlon_to_xyz(np.radians(lat_deg), np.radians(lon_deg)) for lat_deg, lon_deg in continental_latlon_deg
+    ]
+    filler_latlon_deg = _ocean_filler_seeds_latlon_deg(continental_xyz)
+    return _build_debug_world(
+        seed,
+        seeds_latlon_deg=continental_latlon_deg + filler_latlon_deg,
+        crust_types=["continental"] * len(continental_latlon_deg) + ["oceanic"] * len(filler_latlon_deg),
+        relationships=relationships,
+        scenario_message=scenario_message,
+        background_omega=_OCEAN_FILLER_OMEGA,
+    )
+
+
+def scenario_two_continental_collision(seed: int) -> World:
+    """Two continental plates locked in a head-on convergent boundary, both landmass (unlike
+    `scenario_two_plate_convergent`'s one-continental-one-oceanic subduction margin), adrift in
+    an otherwise ordinary ocean of background plates (see `_build_collision_world`) -- stepped
+    for a long run this is a continent-continent suture that never resolves into subduction, so
+    the two landmasses keep shoving into and piling onto each other indefinitely, the
+    debug-world stand-in for something like the Indo-Asian collision."""
+    return _build_collision_world(
+        seed,
+        continental_latlon_deg=[(0.0, -10.0), (0.0, 10.0)],
+        relationships=[(0, 1, "convergent")],
+        scenario_message="Debugging world generated: two continental plates, sustained collision.",
+    )
+
+
+def scenario_two_colliding_pairs(seed: int) -> World:
+    """Two independent continent-continent collisions happening at once, far enough apart on
+    the sphere (roughly opposite sides) that neither pair's gap-filling activity should ever
+    touch the other's -- two separate copies of `scenario_two_continental_collision`'s boundary
+    in one otherwise-oceanic world, for exercising several unrelated corner-notch/collision
+    zones simultaneously."""
+    return _build_collision_world(
+        seed,
+        continental_latlon_deg=[(20.0, -60.0), (20.0, -40.0), (-20.0, 60.0), (-20.0, 80.0)],
+        relationships=[(0, 1, "convergent"), (2, 3, "convergent")],
+        scenario_message="Debugging world generated: two colliding pairs of continental plates.",
+    )
+
+
+def scenario_three_colliding_pairs(seed: int) -> World:
+    """Three independent continent-continent collisions, one every 120 degrees of longitude
+    around the same latitude line so all three stay well clear of each other -- the same idea
+    as `scenario_two_colliding_pairs` with one more pair, six continental plates total."""
+    return _build_collision_world(
+        seed,
+        continental_latlon_deg=[
+            (10.0, -10.0),
+            (10.0, 10.0),
+            (10.0, 110.0),
+            (10.0, 130.0),
+            (10.0, -130.0),
+            (10.0, -110.0),
+        ],
+        relationships=[(0, 1, "convergent"), (2, 3, "convergent"), (4, 5, "convergent")],
+        scenario_message="Debugging world generated: three colliding pairs of continental plates.",
+    )
+
+
+def scenario_three_plate_mutual_collision(seed: int) -> World:
+    """Three continental plates meeting at one point with every leg convergent (unlike
+    `scenario_triple_junction_mixed`'s two-divergent-one-convergent mix) -- all three shove
+    toward the shared junction and toward each other at once, so stepped for a while they weld
+    into a single combined landmass rather than settling into a stable boundary shape."""
+    return _build_collision_world(
+        seed,
+        continental_latlon_deg=[(10.0, 0.0), (-10.0, 10.0), (-10.0, -10.0)],
+        relationships=[(0, 1, "convergent"), (0, 2, "convergent"), (1, 2, "convergent")],
+        scenario_message="Debugging world generated: three plates mutually converging into one landmass.",
+    )
+
+
 DEBUG_SCENARIOS = {
     "two_plate_divergent": scenario_two_plate_divergent,
     "two_plate_convergent": scenario_two_plate_convergent,
     "triple_junction_mixed": scenario_triple_junction_mixed,
     "four_plate_grid": scenario_four_plate_grid,
     "five_plate_irregular": scenario_five_plate_irregular,
+    "two_continental_collision": scenario_two_continental_collision,
+    "two_colliding_pairs": scenario_two_colliding_pairs,
+    "three_colliding_pairs": scenario_three_colliding_pairs,
+    "three_plate_mutual_collision": scenario_three_plate_mutual_collision,
 }
 
 # Short human-readable labels for the Generate World "Debugging Worlds" tab's scenario picker
@@ -209,6 +360,10 @@ DEBUG_SCENARIO_LABELS = {
     "triple_junction_mixed": "Triple junction (2 divergent, 1 convergent)",
     "four_plate_grid": "Four-plate grid, all edges divergent",
     "five_plate_irregular": "Five plates, irregular ring",
+    "two_continental_collision": "Two continental plates, sustained collision (open ocean)",
+    "two_colliding_pairs": "Two colliding continent pairs, open ocean",
+    "three_colliding_pairs": "Three colliding continent pairs, open ocean",
+    "three_plate_mutual_collision": "Three plates, mutual collision (open ocean)",
 }
 
 
