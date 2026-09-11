@@ -352,6 +352,14 @@ class HydrologyFields:
     # margin (a terminal moraine/outwash deposit) instead of being stranded wherever it was
     # scoured. Also defaulted, same backward-compatibility reasoning as lake_events above.
     ice_flow_target: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
+    # True wherever lake_depth is standing water AND lakes._classify_tier currently reads that
+    # body as sea tier (large enough, see lakes.SEA_MIN_FLOODED_AREA_KM2) rather than lake tier
+    # -- climate.py's own moisture source and render_image.py's overlay both key off this the
+    # same way they already key off lake_depth. Also defaulted, same backward-compatibility
+    # reasoning as lake_events above -- a cache loaded from a save written before this field
+    # existed has none of it, so every reader treats a shape-0/mismatched array as "no sea
+    # anywhere" via the same guard sample_is_ocean already uses for a stale/absent cache.
+    is_sea: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
 
 
 def _gather_nodes(
@@ -467,6 +475,23 @@ def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np
     flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
     _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
     return hydro.is_ocean[idx].reshape(fallback_is_ocean.shape)
+
+
+def sample_is_sea(world: "World", query_xyz: np.ndarray, fallback_is_sea: np.ndarray) -> np.ndarray:
+    """Same resample-from-cache contract as `sample_is_ocean` immediately above, for
+    `HydrologyFields.is_sea` (lakes.py's sea-tier classification, see `lakes._classify_tier`):
+    climate.py's own moisture source and render_image.py's overlay both need this on their own
+    grid the same way they already need `is_ocean`/`lake_depth`. `fallback_is_sea` (all-False
+    -- nothing is a sea before the world's first hydrology pass) is returned unchanged when no
+    cache exists yet, or when a loaded cache predates this field (`HydrologyFields.is_sea`'s own
+    comment -- an old save's cached object simply has no such attribute at all)."""
+    hydro = getattr(world, "hydrology_cache", None)
+    hydro_is_sea = getattr(hydro, "is_sea", None) if hydro is not None else None
+    if hydro is None or len(hydro.points) == 0 or hydro_is_sea is None or len(hydro_is_sea) != len(hydro.points):
+        return fallback_is_sea
+    flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
+    _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
+    return hydro_is_sea[idx].reshape(fallback_is_sea.shape)
 
 
 def lake_components(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> list[np.ndarray]:
@@ -951,7 +976,7 @@ def compute_hydrology(
     # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
     # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
     # used (see lakes.resolve_lakes's own docstring).
-    fields.lake_depth, fields.silt_deposited, fields.lake_events = lakes.resolve_lakes(
+    fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
         forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen
     )
     fields.lake_forest = forest

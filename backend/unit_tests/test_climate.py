@@ -189,6 +189,56 @@ def test_humidity_is_higher_near_warm_ocean_and_decays_inland():
     assert humidity[row, coast_col] > humidity[row, inland_col]
 
 
+def test_land_moisture_source_sea_cells_evaporate_at_a_higher_ceiling_than_lake_cells():
+    air_temp = np.array([[20.0, 20.0]])
+    lake_depth = np.full((1, 2), 50.0)  # both fully saturated (>> LAKE_EVAPORATION_REFERENCE_DEPTH_M)
+    channel_depth = np.zeros((1, 2))
+    vegetation = np.zeros((1, 2))
+    is_sea = np.array([[False, True]])
+
+    source = climate._land_moisture_source(air_temp, lake_depth, channel_depth, vegetation, is_sea=is_sea)
+    assert source[0, 0] == pytest.approx(climate.LAKE_EVAPORATION_CEILING)
+    assert source[0, 1] == pytest.approx(climate.SEA_EVAPORATION_CEILING)
+    assert source[0, 1] > source[0, 0]
+
+
+def test_land_moisture_source_defaults_every_cell_to_the_flat_lake_ceiling():
+    # is_sea=None (the default -- every existing caller that predates this parameter) should
+    # reproduce the old flat-ceiling behavior exactly, not silently promote anything.
+    air_temp = np.array([20.0])
+    lake_depth = np.array([50.0])
+    channel_depth = np.zeros(1)
+    vegetation = np.zeros(1)
+    source = climate._land_moisture_source(air_temp, lake_depth, channel_depth, vegetation)
+    assert source[0] == pytest.approx(climate.LAKE_EVAPORATION_CEILING)
+
+
+def test_compute_humidity_a_sea_cell_evaporates_more_than_an_identical_lake_cell():
+    shape = (1, 3)
+    is_ocean = np.zeros(shape, dtype=bool)
+    elevation = np.full(shape, 100.0)
+    ocean_temp = np.full(shape, 20.0)
+    air_temp = np.full(shape, 20.0)
+    wind_u = np.zeros(shape)
+    wind_v = np.zeros(shape)
+    elevation_factor = np.ones(shape)
+    lat_deg = np.zeros(1)
+    lake_depth = np.full(shape, 50.0)  # every cell equally "wet"
+    channel_depth = np.zeros(shape)
+
+    lake_humidity, _ = climate.compute_humidity(
+        is_ocean, elevation, ocean_temp, air_temp, wind_u, wind_v, elevation_factor, lat_deg, lake_depth, channel_depth,
+    )
+    sea_humidity, _ = climate.compute_humidity(
+        is_ocean, elevation, ocean_temp, air_temp, wind_u, wind_v, elevation_factor, lat_deg, lake_depth, channel_depth,
+        is_sea=np.ones(shape, dtype=bool),
+    )
+    # Same wetness everywhere -- the only difference is the tier's own evaporation ceiling, so
+    # the sea version must read higher at every cell, not just downwind of some source.
+    assert np.all(sea_humidity >= lake_humidity)
+    assert np.any(sea_humidity > lake_humidity)
+
+
 def test_humidity_noise_breaks_zonal_banding_without_moving_row_means():
     # All-ocean grid with a latitude-banded ocean temperature: without an rng every row of
     # the humidity field is flat (the evaporation ceiling is a near-pure function of
@@ -440,7 +490,7 @@ def test_wind_model_diagnostic_bypasses_the_cfd_state():
     fields = climate.compute_climate(world, height, width)
 
     lat_deg, _, world_xyz = climate._build_grid(height, width)
-    elevation_m, is_ocean, _, _ = climate._sample_elevation_and_crust(world, world_xyz)
+    elevation_m, is_ocean, _, _, _ = climate._sample_elevation_and_crust(world, world_xyz)
     insol = climate.compute_insolation(lat_deg, world.axial_tilt_deg, world.solar_multiplier)
     land_t = climate.compute_land_temperature(insol, elevation_m)
     ocean_b = climate.compute_ocean_temperature_baseline(insol, height, width)

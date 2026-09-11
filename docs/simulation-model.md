@@ -3029,6 +3029,105 @@ its floor has risen to meet the surrounding rim, it stops registering as a local
 all (steepest descent no longer sees a depression there), and the lake disappears outright,
 exactly the "reaches ground level" case a lake should eventually hit.
 
+<a id="lake-vs-sea-tiers"></a>
+### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
+
+Before this, a closed basin's only depth limit was its own real geological rim (`max_depth` --
+unbounded for a genuinely endorheic basin) -- so a large, gently-sloped drainage catchment
+could keep filling for hundreds of My with nothing to say "this is now physically implausible."
+Confirmed directly on a 286 My save (seed 931964976): the largest closed basin had grown to
+~4.84M km^2 and 4,626 m deep, sitting right at its own real spill point -- 13x the Caspian
+Sea's actual area and 4.5x Lake Baikal's actual (the real deepest lake's) depth. `lakes.py`
+also had no notion that a basin this size should behave any differently from a five-node pond,
+climatically or visually.
+
+`lakes._classify_tier(members, prev_lake_depth, node_area_km2)` decides, per lake, per step,
+whether it counts as **sea tier**: its own *prior* step's flooded extent (not the depth this
+step is about to compute -- the same "read the already-persisted array" idiom `_prev_level`'s
+own `already_merged` check already uses, avoiding a chicken-and-egg loop) covers at least
+`SEA_MIN_FLOODED_AREA_KM2` (200,000 km^2 -- between the historical Aral Sea and the Caspian).
+`node_area_km2` is derived once per call from `4*pi*R^2 / len(elevation)`, not a node count, so
+the threshold is resolution-invariant without threading `world.node_density` into a module that
+otherwise takes only bare arrays. Each tier gets its own depth ceiling, folded into
+`_water_balance`'s existing `cap_depth` alongside the real rim (`cap_depth = min(rim_cap or
+inf, tier_max_depth)`) -- `LAKE_MAX_DEPTH_M` (1,800 m, comfortably above Baikal's real 1,642 m)
+for an ordinary basin, `SEA_MAX_DEPTH_M` (3,500 m, deeper than the Caspian's real 1,025 m --
+a simulated rift-sea basin can plausibly run deeper, but not unbounded) once promoted. Both are
+first-pass estimates pinned to those two real-world reference points, not swept.
+
+**The cap doubles as the fix for "smaller lakes should split apart" rather than staying
+pathologically merged.** It applies at whichever `Lake` node `_resolve` is currently
+resolving, leaf or already-merged composite alike -- so a composite lake's own rise is capped
+too, not just a leaf's. A depth ceiling low enough to matter sits below some basins' own
+internal merge saddles, so a composite that only stayed merged because nothing capped its rise
+can fall back below its own `min_depth` and split on the very next `_resolve` pass, using the
+ordinary split mechanism `build_lake_hierarchy`'s merge tree already provides -- no new
+mechanism needed, just removing the thing that let a merge become permanent regardless of
+whether the water level could actually still support it.
+
+**The split reset had to change too, or the cap oscillates forever instead of ever actually
+shrinking anything.** `_resolve`'s existing split branch reset both children to exactly
+`node.min_depth` regardless of how far below it `new_level` had fallen -- a fine approximation
+for an ordinary organic dip (the two sides really were still at that shared saddle a moment
+ago), but wrong by a wide margin when the *tier cap*, not evaporation, is what pushed
+`new_level` down: resetting to the stale `min_depth` completely undoes the cap for this step's
+reported depth, and -- confirmed directly on the 286 My save above, as a genuine infinite loop,
+not just an approximation error -- the very next step's `_prev_level` check reads that reset
+value as still exactly `>= min_depth`, re-merges into the identical capped computation, and
+splits again, forever, with the depth never actually decreasing. `max_depth` being a real rim
+can never trigger this on its own (a rim is always `>= min_depth` by construction, so a
+rim-bounded `new_level` can never itself fall below `min_depth`) -- only a tier cap, independent
+of the tree's own topology, can. The fix: when `new_level` lands at or past `tier_max_depth`
+above the floor (the exact, checkable signature of "the tier cap bound this, not organic
+decay"), both children reset to that real, capped `new_level` instead of `min_depth` (each
+clamped to its own `floor_elevation`, since one child's floor can sit above the merged body's
+overall floor, in which case that child now reads as dry rather than negative-depth) -- a
+genuinely lower value the next step's `_prev_level` reads as *not* still merged, so it resolves
+each child independently instead of re-entering the same losing computation. The mirror-image
+case needed the same fix: the merge branch (two children rejoining) also folds the merged
+body's own `_classify_tier` cap into its `min(node.min_depth, floor + tier_max_depth)` result,
+not just `node.min_depth` -- without it, a child large enough to independently reach the saddle
+on its own (legitimate: a child that itself classifies sea tier can grow past an internal
+saddle below `SEA_MAX_DEPTH_M`) would merge back up past the cap the split just enforced, only
+to be capped and split again next step. Both fixes are pinned in `test_lakes.py`'s own
+`test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits`, which re-resolves a
+second time from the first split's own output and asserts no immediate repeat split. Verified
+on the 286 My save: the largest basin's own reported depth, previously frozen forever at 4,626
+m (an exact, unchanging fixed point under both bugs), now converges to a stable ~3,340 m within
+a handful of resolution passes and stays there.
+
+**Known residual, not chased further: some steady-state merge/split churn remains, invisible
+to the player.** On the same save, replaying `lakes.step_lakes` repeatedly against *frozen*
+terrain/inflow (an artificial worst case -- real gameplay's climate, silt, and tectonics all
+change every step) still shows a stable ~13 splits / ~56 merges per pass, sphere-wide, once the
+depth itself has settled -- smaller basins trading membership back and forth without the depth
+bound ever being violated again. This never reaches the player: `erosion.py`'s own comment
+already documents that lake merge/split transitions are deliberately *never* routed to
+`World.log_event` at all (even the near-sea-level-aggregated ones "churn constantly along a
+dithering coastline and drown out the genuine tectonic events" -- see `summarize_lake_events`),
+so this is purely internal tree-topology churn, not a console-spam regression. Worth a closer
+look if it turns out to cost real per-step time on a large save, but not otherwise pursued here.
+
+**Sea tier reaches climate and rendering, not `hydrology.is_ocean`.** `resolve_lakes` returns
+a new `(N,) bool` `lake_is_sea` array (`HydrologyFields.is_sea`, same "recomputed fresh every
+step, no persistent identity" contract as `lake_depth` itself), true for every currently-wet
+member of a sea-tier lake. `climate.py`'s `_land_moisture_source` picks `SEA_EVAPORATION_
+CEILING` (1.0 -- well above `LAKE_EVAPORATION_CEILING`'s 0.5, still short of open ocean's own
+`MAX_EVAPORATION_CEILING` 1.4, since a big enclosed sea has no current-driven mixing/upwelling
+replenishing its surface the way the open ocean does) over a sea cell, so a large enough basin
+now visibly drives more downwind humidity -- the "generating humidity" a real inland sea does.
+`render_image.py` draws a sea cell in a distinct, more saturated `SEA_COLOR_RGB` (both the
+Biome/Combined grid and the Elevation/Plates lattice), with its own Combined-view alpha id
+(`COMBINED_SEA_ID_CODE`) and legend row ("Salt Sea") for click-to-highlight. Deliberately
+**not** folded into `hydrology.is_ocean`: no ocean currents, ocean-temperature advection, or
+pelagic biome classification -- a sea tier basin is still a closed body, just one with
+sea-strength evaporation and a sea-blue tint, not the connected-ocean machinery a genuinely
+open, current-driven body assumes. `is_sea` isn't a value persisted on the plates themselves
+(unlike `lake_depth`/`channel_depth`) -- both climate.py and render_image.py resample it from
+`world.hydrology_cache` per call (`hydrology.sample_is_sea`), the same up-to-one-step-stale
+tolerance and all-False-fallback contract `hydrology.sample_is_ocean` already established for
+`is_ocean`.
+
 A river's own `flow_target` can point at a node that's genuinely part of a lake (real inflow),
 but a flooded node is never itself classified `is_river` -- checked against this step's
 *final* lake extent, after `lakes.step_lakes` runs, not the flat land/ocean split alone -- so a

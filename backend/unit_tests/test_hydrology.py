@@ -235,6 +235,33 @@ def test_compute_hydrology_treats_an_interior_pit_as_an_endorheic_basin_that_sil
     assert fields.silt_deposited[28:31].max() > 0.0
 
 
+def test_compute_hydrology_populates_is_sea_once_a_basin_stays_flooded():
+    # Same interior-pit fixture as the test above. is_sea is derived from *last* step's own
+    # flooded extent (lakes._classify_tier), so it can't promote on the very first pass -- but
+    # this tiny synthetic world's implied node_area_km2 (whole-sphere area / 40 nodes) is
+    # enormous, so a single wet node held over from a prior step already clears
+    # SEA_MIN_FLOODED_AREA_KM2 on the next one.
+    d = 0.05
+    theta = d * np.arange(40)
+    elevation = np.full(40, 300.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = -60.0
+    plate = _flow_line_plate(0, theta, elevation)
+    world = World(seed=0, plates=[plate])
+
+    first = hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=1_000_000)
+    assert first.lake_depth[28:31].max() > 0.0
+    assert first.is_sea.shape == first.lake_depth.shape
+    assert not first.is_sea.any()  # nothing was wet *last* step yet -- can't have promoted
+
+    second_plate = _flow_line_plate_with_lake(0, theta, elevation, first.lake_depth)
+    second_world = World(seed=0, plates=[second_plate])
+    second = hydrology.compute_hydrology(second_world, np.full(40, 800.0), np.full(40, 15.0), years=1_000_000)
+    assert second.lake_depth[28:31].max() > 0.0
+    assert second.is_sea[28:31].any()
+    assert not second.is_sea[0:15].any()  # ocean itself is never "sea tier" -- is_sea is lake-only
+
+
 def test_compute_hydrology_end_to_end_on_a_small_synthetic_world():
     # 12 points along a monotonically descending line, the last three underwater --
     # exercises the whole pipeline (basin-spill, flow direction, accumulation, river

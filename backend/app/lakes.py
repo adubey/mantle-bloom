@@ -105,6 +105,54 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # into it -- rather than an `elevation + prev_silt_depth` effective floor.
 SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
 
+# Same value elevation_lines.py/mantle.py each already redefine locally rather than import --
+# following that precedent here too rather than pulling in plates.py (a much heavier module,
+# and one this module has never depended on) just for one scalar.
+PLANET_RADIUS_KM = 6371.0
+
+# Lake-vs-sea tiers: a real lake and a real sea behave differently (a sea drives regional
+# humidity at close to ocean strength -- see climate.py's SEA_EVAPORATION_CEILING -- and looks
+# different, hydrology.HydrologyFields.is_sea/render_image.py's SEA_COLOR), and neither should
+# be allowed to grow to an arbitrary size just because its own geological rim happens to sit
+# high. Without any ceiling, a closed basin fills to whatever its real rim allows regardless of
+# how physically implausible that is -- confirmed directly on a 286 My save (seed 931964976):
+# the basin's biggest closed lake had grown to ~4.84M km^2 and 4,626 m deep, sitting right at
+# its own real spill point -- 13x the Caspian Sea's actual area and 4.5x Lake Baikal's actual
+# (the real deepest lake's) depth. The ceilings below are first-pass estimates pinned to those
+# two real-world reference points, not swept.
+#
+# Comfortably above the deepest real lake (Baikal, 1,642 m) -- an ordinary closed basin's water
+# column is capped here regardless of how much deeper its own geological rim would allow.
+LAKE_MAX_DEPTH_M = 1800.0
+# Deeper than the Caspian Sea's real 1,025 m (a simulated rift-sea basin can plausibly run
+# deeper), but still finite -- unlike LAKE_MAX_DEPTH_M/SEA_MAX_DEPTH_M this doesn't reflect an
+# absence of a rim; it's a second, tier-specific ceiling on top of whatever the real rim is.
+SEA_MAX_DEPTH_M = 3500.0
+# Between the historical Aral Sea (~68,000 km^2, before it was largely drained) and the Caspian
+# (~371,000 km^2, Earth's largest lake) -- a basin has to be genuinely sea-scale, not just "a
+# big lake," to promote. A physical area, not a node count, so it's resolution-invariant
+# without threading `world.node_density` into this module (which takes only bare arrays, no
+# `World`, by design -- see the module docstring's own testability rationale).
+SEA_MIN_FLOODED_AREA_KM2 = 200_000.0
+
+
+def _classify_tier(
+    members: np.ndarray, prev_lake_depth: np.ndarray, node_area_km2: float
+) -> tuple[bool, float]:
+    """Whether `members` (a Lake's own catchment, leaf or merged) counts as sea tier *this*
+    step, decided from *last* step's own persisted flooded extent (`prev_lake_depth`) rather
+    than the depth this step is about to compute -- the same "read the already-persisted array,
+    not a value not yet computed this step" idiom `_prev_level`/`_resolve`'s own `already_merged`
+    check already uses, avoiding a chicken-and-egg loop between "how big is this lake" and "how
+    deep is this lake allowed to get." A lake that has never yet held any water defaults to lake
+    tier (promotes one step after first crossing the threshold -- negligible). Returns
+    `(is_sea, tier_max_depth)` -- the caller folds `tier_max_depth` into `_water_balance`'s own
+    `cap_depth`."""
+    prev_wet_count = int(np.count_nonzero(prev_lake_depth[members] > 0.0))
+    is_sea = prev_wet_count * node_area_km2 >= SEA_MIN_FLOODED_AREA_KM2
+    return is_sea, (SEA_MAX_DEPTH_M if is_sea else LAKE_MAX_DEPTH_M)
+
+
 # Sentinel `_catchment_roots` result: this node's own pure-steepest-descent chain reaches the
 # ocean without ever passing through a land local minimum first -- an ordinary hillslope node,
 # never part of any Lake. Distinct from a real node index (always >= 0) and from -1 (unused
@@ -419,6 +467,9 @@ def _water_balance(
     years_myr: float,
     is_frozen: bool,
     out_silt_deposited: np.ndarray,
+    tier_max_depth: float,
+    is_sea: bool,
+    out_lake_is_sea: np.ndarray,
 ) -> float:
     """This lake's new water elevation, generalizing the old per-node `update_lakes` formula
     (hydrology.py) to a single scalar shared by every member: evaporate `prev_level`'s depth
@@ -427,8 +478,14 @@ def _water_balance(
     lake's own members, since more than one of them can be a true sink once several originally
     separate basins are merged into one lake -- spread as a level rise over the lake's own area
     (member count, the same area proxy used elsewhere in this codebase). Clipped to
-    `[floor_elevation, max_depth]` (unbounded above for a closed/endorheic basin, `max_depth is
-    None`).
+    `[floor_elevation, max_depth]` (the real geological rim; unbounded above for a closed/
+    endorheic basin, `max_depth is None`), and *also* to `tier_max_depth` (`_classify_tier`'s
+    lake-vs-sea depth ceiling, always finite) regardless of what the real rim allows -- see that
+    function's own docstring for why an unbounded-by-tier basin is the actual bug being fixed
+    here. Capping a composite (already-merged) lake's own rise this way is what lets it fall
+    back below its own `min_depth` and split on a later `_resolve` pass, using the split
+    mechanism that already exists -- a depth ceiling doubles as the fix for lakes that should
+    never have stayed merged this large in the first place.
 
     The same inflow that grows standing water also drops a small amount of sediment
     (`SILT_ACCUMULATION_COEFFICIENT`, ~100x smaller -- see that constant's own comment) onto the
@@ -457,14 +514,15 @@ def _water_balance(
     member_count = max(len(lake.members), 1)
     growth_depth = LAKE_FILL_RATE * inflow * years_myr / member_count
 
-    cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
-    new_depth = carried_depth + growth_depth
-    if cap_depth is not None:
-        new_depth = min(new_depth, cap_depth)
+    rim_cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
+    cap_depth = tier_max_depth if rim_cap_depth is None else min(rim_cap_depth, tier_max_depth)
+    new_depth = min(carried_depth + growth_depth, cap_depth)
     new_level = lake.floor_elevation + new_depth
 
     members = lake.members
     wet = members[elevation[members] < new_level]
+    if is_sea and len(wet) > 0:
+        out_lake_is_sea[wet] = True
     if len(wet) > 0:
         silt_rise = SILT_ACCUMULATION_COEFFICIENT * inflow * years_myr / len(wet)
         # Never lift a node's bed above this step's own water surface (sediment settles under
@@ -607,6 +665,8 @@ def _resolve(
     is_frozen: np.ndarray,
     out_lake_depth: np.ndarray,
     out_silt_deposited: np.ndarray,
+    out_lake_is_sea: np.ndarray,
+    node_area_km2: float,
     events: list[LakeEvent],
 ) -> float:
     """Resolves one lake (and, for a parent, implicitly its whole subtree) into this step's
@@ -644,7 +704,13 @@ def _resolve(
     reason. Each stack entry is visited twice: `descend=False` pushes the node's children,
     `descend=True` resolves it once they are done. A resolved lake's level is read back off
     its own `current_water_elevation`, which every branch below sets to the same value it
-    would previously have returned."""
+    would previously have returned.
+
+    `out_lake_is_sea`/`node_area_km2` feed `_classify_tier` at every point this function
+    writes `out_lake_depth` -- each write site classifies the *members it's actually writing*
+    (a just-split child's own extent, not its former parent's; a just-merged body's own now-
+    larger extent, not either child's alone), so `_classify_tier`'s own `SEA_MIN_FLOODED_AREA_
+    KM2` reads on the same set of members a viewer would actually see as one lake this step."""
     stack: list[tuple[Lake, bool]] = [(lake, False)]
     while stack:
         node, resolve_now = stack.pop()
@@ -655,9 +721,23 @@ def _resolve(
             child_levels = [child.current_water_elevation for child in node.children]
             if max(child_levels) >= node.min_depth:
                 events.append(LakeEvent(kind="merge", node_count=len(node.members), elevation_m=node.min_depth, basin_count=2))
-                out_lake_depth[node.members] = np.maximum(0.0, node.min_depth - elevation[node.members])
-                node.current_water_elevation = node.min_depth
-                node.is_spilling = node.max_depth is not None and node.min_depth >= node.max_depth
+                is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
+                # A child capable of independently reaching min_depth on its own (this can only
+                # happen if that child's *own* tier cap is above the saddle -- e.g. a child big
+                # enough to classify sea tier growing past an internal saddle lower than
+                # SEA_MAX_DEPTH_M) legitimately merges -- ordinary lake physics, unrelated to
+                # this section's own cap. But the *merged whole*'s own tier cap still applies to
+                # the result: capping here at merge time (not just in _water_balance, which
+                # only ever runs on an already-single body) is what stops the merged level from
+                # sitting above the ceiling this step's caterpillar-splitting fix would then
+                # immediately undo again -- min_depth alone is a real rim value that predates
+                # any tier cap, so it can land above tier_max_depth just as easily as below it.
+                merge_level = min(node.min_depth, node.floor_elevation + tier_max_depth)
+                out_lake_depth[node.members] = np.maximum(0.0, merge_level - elevation[node.members])
+                if is_sea:
+                    out_lake_is_sea[node.members[elevation[node.members] < merge_level]] = True
+                node.current_water_elevation = merge_level
+                node.is_spilling = node.max_depth is not None and merge_level >= node.max_depth
             else:
                 node.current_water_elevation = max(child_levels)
             continue
@@ -676,14 +756,40 @@ def _resolve(
 
         # A leaf, or a parent already one merged body last step: single connected water body.
         node_is_frozen = bool(is_frozen[node.members].any())
-        new_level = _water_balance(node, prev_level, elevation, water_deposited, years_myr, node_is_frozen, out_silt_deposited)
+        is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
+        new_level = _water_balance(
+            node, prev_level, elevation, water_deposited, years_myr, node_is_frozen,
+            out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea,
+        )
         if node.children and new_level < node.min_depth:
             events.append(LakeEvent(kind="split", node_count=len(node.members), elevation_m=node.min_depth, basin_count=len(node.children)))
+            # Ordinarily both children reset to exactly node.min_depth (continuity -- see this
+            # function's own docstring: a small organic evaporation dip means both sides really
+            # were still at that shared saddle a moment ago). That approximation breaks down,
+            # and oscillates forever, when the *tier* cap (not ordinary evaporation) is what
+            # pushed new_level below the saddle: `_water_balance` can never return more than
+            # `tier_max_depth` above the floor, so `new_level` landing at (or past, by rounding)
+            # that ceiling means the tier cap was the binding constraint, not a near-miss dip.
+            # (A real geological rim cap can never do this on its own -- max_depth is always
+            # >= min_depth by construction, so a rim-bounded new_level can never fall below
+            # min_depth in the first place.) Resetting to the stale min_depth in that case would
+            # completely undo the cap for this step's *reported* depth, and -- worse -- persist
+            # a value that reads as "still merged" (exactly >= min_depth) on the very next
+            # step's _prev_level check, re-running this same capped computation and splitting
+            # again forever with no actual progress. Using the real (capped) new_level instead
+            # breaks that loop: next step reads a level genuinely below the saddle and resolves
+            # each child independently, the same as an ordinary multi-step organic decay would.
+            tier_capped = (new_level - node.floor_elevation) >= tier_max_depth - 1e-6
+            reset_level = new_level if tier_capped else node.min_depth
             for child in node.children:
-                out_lake_depth[child.members] = np.maximum(0.0, node.min_depth - elevation[child.members])
-                child.current_water_elevation = node.min_depth
+                child_level = max(reset_level, child.floor_elevation)
+                out_lake_depth[child.members] = np.maximum(0.0, child_level - elevation[child.members])
+                child_is_sea, _ = _classify_tier(child.members, prev_lake_depth, node_area_km2)
+                if child_is_sea:
+                    out_lake_is_sea[child.members[elevation[child.members] < child_level]] = True
+                child.current_water_elevation = child_level
                 child.is_spilling = False
-            node.current_water_elevation = node.min_depth
+            node.current_water_elevation = reset_level
         else:
             out_lake_depth[node.members] = np.maximum(0.0, new_level - elevation[node.members])
             node.current_water_elevation = new_level
@@ -699,27 +805,40 @@ def resolve_lakes(
     water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, list[LakeEvent]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[LakeEvent]]:
     """The back half of `step_lakes` -- everything after `build_lake_hierarchy` -- pulled out
     on its own so `compute_hydrology` can build the hierarchy once, early (before flow routing,
     which now needs it too -- see `compute_spill_routing`), and pass that *same* `forest` in
     here afterward rather than paying for a second, redundant `build_lake_hierarchy` call every
     step. Resolves every top-level lake's own water balance (growth/evaporation/merge/split,
     and this step's own silt drop -- see `_resolve`/`_water_balance`). Returns `(lake_depth,
-    silt_deposited, events)` -- see `step_lakes`'s own docstring for what each means; `forest`
-    itself isn't returned here since the caller already has the exact object it passed in,
-    now mutated in place with this step's resolved `current_water_elevation`/`is_spilling`."""
+    silt_deposited, lake_is_sea, events)` -- see `step_lakes`'s own docstring for what each
+    means; `forest` itself isn't returned here since the caller already has the exact object it
+    passed in, now mutated in place with this step's resolved `current_water_elevation`/
+    `is_spilling`.
+
+    `node_area_km2` -- the physical area one node stands in for, `_classify_tier`'s own lake-
+    vs-sea size threshold -- is derived once here from `len(elevation)` (a sphere's fixed
+    surface area spread evenly over however many nodes this call sees), not passed in: every
+    caller already has `elevation` at hand, and this avoids threading `world.node_density`
+    into a module that otherwise takes only bare arrays -- see `SEA_MIN_FLOODED_AREA_KM2`'s own
+    comment."""
     n = len(elevation)
     lake_depth = np.zeros(n)
     silt_deposited = np.zeros(n)
+    lake_is_sea = np.zeros(n, dtype=bool)
     if n == 0:
-        return lake_depth, silt_deposited, []
+        return lake_depth, silt_deposited, lake_is_sea, []
 
+    node_area_km2 = (4.0 * np.pi * PLANET_RADIUS_KM**2) / n
     years_myr = years / 1_000_000.0
     events: list[LakeEvent] = []
     for root in forest:
-        _resolve(root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen, lake_depth, silt_deposited, events)
-    return lake_depth, silt_deposited, events
+        _resolve(
+            root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen,
+            lake_depth, silt_deposited, lake_is_sea, node_area_km2, events,
+        )
+    return lake_depth, silt_deposited, lake_is_sea, events
 
 
 def step_lakes(
@@ -730,7 +849,7 @@ def step_lakes(
     water_deposited: np.ndarray,
     years: float,
     is_frozen: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, list[Lake], list[LakeEvent]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[Lake], list[LakeEvent]]:
     """The full per-step lake update, for a caller that doesn't need to reuse the depression
     hierarchy for anything else (`compute_hydrology` itself no longer calls this directly --
     see `resolve_lakes`'s own docstring -- but every existing test, and any other future
@@ -738,19 +857,24 @@ def step_lakes(
     depression hierarchy from current terrain (`build_lake_hierarchy`, bare `elevation` --
     everything silted in through the end of last step is already folded into real `elevation`
     by erosion.py, so there's no separate effective-floor offset to add), then `resolve_lakes`
-    it. Returns `(lake_depth, silt_deposited, forest, events)`: `lake_depth` an (N,) array
-    aligned with `elevation` (0 wherever no lake reaches, exactly the same shape/meaning
-    hydrology.py's old `update_lakes` produced, for every other consumer -- render_image.py,
-    coastline.py, erosion.py, group_rivers -- to keep reading unchanged); `silt_deposited`
-    *this step's* per-node sediment increment for erosion.py to add straight into `elevation`
-    (always >= 0, nonzero only under standing water this step); `forest` this step's
-    fully-resolved `Lake` tree (each lake's own `current_water_elevation`/`is_spilling` set to
-    its outcome this step -- informational only, e.g. for a future per-lake stats view; nothing
-    in this module reads it back next step, see the module docstring for why no persistent
-    registry is needed); and `events` this step's `LakeEvent`s (merge/split transitions -- the
-    caller runs them through `summarize_lake_events` and logs the result, mirroring
-    merge_split.apply_topology_changes's own pattern; this module never calls
-    `world.log_event` directly, keeping it testable without a `World`)."""
+    it. Returns `(lake_depth, silt_deposited, lake_is_sea, forest, events)`: `lake_depth` an
+    (N,) array aligned with `elevation` (0 wherever no lake reaches, exactly the same
+    shape/meaning hydrology.py's old `update_lakes` produced, for every other consumer --
+    render_image.py, coastline.py, erosion.py, group_rivers -- to keep reading unchanged);
+    `silt_deposited` *this step's* per-node sediment increment for erosion.py to add straight
+    into `elevation` (always >= 0, nonzero only under standing water this step); `lake_is_sea`
+    an (N,) bool array, true wherever `lake_depth` is nonzero *and* that water body currently
+    classifies as sea tier (`_classify_tier`) -- climate.py's own moisture source and
+    render_image.py's overlay both key off it the same way they already key off `lake_depth`;
+    `forest` this step's fully-resolved `Lake` tree (each lake's own `current_water_elevation`/
+    `is_spilling` set to its outcome this step -- informational only, e.g. for a future
+    per-lake stats view; nothing in this module reads it back next step, see the module
+    docstring for why no persistent registry is needed); and `events` this step's `LakeEvent`s
+    (merge/split transitions -- the caller runs them through `summarize_lake_events` and logs
+    the result, mirroring merge_split.apply_topology_changes's own pattern; this module never
+    calls `world.log_event` directly, keeping it testable without a `World`)."""
     forest = build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
-    lake_depth, silt_deposited, events = resolve_lakes(forest, elevation, prev_lake_depth, water_deposited, years, is_frozen)
-    return lake_depth, silt_deposited, forest, events
+    lake_depth, silt_deposited, lake_is_sea, events = resolve_lakes(
+        forest, elevation, prev_lake_depth, water_deposited, years, is_frozen
+    )
+    return lake_depth, silt_deposited, lake_is_sea, forest, events
