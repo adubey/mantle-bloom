@@ -22,6 +22,58 @@ interface Props {
 
 const SWATCH_SIZE = 14;
 
+// The map's own km-per-pixel scale, for the ScaleBar below. The world is always Earth-sized
+// (see backend app/elevation_lines.py's PLANET_RADIUS_KM) and both current projections
+// (behrmann/eckert4 -- see backend app/projections.py) fit the whole sphere to the rendered
+// width/height with their widest point at the equator (backend render_image.py's
+// _fit_and_project_sphere, fit against PADDING_PX at REFERENCE_WIDTH_PX -- both equal to this
+// app's own MAP_DISPLAY_WIDTH_PX/MAP_PADDING_PX below). For any projection shaped that way, the
+// equatorial scale works out to just the planet's circumference divided by the available map
+// width, independent of the projection's own math -- so this doesn't need to duplicate
+// projections.py's per-projection formulas, only the constants that decide how big the map is.
+// Away from the equator this equal-area map's horizontal scale changes with latitude (area is
+// preserved, not shape), so the bar is only exact there -- the same caveat any small-scale
+// world map's scale bar carries.
+const PLANET_RADIUS_KM = 6371; // matches backend app/elevation_lines.py's PLANET_RADIUS_KM
+const MAP_DISPLAY_WIDTH_PX = 1100; // matches App.tsx's DISPLAY_WIDTH
+const MAP_PADDING_PX = 20; // matches backend app/render_image.py's PADDING_PX
+const KM_PER_PIXEL_AT_EQUATOR =
+  (2 * Math.PI * PLANET_RADIUS_KM) / (MAP_DISPLAY_WIDTH_PX - 2 * MAP_PADDING_PX);
+// The bar's target on-screen size -- picks whichever "nice" 1/2/5 x 10^n km value lands
+// closest to (without going far past) this many pixels wide.
+const SCALE_BAR_TARGET_PX = 150;
+
+// Rounds down to the nearest "nice" (1, 2, or 5 x a power of ten) km value, the same
+// convention every cartographic scale bar uses so its label reads as a round number.
+function niceScaleKm(roughKm: number): number {
+  const magnitude = Math.pow(10, Math.floor(Math.log10(roughKm)));
+  const residual = roughKm / magnitude;
+  const nice = residual >= 5 ? 5 : residual >= 2 ? 2 : 1;
+  return nice * magnitude;
+}
+
+function ScaleBar() {
+  const km = niceScaleKm(KM_PER_PIXEL_AT_EQUATOR * SCALE_BAR_TARGET_PX);
+  const widthPx = km / KM_PER_PIXEL_AT_EQUATOR;
+  return (
+    <div
+      style={{ flexShrink: 0, fontSize: 10, opacity: 0.85 }}
+      title="Exact at the equator -- this equal-area map's horizontal scale changes with latitude."
+    >
+      <div
+        style={{
+          width: widthPx,
+          height: 5,
+          borderLeft: "1px solid #dee2eb",
+          borderRight: "1px solid #dee2eb",
+          borderBottom: "1px solid #dee2eb",
+        }}
+      />
+      <div style={{ marginTop: 2, whiteSpace: "nowrap" }}>{km.toLocaleString()} km at equator</div>
+    </div>
+  );
+}
+
 function Swatch({ kind, color, outline }: { kind: SwatchKind; color: string; outline?: string }) {
   const s = SWATCH_SIZE;
   switch (kind) {
@@ -178,6 +230,7 @@ export default function Legend({
             <GradientBar gradient={gradient} />
           </div>
         ))}
+        <ScaleBar />
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient || spec.gradients ? 2 : 8 }}>
         {spec.symbols.map((sym) => {

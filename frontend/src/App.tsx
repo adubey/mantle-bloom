@@ -31,6 +31,17 @@ import { getCookie, setCookie } from "./cookies";
 // The map is displayed at DISPLAY_WIDTH x DISPLAY_HEIGHT (CSS pixels, unchanged from
 // before), but the image requested from the server is RENDER_SCALE times bigger -- a
 // sharper, retina-style render at the same on-screen size, rather than a bigger map.
+// Whether the page was loaded with ?deb in the URL -- gates a cluster of developer-only UI:
+// the Generate World dialog's "Debugging Worlds" tab (see backend debug_worlds.py), the Event
+// Console and corner-notch log side panels, and the "Debug >" group of Map View choices.
+// Without it, none of that is present at all (not just disabled), so an ordinarily-generated
+// world's sidebar/dialogs stay uncluttered by default. Read once at module load (this is a
+// browser-only SPA bundle, so `window` is always available) since it's a one-time flag for the
+// whole page load, not something that changes while the app is open. Works identically on the
+// packaged prod server and the dev/debug server -- it only ever looks at the URL the browser
+// actually loaded, never which backend is serving it.
+const DEBUG_UI = new URLSearchParams(window.location.search).has("deb");
+
 const DISPLAY_WIDTH = 1100;
 const DISPLAY_HEIGHT = 611;
 const RENDER_SCALE = 2;
@@ -157,6 +168,14 @@ const MAP_VIEW_CHOICES = new Set<MapView>([
   "resources", "soilQuality", "geomorph", "elevReason", "overlapAge", "nodeAge", "plateInspector", "riverInspector", "lakeInspector", "platesAndFaults",
 ]);
 const PROJECTION_CHOICES = new Set<Projection>(["behrmann", "eckert4"]);
+// The Map View select's "Debug >" optgroup (see the DEBUG_UI comment above) -- kept as its own
+// set so a restored VIEW_COOKIE_NAME cookie pointing at one of these can be sanitized back to
+// the default when the page loads without ?deb, rather than landing on a view whose picker
+// option is no longer there to switch away from.
+const DEBUG_MAP_VIEWS = new Set<MapView>([
+  "platesDetail", "speckle", "platesAndFaults", "geomorph", "elevReason", "overlapAge", "nodeAge",
+  "plateInspector", "riverInspector", "lakeInspector",
+]);
 
 interface ViewCookie {
   projection: Projection;
@@ -203,6 +222,7 @@ export default function App() {
   const [debugScenarios, setDebugScenarios] = useState<DebugScenario[]>([]);
   const [debugScenario, setDebugScenario] = useState<string>("");
   useEffect(() => {
+    if (!DEBUG_UI) return; // "Debugging Worlds" tab is hidden without ?deb -- nothing to populate it with
     fetchDebugScenarios()
       .then((r) => {
         setDebugScenarios(r.scenarios);
@@ -248,7 +268,9 @@ export default function App() {
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
-  const [mapView, setMapView] = useState<MapView>(initialView?.mapView ?? "combined");
+  const [mapView, setMapView] = useState<MapView>(
+    initialView && (DEBUG_UI || !DEBUG_MAP_VIEWS.has(initialView.mapView)) ? initialView.mapView : "combined",
+  );
   // handleStep's own closure over `mapView` is captured when the step *starts*, so if the map
   // mode changes while that step is still in flight, its post-step refresh would otherwise
   // render the world's new (stepped) state back in the old, now-stale map mode -- overwriting
@@ -1121,18 +1143,20 @@ export default function App() {
                 <option value="resources">Resources</option>
                 <option value="soilQuality">Soil Quality</option>
               </optgroup>
-              <optgroup label="Debug &gt;">
-                <option value="platesDetail">Points</option>
-                <option value="speckle">Coastal dither (speckle)</option>
-                <option value="platesAndFaults">Plates &amp; Faults</option>
-                <option value="geomorph">Erosion &amp; Deposition</option>
-                <option value="elevReason">Last elevation change</option>
-                <option value="overlapAge">Plate overlap age</option>
-                <option value="nodeAge">Added/removed points</option>
-                <option value="plateInspector">Plate Inspector</option>
-                <option value="riverInspector">Rivers</option>
-                <option value="lakeInspector">Lake Inspector</option>
-              </optgroup>
+              {DEBUG_UI && (
+                <optgroup label="Debug &gt;">
+                  <option value="platesDetail">Points</option>
+                  <option value="speckle">Coastal dither (speckle)</option>
+                  <option value="platesAndFaults">Plates &amp; Faults</option>
+                  <option value="geomorph">Erosion &amp; Deposition</option>
+                  <option value="elevReason">Last elevation change</option>
+                  <option value="overlapAge">Plate overlap age</option>
+                  <option value="nodeAge">Added/removed points</option>
+                  <option value="plateInspector">Plate Inspector</option>
+                  <option value="riverInspector">Rivers</option>
+                  <option value="lakeInspector">Lake Inspector</option>
+                </optgroup>
+              )}
             </select>
             <select
               value={projection}
@@ -1343,10 +1367,14 @@ export default function App() {
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
 
-          <EventConsole events={summary?.events ?? []} />
-          <div style={{ marginTop: 8 }}>
-            <CornerNotchLogPanel entries={cornerNotchLog} enabled={debugDiagnostics} />
-          </div>
+          {DEBUG_UI && (
+            <>
+              <EventConsole events={summary?.events ?? []} />
+              <div style={{ marginTop: 8 }}>
+                <CornerNotchLogPanel entries={cornerNotchLog} enabled={debugDiagnostics} />
+              </div>
+            </>
+          )}
         </div>
 
         <div>
@@ -1698,7 +1726,7 @@ export default function App() {
             <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
 
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
-              {(["random", "human", "debug"] as const).map((mode) => (
+              {(DEBUG_UI ? (["random", "human", "debug"] as const) : (["random", "human"] as const)).map((mode) => (
                 <button
                   key={mode}
                   type="button"
