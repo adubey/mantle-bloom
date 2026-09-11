@@ -39,37 +39,46 @@ const MAP_DISPLAY_WIDTH_PX = 1100; // matches App.tsx's DISPLAY_WIDTH
 const MAP_PADDING_PX = 20; // matches backend app/render_image.py's PADDING_PX
 const KM_PER_PIXEL_AT_EQUATOR =
   (2 * Math.PI * PLANET_RADIUS_KM) / (MAP_DISPLAY_WIDTH_PX - 2 * MAP_PADDING_PX);
-// The bar's target on-screen size -- picks whichever "nice" 1/2/5 x 10^n km value lands
-// closest to (without going far past) this many pixels wide.
+const PX_PER_KM_AT_EQUATOR = 1 / KM_PER_PIXEL_AT_EQUATOR;
+// The ruler's target on-screen length -- floored down to the nearest whole major (1,000 km)
+// division, never past it, so the bar always ends exactly on a major tick rather than a
+// partial one. Major ticks (taller) fall every SCALE_BAR_MAJOR_STEP_KM, minor ticks (shorter)
+// every SCALE_BAR_MINOR_STEP_KM in between.
 const SCALE_BAR_TARGET_PX = 150;
-
-// Rounds down to the nearest "nice" (1, 2, or 5 x a power of ten) km value, the same
-// convention every cartographic scale bar uses so its label reads as a round number.
-function niceScaleKm(roughKm: number): number {
-  const magnitude = Math.pow(10, Math.floor(Math.log10(roughKm)));
-  const residual = roughKm / magnitude;
-  const nice = residual >= 5 ? 5 : residual >= 2 ? 2 : 1;
-  return nice * magnitude;
-}
+const SCALE_BAR_MAJOR_STEP_KM = 1000;
+const SCALE_BAR_MINOR_STEP_KM = 100;
 
 function ScaleBar() {
-  const km = niceScaleKm(KM_PER_PIXEL_AT_EQUATOR * SCALE_BAR_TARGET_PX);
-  const widthPx = km / KM_PER_PIXEL_AT_EQUATOR;
+  const roughKm = KM_PER_PIXEL_AT_EQUATOR * SCALE_BAR_TARGET_PX;
+  const totalKm = Math.max(SCALE_BAR_MAJOR_STEP_KM, Math.floor(roughKm / SCALE_BAR_MAJOR_STEP_KM) * SCALE_BAR_MAJOR_STEP_KM);
+  const widthPx = totalKm * PX_PER_KM_AT_EQUATOR;
+  const baselineY = 3;
+  const majorTickLen = 6;
+  const minorTickLen = 3;
+  const minorTicks: number[] = [];
+  for (let km = SCALE_BAR_MINOR_STEP_KM; km < totalKm; km += SCALE_BAR_MINOR_STEP_KM) {
+    if (km % SCALE_BAR_MAJOR_STEP_KM !== 0) minorTicks.push(km);
+  }
+  const majorTicks: number[] = [];
+  for (let km = 0; km <= totalKm; km += SCALE_BAR_MAJOR_STEP_KM) majorTicks.push(km);
+
   return (
     <div
-      style={{ flexShrink: 0, fontSize: 10, opacity: 0.85 }}
-      title="Exact at the equator -- this equal-area map's horizontal scale changes with latitude."
+      style={{ flexShrink: 0, marginLeft: "auto", fontSize: 10, opacity: 0.85, textAlign: "right" }}
+      title={`Ticks every ${SCALE_BAR_MAJOR_STEP_KM.toLocaleString()}/${SCALE_BAR_MINOR_STEP_KM} km. Exact at the equator -- this equal-area map's horizontal scale changes with latitude.`}
     >
-      <div
-        style={{
-          width: widthPx,
-          height: 5,
-          borderLeft: "1px solid #dee2eb",
-          borderRight: "1px solid #dee2eb",
-          borderBottom: "1px solid #dee2eb",
-        }}
-      />
-      <div style={{ marginTop: 2, whiteSpace: "nowrap" }}>{km.toLocaleString()} km at equator</div>
+      <svg width={widthPx} height={baselineY + majorTickLen + 1} aria-hidden>
+        <line x1={0} y1={baselineY} x2={widthPx} y2={baselineY} stroke="#dee2eb" strokeWidth={1} />
+        {minorTicks.map((km) => {
+          const x = km * PX_PER_KM_AT_EQUATOR;
+          return <line key={km} x1={x} y1={baselineY} x2={x} y2={baselineY + minorTickLen} stroke="#dee2eb" strokeWidth={1} />;
+        })}
+        {majorTicks.map((km) => {
+          const x = km * PX_PER_KM_AT_EQUATOR;
+          return <line key={km} x1={x} y1={baselineY} x2={x} y2={baselineY + majorTickLen} stroke="#dee2eb" strokeWidth={1.5} />;
+        })}
+      </svg>
+      <div style={{ marginTop: 2, whiteSpace: "nowrap" }}>{totalKm.toLocaleString()} km at equator</div>
     </div>
   );
 }
