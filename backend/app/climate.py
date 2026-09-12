@@ -76,7 +76,12 @@ elevation itself -- see `_sample_elevation_and_crust`) plus vegetation transpira
 from a biome classification, `biomes.classify_biomes`, of *last* step's climate snapshot --
 see `_vegetation_transpiration_source`). A frozen surface (`air_temperature_c` below
 `hydrology.FREEZE_POINT_C`) can't evaporate, so lake/river evaporation -- but not vegetation
-transpiration, already near zero in any biome cold enough to freeze -- is zeroed there.
+transpiration, already near zero in any biome cold enough to freeze -- is zeroed there. Lake/sea
+evaporation is also scaled by how warm that water actually is (`_water_evaporation_temp_factor`),
+not a single flat rate -- real lakes/seas have far less thermal mass than the open ocean, so they
+heat up (and evaporate) faster for the same climate, which is what lets a large enclosed sea
+drive its own local rain -- and, through erosion.py's own river erosion/deposition, its own
+sediment supply -- rather than sitting at a fixed evaporation rate regardless of temperature.
 
 **Out of scope** (mantle-bloom has no lakes/rivers/vegetation *state of its own* to persist
 here -- this module borrows plates.py's/biomes.py's already-persisted state above rather than
@@ -1079,6 +1084,26 @@ RIVER_EVAPORATION_CEILING = 0.15
 SEA_EVAPORATION_CEILING = 1.0
 RIVER_EVAPORATION_REFERENCE_DEPTH_M = 50.0
 
+# Lakes and seas have far less thermal mass than the open ocean, so the same sun that only
+# slowly warms a current-mixed ocean column (`ocean_temperature_c`, buffered/advected -- see
+# `advect_ocean_temperature`) heats a shallow enclosed body of water toward the local air
+# equilibrium much faster -- and a warmer water surface evaporates faster, the same physical
+# relationship `_evaporation_ceiling` already models for the ocean. `LAKE_EVAPORATION_CEILING`/
+# `SEA_EVAPORATION_CEILING` above were previously flat -- a lake/sea evaporated at the same rate
+# regardless of how hot it actually was, only cut off outright below freezing. This factor
+# multiplies onto those ceilings using `air_temperature_c` (already the land side's own
+# "no thermal inertia" energy balance, unlike `ocean_temperature_c`) as the faster-responding
+# stand-in for the water's own surface temperature, reusing `_evaporation_ceiling`'s exact
+# normalize-and-clip shape (and its own reference/floor/ceiling constants) rather than a
+# separate set tuned from scratch, since it's the same relationship applied to a different
+# temperature signal. This is what lets a large enclosed sea sitting in a hot climate evaporate
+# as strongly as warm open ocean instead of capping out at a flat, temperature-blind ceiling --
+# closing the loop the user asked for: a big, shallow, fast-heating lake/sea evaporates hard,
+# drives local humidity/rain, and that rain's own erosion feeds sediment back into the very
+# basin _spread_lake_sediment (erosion.py) is filling in.
+def _water_evaporation_temp_factor(air_temperature_c: np.ndarray) -> np.ndarray:
+    return np.clip(air_temperature_c / EVAPORATION_REFERENCE_TEMP_C, MIN_EVAPORATION_CEILING, MAX_EVAPORATION_CEILING)
+
 # Vegetation transpiration: a *recycling* term, not a manufactured one -- it can only return
 # some fraction of the moisture that actually fell as rain *last step* at that same cell
 # (`prev.precipitation_mm`, converted back to humidity units), scaled by
@@ -1185,11 +1210,19 @@ def _land_moisture_source(
     `SEA_EVAPORATION_CEILING` over `LAKE_EVAPORATION_CEILING` per cell wherever true -- a cell
     can be both wet (`lake_depth_m > 0`) and sea-classified, in which case it evaporates at the
     stronger sea ceiling; `LAKE_EVAPORATION_REFERENCE_DEPTH_M` is shared by both tiers (see that
-    constant's own comment for why saturation depth, unlike the ceiling, shouldn't differ)."""
+    constant's own comment for why saturation depth, unlike the ceiling, shouldn't differ). That
+    ceiling is further scaled by `_water_evaporation_temp_factor` -- a lake/sea's own thin,
+    fast-heating water evaporates harder when it's actually warm, not at a single flat rate
+    regardless of climate (see that function's own comment); river evaporation keeps its own
+    flat `RIVER_EVAPORATION_CEILING` unscaled, since flowing water's evaporation is already
+    handled in-transit, temperature-scaled, over in hydrology.py's own RIVER_EVAPORATION_* terms
+    -- this river term is only the same-step humidity-source stand-in that module's docstring
+    already describes."""
     lake_fraction = np.clip(lake_depth_m / LAKE_EVAPORATION_REFERENCE_DEPTH_M, 0.0, 1.0)
     river_fraction = np.clip(channel_depth_m / RIVER_EVAPORATION_REFERENCE_DEPTH_M, 0.0, 1.0)
     lake_ceiling = LAKE_EVAPORATION_CEILING if is_sea is None else np.where(is_sea, SEA_EVAPORATION_CEILING, LAKE_EVAPORATION_CEILING)
-    water_source = lake_fraction * lake_ceiling + river_fraction * RIVER_EVAPORATION_CEILING
+    water_temp_factor = _water_evaporation_temp_factor(air_temperature_c)
+    water_source = lake_fraction * lake_ceiling * water_temp_factor + river_fraction * RIVER_EVAPORATION_CEILING
     water_source = np.where(air_temperature_c < hydrology.FREEZE_POINT_C, 0.0, water_source)
     return water_source + vegetation_source
 
