@@ -99,7 +99,7 @@ def test_save_before_generate_returns_404(client):
 
 
 def test_animate_before_generate_returns_404(client):
-    resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 2})
+    resp = client.post("/world/animate", json={"step_years": 1_000_000, "num_frames": 2})
     assert resp.status_code == 404
 
 
@@ -214,7 +214,7 @@ def test_step_compute_routes_do_not_race_an_in_progress_step(client, monkeypatch
     assert entered_step_world.wait(timeout=5)
 
     # animate is a long-running write -- rejected outright while the step holds the lock.
-    animate_resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 2})
+    animate_resp = client.post("/world/animate", json={"step_years": 1_000_000, "num_frames": 2})
     assert animate_resp.status_code == 503
 
     # stats is a read -- it must block, not race straight through into a climate recompute.
@@ -844,7 +844,7 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
     client.post("/world/generate", json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
-        json={"projection": "eckert4", "view": "elevation", "width": 200, "height": 110, "years_per_frame": 1_000_000, "num_frames": 3},
+        json={"projection": "eckert4", "view": "elevation", "width": 200, "height": 110, "step_years": 1_000_000, "num_frames": 3},
     )
     assert resp.status_code == 200
 
@@ -861,7 +861,7 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
     done = messages[-1]
     assert done["type"] == "done"
     assert done["mime"] == "video/mp4"
-    assert done["elapsed_years"] == 2_000_000.0  # (num_frames - 1) * years_per_frame
+    assert done["elapsed_years"] == 2_000_000.0  # (num_frames - 1) * steps_per_frame * step_years
 
     video = base64.b64decode(done["video_base64"])
     assert video[4:12] == b"ftypisom"  # an MP4 container
@@ -869,17 +869,53 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
         assert sum(1 for _ in container.decode(video=0)) == 3
 
 
+def test_animate_steps_per_frame_runs_every_step_but_renders_only_the_last(client):
+    # 3 frames * 4 steps_per_frame = 1 (frame 0, unstepped) + 2*4 = 8 real step_world calls
+    # total, even though only 3 frames are ever rendered/encoded -- see
+    # render_image.stream_animation_mp4's own docstring for why this isn't the same as one
+    # bigger step_world(world, steps_per_frame * step_years) call per frame.
+    from app import main
+
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post(
+        "/world/animate",
+        json={"width": 64, "height": 64, "step_years": 250_000, "steps_per_frame": 4, "num_frames": 3},
+    )
+    assert resp.status_code == 200
+
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    progress = [m for m in messages if m["type"] == "progress"]
+    # Each rendered frame is still steps_per_frame * step_years further along than the last.
+    assert [m["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
+
+    world = main._state["world"]
+    assert world.steps_taken == 8  # (num_frames - 1) * steps_per_frame real step_world calls
+    assert world.elapsed_years == 2_000_000.0
+
+    done = messages[-1]
+    with av.open(io.BytesIO(base64.b64decode(done["video_base64"]))) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 3  # still only 3 frames encoded
+
+
+def test_animate_rejects_zero_or_negative_steps_per_frame(client):
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post("/world/animate", json={"step_years": 1_000_000, "steps_per_frame": 0, "num_frames": 2})
+    assert resp.status_code == 400
+    resp = client.post("/world/animate", json={"step_years": 1_000_000, "steps_per_frame": -1, "num_frames": 2})
+    assert resp.status_code == 400
+
+
 def test_animate_rejects_out_of_range_frame_counts(client):
     client.post("/world/generate", json={"seed": 9, "num_plates": 6})
-    resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 0})
+    resp = client.post("/world/animate", json={"step_years": 1_000_000, "num_frames": 0})
     assert resp.status_code == 400
-    resp = client.post("/world/animate", json={"years_per_frame": 1_000_000, "num_frames": 10_000})
+    resp = client.post("/world/animate", json={"step_years": 1_000_000, "num_frames": 10_000})
     assert resp.status_code == 400
 
 
 def test_animate_rejects_unknown_view(client):
     client.post("/world/generate", json={"seed": 9, "num_plates": 6})
-    resp = client.post("/world/animate", json={"view": "not-a-real-view", "years_per_frame": 1_000_000, "num_frames": 2})
+    resp = client.post("/world/animate", json={"view": "not-a-real-view", "step_years": 1_000_000, "num_frames": 2})
     assert resp.status_code == 400
 
 
@@ -902,7 +938,7 @@ def test_animate_clears_a_stale_stop_signal_from_a_previous_call(client):
     client.post("/world/animate/stop")  # simulate a stray/late stop signal
     resp = client.post(
         "/world/animate",
-        json={"width": 64, "height": 64, "years_per_frame": 1_000_000, "num_frames": 3},
+        json={"width": 64, "height": 64, "step_years": 1_000_000, "num_frames": 3},
     )
     messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
     progress = [m for m in messages if m["type"] == "progress"]

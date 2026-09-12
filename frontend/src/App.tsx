@@ -876,7 +876,7 @@ export default function App() {
   // doubles as the animation preview; every world-mutating control is disabled until it
   // finishes or the toolbar's Stop button ends it (see `animating`, handleStopAnimation).
   const handleStartAnimation = useCallback(
-    async ({ numFrames, yearsPerFrame, unbounded }: { numFrames: number; yearsPerFrame: number; unbounded: boolean }) => {
+    async ({ numFrames, stepsPerFrame, unbounded }: { numFrames: number; stepsPerFrame: number; unbounded: boolean }) => {
       setShowAnimationModal(false);
       setError(null);
       setAnimationResult(null);
@@ -884,7 +884,7 @@ export default function App() {
       const view = mapViewRef.current;
       try {
         const result = await animateWorld(
-          projection, view, RENDER_WIDTH, RENDER_HEIGHT, rotation, yearsPerFrame, numFrames,
+          projection, view, RENDER_WIDTH, RENDER_HEIGHT, rotation, stepYears, stepsPerFrame, numFrames,
           (p) => {
             setAnimation({ frame: p.frame, total: p.total, unbounded });
             // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
@@ -909,7 +909,7 @@ export default function App() {
         setAnimation(null);
       }
     },
-    [projection, rotation, handleWorldAdvanced],
+    [projection, rotation, stepYears, handleWorldAdvanced],
   );
 
   // The toolbar's "Stop" button while recording -- asks the server to end the animation

@@ -181,9 +181,9 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
     stop_event = threading.Event()
 
     # Fire the stop signal after the 2nd frame's step -- stream_animation_mp4 checks
-    # `stop_event` right before stepping for the *next* frame, so this should stop the run
-    # after frame 3 (frame 1 is unstepped, frames 2 and 3 each call step_fn once) rather than
-    # reaching the requested 10.
+    # `stop_event` before every individual step_fn call, so with steps_per_frame=1 this
+    # should stop the run after frame 3 (frame 1 is unstepped, frames 2 and 3 each call
+    # step_fn once) rather than reaching the requested 10.
     steps_taken = []
 
     def _counting_step(w, years):
@@ -193,7 +193,7 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
             stop_event.set()
 
     messages = list(render_image.stream_animation_mp4(
-        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 10,
+        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 1, 10,
         step_fn=_counting_step, stop_event=stop_event,
     ))
 
@@ -215,11 +215,64 @@ def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_v
 def test_stream_animation_mp4_runs_to_completion_when_never_stopped():
     world = _world()
     messages = list(render_image.stream_animation_mp4(
-        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 3,
+        world, "behrmann", "elevation", 64, 64, None, 1_000_000, 1, 3,
     ))
     done = messages[-1]
     assert done[0] == "done"
     assert done[2] is False  # stopped_early
+
+
+def test_stream_animation_mp4_steps_per_frame_steps_every_time_but_renders_only_the_last():
+    # steps_per_frame=5 real step_fn calls per frame after the first, but still only 3 frames
+    # rendered/encoded -- not one bigger step_fn(world, 5 * step_years) call per frame (see
+    # stream_animation_mp4's own docstring for why that distinction matters).
+    world = _world()
+    step_calls = []
+
+    def _counting_step(w, years):
+        step_calls.append(years)
+        step_world(w, years)
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 200_000, 5, 3,
+        step_fn=_counting_step,
+    ))
+    progress = [m for m in messages if m[0] == "progress"]
+    assert [m[1] for m in progress] == [1, 2, 3]
+    assert [m[4] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]  # 5 * 200_000 per frame
+
+    assert step_calls == [200_000] * 10  # (3 - 1) * 5 real, individual step_fn calls
+    assert world.steps_taken == 10
+
+    done = messages[-1]
+    with av.open(io.BytesIO(done[1])) as container:
+        assert sum(1 for _ in container.decode(video=0)) == 3  # still only 3 frames encoded
+
+
+def test_stream_animation_mp4_stop_event_can_interrupt_mid_frame_batch():
+    # steps_per_frame=10 but the stop event fires after the 3rd sub-step of frame 2's batch --
+    # that whole batch should be abandoned (frame 2 never renders) rather than either running
+    # all 10 sub-steps or rendering a partially-stepped frame.
+    world = _world()
+    stop_event = threading.Event()
+    step_calls = []
+
+    def _counting_step(w, years):
+        step_calls.append(years)
+        step_world(w, years)
+        if len(step_calls) == 3:
+            stop_event.set()
+
+    messages = list(render_image.stream_animation_mp4(
+        world, "behrmann", "elevation", 64, 64, None, 100_000, 10, 5,
+        step_fn=_counting_step, stop_event=stop_event,
+    ))
+    progress = [m for m in messages if m[0] == "progress"]
+    assert [m[1] for m in progress] == [1]  # only frame 1 (unstepped) ever rendered
+    assert len(step_calls) == 3  # abandoned mid-batch, not run to completion or rendered
+
+    done = messages[-1]
+    assert done[2] is True  # stopped_early
 
 
 def test_geomorph_colors_diverge_around_zero():
