@@ -358,6 +358,59 @@ def test_spread_coastal_leveling_declumps_a_single_source_across_neighbours():
     assert out[n // 2] < 500.0  # and did not all stay on the source node
 
 
+def test_spread_lake_sediment_leaves_dry_sinks_untouched():
+    # A closed basin with no standing water yet (lake_depth all zero) keeps route_downstream's
+    # old single-point-pile behavior -- nothing here is a real lake to spread across.
+    lake_depth = np.zeros(4)
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1], [0, 0]])
+    source = np.array([50.0, 0.0, 0.0, 0.0])
+
+    out = erosion._spread_lake_sediment(lake_depth, neighbor_idx, source)
+    assert out.tolist() == [50.0, 0.0, 0.0, 0.0]
+
+
+def test_spread_lake_sediment_conserves_mass_and_reaches_every_member():
+    # A 4-node flooded lake, all connected; sediment lands only at node 0 (its own catchment
+    # sink) but should spread across all four members instead of piling entirely on node 0.
+    lake_depth = np.array([5.0, 5.0, 5.0, 5.0])
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1], [0, 1]])
+    source = np.zeros(4)
+    source[0] = 40.0
+
+    out = erosion._spread_lake_sediment(lake_depth, neighbor_idx, source)
+    assert np.isclose(out.sum(), 40.0)
+    assert np.all(out > 0.0)  # reached every member, not just the sink
+    assert out[0] < 40.0  # and did not all stay piled on the sink
+
+
+def test_spread_lake_sediment_fills_the_deepest_member_more_than_a_shallow_one():
+    # Same lake, but node 2 is much deeper (a real valley within the basin) than the others --
+    # it should receive more of the redistributed sediment, the "fill valleys more than hills"
+    # behavior that flattens a basin's floor over repeated steps.
+    lake_depth = np.array([2.0, 2.0, 40.0, 2.0])
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1], [0, 1]])
+    source = np.zeros(4)
+    source[0] = 40.0
+
+    out = erosion._spread_lake_sediment(lake_depth, neighbor_idx, source)
+    assert out[2] > out[1]
+    assert out[2] > out[3]
+    assert np.isclose(out.sum(), 40.0)
+
+
+def test_spread_lake_sediment_keeps_two_separate_lakes_disjoint():
+    # Two disconnected two-node ponds -- sediment landing in one must never leak into the other.
+    lake_depth = np.array([3.0, 3.0, 3.0, 3.0])
+    neighbor_idx = np.array([[1], [0], [3], [2]])
+    source = np.array([10.0, 0.0, 20.0, 0.0])
+
+    out = erosion._spread_lake_sediment(lake_depth, neighbor_idx, source)
+    assert np.isclose(out[0] + out[1], 10.0)
+    assert np.isclose(out[2] + out[3], 20.0)
+    assert out[0] > 0.0 and out[1] > 0.0
+    assert out[2] > 0.0 and out[3] > 0.0
+
+
 def test_apply_erosion_coastal_feedback_keeps_a_generated_world_sane():
     world = generate_world(seed=23, num_plates=8)
     _, before, _, _, _, _ = erosion._gather_nodes(world)

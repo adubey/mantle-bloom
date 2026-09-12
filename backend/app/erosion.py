@@ -297,18 +297,21 @@ MARINE_SPREAD_NEIGHBOR_COUNT = 8
 
 # Deposition, not just erosion -- eroded material has to go somewhere, and "wherever
 # route_downstream's single water-flow graph happens to carry it" is only right for rain/
-# river erosion. Three more pathways, alongside the existing river/runoff floodplain
+# river erosion. Four more pathways, alongside the existing river/runoff floodplain
 # deposition above (DEPOSITION_*, already shared by every source through that one routed
 # pool): a glacier's own debris load mostly drops close to where the ice picked it up
 # (subglacial till), not carried far by meltwater; wind-eroded material mostly resettles a
 # short real distance downwind (dust/sand -- genuinely different physics from water-driven
-# transport, so it needs its own transport step, not the water flow_target graph); and
-# material that reaches the ocean spreads along nearby shallow coast as beach/nearshore
-# sediment instead of piling entirely onto the single river-mouth node route_downstream
-# happened to route it to. All three conserve mass exactly, same as route_downstream's own
-# retain_fraction -- nothing here is lost, only moved (deep-ocean beach spreading is the one
-# partial exception, see BEACH_SHELF_DEPTH_M below, and even that falls back to full local
-# deposit rather than vanishing when no shallow water is in range).
+# transport, so it needs its own transport step, not the water flow_target graph); material
+# that reaches the ocean spreads along nearby shallow coast as beach/nearshore sediment
+# instead of piling entirely onto the single river-mouth node route_downstream happened to
+# route it to; and material that reaches an enclosed lake/sea instead spreads across that
+# whole standing body of water (see LAKE_SEDIMENT_UNIFORM_FRACTION/_spread_lake_sediment
+# below) rather than piling onto the single sink node its basin's own catchment happens to
+# drain to. All four conserve mass exactly, same as route_downstream's own retain_fraction --
+# nothing here is lost, only moved (deep-ocean beach spreading is the one partial exception,
+# see BEACH_SHELF_DEPTH_M below, and even that falls back to full local deposit rather than
+# vanishing when no shallow water is in range).
 
 # A glacier's scoured load splits two ways: GLACIER_TILL_FRACTION settles immediately,
 # subglacial till dropped right where the ice picked it up; the rest travels *with the ice
@@ -476,6 +479,30 @@ PROMINENCE_MAX = 3.0
 # floor it would attract no sediment and never form. This is the minimum attractiveness a
 # barrier candidate keeps regardless of shelter.
 BARRIER_ATTRACT_FLOOR = 0.35
+
+# Lake/sea deposition: an enclosed standing body of water has none of the wave/current energy
+# that keeps ocean sediment moving toward deeper water (see SUBMARINE_EROSION_*/
+# _spread_marine_sediment above) -- it's quiet enough that essentially all the sediment a river
+# carries into it settles somewhere inside the basin, rather than being carried on through (there
+# *is* nowhere further to go -- a lake/sea's own sink node has no lower neighbor by construction,
+# unlike an ordinary reach along a river's course). Left alone, route_downstream's ordinary
+# dead-end rule (see hydrology.route_downstream) piles the *entire* accumulated sediment load
+# onto that single sink node every step -- a single growing spike right at the inflow point, not
+# a real lake-bed blanket. `_spread_lake_sediment` instead redistributes whatever lands on a lake
+# member node across that lake's whole currently-flooded extent (`hydrology.lake_components`, the
+# same connected-body grouping hydrology.py's own breach-erosion term uses), weighted
+# LAKE_SEDIMENT_UNIFORM_FRACTION uniform across every member (fine suspended sediment settling
+# out of quiet water genuinely blankets a whole lake floor fairly evenly) plus the remainder
+# weighted by each member's own current `lake_depth` -- a real lake fills its deepest holes
+# fastest, since there's more standing water (and so more settling sediment reaching the bed)
+# above a deep spot than a shallow one. Depth-weighting is what actually flattens the basin over
+# repeated steps rather than just relocating one pile to another: it's a relaxation toward
+# uniform depth, i.e. the discrete analogue of "valleys fill in faster than hills, converging on
+# a flat floor" -- the enclosed-basin counterpart to _spread_marine_sediment's open-ocean
+# spreading. Conserves the redistributed total exactly, via np.add.at, same as every other
+# _spread_* helper here; a sink with no real standing water yet (a dry playa/closed basin) is
+# left untouched, keeping this pathway's old, un-lake-aware single-point-pile behavior there.
+LAKE_SEDIMENT_UNIFORM_FRACTION = 0.5
 
 
 @dataclass
@@ -798,6 +825,48 @@ def _spread_marine_sediment(
     normalized_weight = np.divide(weight, weight_sum[:, None], out=np.zeros_like(weight), where=weight_sum[:, None] > 0)
     contribution = normalized_weight * spread_share[:, None]
     np.add.at(result, target_idx.ravel(), contribution.ravel())
+    return result
+
+
+def _spread_lake_sediment(lake_depth: np.ndarray, neighbor_idx: np.ndarray, source_amount: np.ndarray) -> np.ndarray:
+    """Redistributes whatever `source_amount` (route_downstream's own per-node deposit, from the
+    ordinary water-routed sediment pool) landed on a lake/sea member node across that lake's
+    whole currently-flooded extent -- see LAKE_SEDIMENT_UNIFORM_FRACTION's own comment for why. A
+    source node not currently part of a real lake (`lake_depth` at or below
+    `hydrology.LAKE_MIN_VISIBLE_DEPTH_M` -- an ordinary dry floodplain sink, or a closed basin
+    that hasn't filled with standing water yet) keeps its full amount right there, same as
+    route_downstream's own un-lake-aware dead-end rule.
+
+    Grouped by `hydrology.lake_components` (the same connected-body grouping hydrology.py's own
+    breach-erosion term uses) so two separate catchments that happen to have merged into one
+    lake this step spread their combined sediment across the *whole* merged body, not just each
+    catchment's own original half. A component with zero total lake_depth across every member
+    (shouldn't happen for a node `hydrology.lake_components` itself classified as lake, but
+    guarded the same defensive way every other weighted spread here is) falls back to a plain
+    uniform split. Exactly conserves `source_amount`'s total, via np.add.at, same as
+    _spread_beach_sediment/_spread_marine_sediment above."""
+    n = len(lake_depth)
+    result = np.zeros(n)
+    source_idx = np.nonzero(source_amount > 0)[0]
+    if len(source_idx) == 0:
+        return result
+
+    is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    off_lake = source_idx[~is_lake[source_idx]]
+    result[off_lake] = source_amount[off_lake]
+    if not np.any(is_lake[source_idx]):
+        return result
+
+    for members in hydrology.lake_components(is_lake, neighbor_idx):
+        total = source_amount[members].sum()
+        if total <= 0.0:
+            continue
+        member_depth = lake_depth[members]
+        depth_sum = member_depth.sum()
+        uniform_share = np.full(len(members), 1.0 / len(members))
+        depth_share = (member_depth / depth_sum) if depth_sum > 0.0 else uniform_share
+        weight = LAKE_SEDIMENT_UNIFORM_FRACTION * uniform_share + (1.0 - LAKE_SEDIMENT_UNIFORM_FRACTION) * depth_share
+        result[members] += total * weight
     return result
 
 
@@ -1194,8 +1263,7 @@ def apply_erosion(
 
     # Marine/beach sediment: whatever water_routed_deposit above piled onto a single ocean
     # node (wherever that node's flow path happened to terminate) spreads across nearby
-    # shallow coast instead -- see _spread_beach_sediment's own docstring. Land-side deposits
-    # (floodplain retention, dead-end-basin sinks) are untouched.
+    # shallow coast instead -- see _spread_beach_sediment's own docstring.
     ocean_terminal_deposit = np.where(is_ocean_node, water_routed_deposit, 0.0)
     # ocean_deposition_multiplier scales the *settled* marine sediment (here and marine_deposit
     # below), not the pre-spread pool -- scaling the pool would desync the mass-conserving
@@ -1203,7 +1271,13 @@ def apply_erosion(
     # it's a deliberate small non-conservative shelf-building / shelf-starving source, same
     # character as flatten_delta and lake siltation.
     beach_deposit = _spread_beach_sediment(points, elevation, is_ocean_node, ocean_terminal_deposit) * world.ocean_deposition_multiplier
-    sediment_deposited = np.where(is_ocean_node, beach_deposit, water_routed_deposit)
+    # Land-side deposits (floodplain retention, dead-end-basin sinks) spread across a lake/sea's
+    # whole flooded extent instead of piling onto its single sink node -- see
+    # LAKE_SEDIMENT_UNIFORM_FRACTION/_spread_lake_sediment's own comments. A dry closed basin (no
+    # standing water yet) is untouched by this, same old single-point-pile behavior.
+    land_terminal_deposit = np.where(is_ocean_node, 0.0, water_routed_deposit)
+    lake_deposit = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, land_terminal_deposit)
+    sediment_deposited = np.where(is_ocean_node, beach_deposit, lake_deposit)
 
     wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source)
 
