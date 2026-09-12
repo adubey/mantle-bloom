@@ -1872,9 +1872,11 @@ export default function App() {
                 </div>
                 <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
                   Same coastline-driven generation as "Human-made" above, just starting from one
-                  of these built-in maps instead of a drawn or loaded one. "Pangaea" and
-                  "Dragons &amp; Zombie World" are stylized, freehand approximations, not precise
-                  reconstructions.
+                  of these built-in maps instead of a drawn or loaded one. "Present-day Earth"
+                  also seeds real-world mountain ranges and rivers, not just coastlines.
+                  "Pangaea" reassembles real continent outlines into the classic supercontinent
+                  fit; "Dragons &amp; Zombie World" is an original interpretation of a
+                  well-known fantasy world's geography, not a reproduction of any map.
                 </div>
               </div>
             )}
