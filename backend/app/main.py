@@ -177,13 +177,17 @@ class AnimateRequest(BaseModel):
     width: int = 1100
     height: int = 611
     rotation: str | None = None
-    # The UI's "years per frame" choice -- the frontend defaults this to 1_000_000, matching
-    # the feature's own framing ("a new frame every million years"), but it's sent explicitly
-    # rather than defaulted here so a future UI change doesn't need a matching backend change.
-    years_per_frame: float
+    # The UI's "Years per step" choice (same value /world/step's own `years` would use) --
+    # sent explicitly rather than defaulted here so a future UI change doesn't need a matching
+    # backend change.
+    step_years: float
+    # The UI's "Steps per frame" choice -- each frame after the first costs this many real
+    # step_world calls of `step_years` each, only the last of which gets rendered (see
+    # render_image.stream_animation_mp4's own docstring for why that's not the same thing as
+    # one bigger step_world(world, steps_per_frame * step_years) call).
+    steps_per_frame: int = 1
     # Total frames, including frame 0 (the world's current, unstepped state) -- so this
-    # permanently advances the world by (num_frames - 1) * years_per_frame years (see
-    # render_image.stream_animation_mp4's own docstring).
+    # permanently advances the world by (num_frames - 1) * steps_per_frame * step_years years.
     num_frames: int
 
 
@@ -759,21 +763,23 @@ def render(
 def animate(req: AnimateRequest) -> StreamingResponse:
     """The "File > Make Animation" action: streams newline-delimited JSON progress while
     rendering an H.264/MP4 video of `view`/`projection`'s progress -- one frame for the
-    world's current state plus `req.num_frames - 1` more, each `req.years_per_frame` further
-    along (see render_image.stream_animation_mp4 for the encoding details). Each response
-    line is one JSON object: `{"type": "progress", "frame": n, "total": N, "image_base64":
-    <that frame's PNG>, "elapsed_years": <world.elapsed_years after this frame>}` as each
-    frame finishes, then a final `{"type": "done",
+    world's current state plus `req.num_frames - 1` more, each `req.steps_per_frame` real
+    steps of `req.step_years` further along, with only the last of those steps rendered (see
+    render_image.stream_animation_mp4 for why that's not the same as one bigger step). Each
+    response line is one JSON object: `{"type": "progress", "frame": n, "total": N,
+    "image_base64": <that frame's PNG>, "elapsed_years": <world.elapsed_years after this
+    frame>}` as each frame finishes, then a final `{"type": "done",
     "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
     "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
     the stream has started.
 
-    **This permanently advances the world** by `(req.num_frames - 1) * req.years_per_frame`
-    years, the same as calling /world/step that many times -- not a side-effect-free preview.
-    Same validation as /world/render for projection/view/width/height/rotation, plus
-    `num_frames` bounded to `[1, MAX_ANIMATION_FRAMES]` (each frame costs a full step_world +
-    render). `404` if no world has been generated yet, `503` if a step or another animation
-    is already in progress."""
+    **This permanently advances the world** by
+    `(req.num_frames - 1) * req.steps_per_frame * req.step_years` years, the same as calling
+    /world/step that many times -- not a side-effect-free preview. Same validation as
+    /world/render for projection/view/width/height/rotation, plus `num_frames` bounded to
+    `[1, MAX_ANIMATION_FRAMES]` and `steps_per_frame` required to be `>= 1` (each frame costs
+    up to `steps_per_frame` full step_world calls + one render). `404` if no world has been
+    generated yet, `503` if a step or another animation is already in progress."""
     world = _require_world()
     if req.projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {req.projection!r}")
@@ -783,6 +789,8 @@ def animate(req: AnimateRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     if not (1 <= req.num_frames <= MAX_ANIMATION_FRAMES):
         raise HTTPException(status_code=400, detail=f"num_frames must be in [1, {MAX_ANIMATION_FRAMES}]")
+    if req.steps_per_frame < 1:
+        raise HTTPException(status_code=400, detail="steps_per_frame must be >= 1")
     view_rotation = _parse_view_rotation(req.rotation)
 
     # Acquire `_world_lock` synchronously (like _reject_if_busy, but the response streams so
@@ -798,7 +806,8 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     def _stream():
         try:
             for message in render_image.stream_animation_mp4(
-                world, req.projection, req.view, req.width, req.height, view_rotation, req.years_per_frame, req.num_frames,
+                world, req.projection, req.view, req.width, req.height, view_rotation,
+                req.step_years, req.steps_per_frame, req.num_frames,
                 stop_event=_animation_stop_event,
             ):
                 if message[0] == "progress":

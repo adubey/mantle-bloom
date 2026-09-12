@@ -29,8 +29,11 @@ interface Props {
   // the background off the current map view (see App.tsx's handleStartAnimation).
   // `unbounded` is "keep going until Stop is pressed": `numFrames` is still a real, finite
   // safety ceiling underneath it (the caller is never expected to reach it), it's just not
-  // shown to the user as the run's actual endpoint.
-  onStartAnimation: (opts: { numFrames: number; yearsPerFrame: number; unbounded: boolean }) => void;
+  // shown to the user as the run's actual endpoint. `stepsPerFrame` is passed through as-is
+  // (not pre-multiplied into a years total) -- the backend runs every one of those steps for
+  // real between frames, only rendering the last, rather than taking one bigger step (see
+  // api.ts's animateWorld).
+  onStartAnimation: (opts: { numFrames: number; stepsPerFrame: number; unbounded: boolean }) => void;
 }
 
 function fmtMyr(years: number): string {
@@ -106,7 +109,8 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
               </select>
             </label>
             <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 10 }}>
-              {fmtMyr(yearsPerFrame)} per frame ({stepsPerFrame.toLocaleString()} × {stepYears.toLocaleString()} yr/step).{" "}
+              {fmtMyr(yearsPerFrame)} per frame ({stepsPerFrame.toLocaleString()} × {stepYears.toLocaleString()} yr/step,
+              every one of them actually simulated -- only the last of each frame's steps is rendered).{" "}
               {unbounded
                 ? `Permanently advances the world for as long as it runs (stops on its own after ${MAX_NUM_FRAMES.toLocaleString()} frames if Stop is never pressed).`
                 : `Permanently advances the world by ${fmtMyr((numFrames - 1) * yearsPerFrame)}, same as clicking Step ${((numFrames - 1) * stepsPerFrame).toLocaleString()} times -- not a preview.`}
@@ -118,7 +122,7 @@ export default function AnimationModal({ hasWorld, stepYears, mapView, onClose, 
               its own, then a dialog lets you save or discard the MP4.
             </div>
             <button
-              onClick={() => onStartAnimation({ numFrames, yearsPerFrame, unbounded })}
+              onClick={() => onStartAnimation({ numFrames, stepsPerFrame, unbounded })}
               disabled={!canStart}
               style={{ width: "100%", fontSize: 12 }}
             >

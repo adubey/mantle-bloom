@@ -2502,27 +2502,36 @@ def stream_animation_mp4(
     width: int,
     height: int,
     view_rotation: np.ndarray,
-    years_per_frame: float,
+    step_years: float,
+    steps_per_frame: int,
     num_frames: int,
     step_fn=step_world,
     stop_event=None,
 ):
     """Generator driving the "Record" toolbar action. Renders `world`'s progress in
     `view`/`projection` as an H.264/MP4 video -- frame 0 is the world's current state, and
-    each of the `num_frames - 1` frames after it is `years_per_frame` further along, calling
-    `step_fn` (defaulting to `step_world`) for real between frames. So this permanently
-    advances `world` by `(num_frames - 1) * years_per_frame` years total (see main.py's
+    each of the `num_frames - 1` frames after it is `steps_per_frame` real `step_fn` calls of
+    `step_years` further along -- i.e. each frame costs `steps_per_frame` genuine simulation
+    steps, only the last of which gets rendered/encoded, the same as clicking Step
+    `steps_per_frame` times and only then looking at the map. This is deliberately *not* one
+    bigger `step_fn(world, steps_per_frame * step_years)` call: plate deformation, erosion,
+    and volcanism's per-step eruption-chance roll all key off individual step calls, so a
+    coarser render cadence (a bigger `steps_per_frame`) still simulates at the same
+    granularity as `step_years` alone would, it just skips rendering most of the intermediate
+    states. `steps_per_frame=1` (a fresh animation's default) makes every frame a real step,
+    same as before this distinction existed. So this permanently advances `world` by
+    `(num_frames - 1) * steps_per_frame * step_years` years total (see main.py's
     `/world/animate` -- deliberately not a side-effect-free preview, same "the map really did
     move forward" semantics manually clicking Step that many times would have).
 
-    `stop_event` (a `threading.Event`, checked once per frame -- see main.py's
-    `_animation_stop_event` / POST /world/animate/stop) lets a caller end the run early
-    without losing the video: once set, the loop finishes the frame already in progress, then
-    breaks *before* stepping the world for the next one, so the encoder still gets flushed and
-    a complete (just shorter) MP4 comes back. This is what backs the frontend's "keep going
-    until Stop is pressed" animation mode -- `num_frames` there is still a real, finite
-    ceiling (so an unattended run can't loop forever), just one the caller isn't expected to
-    reach.
+    `stop_event` (a `threading.Event`, checked before every individual `step_fn` call, not
+    just once per frame -- see main.py's `_animation_stop_event` / POST /world/animate/stop)
+    lets a caller end the run early without losing the video: once set, the loop abandons
+    whatever frame's step batch is in progress (without rendering a partially-stepped frame)
+    and breaks, so the encoder still gets flushed and a complete (just shorter) MP4 comes
+    back. This is what backs the frontend's "keep going until Stop is pressed" animation mode
+    -- `num_frames` there is still a real, finite ceiling (so an unattended run can't loop
+    forever), just one the caller isn't expected to reach.
 
     Yields `("progress", frames_done, num_frames, frame_png_bytes, elapsed_years)` as each
     frame finishes encoding -- `elapsed_years` is `world.elapsed_years` *after* that frame's
@@ -2532,7 +2541,8 @@ def stream_animation_mp4(
     and whether `stop_event` was what ended the run short of `num_frames`. Streaming
     frame-by-frame lets the caller show a real progress bar -- and paint each frame onto the
     live map -- instead of blocking the client on one opaque request that can take minutes on
-    a big world (up to num_frames frames, each a full step_world + render).
+    a big world (up to num_frames frames, each up to steps_per_frame step_world calls + one
+    render).
 
     MP4 replaces the animated GIF this used to emit: an order of magnitude smaller on the
     wire for the same frames, and no 256-color quantization (the GIF path had to quantize
@@ -2552,10 +2562,13 @@ def stream_animation_mp4(
     stopped_early = False
     for i in range(num_frames):
         if i > 0:
-            if stop_event is not None and stop_event.is_set():
-                stopped_early = True
+            for _ in range(steps_per_frame):
+                if stop_event is not None and stop_event.is_set():
+                    stopped_early = True
+                    break
+                step_fn(world, step_years)
+            if stopped_early:
                 break
-            step_fn(world, years_per_frame)
         png_bytes = render_png(world, projection, view, width, height, view_rotation)
         frame_img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
         if frame_img.size != (enc_w, enc_h):

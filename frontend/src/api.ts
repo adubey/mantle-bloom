@@ -803,12 +803,14 @@ export interface AnimateProgress {
 const ANIMATE_IDLE_TIMEOUT_MS = 3 * 60 * 1000;
 
 // The "Record" toolbar action -- renders `numFrames` frames of `view`/`projection`'s
-// progress, starting from the world's current state (frame 0) and stepping it forward by
-// `yearsPerFrame` real years between each subsequent frame, encoded as an H.264/MP4 video.
-// **This permanently advances the world** by up to `(numFrames - 1) * yearsPerFrame` years,
-// the same as calling stepWorld that many times -- not a side-effect-free preview (see
-// backend app/main.py's /world/animate). The caller should run the same post-step refresh
-// sequence it runs after stepWorld.
+// progress, starting from the world's current state (frame 0). Each subsequent frame costs
+// `stepsPerFrame` real simulation steps of `stepYears` each -- only the last of which gets
+// rendered -- encoded as an H.264/MP4 video. **This permanently advances the world** by up to
+// `(numFrames - 1) * stepsPerFrame * stepYears` years, the same as calling stepWorld that
+// many times -- not a side-effect-free preview (see backend app/main.py's /world/animate,
+// and render_image.stream_animation_mp4's docstring for why a coarser render cadence still
+// simulates every step rather than taking one bigger step). The caller should run the same
+// post-step refresh sequence it runs after stepWorld.
 //
 // The endpoint streams newline-delimited JSON: one `{type: "progress", frame, total,
 // image_base64}` per frame (surfaced via `onProgress` -- the image lets the caller paint the
@@ -827,7 +829,8 @@ export async function animateWorld(
   width: number,
   height: number,
   rotation: number[] | undefined,
-  yearsPerFrame: number,
+  stepYears: number,
+  stepsPerFrame: number,
   numFrames: number,
   onProgress?: (progress: AnimateProgress) => void,
   cancelSignal?: AbortSignal,
@@ -860,7 +863,8 @@ export async function animateWorld(
         width,
         height,
         rotation: rotation ? rotation.join(",") : null,
-        years_per_frame: yearsPerFrame,
+        step_years: stepYears,
+        steps_per_frame: stepsPerFrame,
         num_frames: numFrames,
       }),
       signal: idleAbort.signal,
