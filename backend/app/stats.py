@@ -55,19 +55,36 @@ denominator, so the Stats panel's Biome tab can chart the ocean provinces over t
 way it charts the Köppen land classes. Land Köppen classes are omitted from it (0% of ocean),
 and it's `{}` when there are no ocean cells at all.
 
-`plate_count`/`elevation_point_count` are the two exceptions to "every stat here is a
+`plate_count`/`elevation_point_count` are two of the exceptions to "every stat here is a
 spatial min/max/mean snapshot of the current world": each is a single running total (plate
 count, and the sum of every plate's own `node_count()`), with no per-call distribution to
 take a min/max/mean of. The frontend's Simulation tab is what turns a run of these single
 numbers into a min/max/mean/std-dev over time, the same "backend snapshot, frontend
 accumulates history" split every other stat here already uses.
+
+`total_land_area_km2`/`total_continental_crust_volume_km3` are the same kind of running
+total, added to give the Simulation tab a mass/volume-conservation check independent of
+land_fraction -- read straight off `world.plates`' own Hc columns and current elevation,
+*not* the climate grid `is_land`/`is_ocean` above (so, unlike every stat above, immune to
+the hydrology-cache staleness `_reconcile_land_ocean`'s own docstring describes, and not an
+approximation of a non-equal-area grid either -- every lattice node really is the same
+physical footprint, `lithosphere.node_area_m2`). The distinction they're for: land area can
+swing a lot from tectonics moving existing crust above/below sea level (isostasy, sea-level
+change, redistribution within a colliding pair) while the underlying crustal *volume* barely
+moves -- vs. a genuine mass-conservation bug (a topology change that drops a column's volume
+instead of preserving it, e.g. an unaccounted-for retreat) actually shrinking the volume
+number itself. Continental-crust-only (oceanic crust is routinely created/destroyed by
+spreading/subduction by design, so summing it in wouldn't isolate a conservation bug the way
+continental-only does); see docs/TODO.md's collision/land-fraction investigation notes for
+the mechanisms this was added to help tell apart.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
-from . import biomes, climate
+from . import biomes, climate, lithosphere
+from .elevation_lines import line_spacing_rad
 from .world import World
 
 
@@ -97,6 +114,25 @@ def _reconcile_land_ocean(fields: "climate.ClimateFields", sea_level_m: float) -
     return is_ocean, ~is_ocean
 
 
+def _total_land_area_and_continental_volume(world: World) -> tuple[float, float]:
+    """(total land area m^2, total continental crustal volume m^3) straight off
+    `world.plates` -- see this module's own docstring for why these are computed here rather
+    than off the climate grid `compute_stats` otherwise uses throughout. `node_area_m2` is
+    (almost exactly) constant across latitude by construction, so both are a plain node-count
+    sum, not an integral -- one pass per plate, no grid resample."""
+    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+    land_area = 0.0
+    continental_volume = 0.0
+    for plate in world.plates:
+        _, elevation = plate.all_points_and_elevation()
+        if len(elevation) == 0:
+            continue
+        land_area += float(np.count_nonzero(elevation > world.sea_level_m)) * area_m2
+        if plate.crust_type == "continental":
+            continental_volume += float(np.sum(plate.collect("crustal_thickness_m"))) * area_m2
+    return land_area, continental_volume
+
+
 def compute_stats(world: World) -> dict:
     fields = climate.compute_climate_cached(world)
     is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
@@ -109,6 +145,8 @@ def compute_stats(world: World) -> dict:
     air_temp_min, air_temp_max, air_temp_mean, air_temp_std = _min_max_mean_std(fields.air_temperature_c[is_land])
     ocean_temp_min, ocean_temp_max, ocean_temp_mean, ocean_temp_std = _min_max_mean_std(fields.ocean_temperature_c[is_ocean])
     precip_min, precip_max, precip_mean, precip_std = _min_max_mean_std(fields.precipitation_mm)
+
+    land_area_m2, continental_crust_volume_m3 = _total_land_area_and_continental_volume(world)
 
     land_biome_ids = fields.biome_ids[is_land]
     n_land = int(is_land.sum())
@@ -129,6 +167,9 @@ def compute_stats(world: World) -> dict:
         "elapsed_years": world.elapsed_years,
         "plate_count": len(world.plates),
         "elevation_point_count": sum(p.node_count() for p in world.plates),
+        "sea_level_m": world.sea_level_m,
+        "total_land_area_km2": land_area_m2 / 1.0e6,
+        "total_continental_crust_volume_km3": continental_crust_volume_m3 / 1.0e9,
         "land_fraction": float(is_land.sum()) / total,
         "ocean_fraction": float(is_ocean.sum()) / total,
         "elevation_min_m": elevation_min,

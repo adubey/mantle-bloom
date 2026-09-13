@@ -176,9 +176,20 @@ CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 # LEADING_ROW_CONTESTED_FRACTION contested for a cumulative LEADING_ROW_RETREAT_SUSTAINED_YEARS
 # of deform time, the whole row is dropped. Whole-row removal keeps the plate contiguous -- the
 # lobe-severing hazard is specific to *mid*-row carving -- so this is safe exactly where the
-# interior-subduction carve is not. Like the 2026-09-02 end-retreat this does not plumb the
-# dropped column's volume anywhere; the newly-exposed frontmost row is contested next step and
-# thickens through the ordinary `CONTINENTAL_COLLISION_SHORTENING_BOOST` path.
+# interior-subduction carve is not.
+#
+# The dropped row's crustal volume is conserved (mass-conservation bug, confirmed 2026-09-12
+# investigating a "land fraction rises then falls" report on the `two_colliding_pairs`
+# Debugging World: a real, if quantitatively minor -- a few tenths of a percent of total
+# continental crust volume over 30+ My in that scenario -- silent mass leak, since this used
+# to just drop the row's Hc/Hm with nothing thrusting it anywhere, unlike every other
+# continental retreat path in this file, which conserves via `_redistribute_accreted_column`).
+# See `_accrete_dropped_row_volume`: it thrusts each dropped row's summed Hc onto the plate's
+# new leading row at that same extreme, spread evenly across that whole row's nodes (a
+# whole-row-wide suture, since the row being consumed spans the plate's full theta width --
+# unlike `_redistribute_accreted_column`'s single-line-end case, there is no narrower "end"
+# to concentrate it on), capped at the same `SUTURE_ACCRETION_MAX_HC_M` (the overflow
+# delaminates, same as ordinary suture accretion).
 LEADING_ROW_CONTESTED_FRACTION = 0.7
 LEADING_ROW_RETREAT_SUSTAINED_YEARS = 5_000_000.0
 # Never drop a row that would take the plate below this many rows -- a tiny plate has no
@@ -1213,7 +1224,7 @@ class LithospherePlate(PlateWithLines):
             tracker.clear()
             return new_lines
 
-        drop_phis: list[float] = []
+        drop_extremes: dict[float, str] = {}
         for extreme, phi_key in (("lo", rows_left[0]), ("hi", rows_left[-1])):
             n_nodes, n_contested = contested_by_phi.get(phi_key, (0.0, 0.0))
             fraction = n_contested / n_nodes if n_nodes else 0.0
@@ -1223,14 +1234,56 @@ class LithospherePlate(PlateWithLines):
             prev_phi, prev_years = tracker.get(extreme, (None, 0.0))
             accumulated = (prev_years if prev_phi == phi_key else 0.0) + years
             if accumulated >= LEADING_ROW_RETREAT_SUSTAINED_YEARS:
-                drop_phis.append(phi_key)
+                drop_extremes[phi_key] = extreme
                 tracker.pop(extreme, None)
             else:
                 tracker[extreme] = (phi_key, accumulated)
 
-        if not drop_phis:
+        if not drop_extremes:
             return new_lines
-        return [ln for ln in new_lines if round(float(ln.phi), 6) not in drop_phis]
+        return self._accrete_dropped_row_volume(new_lines, drop_extremes)
+
+    def _accrete_dropped_row_volume(
+        self, lines: list[ElevationLine], drop_extremes: dict[float, str]
+    ) -> list[ElevationLine]:
+        """Conserve the crustal volume of the whole leading rows `_retreat_contested_leading_
+        rows` just dropped (`drop_extremes`: this plate's own phi keys -> "lo"/"hi", which
+        extreme each was) by thrusting each dropped row's summed Hc onto the plate's *new*
+        leading row at that same extreme -- spread evenly across every node of that whole
+        row, since the row being consumed spans the plate's full theta width, unlike
+        `_redistribute_accreted_column`'s single line-end case, where there's a narrower
+        "end" to concentrate the volume on. Node area is constant per node, so summed Hc *is*
+        the conserved volume; capped at `SUTURE_ACCRETION_MAX_HC_M` same as ordinary suture
+        accretion (the overflow delaminates -- see that constant's own comment)."""
+        rho_c = self.crust_density()
+        kept = [ln for ln in lines if round(float(ln.phi), 6) not in drop_extremes]
+        if not kept:
+            return kept
+        kept_phis = sorted({round(float(ln.phi), 6) for ln in kept})
+
+        for phi_key, extreme in drop_extremes.items():
+            dropped_hc_sum = sum(
+                float(ln.crustal_thickness_m.sum()) for ln in lines if round(float(ln.phi), 6) == phi_key
+            )
+            if dropped_hc_sum <= 0.0:
+                continue
+            target_phi = kept_phis[0] if extreme == "lo" else kept_phis[-1]
+            target_idx = [i for i, ln in enumerate(kept) if round(float(ln.phi), 6) == target_phi]
+            target_n = sum(len(kept[i]) for i in target_idx)
+            if target_n == 0:
+                continue
+            add_hc_per_node = dropped_hc_sum / target_n
+            for i in target_idx:
+                ln = kept[i]
+                hc = ln.crustal_thickness_m
+                hm = ln.mantle_lithosphere_thickness_m
+                before = lithosphere.isostatic_elevation(hc, hm, rho_c)
+                new_hc = np.minimum(hc + add_hc_per_node, SUTURE_ACCRETION_MAX_HC_M)
+                new_hm = hm * (new_hc / hc)
+                after = lithosphere.isostatic_elevation(new_hc, new_hm, rho_c)
+                new_elevation = rheology.clip_elevation_bounds(ln.elevation + (after - before))
+                kept[i] = ln.replace(crustal_thickness_m=new_hc, mantle_lithosphere_thickness_m=new_hm, elevation=new_elevation)
+        return kept
 
     def _seed_and_erupt_new_nodes(
         self, world: "World", line_index: int, world_pts: np.ndarray, thin_ratio: float,  # noqa: F821
@@ -1771,11 +1824,15 @@ class LithospherePlate(PlateWithLines):
     def _merge_nodes_with(self, other: "LithospherePlate", spacing_rad: float, coverage_radius_rad: float, other_points_xyz: np.ndarray) -> None:
         keep_pts, _ = self.all_points_and_elevation()
         absorb_pts, _ = other.all_points_and_elevation()
-        old_points = np.concatenate([keep_pts, absorb_pts], axis=0)
-        old_hc = np.concatenate([self.collect("crustal_thickness_m"), other.collect("crustal_thickness_m")])
-        old_hm = np.concatenate([self.collect("mantle_lithosphere_thickness_m"), other.collect("mantle_lithosphere_thickness_m")])
         exclude_tree = cKDTree(other_points_xyz) if len(other_points_xyz) else None
-        self.set_lines(_lines_from_resample(self.frame, old_points, old_hc, old_hm, coverage_radius_rad, spacing_rad, exclude_tree))
+        self.set_lines(
+            _merge_lines_from_resample(
+                self.frame,
+                keep_pts, self.collect("crustal_thickness_m"), self.collect("mantle_lithosphere_thickness_m"),
+                absorb_pts, other.collect("crustal_thickness_m"), other.collect("mantle_lithosphere_thickness_m"),
+                coverage_radius_rad, spacing_rad, exclude_tree,
+            )
+        )
         lithosphere.sync_plate_elevation(self)
 
     def split(self, new_id: int, cut_normal: np.ndarray, min_nodes: int) -> tuple["LithospherePlate", "LithospherePlate"] | None:
@@ -1860,44 +1917,109 @@ class LithospherePlate(PlateWithLines):
         self.set_lines(new_lines)
 
 
-def _lines_from_resample(
+def _merge_lines_from_resample(
     frame: np.ndarray,
-    points: np.ndarray,
-    hc: np.ndarray,
-    hm: np.ndarray,
+    keep_points: np.ndarray,
+    keep_hc: np.ndarray,
+    keep_hm: np.ndarray,
+    absorb_points: np.ndarray,
+    absorb_hc: np.ndarray,
+    absorb_hm: np.ndarray,
     coverage_radius_rad: float,
     spacing_rad: float,
     exclude_tree: cKDTree | None = None,
 ) -> list[ElevationLine]:
-    """`plates._lines_from_resample`'s own algorithm, carrying Hc/Hm (nearest-point lookup)
-    instead of a bare scalar elevation -- see that function's docstring for the exclusivity
-    logic. `elevation` on the returned lines is a placeholder (zeros); the caller must run
+    """Resample the fusing pair's own node clouds onto a fresh local lattice (see
+    `_merge_nodes_with`'s own docstring) -- `keep`/`absorb` queried *separately*, not
+    (as an earlier version of this did) via one nearest-neighbor lookup against their naive
+    concatenation.
+
+    That distinction matters exactly where a merge is most consequential: the deeply
+    overlapping suture band a sustained collision leaves behind before the two plates
+    actually fuse (see merge_split.py's own `FORCED_MERGE_OVERLAP_FRACTION` / ordinary
+    closing-rate merge threshold, both tuned to only fire once real territorial overlap has
+    built up). There, `keep` and `absorb` each still carry their own full-thickness column
+    at roughly the same location -- two independent lattices interleaved at close to the
+    *same* areal density the new, merged lattice also targets. A single nearest-of-the-union
+    lookup at that density picks up only whichever one of the two happened to be closer to
+    each new site and silently drops the other's entire column -- confirmed directly
+    (2026-09-12, investigating a "land keeps declining across a continental collision"
+    report): every one of 7 sampled merge events across 5 seeds of the `two_colliding_pairs`
+    Debugging World lost 9-17% of the merging pair's total continental crustal volume at the
+    moment of fusion, with no discrete accounting for where it went -- confirming "some
+    volume gets consumed entirely by an early fusion" as a real bug, not just a hypothesis.
+
+    Fix: query `keep`'s and `absorb`'s own clouds independently at every new lattice site.
+    Where only one has a node within `coverage_radius_rad`, behavior is unchanged from
+    before (an ordinary single-column resample). Where *both* do -- genuine suture overlap
+    -- their Hc is summed (real collisions really do stack two independent columns into one
+    thicker one; this is the literal orogenic-thrust-wedge physics
+    `_redistribute_accreted_column` already applies to an ordinary contested-edge retreat,
+    just applied here to the deep-overlap remainder that survives all the way to the final
+    merge instead of retreating earlier), capped at the same `SUTURE_ACCRETION_MAX_HC_M` an
+    ordinary suture uses (the overflow delaminates -- see that constant's own comment), with
+    `keep`'s own Hm scaled by the same Hc growth ratio `_redistribute_accreted_column` uses
+    (a doubled crustal column does not imply a doubled mantle-lithosphere lid) rather than
+    also summed.
+
+    `exclude_tree` (every *other*, uninvolved plate's own nodes) keeps its original meaning
+    and does not change this plate's resulting footprint, only how Hc/Hm is sampled within
+    it: a candidate site closer to some third plate than to either fusing plate is still
+    never claimed here, the same exclusivity `plates.generate_plates`' Voronoi tiling
+    guarantees at generation.
+
+    `elevation` on the returned lines is a placeholder (zeros); the caller must run
     `lithosphere.sync_plate_elevation` right after to derive the real isostatic value."""
-    tree = cKDTree(points)
-
-    def is_owned(world_pts: np.ndarray) -> np.ndarray:
-        own_dist, _ = tree.query(world_pts)
-        if exclude_tree is None:
-            return own_dist < coverage_radius_rad
-        other_dist, _ = exclude_tree.query(world_pts)
-        return (own_dist < coverage_radius_rad) & (own_dist < other_dist)
-
-    lines: list[ElevationLine] = []
     from .elevation_lines import iter_local_lattice
 
+    keep_tree = cKDTree(keep_points) if len(keep_points) else None
+    absorb_tree = cKDTree(absorb_points) if len(absorb_points) else None
+
+    def query(tree: cKDTree | None, world_pts: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if tree is None:
+            return np.full(len(world_pts), np.inf), np.zeros(len(world_pts), dtype=int)
+        return tree.query(world_pts)
+
+    lines: list[ElevationLine] = []
     for phi, theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
-        owned = is_owned(world_pts)
+        keep_dist, keep_idx = query(keep_tree, world_pts)
+        absorb_dist, absorb_idx = query(absorb_tree, world_pts)
+        own_dist = np.minimum(keep_dist, absorb_dist)
+
+        if exclude_tree is not None:
+            exclude_dist, _ = exclude_tree.query(world_pts)
+        else:
+            exclude_dist = np.full(len(world_pts), np.inf)
+        owned = (own_dist < coverage_radius_rad) & (own_dist < exclude_dist)
         if not np.any(owned):
             continue
+
+        keep_close = keep_dist < coverage_radius_rad
+        absorb_close = absorb_dist < coverage_radius_rad
+        both = keep_close & absorb_close
+
+        hc = np.zeros(len(world_pts))
+        hm = np.zeros(len(world_pts))
+        only_keep = keep_close & ~both
+        hc[only_keep] = keep_hc[keep_idx[only_keep]]
+        hm[only_keep] = keep_hm[keep_idx[only_keep]]
+        only_absorb = absorb_close & ~both
+        hc[only_absorb] = absorb_hc[absorb_idx[only_absorb]]
+        hm[only_absorb] = absorb_hm[absorb_idx[only_absorb]]
+        if np.any(both):
+            base_hc = keep_hc[keep_idx[both]]
+            new_hc = np.minimum(base_hc + absorb_hc[absorb_idx[both]], SUTURE_ACCRETION_MAX_HC_M)
+            hc[both] = new_hc
+            hm[both] = keep_hm[keep_idx[both]] * (new_hc / base_hc)
+
         theta_owned = theta_candidates[owned]
-        _, idx = tree.query(world_pts[owned])
         lines.append(
             ElevationLine(
                 phi=phi,
                 theta=theta_owned,
                 elevation=np.zeros(len(theta_owned)),
-                crustal_thickness_m=hc[idx],
-                mantle_lithosphere_thickness_m=hm[idx],
+                crustal_thickness_m=hc[owned],
+                mantle_lithosphere_thickness_m=hm[owned],
             )
         )
     return lines

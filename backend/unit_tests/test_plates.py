@@ -1219,6 +1219,117 @@ def test_lithosphere_contested_leading_row_is_dropped_after_sustained_override()
     assert any(abs(ln.phi - front_phi) < 1e-6 for ln in lonely.lines)
 
 
+def test_lithosphere_leading_row_drop_conserves_crustal_volume():
+    """The whole-row drop above used to just discard the row's Hc/Hm with nothing
+    thrusting it anywhere -- a confirmed mass-conservation bug (see
+    `_accrete_dropped_row_volume`'s own docstring). The dropped row's summed Hc must now
+    reappear on the plate's new leading row at that same extreme, so total continental
+    crustal volume (sum of Hc, since node area is constant per node) is conserved across the
+    drop, not merely reduced by exactly one row's worth."""
+    from app.lithosphere import reference_thickness
+    from app.lithosphere_plate import LEADING_ROW_RETREAT_SUSTAINED_YEARS, LithospherePlate
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+    hc0, hm0 = reference_thickness("continental")
+
+    def _rows(phis, theta_lo, theta_hi, n):
+        theta = np.linspace(theta_lo, theta_hi, n)
+        return [
+            ElevationLine(
+                phi=phi,
+                theta=theta.copy(),
+                elevation=np.zeros(n),
+                crustal_thickness_m=np.full(n, hc0),
+                mantle_lithosphere_thickness_m=np.full(n, hm0),
+            )
+            for phi in phis
+        ]
+
+    front_phi = 14 * spacing
+    inner_phis = [10 * spacing, 11 * spacing, 12 * spacing, 13 * spacing]
+    continent = LithospherePlate(
+        plate_id=0, frame=np.eye(3), crust_type="continental",
+        lines=_rows(inner_phis + [front_phi], -0.5, 0.5, 40),
+    )
+    neighbour = LithospherePlate(
+        plate_id=1, frame=np.eye(3), crust_type="continental",
+        lines=_rows(list(front_phi - 0.5 * spacing + spacing * np.arange(10)), -0.53, 0.53, 60),
+    )
+    world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+
+    def total_hc(plate) -> float:
+        return float(sum(ln.crustal_thickness_m.sum() for ln in plate.lines))
+
+    years_per_step = 1_000_000
+    steps_to_drop = int(np.ceil(LEADING_ROW_RETREAT_SUSTAINED_YEARS / years_per_step))
+
+    hc_before_drop = None
+    for step in range(steps_to_drop):
+        if not any(abs(ln.phi - front_phi) < 1e-6 for ln in continent.lines):
+            break
+        hc_before_drop = total_hc(continent)
+        continent.deform(world, [neighbour], years=years_per_step, max_distance=1.5 * spacing)
+
+    assert not any(abs(ln.phi - front_phi) < 1e-6 for ln in continent.lines), "front row should have dropped"
+    assert hc_before_drop is not None
+    hc_after_drop = total_hc(continent)
+    # Ordinary per-step deformation (isostasy-neutral Hc changes elsewhere) still moves this
+    # a little step to step -- the assertion is "the whole row's worth of Hc survived
+    # somewhere on the plate," not "nothing at all changed."
+    assert hc_after_drop == pytest.approx(hc_before_drop, rel=0.05)
+
+
+def test_merge_lines_from_resample_sums_hc_where_both_plates_overlap():
+    """Confirmed bug (2026-09-12, investigating a "land keeps declining across a continental
+    collision" report): the old merge resample queried the merging pair's *concatenated*
+    node cloud with a single nearest-neighbor lookup per new lattice site -- so wherever
+    `keep` and `absorb` had each already built up a full-thickness column at close to the
+    same location (a genuine, deep suture overlap -- exactly the geometry a real collision
+    leaves behind right before the two plates actually fuse), the resample kept only
+    whichever one happened to be nearest and silently discarded the other's entire Hc.
+    Measured live across 5 seeds of the `two_colliding_pairs` Debugging World: every one of
+    7 sampled merges lost 9-17% of the pair's total continental crustal volume at the moment
+    of fusion.
+
+    `_merge_lines_from_resample` now queries `keep`'s and `absorb`'s clouds separately and
+    sums Hc wherever both are present. This constructs `keep`/`absorb` point clouds that
+    exactly coincide at the *same* lattice sites `iter_local_lattice` will itself resample
+    onto (matching a real plate's own full-density node cloud, unlike a sparse synthetic
+    fixture) so the expected total is exact, not approximate."""
+    from app.elevation_lines import iter_local_lattice
+    from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M, _merge_lines_from_resample
+
+    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
+    spacing_rad = line_spacing_rad(1.0)
+    coverage_radius_rad = 1.2 * spacing_rad
+
+    rows = []
+    for phi, _theta_candidates, world_pts in iter_local_lattice(frame, spacing_rad=spacing_rad):
+        rows.append(world_pts)
+        if len(rows) >= 3:  # a handful of rows is enough to exercise the resample
+            break
+    points = np.concatenate(rows, axis=0)
+    n = len(points)
+
+    keep_hc, keep_hm = np.full(n, 35_000.0), np.full(n, 100_000.0)
+    absorb_hc, absorb_hm = np.full(n, 20_000.0), np.full(n, 80_000.0)
+
+    # keep_points/absorb_points are the identical array here, so every resampled site --
+    # even one just past this test's own 3-row slice that a coverage-radius-driven bleed
+    # into a neighboring row still picks up -- is equidistant from both, i.e. "both present"
+    # by construction: the whole plate should come back at the summed-and-capped value, not
+    # some diluted mix.
+    lines = _merge_lines_from_resample(
+        frame, points, keep_hc, keep_hm, points, absorb_hc, absorb_hm, coverage_radius_rad, spacing_rad,
+    )
+
+    assert sum(len(ln) for ln in lines) >= n  # every original site survived (plus maybe a row-bleed edge)
+    expected_hc_per_node = min(35_000.0 + 20_000.0, SUTURE_ACCRETION_MAX_HC_M)
+    for ln in lines:
+        assert ln.crustal_thickness_m == pytest.approx(np.full(len(ln), expected_hc_per_node))
+
+
 def test_lithosphere_claim_adjacent_territory_keeps_a_margin_from_the_local_pole():
     from app.plates import POLE_CAP_MARGIN_MULT
     from app.world import World
