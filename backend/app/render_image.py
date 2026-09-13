@@ -659,9 +659,16 @@ def _node_cloud_and_tree(world: World):
     node. It, and the concatenated arrays it indexes into, are cached on
     `World.node_kdtree_cache` and reused until the next `step_world` moves a node and resets
     the cache -- node positions are otherwise fixed between steps, and no render ever runs
-    mid-step. This is the "left for later" tail of docs/profiling.md #6. Every
-    `plates.collect_all_*` array is built in this same per-plate/per-node order, so the
-    tree's query indices map into any of them, not just the three returned here."""
+    mid-step. Elevation/owner are always gathered fresh here (`collect_all_points`, cheap next
+    to the tree build) rather than trusted from any earlier point in the step -- but the tree
+    itself, built from positions alone, is safe to reuse the instant node positions settle for
+    this step, well before erosion.py finishes mutating elevation; climate.py's own per-step
+    resample (`_sample_elevation_and_crust`) builds exactly that tree early (every step, inside
+    `apply_erosion`) and shares it via `World.node_position_tree_cache`, so in practice the
+    first render after a step only pays for this function's own elevation/owner gather, not
+    another tree build. This is the "left for later" tail of docs/profiling.md #6. Every
+    `plates.collect_all_*` array is built in this same per-plate/per-node order, so the tree's
+    query indices map into any of them, not just the three returned here."""
     cached = world.node_kdtree_cache
     if cached is not None:
         return cached
@@ -669,7 +676,9 @@ def _node_cloud_and_tree(world: World):
     if collected is None:
         return None
     all_points, all_elevation, all_owner = collected
-    result = (all_points, all_elevation, all_owner, cKDTree(all_points))
+    shared_tree = world.node_position_tree_cache
+    tree = shared_tree[1] if shared_tree is not None else cKDTree(all_points)
+    result = (all_points, all_elevation, all_owner, tree)
     world.node_kdtree_cache = result
     return result
 

@@ -84,6 +84,8 @@ def _drop_derived_caches(world: World) -> None:
         invalidate = getattr(plate, "_invalidate_bounding_polygon", None)
         if callable(invalidate):
             invalidate()
-    # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) -- a pure
-    # function of the just-invalidated plate geometry, rebuilt on the first render after load.
+    # The render path's cached node-cloud k-d tree and its positions-only sibling shared with
+    # climate.py (see World.node_kdtree_cache/node_position_tree_cache) -- both pure functions
+    # of the just-invalidated plate geometry, rebuilt on first use after load.
     world.node_kdtree_cache = None
+    world.node_position_tree_cache = None
