@@ -846,6 +846,27 @@ fluid solve does nothing to `elevation` without erosion.)
   only decreases"). `test_merge_split.py::test_apply_failed_rift_*` /
   `test_maybe_split_plate_with_failed_outcome_*`.
 
+- **Rift magmatic underplating -- crust-building counterweight for over-stretched interiors.
+  Landed 2026-09-13.** Item 2 above ("over-stretched continental plates ... thinning their
+  interiors via `rheology.apply_divergent_deformation`") had no crust-building counterweight
+  at all until melt-through -- unlike the convergent side's `apply_convergent_deformation` +
+  arc-magmatism pairing directly above, a divergent node thinned continuously from a full
+  reference column down to `RIFT_CRITICAL_THICKNESS_M` (~5 km) with zero offset. New
+  `rheology.apply_rift_magmatic_thickening` mirrors the arc function for the divergent branch:
+  once `Hc` drops below `RIFT_VOLCANISM_ONSET_HC_M` (20 km), adds `Hc` continuously, ramping
+  in as `Hc` approaches the melt-through threshold and scaled gently by extension rate --
+  deliberately calibrated well below the arc rate (150 vs `ARC_MAGMATIC_HC_RATE_M_PER_MYR`'s
+  450 m/Myr), a partial offset rather than a brake, so a sustained rift still reaches full
+  rupture. `lithosphere_plate._ignite_early_rift_volcanoes` also starts the same node's
+  point-volcano eruption lifecycle at that same onset, well before the melt-through event's
+  own guaranteed volcano flag -- see docs/simulation-model.md's [Whole-sphere
+  coverage](simulation-model.md#gap-filling) and [Volcanism](simulation-model.md#volcanism).
+  **Measured** (seed 926698457, node_density 0.5, climate off, 80 My): land-fraction decline
+  **-0.1255 -> -0.1028** (~18% slower) -- same order as arc accretion's own ~10% above.
+  `backend/unit_tests/test_rheology.py::test_rift_magmatism_*`. Partial fix, same caveat as
+  arc accretion/eustasy above: slows, does not stop, the long-run decline; not yet combined
+  with arc + eustasy + failed-rifts in one measured run.
+
 ### Fault mode re-verified; thin belts + weak volcanism addressed (2026-09-04)
 
 **Trigger.** User-supplied `~/Downloads/mantle-bloom-seed52459390-188100000y.mbworld`
