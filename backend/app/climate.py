@@ -182,6 +182,7 @@ class ClimateFields:
     world_xyz: np.ndarray  # (H, W, 3) unit vectors, for projecting cells onto the map
     elevation_m: np.ndarray  # (H, W)
     is_ocean: np.ndarray  # (H, W) bool
+    lake_depth_m: np.ndarray  # (H, W) -- 0 where no lake/sea reaches; see _sample_elevation_and_crust
     land_temperature_c: np.ndarray  # (H, W) -- solar heating (+ lapse rate), unmoderated
     ocean_temperature_c: np.ndarray  # (H, W) -- final, current-advected
     air_temperature_c: np.ndarray  # (H, W) -- final, moderated toward nearby ocean
@@ -1675,6 +1676,7 @@ def compute_climate(
         world_xyz=world_xyz,
         elevation_m=elevation_m,
         is_ocean=is_ocean,
+        lake_depth_m=lake_depth_m,
         land_temperature_c=land_temperature_c,
         ocean_temperature_c=ocean_temperature_c,
         air_temperature_c=air_temperature_c,

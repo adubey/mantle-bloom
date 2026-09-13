@@ -73,6 +73,76 @@ def test_set_sea_level_via_water_budget_is_conserved_across_a_step():
     assert abs(world.ocean_water_column_m - budget) < 1e-6
 
 
+class _FakeHydrologyCache:
+    """Just enough of `HydrologyFields` for `eustasy._ocean_connected_mask` to work with:
+    `points` (only its length is consulted), `neighbor_idx` (the actual connectivity graph),
+    and `is_ocean` (the seed `_seeded_connected_mask` anchors to -- see that function's own
+    docstring for why a fixed seed, not a fresh "largest wins" pass, is what the eustasy solve
+    needs). Lets the connectivity-aware path be exercised without spinning up a real `World`/
+    plate tectonics run."""
+
+    def __init__(self, n: int, neighbor_idx: np.ndarray, is_ocean: np.ndarray):
+        self.points = np.zeros((n, 3))
+        self.neighbor_idx = neighbor_idx
+        self.is_ocean = is_ocean
+
+
+def _ring_neighbors(indices: list[int]) -> list[tuple[int, int]]:
+    """Every consecutive (wraparound) pair in `indices` -- builds one connected ring
+    component, isolated from any other index range that gets its own separate ring."""
+    return [(indices[i], indices[(i + 1) % len(indices)]) for i in range(len(indices))]
+
+
+def _make_fake_world_with_two_below_sea_level_rings():
+    """20 nodes, three disjoint rings, no edges crossing between them: a 10-node "ocean" ring
+    at -100 m, a 5-node "closed pit" ring at -500 m (below sea level, but never connected to
+    the ocean ring), and a 5-node "land" ring at +50 m -- a minimal fixture for
+    `connected_ocean_mask` to draw exactly the distinction this module's whole fix is about:
+    the pit is below sea level but isn't the ocean, so its own volume shouldn't count as free
+    ocean depth (see eustasy.py's own module docstring)."""
+    n = 20
+    elevations = np.concatenate([np.full(10, -100.0), np.full(5, -500.0), np.full(5, 50.0)])
+    edges = _ring_neighbors(list(range(0, 10))) + _ring_neighbors(list(range(10, 15))) + _ring_neighbors(list(range(15, 20)))
+    neighbor_idx = np.full((n, 2), -1, dtype=np.int64)
+    fill = np.zeros(n, dtype=np.int64)
+    for a, b in edges:
+        neighbor_idx[a, fill[a]] = b
+        neighbor_idx[b, fill[b]] = a
+        fill[a] += 1
+        fill[b] += 1
+    # The seed is last step's own real `is_ocean` -- the 10-node ring is the only component
+    # ever actually classified ocean; the pit is deliberately left out of it, exactly like a
+    # real save's `hydrology_cache.is_ocean` would leave out a genuine closed basin.
+    is_ocean = np.zeros(n, dtype=bool)
+    is_ocean[:10] = True
+    world = type("FakeWorld", (), {})()
+    world.hydrology_cache = _FakeHydrologyCache(n, neighbor_idx, is_ocean)
+    return world, elevations
+
+
+def test_ocean_water_column_excludes_a_disconnected_below_sea_level_pit():
+    world, elevations = _make_fake_world_with_two_below_sea_level_rings()
+    sea_level_m = 0.0
+
+    # The bare formula (what the old code used) double-books the closed pit's own volume.
+    assert eustasy.total_water_column_m(elevations, sea_level_m) == 10 * 100.0 + 5 * 500.0
+    # The connectivity-aware one counts only the actual (connected) ocean ring.
+    assert eustasy.ocean_water_column_m(world, elevations, sea_level_m) == 10 * 100.0
+
+
+def test_solve_sea_level_connected_ignores_the_pits_volume():
+    world, elevations = _make_fake_world_with_two_below_sea_level_rings()
+    # A water budget that would exactly float the ocean ring at -20 m, ignoring the pit.
+    target_level = -20.0
+    ocean_only_budget = 10 * (target_level - (-100.0))
+    solved = eustasy._solve_sea_level_connected(world, elevations, ocean_only_budget)
+    assert abs(solved - target_level) < 1.0
+    # The same budget fed to the bare (connectivity-oblivious) solver reads as a much lower
+    # level, since it also expects to have filled the pit "for free" along the way.
+    naive = eustasy.solve_sea_level(elevations, ocean_only_budget)
+    assert naive < solved - 1.0
+
+
 def _pile_ice_everywhere(world, depth_m):
     for plate in world.plates:
         for i, line in enumerate(plate.lines):

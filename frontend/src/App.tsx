@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import "./index.css";
 import {
-  animateWorld, fetchCornerNotchLog, fetchDebugScenarios, fetchEarthquakes, fetchElevationPoint, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
+  animateWorld, fetchCornerNotchLog, fetchDebugScenarios, fetchEarthquakes, fetchElevationPoint, fetchElevationPointAt, fetchFaults, fetchLakes, fetchNodeAt, fetchPlates, fetchPointSample, fetchRivers, fetchStats, fetchStatsHistory, fetchVolcanoes, fetchWorldSummary, generateDebugWorld, generateWorld, renderWorld, stepWorld, stopAnimation, updateControls,
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
@@ -523,9 +523,11 @@ export default function App() {
   );
   // Stats panel data (see StatsModal.tsx) -- `stats` is the latest snapshot, `statsHistory`
   // accumulates one entry per generate/step (deduped by elapsed_years) for the panel's graph
-  // tabs, built entirely client-side since the backend endpoint itself is stateless (see
-  // backend app/stats.py). Recorded continuously, not just while the modal is open, so
-  // opening it later still shows the full history since the world was generated.
+  // tabs. Recorded continuously, not just while the modal is open, so opening it later still
+  // shows the full history since the world was generated. The backend now keeps its own copy
+  // too (World.stats_history, persisted in every saved .mbworld -- see backend app/world.py),
+  // which handleWorldReplaced below restores this from after a Load -- otherwise a loaded
+  // save would resume with an empty chart despite however much history it was saved with.
   const [stats, setStats] = useState<WorldStats | null>(null);
   const [statsHistory, setStatsHistory] = useState<WorldStats[]>([]);
   const [showStatsModal, setShowStatsModal] = useState(false);
@@ -844,7 +846,9 @@ export default function App() {
   // world's own real values: calling updateControls with no fields set changes nothing but
   // still returns the current world's current values (see api.ts's updateControls/backend
   // app/main.py's /world/controls), which is simpler than adding a new endpoint just to read
-  // them back.
+  // them back. statsHistory is restored the same way, from GET /world/stats_history -- the
+  // loaded save's own recorded series (see World.stats_history), not reset to empty the way
+  // it used to be before the backend persisted this itself.
   const handleWorldReplaced = useCallback(async (s: WorldSummary) => {
     setBusy(true);
     setError(null);
@@ -854,7 +858,16 @@ export default function App() {
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
-      setStatsHistory([]);
+      // Awaited (not fire-and-forget) so it lands before the Promise.all below's own
+      // recordStats() call appends this instant's reading on top of it -- otherwise the two
+      // setStatsHistory calls could resolve in either order and recordStats()'s plain-array
+      // append would risk being clobbered by this one landing second.
+      try {
+        const { history } = await fetchStatsHistory();
+        setStatsHistory(history);
+      } catch {
+        // best-effort, same spirit as recordStats below -- see its own comment
+      }
       const controls = await updateControls({});
       setSeaLevelM(controls.sea_level_m);
       setSolarMultiplier(controls.solar_multiplier);

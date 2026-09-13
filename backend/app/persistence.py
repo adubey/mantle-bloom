@@ -65,6 +65,8 @@ def _backfill_added_fields(world: World) -> None:
         world.corner_notch_log = []
     if not hasattr(world, "pinned_omegas"):
         world.pinned_omegas = {}
+    if not hasattr(world, "stats_history"):
+        world.stats_history = []
     # Eustatic sea level (eustasy.py): a save written before this existed has a fixed
     # sea_level_m and no water budget -- snapshot the budget from that save's own hypsometry
     # + sea level so loading it doesn't jump the shoreline, then let it be conserved onward.

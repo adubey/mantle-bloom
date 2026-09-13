@@ -293,9 +293,11 @@ export interface LakeAtResponse {
   basin: LakeSummary | null;
 }
 
-// Stats panel data (see backend app/stats.py) -- a stateless snapshot of the *current* world;
-// the client is what accumulates a history over time (see App.tsx's recordStats), same
-// division of responsibility /world/render already has with renderData. Land/ocean
+// Stats panel data (see backend app/stats.py) -- /world/stats is a stateless snapshot of the
+// *current* world; the actual recorded time series lives on the backend now too (see
+// World.stats_history / GET /world/stats_history below), persisted in every saved .mbworld,
+// so App.tsx's statsHistory just mirrors that rather than accumulating its own copy client-
+// side. Land/ocean
 // temperature/elevation/depth fields are `null` when their domain has no grid cells at all
 // (e.g. an all-ocean world has no land cells, so elevation_*/land_*/air_* are all null; a
 // world with no ocean at all would similarly null out ocean_depth_*/ocean_temperature_*) --
@@ -719,6 +721,14 @@ export function fetchElevationPoint(
 
 export function fetchStats(): Promise<WorldStats> {
   return fetch(`${API_BASE}/world/stats`).then(asJson<WorldStats>);
+}
+
+// The full recorded time series (see World.stats_history) -- persisted server-side and so
+// present in every saved .mbworld, unlike the single instantaneous fetchStats() snapshot
+// above. App.tsx calls this after a Load to restore the Stats panel's history charts instead
+// of resetting them to empty.
+export function fetchStatsHistory(): Promise<{ history: WorldStats[] }> {
+  return fetch(`${API_BASE}/world/stats_history`).then(asJson<{ history: WorldStats[] }>);
 }
 
 // Re-syncs with whatever world is already sitting in server memory -- used on page load to

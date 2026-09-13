@@ -177,6 +177,12 @@ simpler, matching the v1 "elevation view only" scope. A `World` holds:
   otherwise being fully stateless.
 - `events: list[(float, str)]` -- the event log for the UI's console (elapsed_years,
   message), capped at `MAX_EVENT_LOG_LENGTH = 200` entries. Appended to via `World.log_event`.
+- `stats_history: list[dict]` -- one `stats.compute_stats(self)` snapshot per real advance
+  (generation, then every step), for the Stats panel's history charts. Deliberately
+  uncapped, unlike `events` above. Appended to via `World.record_stats` (skipped, not forced,
+  when climate wasn't computed this step -- see that method's own docstring), exposed via
+  `GET /world/stats_history`; persisted in every saved `.mbworld` so a Load restores the
+  charts instead of resetting them to empty, unlike the stateless `GET /world/stats` snapshot.
 - `climate_cache`/`hydrology_cache` -- this step's climate/flow-routing snapshot, populated
   by `erosion.py` (which needs a fresh one every step regardless) and reused by
   `/world/stats`, a climate map render, and river/lake rendering so they don't each trigger

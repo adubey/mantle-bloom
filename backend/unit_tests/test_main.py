@@ -111,6 +111,10 @@ def test_stats_before_generate_returns_404(client):
     assert client.get("/world/stats").status_code == 404
 
 
+def test_stats_history_before_generate_returns_404(client):
+    assert client.get("/world/stats_history").status_code == 404
+
+
 def test_overlapping_step_returns_503(client, monkeypatch):
     client.post("/world/generate", json={"seed": 1, "num_plates": 6})
 
@@ -811,6 +815,27 @@ def test_stats_returns_expected_shape(client):
     # Both biome breakdowns are present and each sums to ~1 over its own domain (land / ocean).
     assert math.isclose(sum(body["biome_land_fraction"].values()), 1.0, abs_tol=1e-6)
     assert math.isclose(sum(body["biome_ocean_fraction"].values()), 1.0, abs_tol=1e-6)
+
+
+def test_stats_history_records_generate_and_each_step_and_survives_save_load(client):
+    # The whole point of World.stats_history (see world.py/persistence.py): a save/load round
+    # trip should keep the Stats panel's history charts, not silently drop them.
+    client.post("/world/generate", json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
+    history = client.get("/world/stats_history").json()["history"]
+    assert [s["elapsed_years"] for s in history] == [0.0]
+
+    client.post("/world/step", json={"years": 1_000_000})
+    history = client.get("/world/stats_history").json()["history"]
+    assert [s["elapsed_years"] for s in history] == [0.0, 1_000_000.0]
+
+    saved = client.get("/world/save").content
+    client.post("/world/generate", json={"seed": 99, "num_plates": 4})  # replace with something else
+    assert [s["elapsed_years"] for s in client.get("/world/stats_history").json()["history"]] == [0.0]
+
+    client.post("/world/load", content=saved)
+    reloaded_history = client.get("/world/stats_history").json()["history"]
+    assert [s["elapsed_years"] for s in reloaded_history] == [0.0, 1_000_000.0]
+    assert reloaded_history == history
 
 
 def test_save_then_load_round_trips_the_exact_world_state(client):
