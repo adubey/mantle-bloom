@@ -468,6 +468,7 @@ def generate_world(
     extra_sites_per_plate: int = lithosphere_plate.EXTRA_SITES_PER_PLATE,
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
+    premade_world_id: str | None = None,
 ) -> World:
     """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
@@ -499,7 +500,14 @@ def generate_world(
     "Human-made" Generate World tab, see worldsketch.py) replaces noise-driven land/sea and
     random plate-site placement with a drawn/loaded coastline -- see
     lithosphere_plate.generate_plates's own `sketch` param for what it changes; `None` (every
-    caller before this parameter existed) is unaffected."""
+    caller before this parameter existed) is unaffected. `premade_world_id` (`"earth"`,
+    `"pangaea"`, or `"got"` -- the "Premade worlds" tab; see lithosphere_plate.generate_plates's
+    own param of the same name for what it changes there, real-geography relief regions for
+    every one of the three) additionally swaps the random mantle convection centers below for
+    ones fit to reproduce known (or, for Pangaea, directionally-approximated) real plate
+    motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
+    `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
+    random centers."""
     plates = generate_plates(
         seed,
         num_plates,
@@ -509,9 +517,24 @@ def generate_world(
         extra_sites_per_plate=extra_sites_per_plate,
         voronoi_points=voronoi_points,
         sketch=sketch,
+        premade_world_id=premade_world_id,
     )
     rng = np.random.default_rng(seed)
-    mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)
+    if premade_world_id in ("earth", "pangaea"):
+        # Local import, same reasoning as generate_plates' own (avoid paying for
+        # real_plates.py's data-file parsing on every other generation path). "got" has no
+        # real-world motion to fit to, so it keeps the ordinary random centers below.
+        from . import real_plates
+
+        if premade_world_id == "earth":
+            real_plate_list = real_plates.load_major_plates()
+            candidates = real_plates.load_ridge_trench_candidates()
+        else:
+            real_plate_list = real_plates.pangaea_real_plates()
+            candidates = real_plates.pangaea_ridge_trench_candidates(sketch, rng)
+        mantle_centers = real_plates.fit_mantle_centers(real_plate_list, candidates, rng)
+    else:
+        mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)
 
     world = World(
         seed=seed,

@@ -2066,6 +2066,7 @@ def generate_plates(
     extra_sites_per_plate: int = EXTRA_SITES_PER_PLATE,
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
+    premade_world_id: str | None = None,
 ) -> list[LithospherePlate]:
     """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
     each plate owns the union of several adjacent Voronoi cells (see `build_plate_tiling` and
@@ -2095,7 +2096,19 @@ def generate_plates(
     which is derived once the final plate count is known as
     `round(voronoi_points / num_plates) - 1` (clamped at 0). More points -> lumpier, less
     convex plate outlines; `voronoi_points <= num_plates` recovers the one-cell-per-plate
-    tiling. `None` keeps `extra_sites_per_plate` as passed."""
+    tiling. `None` keeps `extra_sites_per_plate` as passed.
+
+    `premade_world_id` (the Generate World dialog's "Premade worlds" tab -- `"earth"`,
+    `"pangaea"`, or `"got"`; `None` for every other tab) always swaps `ContinentalRelief`'s
+    belt/plateau masks for real-geography/lore ones (see relief_regions.py) instead of the
+    usual calibrated-random coverage -- see that module and `terrain_noise.ContinentalRelief`
+    for what a belt/plateau mask actually changes (where one is allowed to appear, not the
+    ridge/terrace texture inside it). For `"earth"`/`"pangaea"` specifically, it additionally
+    replaces `sketch`'s own `sketch_plate_sites` for *site placement* with real plate geometry
+    (`real_plates.real_plate_sites`/`real_plates.pangaea_real_plates`) -- `sketch` is still
+    required alongside it and still decides land/sea/mountain/river in each continental
+    plate's `hc_at` exactly as it does for "Human-made". `"got"` has no real-plate analog, so
+    its site placement falls through to the ordinary sketch-driven path, same as "Human-made"."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -2106,7 +2119,45 @@ def generate_plates(
         num_continents = round(continental_fraction * num_plates)
         num_plates = max(num_plates, num_continents + MIN_OCEANIC_PLATES)
 
-    if sketch is not None:
+    # Premade-worlds' real-geography relief regions (relief_regions.py) -- unlike the site-
+    # placement override below, these apply for *every* premade world including "got" (Z&D
+    # has no real-world data to ground plate placement/mantle convection in, but its named
+    # lore regions still replace the usual random belt/plateau coverage).
+    belt_mask = plateau_mask = None
+    if premade_world_id is not None:
+        # Local imports: real_plates.py/relief_regions.py are the newer, Premade-worlds-
+        # specific modules; keeping the import here (rather than at module scope) avoids
+        # paying for real_plates' own data-file parsing on every other generation path.
+        from . import relief_regions
+
+        if premade_world_id == "earth":
+            belts, plateaus = relief_regions.EARTH_BELTS, relief_regions.EARTH_PLATEAUS
+        elif premade_world_id == "pangaea":
+            belts, plateaus = relief_regions.pangaea_belts(), relief_regions.pangaea_plateaus()
+        elif premade_world_id == "got":
+            belts, plateaus = relief_regions.GOT_BELTS, {}
+        else:
+            raise ValueError(f"unknown premade_world_id {premade_world_id!r}")
+        belt_mask = relief_regions.build_belt_mask(belts)
+        plateau_mask = relief_regions.build_plateau_mask(plateaus)
+
+    if premade_world_id in ("earth", "pangaea"):
+        # "Predetermined plates": site placement from real plate geometry instead of the
+        # sketch's own landmasses (see real_plates.py) -- "got" has no real-plate analog, so
+        # it falls through to the ordinary sketch-driven path below like "Human-made" does.
+        from . import real_plates
+
+        real_plate_list = real_plates.load_major_plates() if premade_world_id == "earth" else real_plates.pangaea_real_plates()
+        pooled_oceanic = premade_world_id == "pangaea"
+        target_continents = num_continents if num_continents is not None else round(CONTINENTAL_FRACTION * num_plates)
+        site_xyz, crust_types = real_plates.real_plate_sites(
+            sketch, real_plate_list, num_plates, target_continents, rng, pooled_oceanic=pooled_oceanic
+        )
+        num_plates = len(site_xyz)
+        if voronoi_points is not None:
+            extra_sites_per_plate = max(0, round(voronoi_points / max(num_plates, 1)) - 1)
+        tiling = build_plate_tiling(rng, num_plates, extra_sites_per_plate, primary_sites=site_xyz)
+    elif sketch is not None:
         target_continents = num_continents if num_continents is not None else round(CONTINENTAL_FRACTION * num_plates)
         site_xyz, crust_types = worldsketch.sketch_plate_sites(sketch, num_plates, target_continents, rng)
         num_plates = len(site_xyz)
@@ -2141,6 +2192,8 @@ def generate_plates(
         orogenic_units=_OROGENIC_RELIEF_UNITS,
         plateau_units=_PLATEAU_UPLIFT_UNITS,
         plateau_relief_units=_PLATEAU_RELIEF_UNITS,
+        belt_mask=belt_mask,
+        plateau_mask=plateau_mask,
     )
     ocean_relief = terrain_noise.OceanicRelief(rng)
 

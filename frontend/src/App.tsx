@@ -219,6 +219,11 @@ export default function App() {
   // drawing/pick around rather than discarding it.
   const [generateMode, setGenerateMode] = useState<"random" | "human" | "premade" | "debug">("random");
   const [sketchImageDataUrl, setSketchImageDataUrl] = useState<string | null>(null);
+  // The selected Premade world's backendId (see premadeWorlds.ts) -- rides alongside
+  // sketchImageDataUrl/seed to generateWorld's own premadeWorldId param so the backend can
+  // ground plate placement/mantle convection in real data for Earth/Pangaea; null for Z&D
+  // (and for every other tab, where it's simply unused).
+  const [premadeWorldId, setPremadeWorldId] = useState<"earth" | "pangaea" | "got" | null>(null);
   const [showSketchEditor, setShowSketchEditor] = useState(false);
   // "Debugging Worlds" tab (see backend debug_worlds.py) -- tiny scripted plate scenarios for
   // fast iteration on the gap-filling problem. The scenario list is fetched once (static,
@@ -693,6 +698,7 @@ export default function App() {
           : await generateWorld(
               seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
               climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
+              generateMode === "premade" ? premadeWorldId : null,
             );
       setSummary(s);
       setSelectedPlateId(null);
@@ -720,7 +726,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats,
+    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats,
   ]);
 
 
@@ -1846,6 +1852,7 @@ export default function App() {
                       onClick={() => {
                         setSketchImageDataUrl(world.dataUrl);
                         setSeed(world.seed);
+                        setPremadeWorldId(world.backendId);
                       }}
                       disabled={busy}
                       style={{
