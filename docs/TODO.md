@@ -867,6 +867,23 @@ fluid solve does nothing to `elevation` without erosion.)
   arc accretion/eustasy above: slows, does not stop, the long-run decline; not yet combined
   with arc + eustasy + failed-rifts in one measured run.
 
+  **Constant-tuning sweep at the full 300 My timescale (2026-09-13, follow-up, no code
+  change).** Swept `RIFT_MAGMATIC_HC_RATE_M_PER_MYR` (0/150/300/450 m/Myr) and
+  `RIFT_VOLCANISM_ONSET_HC_M` (15/20/25/30 km) on the same seed/setup, stepped the full 300 My
+  instead of 80. **On-vs-off replicates at this timescale:** rate=0 declines to land fraction
+  0.070 by 300 My vs 0.094 at the shipped default (150 m/Myr, 20 km onset) -- the ~18%
+  slowdown measured at 80 My holds up over the full run, not just the early stretch. **Neither
+  knob shows a clean tuning signal beyond that on/off effect**, though: rate 300 and 450, and
+  onset 15 km and 25 km, all land *worse* than the shipped default on this seed (onset=25 km
+  even edges below the rate=0 control, 0.067). Onset=30 km was the single best alternate found
+  here, but re-run on two more seeds (331015891, 559394024) against the shipped default it only
+  wins 2 of 3 -- by a margin (+0.003 to +0.02 land fraction) smaller than the run-to-run noise
+  this document's own sweeps keep flagging elsewhere (~0.01 LF from plate-split-timing chaos
+  alone; see "Toggle sweep" above). **No constant change -- shipped defaults (150 m/Myr, 20 km
+  onset) stand.** Tuning this mechanism further would need multi-seed averaging per candidate,
+  not single-seed spot checks -- the chaotic-divergence caveat this document already applies to
+  the arc/eustasy measurements applies just as much to this knob.
+
 ### Fault mode re-verified; thin belts + weak volcanism addressed (2026-09-04)
 
 **Trigger.** User-supplied `~/Downloads/mantle-bloom-seed52459390-188100000y.mbworld`
