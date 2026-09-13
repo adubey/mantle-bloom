@@ -923,6 +923,30 @@ direct, per-step answer to "a gap should close by the plate thinning, and once t
 magma flows up" -- it is what keeps almost every ordinary rift from ever outrunning growth in
 the first place, rather than a periodic sweep noticing a hole after the fact.
 
+**Rift magmatic underplating -- a counterweight before the melt-through reset (2026-09).** The
+mechanism above is a hard, one-shot rescue: a divergent node thins with *no* magmatic offset
+at all the whole way from a full reference column down to `rheology.RIFT_CRITICAL_THICKNESS_M`,
+unlike the convergent side's `apply_convergent_deformation` + `apply_arc_magmatic_thickening`
+pairing (see [arc magmatism](#boundary-evolution)) -- exactly the "over-stretched interiors"
+asymmetry docs/TODO.md's land-fraction investigation flagged.
+`rheology.apply_rift_magmatic_thickening` mirrors the arc function for the divergent branch:
+once a node's `Hc` drops below `RIFT_VOLCANISM_ONSET_HC_M` (20 km -- the "sufficient stretching
+introduces melt" stage a real continental rift passes through well before breakup), it adds
+`Hc` continuously, ramping from zero intensity at onset to full intensity as `Hc` approaches
+`RIFT_CRITICAL_THICKNESS_M` and scaled gently by extension rate -- a *partial* offset,
+deliberately calibrated well below the arc rate (`RIFT_MAGMATIC_HC_RATE_M_PER_MYR`, 150 vs
+`ARC_MAGMATIC_HC_RATE_M_PER_MYR`'s 450: real rift magmatism is dominated by unseen intrusion
+rather than eruption, and globally contributes less new continental crust than arc accretion),
+so a sustained rift still reaches full rupture rather than stalling forever just above it. A
+node crossing the onset also starts its own point-volcano eruption lifecycle early
+(`lithosphere_plate._ignite_early_rift_volcanoes`, same `volcanism.py` machinery the
+melt-through event above uses, without resetting `Hc`/`Hm`) rather than waiting for the full
+reset -- see [Volcanism](#volcanism)'s own "Creation" section below. Measured (seed
+926698457, node_density 0.5, climate off, 80 My): land-fraction decline -0.1255 -> -0.1028,
+~18% slower -- the same order as the other partial counterweights already landed (arc
+accretion ~10%, eustasy ~50%, see docs/TODO.md "Land fraction slowly declines over a long
+run"). `backend/unit_tests/test_rheology.py` pins the calibration.
+
 **Triple junctions: a real neighbour, up to CORNER_NOTCH_NEIGHBOUR_REACH_MULT away, is enough
 to keep claiming.** The two ordinary per-step growth ops are each confined to one axis of a
 plate's own local (theta, phi) lattice -- `_grow_or_shrink_line_for_deform`'s `_stretch_end`
@@ -1065,22 +1089,30 @@ now inline in `deform()`'s own overstretched-rift handling (see [Plate motion: s
 deform](#boundary-evolution)) -- and `volcanism.py` now holds only the per-step eruption
 lifecycle, which is unchanged.
 
-**Creation.** When a divergent line end grows, the new nodes come back as a fresh volcano
-(rather than plain ridge/rift fill) with a small fixed probability per growth event
-(`STRETCH_VOLCANO_PROBABILITY`, 0.02) -- see [Plate motion: shift and
-deform](#boundary-evolution) for why this replaced the old whole-sphere gap-outlier scan
-(`GAP_OUTLIER_FACTOR`, boundary-point median-spacing comparison) and why it's a probability
-roll rather than a deterministic threshold. A volcano node is a node *on the growing plate's
-own existing line* -- not a separately spawned `Plate` the way the old detection pass worked.
-One consequence: there is no longer any whole-plate "volcanic field" bookkeeping at all --
-`World` used to carry a `volcanic_field_plate_ids` set and `volcanism.py` a dormancy check
-that relabelled a diluted field as ordinary continental crust, but with nothing creating a
-separately-tracked field plate both were dead weight and have been removed. A fresh volcano
-gets a random `volcano_active_years_remaining` draw
-(`VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years) and **one guaranteed immediate eruption**
-(`+= ERUPTION_ELEVATION_M`, unconditional -- unlike every later eruption, which is rolled
-probabilistically, see below) -- distinguishing a freshly-created rift volcano from an
-ordinary volcano's own first, merely-probable eruption.
+**Creation.** A node becomes a volcano (`is_volcano=True`, plus a fresh
+`volcano_active_years_remaining` draw from `VOLCANO_ACTIVE_MIN/MAX_YEARS`, 100k-1M years) one
+of two ways, both inline in `deform()`'s own divergent-boundary handling (see [Plate motion:
+shift and deform](#boundary-evolution) / [Whole-sphere coverage](#gap-filling)) rather than a
+separately spawned `Plate` the old whole-sphere detection pass used -- a volcano node is
+always a node *on* the growing/thinning plate's own existing line:
+
+- **Decompression melt-through** (`_erupt_melted_nodes`, triggered when `Hc` crosses below
+  `rheology.RIFT_CRITICAL_THICKNESS_M`, ~5 km) -- the hard reset described above, which also
+  resets `Hc`/`Hm` to a fresh reference column.
+- **Early rift-onset ignition** (`_ignite_early_rift_volcanoes`, triggered when `Hc` crosses
+  below `rheology.RIFT_VOLCANISM_ONSET_HC_M`, 20 km, 2026-09) -- fires well before
+  melt-through, on the same node that's now also drawing `apply_rift_magmatic_thickening`'s
+  continuous partial `Hc` offset (see [Whole-sphere coverage](#gap-filling)); `Hc`/`Hm` are
+  *not* reset here -- the node is still ordinary, still-thinning continental crust that's
+  simply started erupting onto its own surface.
+
+Neither event adds `ERUPTION_ELEVATION_M` itself -- **the first eruption is rolled the same
+probabilistic way as every later one**, in the per-step pass below; a freshly-ignited or
+freshly-melted node has no guaranteed immediate eruption, it just starts rolling. (There is no
+longer any whole-plate "volcanic field" bookkeeping at all -- `World` used to carry a
+`volcanic_field_plate_ids` set and `volcanism.py` a dormancy check that relabelled a diluted
+field as ordinary continental crust, but with nothing creating a separately-tracked field
+plate both were dead weight and have been removed.)
 
 **Eruption, every step, unchanged.** Each individual volcano point has its own
 `volcano_active_years_remaining` (drawn once at creation, whether by `deform()`'s rift

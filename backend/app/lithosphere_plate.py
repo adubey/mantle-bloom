@@ -323,6 +323,34 @@ def _erupt_melted_nodes(
     volcano_remaining[melting] = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=int(melting.sum()))
 
 
+def _ignite_early_rift_volcanoes(
+    world: "World",  # noqa: F821
+    plate_id: int,
+    line_index: int,
+    is_volcano: np.ndarray,
+    volcano_remaining: np.ndarray,
+    ignite: np.ndarray,
+) -> None:
+    """In-place: any node flagged `ignite` (crossed below `rheology.RIFT_VOLCANISM_ONSET_HC_M`
+    this step without fully melting through -- see `rheology.apply_rift_magmatic_thickening`)
+    starts its own point-volcano eruption lifecycle early, the same one ordinary
+    decompression-melt volcanoes (`_erupt_melted_nodes`) and arc volcanoes already use
+    (volcanism.py) -- a real continental rift is volcanically active well before it actually
+    ruptures (docs/TODO.md "Land fraction slowly declines", "over-stretched interiors").
+    Mutates is_volcano/volcano_remaining in place; unlike `_erupt_melted_nodes` this never
+    touches hc/hm/crust_type_code -- the node is still ordinary, still-thinning continental
+    crust, just one that's now also erupting onto its own surface."""
+    if not np.any(ignite):
+        return
+    from .elevation_lines import VOLCANO_ACTIVE_MAX_YEARS, VOLCANO_ACTIVE_MIN_YEARS
+
+    is_volcano[ignite] = True
+    # Distinct rng key (trailing 1) from _erupt_melted_nodes' own draw above so the two
+    # event types don't share a random stream at the same (seed, step, plate, line).
+    rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate_id, line_index, 1))
+    volcano_remaining[ignite] = rng.uniform(VOLCANO_ACTIVE_MIN_YEARS, VOLCANO_ACTIVE_MAX_YEARS, size=int(ignite.sum()))
+
+
 def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
     """`mask`, with every True-run shorter than `min_run` cleared to False. Used to gate
     continental-edge retreat on a genuine multi-node contested stretch rather than a
@@ -729,7 +757,9 @@ class LithospherePlate(PlateWithLines):
                     hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
                 )
 
+            prior_hc = hc.copy()
             melting = np.zeros(n, dtype=bool)
+            newly_below_rift_onset = np.zeros(n, dtype=bool)
             if np.any(divergent):
                 new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
                 # "fault" mode: scale the thinning delta by fault proximity (all-ones
@@ -739,6 +769,21 @@ class LithospherePlate(PlateWithLines):
                 hc[divergent] = hc[divergent] + infl * (new_hc - hc[divergent])
                 hm[divergent] = hm[divergent] + infl * (new_hm - hm[divergent])
                 melting[divergent] = melt
+
+                # Rift magmatic underplating (see rheology.apply_rift_magmatic_thickening): a
+                # partial Hc offset for nodes that thinned past RIFT_VOLCANISM_ONSET_HC_M but
+                # didn't melt all the way through this step -- nodes that did melt already got
+                # the full reference-column reset below and don't need this on top of it.
+                magmatic_band = divergent & ~melting
+                if np.any(magmatic_band):
+                    new_hc_mag, new_hm_mag = rheology.apply_rift_magmatic_thickening(
+                        hc[magmatic_band], hm[magmatic_band], closing_rate[magmatic_band], years_myr
+                    )
+                    hc[magmatic_band] = new_hc_mag
+                    hm[magmatic_band] = new_hm_mag
+                    newly_below_rift_onset = (
+                        magmatic_band & (prior_hc >= rheology.RIFT_VOLCANISM_ONSET_HC_M) & (hc < rheology.RIFT_VOLCANISM_ONSET_HC_M)
+                    )
 
             prior_age = line.divergent_age_myr
             new_age = np.where(divergent, prior_age + years_myr, 0.0)
@@ -759,6 +804,7 @@ class LithospherePlate(PlateWithLines):
             # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
             # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
             _erupt_melted_nodes(world, self.plate_id, line_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, line.elevation)
+            _ignite_early_rift_volcanoes(world, self.plate_id, line_index, is_volcano, volcano_remaining, newly_below_rift_onset)
 
             # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
             # bump on the transform band, kept as a direct elevation delta (like erosion's

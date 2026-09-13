@@ -121,3 +121,43 @@ def test_extension_thins_crust_and_triggers_decompression_melting():
 
     assert np.all(new_hc < hc)
     assert bool(melting[0]) and not bool(melting[1])
+
+
+def test_rift_magmatism_adds_hc_only_below_onset_while_extending():
+    """Nodes below RIFT_VOLCANISM_ONSET_HC_M and genuinely extending get a partial Hc
+    offset; nodes still above onset, or not extending, get nothing."""
+    hc = np.array([12_000.0, 25_000.0, 12_000.0])
+    hm = np.array([60_000.0, 80_000.0, 60_000.0])
+    closing = np.array([-_closing_m_per_s(3.0), -_closing_m_per_s(3.0), _closing_m_per_s(3.0)])
+
+    new_hc, new_hm = rheology.apply_rift_magmatic_thickening(hc, hm, closing, years_myr=1.0)
+
+    assert np.array_equal(new_hm, hm)  # Hm untouched
+    assert new_hc[0] > hc[0]  # below onset, extending -> partial offset
+    assert new_hc[1] == hc[1]  # still above onset -> nothing
+    assert new_hc[2] == hc[2]  # converging, not extending -> nothing
+
+
+def test_rift_magmatism_ramps_up_as_crust_approaches_full_rupture():
+    """"Further rifting -> more volcanism": a column close to RIFT_CRITICAL_THICKNESS_M gets
+    a bigger offset than one that just crossed onset, at the same extension rate, and never
+    overshoots back above onset in one step at an ordinary rate."""
+    closing = np.array([-_closing_m_per_s(3.0)])
+    near_onset, _ = rheology.apply_rift_magmatic_thickening(np.array([19_000.0]), np.array([60_000.0]), closing, years_myr=1.0)
+    near_rupture, _ = rheology.apply_rift_magmatic_thickening(np.array([6_000.0]), np.array([60_000.0]), closing, years_myr=1.0)
+
+    assert (near_onset[0] - 19_000.0) < (near_rupture[0] - 6_000.0)
+    assert near_onset[0] < rheology.RIFT_VOLCANISM_ONSET_HC_M
+
+
+def test_rift_magmatism_flux_saturates_at_a_fast_extension_rate():
+    """The extension multiplier is capped, mirroring apply_arc_magmatic_thickening's own
+    convergence cap -- an unusually fast rift can't flux unbounded melt."""
+    ref, _ = rheology.apply_rift_magmatic_thickening(
+        np.array([12_000.0]), np.array([60_000.0]), np.array([-_closing_m_per_s(2.0)]), years_myr=1.0
+    )
+    fast, _ = rheology.apply_rift_magmatic_thickening(
+        np.array([12_000.0]), np.array([60_000.0]), np.array([-_closing_m_per_s(20.0)]), years_myr=1.0
+    )
+    assert fast[0] > ref[0]
+    assert (fast[0] - 12_000.0) <= rheology.RIFT_MAGMATIC_EXTENSION_CAP * (ref[0] - 12_000.0) + 1e-6
