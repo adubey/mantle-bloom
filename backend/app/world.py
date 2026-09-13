@@ -258,15 +258,30 @@ class World:
     land_kdtree_cache: cKDTree | None = None
     # The render path's full node-cloud k-d tree (a cKDTree over plates.collect_all_points'
     # concatenated node positions -- ~131 K at node_density 4), paired with the concatenated
-    # (points, elevation, owner) arrays it indexes into -- see
-    # render_image._node_cloud_and_tree. The tree build is ~20 ms at that size (docs/profiling.md
-    # #6 -- the query over the render grid is the larger cost and is already workers=parallel);
-    # the node cloud is fixed between steps (only elevation/other per-node fields still move
-    # mid-step, and the render path never runs mid-step), so this is built once by the first
-    # render after a step and reused by every subsequent render -- and by the several separate
-    # resamples within a single combined/elevation render -- until step_world resets it.
+    # (points, elevation, owner) arrays it indexes into -- see render_image._node_cloud_and_tree.
+    # The tree build is ~20 ms at that size (docs/profiling.md #6 -- the query over the render
+    # grid is the larger cost and is already workers=parallel); the node cloud is fixed between
+    # steps (only elevation/other per-node fields still move mid-step, and the render path
+    # never runs mid-step), so this is built once by the first render after a step and reused
+    # by every subsequent render -- and by the several separate resamples within a single
+    # combined/elevation render -- until step_world resets it. Elevation is deliberately NOT
+    # shared any earlier than this (e.g. with climate.py's own per-step resample, which runs
+    # before erosion has finished mutating it that same step) -- see
+    # node_position_tree_cache's own docstring for the piece that *is* safe to share mid-step.
     # Persisted like the other caches but dropped on load (persistence._drop_derived_caches).
     node_kdtree_cache: tuple[np.ndarray, np.ndarray, np.ndarray, cKDTree] | None = None
+    # The *positions-only* half of the cache above -- (all_points, cKDTree over them), no
+    # elevation/owner -- shared between climate.py's own per-step resample
+    # (`_sample_elevation_and_crust`, which runs early in a step, before erosion has finished
+    # mutating elevation this same step) and render_image._node_cloud_and_tree (which runs
+    # only after a step fully settles). Node *positions* really are fixed for the rest of a
+    # step the instant shift()/deform()/topology changes finish (nothing moves a node again
+    # until the next step's shift()), so this narrower cache is safe to write and read at any
+    # point in that window -- unlike node_kdtree_cache's own elevation, which erosion.py is
+    # still about to change when climate.py builds this. Reset alongside node_kdtree_cache
+    # (same invalidation event: a node moved). Persisted like the other caches but dropped on
+    # load (persistence._drop_derived_caches).
+    node_position_tree_cache: tuple[np.ndarray, cKDTree] | None = None
     # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
@@ -626,12 +641,15 @@ def step_world(world: World, years: float) -> None:
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
     world.steps_taken += 1
-    # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) is a pure
-    # function of node positions, which shift()/deform()/topology changes below are about to
-    # move -- drop it now so the first render after this step rebuilds it. (land_kdtree_cache
-    # is reset separately, inside the simulate_climate_biomes block, since only that path
-    # reads it.)
+    # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) and its
+    # positions-only sibling shared with climate.py (World.node_position_tree_cache) are both
+    # a pure function of node positions, which shift()/deform()/topology changes below are
+    # about to move -- drop both now so the first render after this step rebuilds
+    # node_kdtree_cache fresh (reusing node_position_tree_cache's tree if climate.py already
+    # rebuilt that one this step -- see its own docstring). (land_kdtree_cache is reset
+    # separately, inside the simulate_climate_biomes block, since only that path reads it.)
     world.node_kdtree_cache = None
+    world.node_position_tree_cache = None
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)
