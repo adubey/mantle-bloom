@@ -222,6 +222,52 @@ def apply_arc_magmatic_thickening(
     return new_hc, hm_m
 
 
+# Rift magmatic underplating: the "further rifting -> more volcanism" middle stage a real
+# continental rift passes through well before full rupture (RIFT_CRITICAL_THICKNESS_M's hard
+# melt-through reset in `lithosphere_plate._erupt_melted_nodes`). Once extension has thinned
+# crust past this onset, upwelling asthenosphere starts partially melting and the melt
+# intrudes/erupts into the extending column -- a partial offset to the ongoing plastic
+# thinning (docs/TODO.md "Land fraction slowly declines", "over-stretched interiors": a
+# continent's interior currently thins from full reference Hc all the way to
+# RIFT_CRITICAL_THICKNESS_M with zero magmatic counterweight, unlike the convergent side's
+# apply_convergent_deformation + apply_arc_magmatic_thickening pairing). Rate deliberately far
+# below ARC_MAGMATIC_HC_RATE_M_PER_MYR: real rift magmatism is dominated by unseen intrusion
+# rather than eruption, and globally contributes less new continental crust than arc
+# accretion -- this is a partial brake on the thinning, not a replacement for genuine rifting
+# (a sustained rift must still be able to reach RIFT_CRITICAL_THICKNESS_M and rupture).
+RIFT_VOLCANISM_ONSET_HC_M = 20_000.0
+RIFT_MAGMATIC_HC_RATE_M_PER_MYR = 150.0
+RIFT_MAGMATIC_REFERENCE_EXTENSION_M_PER_S = 0.02 / SECONDS_PER_YEAR  # 2 cm/yr
+RIFT_MAGMATIC_EXTENSION_CAP = 2.0
+RIFT_MAGMATIC_MIN_EXTENSION_M_PER_S = 0.002 / SECONDS_PER_YEAR  # 0.2 cm/yr -- below this, no melt
+
+
+def apply_rift_magmatic_thickening(
+    hc_m: np.ndarray, hm_m: np.ndarray, closing_rate_m_per_s: np.ndarray, years_myr: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Partial Hc offset for divergent nodes already thinner than RIFT_VOLCANISM_ONSET_HC_M --
+    see module constants above. Ramps from 0 intensity at onset to full intensity as Hc
+    approaches RIFT_CRITICAL_THICKNESS_M ("further rifting -> more volcanism," not a step
+    function), with a gentle extra dependence on extension rate (faster stretching -> more
+    decompression melt) -- the same shape apply_arc_magmatic_thickening uses for convergence
+    rate. Only Hc grows; Hm (mantle lithosphere) is untouched, matching that function's own
+    convention (underplating adds crustal material, not mantle lithosphere). Not yield-gated,
+    also matching arc magmatism: decompression melting doesn't care whether the extensional
+    stress is past Mohr-Coulomb yield, only how thin the column already is and how fast it's
+    still extending. Caller is expected to skip nodes already flagged `melting` this step
+    (rheology.apply_divergent_deformation's own return) -- those already got the full
+    melt-through reset and don't need a partial offset on top of it."""
+    extending = closing_rate_m_per_s < -RIFT_MAGMATIC_MIN_EXTENSION_M_PER_S
+    below_onset = hc_m < RIFT_VOLCANISM_ONSET_HC_M
+    active = extending & below_onset
+    onset_span = RIFT_VOLCANISM_ONSET_HC_M - RIFT_CRITICAL_THICKNESS_M
+    depth_fraction = np.clip((RIFT_VOLCANISM_ONSET_HC_M - hc_m) / onset_span, 0.0, 1.0)
+    extension = np.clip(-closing_rate_m_per_s / RIFT_MAGMATIC_REFERENCE_EXTENSION_M_PER_S, 0.0, RIFT_MAGMATIC_EXTENSION_CAP)
+    rate_mult = np.where(active, depth_fraction * (0.4 + 0.6 * extension), 0.0)
+    new_hc = hc_m + RIFT_MAGMATIC_HC_RATE_M_PER_MYR * years_myr * rate_mult
+    return new_hc, hm_m
+
+
 def relax_young_oceanic_mantle_lithosphere(hm_m: np.ndarray, divergent_age_myr: np.ndarray, years_myr: float) -> np.ndarray:
     """Freshly-formed ridge crust starts with thin mantle lithosphere (`lithosphere.
     YOUNG_RIDGE_HM_M`) and thickens toward the reference oceanic value as it cools and ages
