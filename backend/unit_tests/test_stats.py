@@ -1,6 +1,8 @@
 import numpy as np
+import pytest
 
-from app import stats
+from app import lithosphere, stats
+from app.elevation_lines import line_spacing_rad
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World
 
@@ -46,6 +48,38 @@ def test_compute_stats_ocean_depth_bounds_are_consistent():
     # Every cell here is a uniform -3800m ocean floor at the default sea_level_m=0.0, so
     # depth should come out to a uniform +3800m.
     assert result["ocean_depth_min_m"] == result["ocean_depth_max_m"] == 3800.0
+
+
+def test_compute_stats_total_land_area_and_continental_volume_are_zero_for_all_ocean_world():
+    # Read straight off world.plates (see stats.py's own docstring), not the climate grid --
+    # an all-ocean world has no land nodes and no continental plates at all, so both must be
+    # exactly zero (a running total, unlike the None-for-empty-domain convention the
+    # climate-grid stats above use).
+    world = _all_ocean_world()
+    result = stats.compute_stats(world)
+    assert result["total_land_area_km2"] == 0.0
+    assert result["total_continental_crust_volume_km3"] == 0.0
+
+
+def test_compute_stats_total_continental_crust_volume_matches_hand_computed_sum():
+    # One continental plate, every node holding a known Hc -- total volume should be exactly
+    # node_area_m2 * sum(Hc), converted to km^3, regardless of how that Hc happens to be
+    # distributed across nodes (see _total_land_area_and_continental_volume's own docstring).
+    n = 20
+    hc = np.linspace(20_000.0, 40_000.0, n)
+    line = ElevationLine(
+        phi=0.0, theta=np.linspace(-np.pi, np.pi, n, endpoint=False),
+        elevation=np.full(n, 500.0), crustal_thickness_m=hc,
+    )
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate])
+    result = stats.compute_stats(world)
+
+    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+    expected_km3 = float(hc.sum()) * area_m2 / 1.0e9
+    assert result["total_continental_crust_volume_km3"] == pytest.approx(expected_km3)
+    # Every node here sits above the default sea_level_m=0.0, so the whole plate is land.
+    assert result["total_land_area_km2"] == pytest.approx(n * area_m2 / 1.0e6)
 
 
 def test_compute_stats_biome_land_fraction_excludes_ocean_and_sums_to_one():

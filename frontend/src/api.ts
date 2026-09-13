@@ -306,6 +306,15 @@ export interface WorldStats {
   // the Simulation tab is what turns a run of these into a min/max/mean/std-dev over time.
   plate_count: number;
   elevation_point_count: number;
+  // Read straight off world.plates (see backend app/stats.py's own docstring) rather than
+  // the climate grid every field below uses -- a mass/volume-conservation check independent
+  // of land_fraction: land area can swing a lot from tectonics moving existing crust above/
+  // below sea level while total_continental_crust_volume_km3 (continental crust only --
+  // oceanic crust is routinely created/destroyed by spreading/subduction by design) barely
+  // moves, unless something is actually failing to conserve mass across a topology change.
+  sea_level_m: number;
+  total_land_area_km2: number;
+  total_continental_crust_volume_km3: number;
   land_fraction: number;
   ocean_fraction: number;
   // Land only (height above the current sea level) -- see stats.py's module docstring.

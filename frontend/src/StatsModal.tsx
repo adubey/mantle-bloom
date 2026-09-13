@@ -167,6 +167,18 @@ const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> =
 const SIMULATION_METRICS: Metric[] = [
   numMetric("elevation_point_count", "Elevation points", (s) => s.elevation_point_count, 0),
   numMetric("plate_count", "Plates", (s) => s.plate_count, 0),
+  // Land/volume-conservation check (see api.ts's own comment): land area is read straight off
+  // world.plates -- immune to the climate-grid land_fraction's hydrology-cache staleness --
+  // and crust volume is continental crust only, so a real mass-conservation bug (a topology
+  // change that drops a column's volume instead of preserving it) shows up as this number
+  // actually shrinking, distinct from land area swinging while volume holds roughly steady
+  // (ordinary tectonics moving existing crust above/below sea level).
+  numMetric("total_land_area_km2", "Land area", (s) => s.total_land_area_km2, 0, " km²"),
+  numMetric(
+    "total_continental_crust_volume_km3", "Continental crust volume",
+    (s) => s.total_continental_crust_volume_km3, 0, " km³",
+  ),
+  numMetric("sea_level_m", "Sea level", (s) => s.sea_level_m, 0, " m"),
 ];
 
 interface HistoryStats {
