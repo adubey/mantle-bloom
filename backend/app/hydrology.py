@@ -460,6 +460,28 @@ def connected_ocean_mask(
     return below & np.isin(labels, ocean_labels)
 
 
+# Holds the most recent (hydro, query_xyz, idx) from either `sample_is_ocean`/`sample_is_sea`
+# below, so a call to one immediately followed by a call to the other *for the same
+# (hydrology cache, query points)* -- climate.py's `_sample_elevation_and_crust` and
+# render_image.py's `_biome_fields` both do exactly this, back-to-back, against the same
+# `world_xyz` -- reuses the first call's cKDTree build+query instead of repeating an identical
+# one just to read out a different boolean field. Keyed by real object identity (`is`, not
+# `id()`, which CPython can recycle once an object is freed) held in the tuple itself, so a
+# mismatch can only ever cause an extra (still-correct) rebuild, never a stale hit.
+_LAST_NEAREST_HYDRO_NODE: tuple[object, object, np.ndarray] | None = None
+
+
+def _nearest_hydro_node_idx(hydro: "HydrologyFields", query_xyz: np.ndarray) -> np.ndarray:
+    global _LAST_NEAREST_HYDRO_NODE
+    cached = _LAST_NEAREST_HYDRO_NODE
+    if cached is not None and cached[0] is hydro and cached[1] is query_xyz:
+        return cached[2]
+    flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
+    _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
+    _LAST_NEAREST_HYDRO_NODE = (hydro, query_xyz, idx)
+    return idx
+
+
 def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np.ndarray) -> np.ndarray:
     """Connectivity-aware `is_ocean` (see `connected_ocean_mask`) resampled onto arbitrary
     `query_xyz` (any shape, trailing axis 3) from last step's `world.hydrology_cache` --
@@ -472,8 +494,7 @@ def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np
     hydro = getattr(world, "hydrology_cache", None)
     if hydro is None or len(hydro.points) == 0 or len(hydro.is_ocean) != len(hydro.points):
         return fallback_is_ocean
-    flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
-    _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
+    idx = _nearest_hydro_node_idx(hydro, query_xyz)
     return hydro.is_ocean[idx].reshape(fallback_is_ocean.shape)
 
 
@@ -489,8 +510,7 @@ def sample_is_sea(world: "World", query_xyz: np.ndarray, fallback_is_sea: np.nda
     hydro_is_sea = getattr(hydro, "is_sea", None) if hydro is not None else None
     if hydro is None or len(hydro.points) == 0 or hydro_is_sea is None or len(hydro_is_sea) != len(hydro.points):
         return fallback_is_sea
-    flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
-    _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
+    idx = _nearest_hydro_node_idx(hydro, query_xyz)
     return hydro_is_sea[idx].reshape(fallback_is_sea.shape)
 
 
