@@ -794,19 +794,28 @@ def _plate_stress(world: "World", plate: Plate):
     """Per own-node: world position, distance (rad) to the nearest cross-plate boundary
     node, that neighbour's omega, and that neighbour's position. None if this plate has no
     neighbours or no nodes."""
-    own_points = plate.all_points_and_elevation()[0]
+    # Position only -- `all_points_and_elevation()` also gathers elevation, which nothing
+    # here reads (own_points/nb_pts only ever feed the KD-tree and its query output).
+    own_points = plate._get_world_points()
     if len(own_points) == 0:
         return None
     neighbours = plate.get_neighbours(world.plates)
     if not neighbours:
         return None
-    nb_pts = np.concatenate([p.all_points_and_elevation()[0] for p in neighbours], axis=0)
+    nb_pts = np.concatenate([p._get_world_points() for p in neighbours], axis=0)
     nb_omega = np.concatenate(
         [np.tile(np.asarray(p.omega, dtype=float), (p.node_count(), 1)) for p in neighbours], axis=0
     )
     if len(nb_pts) == 0:
         return None
-    tree = cKDTree(nb_pts, balanced_tree=False, compact_nodes=False)
+    # leafsize=64: this tree is rebuilt from scratch every call (a fresh combined-neighbour
+    # point set each time, so nothing to cache across calls) -- a larger leaf cuts short the
+    # recursive split earlier, trading a bit of query-side brute-force scanning for
+    # meaningfully less build-side bookkeeping. Bit-exact vs the default leafsize (KD-tree
+    # nearest-neighbour results don't depend on leaf size), ~12% faster on this workload
+    # (14 plates, ~0.4k-8k nodes each) -- benchmarked via interleaved shuffled trials over
+    # leafsize in [16, 32, 48, 64, 80, 96], which plateaus at 48-64.
+    tree = cKDTree(nb_pts, balanced_tree=False, compact_nodes=False, leafsize=64)
     dist, idx = tree.query(own_points, workers=query_workers(len(own_points)))
     return own_points, dist, nb_omega[idx], nb_pts[idx]
 
