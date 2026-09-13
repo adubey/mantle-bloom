@@ -545,27 +545,62 @@ def generate_boundary_faults(world: "World") -> None:
     thr = boundary.TRANSFORM_RATE_THRESHOLD
     omega_by_id = {p.plate_id: np.asarray(p.omega, dtype=float) for p in world.plates}
 
+    # One global tree over every plate's own points, built once, replaces what used to be a
+    # fresh "every other plate's points" cKDTree rebuilt from scratch per plate (an
+    # O(n_plates) rebuild of a near-full-world tree every step, for a per-plate point set
+    # that's almost the same points each time). `closing`/`regime` below are only ever read
+    # at outline points classified `near` a foreign plate (see the run-building loop further
+    # down, gated on `regime[i] != 0`), so an exact "nearest *other*-plate point" is only
+    # needed inside `reach_rad` -- beyond it, near is False either way and the value is never
+    # read. `query_ball_point` (already this module's own idiom -- see
+    # `_apply_plate_fault_relief`) gets exactly those within-radius candidates in one batched
+    # call against the global tree; filtering each point's candidates to foreign-owned ones
+    # and keeping the closest reproduces the old per-plate exact-nearest-neighbour result
+    # bit-for-bit whenever that neighbour is within reach_rad, and near/far is identical
+    # otherwise -- verified against the original implementation's output.
+    all_pts_list: list[np.ndarray] = []
+    all_owner_list: list[np.ndarray] = []
+    for p in world.plates:
+        pts = p.all_points_and_elevation()[0]
+        if len(pts):
+            all_pts_list.append(pts)
+            all_owner_list.append(np.full(len(pts), p.plate_id))
+    if not all_pts_list:
+        return
+    all_pts = np.concatenate(all_pts_list, axis=0)
+    all_owner = np.concatenate(all_owner_list, axis=0)
+    global_tree = cKDTree(all_pts, balanced_tree=False, compact_nodes=False)
+
     for plate in world.plates:
         outline = plate.get_bounding_polygon()
         if outline is None or len(outline) < 4:
             continue
-        pts_list: list[np.ndarray] = []
-        owner_list: list[np.ndarray] = []
-        for other in world.plates:
-            if other.plate_id == plate.plate_id:
-                continue
-            npts = other.all_points_and_elevation()[0]
-            if len(npts):
-                pts_list.append(npts)
-                owner_list.append(np.full(len(npts), other.plate_id))
-        if not pts_list:
+        if not np.any(all_owner != plate.plate_id):
             continue
-        other_pts = np.concatenate(pts_list, axis=0)
-        other_owner = np.concatenate(owner_list, axis=0)
 
-        d, idx = cKDTree(other_pts).query(outline, workers=query_workers(len(outline)))
-        nn_owner = other_owner[idx]
-        nn_pt = other_pts[idx]
+        m = len(outline)
+        candidate_lists = global_tree.query_ball_point(outline, reach_rad, workers=query_workers(m))
+
+        # Far-point placeholders (self point / self plate / self omega) are never read: with
+        # neighbor_points == points, boundary.closing_rate's own zero-normal guard zeroes the
+        # result, and `near` (False here) gates every place regime/nn_owner would otherwise
+        # matter -- see this function's own docstring note above.
+        d = np.full(m, np.inf)
+        nn_owner = np.full(m, plate.plate_id)
+        nn_pt = outline.copy()
+        for i, candidates in enumerate(candidate_lists):
+            if not candidates:
+                continue
+            candidates = np.asarray(candidates)
+            foreign = candidates[all_owner[candidates] != plate.plate_id]
+            if len(foreign) == 0:
+                continue
+            dists = np.linalg.norm(all_pts[foreign] - outline[i], axis=1)
+            best = foreign[np.argmin(dists)]
+            d[i] = dists.min()
+            nn_owner[i] = all_owner[best]
+            nn_pt[i] = all_pts[best]
+
         near = d <= reach_rad
         nn_omega = np.stack([omega_by_id[int(o)] for o in nn_owner], axis=0)
         closing = boundary.closing_rate(outline, omega_by_id[plate.plate_id], nn_omega, nn_pt)
@@ -1254,7 +1289,13 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) ->
             continue
         affected = np.array(affected)
         pts = own_points[affected]
-        d, _ = cKDTree(trace).query(pts)
+        # Brute-force nearest-trace-point distance, not a cKDTree: a fault's own trace is
+        # hard-capped at FAULT_NODES_MIN..FAULT_NODES_MAX (4..14) points (see _build_fault),
+        # and this runs once per active fault per plate per step (100+ faults/plate is
+        # ordinary) -- building a tree over a handful of points every time was pure
+        # overhead, never a real algorithmic win. Identical result to
+        # `cKDTree(trace).query(pts)`'s single nearest-neighbour distance.
+        d = np.min(np.linalg.norm(pts[:, None, :] - trace[None, :, :], axis=-1), axis=1)
         taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
         slip_norm = float(np.clip(fault.slip_rate_m_per_myr / SLIP_RATE_REF_M_PER_MYR, 0.2, 3.0))
         # Boundary faults carry only a fraction of the intraplate relief rate: the

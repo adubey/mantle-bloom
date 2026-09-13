@@ -1801,32 +1801,62 @@ class LithospherePlate(PlateWithLines):
 
         max_abs_phi = np.pi / 2 - spacing_rad / 2  # matches iter_local_lattice's own bound
         max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad
-        phis = np.array([line.phi for line in lines_with_nodes])
-        phi_lo = max(phis.min() - window_rad, -max_abs_phi)
-        phi_hi = min(phis.max() + window_rad, max_abs_phi)
+        line_phis = np.array([line.phi for line in lines_with_nodes])
+        phi_lo = max(line_phis.min() - window_rad, -max_abs_phi)
+        phi_hi = min(line_phis.max() + window_rad, max_abs_phi)
         row_lo = int(np.floor((phi_lo + max_abs_phi) / spacing_rad))
         row_hi = int(np.ceil((phi_hi + max_abs_phi) / spacing_rad))
         phi_values = -max_abs_phi + spacing_rad * np.arange(row_lo, row_hi + 1)
+        phi_values = phi_values[np.abs(phi_values) <= max_phi_limit]
 
-        gap_chunks = []
-        for phi in phi_values:
-            if abs(phi) > max_phi_limit:
-                continue
-            dtheta = spacing_rad / max(np.cos(phi), 1e-3)
-            nearest = min(lines_with_nodes, key=lambda ln: abs(ln.phi - phi))
-            margin = window_rad / max(np.cos(phi), 1e-3)
-            theta_lo, theta_hi = float(nearest.theta[0]) - margin, float(nearest.theta[-1]) + margin
-            n_theta = max(int(np.round((theta_hi - theta_lo) / dtheta)) + 1, 1)
-            n_theta = min(n_theta, max(int(np.round(2.0 * np.pi / dtheta)), 1))
-            theta_candidates = theta_lo + dtheta * np.arange(n_theta)
-            world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_theta, phi), theta_candidates))
+        gap_chunks: list[np.ndarray] = []
+        if len(phi_values) > 0:
+            # Vectorized replacement for a per-row `min(lines_with_nodes, key=...)` scan:
+            # a row split into multiple contiguous runs (e.g. one wrapping the antimeridian,
+            # see split_into_contiguous_runs) can leave two-plus lines sharing the same phi,
+            # and `min` breaks that tie by first list occurrence -- `np.unique`'s
+            # `return_index` gives exactly that (each unique phi's *first* original index),
+            # so searching the deduped, sorted phis and mapping back through it reproduces
+            # `min`'s tie-break exactly (verified against a brute-force `min` scan across
+            # thousands of randomized duplicate-phi cases) without ever re-scanning
+            # `lines_with_nodes` per row. Batching every row's world points into one cKDTree
+            # query below (instead of one query per row) is this method's other real cost --
+            # together these were the two costs profiled here; detection logic/results are
+            # otherwise unchanged.
+            sorted_phis, first_idx = np.unique(line_phis, return_index=True)
+            theta_first = np.array([lines_with_nodes[i].theta[0] for i in first_idx], dtype=float)
+            theta_last = np.array([lines_with_nodes[i].theta[-1] for i in first_idx], dtype=float)
+            if len(sorted_phis) == 1:
+                nearest_idx = np.zeros(len(phi_values), dtype=int)
+            else:
+                insert_idx = np.clip(np.searchsorted(sorted_phis, phi_values), 1, len(sorted_phis) - 1)
+                left_idx = insert_idx - 1
+                choose_left = np.abs(sorted_phis[left_idx] - phi_values) <= np.abs(sorted_phis[insert_idx] - phi_values)
+                nearest_idx = np.where(choose_left, left_idx, insert_idx)
 
-            neighbour_dist, _ = neighbour_tree.query(world_pts)
+            cos_phi = np.maximum(np.cos(phi_values), 1e-3)
+            dtheta = spacing_rad / cos_phi
+            margin = window_rad / cos_phi
+            theta_lo = theta_first[nearest_idx] - margin
+            theta_hi = theta_last[nearest_idx] + margin
+            n_theta = np.maximum(np.round((theta_hi - theta_lo) / dtheta).astype(int) + 1, 1)
+            n_theta = np.minimum(n_theta, np.maximum(np.round(2.0 * np.pi / dtheta).astype(int), 1))
+
+            row_thetas = [lo + dth * np.arange(n) for lo, dth, n in zip(theta_lo, dtheta, n_theta)]
+            row_phis = [np.full(n, phi) for phi, n in zip(phi_values, n_theta)]
+            world_pts = geometry.to_world(self.frame, geometry.local_xyz(np.concatenate(row_phis), np.concatenate(row_thetas)))
+
+            neighbour_dist, _ = neighbour_tree.query(world_pts, workers=query_workers(len(world_pts)))
             near_neighbour = neighbour_dist <= neighbour_reach_rad
             covered_by_neighbour = neighbour_dist <= coverage_radius_rad
             base_mask = near_neighbour & ~covered_by_neighbour
-            if np.any(base_mask):
-                gap_chunks.append(world_pts[base_mask])
+
+            offset = 0
+            for n in n_theta:
+                row_mask = base_mask[offset : offset + n]
+                if np.any(row_mask):
+                    gap_chunks.append(world_pts[offset : offset + n][row_mask])
+                offset += n
 
         if not gap_chunks:
             world.log_corner_notch({
