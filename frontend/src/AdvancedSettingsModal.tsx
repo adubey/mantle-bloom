@@ -19,10 +19,11 @@ interface Props {
   // real auto count is only known seed-side at generation time).
   effectivePlateCount: number;
   // The current sketch and Generate World tab, used to decide whether -- and what -- to show
-  // in the Voronoi preview below the slider (only ever "human" with a sketch). Widened to
-  // accept "debug" too since App.tsx passes its own generateMode verbatim even though the
-  // "Advanced settings" button is hidden entirely in that tab (see App.tsx).
-  generateMode: "random" | "human" | "debug";
+  // in the Voronoi preview below the slider ("premade" behaves exactly like "human": it's the
+  // same sketch-driven generation, just pre-filled). Widened to accept "debug" too since
+  // App.tsx passes its own generateMode verbatim even though the "Advanced settings" button is
+  // hidden entirely in that tab (see App.tsx).
+  generateMode: "random" | "human" | "premade" | "debug";
   sketchImageDataUrl: string | null;
   seed: number;
   axialTiltDeg: number;
@@ -75,7 +76,7 @@ export default function AdvancedSettingsModal({
   onFluidDensityChange,
   onClose,
 }: Props) {
-  const showVoronoiPreview = generateMode === "human" && sketchImageDataUrl != null;
+  const showVoronoiPreview = (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl != null;
 
   return (
     <div

@@ -27,7 +27,7 @@ amplitude and multiplies.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Callable, Protocol
 
 import numpy as np
 
@@ -207,12 +207,17 @@ class ContinentalRelief:
         orogenic_units: float,
         plateau_units: float,
         plateau_relief_units: float,
+        belt_mask: Callable[[np.ndarray], np.ndarray] | None = None,
+        plateau_mask: Callable[[np.ndarray], np.ndarray] | None = None,
     ):
         self._orogenic_units = orogenic_units
         self._plateau_units = plateau_units
         self._plateau_relief_units = plateau_relief_units
 
-        # Fixed draw order -- determinism depends on nothing between here reordering.
+        # Fixed draw order -- determinism depends on nothing between here reordering. Every
+        # one of these is still drawn even when `belt_mask`/`plateau_mask` below replace their
+        # calibrated-random counterpart -- skipping a draw would shift every later rng call
+        # (see generate_plates' own sketch-path comment for the same reasoning).
         self._warp = [SphereNoise(rng, octaves=_WARP_OCTAVES, base_freq=_WARP_FREQ) for _ in range(3)]
         self._base = SphereNoise(rng, octaves=_BASE_OCTAVES, base_freq=_BASE_FREQ)
         self._regional = SphereNoise(rng, octaves=_REGIONAL_OCTAVES, base_freq=_REGIONAL_FREQ)
@@ -222,8 +227,12 @@ class ContinentalRelief:
         self._plateau_field = SphereNoise(rng, octaves=_PLATEAU_FIELD_OCTAVES, base_freq=_PLATEAU_FIELD_FREQ)
 
         lattice = _fibonacci_sphere(_CALIBRATION_POINTS)
-        self._belt_mask = _CalibratedMask(belt_noise, _BELT_COVERAGE, _BELT_EDGE, lattice)
-        self._plateau_mask = _CalibratedMask(plateau_mask_noise, _PLATEAU_COVERAGE, _PLATEAU_EDGE, lattice)
+        # `belt_mask`/`plateau_mask` (Premade-worlds' real-geography regions, see
+        # relief_regions.py), when given, replace the usual calibrated-random mask outright --
+        # *where* a belt/plateau is allowed to appear becomes real-geography-driven, but the
+        # ridge/terrace texture inside one (below) is unaffected either way.
+        self._belt_mask = belt_mask if belt_mask is not None else _CalibratedMask(belt_noise, _BELT_COVERAGE, _BELT_EDGE, lattice)
+        self._plateau_mask = plateau_mask if plateau_mask is not None else _CalibratedMask(plateau_mask_noise, _PLATEAU_COVERAGE, _PLATEAU_EDGE, lattice)
 
         raw_std = float(np.std(self._raw_sample(lattice))) or 1.0
         self._sample_renorm = _TARGET_SAMPLE_STD / raw_std

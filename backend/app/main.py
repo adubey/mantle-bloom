@@ -162,6 +162,13 @@ class GenerateRequest(BaseModel):
     # lithosphere_plate.generate_plates's own `sketch` param). `land_fraction` above is
     # ignored when this is set -- the drawing decides land extent directly.
     sketch: SketchRequest | None = None
+    # The "Premade worlds" tab's pick -- `"earth"`, `"pangaea"`, or `"got"` (see
+    # premadeWorlds.ts's `backendId`) -- `sketch` above still supplies that world's coastline,
+    # but its mountain belts/plateaus come from real-geography/lore regions instead of random
+    # coverage, and for `"earth"`/`"pangaea"` specifically plate sites/mantle convection
+    # additionally come from real plate geometry/motion (see world.generate_world's own
+    # `premade_world_id` param). `None` (every other tab) is unaffected.
+    premade_world_id: str | None = None
 
 
 class StepRequest(BaseModel):
@@ -592,6 +599,10 @@ def generate(req: GenerateRequest) -> dict:
         )
     if req.voronoi_points is not None and not 1 <= req.voronoi_points <= 500:
         raise HTTPException(status_code=400, detail="voronoi_points must be between 1 and 500")
+    if req.premade_world_id is not None and req.premade_world_id not in ("earth", "pangaea", "got"):
+        raise HTTPException(status_code=400, detail=f"unknown premade_world_id {req.premade_world_id!r}")
+    if req.premade_world_id is not None and req.sketch is None:
+        raise HTTPException(status_code=400, detail="premade_world_id requires sketch")
     sketch_masks = None
     if req.sketch is not None:
         try:
@@ -612,6 +623,7 @@ def generate(req: GenerateRequest) -> dict:
             climate_density=req.climate_density,
             fluid_density=req.fluid_density,
             sketch=sketch_masks,
+            premade_world_id=req.premade_world_id,
         )
         _state["world"] = world
     return _summary(world)

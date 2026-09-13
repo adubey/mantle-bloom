@@ -19,7 +19,12 @@ FRONTEND_DIST = REPO / "frontend" / "dist"
 if not (FRONTEND_DIST / "index.html").is_file():
     raise SystemExit("build the frontend first: cd frontend && npm run build")
 
-datas = [(str(FRONTEND_DIST), "frontend_dist")]
+datas = [
+    (str(FRONTEND_DIST), "frontend_dist"),
+    # Baked-in real-world plate data (real_plates.py) -- plain JSON, not a Python module, so
+    # PyInstaller's own submodule collection below never picks it up on its own.
+    (str(BACKEND / "app" / "data"), "app/data"),
+]
 
 # numba compiles at runtime and needs llvmlite's shared lib; PyAV carries its own ffmpeg.
 binaries = collect_dynamic_libs("llvmlite") + collect_dynamic_libs("av")

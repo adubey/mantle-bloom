@@ -393,6 +393,11 @@ async function asBlob(resp: Response): Promise<Blob> {
 // painted, mountains/rivers) come from that image instead of noise, and plate boundaries are
 // fit to it, instead of the usual random placement (landFraction is then ignored server-side).
 // `null` (every caller before this parameter existed) is the "Random" tab, unaffected.
+// premadeWorldId is the "Premade worlds" tab's `"earth"`/`"pangaea"` pick (see
+// premadeWorlds.ts's `backendId`) -- additionally swaps plate sites/mantle convection for
+// real geometry/motion instead of the sketch alone (see world.generate_world's own
+// `premade_world_id` param). `null` (every other tab, "Dragons & Zombie World" included) is
+// unaffected.
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -405,6 +410,7 @@ export function generateWorld(
   numPlates: number | null,
   voronoiPoints: number,
   sketchImageBase64: string | null = null,
+  premadeWorldId: string | null = null,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -421,6 +427,7 @@ export function generateWorld(
       climate_density: climateDensity,
       fluid_density: fluidDensity,
       sketch: sketchImageBase64 ? { image_base64: sketchImageBase64 } : null,
+      premade_world_id: premadeWorldId,
     }),
   }).then(asJson<WorldSummary>);
 }

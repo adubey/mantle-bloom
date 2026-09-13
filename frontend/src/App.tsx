@@ -23,6 +23,7 @@ import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
 import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
+import { PREMADE_WORLDS } from "./premadeWorlds";
 import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION } from "./rotation";
 import type { Mat3 } from "./rotation";
@@ -207,13 +208,22 @@ const initialView = loadViewCookie();
 export default function App() {
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   // "Random" (today's noise-driven generation, default) vs. "Human-made" (a drawn or loaded
-  // coastline -- see SketchEditor.tsx and backend app/worldsketch.py). sketchImageDataUrl is
-  // the captured drawing/image as a full data URL (so it can double as an <img> preview
-  // source); handleGenerate strips its `data:image/png;base64,` prefix before sending. Neither
-  // resets on a successful Generate, so re-opening the dialog to tweak the seed/detail keeps
-  // the same drawing around rather than discarding it.
-  const [generateMode, setGenerateMode] = useState<"random" | "human" | "debug">("random");
+  // coastline) vs. "Premade worlds" (one of PREMADE_WORLDS' built-in coastline sketches) vs.
+  // "Debugging Worlds" (see below) -- see SketchEditor.tsx and backend app/worldsketch.py.
+  // sketchImageDataUrl is the captured drawing/image/premade pick as a full data URL (so it
+  // can double as an <img> preview source); handleGenerate strips its
+  // `data:image/png;base64,` prefix before sending. "Premade worlds" rides the exact same
+  // sketchImageDataUrl/generation path "Human-made" does -- picking one just pre-fills it with
+  // a built-in image instead of a drawn/loaded one. None of "random"/"human"/"premade" resets
+  // on a successful Generate, so re-opening the dialog to tweak the seed/detail keeps the same
+  // drawing/pick around rather than discarding it.
+  const [generateMode, setGenerateMode] = useState<"random" | "human" | "premade" | "debug">("random");
   const [sketchImageDataUrl, setSketchImageDataUrl] = useState<string | null>(null);
+  // The selected Premade world's backendId (see premadeWorlds.ts) -- rides alongside
+  // sketchImageDataUrl/seed to generateWorld's own premadeWorldId param so the backend can
+  // ground plate placement/mantle convection in real data for Earth/Pangaea; null for Z&D
+  // (and for every other tab, where it's simply unused).
+  const [premadeWorldId, setPremadeWorldId] = useState<"earth" | "pangaea" | "got" | null>(null);
   const [showSketchEditor, setShowSketchEditor] = useState(false);
   // "Debugging Worlds" tab (see backend debug_worlds.py) -- tiny scripted plate scenarios for
   // fast iteration on the gap-filling problem. The scenario list is fetched once (static,
@@ -675,17 +685,20 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      // The "Human-made" tab's sketch rides along as a bare base64 payload -- strip the data
-      // URL's `data:image/png;base64,` prefix generateWorld's caller (SketchEditor's
-      // toDataURL / the file-picker's FileReader) both produce.
+      // The "Human-made"/"Premade worlds" tabs' sketch rides along as a bare base64 payload --
+      // strip the data URL's `data:image/png;base64,` prefix generateWorld's caller
+      // (SketchEditor's toDataURL / the file-picker's FileReader / premadeWorlds.ts) all produce.
       const sketchBase64 =
-        generateMode === "human" && sketchImageDataUrl ? sketchImageDataUrl.split(",", 2)[1] ?? null : null;
+        (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl
+          ? sketchImageDataUrl.split(",", 2)[1] ?? null
+          : null;
       const s =
         generateMode === "debug"
           ? await generateDebugWorld(debugScenario, seed)
           : await generateWorld(
               seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
               climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
+              generateMode === "premade" ? premadeWorldId : null,
             );
       setSummary(s);
       setSelectedPlateId(null);
@@ -713,7 +726,7 @@ export default function App() {
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
-    generateMode, sketchImageDataUrl, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats,
+    generateMode, sketchImageDataUrl, premadeWorldId, debugScenario, projection, mapView, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats,
   ]);
 
 
@@ -1726,7 +1739,10 @@ export default function App() {
             <h2 style={{ fontSize: 16, marginTop: 0, marginBottom: 12 }}>Generate World</h2>
 
             <div style={{ display: "flex", marginBottom: 16, borderBottom: "1px solid #333" }}>
-              {(DEBUG_UI ? (["random", "human", "debug"] as const) : (["random", "human"] as const)).map((mode) => (
+              {(DEBUG_UI
+                ? (["random", "human", "premade", "debug"] as const)
+                : (["random", "human", "premade"] as const)
+              ).map((mode) => (
                 <button
                   key={mode}
                   type="button"
@@ -1742,7 +1758,13 @@ export default function App() {
                     borderBottom: generateMode === mode ? "2px solid #5b8cff" : "2px solid transparent",
                   }}
                 >
-                  {mode === "random" ? "Random" : mode === "human" ? "Human-made" : "Debugging Worlds"}
+                  {mode === "random"
+                    ? "Random"
+                    : mode === "human"
+                      ? "Human-made"
+                      : mode === "premade"
+                        ? "Premade worlds"
+                        : "Debugging Worlds"}
                 </button>
               ))}
             </div>
@@ -1820,6 +1842,52 @@ export default function App() {
               </div>
             )}
 
+            {generateMode === "premade" && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {PREMADE_WORLDS.map((world) => (
+                    <button
+                      key={world.id}
+                      type="button"
+                      onClick={() => {
+                        setSketchImageDataUrl(world.dataUrl);
+                        setSeed(world.seed);
+                        setPremadeWorldId(world.backendId);
+                      }}
+                      disabled={busy}
+                      style={{
+                        flex: 1,
+                        padding: 4,
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 4,
+                        cursor: "pointer",
+                        background: "none",
+                        border: sketchImageDataUrl === world.dataUrl ? "2px solid #5b8cff" : "2px solid #333",
+                        borderRadius: 4,
+                      }}
+                    >
+                      <img
+                        src={world.dataUrl}
+                        alt={`${world.label} coastline preview`}
+                        style={{ width: "100%", borderRadius: 2, background: "#fff", display: "block" }}
+                      />
+                      <span style={{ fontSize: 11, color: "#e6e8ef", textAlign: "center" }}>{world.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: "#999", marginTop: 6 }}>
+                  Same coastline-driven generation as "Human-made" above, just starting from one
+                  of these built-in maps instead of a drawn or loaded one. "Present-day Earth"
+                  also seeds real-world mountain ranges and rivers, not just coastlines.
+                  "Pangaea" reassembles real continent outlines into the classic supercontinent
+                  fit; "Dragons &amp; Zombie World" is an original interpretation of a
+                  well-known fantasy world's geography, not a reproduction of any map.
+                </div>
+              </div>
+            )}
+
             <label style={{ display: "block", marginBottom: 16 }}>
               Seed
               <div style={{ display: "flex", gap: 6 }}>
@@ -1827,6 +1895,7 @@ export default function App() {
                   type="number"
                   value={seed}
                   onChange={(e) => setSeed(Number(e.target.value))}
+                  disabled={generateMode === "premade"}
                   style={{ flex: 1 }}
                 />
                 <button
@@ -1834,10 +1903,17 @@ export default function App() {
                   title="Randomize seed"
                   aria-label="Randomize seed"
                   onClick={() => setSeed(randomSeed())}
+                  disabled={generateMode === "premade"}
                 >
                   🎲
                 </button>
               </div>
+              {generateMode === "premade" && (
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Fixed for premade worlds -- each one is tuned to this seed so it always
+                  generates looking like its preview above, not a random plate layout.
+                </div>
+              )}
             </label>
 
             {generateMode !== "debug" && (
@@ -1877,7 +1953,7 @@ export default function App() {
                   onClick={handleGenerate}
                   disabled={
                     busy ||
-                    (generateMode === "human" && !sketchImageDataUrl) ||
+                    ((generateMode === "human" || generateMode === "premade") && !sketchImageDataUrl) ||
                     (generateMode === "debug" && !debugScenario)
                   }
                 >

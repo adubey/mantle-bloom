@@ -247,7 +247,7 @@ def landmasses(masks: SketchMasks) -> list[Landmass]:
     return result
 
 
-def _distribute_counts(total: int, weights: list[float]) -> list[int]:
+def distribute_counts(total: int, weights: list[float]) -> list[int]:
     """`total` plate slots divided across `len(weights)` landmasses proportional to `weights`
     (largest-remainder rounding), guaranteeing every landmass at least 1 plate when there are
     enough slots to go around -- so a small island never silently vanishes into whichever
@@ -281,7 +281,7 @@ def _distribute_counts(total: int, weights: list[float]) -> list[int]:
     return counts
 
 
-def _kmeans_sites(xyz: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
+def kmeans_sites(xyz: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
     """`k` seed sites (unit vectors) covering `xyz` (n, 3) -- a weighted centroid for `k <= 1`,
     else `scipy.cluster.vq.kmeans2` cluster centers (re-normalized back onto the sphere; the
     landmass's own angular extent is always small enough for Euclidean k-means on its xyz
@@ -296,7 +296,7 @@ def _kmeans_sites(xyz: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarr
     return geometry.normalize(centers)
 
 
-def _farthest_point_sites(candidates_xyz: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
+def farthest_point_sites(candidates_xyz: np.ndarray, k: int, rng: np.random.Generator) -> np.ndarray:
     """Greedy farthest-point sampling of `k` sites from `candidates_xyz` (n, 3, unit vectors)
     -- repeatedly picks whichever remaining candidate is farthest (in angular terms) from every
     site already chosen, so oceanic plate sites spread out over open ocean instead of
@@ -324,28 +324,28 @@ def sketch_plate_sites(
     `lithosphere_plate.generate_plates`'s `sketch` param, which calls this).
 
     `num_continents` plate slots are divided across `landmasses(masks)` by area share
-    (`_distribute_counts`), each landmass's share placed via `_kmeans_sites` -- so a large
+    (`distribute_counts`), each landmass's share placed via `kmeans_sites` -- so a large
     hand-drawn continent assigned several plates gets pre-partitioned into plausible
     sub-regions before Voronoi tiling ever runs, the same way Earth's own continents straddle
     more than one plate. The remaining slots go to oceanic sites, farthest-point-sampled over
     every non-land grid cell so they spread out across open ocean.
 
     The returned site count may exceed `num_plates` (every landmass is guaranteed at least one
-    plate even if that overshoots the target, see `_distribute_counts`) -- the caller
+    plate even if that overshoots the target, see `distribute_counts`) -- the caller
     (`generate_plates`) uses `len(site_xyz)` as the real final plate count, the same tolerance
     it already has for bumping plate count up to satisfy `MIN_OCEANIC_PLATES`."""
     lands = landmasses(masks)
     num_continents = max(0, min(num_continents, num_plates)) if lands else 0
-    counts = _distribute_counts(num_continents, [lm.area for lm in lands]) if lands else []
+    counts = distribute_counts(num_continents, [lm.area for lm in lands]) if lands else []
 
     continental_chunks = [
-        _kmeans_sites(lm.xyz, k, rng) for lm, k in zip(lands, counts) if k > 0
+        kmeans_sites(lm.xyz, k, rng) for lm, k in zip(lands, counts) if k > 0
     ]
     continental_sites = np.concatenate(continental_chunks, axis=0) if continental_chunks else np.zeros((0, 3))
 
     num_oceanic = max(num_plates - len(continental_sites), 0)
     ocean_xyz = masks.cell_centers_xyz()[~masks.land]
-    oceanic_sites = _farthest_point_sites(ocean_xyz, num_oceanic, rng)
+    oceanic_sites = farthest_point_sites(ocean_xyz, num_oceanic, rng)
 
     site_xyz = np.concatenate([continental_sites, oceanic_sites], axis=0)
     crust_types = ["continental"] * len(continental_sites) + ["oceanic"] * len(oceanic_sites)
