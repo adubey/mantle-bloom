@@ -4,6 +4,9 @@ import type { LegendGradient, LegendSymbol, SwatchKind } from "./legendData";
 
 interface Props {
   mapView: MapView;
+  // False before any world has been generated or loaded (see App.tsx's `summary`) -- the real
+  // legend has nothing to describe yet, so the panel shows a prompt to get started instead.
+  hasWorld: boolean;
   // Legend-click-to-highlight (Biome and Combined views only -- see App.tsx/MapCanvas.tsx):
   // the currently highlighted swatch's label, and a callback fired with a swatch's label on
   // click (App.tsx toggles it off if the same label is clicked again). Both omitted on every
@@ -191,6 +194,7 @@ function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClic
 // canvas above it).
 export default function Legend({
   mapView,
+  hasWorld,
   highlightedBiome,
   onBiomeClick,
   showMountains,
@@ -198,6 +202,25 @@ export default function Legend({
   showPlainsPlateaus,
   onTogglePlainsPlateaus,
 }: Props) {
+  if (!hasWorld) {
+    return (
+      <div
+        style={{
+          marginTop: 10,
+          padding: 10,
+          background: "rgba(16, 20, 34, 0.92)",
+          border: "1px solid #4b5060",
+          borderRadius: 4,
+          color: "#dee2eb",
+          userSelect: "none",
+          fontSize: 13,
+        }}
+      >
+        Click &apos;Generate World&apos; or &apos;File&apos; to begin.
+      </div>
+    );
+  }
+
   const spec = legendFor(mapView);
   if (!spec) return null;
 

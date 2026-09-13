@@ -1043,7 +1043,12 @@ export default function App() {
             Physical World Builder
           </p>
 
-          <button onClick={() => setShowGenerateDialog(true)} disabled={busy || animating} style={{ fontSize: 12 }}>
+          <button
+            onClick={() => setShowGenerateDialog(true)}
+            disabled={busy || animating}
+            className={!summary ? "generate-flashing" : undefined}
+            style={{ fontSize: 12 }}
+          >
             Generate World
           </button>
 
@@ -1141,7 +1146,7 @@ export default function App() {
             <select
               value={mapView}
               onChange={(e) => setMapView(e.target.value as MapView)}
-              disabled={animating}
+              disabled={animating || !summary}
               style={{ width: "100%", marginBottom: 6, fontSize: 12 }}
             >
               <optgroup label="Maps">
@@ -1174,7 +1179,7 @@ export default function App() {
             <select
               value={projection}
               onChange={(e) => setProjection(e.target.value as Projection)}
-              disabled={animating}
+              disabled={animating || !summary}
               style={{ width: "100%", fontSize: 12 }}
             >
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
@@ -1687,6 +1692,7 @@ export default function App() {
           </div>
           <Legend
             mapView={mapView}
+            hasWorld={!!summary}
             highlightedBiome={highlightedBiome}
             onBiomeClick={(label) => setHighlightedBiome((cur) => (cur === label ? null : label))}
             showMountains={showMountains}
