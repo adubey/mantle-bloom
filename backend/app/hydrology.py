@@ -550,6 +550,21 @@ _LAST_OCEAN_TREE: tuple[object, cKDTree] | None = None
 _LAST_OCEAN_HEALPIX_GRID: tuple[int, healpix_grid.HealpixGrid] | None = None
 _LAST_OCEAN_HEALPIX_INDEX: tuple[object, healpix_grid.NodePixelIndex] | None = None
 
+# Issue #133 phase 4: phase 2 measured "healpix" mode's is_ocean disagreeing with "kdtree" in a
+# dilated/eroded coastal band 16.1% of the time (vs. 0.03% interior) at the default 1:1
+# node-count sizing -- real, not a formality, since this is exactly where is_ocean correctness
+# matters most. A finer ocean grid was one of the two levers that write-up flagged (the other,
+# an is_ocean-aware scatter tie-break, is unimplemented). Measured directly (throwaway spike,
+# same seed=0/node_density=4.0/4-step world the phase 2/3 numbers above used): 2x -> 11.4%
+# coastal, 4x -> 7.2%, 8x -> 5.4% -- diminishing returns, and 8x's one-time HealpixGrid.build()
+# cost (~67s at this node count) makes it impractical. 4x was chosen as the best cost/accuracy
+# trade: ~55% relative reduction in coastal mismatch for a per-`step_world` fill cost of
+# ~65-90ms (vs. ~24ms at 1x) against a step that otherwise takes several *seconds* -- and the
+# grid itself (unlike the fill) is built once per node-count bracket, not every step. Still not
+# zero, so this alone doesn't clear the phase-4 default-flip gate; see docs/profiling.md's
+# "Phase 4" section for the full numbers and that decision.
+_OCEAN_NSIDE_OVERSAMPLE = 4
+
 
 def _ocean_node_tree(hydro: "HydrologyFields") -> cKDTree:
     global _LAST_OCEAN_TREE
@@ -568,7 +583,7 @@ def _ocean_node_healpix_index(hydro: "HydrologyFields") -> healpix_grid.NodePixe
     cached_index = _LAST_OCEAN_HEALPIX_INDEX
     if cached_index is not None and cached_index[0] is hydro:
         return cached_index[1]
-    nside = healpix_grid.nside_for_node_count(len(hydro.points))
+    nside = healpix_grid.nside_for_node_count(len(hydro.points), oversample=_OCEAN_NSIDE_OVERSAMPLE)
     cached_grid = _LAST_OCEAN_HEALPIX_GRID
     if cached_grid is not None and cached_grid[0] == nside:
         grid = cached_grid[1]

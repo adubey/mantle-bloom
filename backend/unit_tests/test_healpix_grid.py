@@ -128,6 +128,26 @@ def test_nside_for_node_count_handles_small_and_zero_counts():
     assert healpix_grid.nside_for_node_count(5) >= 1
 
 
+# -- Issue #133 phase 4: hydrology's oversampled ocean grid ------------------------------------
+
+
+def test_nside_for_node_count_oversample_multiplies_the_base_choice():
+    """`oversample` (hydrology.py's `_OCEAN_NSIDE_OVERSAMPLE`) should scale the same base
+    choice the default (oversample=1) picks, not pick an independently-rounded nside."""
+    base = healpix_grid.nside_for_node_count(130_587)
+    assert healpix_grid.nside_for_node_count(130_587, oversample=4) == base * 4
+    assert healpix_grid.nside_for_node_count(130_587, oversample=1) == base
+
+
+def test_nside_for_node_count_rejects_non_power_of_two_oversample():
+    for bad in (0, 3, 5, -2):
+        try:
+            healpix_grid.nside_for_node_count(1000, oversample=bad)
+        except AssertionError:
+            continue
+        raise AssertionError(f"expected oversample={bad} to be rejected")
+
+
 def test_scatter_node_indices_leaves_most_pixels_occupied_or_tracks_collisions():
     grid = healpix_grid.build(16)
     # One node placed exactly at pixel 0's own center: must win that pixel outright.
