@@ -322,6 +322,39 @@ def test_maybe_split_plate_returns_none_for_small_plate():
     assert merge_split.maybe_split_plate(world, small) is None
 
 
+def test_refine_split_cut_recovers_a_clean_spatial_split_from_noisy_labels():
+    """GH #119: k-means clusters on velocity alone, so a node whose local flow sample is
+    merely noisy relative to its true regime can be mislabeled even though it sits deep inside
+    one spatial half -- fitting straight from those labels gives a daughter's Euler pole a
+    spatially-intermingled body, and the great-circle cut plate.split() actually uses (fit
+    from the same labels' centroids) is a poor separator too. Simulate that noise directly on
+    a mask (bypassing k-means/velocities entirely) and confirm _refine_split_cut's alternating
+    "refit the great circle from the current halves' centroids" / "resort every node to
+    whichever side it's actually on" recovers the true spatially-contiguous split rather than
+    carrying the scrambled labels through to the cut and the pole fit."""
+    seed_xyz = np.array([1.0, 0.0, 0.0])
+    frame = geometry.plate_frame_from_seed(seed_xyz)
+    n = 2000
+    theta = np.linspace(-0.5, 0.5, n)
+    points = geometry.to_world(frame, geometry.local_xyz(np.zeros(n), theta))
+
+    true_mask = theta < 0
+    rng = np.random.default_rng(0)
+    scrambled = true_mask.copy()
+    flip_idx = rng.choice(n, size=round(0.15 * n), replace=False)
+    scrambled[flip_idx] = ~scrambled[flip_idx]
+    assert np.sum(scrambled != true_mask) > 0.1 * n  # the scramble actually did something
+
+    refined = merge_split._refine_split_cut(points, scrambled)
+    assert refined is not None
+    mask_a, cut_normal = refined
+    assert np.isclose(np.linalg.norm(cut_normal), 1.0)  # a genuine unit normal, not degenerate
+    # Recovers the true theta=0 spatial split (mod which side is "a") to within a node or two
+    # at the boundary -- nowhere close to the ~15% of nodes the scramble actually flipped.
+    disagreement = min(np.sum(mask_a != true_mask), np.sum(mask_a != ~true_mask))
+    assert disagreement <= 2
+
+
 def _engineered_split_world():
     """The `test_maybe_split_plate_splits_under_engineered_flow_divergence` setup as a
     `LithospherePlate` (Hc/Hm columns) so the rift-failure test can reuse the exact same
@@ -342,11 +375,21 @@ def _engineered_split_world():
         plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS
     )
     strong_rate = mantle.MANTLE_FLOW_REFERENCE_RATE * 20
-    west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
-    east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
+    # Offset in *phi* (not just mirrored in theta) and same-signed, not opposite-signed: a
+    # west/east-mirrored, opposite-strength pair (the original shape here) makes the whole
+    # velocity field odd-symmetric about theta=0, so the west and east halves are point
+    # reflections of each other and *always* fit to the same fit_euler_pole regardless of
+    # placement/strength/falloff -- a single rigid rotation fits each half equally poorly (or
+    # well), so there's no genuine two-regime split for a great-circle cut to find. The
+    # pre-GH-119 code never noticed, because it fit each daughter's pole from k-means's raw
+    # (velocity-only) label mask rather than from the actual geometric halves plate.split()
+    # produces -- exactly the inconsistency that issue tracks. This phi-offset pair gives two
+    # halves whose independently-fit poles genuinely differ (see the assertion below).
+    west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.5]), np.array([-0.3]))[0])
+    east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([-0.5]), np.array([0.3]))[0])
     centers = [
-        mantle.ConvectionCenter(position=west_pt, strength=strong_rate, falloff=0.3),
-        mantle.ConvectionCenter(position=east_pt, strength=-strong_rate, falloff=0.3),
+        mantle.ConvectionCenter(position=west_pt, strength=strong_rate, falloff=0.6),
+        mantle.ConvectionCenter(position=east_pt, strength=strong_rate, falloff=0.6),
     ]
     world = World(seed=0, plates=[plate], mantle_centers=centers, next_plate_id=1, node_density=1.0)
     pts, _ = plate.all_points_and_elevation()
@@ -415,15 +458,21 @@ def test_maybe_split_plate_splits_under_engineered_flow_divergence(monkeypatch):
     line = _thick_line(0.0, theta, 0.0, "continental")
     plate = LithospherePlate(plate_id=0, frame=frame, crust_type="continental", lines=[line], age_steps=merge_split.SPLIT_MIN_AGE_STEPS)
 
-    # Two strong, oppositely-signed convection centers straddling the plate so its two
-    # halves get pushed in genuinely different directions -- a single rigid rotation can't
-    # fit both, which is exactly the split trigger.
-    west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([-0.4]))[0])
-    east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.0]), np.array([0.4]))[0])
+    # Two strong convection centers, offset in *phi* (not mirrored in theta) and same-signed
+    # (not opposite): a west/east-mirrored, opposite-strength pair makes the whole velocity
+    # field odd-symmetric about theta=0, so the west and east halves are point reflections of
+    # each other and always fit to the *same* Euler pole -- no genuine two-regime split for a
+    # great-circle cut to find, however poorly a single rigid rotation fits the whole plate.
+    # See _engineered_split_world's own comment (same shape, reused by the rift-failure
+    # tests) for why this matters post-GH-119: daughter poles are now fit from the actual
+    # geometric halves plate.split() produces, not from k-means's raw velocity-only labels,
+    # so the test field itself has to contain two genuinely different rigid-rotation halves.
+    west_pt = geometry.to_world(frame, geometry.local_xyz(np.array([0.5]), np.array([-0.3]))[0])
+    east_pt = geometry.to_world(frame, geometry.local_xyz(np.array([-0.5]), np.array([0.3]))[0])
     strong_rate = mantle.MANTLE_FLOW_REFERENCE_RATE * 20
     centers = [
-        mantle.ConvectionCenter(position=west_pt, strength=strong_rate, falloff=0.3),
-        mantle.ConvectionCenter(position=east_pt, strength=-strong_rate, falloff=0.3),
+        mantle.ConvectionCenter(position=west_pt, strength=strong_rate, falloff=0.6),
+        mantle.ConvectionCenter(position=east_pt, strength=strong_rate, falloff=0.6),
     ]
     # node_density pinned to 1.0 (not DEFAULT_NODE_DENSITY): the plate above is sized to
     # 4 * SPLIT_MIN_NODES total (2x that threshold per resulting half), but maybe_split_plate's
