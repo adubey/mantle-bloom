@@ -44,6 +44,23 @@ def test_step_world_gives_plates_nonzero_omega():
     assert any(r > 0 for r in rates)
 
 
+def test_hydrology_cache_step_freezes_when_climate_toggled_off():
+    # World.hydrology_cache_step (see its own docstring, GitHub issue #121) is how
+    # stats.compute_stats tells "hydrology_cache reflects this step" apart from "hydrology_
+    # cache is frozen from whenever simulate_climate_biomes was last on" -- it must track
+    # World.steps_taken exactly while climate is on, then stop advancing the instant it's
+    # toggled off, even though tectonics (and steps_taken itself) keep moving.
+    world = generate_world(seed=10, num_plates=8)
+    step_world(world, years=1_000_000)
+    assert world.hydrology_cache is not None
+    assert world.hydrology_cache_step == world.steps_taken
+
+    world.simulate_climate_biomes = False
+    step_world(world, years=1_000_000)
+    assert world.hydrology_cache is not None  # last-good value, not cleared
+    assert world.hydrology_cache_step != world.steps_taken
+
+
 def test_different_plates_generally_acquire_different_omegas_after_a_step():
     world = generate_world(seed=14, num_plates=10)
     step_world(world, years=1_000_000)

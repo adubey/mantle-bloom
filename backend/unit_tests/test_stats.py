@@ -162,3 +162,54 @@ def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_
         if i not in biomes.OCEAN_IDS and n_land > 0
     }
     assert result["biome_land_fraction"] == expected
+
+
+def test_compute_stats_land_fraction_node_matches_raw_elevation_count():
+    # land_fraction_node (see stats.py's own docstring, GitHub issue #121) is a plain
+    # elevation > sea_level_m node count/total -- unlike land_fraction, not connectivity-aware
+    # and not resampled from any hydrology cache. Compare against an independent recount
+    # straight off world.plates (line regularization means node count isn't necessarily the
+    # ElevationLine's original theta length, so don't assume exactly half).
+    world = _land_and_ocean_world()
+    result = stats.compute_stats(world)
+
+    land_nodes = 0
+    total_nodes = 0
+    for plate in world.plates:
+        _, elevation = plate.all_points_and_elevation()
+        land_nodes += int(np.count_nonzero(elevation > world.sea_level_m))
+        total_nodes += len(elevation)
+    assert result["land_fraction_node"] == pytest.approx(land_nodes / total_nodes)
+    assert 0.0 < result["land_fraction_node"] < 1.0  # genuinely a mix, not all-one-or-the-other
+
+
+def test_compute_stats_land_fraction_node_zero_for_all_ocean_world():
+    world = _all_ocean_world()
+    result = stats.compute_stats(world)
+    assert result["land_fraction_node"] == 0.0
+
+
+def test_compute_stats_land_fraction_stale_false_when_hydrology_cache_never_populated():
+    # A freshly constructed World has hydrology_cache=None -- land_fraction is computed live
+    # off a fresh climate solve in that case (see hydrology.sample_is_ocean's elevation-only
+    # fallback), not resampled from a frozen cache, so it must never read as stale.
+    world = _land_and_ocean_world()
+    assert world.hydrology_cache is None
+    result = stats.compute_stats(world)
+    assert result["land_fraction_stale"] is False
+
+
+def test_compute_stats_land_fraction_stale_true_once_climate_is_toggled_off():
+    # End-to-end version of test_world_stepping.py's
+    # test_hydrology_cache_step_freezes_when_climate_toggled_off: once simulate_climate_biomes
+    # is off, world.hydrology_cache stops advancing with world.steps_taken, and
+    # compute_stats's land_fraction_stale must flag exactly that (GitHub issue #121).
+    from app.world import generate_world, step_world
+
+    world = generate_world(seed=10, num_plates=8)
+    step_world(world, years=1_000_000)
+    assert stats.compute_stats(world)["land_fraction_stale"] is False
+
+    world.simulate_climate_biomes = False
+    step_world(world, years=1_000_000)
+    assert stats.compute_stats(world)["land_fraction_stale"] is True

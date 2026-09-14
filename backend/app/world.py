@@ -274,6 +274,13 @@ class World:
     # This step's flow-routing snapshot (see hydrology.py), populated by erosion.py
     # alongside climate_cache -- same reuse pattern, same one-step-stale simplification.
     hydrology_cache: hydrology.HydrologyFields | None = None
+    # steps_taken at the moment hydrology_cache was last (re)populated by erosion.py, or None
+    # while hydrology_cache itself is None. Lets a reader (stats.compute_stats) tell "one step
+    # stale" (the tolerated case above -- this step just hasn't run erosion *yet*) apart from
+    # "frozen for N steps" (simulate_climate_biomes toggled off, so hydrology_cache.is_ocean
+    # keeps answering for a coastline tectonics has long since moved on from -- see GitHub
+    # issue #121): compare against World.steps_taken at read time.
+    hydrology_cache_step: int | None = None
     # Last step's erosion breakdown (see erosion.ErosionResult), retained here purely so the
     # Geomorph Rate debug view (render_image._render_geomorph_view) can colour every node by
     # its net elevation change this step -- geology.py still receives its own copy as a direct

@@ -15,15 +15,26 @@ interface Metric {
   get: (s: WorldStats) => number | null;
   tableFormat: (v: number | null) => string;
   yFormat: (v: number) => string;
+  // Set only for a metric that can go stale (currently land_fraction/ocean_fraction -- see
+  // WorldStats.land_fraction_stale, GitHub issue #121): Table mode's current-value row shows
+  // a marker when this returns true, so a frozen hydrology cache doesn't read as a normal
+  // live number.
+  stale?: (s: WorldStats) => boolean;
 }
 
-function pctMetric(key: string, label: string, get: (s: WorldStats) => number | null): Metric {
+function pctMetric(
+  key: string,
+  label: string,
+  get: (s: WorldStats) => number | null,
+  stale?: (s: WorldStats) => boolean,
+): Metric {
   return {
     key,
     label,
     get,
     tableFormat: (v) => (v === null ? "--" : `${(v * 100).toFixed(1)}%`),
     yFormat: (v) => `${(v * 100).toFixed(0)}%`,
+    stale,
   };
 }
 
@@ -108,8 +119,11 @@ const TABS: { key: TabKey; label: string }[] = [
 
 const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> = {
   physical: [
-    metricEntry(pctMetric("land_fraction", "Land", (s) => s.land_fraction)),
-    metricEntry(pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction)),
+    metricEntry(pctMetric("land_fraction", "Land", (s) => s.land_fraction, (s) => s.land_fraction_stale ?? false)),
+    metricEntry(pctMetric("ocean_fraction", "Water", (s) => s.ocean_fraction, (s) => s.land_fraction_stale ?? false)),
+    // Raw elevation>sea_level node fraction -- always fresh, unlike Land/Water above (see
+    // WorldStats.land_fraction_node's own comment, GitHub issue #121).
+    metricEntry(pctMetric("land_fraction_node", "Land (raw)", (s) => s.land_fraction_node ?? null)),
     groupEntry(
       numGroup(
         "elevation_m", "Elevation (land)",
@@ -328,9 +342,9 @@ function biomeSeriesValue(s: WorldStats, domain: BiomeDomain, members: string[])
 const biomePctFormat = (v: number) => `${(v * 100).toFixed(0)}%`;
 const biomePctTableFormat = (v: number | null) => (v === null ? "--" : `${(v * 100).toFixed(1)}%`);
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0" }}>
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0" }} title={title}>
       <span style={{ opacity: 0.7 }}>{label}</span>
       <span>{value}</span>
     </div>
@@ -427,7 +441,16 @@ function MetricTab({ entries, history, current }: { entries: TabEntry[]; history
       {viewMode === "table" ? (
         entries.map((e) =>
           e.kind === "metric" ? (
-            <Row key={e.metric.key} label={e.metric.label} value={e.metric.tableFormat(e.metric.get(current))} />
+            <Row
+              key={e.metric.key}
+              label={e.metric.label}
+              value={e.metric.tableFormat(e.metric.get(current)) + (e.metric.stale?.(current) ? " *" : "")}
+              title={
+                e.metric.stale?.(current)
+                  ? "Stale: erosion/hydrology hasn't run since Climate was turned off, so this may not match the world's current coastline. See \"Land (raw)\" for a value that's always current."
+                  : undefined
+              }
+            />
           ) : (
             <div key={e.group.key} style={{ marginBottom: 14 }}>
               <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.group.label}</div>
