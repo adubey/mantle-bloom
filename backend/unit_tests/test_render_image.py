@@ -6,7 +6,7 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import climate, geometry, hydrology, render_image
+from app import climate, geometry, healpix_grid, hydrology, render_image
 from app.world import World, generate_world, step_world
 
 
@@ -865,3 +865,68 @@ def test_rotation_arc_direction_mirrors_when_omega_sign_flips():
     png_pos = render_image.render_png(world_pos, "eckert4", "plates", 400, 400)
     png_neg = render_image.render_png(world_neg, "eckert4", "plates", 400, 400)
     assert png_pos != png_neg
+
+
+# -- Issue #133 phase 1: node_cloud_resample_mode ---------------------------------------------
+
+
+def test_node_cloud_resample_mode_default_is_kdtree_and_unaffected_by_the_new_flag_existing():
+    """The default ("kdtree") path must render byte-identical output whether or not
+    `node_cloud_resample_mode` is ever touched -- the flag is additive, opt-in only."""
+    world_untouched = _world(seed=2, num_plates=8)
+    world_explicit_default = _world(seed=2, num_plates=8)
+    world_explicit_default.node_cloud_resample_mode = "kdtree"
+    png_untouched = render_image.render_png(world_untouched, "eckert4", "elevation", 200, 100)
+    png_explicit_default = render_image.render_png(world_explicit_default, "eckert4", "elevation", 200, 100)
+    assert png_untouched == png_explicit_default
+
+
+def test_node_cloud_and_tree_healpix_mode_returns_a_node_pixel_index():
+    world = _world(seed=2, num_plates=8)
+    world.node_cloud_resample_mode = "healpix"
+    node_cloud = render_image._node_cloud_and_tree(world)
+    assert node_cloud is not None
+    all_points, all_elevation, all_owner, tree = node_cloud
+    assert isinstance(tree, healpix_grid.NodePixelIndex)
+    assert not np.any(tree.pixel_to_node == -1)
+    # The 4th slot differs by mode, but the node cloud itself (points/elevation/owner) must
+    # not -- both modes resample the exact same underlying data.
+    world.node_cloud_resample_mode = "kdtree"
+    world.node_kdtree_cache = None
+    kd_points, kd_elevation, kd_owner, _kd_tree = render_image._node_cloud_and_tree(world)
+    assert np.array_equal(all_points, kd_points)
+    assert np.array_equal(all_elevation, kd_elevation)
+    assert np.array_equal(all_owner, kd_owner)
+
+
+def test_render_png_healpix_mode_renders_without_crashing_including_terrain_relief():
+    """Exercises every `_node_cloud_and_tree` consumer end-to-end under "healpix" mode via a
+    real `render_png` call, including the Elevation view's relief toggles -- the one path
+    (`_classify_terrain_relief`'s radius search) that can't go through a `NodePixelIndex` at
+    all and must fall back to `_relief_kdtree`'s own real `cKDTree`."""
+    world = _world(seed=3, num_plates=8)
+    world.node_cloud_resample_mode = "healpix"
+    for view in ("elevation", "combined", "biome", "crustType"):
+        png = render_image.render_png(world, "eckert4", view, 200, 100)
+        assert len(png) > 0
+    png_relief = render_image.render_png(
+        world, "eckert4", "elevation", 200, 100, show_mountains=True, show_plains_plateaus=True
+    )
+    assert len(png_relief) > 0
+    assert world.node_kdtree_relief_cache is not None
+
+
+def test_step_world_resets_healpix_index_cache_but_keeps_the_grid_cache():
+    world = _world(seed=4, num_plates=8)
+    world.node_cloud_resample_mode = "healpix"
+    render_image.render_png(world, "eckert4", "elevation", 200, 100)
+    assert world.node_healpix_index_cache is not None
+    grid_cache_before = world.node_healpix_grid_cache
+    assert grid_cache_before is not None
+
+    step_world(world, 1_000_000)
+    assert world.node_healpix_index_cache is None  # a node moved -- must rebuild
+    assert world.node_healpix_grid_cache is grid_cache_before  # node count unchanged -- reused
+
+    render_image.render_png(world, "eckert4", "elevation", 200, 100)
+    assert world.node_healpix_index_cache is not None

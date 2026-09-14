@@ -648,10 +648,17 @@ def _rotate(world_pts: np.ndarray, view_rotation: np.ndarray) -> np.ndarray:
 
 
 def _node_cloud_and_tree(world: World):
-    """`(all_points, all_elevation, all_owner, cKDTree)` for the current node cloud, or
+    """`(all_points, all_elevation, all_owner, tree)` for the current node cloud, or
     `None` for an empty world -- the shared entry point for every render that does a
     nearest-node resample off the full plate node cloud (`_render_grid_arrays`,
     `_biome_fields`, `_resource_fields`, `_render_elev_reason_view`, `_render_speckle_view`).
+    `tree` is a `cKDTree` under the default `World.node_cloud_resample_mode` ("kdtree"), or a
+    `healpix_grid.NodePixelIndex` under "healpix" (issue #133 phase 1) -- both expose the same
+    `.query(points, workers=...) -> (_, idx)` shape every caller here actually uses; none of
+    them consume the discarded distance. The one exception is `_classify_terrain_relief`'s
+    `query_ball_point` radius search, which a `NodePixelIndex` can't serve at all -- see its own
+    call site in `_render_grid_arrays`, which builds a real `cKDTree` on demand for that case
+    instead of getting it from here.
 
     The tree (a `cKDTree` over ~131 K nodes at node_density 4) costs ~20 ms to build -- not
     huge next to its own ~165 ms grid query, but a combined/elevation render runs several
@@ -676,19 +683,44 @@ def _node_cloud_and_tree(world: World):
     if collected is None:
         return None
     all_points, all_elevation, all_owner = collected
-    shared_tree = world.node_position_tree_cache
-    # Only trust the shared tree if it was built over this same node cloud -- normally
-    # guaranteed by step_world resetting both caches together whenever plates move, but a
-    # caller that mutates world.plates directly without going through step_world (e.g. a test
-    # simulating a gap) can leave a stale, differently-sized tree cached from an earlier
-    # topology, whose query indices would then overrun all_elevation/all_owner here.
-    if shared_tree is not None and shared_tree[0].shape[0] == all_points.shape[0]:
-        tree = shared_tree[1]
+    if world.node_cloud_resample_mode == "healpix":
+        tree = _healpix_node_index(world, all_points)
     else:
-        tree = cKDTree(all_points)
+        shared_tree = world.node_position_tree_cache
+        # Only trust the shared tree if it was built over this same node cloud -- normally
+        # guaranteed by step_world resetting both caches together whenever plates move, but a
+        # caller that mutates world.plates directly without going through step_world (e.g. a
+        # test simulating a gap) can leave a stale, differently-sized tree cached from an
+        # earlier topology, whose query indices would then overrun all_elevation/all_owner here.
+        if shared_tree is not None and shared_tree[0].shape[0] == all_points.shape[0]:
+            tree = shared_tree[1]
+        else:
+            tree = cKDTree(all_points)
     result = (all_points, all_elevation, all_owner, tree)
     world.node_kdtree_cache = result
     return result
+
+
+def _healpix_node_index(world: World, all_points: np.ndarray) -> healpix_grid.NodePixelIndex:
+    """The "healpix" `node_cloud_resample_mode` half of `_node_cloud_and_tree` -- builds/reuses
+    `World.node_healpix_grid_cache` (keyed by nside, which only depends on node *count* and so
+    is stable for a world's whole life) and scatters+fills the current node cloud onto it into
+    `World.node_healpix_index_cache` (which, like `node_kdtree_cache`, is a pure function of
+    node *positions* and so is reset every `step_world`)."""
+    cached_index = world.node_healpix_index_cache
+    if cached_index is not None:
+        return cached_index
+    node_count = all_points.shape[0]
+    cached_grid = world.node_healpix_grid_cache
+    if cached_grid is not None and cached_grid[0] == healpix_grid.nside_for_node_count(node_count):
+        grid = cached_grid[1]
+    else:
+        nside = healpix_grid.nside_for_node_count(node_count)
+        grid = healpix_grid.build(nside)
+        world.node_healpix_grid_cache = (nside, grid)
+    index = healpix_grid.build_node_pixel_index(grid, all_points)
+    world.node_healpix_index_cache = index
+    return index
 
 
 # Real-world radius (not a fixed neighbour *count*) so the mountain/plain split reads the same
@@ -707,17 +739,35 @@ _TERRAIN_MOUNTAIN = 1
 _TERRAIN_PLAINS_PLATEAU = 2
 
 
+def _relief_kdtree(world: World, all_points: np.ndarray) -> cKDTree:
+    """A real `cKDTree` for `_classify_terrain_relief`'s `query_ball_point` radius search,
+    used only under "healpix" `World.node_cloud_resample_mode` -- a `healpix_grid.
+    NodePixelIndex` has no radius-search equivalent (issue #133 excludes this call from its
+    scope; see `_node_cloud_and_tree`'s own docstring). Cached separately
+    (`World.node_kdtree_relief_cache`, reset alongside the other node-cloud caches in
+    `step_world`) so this cost -- only paid when the Elevation view's relief toggles are on --
+    never falls on the common render path under the "healpix" mode."""
+    cached = world.node_kdtree_relief_cache
+    if cached is not None and cached.n == all_points.shape[0]:
+        return cached
+    tree = cKDTree(all_points)
+    world.node_kdtree_relief_cache = tree
+    return tree
+
+
 def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, tree: cKDTree, sea_level_m: float) -> np.ndarray:
     """Per-node terrain class for the Elevation view's "Mountains" / "Plains & Plateaus"
     legend toggles: `_TERRAIN_MOUNTAIN` or `_TERRAIN_PLAINS_PLATEAU` for every land node
     (mutually exclusive, together covering all of it -- matching the toggles' own "the rest of
     the land" framing), `_TERRAIN_NONE` for ocean. The split is on local *relief* (ruggedness),
     not raw elevation -- a high, flat plateau is not a mountain, and a low coastal bluff is not
-    a plain, the same distinction real geomorphology uses. `all_points`/`all_elevation`/`tree`
-    are `_node_cloud_and_tree`'s own (already cached on `World.node_kdtree_cache`), so this
-    builds no second tree. Only ever called from the Elevation view's own render path, and only
-    when at least one of the two toggles is on -- see render_png's `view == "elevation"`
-    branch -- so an ordinary render (or any other view) never pays this cost."""
+    a plain, the same distinction real geomorphology uses. Under the default "kdtree"
+    `node_cloud_resample_mode`, `all_points`/`all_elevation`/`tree` are `_node_cloud_and_tree`'s
+    own (already cached on `World.node_kdtree_cache`), so this builds no second tree; under
+    "healpix", `tree` is `_relief_kdtree`'s real `cKDTree` instead (see that function). Only
+    ever called from the Elevation view's own render path, and only when at least one of the
+    two toggles is on -- see render_png's `view == "elevation"` branch -- so an ordinary render
+    (or any other view) never pays this cost."""
     n = len(all_points)
     if n == 0:
         return np.zeros(0, dtype=np.uint8)
@@ -783,9 +833,10 @@ def _render_grid_arrays(
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
     all_channel_depth = plates.collect_all_channel_depth(world.plates)
     all_channel_width = plates.collect_all_channel_width(world.plates)
-    all_terrain_relief = (
-        _classify_terrain_relief(all_points, all_elevation, tree, world.sea_level_m) if include_terrain_relief else None
-    )
+    all_terrain_relief = None
+    if include_terrain_relief:
+        relief_tree = _relief_kdtree(world, all_points) if world.node_cloud_resample_mode == "healpix" else tree
+        all_terrain_relief = _classify_terrain_relief(all_points, all_elevation, relief_tree, world.sea_level_m)
 
     # At the default node_density, GRID_SPACING_RAD (100km) is already finer than the
     # physics resolution (plates.line_spacing_rad(1.0) = 125km), so it's the effective

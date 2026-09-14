@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, hydrology, mantle, merge_split, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, mantle, merge_split, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -239,6 +239,18 @@ class World:
     #     fault_deformation_mode), so this only changes behavior going forward -- an old save
     #     predating this field now defaults to "frontier", not a frozen "windowed" past behavior.
     gap_fill_algorithm: str = "frontier"
+    # Which structure `render_image._node_cloud_and_tree` resamples the node cloud through --
+    # live-adjustable via POST /world/controls, but backend/API-only for now (no Controls-panel
+    # entry, same as gap_fill_algorithm): this is issue #133's phase-1 proving-out flag, not yet
+    # a user-facing tuning knob. See healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES:
+    #   "kdtree" (default) -- today's `cKDTree(all_points).query(...)`, unchanged.
+    #   "healpix" -- scatter the node cloud onto a `HealpixGrid` sized to the node count
+    #     (healpix_grid.nside_for_node_count), wavefront-fill the empty pixels, and resolve
+    #     every render query through an `ang2pix` lookup instead of a tree query
+    #     (healpix_grid.build_node_pixel_index / NodePixelIndex). `_classify_terrain_relief`'s
+    #     radius search is excluded (see its own call site in render_image.py) and still uses a
+    #     real `cKDTree` regardless of this flag -- out of scope for issue #133's phase 1.
+    node_cloud_resample_mode: str = "kdtree"
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
     # One stats.compute_stats(self) snapshot per real advance (generate_world, then every
@@ -289,7 +301,10 @@ class World:
     # before erosion has finished mutating it that same step) -- see
     # node_position_tree_cache's own docstring for the piece that *is* safe to share mid-step.
     # Persisted like the other caches but dropped on load (persistence._drop_derived_caches).
-    node_kdtree_cache: tuple[np.ndarray, np.ndarray, np.ndarray, cKDTree] | None = None
+    # The 4th slot is a `cKDTree` under the default "kdtree" node_cloud_resample_mode, or a
+    # `healpix_grid.NodePixelIndex` under "healpix" -- both expose the same `.query()` shape
+    # every caller here actually uses (see render_image._node_cloud_and_tree).
+    node_kdtree_cache: tuple[np.ndarray, np.ndarray, np.ndarray, cKDTree | healpix_grid.NodePixelIndex] | None = None
     # The *positions-only* half of the cache above -- (all_points, cKDTree over them), no
     # elevation/owner -- shared between climate.py's own per-step resample
     # (`_sample_elevation_and_crust`, which runs early in a step, before erosion has finished
@@ -302,6 +317,23 @@ class World:
     # (same invalidation event: a node moved). Persisted like the other caches but dropped on
     # load (persistence._drop_derived_caches).
     node_position_tree_cache: tuple[np.ndarray, cKDTree] | None = None
+    # "healpix" node_cloud_resample_mode's own caches, same invalidation event (a node moved)
+    # as node_kdtree_cache/node_position_tree_cache above, reset alongside them. Split into two
+    # because they vary on different things: the `HealpixGrid` itself (keyed by nside, which
+    # only depends on node *count*) is stable for a world's whole life and only ever rebuilt if
+    # that count actually changes class, while the node-pixel assignment (`NodePixelIndex`, the
+    # scatter+fill result) depends on node *positions* and is rebuilt every step like the
+    # cKDTree caches above. Persisted like the other caches but dropped on load
+    # (persistence._drop_derived_caches).
+    node_healpix_grid_cache: tuple[int, healpix_grid.HealpixGrid] | None = None
+    node_healpix_index_cache: healpix_grid.NodePixelIndex | None = None
+    # `_classify_terrain_relief`'s own radius-search tree (see its call site in
+    # render_image._render_grid_arrays) -- only ever built under "healpix" node_cloud_resample_
+    # mode, since the default "kdtree" mode already has a real cKDTree in node_kdtree_cache's
+    # 4th slot. `query_ball_point` has no HEALPix-pixel-index equivalent (issue #133 excludes
+    # this call from scope), so this is a real `cKDTree`, built lazily only when the Elevation
+    # view's relief toggles are on. Reset alongside the caches above.
+    node_kdtree_relief_cache: cKDTree | None = None
     # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
@@ -709,6 +741,8 @@ def step_world(world: World, years: float) -> None:
     # separately, inside the simulate_climate_biomes block, since only that path reads it.)
     world.node_kdtree_cache = None
     world.node_position_tree_cache = None
+    world.node_healpix_index_cache = None
+    world.node_kdtree_relief_cache = None
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)

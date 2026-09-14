@@ -110,3 +110,126 @@ def test_resample_round_trip_preserves_smooth_field():
     back = healpix_grid.resample_to_equirect(grid, field_pix, height, width)
     correlation = np.corrcoef(field_hw.ravel(), back.ravel())[0, 1]
     assert correlation > 0.98
+
+
+# -- Issue #133 phase 1: node-cloud scatter/fill/query plumbing -------------------------------
+
+
+def test_nside_for_node_count_matches_phase0_spike_ratio():
+    """Phase-0's own spike used nside=128 (npix=196,608) for ~130.6K nodes -- the chooser
+    should reproduce that exact choice at that node count, not just "some" power of 2."""
+    assert healpix_grid.nside_for_node_count(130_587) == 128
+
+
+def test_nside_for_node_count_handles_small_and_zero_counts():
+    # Never below nside=1 (the smallest valid HEALPix grid), even for a tiny or empty node cloud.
+    assert healpix_grid.nside_for_node_count(0) >= 1
+    assert healpix_grid.nside_for_node_count(1) >= 1
+    assert healpix_grid.nside_for_node_count(5) >= 1
+
+
+def test_scatter_node_indices_leaves_most_pixels_occupied_or_tracks_collisions():
+    grid = healpix_grid.build(16)
+    # One node placed exactly at pixel 0's own center: must win that pixel outright.
+    node_xyz = grid.world_xyz[[0]]
+    pixel_to_node = healpix_grid.scatter_node_indices(grid, node_xyz)
+    assert pixel_to_node[0] == 0
+    assert np.sum(pixel_to_node != -1) == 1  # the other 3071 pixels have no node at all
+
+
+def test_scatter_node_indices_tie_break_is_nearest_to_pixel_center():
+    """Two nodes landing in the same pixel: the *nearer* one to that pixel's own center must
+    win, regardless of which one appears first/last in `node_xyz` -- the scatter has to be
+    independent of node/plate iteration order, not "first node wins" or "last node wins"."""
+    grid = healpix_grid.build(16)
+    center = grid.world_xyz[0]
+    # A tiny eastward nudge for both, one twice as far as the other -- both still land in
+    # pixel 0 at this nside (pixel extent is far larger than either nudge).
+    east = grid.east[0]
+    near = center + east * 1e-4
+    near /= np.linalg.norm(near)
+    far = center + east * 5e-4
+    far /= np.linalg.norm(far)
+
+    # Order A: near node first.
+    pixel_to_node = healpix_grid.scatter_node_indices(grid, np.stack([near, far]))
+    assert pixel_to_node[0] == 0
+    # Order B: far node first -- same winner (the nearer one), proving this isn't "first wins".
+    pixel_to_node_reversed = healpix_grid.scatter_node_indices(grid, np.stack([far, near]))
+    assert pixel_to_node_reversed[0] == 1
+
+
+def test_wavefront_fill_leaves_no_pixel_empty_and_is_deterministic():
+    grid = healpix_grid.build(16)
+    rng = np.random.default_rng(0)
+    xyz = rng.normal(size=(400, 3))
+    xyz /= np.linalg.norm(xyz, axis=1, keepdims=True)
+    pixel_to_node = healpix_grid.scatter_node_indices(grid, xyz)
+    assert np.any(pixel_to_node == -1)  # a real, non-trivial fill case
+
+    filled_a, rounds_a = healpix_grid._wavefront_fill(grid, pixel_to_node.copy())
+    filled_b, rounds_b = healpix_grid._wavefront_fill(grid, pixel_to_node.copy())
+    assert not np.any(filled_a == -1)
+    assert rounds_a == rounds_b
+    assert np.array_equal(filled_a, filled_b)
+    # Every originally scatter-assigned pixel must keep its own value -- filling must never
+    # overwrite a real assignment.
+    assigned = pixel_to_node != -1
+    assert np.array_equal(filled_a[assigned], pixel_to_node[assigned])
+
+
+def test_wavefront_fill_round_breaks_ties_by_lowest_neighbour_slot():
+    """Pins the exact tie-break convention (lowest neighbour-slot index wins when more than
+    one neighbour is already filled in the same round) rather than leaving it an implementation
+    detail -- a reviewer-visible contract, and a regression guard against silently flipping to
+    "last slot wins" (still deterministic, but a different answer) while refactoring the kernel."""
+    grid = healpix_grid.build(16)
+    pix = 0
+    current = np.full(grid.npix, -1, dtype=np.int64)
+    valid_slots = np.flatnonzero(grid.neighbour_valid[pix])
+    assert len(valid_slots) >= 2  # nside=16 pixel 0 should have its full 8 neighbours
+    first_valid, second_valid = valid_slots[0], valid_slots[1]
+    current[grid.neighbours[pix, first_valid]] = 111
+    current[grid.neighbours[pix, second_valid]] = 222
+    next_buf = np.empty_like(current)
+    healpix_grid._wavefront_fill_round(grid.neighbours, grid.neighbour_valid, current, next_buf)
+    assert next_buf[pix] == 111
+
+
+def test_wavefront_fill_round_real_grid_shapes_no_crash():
+    """A plain shape-regression guard for the njit kernel -- run it against real, correctly-
+    shaped tiny grids (not hand-typed dummy arrays), the thing phase-0's own spike got wrong
+    (a shape-mismatched dummy array segfaulted silently instead of raising)."""
+    for nside in (1, 2):
+        grid = healpix_grid.build(nside)
+        current = np.full(grid.npix, -1, dtype=np.int64)
+        current[0] = 0
+        next_buf = np.empty_like(current)
+        healpix_grid._wavefront_fill_round(grid.neighbours, grid.neighbour_valid, current, next_buf)
+        assert next_buf.shape == (grid.npix,)
+
+
+def test_build_node_pixel_index_query_matches_cktree_for_nodes_that_own_their_pixel():
+    """For a node that's the nearest node to its *own* assigned pixel, `NodePixelIndex.query`
+    must recover that exact node when queried at its own position -- the one case where the
+    HEALPix path and a true nearest-neighbour tree are guaranteed to agree exactly."""
+    from scipy.spatial import cKDTree
+
+    grid = healpix_grid.build(16)
+    rng = np.random.default_rng(1)
+    xyz = rng.normal(size=(500, 3))
+    xyz /= np.linalg.norm(xyz, axis=1, keepdims=True)
+
+    index = healpix_grid.build_node_pixel_index(grid, xyz)
+    assert not np.any(index.pixel_to_node == -1)
+
+    pix = grid.ang2pix(np.arctan2(xyz[:, 1], xyz[:, 0]), np.arcsin(xyz[:, 2]))
+    owns_own_pixel = index.pixel_to_node[pix] == np.arange(len(xyz))
+    assert owns_own_pixel.sum() > len(xyz) // 2  # most nodes should, at this node-to-pixel ratio
+
+    _, idx = index.query(xyz[owns_own_pixel])
+    assert np.array_equal(idx, np.arange(len(xyz))[owns_own_pixel])
+
+    tree = cKDTree(xyz)
+    _, tree_idx = tree.query(xyz[owns_own_pixel])
+    assert np.array_equal(idx, tree_idx)

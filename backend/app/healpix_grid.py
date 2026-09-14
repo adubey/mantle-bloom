@@ -12,6 +12,7 @@ to get subtly wrong at base-pixel boundaries.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import astropy.units as u
@@ -269,3 +270,139 @@ def resample_to_equirect(grid: HealpixGrid, field_pix: np.ndarray, height: int, 
     lat_grid, lon_grid = np.meshgrid(np.radians(lat_deg), np.radians(lon_deg), indexing="ij")
     pix = grid.ang2pix(lon_grid.ravel(), lat_grid.ravel())
     return field_pix[pix].reshape(height, width)
+
+
+# Issue #133 phase 1: an optional HEALPix-backed drop-in for render_image._node_cloud_and_tree's
+# `cKDTree(all_points).query(...)` resample, gated by World.node_cloud_resample_mode. Unlike
+# `resample_to_equirect` above (an existing field *value* living on HEALPix pixels, looked up
+# by query point), this scatters a *moving node cloud* onto HEALPix pixels -- the direction
+# nothing in this module did before phase 0's spike. See docs/profiling.md's "Item 4" section
+# for the full design writeup and phase-0's own measurements this builds on.
+NODE_CLOUD_RESAMPLE_MODE_CHOICES = ("kdtree", "healpix")
+
+# Phase-0's spike found 2-4 rounds typical (~35% of pixels empty before fill, closed to 0% by
+# round 4) -- this is a generous safety margin, not a tuned budget. Hitting it is a real bug
+# (the node cloud failing to reach every pixel via the neighbour graph), not a slow-but-fine
+# case, so _wavefront_fill raises rather than silently returning unfilled (-1) pixels, which
+# would otherwise index out of bounds wherever NodePixelIndex.query's result is used downstream.
+MAX_FILL_ROUNDS = 64
+
+
+def nside_for_node_count(n: int) -> int:
+    """A power-of-2 `nside` sized to the node count `n`, not to a density label the way
+    `nside_for_density`/`NSIDE_CHOICES` size the (unrelated) CFD grid -- picks whichever of the
+    two powers of 2 bracketing `sqrt(n/12)` gives an `npix` closer to `n`. Phase-0's spike used
+    nside=128 (npix=196,608) for ~130.6K nodes, a ~1.5x ratio this reproduces exactly at that
+    node count."""
+    raw = math.sqrt(max(n, 1) / 12.0)
+    low_order = max(int(math.floor(math.log2(max(raw, 1.0)))), 0)
+    low = 2**low_order
+    high = low * 2
+    return low if abs(12 * low * low - n) <= abs(12 * high * high - n) else high
+
+
+def scatter_node_indices(grid: HealpixGrid, node_xyz: np.ndarray) -> np.ndarray:
+    """Assigns each HEALPix pixel the index (into `node_xyz`) of its nearest node, `-1` where
+    no node lands in that pixel. Tie-break for pixels more than one node maps to: nearest to
+    the pixel's own center (squared xyz distance, monotonic with angular distance on the unit
+    sphere so no trig is needed) -- matches today's `cKDTree` nearest-node semantics most
+    closely, and is deterministic regardless of node/plate iteration order (unlike e.g. "last
+    node in plate order"). Implemented via a single combined sort rather than a per-pixel
+    Python loop: `np.lexsort` orders every node by `(pixel, distance-to-that-pixel's-center)`,
+    so the first node in that order for each occupied pixel is exactly the nearest one."""
+    node_xyz = np.ascontiguousarray(node_xyz, dtype=np.float64)
+    lon_rad = np.arctan2(node_xyz[:, 1], node_xyz[:, 0])
+    lat_rad = np.arcsin(np.clip(node_xyz[:, 2], -1.0, 1.0))
+    pix = grid.ang2pix(lon_rad, lat_rad)
+    delta = node_xyz - grid.world_xyz[pix]
+    dist2 = np.einsum("ij,ij->i", delta, delta)
+    order = np.lexsort((dist2, pix))  # primary key pix, secondary dist2 -- both ascending
+    sorted_pix = pix[order]
+    occupied_pix, first_occurrence = np.unique(sorted_pix, return_index=True)
+    pixel_to_node = np.full(grid.npix, -1, dtype=np.int64)
+    pixel_to_node[occupied_pix] = order[first_occurrence]
+    return pixel_to_node
+
+
+@njit(**_NUMBA_JIT_KWARGS)
+def _wavefront_fill_round(neighbours: np.ndarray, neighbour_valid: np.ndarray, current: np.ndarray, next_buf: np.ndarray) -> None:
+    """One round of a multi-source wavefront fill: every already-filled pixel keeps its value;
+    every still-empty pixel copies the *first* (lowest neighbour-slot index) already-filled
+    neighbour's value, or stays empty if none of its neighbours are filled yet. Reads only
+    `current` (this round's fixed snapshot) and writes only `next_buf` -- each `prange`
+    iteration owns exactly one output slot and never reads a value written earlier in the same
+    round, so this is deterministic regardless of how numba schedules the loop across threads
+    (the same double-buffered shape `fluid_dynamics_healpix.py`'s one-hop kernels already use
+    over this same `(npix, 8)` neighbour table)."""
+    npix = current.shape[0]
+    for i in prange(npix):
+        if current[i] != -1:
+            next_buf[i] = current[i]
+            continue
+        filled_value = -1
+        for k in range(8):
+            if neighbour_valid[i, k]:
+                neighbour_value = current[neighbours[i, k]]
+                if neighbour_value != -1:
+                    filled_value = neighbour_value
+                    break
+        next_buf[i] = filled_value
+
+
+def _wavefront_fill(grid: HealpixGrid, pixel_to_node: np.ndarray) -> tuple[np.ndarray, int]:
+    """Repeatedly applies `_wavefront_fill_round` until every pixel is filled, returning the
+    filled `(npix,)` array and the round count actually used. Raises if the fill stalls (some
+    pixels never reachable via the neighbour graph from any scatter-assigned pixel) or exceeds
+    `MAX_FILL_ROUNDS` -- either would mean a `-1` silently flowing into `NodePixelIndex.query`'s
+    result, which downstream code would then use as a real (and very wrong) array index."""
+    current = pixel_to_node
+    for round_idx in range(1, MAX_FILL_ROUNDS + 1):
+        if not np.any(current == -1):
+            return current, round_idx - 1
+        next_buf = np.empty_like(current)
+        _wavefront_fill_round(grid.neighbours, grid.neighbour_valid, current, next_buf)
+        if np.array_equal(next_buf, current):
+            remaining = int(np.sum(next_buf == -1))
+            raise RuntimeError(
+                f"HEALPix wavefront fill stalled after {round_idx} round(s) with {remaining} "
+                "empty pixel(s) unreachable from any scatter-assigned pixel via the neighbour "
+                "graph -- expected to always converge (plates tile the whole globe by "
+                "construction, see issue #133's phase-0 spike)."
+            )
+        current = next_buf
+    remaining = int(np.sum(current == -1))
+    raise RuntimeError(f"HEALPix wavefront fill did not converge within {MAX_FILL_ROUNDS} rounds ({remaining} pixels still empty)")
+
+
+@dataclass
+class NodePixelIndex:
+    """A `cKDTree`-`.query()`-compatible nearest-node index backed by a HEALPix scatter+fill
+    instead of a tree query -- see `build_node_pixel_index`. `pixel_to_node` is fully filled
+    (no `-1` left) by the time this is constructed."""
+
+    grid: HealpixGrid
+    pixel_to_node: np.ndarray  # (npix,) int64, indices into whatever point cloud built this
+    fill_rounds_used: int
+
+    def query(self, points_xyz: np.ndarray, workers: int | None = None) -> tuple[None, np.ndarray]:
+        """Matches `cKDTree.query`'s `(distances, indices)` return shape -- `None` in place of
+        distances, since no caller of `render_image._node_cloud_and_tree` actually consumes
+        them (every real call site does `_, idx = tree.query(...)`). `workers` is accepted and
+        ignored: `ang2pix` is already a parallel njit kernel internally, with no separate
+        per-call worker count to tune."""
+        points_xyz = np.ascontiguousarray(points_xyz, dtype=np.float64)
+        lon_rad = np.arctan2(points_xyz[:, 1], points_xyz[:, 0])
+        lat_rad = np.arcsin(np.clip(points_xyz[:, 2], -1.0, 1.0))
+        pix = self.grid.ang2pix(lon_rad, lat_rad)
+        return None, self.pixel_to_node[pix]
+
+
+def build_node_pixel_index(grid: HealpixGrid, node_xyz: np.ndarray) -> NodePixelIndex:
+    """Scatter + wavefront-fill `node_xyz` onto `grid`, returning a ready-to-query
+    `NodePixelIndex`. `grid` should be sized via `nside_for_node_count(len(node_xyz))` --
+    passed in rather than built here since the grid itself (a pure function of `nside`) is
+    meant to be cached separately from this per-step scatter+fill result (see
+    `World.node_healpix_grid_cache` vs. `World.node_healpix_index_cache`)."""
+    pixel_to_node = scatter_node_indices(grid, node_xyz)
+    filled, rounds_used = _wavefront_fill(grid, pixel_to_node)
+    return NodePixelIndex(grid=grid, pixel_to_node=filled, fill_rounds_used=rounds_used)
