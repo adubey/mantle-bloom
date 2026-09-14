@@ -350,7 +350,7 @@ BEACH_DEPOSITION_RANGE_RAD = BEACH_DEPOSITION_RANGE_KM / PLANET_RADIUS_KM
 BEACH_SHELF_DEPTH_M = -200.0
 BEACH_SPREAD_NEIGHBOR_COUNT = 8
 
-# Coastal leveling feedback (mantle-bloom-original -- see docs/TODO.md "Speckled low-relief
+# Coastal leveling feedback (mantle-bloom-original -- see GitHub issue #122, "Speckled low-relief
 # coastlines"). Every source above is either purely subaerial or purely submarine, and none
 # of them look at coastal *connectivity*: a marginally-submerged flat continental shelf
 # sitting right on the waterline is a stable fixed point that just dithers land<->ocean
@@ -536,7 +536,7 @@ class ErosionResult:
     net-raised it). Retained on `World.erosion_cache` for the Geomorph Rate debug view
     (`render_image._render_geomorph_view`) -- the lumpiness of near-sea-level deposition (a
     +200 m spike on one node, ~0 on its neighbour) is invisible in every other view but is
-    the whole coastal-speckle mechanism (see docs/TODO.md).
+    the whole coastal-speckle mechanism (see GitHub issue #122).
 
     `is_river_depositing` is exactly the mask DEPOSITION_SPEED_THRESHOLD/DEPOSITION_MIN_FLOW_M
     already select internally -- "a big, slow river is actively settling its sediment load
@@ -1387,7 +1387,7 @@ def apply_erosion(
     # its own, never told isostasy: `elevation` used to absorb the whole change, drifting
     # ever further below isostatic_elevation(Hc, Hm) as coastal + submarine erosion shipped
     # continental crust off to the abyss with no rebound -- which planed every continent flat
-    # over a few hundred Myr once orogeny slowed (docs/TODO.md "Land fraction slowly
+    # over a few hundred Myr once orogeny slowed (GitHub issue #120, "Land fraction slowly
     # declines"). Now the full rock-column change books against Hc and `elevation` moves by
     # exactly the resulting Airy response -- so the unloaded crustal root rebounds (only
     # ~1/6 of subaerial erosion, ~1/4 of submarine, survives as a surface drop) and a

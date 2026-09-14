@@ -7,7 +7,7 @@ recomputing that one number each step: tectonics deepens ocean basins (sea-floor
 subduction) and thins/drowns continental crust, erosion planes highlands into the sea -- all
 of which change how much basin volume the same water fills, hence where the shoreline sits.
 Without this, a fixed sea level means every bit of continental subsidence or new deep ocean
-floor is a permanent, uncompensated loss of dry land (docs/TODO.md "Land fraction slowly
+floor is a permanent, uncompensated loss of dry land (GitHub issue #120, "Land fraction slowly
 declines"): on the real Earth, opening an ocean basin drops sea level and hands that land
 back as continental freeboard.
 

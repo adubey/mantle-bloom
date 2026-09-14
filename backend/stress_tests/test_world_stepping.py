@@ -138,7 +138,7 @@ def _continental_node_count(world) -> int:
 
 
 def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
-    """The continental boundary ratchet (docs/TODO.md "Continental ratchet: solution design")
+    """The continental boundary ratchet (GitHub issue #119, "Continental ratchet: solution design")
     grows every continental margin at the oceanic reference column and never retreats a
     leading row, so a continental plate's node pile climbs without limit over a long run. The
     volume-budget growth gate (lithosphere_plate.CONTINENTAL_AREA_BUDGET_MULT) suppresses
@@ -166,7 +166,7 @@ def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
 
 def test_coastal_feedback_stays_stable_over_many_steps():
     # A regression floor for the symmetric coastal-leveling feedback (erosion.py), not a tight
-    # bound. The real drowned-shelf checkerboard from docs/TODO.md "Speckled low-relief
+    # bound. The real drowned-shelf checkerboard from GitHub issue #122, "Speckled low-relief
     # coastlines" only bites at node_density=4 (or on the seed-888151728 save) -- too slow for
     # a stress test, and a sudden sea-level jump on a density-1 world just makes a rough
     # newborn coast whose transient roughening swamps the feedback's slow ~My effect. So this

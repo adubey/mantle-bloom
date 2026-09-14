@@ -636,7 +636,7 @@ only ever thinned and drowned, and the stalled multi-plate overlaps the `overlap
 shows (some stuck 100+ Myr) never crumpled into orogens. Recalibrated to `1e17` (a sustained
 ~3 cm/yr collision now sits a few x past yield: Hc doubles over ~45 Myr, the Himalaya/Tibet
 timescale); `backend/unit_tests/test_rheology.py` pins it. See
-[TODO.md](TODO.md#plate-geometry-degrades-on-long-runs-pole-winding-unbounded-overlap-bad-split-siblings).
+[GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119).
 
 **Continental arc magmatism (2026).** `apply_convergent_deformation` is yield-limited plastic
 *shortening* -- it conserves crustal volume, and only bites at the contested contact line (a
@@ -650,7 +650,7 @@ term), fading from the trench inboard and scaled gently by convergence rate. Thi
 mass (from the mantle, not conserved from the neighbour) and is **not** yield-gated. Together
 with the arc-crust growth seed above it is the crust-building answer to "an oceanic plate
 subducting under a continent makes more continent" -- the land-fraction decline's physical
-counterweight (docs/TODO.md "Land fraction slowly declines"). Long-term footprint is still
+counterweight ([GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land fraction slowly declines"). Long-term footprint is still
 bounded by the volume-budget gate. `backend/unit_tests/test_rheology.py` pins the calibration.
 
 Every node's onset year is also stamped onto
@@ -797,7 +797,7 @@ routine per-step motion.
   the plate's split cooldown resets (`reset_age`). A *successful* rift, by contrast, puts
   that whole zone through sustained `apply_divergent_deformation` thinning on both daughters
   and ends in decompression melting -> oceanic crust + permanently drowned passive margins,
-  so failing half of them is a real brake on the land-fraction decline (docs/TODO.md "Land
+  so failing half of them is a real brake on the land-fraction decline ([GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land
   fraction slowly declines"). The probability is tuned to keep the healthy plate-count churn
   the 2026 split-gate loosening produced.
 
@@ -928,7 +928,7 @@ mechanism above is a hard, one-shot rescue: a divergent node thins with *no* mag
 at all the whole way from a full reference column down to `rheology.RIFT_CRITICAL_THICKNESS_M`,
 unlike the convergent side's `apply_convergent_deformation` + `apply_arc_magmatic_thickening`
 pairing (see [arc magmatism](#boundary-evolution)) -- exactly the "over-stretched interiors"
-asymmetry docs/TODO.md's land-fraction investigation flagged.
+asymmetry [GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120)'s land-fraction investigation flagged.
 `rheology.apply_rift_magmatic_thickening` mirrors the arc function for the divergent branch:
 once a node's `Hc` drops below `RIFT_VOLCANISM_ONSET_HC_M` (20 km -- the "sufficient stretching
 introduces melt" stage a real continental rift passes through well before breakup), it adds
@@ -944,7 +944,7 @@ melt-through event above uses, without resetting `Hc`/`Hm`) rather than waiting 
 reset -- see [Volcanism](#volcanism)'s own "Creation" section below. Measured (seed
 926698457, node_density 0.5, climate off, 80 My): land-fraction decline -0.1255 -> -0.1028,
 ~18% slower -- the same order as the other partial counterweights already landed (arc
-accretion ~10%, eustasy ~50%, see docs/TODO.md "Land fraction slowly declines over a long
+accretion ~10%, eustasy ~50%, see [GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land fraction slowly declines over a long
 run"). `backend/unit_tests/test_rheology.py` pins the calibration.
 
 **Triple junctions: a real neighbour, up to CORNER_NOTCH_NEIGHBOUR_REACH_MULT away, is enough
@@ -972,7 +972,7 @@ a real eruption, never a distinct silent "spawn". On the real save that motivate
 fix turns a triple-junction void that grew without bound into one that stays roughly steady
 state as the three plates keep separating -- production genuinely keeping pace with opening,
 though not (yet) shrinking it to nothing; see
-[TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix) for what's still open.
+[GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127) for what's still open.
 
 **Whole-sphere fallback (`gaps.py`'s `fill_gaps`).** Once every plate bordering a stretch of
 open ocean has been fully subducted and removed (`merge_split.remove_defunct_plates`), that
@@ -987,14 +987,14 @@ sea level, and within `gaps.GAP_LAND_ADOPTION_RADIUS_MULT` line-spacings, the ne
 back continental too (`gaps.GAP_LAND_ADOPTION_RADIUS_MULT = 3.0`, hugging a real coastline --
 e.g. a fully-subducted marginal sea landlocked by continent -- not reaching all the way across
 an ocean basin to a far-off continent). Deliberately spawn-only, not absorb-into-a-neighbour,
-to avoid feeding the continental-growth ratchet ([Node-count creep](TODO.md#node-count-creep-
-continental-boundaries-grow-but-never-retreat-2026-09-01-investigation)). The new plate's own
+to avoid feeding the continental-growth ratchet (GitHub issue #119's "Node-count creep"
+section). The new plate's own
 `crust_type` label is the majority of what its nodes actually ended up being (see
 [Per-node crust type](#per-node-crust-type)), not a hardcoded "oceanic" -- it is oceanic in
 practice for all but the rare landlocked case. Known stopgap, not the real fix: the local
 thinning-then-melting mechanism above should, over time, make this whole-sphere sweep an
 increasingly rare fallback rather than a routine occurrence -- see `gaps.py`'s own module
-docstring and [TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix).
+docstring and [GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127).
 
 <a id="frontier-gap-fill"></a>
 ### Frontier gap-fill: the default at both sites since 2026-09-09 (`gap_fill_frontier.py`)
@@ -1029,11 +1029,11 @@ This is a real behavioral departure from `"windowed"`, not just a faster impleme
 same thing: at the whole-sphere site in particular, it grows a plate's own existing territory
 into a vacated region instead of spawning a new plate -- exactly the "absorb into a dominant
 bordering plate" behaviour `fill_gaps`'s own module docstring says it deliberately avoids (see
-that docstring, and [TODO.md](TODO.md#gaps-pys-plate-spawn-is-a-stopgap-not-the-real-fix)).
+that docstring, and [GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127)).
 Falls back to spawning a plate (`gaps._spawn_plate_from_gap`, unchanged) only when a cluster
 has no adjacent plate at all -- a genuinely isolated void with nothing nearby to grow, the one
 case both algorithms still handle identically. Promoted from opt-in to the default on
-2026-09-09 after comparing both on every Debugging Worlds scenario (`docs/TODO.md`'s
+2026-09-09 after comparing both on every Debugging Worlds scenario (GitHub issue #127's
 frontier-gap-fill addendum has the numbers): consistently fewer, longer lines per plate and far
 fewer stalled (`hop_no_progress`/`no_claim`) corner-notch calls than `"windowed"`. That
 comparison covered only the small hand-scripted scenarios plus one synthetic whole-sphere
@@ -1266,7 +1266,7 @@ free -- the same "attached to the crust, not the world" property every persisten
 - **strike-slip** -- a modest always-on transpressional ridge (`STRIKE_SLIP_RIDGE_M_PER_MYR`,
   70) plus a `strike_sense`-signed restraining-uplift / releasing-sag term
   (`STRIKE_SLIP_BEND_M_PER_MYR`, 130). The node field is *not* physically sheared across the
-  trace -- relief only (see `docs/TODO.md`).
+  trace -- relief only (see [GitHub issue #125](https://github.com/adubey/mantle-bloom/issues/125)).
 
 All rates are kept well below `deform()`'s boundary rates (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
 = 800) so this additive layer doesn't disturb long-run hypsometry tuning. The affected nodes'
@@ -1659,7 +1659,7 @@ deliberately-adversarial test documenting current (imperfect but non-crashing) b
 rather than leaving it silently untested.
 
 **The selected-plate panel also reports motion and shape-health diagnostics** (added
-2026-08-31, from the long-run plate-geometry investigation in `docs/TODO.md`): the plate's
+2026-08-31, from the long-run plate-geometry investigation in [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119)): the plate's
 surface speed in cm/yr and whether it is railed at `mantle.MAX_PLATE_RATE`, its Euler pole,
 its age in steps, its median node elevation and submerged fraction (flagged when a
 continental plate is mostly under water), the other plates its territory currently overlaps
@@ -2146,7 +2146,7 @@ the land biome map** and precipitation/temperature **within ~8-11%**, while cutt
 12-step run from ~42 s to ~7 s (**~6x**) at that resolution -- the CFD substep loop itself
 is ~15x, diluted by the rest of a step's fixed cost, and the multiple grows with
 `fluid_density` (closer to ~1.5x at `0.5`). The residual gap is almost entirely the
-air-temperature field's missing advective/diffusive structure -- see `TODO.md` for the
+air-temperature field's missing advective/diffusive structure -- see [GitHub issue #118](https://github.com/adubey/mantle-bloom/issues/118) for the
 options to close it.
 
 **Rendering.** The `"wind"` and `"temperature"` map views normally draw
@@ -2598,7 +2598,7 @@ changes (see [Isostasy](#isostasy)). An unloaded crustal root rebounds and a sed
 subsides under its own weight, so only ~1/6 of subaerial erosion and ~1/4 of submarine
 erosion shows up as a surface elevation change; the rest is isostatic. Without this,
 coastal + submarine erosion exporting continental crust to the deep ocean planed every
-continent flat over a few hundred Myr once orogeny slowed (`docs/TODO.md`); with it, `elevation`
+continent flat over a few hundred Myr once orogeny slowed ([GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120)); with it, `elevation`
 also stays a faithful readout of `isostatic_elevation(Hc, Hm)` between tectonic events rather
 than drifting away from it.
 
@@ -2705,7 +2705,7 @@ the bracket `[min z, max z + headroom]` always contains exactly one root.
 Measured (seed 926698457, node_density 0.5, climate off, 100 My): the land-fraction decline
 roughly halves against a fixed sea level (~-0.025 vs ~-0.052), and the trajectory changes
 from monotonic decline to a slight rise then a slow decline as sea level tracks the basins
-down (to roughly -150 to -300 m over the run). See docs/TODO.md "Land fraction slowly
+down (to roughly -150 to -300 m over the run). See [GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land fraction slowly
 declines".
 
 <a id="tuning-knobs"></a>

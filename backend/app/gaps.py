@@ -10,7 +10,7 @@ closes it. But once every oceanic plate bordering a stretch of open ocean has be
 down by subduction and fully removed (see `merge_split.remove_defunct_plates`), the sphere
 area it used to occupy has no plate left anywhere near it -- there is nothing there to grow,
 so it just stays empty forever. Confirmed on a 399 My / node_density=4 save (seed 920135003,
-see docs/TODO.md's "Very-long-run collapse" section): ~42% of the sphere had zero elevation
+see GitHub issue #126's "Very-long-run collapse" section): ~42% of the sphere had zero elevation
 nodes, all of it sphere area no live plate's lines reached.
 
 This module finds those genuinely-uncovered regions periodically (same cadence as
@@ -18,7 +18,7 @@ This module finds those genuinely-uncovered regions periodically (same cadence a
 each big-enough one with a brand-new plate. It deliberately does *not* try to instead grow an
 existing neighbouring plate into the gap -- besides needing a partition/absorption scheme of
 its own (the pre-refactor `gaps.py` this replaces did that too, "if bordered mainly by one
-plate, absorb it into that plate," never ported to this engine -- see docs/TODO.md), handing
+plate, absorb it into that plate," never ported to this engine -- see GitHub issue #119), handing
 a large freshly-vacated region to whichever plate happens to be nearest would feed exactly
 the continental-growth ratchet already tracked there. A brand-new plate is neutral: it can
 still merge, subduct, or get absorbed by ordinary boundary growth like any other plate once
@@ -32,7 +32,7 @@ landlocked by continent -- comes back continental instead (see `_spawn_plate_fro
 actually ended up with (`elevation_lines.majority_crust_type`), so it is oceanic in practice
 for all but that rare landlocked case.
 
-Known stopgap, not the real fix -- see docs/TODO.md ("`gaps.py`'s plate-spawn is a stopgap,
+Known stopgap, not the real fix -- see GitHub issue #127 ("`gaps.py`'s plate-spawn is a stopgap,
 not the real fix"): conjuring a whole fully-formed plate into existence after the fact isn't
 how new ocean floor actually forms (continuous mid-ocean-ridge spreading off an existing
 plate's own divergent edge is). The real fix is upstream, in `deform()`'s own per-step

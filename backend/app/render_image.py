@@ -55,7 +55,7 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # "geomorph" is also node-cloud-derived, but from last step's erosion breakdown
 # (World.erosion_cache) rather than any persistent plate field -- its own dispatch branch
 # (_render_geomorph_view), a debug view for the per-step erosion/deposition lumpiness that's
-# invisible in every other view (see docs/TODO.md / docs/debugging.md).
+# invisible in every other view (see GitHub issue #123 / docs/debugging.md).
 # "elevReason" is node-cloud-derived from a persistent per-node field
 # (ElevationLine.elev_change_reason -- the ELEV_CHANGE_* code for whatever process last moved
 # that node's elevation past elevation_lines.ELEV_CHANGE_MIN_DELTA_M), its own dispatch
@@ -426,7 +426,7 @@ _PRECIPITATION_STOP_RGB = np.array(
 # net-lowered a node (degradation), cool/blue where it net-raised one (aggradation), a flat
 # near-neutral grey in the +-few-metre band so only the lumps stand out. Keyed in metres per
 # step; +-60 m spans the p10/p90 of the near-sea-level checkerboard band the view exists to
-# expose (see docs/TODO.md), with everything past that clamped to the end stops.
+# expose (see GitHub issue #122), with everything past that clamped to the end stops.
 _GEOMORPH_STOP_M = np.array([-60.0, -20.0, -4.0, 0.0, 4.0, 20.0, 60.0], dtype=float)
 _GEOMORPH_STOP_RGB = np.array(
     [
@@ -695,7 +695,7 @@ def _node_cloud_and_tree(world: World):
 # regardless of World.node_density -- a fixed k of nearest neighbours would cover a much
 # smaller real neighbourhood at high density than at low, silently changing what "mountain"
 # means between two otherwise-identical worlds. Threshold picked by sampling the relief
-# distribution this produces on a long-run save (docs/TODO.md "Land fraction slowly
+# distribution this produces on a long-run save (GitHub issue #120, "Land fraction slowly
 # declines"): land relief over a 50 km neighbourhood is overwhelmingly near 0 (most land is
 # genuinely flat at this scale) with a clearly separated rugged tail, and the resulting
 # mountain share is fairly insensitive to the exact cutoff across a wide range around it.
@@ -2041,7 +2041,7 @@ def _render_geomorph_view(world: World, projection: str, width: int, height: int
     the diverging geomorph_colors scale (warm = the step net-lowered this node, cool = it
     net-raised it). The point of the view is that per-step deposition in the near-sea-level
     band is wildly lumpy -- a +200 m spike on one node, ~0 on its neighbour -- which drives
-    the coastal checkerboard but is invisible in every other view (see docs/TODO.md).
+    the coastal checkerboard but is invisible in every other view (see GitHub issue #122).
 
     erosion_cache is None until the world has been stepped once with climate & biomes on (and
     on a freshly loaded save, which doesn't persist it) -- then this draws a flat neutral

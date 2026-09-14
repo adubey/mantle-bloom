@@ -25,7 +25,7 @@ classification (`LithospherePlate.deform`). Each step it
 3. applies each active fault's own relief to the nearby crust -- reverse: an uplift ridge;
    normal: a hanging-wall graben with a footwall shoulder; strike-slip: a modest
    transpressional ridge or transtensional sag (relief only -- the node field is *not*
-   physically sheared across the trace, see docs/TODO.md);
+   physically sheared across the trace, see GitHub issue #125);
 4. rolls each active fault's **earthquakes** for the step (`_generate_earthquakes`): a
    Poisson count from `slip_rate * dt / CHARACTERISTIC_SLIP_PER_QUAKE_M`, each a transient
    located `Earthquake` (magnitude from trace length + slip rate) appended to
@@ -106,7 +106,7 @@ SPAWN_PLACE_INTERIOR_FLOOR = 0.004
 
 # Segment length: lognormal, a few km to ~200 km. NOTE: this (and the fault-set spread
 # below) is known to be far too short -- real faults run to ~1300 km and fault *systems* to
-# ~5500 km. See docs/TODO.md "Intraplate faults: follow-ups" item 1.
+# ~5500 km. See GitHub issue #125, "Intraplate faults: follow-ups" item 1.
 LENGTH_MEDIAN_KM = 45.0
 LENGTH_SIGMA = 0.6
 LENGTH_MIN_KM = 12.0

@@ -16,7 +16,7 @@ def stepped_world():
 
 
 def test_clean_tiling_estimate_matches_the_known_density_4_figure():
-    # docs/TODO.md records ~130k for a clean tiling at node_density 4, ~32.6k at 1x.
+    # GitHub issue #119 records ~130k for a clean tiling at node_density 4, ~32.6k at 1x.
     assert clean_tiling_node_estimate(4.0) == pytest.approx(130_000, rel=0.02)
     assert clean_tiling_node_estimate(1.0) == pytest.approx(32_600, rel=0.02)
 
