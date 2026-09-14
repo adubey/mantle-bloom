@@ -136,6 +136,19 @@ SPLIT_MIN_AGE_STEPS = 20
 # freshly-generated plate within the first ~30 Myr (they all start near radius 1.3-1.5).
 SPLIT_SIZE_CERTAIN_RIFT_RAD = 2.2
 
+# maybe_split_plate's k-means call below clusters purely on velocity, so a node whose local
+# mantle-flow sample is merely noisy relative to its true regime can land in the "wrong"
+# cluster even while sitting deep inside one spatial half -- fitting a daughter's Euler pole
+# straight from those labels then fits it from a body spatially intermingled with the other
+# daughter's, and `centroid_a - centroid_b` (the great-circle cut plate.split() actually uses)
+# ends up a poor separator too (GH #119: disjoint daughters drifting back over each other,
+# poles fit far from the daughter body). _refine_split_cut alternates "refit the great circle
+# from the current halves' position centroids" / "resort every node to whichever side of that
+# circle it's actually on" -- a spatially-contiguous cut by construction -- until it converges;
+# this many rounds is comfortably more than a genuinely bimodal field needs (2-3 in practice)
+# without looping long on a field that never separates cleanly.
+SPLIT_CUT_REFINE_ITERS = 5
+
 # --- Accumulated breakup stress (Plate.internal_stress) -----------------------------------
 #
 # SPLIT_SIZE_CERTAIN_RIFT_RAD above already relaxes the split gates by a plate's *current*
@@ -509,6 +522,36 @@ def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndar
     return float(np.sqrt(np.mean(np.sum((predicted - velocities) ** 2, axis=-1))))
 
 
+def _refine_split_cut(points: np.ndarray, mask_a: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    """Turn a raw velocity-space cluster mask into the spatially-contiguous great-circle cut
+    plate.split() will actually use -- see SPLIT_CUT_REFINE_ITERS' own comment for why the raw
+    mask can't be trusted as-is. Returns (mask_a, cut_normal) for the converged cut, or None if
+    a side ever empties out completely (the two velocity clusters were spatially inseparable,
+    with nothing left to refine toward).
+
+    Each round refits the great circle from the *current* halves' position centroids (via
+    geometry.normalize, which -- as ever -- treats a degenerate, ~coincident centroid pair as
+    "no clear separating direction" rather than raising), then resorts every node to whichever
+    side of that circle it's actually on: by construction a spatially-contiguous partition,
+    unlike the raw label mask that seeded it. A round that reproduces the same split it started
+    from has converged."""
+    cut_normal = np.zeros(3)
+    for _ in range(SPLIT_CUT_REFINE_ITERS):
+        if mask_a.sum() == 0 or (~mask_a).sum() == 0:
+            return None
+        centroid_a = geometry.normalize(points[mask_a].mean(axis=0))
+        centroid_b = geometry.normalize(points[~mask_a].mean(axis=0))
+        # The great circle equidistant from two points has normal (a - b): P.a == P.b iff
+        # P.(a-b) == 0.
+        new_cut_normal = geometry.normalize(centroid_a - centroid_b)
+        new_mask_a = np.sum(points * new_cut_normal, axis=-1) > 0
+        converged = np.array_equal(new_mask_a, mask_a)
+        cut_normal, mask_a = new_cut_normal, new_mask_a
+        if converged:
+            break
+    return mask_a, cut_normal
+
+
 def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | None:
     """If a single rigid rotation poorly explains the mantle flow across this plate's
     footprint, cluster the flow into two regimes and, if they're genuinely different, cut
@@ -546,18 +589,16 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     if len(np.unique(labels)) < 2:
         return None
 
-    mask_a = labels == 0
-    mask_b = labels == 1
+    refined = _refine_split_cut(points, labels == 0)
+    if refined is None:
+        return None
+    mask_a, cut_normal = refined
+    mask_b = ~mask_a
+
     pole_a = mantle.fit_euler_pole(points[mask_a], velocities[mask_a])
     pole_b = mantle.fit_euler_pole(points[mask_b], velocities[mask_b])
     if np.linalg.norm(pole_a - pole_b) < pole_separation_threshold:
         return None
-
-    centroid_a = geometry.normalize(points[mask_a].mean(axis=0))
-    centroid_b = geometry.normalize(points[mask_b].mean(axis=0))
-    # The great circle equidistant from two points has normal (a - b): P.a == P.b iff
-    # P.(a-b) == 0.
-    cut_normal = geometry.normalize(centroid_a - centroid_b)
 
     # Peek at next_plate_id without consuming it yet -- plate.split returns None (no id
     # actually used) if either resulting half would be too small, and a rejected split
