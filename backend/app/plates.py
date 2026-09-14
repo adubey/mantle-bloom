@@ -1403,6 +1403,29 @@ def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[Pla
     return points, plates_in_order
 
 
+def cached_node_position_tree(world: "World | None", points: np.ndarray) -> cKDTree:  # noqa: F821
+    """A `cKDTree` over `points` -- this step's full node cloud, as returned by
+    `gather_node_positions` -- shared via `World.node_position_tree_cache` across every
+    caller that runs after this step's shift/deform/topology changes have already settled
+    (see that field's own docstring on `World` for exactly which window that is -- climate.py's
+    `_sample_elevation_and_crust` already established the pattern this generalizes). Every
+    such caller is handed the *same* `points` array this step (the one `world.py`'s
+    `step_world` gathers once via `gather_node_positions` and threads through
+    `climate.compute_climate`/`hydrology.compute_hydrology`/`erosion.apply_erosion`), so
+    whichever of them runs first this step pays the build and every later one reuses it.
+    `world=None` -- a direct unit-test call against a bare points array, not a real step --
+    always builds fresh instead of risking a stale hit against some other test's leftover
+    cache."""
+    if world is None:
+        return cKDTree(points)
+    cached = world.node_position_tree_cache
+    if cached is not None:
+        return cached[1]
+    tree = cKDTree(points)
+    world.node_position_tree_cache = (points, tree)
+    return tree
+
+
 def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
     """Every plate's current elevation-node positions, elevations, and owning plate_id,
     concatenated -- shared by the render grid's nearest-node resample

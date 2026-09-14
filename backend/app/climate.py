@@ -251,18 +251,15 @@ def _sample_elevation_and_crust(
     all_elev = plates.collect_all_elevation(plates_in_order)
     all_lake = plates.collect_all_lake_depth(plates_in_order)
     all_channel = plates.collect_all_channel_depth(plates_in_order)
-    # Positions-only tree, shared with the render path (World.node_position_tree_cache, see its
-    # own docstring and render_image._node_cloud_and_tree): same points, same plate-major
-    # order, same tree, whichever of the two builds it first this step. Deliberately *not*
-    # World.node_kdtree_cache itself -- that one also carries elevation, which erosion.py is
-    # about to mutate later in this same step, so baking this call's (pre-erosion) elevation
-    # into a cache a later render would trust as final would resurface stale terrain.
-    cached = world.node_position_tree_cache
-    if cached is not None:
-        tree = cached[1]
-    else:
-        tree = cKDTree(all_points)
-        world.node_position_tree_cache = (all_points, tree)
+    # Positions-only tree, shared with the render path and with erosion.py/hydrology.py's own
+    # per-step full-node-cloud queries (World.node_position_tree_cache via
+    # plates.cached_node_position_tree -- see its own docstring and
+    # render_image._node_cloud_and_tree): same points, same plate-major order, same tree,
+    # whichever caller builds it first this step. Deliberately *not* World.node_kdtree_cache
+    # itself -- that one also carries elevation, which erosion.py is about to mutate later in
+    # this same step, so baking this call's (pre-erosion) elevation into a cache a later render
+    # would trust as final would resurface stale terrain.
+    tree = plates.cached_node_position_tree(world, all_points)
     _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     elevation = all_elev[idx].reshape(height, width)
     # Connectivity-aware: an enclosed interior depression below sea level is *not* ocean (see

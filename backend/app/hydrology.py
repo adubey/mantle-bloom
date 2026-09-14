@@ -94,6 +94,7 @@ from . import geometry, lakes
 from .elevation_lines import PLANET_RADIUS_KM
 from .plates import (
     Plate,
+    cached_node_position_tree,
     collect_all_channel_depth,
     collect_all_elevation,
     collect_all_glacier_depth,
@@ -390,15 +391,23 @@ def _gather_nodes(
     return points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, plates_in_order
 
 
-def _build_neighbor_graph(points: np.ndarray) -> np.ndarray:
+def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> np.ndarray:
     n = len(points)
     k = min(FLOW_NEIGHBOR_COUNT, n - 1)
-    # balanced_tree=False/compact_nodes=False + query_workers on the query -- same build-
-    # once/query-once tradeoff plates.PlateWithLines.deform's own per-plate tree uses: this
-    # tree is built fresh every step and queried exactly once (one batched k-NN query over
-    # every node at once). Still an exact k-nearest-neighbor search either way -- results
-    # unchanged.
-    tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
+    # `world`, when passed (compute_hydrology's own per-step call does), shares this tree via
+    # plates.cached_node_position_tree with every other per-step full-node-cloud query
+    # (climate.py's own resample, erosion.py's slope/earthquake/wind-deposit queries) instead
+    # of rebuilding an equivalent one from scratch -- see that function's own docstring.
+    # `world=None` (connected_ocean_mask's own fallback build, and direct unit-test calls)
+    # keeps the old balanced_tree=False/compact_nodes=False build -- same build-once/
+    # query-once tradeoff plates.PlateWithLines.deform's own per-plate tree uses: built fresh
+    # and queried exactly once (one batched k-NN query over every node at once). Either way,
+    # an exact k-nearest-neighbor search -- results unchanged.
+    tree = (
+        cached_node_position_tree(world, points)
+        if world is not None
+        else cKDTree(points, balanced_tree=False, compact_nodes=False)
+    )
     _, neighbor_idx = tree.query(points, k=k + 1, workers=query_workers(n))
     return neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
 
@@ -470,6 +479,27 @@ def connected_ocean_mask(
 # mismatch can only ever cause an extra (still-correct) rebuild, never a stale hit.
 _LAST_NEAREST_HYDRO_NODE: tuple[object, object, np.ndarray] | None = None
 
+# The cKDTree half of the cache above, held separately (and keyed on `hydro` alone, not also
+# `query_xyz`) because a *different* query_xyz this same step -- the climate grid, then later
+# the render grid, both resampling the same `hydro.points` -- still shouldn't pay a fresh
+# ~130K-node tree build just because the point above's exact-match cache misses on
+# `query_xyz`. Not stored as a field on `HydrologyFields` itself: `World.hydrology_cache` is
+# part of the pickled save-file object graph (see persistence.py), so a tree living there
+# would round-trip through every save/load for no benefit -- a plain module global, like
+# `_LAST_NEAREST_HYDRO_NODE` above, never enters that graph at all. Same identity-keyed,
+# worst-case-is-an-extra-rebuild safety as that cache.
+_LAST_OCEAN_TREE: tuple[object, cKDTree] | None = None
+
+
+def _ocean_node_tree(hydro: "HydrologyFields") -> cKDTree:
+    global _LAST_OCEAN_TREE
+    cached = _LAST_OCEAN_TREE
+    if cached is not None and cached[0] is hydro:
+        return cached[1]
+    tree = cKDTree(hydro.points)
+    _LAST_OCEAN_TREE = (hydro, tree)
+    return tree
+
 
 def _nearest_hydro_node_idx(hydro: "HydrologyFields", query_xyz: np.ndarray) -> np.ndarray:
     global _LAST_NEAREST_HYDRO_NODE
@@ -477,7 +507,7 @@ def _nearest_hydro_node_idx(hydro: "HydrologyFields", query_xyz: np.ndarray) -> 
     if cached is not None and cached[0] is hydro and cached[1] is query_xyz:
         return cached[2]
     flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
-    _, idx = cKDTree(hydro.points).query(flat_xyz, workers=query_workers(len(flat_xyz)))
+    _, idx = _ocean_node_tree(hydro).query(flat_xyz, workers=query_workers(len(flat_xyz)))
     _LAST_NEAREST_HYDRO_NODE = (hydro, query_xyz, idx)
     return idx
 
@@ -851,7 +881,7 @@ def compute_hydrology(
             silt_depth=prev_silt_depth, silt_deposited=np.zeros(n), ice_flow_target=empty_i,
         )
 
-    neighbor_idx = _build_neighbor_graph(points)
+    neighbor_idx = _build_neighbor_graph(points, world=world)
     # `is_ocean` from _gather_nodes is the bare `elevation <= sea_level` test; refine it to
     # "below sea level *and* connected to the world ocean" now that the k-NN graph exists, so an
     # enclosed interior depression that dipped below sea level is routed/pooled/silted as an

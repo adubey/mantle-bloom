@@ -92,6 +92,7 @@ from .elevation_lines import (
 )
 from .plates import (
     Plate,
+    cached_node_position_tree,
     collect_all_channel_depth,
     collect_all_channel_width,
     collect_all_crustal_thickness,
@@ -593,7 +594,7 @@ def _earthquake_erosion_multiplier(world: "World", points: np.ndarray) -> np.nda
     boost = np.zeros(len(points))
     retain_years = faults.EARTHQUAKE_RETAIN_MYR * 1_000_000.0
     epicentres = np.array([q.epicenter_world for q in quakes])
-    tree = cKDTree(points)
+    tree = cached_node_position_tree(world, points)
     for q, epi in zip(quakes, epicentres):
         recency = np.clip(1.0 - (world.elapsed_years - q.birth_years) / max(retain_years, 1.0), 0.0, 1.0)
         if recency <= 0.0:
@@ -610,7 +611,7 @@ def _earthquake_erosion_multiplier(world: "World", points: np.ndarray) -> np.nda
     return 1.0 + boost
 
 
-def compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def compute_slope(points: np.ndarray, elevation: np.ndarray, world: "World | None" = None) -> tuple[np.ndarray, np.ndarray]:
     """Per-node dimensionless rise/run -- elevation drop to the *lowest* of each node's
     SLOPE_NEIGHBOR_COUNT nearest neighbors (0 if this node is already a local minimum -- the
     "slope to lowest neighbor" definition used throughout this module), divided by the real
@@ -620,12 +621,15 @@ def compute_slope(points: np.ndarray, elevation: np.ndarray) -> tuple[np.ndarray
     neighbor's own elevation, which would carve a new pit lower than the valley it drains
     into. The two are tracked as separate return values because `slope` here is normalized
     (dimensionless rise/run) while the cap needs the raw, unnormalized drop -- capping against
-    the normalized value would bound elevation change in the wrong units entirely."""
+    the normalized value would bound elevation change in the wrong units entirely. `world`,
+    when passed (apply_erosion's own call does), shares this tree with every other per-step
+    full-node-cloud query via plates.cached_node_position_tree instead of rebuilding an
+    equivalent one from scratch -- see that function's own docstring."""
     n = len(points)
     if n <= SLOPE_NEIGHBOR_COUNT:
         return np.zeros(n), np.zeros(n)
 
-    tree = cKDTree(points)
+    tree = cached_node_position_tree(world, points)
     _, neighbor_idx = tree.query(points, k=SLOPE_NEIGHBOR_COUNT + 1, workers=query_workers(n))
     neighbor_idx = neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
 
@@ -698,7 +702,9 @@ def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: 
     return (local_mean - hydro.elevation) * relax
 
 
-def _route_wind_deposit(points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, source_amount: np.ndarray) -> np.ndarray:
+def _route_wind_deposit(
+    points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, source_amount: np.ndarray, world: "World | None" = None
+) -> np.ndarray:
     """Single-hop aeolian transport: every node with `source_amount > 0` moves that amount to
     whichever real node sits nearest a point WIND_TRANSPORT_DISTANCE_RAD further downwind on
     the sphere (the exact small-circle geodesic step `point*cos(d) + tangent*sin(d)`, `tangent`
@@ -706,7 +712,11 @@ def _route_wind_deposit(points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarr
     convention -- the same convention climate.py's wind field itself uses). A node with
     negligible wind (`speed` near 0) has no real direction to carry it, so it just redeposits
     in place. Exactly conserves `source_amount`'s total -- every unit that leaves a source node
-    lands on exactly one target node, via `np.add.at`."""
+    lands on exactly one target node, via `np.add.at`. `world`, when passed, shares the source
+    tree via plates.cached_node_position_tree instead of rebuilding it (see that function's
+    own docstring) -- this is the *source* tree only; `target_points` still needs its own query
+    since it's a different point set (each source node projected downwind), not this step's
+    shared node cloud."""
     n = len(points)
     result = np.zeros(n)
     active = source_amount > 0
@@ -725,7 +735,7 @@ def _route_wind_deposit(points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarr
         points,
     )
 
-    tree = cKDTree(points, balanced_tree=False, compact_nodes=False)
+    tree = cached_node_position_tree(world, points)
     active_idx = np.nonzero(active)[0]
     _, nearest = tree.query(target_points[active_idx], k=1, workers=query_workers(len(active_idx)))
     np.add.at(result, nearest, source_amount[active_idx])
@@ -1158,7 +1168,7 @@ def apply_erosion(
     # temperature view displays -- ocean surface over water, moderated air over land.
     temperature = np.where(is_ocean_node, fields.ocean_temperature_c[row, col], fields.air_temperature_c[row, col])
 
-    slope, drop_to_lowest_neighbor_m = compute_slope(points, elevation)
+    slope, drop_to_lowest_neighbor_m = compute_slope(points, elevation, world=world)
     dt_myr = years / 1_000_000.0
 
     hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years, node_cloud=node_cloud)
@@ -1279,7 +1289,7 @@ def apply_erosion(
     lake_deposit = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, land_terminal_deposit)
     sediment_deposited = np.where(is_ocean_node, beach_deposit, lake_deposit)
 
-    wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source)
+    wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source, world=world)
 
     # Glacial transport: glacier_carried travels along the ice's own real flow path
     # (hydro.ice_flow_target, not water's flow_target -- see GLACIER_TILL_FRACTION's own

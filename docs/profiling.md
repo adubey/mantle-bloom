@@ -242,3 +242,316 @@ Still open, roughly in order:
     `east`/`north` tangent frame is a pure function of the fixed grid -- precompute it once
     (module-level, keyed on `(height, width)`) instead of every call; `_lon_grid` is currently
     built twice per call on top of that.
+
+## Stepping + rendering: cKDTree construction vs. query, and three alternative
+## representations (2026-09-13, commit `88b4db6`)
+
+**Measured:** commit `88b4db6` (`main`, post fault-based tectonics, frontier gap-fill,
+lake/sea tiers, and the eustasy connectivity fix -- all landed after the profile above).
+10-core Apple Silicon (M4) -- a different, faster box than the 6-core one the `f68fa46`
+numbers above were measured on, so absolute wall-clock isn't directly comparable step-for-
+step; the *proportions* (build vs. query, which call sites dominate) are what this section
+leans on. Python 3.14.6, backend `.venv`.
+
+**Inputs:** identical to the section above -- seed 0, `node_density=4.0`,
+`climate_density=4.0`, `fluid_density=2.0`, `eckert4`/`combined`, 2200x1222, 100 kyr/step,
+diagnostic wind. 19 plates, ~130,600 nodes; the combined-view render grid is 1,282,401 points.
+
+**Method:** a `cKDTree` subclass (`InstrumentedKDTree`) swapped into every already-imported
+`app.*` module's own `cKDTree` name (each does `from scipy.spatial import cKDTree`, binding
+its own reference at import time, so this has to happen post-import, per-module) that records,
+per call site (source file:line:function), construction count/time/point-count and
+query/query_ball_point count/time/point-count separately. Driven against 9 real `step_world`
+calls + 10 real `render_png` calls (same call `stream_animation_mp4` makes), then separately
+under `cProfile` for the usual hotspot breakdown. This directly answers the question the three
+alternative representations below all hinge on: is tree *construction* or tree *query* the
+actual cost, and by how much.
+
+### Headline: query dominates construction, roughly 2.6:1
+
+Over the 9-step + 10-render run: **8,772 ms total in `.query`/`.query_ball_point`** vs.
+**3,314 ms total in tree construction** (`cKDTree.__init__`), across every `cKDTree` built or
+queried anywhere in plates/torque/faults/erosion/hydrology/climate/render. Per-tree
+construction is cheap at this node count -- the priciest single builder
+(`lithosphere_plate._claim_adjacent_territory`'s ~42K-point neighbour-cloud tree) is ~4.7 ms/
+call; a full ~130K-node tree is ~15-20 ms to build. Nothing here is spending its time in
+median-finding -- it's spending it walking the tree many, many times, and (see below) often
+building the *same* tree redundantly before doing so.
+
+Wall-clock: step ~2.9-3.1 s, render ~1.5 s at these settings on this box (render is down from
+the ~1.8-2.0 s in the section above -- fix 6's `workers=` parallelism holding up; step is
+roughly flat despite fix 7-9 landing, because fault generation, frontier gap-fill, and the
+eustasy connectivity solve -- all added since -- backfilled the time those fixes freed).
+
+### New since the last profile: redundant per-step tree construction
+
+The single most actionable finding, and the direct, evidence-backed answer to "what if every
+continent were a kd-tree, rebuilt every step": **that's already most of the architecture**
+(`Plate.get_node_kdtree`, cached and invalidated only on `rotate()`/a node-set change -- see
+fix 4 above), **but several call sites don't use the cache that already exists, and rebuild
+an equivalent tree over the same ~130K-node cloud from scratch, once per step, independently
+of each other:**
+
+| Call site | Build cost | What it builds |
+| --- | --- | --- |
+| `climate._sample_elevation_and_crust` | ~15.6 ms/step | reads `World.node_position_tree_cache` if warm, else builds+populates it -- this one's already fixed (5ec022c) |
+| `erosion.compute_slope` | ~17.3 ms/step | its own fresh `cKDTree(points)`, immediately `.query(points, k=5)` |
+| `erosion._earthquake_erosion_multiplier` | ~15.5 ms/step | its own fresh `cKDTree(points)`, then a handful of tiny `query_ball_point` calls around each epicentre |
+| `plates.compute_node_overlap` | ~15.5 ms/step | its own fresh `cKDTree(concatenated clouds)`, `.query_pairs(...)` |
+| `hydrology._build_neighbor_graph` | ~5.9 ms/step | its own fresh `cKDTree(points, balanced_tree=False)`, `.query(points, k=9)` |
+| `faults.generate_boundary_faults` | ~5.9 ms/step | its own fresh `global_tree` over all points |
+| `erosion._route_wind_deposit` | ~2.7 ms/step | its own fresh tree over all points |
+| `erosion._spread_marine_sediment` | ~5.3 ms/step (over the ocean subset) | its own fresh tree |
+| `gaps._existing_node_tree` | ~15 ms on the (rare) steps it runs | its own fresh tree |
+
+None of these are wrong -- every one gets the right answer -- but together they're
+**~85-105 ms/step of pure `cKDTree.__init__` spent rebuilding what is, modulo ordering, the
+same point cloud `World.node_position_tree_cache` already holds once climate.py has run this
+step.** This is exactly item 10 above, except it turns out to be a wider problem than
+originally scoped: fix 5ec022c only wired the cache through `climate.py`; `hydrology.py`,
+`erosion.py`, `plates.py`, `faults.py`, and `gaps.py` each independently reinvented it. The
+fix is mechanical and bit-exact (same points, same tree semantics, only the constant-factor
+build cost changes) -- thread `world.node_position_tree_cache` through these call sites the
+same way `climate.py` already does, falling back to a fresh build only where the query shape
+genuinely differs (e.g. `_spread_marine_sediment`'s ocean-only subset can't reuse the
+full-cloud tree, but could still build its subset tree with `balanced_tree=False,
+compact_nodes=False` like its siblings already do).
+
+### New since the last profile: two call sites reinvent torque.py's neighbour-tree fix, worse
+
+`faults._plate_stress` (`~44K`-point concatenated-neighbour tree) and
+`lithosphere_plate._claim_adjacent_territory` / `_fill_corner_notch_frontier` (`~42K`-point
+concatenated-neighbour tree) each explicitly comment that the tree "is rebuilt from scratch
+every call, a fresh combined-neighbour point set each time, so nothing to cache across
+calls" -- which was exactly torque.py's problem before fix 4, and fix 4's actual solution
+(query each neighbour's own cached `Plate.get_node_kdtree()` and keep the elementwise
+nearest via `argmin`, rather than concatenating every neighbour into one fresh tree) applies
+here unchanged, since it's the identical shape of computation ("nearest cross-plate boundary
+node"). Measured cost of the current, uncached version:
+
+| Call site | Calls/9 steps | Build | Query | Combined/step |
+| --- | --- | --- | --- | --- |
+| `faults._plate_stress` | 171 (~19/step) | 252 ms | 249 ms | ~56 ms/step |
+| `lithosphere_plate._claim_adjacent_territory` | 153 (~17/step) | 717 ms | -- | ~80 ms/step |
+| `lithosphere_plate._fill_corner_notch_frontier` | 153 (~17/step) | 714 ms | 399 ms | ~124 ms/step |
+
+That's **~260 ms/step combined**, and unlike the previous section's fix, this one has an
+exact, already-proven-correct blueprint sitting in the same codebase (`torque.
+gather_boundary_force_inputs`) rather than needing new design work.
+
+### Still the biggest single line item: `hydrology`'s ocean/sea nearest-node resample
+
+`hydrology._nearest_hydro_node_idx` (backing `sample_is_ocean`/`sample_is_sea`) is the single
+largest query-time consumer measured outside `torque`: 1,315 ms of query time across just 17
+calls (some at the ~259K-point climate-grid resolution, some at the ~1.28M-point render-grid
+resolution) plus 264 ms rebuilding `cKDTree(hydro.points)` from scratch each of those calls.
+This is exactly the follow-up the previous section's fix 6 flagged and left undone ("`a
+_ocean_tree` lazy attribute on `HydrologyFields` would be the same pattern... left as a small
+follow-up") -- still true, still worth doing, and now clearly the biggest single win left in
+this family: `HydrologyFields` already keys off `world.hydrology_cache` (per-step), so caching
+`cKDTree(hydro.points)` there is a direct lazy-attribute add, no invalidation logic beyond what
+already exists.
+
+### Where the render-side query time actually goes
+
+`render_image._biome_fields`'s `tree.query(flat_xyz)` (773-1,232 ms across 8-10 renders, no
+stepping between) is the single biggest render cost, and its tree is already the cached,
+shared one (fix 6/render_image._node_cloud_and_tree) -- there's no more construction cost left
+to cut here. What's left is the query itself: 1.28M grid points, each asking "which of ~130K
+moving nodes is nearest," `workers=-1` parallel. This is the same shape of cost as
+`_sample_elevation_and_crust`'s climate-grid resample and `distance_from_land_approx`'s
+coastline-distance resample -- all three are "fixed grid asks a moving point cloud who's
+closest," and together they're roughly a third of all measured query time. See the HEALPix
+discussion below for why this specific shape, not the other two, is the one worth
+re-architecting rather than just caching harder.
+
+### Answering the three alternative representations
+
+**1. "Every continent as a kd-tree, rebuilt at every step."** Substantially already true --
+`Plate.get_node_kdtree()` is exactly that, and it's cheap: building a ~7,000-node per-plate
+tree or even the full ~130,600-node world tree costs single-digit-to-tens of milliseconds
+(measured above). The actual waste this profile found isn't "we don't rebuild enough" or
+"rebuilding is slow" -- it's that **several call sites rebuild an equivalent tree redundantly
+within the same step** instead of sharing the one `World.node_position_tree_cache` (or a
+per-plate `get_node_kdtree()`) already computed this step. The fix is "cache once per step
+and thread it through more callers," which this codebase has already proven out twice (fix 4
+for `torque.py`, fix 6/5ec022c for `climate.py`/render) -- it just hasn't reached
+`hydrology.py`, `erosion.py`, `plates.py`, `faults.py`, or `gaps.py` yet. Rebuilding *across*
+steps, by contrast, is unavoidable and correct: every plate rotates rigidly every step, so
+every node's position genuinely changes and a stale tree would silently return wrong nearest-
+neighbours.
+
+**2. "Stored natively as an R-tree, allowing cheaper construction of kd-trees."** The evidence
+here argues against it, on both halves of the premise:
+- *Construction isn't the bottleneck to begin with* -- query time outweighs construction
+  time 2.6:1 in this profile, and per-tree construction is already a few to tens of
+  milliseconds even at ~130K points. There's no large "construction cost" left for a
+  different data structure to undercut.
+- *An R-tree's actual advantage -- amortized incremental insert/delete instead of a full
+  rebuild -- doesn't apply to this workload.* That advantage pays off when most points are
+  stable between rebuilds and only a few move (a particle simulation with local motion, a
+  scene graph with occasional edits). Here, every plate's node cloud undergoes a **rigid
+  rotation** every step (`Plate.rotate`) -- every single node's coordinates change, even if by
+  a small angle -- so there is no stable majority to amortize an incremental update against;
+  the correct operation is "throw away the old tree, build a new one from the rotated
+  positions," which is exactly what happens today. Bulk-loading an R-tree (STR-packing) is
+  also `O(n log n)`, the same order as `cKDTree`'s own median-split build -- nothing here is
+  asymptotically cheaper.
+- R-trees are optimized for bounding-box/range queries over extended geometries (their whole
+  reason to exist); this workload is uniformly nearest-neighbour-over-point-clouds, which is
+  `cKDTree`'s strong suit -- a single compiled call, batched, `workers=-1`-parallel. A Python
+  `rtree`/libspatialindex binding has no batched multi-query equivalent and would almost
+  certainly lose on the actual measured hot path (`tree.query(1.28M points)` in one call)
+  even before counting construction.
+
+Net: an R-tree would trade a data structure well-suited to this workload for one that isn't,
+in exchange for solving a construction-cost problem that isn't actually the bottleneck.
+Recommend against.
+
+**3. "Elevation points fixed to HEALPix positions via a lookup table."** This is the one idea
+of the three that changes the *asymptotic* shape of the actual bottleneck rather than just its
+constant factor -- and this codebase has already built and validated the exact mechanism, just
+for a different field. `healpix_grid.py` + `fluid_dynamics_healpix.py` (the opt-in `"cfd"`
+wind model) replace `atmosphere_cfd.py`'s equirectangular grid with a fixed HEALPix pixel set
+and an `ang2pix_nest_scalar` njit kernel -- an **O(1) per-point lookup with no tree at all**,
+built specifically because (per that module's own docstring) an astropy-backed nearest-pixel
+lookup "was `semi_lagrangian_advect`'s single costliest call." Two different places this idea
+could go, with very different cost/benefit:
+- *Snapping the plate/elevation node mesh itself to fixed HEALPix pixels* fights the physics
+  rather than helping it: `ElevationLine` rows exist specifically to track continuous rigid
+  rotation and deformation (row spacing, contested/open boundary claiming, stretch/shrink at a
+  row's ends -- see `lithosphere_plate.py`), and every one of those operations assumes
+  positions that move by arbitrary sub-pixel amounts each step. Quantizing to the nearest
+  fixed pixel every step is itself a nearest-neighbour query (`ang2pix` per node is O(1), but
+  *deciding what value belongs in each pixel as the underlying node moves through it* still
+  needs the same resample this profile is trying to avoid) -- it relocates the cost rather
+  than removing it, and would mean rebuilding plate tectonics as an Eulerian (fixed-grid)
+  simulation instead of the current Lagrangian (moving-point) one. Not a data-structure swap;
+  a different simulation.
+- *Applying it to the render/climate/hydrology resample grids* is the actually promising
+  version, and it's the direction this profile's own numbers point at: `render_image.
+  _biome_fields`, `climate._sample_elevation_and_crust`, `hydrology._nearest_hydro_node_idx`,
+  and `world.distance_from_land_approx` are all doing `cKDTree(moving_node_positions).query
+  (fixed_grid_points)` -- the *gather* direction, `O(M log N)` for `M` grid cells and `N`
+  nodes -- and together they're roughly a third of all measured query time. If that fixed
+  grid were HEALPix (as `fluid_dynamics_healpix.py`'s already is) instead of equirectangular,
+  the resample could run in the *scatter* direction instead: `ang2pix(node_positions)` is an
+  `O(1)`-per-node, vectorized/njit lookup -- no tree, no `log N` -- that says which fixed pixel
+  each of the ~130,600 moving nodes now falls into; splat elevation/lake/channel data into
+  those pixels (keeping the same "nearest/owning node wins" tie-break the current resample
+  uses) instead of asking each of 1.28M fixed cells "which moving node is closest." That's
+  `O(N)` in the node count instead of `O(M log N)` in the grid resolution -- a real complexity
+  win, not just a constant-factor one, and it's the only one of these three ideas that is. The
+  cost is real too, though: it's a new grid representation for every render/climate/hydrology
+  consumer (not just the CFD solver), a new resample/splat implementation, and a rethink of
+  everywhere code currently assumes an equirectangular `(lat row, lon col)` grid --
+  `projections.py`'s map projections, `elevation_lines`/hex export, and the frontend's own
+  pixel mapping all lean on that shape today. Worth scoping as a real project, not a
+  profiling-session patch -- but with a working precedent already in this repo to build it
+  from.
+
+### Suggested order
+
+1. Thread `world.node_position_tree_cache` through `hydrology._build_neighbor_graph`,
+   `erosion.compute_slope`/`_earthquake_erosion_multiplier`/`_route_wind_deposit`,
+   `plates.compute_node_overlap`, and `faults.generate_boundary_faults` -- mechanical,
+   bit-exact, ~85-105 ms/step.
+2. Port `torque.gather_boundary_force_inputs`'s per-neighbour-cached-tree-plus-`argmin`
+   pattern into `faults._plate_stress` and `lithosphere_plate._claim_adjacent_territory`/
+   `_fill_corner_notch_frontier` -- ~260 ms/step, same proof of correctness fix 4 already did.
+3. Cache `cKDTree(hydro.points)` on `HydrologyFields` the way item 10 originally asked for --
+   ~150 ms/step-and-render combined, direct lazy-attribute add.
+4. Scope HEALPix-ifying the render/climate/hydrology resample grid as its own project --
+   the biggest number on this page (~a third of query time), the only complexity-class win of
+   the three ideas, and the one with a working local precedent (`healpix_grid.py`).
+5. Leave the R-tree idea aside -- no measured bottleneck it would address.
+
+### Items 1-3, done (2026-09-13)
+
+**Measured:** same box/inputs as the section above, before vs. after, via the same
+instrumented-`cKDTree` harness (9 steps + 10 renders). Total `cKDTree` construction time
+**3,314 ms -> 2,192 ms (-34%)**; total query time roughly flat (8,772 ms -> 8,998 ms, within
+this box's own run-to-run noise -- see the caveat below). Wall-clock step/render means were
+likewise flat (step 2.91 s -> 2.94 s, render 1.53 s -> 1.59 s): expected, since query -- which
+these fixes deliberately didn't touch -- was already ~2.6x the size of construction, so cutting
+a third of the smaller half moves the total by only a few percent. The win here is real but
+modest; it doesn't change the headline number, only removes waste that was never load-bearing.
+
+- **Item 1, landed as scoped, minus two call sites.** Added `plates.cached_node_position_tree
+  (world, points)` (check `World.node_position_tree_cache`, build+populate on a miss, `world=
+  None` always builds fresh for a direct-unit-test caller) and threaded it through
+  `erosion.compute_slope`, `erosion._earthquake_erosion_multiplier`, `erosion._route_wind_
+  deposit`, and `hydrology._build_neighbor_graph`'s `compute_hydrology` call site (all four
+  already ran downstream of `world.py`'s per-step `gather_node_positions` call, strictly after
+  shift/deform/topology-changes/gap-fill have settled the node set for the rest of the step --
+  see `World.node_position_tree_cache`'s own docstring for why that window is safe to share
+  across).
+
+  **`faults.generate_boundary_faults` and `plates.compute_node_overlap` were deliberately left
+  out**, on closer reading than the original write-up gave them: both run *before* that window
+  closes -- `generate_boundary_faults` from `faults.update_faults`, called mid-`step_world`
+  before topology changes/gap-fill can still add or remove nodes; `compute_node_overlap` from
+  `merge_split.py` during the topology-change pass itself (and separately from `main.py`,
+  outside `step_world` entirely). Sharing `world.node_position_tree_cache` from either would
+  let a caller earlier in the step populate it with a node set gap-fill or topology changes
+  are about to change, and nothing re-invalidates the cache in between -- climate.py's later
+  read would then silently resample against a stale, too-small node cloud for the rest of the
+  step. Not worth the correctness risk for ~15-20 ms/step apiece; left building their own
+  fresh trees.
+
+  Measured: the redundant full-node-cloud builds these four used to do independently
+  (`erosion.py:628`/`596`/`701`, `hydrology.py:393`) have disappeared from the per-call-site
+  breakdown entirely, replaced by one shared `plates.cached_node_position_tree` build/step
+  (~155-160 ms across the 9-step run, i.e. ~17-18 ms/step for the *shared* tree -- the four
+  call sites' own previous combined cost was ~370 ms across the same 9 steps).
+
+- **Item 2, half landed, half reverted after measuring a regression.**
+  `lithosphere_plate._claim_adjacent_territory` and `_fill_corner_notch_frontier` now share one
+  concatenated-neighbour `cKDTree`, built once per `deform()` call (right before both, since
+  neither touches any *neighbour's* own nodes -- only self's -- so the neighbour cloud can't
+  have changed between the two calls) instead of each rebuilding an equivalent one from
+  scratch. Measured: their combined construction cost **1,431 ms -> 745 ms over the 9-step
+  run (-48%)**; query cost unchanged (same single combined tree, same single batched query
+  each still runs -- the ~469-780 ms range measured for `_fill_corner_notch_frontier`'s own
+  query across different runs is this box's own noise, not a code change, since nothing about
+  its query path moved).
+
+  `faults._plate_stress` got the *other* fix -- torque.gather_boundary_force_inputs' own
+  per-neighbour-cached-tree-plus-`argmin` pattern -- and it measured as a clear **regression**,
+  caught by re-profiling rather than assumed correct from the pattern's own pedigree: construction
+  cost dropped to ~0 as expected (reusing each neighbour's already-cached `get_node_kdtree()`),
+  but query cost grew **roughly 8x** (249 ms -> ~2,080 ms of query time across the 9-step run),
+  because this function queries its *own* full `own_points` array once per neighbour in a
+  Python loop -- the same shape torque.py's own fix uses, but torque calls this ~200+ times a
+  step (so eliminating each call's fresh combined-tree build dominates), while `_plate_stress`
+  is called only ~19 times a step (once per plate) -- there, the old combined-tree build was
+  cheap enough (~250 ms total) that looping a full-size query per neighbour instead of running
+  one query against one combined tree came out net negative. Reverted to the original
+  concatenated-tree implementation, with a comment recording the measurement so this isn't
+  re-attempted blind later. **The general lesson**: the per-neighbour-cached-tree pattern's
+  win depends on how many times a step the *old* combined tree would have been rebuilt, not
+  just on "does this look like the same computation as `gather_boundary_force_inputs`" --
+  worth checking call frequency before porting it anywhere else.
+
+- **Item 3, landed as scoped.** Added a module-level `_LAST_OCEAN_TREE` cache in
+  `hydrology.py` (identity-keyed on the `HydrologyFields` instance, same convention
+  `_LAST_NEAREST_HYDRO_NODE` right above it already uses) backing a new `_ocean_node_tree(
+  hydro)` helper, and pointed `_nearest_hydro_node_idx` at it instead of building
+  `cKDTree(hydro.points)` fresh on every call. Deliberately a plain module global, not a field
+  on `HydrologyFields` itself: `world.hydrology_cache` is part of the pickled save-file object
+  graph (persistence.py never drops it on load, unlike `node_kdtree_cache`/
+  `node_position_tree_cache`), so a `cKDTree` living there would round-trip through every
+  save/load file for no benefit. Measured: 17 calls across the 9-step+10-render run now
+  trigger only 9 tree builds (one per distinct `HydrologyFields` this step created, reused by
+  every resample against it -- climate-grid and render-grid alike -- instead of one build per
+  call).
+
+All three verified against the full unit + stress test suite (`pytest unit_tests
+stress_tests`, 401 tests, all green including after the `_plate_stress` revert). One test
+(`test_faults.py::test_fault_systems_spawn_with_long_master_traces_and_strand_families`)
+failed identically on unmodified `main` before any of this section's changes too -- a
+pre-existing issue, not caused by this work -- and turned out to already be fixed on
+`origin/main` (`9937bf5`, merged as part of PR #116 while this section's changes were in
+progress: the lone-fault length assertion's own tolerance was too tight for real
+`BEND_MAX_FRACTION` wander on top of the length-clipped nominal trace). Rebasing this work
+onto that `origin/main` picked the fix up for free.
