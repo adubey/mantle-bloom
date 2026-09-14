@@ -498,13 +498,18 @@ def _water_balance(
     A lake with any member currently below freezing (`hydrology.FREEZE_POINT_C` -- the real 0C
     freezing point, colder than nothing else in this codebase; deliberately *not* the much
     colder `hydrology.GLACIER_ACCUMULATION_TEMP_C` reserved for permanent glacier accumulation,
-    see that constant's own comment) freezes solid this step -- forced to its own dry floor with
-    no silt growth either (no liquid water to carry suspended sediment), matching the old
-    system's same all-or-nothing freeze simplification generalized from one node to a lake's
-    whole connected surface."""
-    if is_frozen:
-        return lake.floor_elevation
-
+    see that constant's own comment) freezes solid this step -- forced to its own dry floor
+    (`out_lake_depth` reads 0 everywhere for it, matching the old system's all-or-nothing
+    freeze simplification generalized from one node to a lake's whole connected surface) -- but
+    still deposits silt. This step's inflow is still routed here at the mild 0C threshold (a
+    seasonally-freezing lake, not necessarily a permanently ice-locked one) and real meltwater
+    still carries a suspended sediment load that settles onto the bed even when the surface
+    itself won't be reported as open water this step; skipping silt too would leave any
+    catchment that's frozen *every* step it's ever resolved with zero fill forever regardless of
+    how much inflow reaches it, one of the two literal "never holds water, gets nothing" gaps
+    behind GitHub issue #117's lake-hierarchy caterpillar trees (thousands of tiny, high, often
+    sub-freezing catchments each staying their own permanent `Lake` leaf instead of silting
+    into their neighbors)."""
     retention = np.exp(-LAKE_EVAPORATION_RATE_PER_MYR * years_myr)
     baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
     prev_depth = max(0.0, prev_level - lake.floor_elevation)
@@ -521,7 +526,7 @@ def _water_balance(
 
     members = lake.members
     wet = members[elevation[members] < new_level]
-    if is_sea and len(wet) > 0:
+    if is_sea and len(wet) > 0 and not is_frozen:
         out_lake_is_sea[wet] = True
     if len(wet) > 0:
         silt_rise = SILT_ACCUMULATION_COEFFICIENT * inflow * years_myr / len(wet)
@@ -530,7 +535,7 @@ def _water_balance(
         # basin rim, since `new_level` is already clipped to `max_depth`.
         room = np.clip(new_level - elevation[wet], 0.0, None)
         out_silt_deposited[wet] += np.minimum(silt_rise, room)
-    return new_level
+    return lake.floor_elevation if is_frozen else new_level
 
 
 def _prev_level(lake: Lake, elevation: np.ndarray, prev_lake_depth: np.ndarray) -> float:

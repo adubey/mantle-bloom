@@ -274,7 +274,7 @@ def test_step_lakes_evaporates_a_dry_spell_to_nothing():
     assert events == []
 
 
-def test_step_lakes_freezes_a_lake_to_its_dry_floor_regardless_of_inflow():
+def test_step_lakes_freezes_a_lake_to_its_dry_floor_but_still_silts_it_in():
     prev_lake_depth = np.array([5.0, 0.0, 0.0])
     water_deposited = np.array([500.0, 0.0, 0.0])  # would otherwise grow it a lot
     is_accumulating = np.array([True, False, False])
@@ -282,8 +282,10 @@ def test_step_lakes_freezes_a_lake_to_its_dry_floor_regardless_of_inflow():
     depth, silt_deposited, _, _, _ = lakes.step_lakes(
         _SINK_ELEVATION, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_accumulating
     )
-    assert depth[0] == 0.0
-    assert silt_deposited[0] == 0.0  # frozen -- no liquid water to carry sediment either
+    assert depth[0] == 0.0  # frozen -- no visible standing water reported
+    # ...but real inflow still carries a sediment load that settles onto the bed even under
+    # ice (GitHub issue #117: without this a chronically-frozen pit never silts in at all).
+    assert silt_deposited[0] > 0.0
 
 
 def test_step_lakes_merges_two_basins_once_one_reaches_the_saddle():
@@ -359,6 +361,48 @@ def test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in()
     assert elevation[0] <= 25.0 + 1e-6  # never silts past the basin rim
     assert depths_over_time[-1] == 0.0  # lake fully silted in despite inflow never stopping
     assert depths_over_time[0] > 0.0
+
+
+def test_water_balance_frozen_lake_reports_no_water_but_still_deposits_silt():
+    # GitHub issue #117: a chronically-frozen catchment used to get zero silt forever
+    # regardless of inflow, since the old code returned before computing anything. It should
+    # still report a dry floor (no visible standing water while frozen)...
+    lake = lakes._make_leaf(0, [0], [0.0], sink_node_idx=0)
+    elevation = np.array([0.0])
+    water_deposited = np.array([500.0])
+    out_silt = np.zeros(1)
+    out_is_sea = np.zeros(1, dtype=bool)
+
+    new_level = lakes._water_balance(
+        lake, 0.0, elevation, water_deposited, years_myr=1.0, is_frozen=True,
+        out_silt_deposited=out_silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=True,
+        out_lake_is_sea=out_is_sea,
+    )
+    # ...but still silts in from this step's inflow, and never gets marked as open sea while
+    # frozen even if it's big enough to otherwise qualify.
+    assert new_level == lake.floor_elevation
+    assert out_silt[0] > 0.0
+    assert not out_is_sea[0]
+
+
+def test_step_lakes_a_chronically_frozen_pit_still_silts_in_over_time():
+    # Same shape as test_step_lakes_silt_raises_the_floor_and_eventually_fills_a_small_lake_in,
+    # but frozen every single step -- the exact "never holds water" caterpillar-tree case from
+    # GitHub issue #117. Before the fix this lake's floor never moved at all.
+    elevation = _SINK_ELEVATION.astype(float).copy()
+    prev_lake_depth = np.zeros(3)
+    water_deposited = np.array([500.0, 0.0, 0.0])
+    is_frozen = np.ones(3, dtype=bool)
+
+    for _ in range(400):
+        depth, silt_deposited, _, _, _ = lakes.step_lakes(
+            elevation, _SINK_IS_OCEAN, _SINK_NEIGHBORS, prev_lake_depth, water_deposited, years=1_000_000, is_frozen=is_frozen
+        )
+        elevation = elevation + silt_deposited
+        prev_lake_depth = depth
+
+    assert elevation[0] > _SINK_ELEVATION[0]  # the floor silted upward despite being frozen throughout
+    assert (depth == 0.0).all()  # never reports standing water while frozen
 
 
 def _ev(kind, elevation_m, node_count=10, basin_count=2):

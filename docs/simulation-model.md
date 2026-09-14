@@ -3160,6 +3160,20 @@ its floor has risen to meet the surrounding rim, it stops registering as a local
 all (steepest descent no longer sees a depression there), and the lake disappears outright,
 exactly the "reaches ground level" case a lake should eventually hit.
 
+**A frozen lake still silts in (2026-09-14).** `_water_balance` forces a lake with any member
+below freezing (`hydrology.FREEZE_POINT_C`, the mild 0C threshold -- a seasonally-freezing lake,
+not necessarily a permanently ice-locked one) to report its own dry floor -- no visible standing
+water this step. It used to also skip silt entirely while frozen ("no liquid water to carry
+suspended sediment"), but that made a *chronically* frozen catchment (common at altitude/
+latitude on an old, rough world) accumulate literal zero silt forever, no matter how much inflow
+reached it -- one of the two ways a pit can genuinely "never hold water, get nothing" named in
+GitHub issue #117 ("Lake-hierarchy caterpillar trees"), where thousands of tiny, often
+sub-freezing catchments each stay their own permanent `Lake` leaf instead of silting into their
+neighbors, producing merge-tree depths in the thousands on old, rough worlds. Real meltwater
+still carries a suspended sediment load that settles onto the bed even when the surface won't be
+reported as open water, so silt now still deposits from this step's inflow while frozen -- only
+the reported water level (and sea-tier promotion) stays gated on not being frozen.
+
 <a id="lake-vs-sea-tiers"></a>
 ### Lake vs. sea tiers: a depth ceiling by size (2026-09-10)
 
