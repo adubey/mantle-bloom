@@ -555,3 +555,179 @@ pre-existing issue, not caused by this work -- and turned out to already be fixe
 progress: the lone-fault length assertion's own tolerance was too tight for real
 `BEND_MAX_FRACTION` wander on top of the length-clipped nominal trace). Rebasing this work
 onto that `origin/main` picked the fix up for free.
+
+## Item 4, scoped: HEALPix-ifying the render/climate/hydrology resample grid (2026-09-13)
+
+Item 4 above was left as "scope this as its own project" rather than a patch, because it's the
+one idea of the three that changes an asymptotic complexity class rather than a constant
+factor -- which also makes it the one most worth getting the design right on paper before
+writing code. This section is that scoping pass: no production code changed. It reads
+`healpix_grid.py`/`fluid_dynamics_healpix.py` (the existing, validated precedent) and every
+consumer named in the section above (`render_image.py`, `climate.py`, `hydrology.py`,
+`world.py`) closely enough to turn "worth doing" into concrete phases, and surfaces the one
+technical question (a fill step for scattered-but-sparse pixels) that has to be spiked with
+real numbers before any of it is greenlit.
+
+### What's actually in scope
+
+The three-ideas section already separated "snap the physics mesh to HEALPix" (rejected -- fights
+`ElevationLine`'s continuous rigid rotation) from "use HEALPix for the *resample* grids"
+(promising). Reading each candidate consumer directly narrows that further:
+
+| Consumer | Shape of the cost | In scope? |
+| --- | --- | --- |
+| `render_image._node_cloud_and_tree` gather -> `_biome_fields`/`_resource_fields`/`_render_grid_arrays` | `cKDTree(~130K moving nodes).query(fixed grid)`, nearest-value lookup only | **Yes** -- the core case |
+| `climate._sample_elevation_and_crust` | Same shape, same node cloud, already shares `world.node_position_tree_cache` (item 1) | **Yes** -- do alongside render, same underlying tree |
+| `hydrology._nearest_hydro_node_idx` (`sample_is_ocean`/`sample_is_sea`) | Same nearest-value shape, but deliberately queries *last* step's node positions against *this* step's grid (see item 10's own parenthetical) -- see caveat below | **Yes, with a semantics check** |
+| `world.distance_from_land_approx` (`geology.py`'s caller) | Needs the **distance itself**, not just the nearest node's value -- `land_kdtree_cache.query(points)` returns `(dist, idx)` and only `dist` is used | **Different problem** -- see below, not a drop-in |
+| `render_image._classify_terrain_relief` | `query_ball_point` (radius search, variable-count neighbours), not nearest-value | **Different problem** -- see below |
+| `climate.py`'s own native simulation grid (`_build_grid`, `compute_climate`'s internal `(H,W)` physics arrays) | Not a moving-cloud resample at all -- it's climate's own fixed working grid | **Out of scope** -- see below |
+| `fluid_dynamics_healpix.py` / CFD wind model | Already HEALPix | N/A, already done |
+| `geodesic.py` hex export (`File > Export Hex Grid`) | A separate icosahedral tiling, separate output format, no render-grid resample in its critical path | **Out of scope**, unaffected either way |
+| Frontend (`MapCanvas.tsx` `project`/`unproject`) | Operates on PNG bytes + its own lat/lon<->pixel math, never sees the backend's internal grid representation | **Unaffected** -- HEALPix would be purely a backend intermediate, invisible past `render_png`'s return value |
+
+Climate's own simulation grid staying equirectangular is a deliberate exclusion, not an
+oversight: `_humidity_zonal_sweep` (item 12) and the banding-noise/flux-divergence sweeps in
+`compute_moisture_flux_convergence` are literal left-to-right/pole-to-pole row scans -- they
+lean on "row `i` is a line of constant latitude, column `j+1` is column `j`'s immediate
+eastward neighbour" being true by construction, which a HEALPix pixel index doesn't give for
+free (its neighbour table is unordered/8-connected, not a scan direction). Porting *those*
+kernels to HEALPix is a separate, unrelated project (arguably harder, since a prefix-scan
+needs a consistent sweep order that nested-scheme HEALPix pixel numbering doesn't provide) --
+this scope is only the moving-node-cloud -> fixed-grid *resample* step, which climate.py also
+does (`_sample_elevation_and_crust`) but as input gathering, not as its own working grid.
+
+### The one finding that reshapes the whole plan: `resample_to_equirect` is already O(1)/cell
+
+`healpix_grid.resample_to_equirect` (used today by the CFD wind path to hand v2's HEALPix wind
+state back to v1's equirectangular `climate.py`) does `pix = grid.ang2pix(lon_grid, lat_grid)`
+then `field_pix[pix]` -- an `O(1)`-per-cell **lookup**, not a tree query, because it's going
+*from* a HEALPix pixel array *to* arbitrary query points via the njit `ang2pix` kernel, same
+direction as the scatter step below. That means the render/climate/hydrology migration doesn't
+need to touch `_biome_grid`'s `(H, W)` array shape, `_bilinear_resample`, `biomes.
+smooth_biome_field`, PNG encoding, the legend, or the frontend at all -- every one of those
+stays exactly as it is today, fed by an `(H, W)` array. Only the step that currently *fills*
+that array changes:
+
+```
+today:     cKDTree(node_xyz).query(grid_xyz)          -- O(M log N), M=grid cells, N=nodes
+proposed:  ang2pix(node_xyz)  -> scatter onto HealpixGrid(npix ~ N)   -- O(N)
+           ang2pix(grid_xyz)  -> resample_to_equirect(HealpixGrid)    -- O(M), O(1)/cell
+```
+
+This is a materially smaller and safer change than "migrate the render pipeline to HEALPix"
+(the more invasive alternative -- painting HEALPix pixels directly via `_fill_rects`, the way
+`_draw_climate_vectors_healpix` already does for the wind-vector overlay -- was considered and
+set aside for this scope: it would remove the final `O(M)` hop too, but at the cost of porting
+`smooth_biome_field`'s neighbour-vote, `_bilinear_resample`, and the legend/blur/encode chain to
+an irregular flat pixel list, none of which have a HEALPix equivalent today). Worth revisiting
+only if the `O(M)` resample-to-equirect hop itself ever shows up as a cost on its own merits --
+nothing in this profile suggests it will, since it was already cheap enough to be the *existing*
+production path for wind vectors.
+
+### The open technical question: scatter is sparse, and sparse needs a fill step
+
+The `O(N)` half (`ang2pix(node_xyz)`) is the genuinely new work, and it isn't a drop-in swap for
+`cKDTree(...).query(...)` the way `resample_to_equirect` is, for one concrete reason: **nearest-
+neighbour query never leaves a query point unanswered, but scattering leaves most pixels
+empty.**
+
+- `render_image.py`'s own comment on `grid_spacing_rad` (picking the finer of a fixed 100km and
+  `plates.line_spacing_rad(world.node_density)`) establishes that the render grid is
+  deliberately sized to match, not exceed, the physics node spacing -- so `HealpixGrid(nside)`
+  should be picked so `npix` is the same order of magnitude as `N` (~130,600 nodes at the
+  profiled density), not the render grid's own, much larger `M` (1,282,401 for the combined
+  view). That's the right target for the `O(N)` scatter half.
+- At `npix ~ N`, scattering `N` points into `npix` pixels via a single-valued last-write-wins
+  `ang2pix` assignment leaves a real fraction of pixels with **zero** nodes (an occupancy-1
+  scatter, even over a fairly even point distribution, doesn't fill every bin -- coastlines,
+  recently-created gap-fill regions, and the poles are exactly where this is worst) and a
+  smaller fraction with **more than one** (needing a deterministic tie-break -- "nearest to
+  pixel center," matching today's exact-nearest-node semantics most closely, is the natural
+  choice, not "last node in plate/index order," which would make output depend on plate
+  iteration order).
+- Every empty pixel then needs a value pulled from somewhere, and the only cheap source is the
+  `HealpixGrid.neighbours` `(npix, 8)` table already built by `healpix_grid.build()`: a wavefront
+  fill (repeatedly copy a filled pixel's value into its unfilled neighbours, like a multi-source
+  BFS) is the same *shape* of algorithm as `hydrology._basin_spill_kernel` (fix 7) -- and should
+  be written the same way, an `@njit` array-backed frontier, not a Python loop. Its cost is
+  `O(N + npix)` only if the average empty-run length is a small constant (true if nodes are
+  roughly evenly spread relative to `nside`); a pathological case (e.g. an early-game world with
+  large unclaimed ocean regions, or a `node_density` chosen much coarser than the render's
+  `nside`) could make the fill dominate the whole exercise instead of the tree query it's meant
+  to replace.
+
+This is the one number this scope doesn't have yet, and it's the one that decides whether the
+rest of the plan is worth doing at all: **the fill step's real cost, on this codebase's real
+node distributions, has to be measured before committing to phases 1+ below.**
+
+### Two shapes that don't fit the scatter pattern at all
+
+- **`world.distance_from_land_approx`** needs the distance value itself (`geology.py` uses it for
+  distance-banded effects), not a nearest-node's attribute. A HEALPix analogue exists in
+  principle -- a multi-source Dijkstra/BFS from every land pixel over `neighbours`/
+  `neighbour_distance_m`, the exact same shape as the basin-spill kernel again -- but it's a
+  genuinely different algorithm from "scatter + fill," not a variant of it, and its accuracy
+  depends on how well `neighbour_distance_m`'s chord-projection approximates true geodesic
+  distance over many hops (fine for CFD's own single-hop gradient use; unverified over the
+  many-hop distances this function actually returns). Left as a separate follow-up, not part of
+  this migration.
+- **`render_image._classify_terrain_relief`** needs a variable-radius neighbour *set* (`elevation.max() - elevation.min()` over every node within 50km), not a nearest-value lookup. HEALPix's
+  fixed neighbour table gives a fixed number of rings, not a fixed real-world radius, so
+  "how many rings equal 50km at this `nside`" would need its own derivation and would only be
+  approximately right (rings are equal-area, not equal-real-distance near the poles vs equator
+  the same way `cKDTree.query_ball_point`'s radius already is exactly right by construction).
+  Also left out of this migration; it's a small, occasional cost (only the Elevation view's two
+  optional toggles) next to the render grid it's excluded from sharing.
+
+### `hydrology`'s last-step/this-step semantics need a check, not an assumption
+
+Item 10's own note ("`sample_is_ocean` genuinely can't share [the cached tree] -- it queries
+*last* step's cached points against a tree of *this* step's, on purpose") still applies here in
+a slightly different form: under scatter+fill, `hydro.is_ocean` (an array over *last* step's
+node positions) would need to be scattered using *last* step's `ang2pix` assignment, then the
+render/climate grid resampled from *this* step's filled HEALPix array using `resample_to_
+equirect` against *this* step's `ang2pix`. That's two different `HealpixGrid` populations one
+step apart, not one -- workable, but it means `sample_is_ocean`/`sample_is_sea`'s one-step
+staleness tolerance (already documented as deliberate) needs to be re-verified empirically
+against the HEALPix path rather than assumed to carry over unchanged, since "nearest node" and
+"nearest filled HEALPix pixel after a wavefront fill" are not quite the same nearest-neighbour
+operation at a coastline boundary, which is exactly where `is_ocean` correctness matters most.
+
+### Suggested phases
+
+0. **Spike only, no production code.** Build a throwaway `HealpixGrid(nside ~ node count)`,
+   scatter a real world's node cloud (elevation, is_ocean) via `ang2pix` with the nearest-to-
+   center tie-break, run the njit wavefront fill, and measure: fill-step wall clock across a few
+   real saves (early-game sparse, late-game dense), empty-pixel fraction before/after fill, and
+   end-to-end scatter+fill+resample_to_equirect wall clock vs. today's `cKDTree(...).query(...)`
+   at the same effective resolution. This is the number that makes or breaks the rest of the
+   plan -- don't move past this phase without it.
+1. If phase 0's numbers hold up: land the shared `HealpixGrid` + scatter/fill/resample plumbing
+   as a new, optional code path behind the existing node-cloud-and-tree entry points (`render_
+   image._node_cloud_and_tree`, `plates.cached_node_position_tree`), diffed pixel-for-pixel
+   against the current `cKDTree` output on a fixed test world (not just visually -- an exact
+   `array_equal`/tolerance check the way fixes 6-8 above were verified), with the equirectangular
+   path kept as the default until it's proven out on a real animation run end-to-end.
+2. Extend to `climate._sample_elevation_and_crust` (same node cloud, same tree) and `hydrology.
+   _nearest_hydro_node_idx` (after the last-step/this-step check above is resolved) together,
+   since they already share `world.node_position_tree_cache`/the item-3 ocean-tree cache and
+   would share one `HealpixGrid` population per step the same way.
+3. Leave `world.distance_from_land_approx` and `_classify_terrain_relief` on their current
+   `cKDTree` paths (see above) -- not part of this migration, no shared infrastructure to gain
+   from doing them at the same time.
+4. Only after 1-2 are shipped and measured on a real animation run: consider flipping the
+   default, and only then consider the more invasive "paint HEALPix pixels directly" alternative
+   mentioned above, if the remaining `O(M)` `resample_to_equirect` hop turns out to matter after
+   all (nothing in this profile suggests it will).
+
+### Why this is scoped as a project, concretely
+
+Each phase above is independently revertable and individually small, but the honest total is
+still substantial: a new shared data structure touching five modules
+(`render_image.py`/`climate.py`/`hydrology.py`/`plates.py`/`world.py`), one new numba kernel
+(the wavefront fill) that needs the same bit-exactness discipline fix 7's basin-spill kernel
+went through, a tie-break rule that has to be chosen and justified, and a semantics re-check for
+hydrology's cross-step read. That's why item 4 stayed "scope it" rather than "do it" even after
+items 1-3 landed in one session -- and why phase 0's spike, not this write-up, is the actual
+next action if this gets picked up.
