@@ -7,12 +7,21 @@
 // additionally ground plate placement, mantle convection, and coarse relief in real data
 // instead of the sketch/seed alone (see backend/app/real_plates.py and relief_regions.py).
 //
-// "Present-day Earth" traces real (Natural Earth 110m) coastlines; its plate sites come from
-// the real NNR-MORVEL56 tectonic plate boundaries (real_plates.real_plate_sites), its mantle
-// convection centers are fit to reproduce those same plates' real absolute motion
+// "Present-day Earth" no longer leans on this baked sketch for land/sea or plate placement at
+// all (the sketch here is a fallback/preview only, and still supplies mountain/river
+// painting) -- backend/app/real_plates.py's "Exact Earth coastline/plates" section builds
+// both directly from real data instead: coastline from a Natural Earth `ne_10m_land`
+// rasterization (10x this sketch's own resolution -- tracing-then-flood-filling a sketch this
+// coarse measurably merged real straits/erased real seas no dilation tuning could fix, see
+// that module comment), plate membership from the real NNR-MORVEL56 boundaries directly
+// (real_plates.build_exact_earth_plates) rather than Voronoi-approximated site placement.
+// Its mantle convection centers are fit to reproduce those same plates' real absolute motion
 // (real_plates.fit_mantle_centers), and its mountain belts/plateaus are real named regions
-// (relief_regions.EARTH_BELTS/EARTH_PLATEAUS) -- only the fine ridge/terrace texture and
-// oceanic-plate placement are still seed-driven, not hand-specified.
+// (relief_regions.EARTH_BELTS/EARTH_PLATEAUS) -- only the fine ridge/terrace texture is still
+// seed-driven, not hand-specified. Its plate *count* is likewise no longer a seed/UI-driven
+// choice: it's whatever that exact partition contains (currently 66 -- see
+// `_MIN_LAND_COMPONENT_KM2`'s own comment for why every real island doesn't get its own
+// plate).
 //
 // "Pangaea (pre-breakup)" reassembles real Natural Earth continent outlines (Africa+Eurasia
 // and North+South America each split at their present-day land bridge -- Suez, Panama) into
@@ -36,13 +45,16 @@
 // sketch/config can reconstruct very differently depending on plate seed, so each was picked
 // by generating every seed 1-30 against that world's own sketch/config and keeping the one
 // whose generated land/sea agrees best with the sketch's flood-filled land mask (see the git
-// history for the search script) -- not hand-tuned or otherwise special beyond that. Earth's
-// and Pangaea's real-plate-grounded generation raises that agreement's *typical* level well
-// above before real_plates.py existed (most seeds land in the low-to-high 0.9s rather than
-// the wide 0.78-0.94 spread a purely seed-driven kmeans placement gave), but still varies
-// seed to seed (auto plate count, oceanic-plate placement, extra-site texture, fine ridge/
-// plateau noise all still come from the seed), so the same search still matters --
-// just far less than it used to for these two.
+// history for the search script) -- not hand-tuned or otherwise special beyond that. Pangaea's
+// real-plate-grounded generation raises that agreement's *typical* level well above a purely
+// seed-driven kmeans placement (most seeds land in the low-to-high 0.9s rather than the wide
+// 0.78-0.94 spread that gave), but still varies seed to seed (auto plate count, oceanic-plate
+// placement, extra-site texture, fine ridge/plateau noise all still come from the seed), so
+// the same search still matters -- just far less than it used to. Earth's own land/sea and
+// plate count no longer depend on the seed at all (see its own comment above) -- its fixed
+// seed only still varies fine ridge/terrace texture, so this same search doesn't apply to it,
+// though the seed is kept fixed anyway for the same reproducible-generation reason every
+// other world's is.
 
 export interface PremadeWorld {
   id: string;

@@ -67,6 +67,14 @@ class World:
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
     axial_tilt_deg: float = DEFAULT_AXIAL_TILT_DEG
+    # Another fixed per-world property: which Premade-worlds tab entry (if any) this world
+    # was generated from ("earth"/"pangaea"/"got"), `None` for every other Generate World tab.
+    # Stored (not just consumed once at generation) so a later step, long after generation,
+    # can still tell -- hydrology.py's own Gibraltar note is the one thing that currently
+    # reads this, to apply an "earth"-only override; a plain default means a world pickled
+    # before this field existed still loads (reading None, no override) same as any other
+    # field added here, see persistence.py.
+    premade_world_id: str | None = None
     # Another fixed per-world property, set once at generation (see plates.generate_plates'
     # own node_density parameter) and read for the rest of this world's life by every module
     # that builds new elevation-line nodes or derives a distance/count threshold from
@@ -606,6 +614,7 @@ def generate_world(
         mantle_centers=mantle_centers,
         next_plate_id=len(plates),
         axial_tilt_deg=axial_tilt_deg if axial_tilt_deg is not None else DEFAULT_AXIAL_TILT_DEG,
+        premade_world_id=premade_world_id,
         node_density=node_density,
         climate_density=climate_density,
         fluid_density=fluid_density,
