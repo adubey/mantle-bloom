@@ -1064,20 +1064,28 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
     the only things left outside are open ocean, a lake (excluded from `is_river` by the
     `~is_lake` term below, regardless of its own flow_accum), or a true dead-end sink.
 
-    **mouth_type** reads `lake_depth`/`is_ocean` off *`flow_target[mouth_idx]`* -- the node
-    the mouth actually empties into -- not off the mouth itself: `is_river` above always
-    excludes lake nodes (`~is_lake`), so the mouth of a real river can never itself carry
-    standing water, and checking the mouth's own (structurally always-dry) lake_depth here
-    made `"lake"` effectively unreachable and silently mislabeled every river that actually
-    ends at a lake as `"ocean"` instead (any real flow_target at all, lake or open sea, used
-    to read as `"ocean"` outright -- confirmed directly: a hand-built fixture modeling a river
-    ending at a lake only ever passed because it fabricated `is_river=True` on the flooded
-    node itself, a state real `compute_hydrology` output can never produce). `"other"` is now
-    reserved for what it was always meant to mean -- a genuine, still-unresolved dry interior
-    sink (`flow_target == -1`, not yet spilling) -- which `lakes.step_lakes` already grows
-    into a real lake node by node every step regardless of this classification; once that
-    basin's own water crosses `LAKE_MIN_VISIBLE_DEPTH_M` this same river correctly flips to
-    `"lake"` on its own, no separate fix needed there.
+    **mouth_type** reads `lake_depth`/`is_ocean` off the chain starting at
+    *`flow_target[mouth_idx]`* -- the node(s) the mouth actually empties into -- not off the
+    mouth itself: `is_river` above always excludes lake nodes (`~is_lake`), so the mouth of a
+    real river can never itself carry standing water, and checking the mouth's own
+    (structurally always-dry) lake_depth here made `"lake"` effectively unreachable and
+    silently mislabeled every river that actually ends at a lake as `"ocean"` instead (any real
+    flow_target at all, lake or open sea, used to read as `"ocean"` outright -- confirmed
+    directly: a hand-built fixture modeling a river ending at a lake only ever passed because it
+    fabricated `is_river=True` on the flooded node itself, a state real `compute_hydrology`
+    output can never produce). The chain walks *past* `flow_target[mouth_idx]` rather than
+    stopping there because a wide, gently-sloped basin floor routinely crosses several more dry
+    hops of real (currently-above-the-shoreline) catchment before actually reaching standing
+    water -- stopping at one hop mislabeled a river ending in an almost-full lake as `"other"`
+    (confirmed directly against a real save: a 636-node basin sitting at ~96% of its own rim,
+    with only its lowest couple of nodes actually underwater, so the immediate mouth_target read
+    as neither ocean nor lake even though the same chain reached real lake water two hops
+    later). `"other"` is reserved for what it's meant to mean -- a genuine, still-unresolved dry
+    interior sink (the chain runs out at `flow_target == -1` without ever crossing `is_ocean` or
+    `LAKE_MIN_VISIBLE_DEPTH_M`, not yet spilling) -- which `lakes.step_lakes` already grows into
+    a real lake node by node every step regardless of this classification; once that basin's own
+    water crosses `LAKE_MIN_VISIBLE_DEPTH_M` anywhere along the chain this same river correctly
+    flips to `"lake"` on its own, no separate fix needed there.
 
     **num_tributaries** (an original definition, with no existing precedent in this codebase
     to follow): counts each member's in-network in-degree (how many *other* members flow
@@ -1123,21 +1131,29 @@ def group_rivers(fields: HydrologyFields) -> list[RiverInfo]:
         mouth_idx = int(member_idx[np.argmax(fields.flow_accum[member_idx])])
 
         # See this function's own docstring for why this reads the *target*'s state, not the
-        # (structurally always-dry) mouth's own.
-        mouth_target = fields.flow_target[mouth_idx]
-        if mouth_target < 0:
-            mouth_type = "other"
-        elif fields.is_ocean[mouth_target]:
-            mouth_type = "ocean"
-        elif fields.lake_depth[mouth_target] > LAKE_MIN_VISIBLE_DEPTH_M:
-            mouth_type = "lake"
-        else:
-            # Flows onward into ordinary land outside this network -- flow_accum's usual
-            # downhill-monotonic guarantee (see this function's own docstring) makes this rare
-            # (river evaporation can, in principle, dip flow_accum enough at that one next node
-            # to miss the same percentile cut that qualified the mouth itself), but it's still a
-            # genuinely unresolved interior node, the same "other" meaning as a true dead end.
-            mouth_type = "other"
+        # (structurally always-dry) mouth's own -- and why it walks the chain past that first
+        # hop rather than stopping there. A wide, gently-sloped basin floor routinely crosses
+        # several more dry hops (real, currently-above-the-shoreline catchment, not a bug -- see
+        # lakes.py's own "members include dry higher ground" docstring) before actually reaching
+        # standing water, so checking only mouth_target's own lake_depth mislabeled a river
+        # ending in an almost-full lake as "other" (confirmed directly against a real save: a
+        # 636-node basin sitting at ~96% of its own rim, with only its lowest couple of nodes
+        # actually underwater -- mouth_target was still dry basin floor, but the same chain
+        # reached real lake water two hops later). `visited` guards this since it walks live
+        # per-step state rather than trusting the usual downhill-monotonic invariant to
+        # terminate.
+        mouth_type = "other"
+        node = int(fields.flow_target[mouth_idx])
+        visited: set[int] = set()
+        while node >= 0 and node not in visited:
+            if fields.is_ocean[node]:
+                mouth_type = "ocean"
+                break
+            if fields.lake_depth[node] > LAKE_MIN_VISIBLE_DEPTH_M:
+                mouth_type = "lake"
+                break
+            visited.add(node)
+            node = int(fields.flow_target[node])
 
         member_set = set(members)
         in_degree = {m: 0 for m in members}

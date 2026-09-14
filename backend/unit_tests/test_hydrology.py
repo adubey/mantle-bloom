@@ -47,6 +47,12 @@ def _river_inspector_fields():
     #   target it flows into). mouth_type "lake".
     #   Network C -- a single lone node 8, a genuine unresolved dry sink (flow_target -1, no
     #   lake there yet). mouth_type "other".
+    #   Network D -- a single lone node 9, ending at dry node 10 (still-dry basin floor, well
+    #   above the lake's current shoreline) which itself flows onward one more hop into the
+    #   same lake node 7 -- reproducing a real basin sitting near its own rim, with only its
+    #   lowest node or two actually underwater: mouth_target alone reads as neither ocean nor
+    #   lake, but the chain still reaches real lake water. mouth_type "lake" (confirmed
+    #   directly against a real save -- see group_rivers's own docstring).
     # Node 6 is ordinary land with flow but deliberately *not* in the is_river mask, to check
     # grouping doesn't pull in non-river neighbors.
     points = np.array(
@@ -60,15 +66,18 @@ def _river_inspector_fields():
             _normalize([0.0, 1.0, 0.0]),  # 6: non-river land
             _normalize([-1.0, 0.02, 0.0]),  # 7: the lake node 5 flows into (not itself a river)
             _normalize([0.0, -1.0, 0.0]),  # 8: lone river node, a still-dry interior sink
+            _normalize([0.0, -1.0, 0.02]),  # 9: lone river node, mouth of network D
+            _normalize([0.0, -1.0, 0.04]),  # 10: dry basin floor between node 9 and the lake
         ]
     )
     n = len(points)
-    elevation = np.array([100.0, 110.0, 80.0, 50.0, -10.0, 60.0, 40.0, 55.0, 70.0])
-    is_ocean = np.array([False, False, False, False, True, False, False, False, False])
-    flow_target = np.array([2, 2, 3, 4, -1, 7, -1, -1, -1])
-    flow_accum = np.array([10.0, 12.0, 25.0, 40.0, 0.0, 5.0, 0.0, 0.0, 3.0])
-    is_river = np.array([True, True, True, True, False, True, False, False, True])
-    lake_depth = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0])  # node 7 well above LAKE_MIN_VISIBLE_DEPTH_M
+    elevation = np.array([100.0, 110.0, 80.0, 50.0, -10.0, 60.0, 40.0, 55.0, 70.0, 65.0, 58.0])
+    is_ocean = np.array([False, False, False, False, True, False, False, False, False, False, False])
+    flow_target = np.array([2, 2, 3, 4, -1, 7, -1, -1, -1, 10, 7])
+    flow_accum = np.array([10.0, 12.0, 25.0, 40.0, 0.0, 5.0, 0.0, 0.0, 3.0, 4.0, 0.0])
+    is_river = np.array([True, True, True, True, False, True, False, False, True, True, False])
+    lake_depth = np.zeros(n)
+    lake_depth[7] = 5.0  # node 7 well above LAKE_MIN_VISIBLE_DEPTH_M
     zeros = np.zeros(n)
     return hydrology.HydrologyFields(
         points=points,
@@ -637,7 +646,7 @@ def test_compute_hydrology_freezes_rivers_and_snow_over_an_ice_cap_above_freezin
 def test_group_rivers_groups_confluence_and_finds_max_flow_mouth():
     fields = _river_inspector_fields()
     rivers = hydrology.group_rivers(fields)
-    assert len(rivers) == 3
+    assert len(rivers) == 4
 
     network_a = next(r for r in rivers if len(r.member_idx) == 4)
     assert sorted(network_a.member_idx.tolist()) == [0, 1, 2, 3]
@@ -665,6 +674,13 @@ def test_group_rivers_classifies_mouth_type_ocean_lake_and_other():
     assert network_c.mouth_idx == 8
     assert network_c.mouth_type == "other"  # flow_target -1: a still-dry, unresolved sink
 
+    network_d = next(r for r in rivers if 9 in r.member_idx.tolist())
+    assert network_d.mouth_idx == 9
+    # flow_target[9] (node 10) is itself still dry -- only the chain's *next* hop (node 7)
+    # actually carries standing water. Stopping at node 10 alone would misclassify this as
+    # "other", the exact bug a real save reproduced (see group_rivers's own docstring).
+    assert network_d.mouth_type == "lake"
+
 
 def test_group_rivers_excludes_non_river_nodes():
     fields = _river_inspector_fields()
@@ -673,6 +689,7 @@ def test_group_rivers_excludes_non_river_nodes():
     assert 4 not in all_members  # ocean node, never is_river
     assert 6 not in all_members  # land node deliberately not classified as a river
     assert 7 not in all_members  # the lake node itself -- is_river excludes it too
+    assert 10 not in all_members  # dry basin floor between node 9 and the lake, not is_river
 
 
 def test_group_rivers_on_no_rivers_returns_empty_list():
