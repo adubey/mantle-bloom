@@ -2330,12 +2330,25 @@ def generate_plates(
     belt/plateau masks for real-geography/lore ones (see relief_regions.py) instead of the
     usual calibrated-random coverage -- see that module and `terrain_noise.ContinentalRelief`
     for what a belt/plateau mask actually changes (where one is allowed to appear, not the
-    ridge/terrace texture inside it). For `"earth"`/`"pangaea"` specifically, it additionally
-    replaces `sketch`'s own `sketch_plate_sites` for *site placement* with real plate geometry
-    (`real_plates.real_plate_sites`/`real_plates.pangaea_real_plates`) -- `sketch` is still
-    required alongside it and still decides land/sea/mountain/river in each continental
-    plate's `hc_at` exactly as it does for "Human-made". `"got"` has no real-plate analog, so
-    its site placement falls through to the ordinary sketch-driven path, same as "Human-made"."""
+    ridge/terrace texture inside it).
+
+    `"earth"` additionally bypasses `sketch`/`num_plates`/`continental_fraction`/
+    `voronoi_points` entirely for plate/coastline construction: `real_plates.
+    build_exact_earth_plates` partitions the globe directly from the real 16-plate boundaries
+    and a real coastline raster (see that function's own module comment for why -- the old
+    Voronoi-approximated site placement below, kept for Pangaea/GoT, measurably merged real
+    straits/erased real islands no site-count tuning could fix), so both plate count and land
+    extent are simply whatever that partition contains, not a knob here. `sketch` is still
+    parsed from whatever the frontend sent (every premade world still supplies one, even
+    "earth") but only for mountain/river painting now -- see `real_plates.exact_earth_masks`,
+    which is what actually reaches each continental plate's `hc_at` below.
+
+    `"pangaea"` still replaces `sketch`'s own `sketch_plate_sites` for *site placement* with
+    real (rigidly transformed) plate geometry (`real_plates.real_plate_sites`) the old way --
+    `sketch` is still required alongside it and still decides land/sea/mountain/river in each
+    continental plate's `hc_at` exactly as it does for "Human-made". `"got"` has no real-plate
+    analog, so its site placement falls through to the ordinary sketch-driven path, same as
+    "Human-made"."""
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -2368,17 +2381,34 @@ def generate_plates(
         belt_mask = relief_regions.build_belt_mask(belts)
         plateau_mask = relief_regions.build_plateau_mask(plateaus)
 
-    if premade_world_id in ("earth", "pangaea"):
-        # "Predetermined plates": site placement from real plate geometry instead of the
-        # sketch's own landmasses (see real_plates.py) -- "got" has no real-plate analog, so
-        # it falls through to the ordinary sketch-driven path below like "Human-made" does.
+    # Non-None only for "earth" -- see its own module comment in real_plates.py. Its
+    # `is_owned`/frame-seed come straight from a baked exact partition instead of the
+    # Voronoi-tiling `tiling`/`owner_tree` every other path below builds, so most of the rest
+    # of this function branches on whether this is set rather than touching `tiling` directly.
+    exact_earth_plates = None
+
+    if premade_world_id == "earth":
         from . import real_plates
 
-        real_plate_list = real_plates.load_major_plates() if premade_world_id == "earth" else real_plates.pangaea_real_plates()
-        pooled_oceanic = premade_world_id == "pangaea"
+        exact_earth_plates = real_plates.build_exact_earth_plates()
+        num_plates = len(exact_earth_plates.crust_types)
+        crust_types = exact_earth_plates.crust_types
+        # The sketch's own (traced, resolution-limited) land grid is only still used for
+        # mountain/river painting now -- land/sea itself comes from the exact partition's own
+        # much finer raster instead (see exact_earth_masks' own docstring).
+        sketch = real_plates.exact_earth_masks(sketch)
+    elif premade_world_id == "pangaea":
+        # "Predetermined plates": site placement from real plate geometry instead of the
+        # sketch's own landmasses (see real_plates.py). Not (yet) rebuilt on the same exact
+        # partition "earth" uses above -- Pangaea's plates/coastline are already an
+        # approximation (a rigid per-continent transform, not a real reconstruction), so
+        # Voronoi-approximated placement within that is a smaller loss than it is for Earth.
+        from . import real_plates
+
+        real_plate_list = real_plates.pangaea_real_plates()
         target_continents = num_continents if num_continents is not None else round(CONTINENTAL_FRACTION * num_plates)
         site_xyz, crust_types = real_plates.real_plate_sites(
-            sketch, real_plate_list, num_plates, target_continents, rng, pooled_oceanic=pooled_oceanic
+            sketch, real_plate_list, num_plates, target_continents, rng, pooled_oceanic=True
         )
         num_plates = len(site_xyz)
         if voronoi_points is not None:
@@ -2401,13 +2431,20 @@ def generate_plates(
             continental_indices = set(rng.choice(num_plates, size=num_continents, replace=False).tolist())
             crust_types = ["continental" if i in continental_indices else "oceanic" for i in range(num_plates)]
 
-    seed_xyz = tiling.site_xyz
+    # `exact_earth_plates` ("earth" only) has no `tiling`/`owner_tree` at all -- its `is_owned`
+    # is a direct label-grid lookup (see the per-plate loop below) -- and `land_threshold`
+    # below is never reached for it either (that branch requires `sketch is None`, never true
+    # for a premade world), so neither `site_crust_types` nor `owner_tree` has a use to build
+    # for it.
+    if exact_earth_plates is None:
+        seed_xyz = tiling.site_xyz
 
-    # Per-site crust type (each site inherits its owning plate's) -- `_land_noise_threshold`
-    # and the `is_owned` test below both index by nearest *site*, not nearest plate.
-    site_crust_types = [crust_types[tiling.site_plate[s]] for s in range(len(seed_xyz))]
+        # Per-site crust type (each site inherits its owning plate's) -- `_land_noise_threshold`
+        # and the `is_owned` test below both index by nearest *site*, not nearest plate.
+        site_crust_types = [crust_types[tiling.site_plate[s]] for s in range(len(seed_xyz))]
 
-    owner_tree = cKDTree(seed_xyz)
+        owner_tree = cKDTree(seed_xyz)
+
     # Composite relief fields (see terrain_noise.py) -- the last consumers of `rng`, drawn in
     # a fixed order so a given seed reproduces the same terrain. `relief.sample()` stands in
     # for the old single `SphereNoise` (same std, same land/sea decision); `relief.uplift()`
@@ -2434,14 +2471,21 @@ def generate_plates(
     spacing_rad = line_spacing_rad(node_density)
     plates: list[LithospherePlate] = []
     for i in range(num_plates):
-        frame = geometry.plate_frame_from_seed(tiling.primary_site(i))
         crust_type = crust_types[i]
         hc0, hm0 = lithosphere.reference_thickness(crust_type)
         hc_amp = _HC_NOISE_AMPLITUDE_CONTINENTAL_M if crust_type == "continental" else _HC_NOISE_AMPLITUDE_OCEANIC_M
 
-        def is_owned(world_pts: np.ndarray, _i: int = i) -> np.ndarray:
-            _, nearest_idx = owner_tree.query(world_pts)
-            return tiling.site_plate[nearest_idx] == _i
+        if exact_earth_plates is None:
+            frame = geometry.plate_frame_from_seed(tiling.primary_site(i))
+
+            def is_owned(world_pts: np.ndarray, _i: int = i) -> np.ndarray:
+                _, nearest_idx = owner_tree.query(world_pts)
+                return tiling.site_plate[nearest_idx] == _i
+        else:
+            frame = geometry.plate_frame_from_seed(exact_earth_plates.frame_xyz[i])
+
+            def is_owned(world_pts: np.ndarray, _i: int = i) -> np.ndarray:
+                return exact_earth_plates.is_owned(_i, world_pts)
 
         if crust_type == "continental":
             if sketch is not None:

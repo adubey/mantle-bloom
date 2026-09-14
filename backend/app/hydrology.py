@@ -469,6 +469,52 @@ def connected_ocean_mask(
     return below & np.isin(labels, ocean_labels)
 
 
+# (lon, lat) degrees on each side of a real strait narrower than this engine can ever resolve
+# on its own -- see real_plates.py's own module comment for why Gibraltar specifically is
+# narrower than even the "earth" premade world's exact coastline raster, a limit of the
+# source cartographic data itself, not a bug in that bake. Only consulted for that one
+# premade world (see `force_earth_strait_connections`'s caller) -- a coordinate this specific
+# is never meaningful for a hand-drawn or procedurally generated world.
+_FORCED_EARTH_STRAITS_LONLAT = [
+    ((-6.5, 35.9), (-3.5, 35.9)),  # Gibraltar: just inside the Atlantic, just inside the Mediterranean
+]
+
+
+def force_earth_strait_connections(
+    points: np.ndarray, is_ocean: np.ndarray, elevation: np.ndarray, sea_level_m: float, neighbor_idx: np.ndarray
+) -> np.ndarray:
+    """`is_ocean` (`connected_ocean_mask`'s own result) with every strait in
+    `_FORCED_EARTH_STRAITS_LONLAT` counted as connected regardless of whether any node
+    actually sits in the gap -- the "earth" premade world's one deliberate exception to
+    letting node placement alone decide ocean connectivity (its caller gates this to that one
+    premade world). Recomputes the same below-sea-level connected-components labeling
+    `connected_ocean_mask` already did (cheap: the k-NN graph is already built) purely to find
+    which component each strait's two sides falls in; a no-op for a strait where either side
+    isn't actually below sea level this step (ice age glaciation, or plate motion has since
+    pushed that coordinate above water), or where they're already connected (a node happens to
+    sit in the gap; ordinary `connected_ocean_mask` output already has this right)."""
+    n = len(elevation)
+    below = elevation <= sea_level_m
+    if n == 0 or not np.any(below):
+        return is_ocean
+    k = neighbor_idx.shape[1]
+    rows = np.repeat(np.arange(n), k)
+    cols = neighbor_idx.ravel()
+    keep = below[rows] & below[cols]
+    graph = coo_matrix((np.ones(keep.sum()), (rows[keep], cols[keep])), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+
+    tree = cKDTree(points)
+    for (lon_a, lat_a), (lon_b, lat_b) in _FORCED_EARTH_STRAITS_LONLAT:
+        side_xyz = geometry.latlon_to_xyz(np.radians([lat_a, lat_b]), np.radians([lon_a, lon_b]))
+        _, (idx_a, idx_b) = tree.query(side_xyz)
+        if not (below[idx_a] and below[idx_b]) or labels[idx_a] == labels[idx_b]:
+            continue
+        if is_ocean[idx_a] or is_ocean[idx_b]:
+            is_ocean = is_ocean | (labels == labels[idx_a]) | (labels == labels[idx_b])
+    return is_ocean
+
+
 # Holds the most recent (hydro, query_xyz, idx) from either `sample_is_ocean`/`sample_is_sea`
 # below, so a call to one immediately followed by a call to the other *for the same
 # (hydrology cache, query points)* -- climate.py's `_sample_elevation_and_crust` and
@@ -887,6 +933,8 @@ def compute_hydrology(
     # enclosed interior depression that dipped below sea level is routed/pooled/silted as an
     # endorheic basin (see connected_ocean_mask) rather than treated as a vanishing ocean sink.
     is_ocean = connected_ocean_mask(points, elevation, world.sea_level_m, neighbor_idx)
+    if world.premade_world_id == "earth":
+        is_ocean = force_earth_strait_connections(points, is_ocean, elevation, world.sea_level_m, neighbor_idx)
 
     # A node is "frozen" this step -- any liquid water on it turns to ice, precipitation falls
     # as snow, a river crossing it stops -- when its sampled surface temperature is below the

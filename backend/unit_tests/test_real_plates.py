@@ -47,9 +47,15 @@ def test_real_plate_sites_distributes_across_land_and_sea():
 
     site_xyz, crust_types = real_plates.real_plate_sites(masks, plates, num_plates=32, num_continents=16, rng=rng)
 
-    assert len(site_xyz) == len(crust_types) == 32
+    # Site count may exceed num_plates: the rescue pass (see real_plate_sites' own comment)
+    # adds one site per connected patch of drawn land that ended up nearest an oceanic site,
+    # on top of the requested budget -- same tolerance sketch_plate_sites already documents
+    # for its own "every landmass gets at least one plate" guarantee. The synthetic land/sea
+    # checkerboard here is a worst case for that (lots of small alternating patches), so it's
+    # expected to trigger plenty of rescues.
+    assert len(site_xyz) == len(crust_types) >= 32
     assert set(crust_types) <= {"continental", "oceanic"}
-    assert crust_types.count("continental") + crust_types.count("oceanic") == 32
+    assert crust_types.count("continental") + crust_types.count("oceanic") == len(site_xyz)
     norms = np.linalg.norm(site_xyz, axis=-1)
     assert np.allclose(norms, 1.0, atol=1e-6)
 

@@ -12,7 +12,12 @@ matter at this app's usual plate-count scale (see data/major_plates.json). Ridge
 candidate positions for the mantle-center fit come from PB2002 (Bird, 2002), via the
 `fraxen/tectonicplates` GeoJSON export, clustered down from individual boundary steps to a
 handful of representative points per major ridge/trench system (see data/ridge_trench_centers.json).
-Both files are baked in at generation time by one-off scripts, not fetched at runtime.
+`data/plate_owner_grid.npz` (which of those same 16 polygons contains each cell of a 0.25-
+degree grid) is baked from that same boundary data. `data/real_land_mask.npz` (real coastline,
+Natural Earth `ne_10m_land` polygons rasterized onto a 0.05-degree grid) is the one exception
+to "boundary/motion data" this module otherwise deals in -- see the "Exact Earth coastline/
+plates" section below for why coastline needed its own real-data source, not just plates. All
+four files are baked in at generation time by one-off scripts, not fetched at runtime.
 """
 
 from __future__ import annotations
@@ -23,6 +28,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from scipy import ndimage
+from scipy.spatial import cKDTree
 
 from . import geometry, mantle
 
@@ -96,6 +103,210 @@ def load_major_plates() -> list[RealPlate]:
         omega = _pole_to_omega(pole["lat"], pole["lon"], pole["rate_deg_per_myr"])
         plates.append(RealPlate(name=p["name"], code=p["code"], boundary_xyz=boundary_xyz, omega=omega))
     return plates
+
+
+# --- Exact Earth coastline/plates ---------------------------------------------------------
+#
+# "Present-day Earth" no longer decides land/sea from the drawn/traced sketch PNG at all (see
+# worldsketch.py's module docstring for why that path is lossy: a hand-tolerant coastline
+# stroke needs gap-closing dilation to flood-fill cleanly, and that same dilation swallows any
+# real strait/sea narrower than it -- the Mediterranean via Gibraltar, the Korea Strait,
+# Torres Strait all measured as casualties of the *same* dilation amount that keeps ordinary
+# coastlines closed, at every resolution the baked sketch PNG offers). `real_land_mask.npz`
+# instead is a direct rasterization (see the one-off bake, not checked in -- Natural Earth's
+# `ne_10m_land` polygons filled straight onto a 0.05-degree grid, no outline-then-flood-fill
+# step to lose a gap in) of the actual coastline, at 10x the old sketch grid's resolution.
+# Gibraltar itself is still narrower than even this grid resolves (confirmed by inspection:
+# the source polygons touch with zero gap at Gibraltar, a generalization of the underlying
+# cartographic data, not a bug in this bake) -- see hydrology.py's own Gibraltar note for how
+# the Mediterranean still ends up counted as ocean despite that.
+#
+# Plate *membership* similarly no longer comes from Voronoi tiling over a handful of sites
+# (`real_plate_sites` below, still used for Pangaea/GoT) -- `plate_owner_grid.npz` (baked the
+# same way, from the unrotated `major_plates.json` boundaries) directly assigns every 0.25-
+# degree cell to whichever of the 16 real plates' polygon contains it (covering ~93% of the
+# globe; the rest is real microplates this app's simplified 16-plate set omits entirely).
+# `build_exact_earth_plates` below turns that into actual `LithospherePlate` territories: one
+# oceanic sub-plate per real plate (its crust type is "monolithic" in this engine, see
+# `generate_plates`'s own docstring, so a real plate's onshore/offshore crust still has to be
+# two separate LithospherePlate objects here, same as the old Voronoi path already did) plus
+# one continental sub-plate per land component *above `_MIN_LAND_COMPONENT_KM2`* within it --
+# smaller than that is folded into the surrounding ocean rather than getting its own plate.
+# That floor exists only because a `LithospherePlate` is a real, persistent per-step cost
+# (its own KD-tree, its own deform() pass, ...) and this app has never been run with more than
+# a few dozen of them (32 in its own stress tests) -- every real island get its own exact
+# plate would mean several hundred, untested territory for the whole engine, not just
+# generation. `_MIN_LAND_COMPONENT_KM2` = 50,000 keeps the total near that tested range while
+# still covering every landmass big enough to plausibly matter (all of Indonesia's/Japan's/
+# the Mediterranean's/the Caribbean's major islands clear it) -- a smaller real island
+# (Cyprus, Crete, Puerto Rico, ~8-10k km2 each) is the actual, deliberate cost of that
+# tradeoff: it renders as open ocean, not a bug, and the floor is one constant to lower if
+# that trade is ever worth revisiting against the performance it costs.
+_EXACT_GRID_H = 720
+_EXACT_GRID_W = 1440
+_MIN_LAND_COMPONENT_KM2 = 50_000.0
+_EARTH_RADIUS_KM = 6371.0
+
+
+def _exact_grid_rowcol(xyz: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Same row/col convention as `worldsketch.SketchMasks._rowcol`, standalone here so
+    `build_exact_earth_plates`'s label grid can be looked up without constructing a
+    `SketchMasks` for it (its H/W differ from the sketch's own working grid)."""
+    lat_rad, lon_rad = geometry.xyz_to_latlon(xyz)
+    lat_deg = np.degrees(lat_rad)
+    lon_deg = np.degrees(lon_rad)
+    row = np.clip(np.round((90.0 - lat_deg) * _EXACT_GRID_H / 180.0 - 0.5), 0, _EXACT_GRID_H - 1).astype(int)
+    col = np.mod(np.round((lon_deg + 180.0) * _EXACT_GRID_W / 360.0 - 0.5), _EXACT_GRID_W).astype(int)
+    return row, col
+
+
+_real_land_mask_cache: np.ndarray | None = None
+
+
+def load_real_land_mask() -> np.ndarray:
+    """The fine (0.05-degree) real-coastline raster -- see the module comment above. Cached
+    at module scope since it's ~26M booleans decompressed and every call this generation (or
+    load, if a saved exact-Earth world is later reopened) wants the identical array."""
+    global _real_land_mask_cache
+    if _real_land_mask_cache is None:
+        with np.load(_DATA_DIR / "real_land_mask.npz") as data:
+            _real_land_mask_cache = data["land"]
+    return _real_land_mask_cache
+
+
+_plate_owner_grid_cache: tuple[np.ndarray, list[str]] | None = None
+
+
+def load_plate_owner_grid() -> tuple[np.ndarray, list[str]]:
+    """`(owner, codes)` -- `owner` ((_EXACT_GRID_H, _EXACT_GRID_W) int8, -1 or an index into
+    `codes`) is which real plate's polygon (unrotated `major_plates.json` boundaries) contains
+    each cell, baked the same way `real_land_mask.npz` was. Cached like that mask."""
+    global _plate_owner_grid_cache
+    if _plate_owner_grid_cache is None:
+        with np.load(_DATA_DIR / "plate_owner_grid.npz") as data:
+            _plate_owner_grid_cache = (data["owner"], [str(c) for c in data["codes"]])
+    return _plate_owner_grid_cache
+
+
+@dataclass
+class ExactEarthPlates:
+    """`build_exact_earth_plates`'s result: `label_grid` ((_EXACT_GRID_H, _EXACT_GRID_W)
+    int32, -1 or an index into `crust_types`/`frame_xyz`) assigns every cell to one final
+    LithospherePlate-to-be; `crust_types[i]`/`frame_xyz[i]` (a representative unit vector,
+    that sub-plate's own member-cell centroid) describe sub-plate `i`."""
+
+    label_grid: np.ndarray
+    crust_types: list[str]
+    frame_xyz: list[np.ndarray]
+
+    def is_owned(self, sub_plate_id: int, world_pts: np.ndarray) -> np.ndarray:
+        row, col = _exact_grid_rowcol(world_pts)
+        return self.label_grid[row, col] == sub_plate_id
+
+
+_exact_earth_plates_cache: ExactEarthPlates | None = None
+
+
+def build_exact_earth_plates() -> ExactEarthPlates:
+    """The real-plate-grounded partition "Present-day Earth" builds its `LithospherePlate`s
+    from -- see the module comment above for the oceanic/continental split and why
+    `_MIN_LAND_COMPONENT_KM2` exists. Deterministic (no seed/rng: both input rasters are
+    static data), so cached at module scope like the rasters it's built from."""
+    global _exact_earth_plates_cache
+    if _exact_earth_plates_cache is not None:
+        return _exact_earth_plates_cache
+
+    from . import worldsketch  # local import: real_plates.py is the newer, more special-purpose module
+
+    owner, codes = load_plate_owner_grid()
+    fine_land = load_real_land_mask()
+    fh, fw = fine_land.shape[0] // _EXACT_GRID_H, fine_land.shape[1] // _EXACT_GRID_W
+    coarse_land = fine_land[: fh * _EXACT_GRID_H, : fw * _EXACT_GRID_W].reshape(_EXACT_GRID_H, fh, _EXACT_GRID_W, fw).max(axis=(1, 3))
+
+    lat_deg = 90.0 - (np.arange(_EXACT_GRID_H) + 0.5) * 180.0 / _EXACT_GRID_H
+    lon_deg = -180.0 + (np.arange(_EXACT_GRID_W) + 0.5) * 360.0 / _EXACT_GRID_W
+    lat_grid, lon_grid = np.meshgrid(np.radians(lat_deg), np.radians(lon_deg), indexing="ij")
+    cell_xyz = geometry.latlon_to_xyz(lat_grid, lon_grid)
+    cell_km2 = np.cos(lat_grid) * (np.radians(180.0 / _EXACT_GRID_H) * np.radians(360.0 / _EXACT_GRID_W)) * _EARTH_RADIUS_KM**2
+
+    label_grid = np.full((_EXACT_GRID_H, _EXACT_GRID_W), -1, dtype=np.int32)
+    crust_types: list[str] = []
+    frame_xyz: list[np.ndarray] = []
+
+    def add_sub_plate(mask: np.ndarray, crust_type: str) -> None:
+        label_grid[mask] = len(crust_types)
+        crust_types.append(crust_type)
+        frame_xyz.append(geometry.normalize(cell_xyz[mask].mean(axis=0)))
+
+    # The 16 real plates: exactly one oceanic sub-plate per plate (its own onshore/offshore
+    # crust already differs in reality; splitting the *sea* side further by its own internal
+    # connectivity would multiply plate count for no coastline-fidelity benefit, since an
+    # oceanic sub-plate's hc_at never reads the land mask either way -- see the module
+    # comment), plus one continental sub-plate per land component clearing the area floor.
+    for i in range(len(codes)):
+        region_mask = owner == i
+        if not np.any(region_mask):
+            continue
+        land_mask = region_mask & coarse_land
+        labeled, n_components = worldsketch._label_wrapped(land_mask)
+        kept_land = np.zeros_like(land_mask)
+        for comp in range(1, n_components + 1):
+            comp_mask = labeled == comp
+            if cell_km2[comp_mask].sum() >= _MIN_LAND_COMPONENT_KM2:
+                add_sub_plate(comp_mask, "continental")
+                kept_land |= comp_mask
+        sea_mask = region_mask & ~kept_land
+        if np.any(sea_mask):
+            add_sub_plate(sea_mask, "oceanic")
+
+    # Leftover (~7% of the globe, real microplates this app's 16-plate set omits): each
+    # connected patch -- land and sea together, since these are already small -- becomes its
+    # own plate, continental if it holds any land clearing the same floor, else oceanic. This
+    # is the "give leftover area its own small plates" choice, not folding it into whichever
+    # of the 16 plates happens to be nearest.
+    leftover_mask = owner == -1
+    labeled, n_components = worldsketch._label_wrapped(leftover_mask)
+    for comp in range(1, n_components + 1):
+        comp_mask = labeled == comp
+        if cell_km2[comp_mask].sum() < _MIN_LAND_COMPONENT_KM2:
+            continue  # too small a scrap to bother with its own plate -- absorbed into its nearest neighbor below
+        has_land = bool(coarse_land[comp_mask].any())
+        add_sub_plate(comp_mask, "continental" if has_land else "oceanic")
+
+    # Every cell above belongs to some sub-plate now except the leftover scraps just skipped
+    # for being too small -- unlike a too-small *land* component within a real plate's own
+    # region (which already lands in that region's own oceanic sea_mask above, never
+    # unclaimed), a skipped leftover scrap has no such natural home, so it would otherwise
+    # sit outside every plate's territory and never get a node at all. Absorb each into
+    # whichever already-decided sub-plate has the nearest member cell -- same "too small to
+    # matter, folds into its surroundings" degrade as everywhere else in this bake, just
+    # applied after the fact instead of by skipping it up front.
+    unclaimed = label_grid == -1
+    if np.any(unclaimed) and not np.all(unclaimed):
+        claimed_tree = cKDTree(cell_xyz[~unclaimed])
+        claimed_labels = label_grid[~unclaimed]
+        _, nearest = claimed_tree.query(cell_xyz[unclaimed])
+        label_grid[unclaimed] = claimed_labels[nearest]
+
+    _exact_earth_plates_cache = ExactEarthPlates(label_grid=label_grid, crust_types=crust_types, frame_xyz=frame_xyz)
+    return _exact_earth_plates_cache
+
+
+def exact_earth_masks(approx_sketch: "worldsketch.SketchMasks") -> "worldsketch.SketchMasks":
+    """`approx_sketch` (the ordinary sketch-PNG parse the frontend still sends, so it still
+    supplies mountain/river painting the same as before -- the reported mismatch was
+    coastlines/plates, not those) with its `land` grid swapped for the exact raster (see the
+    module comment above). `mountain`/`river` are nearest-upsampled from the sketch's own
+    coarser grid onto the exact grid's resolution -- `SketchMasks` indexes all three fields
+    with the same row/col math, so they have to share a shape."""
+    from . import worldsketch  # local import: real_plates.py is the newer, more special-purpose module
+
+    land = load_real_land_mask()
+    fh = land.shape[0] // approx_sketch.height
+    fw = land.shape[1] // approx_sketch.width
+    mountain = np.repeat(np.repeat(approx_sketch.mountain, fh, axis=0), fw, axis=1)[: land.shape[0], : land.shape[1]]
+    river = np.repeat(np.repeat(approx_sketch.river, fh, axis=0), fw, axis=1)[: land.shape[0], : land.shape[1]]
+    return worldsketch.SketchMasks(land=land, mountain=mountain & land, river=river & land)
 
 
 @dataclass
@@ -177,6 +388,48 @@ def real_plate_sites(
 
     site_xyz = np.concatenate([continental_sites, oceanic_sites], axis=0)
     crust_types = ["continental"] * len(continental_sites) + ["oceanic"] * len(oceanic_sites)
+
+    # Rescue pass: `distribute_counts`'s "only the `num_continents` largest landmasses get a
+    # plate" degrade (its own docstring calls this "an acceptable loss for more islands than
+    # requested continental plates") is fine when the dropped land ends up nearest an already-
+    # placed *continental* site regardless of which real plate that site nominally belongs to
+    # (`hc_at` reads the sketch per-node the same way for every continental plate, see
+    # `lithosphere_plate.generate_plates`'s own `sketch` docstring) -- a sliver of land near a
+    # real plate boundary inherits its continental neighbor's site just like it would in
+    # reality. It's not fine when the nearest site turns out to be *oceanic* instead: that
+    # land renders as open ocean regardless of what was drawn, whether it's a whole isolated
+    # continent with no continental neighbor to inherit from (Australia, Antarctica) or part
+    # of one that a real plate's own internal boundary (e.g. Nubia/Somalia's East African Rift
+    # split) happens to cut off from its nearest surviving continental site. Rather than
+    # guessing which real plate's land deserves a guaranteed site up front -- by real plate
+    # (over-guarantees every oceanic plate's boundary-noise sliver of coastal land too, at the
+    # oceanic site budget's expense) or even by whole land group (too coarse when only part of
+    # a large group ends up orphaned) -- check every drawn land cell directly against the
+    # sites actually placed, and add one rescue site per *connected patch* of cells that ended
+    # up oceanic-nearest (`ndimage.label`, same 8-connectivity `worldsketch._flood_fill_land`
+    # uses), sized independently of real-plate identity. Added on top rather than carved out
+    # of `num_oceanic`, so this can only ever add a handful of plates for genuinely orphaned
+    # land, never shrink oceanic coverage -- and can only ever turn oceanic-nearest land
+    # continental, never the reverse, so it can't introduce a new mismatch of its own.
+    if len(site_xyz) > 0 and np.any(land_flat):
+        site_tree = cKDTree(site_xyz)
+        is_oceanic_site = np.array([c == "oceanic" for c in crust_types])
+        land_idx = np.flatnonzero(land_flat)
+        _, nearest_site = site_tree.query(cell_xyz[land_idx])
+        orphaned = is_oceanic_site[nearest_site]
+        if np.any(orphaned):
+            orphaned_mask = np.zeros(land_flat.shape, dtype=bool)
+            orphaned_mask[land_idx[orphaned]] = True
+            orphaned_grid = orphaned_mask.reshape(sketch.height, sketch.width)
+            labeled, n_components = ndimage.label(orphaned_grid, structure=np.ones((3, 3)))
+            labeled_flat = labeled.reshape(-1)
+            rescued_sites = np.concatenate(
+                [worldsketch.kmeans_sites(cell_xyz[labeled_flat == comp], 1, rng) for comp in range(1, n_components + 1)],
+                axis=0,
+            )
+            site_xyz = np.concatenate([site_xyz, rescued_sites], axis=0)
+            crust_types = crust_types + ["continental"] * len(rescued_sites)
+
     return site_xyz, crust_types
 
 
