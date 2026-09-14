@@ -109,7 +109,7 @@ const DEFAULT_PLATES = 14;
 // historical feel (EXTRA_SITES_PER_PLATE = 2, i.e. ~3x the plate count at 14 plates); higher
 // makes plate outlines lumpier and less convex, lower makes them smoother.
 const MIN_VORONOI_POINTS = 8;
-const MAX_VORONOI_POINTS = 200;
+const MAX_VORONOI_POINTS = 10000;
 const DEFAULT_VORONOI_POINTS = 42;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
