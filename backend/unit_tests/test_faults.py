@@ -442,10 +442,14 @@ def test_fault_systems_spawn_with_long_master_traces_and_strand_families():
     assert strand_system_ids & live_system_ids  # strands point at systems that still exist
     assert max(f.length_km() for f in world.faults if f.system_id is not None) > faults.LENGTH_MAX_KM
 
-    # Lone faults (no system) still obey the original tight length cap.
+    # Lone faults (no system) still obey the original tight length cap -- modulo the
+    # sine-shaped BEND_MAX_FRACTION wander applied on top of the nominal length, which at max
+    # length + max bend fraction adds ~6.9 km of real arc length (measured directly from
+    # _build_fault's own geometry); the nominal `length_km` fed into that construction is
+    # still hard-clipped to LENGTH_MAX_KM.
     lone = [f.length_km() for f in world.faults if f.system_id is None]
     if lone:
-        assert max(lone) <= faults.LENGTH_MAX_KM + 1.0
+        assert max(lone) <= faults.LENGTH_MAX_KM + 8.0
 
 
 def test_fault_systems_age_and_go_inactive():

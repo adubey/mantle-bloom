@@ -677,7 +677,15 @@ def _node_cloud_and_tree(world: World):
         return None
     all_points, all_elevation, all_owner = collected
     shared_tree = world.node_position_tree_cache
-    tree = shared_tree[1] if shared_tree is not None else cKDTree(all_points)
+    # Only trust the shared tree if it was built over this same node cloud -- normally
+    # guaranteed by step_world resetting both caches together whenever plates move, but a
+    # caller that mutates world.plates directly without going through step_world (e.g. a test
+    # simulating a gap) can leave a stale, differently-sized tree cached from an earlier
+    # topology, whose query indices would then overrun all_elevation/all_owner here.
+    if shared_tree is not None and shared_tree[0].shape[0] == all_points.shape[0]:
+        tree = shared_tree[1]
+    else:
+        tree = cKDTree(all_points)
     result = (all_points, all_elevation, all_owner, tree)
     world.node_kdtree_cache = result
     return result
