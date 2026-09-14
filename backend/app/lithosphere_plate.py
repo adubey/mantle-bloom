@@ -902,12 +902,24 @@ class LithospherePlate(PlateWithLines):
 
         self.set_lines(new_lines)
         if not suppress_growth:
-            self._claim_adjacent_territory(world, neighbours, spacing_rad)
+            # Built once and shared between the two calls below (both need "distance to the
+            # nearest neighbour node", nothing else about which neighbour) -- previously each
+            # rebuilt its own identical cKDTree over the same concatenated neighbour-node
+            # cloud from scratch (docs/profiling.md; neither of these two calls touches any
+            # *neighbour's* own nodes, only self's, so the cloud can't have changed between
+            # them). Not the torque.gather_boundary_force_inputs per-neighbour-tree pattern --
+            # that trades one big batched query for several smaller ones, a good trade when
+            # the query side is tiny (as in _claim_adjacent_territory's own per-row probe) but
+            # a bad one for _fill_corner_notch_frontier's single large batched query, where a
+            # single combined tree stays the cheaper query shape.
+            neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
+            neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
+            self._claim_adjacent_territory(world, neighbours, spacing_rad, neighbour_tree=neighbour_tree)
             # World.gap_fill_algorithm ("frontier" default, "windowed" opt-out) -- see
             # gap_fill_frontier.py's own module docstring. _stretch_end/_claim_adjacent_
             # territory above are unaffected either way; only the residual-notch closer swaps.
             if getattr(world, "gap_fill_algorithm", "frontier") == "frontier":
-                self._fill_corner_notch_frontier(world, neighbours, spacing_rad, years)
+                self._fill_corner_notch_frontier(world, neighbours, spacing_rad, years, neighbour_tree=neighbour_tree)
             else:
                 self._fill_corner_notch(world, neighbours, spacing_rad, years)
 
@@ -1368,7 +1380,9 @@ class LithospherePlate(PlateWithLines):
             "node_created_years": np.full(n, world.elapsed_years, dtype=float),
         }
 
-    def _claim_adjacent_territory(self, world: "World", neighbours: list, spacing_rad: float) -> None:  # noqa: F821
+    def _claim_adjacent_territory(
+        self, world: "World", neighbours: list, spacing_rad: float, neighbour_tree: cKDTree | None = None  # noqa: F821
+    ) -> None:
         """Same shape as `PlateWithLines._claim_adjacent_territory` -- one or more brand-new
         phi rows just past this plate's own phi extremes, where open -- seeded with fresh Hc/Hm
         (oceanic reference, see `growth_seed_thickness`) plus `terrain_noise.FractalTexture`
@@ -1398,7 +1412,12 @@ class LithospherePlate(PlateWithLines):
         many contiguous open runs it actually has (`split_into_contiguous_runs`) instead of
         always claiming the full old row's theta span with holes in it -- what lets a
         triple-junction wedge narrow or widen row by row instead of insisting on full-width
-        rectangular strips."""
+        rectangular strips.
+
+        `neighbour_tree`, when passed (deform()'s own call does, sharing it with whichever
+        corner-notch closer runs right after this in the same deform() call), is a cKDTree
+        already built over every neighbour's concatenated node cloud -- built fresh here only
+        for a caller without one (a direct unit-test call, or `neighbours=[]`)."""
         lines_with_nodes = [line for line in self.lines if len(line) > 0]
         if not lines_with_nodes:
             return
@@ -1417,8 +1436,9 @@ class LithospherePlate(PlateWithLines):
         texture = terrain_noise.FractalTexture(
             np.random.default_rng((world.seed, self.plate_id, _TERRAIN_SEED_TAG))
         )
-        neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
-        neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
+        if neighbour_tree is None:
+            neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
+            neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
         coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
         line_index_by_id = {id(row): i for i, row in enumerate(self.lines)}
         new_lines: list[ElevationLine] = []
@@ -1766,7 +1786,9 @@ class LithospherePlate(PlateWithLines):
                 "window_rad": float(window_rad), "phi_lo": float(phi_lo), "phi_hi": float(phi_hi),
             })
 
-    def _fill_corner_notch_frontier(self, world: "World", neighbours: list, spacing_rad: float, years: float) -> None:  # noqa: F821
+    def _fill_corner_notch_frontier(
+        self, world: "World", neighbours: list, spacing_rad: float, years: float, neighbour_tree: cKDTree | None = None  # noqa: F821
+    ) -> None:
         """`World.gap_fill_algorithm == "frontier"` alternative to `_fill_corner_notch`, called
         from the same place in `deform()` -- see `gap_fill_frontier.py`'s own module docstring
         for the algorithm. Detecting *this* plate's own candidate notch points is identical to
@@ -1778,14 +1800,22 @@ class LithospherePlate(PlateWithLines):
         found differs: `gap_fill_frontier.fill_gap_by_growing_plates` grows *this plate's own
         existing lines* into them node by node instead of always emitting brand-new ones.
 
+        `neighbour_tree`, when passed (deform()'s own call does, sharing it with
+        `_claim_adjacent_territory`'s own call right before this in the same deform() call --
+        neither call touches any neighbour's own nodes, so the same tree serves both), is a
+        cKDTree already built over every neighbour's concatenated node cloud -- built fresh
+        here only for a caller without one.
+
         Imports `gap_fill_frontier` locally (not at module scope) since that module itself
         imports back from here (`_TERRAIN_SEED_TAG`, `_erupt_melted_nodes`,
         `growth_seed_thickness`) -- same deferred-import shape `deform()`'s own `from . import
         faults` already uses to avoid a circular top-level import."""
         from . import gap_fill_frontier
 
-        neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
-        if not neighbour_points:
+        if neighbour_tree is None:
+            neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
+            neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
+        if neighbour_tree is None:
             world.log_corner_notch({"plate_id": self.plate_id, "outcome": "no_neighbours", "nodes_added": 0, "algorithm": "frontier"})
             return
         own_points, _ = self.all_points_and_elevation()
@@ -1797,7 +1827,6 @@ class LithospherePlate(PlateWithLines):
         coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
         window_rad = max(CORNER_NOTCH_MIN_WINDOW_ROWS * spacing_rad, mantle.MAX_PLATE_RATE * years)
         neighbour_reach_rad = window_rad + CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT * spacing_rad
-        neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0))
 
         max_abs_phi = np.pi / 2 - spacing_rad / 2  # matches iter_local_lattice's own bound
         max_phi_limit = np.pi / 2 - POLE_CAP_MARGIN_MULT * spacing_rad

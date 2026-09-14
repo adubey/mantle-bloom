@@ -802,6 +802,17 @@ def _plate_stress(world: "World", plate: Plate):
     neighbours = plate.get_neighbours(world.plates)
     if not neighbours:
         return None
+    # NOT torque.gather_boundary_force_inputs' per-neighbour-cached-tree-plus-argmin pattern
+    # (tried here first -- see docs/profiling.md): that pattern wins when a fresh combined
+    # tree would otherwise be rebuilt on *many* calls a step (torque queries every plate's
+    # neighbours twice a step, ~200+ calls, so eliminating each one's fresh build dominates),
+    # but this function is only called once per plate a step (~19 calls at this profile's
+    # world size) -- there, looping a full `own_points` query per neighbour costs more in
+    # extra query time (each neighbour's tree gets its own full-size query instead of sharing
+    # one) than the single combined-tree build it would save. Measured directly: swapping to
+    # the per-neighbour pattern here dropped this function's own build cost to ~0 but grew its
+    # query cost ~8x (torque's own per-neighbour queries are the *same* cost shape, just
+    # amortized over far more calls) -- a net loss, reverted.
     nb_pts = np.concatenate([p._get_world_points() for p in neighbours], axis=0)
     nb_omega = np.concatenate(
         [np.tile(np.asarray(p.omega, dtype=float), (p.node_count(), 1)) for p in neighbours], axis=0
