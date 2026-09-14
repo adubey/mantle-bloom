@@ -710,10 +710,9 @@ operation at a coastline boundary, which is exactly where `is_ocean` correctness
    `"healpix"`) behind `render_image._node_cloud_and_tree` only -- see "Phase 1 landed" below
    for why `plates.cached_node_position_tree`, also named in this checklist item's original
    text, turned out not to belong in this phase after all.
-2. Extend to `climate._sample_elevation_and_crust` (same node cloud, same tree) and `hydrology.
-   _nearest_hydro_node_idx` (after the last-step/this-step check above is resolved) together,
-   since they already share `world.node_position_tree_cache`/the item-3 ocean-tree cache and
-   would share one `HealpixGrid` population per step the same way.
+2. **Done (2026-09-14).** Extended to `climate._sample_elevation_and_crust` and `hydrology.
+   _nearest_hydro_node_idx`/`sample_is_ocean`/`sample_is_sea` -- see "Phase 2 landed" below,
+   including the last-step/this-step accuracy measurement this item was gated on.
 3. Leave `world.distance_from_land_approx` and `_classify_terrain_relief` on their current
    `cKDTree` paths (see above) -- not part of this migration, no shared infrastructure to gain
    from doing them at the same time.
@@ -868,3 +867,69 @@ resample.py`):
 - `hydrology`'s own one-step-behind `is_ocean`/`is_sea` semantics (this document's own
   "last-step/this-step" note above) are unaffected by Phase 1 -- `hydrology.py` isn't touched
   this phase at all (deferred to Phase 2 along with everything else hydrology-related).
+
+### Phase 2 landed (2026-09-14)
+
+Extends `World.node_cloud_resample_mode` to the two remaining call sites this checklist named:
+`climate._sample_elevation_and_crust` and `hydrology._nearest_hydro_node_idx` (reached via
+`sample_is_ocean`/`sample_is_sea`). No new user-facing surface -- still the same backend/API-only
+flag Phase 1 introduced.
+
+**`climate._sample_elevation_and_crust`.** Rather than each caller building its own
+`NodePixelIndex`, `plates.cached_node_healpix_index(world, points)` was factored out of what was
+Phase 1's private `render_image._healpix_node_index` -- the `"healpix"` analogue of
+`cached_node_position_tree`, with the identical `World.node_healpix_grid_cache`/
+`node_healpix_index_cache` split (grid keyed by `nside`, reused all game; per-step scatter+fill,
+rebuilt every `step_world`). `render_image._node_cloud_and_tree` and `climate.
+_sample_elevation_and_crust` now both call this one function, so whichever runs first this step
+pays the scatter+fill and the other reuses it -- confirmed directly (not just by code reading):
+calling `render_image._node_cloud_and_tree` then `climate._sample_elevation_and_crust`
+back-to-back against the same step leaves `World.node_healpix_index_cache` at the exact same
+object identity, i.e. climate's call didn't rebuild.
+
+Because it's the literal same node cloud and the literal same `NodePixelIndex` as the render
+path, climate's elevation accuracy against `cKDTree` (measured over the same 801x1601 full-
+sphere grid, same `seed=0`/`node_density=4.0` world Phase 1 measured) comes out identical to
+Phase 1's own numbers to one decimal place: **mean 53.5m, p95 256.9m, max 7048.2m**. `is_ocean`/
+`is_sea` (both routed through `hydrology.sample_is_ocean`/`sample_is_sea`, same as before --
+unaffected by this specific change since they resample a *different* node cloud, see below)
+agreed >99% of the time.
+
+**`hydrology._nearest_hydro_node_idx` / `sample_is_ocean` / `sample_is_sea` -- the accuracy gate
+this checklist item was explicitly waiting on.** Unlike the climate/render pair above, this
+resamples **last step's** cached `hydro.points` (`World.hydrology_cache`), not this step's live
+node cloud -- a genuinely different, and smaller, point population, one step stale by design (see
+this document's own "last-step/this-step" note). Given its own module-global cache placement
+(`_LAST_OCEAN_TREE`, not on `World`, to avoid round-tripping a tree through every save/load), the
+HEALPix path mirrors that exactly: two new module globals (`_LAST_OCEAN_HEALPIX_GRID`/
+`_LAST_OCEAN_HEALPIX_INDEX`), same grid/index split, same identity-keyed "worst case is an extra
+rebuild" safety. `_nearest_hydro_node_idx` now takes `resample_mode` and folds it into its
+single-entry cache key so a mode flip mid-process can't serve a stale cross-mode hit.
+
+**Measured directly, at the same real-world config as every number above:** overall `is_ocean`
+disagreement between `"kdtree"` and `"healpix"` is small, **0.43%** of the full 801x1601 grid.
+But split by a dilated/eroded coastal band the same way Phase 1's own outlier check does, the
+picture the issue's text worried about is real, not a formality: **coastal-band mismatch is
+16.1%**, against **0.03%** in the interior -- roughly a 500x concentration, and not a small
+absolute number either. This is a materially worse agreement rate than Phase 1's own
+render-path *elevation* outlier concentration (that one was about magnitude of a continuous
+field skewing high near coastlines; this is a binary classification actually flipping for
+roughly 1 in 6 coastal-band cells). The cause is the same double jump the issue's own text
+called out before this was measured: (1) last-step's node cloud resampled through a *different*
+scatter+fill population than this step's, so even a stationary coastline sees two independent
+nearest-pixel-after-fill assignments, not one nearest-node lookup reused twice, and (2) exactly
+at a land/ocean transition, "nearest filled HEALPix pixel" and "nearest node" are the two
+operations most likely to pick different sides of the boundary. **Caveat for whoever picks up
+Phase 4 (flipping the default):** this number, not Phase 1's elevation-outlier number, is the one
+that should gate that decision for anything coastline-sensitive (lake/river mouth detection,
+coastal climate effects) -- 16% coastal disagreement is well short of "no visible difference,"
+even though the overall grid-wide number looks clean. Not investigated further here (out of
+Phase 2's own scope, which was wiring the flag through and measuring it honestly, not tuning it
+away) -- a smaller coastal `nside` relative to node density, or a tie-break rule aware of
+`is_ocean` itself rather than pure nearest-center distance, are the two most likely levers if
+this needs to shrink later.
+
+Tests: `backend/stress_tests/test_healpix_resample.py` (real-scale accuracy/sharing checks
+above) and `backend/unit_tests/test_plates.py`/`test_climate.py`/`test_hydrology.py`
+(fast-suite equivalence checks for `cached_node_healpix_index` and the mode-aware hydrology
+resample).

@@ -653,7 +653,7 @@ def _node_cloud_and_tree(world: World):
     nearest-node resample off the full plate node cloud (`_render_grid_arrays`,
     `_biome_fields`, `_resource_fields`, `_render_elev_reason_view`, `_render_speckle_view`).
     `tree` is a `cKDTree` under the default `World.node_cloud_resample_mode` ("kdtree"), or a
-    `healpix_grid.NodePixelIndex` under "healpix" (issue #133 phase 1) -- both expose the same
+    `healpix_grid.NodePixelIndex` under "healpix" (issue #133 phases 1-2) -- both expose the same
     `.query(points, workers=...) -> (_, idx)` shape every caller here actually uses; none of
     them consume the discarded distance. The one exception is `_classify_terrain_relief`'s
     `query_ball_point` radius search, which a `NodePixelIndex` can't serve at all -- see its own
@@ -671,9 +671,11 @@ def _node_cloud_and_tree(world: World):
     itself, built from positions alone, is safe to reuse the instant node positions settle for
     this step, well before erosion.py finishes mutating elevation; climate.py's own per-step
     resample (`_sample_elevation_and_crust`) builds exactly that tree early (every step, inside
-    `apply_erosion`) and shares it via `World.node_position_tree_cache`, so in practice the
+    `apply_erosion`) and shares it via `World.node_position_tree_cache` -- or, under "healpix",
+    via `plates.cached_node_healpix_index`/`World.node_healpix_grid_cache`+
+    `node_healpix_index_cache` (issue #133 phase 2) -- so in practice the
     first render after a step only pays for this function's own elevation/owner gather, not
-    another tree build. This is the "left for later" tail of docs/profiling.md #6. Every
+    another tree/index build. This is the "left for later" tail of docs/profiling.md #6. Every
     `plates.collect_all_*` array is built in this same per-plate/per-node order, so the tree's
     query indices map into any of them, not just the three returned here."""
     cached = world.node_kdtree_cache
@@ -684,7 +686,11 @@ def _node_cloud_and_tree(world: World):
         return None
     all_points, all_elevation, all_owner = collected
     if world.node_cloud_resample_mode == "healpix":
-        tree = _healpix_node_index(world, all_points)
+        # Shared with climate._sample_elevation_and_crust (issue #133 phase 2) via
+        # World.node_healpix_grid_cache/node_healpix_index_cache -- whichever of the two runs
+        # first this step pays the scatter+fill, the other reuses it, the same "first caller
+        # this step wins" sharing plates.cached_node_position_tree already does for "kdtree".
+        tree = plates.cached_node_healpix_index(world, all_points)
     else:
         shared_tree = world.node_position_tree_cache
         # Only trust the shared tree if it was built over this same node cloud -- normally
@@ -699,28 +705,6 @@ def _node_cloud_and_tree(world: World):
     result = (all_points, all_elevation, all_owner, tree)
     world.node_kdtree_cache = result
     return result
-
-
-def _healpix_node_index(world: World, all_points: np.ndarray) -> healpix_grid.NodePixelIndex:
-    """The "healpix" `node_cloud_resample_mode` half of `_node_cloud_and_tree` -- builds/reuses
-    `World.node_healpix_grid_cache` (keyed by nside, which only depends on node *count* and so
-    is stable for a world's whole life) and scatters+fills the current node cloud onto it into
-    `World.node_healpix_index_cache` (which, like `node_kdtree_cache`, is a pure function of
-    node *positions* and so is reset every `step_world`)."""
-    cached_index = world.node_healpix_index_cache
-    if cached_index is not None:
-        return cached_index
-    node_count = all_points.shape[0]
-    cached_grid = world.node_healpix_grid_cache
-    if cached_grid is not None and cached_grid[0] == healpix_grid.nside_for_node_count(node_count):
-        grid = cached_grid[1]
-    else:
-        nside = healpix_grid.nside_for_node_count(node_count)
-        grid = healpix_grid.build(nside)
-        world.node_healpix_grid_cache = (nside, grid)
-    index = healpix_grid.build_node_pixel_index(grid, all_points)
-    world.node_healpix_index_cache = index
-    return index
 
 
 # Real-world radius (not a fixed neighbour *count*) so the mountain/plain split reads the same

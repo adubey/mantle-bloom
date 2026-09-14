@@ -3,6 +3,7 @@ import pytest
 from app import geometry
 from app.elevation_lines import ElevationLine, line_spacing_rad
 from app.lithosphere_plate import build_plate_tiling, generate_plates
+from app import healpix_grid
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
     MAX_AUTO_PLATES,
@@ -10,6 +11,7 @@ from app.plates import (
     MIN_OCEANIC_PLATES,
     NODE_DENSITY_CHOICES,
     PlateWithLines,
+    cached_node_healpix_index,
     collect_all_coal_deposit,
     collect_all_mineral_deposit,
     collect_all_oil_gas_deposit,
@@ -1712,3 +1714,66 @@ def test_decompression_melting_at_or_below_sea_level_erupts_oceanic_crust():
     assert line.elev_change_reason[-1] == ELEV_CHANGE_RIFT
     # A fresh oceanic reference column floats at abyssal depth, not dry land.
     assert line.elevation[-1] < -3000.0
+
+
+# -- Issue #133 phase 2: cached_node_healpix_index -------------------------------------------
+
+
+def test_cached_node_healpix_index_query_matches_cktree_for_nodes_that_own_their_pixel():
+    """Same contract as healpix_grid's own `NodePixelIndex` regression test, but through the
+    shared `plates.cached_node_healpix_index` entry point every "healpix"
+    `node_cloud_resample_mode` caller now goes through (render_image._node_cloud_and_tree,
+    climate._sample_elevation_and_crust)."""
+    from scipy.spatial import cKDTree
+
+    rng = np.random.default_rng(2)
+    xyz = rng.normal(size=(500, 3))
+    xyz /= np.linalg.norm(xyz, axis=1, keepdims=True)
+
+    index = cached_node_healpix_index(None, xyz)
+    assert not np.any(index.pixel_to_node == -1)
+
+    pix = index.grid.ang2pix(np.arctan2(xyz[:, 1], xyz[:, 0]), np.arcsin(xyz[:, 2]))
+    owns_own_pixel = index.pixel_to_node[pix] == np.arange(len(xyz))
+    assert owns_own_pixel.sum() > len(xyz) // 2
+
+    _, idx = index.query(xyz[owns_own_pixel])
+    tree = cKDTree(xyz)
+    _, tree_idx = tree.query(xyz[owns_own_pixel])
+    assert np.array_equal(idx, tree_idx)
+
+
+def test_cached_node_healpix_index_world_none_always_builds_fresh():
+    rng = np.random.default_rng(3)
+    xyz_a = rng.normal(size=(200, 3))
+    xyz_a /= np.linalg.norm(xyz_a, axis=1, keepdims=True)
+    xyz_b = rng.normal(size=(200, 3))
+    xyz_b /= np.linalg.norm(xyz_b, axis=1, keepdims=True)
+
+    index_a = cached_node_healpix_index(None, xyz_a)
+    index_b = cached_node_healpix_index(None, xyz_b)
+    assert not np.array_equal(index_a.pixel_to_node, index_b.pixel_to_node)
+
+
+def test_cached_node_healpix_index_shares_grid_and_index_across_world_callers():
+    """The whole point of moving this out of render_image.py's own private helper: a second
+    caller against the same world this step (climate.py, per issue #133 phase 2) must reuse
+    the first caller's scatter+fill, not rebuild -- the same "first caller wins" sharing
+    `cached_node_position_tree` already provides for "kdtree" mode."""
+    world = generate_world(5, num_plates=8)
+    all_points, _all_elev, _all_owner = collect_all_points(world.plates)
+
+    first = cached_node_healpix_index(world, all_points)
+    assert world.node_healpix_grid_cache is not None
+    assert world.node_healpix_index_cache is first
+
+    second = cached_node_healpix_index(world, all_points)
+    assert second is first  # reused, not rebuilt
+
+    grid_cache_before = world.node_healpix_grid_cache
+    step_world(world, 1_000_000)
+    assert world.node_healpix_index_cache is None  # a node moved -- must rebuild
+    assert world.node_healpix_grid_cache is grid_cache_before  # node count unchanged -- reused
+
+    third = cached_node_healpix_index(world, all_points)
+    assert third is not first
