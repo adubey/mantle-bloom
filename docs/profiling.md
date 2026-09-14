@@ -696,13 +696,15 @@ operation at a coastline boundary, which is exactly where `is_ocean` correctness
 
 ### Suggested phases
 
-0. **Spike only, no production code.** Build a throwaway `HealpixGrid(nside ~ node count)`,
-   scatter a real world's node cloud (elevation, is_ocean) via `ang2pix` with the nearest-to-
-   center tie-break, run the njit wavefront fill, and measure: fill-step wall clock across a few
-   real saves (early-game sparse, late-game dense), empty-pixel fraction before/after fill, and
-   end-to-end scatter+fill+resample_to_equirect wall clock vs. today's `cKDTree(...).query(...)`
-   at the same effective resolution. This is the number that makes or breaks the rest of the
-   plan -- don't move past this phase without it.
+0. ~~**Spike only, no production code.**~~ **Done, 2026-09-14 -- see below.** Build a
+   throwaway `HealpixGrid(nside ~ node count)`, scatter a real world's node cloud (elevation,
+   is_ocean) via `ang2pix` with the nearest-to-center tie-break, run the njit wavefront fill, and
+   measure: fill-step wall clock across a few real saves (early-game sparse, late-game dense),
+   empty-pixel fraction before/after fill, and end-to-end scatter+fill+resample_to_equirect wall
+   clock vs. today's `cKDTree(...).query(...)` at the same effective resolution. This is the
+   number that makes or breaks the rest of the plan -- don't move past this phase without it.
+   **Result: ~2.9-3.8x faster at steady state, fill cost negligible -- go, with two caveats
+   budgeted into phase 1 (see "Phase 0, done" below).**
 1. If phase 0's numbers hold up: land the shared `HealpixGrid` + scatter/fill/resample plumbing
    as a new, optional code path behind the existing node-cloud-and-tree entry points (`render_
    image._node_cloud_and_tree`, `plates.cached_node_position_tree`), diffed pixel-for-pixel
@@ -731,3 +733,80 @@ went through, a tie-break rule that has to be chosen and justified, and a semant
 hydrology's cross-step read. That's why item 4 stayed "scope it" rather than "do it" even after
 items 1-3 landed in one session -- and why phase 0's spike, not this write-up, is the actual
 next action if this gets picked up.
+
+### Phase 0, done (2026-09-14): scatter+fill+resample beats `cKDTree.query` ~3x at steady state
+
+**Measured:** throwaway spike script (not committed -- scatter/fill/resample reimplemented
+standalone against `healpix_grid.py`'s real `HealpixGrid.build`/`ang2pix`/`resample_to_equirect`,
+not wired into `render_image.py`), backend `.venv`, same box as the sections above. `seed=0`,
+`node_density=climate_density=4.0` (this doc's own convention), grid `801x1601 = 1.28M` points
+(the Biome/Combined render grid size from the animation-profile section above). `nside=128`
+(`npix=196,608`, chosen as the smallest power-of-2 `nside` with `npix >= node count`, per the
+write-up's own "same order of magnitude as N" guidance) against a node cloud of ~130.6K nodes.
+Wavefront fill: a genuinely new njit kernel (this spike's own, plain multi-source BFS over
+`HealpixGrid.neighbours`/`neighbour_valid`, array-backed frontier, no priority queue needed since
+every hop costs the same) -- not adapted from `hydrology._basin_spill_kernel` as the write-up
+above suggested, because that function no longer exists in this checkout (see caveat below).
+
+**Headline:** at steady state (JIT warm, repeated calls against the same already-built node
+cloud), scatter+fill+`resample_to_equirect` consistently beats a warm `cKDTree.query` by
+**~2.9-3.8x** -- 5 back-to-back trials against the early-game world: 63.4-102.3 ms end-to-end vs.
+216.7-240.6 ms for `cKDTree.query` alone (both distributions overlap run to run, but the ratio
+never dropped below 2.35x once past the first call in the process). The fill step itself is
+cheap and not the bottleneck the write-up worried it might be: **2.2-4.8 ms, 2-4 BFS rounds**,
+0% empty pixels remaining every time, from a **~35% empty-before-fill** starting point (both the
+early- and late-game worlds landed at 35.0-35.1% empty pre-fill, effectively identical). Scatter
+(nearest-to-center tie-break, plain numpy + a Python loop over ~130K nodes, not yet its own njit
+kernel) is the actual larger piece of the proposed path at ~54-82 ms, still well under
+`cKDTree.query`'s own 217-240 ms. **This is the number the write-up said would make or break the
+plan, and it clears the bar -- recommend proceeding to phase 1**, with the two caveats below
+budgeted into that work rather than treated as settled.
+
+**Caveat 1 -- single-sample timings on this box are noisy enough to invert the result.** The
+very first measurement taken (early-game world, first call in a fresh process) showed
+scatter+fill+resample at 231.8 ms against `cKDTree.query`'s 235.0 ms -- a statistical tie
+(1.01x), which would have read as "phase 1 isn't worth it" if taken at face value. Five
+repeated trials against the same node cloud (no world regeneration, so this isolates measurement
+noise, not a real early-game-specific effect) settled to a consistent ~3x once past that first
+call -- first-call cost is dominated by cold caches/page faults/thread-pool warm-up, not the
+algorithm. Any phase-1 PR's own before/after numbers should report repeated trials the way the
+"Items 1-3, done" section above already does, not a single sample.
+
+**Caveat 2 -- accuracy tolerance vs. `cKDTree` needs to be a real gate, not a formality.**
+Nearest-filled-HEALPix-pixel elevation disagreed with the `cKDTree` ground truth at the same
+grid resolution by mean 33.8 m (early) / 81.2 m (late), p95 124.3 m / 389.6 m, but **max 4.16 km
+/ 8.12 km** -- a handful of pixels disagree by more than almost any single real elevation swing
+on this planet. Phase 1's own checklist item ("diffed pixel-for-pixel ... not just visually --
+an exact `array_equal`/tolerance check") needs to actually inspect where those outlier pixels
+land (a coastline/land-ocean BFS-fill boundary is the likely suspect, not confirmed here) before
+picking a tolerance, rather than accepting a mean/p95-level number as sufficient.
+
+**Node count and empty-fraction didn't grow between early- and late-game, contrary to the
+write-up's own worry.** The write-up above flagged "an early-game world with large unclaimed
+ocean regions" as a plausible pathological case for the fill step. Measured against 0 steps vs.
+60 steps (100 kyr/step, ~6 My simulated) at `seed=0`: node count barely moved (130,587 ->
+130,573) and empty-before-fill was effectively flat (35.0% -> 35.1%) -- plates tile the whole
+globe by construction (Voronoi-based generation), so there's no growing "unclaimed" region over
+time in this codebase's model, at least for this seed/density. Worth spot-checking a sparser
+`node_density` and/or a sketch-based premade world with a deliberately uneven landmass before
+treating the fill step's cost as settled for every world shape -- this run only ever saw one
+node-density/seed combination.
+
+**Aside -- two doc-drift findings, unrelated to the numbers above but worth flagging for
+whoever picks up phase 1:**
+
+- `hydrology._basin_spill_kernel`, cited both by the write-up above and by this doc's own
+  "Why this is scoped as a project" paragraph as the precedent for "the same bit-exactness
+  discipline" the wavefront-fill kernel should follow, no longer exists -- `hydrology.py`'s own
+  current module docstring says it was removed because it could drift out of sync with
+  `lakes.py`'s own, physically-correct spill hierarchy (`lakes.compute_spill_routing`). That's
+  worth more than a shrug: it's a second instance of the exact failure mode phase 2's own
+  hydrology cross-step semantics check is worried about (a derived resample diverging from its
+  authoritative source), and whoever writes the real fill kernel should read that removal's
+  history before using the old kernel as a model that isn't there anymore.
+- This spike's first cut segfaulted (exit 139, no Python traceback) rather than raising, from a
+  numba warm-up/precompile call that sliced `filled`/`values` to a small dummy length while
+  still passing the full-size `neighbours`/`neighbour_valid` arrays -- an out-of-bounds read
+  inside `nopython` code. Not a production bug (no production kernel exists yet), but a concrete
+  footgun for phase 1: a kernel warm-up call needs an internally consistent dummy shape, never a
+  slice of one array paired with another at full production size.
