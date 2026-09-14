@@ -258,8 +258,15 @@ def _sample_elevation_and_crust(
     # whichever caller builds it first this step. Deliberately *not* World.node_kdtree_cache
     # itself -- that one also carries elevation, which erosion.py is about to mutate later in
     # this same step, so baking this call's (pre-erosion) elevation into a cache a later render
-    # would trust as final would resurface stale terrain.
-    tree = plates.cached_node_position_tree(world, all_points)
+    # would trust as final would resurface stale terrain. Under "healpix"
+    # World.node_cloud_resample_mode (issue #133 phase 2), the equivalent shared structure is
+    # plates.cached_node_healpix_index (World.node_healpix_grid_cache/node_healpix_index_cache),
+    # reused with render_image._node_cloud_and_tree the same "first caller this step builds it"
+    # way -- see that function's own comment on its "healpix" branch.
+    if world.node_cloud_resample_mode == "healpix":
+        tree = plates.cached_node_healpix_index(world, all_points)
+    else:
+        tree = plates.cached_node_position_tree(world, all_points)
     _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
     elevation = all_elev[idx].reshape(height, width)
     # Connectivity-aware: an enclosed interior depression below sea level is *not* ocean (see

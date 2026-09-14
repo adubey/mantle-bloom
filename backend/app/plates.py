@@ -20,7 +20,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
-from . import ellipse, geometry
+from . import ellipse, geometry, healpix_grid
 from . import elevation_lines
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
@@ -1424,6 +1424,35 @@ def cached_node_position_tree(world: "World | None", points: np.ndarray) -> cKDT
     tree = cKDTree(points)
     world.node_position_tree_cache = (points, tree)
     return tree
+
+
+def cached_node_healpix_index(world: "World | None", points: np.ndarray) -> healpix_grid.NodePixelIndex:  # noqa: F821
+    """The `"healpix"` `World.node_cloud_resample_mode` analogue of `cached_node_position_tree`
+    immediately above -- shared via `World.node_healpix_grid_cache`/`node_healpix_index_cache`
+    across every this-step-node-cloud caller under that mode
+    (`render_image._node_cloud_and_tree`, `climate._sample_elevation_and_crust` -- issue #133
+    phase 2), the same split phase 1 established: the `HealpixGrid` itself
+    (`node_healpix_grid_cache`, keyed by `nside`, a pure function of node *count*) is reused for
+    a world's whole life unless that count crosses a bracket, while the per-step scatter+fill
+    (`node_healpix_index_cache`) is rebuilt whenever `step_world` resets it (same invalidation
+    event as `node_position_tree_cache`). `world=None` (direct unit-test call) always builds
+    fresh, matching `cached_node_position_tree`'s own testing convention."""
+    if world is None:
+        nside = healpix_grid.nside_for_node_count(points.shape[0])
+        return healpix_grid.build_node_pixel_index(healpix_grid.build(nside), points)
+    cached_index = world.node_healpix_index_cache
+    if cached_index is not None:
+        return cached_index
+    nside = healpix_grid.nside_for_node_count(points.shape[0])
+    cached_grid = world.node_healpix_grid_cache
+    if cached_grid is not None and cached_grid[0] == nside:
+        grid = cached_grid[1]
+    else:
+        grid = healpix_grid.build(nside)
+        world.node_healpix_grid_cache = (nside, grid)
+    index = healpix_grid.build_node_pixel_index(grid, points)
+    world.node_healpix_index_cache = index
+    return index
 
 
 def collect_all_points(plate_list: list[Plate]) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:

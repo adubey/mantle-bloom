@@ -90,7 +90,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lakes
+from . import geometry, healpix_grid, lakes
 from .elevation_lines import PLANET_RADIUS_KM
 from .plates import (
     Plate,
@@ -515,15 +515,18 @@ def force_earth_strait_connections(
     return is_ocean
 
 
-# Holds the most recent (hydro, query_xyz, idx) from either `sample_is_ocean`/`sample_is_sea`
-# below, so a call to one immediately followed by a call to the other *for the same
-# (hydrology cache, query points)* -- climate.py's `_sample_elevation_and_crust` and
-# render_image.py's `_biome_fields` both do exactly this, back-to-back, against the same
-# `world_xyz` -- reuses the first call's cKDTree build+query instead of repeating an identical
-# one just to read out a different boolean field. Keyed by real object identity (`is`, not
-# `id()`, which CPython can recycle once an object is freed) held in the tuple itself, so a
-# mismatch can only ever cause an extra (still-correct) rebuild, never a stale hit.
-_LAST_NEAREST_HYDRO_NODE: tuple[object, object, np.ndarray] | None = None
+# Holds the most recent (hydro, query_xyz, idx, resample_mode) from either
+# `sample_is_ocean`/`sample_is_sea` below, so a call to one immediately followed by a call to
+# the other *for the same (hydrology cache, query points, resample mode)* -- climate.py's
+# `_sample_elevation_and_crust` and render_image.py's `_biome_fields` both do exactly this,
+# back-to-back, against the same `world_xyz` -- reuses the first call's tree/index build+query
+# instead of repeating an identical one just to read out a different boolean field. Keyed by
+# real object identity (`is`, not `id()`, which CPython can recycle once an object is freed)
+# held in the tuple itself, so a mismatch can only ever cause an extra (still-correct) rebuild,
+# never a stale hit. `resample_mode` (issue #133 phase 2) joins the key alongside identity, not
+# just to pick the source below, but because it's plain data -- unlike `hydro`/`query_xyz`,
+# comparing it by value rather than `is` is correct and cheap.
+_LAST_NEAREST_HYDRO_NODE: tuple[object, object, np.ndarray, str] | None = None
 
 # The cKDTree half of the cache above, held separately (and keyed on `hydro` alone, not also
 # `query_xyz`) because a *different* query_xyz this same step -- the climate grid, then later
@@ -536,6 +539,17 @@ _LAST_NEAREST_HYDRO_NODE: tuple[object, object, np.ndarray] | None = None
 # worst-case-is-an-extra-rebuild safety as that cache.
 _LAST_OCEAN_TREE: tuple[object, cKDTree] | None = None
 
+# The "healpix" World.node_cloud_resample_mode analogue of _LAST_OCEAN_TREE above (issue #133
+# phase 2) -- same module-global, not-on-World placement (and the same reasoning: a save/load
+# round-trip through World.hydrology_cache would carry a HealpixGrid/NodePixelIndex for no
+# benefit), split the same way plates.cached_node_healpix_index splits World's own pair: the
+# HealpixGrid itself (keyed by nside, a pure function of hydro.points' node *count*) versus the
+# per-hydro-cache scatter+fill population, since hydro.points only actually changes identity
+# once per step_world (a new HydrologyFields object), the same cadence _LAST_OCEAN_TREE reuses
+# at today.
+_LAST_OCEAN_HEALPIX_GRID: tuple[int, healpix_grid.HealpixGrid] | None = None
+_LAST_OCEAN_HEALPIX_INDEX: tuple[object, healpix_grid.NodePixelIndex] | None = None
+
 
 def _ocean_node_tree(hydro: "HydrologyFields") -> cKDTree:
     global _LAST_OCEAN_TREE
@@ -547,14 +561,40 @@ def _ocean_node_tree(hydro: "HydrologyFields") -> cKDTree:
     return tree
 
 
-def _nearest_hydro_node_idx(hydro: "HydrologyFields", query_xyz: np.ndarray) -> np.ndarray:
+def _ocean_node_healpix_index(hydro: "HydrologyFields") -> healpix_grid.NodePixelIndex:
+    """The `"healpix"` counterpart to `_ocean_node_tree` immediately above -- see
+    `_LAST_OCEAN_HEALPIX_GRID`/`_LAST_OCEAN_HEALPIX_INDEX`'s own comment for the caching split."""
+    global _LAST_OCEAN_HEALPIX_GRID, _LAST_OCEAN_HEALPIX_INDEX
+    cached_index = _LAST_OCEAN_HEALPIX_INDEX
+    if cached_index is not None and cached_index[0] is hydro:
+        return cached_index[1]
+    nside = healpix_grid.nside_for_node_count(len(hydro.points))
+    cached_grid = _LAST_OCEAN_HEALPIX_GRID
+    if cached_grid is not None and cached_grid[0] == nside:
+        grid = cached_grid[1]
+    else:
+        grid = healpix_grid.build(nside)
+        _LAST_OCEAN_HEALPIX_GRID = (nside, grid)
+    index = healpix_grid.build_node_pixel_index(grid, hydro.points)
+    _LAST_OCEAN_HEALPIX_INDEX = (hydro, index)
+    return index
+
+
+def _nearest_hydro_node_idx(hydro: "HydrologyFields", query_xyz: np.ndarray, resample_mode: str = "kdtree") -> np.ndarray:
+    """Nearest-node index from last step's `hydro.points` for each `query_xyz` point --
+    `resample_mode` (`World.node_cloud_resample_mode`, issue #133 phase 2) picks `_ocean_node_tree`
+    (`cKDTree`, default) or `_ocean_node_healpix_index` (`NodePixelIndex`); folded into the
+    single-entry cache key below alongside `hydro`/`query_xyz` identity so a mode flip
+    mid-process (e.g. a test flipping `World.node_cloud_resample_mode`) can't serve a stale
+    cross-mode hit."""
     global _LAST_NEAREST_HYDRO_NODE
     cached = _LAST_NEAREST_HYDRO_NODE
-    if cached is not None and cached[0] is hydro and cached[1] is query_xyz:
+    if cached is not None and cached[0] is hydro and cached[1] is query_xyz and cached[3] == resample_mode:
         return cached[2]
     flat_xyz = np.asarray(query_xyz).reshape(-1, 3)
-    _, idx = _ocean_node_tree(hydro).query(flat_xyz, workers=query_workers(len(flat_xyz)))
-    _LAST_NEAREST_HYDRO_NODE = (hydro, query_xyz, idx)
+    source = _ocean_node_healpix_index(hydro) if resample_mode == "healpix" else _ocean_node_tree(hydro)
+    _, idx = source.query(flat_xyz, workers=query_workers(len(flat_xyz)))
+    _LAST_NEAREST_HYDRO_NODE = (hydro, query_xyz, idx, resample_mode)
     return idx
 
 
@@ -566,11 +606,13 @@ def sample_is_ocean(world: "World", query_xyz: np.ndarray, fallback_is_ocean: np
     when plate topology changed between that cache and this call). `fallback_is_ocean` (a bare
     `elevation <= sea_level_m` mask the caller already has) is returned unchanged before the
     first step, when no hydrology cache exists yet; the result otherwise has
-    `fallback_is_ocean`'s shape."""
+    `fallback_is_ocean`'s shape. Resamples through `_nearest_hydro_node_idx` under
+    `world.node_cloud_resample_mode` (issue #133 phase 2) the same way every other node-cloud
+    resample in this codebase now does."""
     hydro = getattr(world, "hydrology_cache", None)
     if hydro is None or len(hydro.points) == 0 or len(hydro.is_ocean) != len(hydro.points):
         return fallback_is_ocean
-    idx = _nearest_hydro_node_idx(hydro, query_xyz)
+    idx = _nearest_hydro_node_idx(hydro, query_xyz, getattr(world, "node_cloud_resample_mode", "kdtree"))
     return hydro.is_ocean[idx].reshape(fallback_is_ocean.shape)
 
 
@@ -586,7 +628,7 @@ def sample_is_sea(world: "World", query_xyz: np.ndarray, fallback_is_sea: np.nda
     hydro_is_sea = getattr(hydro, "is_sea", None) if hydro is not None else None
     if hydro is None or len(hydro.points) == 0 or hydro_is_sea is None or len(hydro_is_sea) != len(hydro.points):
         return fallback_is_sea
-    idx = _nearest_hydro_node_idx(hydro, query_xyz)
+    idx = _nearest_hydro_node_idx(hydro, query_xyz, getattr(world, "node_cloud_resample_mode", "kdtree"))
     return hydro_is_sea[idx].reshape(fallback_is_sea.shape)
 
 

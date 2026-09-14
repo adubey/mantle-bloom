@@ -916,16 +916,24 @@ def test_render_png_healpix_mode_renders_without_crashing_including_terrain_reli
     assert world.node_kdtree_relief_cache is not None
 
 
-def test_step_world_resets_healpix_index_cache_but_keeps_the_grid_cache():
+def test_step_world_rebuilds_healpix_index_cache_but_keeps_the_grid_cache():
     world = _world(seed=4, num_plates=8)
     world.node_cloud_resample_mode = "healpix"
     render_image.render_png(world, "eckert4", "elevation", 200, 100)
     assert world.node_healpix_index_cache is not None
+    index_before = world.node_healpix_index_cache
     grid_cache_before = world.node_healpix_grid_cache
     assert grid_cache_before is not None
 
     step_world(world, 1_000_000)
-    assert world.node_healpix_index_cache is None  # a node moved -- must rebuild
+    # A node moved, so the stale index must not survive -- but since issue #133 phase 2,
+    # climate._sample_elevation_and_crust shares this same cache and runs every step_world, so
+    # by the time step_world returns the cache has already been rebuilt in-step (the exact same
+    # "climate rebuilds it before the next render even asks" behavior node_position_tree_cache
+    # already had under "kdtree" mode) -- not left None until the next render call the way it
+    # was in phase 1, before climate had a healpix branch of its own.
+    assert world.node_healpix_index_cache is not None
+    assert world.node_healpix_index_cache is not index_before
     assert world.node_healpix_grid_cache is grid_cache_before  # node count unchanged -- reused
 
     render_image.render_png(world, "eckert4", "elevation", 200, 100)

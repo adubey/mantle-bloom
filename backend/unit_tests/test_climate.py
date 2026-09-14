@@ -602,3 +602,47 @@ def test_ice_age_cooling_lowers_temperatures_uniformly():
     assert np.allclose(
         warm.land_temperature_c - cold.land_temperature_c, climate.ICE_AGE_MAX_COOLING_C
     )
+
+
+# -- Issue #133 phase 2: node_cloud_resample_mode in _sample_elevation_and_crust --------------
+
+
+def test_sample_elevation_and_crust_healpix_mode_builds_and_shares_the_index_cache():
+    world = _world(seed=20, steps=1)
+    world.node_cloud_resample_mode = "healpix"
+    height, width, world_xyz = climate._build_grid(30, 60)
+
+    elevation, is_ocean, lake_depth, channel_depth, is_sea = climate._sample_elevation_and_crust(world, world_xyz)
+    assert elevation.shape == (30, 60)
+    assert np.all(np.isfinite(elevation))
+    assert world.node_healpix_index_cache is not None
+    assert world.node_healpix_grid_cache is not None
+
+
+def test_sample_elevation_and_crust_healpix_mode_agrees_closely_with_kdtree():
+    """Small-scale (unit-test speed) version of the accuracy gate --
+    stress_tests/test_healpix_resample.py carries the real-scale, coastal-band-specific
+    version of this same check."""
+    world = _world(seed=21, steps=2)
+    height, width, world_xyz = climate._build_grid(41, 81)
+
+    world.node_cloud_resample_mode = "kdtree"
+    elev_kd, ocean_kd, _lake_kd, _chan_kd, sea_kd = climate._sample_elevation_and_crust(world, world_xyz)
+
+    world.node_cloud_resample_mode = "healpix"
+    world.node_kdtree_cache = None
+    world.node_position_tree_cache = None
+    elev_hp, ocean_hp, _lake_hp, _chan_hp, sea_hp = climate._sample_elevation_and_crust(world, world_xyz)
+
+    diff = np.abs(elev_kd - elev_hp)
+    assert diff.mean() < 500.0  # generous vs. phase-1's own real-scale ~50-80m mean
+    assert (ocean_kd == ocean_hp).mean() > 0.95
+    assert (sea_kd == sea_hp).mean() > 0.95
+
+
+def test_compute_climate_runs_end_to_end_under_healpix_mode():
+    world = _world(seed=22, steps=1)
+    world.node_cloud_resample_mode = "healpix"
+    fields = climate.compute_climate(world, height=30, width=60)
+    assert np.all(np.isfinite(fields.humidity))
+    assert np.all(np.isfinite(fields.precipitation_mm))

@@ -323,7 +323,10 @@ class World:
     # only depends on node *count*) is stable for a world's whole life and only ever rebuilt if
     # that count actually changes class, while the node-pixel assignment (`NodePixelIndex`, the
     # scatter+fill result) depends on node *positions* and is rebuilt every step like the
-    # cKDTree caches above. Persisted like the other caches but dropped on load
+    # cKDTree caches above. Built/reused via plates.cached_node_healpix_index -- the "healpix"
+    # counterpart to node_position_tree_cache/cached_node_position_tree, shared the same way
+    # across render_image._node_cloud_and_tree and climate._sample_elevation_and_crust (issue
+    # #133 phase 2). Persisted like the other caches but dropped on load
     # (persistence._drop_derived_caches).
     node_healpix_grid_cache: tuple[int, healpix_grid.HealpixGrid] | None = None
     node_healpix_index_cache: healpix_grid.NodePixelIndex | None = None

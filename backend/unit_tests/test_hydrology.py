@@ -741,3 +741,63 @@ def test_compute_river_speed_increases_with_slope_and_flow():
     more_flow = hydrology.compute_river_speed(np.array([0.01]), np.array([100.0]))[0]
     assert steeper > base
     assert more_flow > base
+
+
+# -- Issue #133 phase 2: node_cloud_resample_mode in sample_is_ocean/sample_is_sea -----------
+
+
+def _grid_xyz(height, width):
+    lat_deg = 90.0 - (np.arange(height) + 0.5) * (180.0 / height)
+    lon_deg = -180.0 + (np.arange(width) + 0.5) * (360.0 / width)
+    lat_grid = np.repeat(lat_deg[:, None], width, axis=1)
+    lon_grid = np.repeat(lon_deg[None, :], height, axis=0)
+    return geometry.latlon_to_xyz(np.radians(lat_grid), np.radians(lon_grid))
+
+
+def test_sample_is_ocean_and_is_sea_healpix_mode_agree_closely_with_kdtree():
+    world = generate_world(30, num_plates=8)
+    step_world(world, 1_000_000)  # populates world.hydrology_cache
+    world_xyz = _grid_xyz(31, 61)
+    fallback = np.zeros((31, 61), dtype=bool)
+
+    world.node_cloud_resample_mode = "kdtree"
+    ocean_kd = hydrology.sample_is_ocean(world, world_xyz, fallback)
+    sea_kd = hydrology.sample_is_sea(world, world_xyz, fallback)
+
+    world.node_cloud_resample_mode = "healpix"
+    ocean_hp = hydrology.sample_is_ocean(world, world_xyz, fallback)
+    sea_hp = hydrology.sample_is_sea(world, world_xyz, fallback)
+
+    assert (ocean_kd == ocean_hp).mean() > 0.95
+    assert (sea_kd == sea_hp).mean() > 0.95
+
+
+def test_nearest_hydro_node_idx_cache_does_not_cross_contaminate_between_modes():
+    """The single-entry cache (`_LAST_NEAREST_HYDRO_NODE`) must key on `resample_mode` too --
+    otherwise a "kdtree" call followed immediately by a "healpix" call against the identical
+    `(hydro, query_xyz)` would incorrectly serve the first mode's stale result."""
+    world = generate_world(31, num_plates=8)
+    step_world(world, 1_000_000)
+    hydro = world.hydrology_cache
+    world_xyz = _grid_xyz(21, 41)
+
+    idx_kd = hydrology._nearest_hydro_node_idx(hydro, world_xyz, "kdtree")
+    idx_hp = hydrology._nearest_hydro_node_idx(hydro, world_xyz, "healpix")
+    idx_kd_again = hydrology._nearest_hydro_node_idx(hydro, world_xyz, "kdtree")
+
+    assert np.array_equal(idx_kd, idx_kd_again)  # re-fetching "kdtree" wasn't clobbered by the "healpix" call
+    tree = hydrology._ocean_node_tree(hydro)
+    _, expected_kd = tree.query(world_xyz.reshape(-1, 3), workers=1)
+    assert np.array_equal(idx_kd, expected_kd)
+
+
+def test_sample_is_ocean_fallback_before_first_hydrology_pass_is_mode_independent():
+    world = generate_world(32, num_plates=8)  # no step_world -- no hydrology_cache yet
+    world_xyz = _grid_xyz(11, 21)
+    fallback = np.zeros((11, 21), dtype=bool)
+    fallback[0, 0] = True
+
+    for mode in ("kdtree", "healpix"):
+        world.node_cloud_resample_mode = mode
+        result = hydrology.sample_is_ocean(world, world_xyz, fallback)
+        assert np.array_equal(result, fallback)
