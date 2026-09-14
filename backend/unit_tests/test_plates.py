@@ -1024,6 +1024,113 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
     assert _main_span_growth(REFERENCE_HC_CONTINENTAL_M) > 0.8 * spacing
 
 
+def _staircase_continental_plate(n_rows=20, per_row=30):
+    """A continental plate whose rows drift further right one from the next -- the diagonal
+    "staircase" boundary GitHub issue #119 describes as the signature of repeated row-end
+    extension at a slightly different rate per row. Each node starts at genuine reference
+    crustal thickness with a small per-node variation, so a nearest-neighbour resample onto a
+    denser lattice is actually observable."""
+    from app.lithosphere import REFERENCE_HC_CONTINENTAL_M, REFERENCE_HM_CONTINENTAL_M
+    from app.lithosphere_plate import LithospherePlate
+
+    spacing = line_spacing_rad(1.0)
+    rng = np.random.default_rng(0)
+    lines = []
+    for r in range(n_rows):
+        phi = -0.3 + r * spacing
+        shift = r * 0.4 * spacing
+        theta = np.linspace(-0.4, 0.4, per_row) + shift
+        hc = REFERENCE_HC_CONTINENTAL_M + rng.uniform(-500.0, 500.0, per_row)
+        hm = np.full(per_row, REFERENCE_HM_CONTINENTAL_M)
+        lines.append(ElevationLine(phi=phi, theta=theta, elevation=np.zeros(per_row), crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm))
+    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
+    return plate, spacing
+
+
+def test_relattice_conserves_total_crustal_volume_and_regularizes_the_lattice():
+    """`LithospherePlate.relattice` refits a drifted, staircase-shaped lattice onto the
+    canonical evenly-phased grid (each row's own theta spacing lands back at target spacing,
+    not whatever the row's own incremental growth history left it at) while conserving the
+    plate's total crustal volume -- `sum(Hc)`, since per-node area is constant -- to floating-
+    point precision."""
+    from app.lithosphere_plate import LithospherePlate
+
+    plate, spacing = _staircase_continental_plate()
+    total_hc_before = float(np.sum(plate.collect("crustal_thickness_m")))
+    # Before: at least one row is well off target spacing (the staircase drift), confirming
+    # the fixture actually exercises what's under test.
+    assert not all(np.allclose(np.diff(line.theta), spacing / max(np.cos(line.phi), 1e-3), atol=1e-9) for line in plate.lines if len(line) > 1)
+
+    plate.relattice(spacing)
+
+    total_hc_after = float(np.sum(plate.collect("crustal_thickness_m")))
+    assert total_hc_after == pytest.approx(total_hc_before, rel=1e-9)
+    # After: every surviving row is evenly spaced (the canonical lattice's own row spacing,
+    # not exactly `spacing_rad` since `iter_local_lattice` rounds to a whole number of nodes
+    # around the full circle -- close to it, and uniform within the row either way).
+    for line in plate.lines:
+        if len(line) < 2:
+            continue
+        dtheta_target = spacing / max(np.cos(line.phi), 1e-3)
+        diffs = np.diff(line.theta)
+        assert np.allclose(diffs, diffs[0])  # uniform within the row
+        assert diffs[0] == pytest.approx(dtheta_target, rel=0.05)
+
+
+def test_relattice_carries_persistent_fields_onto_the_new_lattice():
+    """A whole-plate rebuild must not silently wipe out persistent per-node state (soil,
+    volcanic provenance, crust-type overrides, ...) the way `ElevationLine`'s own docstring
+    warns a hand-rolled reconstruction can -- `relattice` carries every `OPTIONAL_FIELDS`
+    value onto its nearest new site, not just Hc/Hm."""
+    plate, spacing = _staircase_continental_plate()
+    # Mark one whole row as volcanic with real soil accumulation.
+    marked = plate.lines[len(plate.lines) // 2]
+    plate.replace_line(
+        len(plate.lines) // 2,
+        marked.replace(
+            is_volcano=np.ones(len(marked), dtype=bool),
+            soil_depth=np.full(len(marked), 12.5),
+        ),
+    )
+    assert np.sum(plate.collect("is_volcano")) > 0
+
+    plate.relattice(spacing)
+
+    # Some nodes near that row's phi still read as volcanic with soil after the rebuild.
+    assert np.sum(plate.collect("is_volcano")) > 0
+    assert np.sum(plate.collect("soil_depth") > 0.0) > 0
+
+
+def test_relattice_is_a_noop_for_oceanic_plates():
+    """Oceanic footprint is already self-bounding via subduction (see the method's own
+    docstring) -- `relattice` only touches continental crust."""
+    from app.lithosphere import REFERENCE_HC_OCEANIC_M, REFERENCE_HM_OCEANIC_M
+    from app.lithosphere_plate import LithospherePlate
+
+    spacing = line_spacing_rad(1.0)
+    theta = np.linspace(-0.4, 0.4, 30)
+    line = ElevationLine(
+        phi=0.0, theta=theta, elevation=np.zeros(30),
+        crustal_thickness_m=np.full(30, REFERENCE_HC_OCEANIC_M),
+        mantle_lithosphere_thickness_m=np.full(30, REFERENCE_HM_OCEANIC_M),
+    )
+    plate = LithospherePlate(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=[line])
+    original_line = plate.lines[0]
+
+    plate.relattice(spacing)
+
+    assert plate.lines[0] is original_line
+
+
+def test_relattice_is_a_noop_for_an_empty_plate():
+    from app.lithosphere_plate import LithospherePlate
+
+    spacing = line_spacing_rad(1.0)
+    plate = LithospherePlate(plate_id=2, frame=np.eye(3), crust_type="continental", lines=[])
+    plate.relattice(spacing)  # must not raise
+    assert plate.node_count() == 0
+
+
 def test_lithosphere_active_margin_grows_arc_crust_not_ocean_floor():
     """A continental plate's *leading* edge advancing into space a subducting oceanic slab is
     vacating still grows juvenile arc / accreted-terrane crust (the thicker ARC_MARGIN_SEED_*

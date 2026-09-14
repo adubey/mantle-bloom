@@ -224,6 +224,14 @@ DEFRAG_FRAGMENT_MIN_NODES = 50
 # topology doesn't fragment fast. cf. the removed reassign.py's REASSIGN_INTERVAL_STEPS = 5.
 DEFRAG_INTERVAL_STEPS = 4
 
+# Periodic conservative continental re-lattice (see relattice_continental_plates /
+# LithospherePlate.relattice; GitHub issue #119, "Continental ratchet: solution design,"
+# mechanism 4). A heavier whole-plate k-d-tree rebuild than defragment_plates above -- every
+# node of every continental plate gets resampled, not just a connectivity check -- and the
+# drift it corrects (row-to-row phase drift from independent per-row end-growth) accumulates
+# over many steps, so a longer interval than DEFRAG_INTERVAL_STEPS/gaps.GAP_FILL_INTERVAL_STEPS.
+RELATTICE_INTERVAL_STEPS = 20
+
 
 def remove_defunct_plates(world: "World") -> None:
     """A plate whose every elevation node was deleted (fully subducted, see boundary.py), or
@@ -635,6 +643,22 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     return plate_a, plate_b
 
 
+def relattice_continental_plates(world: "World") -> None:
+    """Refit every continental plate's lattice to its own current outline, on
+    `RELATTICE_INTERVAL_STEPS` cadence -- see `LithospherePlate.relattice`'s own docstring for
+    what this fixes and why. `relattice` is a v2 (`lithosphere_plate.LithospherePlate`)
+    method; duck-typed via `getattr` the same way `maybe_split_plate`'s failed-rift path
+    checks for `apply_failed_rift`, since v1's `plates.PlateWithLines` has no equivalent (this
+    mechanism, like the rest of the continental-ratchet work, only applies to the running v2
+    engine). A no-op per plate if `crust_type` isn't continental or it has no nodes -- see
+    that method."""
+    spacing_rad = line_spacing_rad(world.node_density)
+    for plate in world.plates:
+        relattice = getattr(plate, "relattice", None)
+        if callable(relattice):
+            relattice(spacing_rad)
+
+
 def defragment_plates(world: "World") -> list[str]:
     """Split any plate whose nodes form more than one disconnected landmass into that many
     plates, and drop stranded sub-fragments -- the geometric cleanup ordinary deform()/
@@ -741,6 +765,12 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     # fast (see the constant's own comment).
     if world.steps_taken % DEFRAG_INTERVAL_STEPS == 0:
         events.extend(defragment_plates(world))
+
+    # Periodic continental lattice refit -- see relattice_continental_plates. Also geometric
+    # cleanup, so gated and placed the same way as defragment_plates above (before collision/
+    # split reads this step's geometry), just on its own, longer cadence.
+    if world.steps_taken % RELATTICE_INTERVAL_STEPS == 0:
+        relattice_continental_plates(world)
 
     ready_pairs = update_collision_progress(world, years)
     merged_this_step = False
