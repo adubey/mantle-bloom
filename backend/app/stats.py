@@ -6,14 +6,28 @@ precipitation stats all agree with what the climate map views actually display).
 `climate.compute_climate_cached` rather than `compute_climate` directly, reusing whatever
 erosion.py already computed this step instead of triggering a second recomputation -- see
 that function's own docstring for what "cached" means here (same-turn reuse, up to one step
-stale, not a correctness mechanism). History across time is a frontend concern (see
-App.tsx) -- the backend has no per-step storage of its own, only a snapshot endpoint.
+stale, not a correctness mechanism). `compute_stats` itself is a stateless, single-instant
+snapshot -- `GET /world/stats`; the recorded time series that snapshot feeds is `World.
+stats_history` (see world.py's `World.record_stats`/`GET /world/stats_history`), which is
+what actually persists across a save/load, not this module.
 
 Land vs ocean, and land/ocean fractions, use climate.py's own `is_ocean` mask (below
 world.sea_level_m, live-adjustable -- see World.sea_level_m -- and connected to the world
 ocean, see hydrology.connected_ocean_mask) rather than crust_type, for the same reason
 climate.py itself does: a submerged continental shelf is physically ocean, an enclosed
 interior depression is not.
+
+A landlocked lake or sea isn't part of that connected ocean (that's exactly what makes it a
+lake, not a bay), but it's still standing water, not land -- `land_fraction`/`ocean_fraction`
+(labelled "Land"/"Water" in the frontend's Stats panel, see StatsModal.tsx) fold in
+`fields.lake_depth_m` (the same resampled, persisted per-node depth hydrology.py's own
+`is_lake` check uses, cleared past `hydrology.LAKE_MIN_VISIBLE_DEPTH_M` the same way) so a
+basin covered by a real, visible lake counts toward "Water" the instant it floods, at any
+depth -- not just once it happens to sink deep enough to trip `_reconcile_land_ocean`'s own
+stale-cache fallback below. Every *other* stat here (`elevation_*`, `ocean_depth_*`, the
+temperature stats, `biome_land_fraction`/`biome_ocean_fraction`) deliberately keeps reading
+the narrower `is_land`/`is_ocean` split unchanged -- a lake sitting over dry-land elevation
+isn't ocean bathymetry, and biome classification has no separate "lake" class to route it to.
 Fractions are a plain count over grid cells, not cos(lat)-weighted -- the climate grid is a
 plain equirectangular lattice, not an equal-area projection, so this is an approximation.
 
@@ -83,7 +97,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import biomes, climate, lithosphere
+from . import biomes, climate, hydrology, lithosphere
 from .elevation_lines import line_spacing_rad
 from .world import World
 
@@ -133,9 +147,18 @@ def _total_land_area_and_continental_volume(world: World) -> tuple[float, float]
     return land_area, continental_volume
 
 
+def _is_water(fields: "climate.ClimateFields", is_ocean: np.ndarray) -> np.ndarray:
+    """`is_ocean` plus every cell covered by a real, visible lake or sea (see this module's
+    own docstring) -- the mask `land_fraction`/`ocean_fraction` actually want, as opposed to
+    the narrower `is_ocean` every other stat below still uses unchanged."""
+    is_lake_or_sea = fields.lake_depth_m > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    return is_ocean | is_lake_or_sea
+
+
 def compute_stats(world: World) -> dict:
     fields = climate.compute_climate_cached(world)
     is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
+    is_water = _is_water(fields, is_ocean)
     total = is_ocean.size
 
     elevation_min, elevation_max, elevation_mean, elevation_std = _min_max_mean_std(fields.elevation_m[is_land])
@@ -170,8 +193,8 @@ def compute_stats(world: World) -> dict:
         "sea_level_m": world.sea_level_m,
         "total_land_area_km2": land_area_m2 / 1.0e6,
         "total_continental_crust_volume_km3": continental_crust_volume_m3 / 1.0e9,
-        "land_fraction": float(is_land.sum()) / total,
-        "ocean_fraction": float(is_ocean.sum()) / total,
+        "land_fraction": float((~is_water).sum()) / total,
+        "ocean_fraction": float(is_water.sum()) / total,
         "elevation_min_m": elevation_min,
         "elevation_max_m": elevation_max,
         "elevation_mean_m": elevation_mean,

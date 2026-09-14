@@ -13,6 +13,30 @@ def test_generate_world_starts_plates_at_rest():
     assert all(r == 0.0 for r in rates)
 
 
+def test_generate_world_records_baseline_stats_without_leaking_a_climate_cache():
+    # finish_generation's own record_stats(force=True) computes stats.compute_stats once for
+    # the baseline stats_history entry, but must not leave world.climate_cache populated as a
+    # side effect of that -- other code (coastline.py, climate.py's vegetation-transpiration
+    # source) reads climate_cache is None as "no step has run yet."
+    world = generate_world(seed=10, num_plates=8)
+    assert len(world.stats_history) == 1
+    assert world.stats_history[0]["elapsed_years"] == 0.0
+    assert world.climate_cache is None
+
+
+def test_step_world_skips_recording_stats_when_climate_is_off():
+    # World.record_stats(force=False) (step_world's own call) must not force a fresh climate
+    # computation purely to snapshot stats -- that would defeat simulate_climate_biomes=False
+    # existing to run tectonics-only steps fast. The elapsed_years=0 baseline from generation
+    # is still there (finish_generation always forces it), just nothing gets appended on top.
+    world = generate_world(seed=10, num_plates=8)
+    world.simulate_climate_biomes = False
+    assert len(world.stats_history) == 1
+    step_world(world, years=1_000_000)
+    assert world.climate_cache is None
+    assert len(world.stats_history) == 1
+
+
 def test_step_world_gives_plates_nonzero_omega():
     world = generate_world(seed=10, num_plates=8)
     step_world(world, years=1_000_000)

@@ -233,6 +233,18 @@ class World:
     gap_fill_algorithm: str = "frontier"
     # Human-readable log for the UI's event console, each entry (elapsed_years, message).
     events: list[tuple[float, str]] = field(default_factory=list)
+    # One stats.compute_stats(self) snapshot per real advance (generate_world, then every
+    # step_world -- see record_stats), for the Stats panel's history charts. Previously kept
+    # only in the frontend's own React state (built one fetch at a time from the stateless
+    # GET /world/stats -- see stats.py's own module docstring), which meant a Save/Load
+    # round-trip silently dropped the whole run's history even though every other per-step
+    # record (events, corner_notch_log) already survives one. Recorded here instead so it
+    # rides along in the pickle like everything else on World, and GET /world/stats_history
+    # (main.py) hands the *full* series back after a load. Deliberately uncapped, unlike
+    # events/corner_notch_log -- a history chart needs the whole run, not just recent
+    # activity, and mirrors what the frontend already kept unbounded client-side before this.
+    # `default_factory` field -> backfilled on load (see persistence._backfill_added_fields).
+    stats_history: list[dict] = field(default_factory=list)
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
     # a fresh one every step regardless -- and reused by /world/stats and a climate map
     # render so they don't each trigger their own (~50ms) recomputation the same turn. See
@@ -398,6 +410,43 @@ class World:
         self.events.append((self.elapsed_years, message))
         if len(self.events) > MAX_EVENT_LOG_LENGTH:
             del self.events[: len(self.events) - MAX_EVENT_LOG_LENGTH]
+
+    def record_stats(self, force: bool = False) -> None:
+        """Append this instant's `stats.compute_stats(self)` snapshot to `stats_history` --
+        called once at the end of `finish_generation` (`force=True`) and once at the end of
+        every `step_world` (see `stats_history`'s own comment for why this lives on World at
+        all now). Deduped by `elapsed_years`, the same guard the frontend's own client-side
+        accumulation used to apply, so a `years=0` step (or any other call that leaves
+        elapsed_years unchanged) doesn't pile up a redundant entry.
+
+        `stats.compute_stats` reads `climate.compute_climate_cached`, which computes a fresh
+        (~50ms) climate snapshot on demand whenever `climate_cache` is empty rather than ever
+        skipping it -- fine as a one-time generation cost (`force=True`, unconditionally), but
+        *not* something an ordinary step should trigger purely to record a stats snapshot: a
+        `simulate_climate_biomes=False` run deliberately skips climate every step to run fast,
+        and `climate_cache is None` the whole time it does, so `step_world`'s own call
+        (`force=False`) simply skips recording rather than undoing that skip's whole point.
+
+        A `force=True` call that finds `climate_cache` still empty (generation) restores it to
+        `None` afterward -- `compute_climate_cached` itself stashes whatever it computes back
+        onto `world.climate_cache` as a side effect, and several call sites elsewhere
+        (coastline.py, climate.py's vegetation-transpiration source) read `climate_cache is
+        None` as "no step has run yet"; letting this method's own one-off snapshot leak into
+        that field would make a freshly generated, never-stepped world look like it had.
+
+        A local import: stats.py imports World for its own type hint, so importing it back at
+        module scope here would be circular."""
+        if not force and self.climate_cache is None:
+            return
+        from . import stats
+
+        if self.stats_history and self.stats_history[-1]["elapsed_years"] == self.elapsed_years:
+            return
+        had_no_cache = self.climate_cache is None
+        snapshot = stats.compute_stats(self)
+        if had_no_cache:
+            self.climate_cache = None
+        self.stats_history.append(snapshot)
 
     def record_removed_points(self, points_xyz: np.ndarray, plate_id: int) -> None:
         """Append one `removed_points_log` entry per point in `points_xyz` (world-frame, shape
@@ -589,6 +638,7 @@ def finish_generation(world: World, log_message: str) -> None:
     eustasy.initialize_water_budget(world)
 
     world.log_event(log_message)
+    world.record_stats(force=True)  # the elapsed_years=0 baseline entry -- see World.stats_history
 
 
 def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
@@ -720,5 +770,7 @@ def step_world(world: World, years: float) -> None:
     # tectonics and erosion reshape the basins, and even a movement-and-climate-off step
     # should keep sea level self-consistent if a control just changed the water budget.
     eustasy.update_sea_level(world)
+
+    world.record_stats()
 
 

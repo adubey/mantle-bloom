@@ -18,6 +18,7 @@ def _climate_fields(is_ocean: np.ndarray) -> climate.ClimateFields:
         world_xyz=world_xyz,
         elevation_m=zeros,
         is_ocean=is_ocean,
+        lake_depth_m=zeros,
         land_temperature_c=zeros,
         ocean_temperature_c=zeros,
         air_temperature_c=zeros,

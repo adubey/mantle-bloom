@@ -967,13 +967,25 @@ def list_plates() -> dict:
 @app.get("/world/stats")
 def get_stats() -> dict:
     """Aggregate physical/temperature/precipitation statistics for the Stats panel -- see
-    stats.py. Stateless: recomputed fresh from the current world state every call (the
-    frontend is what accumulates a history over time, by calling this after every
-    generate/step, same as it already does for /world/render). `404` if no world has been
-    generated yet."""
+    stats.py. Stateless: recomputed fresh from the current world state every call. Separate
+    from the actual recorded time series (see /world/stats_history / World.stats_history) --
+    this is just the current instant, for a caller that only wants "right now" without paying
+    for a full-history response. `404` if no world has been generated yet."""
     world = _require_world()
     with _world_lock:
         return stats.compute_stats(world)
+
+
+@app.get("/world/stats_history")
+def get_stats_history() -> dict:
+    """The full recorded stats time series (see World.stats_history) -- one compute_stats
+    snapshot per generate/step, persisted on `World` itself (and so in every saved .mbworld,
+    see persistence.py) rather than only kept in the frontend's own React state. The frontend
+    calls this once after a Load (see App.tsx's handleWorldReplaced) to restore the Stats
+    panel's history charts from a save, instead of the pre-history-persistence behaviour of
+    just resetting them to empty. `404` if no world has been generated yet."""
+    world = _require_world()
+    return {"history": world.stats_history}
 
 
 @app.get("/world/plate_at")

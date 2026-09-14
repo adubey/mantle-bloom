@@ -27,7 +27,7 @@ def _synthetic_converging_currents_fields(height=20, width=40) -> "climate.Clima
     zeros = np.zeros((height, width))
     return climate.ClimateFields(
         lat_deg=lat_deg, lon_deg=lon_deg, world_xyz=world_xyz,
-        elevation_m=zeros, is_ocean=is_ocean,
+        elevation_m=zeros, is_ocean=is_ocean, lake_depth_m=zeros,
         land_temperature_c=zeros, ocean_temperature_c=zeros, air_temperature_c=zeros,
         wind_u=zeros, wind_v=zeros, current_u=current_u, current_v=current_v,
         humidity=zeros, precipitation_mm=zeros, swell_rows=rows, swell_cols=cols,

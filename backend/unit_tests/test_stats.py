@@ -121,6 +121,26 @@ def test_compute_stats_biome_land_fraction_sums_to_one_with_land():
     assert set(result["biome_land_fraction"]).isdisjoint(result["biome_ocean_fraction"])
 
 
+def test_compute_stats_land_and_ocean_fractions_count_a_lake_as_water():
+    # A landlocked lake sits on land elevation-wise (never below world.sea_level_m, and never
+    # part of the connected ocean -- that's exactly what makes it a lake), so `is_ocean` alone
+    # would miss it entirely. land_fraction/ocean_fraction ("Land"/"Water" in the frontend's
+    # Stats panel) must still count it as water, not land -- see stats.py's own docstring.
+    n = 40
+    theta = np.linspace(-np.pi, np.pi, n, endpoint=False)
+    elevation = np.full(n, 500.0)  # all land, well above the default sea_level_m=0.0
+    lake_depth = np.where(np.abs(theta) < np.pi / 4, 20.0, 0.0)  # a lake over a quarter of it
+    line = ElevationLine(phi=0.0, theta=theta, elevation=elevation, lake_depth=lake_depth)
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate])
+
+    result = stats.compute_stats(world)
+    lake_fraction = float(np.count_nonzero(lake_depth > 0.0)) / n
+    assert result["ocean_fraction"] == pytest.approx(lake_fraction, abs=0.05)
+    assert result["land_fraction"] == pytest.approx(1.0 - lake_fraction, abs=0.05)
+    assert result["land_fraction"] + result["ocean_fraction"] == pytest.approx(1.0)
+
+
 def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_ids():
     # stats.py no longer runs its own classify_biomes -- it reads ClimateFields.biome_ids,
     # the same stored field compute_climate now computes once and every other biome-consuming

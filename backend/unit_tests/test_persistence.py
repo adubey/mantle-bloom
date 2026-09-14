@@ -69,6 +69,29 @@ def test_loading_a_world_pickled_before_removed_points_log_existed_defaults_to_e
     assert loaded.removed_points_log == []
 
 
+def test_round_trip_preserves_stats_history():
+    # World.stats_history is what makes a save/load round trip keep the Stats panel's history
+    # charts (see World.record_stats/GET /world/stats_history) -- generation records one
+    # baseline entry, each step should add (at most) one more.
+    world = generate_world(seed=11, num_plates=6)
+    assert len(world.stats_history) == 1
+    step_world(world, 5_000_000)
+    step_world(world, 5_000_000)
+    assert len(world.stats_history) == 3
+    assert [s["elapsed_years"] for s in world.stats_history] == [0.0, 5_000_000.0, 10_000_000.0]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.stats_history == world.stats_history
+
+
+def test_loading_a_world_pickled_before_stats_history_existed_defaults_to_empty():
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["stats_history"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.stats_history == []
+
+
 def test_loading_a_world_pickled_before_gap_tracks_existed_defaults_to_empty():
     world = generate_world(seed=3, num_plates=4)
     del world.__dict__["gap_tracks"]
