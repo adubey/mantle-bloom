@@ -933,3 +933,27 @@ Tests: `backend/stress_tests/test_healpix_resample.py` (real-scale accuracy/shar
 above) and `backend/unit_tests/test_plates.py`/`test_climate.py`/`test_hydrology.py`
 (fast-suite equivalence checks for `cached_node_healpix_index` and the mode-aware hydrology
 resample).
+
+### Phase 3, closed as a no-op (2026-09-14)
+
+No production code changed. This phase's own definition, set when the issue was scoped, was to
+*leave* `world.distance_from_land_approx` and `render_image._classify_terrain_relief` on their
+current `cKDTree` paths rather than migrate them -- so closing it out means confirming that
+decision still holds, not writing a HEALPix version of either.
+
+It does. Both were already ruled out above ("Two shapes that don't fit the scatter pattern at
+all") for reasons specific to what each actually needs, not for lack of time: `distance_from_
+land_approx` returns `land_kdtree_cache.query(points)`'s **distance**, not a nearest node's
+attribute, so scatter+fill (a value-lookup operation) doesn't apply without a different
+algorithm entirely (a multi-source BFS over `neighbours`/`neighbour_distance_m`, whose accuracy
+over many hops is unverified); `_classify_terrain_relief` needs a variable-radius neighbour
+*set* via `query_ball_point`, and HEALPix's fixed ring structure only approximates a real-world
+radius, exactly (not approximately) the way `cKDTree`'s radius already does today. Phase 2's
+measured numbers sharpen the case for leaving both alone rather than weaken it: the one shared-
+infrastructure win phases 1-2 delivered (`cached_node_healpix_index`'s one-scatter-per-step
+reuse) doesn't transfer to either function's different query shape, and phase 2's 16.1%
+coastal-band `is_ocean` disagreement is a reminder that scatter+fill's accuracy cost concentrates
+exactly at the coastlines `distance_from_land_approx` and terrain-relief classification care
+about most -- more reason to keep both on the exact `cKDTree` semantics they have now, not less.
+
+No new shared infrastructure, no new tests, no behavior change. See issue #133 for the checklist.
