@@ -319,6 +319,17 @@ export interface WorldStats {
   total_continental_crust_volume_km3: number;
   land_fraction: number;
   ocean_fraction: number;
+  // Raw `elevation > sea_level_m` node fraction -- unlike land_fraction/ocean_fraction above,
+  // not connectivity-aware and not cos(lat)-weighted, but always reflects the current world
+  // rather than a possibly-frozen hydrology cache (see land_fraction_stale below and backend
+  // app/stats.py's module docstring). Absent on WorldStats records captured before this field
+  // was added -- treat missing as unknown, not 0. GitHub issue #121.
+  land_fraction_node?: number | null;
+  // True when land_fraction/ocean_fraction were resampled from a hydrology cache that hasn't
+  // been rebuilt since simulate_climate_biomes was last turned off -- i.e. they may no longer
+  // match the world's actual current coastline. Absent on older records -- treat missing as
+  // false (unknown). GitHub issue #121.
+  land_fraction_stale?: boolean;
   // Land only (height above the current sea level) -- see stats.py's module docstring.
   elevation_min_m: number | null;
   elevation_max_m: number | null;

@@ -1150,6 +1150,7 @@ def apply_erosion(
     n = len(points)
     if n == 0:
         world.hydrology_cache = None
+        world.hydrology_cache_step = None
         return None
 
     height, width = fields.precipitation_mm.shape
@@ -1173,6 +1174,7 @@ def apply_erosion(
 
     hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years, node_cloud=node_cloud)
     world.hydrology_cache = hydro
+    world.hydrology_cache_step = world.steps_taken
     # From here on use hydrology's connectivity-aware mask: an interior pit that dipped below
     # sea level without connecting to open ocean now gets the *subaerial* erosion/deposition
     # pathways (and its lake silt, folded into elevation below), not the marine ones.

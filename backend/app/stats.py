@@ -91,6 +91,16 @@ number itself. Continental-crust-only (oceanic crust is routinely created/destro
 spreading/subduction by design, so summing it in wouldn't isolate a conservation bug the way
 continental-only does); see GitHub issues #119 and #120's collision/land-fraction investigation notes for
 the mechanisms this was added to help tell apart.
+
+`land_fraction_node`/`land_fraction_stale` address a narrower gap in the same family: `land_
+fraction` above is resampled from `world.hydrology_cache` (see `hydrology.sample_is_ocean`),
+which is populated only inside `erosion.apply_erosion` -- so with `simulate_climate_biomes`
+off, it freezes at whatever the world looked like when erosion last ran and silently stops
+tracking tectonics/eustasy moving the coastline underneath it. `land_fraction_node` is a raw,
+always-fresh `elevation > sea_level_m` node count (like `total_land_area_km2`, immune to the
+staleness, but a *fraction* comparable to `land_fraction` rather than an area) and `land_
+fraction_stale` flags the frozen-cache case explicitly rather than leaving the Stats panel to
+guess. See GitHub issue #121.
 """
 
 from __future__ import annotations
@@ -128,23 +138,26 @@ def _reconcile_land_ocean(fields: "climate.ClimateFields", sea_level_m: float) -
     return is_ocean, ~is_ocean
 
 
-def _total_land_area_and_continental_volume(world: World) -> tuple[float, float]:
-    """(total land area m^2, total continental crustal volume m^3) straight off
-    `world.plates` -- see this module's own docstring for why these are computed here rather
-    than off the climate grid `compute_stats` otherwise uses throughout. `node_area_m2` is
-    (almost exactly) constant across latitude by construction, so both are a plain node-count
-    sum, not an integral -- one pass per plate, no grid resample."""
+def _total_land_area_and_continental_volume(world: World) -> tuple[float, float, int]:
+    """(total land area m^2, total continental crustal volume m^3, total land node count)
+    straight off `world.plates` -- see this module's own docstring for why these are computed
+    here rather than off the climate grid `compute_stats` otherwise uses throughout.
+    `node_area_m2` is (almost exactly) constant across latitude by construction, so both are a
+    plain node-count sum, not an integral -- one pass per plate, no grid resample. The node
+    count is also `land_fraction_node`'s numerator (see `compute_stats`) -- a raw
+    `elevation > sea_level_m` count, immune to the same hydrology-cache staleness as
+    `land_area`/`continental_volume`, for the same reason."""
     area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
-    land_area = 0.0
+    land_nodes = 0
     continental_volume = 0.0
     for plate in world.plates:
         _, elevation = plate.all_points_and_elevation()
         if len(elevation) == 0:
             continue
-        land_area += float(np.count_nonzero(elevation > world.sea_level_m)) * area_m2
+        land_nodes += int(np.count_nonzero(elevation > world.sea_level_m))
         if plate.crust_type == "continental":
             continental_volume += float(np.sum(plate.collect("crustal_thickness_m"))) * area_m2
-    return land_area, continental_volume
+    return land_nodes * area_m2, continental_volume, land_nodes
 
 
 def _is_water(fields: "climate.ClimateFields", is_ocean: np.ndarray) -> np.ndarray:
@@ -169,7 +182,8 @@ def compute_stats(world: World) -> dict:
     ocean_temp_min, ocean_temp_max, ocean_temp_mean, ocean_temp_std = _min_max_mean_std(fields.ocean_temperature_c[is_ocean])
     precip_min, precip_max, precip_mean, precip_std = _min_max_mean_std(fields.precipitation_mm)
 
-    land_area_m2, continental_crust_volume_m3 = _total_land_area_and_continental_volume(world)
+    land_area_m2, continental_crust_volume_m3, land_node_count = _total_land_area_and_continental_volume(world)
+    elevation_point_count = sum(p.node_count() for p in world.plates)
 
     land_biome_ids = fields.biome_ids[is_land]
     n_land = int(is_land.sum())
@@ -189,12 +203,28 @@ def compute_stats(world: World) -> dict:
     return {
         "elapsed_years": world.elapsed_years,
         "plate_count": len(world.plates),
-        "elevation_point_count": sum(p.node_count() for p in world.plates),
+        "elevation_point_count": elevation_point_count,
         "sea_level_m": world.sea_level_m,
         "total_land_area_km2": land_area_m2 / 1.0e6,
         "total_continental_crust_volume_km3": continental_crust_volume_m3 / 1.0e9,
         "land_fraction": float((~is_water).sum()) / total,
         "ocean_fraction": float(is_water.sum()) / total,
+        # A raw `elevation > sea_level_m` node count (see `_total_land_area_and_continental_
+        # volume`'s docstring) -- unlike `land_fraction` above, not connectivity-aware (an
+        # enclosed sub-sea-level pit with no lake fill yet still counts as land here) and not
+        # cos(lat)-weighted, but always reflects the *current* world, never `hydrology_cache`.
+        # See GitHub issue #121.
+        "land_fraction_node": float(land_node_count) / elevation_point_count if elevation_point_count > 0 else None,
+        # True when `land_fraction`/`ocean_fraction` above were resampled from a
+        # `world.hydrology_cache` that wasn't (re)built this step -- i.e. `simulate_climate_
+        # biomes` has been off for at least one step since the cache was last refreshed, so
+        # tectonics/eustasy may have moved the coastline out from under it. Never true while
+        # `hydrology_cache` is `None`: that case computes `is_ocean` fresh (elevation-only
+        # fallback, see `hydrology.sample_is_ocean`), not from a frozen cache. See issue #121.
+        "land_fraction_stale": (
+            world.hydrology_cache is not None
+            and world.hydrology_cache_step != world.steps_taken
+        ),
         "elevation_min_m": elevation_min,
         "elevation_max_m": elevation_max,
         "elevation_mean_m": elevation_mean,
