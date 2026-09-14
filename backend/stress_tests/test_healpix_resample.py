@@ -219,19 +219,21 @@ def test_hydrology_sample_is_ocean_healpix_and_kdtree_agree_with_coastal_band_me
     mismatch = ocean_kd != ocean_hp
     mismatch_rate = mismatch.mean()
     print(f"hydrology is_ocean mismatch rate: {mismatch_rate:.4f}")
-    # Measured on this implementation: ~0.4% overall -- near-exact away from coastlines (see
-    # docs/profiling.md's "Phase 2 landed" section for the full writeup).
+    # Measured on this implementation: ~0.3% overall -- near-exact away from coastlines (see
+    # docs/profiling.md's "Phase 2 landed"/"Phase 4" sections for the full writeup).
     assert mismatch_rate < 0.02
 
     coastal = binary_dilation(ocean_kd, iterations=2) & ~binary_erosion(ocean_kd, iterations=2)
     coastal_mismatch_rate = mismatch[coastal].mean()
     interior_mismatch_rate = mismatch[~coastal].mean()
     print(f"coastal mismatch rate: {coastal_mismatch_rate:.4f}, interior: {interior_mismatch_rate:.4f}")
-    # This is the real number issue #133 asked for, and it's not small: measured ~16% coastal-
-    # band mismatch (vs. ~0.03% interior) at this config -- confirming, not dispelling, the
-    # issue's own worry that "nearest node" and "nearest filled HEALPix pixel" diverge most
-    # exactly where is_ocean correctness matters most. Bound set with headroom above the
-    # measured value (not tightened to "prove" accuracy) -- see docs/profiling.md's "Phase 2
-    # landed" section for the caveat this measurement supports.
-    assert coastal_mismatch_rate < 0.25
+    # This is the real number issue #133 asked for. Phase 2 measured ~16% coastal-band mismatch
+    # (vs. ~0.03% interior) at the default 1:1 node-count grid sizing -- confirming, not
+    # dispelling, the issue's own worry that "nearest node" and "nearest filled HEALPix pixel"
+    # diverge most exactly where is_ocean correctness matters most. Phase 4's `_OCEAN_NSIDE_
+    # OVERSAMPLE=4` (hydrology.py) cut that to ~7% -- better, but still real, so the bound below
+    # has headroom above the measured value rather than being tightened to "prove" accuracy --
+    # see docs/profiling.md's "Phase 4" section for the full numbers and the default-flip
+    # decision this measurement fed into.
+    assert coastal_mismatch_rate < 0.15
     assert (sea_kd != sea_hp).mean() < 0.02

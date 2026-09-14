@@ -957,3 +957,56 @@ exactly at the coastlines `distance_from_land_approx` and terrain-relief classif
 about most -- more reason to keep both on the exact `cKDTree` semantics they have now, not less.
 
 No new shared infrastructure, no new tests, no behavior change. See issue #133 for the checklist.
+
+### Phase 4, in progress (2026-09-14): shrinking the coastal `is_ocean` gate before considering the default flip
+
+Phase 4's own text says "consider flipping the default" once phases 1-2 are shipped and measured
+-- but phase 2's own measurement (16.1% coastal-band `is_ocean` mismatch vs. 0.03% interior) is
+exactly the number that write-up flagged as the thing that should gate this, "for anything
+coastline-sensitive," rather than a formality to note and move past. So before touching
+`World.node_cloud_resample_mode`'s default, this phase tried the first of the two levers phase
+2 flagged as likely: a finer coastal HEALPix grid, on the theory that "nearest filled pixel"
+converges toward "nearest node" as pixels shrink relative to internode spacing. (The second
+lever -- an `is_ocean`-aware scatter tie-break instead of pure nearest-pixel-center distance --
+is unimplemented; not needed once the first lever's numbers came in, see below.)
+
+**Measured** (throwaway spike, same seed=0/node_density=4.0/4-step world every number in this
+document since phase 0 has used), sweeping an nside multiplier applied only to `hydrology.
+py`'s ocean grid (`_ocean_node_healpix_index`, not the shared render/climate grid -- this
+migration's own architecture already keeps the two separate, since hydrology resamples a
+different, one-step-stale node cloud):
+
+| oversample | nside | npix | coastal mismatch | one-time grid build | per-`step_world` fill |
+| --- | --- | --- | --- | --- | --- |
+| 1x (today) | 128 | 196,608 | 16.1% | ~0.1s | ~24ms |
+| 2x | 256 | 786,432 | 11.4% | ~0.5s | ~31ms |
+| **4x (chosen)** | 512 | 3,145,728 | **7.2%** | ~3.2s | ~65-90ms |
+| 8x | 1024 | 12,582,912 | 5.4% | ~67s | ~3.4s |
+
+Diminishing returns past 4x, and 8x's cost stops being negligible on either axis: a 67-second
+one-time `HealpixGrid.build()` (still paid once per node-count bracket, not every step, per this
+migration's own grid/index cache split) and a 3.4-second-per-step fill would be a real tax
+against `step_world`'s own ~4.3-4.8s measured wall time (a full-world, node_density=4.0 step,
+same config as every number here) -- a ~70% step-time regression under "healpix" mode just from
+this one lever, self-defeating for a change whose entire point was speed. 4x's own fill cost
+(~65-90ms) is under 2% of that same step time, negligible by the same yardstick 1x already
+cleared.
+
+**Landed:** `hydrology._OCEAN_NSIDE_OVERSAMPLE = 4`, threaded through `healpix_grid.
+nside_for_node_count`'s new `oversample` parameter (default 1, a no-op for every other caller --
+`render_image`/`climate`'s shared grid via `plates.cached_node_healpix_index` is untouched,
+since phase 1/2's own elevation-outlier numbers there were never the thing this gate is about).
+Confirmed on the real implementation, not just the spike: `backend/stress_tests/
+test_healpix_resample.py`'s coastal-band test now measures **7.17%** (down from 16.1%), bound
+loosened to `< 0.15` (headroom above the measured value, same convention the original 16%
+bound used, not tightened to "prove" accuracy).
+
+**Still open: the default-flip decision itself.** 7.2% is real progress -- roughly a 55%
+relative cut -- but it is not "no visible difference": still meaningfully more than 1 in 20
+coastal cells flipping `is_ocean` under "healpix" mode, for exactly the boundary lake/river-
+mouth detection and coastal climate effects phase 2's own caveat named. `World.
+node_cloud_resample_mode` default is unchanged (`"kdtree"`) pending that call. Source spike not
+committed (same convention every phase-0-style measurement in this document has followed) --
+numbers above are reproducible via `backend/stress_tests/test_healpix_resample.py`'s existing
+`test_hydrology_sample_is_ocean_healpix_and_kdtree_agree_with_coastal_band_measured` plus the
+`_OCEAN_NSIDE_OVERSAMPLE` sweep described above.

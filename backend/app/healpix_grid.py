@@ -288,17 +288,25 @@ NODE_CLOUD_RESAMPLE_MODE_CHOICES = ("kdtree", "healpix")
 MAX_FILL_ROUNDS = 64
 
 
-def nside_for_node_count(n: int) -> int:
+def nside_for_node_count(n: int, oversample: int = 1) -> int:
     """A power-of-2 `nside` sized to the node count `n`, not to a density label the way
     `nside_for_density`/`NSIDE_CHOICES` size the (unrelated) CFD grid -- picks whichever of the
     two powers of 2 bracketing `sqrt(n/12)` gives an `npix` closer to `n`. Phase-0's spike used
     nside=128 (npix=196,608) for ~130.6K nodes, a ~1.5x ratio this reproduces exactly at that
-    node count."""
+    node count.
+
+    `oversample` (must be a power of 2) multiplies the result beyond that 1:1 sizing --
+    `hydrology.py`'s ocean healpix grid passes `_OCEAN_NSIDE_OVERSAMPLE` (issue #133 phase 4):
+    finer pixels bring "nearest filled HEALPix pixel" closer to "nearest node" specifically at
+    coastlines, where phase 2 measured `is_ocean` disagreement concentrating. Left at 1 (a
+    no-op) for every other caller, which weren't flagged as needing it."""
+    assert oversample >= 1 and (oversample & (oversample - 1)) == 0, f"oversample must be a power of 2, got {oversample}"
     raw = math.sqrt(max(n, 1) / 12.0)
     low_order = max(int(math.floor(math.log2(max(raw, 1.0)))), 0)
     low = 2**low_order
     high = low * 2
-    return low if abs(12 * low * low - n) <= abs(12 * high * high - n) else high
+    base = low if abs(12 * low * low - n) <= abs(12 * high * high - n) else high
+    return base * oversample
 
 
 def scatter_node_indices(grid: HealpixGrid, node_xyz: np.ndarray) -> np.ndarray:
