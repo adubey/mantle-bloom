@@ -894,6 +894,39 @@ routine per-step motion.
   alone here, not deleted; the comb-of-stubs branch of consumption (above) prunes it on the
   same step. This runs before the collision and split passes so a severed lobe or a ghost
   comb stops polluting neighbour polygons and collision detection first.
+- **Periodic continental re-lattice** (`relattice_continental_plates`, every
+  `RELATTICE_INTERVAL_STEPS` steps, [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119),
+  "Continental ratchet: solution design," mechanism 4). Defragmentation above catches a
+  severed lobe; this catches a subtler geometric failure mode in an intact one.
+  `_grow_or_shrink_line_for_deform` grows each row's own open end independently, one node at
+  a time, at whatever rate that row's own local contact happens to demand -- so nothing stops
+  row-to-row phase drift from compounding: each row ends up shifted a little further from its
+  neighbours than the row before, and after enough steps the boundary reads as a diagonal
+  staircase (issue #119's "streaking" symptom -- a thin triangular tongue built one row-end
+  extension at a time) rather than a smooth coastline. [Line regularization](#line-
+  regularization) can't reach this: it re-evens spacing *within* one already-existing row,
+  preserving that row's own two endpoints exactly, so it never touches where a row's edge
+  actually sits relative to its neighbours.
+
+  `LithospherePlate.relattice` is the 2-D generalisation: sweep the plate's canonical,
+  evenly-phased lattice from scratch (`elevation_lines.iter_local_lattice`, the same sweep
+  initial generation and merge resampling use) and keep whichever candidate sites this
+  plate's own `contains_batch` -- its exact current outline, not a coverage-radius dilation
+  of the existing node cloud -- says it owns. (A radius-based resample, `Plate.grow_into`,
+  was already rejected for routine per-step use -- see [Plate motion: shift and
+  deform](#boundary-evolution)'s "Claiming adjacent territory" -- because its coverage
+  radius around even a handful of points reconstructs far more area than they actually
+  cover; testing the outline directly instead reproduces exactly the plate's existing
+  footprint.) Every persistent per-node field, Hc/Hm included, is carried onto each new site
+  from its nearest surviving node (a 2-D scatter resample has no single ordered axis to
+  `np.interp` along), then `crustal_thickness_m`/`mantle_lithosphere_thickness_m` are rescaled
+  by one uniform factor so the plate's total crustal volume (`sum(Hc)`, since per-node area is
+  constant) comes out exactly where it started -- a nearest-neighbour carry alone doesn't
+  conserve it exactly, since a different-shaped node set overweights whichever old nodes end
+  up nearest the most new sites near the boundary. Continental crust only: an oceanic plate's
+  footprint is already self-bounding via subduction. A heavier whole-plate rebuild than
+  defragmentation or gap-filling (every node of every continental plate, not just a
+  connectivity check), so its own interval is longer than either of theirs.
 
 <a id="gap-filling"></a>
 ## Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback (`gaps.py`)

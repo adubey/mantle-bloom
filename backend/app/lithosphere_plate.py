@@ -2021,6 +2021,87 @@ class LithospherePlate(PlateWithLines):
             )
         self.set_lines(new_lines)
 
+    def relattice(self, spacing_rad: float) -> None:
+        """Refit this plate's lattice to its own current outline and redistribute its
+        existing total crustal volume onto the fresh node set (GitHub issue #119, "Continental
+        ratchet: solution design," mechanism 4, "periodic conservative continental
+        re-lattice") -- the 2-D generalisation of `elevation_lines.regularize_line`, which only
+        ever re-evens spacing *within* one already-existing row, preserving its two endpoints
+        exactly. That per-row guarantee is exactly what it can't fix: `_grow_or_shrink_line_
+        for_deform` grows each row's own ends independently, one node at a time, at whatever
+        rate that row's own local contact happens to demand, so nothing stops row-to-row phase
+        drift (a diagonal, staircase boundary from repeated row-end extension -- issue #119's
+        "streaking" symptom, a thin triangular tongue grown one row-end at a time) from
+        compounding indefinitely even while every individual row stays evenly spaced.
+        Continental crust only: an oceanic plate's footprint is already self-bounding via
+        subduction, so there is no such drift here worth periodically re-fitting.
+
+        Ownership of each fresh lattice site is `contains_batch` -- this plate's own polygon
+        test, exact against its outline as of the last `deform()` -- not a coverage-radius
+        dilation of the existing node cloud (`Plate.grow_into`, used for merges). A
+        radius-based resample was already rejected for routine per-step use because its
+        coverage radius around even a handful of points reconstructs far more lattice area
+        than they actually cover (see docs/simulation-model.md's "Claiming adjacent
+        territory"); testing the outline directly instead reproduces exactly this plate's
+        existing footprint -- no smaller, no larger -- just resampled onto the canonical,
+        evenly-phased lattice `iter_local_lattice` builds from scratch.
+
+        Every `OPTIONAL_FIELDS` value (Hc/Hm included) is carried onto each new site from its
+        nearest surviving node: a 2-D scatter resample has no single ordered axis to
+        `np.interp` along the way `regularize_line` does, so nearest-neighbour is the natural
+        generalisation (the same choice `regularize_line` itself already makes for its
+        categorical fields). Because node area is constant, a nearest-neighbour carry alone
+        doesn't exactly conserve total crustal volume -- a different-shaped node set
+        overweights whichever few old nodes end up nearest the most new sites near the
+        boundary -- so `crustal_thickness_m` (and `mantle_lithosphere_thickness_m`, scaled by
+        the same ratio: a thicker resampled column carries a proportionally thicker attached
+        mantle lid, the same convention `_redistribute_accreted_column` uses) is rescaled by
+        one uniform factor afterward so the plate's `sum(Hc)` -- its total crustal volume,
+        since per-node area is constant -- comes out exactly where it started."""
+        if self.crust_type != "continental":
+            return
+        own_points, _ = self.all_points_and_elevation()
+        if len(own_points) == 0:
+            return
+        field_names = ("elevation",) + ElevationLine.OPTIONAL_FIELDS
+        own_fields = {name: self.collect(name) for name in field_names}
+        total_hc_before = float(np.sum(own_fields["crustal_thickness_m"]))
+        if total_hc_before <= 0.0:
+            return
+
+        from .elevation_lines import iter_local_lattice
+
+        tree = cKDTree(own_points)
+        raw_rows: list[tuple[float, np.ndarray, dict[str, np.ndarray]]] = []
+        for phi, theta_candidates, world_pts in iter_local_lattice(self.frame, spacing_rad=spacing_rad):
+            owned = self.contains_batch(world_pts)
+            if not np.any(owned):
+                continue
+            _, idx = tree.query(world_pts[owned])
+            row_fields = {name: values[idx] for name, values in own_fields.items()}
+            raw_rows.append((phi, theta_candidates[owned], row_fields))
+
+        if not raw_rows:
+            return
+
+        total_hc_after = float(sum(np.sum(fields["crustal_thickness_m"]) for _, _, fields in raw_rows))
+        hc_scale = total_hc_before / total_hc_after if total_hc_after > 0.0 else 1.0
+
+        new_lines = []
+        for phi, theta_owned, fields in raw_rows:
+            overrides = dict(fields)
+            elevation = overrides.pop("elevation")
+            overrides["crustal_thickness_m"] = np.maximum(
+                overrides["crustal_thickness_m"] * hc_scale, lithosphere.MIN_CRUSTAL_THICKNESS_M
+            )
+            overrides["mantle_lithosphere_thickness_m"] = np.maximum(
+                overrides["mantle_lithosphere_thickness_m"] * hc_scale, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+            )
+            new_lines.append(ElevationLine(phi=phi, theta=theta_owned, elevation=elevation, **overrides))
+
+        self.set_lines(new_lines)
+        lithosphere.sync_plate_elevation(self)
+
 
 def _merge_lines_from_resample(
     frame: np.ndarray,

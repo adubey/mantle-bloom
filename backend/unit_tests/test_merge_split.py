@@ -756,6 +756,59 @@ def test_apply_topology_changes_runs_defragment_only_on_cadence():
     assert all(_single_component(p) for p in on_cadence.plates)
 
 
+def _drifted_continental_plate(plate_id=0, n_rows=6, per_row=20):
+    """A multi-row continental plate whose rows drift further apart one from the next --
+    enough of GitHub issue #119's "staircase" symptom to make `relattice` visibly do
+    something (see test_plates.py's `_staircase_continental_plate`, the same idea, here
+    surviving `remove_defunct_plates`'s multi-line requirement without a separate filler
+    line)."""
+    spacing = line_spacing_rad(1.0)
+    lines = []
+    for r in range(n_rows):
+        phi = r * spacing
+        shift = r * 0.4 * spacing
+        theta = np.linspace(-0.3, 0.3, per_row) + shift
+        lines.append(_thick_line(phi, theta, 0.0, "continental"))
+    return LithospherePlate(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=lines)
+
+
+def test_relattice_continental_plates_refits_continents_and_skips_oceanic():
+    continent = _drifted_continental_plate(plate_id=0)
+    ocean = _test_plate(1, np.array([0.0, 0.0, 1.0]), "oceanic", np.linspace(-0.3, 0.3, 20), 0.0)
+    world = World(seed=0, plates=[continent, ocean], next_plate_id=2, node_density=1.0)
+    total_hc_before = float(np.sum(continent.collect("crustal_thickness_m")))
+    ocean_line_before = ocean.lines[0]
+
+    merge_split.relattice_continental_plates(world)
+
+    total_hc_after = float(np.sum(continent.collect("crustal_thickness_m")))
+    assert np.isclose(total_hc_after, total_hc_before, rtol=1e-6)
+    assert ocean.lines[0] is ocean_line_before  # untouched -- oceanic is a no-op
+
+
+def test_apply_topology_changes_relattices_continental_plates_only_on_cadence():
+    def drifted_world(steps_taken):
+        w = World(seed=0, plates=[_drifted_continental_plate(plate_id=0)], next_plate_id=1, node_density=1.0)
+        w.steps_taken = steps_taken
+        return w
+
+    off_cadence = drifted_world(steps_taken=merge_split.RELATTICE_INTERVAL_STEPS + 1)
+    line_before = off_cadence.plates[0].lines[0]
+    merge_split.apply_topology_changes(off_cadence, years=1.0e6)
+    assert off_cadence.plates[0].lines[0] is line_before  # untouched off-cadence
+
+    on_cadence = drifted_world(steps_taken=merge_split.RELATTICE_INTERVAL_STEPS)
+    total_hc_before = float(np.sum(on_cadence.plates[0].collect("crustal_thickness_m")))
+    node_count_before = on_cadence.plates[0].node_count()
+
+    merge_split.apply_topology_changes(on_cadence, years=1.0e6)
+
+    total_hc_after = float(np.sum(on_cadence.plates[0].collect("crustal_thickness_m")))
+    assert np.isclose(total_hc_after, total_hc_before, rtol=1e-6)
+    # The lattice was actually rebuilt -- node count changed from the raw staircase input.
+    assert on_cadence.plates[0].node_count() != node_count_before
+
+
 def test_apply_topology_changes_drops_a_defrag_debris_plate_via_the_territory_check():
     # A comb of one-node rows in three disconnected clusters: no component is big enough to
     # anchor a plate, so defragment_plates declines -- then the comb-of-stubs branch of
