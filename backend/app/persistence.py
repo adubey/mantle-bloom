@@ -91,3 +91,8 @@ def _drop_derived_caches(world: World) -> None:
     # of the just-invalidated plate geometry, rebuilt on first use after load.
     world.node_kdtree_cache = None
     world.node_position_tree_cache = None
+    # "healpix" node_cloud_resample_mode's own caches -- same rationale, see their own
+    # docstrings on World. node_healpix_grid_cache is kept (it's a pure function of node
+    # *count*, not the just-invalidated geometry) rather than dropped alongside the others.
+    world.node_healpix_index_cache = None
+    world.node_kdtree_relief_cache = None

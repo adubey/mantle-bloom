@@ -705,12 +705,11 @@ operation at a coastline boundary, which is exactly where `is_ocean` correctness
    number that makes or breaks the rest of the plan -- don't move past this phase without it.
    **Result: ~2.9-3.8x faster at steady state, fill cost negligible -- go, with two caveats
    budgeted into phase 1 (see "Phase 0, done" below).**
-1. If phase 0's numbers hold up: land the shared `HealpixGrid` + scatter/fill/resample plumbing
-   as a new, optional code path behind the existing node-cloud-and-tree entry points (`render_
-   image._node_cloud_and_tree`, `plates.cached_node_position_tree`), diffed pixel-for-pixel
-   against the current `cKDTree` output on a fixed test world (not just visually -- an exact
-   `array_equal`/tolerance check the way fixes 6-8 above were verified), with the equirectangular
-   path kept as the default until it's proven out on a real animation run end-to-end.
+1. **Done (2026-09-14).** Landed the shared `HealpixGrid` + scatter/fill/resample plumbing as
+   a new, optional code path (`World.node_cloud_resample_mode`, default `"kdtree"`, opt into
+   `"healpix"`) behind `render_image._node_cloud_and_tree` only -- see "Phase 1 landed" below
+   for why `plates.cached_node_position_tree`, also named in this checklist item's original
+   text, turned out not to belong in this phase after all.
 2. Extend to `climate._sample_elevation_and_crust` (same node cloud, same tree) and `hydrology.
    _nearest_hydro_node_idx` (after the last-step/this-step check above is resolved) together,
    since they already share `world.node_position_tree_cache`/the item-3 ocean-tree cache and
@@ -810,3 +809,62 @@ whoever picks up phase 1:**
   inside `nopython` code. Not a production bug (no production kernel exists yet), but a concrete
   footgun for phase 1: a kernel warm-up call needs an internally consistent dummy shape, never a
   slice of one array paired with another at full production size.
+
+### Phase 1 landed (2026-09-14)
+
+Implements `healpix_grid.scatter_node_indices` (HEALPix-pixel-center tie-break, via a single
+`np.lexsort` rather than a per-pixel loop), a double-buffered `@njit` wavefront-fill kernel
+(`_wavefront_fill_round`/`_wavefront_fill`, fixed lowest-neighbour-slot tie-break, raises rather
+than ever returning an unfilled `-1`), and `NodePixelIndex` -- a `cKDTree.query()`-compatible
+wrapper so every real `_node_cloud_and_tree` consumer (`_render_grid_arrays`, `_biome_fields`,
+`_resource_fields`, and the elev-reason/crust-type/speckle views) needed zero changes. Gated by
+a new `World.node_cloud_resample_mode` flag (`"kdtree"` default / `"healpix"`), modeled on
+`gap_fill_algorithm` rather than `wind_model` -- backend/API-only for now
+(`POST /world/controls`), no Controls-panel entry, since this is a proving-out flag, not yet a
+user-facing tuning knob.
+
+**Deviation from this checklist item's original text:** it named both
+`render_image._node_cloud_and_tree` and `plates.cached_node_position_tree` as Phase 1's entry
+points. Checking the latter's five real call shapes found three are flatly incompatible with a
+HEALPix pixel-ownership index -- `hydrology._build_neighbor_graph`/`erosion.compute_slope`
+both call `.query(..., k>1)` (self k-NN for a routing/slope graph) and
+`erosion._earthquake_erosion_multiplier` calls `.query_ball_point` (a radius search) -- and the
+remaining compatible, relevant caller (`climate._sample_elevation_and_crust`) was already this
+document's own **Phase 2**, never Phase 1. So Phase 1 only touches
+`render_image._node_cloud_and_tree`; `plates.cached_node_position_tree` is untouched, deferred
+to Phase 2 alongside `climate._sample_elevation_and_crust`/`hydrology._nearest_hydro_node_idx`
+as originally planned.
+
+`_classify_terrain_relief`'s `query_ball_point` radius search (already out of scope per the
+table above) still needs a real tree under `"healpix"` mode -- handled at its one call site in
+`_render_grid_arrays`, which now builds a real `cKDTree` on demand (cached on the new
+`World.node_kdtree_relief_cache`) only when the Elevation view's relief toggles are on, leaving
+every other caller on the fast path.
+
+**Numbers, measured on the real implementation** (not phase-0's throwaway script), same config
+as phase-0's own spike (seed=0, node_density=climate_density=4.0, 4 steps, ~130.5K nodes,
+nside=128/npix=196,608, 801x1601 render grid -- see `backend/stress_tests/test_healpix_
+resample.py`):
+
+- **Query speedup: ~8-9x** at steady state (already-built index/tree, 5 repeated trials) --
+  notably better than phase-0's own ~2.9-3.8x, likely implementation/box-specific rather than a
+  meaningful discrepancy (phase-0's own writeup already flagged single-box timing as noisy).
+- **Scatter+fill rebuild cost: ~22-25ms** (5 repeated trials, includes the scatter/tie-break sort,
+  not just the fill rounds), 3 rounds to close the gap to zero empty pixels -- comparable to,
+  not cheaper than, a `cKDTree` build over the same node cloud (~20ms, per `_node_cloud_and_tree`'s
+  own docstring), so the win is entirely on the query side, exactly as phase 0 predicted.
+- **Accuracy vs. `cKDTree` ground truth, full 801x1601 render grid:** mean 53.5m, p95 256.9m,
+  max 7048.2m -- squarely inside phase-0's own reported ranges (mean 34-81m, p95 124-390m, max
+  4.2-8.1km), despite being a different (real, not throwaway) implementation.
+- **Where the outliers actually land (phase-0 could only guess):** correlation between
+  per-pixel disagreement and local elevation-gradient magnitude is **0.53**, and the worst
+  disagreements concentrate in the highest-relief terrain, not randomly -- confirmed by direct
+  measurement, not inferred. Coastlines are part of this (a dilated land/ocean boundary mask's
+  mean disagreement there is ~10x the non-coastal mean: 435m vs. 44m in one measured run) since
+  a land/ocean transition is by definition a steep one, but only explains a minority of large
+  (>1km) disagreements on their own (~29% in one measured run) -- rugged interior terrain
+  (mountain ridgelines, valley edges) drives the rest. So: high local relief generally, not
+  "coastline specifically," is the real, confirmed explanation phase-0's writeup asked for.
+- `hydrology`'s own one-step-behind `is_ocean`/`is_sea` semantics (this document's own
+  "last-step/this-step" note above) are unaffected by Phase 1 -- `hydrology.py` isn't touched
+  this phase at all (deferred to Phase 2 along with everything else hydrology-related).

@@ -1167,6 +1167,22 @@ def test_controls_gap_fill_algorithm_toggle_and_validation(client):
     assert client.post("/world/controls", json={"gap_fill_algorithm": "nonsense"}).status_code == 400
 
 
+def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
+    from app import main
+
+    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+    assert world.node_cloud_resample_mode == "kdtree"
+
+    for mode in ("healpix", "kdtree"):
+        resp = client.post("/world/controls", json={"node_cloud_resample_mode": mode})
+        assert resp.status_code == 200
+        assert resp.json()["node_cloud_resample_mode"] == mode
+        assert world.node_cloud_resample_mode == mode
+
+    assert client.post("/world/controls", json={"node_cloud_resample_mode": "nonsense"}).status_code == 400
+
+
 def test_earthquakes_endpoint(client):
     client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     assert client.get("/world/earthquakes").json()["earthquakes"] == []  # none before a step
