@@ -1,10 +1,11 @@
 import numpy as np
 import pytest
-from app import faults, persistence
+from app import faults, geometry, persistence
 from app.elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
     ELEV_CHANGE_FAULT_REVERSE,
     ELEV_CHANGE_FAULT_STRIKE_SLIP,
+    ElevationLine,
 )
 from app.faults import (
     Fault,
@@ -18,6 +19,7 @@ from app.faults import (
     reconcile_faults,
     update_faults,
 )
+from app.plates import PlateWithLines
 from app.world import World, generate_world, step_world
 
 # A high BASE_SPAWN_RATE keeps the step-count (and so the runtime) of the integration tests
@@ -237,6 +239,68 @@ def test_reverse_fault_uplifts_and_normal_fault_drops_its_hanging_wall():
 
     nrm = relief_delta(_KIND_NORMAL)
     assert np.min(nrm) < 0.0 and np.max(nrm) > 0.0  # graben down, footwall shoulder up
+
+
+def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_trace():
+    # A distinctive "marker" value planted on one side of an active strike-slip trace should
+    # move away from its original node and reappear one row over on the *same* side after a
+    # step's worth of slip -- the node field itself never crosses the trace (see GitHub issue
+    # #125 item 2). A small hand-built regular plate (rather than a real generated one, whose
+    # ~125 km node spacing rarely puts a second node within reach of a short hand-placed
+    # trace) gives predictable node positions to assert against.
+    phis = np.array([-0.02, -0.01, 0.0, 0.01, 0.02])
+    thetas = np.linspace(-0.05, 0.05, 21)
+    rng = np.random.default_rng(0)
+    lines = [
+        ElevationLine(phi=float(phi), theta=thetas.copy(), elevation=rng.uniform(100.0, 200.0, size=len(thetas)))
+        for phi in phis
+    ]
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
+    own_points = plate.all_points_and_elevation()[0]
+
+    marker_col = int(np.argmin(np.abs(thetas - (-0.005))))  # ~32 km to one side of the trace
+    marker_idx = 2 * len(thetas) + marker_col  # row phi=0.0
+    neighbour_idx = 0 * len(thetas) + marker_col  # row phi=-0.02, same theta column
+    opposite_idx = 2 * len(thetas) + int(np.argmin(np.abs(thetas - 0.005)))  # other side of the trace
+
+    # Trace runs along phi at theta=0, so its along-strike tangent points toward +/-phi.
+    trace_theta = 0.0
+    tiny = 1e-5
+    base = geometry.local_xyz(np.array([0.0]), np.array([trace_theta]))[0]
+    shifted = geometry.local_xyz(np.array([0.0]), np.array([trace_theta + tiny]))[0]
+    dip_dir_local = geometry.normalize(shifted - base)  # points toward +theta
+
+    f = _fault(
+        kind=_KIND_STRIKE_SLIP,
+        local_phi=np.linspace(-0.03, 0.03, 7),
+        local_theta=np.full(7, trace_theta),
+        dip_dir_local=dip_dir_local,
+        strike_sense=1,
+        slip_rate_m_per_myr=faults.SLIP_RATE_MAX_M_PER_MYR,
+        lifespan_myr=1e9,
+        plate_id=0,
+    )
+    world = World(seed=0, plates=[])
+    world.fault_deformation_mode = "boundary"  # reach_scale == 1.0, simplest to reason about
+    world.faults = [f]
+
+    trace = faults.fault_world_points(f, plate)
+    mid = trace[len(trace) // 2]
+    dip_dir_world = geometry.to_world(plate.frame, f.dip_dir_local)
+    side = np.sign((own_points - mid) @ dip_dir_world)
+    assert side[marker_idx] == side[neighbour_idx] != side[opposite_idx]
+
+    elevation = plate.collect("elevation").copy()
+    marker_value = 123456.0
+    elevation[marker_idx] = marker_value
+    plate.set_fields_on_plate(elevation=elevation)
+
+    faults._apply_plate_fault_shear(world, plate, years_myr=10.0)
+
+    new_elevation = plate.collect("elevation")
+    assert new_elevation[marker_idx] != marker_value  # overwritten by whatever was upstream
+    assert new_elevation[neighbour_idx] == marker_value  # slipped one row over, same side
+    assert new_elevation[opposite_idx] != marker_value  # never jumped across the trace
 
 
 # ------------------------------------------------------------ fault-localised deformation mode

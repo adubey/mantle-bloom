@@ -24,8 +24,9 @@ classification (`LithospherePlate.deform`). Each step it
    `SET_PROBABILITY` chance a whole sub-parallel family rather than a lone trace;
 3. applies each active fault's own relief to the nearby crust -- reverse: an uplift ridge;
    normal: a hanging-wall graben with a footwall shoulder; strike-slip: a modest
-   transpressional ridge or transtensional sag (relief only -- the node field is *not*
-   physically sheared across the trace, see GitHub issue #125);
+   transpressional ridge or transtensional sag -- and, for an active strike-slip trace,
+   shears the node field's *values* across it by this step's along-strike slip
+   (`_apply_plate_fault_shear`; nodes themselves stay put, see GitHub issue #125);
 4. rolls each active fault's **earthquakes** for the step (`_generate_earthquakes`): a
    Poisson count from `slip_rate * dt / CHARACTERISTIC_SLIP_PER_QUAKE_M`, each a transient
    located `Earthquake` (magnitude from trace length + slip rate) appended to
@@ -70,6 +71,7 @@ from .elevation_lines import (
     MAX_ELEVATION_M,
     MIN_ELEVATION_M,
     PLANET_RADIUS_KM,
+    ElevationLine,
     line_spacing_rad,
 )
 from .plates import OVERLAP_TOLERANCE_MULT, Plate, collect_all_points, query_workers
@@ -677,6 +679,7 @@ def update_faults(world: "World", years: float) -> None:
     generate_boundary_faults(world)
 
     for plate in world.plates:
+        _apply_plate_fault_shear(world, plate, years_myr)
         _apply_plate_fault_relief(world, plate, years_myr)
 
     _generate_earthquakes(world, years_myr)
@@ -1284,6 +1287,110 @@ def fault_tangent_components(world: "World", plate: Plate, phi: float, theta: fl
         return None
     tangent_theta, tangent_phi = best_tangent
     return tangent_phi, tangent_theta  # swapped: separation runs across the fault's own strike
+
+
+def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float) -> None:
+    """Physically displace crust across an active strike-slip trace -- a river valley or
+    ridge crest straddling the fault should end up offset along-strike by
+    `cumulative_offset_m`, the visually recognisable thing about a real transform like the
+    San Andreas (see GitHub issue #125 item 2). `ElevationLine.theta` is fixed once a node
+    exists (see elevation_lines.py) -- nodes themselves never move -- so this advects the
+    *field values* instead: every node within `MAX_FAULT_REACH_KM` of an active strike-slip
+    trace is overwritten with whatever this plate's own crust held one step's worth of
+    along-strike slip upstream of it, nearest-neighbour sampled from this same step's
+    snapshot (a semi-Lagrangian backward trace over an irregular node cloud -- the same
+    technique `fluid_dynamics.semi_lagrangian_advect` uses for wind/humidity on a fixed
+    grid). `taper` (1 at the trace, 0 at the reach) scales the slip distance itself, so at
+    the outer edge the upstream sample point collapses back onto the node and every field
+    -- `elevation` and everything in `ElevationLine.OPTIONAL_FIELDS`, categorical/bool
+    fields included -- is an exact no-op with no type-specific blending needed.
+
+    Side of the trace comes from the fault's own `dip_dir_local` (already computed at spawn
+    for every kind, just otherwise idle for strike-slip -- see `Fault`'s docstring);
+    `strike_sense` (otherwise only the restraining/releasing relief-magnitude bend) doubles
+    as an arbitrary but per-fault-consistent left/right-lateral handedness, so the two sides
+    of a trace always slip in opposite directions. Runs unconditionally like
+    `_apply_plate_fault_relief` -- an additive layer regardless of
+    `World.fault_deformation_mode`, only `reach_scale`-widened in "fault"/"both" mode.
+
+    Sharing OPTIONAL_FIELDS wholesale (rather than cherry-picking "terrain" fields) means a
+    node's silt/coal/mineral deposit -- normally monotonically non-decreasing over that
+    node's own history -- can drop if sheared-in crust from across the fault happened to
+    carry less: correct once you read it as "this is different material now," and the same
+    generic-field-list choice `ElevationLine`'s own docstring already argues for (the
+    alternative -- a hand-picked field subset -- is exactly what silently dropped
+    is_volcano/volcano_active_years_remaining before OPTIONAL_FIELDS existed)."""
+    if not hasattr(plate, "lines"):
+        return
+    active = [
+        f for f in _all_faults(world)
+        if f.plate_id == plate.plate_id and f.active and f.kind == _KIND_STRIKE_SLIP
+    ]
+    if not active:
+        return
+    own_points = plate.all_points_and_elevation()[0]
+    if len(own_points) == 0:
+        return
+    _, reach_scale = _relief_mode_scales(world)
+    reach_rad = reach_scale * MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
+    tree = cKDTree(own_points, balanced_tree=False, compact_nodes=False)
+
+    field_names = ("elevation",) + ElevationLine.OPTIONAL_FIELDS
+    originals = {name: plate.collect(name) for name in field_names}
+    overrides = {name: arr.copy() for name, arr in originals.items()}
+    any_shifted = False
+
+    for fault in active:
+        trace = fault_world_points(fault, plate)
+        neighbours = tree.query_ball_point(trace, reach_rad)
+        affected = sorted({i for sub in neighbours for i in sub})
+        if not affected:
+            continue
+        affected = np.array(affected)
+        pts = own_points[affected]
+
+        # Nearest trace point per affected node (brute-force, same rationale as
+        # _apply_plate_fault_relief: a trace is capped at FAULT_NODES_MIN..MAX points), used
+        # both for the relief-style distance taper and to pick the local along-strike tangent
+        # (the bracketing trace points either side of the nearest one).
+        dists = np.linalg.norm(pts[:, None, :] - trace[None, :, :], axis=-1)
+        nearest = np.argmin(dists, axis=1)
+        d = dists[np.arange(len(pts)), nearest]
+        taper = np.clip(1.0 - d / reach_rad, 0.0, 1.0)
+
+        lo = np.clip(nearest - 1, 0, len(trace) - 1)
+        hi = np.clip(nearest + 1, 0, len(trace) - 1)
+        tangent = trace[hi] - trace[lo]
+        # Project onto each affected node's own tangent plane (the trace's raw chord isn't
+        # exactly tangent to a node sitting reach_km away, but reach is tiny next to the
+        # planet radius, so this small-angle correction is enough).
+        tangent = tangent - np.sum(tangent * pts, axis=-1, keepdims=True) * pts
+        tangent_norm = np.linalg.norm(tangent, axis=-1, keepdims=True)
+        valid = tangent_norm[:, 0] > 1e-12
+        tangent = np.divide(tangent, tangent_norm, out=np.zeros_like(tangent), where=tangent_norm > 1e-12)
+
+        dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
+        mid = trace[len(trace) // 2]
+        side_sign = np.sign((pts - mid) @ dip_dir_world)
+        side_sign[side_sign == 0.0] = 1.0
+
+        slip_step_km = fault.slip_rate_m_per_myr * years_myr / 1000.0
+        shift_rad = taper * side_sign * fault.strike_sense * (slip_step_km / PLANET_RADIUS_KM)
+        shift_rad[~valid] = 0.0
+
+        moved = np.abs(shift_rad) > 1e-12
+        if not np.any(moved):
+            continue
+        upstream = geometry.normalize(pts[moved] - shift_rad[moved, None] * tangent[moved])
+        _, source_idx = tree.query(upstream, workers=query_workers(len(upstream)))
+
+        idx_dest = affected[moved]
+        for name in field_names:
+            overrides[name][idx_dest] = originals[name][source_idx]
+        any_shifted = True
+
+    if any_shifted:
+        plate.set_fields_on_plate(**overrides)
 
 
 def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) -> None:

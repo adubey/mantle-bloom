@@ -1298,8 +1298,27 @@ free -- the same "attached to the crust, not the world" property every persisten
   footwall shoulder up (`NORMAL_SHOULDER_UPLIFT_M_PER_MYR`, 55) on the other.
 - **strike-slip** -- a modest always-on transpressional ridge (`STRIKE_SLIP_RIDGE_M_PER_MYR`,
   70) plus a `strike_sense`-signed restraining-uplift / releasing-sag term
-  (`STRIKE_SLIP_BEND_M_PER_MYR`, 130). The node field is *not* physically sheared across the
-  trace -- relief only (see [GitHub issue #125](https://github.com/adubey/mantle-bloom/issues/125)).
+  (`STRIKE_SLIP_BEND_M_PER_MYR`, 130).
+
+**6a. Shear (2026-09).** An active strike-slip trace also physically displaces the crust it
+cuts, so a river valley or ridge crest straddling it visibly offsets along-strike as
+`cumulative_offset_m` grows -- previously relief-only (see
+[GitHub issue #125](https://github.com/adubey/mantle-bloom/issues/125)). Grid nodes never
+move (`ElevationLine.theta` is fixed once a node exists), so `_apply_plate_fault_shear`
+advects each node's *field values* instead: every node within `MAX_FAULT_REACH_KM` of an
+active strike-slip trace is overwritten, this step, with whatever the plate's own crust held
+one step's worth of along-strike slip upstream of it -- nearest-neighbour sampled from this
+step's own snapshot, the same semi-Lagrangian-backward-trace technique
+`fluid_dynamics.semi_lagrangian_advect` uses for wind/humidity on a fixed grid. The relief
+taper (1 at the trace, 0 at the reach) scales the slip distance itself, so at the outer edge
+the upstream sample point collapses back onto the node and every field -- `elevation` and
+everything in `ElevationLine.OPTIONAL_FIELDS`, bool/categorical fields included -- is an
+exact no-op with no type-specific handling needed. Which side of the trace moves which way
+comes from the fault's own `dip_dir_local` (already computed at spawn for every kind, just
+otherwise idle for strike-slip) crossed with `strike_sense` (otherwise only the relief bend
+above) as an arbitrary but per-fault-consistent left/right-lateral handedness. Runs
+unconditionally alongside relief -- an additive layer regardless of
+`World.fault_deformation_mode`, only `reach_scale`-widened in `"fault"`/`"both"` mode.
 
 All rates are kept well below `deform()`'s boundary rates (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`
 = 800) so this additive layer doesn't disturb long-run hypsometry tuning. The affected nodes'
