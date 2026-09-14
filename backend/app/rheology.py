@@ -227,7 +227,7 @@ def apply_arc_magmatic_thickening(
 # melt-through reset in `lithosphere_plate._erupt_melted_nodes`). Once extension has thinned
 # crust past this onset, upwelling asthenosphere starts partially melting and the melt
 # intrudes/erupts into the extending column -- a partial offset to the ongoing plastic
-# thinning (docs/TODO.md "Land fraction slowly declines", "over-stretched interiors": a
+# thinning (GitHub issue #120, "Land fraction slowly declines", "over-stretched interiors": a
 # continent's interior currently thins from full reference Hc all the way to
 # RIFT_CRITICAL_THICKNESS_M with zero magmatic counterweight, unlike the convergent side's
 # apply_convergent_deformation + apply_arc_magmatic_thickening pairing). Rate deliberately far

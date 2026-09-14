@@ -161,7 +161,7 @@ def _classify_tier(
 _OCEAN_CATCHMENT = -2
 
 # A lake merge/split transition whose water surface sits within this band of sea level is a
-# transient coastal pond on a dithering low-relief shelf (docs/TODO.md "Speckled low-relief
+# transient coastal pond on a dithering low-relief shelf (GitHub issue #122, "Speckled low-relief
 # coastlines"), not a real basin event -- on a long run over a drowned coastal plain hundreds
 # of these form and split every My, one pair per puddle per step, and they bury genuine
 # (deep) basin/tectonic events in the UI's event console. `summarize_lake_events` collapses a

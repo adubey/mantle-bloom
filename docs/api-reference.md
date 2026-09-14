@@ -424,7 +424,7 @@ has been generated yet.
   or merge). These come straight from the dynamic torque solve (`torque.py`).
 - `median_elevation_m` / `submerged_fraction` summarise the plate's own node elevations
   against `world.sea_level_m`. A continental plate reading mostly submerged is a red flag for
-  over-stretching (see `docs/TODO.md`).
+  over-stretching (see [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119)).
 - `overlaps` lists the other plates this plate's territory currently sits on top of --
   `fraction` is the share of *this* plate's nodes within half a target node spacing of a
   node owned by `plate_id` (ordinary shared boundaries sit ~one full spacing apart, so this
@@ -436,7 +436,7 @@ has been generated yet.
   view. `collisions` surfaces
   `merge_split.update_collision_progress`'s sustained-collision timers (accumulated
   convergent years) for pairs involving this plate. Both are diagnostics for the long-run
-  plate-geometry degradation tracked in `docs/TODO.md`.
+  plate-geometry degradation tracked in [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119).
 
 ## `GET /world/plate_at?lat_deg=0&lon_deg=0`
 
@@ -745,7 +745,7 @@ The Fault Line Inspector's click hit-test: the `fault_id` of the trace nearest
 
 Endorheic depressions whose floor sits below sea level and that have **no drainage path to
 the ocean at all** -- the "land-locked coastal pit" pathology from
-[TODO.md](TODO.md)'s coastal-speckle section, which the event log records but drowns in
+[GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)'s coastal-speckle section, which the event log records but drowns in
 near-sea-level transient-pond churn. Read straight off this step's already-resolved
 depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin with no known
 spill (`lakes.Lake.max_depth is None`) whose floor is below `world.sea_level_m`. `stranded_basins`

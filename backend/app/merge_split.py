@@ -180,7 +180,7 @@ FAILED_RIFT_STRESS_RELIEF = 0.5
 # rift fails -- `LithospherePlate.apply_failed_rift` books a one-off aulacogen thinning along
 # the cut and the plate's split cooldown is reset (`reset_age`), and it stays one plate.
 # Tuned against plate-count churn: 0.55 keeps the healthy ~18-26 oscillation from the 2026
-# split-gate loosening (docs/TODO.md "Plate count only decreases") while roughly halving the
+# split-gate loosening (GitHub issue #119, "Plate count only decreases") while roughly halving the
 # rifted-margin drowning.
 RIFT_SUCCESS_PROBABILITY = 0.55
 _RIFT_OUTCOME_SEED_TAG = 71  # np.random.default_rng tuple slot, distinct from other per-plate draws

@@ -166,7 +166,7 @@ def test_collision_uplift_reach_widens_the_thickened_belt():
 
 
 def test_collision_uplift_reach_at_zero_thickens_less_than_its_own_default():
-    # 2026-09-04 (docs/TODO.md "Land fraction slowly declines"): the near-field dilation ring
+    # 2026-09-04 (GitHub issue #120, "Land fraction slowly declines"): the near-field dilation ring
     # is no longer "extra width above 1.0" -- it's linear in the knob from 0 (see
     # COLLISION_REACH_DILATION_NODES_PER_UNIT's own comment), so the knob's own untuned value
     # (1.0) already carries a real near-field ring, not none. reach=0.0 both drops the ring

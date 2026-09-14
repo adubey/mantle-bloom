@@ -361,7 +361,7 @@ def _plate_summary(plate: plates.Plate, world: World, overlaps: dict[int, list[d
         "crust_type": plate.crust_type,
         # Plate motion (torque.py's dynamic omega): surface speed at the planet's radius, the
         # Euler-rotation pole, and whether the plate is pinned at mantle.MAX_PLATE_RATE (a
-        # long-run pathology when it's true for most plates -- see docs/TODO.md).
+        # long-run pathology when it's true for most plates -- see GitHub issue #119).
         "speed_cm_per_yr": round(mantle.rad_per_yr_to_cm_per_yr(rate_rad), 3),
         "at_max_rate": bool(rate_rad >= mantle.MAX_PLATE_RATE - 1e-12),
         "euler_pole": euler_pole,
@@ -1479,7 +1479,7 @@ def lake_at(lat_deg: float, lon_deg: float) -> dict:
 @app.get("/world/stranded_basins")
 def list_stranded_basins() -> dict:
     """Endorheic depressions whose floor sits below sea level and that have no drainage path
-    to the ocean at all -- the "land-locked coastal pit" pathology from docs/TODO.md's
+    to the ocean at all -- the "land-locked coastal pit" pathology from GitHub issue #122's
     coastal-speckle section, which the event log records but drowns in near-sea-level
     transient-pond churn (see docs/debugging.md). Read straight off this step's already-
     resolved depression hierarchy (`world.hydrology_cache.lake_forest`): a top-level basin

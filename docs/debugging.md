@@ -3,7 +3,7 @@
 Working through a degradation (plate geometry going bad on long runs, coastlines dithering
 pixel-by-pixel) usually needs a number the ordinary map views don't surface. This file
 documents the debug-only views and endpoints that exist for that, and how to read them.
-`docs/TODO.md` ("Diagnostic views & debug output") tracks the ones still worth building.
+[GitHub issue #123](https://github.com/adubey/mantle-bloom/issues/123) ("Diagnostic views & debug output") tracks the ones still worth building.
 
 Debug views live in the frontend's **Map View → "Debug >"** dropdown group and, like every
 other render view, are just `GET /world/render?view=...` PNGs (see
@@ -18,7 +18,7 @@ render and carry no simulation side effects.
 
 ### What it's for
 
-The "speckled low-relief coastlines" problem (see `docs/TODO.md`): a marginally-submerged
+The "speckled low-relief coastlines" problem (see [GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)): a marginally-submerged
 flat shelf whose per-node elevation noise is larger than its own height above/below sea
 level, so neighbouring nodes flip land↔ocean and the coast renders as a checkerboard instead
 of a shoreline. On the Elevation / Biome / Combined views that just looks like a fuzzy,
@@ -114,7 +114,7 @@ water), `overlaps` (which other plates this one's territory sits on top of, by w
 fraction of its own nodes, and `since_years` — the earliest `elapsed_years` any still-
 overlapping node first went over another plate; `main._plate_overlaps` /
 `ElevationLine.overlap_onset_years`, see the `overlapAge` view below), and `collisions`
-(`world.collision_progress` timers involving the plate). See `docs/TODO.md` ("Plate geometry
+(`world.collision_progress` timers involving the plate). See [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119) ("Plate geometry
 degrades on long runs") for what these numbers turned up.
 # Debugging & Diagnostic Views
 
@@ -123,11 +123,13 @@ and one offline tool exist purely to answer *"is this world's geometry / climate
 healthy, or has a long run degraded it?"* -- they surface numbers the ordinary Elevation /
 Biome / Climate renders don't. This page collects them.
 
-Most of them were built while chasing the two long-run pathologies still tracked in
-[TODO.md](TODO.md): plate geometry degrading over tens of My (pole winding, unbounded
-overlap, over-stretched continental plates) and speckled low-relief coastlines. That
-section's **"Diagnostic views & debug output"** heading lists what has landed and what is
-still worth building.
+Most of them were built while chasing the two long-run pathologies tracked in
+[GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119) (plate geometry
+degrading over tens of My -- pole winding, unbounded overlap, over-stretched continental
+plates) and [GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122) (speckled
+low-relief coastlines). [GitHub issue #123](https://github.com/adubey/mantle-bloom/issues/123)'s
+**"Diagnostic views & debug output"** section lists what has landed and what is still worth
+building.
 
 ---
 
@@ -185,7 +187,8 @@ node budget
 
 - **`speed` + the `*` flag.** `*` means the plate is pinned at `mantle.MAX_PLATE_RATE`
   (15 cm/yr). One or two railed plates is normal (genuine slab pull). *Most* plates railed --
-  and especially *every oceanic* plate at exactly 15.0 -- is the pathology in TODO.md's
+  and especially *every oceanic* plate at exactly 15.0 -- is the pathology in
+  [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119)'s
   plate-geometry item 1. (The stiff-basal-drag bug that pinned *all* plates from step 1 was
   fixed 2026-08-30; a mostly-ocean world can still rail its oceanic plates for real reasons.)
 - **`med.elev` + `submrg` + the `!` flag.** `!` marks a **continental** plate with more than
@@ -200,7 +203,7 @@ node budget
   node spacing of a node owned by B (ordinary shared boundaries are ~one full spacing apart,
   so this only fires on genuine overlap). The text dump hides entries below 0.5%; `--json`
   has the full list. A stable double-digit overlap that is *not* also in the collision
-  timers will never trigger the merge path -- TODO.md plate-geometry item 4.
+  timers will never trigger the merge path -- [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119)'s plate-geometry item 4.
 - **sustained-collision timers** are `world.collision_progress` -- accumulated convergent
   years per plate pair (`merge_split.update_collision_progress`). Compared against the
   50--100 My merge threshold, these tell you which overlaps are on track to heal and which
@@ -256,7 +259,7 @@ clamped past +-60 m/step. The coastline is overlaid for orientation.
 
 What it's for: the per-step deposition in the near-sea-level band is wildly lumpy -- a
 +200 m spike on one node, ~0 on its neighbour -- which is the mechanism behind the coastal
-checkerboard (see [TODO.md](TODO.md), "Speckled low-relief coastlines"), but is invisible in
+checkerboard (see [GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122), "Speckled low-relief coastlines"), but is invisible in
 every other view. Step the world once with climate & biomes on, then switch to this view and
 look along a drowned shelf: a clean coastal plain deposits smoothly (uniform pale colour), a
 dithering one shows a salt-and-pepper mix of saturated warm and cool cells. Use it as a
@@ -312,7 +315,7 @@ has been -- `world.elapsed_years - ElevationLine.overlap_onset_years`
 (`render_image._render_overlap_age_view` / `overlap_age_colors`). Pale yellow = a fresh
 overlap (transient envelope slop, self-correcting); deepening through orange to
 magenta-purple = stuck for tens of Myr (a real stalled collision the merge path never
-resolves -- see TODO.md "Plate geometry degrades on long runs"). Clamped at 60 Myr.
+resolves -- see [GitHub issue #119](https://github.com/adubey/mantle-bloom/issues/119), "Plate geometry degrades on long runs"). Clamped at 60 Myr.
 
 `overlap_onset_years` is a per-node `ElevationLine` field stamped every step by
 `merge_split.update_overlap_tracking`, which goes through the same
@@ -521,7 +524,7 @@ endorheic basins show up -- see
 
 ## Stranded-basin report -- `GET /world/stranded_basins` + `python -m app.stranded_basins`
 
-A "stranded basin" is the **land-locked coastal pit** from TODO.md's coastal-speckle
+A "stranded basin" is the **land-locked coastal pit** from [GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122)'s coastal-speckle
 section: an endorheic depression whose floor sits *below sea level* and that has **no
 drainage path to the ocean at all**. Such a node is neither hydrology's connectivity-aware
 `is_ocean` nor above sea level, so the marine sink, coastal planation, and lake infill all
@@ -591,7 +594,7 @@ formation/splits and other discrete events.
 
 On a long run over a dithering low-relief coast the lake solver produces hundreds of
 near-sea-level transient merge/split transitions per My -- one pair per puddle per step (see
-[TODO.md](TODO.md) "Speckled low-relief coastlines"). Left raw, these flood the console and
+[GitHub issue #122](https://github.com/adubey/mantle-bloom/issues/122), "Speckled low-relief coastlines"). Left raw, these flood the console and
 bury real basin/tectonic events.
 
 `lakes.step_lakes` now returns structured `lakes.LakeEvent`s
@@ -618,11 +621,11 @@ sea-level control change. Tests:
 
 ## Still worth building
 
-See `docs/TODO.md` → "Diagnostic views & debug output" for the current list: a per-node
+See [GitHub issue #123](https://github.com/adubey/mantle-bloom/issues/123) → "Diagnostic views & debug output" for the current list: a per-node
 geomorph-rate (`sediment_deposited` / net `dElev`) diverging map, a stranded sub-sea-level
 basin report, lake-churn event-log dedup, and a standalone
 `python -m app.<something> <save.mbworld>` plate-diagnostics dump.
-From TODO.md's "Diagnostic views & debug output" section, not yet implemented:
+From issue #123's "Diagnostic views & debug output" section, not yet implemented:
 
 1. **Speckle / coastal-dither overlay render mode** -- colour every near-sea-level node by
    the fraction of its neighbours on the opposite side of the waterline; flag ≥ 0.75.
@@ -636,4 +639,4 @@ The **stranded-basin report** (was item 3) landed -- see the section above.
 (Event-log dedup for lake churn -- formerly item 4 -- landed 2026-08-31; see the
 Lake-churn aggregation section above.)
 
-See [TODO.md](TODO.md) for the full rationale on each.
+See [GitHub issue #123](https://github.com/adubey/mantle-bloom/issues/123) for the full rationale on each.

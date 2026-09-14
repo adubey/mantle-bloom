@@ -152,7 +152,7 @@ TRANSFORM_UPLIFT_RATE_M_PER_MYR = 100.0
 # relief in proportion to the overlap it actually eats). Left un-retreatable, a contested end
 # still grows at its *other* (divergent) side every step and never back -- the continental
 # node ratchet that drives the unbounded node-count creep and the slow land-fraction decline
-# (docs/TODO.md "Node-count creep") -- and, for a continent-continent pile-up, a deep
+# (GitHub issue #119, "Node-count creep") -- and, for a continent-continent pile-up, a deep
 # territory overlap that just sat there for tens of Myr until the forced-merge timer fused
 # the pair (the `overlapAge` view's stalled multi-plate collisions). Retreat is gated:
 #   - one node per step (the existing `n_distance_cap` / `max_extend_nodes` caps already do
@@ -161,7 +161,7 @@ TRANSFORM_UPLIFT_RATE_M_PER_MYR = 100.0
 #     contested nodes, so a single stray node from bounding-polygon envelope fuzz can't
 #     nibble a stable coastline or, worse, sever a lobe into a spurious defragmentation plate
 #     (the failure the naive "retreat every continental contested node" experiment hit -- see
-#     that TODO section; the interior-subduction carve below also stays oceanic-only for the
+#     GitHub issue #119; the interior-subduction carve below also stays oceanic-only for the
 #     same lobe-severing reason).
 CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 
@@ -171,8 +171,8 @@ CONTINENTAL_CONTESTED_RETREAT_MIN_RUN = 3
 # `_grow_or_shrink_line_for_deform` to trim, and a continental row is never carved mid-span
 # (that severs the landmass into a spurious defragmentation plate), so end-trim alone leaves
 # that plate physically unable to give ground -- its trailing edge still grows every step, so
-# the node pile ratchets outward regardless (docs/TODO.md#continental-ratchet-solution,
-# mechanism 2). Once a plate's outermost row (either phi extreme) has been at least
+# the node pile ratchets outward regardless (GitHub issue #119, "Continental ratchet: solution
+# design", mechanism 2). Once a plate's outermost row (either phi extreme) has been at least
 # LEADING_ROW_CONTESTED_FRACTION contested for a cumulative LEADING_ROW_RETREAT_SUSTAINED_YEARS
 # of deform time, the whole row is dropped. Whole-row removal keeps the plate contiguous -- the
 # lobe-severing hazard is specific to *mid*-row carving -- so this is safe exactly where the
@@ -195,7 +195,7 @@ LEADING_ROW_RETREAT_SUSTAINED_YEARS = 5_000_000.0
 # Never drop a row that would take the plate below this many rows -- a tiny plate has no
 # "leading row" worth the name and the contiguity argument gets thin.
 LEADING_ROW_DROP_MIN_ROWS = 4
-# Volume-budget growth gate (docs/TODO.md "Continental ratchet: solution design",
+# Volume-budget growth gate (GitHub issue #119, "Continental ratchet: solution design",
 # mechanism 1). A lattice node's physical footprint is constant across the sphere by
 # construction (`lithosphere.node_area_m2`), so a plate's total area is just its node count
 # times that -- and its implied *mean* crustal thickness is `mean(crustal_thickness_m)`.
@@ -204,7 +204,7 @@ LEADING_ROW_DROP_MIN_ROWS = 4
 # (`growth_seed_thickness`), and nothing ever removes a whole leading row, so a
 # shear-stretched continental plate tiles unbounded drowned passive-margin outward -- node
 # count creeps ~+5-6% per 150 My and the plate interior isostatically oceanises into a
-# "giant 80%-drowned continent" (docs/TODO.md items 2 / 5, and the land-fraction decline).
+# "giant 80%-drowned continent" (GitHub issue #119 items 2 / 5, and issue #120's land-fraction decline).
 #
 # The gate counts a plate's *genuine* continental nodes -- Hc at least
 # `CONTINENTAL_BUDGET_HC_FRACTION` of the continental reference -- and, once the plate's
@@ -250,7 +250,7 @@ SUTURE_ACCRETION_MAX_HC_M = 2.4 * lithosphere.REFERENCE_HC_CONTINENTAL_M
 # any margin; seeding a thicker column *only* where the growing end abuts a genuinely
 # converging oceanic slab -- and still under the `CONTINENTAL_AREA_BUDGET_MULT` volume gate
 # -- is arc accretion, the dominant land-loss driver's actual physical counterweight (see
-# docs/TODO.md "Land fraction slowly declines"). The seed lands as shallow forearc/shelf
+# GitHub issue #120, "Land fraction slowly declines"). The seed lands as shallow forearc/shelf
 # (~ -450 m) and builds to land as convergence continues via
 # `rheology.apply_arc_magmatic_thickening` + ordinary convergent shortening.
 ARC_MARGIN_SEED_HC_M = 28_000.0
@@ -336,7 +336,7 @@ def _ignite_early_rift_volcanoes(
     starts its own point-volcano eruption lifecycle early, the same one ordinary
     decompression-melt volcanoes (`_erupt_melted_nodes`) and arc volcanoes already use
     (volcanism.py) -- a real continental rift is volcanically active well before it actually
-    ruptures (docs/TODO.md "Land fraction slowly declines", "over-stretched interiors").
+    ruptures (GitHub issue #120, "Land fraction slowly declines", "over-stretched interiors").
     Mutates is_volcano/volcano_remaining in place; unlike `_erupt_melted_nodes` this never
     touches hc/hm/crust_type_code -- the node is still ordinary, still-thinning continental
     crust, just one that's now also erupting onto its own surface."""
@@ -392,7 +392,7 @@ def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
 # near-field belt (~200 km, a real orogen's crumple-zone width -- the Himalaya spans ~500 km),
 # not zero, so the near-field ring is part of the model's own baseline collision-uplift
 # behaviour, not something that only exists once a user raises this knob above default (see
-# docs/TODO.md "Land fraction slowly declines" -- measured, this also modestly slows the
+# GitHub issue #120, "Land fraction slowly declines" -- measured, this also modestly slows the
 # land-fraction decline in its own right, since more of a collision's crust ends up thickened
 # rather than left for erosion to plane down untouched).
 #
@@ -748,7 +748,7 @@ class LithospherePlate(PlateWithLines):
             # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
             # the mantle wedge and underplates juvenile crust across the whole arc band --
             # extra Hc (added from the mantle, not conserved), the crust-building half of
-            # "subduction under a continent makes more continent" (docs/TODO.md "Land fraction
+            # "subduction under a continent makes more continent" (GitHub issue #120, "Land fraction
             # slowly declines"). Separate from the contested shortening above: the band is far
             # wider than the contact line. Bounded long-term by the CONTINENTAL_AREA_BUDGET_MULT
             # volume gate.
@@ -1983,7 +1983,7 @@ class LithospherePlate(PlateWithLines):
         # A well-formed cut plane's normal is a unit vector; a degenerate one (the two flow
         # clusters were spatially intermingled, so `normalize(centroid_a - centroid_b)`
         # collapsed toward zero -- a known `maybe_split_plate` failure mode, see the
-        # pole-winding notes in docs/TODO.md) would put every node "next to the rift" and thin
+        # pole-winding notes in GitHub issue #119) would put every node "next to the rift" and thin
         # the whole plate. No cut, no aulacogen -- the rift just fails silently.
         if not np.isfinite(cut_normal).all() or abs(np.linalg.norm(cut_normal) - 1.0) > 1e-3:
             return

@@ -6,7 +6,7 @@
 Loads a `.mbworld` file (same pickle format as "File > Load", see persistence.py) and prints
 the per-plate motion / shape / overlap table, the territory-overlap list, the
 sustained-collision timers, and the total node count against a clean-tiling estimate -- the
-exact set of numbers the plate-geometry investigation in docs/TODO.md keeps needing for its
+exact set of numbers the plate-geometry investigation in GitHub issue #119 keeps needing for its
 "is this save's geometry healthy?" re-verify. It reuses `main._plate_summary` /
 `main._plate_overlaps` (the same code path behind `GET /world/plates` and the Plate
 Inspector), so the CLI and the UI never drift.
@@ -29,8 +29,9 @@ from .main import _plate_overlaps, _plate_summary
 from .world import World
 
 # Convention only -- nothing in the engine hardcodes a step size (see world.step_world, which
-# advances by whatever `years` it's handed), but every run in docs/TODO.md and the UI's
-# Step/Play buttons uses 100 ky, so reporting an approximate step count alongside the raw
+# advances by whatever `years` it's handed), but every long-run save examined in GitHub
+# issues #119, #120, and #126, and the UI's Step/Play buttons, uses 100 ky, so reporting an
+# approximate step count alongside the raw
 # elapsed years is what makes "851 steps / 85.1 My" legible.
 CONVENTIONAL_YEARS_PER_STEP = 100_000.0
 
@@ -38,7 +39,7 @@ CONVENTIONAL_YEARS_PER_STEP = 100_000.0
 def clean_tiling_node_estimate(node_density: float) -> float:
     """How many nodes a gap-free, non-overlapping lattice at this density would put on the
     whole sphere: unit-sphere area (4*pi) divided by the area one node's spacing covers
-    (`line_spacing_rad**2`). The long-run node-count blowup in docs/TODO.md is measured as
+    (`line_spacing_rad**2`). The long-run node-count blowup in GitHub issue #119 is measured as
     the ratio of the world's actual total to this number (~130k at node_density 4)."""
     spacing = elevation_lines.line_spacing_rad(node_density)
     return 4.0 * np.pi / (spacing * spacing)

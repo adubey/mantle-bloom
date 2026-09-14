@@ -223,7 +223,7 @@ class World:
     #     disjoint new lines or conjuring a whole new plate. Chosen as the default (2026-09-09)
     #     after comparing both on every Debugging Worlds scenario: consistently fewer, longer
     #     lines per plate and far fewer stalled (hop_no_progress/no_claim) corner-notch calls
-    #     than "windowed" -- see docs/TODO.md's frontier-gap-fill addendum for the numbers.
+    #     than "windowed" -- see GitHub issue #127's frontier-gap-fill addendum for the numbers.
     #   "windowed" -- today's (pre-2026-09-09) LithospherePlate._fill_corner_notch (a per-plate,
     #     per-step fixed geometric window; always emits brand-new ElevationLines) and
     #     gaps.fill_gaps (a periodic whole-sphere sweep that spawns a brand-new plate into any
@@ -385,7 +385,7 @@ class World:
     # ABL-style formulas (compute_wind + compute_air_temperature_diagnostic) every call, the same
     # way it already does during the pre-CFD cold-start bootstrap. Reproduces ~85-90% of the land
     # biome map and precipitation within ~10% for a fraction of the cost -- see
-    # docs/simulation-model.md#wind-model and docs/TODO.md -- so it's the default; opt into "cfd"
+    # docs/simulation-model.md#wind-model and GitHub issue #118 -- so it's the default; opt into "cfd"
     # via Controls for the full solve. atmosphere_cfd_state is still kept in sync (init'd at
     # generation, never cleared) so switching to "cfd" mid-session resumes from a real, if
     # now-stale, state rather than a cold start.

@@ -233,7 +233,7 @@ def test_apply_erosion_noop_for_empty_world():
     assert world.plates == []
 
 
-# --- Symmetric coastal-leveling feedback (docs/TODO.md "Speckled low-relief coastlines") ---
+# --- Symmetric coastal-leveling feedback (GitHub issue #122, "Speckled low-relief coastlines") ---
 
 
 def _equator_lattice(half_span_deg: float, step_deg: float) -> np.ndarray:

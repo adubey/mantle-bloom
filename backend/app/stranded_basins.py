@@ -1,7 +1,7 @@
 """Stranded-basin diagnostics: endorheic depressions whose floor sits below sea level and
 that have no drainage path to the ocean at all.
 
-This is the "land-locked coastal pit" pathology tracked in docs/TODO.md's coastal-speckle
+This is the "land-locked coastal pit" pathology tracked in GitHub issue #122's coastal-speckle
 section. An isolated sub-sea-level node ringed by land is neither hydrology's
 connectivity-aware `is_ocean` nor above sea level, so the marine sink, coastal planation, and
 lake infill all skip it -- it churns (merge/split) in the event log every step and never
@@ -42,14 +42,15 @@ if TYPE_CHECKING:
     from .world import World
 
 # A stranded basin drifts with its own plate at most ~MAX_PLATE_RATE (15 cm/yr) -> ~15 km per
-# 100-ky step, far under this; two genuinely distinct stranded basins in the docs/TODO.md
+# 100-ky step, far under this; two genuinely distinct stranded basins in the GitHub issue #122
 # investigation were different depths and well separated. So a fixed ~0.08 rad (~500 km)
 # centroid gate reliably re-identifies the same basin step to step without ever fusing two.
 MATCH_DISTANCE_RAD = 0.08
 
-# Convention only -- nothing in the engine hardcodes a step size -- but every run in
-# docs/TODO.md and the UI's Step/Play buttons uses 100 ky, so reporting an approximate step
-# count next to raw elapsed years is what makes "12.4 My (124 steps)" legible. Mirrors
+# Convention only -- nothing in the engine hardcodes a step size -- but every long-run save
+# examined in GitHub issues #119, #120, and #126, and the UI's Step/Play buttons, uses 100 ky,
+# so reporting an approximate step count next to raw elapsed years is what makes
+# "12.4 My (124 steps)" legible. Mirrors
 # plate_diagnostics.CONVENTIONAL_YEARS_PER_STEP.
 CONVENTIONAL_YEARS_PER_STEP = 100_000.0
 

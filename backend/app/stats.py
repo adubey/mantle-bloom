@@ -89,7 +89,7 @@ moves -- vs. a genuine mass-conservation bug (a topology change that drops a col
 instead of preserving it, e.g. an unaccounted-for retreat) actually shrinking the volume
 number itself. Continental-crust-only (oceanic crust is routinely created/destroyed by
 spreading/subduction by design, so summing it in wouldn't isolate a conservation bug the way
-continental-only does); see docs/TODO.md's collision/land-fraction investigation notes for
+continental-only does); see GitHub issues #119 and #120's collision/land-fraction investigation notes for
 the mechanisms this was added to help tell apart.
 """
 

@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 # erupt zero or one time); at the high end (1 Myr), 5 expected events -> up to
 # ERUPTION_ELEVATION_M * 5 = 1500 m of gross relief before dormancy. "Occasionally," not
 # "every step" or "constantly." Raised alongside ERUPTION_ELEVATION_M 2026-09-04 -- see that
-# constant's own comment (docs/TODO.md "Land fraction slowly declines") -- volcanism was
+# constant's own comment (GitHub issue #120, "Land fraction slowly declines") -- volcanism was
 # contributing next to nothing to land at the old rate.
 ERUPTION_RATE_PER_MYR = 5.0
 
