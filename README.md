@@ -1,4 +1,10 @@
-# mantle-bloom
+# Mantle Bloom
+
+
+
+https://github.com/user-attachments/assets/0535bac6-e602-41e7-82f7-c4a096244443
+
+
 
 An Earth-like planet simulator, including plate tectonics, climate and biosphere. The planet can have completely different terrain from Earth but is similar in other ways including size, composition and insolation. 
 
