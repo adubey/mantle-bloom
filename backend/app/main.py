@@ -780,7 +780,8 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     render_image.stream_animation_mp4 for why that's not the same as one bigger step). Each
     response line is one JSON object: `{"type": "progress", "frame": n, "total": N,
     "image_base64": <that frame's PNG>, "elapsed_years": <world.elapsed_years after this
-    frame>}` as each frame finishes, then a final `{"type": "done",
+    frame>, "stats": <latest World.stats_history snapshot, or null>}` as each frame finishes,
+    then a final `{"type": "done",
     "video_base64": ..., "mime": "video/mp4", ...world summary fields}`. If rendering raises partway through, a `{"type": "error",
     "detail": ...}` line is emitted instead -- the HTTP status is already 200 by then, since
     the stream has started.
@@ -830,6 +831,15 @@ def animate(req: AnimateRequest) -> StreamingResponse:
                         "total": total,
                         "image_base64": base64.b64encode(frame_png).decode("ascii"),
                         "elapsed_years": elapsed_years,
+                        # Each frame's step_fn call already records a stats.py snapshot onto
+                        # World.stats_history (see World.record_stats, called from step_world)
+                        # -- ride the latest one along here so the Stats panel can update live
+                        # instead of sitting frozen until the run finishes (GET /world/stats
+                        # would just block on `_world_lock` for the whole run, see its own
+                        # docstring). `None` if record_stats skipped recording this step (e.g.
+                        # simulate_climate_biomes off leaves climate_cache empty) -- the
+                        # frontend just keeps showing its last-known snapshot in that case.
+                        "stats": world.stats_history[-1] if world.stats_history else None,
                     }) + "\n"
                 else:
                     _, mp4_bytes, stopped_early = message

@@ -668,20 +668,27 @@ export default function App() {
     }
   }, []);
 
+  // Shared by recordStats below and the animation progress handler (see handleStartAnimation)
+  // -- both just land a WorldStats snapshot, one fetched, one riding along an animate() stream
+  // line, so both dedupe against the history's last entry the same way.
+  const applyStats = useCallback((s: WorldStats) => {
+    setStats(s);
+    setStatsHistory((prev) =>
+      prev.length > 0 && prev[prev.length - 1].elapsed_years === s.elapsed_years ? prev : [...prev, s],
+    );
+  }, []);
+
   // Stats are a secondary/best-effort feature -- a failed fetch here (e.g. a transient
   // network blip) shouldn't surface as the main error line or block generate/step, unlike
   // refresh/refreshPlates above which are core to the map actually updating.
   const recordStats = useCallback(async () => {
     try {
       const s = await fetchStats();
-      setStats(s);
-      setStatsHistory((prev) =>
-        prev.length > 0 && prev[prev.length - 1].elapsed_years === s.elapsed_years ? prev : [...prev, s],
-      );
+      applyStats(s);
     } catch {
       // ignored -- see comment above
     }
-  }, []);
+  }, [applyStats]);
 
   const handleGenerate = useCallback(async () => {
     setBusy(true);
@@ -916,6 +923,10 @@ export default function App() {
             // Keep the sidebar's "elapsed" readout climbing frame by frame instead of it
             // sitting frozen at the pre-recording value until the whole run resolves.
             setSummary((prev) => (prev ? { ...prev, elapsed_years: p.elapsedYears } : prev));
+            // Likewise for the Stats panel -- GET /world/stats would just block on the
+            // world lock for the whole run, so this stream-carried snapshot (see api.ts's
+            // AnimateProgress) is what lets it update live instead (GitHub issue #155).
+            if (p.stats) applyStats(p.stats);
             if (p.imageBase64) {
               // Paint the frame onto the main map. renderRequestIdRef is bumped so any
               // pre-animation refresh() still in flight can't clobber it afterward.
@@ -935,7 +946,7 @@ export default function App() {
         setAnimation(null);
       }
     },
-    [projection, rotation, stepYears, handleWorldAdvanced],
+    [projection, rotation, stepYears, handleWorldAdvanced, applyStats],
   );
 
   // The toolbar's "Stop" button while recording -- asks the server to end the animation

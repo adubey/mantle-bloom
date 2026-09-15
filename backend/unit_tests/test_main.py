@@ -894,6 +894,23 @@ def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
         assert sum(1 for _ in container.decode(video=0)) == 3
 
 
+def test_animate_progress_carries_a_live_stats_snapshot(client):
+    # GitHub issue #155: the Stats panel used to sit frozen for the whole recording, since
+    # GET /world/stats blocks on the world lock that /world/animate holds throughout. Each
+    # progress line should instead carry the latest World.stats_history snapshot so the
+    # frontend can update it live off the stream, same as elapsed_years/frame already do.
+    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    resp = client.post(
+        "/world/animate",
+        json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 1_000_000, "num_frames": 3},
+    )
+    assert resp.status_code == 200
+
+    progress = [json.loads(line) for line in resp.text.splitlines() if line.strip() and json.loads(line)["type"] == "progress"]
+    assert [m["stats"]["elapsed_years"] for m in progress] == [0.0, 1_000_000.0, 2_000_000.0]
+    assert all(m["stats"]["plate_count"] == 6 for m in progress)
+
+
 def test_animate_steps_per_frame_runs_every_step_but_renders_only_the_last(client):
     # 3 frames * 4 steps_per_frame = 1 (frame 0, unstepped) + 2*4 = 8 real step_world calls
     # total, even though only 3 frames are ever rendered/encoded -- see
