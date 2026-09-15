@@ -103,6 +103,24 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # genuinely fills in and stays filled even if it later drains or is reclassified. This module
 # therefore builds every hierarchy from bare `elevation` -- last step's fill is already baked
 # into it -- rather than an `elevation + prev_silt_depth` effective floor.
+#
+# GitHub issue #144 asked whether this coefficient's magnitude actually keeps pace with the
+# tectonic roughening rate that carves the small pits it's meant to fill, since it was tuned by
+# feel (the ~100x above) rather than against a measured comparison. Measured directly on a live
+# 30 My run of issue #117's own repro seed (23097282): `elevation_lines._crumple_elevation`
+# (the actual roughening injector, run through `regularize_line` on plate node-density
+# increases) shifts a line's elevation by a median ~51 m per event (p90 ~160 m, up to ~3,000 m)
+# against a naive resample -- vs. this coefficient depositing a median ~0.02 m/step (p90 ~0.32
+# m/step) on a small leaf catchment's bed -- roughly a 1,000x gap per event. Despite that gap,
+# re-running issue #117's exact repro (seed 23097282 @ 79.2 My) against current code via
+# `app.lake_hierarchy_diagnostics` shows the pathology it named already resolved: max hierarchy
+# depth stays in the single digits the whole run (peak 8, ending at 2 with only 6 leaf
+# catchments, none sub-6-node) -- nowhere near the originally-reported ~3,500-level cascade.
+# That's because crumple events are sparse and localized (~5/step across a whole world's worth
+# of lines in that run) while siltation is continuous on every wet leaf every step; #143's fix
+# (silting chronically-frozen catchments instead of skipping them) was the actual bottleneck,
+# not this coefficient's magnitude. No bump is justified by this measurement -- revisit only if
+# a future repro reproduces runaway depth with #143 already in place.
 SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
 
 # Same value elevation_lines.py/mantle.py each already redefine locally rather than import --
