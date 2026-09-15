@@ -679,8 +679,9 @@ def update_faults(world: "World", years: float) -> None:
     generate_boundary_faults(world)
 
     for plate in world.plates:
-        _apply_plate_fault_shear(world, plate, years_myr)
-        _apply_plate_fault_relief(world, plate, years_myr)
+        cache: dict = {}
+        _apply_plate_fault_shear(world, plate, years_myr, cache)
+        _apply_plate_fault_relief(world, plate, years_myr, cache)
 
     _generate_earthquakes(world, years_myr)
 
@@ -1289,7 +1290,21 @@ def fault_tangent_components(world: "World", plate: Plate, phi: float, theta: fl
     return tangent_phi, tangent_theta  # swapped: separation runs across the fault's own strike
 
 
-def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float) -> None:
+def _own_points_and_tree(plate: Plate, cache: dict | None) -> tuple[np.ndarray, cKDTree | None]:
+    """`plate.all_points_and_elevation()`'s points plus a `cKDTree` over them, memoized in
+    `cache` so `_apply_plate_fault_shear` and `_apply_plate_fault_relief` -- called back to
+    back on the same plate every step -- share one tree instead of each rebuilding its own
+    over identical points."""
+    if cache is not None and "tree" in cache:
+        return cache["own_points"], cache["tree"]
+    own_points = plate.all_points_and_elevation()[0]
+    tree = cKDTree(own_points, balanced_tree=False, compact_nodes=False) if len(own_points) else None
+    if cache is not None:
+        cache["own_points"], cache["tree"] = own_points, tree
+    return own_points, tree
+
+
+def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _cache: dict | None = None) -> None:
     """Physically displace crust across an active strike-slip trace -- a river valley or
     ridge crest straddling the fault should end up offset along-strike by
     `cumulative_offset_m`, the visually recognisable thing about a real transform like the
@@ -1328,12 +1343,11 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float) -> 
     ]
     if not active:
         return
-    own_points = plate.all_points_and_elevation()[0]
+    own_points, tree = _own_points_and_tree(plate, _cache)
     if len(own_points) == 0:
         return
     _, reach_scale = _relief_mode_scales(world)
     reach_rad = reach_scale * MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
-    tree = cKDTree(own_points, balanced_tree=False, compact_nodes=False)
 
     field_names = ("elevation",) + ElevationLine.OPTIONAL_FIELDS
     originals = {name: plate.collect(name) for name in field_names}
@@ -1393,17 +1407,16 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float) -> 
         plate.set_fields_on_plate(**overrides)
 
 
-def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float) -> None:
+def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _cache: dict | None = None) -> None:
     if not hasattr(plate, "lines"):
         return
     active = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active]
     if not active:
         return
-    own_points = plate.all_points_and_elevation()[0]
+    own_points, tree = _own_points_and_tree(plate, _cache)
     if len(own_points) == 0:
         return
     rate_scale, reach_scale = _relief_mode_scales(world)
-    tree = cKDTree(own_points, balanced_tree=False, compact_nodes=False)
     reach_rad = reach_scale * MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
 
     delta = np.zeros(len(own_points))
