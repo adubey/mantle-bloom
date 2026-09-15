@@ -1394,6 +1394,7 @@ export default function App() {
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
               <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
+              {animation && <div>{animation.frame} frames recorded</div>}
             </div>
           )}
           {error && <div style={{ color: "#ff8080", fontSize: 11 }}>{error}</div>}
