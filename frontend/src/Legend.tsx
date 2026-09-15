@@ -1,9 +1,19 @@
-import type { MapView } from "./api";
+import type { RefObject } from "react";
+import type { MapView, Projection } from "./api";
 import { faultKindForLegendLabel, legendFor } from "./legendData";
 import type { LegendGradient, LegendSymbol, SwatchKind } from "./legendData";
+import ScaleBar from "./ScaleBar";
 
 interface Props {
   mapView: MapView;
+  // Passed straight through to ScaleBar (see its own doc comment) -- Legend itself has no use
+  // for these, it just hosts the bar's docked position in its own layout row.
+  projection: Projection;
+  width: number;
+  height: number;
+  displayWidth: number;
+  displayHeight: number;
+  mapWrapperRef: RefObject<HTMLDivElement | null>;
   // False before any world has been generated or loaded (see App.tsx's `summary`) -- the real
   // legend has nothing to describe yet, so the panel shows a prompt to get started instead.
   hasWorld: boolean;
@@ -24,67 +34,6 @@ interface Props {
 }
 
 const SWATCH_SIZE = 14;
-
-// The map's own km-per-pixel scale, for the ScaleBar below. The world is always Earth-sized
-// (see backend app/elevation_lines.py's PLANET_RADIUS_KM) and both current projections
-// (behrmann/eckert4 -- see backend app/projections.py) fit the whole sphere to the rendered
-// width/height with their widest point at the equator (backend render_image.py's
-// _fit_and_project_sphere, fit against PADDING_PX at REFERENCE_WIDTH_PX -- both equal to this
-// app's own MAP_DISPLAY_WIDTH_PX/MAP_PADDING_PX below). For any projection shaped that way, the
-// equatorial scale works out to just the planet's circumference divided by the available map
-// width, independent of the projection's own math -- so this doesn't need to duplicate
-// projections.py's per-projection formulas, only the constants that decide how big the map is.
-// Away from the equator this equal-area map's horizontal scale changes with latitude (area is
-// preserved, not shape), so the bar is only exact there -- the same caveat any small-scale
-// world map's scale bar carries.
-const PLANET_RADIUS_KM = 6371; // matches backend app/elevation_lines.py's PLANET_RADIUS_KM
-const MAP_DISPLAY_WIDTH_PX = 1100; // matches App.tsx's DISPLAY_WIDTH
-const MAP_PADDING_PX = 20; // matches backend app/render_image.py's PADDING_PX
-const KM_PER_PIXEL_AT_EQUATOR =
-  (2 * Math.PI * PLANET_RADIUS_KM) / (MAP_DISPLAY_WIDTH_PX - 2 * MAP_PADDING_PX);
-const PX_PER_KM_AT_EQUATOR = 1 / KM_PER_PIXEL_AT_EQUATOR;
-// The ruler's target on-screen length -- floored down to the nearest whole major (1,000 km)
-// division, never past it, so the bar always ends exactly on a major tick rather than a
-// partial one. Major ticks (taller) fall every SCALE_BAR_MAJOR_STEP_KM, minor ticks (shorter)
-// every SCALE_BAR_MINOR_STEP_KM in between.
-const SCALE_BAR_TARGET_PX = 150;
-const SCALE_BAR_MAJOR_STEP_KM = 1000;
-const SCALE_BAR_MINOR_STEP_KM = 100;
-
-function ScaleBar() {
-  const roughKm = KM_PER_PIXEL_AT_EQUATOR * SCALE_BAR_TARGET_PX;
-  const totalKm = Math.max(SCALE_BAR_MAJOR_STEP_KM, Math.floor(roughKm / SCALE_BAR_MAJOR_STEP_KM) * SCALE_BAR_MAJOR_STEP_KM);
-  const widthPx = totalKm * PX_PER_KM_AT_EQUATOR;
-  const baselineY = 3;
-  const majorTickLen = 6;
-  const minorTickLen = 3;
-  const minorTicks: number[] = [];
-  for (let km = SCALE_BAR_MINOR_STEP_KM; km < totalKm; km += SCALE_BAR_MINOR_STEP_KM) {
-    if (km % SCALE_BAR_MAJOR_STEP_KM !== 0) minorTicks.push(km);
-  }
-  const majorTicks: number[] = [];
-  for (let km = 0; km <= totalKm; km += SCALE_BAR_MAJOR_STEP_KM) majorTicks.push(km);
-
-  return (
-    <div
-      style={{ flexShrink: 0, marginLeft: "auto", fontSize: 10, opacity: 0.85, textAlign: "right" }}
-      title={`Ticks every ${SCALE_BAR_MAJOR_STEP_KM.toLocaleString()}/${SCALE_BAR_MINOR_STEP_KM} km. Exact at the equator -- this equal-area map's horizontal scale changes with latitude.`}
-    >
-      <svg width={widthPx} height={baselineY + majorTickLen + 1} aria-hidden>
-        <line x1={0} y1={baselineY} x2={widthPx} y2={baselineY} stroke="#dee2eb" strokeWidth={1} />
-        {minorTicks.map((km) => {
-          const x = km * PX_PER_KM_AT_EQUATOR;
-          return <line key={km} x1={x} y1={baselineY} x2={x} y2={baselineY + minorTickLen} stroke="#dee2eb" strokeWidth={1} />;
-        })}
-        {majorTicks.map((km) => {
-          const x = km * PX_PER_KM_AT_EQUATOR;
-          return <line key={km} x1={x} y1={baselineY} x2={x} y2={baselineY + majorTickLen} stroke="#dee2eb" strokeWidth={1.5} />;
-        })}
-      </svg>
-      <div style={{ marginTop: 2, whiteSpace: "nowrap" }}>{totalKm.toLocaleString()} km at equator</div>
-    </div>
-  );
-}
 
 function Swatch({ kind, color, outline }: { kind: SwatchKind; color: string; outline?: string }) {
   const s = SWATCH_SIZE;
@@ -194,6 +143,12 @@ function SymbolRow({ symbol, onClick, selected }: { symbol: LegendSymbol; onClic
 // canvas above it).
 export default function Legend({
   mapView,
+  projection,
+  width,
+  height,
+  displayWidth,
+  displayHeight,
+  mapWrapperRef,
   hasWorld,
   highlightedBiome,
   onBiomeClick,
@@ -262,7 +217,14 @@ export default function Legend({
             <GradientBar gradient={gradient} />
           </div>
         ))}
-        <ScaleBar />
+        <ScaleBar
+          projection={projection}
+          width={width}
+          height={height}
+          displayWidth={displayWidth}
+          displayHeight={displayHeight}
+          mapWrapperRef={mapWrapperRef}
+        />
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 2, marginTop: spec.gradient || spec.gradients ? 2 : 8 }}>
         {spec.symbols.map((sym) => {

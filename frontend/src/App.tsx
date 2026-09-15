@@ -23,6 +23,7 @@ import FileModal from "./FileModal";
 import AnimationModal from "./AnimationModal";
 import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
+import MeasureOverlay from "./MeasureOverlay";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION } from "./rotation";
@@ -1714,9 +1715,23 @@ export default function App() {
               )}
             </div>
           )}
+          <MeasureOverlay
+            projection={projection}
+            width={RENDER_WIDTH}
+            height={RENDER_HEIGHT}
+            displayWidth={DISPLAY_WIDTH}
+            displayHeight={DISPLAY_HEIGHT}
+            disabled={animating}
+          />
           </div>
           <Legend
             mapView={mapView}
+            projection={projection}
+            width={RENDER_WIDTH}
+            height={RENDER_HEIGHT}
+            displayWidth={DISPLAY_WIDTH}
+            displayHeight={DISPLAY_HEIGHT}
+            mapWrapperRef={mapWrapperRef}
             hasWorld={!!summary}
             highlightedBiome={highlightedBiome}
             onBiomeClick={(label) => setHighlightedBiome((cur) => (cur === label ? null : label))}
