@@ -130,8 +130,9 @@ class World:
     stranded_basin_tracks: list = field(default_factory=list)
     # Cross-step memory for the gap-age diagnostic (docs/debugging.md's overlapAge section):
     # one `gaps.GapTrack` per currently-uncovered lattice cluster, reconciled by centroid
-    # proximity at the same cadence as gaps.fill_gaps (see gaps.reconcile_gap_tracks) -- the
-    # same "lightweight per-key first-seen tracker" role stranded_basin_tracks plays for
+    # proximity at the same cadence as gaps.fill_gaps_by_growing_neighbours (see
+    # gaps.reconcile_gap_tracks) -- the same "lightweight per-key first-seen tracker" role
+    # stranded_basin_tracks plays for
     # basins, since a gap cluster has no persistent identity across steps any more than a
     # basin does. Diagnostic only, nothing in the physics reads it back. A `default_factory`
     # field -> backfilled on load (see persistence._backfill_added_fields).
@@ -147,7 +148,7 @@ class World:
     # MAX_REMOVED_POINTS_LOG's own comment. `default_factory` -> backfilled on load (see
     # persistence._backfill_added_fields).
     removed_points_log: list[tuple[np.ndarray, float, int]] = field(default_factory=list)
-    # Gate for the verbose, structured `_fill_corner_notch` decision log below -- off by
+    # Gate for the verbose, structured `_fill_corner_notch_frontier` decision log below -- off by
     # default (a plain-scalar field, so an old pickle falls through to False with no
     # persistence backfill needed), on by default for a "Debugging Worlds" tab world, and
     # toggleable for any other loaded save via POST /world/controls. Kept as an explicit flag
@@ -156,7 +157,7 @@ class World:
     # per-step diagnostic detail does not belong in the always-on Event Console -- see
     # corner_notch_log's own comment for where it goes instead.
     debug_diagnostics: bool = False
-    # Verbose, structured decision log for `LithospherePlate._fill_corner_notch` (see
+    # Verbose, structured decision log for `LithospherePlate._fill_corner_notch_frontier` (see
     # World.log_corner_notch) -- populated only while `debug_diagnostics` is True. Deliberately
     # separate from `events` (the always-on Event Console): this can fire once per plate per
     # step, far higher volume than that log is meant to carry, so it gets its own capped buffer
@@ -221,28 +222,10 @@ class World:
     #   "both" -- boundary bands at full strength *and* the scaled-up fault relief layer.
     # See faults.FAULT_DEFORMATION_MODES and LithospherePlate.deform.
     fault_deformation_mode: str = "fault"
-    # Which mechanism closes a gap between plates -- live-adjustable via POST /world/controls,
-    # same pattern as fault_deformation_mode. See gap_fill_frontier.py's own module docstring
-    # for the algorithm and gap_fill_frontier.GAP_FILL_ALGORITHM_CHOICES for the choices:
-    #   "frontier" (default) -- gap_fill_frontier.fill_gap_by_growing_plates at both sites:
-    #     detects the same gap, detects the plate(s) genuinely adjacent to it, and grows those
-    #     *existing* plates into it node by node -- extending an existing line where one's
-    #     close enough, opening a new one where none is -- rather than either always emitting
-    #     disjoint new lines or conjuring a whole new plate. Chosen as the default (2026-09-09)
-    #     after comparing both on every Debugging Worlds scenario: consistently fewer, longer
-    #     lines per plate and far fewer stalled (hop_no_progress/no_claim) corner-notch calls
-    #     than "windowed" -- see GitHub issue #127's frontier-gap-fill addendum for the numbers.
-    #   "windowed" -- today's (pre-2026-09-09) LithospherePlate._fill_corner_notch (a per-plate,
-    #     per-step fixed geometric window; always emits brand-new ElevationLines) and
-    #     gaps.fill_gaps (a periodic whole-sphere sweep that spawns a brand-new plate into any
-    #     region no live plate is near). A plain-scalar default (same shape as
-    #     fault_deformation_mode), so this only changes behavior going forward -- an old save
-    #     predating this field now defaults to "frontier", not a frozen "windowed" past behavior.
-    gap_fill_algorithm: str = "frontier"
     # Which structure `render_image._node_cloud_and_tree` resamples the node cloud through --
     # live-adjustable via POST /world/controls, but backend/API-only for now (no Controls-panel
-    # entry, same as gap_fill_algorithm): this is issue #133's phase-1 proving-out flag, not yet
-    # a user-facing tuning knob. See healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES:
+    # entry): this is issue #133's phase-1 proving-out flag, not yet a user-facing tuning knob.
+    # See healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES:
     #   "kdtree" (default) -- today's `cKDTree(all_points).query(...)`, unchanged.
     #   "healpix" -- scatter the node cloud onto a `HealpixGrid` sized to the node count
     #     (healpix_grid.nside_for_node_count), wavefront-fill the empty pixels, and resolve
@@ -515,7 +498,7 @@ class World:
             del self.removed_points_log[:overflow]
 
     def log_corner_notch(self, entry: dict) -> None:
-        """Append one structured decision record from `_fill_corner_notch` -- a no-op unless
+        """Append one structured decision record from `_fill_corner_notch_frontier` -- a no-op unless
         `debug_diagnostics` is on, so a caller can build `entry` unconditionally without
         worrying about cost on an ordinary (non-debugging) world; see this method's own
         callers in lithosphere_plate.py for the exact guard-then-build pattern that keeps this
@@ -782,15 +765,12 @@ def step_world(world: World, years: float) -> None:
         # plate vacated with no neighbour left nearby to grow into it. Gated to the same
         # cadence as defragment_plates above (a whole-world pass, not needed every step).
         if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
-            # World.gap_fill_algorithm ("frontier" default, "windowed" opt-out) -- see
-            # gap_fill_frontier.py's own module docstring.
-            fill_fn = gaps.fill_gaps_by_growing_neighbours if world.gap_fill_algorithm == "frontier" else gaps.fill_gaps
-            for message in fill_fn(world):
+            for message in gaps.fill_gaps_by_growing_neighbours(world):
                 world.log_event(message)
             # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
             # world.gap_tracks against this step's uncovered-lattice clusters at the same
-            # cadence as fill_gaps above, since both are the same whole-sphere sweep -- see
-            # gaps.reconcile_gap_tracks.
+            # cadence as fill_gaps_by_growing_neighbours above, since both are the same
+            # whole-sphere sweep -- see gaps.reconcile_gap_tracks.
             gaps.reconcile_gap_tracks(world)
 
     erosion_result = None

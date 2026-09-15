@@ -548,24 +548,17 @@ export function updateControls(controls: {
 
 export interface CornerNotchLogEntry {
   plate_id: number;
-  outcome: "no_neighbours" | "no_own_lines" | "no_candidate_rows" | "hop_no_progress" | "claimed" | "no_claim";
+  outcome: "no_neighbours" | "no_own_lines" | "no_candidate_rows" | "claimed" | "no_claim";
   nodes_added: number;
   elapsed_years: number;
-  // Present only on some outcomes -- see backend LithospherePlate._fill_corner_notch.
-  hop?: number;
-  hops_used?: number;
-  rows_considered?: number;
+  // Present only on some outcomes -- see backend LithospherePlate._fill_corner_notch_frontier.
   window_rad?: number;
   phi_lo?: number;
   phi_hi?: number;
-  max_corner_fill_nodes?: number;
-  // Present only when World.gap_fill_algorithm == "frontier" -- see
-  // backend LithospherePlate._fill_corner_notch_frontier / gap_fill_frontier.py. Absent
-  // (undefined) for an ordinary "windowed"-mode entry, same as before this field existed.
   algorithm?: "frontier";
 }
 
-// The debug-only structured decision log for LithospherePlate._fill_corner_notch (see
+// The debug-only structured decision log for LithospherePlate._fill_corner_notch_frontier (see
 // World.corner_notch_log / World.debug_diagnostics) -- empty unless debug_diagnostics is on.
 export function fetchCornerNotchLog(): Promise<{ debug_diagnostics: boolean; entries: CornerNotchLogEntry[] }> {
   return fetch(`${API_BASE}/world/corner_notch_log`).then(

@@ -392,11 +392,11 @@ both plate ownership and per-node fields needn't build the k-d tree twice).
 
 ---
 
-## Corner-notch decision log (`_fill_corner_notch`)
+## Corner-notch decision log (`_fill_corner_notch_frontier`)
 
 `GET /world/corner_notch_log` (Controls window -> Tectonics tab -> "Log corner-notch
 decisions" to enable; the panel sits below the Event Console) exposes a verbose, structured,
-per-call record of what `lithosphere_plate.LithospherePlate._fill_corner_notch` -- the
+per-call record of what `lithosphere_plate.LithospherePlate._fill_corner_notch_frontier` -- the
 triple-junction/diagonal-residual gap-filling fallback `_stretch_end` and
 `_claim_adjacent_territory` structurally can't reach -- actually decided each time it ran, and
 why. Deliberately **not** part of the always-on Event Console: this can fire once per plate
@@ -412,31 +412,27 @@ play session. Entries land in `World.corner_notch_log`, capped by count
 
 ### Reading an entry
 
-Every entry carries `plate_id`, `outcome`, `nodes_added`, and `elapsed_years`; most also carry
-enough of the call's own geometry to place it:
+Every entry carries `plate_id`, `outcome`, `nodes_added`, `elapsed_years`, and `algorithm:
+"frontier"`; most also carry enough of the call's own geometry to place it:
 
 | `outcome` | Meaning |
 |---|---|
 | `no_neighbours` | Early return -- no real neighbour plate nearby at all, so "uncovered space next to my own edge" would just be the rest of the sphere (the guard that stops a lone plate from growing its entire perimeter every step). |
 | `no_own_lines` | Early return -- this plate has no nodes/lines to notch-fill from. |
 | `no_candidate_rows` | The scanned window (`window_rad`, `phi_lo`/`phi_hi`) found no lattice point that's both near a neighbour and not already covered by anyone -- the healthy, common case for an already-well-tiled boundary. |
-| `hop_no_progress` | One frontier-hop (`hop`) in the connect-radius walk claimed nothing -- the walk stops here even if `window_rad` isn't fully covered yet. Always followed by one final `claimed`/`no_claim` entry for the same call. |
-| `claimed` | Ended with `nodes_added > 0` new nodes appended -- `hops_used`, `rows_considered`, and `max_corner_fill_nodes` describe how much of the window's own budget was actually used. |
-| `no_claim` | Candidate rows existed but nothing was ever claimed (every hop stalled immediately). |
-
-A call that stalls mid-walk logs **two** entries (`hop_no_progress` then `claimed`/`no_claim`)
--- both describe the same call, the first explaining *when* it gave up, the second summarizing
-the net result.
+| `claimed` | Ended with `nodes_added > 0` new nodes appended -- `gap_fill_frontier.fill_gap_by_growing_plates` grew this plate's own lines (or opened new ones) to cover them. |
+| `no_claim` | Candidate rows existed but `fill_gap_by_growing_plates` claimed nothing (e.g. the connect-radius walk stalled immediately). |
 
 ### Using it on a real save
 
 Load a save, enable diagnostics, then step it -- the panel fills in per-plate-per-step, so
 watching a specific known-bad junction's plate ids (e.g. this project's own seed349206221
-save, plates 12/13/15/0) across several steps shows directly whether `_fill_corner_notch` is
-even attempting that boundary (`no_neighbours`/`no_own_lines` would mean it never gets that
-far), finding nothing to claim (`no_candidate_rows`/`no_claim`), or claiming a window that
-turns out too small (`claimed` with a low `nodes_added` relative to the gap's real size) --
-each a different next step for a fix, instead of guessing blind from the rendered map alone.
+save, plates 12/13/15/0) across several steps shows directly whether
+`_fill_corner_notch_frontier` is even attempting that boundary (`no_neighbours`/`no_own_lines`
+would mean it never gets that far), finding nothing to claim
+(`no_candidate_rows`/`no_claim`), or claiming a window that turns out too small (`claimed` with
+a low `nodes_added` relative to the gap's real size) -- each a different next step for a fix,
+instead of guessing blind from the rendered map alone.
 
 ---
 
@@ -471,9 +467,9 @@ Current scenarios (`debug_worlds.DEBUG_SCENARIOS`):
 
 | Scenario | Layout | Purpose |
 |---|---|---|
-| `two_plate_divergent` | 2 plates, straight rift | Baseline: ordinary end-growth (`_stretch_end`) should close this alone -- `_fill_corner_notch` should log mostly `no_claim`/`no_candidate_rows`, never a real gap. |
+| `two_plate_divergent` | 2 plates, straight rift | Baseline: ordinary end-growth (`_stretch_end`) should close this alone -- `_fill_corner_notch_frontier` should log mostly `no_claim`/`no_candidate_rows`, never a real gap. |
 | `two_plate_convergent` | 2 plates, closing boundary | Subduction/collision baseline. |
-| `triple_junction_mixed` | 3 plates, one junction, 2 divergent legs + 1 convergent | **The exact case `_fill_corner_notch`'s own docstring calls out** (confirmed on a real save, seed 430031492) -- confirmed (see `test_triple_junction_mixed_scenario_exercises_fill_corner_notch`) to drive real `claimed` activity within a handful of steps. Start here. |
+| `triple_junction_mixed` | 3 plates, one junction, 2 divergent legs + 1 convergent | **The exact case `_fill_corner_notch_frontier`'s own docstring calls out** (confirmed on a real save, seed 430031492) -- confirmed (see `test_triple_junction_mixed_scenario_exercises_fill_corner_notch_frontier`) to drive real `claimed` activity within a handful of steps. Start here. |
 | `four_plate_grid` | 4 plates, 2x2, all edges divergent | Four simultaneous triple-junction-like corners at once, around one shared center point. |
 | `five_plate_irregular` | 5 plates, irregular ring, mixed relationships | Closest single scenario to a real save's messiness while staying small enough to iterate on quickly. |
 
@@ -483,31 +479,11 @@ and watch the "Added/Removed Points" and "Plate overlap age" views alongside the
 log panel together -- the combination this whole diagnostic suite was built to let you read at
 once, rather than switching between four separate tools with no shared time axis.
 
-### Comparing gap-fill algorithms on these scenarios
-
-`World.gap_fill_algorithm` (`"frontier"` default since 2026-09-09, `"windowed"` still available
--- see `simulation-model.md#frontier-gap-fill`) is a `POST /world/controls` field, so every scenario
-above can be re-run under the alternative algorithm without any other change: generate a
-scenario (or set it on an already-generated debug world via the Controls request), step it the
-same number of times under each setting, and compare. The corner-notch decision log panel
-reads either algorithm identically (`gap_fill_frontier`'s own entries carry `"algorithm":
-"frontier"` alongside the same `outcome`/`nodes_added` shape `_fill_corner_notch` already
-logs), so the same workflow above -- watch the log panel alongside "Added/Removed Points" --
-works unchanged for either. What to look at when comparing:
-
-- **Line count per plate** (`num_rows` in `GET /world/plates`) -- `"frontier"` extends a
-  plate's own existing lines where the grid allows instead of always emitting brand-new ones,
-  so a healthy comparison run should show `"frontier"` ending with materially *fewer* lines per
-  plate than `"windowed"` for the same scenario/step count, not just similar node totals.
-- **`corner_notch_log` outcome mix** -- both algorithms log the same outcome vocabulary; a
-  `"frontier"` run stuck on `no_claim`/`hop_no_progress` where `"windowed"` reaches `claimed`
-  (or vice versa) is the first thing to chase if the two diverge.
-- **Whole-sphere events** (`world.events`, or `GET /world/controls`'s echoed
-  `gap_fill_algorithm`) -- these tiny scripted scenarios don't naturally exercise
-  `gaps.fill_gaps`/`gaps.fill_gaps_by_growing_neighbours` (every plate starts adjacent to
-  every gap that can open here), so that half of the comparison needs a real or
-  synthetically-vacated-plate world instead -- see `unit_tests/test_gaps.py`'s
-  `fill_gaps_by_growing_neighbours` tests for the shape of that setup.
+These tiny scripted scenarios don't naturally exercise
+`gaps.fill_gaps_by_growing_neighbours` (every plate starts adjacent to every gap that can open
+here) -- checking the whole-sphere sweep needs a real or synthetically-vacated-plate world
+instead, see `unit_tests/test_gaps.py`'s `fill_gaps_by_growing_neighbours` tests for the shape
+of that setup.
 
 ---
 

@@ -1,25 +1,13 @@
-"""An alternative to `lithosphere_plate.LithospherePlate._fill_corner_notch` and
-`gaps.fill_gaps`: given a set of gap points and the plate(s) genuinely adjacent to them,
-iteratively grow those *existing* plates to cover the gap -- one node at a time onto an
-existing `ElevationLine` where one sits close enough to extend, or a brand-new single-node line
-where none does -- rather than either always creating disjoint new lines (`_fill_corner_notch`, which
-never reuses a plate's own existing line even when a claimed row shares its exact phi) or
-conjuring a whole new plate into a region no live plate is near (`gaps.fill_gaps`'s own
-"spawn" fallback, which this module's own `gaps.fill_gaps_by_growing_neighbours` caller still
-falls back to when there is truly nothing nearby to grow).
+"""Given a set of gap points and the plate(s) genuinely adjacent to them, iteratively grow
+those *existing* plates to cover the gap -- one node at a time onto an existing `ElevationLine`
+where one sits close enough to extend, or a brand-new single-node line where none does. Wired
+at both `lithosphere_plate.py`'s `deform()` (via `LithospherePlate._fill_corner_notch_frontier`)
+and `gaps.py`'s whole-sphere sweep (`gaps.fill_gaps_by_growing_neighbours`, which falls back to
+spawning a brand-new plate via `gaps._spawn_plate_from_gap` only when nothing is adjacent at
+all). See docs/simulation-model.md's "Frontier gap-fill" section for the full writeup.
 
-Selected via `World.gap_fill_algorithm` (see `GAP_FILL_ALGORITHM_CHOICES`): `"frontier"`
-(default since 2026-09-09, this module, at both call sites -- `lithosphere_plate.py`'s
-`deform()` and `gaps.py`'s whole-sphere sweep) or `"windowed"` (the prior default, today's
-`_fill_corner_notch`/`gaps.fill_gaps`, still available and unchanged). See
-docs/simulation-model.md's "Frontier gap-fill" section for the full writeup and
-docs/debugging.md for how to compare the two on the "Debugging Worlds" scenarios --
-`"frontier"` was promoted to default after that comparison showed consistently fewer, longer
-lines per plate and far fewer stalled corner-notch calls than `"windowed"`.
-
-Every claimed node is a real magma eruption, never a free area grant -- the one invariant this
-module shares with both algorithms it can replace (see `_erupt_melted_nodes`'s own docstring).
-The two ways a node can be claimed:
+Every claimed node is a real magma eruption, never a free area grant (see
+`_erupt_melted_nodes`'s own docstring). The two ways a node can be claimed:
 
 - **Stretch an existing line.** A candidate grid-adjacent to a line this plate already had
   *before this call* draws its material down from that line's own nearest
@@ -62,11 +50,6 @@ if TYPE_CHECKING:
     from .lithosphere_plate import LithospherePlate
     from .world import World
 
-# The two `World.gap_fill_algorithm` choices -- see this module's own docstring. Exposed here
-# (not duplicated in world.py/main.py) so every validator/UI choice list reads from one place,
-# same pattern as faults.FAULT_DEFORMATION_MODES.
-GAP_FILL_ALGORITHM_CHOICES = ("windowed", "frontier")
-
 # How many of a stretched line's own existing end nodes share a newly-appended node's mass
 # deficit -- same value and same reasoning as lithosphere_plate.K_NEIGHBOUR_ROWS_FOR_MASS_
 # CONSERVATION (a small constant, not node-count-scaled: this is about how many nodes share a
@@ -83,7 +66,7 @@ _STRETCH_SHARE_COUNT = K_STRETCH_SOURCE_NODES + 1
 _STRETCH_THIN_RATIO = 1.0 / _STRETCH_SHARE_COUNT
 
 # A brand-new (non-stretch) node is seeded well below RIFT_CRITICAL_THICKNESS_M -- same
-# formula and same reasoning as _fill_corner_notch's own `seed_thin_ratio`: comfortably clear
+# formula and same reasoning as _fill_corner_notch_frontier's own `seed_thin_ratio`: comfortably clear
 # of the +-amp texture noise _seed_and_erupt_new_nodes adds on top, so every such node is
 # *guaranteed* (not just usually) to melt through and erupt via _erupt_melted_nodes, matching
 # this module's own "never a silent full-thickness spawn" invariant.
@@ -97,7 +80,7 @@ MIN_FRONTIER_NODES = 200
 
 
 def _pole_aligned_row_key(local_phi: float, spacing_rad: float) -> int:
-    """Integer row index on the same pole-aligned phi grid `_fill_corner_notch`'s own
+    """Integer row index on the same pole-aligned phi grid `_fill_corner_notch_frontier`'s own
     `row_lo`/`row_hi` snap to (`iter_local_lattice`'s own bound) -- two candidate points this
     close in phi always land on the same row, regardless of which one a plate's real lines
     happen to sit exactly on."""
@@ -114,7 +97,7 @@ def _sorted_by_theta(line: ElevationLine) -> ElevationLine:
     """`ElevationLine.with_new_nodes` appends unsorted (see its own docstring) -- every
     adjacency check in this module reads `line.theta[0]`/`line.theta[-1]` as the true low/high
     ends, so every append is immediately re-sorted. (Doesn't handle a line spanning the +-pi
-    theta seam any more correctly than `_fill_corner_notch`'s own linear theta_lo/theta_hi math
+    theta seam any more correctly than `_fill_corner_notch_frontier`'s own linear theta_lo/theta_hi math
     already doesn't -- a pre-existing limitation, not one this module introduces.)"""
     order = np.argsort(line.theta)
     return line.masked(order)
@@ -123,7 +106,7 @@ def _sorted_by_theta(line: ElevationLine) -> ElevationLine:
 class _WorkingPlate:
     """This call's mutable view of one claimant plate: a plain Python copy of its lines (only
     committed back via `plate.set_lines` once, at the very end of `fill_gap_by_growing_plates`
-    -- same "accumulate, apply once" shape `_fill_corner_notch` already uses), plus enough
+    -- same "accumulate, apply once" shape `_fill_corner_notch_frontier` already uses), plus enough
     per-row bookkeeping to decide "stretch an existing line" vs. "erupt a new one" for each
     node as it's claimed, node by node, in this call's own theta order."""
 
@@ -320,7 +303,7 @@ def fill_gap_by_growing_plates(
 ) -> dict[int, int]:
     """Grow `claimants` to cover `gap_points` (world xyz), node by node, walking the connected
     frontier outward in `DEFRAG_CONNECT_RADIUS_MULT`-sized hops exactly like
-    `_fill_corner_notch` does (so a claim never reads as a disconnected stray to
+    `_fill_corner_notch_frontier` does (so a claim never reads as a disconnected stray to
     `merge_split.defragment_plates`'s own connected-components check). Each hop: every
     still-uncovered gap point within one connect-radius of *some* claimant's current node cloud
     is assigned to whichever claimant is nearest (this is "detect adjacent plates" applied per

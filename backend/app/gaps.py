@@ -1,6 +1,7 @@
-"""Whole-sphere coverage maintenance: spawn new crust into any region no plate currently
-covers -- oceanic almost everywhere, continental only where a gap point genuinely borders a
-still-standing continental coastline (see GAP_LAND_ADOPTION_RADIUS_MULT).
+"""Whole-sphere coverage maintenance: grow the plate(s) adjacent to any region no plate
+currently covers into it, falling back to spawning new crust -- oceanic almost everywhere,
+continental only where a gap point genuinely borders a still-standing continental coastline
+(see GAP_LAND_ADOPTION_RADIUS_MULT) -- only when nothing is adjacent.
 
 `LithospherePlate.deform()`'s per-step boundary growth only ever extends a line from an
 *existing* node -- a plate can spread into space right next to its own current edge, but
@@ -14,30 +15,19 @@ see GitHub issue #126's "Very-long-run collapse" section): ~42% of the sphere ha
 nodes, all of it sphere area no live plate's lines reached.
 
 This module finds those genuinely-uncovered regions periodically (same cadence as
-`merge_split.defragment_plates` -- a whole-world k-d-tree pass, cheap but not free) and fills
-each big-enough one with a brand-new plate. It deliberately does *not* try to instead grow an
-existing neighbouring plate into the gap -- besides needing a partition/absorption scheme of
-its own (the pre-refactor `gaps.py` this replaces did that too, "if bordered mainly by one
-plate, absorb it into that plate," never ported to this engine -- see GitHub issue #119), handing
-a large freshly-vacated region to whichever plate happens to be nearest would feed exactly
-the continental-growth ratchet already tracked there. A brand-new plate is neutral: it can
-still merge, subduct, or get absorbed by ordinary boundary growth like any other plate once
-it has a real neighbour again.
+`merge_split.defragment_plates` -- a whole-world k-d-tree pass, cheap but not free) and, for
+each big-enough one, grows the plate(s) genuinely adjacent to it into the gap node by node
+(`fill_gaps_by_growing_neighbours`, via `gap_fill_frontier.fill_gap_by_growing_plates`) --
+falling back to spawning a brand-new neutral plate (`_spawn_plate_from_gap`) only when nothing
+is adjacent at all (a fully-vacated region with no live plate left nearby to grow).
 
-The new plate's own composition is decided per node, not blanket-oceanic: real new crust in
-open water is oceanic (the same crust type any mid-ocean ridge produces), but a gap point
-right at a still-standing continental coastline -- e.g. a fully-subducted marginal sea
+The new plate's own composition (spawn fallback) is decided per node, not blanket-oceanic: real
+new crust in open water is oceanic (the same crust type any mid-ocean ridge produces), but a gap
+point right at a still-standing continental coastline -- e.g. a fully-subducted marginal sea
 landlocked by continent -- comes back continental instead (see `_spawn_plate_from_gap`'s own
 `node_is_continental`). The spawned plate's own `crust_type` label is the majority of what it
 actually ended up with (`elevation_lines.majority_crust_type`), so it is oceanic in practice
 for all but that rare landlocked case.
-
-Known stopgap, not the real fix -- see GitHub issue #127 ("`gaps.py`'s plate-spawn is a stopgap,
-not the real fix"): conjuring a whole fully-formed plate into existence after the fact isn't
-how new ocean floor actually forms (continuous mid-ocean-ridge spreading off an existing
-plate's own divergent edge is). The real fix is upstream, in `deform()`'s own per-step
-growth; this module should shrink back to a rare fallback once that exists, not stay the
-primary mechanism.
 """
 
 from __future__ import annotations
@@ -62,9 +52,9 @@ from .lithosphere_plate import LithospherePlate, new_plate
 if TYPE_CHECKING:
     from .world import World
 
-# Cadence: `fill_gaps` is a whole-sphere lattice sweep (O(nodes) at full density), cheap but
-# not free, and coverage doesn't collapse fast -- same reasoning and same cadence as
-# merge_split.DEFRAG_INTERVAL_STEPS, which world.step_world calls it alongside.
+# Cadence: `fill_gaps_by_growing_neighbours` is a whole-sphere lattice sweep (O(nodes) at full
+# density), cheap but not free, and coverage doesn't collapse fast -- same reasoning and same
+# cadence as merge_split.DEFRAG_INTERVAL_STEPS, which world.step_world calls it alongside.
 GAP_FILL_INTERVAL_STEPS = 4
 
 # "Covered" (see elevation_lines.COVERAGE_RADIUS_MULT, shared with LithospherePlate's own
@@ -211,47 +201,11 @@ def _spawn_plate_from_gap(
     return plate
 
 
-def fill_gaps(world: "World") -> list[str]:
-    """Find every sphere region no live plate currently covers and, for each one at least
-    `MIN_GAP_NODES` (scaled by `world.node_density`) large, spawn a new plate to cover it --
-    oceanic almost everywhere (real gaps are overwhelmingly open water a fully-subducted
-    plate vacated), except nodes genuinely hugging a still-standing continental coastline
-    (see GAP_LAND_ADOPTION_RADIUS_MULT), which come back continental. Mutates
-    `world.plates`/`world.next_plate_id` in place; returns event strings for the UI's
-    console."""
-    existing_context = _existing_node_tree(world)
-    if existing_context is None:
-        return []
-
-    spacing_rad = line_spacing_rad(world.node_density)
-    gap_points = _find_gap_points(existing_context, spacing_rad)
-    if len(gap_points) == 0:
-        return []
-
-    labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
-    min_gap_nodes = max(1, round(MIN_GAP_NODES * world.node_density))
-
-    events: list[str] = []
-    for label in np.unique(labels):
-        cluster_points = gap_points[labels == label]
-        if len(cluster_points) < min_gap_nodes:
-            continue
-        plate = _spawn_plate_from_gap(world, cluster_points, spacing_rad, existing_context)
-        if plate.node_count() == 0:
-            continue
-        world.plates.append(plate)
-        where = "in open water no plate had reached in a long time" if plate.crust_type == "oceanic" else "over a long-vacated, landlocked gap"
-        events.append(
-            f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where}."
-        )
-    return events
-
-
 def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spacing_rad: float) -> list[LithospherePlate]:
     """Live plates with at least one node within `ADJACENT_PLATE_REACH_MULT * spacing_rad` of
     `cluster_points` -- "detect adjacent plates" for `fill_gaps_by_growing_neighbours`. Can
-    come back empty (the fully-vacated-region case `fill_gaps`'s own module docstring
-    describes), which its caller falls back to spawning a plate for, same as today."""
+    come back empty (a fully-vacated region with no live plate left nearby), which its caller
+    falls back to spawning a plate for."""
     reach_rad = ADJACENT_PLATE_REACH_MULT * spacing_rad
     adjacent = []
     for plate in world.plates:
@@ -265,17 +219,14 @@ def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spac
 
 
 def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
-    """`World.gap_fill_algorithm == "frontier"` alternative to `fill_gaps` -- same whole-sphere
-    gap *detection* (`_existing_node_tree`/`_find_gap_points`/`_cluster`, `MIN_GAP_NODES` floor,
-    all unchanged), but instead of always spawning a brand-new plate into each big-enough
-    cluster, first looks for plate(s) actually adjacent to it (`_adjacent_plates_to_cluster`)
-    and, when there are any, grows those *existing* plates into the cluster node by node
-    (`gap_fill_frontier.fill_gap_by_growing_plates` -- see that module's own docstring). Falls
-    back to `_spawn_plate_from_gap`, exactly as `fill_gaps` always does, only when a cluster has
-    no adjacent plate at all -- a fully-vacated region with nothing nearby to grow (this
-    module's own docstring's "known stopgap" case), where there is genuinely nothing to grow.
-    Mutates `world.plates`/`world.next_plate_id` (spawn fallback) or existing plates' own lines
-    (grow path) in place; returns event strings for the UI's console, same shape as `fill_gaps`."""
+    """Find every sphere region no live plate currently covers and, for each one at least
+    `MIN_GAP_NODES` (scaled by `world.node_density`) large, first look for plate(s) actually
+    adjacent to it (`_adjacent_plates_to_cluster`) and, when there are any, grow those
+    *existing* plates into the cluster node by node (`gap_fill_frontier.fill_gap_by_growing_
+    plates` -- see that module's own docstring). Falls back to `_spawn_plate_from_gap` only
+    when a cluster has no adjacent plate at all -- a fully-vacated region with nothing nearby
+    to grow. Mutates `world.plates`/`world.next_plate_id` (spawn fallback) or existing plates'
+    own lines (grow path) in place; returns event strings for the UI's console."""
     existing_context = _existing_node_tree(world)
     if existing_context is None:
         return []
@@ -341,13 +292,14 @@ def _nearest_gap_track(
 
 def reconcile_gap_tracks(world: "World") -> None:
     """Recompute this step's uncovered-lattice clusters (the same whole-sphere sweep
-    `fill_gaps` uses, but with no `MIN_GAP_NODES` floor -- see `GAP_AGE_MIN_CLUSTER_NODES`'s
-    own comment on why age-tracking needs a much lower one) and reconcile `world.gap_tracks`
-    by centroid proximity: a cluster matching a previous track keeps its `first_seen_years`
-    and bumps `steps_seen`; an unmatched cluster starts a fresh track; a track with no matching
-    cluster this step is dropped by omission. Same "replace wholesale" pattern as
-    `stranded_basins.reconcile_world_tracks`. Called at the same cadence as `fill_gaps`
-    (`GAP_FILL_INTERVAL_STEPS`) from `world.step_world`, right alongside it."""
+    `fill_gaps_by_growing_neighbours` uses, but with no `MIN_GAP_NODES` floor -- see
+    `GAP_AGE_MIN_CLUSTER_NODES`'s own comment on why age-tracking needs a much lower one) and
+    reconcile `world.gap_tracks` by centroid proximity: a cluster matching a previous track
+    keeps its `first_seen_years` and bumps `steps_seen`; an unmatched cluster starts a fresh
+    track; a track with no matching cluster this step is dropped by omission. Same "replace
+    wholesale" pattern as `stranded_basins.reconcile_world_tracks`. Called at the same cadence
+    as `fill_gaps_by_growing_neighbours` (`GAP_FILL_INTERVAL_STEPS`) from `world.step_world`,
+    right alongside it."""
     existing_context = _existing_node_tree(world)
     if existing_context is None:
         world.gap_tracks = []

@@ -817,10 +817,9 @@ Implements `healpix_grid.scatter_node_indices` (HEALPix-pixel-center tie-break, 
 than ever returning an unfilled `-1`), and `NodePixelIndex` -- a `cKDTree.query()`-compatible
 wrapper so every real `_node_cloud_and_tree` consumer (`_render_grid_arrays`, `_biome_fields`,
 `_resource_fields`, and the elev-reason/crust-type/speckle views) needed zero changes. Gated by
-a new `World.node_cloud_resample_mode` flag (`"kdtree"` default / `"healpix"`), modeled on
-`gap_fill_algorithm` rather than `wind_model` -- backend/API-only for now
-(`POST /world/controls`), no Controls-panel entry, since this is a proving-out flag, not yet a
-user-facing tuning knob.
+a new `World.node_cloud_resample_mode` flag (`"kdtree"` default / `"healpix"`) -- backend/API-only
+for now (`POST /world/controls`), no Controls-panel entry, since this is a proving-out flag, not
+yet a user-facing tuning knob.
 
 **Deviation from this checklist item's original text:** it named both
 `render_image._node_cloud_and_tree` and `plates.cached_node_position_tree` as Phase 1's entry

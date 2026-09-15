@@ -992,14 +992,14 @@ a tuning one. Two changes close most of it: `_claim_adjacent_territory` now loop
 `MAX_CLAIM_ROWS_PER_STEP` rows per direction (instead of exactly one) with each row trimmed to
 only its genuinely open runs (a real coverage/proximity test, not the old "not inside a
 neighbour's polygon" one), so a converging wedge narrows or widens row by row instead of
-insisting on full-width rectangular strips; and a new `_fill_corner_notch` sweeps a narrow
-window of this plate's own local lattice (`CORNER_NOTCH_WINDOW_ROWS` rows past its current
-phi extent) for the sub-row diagonal residual even that leaves behind, claiming any lattice
-point that's genuinely uncovered, close enough to this plate's own edge to survive
-`merge_split.defragment_plates`'s connected-components check, and within
-`CORNER_NOTCH_NEIGHBOUR_REACH_MULT` of a real neighbour (without that last guard, a lone
-plate's entire open perimeter looks claimable, growing it outward forever with nothing to
-stop it). Every node either op originates is seeded thin and routed through the same
+insisting on full-width rectangular strips; and `_fill_corner_notch_frontier` sweeps a narrow
+window of this plate's own local lattice (past its current phi extent, scaling with
+`mantle.MAX_PLATE_RATE * years`) for the sub-row diagonal residual even that leaves behind,
+gathering every lattice point that's genuinely uncovered and within
+`CORNER_NOTCH_NEIGHBOUR_REACH_MARGIN_MULT` of a real neighbour (without that last guard, a lone
+plate's entire open perimeter looks claimable, growing it outward forever with nothing to stop
+it) -- see [Frontier gap-fill](#frontier-gap-fill) below for what happens to those candidate
+points. Every node either op originates is seeded thin and routed through the same
 `_erupt_melted_nodes` decompression-melting path as the local mechanism above -- mechanically
 a real eruption, never a distinct silent "spawn". On the real save that motivated this, the
 fix turns a triple-junction void that grew without bound into one that stays roughly steady
@@ -1007,22 +1007,24 @@ state as the three plates keep separating -- production genuinely keeping pace w
 though not (yet) shrinking it to nothing; see
 [GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127) for what's still open.
 
-**Whole-sphere fallback (`gaps.py`'s `fill_gaps`).** Once every plate bordering a stretch of
-open ocean has been fully subducted and removed (`merge_split.remove_defunct_plates`), that
-sphere area has no plate left anywhere near it to thin/melt from -- there is nothing there to
-grow. `fill_gaps` runs a whole-sphere lattice sweep on the same cadence as
+**Whole-sphere fallback (`gaps.py`'s `fill_gaps_by_growing_neighbours`).** Once every plate
+bordering a stretch of open ocean has been fully subducted and removed
+(`merge_split.remove_defunct_plates`), that sphere area has no plate left anywhere near it to
+thin/melt from -- there is nothing there to grow via the local mechanism above.
+`fill_gaps_by_growing_neighbours` runs a whole-sphere lattice sweep on the same cadence as
 `merge_split.defragment_plates` (`gaps.GAP_FILL_INTERVAL_STEPS`), finds every connected region
-at least `gaps.MIN_GAP_NODES` large that no live plate's lines currently reach, and spawns a
-new plate to cover it -- oceanic almost everywhere (real gaps are overwhelmingly open water a
+at least `gaps.MIN_GAP_NODES` large that no live plate's lines currently reach, and grows the
+plate(s) genuinely adjacent to it into the gap (see [Frontier gap-fill](#frontier-gap-fill)),
+falling back to spawning a brand-new plate (`gaps._spawn_plate_from_gap`) only when a cluster
+has no adjacent plate at all -- a genuinely isolated void with nothing nearby to grow. The
+spawn fallback types nodes oceanic almost everywhere (real gaps are overwhelmingly open water a
 fully-subducted plate vacated), except nodes genuinely hugging a still-standing continental
 coastline: for each gap point, if the *nearest pre-existing node* is continental, still above
 sea level, and within `gaps.GAP_LAND_ADOPTION_RADIUS_MULT` line-spacings, the new node comes
 back continental too (`gaps.GAP_LAND_ADOPTION_RADIUS_MULT = 3.0`, hugging a real coastline --
 e.g. a fully-subducted marginal sea landlocked by continent -- not reaching all the way across
-an ocean basin to a far-off continent). Deliberately spawn-only, not absorb-into-a-neighbour,
-to avoid feeding the continental-growth ratchet (GitHub issue #119's "Node-count creep"
-section). The new plate's own
-`crust_type` label is the majority of what its nodes actually ended up being (see
+an ocean basin to a far-off continent). A spawned plate's own `crust_type` label is the
+majority of what its nodes actually ended up being (see
 [Per-node crust type](#per-node-crust-type)), not a hardcoded "oceanic" -- it is oceanic in
 practice for all but the rare landlocked case. Known stopgap, not the real fix: the local
 thinning-then-melting mechanism above should, over time, make this whole-sphere sweep an
@@ -1030,50 +1032,38 @@ increasingly rare fallback rather than a routine occurrence -- see `gaps.py`'s o
 docstring and [GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127).
 
 <a id="frontier-gap-fill"></a>
-### Frontier gap-fill: the default at both sites since 2026-09-09 (`gap_fill_frontier.py`)
+### Frontier gap-fill: growing existing plates into a gap (`gap_fill_frontier.py`)
 
-`World.gap_fill_algorithm` (`"frontier"` default, `"windowed"` still available, live-adjustable
-via `POST /world/controls`) switches both of the above -- `_fill_corner_notch` and `fill_gaps`
--- for a single alternative mechanism, `gap_fill_frontier.py`, at both call sites
-(`LithospherePlate._fill_corner_notch_frontier` in `deform()`,
-`gaps.fill_gaps_by_growing_neighbours` in `step_world`). Same
-three-step shape at either scale: **detect a gap** (identical detection to the algorithm it
-replaces at each site -- the corner-notch window/neighbour-reach math, or `gaps.py`'s own
-whole-sphere lattice sweep/cluster -- deliberately unchanged, so only the *fill* strategy
-differs), **detect the plate(s) adjacent to it** (the corner-notch site's own `self`; the
-whole-sphere site's `gaps._adjacent_plates_to_cluster`, any plate with a node within
-`gaps.ADJACENT_PLATE_REACH_MULT` of the cluster), then **iteratively grow those existing
-plates into it, one node at a time** (`gap_fill_frontier.fill_gap_by_growing_plates`): walk
-the connected frontier outward in `DEFRAG_CONNECT_RADIUS_MULT`-sized hops (same reach
-`_fill_corner_notch` already uses, so a claim can't outrun `merge_split.defragment_plates`'s
-own connectivity check); at each hop, every reachable gap point is assigned to whichever
-claimant's node cloud is nearest, then, per claimant/row, either **extends an existing line**
-by one node (a real "stretch" -- mass-conserving, drawing the new node's material down from
-that line's own nearest `K_STRETCH_SOURCE_NODES` end nodes, the same row-claim draw-down
-`_claim_adjacent_territory` already does for a whole new phi row, applied here at single-node
-granularity) or, where no line is close enough to extend, **opens a brand-new single-node
-line** -- a genuine magma eruption with nothing thinned in exchange, same seeding
-`_seed_and_erupt_new_nodes` always uses. Either way the claimed node still routes through
-`_erupt_melted_nodes`, typed oceanic vs. continental/volcanic by whether it was above or below
-sea level the instant it erupted -- the same invariant both algorithms it replaces already
-guarantee, never a free area grant.
+Once either mechanism above has detected a gap and the plate(s) genuinely adjacent to it (the
+corner-notch site's own `self`; the whole-sphere site's `gaps._adjacent_plates_to_cluster`, any
+plate with a node within `gaps.ADJACENT_PLATE_REACH_MULT` of the cluster),
+`gap_fill_frontier.fill_gap_by_growing_plates` iteratively grows those existing plates into it,
+one node at a time, rather than either always creating disjoint new lines or spawning a whole
+new plate: it walks the connected frontier outward in `DEFRAG_CONNECT_RADIUS_MULT`-sized hops
+(so a claim can't outrun `merge_split.defragment_plates`'s own connectivity check); at each hop,
+every reachable gap point is assigned to whichever claimant's node cloud is nearest, then, per
+claimant/row, either **extends an existing line** by one node (a real "stretch" --
+mass-conserving, drawing the new node's material down from that line's own nearest
+`K_STRETCH_SOURCE_NODES` end nodes, the same row-claim draw-down `_claim_adjacent_territory`
+already does for a whole new phi row, applied here at single-node granularity) or, where no
+line is close enough to extend, **opens a brand-new single-node line** -- a genuine magma
+eruption with nothing thinned in exchange, same seeding `_seed_and_erupt_new_nodes` always
+uses. Either way the claimed node still routes through `_erupt_melted_nodes`, typed oceanic vs.
+continental/volcanic by whether it was above or below sea level the instant it erupted --
+never a free area grant.
 
-This is a real behavioral departure from `"windowed"`, not just a faster implementation of the
-same thing: at the whole-sphere site in particular, it grows a plate's own existing territory
-into a vacated region instead of spawning a new plate -- exactly the "absorb into a dominant
-bordering plate" behaviour `fill_gaps`'s own module docstring says it deliberately avoids (see
-that docstring, and [GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127)).
-Falls back to spawning a plate (`gaps._spawn_plate_from_gap`, unchanged) only when a cluster
-has no adjacent plate at all -- a genuinely isolated void with nothing nearby to grow, the one
-case both algorithms still handle identically. Promoted from opt-in to the default on
-2026-09-09 after comparing both on every Debugging Worlds scenario (GitHub issue #127's
-frontier-gap-fill addendum has the numbers): consistently fewer, longer lines per plate and far
-fewer stalled (`hop_no_progress`/`no_claim`) corner-notch calls than `"windowed"`. That
-comparison covered only the small hand-scripted scenarios plus one synthetic whole-sphere
-fixture, not a real long-running save -- see `docs/debugging.md`'s "Debugging Worlds" section
-for the same workflow if a real save's behavior under `"frontier"` needs checking, and set
-`gap_fill_algorithm` back to `"windowed"` via `POST /world/controls` to compare against or
-fall back to the prior mechanism.
+At the whole-sphere site in particular, this grows a plate's own existing territory into a
+vacated region instead of always spawning a new plate -- exactly the "absorb into a dominant
+bordering plate" behaviour a pre-refactor `gaps.py` deliberately avoided (see
+[GitHub issue #127](https://github.com/adubey/mantle-bloom/issues/127) for the continental-
+growth-ratchet question this reopens). Promoted from an opt-in comparison mode to the sole
+mechanism at both sites on 2026-09-09 after comparing against the prior fixed-window/spawn-only
+behavior on every Debugging Worlds scenario (GitHub issue #127's frontier-gap-fill addendum has
+the numbers): consistently fewer, longer lines per plate and far fewer stalled
+(`hop_no_progress`/`no_claim`) corner-notch calls. That comparison covered only the small
+hand-scripted scenarios plus one synthetic whole-sphere fixture, not a real long-running save --
+see `docs/debugging.md`'s "Debugging Worlds" section for the diagnostic workflow if a real
+save's behavior needs checking.
 
 <a id="per-node-crust-type"></a>
 ### Per-node crust type

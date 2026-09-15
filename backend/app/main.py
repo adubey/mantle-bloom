@@ -24,7 +24,6 @@ from . import (
     debug_worlds,
     eustasy,
     faults,
-    gap_fill_frontier,
     geodesic,
     geometry,
     healpix_grid,
@@ -218,9 +217,6 @@ class ControlsRequest(BaseModel):
     simulate_climate_biomes: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
-    # Which mechanism closes a gap between plates -- see World.gap_fill_algorithm /
-    # gap_fill_frontier.py's own module docstring. "frontier" (default) or "windowed".
-    gap_fill_algorithm: str | None = None
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
@@ -240,7 +236,7 @@ class ControlsRequest(BaseModel):
     collision_uplift_reach_multiplier: float | None = None
     volcanism_multiplier: float | None = None
     fault_relief_multiplier: float | None = None
-    # Gate for the verbose _fill_corner_notch decision log (see World.debug_diagnostics /
+    # Gate for the verbose _fill_corner_notch_frontier decision log (see World.debug_diagnostics /
     # World.corner_notch_log / GET /world/corner_notch_log) -- on by default for a "Debugging
     # Worlds" tab world, off/toggleable here for any other loaded save.
     debug_diagnostics: bool | None = None
@@ -248,7 +244,6 @@ class ControlsRequest(BaseModel):
 
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
-GAP_FILL_ALGORITHM_CHOICES = gap_fill_frontier.GAP_FILL_ALGORITHM_CHOICES
 NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
 
 
@@ -893,11 +888,6 @@ def set_controls(req: ControlsRequest) -> dict:
             status_code=400,
             detail=f"unknown fault_deformation_mode {req.fault_deformation_mode!r}; choices are {FAULT_DEFORMATION_MODE_CHOICES}",
         )
-    if req.gap_fill_algorithm is not None and req.gap_fill_algorithm not in GAP_FILL_ALGORITHM_CHOICES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"unknown gap_fill_algorithm {req.gap_fill_algorithm!r}; choices are {GAP_FILL_ALGORITHM_CHOICES}",
-        )
     if req.node_cloud_resample_mode is not None and req.node_cloud_resample_mode not in NODE_CLOUD_RESAMPLE_MODE_CHOICES:
         raise HTTPException(
             status_code=400,
@@ -928,8 +918,6 @@ def set_controls(req: ControlsRequest) -> dict:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
             world.fault_deformation_mode = req.fault_deformation_mode
-        if req.gap_fill_algorithm is not None:
-            world.gap_fill_algorithm = req.gap_fill_algorithm
         if req.node_cloud_resample_mode is not None:
             world.node_cloud_resample_mode = req.node_cloud_resample_mode
         if req.debug_diagnostics is not None:
@@ -945,7 +933,6 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
-        "gap_fill_algorithm": world.gap_fill_algorithm,
         "node_cloud_resample_mode": world.node_cloud_resample_mode,
         "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},
@@ -954,7 +941,7 @@ def set_controls(req: ControlsRequest) -> dict:
 
 @app.get("/world/corner_notch_log")
 def corner_notch_log() -> dict:
-    """The verbose, structured decision log for `LithospherePlate._fill_corner_notch` (see
+    """The verbose, structured decision log for `LithospherePlate._fill_corner_notch_frontier` (see
     `World.corner_notch_log` / `World.debug_diagnostics`, toggled via `POST /world/controls`)
     -- empty unless `debug_diagnostics` is on, in which case one entry per plate per step
     records whether/why the notch-filler added points (`outcome`: `no_neighbours`,
