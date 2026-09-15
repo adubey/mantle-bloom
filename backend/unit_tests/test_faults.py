@@ -5,6 +5,7 @@ from app.elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
     ELEV_CHANGE_FAULT_REVERSE,
     ELEV_CHANGE_FAULT_STRIKE_SLIP,
+    PLANET_RADIUS_KM,
     ElevationLine,
 )
 from app.faults import (
@@ -249,7 +250,10 @@ def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_tr
     # ~125 km node spacing rarely puts a second node within reach of a short hand-placed
     # trace) gives predictable node positions to assert against.
     phis = np.array([-0.02, -0.01, 0.0, 0.01, 0.02])
-    thetas = np.linspace(-0.05, 0.05, 21)
+    # Fine enough that the marker column below (picked as a *fraction* of MAX_FAULT_REACH_KM,
+    # not a hardcoded distance -- see that comment) lands close to its intended offset
+    # regardless of how that reach constant gets retuned.
+    thetas = np.linspace(-0.05, 0.05, 101)
     rng = np.random.default_rng(0)
     lines = [
         ElevationLine(phi=float(phi), theta=thetas.copy(), elevation=rng.uniform(100.0, 200.0, size=len(thetas)))
@@ -258,10 +262,18 @@ def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_tr
     plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
     own_points = plate.all_points_and_elevation()[0]
 
-    marker_col = int(np.argmin(np.abs(thetas - (-0.005))))  # ~32 km to one side of the trace
+    # Marker sits 55% of the way out to MAX_FAULT_REACH_KM (reach_scale == 1.0 in "boundary"
+    # mode) -- the taper this gives, combined with this fault's SLIP_RATE_MAX_M_PER_MYR over
+    # 10 Myr, lands the along-strike shift just inside one phi-row's spacing (0.01 rad) below,
+    # which is what makes the "one row over" assertions below hold. Expressed as a fraction of
+    # the reach constant (not a hardcoded km distance) so this keeps working if that constant
+    # is retuned -- verified to hold for taper in ~(0.32, 0.53), i.e. this fraction anywhere in
+    # ~(0.47, 0.68).
+    marker_theta = -0.55 * faults.MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
+    marker_col = int(np.argmin(np.abs(thetas - marker_theta)))
     marker_idx = 2 * len(thetas) + marker_col  # row phi=0.0
     neighbour_idx = 0 * len(thetas) + marker_col  # row phi=-0.02, same theta column
-    opposite_idx = 2 * len(thetas) + int(np.argmin(np.abs(thetas - 0.005)))  # other side of the trace
+    opposite_idx = 2 * len(thetas) + int(np.argmin(np.abs(thetas - (-marker_theta))))  # other side of the trace
 
     # Trace runs along phi at theta=0, so its along-strike tangent points toward +/-phi.
     trace_theta = 0.0

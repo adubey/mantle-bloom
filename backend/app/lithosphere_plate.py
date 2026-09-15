@@ -387,23 +387,32 @@ def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
 
 # The collision-uplift *reach* knob (World.collision_uplift_reach_multiplier) dilates the
 # contested band feeding the orogenic thickening by this many physical km per unit of the
-# knob (so reach 3x -> +600 km each side of every contested stretch) -- linear in the knob,
+# knob (so reach 3x -> +1050 km each side of every contested stretch) -- linear in the knob,
 # not "extra beyond 1.0": at the knob's own untuned value (1.0) this is already a real
-# near-field belt (~200 km, a real orogen's crumple-zone width -- the Himalaya spans ~500 km),
-# not zero, so the near-field ring is part of the model's own baseline collision-uplift
-# behaviour, not something that only exists once a user raises this knob above default (see
-# GitHub issue #120, "Land fraction slowly declines" -- measured, this also modestly slows the
-# land-fraction decline in its own right, since more of a collision's crust ends up thickened
-# rather than left for erosion to plane down untouched).
+# near-field belt (~350 km, a real orogen's crumple-zone width), not zero, so the near-field
+# ring is part of the model's own baseline collision-uplift behaviour, not something that
+# only exists once a user raises this knob above default (see GitHub issue #120, "Land
+# fraction slowly declines" -- measured, this also modestly slows the land-fraction decline
+# in its own right, since more of a collision's crust ends up thickened rather than left for
+# erosion to plane down untouched).
+#
+# 2026-09-14 (GitHub issue #146, "Mountain ranges are too thin"): raised 200 -> 350 km. The
+# real-world target is the topographic belt itself, not the full India-Asia far-field
+# deformation zone (that's the separate FAR_FIELD_INNER/OUTER_KM band below, already 300-
+# 1000 km): the Himalaya proper (Main Frontal Thrust to the Indus-Tsangpo suture) runs
+# ~150-350 km depending on strike segment, widening toward the Pakistan/Nanga Parbat and
+# Arunachal syntaxes; the Andes run ~200-900 km along their length. 350 km sits at the wide
+# end of the Himalaya range and mid-pack for the Andes, plus this ring is additive on top of
+# the (much narrower) geometric contested band itself.
 #
 # Expressed in km, not a flat node count: `_dilate_1d` still operates on node indices (there
 # is no cheaper way to widen a per-line band), but the index count converted to is divided by
 # this step's *actual* line spacing (`spacing_rad`, which shrinks as `world.node_density`
-# rises) so the belt's physical width stays ~200 km regardless of render/simulation
+# rises) so the belt's physical width stays ~350 km regardless of render/simulation
 # resolution -- a flat node count would otherwise make mountains visibly narrower at higher
 # node_density (confirmed: at density=4 a flat 2-node ring is only ~125 km, well under the
 # real-world width it's meant to model).
-COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT = 200.0
+COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT = 350.0
 # Near-field (dilated-but-not-contested) nodes thicken at this fraction of the contested
 # rate -- a collision belt's deformation fades outward from the suture, it doesn't step.
 COLLISION_REACH_NEAR_FIELD_FACTOR = 0.4

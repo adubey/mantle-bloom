@@ -199,7 +199,12 @@ _FAULT_SYSTEM_SEED_TAG = 7332
 # Relief (per Myr, at the trace, tapering linearly to zero at MAX_FAULT_REACH_KM). Kept well
 # below the boundary rates in plates.py (CONVERGENT_MOUNTAIN_RATE_M_PER_MYR = 800) so this
 # additive layer doesn't disturb long-run hypsometry tuning.
-MAX_FAULT_REACH_KM = 50.0
+# 2026-09-14 (GitHub issue #146, "Mountain ranges are too thin"): raised 50 -> 90 km. Real
+# orogenic belts run a few hundred km wide (Himalaya proper, Main Frontal Thrust to the
+# Indus-Tsangpo suture, is ~150-350 km depending on strike segment; the Andes run
+# ~200-900 km) -- a lone fault's own taper at 50 km was an order of magnitude tighter than
+# that even before FAULT_RELIEF_MODE_REACH_SCALE widens it further in fault/both mode.
+MAX_FAULT_REACH_KM = 90.0
 REVERSE_UPLIFT_M_PER_MYR = 220.0
 NORMAL_THROW_M_PER_MYR = 180.0  # hanging-wall down
 NORMAL_SHOULDER_UPLIFT_M_PER_MYR = 55.0  # footwall up
@@ -262,12 +267,22 @@ FAULT_DEFORMATION_MODES = ("boundary", "fault", "both")
 # by fault_influence(): 1.0 within FAULT_DEFORM_REACH_KM of an active fault trace, tapering to
 # FAULT_DEFORM_FLOOR far from one (never 0 -- a contested zone with no fault yet still
 # deforms while Piece-1 spawning fills it in). Faults spawn boundary-hugging (SPAWN_PLACE_*),
-# so a converging edge collects fault families along it within a step or two: the reach is
-# kept tight and the floor low so the orogen reads as a *segmented* belt tracking those fault
-# traces -- ridges where the fault families are, saddles in the gaps -- rather than one
-# continuous polygon-edge swell.
-FAULT_DEFORM_REACH_KM = 80.0
-FAULT_DEFORM_FLOOR = 0.06
+# so a converging edge collects fault families along it within a step or two: the reach and
+# floor set how *segmented* the orogen reads -- ridges where the fault families are, saddles
+# in the gaps -- vs. one continuous polygon-edge swell.
+# 2026-09-14 (GitHub issue #146, "Mountain ranges are too thin"): reach raised 80 -> 220 km
+# and floor raised 0.06 -> 0.12. The original 80 km was well under even the narrowest real
+# orogen belts (Himalaya proper is ~150-350 km MFT-to-suture depending on strike segment,
+# widening to ~350 km in the Pakistan syntaxis; the Andes run ~200-900 km) and, per the
+# fault_deformation_mode default flipping boundary -> fault on 2026-09-03, is the most
+# likely source of a "thin/needle-like" regression the issue reports: every convergent
+# node beyond one fault-width of an actual trace collapsed toward FAULT_DEFORM_FLOOR, and
+# faults themselves are individually short (LENGTH_MAX_KM = 200), so the belt read as
+# isolated spikes rather than a continuous massif. The new values keep genuine segmentation
+# (still tapers, still never fully flat) while landing the belt's width in the real-world
+# range instead of an order of magnitude under it.
+FAULT_DEFORM_REACH_KM = 220.0
+FAULT_DEFORM_FLOOR = 0.12
 # In "fault"/"both" mode faults.py's own relief layer widens (REACH_SCALE) to spread the
 # now-concentrated deformation over a plausible belt width. RATE_SCALE stays at 1.0: with
 # faults hugging the boundary, fault_influence() barely gates the bands right at the contact
