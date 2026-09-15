@@ -585,6 +585,77 @@ Test: [`unit_tests/test_stranded_basins.py`](../backend/unit_tests/test_stranded
 
 ---
 
+## Lake-hierarchy depth / catchment-size -- `app.lake_hierarchy_diagnostics`
+
+[GitHub issue #117](https://github.com/adubey/mantle-bloom/issues/117) measured seed
+23097282 @ 79.2 My producing a `lakes.build_lake_hierarchy` merge forest whose deepest
+subtree was ~3,500 levels -- thousands of tiny sub-resolution catchments each spilling into
+the next rather than siltation collapsing them into a handful of real basins. [Issue
+#143](https://github.com/adubey/mantle-bloom/issues/143) fixed one of the two literal "never
+holds water, gets nothing" silt gaps behind that (a chronically-frozen catchment), but its
+own follow-up ([issue #144](https://github.com/adubey/mantle-bloom/issues/144)) found no
+existing tool actually measures catchment-size or hierarchy-depth distribution -- so tuning
+`lakes.SILT_ACCUMULATION_COEFFICIENT`, or deciding whether a depression pre-fill pass is
+warranted, would be guesswork without this. This module reports the two numbers neither
+`plate_diagnostics` nor `stranded_basins` do: the longest root-to-leaf chain in the merge
+forest (the "~3,500 levels" figure), and a histogram of leaf-catchment node counts.
+
+Same shape as the other two offline dumps -- reads `world.hydrology_cache.lake_forest`, never
+starts the server:
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m app.lake_hierarchy_diagnostics ~/Downloads/mantle-bloom-seed888151728-85000000y.mbworld
+python -m app.lake_hierarchy_diagnostics <save.mbworld> --json
+```
+
+```
+mantle-bloom lake-hierarchy diagnostics
+  seed:          888151728
+  elapsed:       5,000,000 yr  (~50 steps @ 100 ky)
+  node_density:  4.0
+  roots:         68
+  leaf catchments: 82
+  hierarchy depth: max 4   mean 1.21
+
+leaf catchment size (node count)
+         1-1: 0
+         2-5: 6
+        6-20: 15
+       21-100: 39
+      101-500: 20
+        501+: 2
+
+root-to-leaf hierarchy depth (chain length)
+         1-1: 60
+         2-5: 8
+        6-20: 0
+       21-100: 0
+      101-500: 0
+      501-1000: 0
+       1001+: 0
+```
+
+- **`hierarchy depth`** -- `max` is the number to compare against issue #117's ~3,500; `mean`
+  is over roots only (a forest of mostly-unmerged 1-level leaves still reports mean close to
+  1 even if one long cascade exists, so read `max` first).
+- **Leaf catchment size vs. hierarchy depth histograms** -- leaf size is a statement about
+  how many genuinely tiny sub-resolution depressions exist right now; depth is a statement
+  about how long the spill *chains* between them run. A world could have many tiny leaves
+  that all merge shallowly (low depth, e.g. a wide flat plain with lots of small independent
+  pits), or few leaves chained very deep (a long river-like cascade of saddles) -- the two
+  numbers answer different questions about the same pathology.
+
+An empty/all-zero report is the healthy case -- most young or smooth worlds never build a
+deep cascade. The report needs a hydrology snapshot in the save (a world stepped at least
+once with climate on); a never-stepped world reports nothing, same convention as
+`stranded_basins`.
+
+Test: [`unit_tests/test_lake_hierarchy_diagnostics.py`](../backend/unit_tests/test_lake_hierarchy_diagnostics.py).
+
+---
+
 ## Event log
 
 The `events` list on `GET /world/summary` (the UI's event console) logs lake

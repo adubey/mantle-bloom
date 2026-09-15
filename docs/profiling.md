@@ -1010,3 +1010,215 @@ committed (same convention every phase-0-style measurement in this document has 
 numbers above are reproducible via `backend/stress_tests/test_healpix_resample.py`'s existing
 `test_hydrology_sample_is_ocean_healpix_and_kdtree_agree_with_coastal_band_measured` plus the
 `_OCEAN_NSIDE_OVERSAMPLE` sweep described above.
+
+## Issue #147 ("World stepping is slow"): full re-profile at 100 kyr/step, steps/frame=10 (2026-09-14)
+
+**Measured:** commit `9cfb1af` (branch `feat/lake-hierarchy-diagnostics`, even with `main`;
+two untracked/uncommitted files -- `backend/app/lake_hierarchy_diagnostics.py` and its test --
+are unrelated in-progress work, not imported by anything in `app/__init__.py` or `main.py`, so
+they run zero code on this path and don't affect the numbers below). A third, different box
+from either prior section: `sysctl machdep.cpu.brand_string` reports **Apple A18 Pro**, 6
+physical/6 logical cores, Darwin 25.6.0, Python 3.14.6, same backend `.venv`. Per-step and
+per-render wall-clock is **not** comparable across boxes as an absolute number (this box is
+markedly slower than either the 6-core-Apple-Silicon or 10-core-M4 boxes the sections above
+used -- see the headline), but the internal breakdown -- which function eats which fraction of
+a step -- is what this section leans on, same caveat the 2026-09-13 section already stated for
+its own cross-box comparison.
+
+Issue #147 itself is a single unadorned sentence ("World stepping is slow") with no repro
+details attached, so this profile drives the exact settings requested for the redo rather than
+inferring them: **Map View = "Elevation & Biome"**, **Projection = "Eckert IV"**,
+**Resolution = "Standard"**, **step = 100,000 years**, **steps/frame = 10**.
+
+**Inputs:** frontend source confirms the internal names/values these map to (`frontend/src/App.tsx`,
+`frontend/src/AnimationModal.tsx`, `frontend/src/api.ts`) -- "Elevation & Biome" is `view=
+"combined"` (`App.tsx:1166`, also the app's own default view); "Eckert IV" is `projection=
+"eckert4"` (`App.tsx:1199`, also the default); "Standard" is the Detail dropdown's default
+(`DETAIL_CHOICES`, `App.tsx:72-78`), `node_density=climate_density=4.0` (backend defaults,
+`elevation_lines.DEFAULT_NODE_DENSITY`/`climate.DEFAULT_CLIMATE_DENSITY`); `step_years=100_000`
+is `STEP_YEARS_OPTIONS[1]`, the frontend's own default (`App.tsx:51,279`); `steps_per_frame=10`
+is `STEPS_PER_FRAME_OPTIONS[1]` in the Animation modal (`AnimationModal.tsx:10-11`, default is
+1 -- so this is a deliberate, non-default choice the issue's redo asked for). Render dimensions
+are the fixed `RENDER_WIDTH/RENDER_HEIGHT` constants (2200x1222, `App.tsx:46-50`), unaffected
+by Detail. `fluid_density=2.0` (`DEFAULT_FLUID_DETAIL`) and `wind_model="diagnostic"`
+(`World.wind_model`'s own default, `world.py:442` -- confirmed still true, `_advance_fluid_
+dynamics` still a no-op unless `"cfd"`) are both untouched by anything this profile's settings
+name. `World.node_cloud_resample_mode` is still `"kdtree"` (issue #133's default-flip is still
+undecided, see above). `seed=0`: **130,587 nodes, 19 plates** -- identical to every prior
+section's world (same seed/density), so node count isn't a confound here.
+
+**Method:** a throwaway driver script (not committed, same convention every spike in this
+document follows), three passes:
+1. Two back-to-back real `render_image.stream_animation_mp4` calls (the same call `/world/
+   animate` makes) at `num_frames=4`, i.e. 3 real "advance" frames of `steps_per_frame=10`
+   real `step_world` calls each, for genuine end-to-end wall-clock at the requested cadence.
+2. Isolated, unprofiled single-call timing (`step_world`/`render_png` called directly, no
+   `cProfile` overhead) to get a clean per-call baseline.
+3. A warmed 6-step / 4-render run under `cProfile`, `pstats` sorted by cumulative and by
+   internal (`tottime`) time, for the hotspot breakdown.
+
+### Headline: ~6.4s/step, ~4.1s/render on this box -- and steps/frame=10 makes rendering nearly disappear from the animation budget
+
+| | |
+| --- | --- |
+| `step_world` (isolated, unprofiled, 3 calls) | **5.98s, 6.59s, 6.74s** -- mean 6.44s |
+| `render_png` (isolated, unprofiled, warm, 2 calls) | **4.24s, 3.97s** -- mean 4.10s |
+| First render (cold, right after `generate_world`) | 6.02s |
+| One animation "frame" at `steps_per_frame=10` (10 steps + 1 render) | **60.0-72.8s** across 6 measured frames (two back-to-back 4-frame runs), mean **66.8s** |
+| Full end-to-end run, `num_frames=4` (3 advance-frames) | run A: 221.5s wall (55.4s/frame incl. the cheap frame-0 render); run B: 188.8s wall (47.2s/frame) |
+
+**The one number that actually answers "is world stepping slow":** at these exact settings, a
+60-frame animation (the same frame count every prior section in this doc used for its own
+end-to-end headline) advances `(60-1) x 10 x 100,000 = 59,000,000` simulated years and costs
+roughly `59 x 66.8s ~= 3,940s`, **about 66 minutes of wall clock**, plus the first frame. That's
+the concrete, reproducible shape of issue #147's one-line complaint.
+
+**Why rendering barely matters at this specific cadence.** Every prior section in this document
+profiled `steps_per_frame=1` (a fresh animation's own default), where rendering ran every
+single step and made up ~40-60% of frame time (see the very first section's own "~40%
+rendering, ~60% simulation step" split). At `steps_per_frame=10`, one render is amortized over
+ten real steps: render is ~4.1s of a ~66.8s frame, **~6%** -- stepping is essentially the whole
+budget. Concretely, this means every render-side optimization landed since the last profile
+(the shared/cached k-d tree, `workers=` parallelism, the whole HEALPix resample migration) is
+real and correct, but **invisible to a user animating at steps/frame=10** -- it was already a
+minority of frame cost at steps/frame=1, and amortizing it over 10x more steps makes it round
+to noise. Anyone picking up issue #147 with these settings in mind should spend zero further
+effort on `render_image.py` and all of it on `step_world`.
+
+### Simulation step -- ~6.4s/step unprofiled, ~7.1s/step under `cProfile` (6-step warmed run, 42.87s total)
+
+| Hotspot | Cost/step (cumulative) | Note |
+| --- | --- | --- |
+| `lithosphere_plate.deform` (all 19 plates) | **~2.31s** (13.878s/6 steps) | own time only ~0.25s/step; children are `torque.gather_boundary_force_inputs` (~0.90s/step, 228 calls/6steps -- fix 4's per-plate cached-tree pattern still holding up, its own `tottime` stays low), `_grow_or_shrink_line_for_deform` (~0.42s/step, 11,149 calls/6steps), `_fill_corner_notch_frontier` (~0.41s/step, 102 calls/6steps -- unchanged from the 2026-09-13 section's own "~17/step" figure, so this call site's cost hasn't drifted) |
+| `erosion.apply_erosion` | **~1.70s** (10.223s/6) | `climate.compute_climate` ~0.77s/step, `hydrology.compute_hydrology` ~0.36s/step, `lakes.build_lake_hierarchy` ~0.13s/step, plus `compute_slope`/erosion's own per-node work not separately broken out this pass |
+| `faults.update_faults` | **~1.16s** (6.972s/6) | `generate_boundary_faults` ~0.39s/step; `_apply_plate_fault_relief` ~0.26s/step; `fault_tangent_components` (own time, not a child of the two lines above) ~0.23s/step over ~158 calls/step; `_maybe_spawn_faults` ~0.19s/step; `_generate_earthquakes` ~0.19s/step; **`_apply_plate_fault_shear` ~0.13s/step (114 calls/6steps = 19/step, one per plate)** -- see "new since last profile" below, this function didn't exist at the last profile |
+| `eustasy.update_sea_level` | **~0.77s** (4.642s/6) | new hotspot, not broken down at either prior profile -- see below |
+| `lithosphere_plate.shift` + `torque.shift_plate` | **~0.88s** (5.265s/6) | unchanged in shape from prior profiles |
+| `plates.compute_node_overlap` (`merge_split.py`) | ~0.07s/step | still its own fresh `cKDTree` every step, per the 2026-09-13 section's own item-1 writeup (deliberately excluded from that fix on correctness-timing grounds, not forgotten) |
+| gap-fill (`gap_fill_frontier.fill_gap_by_growing_plates`) | ~0.24s/step *amortized*, but only runs 1 step in every 4 (`gaps.GAP_FILL_INTERVAL_STEPS=4`) | a real gap-fill step costs ~1.45s more than a plain one, not spread evenly |
+| continental re-lattice (`merge_split.py`, `RELATTICE_INTERVAL_STEPS=20`) | not captured this pass | runs only 1 step in 20; a 6-step profiling window can't land on it -- flagged, not measured, see caveats below |
+| `{method 'join' of '_thread._ThreadHandle'}` | 21.37s cumulative / 9,000 calls across the 6 steps | **not real serial cost** -- the same "overlapped `workers=-1` scipy thread-pool joins" artifact the 2026-09-13 section already flagged and excluded from its own headline; ~1,500 joins/step matches how many parallel k-d tree queries this codebase now runs per step |
+
+### New since either prior profile: two real hotspots this specific pass is the first to measure
+
+**1. `eustasy._seeded_connected_mask`'s per-step bisection -- ~0.77s/step, ~11-12% of total step time.**
+`eustasy.update_sea_level` -> `_solve_sea_level_connected` bisects for the sea level matching
+the world's conserved water budget (`docs/profiling.md` never profiled this before; the
+2026-09-13 section's own text calls the underlying connectivity fix "landed after" that
+profile, but didn't break it down). The bisection ran **~28-29 iterations/step** in this
+profiled run (171 calls / 6 steps), well under its `_SOLVE_MAX_ITERS=80` cap but still a lot:
+every iteration calls `_ocean_connected_mask` -> `_seeded_connected_mask`, which builds a fresh
+`scipy.sparse.coo_matrix` over the below-candidate-sea-level edges of the full ~131K-node,
+k=9 neighbour graph and runs `scipy.sparse.csgraph.connected_components` on it --
+**one full sparse-graph connectivity solve per bisection iteration, every step.**
+`_seeded_connected_mask`'s own `tottime` (excluding the `coo_matrix`/`connected_components`
+machinery it calls) is already 0.213s/step on its own; the `coo_tocsr`/`csr_sort_indices`/
+`csr_tocsc` scipy internals visible lower in the `tottime` table (0.91-1.09s combined across
+196 calls/6 steps) are the rest. This is architecturally sound -- bisection is the correct way
+to invert a monotonic function, and the docstring's own math argument for why "seeded" rather
+than "largest wins" connectivity is required for correctness is solid -- but nothing here caches
+or amortizes across iterations: each of the ~29 iterations rebuilds the sparse graph from
+scratch against the same fixed neighbour topology, only the candidate sea level (hence which
+edges are "both endpoints below the candidate") changes. A candidate fix in the same spirit as
+this doc's own greedy-union-find or watershed precedents (fixes 7/section-"11 above"): thread
+the graph structure (`rows`/`cols`, i.e. `neighbor_idx` unrolled) through once and reuse it
+across bisection iterations, only recomputing which edges currently qualify as "both endpoints
+below `mid`" and re-running `connected_components` on the filtered subset -- or replace the
+per-iteration `scipy.sparse.csgraph` round-trip with a numba union-find over the same
+edge list (same shape of win the basin-spill kernel already proved out). Not attempted here --
+this pass is measurement only.
+
+**2. `faults._apply_plate_fault_shear` -- ~0.13s/step, new since the 2026-09-13 profile.**
+Landed in the most recent commit on this branch (`9cfb1af`, "shear the node field across
+active strike-slip faults," issue #125 item 2) -- entirely absent from every prior profiling
+section because the code didn't exist yet. Builds one `cKDTree(own_points)` per plate per step
+(`faults.py:1336`) immediately followed by `_apply_plate_fault_relief` building a **second,
+separate** `cKDTree` over the exact same `own_points` array one function call later
+(`faults.py:1406`) -- the two functions are called back-to-back from the same `update_faults`
+loop (`for plate in world.plates: _apply_plate_fault_shear(...); _apply_plate_fault_relief
+(...)`, `faults.py:679-681`) and neither reuses the other's tree. This is the identical
+redundant-construction shape the 2026-09-13 section's own "New since the last profile:
+redundant per-step tree construction" finding described for `climate`/`hydrology`/`erosion`/
+`plates`/`faults` (that finding predates this specific pair, which is new code) -- same fix
+shape would apply: build one `cKDTree(own_points)` per plate per step and pass it to both
+functions, since nothing between the two calls changes `own_points`. Measured cost of the
+redundant half: a `~7,000`-node-per-plate tree build is cheap in isolation (single-digit ms,
+per the 2026-09-13 section's own per-tree numbers), so this alone is not the ~0.13s/step figure
+above -- most of `_apply_plate_fault_shear`'s own cost is the per-fault `query_ball_point` +
+brute-force nearest-trace-point distance matrix + the `tree.query(upstream, workers=...)`
+semi-Lagrangian sample, all real work its docstring's own algorithm requires. Flagged for
+completeness, not a large win on its own.
+
+**Aside -- `fault_tangent_components` re-scans every active fault on every call.**
+Not new this profile (the function predates this section), but its `tottime` (0.953s across
+948 calls, i.e. ~0.16ms/call, ~0.23s/step total, own time only) shows up prominently enough to
+flag: every call rebuilds `[f for f in _all_faults(world) if f.plate_id == plate.plate_id and
+f.active and len(f.local_phi) >= 2]` (`faults.py:1266`) from scratch, an O(total active faults)
+Python-level filter, called from a per-node rift-stretch hot path in `lithosphere_plate.py`
+(~158 calls/step at this world's fault count). A per-plate cached "active strike-slip faults"
+list, invalidated the same way `update_faults` already invalidates its own per-step state,
+would turn this into an O(1) lookup per call -- small (a few tens of ms/step at this fault
+count), but free once measured, and would grow if a world accumulates many more faults over a
+longer run than this profile's 6 steps covered.
+
+### Rendering -- ~2.9-4.1s/frame (small in absolute terms, and now a small fraction of total frame time at this cadence)
+
+| Hotspot | Cost/frame | Note |
+| --- | --- | --- |
+| `biomes.smooth_biome_field_blend` -> `classify_biomes_soft` -> `classify_koppen_soft` -> `_soft_lt` | **~1.73s** (6.913s/4 calls, profiled) | the single largest render-path cost measured this pass -- and new information, not a regression: "blend biome boundaries instead of snapping hard between classes" landed 2026-09-04 (commit `aebb76c`), *after* the 2026-09-01 profile (which measured the old hard-classify `biomes.smooth_biome_field` at ~80ms inside `compute_climate`, a different, smaller call) and the 2026-09-13 profile never re-ran a full render hotspot breakdown (it was scoped to k-d tree construction/query only). This is the first profiling pass to actually measure the soft-blend feature's render cost, and it's substantial: `_soft_lt`'s own `tottime` alone is 2.220s across 144 calls (36/frame) |
+| `render_image._biome_fields` (node-cloud resample, `"kdtree"` mode) | ~0.42s (1.695s/4) | down from the 2026-09-01 profile's ~0.53-1.30s range -- the shared/cached-tree and `workers=` fixes (items 6, and 2026-09-13's phase 1-2 HEALPix work sitting alongside it on the `"kdtree"` path too) are holding up |
+| PNG encode (`_encode_image`) | ~0.11s (0.455s/4) | unchanged in shape from prior profiles |
+| `_draw_rivers` | ~0.11s (0.440s/4) | not separately profiled before |
+| Everything else (coastline, legend, blur, `_fill_rects`) | small, each well under 0.1s/frame | consistent with fixes 2/3/6 above still holding |
+
+Net: rendering's internal shape has shifted since the last full render breakdown (2026-09-01)
+-- the k-d tree query that used to dominate is now a minor cost, and biome soft-blending (a
+feature added afterward, for visual quality, not measured until now) has taken its place as
+the largest single render-path line item. In absolute terms this is still only ~4.1s of a
+~66.8s frame at this profile's `steps_per_frame=10`, so it's flagged for completeness rather
+than urgency -- see the headline above for why rendering isn't where effort should go for this
+specific issue.
+
+### Caveats on this pass
+
+- **Two periodic maintenance passes weren't captured.** `merge_split.py`'s continental
+  re-lattice (`RELATTICE_INTERVAL_STEPS=20`) and, within the window this profile did capture,
+  gap-fill (`GAP_FILL_INTERVAL_STEPS=4`) both run on a fixed step cadence rather than every
+  step. The 6-step `cProfile` window landed on one gap-fill step (contributing the ~1.45s
+  `fill_gap_by_growing_plates` line above) but no re-lattice step; the end-to-end 30-step
+  `stream_animation_mp4` runs above did cross a `steps_taken % 20 == 0` boundary (twice, once
+  per run) without an obvious per-frame spike in the raw per-frame timings, but re-lattice's
+  own cost was never isolated the way gap-fill's was here -- worth a dedicated, longer profiled
+  window (>=20 steps) if re-lattice cost specifically becomes a question.
+- **Box-to-box comparison is qualitative only.** This box's raw step/render times are roughly
+  2-2.7x the 2026-09-13 section's 10-core M4 numbers for the same settings-shape (step
+  2.9-3.1s there vs. ~6.4s here; render ~1.5s there vs. ~4.1s here) -- plausibly explained by
+  fewer cores (6 vs. 10) feeding every `workers=-1` parallel k-d tree query and general
+  per-core throughput, not by anything code-side, but this pass didn't control for that (no
+  same-box before/after available). Treat the hotspot *proportions* in the tables above as the
+  trustworthy output of this profile, not the absolute seconds, if comparing against either
+  prior section.
+- Uncommitted work on this branch (`lake_hierarchy_diagnostics.py` and its test) is confirmed
+  unreferenced by any import in `app/__init__.py`/`main.py`/`world.py`, so it contributes zero
+  cost to any number above.
+
+### Suggested next steps
+
+1. **`eustasy._seeded_connected_mask`'s per-bisection-iteration sparse-graph rebuild** is the
+   single largest *newly identified* hotspot (~0.77s/step, ~11-12% of total) with no cache or
+   amortization today -- the most promising target this pass surfaced. A numba union-find over
+   a once-built edge list (same shape as the basin-spill/wavefront-fill kernels this doc's
+   history already proved out) is the natural next design, but wasn't attempted here.
+2. **Share one `cKDTree(own_points)` between `_apply_plate_fault_shear` and
+   `_apply_plate_fault_relief`** -- small (~single-digit ms/step) but mechanical and free, same
+   proof-of-pattern as the 2026-09-13 section's own item 1.
+3. **Cache `fault_tangent_components`'s per-plate active-strike-slip-fault list** instead of
+   re-filtering `_all_faults(world)` on every one of its ~158 calls/step -- small today, grows
+   with fault count over a longer run.
+4. Re-run this same profile with a >=20-step warmed `cProfile` window specifically to isolate
+   continental re-lattice's own per-occurrence cost, which this pass could only flag, not
+   measure.
+5. Rendering is not a target for this specific issue/settings combination -- see the headline's
+   "why rendering barely matters" note. Any future render-path work (e.g. investigating
+   `_soft_lt`'s cost if biome-view-only performance becomes its own issue) should be scoped and
+   profiled separately from stepping.
