@@ -56,9 +56,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-
-from scipy.sparse import coo_matrix
-from scipy.sparse.csgraph import connected_components
+from numba import njit
 
 from . import hydrology
 
@@ -101,6 +99,53 @@ def total_water_column_m(elevations: np.ndarray, sea_level_m: float) -> float:
     return float(np.sum(np.clip(sea_level_m - elevations, 0.0, None)))
 
 
+@njit(cache=True)
+def _uf_find(parent: np.ndarray, x: int) -> int:
+    """Iterative union-find `find` with path halving -- amortized near-O(1) once `parent`
+    settles, and (unlike plain recursion) has no call-stack depth to blow on a long chain."""
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+@njit(cache=True)
+def _seeded_connected_mask_kernel(neighbor_idx: np.ndarray, below: np.ndarray, seed_below: np.ndarray) -> np.ndarray:
+    """Union-find core of `_seeded_connected_mask`: unions every below-`h` node with its
+    below-`h` neighbors, then marks a node `True` iff it's below `h` *and* its component's root
+    is reachable from some `seed_below` node. A `neighbor_idx` entry of -1 (no such neighbor --
+    the padding a fixed-width neighbor table uses when a node has fewer than `k` real ones)
+    is simply skipped, never treated as a real edge.
+
+    Compiled once per process (`cache=True` persists the machine code to disk) and then called
+    fresh every bisection iteration at native speed with no Python-level array allocation at
+    all beyond the boolean output -- see `_seeded_connected_mask`'s own docstring for why that
+    replaced a per-iteration `scipy.sparse` rebuild."""
+    n = below.shape[0]
+    k = neighbor_idx.shape[1]
+    parent = np.arange(n)
+    for i in range(n):
+        if not below[i]:
+            continue
+        for j in range(k):
+            nb = neighbor_idx[i, j]
+            if nb < 0 or not below[nb]:
+                continue
+            ri = _uf_find(parent, i)
+            rj = _uf_find(parent, nb)
+            if ri != rj:
+                parent[ri] = rj
+    seed_roots = np.zeros(n, dtype=np.bool_)
+    for i in range(n):
+        if seed_below[i]:
+            seed_roots[_uf_find(parent, i)] = True
+    result = np.zeros(n, dtype=np.bool_)
+    for i in range(n):
+        if below[i] and seed_roots[_uf_find(parent, i)]:
+            result[i] = True
+    return result
+
+
 def _seeded_connected_mask(
     elevations: np.ndarray, sea_level_m: float, neighbor_idx: np.ndarray, seed: np.ndarray
 ) -> np.ndarray:
@@ -128,7 +173,18 @@ def _seeded_connected_mask(
 
     Returns all-`False` when no seed node is below `h` at all (the seed's own component hasn't
     reached down this far at this candidate) -- correctly zero ocean volume for a candidate
-    this deep, not a mislabeled non-ocean pit standing in for it."""
+    this deep, not a mislabeled non-ocean pit standing in for it.
+
+    Implementation (issue #147 suggestion #1): `_seeded_connected_mask_kernel`'s numba
+    union-find, not a fresh `scipy.sparse.coo_matrix`/`connected_components` graph built from
+    scratch on every call. Profiling `_solve_sea_level_connected`'s bisection (called once per
+    world step, ~40-80 iterations to converge) found that per-call rebuild -- re-deriving the
+    same invariant `neighbor_idx` edge list as new Python/NumPy objects, then a fresh
+    `connected_components` pass over the *entire* n-node graph -- was the single largest newly
+    identified stepping hotspot, with no cache or amortization. The union-find kernel instead
+    compiles once (`cache=True`) and does the whole below-`h` union, root lookup, and seed-
+    membership test as one pass over plain NumPy arrays, with no intermediate sparse-matrix
+    object at all."""
     below = elevations <= sea_level_m
     n = len(elevations)
     if n == 0 or not below.any():
@@ -136,14 +192,7 @@ def _seeded_connected_mask(
     seed_below = seed & below
     if not seed_below.any():
         return np.zeros(n, dtype=bool)
-    k = neighbor_idx.shape[1]
-    rows = np.repeat(np.arange(n), k)
-    cols = neighbor_idx.ravel()
-    keep = below[rows] & below[cols]
-    graph = coo_matrix((np.ones(int(np.count_nonzero(keep))), (rows[keep], cols[keep])), shape=(n, n))
-    _, labels = connected_components(graph, directed=False)
-    ocean_labels = np.unique(labels[seed_below])
-    return below & np.isin(labels, ocean_labels)
+    return _seeded_connected_mask_kernel(neighbor_idx, below, seed_below)
 
 
 def _ocean_connected_mask(world: "World", elevations: np.ndarray, sea_level_m: float) -> np.ndarray:
