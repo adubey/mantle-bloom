@@ -188,7 +188,27 @@ DEPOSITION_FRACTION = 0.15
 # the erosive multiplier at 2x was leaving thick ice under-erosive relative to thin ice -- the
 # higher cap lets genuinely deep, heavy ice keep scaling up over a wider depth range before
 # saturating.
-GLACIER_EROSION_COEFFICIENT = 0.09
+#
+# GLACIER_EROSION_COEFFICIENT re-derived (see GitHub issue #145's investigation) against a
+# published global compilation of measured erosion rates (Nature Geoscience 2025's "Drivers of
+# global glacial erosion rates", building on Koppes & Montgomery 2009): glacial erosion's
+# log-mean rate (~0.51 mm/yr, 99% of glaciers between 0.02-2.68 mm/yr, alpine tidewater
+# glaciers -- the fastest-eroding type -- averaging ~2.2 mm/yr) sits within the *same order of
+# magnitude* as fluvial erosion measured specifically in actively uplifting mountain terrain
+# (1-10 mm/yr) -- not a full order of magnitude above it the way glacial-vs-*all*-rivers
+# (including ordinary lowland ones, log-mean ~0.067 mm/yr) misleadingly suggests. Since
+# RAIN_EROSION_COEFFICIENT above is itself calibrated for exactly that terrain (steep, wet,
+# actively uplifting), the fair comparison is glacier-vs-rain at matched reference conditions,
+# not glacier-vs-global-river-average -- so the coefficient is set equal to
+# RAIN_EROSION_COEFFICIENT (the same "put it in the same bucket as the thing it's being
+# compared to" precedent SEISMIC_EROSION_COEFFICIENT below already uses), rather than the
+# ~650,000x jump a naive "glacial is 10x fluvial" headline would have implied. At their
+# respective reference points (ice_factor=1, i.e. GLACIER_EROSION_REFERENCE_DEPTH_M of ice;
+# 1000 mm/yr precipitation) the two terms now erode at the same rate for a given slope, with
+# GLACIER_EROSION_MAX_FACTOR still letting genuinely thick ice (a real continental sheet) scale
+# up to 4x that before saturating -- the ceiling a modest valley glacier's ~100 m couldn't
+# plausibly reach.
+GLACIER_EROSION_COEFFICIENT = 6000.0
 GLACIER_EROSION_REFERENCE_DEPTH_M = 100.0
 GLACIER_EROSION_MAX_FACTOR = 4.0
 
