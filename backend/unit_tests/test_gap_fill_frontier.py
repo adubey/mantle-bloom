@@ -1,7 +1,6 @@
-"""gap_fill_frontier.fill_gap_by_growing_plates -- the "frontier" World.gap_fill_algorithm:
-grow the plate(s) adjacent to a gap into it node by node, extending an existing line where
-one's close enough or opening a new one where none is, instead of always spawning a new plate
-or always emitting brand-new lines."""
+"""gap_fill_frontier.fill_gap_by_growing_plates: grow the plate(s) adjacent to a gap into it
+node by node, extending an existing line where one's close enough or opening a new one where
+none is, instead of always spawning a new plate or always emitting brand-new lines."""
 
 import numpy as np
 

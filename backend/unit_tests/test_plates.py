@@ -938,7 +938,7 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
     """A continental plate whose node footprint has outrun its crustal volume -- most of its
     lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new
     *areal* crust this step: `_claim_adjacent_territory` (a claimed new row) and
-    `_fill_corner_notch` (a claimed sub-row notch) are both skipped, so it thins/drowns back
+    `_fill_corner_notch_frontier` (a claimed sub-row notch) are both skipped, so it thins/drowns back
     toward budget instead of tiling drowned margin outward forever. A plate at genuine
     continental thickness everywhere is within budget and both run normally.
 
@@ -981,7 +981,7 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
         plate = _continent(main_hc)
         world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
         called = {"claim": False, "notch": False}
-        orig_claim, orig_notch = LithospherePlate._claim_adjacent_territory, LithospherePlate._fill_corner_notch
+        orig_claim, orig_notch = LithospherePlate._claim_adjacent_territory, LithospherePlate._fill_corner_notch_frontier
 
         def spy_claim(self, *a, **k):
             called["claim"] = True
@@ -992,12 +992,12 @@ def test_lithosphere_continental_volume_budget_suppresses_growth():
             return orig_notch(self, *a, **k)
 
         LithospherePlate._claim_adjacent_territory = spy_claim
-        LithospherePlate._fill_corner_notch = spy_notch
+        LithospherePlate._fill_corner_notch_frontier = spy_notch
         try:
             plate.deform(world, [], years=200_000, max_distance=5 * spacing)
         finally:
             LithospherePlate._claim_adjacent_territory = orig_claim
-            LithospherePlate._fill_corner_notch = orig_notch
+            LithospherePlate._fill_corner_notch_frontier = orig_notch
         return called["claim"] or called["notch"]
 
     def _main_span_growth(main_hc: float) -> float:
@@ -1280,7 +1280,7 @@ def test_lithosphere_contested_leading_row_is_dropped_after_sustained_override()
         ]
 
     # Grid-aligned to `spacing` (a real generated plate's rows are always exactly one
-    # `spacing_rad` apart) -- not just arbitrary values -- so `_fill_corner_notch`'s own
+    # `spacing_rad` apart) -- not just arbitrary values -- so `_fill_corner_notch_frontier`'s own
     # local-lattice grid lines up with these rows exactly, matching a real plate's geometry and
     # avoiding a sub-spacing sliver between the continent's own hand-built rows that only this
     # synthetic setup would ever have room to insert a spurious intermediate row into.
@@ -1461,7 +1461,7 @@ def test_fill_corner_notch_logs_no_neighbours_outcome_when_diagnostics_on():
     plate = _lithosphere_polar_plate([0.0], np.linspace(-0.3, 0.3, 20))
     world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0, debug_diagnostics=True)
 
-    plate._fill_corner_notch(world, [], spacing, years=1_000_000)
+    plate._fill_corner_notch_frontier(world, [], spacing, years=1_000_000)
 
     assert len(world.corner_notch_log) == 1
     entry = world.corner_notch_log[0]
@@ -1479,16 +1479,16 @@ def test_fill_corner_notch_logs_nothing_when_diagnostics_off():
     world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
     assert world.debug_diagnostics is False
 
-    plate._fill_corner_notch(world, [], spacing, years=1_000_000)
+    plate._fill_corner_notch_frontier(world, [], spacing, years=1_000_000)
 
     assert world.corner_notch_log == []
 
 
 def test_fill_corner_notch_logs_a_real_call_during_ordinary_generation():
     """End-to-end: a real generated world's plates already tile the sphere with no gaps, so
-    every neighbouring pair's own `_fill_corner_notch` call should log a real, recognizable
-    outcome (most commonly `no_candidate_rows` -- nothing uncovered to claim) rather than
-    silently doing nothing."""
+    every neighbouring pair's own `_fill_corner_notch_frontier` call should log a real,
+    recognizable outcome (most commonly `no_candidate_rows` -- nothing uncovered to claim)
+    rather than silently doing nothing."""
     from app.world import World
 
     plates_list = generate_plates(seed=5, num_plates=6, node_density=1.0)
@@ -1497,7 +1497,7 @@ def test_fill_corner_notch_logs_a_real_call_during_ordinary_generation():
 
     plate = plates_list[0]
     neighbours = [p for p in plates_list if p.plate_id != plate.plate_id]
-    plate._fill_corner_notch(world, neighbours, spacing, years=1_000_000)
+    plate._fill_corner_notch_frontier(world, neighbours, spacing, years=1_000_000)
 
     # A stalled hop (hop_no_progress) is always followed by exactly one final outcome entry
     # (claimed/no_claim) summarizing the call as a whole -- so 1 or 2 entries, never 0.
@@ -1523,7 +1523,7 @@ def test_corner_notch_log_caps_length():
 
 def test_seed_and_erupt_new_nodes_stamps_node_created_years():
     """`_seed_and_erupt_new_nodes` is the one choke point every node-creation call site
-    (`_claim_adjacent_territory`, `_fill_corner_notch`) funnels through -- it should stamp
+    (`_claim_adjacent_territory`, `_fill_corner_notch_frontier`) funnels through -- it should stamp
     every brand-new node's `node_created_years` at exactly `world.elapsed_years`, the real
     creation time, not the 0.0/-1.0 defaults any other field falls back to."""
     from app import terrain_noise

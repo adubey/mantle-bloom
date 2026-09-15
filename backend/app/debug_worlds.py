@@ -1,6 +1,6 @@
 """Small, hand-scripted plate configurations for the "Debugging Worlds" Generate World tab
 (see main.py's `POST /world/generate_debug`) -- fast-iteration fixtures for the gap-filling
-problem (`lithosphere_plate._fill_corner_notch`, `gaps.py`) that don't depend on any real
+problem (`lithosphere_plate._fill_corner_notch_frontier`, `gaps.py`) that don't depend on any real
 save's history.
 
 Each scenario places a handful of explicit seed points directly (no Voronoi tiling -- see
@@ -33,7 +33,7 @@ from .world import World, finish_generation
 DEBUG_WORLD_NODE_DENSITY = 0.5
 
 # A fixed fraction of MAX_PLATE_RATE, not the rail itself -- keeps every scenario's motion
-# representative of an ordinary plate (so `_fill_corner_notch`'s own window/budget math, which
+# representative of an ordinary plate (so `_fill_corner_notch_frontier`'s own window/budget math, which
 # scales with `mantle.MAX_PLATE_RATE * years`, sees realistic per-step gaps to close) without
 # the corner-notch fallback's reach constant alone swallowing whatever gap opens each step.
 _DEBUG_WORLD_RATE = 0.3 * mantle.MAX_PLATE_RATE
@@ -210,7 +210,7 @@ def scenario_two_plate_convergent(seed: int) -> World:
 
 def scenario_triple_junction_mixed(seed: int) -> World:
     """Three plates meeting at one point, two legs divergent and one convergent -- the exact
-    shape `_fill_corner_notch`'s own docstring calls out as the case `_stretch_end` (theta-
+    shape `_fill_corner_notch_frontier`'s own docstring calls out as the case `_stretch_end` (theta-
     axis-only) and `_claim_adjacent_territory` (phi-axis-only, whole rows) structurally can't
     reach on their own (confirmed on a real save, seed 430031492)."""
     return _build_debug_world(

@@ -22,15 +22,13 @@ function EntryList({ entries, maxHeight }: { entries: CornerNotchLogEntry[]; max
             <span style={{ opacity: 0.7 }}>plate {e.plate_id}</span> —{" "}
             <span style={{ color: e.outcome === "claimed" ? "#7fd88f" : "#e6e8ef" }}>{e.outcome}</span>
             {e.nodes_added > 0 && <span style={{ opacity: 0.7 }}> ({e.nodes_added} nodes)</span>}
-            {e.hop !== undefined && <span style={{ opacity: 0.5 }}> hop {e.hop}</span>}
-            {e.rows_considered !== undefined && <span style={{ opacity: 0.5 }}> · {e.rows_considered} rows</span>}
           </div>
         ))}
     </div>
   );
 }
 
-// Debug-only, structured decision log for LithospherePlate._fill_corner_notch (see
+// Debug-only, structured decision log for LithospherePlate._fill_corner_notch_frontier (see
 // GET /world/corner_notch_log / World.debug_diagnostics) -- deliberately its own panel, never
 // mixed into EventConsole's always-on Event Console (see docs/debugging.md: this can fire
 // once per plate per step, far higher volume than that log is meant to carry). Same

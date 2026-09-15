@@ -108,17 +108,6 @@ def test_loading_a_world_pickled_before_corner_notch_log_existed_defaults_to_emp
     assert loaded.corner_notch_log == []
 
 
-def test_loading_a_world_pickled_before_gap_fill_algorithm_existed_defaults_to_frontier():
-    # World.gap_fill_algorithm is a plain-str dataclass default (same shape as steps_taken,
-    # fault_deformation_mode) -- a class attribute, so an old pickle with no such key still
-    # loads and reads the current default, "frontier" (as of 2026-09-09).
-    world = generate_world(seed=3, num_plates=4)
-    del world.__dict__["gap_fill_algorithm"]
-
-    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
-    assert loaded.gap_fill_algorithm == "frontier"
-
-
 def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
     # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).
