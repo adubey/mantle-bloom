@@ -16,8 +16,8 @@ An Earth-like planet simulator, including plate tectonics, climate and biosphere
   frames, mantle flow, boundary evolution, line regularization, merge/split, boundary point
   reassignment, projections, and why each simplification was an acceptable line to draw.
 - **[docs/api-reference.md](docs/api-reference.md)** -- the three backend routes.
-- **[docs/debugging.md](docs/debugging.md)** -- diagnostic views, endpoints, and the
-  `python -m app.plate_diagnostics` offline dump for checking a long run's health.
+- **[docs/debugging.md](docs/debugging.md)** -- offline `python -m app.*` diagnostic dumps and
+  the `?deb`-gated debug map views/panels for checking a long run's health.
 - **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
   (`bin/package.sh`); **[docs/HOSTING.md](docs/HOSTING.md)** -- putting it on the public web.
 
