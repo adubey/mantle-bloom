@@ -817,6 +817,11 @@ export interface AnimateProgress {
   // world.elapsed_years after this frame's step, so the caller can drive a live elapsed-time
   // display off the stream instead of it sitting frozen until the run's final `done` message.
   elapsedYears: number;
+  // The latest stats.py snapshot recorded as of this frame (see backend main.py's own comment
+  // on the "progress" line) -- lets the Stats panel update live during a recording instead of
+  // sitting frozen until it finishes. `undefined` if this frame's step didn't record one (e.g.
+  // simulate_climate_biomes off) or on older servers that don't send the field.
+  stats?: WorldStats;
 }
 
 // Each animation frame is a full step_world + render (see backend app/main.py's
@@ -918,6 +923,7 @@ export async function animateWorld(
           total: msg.total as number,
           imageBase64: msg.image_base64 as string | undefined,
           elapsedYears: msg.elapsed_years as number,
+          stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
         });
       } else if (msg.type === "error") {
         throw new Error(String(msg.detail));
