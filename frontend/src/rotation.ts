@@ -206,6 +206,66 @@ export function getPixelsPerRadian(projection: Projection, width: number, height
   return cached;
 }
 
+// Matches backend app/elevation_lines.py's PLANET_RADIUS_KM -- the single source of truth for
+// both the static equator-only Legend.tsx scale bar and the draggable/measuring tools below,
+// which both need to turn angles into real-world km.
+export const PLANET_RADIUS_KM = 6371;
+
+export interface LocalPixelScale {
+  pxPerKmHorizontal: number; // along a parallel (east-west) through this point
+  pxPerKmVertical: number; // along a meridian (north-south) through this point
+}
+
+// Like getPixelsPerRadian above, but at an arbitrary *display*-frame (lat, lon) instead of a
+// fixed map center -- lets DraggableScaleBar.tsx recompute an accurate local scale wherever the
+// bar has been dragged to, rather than only at the map's own center. Converted from px/radian
+// to px/km using each direction's own km-per-radian: a meridian is always a great circle (R
+// km/radian, independent of latitude), while a parallel's real length per radian of longitude
+// shrinks toward the poles (R*cos(lat) km/radian) -- same reasoning as Legend.tsx's equator-only
+// scale bar, just generalized to any latitude instead of assuming lat=0.
+export function getLocalPixelScale(projection: Projection, width: number, height: number, lat: number, lon: number): LocalPixelScale {
+  const transform = getRenderTransform(projection, width, height);
+  const [xLonPlus, yLonPlus] = project(projection, lat, lon + JACOBIAN_EPS_RAD);
+  const [xLonMinus, yLonMinus] = project(projection, lat, lon - JACOBIAN_EPS_RAD);
+  const [xLatPlus, yLatPlus] = project(projection, lat + JACOBIAN_EPS_RAD, lon);
+  const [xLatMinus, yLatMinus] = project(projection, lat - JACOBIAN_EPS_RAD, lon);
+  const pxPerRadianLon = (transform.scale * Math.hypot(xLonPlus - xLonMinus, yLonPlus - yLonMinus)) / (2 * JACOBIAN_EPS_RAD);
+  const pxPerRadianLat = (transform.scale * Math.hypot(xLatPlus - xLatMinus, yLatPlus - yLatMinus)) / (2 * JACOBIAN_EPS_RAD);
+  const kmPerRadianLon = PLANET_RADIUS_KM * Math.cos(lat);
+  return {
+    pxPerKmHorizontal: kmPerRadianLon > 1e-6 ? pxPerRadianLon / kmPerRadianLon : Infinity,
+    pxPerKmVertical: pxPerRadianLat / PLANET_RADIUS_KM,
+  };
+}
+
+// Screen (backing-pixel) <-> display-frame lat/lon, factored out of MapCanvas.tsx's
+// handleProbeClick since DraggableScaleBar.tsx and MeasureOverlay.tsx both need the same
+// pixel-to-map-location conversion but, unlike the click-to-inspect popup, never need to go on
+// to the *true* (un-rotated) frame -- a screen distance or on-screen position is the same
+// physical thing in either frame, since rotation is just which point currently faces the
+// viewer.
+export function backingPixelsToDisplayLatLon(projection: Projection, width: number, height: number, backingX: number, backingY: number): [number, number] | null {
+  const transform = getRenderTransform(projection, width, height);
+  const x = (backingX - transform.offsetX) / transform.scale;
+  const y = -(backingY - transform.offsetY) / transform.scale;
+  return unproject(projection, x, y);
+}
+
+export function displayLatLonToBackingPixels(projection: Projection, width: number, height: number, lat: number, lon: number): [number, number] {
+  const transform = getRenderTransform(projection, width, height);
+  const [x, y] = project(projection, lat, lon);
+  return toPixels(transform, x, y);
+}
+
+// Great-circle distance between two display-frame lat/lons, in km -- valid for MeasureOverlay's
+// rubber-band tool without needing either point's *true* (un-rotated) lat/lon: rotation is an
+// isometry of the sphere, so the angle between two points (and thus the distance between them)
+// is identical in either frame.
+export function greatCircleDistanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
+  const dot = Math.min(1, Math.max(-1, vecDot(latLonToXyz(aLat, aLon), latLonToXyz(bLat, bLon))));
+  return PLANET_RADIUS_KM * Math.acos(dot);
+}
+
 // --- Projections: direct ports of backend/app/projections.py, same formulas, same units
 // (radians in, planar units out for a unit-radius sphere).
 
