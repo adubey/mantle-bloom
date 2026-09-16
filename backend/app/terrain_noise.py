@@ -83,7 +83,15 @@ _BELT_FLOOR = 0.16
 # ridge-to-ridge spacing (~a few hundred km), so a belt reads as a train of sub-parallel
 # ranges rather than one dome.
 _RIDGE_OCTAVES, _RIDGE_FREQ = 5, 8.0
-_RIDGE_SHARPEN = 1.3
+# 2026-09-16 (GitHub issue #146, "Mountain ranges are too thin", cause 3 of that investigation):
+# lowered 1.3 -> 1.0. `ridged ** sharpen` on a [0, 1] base sits on the needle-like end of the
+# tradeoff this comment already documents at >1; measured directly (sampling `uplift()` along
+# great-circle transects, several seeds): at 1.3 the fraction of a belt transect above half its
+# own peak uplift averages ~18%, at 1.0 ~20% -- a real, if modest, widening of the massif itself
+# rather than just its outline, without materially changing peak height or fragmenting a belt
+# into more, narrower ranges (still land-gated the same way; still needs `_BELT_FLOOR`/mask
+# coverage above for how *much* of a belt is ridged at all, which this doesn't touch).
+_RIDGE_SHARPEN = 1.0
 _RIDGE_GAIN = 1.4
 # The ridge field is sampled through a heavier domain warp than the rest of the relief, so
 # its otherwise near-parallel crest lines bend into curved, branching ranges.
