@@ -11,7 +11,7 @@ multi-plate collisions never crumpled into orogens). These tests pin the calibra
 
 import numpy as np
 
-from app import rheology
+from app import lithosphere, rheology
 from app.lithosphere import PLANET_RADIUS_M
 
 SECONDS_PER_YEAR = 365.25 * 86400.0
@@ -30,7 +30,7 @@ def test_realistic_continental_collision_thickens_crust():
     hm = np.array([100_000.0])
     closing = np.array([_closing_m_per_s(3.0)])
 
-    new_hc, new_hm = rheology.apply_convergent_deformation(
+    new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
         hc, hm, closing, years_myr=1.0, fault_factor=np.array([1.0])
     )
 
@@ -38,6 +38,7 @@ def test_realistic_continental_collision_thickens_crust():
     # Hc and Hm thicken together (crustal shortening drags the mantle lid along).
     assert new_hm[0] > hm[0]
     assert (new_hc[0] / hc[0]) == np.float64(new_hm[0] / hm[0])
+    assert overflow_hc[0] == 0.0  # nowhere near the ceiling from one ordinary step
 
 
 def test_slow_graze_stays_below_yield():
@@ -48,12 +49,35 @@ def test_slow_graze_stays_below_yield():
     hm = np.array([100_000.0])
     closing = np.array([_closing_m_per_s(0.5)])
 
-    new_hc, new_hm = rheology.apply_convergent_deformation(
+    new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
         hc, hm, closing, years_myr=1.0, fault_factor=np.array([1.0])
     )
 
     assert new_hc[0] == hc[0]
     assert new_hm[0] == hm[0]
+    assert overflow_hc[0] == 0.0
+
+
+def test_convergent_thickening_caps_hc_and_hm_and_reports_the_overflow():
+    """GitHub issue #161: unbounded, no ceiling meant a node sitting in a long-lived
+    convergent regime compounded Hc/Hm exponentially forever (measured up to Hc=413,885 m /
+    Hm=1,311,592 m on a real long save). A node already sitting at (or past) the ceiling must
+    not grow any further, and the function must report how much growth got clipped off so the
+    caller can conserve it (spread it onto the near-field foreland -- see
+    lithosphere_plate.deform) rather than silently losing it."""
+    hc = np.array([lithosphere.MAX_CRUSTAL_THICKNESS_M, 35_000.0])
+    hm = np.array([lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M, 100_000.0])
+    closing = np.full(2, _closing_m_per_s(5.0))  # a fast, well-past-yield collision
+
+    new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
+        hc, hm, closing, years_myr=5.0, fault_factor=np.ones(2)
+    )
+
+    assert new_hc[0] == lithosphere.MAX_CRUSTAL_THICKNESS_M  # already at the ceiling: no further growth
+    assert new_hm[0] == lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    assert overflow_hc[0] > 0.0  # but the strain that would have thickened it further is reported...
+    assert new_hc[1] < lithosphere.MAX_CRUSTAL_THICKNESS_M  # ...while an ordinary column below the ceiling is untouched
+    assert overflow_hc[1] == 0.0
 
 
 def test_plastic_strain_rate_monotonic_and_saturates():
@@ -108,6 +132,21 @@ def test_arc_magmatism_flux_saturates_at_a_fast_margin():
     )
     assert fast[0] > ref[0]
     assert (fast[0] - 25_000.0) <= rheology.ARC_MAGMATIC_CONVERGENCE_CAP * (ref[0] - 25_000.0) + 1e-6
+
+
+def test_arc_magmatism_caps_hc_at_the_same_ceiling_as_convergent_thickening():
+    """Arc underplating is a second, independent (additive rather than multiplicative, so far
+    slower) source of unbounded Hc growth -- a sustained multi-hundred-Myr arc with no cap at
+    all would still eventually climb past what real continental crust can hold before
+    delaminating. A node already at the ceiling gets no further juvenile crust added."""
+    hc = np.array([lithosphere.MAX_CRUSTAL_THICKNESS_M])
+    hm = np.array([100_000.0])
+    closing = np.array([_closing_m_per_s(6.0)])
+
+    new_hc, new_hm = rheology.apply_arc_magmatic_thickening(hc, hm, closing, years_myr=1.0, intensity=np.array([1.0]))
+
+    assert new_hc[0] == lithosphere.MAX_CRUSTAL_THICKNESS_M
+    assert new_hm[0] == hm[0]
 
 
 def test_extension_thins_crust_and_triggers_decompression_melting():

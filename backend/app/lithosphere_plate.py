@@ -237,8 +237,10 @@ SUTURE_ACCRETION_SPREAD_NODES = 3
 # Real orogenic crust does not stack past ~2x reference: the excess root is removed by
 # lower-crustal / mantle-lithosphere delamination (and the surface by erosion). Accreted
 # mass over this ceiling is dropped (delaminated), so accretion is mass-conserving only up
-# to the cap -- which a normal collision, healing over ~1-2 My, never reaches.
-SUTURE_ACCRETION_MAX_HC_M = 2.4 * lithosphere.REFERENCE_HC_CONTINENTAL_M
+# to the cap -- which a normal collision, healing over ~1-2 My, never reaches. Same ceiling
+# `lithosphere.MAX_CRUSTAL_THICKNESS_M` uses for ordinary convergent thickening (issue #161)
+# -- both paths agree on where continental crust actually maxes out.
+SUTURE_ACCRETION_MAX_HC_M = lithosphere.MAX_CRUSTAL_THICKNESS_M
 
 # Active-margin (Cordilleran) accretion. When a continental plate's *leading* edge grows
 # into space a subducting oceanic neighbour is vacating (slab rollback / trench retreat),
@@ -477,9 +479,12 @@ def _redistribute_accreted_column(
     # Crustal shortening drags the attached mantle lithosphere along in proportion (same as
     # rheology.apply_convergent_deformation). Hc is capped at SUTURE_ACCRETION_MAX_HC_M -- the
     # overflow delaminates (see the constant) -- and Hm thickens by whatever fraction Hc
-    # actually grew after that cap.
+    # actually grew after that cap, itself also capped at MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    # (issue #161): a node that started thin can otherwise see a huge new_hc/hc ratio here
+    # (a large volume thrust onto a node that had almost none of its own), which would carry
+    # Hm along past its own ceiling even though Hc's own is respected.
     new_hc = np.minimum(hc[idx] + add_hc / k, SUTURE_ACCRETION_MAX_HC_M)
-    hm[idx] *= new_hc / hc[idx]
+    hm[idx] = np.minimum(hm[idx] * (new_hc / hc[idx]), lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
     hc[idx] = new_hc
     after = lithosphere.isostatic_elevation(hc[idx], hm[idx], rho_c)
     elevation[idx] = rheology.clip_elevation_bounds(elevation[idx] + (after - before))
@@ -747,12 +752,33 @@ class LithospherePlate(PlateWithLines):
                 # thrust onto the leading edge in `_grow_or_shrink_line_for_deform` (see
                 # `_redistribute_accreted_column`). This path is just the ordinary
                 # yield-limited plastic thickening.
-                new_hc, new_hm = rheology.apply_convergent_deformation(
+                new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
                     hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
                     fault_factor[thicken], strength=orogen_strength[thicken],
                 )
                 hc[thicken] = new_hc
                 hm[thicken] = new_hm
+
+                # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
+                # #161): real over-thickened crust spreads laterally into the foreland rather
+                # than stacking indefinitely, the same mass-conserving idiom
+                # `_redistribute_accreted_column` uses for suture retreat -- thrust the
+                # *core* converging band's overflow onto the near-field ring, spread evenly,
+                # Hm growing in proportion (same pattern). Only the core band's overflow is
+                # conserved this way; the near-field ring's own overflow (rarer -- it
+                # thickens at a faded rate already) has nowhere further out to spread to on
+                # this pass and delaminates, same as suture accretion's own overflow past its
+                # cap. No-op when there's no near-field ring to receive it (reach knob at 0,
+                # or an oceanic plate, which never gets one).
+                overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
+                if overflow_total > 0.0 and np.any(near_field):
+                    spread_n = int(np.count_nonzero(near_field))
+                    old_hc_near = hc[near_field].copy()
+                    new_hc_near = np.minimum(old_hc_near + overflow_total / spread_n, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+                    hm[near_field] = np.minimum(
+                        hm[near_field] * (new_hc_near / old_hc_near), lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+                    )
+                    hc[near_field] = new_hc_near
 
             # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
             # the mantle wedge and underplates juvenile crust across the whole arc band --
@@ -1340,7 +1366,10 @@ class LithospherePlate(PlateWithLines):
                 hm = ln.mantle_lithosphere_thickness_m
                 before = lithosphere.isostatic_elevation(hc, hm, rho_c)
                 new_hc = np.minimum(hc + add_hc_per_node, SUTURE_ACCRETION_MAX_HC_M)
-                new_hm = hm * (new_hc / hc)
+                # Also capped (issue #161) -- see _redistribute_accreted_column's own note on
+                # why a large new_hc/hc ratio here (a thin row absorbing a whole dropped row's
+                # volume) can otherwise carry Hm past its own ceiling.
+                new_hm = np.minimum(hm * (new_hc / hc), lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
                 after = lithosphere.isostatic_elevation(new_hc, new_hm, rho_c)
                 new_elevation = rheology.clip_elevation_bounds(ln.elevation + (after - before))
                 kept[i] = ln.replace(crustal_thickness_m=new_hc, mantle_lithosphere_thickness_m=new_hm, elevation=new_elevation)
@@ -1879,17 +1908,42 @@ class LithospherePlate(PlateWithLines):
         total_hc_after = float(sum(np.sum(fields["crustal_thickness_m"]) for _, _, fields in raw_rows))
         hc_scale = total_hc_before / total_hc_after if total_hc_after > 0.0 else 1.0
 
+        # Conserve volume via the uniform `hc_scale` above, but never push a node past
+        # `lithosphere.MAX_CRUSTAL_THICKNESS_M` doing it (issue #161) -- a node already near
+        # the ceiling going into this resample would otherwise cross it under an ordinary >1
+        # rescale. Clip first, then spread whatever got clipped off across every *other*
+        # node's own remaining headroom below the ceiling, weighted by how much headroom each
+        # has (one pass is enough in practice: relattice only ever corrects a small drift in
+        # total volume, not redistributes a large fraction of it) -- the same conserve-then-
+        # spread idiom `apply_convergent_deformation`'s own overflow uses, just plate-wide
+        # instead of a local ring. A true residual (every node already pinned at the ceiling)
+        # finally delaminates, same as everywhere else this ceiling applies.
+        pre_scale_hc = np.concatenate([fields["crustal_thickness_m"] for _, _, fields in raw_rows])
+        scaled_hc = pre_scale_hc * hc_scale
+        capped_hc = np.minimum(scaled_hc, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+        overflow = float(np.sum(scaled_hc - capped_hc))
+        if overflow > 0.0:
+            headroom = lithosphere.MAX_CRUSTAL_THICKNESS_M - capped_hc
+            total_headroom = float(np.sum(headroom))
+            if total_headroom > 0.0:
+                capped_hc = np.minimum(capped_hc + overflow * (headroom / total_headroom), lithosphere.MAX_CRUSTAL_THICKNESS_M)
+        final_hc = np.maximum(capped_hc, lithosphere.MIN_CRUSTAL_THICKNESS_M)
+        hm_ratio = final_hc / pre_scale_hc
+
         new_lines = []
+        offset = 0
         for phi, theta_owned, fields in raw_rows:
+            n = len(theta_owned)
             overrides = dict(fields)
             elevation = overrides.pop("elevation")
-            overrides["crustal_thickness_m"] = np.maximum(
-                overrides["crustal_thickness_m"] * hc_scale, lithosphere.MIN_CRUSTAL_THICKNESS_M
-            )
-            overrides["mantle_lithosphere_thickness_m"] = np.maximum(
-                overrides["mantle_lithosphere_thickness_m"] * hc_scale, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+            overrides["crustal_thickness_m"] = final_hc[offset : offset + n]
+            overrides["mantle_lithosphere_thickness_m"] = np.clip(
+                overrides["mantle_lithosphere_thickness_m"] * hm_ratio[offset : offset + n],
+                lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M,
+                lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
             )
             new_lines.append(ElevationLine(phi=phi, theta=theta_owned, elevation=elevation, **overrides))
+            offset += n
 
         self.set_lines(new_lines)
         lithosphere.sync_plate_elevation(self)
@@ -1988,7 +2042,10 @@ def _merge_lines_from_resample(
             base_hc = keep_hc[keep_idx[both]]
             new_hc = np.minimum(base_hc + absorb_hc[absorb_idx[both]], SUTURE_ACCRETION_MAX_HC_M)
             hc[both] = new_hc
-            hm[both] = keep_hm[keep_idx[both]] * (new_hc / base_hc)
+            # Also capped (issue #161) -- see _redistribute_accreted_column's own note on why
+            # a large new_hc/base_hc ratio here (a thin column absorbing a thick one) can
+            # otherwise carry Hm past its own ceiling even though Hc's own is respected.
+            hm[both] = np.minimum(keep_hm[keep_idx[both]] * (new_hc / base_hc), lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
 
         theta_owned = theta_candidates[owned]
         lines.append(
@@ -2398,7 +2455,11 @@ def generate_plates(
         hc_lines = []
         for line in lines:
             world_pts = line.world_xyz(frame)
-            hc = np.clip(hc_at(world_pts), lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
+            # Also upper-clipped (issue #161): the noise term alone can occasionally seed a
+            # continental node above MAX_CRUSTAL_THICKNESS_M (confirmed directly -- generation
+            # noise landed at 85,349 m on one seed), which is generation-time noise, not real
+            # tectonic mass, so it's simply clipped rather than conserved/redistributed.
+            hc = np.clip(hc_at(world_pts), lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M)
             hm = np.full(len(line), hm0)
             hc_lines.append(line.replace(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm))
 
@@ -2483,7 +2544,8 @@ def new_plate(
     for line in lines:
         world_pts = line.world_xyz(frame)
         is_continental = node_is_continental(world_pts)
-        hc = np.clip(hc_at(world_pts, is_continental), lithosphere.MIN_CRUSTAL_THICKNESS_M, None)
+        # Also upper-clipped (issue #161) -- see generate_plates' own note above.
+        hc = np.clip(hc_at(world_pts, is_continental), lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M)
         hm = np.where(is_continental, hm0_continental, hm0_oceanic)
         code = np.where(is_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(np.int8)
         hc_lines.append(line.replace(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm, crust_type_code=code))
