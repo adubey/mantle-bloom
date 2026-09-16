@@ -19,7 +19,7 @@ An Earth-like planet simulator, including plate tectonics, climate and biosphere
 - **[docs/debugging.md](docs/debugging.md)** -- offline `python -m app.*` diagnostic dumps and
   the `?deb`-gated debug map views/panels for checking a long run's health.
 - **[docs/packaging.md](docs/packaging.md)** -- building the single-process desktop binary
-  (`bin/package.sh`); **[docs/HOSTING.md](docs/HOSTING.md)** -- putting it on the public web.
+  (`bin/package.sh`).
 
 ## Getting started
 
@@ -33,7 +33,7 @@ An Earth-like planet simulator, including plate tectonics, climate and biosphere
 ### First-time setup
 
 ```bash
-git clone <this repo>
+git clone https://github.com/adubey/mantle-bloom/
 cd mantle-bloom
 
 cd backend
@@ -117,15 +117,3 @@ mantle-bloom/
     stress_test.sh   # run the backend's slow, full-simulation test suite
 ```
 
-## Known limitations
-
-- **v1 is elevation-only.** No climate, hydrology, erosion, or biomes yet -- see
-  [docs/simulation-model.md#known-simplifications](docs/simulation-model.md#known-simplifications)
-  for this and the other deliberate scoping decisions.
-- **Single world, in memory.** World state lives in backend memory only, one world at a
-  time -- calling `/world/generate` again (or restarting the backend without saving first)
-  replaces/loses whatever was there. Use the **File...** button's Save/Load World to
-  persist a world to disk and bring it back later -- see
-  [docs/api-reference.md](docs/api-reference.md)'s `/world/save`/`/world/load` (no
-  cross-version compatibility promise; it's a pickle of the whole in-memory state, not a
-  stable interchange format).
