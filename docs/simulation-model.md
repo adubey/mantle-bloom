@@ -673,22 +673,34 @@ on where continental crust actually maxes out before delaminating) and Hm at
 `MAX_MANTLE_LITHOSPHERE_THICKNESS_M` (same 2.4x ratio against the continental Hm reference, in
 the real ~200-250 km range cratonic keels bottom out at). Arc magmatism's overflow is simply
 not added -- it's juvenile mass from the mantle wedge, not conserved from anywhere, so refusing
-to add more past the ceiling loses nothing that existed a moment ago. `apply_convergent_
-deformation`'s overflow is different: real over-thickened crust doesn't just vanish at its
-strength limit, it spreads laterally into the foreland (a fold-thrust belt widening once its
-hinterland can't thicken any further), so `lithosphere_plate.deform` thrusts the *core*
-converging band's clipped-off Hc onto the near-field ring (the same dilated band
-`collision_uplift_reach_multiplier` already widens/narrows), spread evenly with Hm growing in
-proportion -- the same mass-conserving idiom `_redistribute_accreted_column` uses for suture
-retreat, just aimed outward instead of onto a retreating edge. Hm's own overflow is not
-conserved this way (an over-thickened mantle-lithosphere root has nowhere to spread to; it
-delaminates, same as `SUTURE_ACCRETION_MAX_HC_M`'s own overflow), and the near-field ring's own
-overflow (rarer -- it thickens at a faded rate already) also delaminates rather than cascading
-to a further-out tier. `backend/stress_tests/test_world_stepping.py`'s
-`two_continental_collision` debug-world test confirms both that the ceilings hold over a long
-sustained collision and that total continental crustal volume keeps growing well past the
-point the core boundary band saturates, rather than flatlining the moment it first hits the
-cap.
+to add more past the ceiling loses nothing that existed a moment ago.
+
+`apply_convergent_deformation`'s overflow is different: real over-thickened crust doesn't just
+vanish at its strength limit. The version of this fix that shipped first thrust the *entire*
+clipped-off Hc onto the near-field ring in one instant, fully conserved, every single step --
+and that turned out to be its own runaway ([GitHub issue #145](https://github.com/adubey/mantle-bloom/issues/145)'s reopened investigation:
+by 48 Myr into a real save, over half of all continental land was pinned at the Hc ceiling,
+because an unbounded, un-rate-limited mass transfer was standing in for what should be a slow
+geological process). The physically-grounded fix
+(`rheology.apply_delamination_melt_intrusion`): over-thickened lower crust at that depth is
+dense enough (largely eclogitized) to delaminate and sink, same as Hm's own overflow below --
+but as it sinks, asthenospheric upwelling into the gap partially melts it into buoyant,
+silica-rich (granitic) magma that rises back through the overriding plate and intrudes the
+surrounding foreland, while the denser residue keeps sinking as a genuine sink. So only a
+fraction of the overflow is conserved this way (`GRANITIC_MELT_FRACTION`, a real crustal-
+anatexis partial-melt fraction), and even that fraction arrives at a bounded per-Myr rate
+(`DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR`, the same order `ARC_MAGMATIC_HC_RATE_M_PER_MYR`
+uses) rather than an instant lump -- `lithosphere_plate.deform` spreads whatever melt actually
+intrudes this step evenly across the near-field ring (the same dilated band
+`collision_uplift_reach_multiplier` already widens/narrows). Only Hc grows here, matching
+`apply_arc_magmatic_thickening`'s own convention: this is juvenile melt intruding, not
+shortened crust dragging its own Hm root along. Melt that would arrive faster than the rate
+allows in a given step is not banked for later; it delaminates in full, same as the non-melted
+residue and the near-field ring's own (rarer) overflow. `backend/stress_tests/
+test_world_stepping.py`'s `two_continental_collision` debug-world test confirms both that the
+ceilings hold over a long sustained collision and that total continental crustal volume keeps
+growing well past the point the core boundary band saturates, rather than flatlining the
+moment it first hits the cap.
 
 Three more Hc/Hm growth paths needed the same ceiling, found by running that debug world long
 enough to actually saturate the tectonic cap and checking every subsequent step. Plate

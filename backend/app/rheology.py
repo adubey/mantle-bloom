@@ -246,6 +246,56 @@ def apply_arc_magmatic_thickening(
     return np.clip(new_hc, None, lithosphere.MAX_CRUSTAL_THICKNESS_M), hm_m
 
 
+# Delamination melt intrusion (GitHub issue #145's reopened investigation, following up on
+# issue #161's own overflow-conservation fix). When `apply_convergent_deformation`'s Hc hits
+# MAX_CRUSTAL_THICKNESS_M, the excess doesn't keep shortening in place -- but it also doesn't
+# stay together as one coherent slab of ordinary crust either. Real over-thickened lower
+# continental crust at that depth is dense enough (largely eclogitized) to delaminate: it
+# breaks off and sinks into the asthenosphere, the same sink Hm's own overflow already uses.
+# What #161 modeled as the *entire* overflow instead re-emerging, whole and instantly, as
+# ordinary crust on the near-field foreland turned out to be the dominant driver of #145's
+# reopened runaway (50%+ of a real save's continental land pinned at the Hc ceiling by 48 Myr)
+# -- an unbounded, un-rate-limited mass transfer standing in for what should be a slow
+# geological process.
+#
+# The physically-grounded middle ground: delaminating lower crust partially melts as it sinks
+# (asthenospheric upwelling into the gap it leaves, plus decompression and fluid flux) into
+# buoyant, silica-rich (granitic) magma that rises back through the overriding plate and
+# intrudes/erupts into the surrounding foreland -- while the denser mafic/ultramafic residue
+# it separated from keeps sinking as a genuine sink, same as everywhere else this ceiling
+# applies. So overflow is only partially conserved (`GRANITIC_MELT_FRACTION`, a real crustal-
+# anatexis partial-melt fraction), and even that fraction arrives the same bounded way every
+# other magmatic-addition path in this module does -- a per-Myr rate
+# (`DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR`, the same order as `ARC_MAGMATIC_HC_RATE_M_
+# PER_MYR`) rather than an instant lump. Melt that arrives faster than that rate can place it
+# in a given step is not banked for later; it is lost the same way the non-melted residue is --
+# this is deliberately *not* a strict crustal-mass-conservation law (real crust isn't one
+# either, once magmatic transport is in the picture), only a bound on how fast new crust can
+# plausibly show up in one place.
+GRANITIC_MELT_FRACTION = 0.35
+DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR = 300.0
+
+
+def apply_delamination_melt_intrusion(hc_near_field_m: np.ndarray, overflow_hc_m: float, years_myr: float) -> np.ndarray:
+    """New Hc for the near-field ring receiving this step's delamination melt, given the total
+    Hc `overflow_hc_m` (a scalar, already summed over the core convergent band) that hit
+    `apply_convergent_deformation`'s ceiling this step. Spreads whatever melt actually
+    intrudes (`GRANITIC_MELT_FRACTION` of the overflow, capped by `DELAMINATION_MELT_
+    INTRUSION_RATE_M_PER_MYR` summed across the receiving ring) evenly across
+    `hc_near_field_m`, same as #161's own even-spread idiom -- just on a bounded melt budget
+    instead of the full overflow. Only Hc grows, matching `apply_arc_magmatic_thickening`'s
+    own convention: this is juvenile buoyant melt intruding, not shortened crust dragging its
+    own mantle-lithosphere root along, so Hm is left untouched here (unlike the mass-
+    conserving Hc/Hm coupling `_redistribute_accreted_column`'s suture-retreat path uses)."""
+    n = len(hc_near_field_m)
+    if n == 0 or overflow_hc_m <= 0.0:
+        return hc_near_field_m
+    melt_available = overflow_hc_m * GRANITIC_MELT_FRACTION
+    melt_capacity = DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR * years_myr * n
+    melt_to_intrude = min(melt_available, melt_capacity)
+    return np.minimum(hc_near_field_m + melt_to_intrude / n, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+
+
 # Rift magmatic underplating: the "further rifting -> more volcanism" middle stage a real
 # continental rift passes through well before full rupture (RIFT_CRITICAL_THICKNESS_M's hard
 # melt-through reset in `lithosphere_plate._erupt_melted_nodes`). Once extension has thinned
