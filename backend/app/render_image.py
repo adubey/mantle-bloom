@@ -724,13 +724,14 @@ _TERRAIN_PLAINS_PLATEAU = 2
 
 
 def _relief_kdtree(world: World, all_points: np.ndarray) -> cKDTree:
-    """A real `cKDTree` for `_classify_terrain_relief`'s `query_ball_point` radius search,
-    used only under "healpix" `World.node_cloud_resample_mode` -- a `healpix_grid.
-    NodePixelIndex` has no radius-search equivalent (issue #133 excludes this call from its
-    scope; see `_node_cloud_and_tree`'s own docstring). Cached separately
-    (`World.node_kdtree_relief_cache`, reset alongside the other node-cloud caches in
-    `step_world`) so this cost -- only paid when the Elevation view's relief toggles are on --
-    never falls on the common render path under the "healpix" mode."""
+    """A real `cKDTree` for `_classify_terrain_relief`'s `query_ball_point` radius search and
+    `_hillshade_for_world`'s own k-nearest-neighbor query, both used only under "healpix"
+    `World.node_cloud_resample_mode` -- a `healpix_grid.NodePixelIndex` has neither a
+    radius-search nor a k-NN equivalent (issue #133 excludes both from its scope; see
+    `_node_cloud_and_tree`'s own docstring). Cached separately (`World.node_kdtree_relief_cache`,
+    reset alongside the other node-cloud caches in `step_world`) so this cost never falls on the
+    common render path under the default "kdtree" mode, which already has a real `cKDTree` in
+    `_node_cloud_and_tree`'s own 4th element."""
     cached = world.node_kdtree_relief_cache
     if cached is not None and cached.n == all_points.shape[0]:
         return cached
@@ -766,26 +767,150 @@ def _classify_terrain_relief(all_points: np.ndarray, all_elevation: np.ndarray, 
     return codes
 
 
+# Hillshade: a per-node brightness multiplier from a fixed, planet-fixed light direction (not
+# tied to view_rotation -- the shading is baked onto the terrain like a real relief map, so
+# rotating the view turns the "photograph" itself rather than re-lighting it). Every land
+# elevation view was, until this, colored by nothing but height band + a slight elevation-based
+# brightness blend (see RELIEF_BLEND_MAX) -- no directional shading at all, so a real carved
+# valley or ridge (erosion.py already carves them into `elevation`, see that module) had no
+# visual cue distinguishing it from flat ground at the same height. This is a cheap per-node
+# estimate, not a physically exact one: `_compute_hillshade` fits a local
+# tangent-plane gradient through each node's own HILLSHADE_NEIGHBOR_COUNT nearest neighbors
+# (least-squares over their real east/north offsets and elevation differences -- the same
+# "build a local linear model from nearby samples" idea `hydrology`/`erosion`'s own
+# neighbor-based slope already use, just fit through several neighbors at once instead of only
+# the single steepest/lowest one, since a directional light needs a real 2D surface normal,
+# not just a scalar slope magnitude).
+HILLSHADE_NEIGHBOR_COUNT = 8
+# Classic cartographic default (upper-left light) -- azimuth measured clockwise from true
+# north, altitude above the horizon.
+HILLSHADE_SUN_AZIMUTH_DEG = 315.0
+HILLSHADE_SUN_ALTITUDE_DEG = 45.0
+# Vertical exaggeration applied to the fitted gradient before lighting it -- standard practice
+# for any continental/planetary-scale relief map, real ones included: a genuine mountain range
+# here is a few thousand meters of relief spread over tens of km of node spacing (confirmed
+# directly against a real run -- even land in the 95th percentile of ruggedness fits a rise/run
+# slope of only ~0.02-0.03, a 1-2 degree tilt from horizontal), which a true-to-scale normal
+# vector lights almost exactly like flat ground -- the same reason real-world hillshade maps at
+# this scale always exaggerate relief rather than rendering it true-scale. Picked so that
+# 95th-percentile-rugged land reads as a clearly lit slope (tilt on the order of 30-40 degrees)
+# without turning ordinary gentle terrain into visible speckle -- a from-scratch starting point
+# like every other coefficient in this codebase, not a physical constant. Checked directly
+# against a real run: a first pass at 20.0 was confirmed too subtle to read as real relief once
+# blended at HILLSHADE_STRENGTH below and softened by the view's own post-fill blur
+# (CELL_BLUR_RADIUS_PX) -- 30.0 is where a real mountain belt's own light/shadow pattern
+# becomes clearly legible without turning ordinary gentle land into visible speckle.
+HILLSHADE_VERTICAL_EXAGGERATION = 30.0
+# How much the directional shading modulates the existing hypsometric color: 0 would leave
+# every view exactly as before, 1 would let illumination swing the full ratio a Lambertian
+# surface implies. 0.85 is a starting point -- strong enough that a real valley/ridge reads
+# clearly, short of blowing out a steep sunlit slope to solid white or a shadowed one to solid
+# black, which would fight the existing hypsometric color the whole point is to keep legible.
+HILLSHADE_STRENGTH = 0.85
+HILLSHADE_MIN_MULT = 0.45
+HILLSHADE_MAX_MULT = 1.5
+
+
+def _compute_hillshade(all_points: np.ndarray, all_elevation: np.ndarray, tree) -> np.ndarray:
+    """Per-node brightness multiplier (1.0 = unlit-neutral, i.e. this node's local surface is
+    exactly as bright as flat ground) from a fixed sun direction -- see the module comment
+    above. Fits each node's own local surface gradient (dz/d(east), dz/d(north), meters per
+    real meter) by least squares through its `HILLSHADE_NEIGHBOR_COUNT` nearest neighbors'
+    real tangent-plane offsets and elevation differences, rather than picking a single
+    steepest/lowest neighbor the way `erosion.compute_slope`/`hydrology`'s own flow-direction
+    slope do -- a directional light needs a genuine local surface normal (two components), not
+    one scalar magnitude. Falls back to a neutral (all-1.0) result when there are too few nodes
+    to fit any real neighborhood."""
+    n = len(all_points)
+    if n <= HILLSHADE_NEIGHBOR_COUNT:
+        return np.ones(n)
+
+    _, neighbor_idx = tree.query(all_points, k=HILLSHADE_NEIGHBOR_COUNT + 1, workers=plates.query_workers(n))
+    neighbor_idx = neighbor_idx[:, 1:]  # column 0 is always the point itself, at distance 0
+
+    east, north = geometry.local_tangent_frame_batch(all_points)
+    offset = all_points[neighbor_idx] - all_points[:, None, :]  # (n, k, 3) chord vectors
+    meters = plates.PLANET_RADIUS_KM * 1000.0
+    de = np.einsum("nkj,nj->nk", offset, east) * meters
+    dn = np.einsum("nkj,nj->nk", offset, north) * meters
+    d_elev = all_elevation[neighbor_idx] - all_elevation[:, None]
+
+    # Least-squares plane fit z = gx*de + gy*dn through the origin (each node's own elevation
+    # is the local zero) -- the 2x2 normal-equations system, solved directly since a 2x2 solve
+    # per node is cheap and avoids a per-node linalg.solve call.
+    sxx = np.einsum("nk,nk->n", de, de)
+    syy = np.einsum("nk,nk->n", dn, dn)
+    sxy = np.einsum("nk,nk->n", de, dn)
+    sxz = np.einsum("nk,nk->n", de, d_elev)
+    syz = np.einsum("nk,nk->n", dn, d_elev)
+    det = sxx * syy - sxy * sxy
+    degenerate = np.abs(det) < 1e-6
+    safe_det = np.where(degenerate, 1.0, det)
+    gx = np.where(degenerate, 0.0, (syy * sxz - sxy * syz) / safe_det) * HILLSHADE_VERTICAL_EXAGGERATION
+    gy = np.where(degenerate, 0.0, (sxx * syz - sxy * sxz) / safe_det) * HILLSHADE_VERTICAL_EXAGGERATION
+
+    normal = np.stack([-gx, -gy, np.ones_like(gx)], axis=-1)
+    normal = normal / np.linalg.norm(normal, axis=-1, keepdims=True)
+
+    az = np.radians(HILLSHADE_SUN_AZIMUTH_DEG)
+    alt = np.radians(HILLSHADE_SUN_ALTITUDE_DEG)
+    sun = np.array([np.cos(alt) * np.sin(az), np.cos(alt) * np.cos(az), np.sin(alt)])
+
+    illum = np.clip(normal @ sun, 0.0, None)
+    flat_illum = np.sin(alt)
+    ratio = illum / flat_illum
+    shade = 1.0 + HILLSHADE_STRENGTH * (ratio - 1.0)
+    return np.clip(shade, HILLSHADE_MIN_MULT, HILLSHADE_MAX_MULT)
+
+
+def _hillshade_for_world(world: World) -> np.ndarray | None:
+    """`_compute_hillshade`'s result over the current node cloud, cached on
+    `World.node_hillshade_cache` -- a pure function of the same `(all_points, all_elevation,
+    tree)` `_node_cloud_and_tree` already caches on `World.node_kdtree_cache`, so it's reset
+    alongside it (a node moved or its elevation changed) rather than tracked separately. `None`
+    for an empty world.
+
+    Needs a real k-nearest-neighbor-capable `cKDTree`, which `_node_cloud_and_tree`'s own 4th
+    element only is under the default "kdtree" `node_cloud_resample_mode` -- under "healpix" it's
+    a `healpix_grid.NodePixelIndex`, which (like `_classify_terrain_relief`'s own radius search)
+    has no such query. Reuses `_relief_kdtree`'s own on-demand real tree/cache in that case, the
+    same workaround `_render_grid_arrays` already applies for terrain relief."""
+    cached = world.node_hillshade_cache
+    if cached is not None:
+        return cached
+    node_cloud = _node_cloud_and_tree(world)
+    if node_cloud is None:
+        return None
+    all_points, all_elevation, _all_owner, tree = node_cloud
+    if world.node_cloud_resample_mode == "healpix":
+        tree = _relief_kdtree(world, all_points)
+    result = _compute_hillshade(all_points, all_elevation, tree)
+    world.node_hillshade_cache = result
+    return result
+
+
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray, include_terrain_relief: bool = False
 ) -> tuple[np.ndarray, ...] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, and
-    is_sea -- see docs/simulation-model.md#render-image. Returns flat concatenated
+    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea,
+    and hillshade -- see docs/simulation-model.md#render-image. Returns flat concatenated
     (projected_xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth,
-    channel_width, is_sea, cell_half_width, cell_half_height) arrays, or None for an empty
-    world. Unlike the other per-node fields here, `is_sea` isn't a value persisted on the
+    channel_width, is_sea, cell_half_width, cell_half_height, hillshade) arrays, or None for an
+    empty world. Unlike the other per-node fields here, `is_sea` isn't a value persisted on the
     plates themselves -- it's `lakes._classify_tier`'s own per-step read of the hydrology
     cache, resampled per lattice chunk the same way `_biome_fields` resamples it for its own
-    grid (`hydrology.sample_is_sea`).
+    grid (`hydrology.sample_is_sea`); `hillshade` likewise isn't persisted -- it's
+    `_hillshade_for_world`'s own per-node result (cached on `World.node_hillshade_cache`),
+    resampled here with the same nearest-node `idx` every other per-cell field uses.
 
     `include_terrain_relief` (default `False`, every caller but the Elevation view's own
     "Mountains"/"Plains & Plateaus" toggles) appends one more array, each cell's
     `_classify_terrain_relief` code -- computed once per node and sampled onto the grid with
     the exact same nearest-node `idx` every other per-cell field already uses here, so it's
     guaranteed pixel-aligned with the elevation this same call returns. `False` returns the
-    same 10-tuple this function always has, so every existing caller is unaffected.
+    same 12-tuple this function always has, so every existing caller is unaffected.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -817,6 +942,7 @@ def _render_grid_arrays(
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
     all_channel_depth = plates.collect_all_channel_depth(world.plates)
     all_channel_width = plates.collect_all_channel_width(world.plates)
+    all_hillshade = _hillshade_for_world(world)
     all_terrain_relief = None
     if include_terrain_relief:
         relief_tree = _relief_kdtree(world, all_points) if world.node_cloud_resample_mode == "healpix" else tree
@@ -833,8 +959,8 @@ def _render_grid_arrays(
     # density where 100km was already the tighter bound.
     grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, sea_chunks, hw_chunks, hh_chunks, terrain_chunks = (
-        [], [], [], [], [], [], [], [], [], [], [], [],
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, sea_chunks, hw_chunks, hh_chunks, hillshade_chunks, terrain_chunks = (
+        [], [], [], [], [], [], [], [], [], [], [], [], [],
     )
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
@@ -852,6 +978,7 @@ def _render_grid_arrays(
         # own comment) -- resampled straight from the hydrology cache per chunk, the same
         # hydrology.sample_is_sea used for the Biome grid (_biome_fields).
         sea_chunks.append(hydrology.sample_is_sea(world, world_pts, np.zeros(len(world_pts), dtype=bool)))
+        hillshade_chunks.append(all_hillshade[idx] if all_hillshade is not None else np.ones(len(world_pts)))
         if all_terrain_relief is not None:
             terrain_chunks.append(all_terrain_relief[idx])
 
@@ -884,6 +1011,7 @@ def _render_grid_arrays(
         np.concatenate(sea_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
+        np.concatenate(hillshade_chunks, axis=0),
     )
     if include_terrain_relief:
         result = result + (np.concatenate(terrain_chunks, axis=0),)
@@ -953,11 +1081,14 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     coarser, fixed-shape simulation grid (see climate.compute_climate_cached) rather than
     resimulated at this resolution. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3),
     elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
-    lake_depth, glacier_depth, channel_depth, channel_width, is_sea), all (H, W) besides the
-    first three. Unlike lake_depth/glacier_depth/channel_depth, `is_sea` isn't a persisted
-    per-node field on the plates themselves -- it's `lakes._classify_tier`'s own per-step read,
-    resampled from the hydrology cache the same way `is_ocean` already is
-    (`hydrology.sample_is_sea`, same one-step-stale tolerance and all-False fallback)."""
+    lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade), all (H, W)
+    besides the first three. Unlike lake_depth/glacier_depth/channel_depth, `is_sea` isn't a
+    persisted per-node field on the plates themselves -- it's `lakes._classify_tier`'s own
+    per-step read, resampled from the hydrology cache the same way `is_ocean` already is
+    (`hydrology.sample_is_sea`, same one-step-stale tolerance and all-False fallback);
+    `hillshade` likewise isn't persisted -- see `_hillshade_for_world`'s own docstring --
+    resampled here with the same nearest-node `idx` every other per-cell field uses (all-1.0,
+    i.e. unlit-neutral, wherever there's no node cloud to compute it from)."""
     lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
     flat_xyz = world_xyz.reshape(-1, 3)
     shape = (grid_h, grid_w)
@@ -971,18 +1102,21 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         channel_depth = np.zeros(shape)
         channel_width = np.zeros(shape)
         is_sea = np.zeros(shape, dtype=bool)
+        hillshade = np.ones(shape)
     else:
         _all_points, all_elevation, _owner, tree = node_cloud
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
         all_channel_depth = plates.collect_all_channel_depth(world.plates)
         all_channel_width = plates.collect_all_channel_width(world.plates)
+        all_hillshade = _hillshade_for_world(world)
         _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
         glacier_depth = all_glacier_depth[idx].reshape(shape)
         channel_depth = all_channel_depth[idx].reshape(shape)
         channel_width = all_channel_width[idx].reshape(shape)
+        hillshade = all_hillshade[idx].reshape(shape) if all_hillshade is not None else np.ones(shape)
         # Connectivity-aware: an enclosed interior pit below sea level renders as lake/land, not
         # as ocean (and so no longer as an Intertidal Zone). See hydrology.connected_ocean_mask.
         is_ocean = hydrology.sample_is_ocean(world, world_xyz, elevation_m <= world.sea_level_m)
@@ -995,7 +1129,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
 
     return (
         lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip,
-        lake_depth, glacier_depth, channel_depth, channel_width, is_sea,
+        lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade,
     )
 
 
@@ -1624,7 +1758,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width, _is_sea = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width, _is_sea, _hillshade = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1679,7 +1813,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, channel_depth, channel_width, is_sea = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1698,6 +1832,10 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     relief_t = np.clip((elevation_m.reshape(-1) - world.sea_level_m) / RELIEF_ELEVATION_RANGE_M, 0.0, 1.0)
     blend = (relief_t * RELIEF_BLEND_MAX)[:, None]
     land_rgb = shaded_biome_rgb * (1 - blend) + terrain_rgb * blend
+    # Directional hillshade (see the module comment above _compute_hillshade) -- land only: a
+    # real orbital photo shows a water surface as flat regardless of the seafloor relief
+    # beneath it, so this never touches ocean_rgb below.
+    land_rgb = np.clip(land_rgb * hillshade.reshape(-1)[:, None], 0, 255)
 
     flat_ocean = is_ocean.reshape(-1)
     # Ocean: the pelagic-province color blended toward the hypsometric depth shade (see
@@ -1900,7 +2038,7 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
     if grid is None or node_cloud is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
     all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
@@ -1957,7 +2095,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2024,7 +2162,7 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     created = plates.collect_all_node_created_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2419,19 +2557,22 @@ def render_png(
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h, *rest = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h, hillshade, *rest = grid
         terrain_relief = rest[0] if rest else None
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
         colors = elevation_colors(elev, world.sea_level_m) if view == "elevation" else plate_colors(owner)
-        # A deep-and-wide-enough channel darkens toward a visible gorge -- see
-        # _channel_visible_shade's own comment. "elevation" only: "plates" is a categorical
-        # mosaic with no elevation-relief information to carve into in the first place.
+        # A deep-and-wide-enough channel darkens toward a visible gorge (see
+        # _channel_visible_shade's own comment) and directional hillshade lights every cell by
+        # its own local surface normal (see the module comment above _compute_hillshade) --
+        # both "elevation" only: "plates" is a categorical mosaic with no elevation-relief
+        # information to carve or light in the first place.
         if view == "elevation":
             channel_shade = _channel_visible_shade(channel_depth, channel_width)
-            if np.any(channel_shade < 1.0):
-                colors = np.clip(np.round(colors.astype(np.float32) * channel_shade[:, None]), 0, 255).astype(np.uint8)
+            cell_shade = channel_shade * hillshade
+            if np.any(cell_shade != 1.0):
+                colors = np.clip(np.round(colors.astype(np.float32) * cell_shade[:, None]), 0, 255).astype(np.uint8)
         # "Mountains" / "Plains & Plateaus" legend toggles: a translucent wash (not a flat
         # swap, unlike the lake/glacier/volcano overlays below) so the hypsometric colour
         # underneath stays legible -- the point is to show *which* land is which, not to hide
