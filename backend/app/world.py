@@ -327,6 +327,14 @@ class World:
     # this call from scope), so this is a real `cKDTree`, built lazily only when the Elevation
     # view's relief toggles are on. Reset alongside the caches above.
     node_kdtree_relief_cache: cKDTree | None = None
+    # Per-node hillshade brightness multiplier (see render_image._hillshade_for_world), a pure
+    # function of node positions/elevation like the caches above -- computed once (a local
+    # plane-fit gradient over each node's own k nearest neighbours, see
+    # render_image._compute_hillshade) and reused by every render this step (Elevation and
+    # Combined views both resample it the same way they already resample channel_depth/
+    # lake_depth). Reset alongside node_kdtree_cache -- same invalidation event (a node moved
+    # or its elevation changed), since it's derived directly from that cache's own tuple.
+    node_hillshade_cache: np.ndarray | None = None
     # Live-adjustable via POST /world/controls (see main.py) for the UI's "Controls" window
     # -- unlike axial_tilt_deg/node_density (fixed at generation), these are meant to be
     # tweaked mid-simulation. sea_level_m replaces the bare `elevation <= 0.0` convention
@@ -736,6 +744,7 @@ def step_world(world: World, years: float) -> None:
     world.node_position_tree_cache = None
     world.node_healpix_index_cache = None
     world.node_kdtree_relief_cache = None
+    world.node_hillshade_cache = None
     if world.simulate_plate_movement:
         distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
         order = list(world.plates)

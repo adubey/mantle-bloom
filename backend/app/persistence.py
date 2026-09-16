@@ -96,3 +96,4 @@ def _drop_derived_caches(world: World) -> None:
     # *count*, not the just-invalidated geometry) rather than dropped alongside the others.
     world.node_healpix_index_cache = None
     world.node_kdtree_relief_cache = None
+    world.node_hillshade_cache = None

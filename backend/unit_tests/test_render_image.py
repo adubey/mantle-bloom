@@ -16,7 +16,7 @@ def _world(seed=1, num_plates=10, continental_fraction=0.4):
 
 def test_render_grid_arrays_cover_the_sphere_with_no_gaps():
     world = _world()
-    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h, _hillshade = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
 
     n = len(xy)
     assert n > 1000  # a real full-sphere sweep, not a token few points
@@ -88,10 +88,10 @@ def test_classify_terrain_relief_empty_world_returns_empty():
 def test_render_grid_arrays_terrain_relief_is_opt_in():
     world = _world(num_plates=8)
     default_grid = render_image._render_grid_arrays(world, "behrmann", np.eye(3))
-    assert len(default_grid) == 11  # unaffected -- every existing caller's unpack still matches
+    assert len(default_grid) == 12  # unaffected -- every existing caller's unpack still matches
 
     full_grid = render_image._render_grid_arrays(world, "behrmann", np.eye(3), include_terrain_relief=True)
-    assert len(full_grid) == 12
+    assert len(full_grid) == 13
     terrain = full_grid[-1]
     elevation = full_grid[1]
     assert terrain.shape == elevation.shape
@@ -410,7 +410,7 @@ def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_re
     from app import biomes
 
     world = _world(seed=7, num_plates=12, continental_fraction=0.6)
-    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _channel_depth, _channel_width, _is_sea = render_image._biome_fields(
+    lat_deg, _lon, _xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake, glacier_depth, _channel_depth, _channel_width, _is_sea, _hillshade = render_image._biome_fields(
         world, *render_image.biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -818,7 +818,7 @@ def test_render_grid_stays_gap_free_under_a_nontrivial_rotation():
     no-gaps assertions at a rotation that mixes all three axes, not just identity/90/180."""
     world = _world(seed=8)
     rotation = geometry.rotation_matrix(np.array([0.4, -0.5, 0.7]), 1.3)
-    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h = render_image._render_grid_arrays(world, "eckert4", rotation)
+    xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h, _hillshade = render_image._render_grid_arrays(world, "eckert4", rotation)
     assert len(xy) > 1000
     assert np.all(half_w > 0)
     assert np.all(half_h > 0)
