@@ -65,6 +65,23 @@ YOUNG_RIDGE_HM_M = 8_000.0
 MIN_CRUSTAL_THICKNESS_M = 500.0  # never let Hc integrate through zero
 MIN_MANTLE_LITHOSPHERE_THICKNESS_M = 2_000.0
 
+# Upper bounds, mirroring the floors above -- GitHub issue #161 ("Unbounded Hc/Hm growth in
+# apply_convergent_deformation"): with no ceiling, a node sitting in a long-lived convergent
+# regime compounds `apply_convergent_deformation`'s multiplicative thickening exponentially
+# (a 626 My / 6,265-step save measured Hc up to 413,885 m and Hm up to 1,311,592 m -- more
+# than an order of magnitude past anything geologically real). Real continental crust does
+# not stack indefinitely either: past ~2x its reference thickness the excess lower crust /
+# mantle-lithosphere root delaminates (breaks off and sinks into the asthenosphere) rather
+# than continuing to pile up -- the same real process `lithosphere_plate.
+# SUTURE_ACCRETION_MAX_HC_M` already caps suture-accretion overflow against, at the identical
+# 2.4x-reference ratio reused here for ordinary convergent thickening so both paths agree on
+# where continental crust actually maxes out. `MAX_MANTLE_LITHOSPHERE_THICKNESS_M` uses the
+# same ratio against the continental Hm reference -- real cratonic mantle-lithosphere keels
+# bottom out in roughly this range (~200-250 km) before a thickened root becomes gravitationally
+# unstable and delaminates.
+MAX_CRUSTAL_THICKNESS_M = 2.4 * REFERENCE_HC_CONTINENTAL_M
+MAX_MANTLE_LITHOSPHERE_THICKNESS_M = 2.4 * REFERENCE_HM_CONTINENTAL_M
+
 
 def reference_thickness(crust_type: str) -> tuple[float, float]:
     """(Hc, Hm) new crust of this type starts at."""

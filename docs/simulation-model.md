@@ -653,6 +653,65 @@ subducting under a continent makes more continent" -- the land-fraction decline'
 counterweight ([GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120), "Land fraction slowly declines"). Long-term footprint is still
 bounded by the volume-budget gate. `backend/unit_tests/test_rheology.py` pins the calibration.
 
+**Hc/Hm growth ceiling (2026-09, issue #161).** The recalibration above made
+`apply_convergent_deformation` actually thicken crust -- but multiplicatively, every step a
+node stayed convergent, with no upper bound at all. A node sitting in a long-lived convergent
+regime compounds that exponentially: a 626 My / 6,265-step save measured Hc up to 413,885 m
+and Hm up to 1,311,592 m, more than an order of magnitude past anything geologically real. The
+elevation *cache* (`isostatic_elevation(Hc, Hm)`, synced onto `elevation` by `deform`'s own
+before/after delta) stays clipped to the world's physical `[MIN_ELEVATION_M, MAX_ELEVATION_M]`
+bounds, but the underlying Hc/Hm kept climbing unseen beneath that clip -- so the moment such a
+node's regime flipped (rifting, a sudden erosion event), the delta was computed against a
+wildly inflated baseline, producing single-step elevation swings of thousands of metres that
+read as sheer canyon walls / cliff faces cutting through continental interiors, not smooth
+terrain.
+
+Both `apply_convergent_deformation` and `apply_arc_magmatic_thickening` now clip Hc at
+`lithosphere.MAX_CRUSTAL_THICKNESS_M` (the same ~2.4x-reference, ~84 km ceiling
+`SUTURE_ACCRETION_MAX_HC_M` already used for suture-accretion overflow -- both paths now agree
+on where continental crust actually maxes out before delaminating) and Hm at
+`MAX_MANTLE_LITHOSPHERE_THICKNESS_M` (same 2.4x ratio against the continental Hm reference, in
+the real ~200-250 km range cratonic keels bottom out at). Arc magmatism's overflow is simply
+not added -- it's juvenile mass from the mantle wedge, not conserved from anywhere, so refusing
+to add more past the ceiling loses nothing that existed a moment ago. `apply_convergent_
+deformation`'s overflow is different: real over-thickened crust doesn't just vanish at its
+strength limit, it spreads laterally into the foreland (a fold-thrust belt widening once its
+hinterland can't thicken any further), so `lithosphere_plate.deform` thrusts the *core*
+converging band's clipped-off Hc onto the near-field ring (the same dilated band
+`collision_uplift_reach_multiplier` already widens/narrows), spread evenly with Hm growing in
+proportion -- the same mass-conserving idiom `_redistribute_accreted_column` uses for suture
+retreat, just aimed outward instead of onto a retreating edge. Hm's own overflow is not
+conserved this way (an over-thickened mantle-lithosphere root has nowhere to spread to; it
+delaminates, same as `SUTURE_ACCRETION_MAX_HC_M`'s own overflow), and the near-field ring's own
+overflow (rarer -- it thickens at a faded rate already) also delaminates rather than cascading
+to a further-out tier. `backend/stress_tests/test_world_stepping.py`'s
+`two_continental_collision` debug-world test confirms both that the ceilings hold over a long
+sustained collision and that total continental crustal volume keeps growing well past the
+point the core boundary band saturates, rather than flatlining the moment it first hits the
+cap.
+
+Three more Hc/Hm growth paths needed the same ceiling, found by running that debug world long
+enough to actually saturate the tectonic cap and checking every subsequent step. Plate
+*generation* itself can seed a continental node above the ceiling from noise alone (confirmed
+directly: 85,349 m on one seed, before any deform() ever ran) -- `generate_plates`/`new_plate`
+now upper-clip there too, same as their existing `MIN_CRUSTAL_THICKNESS_M` floor, since this is
+generation-time noise rather than real tectonic mass and doesn't need conserving. `erosion.py`'s
+own Hc update (a column's crustal thickness absorbs net sediment deposition directly, the
+same delta idiom deform() uses -- see "Erosional isostatic compensation" below) has no upper
+bound of its own, so ordinary deposition landing on a column deform() had already
+driven to the ceiling this same step could push it over by a few metres; now `np.clip`'d at
+the same `MAX_CRUSTAL_THICKNESS_M`, with the overflow simply not booked (a thin, incidental
+sliver, not a source of runaway growth the way unbounded multiplicative thickening was, so
+not worth threading through erosion's own already-elsewhere redistribution accounting). And
+every place Hc/Hm growth is conserved by scaling Hm in *proportion* to a capped Hc's own
+growth ratio (`_redistribute_accreted_column`, `_accrete_dropped_row_volume`,
+`_merge_lines_from_resample`'s deep-overlap-sum branch, `relattice`'s volume-conserving
+rescale, and this section's own near-field redistribution) can still carry Hm past its own
+ceiling even though Hc's is respected: a node that started with very little Hc sees a large
+new-Hc/old-Hc ratio when a whole dropped row/column's volume lands on it, and that ratio
+multiplies Hm too. Every one of those sites now also clips its own Hm result at
+`MAX_MANTLE_LITHOSPHERE_THICKNESS_M`.
+
 Every node's onset year is also stamped onto
 `ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --

@@ -108,7 +108,7 @@ def apply_convergent_deformation(
     years_myr: float,
     fault_factor: np.ndarray,
     strength: np.ndarray | float = 1.0,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Contested (convergent) nodes: mass-conserving thickening under compression. Hc and Hm
     both thicken in proportion (crustal shortening drags the attached mantle lithosphere
     along with it) -- `fault_factor` (1.0 almost everywhere, `REVERSE_FAULT_VALLEY_UPLIFT_
@@ -118,13 +118,29 @@ def apply_convergent_deformation(
     than a post-hoc elevation multiplier. `strength` is the live collision-uplift tuning knob
     (World.collision_uplift_multiplier, plus the reach knob's near-field taper -- see
     lithosphere_plate.py); a plain 1.0 default keeps every existing caller/behaviour
-    unchanged."""
+    unchanged.
+
+    Hc/Hm are clipped at `lithosphere.MAX_CRUSTAL_THICKNESS_M`/`MAX_MANTLE_LITHOSPHERE_
+    THICKNESS_M` -- see those constants' own comment (GitHub issue #161: with no ceiling here,
+    a node sitting in a long-lived convergent regime compounds this exponentially, run after
+    run, with no physical floor on how tall/thick a single column can get). The third return
+    value, `overflow_hc_m`, is how much Hc growth this step actually got clipped off (>= 0,
+    zero everywhere the node wasn't already at the ceiling) -- real continental crust doesn't
+    just vanish at that ceiling, it spreads laterally into the surrounding foreland (a
+    fold-thrust belt widening once its hinterland can't thicken any further), so the caller
+    (lithosphere_plate.deform) is expected to thrust this onto the near-field band rather than
+    silently dropping it, the same mass-conserving idiom `_redistribute_accreted_column` uses
+    for suture retreat. Hm's own overflow is not returned/conserved -- unlike buoyant crust, an
+    over-thickened mantle-lithosphere root has nowhere to spread to; it delaminates (sinks into
+    the asthenosphere), a real geodynamic sink, not a modeling shortcut."""
     rate = plastic_strain_rate_per_myr(closing_rate_m_per_s)
     rate = np.clip(rate, 0.0, None)  # convergent branch only ever thickens
     fractional_change = rate * years_myr * fault_factor * strength
-    new_hc = hc_m * (1.0 + fractional_change)
-    new_hm = hm_m * (1.0 + fractional_change)
-    return new_hc, new_hm
+    uncapped_new_hc = hc_m * (1.0 + fractional_change)
+    new_hc = np.clip(uncapped_new_hc, None, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+    new_hm = np.clip(hm_m * (1.0 + fractional_change), None, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+    overflow_hc_m = uncapped_new_hc - new_hc
+    return new_hc, new_hm, overflow_hc_m
 
 
 def stretch_components(sep_theta: np.ndarray, sep_phi: np.ndarray, gap_rad: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -214,12 +230,20 @@ def apply_arc_magmatic_thickening(
     magmatism thickens the crustal column; the attached mantle lithosphere is returned
     unchanged (the caller still runs the ordinary convergent shortening on the contested
     subset, which does drag Hm along). Nodes not actually converging
-    (`closing_rate <= ARC_MIN_CONVERGENCE_M_PER_S`) get nothing."""
+    (`closing_rate <= ARC_MIN_CONVERGENCE_M_PER_S`) get nothing.
+
+    Clipped at `lithosphere.MAX_CRUSTAL_THICKNESS_M` -- same ceiling `apply_convergent_
+    deformation` enforces (issue #161), since this is a second, independent, unbounded-over-
+    enough-Myr source of Hc growth (additive rather than multiplicative, so far slower to run
+    away, but a sustained multi-hundred-Myr arc would still climb past it with no cap at all).
+    No overflow to conserve here, unlike the convergent path: this mass is juvenile, added
+    fresh from the mantle wedge rather than shortened out of the node's own prior column, so
+    simply not adding more past the ceiling loses nothing that existed a moment ago."""
     active = closing_rate_m_per_s > ARC_MIN_CONVERGENCE_M_PER_S
     convergence = np.clip(closing_rate_m_per_s / ARC_REFERENCE_CONVERGENCE_M_PER_S, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP)
     rate_mult = np.where(active, np.clip(0.4 + 0.6 * convergence, 0.0, ARC_MAGMATIC_CONVERGENCE_CAP), 0.0)
     new_hc = hc_m + ARC_MAGMATIC_HC_RATE_M_PER_MYR * years_myr * rate_mult * np.asarray(intensity)
-    return new_hc, hm_m
+    return np.clip(new_hc, None, lithosphere.MAX_CRUSTAL_THICKNESS_M), hm_m
 
 
 # Rift magmatic underplating: the "further rifting -> more volcanism" middle stage a real

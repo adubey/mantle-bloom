@@ -1,5 +1,5 @@
 import numpy as np
-from app import erosion, geometry
+from app import debug_worlds, erosion, geometry, lithosphere
 from app import lithosphere_plate
 from app.world import generate_world, step_world
 
@@ -162,6 +162,57 @@ def test_continental_volume_budget_bounds_the_boundary_ratchet(monkeypatch):
     assert ungated > gated + 0.04
     # ... and the gated run's own growth stays modest rather than running away.
     assert gated < 0.15
+
+
+def _continental_hc_hm(world):
+    hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates if p.crust_type == "continental"])
+    hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates if p.crust_type == "continental"])
+    return hc, hm
+
+
+def test_sustained_collision_caps_hc_hm_without_losing_the_overflow():
+    """GitHub issue #161 ("Unbounded Hc/Hm growth in apply_convergent_deformation"): with no
+    ceiling, a node sitting in a long-lived convergent regime compounded Hc/Hm exponentially
+    (measured up to Hc=413,885 m / Hm=1,311,592 m on a 626 My save -- more than an order of
+    magnitude past anything geologically real), and the resulting elevation/isostasy desync
+    read as sheer canyon walls. `two_continental_collision` is the debug world built exactly
+    for this: two continental plates pinned into a head-on collision that "never resolves...
+    the two landmasses keep shoving into and piling onto each other indefinitely."
+
+    Two properties, run over a long stretch (400 My -- several multiples of the ~45 My a
+    strong collision takes to double Hc, so the core boundary band should saturate against
+    the new ceiling well before the run ends):
+
+    1. Hc/Hm never exceed `lithosphere.MAX_CRUSTAL_THICKNESS_M`/`MAX_MANTLE_LITHOSPHERE_
+       THICKNESS_M` -- the regression this test exists to catch.
+    2. Total continental crustal volume keeps growing well past the point the core boundary
+       band saturates, rather than flatlining the moment its own nodes first hit the ceiling
+       -- confirming the capped overflow is actually reaching the near-field foreland
+       (`lithosphere_plate.deform`'s redistribution), not just silently vanishing at the cap
+       the way a bare clip with no conservation would (all growth would stop dead once the
+       one-line-wide boundary band saturated, however much longer the collision ran)."""
+    world = debug_worlds.generate_debug_world("two_continental_collision", seed=1)
+
+    for _ in range(40):
+        step_world(world, years=5_000_000)  # 200 My: the core boundary band should be saturated by now
+    hc_mid, hm_mid = _continental_hc_hm(world)
+    total_hc_mid = float(np.sum(hc_mid))
+    assert np.all(hc_mid <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
+    assert np.all(hm_mid <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6)
+    # The ceiling should actually be biting by now, not just headroom that was never reached --
+    # otherwise property 2 below wouldn't be testing anything.
+    assert np.any(hc_mid >= 0.95 * lithosphere.MAX_CRUSTAL_THICKNESS_M)
+
+    for _ in range(40):
+        step_world(world, years=5_000_000)  # another 200 My
+    hc_late, hm_late = _continental_hc_hm(world)
+    total_hc_late = float(np.sum(hc_late))
+
+    assert np.all(hc_late <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
+    assert np.all(hm_late <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M + 1e-6)
+    # Real continued growth in the second 200 My, not a plateau -- the overflow from the
+    # (already-saturated) core band is still landing somewhere real.
+    assert total_hc_late > total_hc_mid * 1.02
 
 
 def test_coastal_feedback_stays_stable_over_many_steps():

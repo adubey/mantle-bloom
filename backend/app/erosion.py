@@ -1423,9 +1423,18 @@ def apply_erosion(
         [lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order]
     )
     has_column = prior_hc > 0.0
+    # Upper-clipped at MAX_CRUSTAL_THICKNESS_M too (issue #161), same ceiling `rheology`'s
+    # tectonic thickening paths enforce -- without it, ordinary sediment deposition piling
+    # onto a column deform() had already driven right up to that ceiling this same step could
+    # push it over. Unlike the tectonic paths, this overflow isn't conserved elsewhere: it's a
+    # thin, incidental sliver (a column already at ~2.4x reference Hc catching net deposition
+    # in the very same step), not a source of runaway growth the way unbounded multiplicative
+    # thickening was -- the deposited sediment that doesn't fit here is simply not booked this
+    # step, rather than threading a conservation path through erosion's own already-elsewhere
+    # (marine/coastal/fluvial) redistribution accounting.
     new_crustal_thickness = np.where(
         has_column,
-        np.maximum(prior_hc + geomorphic_delta, lithosphere.MIN_CRUSTAL_THICKNESS_M),
+        np.clip(prior_hc + geomorphic_delta, lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M),
         prior_hc,
     )
     isostatic_delta = lithosphere.isostatic_elevation(
