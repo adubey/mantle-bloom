@@ -26,7 +26,7 @@ import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
-import { centerOfRotation, IDENTITY_ROTATION } from "./rotation";
+import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
 import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
 
@@ -50,6 +50,11 @@ const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
+// How long a press-and-hold on the "Center: ..." readout takes before it opens the editable
+// lat/lon fields (see the centerLatLon state below) -- long enough that an ordinary click or
+// tap-to-dismiss-something doesn't accidentally open it, same rationale as rotationDrag.ts's
+// own LONG_PRESS_MS for distinguishing a tap from a press-and-drag.
+const CENTER_EDIT_LONG_PRESS_MS = 500;
 const PLAY_INTERVAL_MS = 400;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
@@ -303,6 +308,15 @@ export default function App() {
     const [latRad, lonRad] = centerOfRotation(initialView.rotation);
     return { lat: (latRad * 180) / Math.PI, lon: (lonRad * 180) / Math.PI };
   });
+  // Press-and-hold on the "Center: ..." readout (see the render below) opens these editable
+  // lat/lon fields so the view can be recentered on a typed coordinate instead of only by
+  // dragging. centerEditValue holds the raw text (not numbers) while typing, so an in-progress
+  // entry like "-" or "12." doesn't get clobbered by parsing/reformatting on every keystroke;
+  // it's only parsed and validated on submit (see handleCommitCenterEdit).
+  const [editingCenter, setEditingCenter] = useState(false);
+  const [centerEditValue, setCenterEditValue] = useState({ lat: "", lon: "" });
+  const [centerEditError, setCenterEditError] = useState<string | null>(null);
+  const centerPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
   // views whose legend swatches are clickable (Biome, Combined, "Last elevation change" and
   // "Plates & Faults"), so it's cleared any time the view changes away from all of them rather
@@ -988,6 +1002,53 @@ export default function App() {
     setCenterLatLon({ lat: 0, lon: 0 });
   }, []);
 
+  // Press-and-hold on the "Center: ..." readout. Mirrors rotationDrag.ts's own long-press
+  // gesture (a timer armed on press, cancelled by an early release) but doesn't need that
+  // one's move-cancel-drag logic since this target never itself starts a drag.
+  const handleCenterPressStart = useCallback(() => {
+    if (busy || !summary || animating || editingCenter) return;
+    if (centerPressTimer.current) clearTimeout(centerPressTimer.current);
+    centerPressTimer.current = setTimeout(() => {
+      centerPressTimer.current = null;
+      setCenterEditValue({ lat: centerLatLon.lat.toFixed(4), lon: centerLatLon.lon.toFixed(4) });
+      setCenterEditError(null);
+      setEditingCenter(true);
+    }, CENTER_EDIT_LONG_PRESS_MS);
+  }, [busy, summary, animating, editingCenter, centerLatLon]);
+
+  const handleCenterPressEnd = useCallback(() => {
+    if (centerPressTimer.current) {
+      clearTimeout(centerPressTimer.current);
+      centerPressTimer.current = null;
+    }
+  }, []);
+
+  const handleCancelCenterEdit = useCallback(() => {
+    setEditingCenter(false);
+    setCenterEditError(null);
+  }, []);
+
+  // Validates the typed lat/lon before committing it as the new view center -- same
+  // rotationForCenter math MapCanvas's drag-to-pan gesture uses to commit a completed drag
+  // (see rotationDrag.ts), just fed a typed target instead of a dragged one.
+  const handleCommitCenterEdit = useCallback(() => {
+    const latText = centerEditValue.lat.trim();
+    const lonText = centerEditValue.lon.trim();
+    const lat = Number(latText);
+    const lon = Number(lonText);
+    if (
+      latText === "" || lonText === "" || !Number.isFinite(lat) || !Number.isFinite(lon) ||
+      lat < -90 || lat > 90 || lon < -180 || lon > 180
+    ) {
+      setCenterEditError("Latitude must be -90 to 90 and longitude -180 to 180.");
+      return;
+    }
+    setRotation(rotationForCenter((lat * Math.PI) / 180, (lon * Math.PI) / 180));
+    setCenterLatLon({ lat, lon });
+    setEditingCenter(false);
+    setCenterEditError(null);
+  }, [centerEditValue]);
+
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
   const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
 
@@ -1210,12 +1271,73 @@ export default function App() {
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
               <option value="eckert4">Eckert IV (pseudocylindrical equal-area)</option>
             </select>
-            <div style={{ marginTop: 6, opacity: 0.8 }}>
-              Center: {formatLatLon(centerLatLon.lat, centerLatLon.lon)}
-            </div>
+            {editingCenter ? (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleCommitCenterEdit();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") handleCancelCenterEdit();
+                }}
+                style={{ marginTop: 6 }}
+              >
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min={-90}
+                    max={90}
+                    value={centerEditValue.lat}
+                    onChange={(e) => setCenterEditValue((v) => ({ ...v, lat: e.target.value }))}
+                    placeholder="lat (-90 to 90)"
+                    aria-label="Center latitude"
+                    autoFocus
+                    style={{ width: "50%", fontSize: 12 }}
+                  />
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min={-180}
+                    max={180}
+                    value={centerEditValue.lon}
+                    onChange={(e) => setCenterEditValue((v) => ({ ...v, lon: e.target.value }))}
+                    placeholder="lon (-180 to 180)"
+                    aria-label="Center longitude"
+                    style={{ width: "50%", fontSize: 12 }}
+                  />
+                </div>
+                {centerEditError && (
+                  <div style={{ color: "#ff8080", fontSize: 10, marginTop: 2 }}>{centerEditError}</div>
+                )}
+                <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                  <button type="submit" style={{ flex: 1, fontSize: 12 }}>
+                    Set
+                  </button>
+                  <button type="button" onClick={handleCancelCenterEdit} style={{ flex: 1, fontSize: 12 }}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div
+                title="Press and hold to type a center coordinate"
+                onMouseDown={handleCenterPressStart}
+                onMouseUp={handleCenterPressEnd}
+                onMouseLeave={handleCenterPressEnd}
+                onTouchStart={handleCenterPressStart}
+                onTouchEnd={handleCenterPressEnd}
+                onTouchCancel={handleCenterPressEnd}
+                style={{ marginTop: 6, opacity: 0.8, cursor: !summary || animating ? undefined : "pointer", userSelect: "none" }}
+              >
+                Center: {formatLatLon(centerLatLon.lat, centerLatLon.lon)}
+              </div>
+            )}
             <button
               onClick={handleRecenter}
-              disabled={busy || !summary || animating || isIdentityRotation(rotation)}
+              disabled={busy || !summary || animating || isIdentityRotation(rotation) || editingCenter}
               style={{ width: "100%", marginTop: 6, fontSize: 12 }}
             >
               Re-center
@@ -1405,7 +1527,7 @@ export default function App() {
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
-              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(1)} Myr</div>
+              <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears === 10_000 ? 2 : 1)} Myr</div>
               {animation && <div>{animation.frame} frames recorded</div>}
             </div>
           )}
