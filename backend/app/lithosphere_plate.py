@@ -372,19 +372,24 @@ def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
     return out
 
 
-def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
-    """`mask` grown by `width` positions on each side, within the 1-D node order (used per
-    line, so no wrap). `width <= 0` returns an unchanged copy. Backs the collision-uplift
-    *reach* knob: a wider contested band -> the orogenic thickening spreads into a broader
-    belt, the same "how far inland does a collision crumple crust" lever v1 had as
-    COLLISION_RANGE_RAD."""
+def _distance_to_mask_1d(mask: np.ndarray, width: int) -> np.ndarray:
+    """Per-element distance (in node-index steps) to the nearest `True` in `mask`, within the
+    1-D node order (used per line, so no wrap). Saturates at `width + 1` for anything `width`
+    steps or farther away -- callers that only care about the ring within `width` steps of
+    `mask` don't need an exact distance transform past its own edge. Backs the collision-uplift
+    *reach* knob's near-field ring: a wider contested band -> the orogenic thickening spreads
+    into a broader belt, the same "how far inland does a collision crumple crust" lever v1 had
+    as COLLISION_RANGE_RAD, now with a smooth taper (COLLISION_NEAR_FIELD_INNER_FACTOR -> 0)
+    across the ring rather than a flat rate -- which needs *how far into* the ring a node is,
+    not just whether it's in the ring at all."""
+    sentinel = width + 1
+    dist = np.where(mask, 0, sentinel)
     if width <= 0 or not mask.any():
-        return mask.copy()
-    out = mask.copy()
+        return dist
     for shift in range(1, width + 1):
-        out[shift:] |= mask[:-shift]
-        out[:-shift] |= mask[shift:]
-    return out
+        dist[shift:] = np.minimum(dist[shift:], np.where(mask[:-shift], shift, sentinel))
+        dist[:-shift] = np.minimum(dist[:-shift], np.where(mask[shift:], shift, sentinel))
+    return dist
 
 
 # The collision-uplift *reach* knob (World.collision_uplift_reach_multiplier) dilates the
@@ -407,17 +412,29 @@ def _dilate_1d(mask: np.ndarray, width: int) -> np.ndarray:
 # end of the Himalaya range and mid-pack for the Andes, plus this ring is additive on top of
 # the (much narrower) geometric contested band itself.
 #
-# Expressed in km, not a flat node count: `_dilate_1d` still operates on node indices (there
-# is no cheaper way to widen a per-line band), but the index count converted to is divided by
+# Expressed in km, not a flat node count: `_distance_to_mask_1d` still operates on node
+# indices (there is no cheaper way to widen a per-line band), but the index count converted to
+# is divided by
 # this step's *actual* line spacing (`spacing_rad`, which shrinks as `world.node_density`
 # rises) so the belt's physical width stays ~350 km regardless of render/simulation
 # resolution -- a flat node count would otherwise make mountains visibly narrower at higher
 # node_density (confirmed: at density=4 a flat 2-node ring is only ~125 km, well under the
 # real-world width it's meant to model).
 COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT = 350.0
-# Near-field (dilated-but-not-contested) nodes thicken at this fraction of the contested
-# rate -- a collision belt's deformation fades outward from the suture, it doesn't step.
-COLLISION_REACH_NEAR_FIELD_FACTOR = 0.4
+# Near-field (dilated-but-not-contested) nodes thicken at a fraction of the contested rate
+# that tapers (cell-centered linear ramp -- see the taper computation at its one call site)
+# across the ring, from just under COLLISION_NEAR_FIELD_INNER_FACTOR right outside the
+# contested band down to just above 0 at the ring's own outer edge (COLLISION_NEAR_FIELD_
+# REACH_KM_PER_UNIT away) -- a collision belt's deformation fades outward from the suture, it
+# doesn't step. 2026-09-16 (GitHub issue #146, "Mountain ranges are too thin", cause 4 of that
+# investigation): this used to be a flat factor across the whole ring, then a hard drop to
+# zero right past it -- a two-level "shelf" profile, not a falloff, which reads as an abrupt
+# foothill line rather than a real orogen's gradual taper into its foreland. Doubling the old
+# flat 0.4 into a ramp from ~0.8 down to ~0 keeps the ring's average thickening rate exactly
+# the old flat value (a symmetric linear ramp always averages to its midpoint, so this knob's
+# own existing tuning-knob tests, which only assert monotonicity, are unaffected) while making
+# the taper itself continuous instead of a step.
+COLLISION_NEAR_FIELD_INNER_FACTOR = 0.8
 
 # Broad far-field collision stress: a genuine continent-continent collision transmits
 # uplift-inducing stress deep into the stable interior, well beyond the fold-thrust belt
@@ -616,11 +633,11 @@ class LithospherePlate(PlateWithLines):
 
         # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
         # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
-        # widens (>1) or narrows (<1) the belt it acts on -- see _dilate_1d /
-        # COLLISION_REACH_*. At 1.0, `orogen_amount` leaves apply_convergent_deformation's
+        # widens (>1) or narrows (<1) the belt it acts on -- see _distance_to_mask_1d /
+        # COLLISION_NEAR_FIELD_*. At 1.0, `orogen_amount` leaves apply_convergent_deformation's
         # contested-band strength at exactly 1.0, same as ever -- but `orogen_reach` no longer
         # means "no near-field ring below/at 1.0, only above": the ring is linear in the knob
-        # from 0 (see COLLISION_REACH_DILATION_NODES_PER_UNIT's own comment for why the model's
+        # from 0 (see COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT's own comment for why the model's
         # own baseline collision belt already carries one at the knob's untuned value).
         orogen_amount = world.collision_uplift_multiplier
         orogen_reach = world.collision_uplift_reach_multiplier
@@ -719,20 +736,35 @@ class LithospherePlate(PlateWithLines):
             elevation_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
 
             # The band that plastically thickens: the whole converging band at
-            # `orogen_contested_strength`, plus (reach knob > 1) a dilated near-field ring at
-            # a faded rate. `orogen_strength` is the per-node multiplier handed to
+            # `orogen_contested_strength`, plus (reach knob > 1) a dilated near-field ring
+            # that tapers linearly from COLLISION_NEAR_FIELD_INNER_FACTOR right outside the
+            # contested band down to 0 at the ring's own outer edge -- see that constant's own
+            # comment (issue #146). `orogen_strength` is the per-node multiplier handed to
             # apply_convergent_deformation; > 0 exactly on the nodes that thicken.
             # `apply_convergent_deformation` still gates on each node's own closing rate
             # (below yield / not actually closing -> zero strain), so a node that is
             # `convergent` only via the `contested` deep-overlap fold and is no longer
             # actively closing simply thickens at zero.
+            near_field_dist = _distance_to_mask_1d(convergent, orogen_dilation_nodes) if orogen_dilation_nodes > 0 else None
             near_field = (
-                _dilate_1d(convergent, orogen_dilation_nodes) & ~convergent & ~divergent
-                if orogen_dilation_nodes > 0
+                (near_field_dist <= orogen_dilation_nodes) & ~convergent & ~divergent
+                if near_field_dist is not None
                 else np.zeros(n, dtype=bool)
             )
             orogen_strength = np.where(convergent, orogen_contested_strength, 0.0)
-            orogen_strength[near_field] = orogen_amount * COLLISION_REACH_NEAR_FIELD_FACTOR
+            if np.any(near_field):
+                # Cell-centered, not edge-to-edge: node `d` (1-indexed) is treated as sitting
+                # at the middle of its own step, so the outermost ring node still gets a small
+                # nonzero share (COLLISION_NEAR_FIELD_INNER_FACTOR / (2*orogen_dilation_nodes))
+                # instead of tapering all the way to exactly 0 right at the last real node --
+                # an edge-to-edge ramp would otherwise re-introduce a (smaller) hard step at a
+                # small reach (e.g. a 1-2 node ring at coarse node_density), the same shelf-vs-
+                # falloff problem this taper exists to fix. This also keeps the ring's mean
+                # strength at exactly COLLISION_NEAR_FIELD_INNER_FACTOR / 2 regardless of
+                # orogen_dilation_nodes (a symmetric linear ramp always averages to its
+                # midpoint), matching the old flat factor's total contribution.
+                taper = np.clip(1.0 - (near_field_dist - 0.5) / orogen_dilation_nodes, 0.0, 1.0)
+                orogen_strength[near_field] = orogen_amount * COLLISION_NEAR_FIELD_INNER_FACTOR * taper[near_field]
             # "fault" mode: concentrate the shortening onto fault traces (no-op / all-ones
             # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
             orogen_strength = orogen_strength * fault_influence

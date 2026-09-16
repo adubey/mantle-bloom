@@ -2845,7 +2845,7 @@ rejected with a `400`.
 | `river_deposition_multiplier` | floodplain/delta settle-out fraction (`DEPOSITION_FRACTION`, clamped `< 0.95`) | `erosion.apply_erosion` |
 | `ocean_deposition_multiplier` | *settled* beach + marine sediment (see caveat below) | `erosion.apply_erosion` |
 | `collision_uplift_multiplier` | plastic crustal-thickening rate at contested nodes | `rheology.apply_convergent_deformation`'s `strength` arg, driven from `LithospherePlate.deform` |
-| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line by a physical-km ring, density-independent (`_dilate_1d`); `<1` narrows/weakens it instead | `LithospherePlate.deform` |
+| `collision_uplift_reach_multiplier` | width of the belt that thickens: dilates the contested band along the line by a physical-km ring, density-independent (`_distance_to_mask_1d`), thickening at a rate that tapers across the ring rather than a flat factor; `<1` narrows/weakens it instead | `LithospherePlate.deform` |
 | `volcanism_multiplier` | per-step eruption probability **and** metres added per eruption | `volcanism.apply_volcanic_activity` |
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
@@ -2861,8 +2861,11 @@ non-conservative shelf-building / shelf-starving source -- the same character as
 read isostasy), **not** a direct `plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` elevation
 delta (the removed v1 `PlateWithLines.deform` did that). The *amount* knob is a
 `strength` multiplier on the plastic thickening; the *reach* knob widens the node band that
-thickens (a near-field ring at `COLLISION_REACH_NEAR_FIELD_FACTOR` of the contested rate,
-`COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` (200 km) wider per unit of multiplier).
+thickens (a near-field ring, `COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT` (350 km) wider per unit
+of multiplier, thickening at a rate that tapers linearly across the ring from
+`COLLISION_NEAR_FIELD_INNER_FACTOR` of the contested rate down to 0 at its outer edge --
+2026-09-16, GitHub issue #146: this used to be a flat factor with a hard drop to 0 past the
+ring, a two-level "shelf" rather than a falloff).
 
 **Near-field reach is now density-independent (2026-09-04).** The ring used to widen by a flat
 node count (`COLLISION_REACH_DILATION_NODES_PER_UNIT`, 2 nodes/unit) -- at the default
