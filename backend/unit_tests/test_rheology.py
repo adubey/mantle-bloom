@@ -134,6 +134,46 @@ def test_arc_magmatism_flux_saturates_at_a_fast_margin():
     assert (fast[0] - 25_000.0) <= rheology.ARC_MAGMATIC_CONVERGENCE_CAP * (ref[0] - 25_000.0) + 1e-6
 
 
+def test_delamination_melt_intrusion_only_conserves_a_bounded_fraction_of_overflow():
+    """GitHub issue #145's reopened investigation: the first version of #161's overflow
+    conservation thrust the *entire* clipped-off Hc onto the near-field ring instantly, fully
+    conserved, every step -- which turned out to over-thicken/over-elevate the majority of a
+    real save's continental land within tens of Myr. `apply_delamination_melt_intrusion`
+    replaces that with a bounded melt fraction at a bounded per-Myr rate, so a large overflow
+    should add real but modest growth, well under the full overflow amount, when plenty of
+    time (`years_myr`) is available."""
+    hc_near = np.full(10, 40_000.0)
+    overflow_hc = 100_000.0  # a large one-step overflow from the core band
+
+    new_hc = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=1.0)
+
+    added_total = float(np.sum(new_hc - hc_near))
+    assert added_total > 0.0
+    assert added_total < overflow_hc  # not fully conserved -- most of it delaminates for good
+    assert np.all(new_hc <= lithosphere.MAX_CRUSTAL_THICKNESS_M)
+
+
+def test_delamination_melt_intrusion_rate_limited_not_instant():
+    """However much melt fraction is theoretically available, it can't all arrive in one
+    vanishingly small step -- the whole point of routing it through a bounded per-Myr rate
+    instead of #161's original instant full-overflow dump. A tiny `years_myr` should add far
+    less than a long one, for the same overflow."""
+    hc_near = np.full(5, 40_000.0)
+    overflow_hc = 50_000.0
+
+    tiny_step = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=1e-4)
+    long_step = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=5.0)
+
+    assert float(np.sum(tiny_step - hc_near)) < float(np.sum(long_step - hc_near))
+
+
+def test_delamination_melt_intrusion_no_op_without_overflow_or_receivers():
+    hc_near = np.full(5, 40_000.0)
+    assert np.array_equal(rheology.apply_delamination_melt_intrusion(hc_near, 0.0, years_myr=5.0), hc_near)
+    empty = np.array([])
+    assert rheology.apply_delamination_melt_intrusion(empty, 50_000.0, years_myr=5.0).size == 0
+
+
 def test_arc_magmatism_caps_hc_at_the_same_ceiling_as_convergent_thickening():
     """Arc underplating is a second, independent (additive rather than multiplicative, so far
     slower) source of unbounded Hc growth -- a sustained multi-hundred-Myr arc with no cap at

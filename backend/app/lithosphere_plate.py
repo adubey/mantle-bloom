@@ -760,25 +760,21 @@ class LithospherePlate(PlateWithLines):
                 hm[thicken] = new_hm
 
                 # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
-                # #161): real over-thickened crust spreads laterally into the foreland rather
-                # than stacking indefinitely, the same mass-conserving idiom
-                # `_redistribute_accreted_column` uses for suture retreat -- thrust the
-                # *core* converging band's overflow onto the near-field ring, spread evenly,
-                # Hm growing in proportion (same pattern). Only the core band's overflow is
-                # conserved this way; the near-field ring's own overflow (rarer -- it
-                # thickens at a faded rate already) has nowhere further out to spread to on
-                # this pass and delaminates, same as suture accretion's own overflow past its
-                # cap. No-op when there's no near-field ring to receive it (reach knob at 0,
-                # or an oceanic plate, which never gets one).
+                # #161) -- but it also doesn't reappear whole and instant on the foreland
+                # either (issue #145's reopened investigation: that turned out to over-
+                # thicken/elevate the majority of a run's continental land within tens of
+                # Myr). It delaminates, partially remelts, and the buoyant melt fraction
+                # intrudes the near-field ring at a bounded rate -- see
+                # rheology.apply_delamination_melt_intrusion's own docstring for the full
+                # reasoning. Only the core band's overflow is conserved (partially) this way;
+                # the near-field ring's own overflow (rarer -- it thickens at a faded rate
+                # already) has nowhere further out to spread to on this pass and delaminates
+                # in full, same as suture accretion's own overflow past its cap. No-op when
+                # there's no near-field ring to receive it (reach knob at 0, or an oceanic
+                # plate, which never gets one).
                 overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
                 if overflow_total > 0.0 and np.any(near_field):
-                    spread_n = int(np.count_nonzero(near_field))
-                    old_hc_near = hc[near_field].copy()
-                    new_hc_near = np.minimum(old_hc_near + overflow_total / spread_n, lithosphere.MAX_CRUSTAL_THICKNESS_M)
-                    hm[near_field] = np.minimum(
-                        hm[near_field] * (new_hc_near / old_hc_near), lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
-                    )
-                    hc[near_field] = new_hc_near
+                    hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
 
             # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
             # the mantle wedge and underplates juvenile crust across the whole arc band --
