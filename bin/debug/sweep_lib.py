@@ -26,7 +26,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 import numpy as np  # noqa: E402
 
-from app import mantle, render_image, stats  # noqa: E402
+from app import biomes, mantle, render_image, stats  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
 from app import lithosphere  # noqa: E402
 from app.world import World, generate_world, step_world  # noqa: E402
@@ -157,7 +157,12 @@ def compute_outcome_stats(world: World) -> dict:
     same as the live app's own Stats panel vs. Elevation-view legend never are either."""
     snapshot = stats.compute_stats(world)
     land_fraction = snapshot["land_fraction"]
-    ice_share_of_land = snapshot["biome_land_fraction"].get("EF", 0.0)
+    # biomes.BIOME_NAMES holds display names ("Ice Cap"), not the Koppen letter code -- look the
+    # key up via biomes.ICE_CAP rather than hardcoding "EF" (confirmed by hand this actually
+    # matters: a first pass of this sweep silently read 0.0 for every one of 660 records because
+    # of exactly this mismatch, even on a seed/checkpoint directly confirmed via
+    # climate.compute_climate_cached to have hundreds of real Ice Cap cells).
+    ice_share_of_land = snapshot["biome_land_fraction"].get(biomes.BIOME_NAMES[biomes.ICE_CAP], 0.0)
     return {
         "land_fraction": land_fraction,
         "ice_cap_fraction": land_fraction * ice_share_of_land,
