@@ -51,16 +51,21 @@ from sweep_lib import (  # noqa: E402
 DEFAULT_OUT = Path(__file__).resolve().parent / "results" / "sweep_results.jsonl"
 
 
-def _completed_triples(out_path: Path, node_density: float, checkpoint_years: list[int]) -> set[tuple[str, float, int]]:
-    """(parameter, multiplier, seed) triples that already have a record for every one of
-    `checkpoint_years` at this exact `node_density` in `out_path` -- a partially-written triple
-    (e.g. the process was killed mid-job) is treated as incomplete and re-run from scratch, since
-    run_one_job only returns a job's records once it finishes every checkpoint (there's no
-    partial-job resume finer than "the whole job"). A row from a differently-configured run
-    (different node_density) is ignored entirely rather than counted toward completeness -- see
-    this module's own docstring for why mixing configurations in one file is unsafe."""
+def _seen_checkpoints(out_path: Path, node_density: float) -> dict[tuple[str, float, int], set[float]]:
+    """(parameter, multiplier, seed) -> the set of checkpoint_years already recorded for it at
+    this exact `node_density` in `out_path`. Used both to decide which triples are complete
+    (see `_completed_triples`) and, row-by-row, to skip re-writing a checkpoint that's already
+    on disk -- a triple can be *incomplete* (so it gets re-run from scratch, since run_one_job
+    has no partial-job resume finer than "the whole job") while still having *some* of its
+    checkpoint rows already flushed, if run_sweep.py itself (not a worker -- worker failures are
+    caught below and never write partial records) was killed mid-write between two of a
+    finished job's `f.write` calls. Without this, resuming after that exact interruption reruns
+    the triple's full checkpoint set and appends duplicate rows for the checkpoints that
+    survived. A row from a differently-configured run (different node_density) is ignored
+    entirely -- see this module's own docstring for why mixing configurations in one file is
+    unsafe."""
     if not out_path.exists():
-        return set()
+        return {}
     seen_checkpoints: dict[tuple[str, float, int], set[float]] = {}
     with out_path.open() as f:
         for line in f:
@@ -72,6 +77,16 @@ def _completed_triples(out_path: Path, node_density: float, checkpoint_years: li
                 continue
             key = (row["parameter"], row["multiplier"], row["seed"])
             seen_checkpoints.setdefault(key, set()).add(row["checkpoint_years"])
+    return seen_checkpoints
+
+
+def _completed_triples(
+    seen_checkpoints: dict[tuple[str, float, int], set[float]], checkpoint_years: list[int]
+) -> set[tuple[str, float, int]]:
+    """(parameter, multiplier, seed) triples that already have a record for every one of
+    `checkpoint_years` -- a partially-written triple (e.g. a worker or the main process was
+    killed mid-job) is treated as incomplete and re-run from scratch, since run_one_job only
+    returns a job's records once it finishes every checkpoint."""
     needed = set(checkpoint_years)
     return {key for key, checkpoints in seen_checkpoints.items() if needed <= checkpoints}
 
@@ -114,7 +129,8 @@ def main() -> None:
     node_density = args.node_density
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    done = _completed_triples(args.out, node_density, checkpoint_years)
+    seen_checkpoints = _seen_checkpoints(args.out, node_density)
+    done = _completed_triples(seen_checkpoints, checkpoint_years)
     all_jobs = build_jobs(params, multipliers, seeds)
     jobs = [j for j in all_jobs if j not in done]
     print(f"{len(jobs)} job(s) to run ({len(all_jobs) - len(jobs)} already complete in {args.out}).")
@@ -139,8 +155,14 @@ def main() -> None:
             except Exception as exc:  # noqa: BLE001 -- keep the sweep going past one bad job
                 print(f"FAILED {param} x{multiplier} seed={seed}: {exc!r}", file=sys.stderr)
                 continue
+            key = (param, multiplier, seed)
+            already = seen_checkpoints.get(key, set())
             for record in records:
+                if record["checkpoint_years"] in already:
+                    continue  # survived a prior interrupted write of this same triple
                 f.write(json.dumps(record) + "\n")
+                already.add(record["checkpoint_years"])
+            seen_checkpoints[key] = already
             f.flush()
             completed += 1
             elapsed = time.perf_counter() - t0
