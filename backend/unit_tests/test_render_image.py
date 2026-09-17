@@ -403,6 +403,42 @@ def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
     assert elev.mode == "RGB"
 
 
+def _pile_ice_everywhere(world, depth_m):
+    for plate in world.plates:
+        for i, line in enumerate(plate.lines):
+            gd = line.glacier_depth.copy()
+            gd[:] = depth_m
+            plate.replace_line(i, line.replace(glacier_depth=gd))
+
+
+@pytest.mark.parametrize("view", ["elevation", "combined"])
+def test_glacier_overlay_is_shaded_by_hillshade_not_flat(view):
+    # Regression for issue #169: ice caps read as flat, texture-less plateaus even over
+    # genuinely varied terrain, because the glacier overlay painted a single flat
+    # GLACIER_COLOR_RGB with no relation to the hillshade the land underneath it would show.
+    # Glaciating the whole world (real, naturally rugged terrain from generation) means almost
+    # every pixel is "under ice" with no glacier/non-glacier boundary to blur across, so any
+    # color variation among those pixels can only come from hillshade, not edge antialiasing.
+    world = _world(seed=7, num_plates=8, continental_fraction=0.5)
+    _pile_ice_everywhere(world, hydrology.GLACIER_VISIBLE_DEPTH_M + 500.0)
+
+    png = render_image.render_png(world, "behrmann", view, 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
+
+    glacier_rgb = np.array(render_image.GLACIER_COLOR_RGB)
+    near_glacier = np.all(np.abs(pixels.astype(int) - glacier_rgb) < 60, axis=-1)
+    assert near_glacier.sum() > 500  # a real, sizeable ice-covered area to sample from
+
+    # A handful of ice-adjacent pixels differ from the flat overlay color regardless -- blur
+    # and the river-line overlay both blend a few pixels toward it without touching the code
+    # under test (confirmed by running this same check against the pre-fix code: it produces
+    # a couple hundred such incidental pixels out of ~40k). Real per-cell hillshade variation
+    # is far larger -- roughly a third of the ice-covered area -- so the bar is set well above
+    # that incidental-blend noise floor.
+    not_flat = near_glacier & ~np.all(np.abs(pixels.astype(int) - glacier_rgb) < 3, axis=-1)
+    assert not_flat.sum() > 2000
+
+
 def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_rest():
     # smooth_biome_field is a cleanup pass, not a reclassification: on the real biome render
     # grid it should change only a small slice of land and never erase a biome that has a

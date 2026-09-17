@@ -1855,7 +1855,12 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         colors = np.where(is_lake[:, None], lake_rgb, colors)
     is_glacier = glacier_depth.reshape(-1) > hydrology.GLACIER_VISIBLE_DEPTH_M
     if np.any(is_glacier):
-        colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
+        # Ice is a thin cap conforming to the terrain beneath it, not a flat surface like
+        # water (see the ocean/hillshade comment above) -- shading it by the same per-cell
+        # hillshade the land underneath would show keeps a glaciated ridge or valley legible
+        # instead of painting every ice cap as one flat, texture-less white plateau.
+        glacier_rgb = np.clip(np.array(GLACIER_COLOR_RGB, dtype=float)[None, :] * hillshade.reshape(-1)[:, None], 0, 255)
+        colors = np.where(is_glacier[:, None], glacier_rgb, colors)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
     # Per-cell class id -> alpha (see COMBINED_LAKE_ID_CODE's comment): every classified cell
@@ -2609,7 +2614,14 @@ def render_png(
             colors = np.where(is_volcano[:, None], np.array(VOLCANO_COLOR_RGB, dtype=np.uint8), colors)
         is_glacier = glacier_depth > hydrology.GLACIER_VISIBLE_DEPTH_M
         if np.any(is_glacier):
-            colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=np.uint8), colors)
+            # Same reasoning as the Combined view's glacier overlay: ice conforms to the
+            # terrain underneath, so light it with that terrain's own hillshade rather than
+            # painting a flat, relief-less white -- "elevation" only, matching cell_shade
+            # above ("plates" has no elevation-relief information to light in the first
+            # place).
+            glacier_shade = hillshade if view == "elevation" else np.ones_like(hillshade)
+            glacier_rgb = np.clip(np.array(GLACIER_COLOR_RGB, dtype=np.float32)[None, :] * glacier_shade[:, None], 0, 255)
+            colors = np.where(is_glacier[:, None], np.round(glacier_rgb).astype(np.uint8), colors)
         _fill_rects(pixels, centers, hw_px, hh_px, colors)
 
     if detail_lines:
