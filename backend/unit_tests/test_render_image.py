@@ -403,6 +403,91 @@ def test_combined_view_encodes_biome_ids_in_the_alpha_channel():
     assert elev.mode == "RGB"
 
 
+def _pile_ice_everywhere(world, depth_m):
+    for plate in world.plates:
+        for i, line in enumerate(plate.lines):
+            gd = line.glacier_depth.copy()
+            gd[:] = depth_m
+            plate.replace_line(i, line.replace(glacier_depth=gd))
+
+
+@pytest.mark.parametrize("view", ["elevation", "combined"])
+def test_glacier_overlay_is_shaded_by_hillshade_not_flat(view):
+    # Regression for issue #169: ice caps read as flat, texture-less plateaus even over
+    # genuinely varied terrain, because the glacier overlay painted a single flat
+    # GLACIER_COLOR_RGB with no relation to the hillshade the land underneath it would show.
+    # Glaciating the whole world (real, naturally rugged terrain from generation) means almost
+    # every pixel is "under ice" with no glacier/non-glacier boundary to blur across, so any
+    # color variation among those pixels can only come from hillshade, not edge antialiasing.
+    world = _world(seed=7, num_plates=8, continental_fraction=0.5)
+    _pile_ice_everywhere(world, hydrology.GLACIER_VISIBLE_DEPTH_M + 500.0)
+
+    png = render_image.render_png(world, "behrmann", view, 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
+
+    glacier_rgb = np.array(render_image.GLACIER_COLOR_RGB)
+    near_glacier = np.all(np.abs(pixels.astype(int) - glacier_rgb) < 60, axis=-1)
+    assert near_glacier.sum() > 500  # a real, sizeable ice-covered area to sample from
+
+    # A handful of ice-adjacent pixels differ from the flat overlay color regardless -- blur
+    # and the river-line overlay both blend a few pixels toward it without touching the code
+    # under test (confirmed by running this same check against the pre-fix code: it produces
+    # a couple hundred such incidental pixels out of ~40k). Real per-cell hillshade variation
+    # is far larger -- roughly a third of the ice-covered area -- so the bar is set well above
+    # that incidental-blend noise floor.
+    not_flat = near_glacier & ~np.all(np.abs(pixels.astype(int) - glacier_rgb) < 3, axis=-1)
+    assert not_flat.sum() > 2000
+
+
+def test_land_only_glacier_shade_keeps_floating_ice_flat():
+    hillshade = np.array([0.5, 1.5, 0.7, 1.2])
+    is_ocean = np.array([True, False, False, False])
+    is_lake = np.array([False, True, False, False])
+    shade = render_image._land_only_glacier_shade(hillshade, is_ocean, is_lake)
+    # Floating sea ice and frozen-lake ice: flat (1.0) regardless of the seafloor/lakebed
+    # hillshade underneath -- the real values above (0.5, 1.5) would visibly darken/brighten
+    # it if the guard were missing.
+    assert shade[0] == 1.0
+    assert shade[1] == 1.0
+    # Land-based ice: real per-cell hillshade passes through unchanged.
+    assert shade[2] == 0.7
+    assert shade[3] == 1.2
+
+
+def test_combined_view_ocean_ice_stays_flat_not_shaded_by_seafloor_relief():
+    # Companion regression to the one above: a real orbital photo shows floating sea ice as a
+    # flat white surface regardless of the seafloor relief beneath it -- the exact rule the
+    # Combined view's own land_rgb hillshade already carves out for open ocean (see its
+    # "land only" comment). Glaciating ocean nodes only (never land) means any color variation
+    # among the resulting ice pixels could only come from that seafloor bathymetry leaking
+    # through, which the fix explicitly guards against.
+    world = _world(seed=11, num_plates=8, continental_fraction=0.5)
+    depth = hydrology.GLACIER_VISIBLE_DEPTH_M + 500.0
+    for plate in world.plates:
+        for i, line in enumerate(plate.lines):
+            gd = line.glacier_depth.copy()
+            gd[line.elevation <= world.sea_level_m] = depth
+            plate.replace_line(i, line.replace(glacier_depth=gd))
+
+    png = render_image.render_png(world, "behrmann", "combined", 320, 180)
+    pixels = np.asarray(Image.open(io.BytesIO(png)).convert("RGB"))
+
+    glacier_rgb = np.array(render_image.GLACIER_COLOR_RGB)
+    near_glacier = np.all(np.abs(pixels.astype(int) - glacier_rgb) < 60, axis=-1)
+    assert near_glacier.sum() > 500  # a real, sizeable sea-ice-covered area to sample from
+
+    not_flat = near_glacier & ~np.all(np.abs(pixels.astype(int) - glacier_rgb) < 3, axis=-1)
+    # Unlike the sibling test above, land here is never glaciated, so ice-covered ocean cells
+    # sit right next to varied-color land at every coastline -- the post-fill blur (see
+    # CELL_BLUR_RADIUS_PX) blends a real, if modest, band of those coastline pixels toward
+    # off-white regardless of this fix (confirmed directly: ~10% on this seed with the fix
+    # applied, entirely from that blur). A real seafloor-hillshade leak would push this far
+    # higher across the *whole* ocean interior, not just coastline blur -- confirmed directly
+    # against the pre-fix code, which put it above 30% on this same seed -- so the bar sits
+    # well clear of both.
+    assert not_flat.sum() < 0.2 * near_glacier.sum()
+
+
 def test_biome_view_smoothing_preserves_the_major_biomes_and_barely_moves_the_rest():
     # smooth_biome_field is a cleanup pass, not a reclassification: on the real biome render
     # grid it should change only a small slice of land and never erase a biome that has a

@@ -889,6 +889,25 @@ def _hillshade_for_world(world: World) -> np.ndarray | None:
     return result
 
 
+def _shaded_glacier_rgb(shade: np.ndarray) -> np.ndarray:
+    """`GLACIER_COLOR_RGB` scaled by a per-cell brightness multiplier (the Elevation/Combined
+    glacier overlays' own `shade`, each built its own way -- see their call sites) and clipped
+    to a valid color range. Factored out purely so the two call sites can't drift apart on the
+    arithmetic itself; each still decides its own `shade` array (whether/where hillshade
+    applies at all differs between the two views)."""
+    return np.clip(np.array(GLACIER_COLOR_RGB, dtype=np.float32)[None, :] * shade[:, None], 0, 255)
+
+
+def _land_only_glacier_shade(hillshade: np.ndarray, is_ocean: np.ndarray, is_lake: np.ndarray) -> np.ndarray:
+    """The Combined view's glacier-overlay hillshade multiplier: real per-cell `hillshade` over
+    land, but a flat, unshaded 1.0 wherever ice is floating on water (`is_ocean` or a currently
+    visible `is_lake`) -- see `_render_combined_view`'s own glacier-overlay comment for why
+    (floating ice conforms to the flat water surface, not the seafloor/lakebed relief beneath
+    it, the same "water reads flat" rule that view's land_rgb hillshade multiply already
+    follows for open ocean)."""
+    return np.where(is_ocean | is_lake, 1.0, hillshade)
+
+
 def _render_grid_arrays(
     world: World, projection: str, view_rotation: np.ndarray, include_terrain_relief: bool = False
 ) -> tuple[np.ndarray, ...] | None:
@@ -1855,7 +1874,15 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
         colors = np.where(is_lake[:, None], lake_rgb, colors)
     is_glacier = glacier_depth.reshape(-1) > hydrology.GLACIER_VISIBLE_DEPTH_M
     if np.any(is_glacier):
-        colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=float), colors)
+        # A land-based ice cap/glacier is a thin layer conforming to the terrain beneath it,
+        # so shading it by that cell's own hillshade keeps a glaciated ridge or valley legible
+        # instead of painting every ice cap as one flat, texture-less white plateau. Floating
+        # sea ice and frozen-lake ice are the opposite case: they conform to the flat water
+        # surface, not the seafloor/lakebed bathymetry underneath (same "water reads flat"
+        # rule land_rgb's own hillshade multiply above already keeps to), so those stay
+        # unshaded regardless of what relief happens to sit below the waterline.
+        glacier_shade = _land_only_glacier_shade(hillshade.reshape(-1), flat_ocean, is_lake)
+        colors = np.where(is_glacier[:, None], _shaded_glacier_rgb(glacier_shade), colors)
     colors = np.clip(np.round(colors), 0, 255).astype(np.uint8)
 
     # Per-cell class id -> alpha (see COMBINED_LAKE_ID_CODE's comment): every classified cell
@@ -2609,7 +2636,16 @@ def render_png(
             colors = np.where(is_volcano[:, None], np.array(VOLCANO_COLOR_RGB, dtype=np.uint8), colors)
         is_glacier = glacier_depth > hydrology.GLACIER_VISIBLE_DEPTH_M
         if np.any(is_glacier):
-            colors = np.where(is_glacier[:, None], np.array(GLACIER_COLOR_RGB, dtype=np.uint8), colors)
+            # Light ice by its cell's own hillshade rather than painting a flat, relief-less
+            # white -- "elevation" only, matching cell_shade above ("plates" has no
+            # elevation-relief information to light in the first place). Unlike the Combined
+            # view's glacier overlay, this doesn't need an ocean/lake exception: cell_shade
+            # above already hillshades bathymetry right along with land here (this view reads
+            # as a relief map of the whole surface, not a simulated photo where a water
+            # surface must stay flat), so floating sea/lake ice is already consistent with how
+            # every other cell in this view is lit.
+            glacier_shade = hillshade if view == "elevation" else np.ones_like(hillshade)
+            colors = np.where(is_glacier[:, None], np.round(_shaded_glacier_rgb(glacier_shade)).astype(np.uint8), colors)
         _fill_rects(pixels, centers, hw_px, hh_px, colors)
 
     if detail_lines:
