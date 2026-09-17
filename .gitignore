@@ -11,3 +11,7 @@ frontend/dist/
 # PyInstaller (bin/package.sh, bin/mantle-bloom.spec)
 /build/
 /dist/
+
+# bin/debug/run_sweep.py's own raw/aggregated output -- regenerable, not source; findings go
+# into the tracking GitHub issue instead of the repo.
+/bin/debug/results/
