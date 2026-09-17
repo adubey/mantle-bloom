@@ -130,12 +130,17 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # call above was itself an artifact of the bug it predates, not just of the frozen-catchment fix
 # it credits. Re-ran the same seed (23097282) from scratch against current code (#161's fix and
 # its #145/#146/#162 follow-ups included), both at the original 79.2 My checkpoint and extended
-# to 300 My (12 checkpoints, every 25 My): max hierarchy depth never exceeds 17 at any
-# checkpoint and oscillates rather than trending upward (4, 17, 4, 4, 7, 15, 2, 7, 7, 2, 6, 3
-# across the 25-300 My checkpoints), with every spike resolving back down within one or two
-# checkpoints -- the same "transient chain forms, siltation collapses it" dynamic the original
-# measurement saw, not a slow climb toward issue #117's ~3,500-level cascade. Conclusion
-# unchanged and now confirmed independent of #161: still no bump justified.
+# to 300 My. At the original checkpoint itself: max depth 3 with 34 leaf catchments (vs. the
+# original's peak 8/ending 2 with only 6 leaf catchments) -- a different but not worse number,
+# as expected given #161's fix changes plate-deformation behaviour from early steps on, not
+# just once Hc/Hm would otherwise have blown up, so this is a genuinely different simulated
+# history from the same seed rather than a literal reproduction. Extended to 300 My (12
+# checkpoints, every 25 My): max hierarchy depth never exceeds 17 at any checkpoint and
+# oscillates rather than trending upward (4, 17, 4, 4, 7, 15, 2, 7, 7, 2, 6, 3 across the
+# 25-300 My checkpoints), with every spike resolving back down within one or two checkpoints --
+# the same "transient chain forms, siltation collapses it" dynamic the original measurement
+# saw, not a slow climb toward issue #117's ~3,500-level cascade. Conclusion unchanged and now
+# confirmed independent of #161: still no bump justified.
 #
 # That same extended run also answers issue #144's item #2 (whether a cheap depression
 # pre-fill pass belongs in the pipeline alongside this module's catchment+Kruskal hierarchy):
