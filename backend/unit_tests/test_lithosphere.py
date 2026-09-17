@@ -59,6 +59,17 @@ def test_isostatic_elevation_broadcasts_a_per_node_crust_density():
     assert np.all(surface_drop > 0.0) and np.all(surface_drop < 25.0)
 
 
+def test_crustal_thickness_for_elevation_round_trips_both_branches():
+    """`crustal_thickness_for_elevation` (issue #173) is the general inverse of
+    `isostatic_elevation`, covering both the dry (above-datum) and water-loaded branches --
+    unlike `crustal_thickness_for_submerged_elevation`, which only covers `z < 0`."""
+    hm = np.full(6, lithosphere.REFERENCE_HM_CONTINENTAL_M)
+    target = np.array([-6000.0, -3000.0, -500.0, 200.0, 1500.0, 4000.0])
+    hc = lithosphere.crustal_thickness_for_elevation(target, hm, lithosphere.RHO_CONTINENTAL_CRUST)
+    back = lithosphere.isostatic_elevation(hc, hm, lithosphere.RHO_CONTINENTAL_CRUST)
+    assert np.allclose(back, target, atol=1e-6)
+
+
 def test_isostatic_elevation_clips_to_world_bounds():
     from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
 
