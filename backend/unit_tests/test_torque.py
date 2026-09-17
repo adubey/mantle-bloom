@@ -418,3 +418,36 @@ def test_collision_friction_torque_brakes_harder_for_a_more_severe_overlap():
     # Same geometry/velocities throughout -- the resistive force still opposes relative
     # motion, it's just scaled up, not redirected.
     assert np.dot(geometry.normalize(severe[None, :])[0], geometry.normalize(light[None, :])[0]) > 0.999
+
+
+def test_collision_friction_torque_brakes_harder_for_a_taller_orogen():
+    """GitHub issue #176: an already-thickened collision zone (Hc/Hm well past reference) must
+    brake harder than one still at reference thickness, holding overlap_severity and the
+    contested-node geometry/velocity fixed -- this is what makes the brake self-limiting as a
+    collision's relief grows, not just its overlap severity."""
+    n = 5
+    own_points = np.tile(np.array([1.0, 0.0, 0.0]), (n, 1))
+    collision_mask = np.ones(n, dtype=bool)
+    base_kwargs = dict(
+        own_points=own_points,
+        own_crust_type_codes=np.zeros(n, dtype=np.int8),
+        dist_to_neighbor=np.full(n, 0.001),
+        direction_to_neighbor=np.tile(np.array([0.0, 1.0, 0.0]), (n, 1)),
+        neighbor_is_oceanic=np.zeros(n, dtype=bool),
+        neighbor_omega=np.tile(np.array([0.0, 0.0, -0.02]), (n, 1)),
+    )
+    # Reference-thickness crust: zero relief above CONTINENTAL_REFERENCE_ELEVATION_M.
+    flat_inputs = torque.BoundaryForceInputs(own_hc=np.full(n, 35_000.0), own_hm=np.full(n, 100_000.0), **base_kwargs)
+    # 2x reference Hc/Hm -- a genuinely tall, Tibetan-Plateau-scale orogen.
+    tall_inputs = torque.BoundaryForceInputs(own_hc=np.full(n, 70_000.0), own_hm=np.full(n, 200_000.0), **base_kwargs)
+
+    class FakePlate:
+        crust_type = "continental"
+        omega = np.array([0.0, 0.0, 0.02])
+
+    plate = FakePlate()
+    flat = torque.collision_friction_torque(plate, flat_inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
+    tall = torque.collision_friction_torque(plate, tall_inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
+
+    assert np.linalg.norm(tall) > np.linalg.norm(flat)
+    assert np.dot(geometry.normalize(tall[None, :])[0], geometry.normalize(flat[None, :])[0]) > 0.999
