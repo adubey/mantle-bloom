@@ -10,8 +10,9 @@ consumes directly, and what `mantle.flow_at` already returns (a field of tangent
 angular velocity since v = omega x r reduces to v = omega x p_unit when r = 1). The physics
 in this module (slab-pull/ridge-push/basal-drag forces, moment of inertia) is expressed in
 real SI units (N, kg, m, s) since that's what the force formulas in the spec are written in
--- `_real_velocity_m_per_s`/`SECONDS_PER_YEAR` are the only two places that cross between the
-two unit systems.
+-- each drag/pull term's own `c` coefficient folds in a `PLANET_RADIUS_M / SECONDS_PER_YEAR`
+factor (twice, for the affine-in-omega `(b, K)` forms) at the point it crosses between the two
+unit systems.
 """
 
 from __future__ import annotations
@@ -103,13 +104,6 @@ COLLISION_RELIEF_FRICTION_SCALE_M = 4000.0
 # Boundary-line integrals (slab-pull/ridge-push) treat each contributing node as owning one
 # `spacing_rad * PLANET_RADIUS_M`-long stretch of the boundary -- consistent with how deform()
 # already treats a line's own node spacing as the physical along-boundary resolution.
-
-
-def _real_velocity_m_per_s(omega_equivalent_vectors: np.ndarray) -> np.ndarray:
-    """Convert an (N,3) array of `omega`-unit ("rad/yr", radius-independent) tangential
-    vectors -- e.g. `omega x unit_point` or `mantle.flow_at`'s own output -- into real
-    physical velocity (m/s) at the planet's actual radius."""
-    return omega_equivalent_vectors * lithosphere.PLANET_RADIUS_M / SECONDS_PER_YEAR
 
 
 @dataclass
@@ -277,15 +271,17 @@ def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarra
     over *every* node this plate owns (a body force, not a boundary integral).
 
     Each node's drag force is `F_i = (mu / d_s) * (v_mantle_i - v_plate_i) * A_i` with
-    `v_plate_i = _real_velocity_m_per_s(omega x p_i)`, so the whole-plate drag torque
-    `sum_i (R p_i) x F_i` is affine in `omega`:
+    `v_plate_i = (omega x p_i) * R / SECONDS_PER_YEAR` (the real m/s velocity at the planet's
+    actual radius `R`), so the whole-plate drag torque `sum_i (R p_i) x F_i` is affine in
+    `omega`:
 
         K = c * sum_i (I3 - p_i p_i^T)      -- symmetric, positive-semidefinite
         b = c * sum_i p_i x flow_i          -- `flow_i` = mantle.flow_at, this codebase's rad/yr units
         c = (mu / d_s) * A * R^2 / SECONDS_PER_YEAR
 
-    (`c`'s `R^2 / SECONDS_PER_YEAR` folds in the two `_real_velocity_m_per_s` conversions plus
-    the `R` lever arm; `sum_i p_i x (omega x p_i) == (sum_i I3 - p_i p_i^T) @ omega`.)
+    (`c`'s `R^2 / SECONDS_PER_YEAR` folds in the two rad/yr-to-m/s conversions (`v_mantle_i` and
+    `v_plate_i` each contribute one power of `R / SECONDS_PER_YEAR`) plus the `R` lever arm;
+    `sum_i p_i x (omega x p_i) == (sum_i I3 - p_i p_i^T) @ omega`.)
 
     Split out from the plain torque so `integrate_omega` can treat this term *implicitly*: it
     is by far the stiffest in the balance -- the asthenosphere coupling relaxes a plate toward
@@ -387,14 +383,16 @@ def integrate_omega(
 
         (I + g K) omega_new = I omega_old + g (tau_explicit + b)        g = years * SECONDS_PER_YEAR**2
 
-    `(drag_b, drag_k)` is `basal_drag_coefficients`' affine split of Eq. 10's drag,
+    `(drag_b, drag_k)` is `basal_drag_coefficients`' own affine split of Eq. 10's drag (plus
+    `slab_drag_coefficient_matrix`/`collision_drag_coefficients`, folded into the same `drag_k`/
+    `drag_b` by `shift_plate` for the same reason -- see `collision_drag_coefficients`' own
+    docstring for why an explicit torque structurally can't compete with this implicit term),
     `tau(omega) = b - K @ omega`; `explicit_torque` is every other (bounded, geometry-driven)
     torque. Backward Euler on the drag term is unconditionally stable for any `years` -- an
     explicit step on it does not converge at any step size this simulation uses (see
-    `basal_drag_coefficients`), and the implicit drag term also dominates the system strongly
-    enough to damp the explicit collision-friction term riding along in `explicit_torque`.
-    Reduces to the old explicit `omega_old + g I^-1 tau` when `K = 0, b = 0`. The final
-    `mantle.clamp_rate` (same physical speed bounds v1 enforced) is unchanged."""
+    `basal_drag_coefficients`). Reduces to the old explicit `omega_old + g I^-1 tau` when
+    `K = 0, b = 0`. The final `mantle.clamp_rate` (same physical speed bounds v1 enforced) is
+    unchanged."""
     g = years * SECONDS_PER_YEAR**2
     lhs = inertia_tensor + g * drag_k
     rhs = inertia_tensor @ plate.omega + g * (explicit_torque + drag_b)
