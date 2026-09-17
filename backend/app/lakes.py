@@ -121,6 +121,35 @@ LAKE_EVAPORATION_BASELINE_M_PER_MYR = 0.5
 # (silting chronically-frozen catchments instead of skipping them) was the actual bottleneck,
 # not this coefficient's magnitude. No bump is justified by this measurement -- revisit only if
 # a future repro reproduces runaway depth with #143 already in place.
+#
+# That measurement predates issue #161's fix: `rheology.apply_convergent_deformation`'s Hc/Hm
+# growth was unbounded until then, desyncing a node's rendered `elevation` from what its own
+# crustal/mantle-lithosphere thickness isostatically implied by up to 16 km on a save examined
+# in that issue -- exactly the kind of spurious deep, narrow well this module's catchment
+# detection would mistake for a real depression. Worth re-checking whether the "no bump needed"
+# call above was itself an artifact of the bug it predates, not just of the frozen-catchment fix
+# it credits. Re-ran the same seed (23097282) from scratch against current code (#161's fix and
+# its #145/#146/#162 follow-ups included), both at the original 79.2 My checkpoint and extended
+# to 300 My. At the original checkpoint itself: max depth 3 with 34 leaf catchments (vs. the
+# original's peak 8/ending 2 with only 6 leaf catchments) -- a different but not worse number,
+# as expected given #161's fix changes plate-deformation behaviour from early steps on, not
+# just once Hc/Hm would otherwise have blown up, so this is a genuinely different simulated
+# history from the same seed rather than a literal reproduction. Extended to 300 My (12
+# checkpoints, every 25 My): max hierarchy depth never exceeds 17 at any checkpoint and
+# oscillates rather than trending upward (4, 17, 4, 4, 7, 15, 2, 7, 7, 2, 6, 3 across the
+# 25-300 My checkpoints), with every spike resolving back down within one or two checkpoints --
+# the same "transient chain forms, siltation collapses it" dynamic the original measurement
+# saw, not a slow climb toward issue #117's ~3,500-level cascade. Conclusion unchanged and now
+# confirmed independent of #161: still no bump justified.
+#
+# That same extended run also answers issue #144's item #2 (whether a cheap depression
+# pre-fill pass belongs in the pipeline alongside this module's catchment+Kruskal hierarchy):
+# with depth staying bounded and self-resolving out to 4x the original check's duration, a
+# second geometric-fill mechanism isn't warranted -- and would cut against the precedent
+# `hydrology.py`'s own module docstring documents (an earlier standalone priority-flood
+# basin-spill pass, `_compute_basin_spill`, was removed because it could drift out of sync with
+# this module's own hierarchy). Issue #144 is closed on that basis: item #1 measured (above),
+# item #2 decided (no pre-fill pass), item #3's tooling is `app.lake_hierarchy_diagnostics`.
 SILT_ACCUMULATION_COEFFICIENT = LAKE_FILL_RATE / 100.0
 
 # Same value elevation_lines.py/mantle.py each already redefine locally rather than import --

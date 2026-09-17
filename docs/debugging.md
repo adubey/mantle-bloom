@@ -205,6 +205,16 @@ deep cascade. The report needs a hydrology snapshot in the save (a world stepped
 once with climate on); a never-stepped world reports nothing, same convention as
 `stranded_basins`.
 
+**Issue #144 (closed).** Built for that issue's item #3; items #1 (silt coefficient's
+magnitude vs. tectonic roughening) and #2 (whether a depression pre-fill pass belongs in the
+pipeline) are answered together in `lakes.py`'s own comment above
+`SILT_ACCUMULATION_COEFFICIENT` -- including a re-check against issue #117's exact repro seed
+(23097282), regenerated from scratch and extended to 300 My, specifically to rule out issue
+#161's since-fixed unbounded Hc/Hm growth (spurious deep, narrow wells that this module's
+catchment detection could have mistaken for real depressions) as a confound in the original
+measurement. Depth stayed bounded and self-resolving the whole run; no pre-fill pass is
+warranted.
+
 Test: [`unit_tests/test_lake_hierarchy_diagnostics.py`](../backend/unit_tests/test_lake_hierarchy_diagnostics.py).
 
 ---
