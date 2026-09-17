@@ -36,6 +36,51 @@ def test_apply_volcanic_activity_can_erupt_and_add_elevation():
     assert np.all(new_elevation <= volcanism.MAX_ELEVATION_M)
 
 
+def test_apply_volcanic_activity_backs_erupted_elevation_with_crustal_thickness():
+    # Issue #173: an eruption's elevation gain must come with a matching crustal_thickness_m
+    # bump when the line actually tracks Hc/Hm, so the added relief is isostatically backed
+    # instead of "phantom" (unbacked) relief erosion can tear down for free.
+    n = 200
+    line = ElevationLine(
+        phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),
+        is_volcano=np.ones(n, dtype=bool), volcano_active_years_remaining=np.full(n, 1_000_000.0),
+        crustal_thickness_m=np.full(n, 35_000.0), mantle_lithosphere_thickness_m=np.full(n, 100_000.0),
+    )
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate])
+
+    original_hc = world.plates[0].lines[0].crustal_thickness_m.copy()
+    original_elevation = world.plates[0].lines[0].elevation.copy()
+    for _ in range(5):
+        volcanism.apply_volcanic_activity(world, years=100_000)
+    new_line = world.plates[0].lines[0]
+    erupted = new_line.elevation > original_elevation
+    assert np.any(erupted)
+    assert np.all(new_line.crustal_thickness_m[erupted] > original_hc[erupted])
+    # An untouched node's crust shouldn't move just because its neighbours erupted.
+    untouched = ~erupted & (new_line.elevation == original_elevation)
+    if np.any(untouched):
+        assert np.allclose(new_line.crustal_thickness_m[untouched], original_hc[untouched])
+
+
+def test_apply_volcanic_activity_falls_back_to_bare_elevation_without_a_crustal_column():
+    # v1 lines with no Hc/Hm tracking (crustal_thickness_m defaults to all-zero) keep the old
+    # bare direct-elevation response -- same `has_column` compatibility gate erosion.py uses.
+    n = 200
+    line = ElevationLine(
+        phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),
+        is_volcano=np.ones(n, dtype=bool), volcano_active_years_remaining=np.full(n, 1_000_000.0),
+    )
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate])
+
+    for _ in range(5):
+        volcanism.apply_volcanic_activity(world, years=100_000)
+    new_line = world.plates[0].lines[0]
+    assert np.all(new_line.crustal_thickness_m == 0.0)
+    assert np.any(new_line.elevation > 200.0)
+
+
 def test_apply_volcanic_activity_noop_for_empty_world():
     world = World(seed=0, plates=[])
     assert volcanism.apply_volcanic_activity(world, years=1_000_000) is None

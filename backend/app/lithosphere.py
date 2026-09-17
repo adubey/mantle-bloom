@@ -159,6 +159,24 @@ def crustal_thickness_for_submerged_elevation(z_m: np.ndarray, hm_m: np.ndarray,
     return (bracket - hm_term) / (1.0 - rho_c / RHO_ASTHENOSPHERE)
 
 
+def crustal_thickness_for_elevation(z_m: np.ndarray, hm_m: np.ndarray, rho_c: float | np.ndarray) -> np.ndarray:
+    """General inverse of `isostatic_elevation`: the `Hc` that, with the given `Hm`, floats a
+    column at target elevation `z_m` of either sign (unlike `crustal_thickness_for_submerged_
+    elevation` above, which only covers `z_m < 0`). Branch choice mirrors `isostatic_
+    elevation`'s own `shifted_bracket <= 0` split -- since both branches there map
+    shifted_bracket to z_m through a positive-slope identity or rescale, sign(z_m) always
+    agrees with sign(shifted_bracket), so splitting on z_m here picks the same branch.
+
+    Used by volcanism.py (GitHub issue #173) so an eruption's target elevation bump comes
+    with a matching crustal_thickness_m addition, backing it the same way every other
+    elevation-changing path (deform()'s tectonic uplift, erosion.py's own Airy-corrected
+    term) already derives elevation from Hc/Hm rather than granting it for free."""
+    hm_term = hm_m * (1.0 - RHO_LITHOSPHERE_MANTLE / RHO_ASTHENOSPHERE)
+    dry_hc = (z_m - ISOSTATIC_REFERENCE_OFFSET_M - hm_term) / (1.0 - rho_c / RHO_ASTHENOSPHERE)
+    wet_hc = crustal_thickness_for_submerged_elevation(z_m, hm_m, rho_c)
+    return np.where(z_m <= 0.0, wet_hc, dry_hc)
+
+
 def sync_line_elevation(line, rho_c: float):
     """Recompute `line.elevation` from its current Hc/Hm columns -- call after any mutation
     to `crustal_thickness_m`/`mantle_lithosphere_thickness_m`. Returns a new `ElevationLine`

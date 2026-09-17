@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry
+from . import geometry, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_VOLCANIC_PLAIN,
@@ -91,9 +91,33 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
         rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id, line_index))
         erupts = active_mask & (rng.random(len(line)) < p_erupt)
 
-        new_elevation = line.elevation.copy()
-        new_elevation[erupts] += ERUPTION_ELEVATION_M * world.volcanism_multiplier
-        new_elevation = np.clip(new_elevation, MIN_ELEVATION_M, MAX_ELEVATION_M)
+        # Issue #173: an eruption's elevation gain has to come with a matching
+        # crustal_thickness_m (Hc) addition, or it's "phantom" relief no crustal mass backs --
+        # exactly the gap that let erosion's slope-driven terms tear down more real crust than
+        # volcanism ever added. Solve for the Hc that isostatically supports the *same* target
+        # elevation this used to just assign directly, so the calibrated eruption/apron
+        # magnitudes (ERUPTION_ELEVATION_M et al) are unchanged, but every meter of it is now
+        # backed. v1 lines with no Hc tracking (crustal_thickness_m all zero, same
+        # `has_column` gate erosion.py uses) keep the old bare direct-elevation response.
+        rho_c = lithosphere.node_crust_density(line.crust_type_code, plate.crust_type)
+        has_column = line.crustal_thickness_m > 0.0
+        target_elevation = np.clip(
+            line.elevation + np.where(erupts, ERUPTION_ELEVATION_M * world.volcanism_multiplier, 0.0),
+            MIN_ELEVATION_M,
+            MAX_ELEVATION_M,
+        )
+        backed = erupts & has_column
+        target_hc = np.clip(
+            lithosphere.crustal_thickness_for_elevation(target_elevation, line.mantle_lithosphere_thickness_m, rho_c),
+            lithosphere.MIN_CRUSTAL_THICKNESS_M,
+            lithosphere.MAX_CRUSTAL_THICKNESS_M,
+        )
+        new_crustal_thickness = np.where(backed, target_hc, line.crustal_thickness_m)
+        new_elevation = np.where(
+            backed,
+            lithosphere.isostatic_elevation(new_crustal_thickness, line.mantle_lithosphere_thickness_m, rho_c),
+            target_elevation,
+        )
         new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
         new_mineral_deposit = np.clip(
             line.mineral_deposit_m + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
@@ -113,6 +137,7 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
             line_index,
             line.replace(
                 elevation=new_elevation,
+                crustal_thickness_m=new_crustal_thickness,
                 volcano_active_years_remaining=new_remaining,
                 mineral_deposit_m=new_mineral_deposit,
                 elev_change_reason=new_reason,
@@ -159,11 +184,28 @@ def _spread_volcanic_plains(plate: PlateWithLines, world: "World", years: float,
         if not np.any(seg_delta):
             new_lines.append(line)
             continue
-        new_elev = np.clip(line.elevation + seg_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+        # Same Hc-backing as the point bump above (issue #173) -- the apron's target elevation
+        # is unchanged, but it's now paid for with a matching crustal_thickness_m addition
+        # instead of granted for free.
+        rho_c = lithosphere.node_crust_density(line.crust_type_code, plate.crust_type)
+        has_column = line.crustal_thickness_m > 0.0
+        target_elev = np.clip(line.elevation + seg_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+        backed = (seg_delta > 0.0) & has_column
+        target_hc = np.clip(
+            lithosphere.crustal_thickness_for_elevation(target_elev, line.mantle_lithosphere_thickness_m, rho_c),
+            lithosphere.MIN_CRUSTAL_THICKNESS_M,
+            lithosphere.MAX_CRUSTAL_THICKNESS_M,
+        )
+        new_crustal_thickness = np.where(backed, target_hc, line.crustal_thickness_m)
+        new_elev = np.where(
+            backed,
+            lithosphere.isostatic_elevation(new_crustal_thickness, line.mantle_lithosphere_thickness_m, rho_c),
+            target_elev,
+        )
         moved = np.abs(new_elev - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
         # Don't downgrade the vent's own sharper VOLCANO stamp to the plain's -- only claim
         # nodes the point bump didn't already touch this step.
         new_reason = np.where(moved & (line.elev_change_reason != ELEV_CHANGE_VOLCANO), ELEV_CHANGE_VOLCANIC_PLAIN, line.elev_change_reason)
-        new_lines.append(line.replace(elevation=new_elev, elev_change_reason=new_reason))
+        new_lines.append(line.replace(elevation=new_elev, crustal_thickness_m=new_crustal_thickness, elev_change_reason=new_reason))
     plate.set_lines(new_lines)
 
