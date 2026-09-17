@@ -31,14 +31,18 @@ from app.elevation_lines import line_spacing_rad  # noqa: E402
 from app import lithosphere  # noqa: E402
 from app.world import World, generate_world, step_world  # noqa: E402
 
-# Five seeds pulled from real reported-problem saves under ~/Downloads (filenames encode
-# seed and elapsed years), not arbitrary small integers -- so the sweep's baseline behavior is
+# Ten seeds pulled from real reported-problem saves under ~/Downloads (filenames encode seed
+# and elapsed years), not arbitrary small integers -- so the sweep's baseline behavior is
 # checked against the exact plate-generation seeds that produced the "land disappears" /
-# "ice cap everywhere" reports, alongside a few other seeds that ran long without collapsing
+# "ice cap everywhere" reports, alongside several other seeds that ran long without collapsing
 # (for contrast). `generate_world(seed=...)` reproduces a seed's plate layout and mantle
 # convection centers exactly; it does not, and cannot, reproduce a save's mid-history state --
-# only ever the same starting point that produced it.
-SWEEP_SEEDS = (829071382, 579428537, 896200538, 331006609, 673790085)
+# only ever the same starting point that produced it. First 5 are #171's original sweep; the
+# next 5 were added when the seed count was doubled for the node_density=2.0/150-180 My rerun.
+SWEEP_SEEDS = (
+    829071382, 579428537, 896200538, 331006609, 673790085,
+    331015891, 875551829, 926698457, 495717634, 343559903,
+)
 
 CHECKPOINT_YEARS = (30_000_000, 60_000_000, 90_000_000, 120_000_000)
 STEP_YEARS = 10_000_000  # evenly divides every checkpoint above
@@ -175,13 +179,22 @@ def compute_outcome_stats(world: World) -> dict:
     }
 
 
-def run_one_job(param_name: str, multiplier: float, seed: int) -> list[dict]:
+def run_one_job(
+    param_name: str,
+    multiplier: float,
+    seed: int,
+    node_density: float = NODE_DENSITY,
+    checkpoint_years: tuple[int, ...] = CHECKPOINT_YEARS,
+) -> list[dict]:
     """Runs one (parameter, multiplier-of-baseline, seed) job from a fresh `generate_world`
-    out to CHECKPOINT_YEARS' last entry, returning one outcome-stats record per checkpoint.
+    out to `checkpoint_years`' last entry, returning one outcome-stats record per checkpoint.
     `param_name == BASELINE_PARAM` runs with every knob at its untouched default (multiplier is
     still recorded, always 1.0) -- see PARAM_SPECS/BASELINE_PARAM's own docstrings for why this
     is shared across every real parameter's own multiplier=1.0 point rather than re-run per
-    parameter."""
+    parameter. `node_density`/`checkpoint_years` default to this module's own constants so old
+    call sites are unaffected; a run at different values records them on every row (see
+    run_sweep.py's own dedup key) so results at incompatible settings never silently average
+    together in the same output file."""
     _apply_rotation_rate_overrides(BASELINE_AVG_RATE_CM_YR, BASELINE_MAX_RATE_CM_YR)
 
     value = None
@@ -193,14 +206,14 @@ def run_one_job(param_name: str, multiplier: float, seed: int) -> list[dict]:
         elif spec.rotation_kind == "max":
             _apply_rotation_rate_overrides(BASELINE_AVG_RATE_CM_YR, value)
 
-    world = generate_world(seed=seed, node_density=NODE_DENSITY)
+    world = generate_world(seed=seed, node_density=node_density)
 
     if spec is not None and spec.world_field is not None:
         setattr(world, spec.world_field, value)
 
     records = []
     years_done = 0.0
-    for checkpoint in CHECKPOINT_YEARS:
+    for checkpoint in checkpoint_years:
         step_world(world, years=checkpoint - years_done)
         years_done = checkpoint
         record = {
@@ -209,6 +222,7 @@ def run_one_job(param_name: str, multiplier: float, seed: int) -> list[dict]:
             "value": value,
             "seed": seed,
             "checkpoint_years": checkpoint,
+            "node_density": node_density,
         }
         record.update(compute_outcome_stats(world))
         records.append(record)

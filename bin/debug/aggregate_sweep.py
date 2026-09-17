@@ -73,10 +73,20 @@ def main() -> None:
         if row["value"] is not None:
             absolute_values[(row["parameter"], row["multiplier"])].add(row["value"])
 
-    summary = {"parameters": {}, "checkpoint_years": sorted({r["checkpoint_years"] for r in all_rows})}
+    summary = {
+        "parameters": {},
+        "checkpoint_years": sorted({r["checkpoint_years"] for r in all_rows}),
+        # Single value, not per-parameter: run_sweep.py's own dedup key refuses to mix node
+        # densities within one --out file (see its module docstring), so every row here shares
+        # one density -- take it from the first row rather than repeating the sweep_lib.py
+        # NODE_DENSITY default, which a --node-density override wouldn't be reflected in.
+        "node_density": all_rows[0]["node_density"] if all_rows else None,
+    }
     for param, spec in PARAM_SPECS.items():
-        points = []
         multipliers = sorted({m for (p, m, _cp) in grouped if p == param})
+        if not multipliers:
+            continue  # this parameter wasn't part of this run (see --params) -- omit it entirely
+        points = []
         for multiplier in multipliers:
             checkpoints = sorted(cp for (p, m, cp) in grouped if p == param and m == multiplier)
             abs_values = absolute_values.get((param, multiplier))
