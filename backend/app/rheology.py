@@ -62,6 +62,39 @@ RIFT_CRITICAL_THICKNESS_M = 5_000.0
 # accumulates less shortening than the thrust sheets around it), not on elevation directly.
 REVERSE_FAULT_VALLEY_UPLIFT_FACTOR = 0.15
 
+# GitHub issue #176: collision_uplift_multiplier pumps up land volume/ice-cap coverage because
+# nothing here tapers as a collision zone's *own* relief grows -- a belt that's already very
+# tall keeps thickening at the same rate as fresh crust, so raising the knob just makes
+# existing mountains taller rather than reclaiming new land area (#171's own sweep: land
+# volume/ice-cap% keep climbing while land *area* stays flat). Real orogenic crust does
+# thicken more slowly once it's already piled high -- gravitational potential energy resists
+# further shortening, and more of the convergence gets absorbed by lateral spreading/extrusion
+# instead -- the same physical argument `lithosphere.MAX_CRUSTAL_THICKNESS_M`'s hard ceiling
+# already uses, just applied as a *soft* taper well before that hard cap, not only once a node
+# is already sitting on it. `RELIEF_TAPER_START_M`/`_END_M` are relief (elevation above the
+# node's own reference column, e.g. `torque.CONTINENTAL_REFERENCE_ELEVATION_M`) at which the
+# taper starts biting and where it bottoms out: full strength up to an already-genuine mountain
+# belt, ramping down by ~6.1km relief -- the isostatic elevation `MAX_CRUSTAL_THICKNESS_M`'s
+# own 2.4x-reference Hc/Hm computes to (see torque.py's sibling calibration comment), so this
+# brake is felt well before a node ever reaches the hard ceiling. Never tapers all the way to
+# zero (`RELIEF_TAPER_FLOOR`): a dead-stalled orogen at extreme relief is its own failure mode
+# (the continental-ratchet family, issue #119) -- some thickening, and the isostatic uplift/
+# erosion feedback that keeps a belt a genuine mountain rather than a frozen plateau, always
+# continues.
+RELIEF_TAPER_START_M = 2_000.0
+RELIEF_TAPER_END_M = 6_000.0
+RELIEF_TAPER_FLOOR = 0.15
+
+
+def relief_taper(relief_m: np.ndarray | float) -> np.ndarray | float:
+    """1.0 at/below `RELIEF_TAPER_START_M` relief, linearly ramping down to
+    `RELIEF_TAPER_FLOOR` by `RELIEF_TAPER_END_M` -- see the constants' own comment. `relief_m`
+    is expected to already be clipped to >= 0 (relief below the reference column doesn't taper
+    anything; `apply_convergent_deformation` is the one caller, and its own `relief_m` is
+    computed that way)."""
+    ramp = 1.0 - (relief_m - RELIEF_TAPER_START_M) / (RELIEF_TAPER_END_M - RELIEF_TAPER_START_M)
+    return np.clip(ramp, RELIEF_TAPER_FLOOR, 1.0)
+
 
 def normal_closing_rate_m_per_s(plate_omega: np.ndarray, neighbor_omega: np.ndarray, points_xyz: np.ndarray, direction_to_neighbor: np.ndarray) -> np.ndarray:
     """`boundary.closing_rate`'s own formula (relative tangential velocity projected onto the
@@ -108,6 +141,7 @@ def apply_convergent_deformation(
     years_myr: float,
     fault_factor: np.ndarray,
     strength: np.ndarray | float = 1.0,
+    relief_m: np.ndarray | float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Contested (convergent) nodes: mass-conserving thickening under compression. Hc and Hm
     both thicken in proportion (crustal shortening drags the attached mantle lithosphere
@@ -118,7 +152,11 @@ def apply_convergent_deformation(
     than a post-hoc elevation multiplier. `strength` is the live collision-uplift tuning knob
     (World.collision_uplift_multiplier, plus the reach knob's near-field taper -- see
     lithosphere_plate.py); a plain 1.0 default keeps every existing caller/behaviour
-    unchanged.
+    unchanged. `relief_m` (GitHub issue #176, see `relief_taper`) is the node's own current
+    relief -- its isostatic elevation above its plate's reference column, already >= 0 clipped
+    by the caller -- and scales the same fractional-thickening rate down as that relief climbs
+    toward `RELIEF_TAPER_END_M`; the 0.0 default leaves every existing caller unaffected
+    (`relief_taper(0.0) == 1.0`).
 
     Hc/Hm are clipped at `lithosphere.MAX_CRUSTAL_THICKNESS_M`/`MAX_MANTLE_LITHOSPHERE_
     THICKNESS_M` -- see those constants' own comment (GitHub issue #161: with no ceiling here,
@@ -135,7 +173,7 @@ def apply_convergent_deformation(
     the asthenosphere), a real geodynamic sink, not a modeling shortcut."""
     rate = plastic_strain_rate_per_myr(closing_rate_m_per_s)
     rate = np.clip(rate, 0.0, None)  # convergent branch only ever thickens
-    fractional_change = rate * years_myr * fault_factor * strength
+    fractional_change = rate * years_myr * fault_factor * strength * relief_taper(relief_m)
     uncapped_new_hc = hc_m * (1.0 + fractional_change)
     new_hc = np.clip(uncapped_new_hc, None, lithosphere.MAX_CRUSTAL_THICKNESS_M)
     new_hm = np.clip(hm_m * (1.0 + fractional_change), None, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)

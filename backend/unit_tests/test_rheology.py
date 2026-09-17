@@ -80,6 +80,29 @@ def test_convergent_thickening_caps_hc_and_hm_and_reports_the_overflow():
     assert overflow_hc[1] == 0.0
 
 
+def test_relief_taper_slows_thickening_for_an_already_tall_orogen():
+    """GitHub issue #176: a node already sitting at high relief (a runaway plateau) must
+    thicken more slowly than an identical column at reference relief, holding closing rate,
+    strength, and fault_factor fixed -- this is what lets raising collision_uplift_multiplier
+    keep building *new* mountains without endlessly piling height onto ones that are already
+    tall."""
+    hc = np.full(2, 50_000.0)
+    hm = np.full(2, 140_000.0)
+    closing = np.full(2, _closing_m_per_s(3.0))
+    # relief=0 (reference elevation) vs relief=8000m (well past RELIEF_TAPER_END_M, so pinned
+    # at the RELIEF_TAPER_FLOOR).
+    relief_m = np.array([0.0, 8_000.0])
+
+    new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
+        hc, hm, closing, years_myr=1.0, fault_factor=np.ones(2), relief_m=relief_m
+    )
+
+    flat_growth = new_hc[0] - hc[0]
+    tall_growth = new_hc[1] - hc[1]
+    assert tall_growth > 0.0  # never fully stalls (RELIEF_TAPER_FLOOR keeps it > 0)
+    assert np.isclose(tall_growth, flat_growth * rheology.RELIEF_TAPER_FLOOR)
+
+
 def test_plastic_strain_rate_monotonic_and_saturates():
     """Strain rate rises with closing rate then flattens -- the linear-viscosity stand-in is
     normalized by the yield stress so it can't blow up at the fast end (`mantle.MAX_PLATE_
