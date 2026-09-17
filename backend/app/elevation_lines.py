@@ -397,6 +397,16 @@ class ElevationLine:
         # whole-sphere gap-fill (gaps.py) -- see effective_is_continental/majority_crust_type
         # below and docs/simulation-model.md.
         "crust_type_code",
+        # GitHub issue #180 ("collision crumpling"): running total (can go negative) of Hc
+        # moved onto (positive) or off (negative) this node by
+        # lithosphere_plate._redistribute_crumple_mass -- see that function and
+        # lithosphere_plate.CRUMPLE_TRANSFER_FRACTION's own comments. Diagnostic only, nothing
+        # in the physics reads it back (same role overlap_onset_years/node_created_years play):
+        # lets a collision belt's real ridge/valley shape be inspected and tested directly,
+        # rather than inferred indirectly from elevation alone. Continuous, not categorical --
+        # interpolated with np.interp in regularize_line like every other continuous field
+        # here, unlike elev_change_reason/crust_type_code's nearest-neighbour carry.
+        "crumple_transfer_m",
     )
 
     def __init__(
@@ -424,6 +434,7 @@ class ElevationLine:
         crustal_thickness_m: np.ndarray | None = None,
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
         crust_type_code: np.ndarray | None = None,
+        crumple_transfer_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -457,6 +468,7 @@ class ElevationLine:
         self._crust_type_code = (
             crust_type_code if crust_type_code is not None else np.zeros_like(theta, dtype=np.int8)
         )
+        self._crumple_transfer_m = crumple_transfer_m if crumple_transfer_m is not None else np.zeros_like(theta)
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -574,6 +586,10 @@ class ElevationLine:
     @property
     def crust_type_code(self) -> np.ndarray:
         return self._crust_type_code
+
+    @property
+    def crumple_transfer_m(self) -> np.ndarray:
+        return self._crumple_transfer_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -1031,6 +1047,10 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # own docstring warns about. A no-op array of zeros for v1 lines.
     new_crustal_thickness_m = np.interp(new_theta, line.theta, line.crustal_thickness_m)
     new_mantle_lithosphere_thickness_m = np.interp(new_theta, line.theta, line.mantle_lithosphere_thickness_m)
+    # crumple_transfer_m is a continuous, signable quantity (not categorical like
+    # elev_change_reason/crust_type_code below), so it interpolates the same way as every
+    # other continuous field here.
+    new_crumple_transfer_m = np.interp(new_theta, line.theta, line.crumple_transfer_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
     # each resampled node from its nearest original node rather than np.interp'ing between two
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
@@ -1072,6 +1092,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         crustal_thickness_m=new_crustal_thickness_m,
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
         crust_type_code=new_crust_type_code,
+        crumple_transfer_m=new_crumple_transfer_m,
     )
 
 

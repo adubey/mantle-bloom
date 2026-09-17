@@ -934,6 +934,194 @@ def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accr
     assert suture_hc_cc > suture_hc_co + 3 * 30_000.0
 
 
+def test_nearest_true_index_1d_finds_nearest_and_breaks_ties_low():
+    from app.lithosphere_plate import _nearest_true_index_1d
+
+    assert list(_nearest_true_index_1d(np.array([False, False, False]))) == [-1, -1, -1]
+    # single True node: everyone's nearest neighbour is it
+    assert list(_nearest_true_index_1d(np.array([False, True, False, False]))) == [1, 1, 1, 1]
+    # index 2 is equidistant from True at 0 and True at 4 -- tie goes to the lower index
+    mask = np.array([True, False, False, False, True])
+    assert list(_nearest_true_index_1d(mask)) == [0, 0, 0, 4, 4]
+
+
+def test_redistribute_crumple_mass_moves_valley_growth_to_nearest_ridge_conserving_total_hc():
+    from app.lithosphere_plate import CRUMPLE_TRANSFER_FRACTION, _redistribute_crumple_mass
+
+    # node 0: ridge (fault_factor == 1.0); node 1: valley (fault_factor < 1.0), grew 1000m
+    # this step; both are inside `thicken` and far from any ceiling.
+    hc = np.array([40_000.0, 31_000.0])
+    hm = np.array([100_000.0, 100_500.0])
+    fault_factor = np.array([1.0, 0.15])
+    thicken = np.array([True, True])
+    pre_hc = np.array([40_000.0, 30_000.0])  # valley grew by 1000m this step
+    pre_hm = np.array([100_000.0, 100_000.0])  # valley's Hm grew by 500m this step
+    convergent = np.array([True, True])
+
+    total_before = hc.sum()
+    delta, core_overflow_hc = _redistribute_crumple_mass(hc, hm, fault_factor, thicken, pre_hc, pre_hm, convergent)
+
+    expected_transfer_hc = CRUMPLE_TRANSFER_FRACTION * 1000.0
+    expected_transfer_hm = CRUMPLE_TRANSFER_FRACTION * 500.0
+    assert hc[1] == pytest.approx(31_000.0 - expected_transfer_hc)
+    assert hc[0] == pytest.approx(40_000.0 + expected_transfer_hc)
+    assert hm[1] == pytest.approx(100_500.0 - expected_transfer_hm)
+    assert hm[0] == pytest.approx(100_000.0 + expected_transfer_hm)
+    assert hc.sum() == pytest.approx(total_before)
+    assert delta[0] == pytest.approx(expected_transfer_hc)
+    assert delta[1] == pytest.approx(-expected_transfer_hc)
+    assert core_overflow_hc == 0.0
+
+
+def test_redistribute_crumple_mass_caps_receiver_at_hc_ceiling_and_reports_core_overflow():
+    from app.lithosphere import MAX_CRUSTAL_THICKNESS_M
+    from app.lithosphere_plate import _redistribute_crumple_mass
+
+    hc = np.array([MAX_CRUSTAL_THICKNESS_M - 10.0, 31_000.0])
+    hm = np.array([200_000.0, 100_500.0])
+    fault_factor = np.array([1.0, 0.15])
+    thicken = np.array([True, True])
+    pre_hc = np.array([MAX_CRUSTAL_THICKNESS_M - 1_010.0, 30_000.0])  # ridge grew 1000m
+    pre_hm = np.array([200_000.0, 100_000.0])
+    convergent = np.array([True, True])
+
+    delta, core_overflow_hc = _redistribute_crumple_mass(hc, hm, fault_factor, thicken, pre_hc, pre_hm, convergent)
+
+    assert hc[0] == pytest.approx(MAX_CRUSTAL_THICKNESS_M)
+    assert core_overflow_hc > 0.0
+
+
+def test_redistribute_crumple_mass_drops_near_field_overflow_same_as_ordinary_thickening():
+    from app.lithosphere import MAX_CRUSTAL_THICKNESS_M
+    from app.lithosphere_plate import _redistribute_crumple_mass
+
+    hc = np.array([MAX_CRUSTAL_THICKNESS_M - 10.0, 31_000.0])
+    hm = np.array([200_000.0, 100_500.0])
+    fault_factor = np.array([1.0, 0.15])
+    thicken = np.array([True, True])
+    pre_hc = np.array([MAX_CRUSTAL_THICKNESS_M - 1_010.0, 30_000.0])
+    pre_hm = np.array([200_000.0, 100_000.0])
+    # the ridge receiver is not classified `convergent` this step (a near-field-ring node) --
+    # its overflow is dropped in full, mirroring the existing near-field overflow policy.
+    convergent = np.array([False, True])
+
+    _, core_overflow_hc = _redistribute_crumple_mass(hc, hm, fault_factor, thicken, pre_hc, pre_hm, convergent)
+
+    assert core_overflow_hc == 0.0
+
+
+def test_redistribute_crumple_mass_is_a_no_op_without_a_ridge_or_a_valley_in_the_band():
+    from app.lithosphere_plate import _redistribute_crumple_mass
+
+    hc_all_valley = np.array([31_000.0, 31_500.0])
+    hm_all_valley = np.array([100_000.0, 100_000.0])
+    delta, overflow = _redistribute_crumple_mass(
+        hc_all_valley.copy(), hm_all_valley.copy(),
+        fault_factor=np.array([0.15, 0.15]), thicken=np.array([True, True]),
+        pre_hc=np.array([30_000.0, 30_500.0]), pre_hm=np.array([100_000.0, 100_000.0]),
+        convergent=np.array([True, True]),
+    )
+    assert np.all(delta == 0.0)
+    assert np.array_equal(hc_all_valley, [31_000.0, 31_500.0])  # unmutated
+    assert overflow == 0.0
+
+    hc_all_ridge = np.array([40_000.0, 40_500.0])
+    hm_all_ridge = np.array([100_000.0, 100_000.0])
+    delta, overflow = _redistribute_crumple_mass(
+        hc_all_ridge.copy(), hm_all_ridge.copy(),
+        fault_factor=np.array([1.0, 1.0]), thicken=np.array([True, True]),
+        pre_hc=np.array([39_000.0, 39_500.0]), pre_hm=np.array([100_000.0, 100_000.0]),
+        convergent=np.array([True, True]),
+    )
+    assert np.all(delta == 0.0)
+    assert np.array_equal(hc_all_ridge, [40_000.0, 40_500.0])  # unmutated
+    assert overflow == 0.0
+
+
+def test_collision_crumpling_makes_ridge_valley_relief_more_uneven_and_conserves_plate_hc(monkeypatch):
+    """Integration test at the `deform()` level: crumpling should make a collision belt's
+    elevation genuinely uneven (real ridges vs. real valleys, not just a uniformly-suppressed
+    valley rate) while conserving the plate's total crustal volume -- compare one deform() step
+    with GitHub issue #180's crumple transfer on vs. off (same seed, so identical fault-noise
+    ridge/valley pattern either way). Unlike the suture-accretion test above (which fires from
+    geometric overlap/retreat alone, independent of closing rate), `_redistribute_crumple_mass`
+    only has anything to redistribute where `rheology.apply_convergent_deformation`'s ordinary
+    thickening actually grew Hc this step, which needs a genuine nonzero closing rate -- so,
+    unlike that test, the continent plate here is given a real convergent omega (same
+    `mantle.cm_per_yr_to_rad_per_yr(5.0)` reference rate the decompression-melting fixture
+    above uses) rather than relying on passive geometric overlap alone."""
+    from app import mantle
+    from app.lithosphere import reference_thickness
+    from app import lithosphere_plate
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    hc0, hm0 = reference_thickness("continental")
+    spacing = line_spacing_rad(1.0)
+    rate = mantle.cm_per_yr_to_rad_per_yr(5.0)
+
+    def _plate(pid, crust_type, theta_lo, theta_hi, n, omega_z):
+        theta = np.linspace(theta_lo, theta_hi, n)
+        line = ElevationLine(
+            phi=0.2,
+            theta=theta,
+            elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, hc0 if crust_type == "continental" else reference_thickness("oceanic")[0]),
+            mantle_lithosphere_thickness_m=np.full(n, hm0 if crust_type == "continental" else reference_thickness("oceanic")[1]),
+        )
+        filler = ElevationLine(
+            phi=-0.6,
+            theta=np.linspace(-0.2, 0.2, 8),
+            elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, hc0),
+            mantle_lithosphere_thickness_m=np.full(8, hm0),
+        )
+        return LithospherePlate(
+            plate_id=pid, frame=np.eye(3), crust_type=crust_type,
+            omega=np.array([0.0, 0.0, omega_z]), lines=[line, filler],
+        )
+
+    def _run(crumple_fraction: float):
+        monkeypatch.setattr(lithosphere_plate, "CRUMPLE_TRANSFER_FRACTION", crumple_fraction)
+        # continent drifts east (+omega_z) into the stationary neighbour -- genuine convergence,
+        # not just the two plates' initial territories already overlapping at construction.
+        continent = _plate(0, "continental", -0.5, 0.5, 40, omega_z=rate)
+        neighbour = _plate(1, "continental", 0.55, 1.3, 40, omega_z=0.0)
+        # `torque.classify_boundary_nodes`'s real (nonzero-closing-rate) convergent band is
+        # only ~4-6 nodes wide regardless of how densely this line's own nodes are sampled --
+        # its width is set by torque.BOUNDARY_FORCE_REACH_MULTIPLIER relative to the world's
+        # own node spacing, not by this test fixture's node count. `fault_noise`'s ridge/valley
+        # pattern (seeded from (world.seed, plate_id, 9001)) is close to a coin flip per node,
+        # so a band this narrow can land all-ridge or all-valley by chance -- seed 1 is
+        # confirmed (by direct search) to put both a ridge and a valley node in that real band.
+        world = World(seed=1, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+        continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
+
+        def suture_line():
+            return next(ln for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
+
+        line = suture_line()
+        return line.crustal_thickness_m.copy(), float(line.crustal_thickness_m.sum()), line.crumple_transfer_m.copy()
+
+    hc_off, total_hc_off, transfer_off = _run(0.0)
+    hc_on, total_hc_on, transfer_on = _run(0.3)
+
+    assert np.all(transfer_off == 0.0)
+    assert np.any(transfer_on > 0.0) and np.any(transfer_on < 0.0)
+    # Compare Hc directly at the handful of nodes crumpling actually touched, rather than
+    # elevation -- this same narrow boundary band is also subject to end-growth/retreat and
+    # isostatic catch-up effects orders of magnitude larger than one step's crumple transfer,
+    # which would swamp an elevation comparison here. Hc is the mechanism's own currency: a
+    # donor (valley, transfer < 0) should hold *less* Hc with crumpling on than off, and a
+    # receiver (ridge, transfer > 0) should hold *more* -- directly, not just "spread out."
+    donors = transfer_on < 0.0
+    receivers = transfer_on > 0.0
+    assert donors.any() and receivers.any()
+    assert np.all(hc_on[donors] < hc_off[donors])
+    assert np.all(hc_on[receivers] > hc_off[receivers])
+    assert total_hc_on == pytest.approx(total_hc_off, rel=1e-6)
+
+
 def test_lithosphere_continental_volume_budget_suppresses_growth():
     """A continental plate whose node footprint has outrun its crustal volume -- most of its
     lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new

@@ -231,6 +231,31 @@ CONTINENTAL_AREA_BUDGET_MULT = 1.8
 # `regularize_line` re-evens the spacing next pass and isostasy lifts the thickened belt.
 SUTURE_ACCRETION_SPREAD_NODES = 3
 
+# GitHub issue #180 ("collision crumpling"), following #176's relief_taper -- which only
+# throttles a node's own approach to a ceiling, and does nothing once a node is already pinned
+# there (#180's own conclusion: the fix has to actively move mass off an already-saturated
+# node, not just slow its own rate). `fault_factor` (rheology.REVERSE_FAULT_VALLEY_UPLIFT_
+# FACTOR) already suppresses a valley (downthrown fault block) node's thickening to 15% of the
+# ridge rate -- but that 15% is still real growth the valley node gets every step, on top of
+# whatever it already holds, and the missing 85% simply never happens (v. `_redistribute_
+# crumple_mass`'s own docstring). A real downthrown block doesn't just absorb less shortening
+# and stop there: the shortening it isn't accommodating gets transferred along-strike into the
+# thrust sheet next to it. This is how much of a valley node's own (already-suppressed) growth
+# this step gets clawed back and moved onto its nearest ridge neighbour -- deliberately pulled
+# from the valley's *actual* growth, not the hypothetical fault_factor==1 growth it never had,
+# since pulling from the hypothetical amount would be pure net Hc creation at ridges (making
+# #176's "volume pumps up" complaint worse, not better) rather than a real transfer.
+#
+# Kept conservative (not 0.5+): even this strictly Hc-conserving transfer isn't necessarily
+# land%-neutral, since it takes height from valley nodes that are rarely near any ceiling (so
+# their loss is fully visible as lower elevation) and gives it to ridge nodes that, per #180's
+# own framing, are disproportionately likely to already be near MAX_CRUSTAL_THICKNESS_M/
+# MAX_ELEVATION_M (so a share of the gain is invisible, rerouted into apply_delamination_melt_
+# intrusion's overflow instead of new relief). Validate any increase against the
+# bin/debug/run_sweep.py land%/ice-cap% harness before raising this, rather than assuming
+# "mass-conserving" implies "land%-neutral."
+CRUMPLE_TRANSFER_FRACTION = 0.3
+
 # Hard ceiling on a node's Hc after suture accretion. A suture that never heals (the
 # neighbour keeps overriding) would otherwise pile every consumed column onto the same few
 # retreating-edge nodes indefinitely -- Hc ran to ~190 km and climbing on a 30-My test run.
@@ -372,6 +397,26 @@ def _runs_of_at_least(mask: np.ndarray, min_run: int) -> np.ndarray:
     return out
 
 
+def _nearest_true_index_1d(mask: np.ndarray) -> np.ndarray:
+    """For every index, the index of the nearest `True` in `mask` (a tie -- equidistant on
+    both sides -- goes to the lower index), or `-1` everywhere if `mask` is all-`False`. Same
+    1-D node-order spirit as `_distance_to_mask_1d` just above, but returning *which* node is
+    nearest rather than just how far, and unbounded rather than saturating at some fixed width
+    -- `_redistribute_crumple_mass` needs an actual ridge node to move a valley's transfer
+    onto, and a valley node's nearest ridge is not guaranteed to sit within any fixed ring."""
+    n = len(mask)
+    idx = np.arange(n)
+    if not mask.any():
+        return np.full(n, -1)
+    fwd = np.maximum.accumulate(np.where(mask, idx, -1))
+    bwd_src = np.where(mask, idx, n)
+    bwd = np.minimum.accumulate(bwd_src[::-1])[::-1]
+    bwd = np.where(bwd == n, -1, bwd)
+    fwd_dist = np.where(fwd >= 0, idx - fwd, np.inf)
+    bwd_dist = np.where(bwd >= 0, bwd - idx, np.inf)
+    return np.where(fwd_dist <= bwd_dist, fwd, bwd)
+
+
 def _distance_to_mask_1d(mask: np.ndarray, width: int) -> np.ndarray:
     """Per-element distance (in node-index steps) to the nearest `True` in `mask`, within the
     1-D node order (used per line, so no wrap). Saturates at `width + 1` for anything `width`
@@ -505,6 +550,85 @@ def _redistribute_accreted_column(
     hc[idx] = new_hc
     after = lithosphere.isostatic_elevation(hc[idx], hm[idx], rho_c)
     elevation[idx] = rheology.clip_elevation_bounds(elevation[idx] + (after - before))
+
+
+def _redistribute_crumple_mass(
+    hc: np.ndarray,
+    hm: np.ndarray,
+    fault_factor: np.ndarray,
+    thicken: np.ndarray,
+    pre_hc: np.ndarray,
+    pre_hm: np.ndarray,
+    convergent: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """GitHub issue #180 ("collision crumpling"): move `CRUMPLE_TRANSFER_FRACTION` of each
+    valley node's own Hc/Hm growth this step (already reduced by `rheology.REVERSE_FAULT_
+    VALLEY_UPLIFT_FACTOR` via `fault_factor`) onto its nearest ridge neighbour within
+    `thicken` -- see `CRUMPLE_TRANSFER_FRACTION`'s own comment for why this pulls from the
+    valley's own *actual* growth rather than the hypothetical fault_factor==1 growth it never
+    had. Mutates `hc`/`hm` in place for both the donating valley nodes and the receiving ridge
+    nodes (capped at the same ceilings `rheology.apply_convergent_deformation` enforces).
+    `pre_hc`/`pre_hm` are each `thicken`-masked node's own Hc/Hm *before* this step's
+    thickening (same order as `hc[thicken]`/`hm[thicken]` were populated), needed to isolate
+    this step's own growth from whatever the node already held.
+
+    Returns `(per_node_delta_hc, core_overflow_hc_m)`: `per_node_delta_hc` (length ==
+    `len(hc)`) is this step's own net Hc change from crumpling alone -- negative at donor
+    valley nodes, positive at receiving ridge nodes that didn't fully overflow, zero elsewhere
+    -- fed straight into `ElevationLine.crumple_transfer_m`'s running total by the caller. A
+    ridge receipt that itself pushes past `lithosphere.MAX_CRUSTAL_THICKNESS_M` is not counted
+    as delivered here (it heads to `rheology.apply_delamination_melt_intrusion` instead, via
+    `core_overflow_hc_m`, a separate mechanism with its own bookkeeping) -- summed across a
+    line this is not a mass leak, just not 100% visible in this one diagnostic field.
+    `core_overflow_hc_m` is that overflowed amount, restricted to receiving ridge nodes that
+    are also `convergent` (not just near-field): a near-field-ring receiver's own overflow is
+    dropped in full here, mirroring the existing policy for its ordinary thickening overflow
+    at this same call site.
+
+    No-op (all-zero delta, `0.0` overflow) wherever `thicken` has no ridge node to receive a
+    valley's transfer, or no valley node at all -- an oceanic plate always has fault_factor==
+    1.0 everywhere (see the `fault_noise is None` branch at this function's one call site), so
+    this is a no-op there too."""
+    n = len(hc)
+    delta = np.zeros(n)
+    ridge_mask = thicken & (fault_factor >= 1.0)
+    valley_mask = thicken & (fault_factor < 1.0)
+    if not (np.any(ridge_mask) and np.any(valley_mask)):
+        return delta, 0.0
+
+    thicken_idx = np.flatnonzero(thicken)
+    own_hc_growth = np.clip(hc[thicken_idx] - pre_hc, 0.0, None)
+    own_hm_growth = np.clip(hm[thicken_idx] - pre_hm, 0.0, None)
+    transfer_hc = np.zeros(n)
+    transfer_hm = np.zeros(n)
+    transfer_hc[thicken_idx] = CRUMPLE_TRANSFER_FRACTION * own_hc_growth
+    transfer_hm[thicken_idx] = CRUMPLE_TRANSFER_FRACTION * own_hm_growth
+    transfer_hc[~valley_mask] = 0.0
+    transfer_hm[~valley_mask] = 0.0
+
+    nearest_ridge = _nearest_true_index_1d(ridge_mask)
+    donors = np.flatnonzero(valley_mask & (nearest_ridge >= 0))
+    hc[donors] -= transfer_hc[donors]
+    hm[donors] -= transfer_hm[donors]
+    delta[donors] -= transfer_hc[donors]
+
+    gain_hc = np.zeros(n)
+    gain_hm = np.zeros(n)
+    np.add.at(gain_hc, nearest_ridge[donors], transfer_hc[donors])
+    np.add.at(gain_hm, nearest_ridge[donors], transfer_hm[donors])
+
+    receiving = np.flatnonzero(gain_hc > 0.0)
+    core_overflow_hc = 0.0
+    if len(receiving) > 0:
+        uncapped_hc = hc[receiving] + gain_hc[receiving]
+        capped_hc = np.minimum(uncapped_hc, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+        overflow = uncapped_hc - capped_hc
+        delta[receiving] += capped_hc - hc[receiving]
+        hc[receiving] = capped_hc
+        hm[receiving] = np.minimum(hm[receiving] + gain_hm[receiving], lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+        core_overflow_hc = float(np.sum(overflow[convergent[receiving]]))
+
+    return delta, core_overflow_hc
 
 
 class LithospherePlate(PlateWithLines):
@@ -769,6 +893,7 @@ class LithospherePlate(PlateWithLines):
             # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
             orogen_strength = orogen_strength * fault_influence
             thicken = orogen_strength > 0.0
+            crumple_delta = np.zeros(n)
             if np.any(thicken):
                 fault_factor = (
                     np.where(
@@ -784,12 +909,30 @@ class LithospherePlate(PlateWithLines):
                 # thrust onto the leading edge in `_grow_or_shrink_line_for_deform` (see
                 # `_redistribute_accreted_column`). This path is just the ordinary
                 # yield-limited plastic thickening.
+                #
+                # GitHub issue #176: relief_m is this step's *pre*-deform relief (elevation_
+                # before, computed above from the same hc/hm this call is about to thicken) --
+                # a node already sitting well above its plate's reference column tapers its own
+                # thickening rate down (rheology.relief_taper), so a runaway collision slows
+                # itself rather than piling on indefinitely at the same rate fresh crust would.
+                relief = np.clip(elevation_before[thicken] - torque.CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
+                pre_hc = hc[thicken].copy()
+                pre_hm = hm[thicken].copy()
                 new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
                     hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
-                    fault_factor[thicken], strength=orogen_strength[thicken],
+                    fault_factor[thicken], strength=orogen_strength[thicken], relief_m=relief,
                 )
                 hc[thicken] = new_hc
                 hm[thicken] = new_hm
+
+                # GitHub issue #180 ("collision crumpling"): see CRUMPLE_TRANSFER_FRACTION's
+                # own comment -- moves part of each suppressed valley node's own growth this
+                # step onto its nearest ridge neighbour, so the belt's shape actually crumples
+                # (real ridges vs. real valleys) instead of a downthrown block's missing strain
+                # simply evaporating.
+                crumple_delta, crumple_core_overflow_hc = _redistribute_crumple_mass(
+                    hc, hm, fault_factor, thicken, pre_hc, pre_hm, convergent,
+                )
 
                 # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
                 # #161) -- but it also doesn't reappear whole and instant on the foreland
@@ -803,8 +946,12 @@ class LithospherePlate(PlateWithLines):
                 # already) has nowhere further out to spread to on this pass and delaminates
                 # in full, same as suture accretion's own overflow past its cap. No-op when
                 # there's no near-field ring to receive it (reach knob at 0, or an oceanic
-                # plate, which never gets one).
-                overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
+                # plate, which never gets one). Crumpling's own core-band overflow
+                # (`crumple_core_overflow_hc`) is folded in here too -- a ridge node that
+                # overflows from a crumple transfer is exactly the same "hinterland can't
+                # thicken any further, spread it to the foreland" case as ordinary thickening
+                # overflow.
+                overflow_total = float(np.sum(overflow_hc[convergent[thicken]])) + crumple_core_overflow_hc
                 if overflow_total > 0.0 and np.any(near_field):
                     hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
 
@@ -939,6 +1086,7 @@ class LithospherePlate(PlateWithLines):
                 volcano_active_years_remaining=volcano_remaining,
                 elev_change_reason=reason,
                 crust_type_code=crust_type_code,
+                crumple_transfer_m=line.crumple_transfer_m + crumple_delta,
             )
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,

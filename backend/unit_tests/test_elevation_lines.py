@@ -68,6 +68,41 @@ def test_elev_change_reason_defaults_to_zero_and_rides_through_replace_and_maske
     assert grown.elev_change_reason[-1] == 0.0
 
 
+def test_crumple_transfer_m_defaults_to_zero_and_rides_through_replace_and_masked():
+    theta = np.array([0.0, 0.1, 0.2, 0.3])
+    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(4))
+    assert np.all(line.crumple_transfer_m == 0.0)
+
+    stamped = line.replace(crumple_transfer_m=np.array([-500.0, 800.0, 0.0, 0.0]))
+    assert stamped.crumple_transfer_m[0] == -500.0
+    assert stamped.crumple_transfer_m[1] == 800.0
+    # masked (plate split / node removal) carries the values with the nodes
+    kept = stamped.masked(np.array([0, 1]))
+    assert list(kept.crumple_transfer_m) == [-500.0, 800.0]
+    # brand-new nodes start with no crumple history
+    grown = stamped.with_new_nodes(np.array([0.4]), np.array([0.0]))
+    assert grown.crumple_transfer_m[-1] == 0.0
+
+
+def test_regularize_line_interpolates_crumple_transfer_m_continuously():
+    theta = np.linspace(0.0, 0.6, 7)
+    line = ElevationLine(
+        phi=0.0,
+        theta=theta,
+        elevation=np.zeros(7),
+        crumple_transfer_m=np.array([-1000.0, -1000.0, -1000.0, 0.0, 1000.0, 1000.0, 1000.0]),
+    )
+    # force a resample by asking for a much finer spacing
+    regularized = regularize_line(line, spacing_rad=TARGET_LINE_SPACING_RAD / 8)
+    assert len(regularized) != len(line)
+    # a continuous (np.interp'd) field takes on in-between values across the transition,
+    # unlike elev_change_reason's nearest-neighbour carry above (which only ever reproduces
+    # the original discrete codes)
+    assert np.any((regularized.crumple_transfer_m > -1000.0) & (regularized.crumple_transfer_m < 1000.0))
+    assert regularized.crumple_transfer_m.min() >= -1000.0 - 1e-6
+    assert regularized.crumple_transfer_m.max() <= 1000.0 + 1e-6
+
+
 def test_regularize_line_carries_elev_change_reason_by_nearest_node():
     theta = np.linspace(0.0, 0.6, 7)
     line = ElevationLine(
