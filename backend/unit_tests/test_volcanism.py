@@ -1,5 +1,5 @@
 import numpy as np
-from app import volcanism
+from app import lithosphere, volcanism
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World
 
@@ -61,6 +61,34 @@ def test_apply_volcanic_activity_backs_erupted_elevation_with_crustal_thickness(
     untouched = ~erupted & (new_line.elevation == original_elevation)
     if np.any(untouched):
         assert np.allclose(new_line.crustal_thickness_m[untouched], original_hc[untouched])
+
+
+def test_back_elevation_gain_does_not_launder_pre_existing_unbacked_drift_into_crust():
+    # Code-review finding on issue #173's fix: solving crustal_thickness_m from a node's
+    # *entire* current elevation (rather than the eruption's own incremental gain) would
+    # retroactively bake any pre-existing unbacked drift -- e.g. from faults.py, which mutates
+    # elevation directly and never touches Hc -- into real crust the moment that node erupts.
+    # The Hc bump one eruption produces must depend only on ERUPTION_ELEVATION_M, not on how
+    # much unrelated drift the node happened to be carrying beforehand.
+    hc, hm = lithosphere.reference_thickness("continental")
+    rho_c = lithosphere.RHO_CONTINENTAL_CRUST
+    equilibrium = lithosphere.isostatic_elevation(np.array([hc]), np.array([hm]), rho_c)[0]
+    plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[])
+
+    def hc_gain_from_one_eruption(pre_existing_drift_m: float) -> float:
+        line = ElevationLine(
+            phi=0.0, theta=np.zeros(1), elevation=np.array([equilibrium + pre_existing_drift_m]),
+            crustal_thickness_m=np.array([hc]), mantle_lithosphere_thickness_m=np.array([hm]),
+        )
+        new_hc, _ = volcanism._back_elevation_gain(
+            line, plate, volcanism.ERUPTION_ELEVATION_M, np.array([True])
+        )
+        return float(new_hc[0] - hc)
+
+    gain_no_drift = hc_gain_from_one_eruption(0.0)
+    gain_with_drift = hc_gain_from_one_eruption(2000.0)  # e.g. unrelated fault-driven relief
+    assert gain_no_drift > 0.0
+    assert abs(gain_with_drift - gain_no_drift) < 1e-6
 
 
 def test_apply_volcanic_activity_falls_back_to_bare_elevation_without_a_crustal_column():
