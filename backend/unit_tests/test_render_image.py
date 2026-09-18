@@ -624,7 +624,7 @@ def test_render_png_base64_round_trips():
 def test_draw_rivers_only_draws_segments_above_the_width_floor():
     # The main map views (unlike the River Inspector, which deliberately shows every
     # is_river-classified network regardless of size) additionally require channel_width to
-    # clear a small blend-alpha floor (RIVER_DRAW_MIN_ALPHA) -- confirmed here by drawing the
+    # clear the absolute RIVER_VISIBLE_MIN_WIDTH_M creek floor -- confirmed here by drawing the
     # exact same is_river/flow_target topology twice, once with channel_width below the floor
     # (no river pixels should appear at all) and once well above it (some must). Calls
     # _draw_rivers directly (rather than the full render_png) against a blank background so
@@ -660,18 +660,68 @@ def test_draw_rivers_only_draws_segments_above_the_width_floor():
         pixels = np.asarray(image)
         return int(np.any(pixels != np.array(render_image.BACKGROUND_RGB), axis=-1).sum())
 
-    below_floor = river_pixel_count(np.full(n, render_image.RIVER_COLOR_BLEND_MIN_WIDTH_M * 0.5))
-    above_floor = river_pixel_count(np.full(n, render_image.RIVER_COLOR_BLEND_MAX_WIDTH_M))
+    below_floor = river_pixel_count(np.full(n, render_image.RIVER_VISIBLE_MIN_WIDTH_M * 0.5))
+    above_floor = river_pixel_count(np.full(n, render_image.RIVER_VISIBLE_MIN_WIDTH_M * 5.0))
 
     assert below_floor == 0
     assert above_floor > 0
+
+
+def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatch):
+    # A multi-pixel-wide river should show a real cross-sectional gradient -- a core close to
+    # full RIVER_COLOR_RGB with a dimmer halo around it (RIVER_CORE_WIDTH_FRACTION/
+    # RIVER_HALO_FILL_FRACTION) -- not one flat, uniformly-blended slab across its whole width.
+    # _rivers_to_draw is monkeypatched to a single segment at a known, full color_alpha/
+    # width_frac so this is a clean test of the halo/core drawing mechanism itself, not
+    # entangled with the percentile-rank color scheme (which needs a large candidate pool to
+    # behave sensibly and isn't what's under test here).
+    world = _world()
+    points = np.array([[1.0, 0.0, 0.0], [0.99, 0.05, 0.0]])
+    points = points / np.linalg.norm(points, axis=1, keepdims=True)
+    n = len(points)
+    world.hydrology_cache = hydrology.HydrologyFields(
+        points=points,
+        elevation=np.array([10.0, 5.0]),
+        is_ocean=np.zeros(n, dtype=bool),
+        neighbor_idx=np.zeros((n, 1), dtype=np.int64),
+        flow_accum=np.zeros(n),
+        water_deposited=np.zeros(n),
+        filled_elevation=np.zeros(n),
+        spill_target=np.full(n, -1, dtype=np.int64),
+        is_river=np.array([True, False]),
+        flow_target=np.array([1, -1]),
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        plates_in_order=[],
+        channel_width=np.array([5000.0, 0.0]),
+    )
+    monkeypatch.setattr(render_image, "_rivers_to_draw", lambda w: (np.array([0]), np.array([1.0]), np.array([1.0])))
+
+    image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
+    image = render_image._draw_rivers(image, world, "behrmann", 50.0, 150.0, 100.0, 10.0, np.eye(3))
+    pixels = np.asarray(image).astype(np.int64)
+    background = np.array(render_image.BACKGROUND_RGB)
+    river_color = np.array(render_image.RIVER_COLOR_RGB)
+
+    is_river_px = np.any(pixels != background, axis=-1)
+    assert is_river_px.sum() > 0
+    near_full_color = is_river_px & np.all(np.abs(pixels - river_color) < 15, axis=-1)
+    # A real halo ring: plenty of drawn pixels are neither background nor near-full color --
+    # far more than the handful of pixels a purely edge-blur effect alone would leave, which is
+    # what an all-one-fill single-pass line (see the width-floor test above) would show instead.
+    halo_ring_px = int(is_river_px.sum()) - int(near_full_color.sum())
+    assert halo_ring_px > int(near_full_color.sum()) * 0.2
 
 
 def _linear_rivers_world(mouth_widths):
     """A synthetic world whose hydrology_cache holds one independent 3-node linear river per
     entry in `mouth_widths` (head -> mid -> mouth -> ocean sink). Node i of river r is index
     3*r + i; channel_width along each river is 20% / 50% / 100% of that river's own mouth
-    width, so it tapers from head to mouth. Ocean sink nodes come last."""
+    width, so it tapers from head to mouth. flow_accum mirrors channel_width (a real world's
+    two are correlated too, just channel_width also saturates at a hard cap over time in a way
+    flow_accum doesn't -- irrelevant for these small, freshly-built fixtures) so tests can
+    exercise _rivers_to_draw's flow-percentile width gate without a separate parameter. Ocean
+    sink nodes come last."""
     world = _world()
     world.node_density = 1.0
     world.climate_density = 1.0
@@ -705,7 +755,7 @@ def _linear_rivers_world(mouth_widths):
         spill_target=np.full(n, -1, dtype=np.int64),
         is_river=is_river,
         flow_target=flow_target,
-        flow_accum=np.zeros(n),
+        flow_accum=channel_width.copy(),
         lake_depth=np.zeros(n),
         glacier_depth=np.zeros(n),
         plates_in_order=[],
@@ -725,15 +775,17 @@ def test_rivers_to_draw_treats_a_stale_pre_channel_width_cache_as_absent():
     # the real (nonzero) node count.
     stale = world.hydrology_cache
     stale.channel_width = np.zeros(0)
-    src_idx, alpha = render_image._rivers_to_draw(world)
+    src_idx, color_alpha, width_frac = render_image._rivers_to_draw(world)
     assert len(src_idx) == 0
-    assert len(alpha) == 0
+    assert len(color_alpha) == 0
+    assert len(width_frac) == 0
 
     # No hydrology_cache at all (before the world's first step) is the same case.
     world.hydrology_cache = None
-    src_idx2, alpha2 = render_image._rivers_to_draw(world)
+    src_idx2, color_alpha2, width_frac2 = render_image._rivers_to_draw(world)
     assert len(src_idx2) == 0
-    assert len(alpha2) == 0
+    assert len(color_alpha2) == 0
+    assert len(width_frac2) == 0
 
 
 def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
@@ -742,35 +794,65 @@ def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
     # including a 9th, 10th, ... river that an old fixed network-count cap would have dropped.
     mouth_widths = [4800, 4700, 4600, 4500, 4400, 4300, 4200, 4100, 4000]
     world = _linear_rivers_world(mouth_widths)
-    src_idx, _ = render_image._rivers_to_draw(world)
+    src_idx, _, _ = render_image._rivers_to_draw(world)
     drawn_rivers = {int(i) // 3 for i in src_idx}
     assert drawn_rivers == set(range(len(mouth_widths)))
 
-    # A genuinely narrow/creek-scale river (well under RIVER_COLOR_BLEND_MIN_WIDTH_M) among the
+    # A genuinely narrow/creek-scale river (well under RIVER_VISIBLE_MIN_WIDTH_M) among the
     # same set is still excluded -- the width floor still does real work, it's just no longer a
     # fixed count of networks.
     world_with_creek = _linear_rivers_world(mouth_widths + [30])
-    src_idx2, _ = render_image._rivers_to_draw(world_with_creek)
+    src_idx2, _, _ = render_image._rivers_to_draw(world_with_creek)
     assert len(mouth_widths) not in {int(i) // 3 for i in src_idx2}
 
 
-def test_rivers_to_draw_scales_alpha_and_width_continuously_with_channel_width():
-    # Blend alpha (and therefore both drawn line width and how far the color sits toward
-    # RIVER_COLOR_RGB) is a continuous function of each segment's own channel_width, not a
-    # discrete tier capped by the network's rank among a drawn set.
+def test_rivers_to_draw_color_is_a_percentile_rank_not_an_absolute_fraction():
+    # Color blend fraction is a percentile rank of channel_width among this call's own visible
+    # drawn segments, not a fixed fraction of the physical MAX_CHANNEL_WIDTH_M cap (which most
+    # real rivers eventually saturate to, reading as uniformly bright) or of each segment's own
+    # network's widest point (which, since is_river already only selects each network's own
+    # highest-flow tail, also reads as mostly-saturated) -- confirmed here across three
+    # independent rivers of very different absolute scale.
     world = _linear_rivers_world([5000, 2500, 500])
-    src_idx, alpha = render_image._rivers_to_draw(world)
+    src_idx, color_alpha, _ = render_image._rivers_to_draw(world)
     river_of = np.array([int(i) // 3 for i in src_idx])
 
-    # The widest river's mouth (channel_width == 5000 == RIVER_COLOR_BLEND_MAX_WIDTH_M) reaches
-    # full blend alpha; a narrower one's mouth does not.
-    mouth_alpha = {r: alpha[(river_of == r)].max() for r in (0, 1, 2)}
-    assert mouth_alpha[0] == pytest.approx(1.0)
-    assert mouth_alpha[0] > mouth_alpha[1] > mouth_alpha[2]
+    # This call's single widest segment overall (river 0's mouth, channel_width == 5000, the
+    # unique global max among all 9 drawn nodes) reaches exactly full color; its single
+    # narrowest (river 2's head, channel_width == 100, the unique global min) sits exactly at
+    # the floor.
+    assert color_alpha[river_of == 0].max() == pytest.approx(1.0)
+    assert color_alpha[river_of == 2].min() == pytest.approx(render_image.RIVER_COLOR_BLEND_MIN_FRACTION)
 
-    # Monotonic within a single tapering river too: head < mid < mouth.
-    river0_alpha = alpha[river_of == 0]
-    assert sorted(river0_alpha.tolist()) == river0_alpha.tolist() or len(river0_alpha) < 2
+    # Monotonic within each individual tapering river (head -> mid -> mouth) regardless of how
+    # the three rivers' absolute scales compare to each other -- the "gets bluer toward a
+    # confluence/mouth" behavior.
+    for r in (0, 1, 2):
+        segs = color_alpha[river_of == r]
+        assert segs[0] < segs[1] < segs[2]
+
+    # A much bigger river's segments generally rank higher than a much smaller river's -- the
+    # scheme isn't simply "every river looks equally blue regardless of its own scale."
+    assert color_alpha[river_of == 0].mean() > color_alpha[river_of == 2].mean()
+
+
+def test_rivers_to_draw_width_only_widens_for_a_steep_top_flow_percentile():
+    # Line width is gated on a *flow_accum* percentile rank (RIVER_WIDE_MIN_PERCENTILE), not
+    # channel_width -- and deliberately a much steeper bar than color's own rank, so only the
+    # single biggest river's own mouth (this fixture's global top-flow node) ever draws wider
+    # than 1px, not every node along it.
+    world = _linear_rivers_world([5000, 500])
+    src_idx, _, width_frac = render_image._rivers_to_draw(world)
+    river_of = np.array([int(i) // 3 for i in src_idx])
+
+    # The big river's own mouth (this fixture's single highest-flow node) gets real extra
+    # width...
+    assert width_frac[river_of == 0].max() > 0.0
+    # ...but nothing else does -- not even that same big river's own mid-course, and not the
+    # small river anywhere along its length, despite both ranking reasonably on the (much more
+    # generous) percentile color scale.
+    assert width_frac[river_of == 0][:-1].max() == 0.0
+    assert width_frac[river_of == 1].max() == 0.0
 
 
 def test_render_png_scales_visual_constants_with_resolution():

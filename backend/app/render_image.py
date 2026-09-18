@@ -28,7 +28,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, erosion, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
+from . import biomes, climate, coastline, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -82,21 +82,45 @@ LAKE_COLOR_RGB = (58, 92, 122)
 # with a distinct teal cast so it's still legible as its own enclosed body next to true open
 # ocean at a glance.
 SEA_COLOR_RGB = (42, 128, 140)
-# River overlay color (#4dd8e6) -- the color a river's own channel_width blends fully toward.
-# See _draw_rivers and _rivers_to_draw: unlike the old discrete-tier/top-N-networks scheme,
-# every is_river network is now a drawing candidate, and both a segment's line width and how
-# much it tints toward RIVER_COLOR_RGB (as opposed to leaving the underlying land color alone)
-# scale continuously with that segment's own channel_width -- 0% at RIVER_COLOR_BLEND_MIN_WIDTH_M
-# and below (a real channel too narrow to read as more than a creek), 100% at
-# RIVER_COLOR_BLEND_MAX_WIDTH_M (erosion.MAX_CHANNEL_WIDTH_M, a river's widest physically
-# possible channel). The River Inspector (main.py's /world/rivers, RiverInspector.tsx) is
-# unaffected either way -- it lists every is_river network regardless of size or width already.
+# River overlay color (#4dd8e6) -- the color a river's color blend (see
+# RIVER_COLOR_BLEND_MIN_FRACTION below) tints toward. See _draw_rivers and _rivers_to_draw:
+# every is_river network is a drawing candidate (no top-N-networks cap), gated only on an
+# absolute "is this even a real, visible channel" floor (RIVER_VISIBLE_MIN_WIDTH_M). Color and
+# line width are deliberately driven by two *different* notions of "how big":
+#
+# - Color blend is a *percentile rank* of channel_width among this render's own currently-
+#   visible drawn segments, not a fraction of any fixed physical scale. Both an absolute
+#   fraction of MAX_CHANNEL_WIDTH_M and a fraction of each segment's own network's widest point
+#   were tried and rejected: confirmed directly against a real 60My-old run that is_river's own
+#   selection (hydrology.RIVER_FLOW_PERCENTILE -- only the top decile-ish of land flow_accum
+#   ever qualifies) already means most *drawn* segments sit close to whatever denominator you
+#   pick, so either absolute approach reads as uniformly bright with barely any visible
+#   head-to-mouth gradient or confluence "gets bluer" moment. A percentile rank is, by
+#   construction, spread evenly from RIVER_COLOR_BLEND_MIN_FRACTION (this render's own
+#   narrowest visible channel) to 1.0 (its widest) regardless of how clustered the raw
+#   channel_width values happen to be -- and it's still exactly monotonic in channel_width, so
+#   a real confluence (a genuine local width increase) still visibly brightens everything
+#   downstream of it.
+# - Line width is gated on a *percentile rank of flow_accum* (not channel_width) among this
+#   same drawn population, requiring the top RIVER_WIDE_MIN_PERCENTILE (a steep bar, so only a
+#   genuine few ever widen) -- deliberately a different field than color's own channel_width
+#   rank. channel_width turned out to have essentially no discriminating power left at world
+#   maturity: confirmed directly against the same real 60My-old run, where the *median*
+#   channel_width across every currently-drawn segment already sits at 4959 of the 5000
+#   physical cap (channel_width only ever grows, never shrinks, see erosion.py) -- so almost
+#   any fixed real-meters threshold below the cap either catches "most of the map" or catches
+#   nothing, with no meaningful few-percent band in between. flow_accum has no such artificial
+#   ceiling (it's recomputed from real precipitation/routing every step, not a monotonically-
+#   saturating persisted quantity), so a percentile rank of it still meaningfully separates a
+#   world's few truly major rivers from everything else even once channel_width has long since
+#   saturated for most of what's drawn.
+#
+# The River Inspector (main.py's /world/rivers, RiverInspector.tsx) is unaffected either way --
+# it lists every is_river network regardless of size or width already.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
-# Widest drawn line, at channel-width blend fraction 1.0, is this many multiples of
-# RIVER_LINE_WIDTH_PX -- a continuous replacement for the old discrete 1/2/3px tier, scaled by
-# the same per-segment blend fraction as the color (see RIVER_COLOR_BLEND_MIN_WIDTH_M/MAX_WIDTH_M
-# below) rather than by a network's rank among a capped drawn set.
+# Widest drawn line, at flow-percentile-rank 1.0 (see RIVER_WIDE_MIN_PERCENTILE), is this many
+# multiples of RIVER_LINE_WIDTH_PX.
 RIVER_LINE_WIDTH_MAX_MULT = 3.0
 # A light Gaussian blur of just the river-line mask before compositing the river color in by
 # the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
@@ -106,39 +130,38 @@ RIVER_LINE_WIDTH_MAX_MULT = 3.0
 # directly, avoids the dark fringing a naive blur would produce against a transparent
 # backdrop, and leaves whatever was already drawn underneath (coastline, plate boundaries)
 # untouched -- unlike blurring the whole image, which would re-soften those too. Each line is
-# now drawn at a gray level equal to its own blend fraction (not always full 255) rather than a
+# drawn at a gray level equal to its own blend fraction (not always full 255) rather than a
 # flat presence/absence mask, so the same blur-then-composite arithmetic that already
 # antialiases a line's edges also carries the width-driven color blend straight through it.
 RIVER_BLUR_RADIUS_PX = 0.6
 
-# A river segment's own channel_width maps linearly onto both its line-width multiplier and how
-# far its drawn color sits between RIVER_COLOR_RGB and the land color beneath it: 0% at
-# RIVER_COLOR_BLEND_MIN_WIDTH_M (a real but narrow channel -- reads as no tint at all, not a
-# hairline of blue), 100% at RIVER_COLOR_BLEND_MAX_WIDTH_M (erosion.MAX_CHANNEL_WIDTH_M, the
-# widest a channel can physically get). Calibrated against a real, mature (60My) generated
-# world: is_river-classified nodes' channel_width ranges from single-digit meters (a brand-new
-# headwater stub) up through the 5000m cap (many established rivers saturate it well before
-# that age), with a median around 2300m -- so this range gives real spread between "barely a
-# creek" and "a big river" while still reaching full blue for anything genuinely major.
-RIVER_COLOR_BLEND_MIN_WIDTH_M = 100.0
-RIVER_COLOR_BLEND_MAX_WIDTH_M = erosion.MAX_CHANNEL_WIDTH_M
-# Below this blend fraction a segment is skipped entirely rather than drawn -- the tint would
-# be imperceptible (a handful of gray levels out of 255) even before the antialiasing blur
-# softens it further, so there's no point paying for the draw call. This is what makes "draw
-# every river network, not just the strongest few" (dropping the old
-# RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY/RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY network-rank cap
-# entirely) cheap: most of a world's smallest tributaries fall under this floor and are never
-# handed to ImageDraw at all.
-#
-# Trading away with it: the old cap's explicit resolution-invariance guarantee (a given
-# planet drawing the same *number* of rivers regardless of node_density) no longer holds --
-# a finer node_density can resolve a few more separate small catchments as their own networks,
-# each independently clearing this fixed absolute width floor, so a higher-resolution render
-# of the same world can show a few more visible rivers than a coarser one. Accepted as a
-# byproduct of "draw every real river, gated only by its own physical channel width" (issue
-# #190's own ask) rather than "draw a rank-capped top few" -- not something this floor tries
-# to compensate for.
-RIVER_DRAW_MIN_ALPHA = 0.04
+# A channel narrower than this is a creek -- skipped entirely rather than drawn, the same
+# "would only change the map by an imperceptible amount" optimization issue #190 asked for,
+# just expressed directly in physical channel_width now that color is a per-render percentile
+# rank rather than a direct function of it.
+RIVER_VISIBLE_MIN_WIDTH_M = 100.0
+# The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
+# (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
+# even this render's own narrowest visible channel still reads as a pale, visible trickle
+# rather than fading all the way to indistinguishable-from-land-color.
+RIVER_COLOR_BLEND_MIN_FRACTION = 0.15
+# Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by flow_accum percentile rank
+# ever draw wider than 1px, ramping from 0 extra width at this floor to full
+# RIVER_LINE_WIDTH_MAX_MULT at percentile-rank 1.0 (this render's single highest-flow drawn
+# segment) -- see RIVER_COLOR_RGB's own comment for why flow_accum rather than channel_width.
+# 0.97 (a steep top-3% bar) is a starting point calibrated by eye against a real run rather
+# than any hard requirement -- issue #190 asked for multi-pixel width to stay rare and reserved
+# for genuinely major rivers, not for a specific percentage.
+RIVER_WIDE_MIN_PERCENTILE = 0.97
+# A multi-pixel line's drawn cross-section is two nested passes rather than one flat bar: a
+# full-width "halo" at a dimmer fill, then a narrower "core" at the segment's own full color
+# painted on top -- so the outer edge of a wide river visibly blends toward the land color
+# while its centerline stays close to full river-blue, instead of the whole width reading as
+# one flat, uniformly-blended slab. Only applies once a segment actually draws wider than 1px
+# (RIVER_WIDE_MIN_PERCENTILE) -- an ordinary 1px line is unaffected, still just a single pass
+# at its own color-blend fill.
+RIVER_CORE_WIDTH_FRACTION = 0.5
+RIVER_HALO_FILL_FRACTION = 0.55
 
 
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
@@ -2315,20 +2338,37 @@ def _render_crust_type_view(world: World, projection: str, width: int, height: i
     return _encode_image(image)
 
 
-def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray]:
-    """Selects which river segments the general-purpose map views draw, and how strongly each
-    tints toward RIVER_COLOR_RGB.
+def _percentile_rank(values: np.ndarray) -> np.ndarray:
+    """0..1 percentile rank of each element of `values` among the others in the same array
+    (0 = the smallest, 1 = the largest) via a double argsort -- evenly spread by construction
+    regardless of how clustered the raw values happen to be, unlike a fraction of any single
+    fixed scale. Ties get distinct adjacent ranks (which of two exactly-equal values ends up
+    higher is arbitrary but stable); a single-element input returns 0.0 for it."""
+    order = np.argsort(values)
+    rank = np.empty(len(values))
+    rank[order] = np.arange(len(values))
+    return rank / max(len(values) - 1, 1)
 
-    Returns (src_idx, alpha): `src_idx` is the node index at the *upstream* end of each drawn
-    segment (its downstream end is hydro.flow_target[src_idx], guaranteed >= 0), and `alpha` is
-    that segment's own channel-width blend fraction in (RIVER_DRAW_MIN_ALPHA, 1.0] -- see
-    RIVER_COLOR_BLEND_MIN_WIDTH_M/MAX_WIDTH_M. Unlike the old scheme, every is_river network is
-    a candidate, not just the strongest few by mouth flow -- hydrology.py's own is_river cut
-    (top RIVER_FLOW_PERCENTILE of land flow_accum) is already the world-relative "how many
-    rivers exist at all" decision; this only additionally drops individual segments too narrow
-    to tint the map by more than a barely-perceptible amount, which both keeps a bone-dry
-    world's few real rivers from being buried in an unbounded creek count and keeps the
-    per-segment ImageDraw loop in _draw_rivers cheap.
+
+def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Selects which river segments the general-purpose map views draw, how strongly each
+    tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
+
+    Returns (src_idx, color_alpha, width_frac): `src_idx` is the node index at the *upstream*
+    end of each drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed
+    >= 0). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
+    segment's own channel_width among every other segment drawn in this same call -- see
+    RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
+    in [0, 1], a percentile rank of this segment's own flow_accum (not channel_width -- see
+    RIVER_COLOR_RGB's own comment for why) among the same drawn population, floored at
+    RIVER_WIDE_MIN_PERCENTILE (0 below it, an ordinary 1px line) and reaching 1 at this call's
+    single highest-flow segment. Every is_river network is a candidate, not just the strongest
+    few by mouth flow -- hydrology.py's own is_river cut (top RIVER_FLOW_PERCENTILE of land
+    flow_accum) is already the world-relative "how many rivers exist at all" decision; this
+    only additionally drops individual segments whose channel is too narrow to be a real,
+    visible river at all (RIVER_VISIBLE_MIN_WIDTH_M), which both keeps a bone-dry world's few
+    real rivers from being buried in an unbounded creek count and keeps the per-segment
+    ImageDraw loop in _draw_rivers cheap.
 
     A stale/pre-#190 hydrology_cache (loaded from an old save, or a hand-built test fixture
     that doesn't set channel_width) has no channel_width of the right shape -- treated the same
@@ -2337,19 +2377,20 @@ def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray]:
     hydro = world.hydrology_cache
     channel_width = getattr(hydro, "channel_width", None) if hydro is not None else None
     if hydro is None or channel_width is None or len(channel_width) != len(hydro.points):
-        return np.empty(0, dtype=np.int64), np.empty(0)
+        return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
-    candidates = np.where(hydro.is_river & (hydro.flow_target >= 0))[0]
-    if len(candidates) == 0:
-        return np.empty(0, dtype=np.int64), np.empty(0)
+    visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
+    if not np.any(visible_mask):
+        return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
+    candidates = np.where(visible_mask)[0]
 
-    width = channel_width[candidates]
-    alpha = np.clip(
-        (width - RIVER_COLOR_BLEND_MIN_WIDTH_M) / (RIVER_COLOR_BLEND_MAX_WIDTH_M - RIVER_COLOR_BLEND_MIN_WIDTH_M),
-        0.0, 1.0,
-    )
-    visible = alpha >= RIVER_DRAW_MIN_ALPHA
-    return candidates[visible].astype(np.int64), alpha[visible]
+    color_percentile = _percentile_rank(channel_width[candidates])
+    color_alpha = RIVER_COLOR_BLEND_MIN_FRACTION + (1.0 - RIVER_COLOR_BLEND_MIN_FRACTION) * color_percentile
+
+    flow_percentile = _percentile_rank(hydro.flow_accum[candidates])
+    width_frac = np.clip((flow_percentile - RIVER_WIDE_MIN_PERCENTILE) / (1.0 - RIVER_WIDE_MIN_PERCENTILE), 0.0, 1.0)
+
+    return candidates.astype(np.int64), color_alpha, width_frac
 
 
 def _draw_rivers(
@@ -2370,20 +2411,22 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    river_idx, alpha = _rivers_to_draw(world)
+    river_idx, color_alpha, width_frac = _rivers_to_draw(world)
     if len(river_idx) == 0:
         return image
     target_idx = hydro.flow_target[river_idx]
 
     width_px = np.maximum(
-        np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * alpha)).astype(int), 1
+        np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
     )
-    # Each line is drawn at a gray level equal to its own blend fraction rather than always
-    # full 255 -- the mask-blur-then-composite below already treats the mask value as a
+    # Each line is drawn at a gray level equal to its own color-blend fraction rather than
+    # always full 255 -- the mask-blur-then-composite below already treats the mask value as a
     # per-pixel blend-toward-RIVER_COLOR_RGB alpha, so a narrow channel's line lands closer to
-    # the land color underneath it and a wide one lands at full river-blue, with no separate
-    # compositing pass needed for the color blend.
-    fill_value = np.clip(np.round(255 * alpha), 0, 255).astype(int)
+    # the land color underneath it and a wide one lands closer to full river-blue, with no
+    # separate compositing pass needed for the color blend.
+    fill_value = np.clip(np.round(255 * color_alpha), 0, 255).astype(int)
+    halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
+    core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
     from_points = _rotate(hydro.points[river_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
@@ -2396,8 +2439,16 @@ def _draw_rivers(
 
     mask = Image.new("L", image.size, 0)
     mask_draw = ImageDraw.Draw(mask)
-    for (x1, y1), (x2, y2), w, f in zip(from_px, to_px, width_px, fill_value):
-        mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(w))
+    for (x1, y1), (x2, y2), w, f, core_w, halo_f in zip(from_px, to_px, width_px, fill_value, core_width_px, halo_fill_value):
+        if w > 1:
+            # A wide river's own cross-section: a full-width, dimmer "halo" first, then a
+            # narrower full-color "core" painted on top -- see RIVER_CORE_WIDTH_FRACTION's own
+            # comment. An ordinary 1px line (the vast majority of drawn segments) skips this
+            # entirely and is just one pass at its own color-blend fill, same as before.
+            mask_draw.line([(x1, y1), (x2, y2)], fill=int(halo_f), width=int(w))
+            mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(core_w))
+        else:
+            mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(w))
     mask = mask.filter(ImageFilter.GaussianBlur(radius=RIVER_BLUR_RADIUS_PX * pixel_scale))
 
     alpha_px = (np.asarray(mask, dtype=np.float32) / 255.0)[:, :, None]
