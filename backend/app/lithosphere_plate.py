@@ -143,6 +143,30 @@ OVERLAP_UPLIFT_SEVERITY_GAIN = 2.0
 # fault_influence-gated.
 TRANSFORM_UPLIFT_RATE_M_PER_MYR = 100.0
 
+# GitHub issue #189's "still open, separate from this fix" follow-up: transform_uplift and
+# far_field_uplift (below) are the last bare-elevation-delta paths deform() writes -- by
+# design (see their own comments: "no net crustal shortening", "doesn't need isostatic
+# bookkeeping"), unlike the faults.py bug #191 fixed, so they still don't go through
+# lithosphere.back_elevation_gain. But nothing ever pulls the elevation they add back down
+# either, and unlike every other write to `elevation` here (deform()'s own tectonic Hc
+# deltas, erosion.py's isostatic compensation, faults.py/volcanism.py's Hc-backed relief) this
+# is a source with literally no decay or consumption mechanism -- confirmed directly
+# (bin/debug/measure_transform_far_field_debt.py): the unbacked debt these two terms alone
+# create (`elevation` in excess of what the column's own Hc/Hm isostatically supports) grows
+# unboundedly over a long enough run, reaching 5-figure-meter gaps and real MAX_ELEVATION_M
+# pinning well past #189's original 120 My window. A real strike-slip pressure ridge or a
+# broad far-field swell isn't permanent the way a deep-rooted orogen is either -- lacking a
+# compensating crustal root, it's gravitationally unstable and works itself back down over
+# geologic time even without dedicated erosion attention. So any *existing* positive debt on
+# a line decays toward zero every step (this step's own fresh contribution is added after,
+# so it isn't clawed back before it even shows up) -- same age/relax-toward-target idiom
+# `rheology.relax_young_oceanic_mantle_lithosphere` already uses for a different field. Picked
+# so a node sitting continuously in a fully-active transform/far-field band (worst case, no
+# relief from ever leaving the band) settles at a steady-state debt on the order of a
+# few thousand meters -- consistent with these being "modest"/"local"/"low-amplitude" relief
+# by design, not a second orogeny -- rather than drifting arbitrarily far before the hard clip.
+UNBACKED_RELIEF_DECAY_PER_MYR = 0.05
+
 # A continental line's *contested* end is allowed to retreat -- one node per step -- whether
 # the overriding neighbour is oceanic (a passive margin / accretion front: the ocean slab
 # descends under it and the buried continental node cedes nothing the model should keep) or
@@ -888,8 +912,21 @@ class LithospherePlate(PlateWithLines):
             )
 
             elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
+
+            # Issue #189 follow-up (see UNBACKED_RELIEF_DECAY_PER_MYR above): relax any
+            # *existing* positive debt -- elevation this line already carries in excess of what
+            # `elevation_before` says its own Hc/Hm column supports -- toward zero, before this
+            # step's own fresh transform_uplift/far_field_uplift (still bare deltas by design)
+            # potentially adds more. `line.crustal_thickness_m` (the column at the *start* of
+            # this step, matching what `elevation_before` was computed from), not `hc` (already
+            # mutated by the convergent/divergent passes above) -- and v1 lines with no Hc
+            # tracking at all (all-zero) are left alone, same has_column gating
+            # lithosphere.back_elevation_gain uses.
+            existing_debt = np.where(line.crustal_thickness_m > 0.0, np.clip(line.elevation - elevation_before, 0.0, None), 0.0)
+            debt_relief = existing_debt * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * years_myr))
+
             new_elevation = rheology.clip_elevation_bounds(
-                line.elevation + (elevation_after - elevation_before) + transform_uplift + far_field_uplift
+                line.elevation - debt_relief + (elevation_after - elevation_before) + transform_uplift + far_field_uplift
             )
             if np.any(melting):
                 # The delta above used this plate's single nominal `rho_c` for both
@@ -927,7 +964,12 @@ class LithospherePlate(PlateWithLines):
             else:
                 reason[convergent & moved] = ELEV_CHANGE_TRENCH
             reason[divergent & moved] = ELEV_CHANGE_RIFT
-            reason[transform & moved] = ELEV_CHANGE_TRANSFORM
+            # Gated on transform_uplift itself, not just band membership (matching the
+            # far_field_uplift gate above) -- issue #189 follow-up's new debt-decay term can
+            # move a transform-band node's elevation on its own (fault_influence == 0 in
+            # "fault" mode zeroes transform_uplift there, but leftover debt still decays), which
+            # would otherwise mislabel a pure decay move as an active transform pressure ridge.
+            reason[(transform_uplift > 0.0) & moved] = ELEV_CHANGE_TRANSFORM
             reason[melting] = ELEV_CHANGE_VOLCANO
 
             updated_line = line.replace(

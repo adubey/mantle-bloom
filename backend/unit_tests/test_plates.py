@@ -1716,6 +1716,104 @@ def test_decompression_melting_at_or_below_sea_level_erupts_oceanic_crust():
     assert line.elevation[-1] < -3000.0
 
 
+# -- Issue #189 follow-up: unbacked transform_uplift/far_field_uplift debt decay -------------
+
+
+# A lone (no-neighbour) line's ends are free to `_stretch_end`/grow every step (nothing
+# blocks them the way the melting tests' "wall" plate does) -- 40 nodes, checking only the
+# interior [10:-10] slice below, is comfortably past any single 10 My step's worth of
+# per-end growth, so the assertions aren't sensitive to that unrelated, well-covered-elsewhere
+# growth behavior.
+_DEBT_TEST_LINE_NODES = 40
+_DEBT_TEST_INTERIOR = slice(10, -10)
+
+
+def _debt_test_plate(debt_m: float, hc0: float | None = None):
+    """A single lone (no-neighbour) continental plate whose one line's `elevation` sits
+    `debt_m` above what its own Hc/Hm isostatically support -- the same "unbacked debt" shape
+    transform_uplift/far_field_uplift leave behind (see UNBACKED_RELIEF_DECAY_PER_MYR's own
+    comment in lithosphere_plate.py). No neighbours at all means classify_boundary_nodes
+    returns every mask empty (convergent/divergent/transform/near_field/far_field), so this
+    isolates the new decay term from every other elevation-moving path in deform()."""
+    from app.lithosphere import RHO_CONTINENTAL_CRUST, isostatic_elevation, reference_thickness
+    from app.lithosphere_plate import LithospherePlate
+
+    hc0 = reference_thickness("continental")[0] if hc0 is None else hc0
+    hm0 = reference_thickness("continental")[1]
+    equilibrium = float(isostatic_elevation(np.array([hc0]), np.array([hm0]), RHO_CONTINENTAL_CRUST)[0])
+    n = _DEBT_TEST_LINE_NODES
+    line = ElevationLine(
+        phi=0.0,
+        theta=np.linspace(-0.5, 0.5, n),
+        elevation=np.full(n, equilibrium + debt_m),
+        crustal_thickness_m=np.full(n, hc0),
+        mantle_lithosphere_thickness_m=np.full(n, hm0),
+    )
+    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    return plate, equilibrium
+
+
+def test_unbacked_relief_debt_decays_toward_isostatic_equilibrium():
+    from app.lithosphere import reference_thickness
+    from app.lithosphere_plate import UNBACKED_RELIEF_DECAY_PER_MYR
+    from app.world import World
+
+    debt = 3000.0
+    hc0 = reference_thickness("continental")[0]
+    plate, equilibrium = _debt_test_plate(debt, hc0=hc0)
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    spacing = line_spacing_rad(1.0)
+
+    years = 10_000_000.0
+    plate.deform(world, [], years=years, max_distance=5 * spacing)
+
+    new_line = plate.lines[0]
+    expected_relief = debt * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * (years / 1_000_000.0)))
+    assert expected_relief > 0.0
+    assert np.allclose(new_line.elevation[_DEBT_TEST_INTERIOR], equilibrium + debt - expected_relief, atol=1.0)
+    # Worked off as a bare elevation delta, the same way it was created -- never laundered into
+    # real crust (unlike lithosphere.back_elevation_gain's callers).
+    assert np.allclose(new_line.crustal_thickness_m[_DEBT_TEST_INTERIOR], hc0)
+
+
+def test_unbacked_relief_debt_decay_is_a_noop_with_no_pre_existing_debt():
+    """A line already sitting exactly at its own isostatic equilibrium (no debt) shouldn't
+    drift at all from this new decay term -- it only relaxes debt that's actually there."""
+    from app.world import World
+
+    plate, equilibrium = _debt_test_plate(debt_m=0.0)
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    spacing = line_spacing_rad(1.0)
+
+    plate.deform(world, [], years=10_000_000.0, max_distance=5 * spacing)
+
+    assert np.allclose(plate.lines[0].elevation[_DEBT_TEST_INTERIOR], equilibrium, atol=1e-6)
+
+
+def test_unbacked_relief_debt_decay_ignores_lines_with_no_crustal_thickness_tracking():
+    """v1-style lines with crustal_thickness_m all zero (has_column false) keep their bare
+    elevation untouched by this term, same has_column gating lithosphere.back_elevation_gain
+    uses -- there's no Hc/Hm to define an equilibrium against in the first place."""
+    from app.lithosphere_plate import LithospherePlate
+    from app.world import World
+
+    n = _DEBT_TEST_LINE_NODES
+    line = ElevationLine(
+        phi=0.0,
+        theta=np.linspace(-0.5, 0.5, n),
+        elevation=np.full(n, 5000.0),
+        crustal_thickness_m=np.zeros(n),
+        mantle_lithosphere_thickness_m=np.zeros(n),
+    )
+    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    spacing = line_spacing_rad(1.0)
+
+    plate.deform(world, [], years=10_000_000.0, max_distance=5 * spacing)
+
+    assert np.allclose(plate.lines[0].elevation[_DEBT_TEST_INTERIOR], 5000.0)
+
+
 # -- Issue #133 phase 2: cached_node_healpix_index -------------------------------------------
 
 
