@@ -59,47 +59,6 @@ MINERAL_DEPOSIT_PER_ERUPTION_M = 0.5
 MAX_MINERAL_DEPOSIT_M = 20.0
 
 
-def _back_elevation_gain(
-    line, plate: PlateWithLines, gain: np.ndarray, apply_mask: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """Where `apply_mask` is set, raise `crustal_thickness_m` by whatever a real eruption
-    would need to isostatically support `gain` meters of *new* elevation, and move `elevation`
-    by exactly that much -- issue #173's fix. Anchored to the column's own current isostatic
-    *equilibrium* (`isostatic_elevation(hc, hm, rho_c)`), never to raw `line.elevation`
-    directly: a node can carry elevation `isostatic_elevation` doesn't actually back (e.g.
-    faults.py mutates elevation directly and never touches Hc), and solving Hc from that raw
-    value would retroactively -- and hugely disproportionately -- launder that unrelated debt
-    into real crust the moment the node happens to erupt. Anchoring to the column's own
-    equilibrium instead means an eruption only ever bills its own contribution; whatever
-    debt/surplus already existed passes through untouched, riding along in the
-    `line.elevation + isostatic_delta` sum below. v1/legacy lines with no Hc tracking
-    (`crustal_thickness_m` all zero) keep the old bare direct-elevation response."""
-    bare_elevation = np.clip(line.elevation + np.where(apply_mask, gain, 0.0), MIN_ELEVATION_M, MAX_ELEVATION_M)
-    if not np.any(apply_mask):
-        return line.crustal_thickness_m, bare_elevation
-
-    has_column = line.crustal_thickness_m > 0.0
-    backed = apply_mask & has_column
-    rho_c = lithosphere.node_crust_density(line.crust_type_code, plate.crust_type)
-    current_equilibrium = lithosphere.isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-    target_hc = np.clip(
-        lithosphere.crustal_thickness_for_elevation(current_equilibrium + gain, line.mantle_lithosphere_thickness_m, rho_c),
-        lithosphere.MIN_CRUSTAL_THICKNESS_M,
-        lithosphere.MAX_CRUSTAL_THICKNESS_M,
-    )
-    new_crustal_thickness = np.where(backed, target_hc, line.crustal_thickness_m)
-    isostatic_delta = (
-        lithosphere.isostatic_elevation(new_crustal_thickness, line.mantle_lithosphere_thickness_m, rho_c)
-        - current_equilibrium
-    )
-    new_elevation = np.where(
-        backed,
-        np.clip(line.elevation + isostatic_delta, MIN_ELEVATION_M, MAX_ELEVATION_M),
-        bare_elevation,
-    )
-    return new_crustal_thickness, new_elevation
-
-
 def apply_volcanic_activity(world: "World", years: float) -> None:
     """Every step: rolls each individual active volcano's own eruption chance, adding
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain
@@ -135,9 +94,9 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
         # Issue #173: an eruption's elevation gain has to come with a matching
         # crustal_thickness_m (Hc) addition, or it's "phantom" relief no crustal mass backs --
         # exactly the gap that let erosion's slope-driven terms tear down more real crust than
-        # volcanism ever added. See _back_elevation_gain's own docstring for why this is
-        # anchored to the column's isostatic equilibrium rather than raw elevation.
-        new_crustal_thickness, new_elevation = _back_elevation_gain(
+        # volcanism ever added. See lithosphere.back_elevation_gain's own docstring for why
+        # this is anchored to the column's isostatic equilibrium rather than raw elevation.
+        new_crustal_thickness, new_elevation = lithosphere.back_elevation_gain(
             line, plate, ERUPTION_ELEVATION_M * world.volcanism_multiplier, erupts
         )
         new_remaining = np.clip(line.volcano_active_years_remaining - years, 0.0, None)
@@ -206,10 +165,10 @@ def _spread_volcanic_plains(plate: PlateWithLines, world: "World", years: float,
         if not np.any(seg_delta):
             new_lines.append(line)
             continue
-        # Same Hc-backing as the point bump above (issue #173, _back_elevation_gain) -- the
-        # apron's elevation gain is unchanged, but it's now paid for with a matching
+        # Same Hc-backing as the point bump above (issue #173, lithosphere.back_elevation_gain)
+        # -- the apron's elevation gain is unchanged, but it's now paid for with a matching
         # crustal_thickness_m addition instead of granted for free.
-        new_crustal_thickness, new_elev = _back_elevation_gain(line, plate, seg_delta, seg_delta > 0.0)
+        new_crustal_thickness, new_elev = lithosphere.back_elevation_gain(line, plate, seg_delta, seg_delta > 0.0)
         moved = np.abs(new_elev - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
         # Don't downgrade the vent's own sharper VOLCANO stamp to the plain's -- only claim
         # nodes the point bump didn't already touch this step.

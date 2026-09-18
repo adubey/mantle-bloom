@@ -66,10 +66,11 @@ def test_apply_volcanic_activity_backs_erupted_elevation_with_crustal_thickness(
 def test_back_elevation_gain_does_not_launder_pre_existing_unbacked_drift_into_crust():
     # Code-review finding on issue #173's fix: solving crustal_thickness_m from a node's
     # *entire* current elevation (rather than the eruption's own incremental gain) would
-    # retroactively bake any pre-existing unbacked drift -- e.g. from faults.py, which mutates
-    # elevation directly and never touches Hc -- into real crust the moment that node erupts.
-    # The Hc bump one eruption produces must depend only on ERUPTION_ELEVATION_M, not on how
-    # much unrelated drift the node happened to be carrying beforehand.
+    # retroactively bake any pre-existing unbacked drift -- e.g. from lithosphere_plate.deform()'s
+    # transform_uplift/far_field_uplift terms, kept as bare elevation deltas by design -- into
+    # real crust the moment that node erupts. The Hc bump one eruption produces must depend only
+    # on ERUPTION_ELEVATION_M, not on how much unrelated drift the node happened to be carrying
+    # beforehand.
     hc, hm = lithosphere.reference_thickness("continental")
     rho_c = lithosphere.RHO_CONTINENTAL_CRUST
     equilibrium = lithosphere.isostatic_elevation(np.array([hc]), np.array([hm]), rho_c)[0]
@@ -80,7 +81,7 @@ def test_back_elevation_gain_does_not_launder_pre_existing_unbacked_drift_into_c
             phi=0.0, theta=np.zeros(1), elevation=np.array([equilibrium + pre_existing_drift_m]),
             crustal_thickness_m=np.array([hc]), mantle_lithosphere_thickness_m=np.array([hm]),
         )
-        new_hc, _ = volcanism._back_elevation_gain(
+        new_hc, _ = lithosphere.back_elevation_gain(
             line, plate, volcanism.ERUPTION_ELEVATION_M, np.array([True])
         )
         return float(new_hc[0] - hc)

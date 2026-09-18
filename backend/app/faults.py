@@ -62,14 +62,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import boundary, geometry
+from . import boundary, geometry, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
     ELEV_CHANGE_FAULT_REVERSE,
     ELEV_CHANGE_FAULT_STRIKE_SLIP,
     ELEV_CHANGE_MIN_DELTA_M,
-    MAX_ELEVATION_M,
-    MIN_ELEVATION_M,
     PLANET_RADIUS_KM,
     ElevationLine,
     line_spacing_rad,
@@ -1496,10 +1494,16 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         if not np.any(seg_delta):
             new_lines.append(line)
             continue
-        new_elev = np.clip(line.elevation + seg_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+        # Issue #189: fault relief used to be a bare elevation delta with no crustal_thickness_m
+        # backing -- unlike deform()'s own convergent/divergent Hc-driven uplift, this let
+        # relief accumulate as permanent "isostatic debt" no erosion pass could ever repay,
+        # eventually pinning land at MAX_ELEVATION_M while its Hc sat nowhere near its own cap.
+        # Same Hc-backing as volcanism.py's eruptions/plains (issue #173) -- extensional throw
+        # (negative seg_delta) thins Hc the same way thrust/ridge uplift (positive) thickens it.
+        new_crustal_thickness, new_elev = lithosphere.back_elevation_gain(line, plate, seg_delta, seg_delta != 0.0)
         moved = np.abs(new_elev - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
         new_reason = np.where(moved & (seg_reason > 0), seg_reason, line.elev_change_reason)
-        new_lines.append(line.replace(elevation=new_elev, elev_change_reason=new_reason))
+        new_lines.append(line.replace(elevation=new_elev, crustal_thickness_m=new_crustal_thickness, elev_change_reason=new_reason))
         changed = True
     if changed:
         plate.set_lines(new_lines)

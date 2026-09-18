@@ -242,6 +242,53 @@ def test_reverse_fault_uplifts_and_normal_fault_drops_its_hanging_wall():
     assert np.min(nrm) < 0.0 and np.max(nrm) > 0.0  # graben down, footwall shoulder up
 
 
+def test_fault_relief_backs_elevation_change_with_crustal_thickness():
+    # Issue #189: fault relief used to be a bare elevation delta with no crustal_thickness_m
+    # (Hc) change -- unbacked relief that erosion's incremental, Hc-derived math could never
+    # repay, so it accumulated as permanent "isostatic debt" until land pinned at
+    # MAX_ELEVATION_M while Hc sat nowhere near its own cap. A reverse-fault (thrust) uplift
+    # should thicken Hc; a normal-fault (extensional) hanging-wall throw should thin it.
+    world = generate_world(seed=2, num_plates=6)
+    step_world(world, 1_000_000)
+    world.boundary_faults = []  # isolate the hand-placed fault from the step's boundary mesh
+    plate = max(world.plates, key=lambda p: p.node_count())
+
+    def relief_deltas(kind: str) -> tuple[np.ndarray, np.ndarray]:
+        pts = plate.all_points_and_elevation()[0]
+        mid = np.asarray(pts[len(pts) // 2])
+        local_mid = mid @ plate.frame
+        phi0 = float(np.arcsin(np.clip(local_mid[2], -1, 1)))
+        theta0 = float(np.arctan2(local_mid[1], local_mid[0]))
+        span = np.linspace(-0.03, 0.03, 6)
+        f = _fault(
+            kind=kind,
+            local_phi=np.full(6, phi0),
+            local_theta=theta0 + span,
+            dip_dir_local=np.array([np.cos(phi0 + 0.5), 0.0, np.sin(phi0 + 0.5)]),
+            slip_rate_m_per_myr=faults.SLIP_RATE_REF_M_PER_MYR,
+            lifespan_myr=1e9,
+            plate_id=plate.plate_id,
+        )
+        world.faults = [f]
+        hc_before = np.concatenate([ln.crustal_thickness_m.copy() for ln in plate.lines])
+        elev_before = np.concatenate([ln.elevation.copy() for ln in plate.lines])
+        faults._apply_plate_fault_relief(world, plate, years_myr=1.0)
+        hc_after = np.concatenate([ln.crustal_thickness_m for ln in plate.lines])
+        elev_after = np.concatenate([ln.elevation for ln in plate.lines])
+        return hc_after - hc_before, elev_after - elev_before
+
+    hc_delta, elev_delta = relief_deltas(_KIND_REVERSE)
+    uplifted = elev_delta > 1e-9
+    assert np.any(uplifted)
+    assert np.all(hc_delta[uplifted] > 0.0)  # thrust uplift thickens Hc
+    assert np.allclose(hc_delta[~uplifted], 0.0)  # untouched nodes' crust doesn't move
+
+    hc_delta, elev_delta = relief_deltas(_KIND_NORMAL)
+    dropped = elev_delta < -1e-9
+    assert np.any(dropped)
+    assert np.all(hc_delta[dropped] < 0.0)  # extensional throw thins Hc
+
+
 def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_trace():
     # A distinctive "marker" value planted on one side of an active strike-slip trace should
     # move away from its original node and reappear one row over on the *same* side after a
