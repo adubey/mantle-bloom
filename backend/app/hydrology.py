@@ -96,6 +96,7 @@ from .plates import (
     Plate,
     cached_node_position_tree,
     collect_all_channel_depth,
+    collect_all_channel_width,
     collect_all_elevation,
     collect_all_glacier_depth,
     collect_all_lake_depth,
@@ -361,34 +362,51 @@ class HydrologyFields:
     # existed has none of it, so every reader treats a shape-0/mismatched array as "no sea
     # anywhere" via the same guard sample_is_ocean already uses for a stale/absent cache.
     is_sea: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=bool))
+    # Prior-step channel_width (erosion.py still owns growing it -- same one-step-stale
+    # tolerance as channel_depth elsewhere in this module), aligned with points/elevation.
+    # render_image.py's `_draw_rivers` reads this directly so it stays a pure function of
+    # HydrologyFields alone, rather than re-deriving it from world.plates the way
+    # render_image.py's node-cloud-aligned fields (elevation, channel_depth for hillshade) do --
+    # unlike those, HydrologyFields is unit-tested via hand-built fixtures fully decoupled from
+    # any real Plate. Also defaulted, same backward-compatibility reasoning as is_sea above --
+    # a cache loaded from a save written before this field existed has none of it, so a reader
+    # detects the shape-0/mismatched array as "stale/absent" the same way is_sea's own guard does.
+    channel_width: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
 def _gather_nodes(
     world: "World",
     node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[Plate]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[Plate]]:
     """Every node's world position, elevation, prior lake_depth, prior glacier_depth, prior
-    channel_depth, prior silt_depth, and whether it's ocean (the bare `elevation <=
-    world.sea_level_m` test -- `compute_hydrology` refines this to a connectivity-aware mask
-    once the k-NN graph exists, see `connected_ocean_mask`), concatenated, alongside the
-    ordered list of plates that contributed
-    them -- same shape as erosion.py's/bathymetry.py's own _gather_nodes. channel_depth is
-    read-only here (erosion.py still owns growing it) -- flow direction just needs to know
-    where an established channel already is, see _compute_flow_direction. `node_cloud`, when
+    channel_depth, prior channel_width, prior silt_depth, and whether it's ocean (the bare
+    `elevation <= world.sea_level_m` test -- `compute_hydrology` refines this to a
+    connectivity-aware mask once the k-NN graph exists, see `connected_ocean_mask`),
+    concatenated, alongside the ordered list of plates that contributed
+    them -- same shape as erosion.py's/bathymetry.py's own _gather_nodes. channel_depth/
+    channel_width are read-only here (erosion.py still owns growing both) -- flow direction
+    just needs to know where an established channel already is (see
+    _compute_flow_direction), and channel_width is carried through purely so
+    `HydrologyFields.channel_width` (render_image.py's river-color-blend input) doesn't need
+    its own separate world.plates read. `node_cloud`, when
     passed (see compute_hydrology), reuses an already-gathered (points, plates_in_order) pair
     instead of re-deriving every node's world position from scratch -- see
     plates.gather_node_positions's own docstring for why."""
     points, plates_in_order = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
     if not plates_in_order:
         empty = np.zeros(0)
-        return np.zeros((0, 3)), empty, empty, empty, empty, empty, np.zeros(0, dtype=bool), []
+        return np.zeros((0, 3)), empty, empty, empty, empty, empty, empty, np.zeros(0, dtype=bool), []
     elevation = collect_all_elevation(plates_in_order)
     prev_lake_depth = collect_all_lake_depth(plates_in_order)
     prev_glacier_depth = collect_all_glacier_depth(plates_in_order)
     prev_channel_depth = collect_all_channel_depth(plates_in_order)
+    prev_channel_width = collect_all_channel_width(plates_in_order)
     prev_silt_depth = collect_all_silt_depth(plates_in_order)
     is_ocean = elevation <= world.sea_level_m
-    return points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, plates_in_order
+    return (
+        points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_channel_width,
+        prev_silt_depth, is_ocean, plates_in_order,
+    )
 
 
 def _build_neighbor_graph(points: np.ndarray, world: "World | None" = None) -> np.ndarray:
@@ -973,7 +991,7 @@ def compute_hydrology(
     risen that last bit as of last step's snapshot) or vice versa -- a real, unavoidable
     one-step lag, the same character every other persisted quantity in this codebase already
     has, not a bug to chase further."""
-    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_silt_depth, is_ocean, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
+    points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_channel_width, prev_silt_depth, is_ocean, plates_in_order = _gather_nodes(world, node_cloud=node_cloud)
     n = len(points)
     if n <= FLOW_NEIGHBOR_COUNT:
         empty_i = np.zeros(n, dtype=np.int64)
@@ -982,6 +1000,7 @@ def compute_hydrology(
             points, elevation, is_ocean, np.zeros((n, 0), dtype=np.int64), empty_i, empty_f, empty_f, empty_f, empty_i,
             np.zeros(n, dtype=bool), empty_f, empty_f, plates_in_order,
             silt_depth=prev_silt_depth, silt_deposited=np.zeros(n), ice_flow_target=empty_i,
+            channel_width=prev_channel_width,
         )
 
     neighbor_idx = _build_neighbor_graph(points, world=world)
@@ -1126,6 +1145,7 @@ def compute_hydrology(
     fields = HydrologyFields(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
+        channel_width=prev_channel_width,
     )
     # Resolves the *same* forest built early (above, for spill routing) against this step's
     # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
