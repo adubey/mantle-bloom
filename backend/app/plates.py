@@ -1561,12 +1561,17 @@ def collect_all_silt_depth(plate_list: list[Plate]) -> np.ndarray:
 
 def collect_all_channel_depth(plate_list: list[Plate]) -> np.ndarray:
     """Used by climate.py to size a river's own evaporative surface for its moisture-
-    recycling humidity source (see that module)."""
+    recycling humidity source (see that module), and by render_image.py's
+    `_hillshade_for_world` to carve a wide-enough channel's own incision into the elevation
+    hillshade lights."""
     return _collect_all(plate_list, "channel_depth")
 
 
 def collect_all_channel_width(plate_list: list[Plate]) -> np.ndarray:
-    """Used by render_image.py to draw a wide river thicker than a narrow one."""
+    """Used by render_image.py to draw a wide river's line thicker and more strongly tinted
+    toward river-blue than a narrow one (`_rivers_to_draw`/`_draw_rivers`), and to gate how much
+    of a channel's depth actually incises the hillshade relief (`_hillshade_for_world`) -- a
+    channel too narrow for either purpose reads as a barely-there creek instead."""
     return _collect_all(plate_list, "channel_width")
 
 

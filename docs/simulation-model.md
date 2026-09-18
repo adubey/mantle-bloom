@@ -3385,8 +3385,9 @@ by gradient, so a slow, wide lowland river and a narrow, steep mountain torrent 
 comparable discharge without needing comparable width. Persistent, monotonically non-
 decreasing, capped at `MAX_CHANNEL_WIDTH_M`, the same shape `channel_depth` already has,
 rather than a stateless function of the current step's flow alone -- a river that temporarily
-dries up doesn't instantly narrow either. Not yet surfaced anywhere in rendering or the River
-Inspector's own per-river stats (`hydrology.RiverInfo`) -- tracked, but not yet exposed.
+dries up doesn't instantly narrow either. Drives both river rendering's color/width blend and
+the hillshade-carved-canyon effect below (issue #190) -- not surfaced in the River Inspector's
+own per-river stats (`hydrology.RiverInfo`), which stays flow/topology-only.
 
 **Rendering.** Both baked directly into the existing elevation/plates/platesDetail views
 (no new map-view mode or API surface needed): lakes are always visible, with no separate
@@ -3394,21 +3395,54 @@ overlay toggle needed. Lake cells use
 a muddier, less-saturated blue than open ocean (`render_image.LAKE_COLOR_RGB`) via the same
 nearest-neighbor grid resample `_render_grid_arrays` already does for elevation/plate_id
 (`plates.collect_all_lake_depth`, index-aligned with `plates.collect_all_points`'s own
-output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one per drawn `is_river` node to its own
-`flow_target`, in a fixed color. Which networks and how wide is `render_image._rivers_to_draw`:
-group `is_river` nodes into connected drainage networks (`hydrology.group_rivers`), keep the
-strongest `river_draw_max_networks(world)` by mouth `flow_accum`
-(`RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`, ~6-10 by `node_density`), and drop any whose
-mouth can't clear the small absolute trickle floor `river_draw_min_flow(world)`
-(`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY`, also used to trim sub-threshold headwater stubs).
-This is a *world-relative* cut because mouth `flow_accum` -- a physical upstream water total
--- spans orders of magnitude between an arid and a soaked world, so no single absolute floor
-generalizes. Line width is a 1/2/3 px tier off each segment's `flow_accum` as a fraction of
-its own network's mouth flow (`RIVER_WIDTH_TIER_FRACTIONS`), then capped by the network's
-size rank (`RIVER_WIDTH_CAP_BY_RANK` = `(3,2,2)`, tail 1) so only the single largest river is
-ever drawn 3 px wide. The River Inspector (below) deliberately keeps listing/drawing every
-`is_river` network regardless of flow, unaffected by any of this, since picking a minor
-tributary out of the full list is exactly what that view is for.
+output so both can share one `cKDTree` query). Rivers are drawn as short line segments, one
+per drawn `is_river` node to its own `flow_target`. Which segments and how they look is
+`render_image._rivers_to_draw`: every `is_river` node with a real downstream `flow_target` and
+a `channel_width` past the small `RIVER_VISIBLE_MIN_WIDTH_M` creek floor is a candidate, not
+just the strongest few networks by mouth flow -- dropped along with the old node_density-scaled
+`RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY`/`RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY` network-rank
+cap. Color and line width are driven by two different, deliberately decoupled measures of "how
+big":
+
+- **Color** is a *percentile rank* of `channel_width` among this same render's own currently-
+  drawn segments (`render_image._percentile_rank`), not a fraction of any fixed physical or
+  per-network scale -- both were tried and rejected (see issue #190's discussion): `is_river`
+  already only selects each catchment's own highest-flow tail, so most drawn segments sit close
+  to whatever fixed denominator you pick, reading as uniformly bright with barely any visible
+  head-to-mouth gradient. A percentile rank is spread evenly from `RIVER_COLOR_BLEND_MIN_FRACTION`
+  (this render's own narrowest visible channel) to 1.0 (its widest) by construction, while
+  staying exactly monotonic in `channel_width` -- so a real confluence (a genuine local width
+  increase) still visibly brightens everything downstream of it toward the river-blue overlay
+  color.
+- **Line width** is a percentile rank of `flow_accum` instead, floored at a much steeper
+  `RIVER_WIDE_MIN_PERCENTILE` (only a genuine top few percent of drawn segments ever widen past
+  1px). `flow_accum`, not `channel_width`, because `channel_width` only ever grows (see
+  `erosion.py`) and, confirmed directly against a real 60My-old run, its *median* across every
+  currently-drawn segment already sits within 1% of the physical `MAX_CHANNEL_WIDTH_M` cap --
+  it has essentially no discriminating power left at world maturity, so an absolute
+  `channel_width` threshold either caught most of the map or nothing. `flow_accum` has no such
+  ceiling and still meaningfully separates a world's few truly major rivers once `channel_width`
+  has saturated for most of what's drawn.
+
+A segment whose color percentile doesn't clear the visibility floor is skipped entirely before
+either measure is computed -- the tint would be imperceptible, so there's no point paying for
+the draw call -- which is what keeps drawing every network cheap even though there's no longer
+a fixed cap on how many get considered. A segment that does draw wider than 1px gets a two-pass
+cross-section (`RIVER_CORE_WIDTH_FRACTION`/`RIVER_HALO_FILL_FRACTION`): a full-width, dimmer
+"halo" first, then a narrower full-color "core" on top, so its outer edge visibly blends toward
+the land color while its centerline stays close to full river-blue, instead of reading as one
+flat, uniformly-blended slab. The River Inspector (below) deliberately keeps listing/drawing
+every `is_river` network regardless of flow or width, unaffected by any of this, since picking
+a minor tributary out of the full list is exactly what that view is for.
+
+**Canyons via hillshade (issue #190).** A channel deep past `CHANNEL_INCISION_MIN_DEPTH_M`
+and wide past `CHANNEL_INCISION_MIN_WIDTH_M` (ramped over `CHANNEL_INCISION_WIDTH_RANGE_M`) has
+that incision subtracted from its node's own elevation before `render_image._hillshade_for_world`
+fits its local surface gradient -- so a real canyon shows up as genuinely lit/shadowed relief
+the same directional way a mountain ridge already does, rather than the flat multiplicative
+darken (`_channel_visible_shade`) this replaced. A channel that's deep but too narrow for this
+node spacing to resolve stays invisible, matching how a real relief map sampled this coarsely
+wouldn't show it either.
 
 Confirmed live on a real run: river networks render as visibly branching, dendritic
 drainage patterns converging toward coasts and lake basins, matching real-world drainage

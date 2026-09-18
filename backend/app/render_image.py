@@ -28,7 +28,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, erosion, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
+from . import biomes, climate, coastline, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -82,98 +82,86 @@ LAKE_COLOR_RGB = (58, 92, 122)
 # with a distinct teal cast so it's still legible as its own enclosed body next to true open
 # ocean at a glance.
 SEA_COLOR_RGB = (42, 128, 140)
-# Fixed river overlay color (#4dd8e6); line width is not fixed -- see _draw_rivers and
-# _rivers_to_draw. A segment's width steps 1/2/3 px off its own flow_accum as a fraction of
-# its network's mouth flow (RIVER_WIDTH_TIER_FRACTIONS): flat along an unbranched reach (where
-# flow_accum is constant), stepping up only at a real confluence and only downstream of it, so
-# a river reads narrowest at the head and widest toward the mouth. That per-segment tier is
-# then capped by the network's size rank among the drawn set -- only the single largest river
-# may reach 3 px, the next two cap at 2 px, everything else at 1 px (RIVER_WIDTH_CAP_BY_RANK)
-# -- so the map never fills with fat blue lines even on a world whose rivers are all of
-# similar size.
+# River overlay color (#4dd8e6) -- the color a river's color blend (see
+# RIVER_COLOR_BLEND_MIN_FRACTION below) tints toward. See _draw_rivers and _rivers_to_draw:
+# every is_river network is a drawing candidate (no top-N-networks cap), gated only on an
+# absolute "is this even a real, visible channel" floor (RIVER_VISIBLE_MIN_WIDTH_M). Color and
+# line width are deliberately driven by two *different* notions of "how big":
+#
+# - Color blend is a *percentile rank* of channel_width among this render's own currently-
+#   visible drawn segments, not a fraction of any fixed physical scale. Both an absolute
+#   fraction of MAX_CHANNEL_WIDTH_M and a fraction of each segment's own network's widest point
+#   were tried and rejected: confirmed directly against a real 60My-old run that is_river's own
+#   selection (hydrology.RIVER_FLOW_PERCENTILE -- only the top decile-ish of land flow_accum
+#   ever qualifies) already means most *drawn* segments sit close to whatever denominator you
+#   pick, so either absolute approach reads as uniformly bright with barely any visible
+#   head-to-mouth gradient or confluence "gets bluer" moment. A percentile rank is, by
+#   construction, spread evenly from RIVER_COLOR_BLEND_MIN_FRACTION (this render's own
+#   narrowest visible channel) to 1.0 (its widest) regardless of how clustered the raw
+#   channel_width values happen to be -- and it's still exactly monotonic in channel_width, so
+#   a real confluence (a genuine local width increase) still visibly brightens everything
+#   downstream of it.
+# - Line width is gated on a *percentile rank of flow_accum* (not channel_width) among this
+#   same drawn population, requiring the top RIVER_WIDE_MIN_PERCENTILE (a steep bar, so only a
+#   genuine few ever widen) -- deliberately a different field than color's own channel_width
+#   rank. channel_width turned out to have essentially no discriminating power left at world
+#   maturity: confirmed directly against the same real 60My-old run, where the *median*
+#   channel_width across every currently-drawn segment already sits at 4959 of the 5000
+#   physical cap (channel_width only ever grows, never shrinks, see erosion.py) -- so almost
+#   any fixed real-meters threshold below the cap either catches "most of the map" or catches
+#   nothing, with no meaningful few-percent band in between. flow_accum has no such artificial
+#   ceiling (it's recomputed from real precipitation/routing every step, not a monotonically-
+#   saturating persisted quantity), so a percentile rank of it still meaningfully separates a
+#   world's few truly major rivers from everything else even once channel_width has long since
+#   saturated for most of what's drawn.
+#
+# The River Inspector (main.py's /world/rivers, RiverInspector.tsx) is unaffected either way --
+# it lists every is_river network regardless of size or width already.
 RIVER_COLOR_RGB = (77, 216, 230)
 RIVER_LINE_WIDTH_PX = 1.0
-# A light Gaussian blur of just the river-line mask before compositing the fixed river color
-# in by the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
+# Widest drawn line, at flow-percentile-rank 1.0 (see RIVER_WIDE_MIN_PERCENTILE), is this many
+# multiples of RIVER_LINE_WIDTH_PX.
+RIVER_LINE_WIDTH_MAX_MULT = 3.0
+# A light Gaussian blur of just the river-line mask before compositing the river color in by
+# the blurred mask's own value as a per-pixel alpha -- the same cheap-AA idea
 # CELL_BLUR_RADIUS_PX already uses for cell edges (see that constant's own comment), just
 # applied to a line mask instead of the filled-cell raster. Blurring only the (single-channel)
 # mask and then blending a flat color by it, rather than Gaussian-blurring the drawn RGBA line
 # directly, avoids the dark fringing a naive blur would produce against a transparent
 # backdrop, and leaves whatever was already drawn underneath (coastline, plate boundaries)
-# untouched -- unlike blurring the whole image, which would re-soften those too.
+# untouched -- unlike blurring the whole image, which would re-soften those too. Each line is
+# drawn at a gray level equal to its own blend fraction (not always full 255) rather than a
+# flat presence/absence mask, so the same blur-then-composite arithmetic that already
+# antialiases a line's edges also carries the width-driven color blend straight through it.
 RIVER_BLUR_RADIUS_PX = 0.6
-# Per-segment width tier as a function of flow_accum / (its network's own mouth flow_accum):
-# a segment carrying >= 80% of what reaches the mouth is a tier-3 candidate, >= 35% a tier-2
-# candidate, below that tier 1 -- so only a river's lower trunk ever widens, not its whole
-# mid-course. Fractions (not absolute flow) so the taper looks the same on a trickle-fed
-# desert river and a continent-draining one; the final width is min(this tier, the network's
-# rank cap below).
-RIVER_WIDTH_TIER_FRACTIONS = (0.80, 0.35)
-# Cap on a drawn network's per-segment width tier, indexed by its flow-size rank among the
-# drawn set (rank 0 = largest). Only the single biggest river may be drawn 3 px wide; the next
-# two cap at 2 px; every remaining river is a flat 1 px line. This is what keeps a 3-px river
-# rare regardless of how flat a world's river-size distribution is -- an absolute flow tier
-# can't, because flow_accum at a mouth spans orders of magnitude between a desert world and a
-# rainforest one, so on a wet-but-even world *every* drawn river clears any fixed 3-px flow.
-RIVER_WIDTH_CAP_BY_RANK = (3, 2, 2)
-RIVER_WIDTH_CAP_TAIL = 1
 
-# How many distinct drainage networks the general-purpose map views draw, strongest-first by
-# mouth flow_accum -- a world-relative cut, since an absolute flow floor alone can't separate
-# "a real river" from "a trickle" consistently when mouth flow_accum ranges from ~1e5 on an
-# arid world to >1e9 on a very wet one (see _rivers_to_draw). The River Inspector (main.py's
-# /world/rivers, RiverInspector.tsx) is deliberately unaffected -- it still lists every
-# is_river network regardless of size, since picking a small tributary out of the full list is
-# what that view is for.
-#
-# Keyed by World.node_density (the frontend's single "Detail" dial locks climate_density to
-# the same value -- see App.tsx's DETAIL_CHOICES -- so these four entries cover every
-# generation resolution the UI can produce). The count rises gently with resolution: a finer
-# grid genuinely resolves a few more separate catchments as their own networks, but a planet
-# doesn't grow more major rivers just because it was sampled more densely.
-RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY = {
-    0.5: 6,
-    1.0: 7,
-    2.0: 8,
-    4.0: 10,
-}
-# A drawn network is still trimmed to segments whose own flow_accum clears this small absolute
-# floor (drops the sub-threshold headwater stubs so a river tapers to a point rather than
-# ending in a blunt 1-px dash), and a network whose mouth doesn't even reach it isn't drawn at
-# all no matter how few others there are -- so a bone-dry world shows its 2-3 real rivers, not
-# the top 10 of its creeks. Keyed by node_density like the count above.
-RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY = {
-    0.5: 4_000.0,
-    1.0: 6_500.0,
-    2.0: 11_000.0,
-    4.0: 20_000.0,
-}
-# The Medium (reference) entry, also the base for the off-preset fallback in river_draw_min_flow.
-RIVER_DRAW_MIN_FLOW = RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY[1.0]
-
-
-def river_draw_min_flow(world: World) -> float:
-    """The minimum flow_accum a river segment needs to be drawn at all on the general map
-    views, for `world`'s own generation resolution -- see RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY.
-    `climate_density` isn't a separate factor: the UI locks it to `node_density` (one "Detail"
-    dial), and the per-node_density calibration already accounts for both moving together.
-    Values off the preset set (only reachable by calling the API directly, not through the UI)
-    fall back to a power-law fit through the calibrated points."""
-    table = RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY
-    if world.node_density in table:
-        return table[world.node_density]
-    return RIVER_DRAW_MIN_FLOW * world.node_density ** 0.85
-
-
-def river_draw_max_networks(world: World) -> int:
-    """How many drainage networks the general map views draw for `world` (the strongest that
-    many by mouth flow_accum) -- see RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY. Off-preset
-    node_density falls back to the nearest calibrated key."""
-    table = RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY
-    if world.node_density in table:
-        return table[world.node_density]
-    nearest = min(table, key=lambda nd: abs(nd - world.node_density))
-    return table[nearest]
+# A channel narrower than this is a creek -- skipped entirely rather than drawn, the same
+# "would only change the map by an imperceptible amount" optimization issue #190 asked for,
+# just expressed directly in physical channel_width now that color is a per-render percentile
+# rank rather than a direct function of it.
+RIVER_VISIBLE_MIN_WIDTH_M = 100.0
+# The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
+# (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
+# even this render's own narrowest visible channel still reads as a pale, visible trickle
+# rather than fading all the way to indistinguishable-from-land-color.
+RIVER_COLOR_BLEND_MIN_FRACTION = 0.15
+# Only the top (1 - RIVER_WIDE_MIN_PERCENTILE) of drawn segments by flow_accum percentile rank
+# ever draw wider than 1px, ramping from 0 extra width at this floor to full
+# RIVER_LINE_WIDTH_MAX_MULT at percentile-rank 1.0 (this render's single highest-flow drawn
+# segment) -- see RIVER_COLOR_RGB's own comment for why flow_accum rather than channel_width.
+# 0.97 (a steep top-3% bar) is a starting point calibrated by eye against a real run rather
+# than any hard requirement -- issue #190 asked for multi-pixel width to stay rare and reserved
+# for genuinely major rivers, not for a specific percentage.
+RIVER_WIDE_MIN_PERCENTILE = 0.97
+# A multi-pixel line's drawn cross-section is two nested passes rather than one flat bar: a
+# full-width "halo" at a dimmer fill, then a narrower "core" at the segment's own full color
+# painted on top -- so the outer edge of a wide river visibly blends toward the land color
+# while its centerline stays close to full river-blue, instead of the whole width reading as
+# one flat, uniformly-blended slab. Only applies once a segment actually draws wider than 1px
+# (RIVER_WIDE_MIN_PERCENTILE) -- an ordinary 1px line is unaffected, still just a single pass
+# at its own color-blend fill.
+RIVER_CORE_WIDTH_FRACTION = 0.5
+RIVER_HALO_FILL_FRACTION = 0.55
 
 
 # A pale icy blue-white -- deliberately distinct from both elevation_colors' own high-peak
@@ -198,34 +186,33 @@ TERRAIN_OVERLAY_ALPHA = 0.35
 
 # erosion.py's channel_depth/channel_width are real, persistent, monotonically-growing fields
 # (a mature river can carve up to erosion.MAX_CHANNEL_DEPTH_M = 2000m deep and
-# erosion.MAX_CHANNEL_WIDTH_M = 5000m wide) but, before this, influenced nothing anywhere in
-# render_image.py -- a river's own carved channel never showed up as any visible incision in
-# the terrain on the Elevation or Elevation & Biome (Combined) view, only as the thin fixed-
-# color line _draw_rivers paints over the top. This darkens a channelized node's own
-# already-computed color in proportion to how far its channel_depth sits past
-# CHANNEL_VISIBLE_MIN_DEPTH_M, so a long enough incised valley reads as a visibly darker gorge
-# cut into the surrounding hypsometric/biome color -- a shade multiply (`biome_relative_
-# shade_factor`'s own technique), not a full color replacement like the lake/glacier/volcano
-# overlays below, since a channel is a shape cut into the land, not a different substance
-# covering it. Gated on channel_width too -- "deep AND wide enough" -- so an early, narrow
-# trickle's still-modest channel_depth doesn't visibly gouge the land before the channel is
-# actually a mature, multi-Myr feature. CHANNEL_VISIBLE_DEPTH_RANGE_M is where the shading
-# saturates at CHANNEL_VISIBLE_MAX_SHADE (well short of black) past the depth floor, so even a
-# channel at the full MAX_CHANNEL_DEPTH_M still reads as terrain, not a hole.
-CHANNEL_VISIBLE_MIN_DEPTH_M = 80.0
-CHANNEL_VISIBLE_MIN_WIDTH_M = 250.0
-CHANNEL_VISIBLE_DEPTH_RANGE_M = 400.0
-CHANNEL_VISIBLE_MAX_SHADE = 0.55
+# erosion.MAX_CHANNEL_WIDTH_M = 5000m wide). Rather than a flat darken applied on top of the
+# already-computed display color (the old approach, issue #190's own before-state), a
+# channelized node's incision is subtracted from the elevation `_hillshade_for_world` fits its
+# local surface gradient through (see that function) -- so a real canyon reads as a genuinely
+# *lit* relief feature, shadowed/highlighted the same directional way a mountain ridge already
+# is, rather than a uniform dark line. Gated on channel_width -- "deep AND wide enough" -- so
+# an early, narrow trickle's still-modest channel_depth doesn't visibly gouge the land before
+# the channel is actually a mature, multi-Myr feature, and so a channel that's real and deep
+# but too skinny for this node spacing to resolve stays invisible, matching how a real relief
+# map sampled this coarsely wouldn't show it either.
+CHANNEL_INCISION_MIN_DEPTH_M = 80.0
+CHANNEL_INCISION_MIN_WIDTH_M = 250.0
+CHANNEL_INCISION_WIDTH_RANGE_M = 400.0
 
 
-def _channel_visible_shade(channel_depth: np.ndarray, channel_width: np.ndarray) -> np.ndarray:
-    """Per-node multiplier in `[1 - CHANNEL_VISIBLE_MAX_SHADE, 1.0]` darkening a channelized
-    node's already-computed display color -- see CHANNEL_VISIBLE_MIN_DEPTH_M's own comment.
-    1.0 (no change at all) wherever channel_width hasn't cleared CHANNEL_VISIBLE_MIN_WIDTH_M
-    yet, or channel_depth hasn't cleared CHANNEL_VISIBLE_MIN_DEPTH_M yet."""
-    excess = np.clip(channel_depth - CHANNEL_VISIBLE_MIN_DEPTH_M, 0.0, None)
-    strength = np.where(channel_width >= CHANNEL_VISIBLE_MIN_WIDTH_M, np.clip(excess / CHANNEL_VISIBLE_DEPTH_RANGE_M, 0.0, 1.0), 0.0)
-    return 1.0 - CHANNEL_VISIBLE_MAX_SHADE * strength
+def _channel_incision_m(channel_depth: np.ndarray, channel_width: np.ndarray) -> np.ndarray:
+    """How many meters of `channel_depth` to subtract from a node's own elevation before
+    `_hillshade_for_world` fits a local surface gradient through it -- see
+    CHANNEL_INCISION_MIN_DEPTH_M's own comment. Depth counts past CHANNEL_INCISION_MIN_DEPTH_M
+    (a shallow channel incises nothing); width is a 0-1 visibility ramp from
+    CHANNEL_INCISION_MIN_WIDTH_M to that plus CHANNEL_INCISION_WIDTH_RANGE_M (a channel
+    narrower than the floor incises nothing regardless of depth -- `_compute_hillshade`'s own
+    HILLSHADE_MIN_MULT/MAX_MULT clip is what keeps an already-exaggerated deep incision from
+    lighting as pure black/white, not a cap here)."""
+    depth_excess = np.clip(channel_depth - CHANNEL_INCISION_MIN_DEPTH_M, 0.0, None)
+    width_visibility = np.clip((channel_width - CHANNEL_INCISION_MIN_WIDTH_M) / CHANNEL_INCISION_WIDTH_RANGE_M, 0.0, 1.0)
+    return depth_excess * width_visibility
 # Coastline: drawn on views that have no other land/ocean cue at all (temperature/humidity/
 # precipitation's color scales carry no land information on their own, unlike elevation's
 # hypsometric coloring) -- see coastline.py. A single fixed color would vanish against parts
@@ -870,6 +857,12 @@ def _hillshade_for_world(world: World) -> np.ndarray | None:
     alongside it (a node moved or its elevation changed) rather than tracked separately. `None`
     for an empty world.
 
+    Fits the gradient through elevation with each node's own channel incision subtracted
+    first (see `_channel_incision_m`) -- channel_depth/channel_width are grown by erosion.py
+    in this same step (alongside elevation itself), so this stays in step with the same
+    "reset alongside node_kdtree_cache" invalidation as everything else here, no separate cache
+    needed.
+
     Needs a real k-nearest-neighbor-capable `cKDTree`, which `_node_cloud_and_tree`'s own 4th
     element only is under the default "kdtree" `node_cloud_resample_mode` -- under "healpix" it's
     a `healpix_grid.NodePixelIndex`, which (like `_classify_terrain_relief`'s own radius search)
@@ -884,7 +877,10 @@ def _hillshade_for_world(world: World) -> np.ndarray | None:
     all_points, all_elevation, _all_owner, tree = node_cloud
     if world.node_cloud_resample_mode == "healpix":
         tree = _relief_kdtree(world, all_points)
-    result = _compute_hillshade(all_points, all_elevation, tree)
+    all_channel_depth = plates.collect_all_channel_depth(world.plates)
+    all_channel_width = plates.collect_all_channel_width(world.plates)
+    incised_elevation = all_elevation - _channel_incision_m(all_channel_depth, all_channel_width)
+    result = _compute_hillshade(all_points, incised_elevation, tree)
     world.node_hillshade_cache = result
     return result
 
@@ -913,11 +909,14 @@ def _render_grid_arrays(
 ) -> tuple[np.ndarray, ...] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea,
-    and hillshade -- see docs/simulation-model.md#render-image. Returns flat concatenated
-    (projected_xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth,
-    channel_width, is_sea, cell_half_width, cell_half_height, hillshade) arrays, or None for an
-    empty world. Unlike the other per-node fields here, `is_sea` isn't a value persisted on the
+    owning plate, lake_depth, glacier_depth, is_volcano, is_sea, and hillshade -- see
+    docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy, elevation,
+    plate_id, lake_depth, glacier_depth, is_volcano, is_sea, cell_half_width, cell_half_height,
+    hillshade) arrays, or None for an empty world. channel_depth/channel_width aren't among
+    them -- their only consumer here used to be the flat channel-darken effect
+    `_hillshade_for_world` now folds directly into `hillshade` instead (see
+    `_channel_incision_m`), so there's nothing left downstream to resample them for. Unlike the
+    other per-node fields here, `is_sea` isn't a value persisted on the
     plates themselves -- it's `lakes._classify_tier`'s own per-step read of the hydrology
     cache, resampled per lattice chunk the same way `_biome_fields` resamples it for its own
     grid (`hydrology.sample_is_sea`); `hillshade` likewise isn't persisted -- it's
@@ -929,7 +928,7 @@ def _render_grid_arrays(
     `_classify_terrain_relief` code -- computed once per node and sampled onto the grid with
     the exact same nearest-node `idx` every other per-cell field already uses here, so it's
     guaranteed pixel-aligned with the elevation this same call returns. `False` returns the
-    same 12-tuple this function always has, so every existing caller is unaffected.
+    same 10-tuple this function always has, so every existing caller is unaffected.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -959,8 +958,6 @@ def _render_grid_arrays(
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
-    all_channel_depth = plates.collect_all_channel_depth(world.plates)
-    all_channel_width = plates.collect_all_channel_width(world.plates)
     all_hillshade = _hillshade_for_world(world)
     all_terrain_relief = None
     if include_terrain_relief:
@@ -978,8 +975,8 @@ def _render_grid_arrays(
     # density where 100km was already the tighter bound.
     grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, sea_chunks, hw_chunks, hh_chunks, hillshade_chunks, terrain_chunks = (
-        [], [], [], [], [], [], [], [], [], [], [], [], [],
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, sea_chunks, hw_chunks, hh_chunks, hillshade_chunks, terrain_chunks = (
+        [], [], [], [], [], [], [], [], [], [], [],
     )
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
@@ -991,8 +988,6 @@ def _render_grid_arrays(
         lake_chunks.append(all_lake_depth[idx])
         glacier_chunks.append(all_glacier_depth[idx])
         volcano_chunks.append(all_is_volcano[idx])
-        channel_depth_chunks.append(all_channel_depth[idx])
-        channel_width_chunks.append(all_channel_width[idx])
         # Not a persisted per-node field like the others above (see HydrologyFields.is_sea's
         # own comment) -- resampled straight from the hydrology cache per chunk, the same
         # hydrology.sample_is_sea used for the Biome grid (_biome_fields).
@@ -1025,8 +1020,6 @@ def _render_grid_arrays(
         np.concatenate(lake_chunks, axis=0),
         np.concatenate(glacier_chunks, axis=0),
         np.concatenate(volcano_chunks, axis=0),
-        np.concatenate(channel_depth_chunks, axis=0),
-        np.concatenate(channel_width_chunks, axis=0),
         np.concatenate(sea_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
@@ -1100,8 +1093,10 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     coarser, fixed-shape simulation grid (see climate.compute_climate_cached) rather than
     resimulated at this resolution. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3),
     elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
-    lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade), all (H, W)
-    besides the first three. Unlike lake_depth/glacier_depth/channel_depth, `is_sea` isn't a
+    lake_depth, glacier_depth, is_sea, hillshade), all (H, W) besides the first three.
+    channel_depth/channel_width aren't among them -- see _render_grid_arrays' own docstring
+    for why there's nothing left downstream to resample them for. Unlike lake_depth/
+    glacier_depth, `is_sea` isn't a
     persisted per-node field on the plates themselves -- it's `lakes._classify_tier`'s own
     per-step read, resampled from the hydrology cache the same way `is_ocean` already is
     (`hydrology.sample_is_sea`, same one-step-stale tolerance and all-False fallback);
@@ -1118,23 +1113,17 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         is_ocean = np.ones(shape, dtype=bool)
         lake_depth = np.zeros(shape)
         glacier_depth = np.zeros(shape)
-        channel_depth = np.zeros(shape)
-        channel_width = np.zeros(shape)
         is_sea = np.zeros(shape, dtype=bool)
         hillshade = np.ones(shape)
     else:
         _all_points, all_elevation, _owner, tree = node_cloud
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
-        all_channel_depth = plates.collect_all_channel_depth(world.plates)
-        all_channel_width = plates.collect_all_channel_width(world.plates)
         all_hillshade = _hillshade_for_world(world)
         _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
         glacier_depth = all_glacier_depth[idx].reshape(shape)
-        channel_depth = all_channel_depth[idx].reshape(shape)
-        channel_width = all_channel_width[idx].reshape(shape)
         hillshade = all_hillshade[idx].reshape(shape) if all_hillshade is not None else np.ones(shape)
         # Connectivity-aware: an enclosed interior pit below sea level renders as lake/land, not
         # as ocean (and so no longer as an Intertidal Zone). See hydrology.connected_ocean_mask.
@@ -1148,7 +1137,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
 
     return (
         lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip,
-        lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade,
+        lake_depth, glacier_depth, is_sea, hillshade,
     )
 
 
@@ -1777,7 +1766,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width, _is_sea, _hillshade = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _is_sea, _hillshade = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1832,7 +1821,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, is_sea, hillshade = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1861,12 +1850,6 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     # OCEAN_PELAGIC_RELIEF_BLEND) so basins still darken and shelves lighten.
     ocean_rgb = biome_rgb * (1.0 - OCEAN_PELAGIC_RELIEF_BLEND) + terrain_rgb * OCEAN_PELAGIC_RELIEF_BLEND
     colors = np.where(flat_ocean[:, None], ocean_rgb, land_rgb)
-    # A deep-and-wide-enough channel darkens toward a visible gorge cut into the biome/terrain
-    # color -- see _channel_visible_shade's own comment; channel_depth is always 0 over ocean,
-    # so this is a land-only effect despite applying unconditionally here.
-    channel_shade = _channel_visible_shade(channel_depth.reshape(-1), channel_width.reshape(-1))
-    if np.any(channel_shade < 1.0):
-        colors = colors * channel_shade[:, None]
     is_lake = lake_depth.reshape(-1) > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
     is_sea_cell = is_lake & is_sea.reshape(-1)
     if np.any(is_lake):
@@ -2065,7 +2048,7 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
     if grid is None or node_cloud is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
@@ -2122,7 +2105,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2189,7 +2172,7 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     created = plates.collect_all_node_created_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2355,69 +2338,70 @@ def _render_crust_type_view(world: World, projection: str, width: int, height: i
     return _encode_image(image)
 
 
-def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray]:
-    """Selects which river segments the general-purpose map views draw, and how wide each is.
+def _percentile_rank(values: np.ndarray) -> np.ndarray:
+    """0..1 percentile rank of each element of `values` among the others in the same array
+    (0 = the smallest, 1 = the largest) via a double argsort -- evenly spread by construction
+    regardless of how clustered the raw values happen to be, unlike a fraction of any single
+    fixed scale. Ties get distinct adjacent ranks (which of two exactly-equal values ends up
+    higher is arbitrary but stable); a single-element input returns 0.0 for it."""
+    order = np.argsort(values)
+    rank = np.empty(len(values))
+    rank[order] = np.arange(len(values))
+    return rank / max(len(values) - 1, 1)
 
-    Returns (src_idx, width_tier): `src_idx` is the node index at the *upstream* end of each
-    drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed >= 0), and
-    `width_tier` is the matching 1/2/3 pre-pixel-scale line-width tier.
 
-    Selection is world-relative: group every is_river node into connected drainage networks
-    (hydrology.group_rivers), then keep the strongest river_draw_max_networks(world) of them
-    by mouth flow_accum, dropping any whose mouth doesn't clear river_draw_min_flow(world).
-    An absolute flow floor alone can't do this job -- mouth flow_accum is a physical upstream
-    water total that ranges over ~four orders of magnitude between an arid world and a soaked
-    one, so no fixed floor both keeps a desert planet's few real rivers and culls a wet one's
-    hundreds.
+def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Selects which river segments the general-purpose map views draw, how strongly each
+    tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
-    Width: within a kept network a segment's tier steps off its flow_accum as a fraction of
-    that network's mouth flow (RIVER_WIDTH_TIER_FRACTIONS) -- flat along an unbranched reach,
-    stepping up only downstream of a real confluence, so a river tapers from head to mouth.
-    That tier is then capped by the network's size rank (RIVER_WIDTH_CAP_BY_RANK): only the
-    single largest river can be drawn 3 px wide, the next two cap at 2 px, the rest at 1 px."""
+    Returns (src_idx, color_alpha, width_frac): `src_idx` is the node index at the *upstream*
+    end of each drawn segment (its downstream end is hydro.flow_target[src_idx], guaranteed
+    >= 0). `color_alpha` is in [RIVER_COLOR_BLEND_MIN_FRACTION, 1.0], a percentile rank of this
+    segment's own channel_width among every other segment drawn in this same call -- see
+    RIVER_COLOR_RGB's own comment for why a rank beats a fixed fraction here. `width_frac` is
+    in [0, 1], a percentile rank of this segment's own flow_accum (not channel_width -- see
+    RIVER_COLOR_RGB's own comment for why) among the same drawn population, floored at
+    RIVER_WIDE_MIN_PERCENTILE (0 below it, an ordinary 1px line) and reaching 1 at this call's
+    single highest-flow segment. Every is_river network is a candidate, not just the strongest
+    few by mouth flow -- hydrology.py's own is_river cut (top RIVER_FLOW_PERCENTILE of land
+    flow_accum) is already the world-relative "how many rivers exist at all" decision; this
+    only additionally drops individual segments whose channel is too narrow to be a real,
+    visible river at all (RIVER_VISIBLE_MIN_WIDTH_M), which both keeps a bone-dry world's few
+    real rivers from being buried in an unbounded creek count and keeps the per-segment
+    ImageDraw loop in _draw_rivers cheap.
+
+    A stale/pre-#190 hydrology_cache (loaded from an old save, or a hand-built test fixture
+    that doesn't set channel_width) has no channel_width of the right shape -- treated the same
+    as "no cache at all," same guard convention as hydrology.sample_is_sea's own stale-cache
+    check."""
     hydro = world.hydrology_cache
-    if hydro is None:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+    channel_width = getattr(hydro, "channel_width", None) if hydro is not None else None
+    if hydro is None or channel_width is None or len(channel_width) != len(hydro.points):
+        return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
-    min_flow = river_draw_min_flow(world)
-    max_networks = river_draw_max_networks(world)
-    rivers = sorted(
-        (r for r in hydrology.group_rivers(hydro) if r.flow_rate >= min_flow),
-        key=lambda r: r.flow_rate,
-        reverse=True,
-    )[:max_networks]
-    if not rivers:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+    visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
+    if not np.any(visible_mask):
+        return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
+    candidates = np.where(visible_mask)[0]
 
-    flow_target = hydro.flow_target
-    flow_accum = hydro.flow_accum
-    frac_hi, frac_lo = RIVER_WIDTH_TIER_FRACTIONS
-    src_chunks: list[np.ndarray] = []
-    tier_chunks: list[np.ndarray] = []
-    for rank, river in enumerate(rivers):
-        cap = RIVER_WIDTH_CAP_BY_RANK[rank] if rank < len(RIVER_WIDTH_CAP_BY_RANK) else RIVER_WIDTH_CAP_TAIL
-        members = river.member_idx
-        keep = members[(flow_target[members] >= 0) & (flow_accum[members] >= min_flow)]
-        if len(keep) == 0:
-            continue
-        frac = flow_accum[keep] / river.flow_rate
-        tier = np.where(frac >= frac_hi, 3, np.where(frac >= frac_lo, 2, 1))
-        src_chunks.append(keep)
-        tier_chunks.append(np.minimum(tier, cap))
-    if not src_chunks:
-        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
-    return np.concatenate(src_chunks).astype(np.int64), np.concatenate(tier_chunks).astype(np.int64)
+    color_percentile = _percentile_rank(channel_width[candidates])
+    color_alpha = RIVER_COLOR_BLEND_MIN_FRACTION + (1.0 - RIVER_COLOR_BLEND_MIN_FRACTION) * color_percentile
+
+    flow_percentile = _percentile_rank(hydro.flow_accum[candidates])
+    width_frac = np.clip((flow_percentile - RIVER_WIDE_MIN_PERCENTILE) / (1.0 - RIVER_WIDE_MIN_PERCENTILE), 0.0, 1.0)
+
+    return candidates.astype(np.int64), color_alpha, width_frac
 
 
 def _draw_rivers(
     image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
 ) -> Image.Image:
-    """Draws each selected river segment (see _rivers_to_draw for which segments and how wide)
-    as a short line from a river node to its own downstream flow target. Each segment is a
-    real, short 3D hop between two adjacent-in-the-flow-graph nodes, so _project_offset (not
-    two independent _project_points calls) keeps it from being wrongly split across the
-    antimeridian seam -- same technique _render_grid_arrays' own corner measurements already
-    rely on.
+    """Draws each selected river segment (see _rivers_to_draw for which segments and how
+    strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
+    downstream flow target. Each segment is a real, short 3D hop between two
+    adjacent-in-the-flow-graph nodes, so _project_offset (not two independent _project_points
+    calls) keeps it from being wrongly split across the antimeridian seam -- same technique
+    _render_grid_arrays' own corner measurements already rely on.
 
     Takes and returns a plain Image (rather than drawing onto a caller-owned
     ImageDraw.ImageDraw, like _draw_coastline and the other _draw_* helpers do) because
@@ -2427,12 +2411,22 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    river_idx, width_tier = _rivers_to_draw(world)
+    river_idx, color_alpha, width_frac = _rivers_to_draw(world)
     if len(river_idx) == 0:
         return image
     target_idx = hydro.flow_target[river_idx]
 
-    width_px = np.maximum(np.round(width_tier * RIVER_LINE_WIDTH_PX * pixel_scale).astype(int), 1)
+    width_px = np.maximum(
+        np.round(pixel_scale * RIVER_LINE_WIDTH_PX * (1.0 + (RIVER_LINE_WIDTH_MAX_MULT - 1.0) * width_frac)).astype(int), 1
+    )
+    # Each line is drawn at a gray level equal to its own color-blend fraction rather than
+    # always full 255 -- the mask-blur-then-composite below already treats the mask value as a
+    # per-pixel blend-toward-RIVER_COLOR_RGB alpha, so a narrow channel's line lands closer to
+    # the land color underneath it and a wide one lands closer to full river-blue, with no
+    # separate compositing pass needed for the color blend.
+    fill_value = np.clip(np.round(255 * color_alpha), 0, 255).astype(int)
+    halo_fill_value = np.clip(np.round(fill_value * RIVER_HALO_FILL_FRACTION), 0, 255).astype(int)
+    core_width_px = np.maximum(np.round(width_px * RIVER_CORE_WIDTH_FRACTION).astype(int), 1)
 
     from_points = _rotate(hydro.points[river_idx], view_rotation)
     to_points = _rotate(hydro.points[target_idx], view_rotation)
@@ -2445,13 +2439,21 @@ def _draw_rivers(
 
     mask = Image.new("L", image.size, 0)
     mask_draw = ImageDraw.Draw(mask)
-    for (x1, y1), (x2, y2), w in zip(from_px, to_px, width_px):
-        mask_draw.line([(x1, y1), (x2, y2)], fill=255, width=int(w))
+    for (x1, y1), (x2, y2), w, f, core_w, halo_f in zip(from_px, to_px, width_px, fill_value, core_width_px, halo_fill_value):
+        if w > 1:
+            # A wide river's own cross-section: a full-width, dimmer "halo" first, then a
+            # narrower full-color "core" painted on top -- see RIVER_CORE_WIDTH_FRACTION's own
+            # comment. An ordinary 1px line (the vast majority of drawn segments) skips this
+            # entirely and is just one pass at its own color-blend fill, same as before.
+            mask_draw.line([(x1, y1), (x2, y2)], fill=int(halo_f), width=int(w))
+            mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(core_w))
+        else:
+            mask_draw.line([(x1, y1), (x2, y2)], fill=int(f), width=int(w))
     mask = mask.filter(ImageFilter.GaussianBlur(radius=RIVER_BLUR_RADIUS_PX * pixel_scale))
 
-    alpha = (np.asarray(mask, dtype=np.float32) / 255.0)[:, :, None]
+    alpha_px = (np.asarray(mask, dtype=np.float32) / 255.0)[:, :, None]
     base_rgb = np.asarray(image, dtype=np.float32)
-    blended = base_rgb * (1.0 - alpha) + np.array(RIVER_COLOR_RGB, dtype=np.float32) * alpha
+    blended = base_rgb * (1.0 - alpha_px) + np.array(RIVER_COLOR_RGB, dtype=np.float32) * alpha_px
     return Image.fromarray(np.clip(np.round(blended), 0, 255).astype(np.uint8), mode="RGB")
 
 
@@ -2584,20 +2586,19 @@ def render_png(
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea, half_w, half_h, hillshade, *rest = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, is_sea, half_w, half_h, hillshade, *rest = grid
         terrain_relief = rest[0] if rest else None
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
         hh_px = half_h * scale * CELL_OVERLAP_FACTOR
         colors = elevation_colors(elev, world.sea_level_m) if view == "elevation" else plate_colors(owner)
-        # A deep-and-wide-enough channel darkens toward a visible gorge (see
-        # _channel_visible_shade's own comment) and directional hillshade lights every cell by
-        # its own local surface normal (see the module comment above _compute_hillshade) --
-        # both "elevation" only: "plates" is a categorical mosaic with no elevation-relief
-        # information to carve or light in the first place.
+        # Directional hillshade (see the module comment above _compute_hillshade, and
+        # _channel_incision_m for how a deep-and-wide-enough channel already shows up as real
+        # carved relief within it) lights every cell by its own local surface normal --
+        # "elevation" only: "plates" is a categorical mosaic with no elevation-relief
+        # information to light in the first place.
         if view == "elevation":
-            channel_shade = _channel_visible_shade(channel_depth, channel_width)
-            cell_shade = channel_shade * hillshade
+            cell_shade = hillshade
             if np.any(cell_shade != 1.0):
                 colors = np.clip(np.round(colors.astype(np.float32) * cell_shade[:, None]), 0, 255).astype(np.uint8)
         # "Mountains" / "Plains & Plateaus" legend toggles: a translucent wash (not a flat
