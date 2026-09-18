@@ -964,7 +964,12 @@ class LithospherePlate(PlateWithLines):
             else:
                 reason[convergent & moved] = ELEV_CHANGE_TRENCH
             reason[divergent & moved] = ELEV_CHANGE_RIFT
-            reason[transform & moved] = ELEV_CHANGE_TRANSFORM
+            # Gated on transform_uplift itself, not just band membership (matching the
+            # far_field_uplift gate above) -- issue #189 follow-up's new debt-decay term can
+            # move a transform-band node's elevation on its own (fault_influence == 0 in
+            # "fault" mode zeroes transform_uplift there, but leftover debt still decays), which
+            # would otherwise mislabel a pure decay move as an active transform pressure ridge.
+            reason[(transform_uplift > 0.0) & moved] = ELEV_CHANGE_TRANSFORM
             reason[melting] = ELEV_CHANGE_VOLCANO
 
             updated_line = line.replace(
