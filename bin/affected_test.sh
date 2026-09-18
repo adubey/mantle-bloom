@@ -15,11 +15,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# --base can appear anywhere, not just first -- everything else is forwarded to pytest
+# untouched, in order (e.g. `./bin/affected_test.sh -v --base main` must not hand pytest a
+# literal "--base main" it doesn't understand).
 BASE_ARGS=()
-if [[ "${1:-}" == "--base" ]]; then
-  BASE_ARGS=(--base "$2")
-  shift 2
-fi
+PYTEST_ARGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base)
+      BASE_ARGS=(--base "$2")
+      shift 2
+      ;;
+    *)
+      PYTEST_ARGS+=("$1")
+      shift
+      ;;
+  esac
+done
 
 # Word-split intentionally (no mapfile -- macOS ships bash 3.2, which lacks it): every path
 # list_affected_tests.py prints is a plain unit_tests/test_*.py filename, never containing a
@@ -32,4 +44,4 @@ fi
 
 cd "$REPO_ROOT/backend"
 source .venv/bin/activate
-python -m pytest $AFFECTED -q -n auto --dist loadscope "$@"
+python -m pytest $AFFECTED -q -n auto --dist loadscope "${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"}"

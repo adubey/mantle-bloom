@@ -154,6 +154,37 @@ def test_deleted_test_file_is_not_listed(fake_repo):
     assert _affected(_run(fake_repo)) == set()
 
 
+def test_absolute_self_import_inside_app_is_tracked(fake_repo):
+    # a couple of real app/ files import absolutely rather than relatively, e.g. desktop.py's
+    # `from app.main import app` -- that must count as a dependency edge just like `from . import`
+    _write(fake_repo / "backend/app/d.py", "from app.a import VALUE\n")
+    _write(
+        fake_repo / "backend/unit_tests/test_d.py",
+        "from app import d\n\n\ndef test_d():\n    assert d.VALUE == 1\n",
+    )
+    _git(fake_repo, "add", "-A")
+    _git(fake_repo, "commit", "-q", "-m", "add d")
+
+    (fake_repo / "backend/app/a.py").write_text("VALUE = 2\n")
+    assert _affected(_run(fake_repo)) == {
+        "unit_tests/test_a.py",
+        "unit_tests/test_b.py",
+        "unit_tests/test_c.py",
+        "unit_tests/test_d.py",
+    }
+
+
+def test_change_under_app_subdirectory_falls_back_to_full_suite(fake_repo):
+    # e.g. the real backend/app/data/major_plates.json that real_plates.py reads -- not a
+    # top-level app/*.py module, so it can't be mapped and must not be silently dropped
+    _write(fake_repo / "backend/app/data/plates.json", "{}\n")
+    assert _affected(_run(fake_repo)) == {
+        "unit_tests/test_a.py",
+        "unit_tests/test_b.py",
+        "unit_tests/test_c.py",
+    }
+
+
 def test_base_override(fake_repo):
     (fake_repo / "backend/app/a.py").write_text("VALUE = 2\n")
     _git(fake_repo, "add", "-A")

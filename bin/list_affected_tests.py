@@ -10,14 +10,16 @@ mid-edit and right after committing on a branch, without a --base flag to rememb
 
 The dependency graph is built by statically parsing app/*.py and unit_tests/*.py with ast
 (not by importing them -- app/ pulls in numba/scipy at import time, too slow to pay per
-invocation) and only understands this codebase's two import styles: relative imports within
-app/ (`from . import x, y` / `from .x import y`) and absolute imports from tests
-(`from app import x` / `from app.x import y` / `import app.x`). A new leaf module with no
-importers yet is handled directly by the graph (it affects nothing, correctly -- nothing
-exercises it). What this can't map to a single module -- a changed app/__init__.py or
-unit_tests/__init__.py, a parse error -- falls back to "affected == everything", since a
-wrong "nothing affected" is a silent gap in coverage where a wrong "run everything" just
-costs time.
+invocation) and only understands this codebase's import styles: relative imports within
+app/ (`from . import x, y` / `from .x import y`), and absolute imports of app's own modules
+(`from app import x` / `from app.x import y` / `import app.x`) wherever they appear -- tests
+use these exclusively, and a couple of app/ files do too (e.g. desktop.py's
+`from app.main import app`). A new leaf module with no importers yet is handled directly by
+the graph (it affects nothing, correctly -- nothing exercises it). What this can't map to a
+single top-level app/*.py or unit_tests/test_*.py file -- a changed app/__init__.py or
+unit_tests/__init__.py, something under a subdirectory like app/data/*.json, a parse error --
+falls back to "affected == everything", since a wrong "nothing affected" is a silent gap in
+coverage where a wrong "run everything" just costs time.
 """
 
 from __future__ import annotations
@@ -100,11 +102,14 @@ def imported_app_modules(path: Path) -> set[str] | None:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if is_app_file and node.level == 1:
+                # `from . import x, y` / `from .x import y` -- app/'s own relative style
                 if node.module is None:
                     deps.update(alias.name for alias in node.names)
                 else:
                     deps.add(node.module.split(".")[0])
-            elif not is_app_file and node.level == 0 and node.module:
+            elif node.level == 0 and node.module:
+                # `from app import x` / `from app.x import y` -- used both by tests and by
+                # a few app/ files that import themselves absolutely (e.g. desktop.py)
                 parts = node.module.split(".")
                 if parts[0] == "app":
                     if len(parts) > 1:
@@ -150,15 +155,26 @@ def main() -> int:
             return 0
         depends_on[mod] = deps
 
-    changed_modules = {module_name(f) for f in changed if f.parent == APP_DIR}
-    changed_modules.discard(None)
-    unresolved_app_changes = {f for f in changed if f.parent == APP_DIR and module_name(f) is None}
-    # matched by name, not by current existence -- a *deleted* test_*.py has nothing left to
-    # run and isn't unresolved, it just drops out of test_files on its own
-    unresolved_test_changes = {
-        f for f in changed if f.parent == TESTS_DIR and not fnmatch(f.name, "test_*.py")
-    }
-    unresolved = unresolved_app_changes | unresolved_test_changes
+    # Walk every changed path against both directories *recursively* (APP_DIR in f.parents,
+    # not f.parent == APP_DIR) -- app/data/major_plates.json is a real file real_plates.py
+    # reads, and a change to it (or to anything else this can't resolve to a top-level app/
+    # module or unit_tests/test_*.py file) must fall into `unresolved` below, not vanish
+    # silently because it's one directory deeper than this script expects.
+    changed_modules: set[str] = set()
+    unresolved: set[Path] = set()
+    for f in changed:
+        if APP_DIR in f.parents:
+            mod = module_name(f) if f.parent == APP_DIR else None
+            if mod is None:
+                unresolved.add(f)
+            else:
+                changed_modules.add(mod)
+        elif TESTS_DIR in f.parents:
+            # matched by name, not by current existence -- a *deleted* test_*.py has nothing
+            # left to run and isn't unresolved, it just drops out of test_files on its own
+            if not (f.parent == TESTS_DIR and fnmatch(f.name, "test_*.py")):
+                unresolved.add(f)
+
     if unresolved:
         names = ", ".join(str(f.relative_to(REPO_ROOT)) for f in sorted(unresolved))
         print(f"# {names} isn't a plain app/test module (e.g. __init__.py), falling back to full suite", file=sys.stderr)
