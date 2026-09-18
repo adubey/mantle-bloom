@@ -20,6 +20,7 @@ from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, MAX_ELE
 
 if TYPE_CHECKING:
     from .lithosphere_plate import LithospherePlate
+    from .plates import Plate
 
 PLANET_RADIUS_M = PLANET_RADIUS_KM * 1000.0
 GRAVITY_M_S2 = 9.81
@@ -175,6 +176,50 @@ def crustal_thickness_for_elevation(z_m: np.ndarray, hm_m: np.ndarray, rho_c: fl
     dry_hc = (z_m - ISOSTATIC_REFERENCE_OFFSET_M - hm_term) / (1.0 - rho_c / RHO_ASTHENOSPHERE)
     wet_hc = crustal_thickness_for_submerged_elevation(z_m, hm_m, rho_c)
     return np.where(z_m <= 0.0, wet_hc, dry_hc)
+
+
+def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Where `apply_mask` is set, raise `crustal_thickness_m` by whatever a real tectonic/
+    magmatic process would need to isostatically support `gain` meters of *new* elevation, and
+    move `elevation` by exactly that much -- issue #173's fix (originally volcanism-only, moved
+    here so faults.py's fault relief can share it -- issue #189).
+
+    Anchored to the column's own current isostatic *equilibrium* (`isostatic_elevation(hc, hm,
+    rho_c)`), never to raw `line.elevation` directly: a node can carry elevation
+    `isostatic_elevation` doesn't actually back (e.g. lithosphere_plate.deform()'s
+    transform_uplift/far_field_uplift terms, kept as bare elevation deltas by design -- "local
+    relief without net crustal shortening"), and solving Hc from that raw value would
+    retroactively -- and hugely disproportionately -- launder that unrelated drift into real
+    crust the moment the node happens to erupt or slip again. Anchoring to the column's own
+    equilibrium instead means a caller only ever bills its own contribution; whatever debt/
+    surplus already existed passes through untouched, riding along in the
+    `line.elevation + isostatic_delta` sum below. v1/legacy lines with no Hc tracking
+    (`crustal_thickness_m` all zero) keep the old bare direct-elevation response. `gain` may be
+    negative (e.g. a normal fault's extensional hanging-wall throw), which thins Hc the same way
+    a positive gain thickens it."""
+    bare_elevation = np.clip(line.elevation + np.where(apply_mask, gain, 0.0), MIN_ELEVATION_M, MAX_ELEVATION_M)
+    if not np.any(apply_mask):
+        return line.crustal_thickness_m, bare_elevation
+
+    has_column = line.crustal_thickness_m > 0.0
+    backed = apply_mask & has_column
+    rho_c = node_crust_density(line.crust_type_code, plate.crust_type)
+    current_equilibrium = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
+    target_hc = np.clip(
+        crustal_thickness_for_elevation(current_equilibrium + gain, line.mantle_lithosphere_thickness_m, rho_c),
+        MIN_CRUSTAL_THICKNESS_M,
+        MAX_CRUSTAL_THICKNESS_M,
+    )
+    new_crustal_thickness = np.where(backed, target_hc, line.crustal_thickness_m)
+    isostatic_delta = (
+        isostatic_elevation(new_crustal_thickness, line.mantle_lithosphere_thickness_m, rho_c) - current_equilibrium
+    )
+    new_elevation = np.where(
+        backed,
+        np.clip(line.elevation + isostatic_delta, MIN_ELEVATION_M, MAX_ELEVATION_M),
+        bare_elevation,
+    )
+    return new_crustal_thickness, new_elevation
 
 
 def sync_line_elevation(line, rho_c: float):
