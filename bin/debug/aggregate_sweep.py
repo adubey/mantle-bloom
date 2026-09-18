@@ -54,6 +54,17 @@ def main() -> None:
             if line:
                 rows.append(json.loads(line))
 
+    # This script reports a single top-level node_density (see below), so a file that actually
+    # mixes densities -- run_sweep.py's own docstring only advises against pointing two
+    # differently-configured runs at the same --out, it doesn't enforce it -- would otherwise
+    # silently average incompatible runs together with no warning.
+    densities = {row["node_density"] for row in rows}
+    if len(densities) > 1:
+        parser.error(
+            f"{args.inp} mixes node_density values {sorted(densities)} -- rerun each density "
+            "into its own --out file (see run_sweep.py --node-density)"
+        )
+
     # Rows are keyed by literal parameter name in the file, but a BASELINE_PARAM row belongs to
     # every real parameter's own multiplier=1.0 point -- fan it out here so grouping below is a
     # simple per-parameter groupby with no special-casing.

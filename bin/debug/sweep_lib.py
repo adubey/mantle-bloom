@@ -214,8 +214,10 @@ def run_one_job(
     records = []
     years_done = 0.0
     for checkpoint in checkpoint_years:
-        step_world(world, years=checkpoint - years_done)
-        years_done = checkpoint
+        while years_done < checkpoint:
+            step = min(STEP_YEARS, checkpoint - years_done)
+            step_world(world, years=step)
+            years_done += step
         record = {
             "parameter": param_name,
             "multiplier": multiplier,

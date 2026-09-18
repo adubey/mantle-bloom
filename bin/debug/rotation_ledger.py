@@ -137,8 +137,9 @@ def run_ledger(
     prev = snapshot(world)
     years_done = 0.0
     while years_done < total_years:
-        step_world(world, years=step_years)
-        years_done += step_years
+        step = min(step_years, total_years - years_done)
+        step_world(world, years=step)
+        years_done += step
         cur = snapshot(world)
 
         record = {"seed": seed, "multiplier": multiplier, "years_elapsed": years_done}
