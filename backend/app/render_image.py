@@ -129,6 +129,15 @@ RIVER_COLOR_BLEND_MAX_WIDTH_M = erosion.MAX_CHANNEL_WIDTH_M
 # RIVER_DRAW_MAX_NETWORKS_BY_NODE_DENSITY/RIVER_DRAW_MIN_FLOW_BY_NODE_DENSITY network-rank cap
 # entirely) cheap: most of a world's smallest tributaries fall under this floor and are never
 # handed to ImageDraw at all.
+#
+# Trading away with it: the old cap's explicit resolution-invariance guarantee (a given
+# planet drawing the same *number* of rivers regardless of node_density) no longer holds --
+# a finer node_density can resolve a few more separate small catchments as their own networks,
+# each independently clearing this fixed absolute width floor, so a higher-resolution render
+# of the same world can show a few more visible rivers than a coarser one. Accepted as a
+# byproduct of "draw every real river, gated only by its own physical channel width" (issue
+# #190's own ask) rather than "draw a rank-capped top few" -- not something this floor tries
+# to compensate for.
 RIVER_DRAW_MIN_ALPHA = 0.04
 
 
@@ -877,11 +886,14 @@ def _render_grid_arrays(
 ) -> tuple[np.ndarray, ...] | None:
     """A uniform lat/lon grid covering the whole sphere (GRID_SPACING_RAD, independent of
     any plate's own line spacing), each cell assigned its nearest elevation node's elevation,
-    owning plate, lake_depth, glacier_depth, is_volcano, channel_depth, channel_width, is_sea,
-    and hillshade -- see docs/simulation-model.md#render-image. Returns flat concatenated
-    (projected_xy, elevation, plate_id, lake_depth, glacier_depth, is_volcano, channel_depth,
-    channel_width, is_sea, cell_half_width, cell_half_height, hillshade) arrays, or None for an
-    empty world. Unlike the other per-node fields here, `is_sea` isn't a value persisted on the
+    owning plate, lake_depth, glacier_depth, is_volcano, is_sea, and hillshade -- see
+    docs/simulation-model.md#render-image. Returns flat concatenated (projected_xy, elevation,
+    plate_id, lake_depth, glacier_depth, is_volcano, is_sea, cell_half_width, cell_half_height,
+    hillshade) arrays, or None for an empty world. channel_depth/channel_width aren't among
+    them -- their only consumer here used to be the flat channel-darken effect
+    `_hillshade_for_world` now folds directly into `hillshade` instead (see
+    `_channel_incision_m`), so there's nothing left downstream to resample them for. Unlike the
+    other per-node fields here, `is_sea` isn't a value persisted on the
     plates themselves -- it's `lakes._classify_tier`'s own per-step read of the hydrology
     cache, resampled per lattice chunk the same way `_biome_fields` resamples it for its own
     grid (`hydrology.sample_is_sea`); `hillshade` likewise isn't persisted -- it's
@@ -893,7 +905,7 @@ def _render_grid_arrays(
     `_classify_terrain_relief` code -- computed once per node and sampled onto the grid with
     the exact same nearest-node `idx` every other per-cell field already uses here, so it's
     guaranteed pixel-aligned with the elevation this same call returns. `False` returns the
-    same 12-tuple this function always has, so every existing caller is unaffected.
+    same 10-tuple this function always has, so every existing caller is unaffected.
 
     Cell half-extents are measured per cell, not per row: at the identity rotation, a row of
     constant true latitude also has constant apparent latitude, so one measurement per row
@@ -923,8 +935,6 @@ def _render_grid_arrays(
     all_lake_depth = plates.collect_all_lake_depth(world.plates)
     all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
     all_is_volcano = plates.collect_all_is_volcano(world.plates)
-    all_channel_depth = plates.collect_all_channel_depth(world.plates)
-    all_channel_width = plates.collect_all_channel_width(world.plates)
     all_hillshade = _hillshade_for_world(world)
     all_terrain_relief = None
     if include_terrain_relief:
@@ -942,8 +952,8 @@ def _render_grid_arrays(
     # density where 100km was already the tighter bound.
     grid_spacing_rad = min(GRID_SPACING_RAD, plates.line_spacing_rad(world.node_density))
 
-    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, channel_depth_chunks, channel_width_chunks, sea_chunks, hw_chunks, hh_chunks, hillshade_chunks, terrain_chunks = (
-        [], [], [], [], [], [], [], [], [], [], [], [], [],
+    xy_chunks, elev_chunks, owner_chunks, lake_chunks, glacier_chunks, volcano_chunks, sea_chunks, hw_chunks, hh_chunks, hillshade_chunks, terrain_chunks = (
+        [], [], [], [], [], [], [], [], [], [], [],
     )
     for phi, theta_candidates, world_pts in plates.iter_local_lattice(np.eye(3), spacing_rad=grid_spacing_rad):
         _, idx = tree.query(world_pts)
@@ -955,8 +965,6 @@ def _render_grid_arrays(
         lake_chunks.append(all_lake_depth[idx])
         glacier_chunks.append(all_glacier_depth[idx])
         volcano_chunks.append(all_is_volcano[idx])
-        channel_depth_chunks.append(all_channel_depth[idx])
-        channel_width_chunks.append(all_channel_width[idx])
         # Not a persisted per-node field like the others above (see HydrologyFields.is_sea's
         # own comment) -- resampled straight from the hydrology cache per chunk, the same
         # hydrology.sample_is_sea used for the Biome grid (_biome_fields).
@@ -989,8 +997,6 @@ def _render_grid_arrays(
         np.concatenate(lake_chunks, axis=0),
         np.concatenate(glacier_chunks, axis=0),
         np.concatenate(volcano_chunks, axis=0),
-        np.concatenate(channel_depth_chunks, axis=0),
-        np.concatenate(channel_width_chunks, axis=0),
         np.concatenate(sea_chunks, axis=0),
         np.concatenate(hw_chunks, axis=0),
         np.concatenate(hh_chunks, axis=0),
@@ -1064,8 +1070,10 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
     coarser, fixed-shape simulation grid (see climate.compute_climate_cached) rather than
     resimulated at this resolution. Returns (lat_deg (H,), lon_deg (W,), world_xyz (H,W,3),
     elevation_m, is_ocean, air_temperature_c, ocean_temperature_c, precipitation_mm,
-    lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade), all (H, W)
-    besides the first three. Unlike lake_depth/glacier_depth/channel_depth, `is_sea` isn't a
+    lake_depth, glacier_depth, is_sea, hillshade), all (H, W) besides the first three.
+    channel_depth/channel_width aren't among them -- see _render_grid_arrays' own docstring
+    for why there's nothing left downstream to resample them for. Unlike lake_depth/
+    glacier_depth, `is_sea` isn't a
     persisted per-node field on the plates themselves -- it's `lakes._classify_tier`'s own
     per-step read, resampled from the hydrology cache the same way `is_ocean` already is
     (`hydrology.sample_is_sea`, same one-step-stale tolerance and all-False fallback);
@@ -1082,23 +1090,17 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
         is_ocean = np.ones(shape, dtype=bool)
         lake_depth = np.zeros(shape)
         glacier_depth = np.zeros(shape)
-        channel_depth = np.zeros(shape)
-        channel_width = np.zeros(shape)
         is_sea = np.zeros(shape, dtype=bool)
         hillshade = np.ones(shape)
     else:
         _all_points, all_elevation, _owner, tree = node_cloud
         all_lake_depth = plates.collect_all_lake_depth(world.plates)
         all_glacier_depth = plates.collect_all_glacier_depth(world.plates)
-        all_channel_depth = plates.collect_all_channel_depth(world.plates)
-        all_channel_width = plates.collect_all_channel_width(world.plates)
         all_hillshade = _hillshade_for_world(world)
         _, idx = tree.query(flat_xyz, workers=plates.query_workers(len(flat_xyz)))
         elevation_m = all_elevation[idx].reshape(shape)
         lake_depth = all_lake_depth[idx].reshape(shape)
         glacier_depth = all_glacier_depth[idx].reshape(shape)
-        channel_depth = all_channel_depth[idx].reshape(shape)
-        channel_width = all_channel_width[idx].reshape(shape)
         hillshade = all_hillshade[idx].reshape(shape) if all_hillshade is not None else np.ones(shape)
         # Connectivity-aware: an enclosed interior pit below sea level renders as lake/land, not
         # as ocean (and so no longer as an Intertidal Zone). See hydrology.connected_ocean_mask.
@@ -1112,7 +1114,7 @@ def _biome_fields(world: World, grid_h: int, grid_w: int):
 
     return (
         lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip,
-        lake_depth, glacier_depth, channel_depth, channel_width, is_sea, hillshade,
+        lake_depth, glacier_depth, is_sea, hillshade,
     )
 
 
@@ -1741,7 +1743,7 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _channel_depth, _channel_width, _is_sea, _hillshade = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, _lake_depth, _glacier_depth, _is_sea, _hillshade = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -1796,7 +1798,7 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     padding_px = PADDING_PX * pixel_scale
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
 
-    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, _channel_depth, _channel_width, is_sea, hillshade = _biome_fields(
+    lat_deg, lon_deg, world_xyz, elevation_m, is_ocean, air_temp, ocean_temp, precip, lake_depth, glacier_depth, is_sea, hillshade = _biome_fields(
         world, *biome_grid_dimensions(world.climate_density)
     )
     display_temp = np.where(is_ocean, ocean_temp, air_temp)
@@ -2023,7 +2025,7 @@ def _render_speckle_view(world: World, projection: str, width: int, height: int,
     if grid is None or node_cloud is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, all_elevation, _owner, _tree = node_cloud
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
 
@@ -2080,7 +2082,7 @@ def _render_overlap_age_view(world: World, projection: str, width: int, height: 
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     onset = plates.collect_all_overlap_onset_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2147,7 +2149,7 @@ def _render_node_age_view(world: World, projection: str, width: int, height: int
     if grid is None or collected is None:
         return _encode_image(Image.fromarray(blank, mode="RGB"))
 
-    xy, elev, _owner, _lake, _glacier, _volcano, _channel_depth, _channel_width, _is_sea, half_w, half_h, _hillshade = grid
+    xy, elev, _owner, _lake, _glacier, _volcano, _is_sea, half_w, half_h, _hillshade = grid
     all_points, _all_elevation, _ = collected
     created = plates.collect_all_node_created_years(world.plates)
     node_xy = _project_points(projection, _rotate(all_points, view_rotation))
@@ -2533,7 +2535,7 @@ def render_png(
     pixels = blank.copy()
 
     if grid is not None:
-        xy, elev, owner, lake_depth, glacier_depth, is_volcano, _channel_depth, _channel_width, is_sea, half_w, half_h, hillshade, *rest = grid
+        xy, elev, owner, lake_depth, glacier_depth, is_volcano, is_sea, half_w, half_h, hillshade, *rest = grid
         terrain_relief = rest[0] if rest else None
         centers = _to_pixels(scale, offset_x, offset_y, xy)
         hw_px = half_w * scale * CELL_OVERLAP_FACTOR
