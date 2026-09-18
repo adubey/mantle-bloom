@@ -90,6 +90,18 @@ Runs the backend's fast unit tests (`backend/unit_tests/`, every test well under
 -- the frontend has no unit test framework set up yet. Extra arguments are forwarded to
 pytest, e.g. `./bin/unit_test.sh -k biome`.
 
+When you're iterating on a handful of files, run only the tests actually affected by your
+changes (committed since `main` plus anything uncommitted) instead of the whole suite:
+
+```bash
+./bin/affected_test.sh
+```
+
+It maps changed files to test files through `app`'s own import graph -- a module's own
+tests, plus every module that transitively imports it -- and falls back to the full suite
+whenever that mapping can't be trusted. It's a dev-loop shortcut, not a substitute for
+`./bin/unit_test.sh` before pushing.
+
 The suite's slow, full-simulation tests (many-step integration/determinism checks, anywhere
 from a few seconds to several minutes each) live separately in `backend/stress_tests/`,
 run with:
@@ -114,6 +126,7 @@ mantle-bloom/
     stop.sh          # stop everything restart.sh started
     package.sh       # build the self-contained desktop binary (see docs/packaging.md)
     unit_test.sh     # run the backend's fast unit test suite
+    affected_test.sh # run only the unit tests affected by this branch's changes
     stress_test.sh   # run the backend's slow, full-simulation test suite
 ```
 
