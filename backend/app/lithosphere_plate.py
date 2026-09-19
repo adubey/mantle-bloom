@@ -266,6 +266,60 @@ SUTURE_ACCRETION_SPREAD_NODES = 3
 # -- both paths agree on where continental crust actually maxes out.
 SUTURE_ACCRETION_MAX_HC_M = lithosphere.MAX_CRUSTAL_THICKNESS_M
 
+# GitHub issue #177: a continental passive margin overridden by an *oceanic* neighbour
+# subducts its retreating column outright, with no rate limit of its own -- unlike the
+# compensating gain on the same convergent boundary, `rheology.apply_arc_magmatic_thickening`,
+# which is rate-capped at `rheology.ARC_MAGMATIC_CONVERGENCE_CAP`. The issue's own ledger
+# instrumentation confirmed this uncapped-loss/capped-gain pairing is the actual driver of
+# `avg_rotation_rate`'s super-linear land loss: faster rotation -> deeper/more overlap per
+# step -> more uncapped subduction, while the capped creation path can't scale to match.
+#
+# Rather than invent a second hardcoded rate for the loss side (which would just be two
+# constants racing each other, free to drift apart again as either one gets retuned), this
+# plate's oceanic-override retreat is capped, this same step, by however much Hc this exact
+# step's real arc-magmatic thickening is actually adding across the whole plate --
+# `deform()` computes that total once (mirroring the calculation `apply_arc_magmatic_
+# thickening` performs per-line for real) into a shared budget, and `_grow_or_shrink_line_
+# for_deform` spends it down end by end via `_budget_limited_removal`. Node area is constant
+# per node, so summed Hc is directly comparable as "volume" on both sides of this cap, the
+# same convention `_redistribute_accreted_column` already uses. A continent-continent suture
+# retreat is untouched by this (it already fully conserves its own volume, so it isn't the
+# uncapped channel this targets), and so is an oceanic self-plate's own ordinary subduction
+# (not a passive margin at all -- that loss is expected, not a bug).
+#
+# 1.0 is a genuinely symmetric cap (this issue's own proposal: match the two channels' rates
+# directly), kept as a named multiplier rather than folded into the budget calculation itself
+# so it is the one place to loosen this if a strict 1:1 turns out to starve ordinary retreat
+# unrelated to the runaway this exists to fix.
+OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER = 1.0
+
+
+def _budget_limited_removal(hc: np.ndarray, n_remove: int, budget_hc: np.ndarray, from_high: bool) -> int:
+    """How many of the candidate `n_remove` end nodes an oceanic-override retreat may actually
+    take this step, capped by `budget_hc[0]` (this plate's remaining same-step arc-magmatic
+    creation budget -- see deform()'s own `oceanic_override_retreat_budget_hc` and
+    OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER). `budget_hc` is a shared, mutable single-
+    element array -- every call across this plate's whole deform() pass (both ends, every
+    line) spends down the same plate-wide budget in place, in call order; once it hits zero,
+    every oceanic-override retreat still to come this step is refused, not just throttled.
+
+    Finds the largest prefix of the candidate window, counted in from the true (retreating)
+    end, whose summed Hc stays within the remaining budget -- node area is constant per node,
+    so that sum is directly comparable to the Hc-sum budget. Returns a possibly-smaller
+    `n_remove` (down to 0) and debits whatever it actually spends from `budget_hc`."""
+    if n_remove <= 0:
+        return n_remove
+    tail = hc[-n_remove:] if from_high else hc[:n_remove]
+    ordered = tail[::-1] if from_high else tail  # index 0 = the true (retreating) end
+    cum = np.cumsum(ordered)
+    budget = max(float(budget_hc[0]), 0.0)
+    within = cum <= budget
+    k = n_remove if within.all() else int(np.argmax(~within))
+    if k > 0:
+        budget_hc[0] -= float(cum[k - 1])
+    return k
+
+
 # Active-margin (Cordilleran) accretion. When a continental plate's *leading* edge grows
 # into space a subducting oceanic neighbour is vacating (slab rollback / trench retreat),
 # the new ground is juvenile arc + accreted-terrane crust, not abyssal sea floor -- so it is
@@ -655,6 +709,21 @@ class LithospherePlate(PlateWithLines):
         years_myr = years / 1_000_000.0
         rho_c = self.crust_density()
 
+        # GitHub issue #177 direction 1 -- see OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER's own
+        # comment for the full rationale. This step's real arc-magmatic creation across the
+        # whole plate, computed once here (mirrors the per-line calculation below) into a
+        # shared budget the per-line loop's oceanic-override retreats spend down in place.
+        oceanic_override_retreat_budget_hc = np.zeros(1)
+        if self.crust_type == "continental" and np.any(arc_band_all):
+            hm_all = self.collect("mantle_lithosphere_thickness_m")
+            grown_hc, _ = rheology.apply_arc_magmatic_thickening(
+                hc_all[arc_band_all], hm_all[arc_band_all], closing_rate_all[arc_band_all],
+                years_myr, arc_intensity_all[arc_band_all],
+            )
+            oceanic_override_retreat_budget_hc[0] = (
+                OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER * float(np.sum(grown_hc - hc_all[arc_band_all]))
+            )
+
         # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
         # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
         # widens (>1) or narrows (<1) the belt it acts on -- see _distance_to_mask_1d /
@@ -996,6 +1065,7 @@ class LithospherePlate(PlateWithLines):
                 world,
                 line_index,
                 neighbours,
+                oceanic_override_retreat_budget_hc,
                 suppress_growth,
                 arc_end_low,
                 arc_end_high,
@@ -1074,6 +1144,7 @@ class LithospherePlate(PlateWithLines):
         world: "World",  # noqa: F821
         line_index: int,
         neighbours: list,
+        oceanic_override_retreat_budget_hc: np.ndarray,
         suppress_growth: bool = False,
         arc_end_low: bool = False,
         arc_end_high: bool = False,
@@ -1090,7 +1161,12 @@ class LithospherePlate(PlateWithLines):
         `accrete` marks end nodes whose crustal/mantle-lithosphere volume must be conserved
         when they retreat (a continental suture -- see `_redistribute_accreted_column`);
         elsewhere retreat drops the column (oceanic subduction, or a continental passive
-        margin against an oceanic slab).
+        margin against an oceanic slab) -- and, for a continental self-plate's oceanic-
+        override case specifically, is further rate-limited against
+        `oceanic_override_retreat_budget_hc` (see `_budget_limited_removal` /
+        OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER, issue #177 direction 1). That budget is
+        shared and mutable across this plate's whole deform() pass (every line, both ends),
+        so it must be threaded through from the caller rather than recomputed here.
 
         `direction` (world-frame, this plate's own `torque.BoundaryForceInputs.
         direction_to_neighbor`, one per node) feeds the end-growth branch's own rift-stretch
@@ -1141,6 +1217,10 @@ class LithospherePlate(PlateWithLines):
 
         if len(shrinkable) > 0 and shrinkable[-1]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=True), n_distance_cap, max_extend_nodes, len(theta) - 1)
+            if n_remove > 0 and self.crust_type == "continental" and not accrete[-1]:
+                n_remove = _budget_limited_removal(
+                    persistent_fields["crustal_thickness_m"], n_remove, oceanic_override_retreat_budget_hc, from_high=True
+                )
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][-n_remove:].copy()
                 accrete_removed = accrete[-n_remove:].copy()
@@ -1157,6 +1237,10 @@ class LithospherePlate(PlateWithLines):
 
         if shrinkable[0]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
+            if n_remove > 0 and self.crust_type == "continental" and not accrete[0]:
+                n_remove = _budget_limited_removal(
+                    persistent_fields["crustal_thickness_m"], n_remove, oceanic_override_retreat_budget_hc, from_high=False
+                )
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][:n_remove].copy()
                 accrete_removed = accrete[:n_remove].copy()

@@ -780,15 +780,26 @@ def test_runs_of_at_least_clears_short_true_runs():
     assert list(_runs_of_at_least(np.array([0, 0, 1, 1, 1], dtype=bool), 3)) == [0, 0, 1, 1, 1]
 
 
-def test_lithosphere_continental_contested_edge_retreats():
+def test_lithosphere_continental_contested_edge_retreats(monkeypatch):
     """A continental line's contested end retreats one node per step whether the overriding
     neighbour is oceanic (a passive margin / accretion front, breaking the node ratchet) or
     continental (a suture whose territory overlap is consumed into the orogen rather than
-    frozen for tens of Myr). Both cases lose real theta extent."""
+    frozen for tens of Myr). Both cases lose real theta extent.
+
+    This scenario's plates are static (zero omega, no relative motion at all), so closing rate
+    -- and with it this step's arc-magmatic creation -- is uniformly zero regardless of which
+    neighbour type is retreated against (see issue #177 direction 1's
+    `_budget_limited_removal`/`oceanic_override_retreat_budget_hc`): a real simulated world's
+    plates always carry a real omega, so an actively-contested boundary there is never stuck at
+    exactly zero closing rate the way this handcrafted static setup is. Bypassing
+    `_budget_limited_removal` here keeps this test about the retreat/accretion mechanic itself
+    -- the budget cap gets its own dedicated test below."""
+    from app import lithosphere_plate as lp
     from app.lithosphere_plate import CONTINENTAL_CONTESTED_RETREAT_MIN_RUN, LithospherePlate
     from app.lithosphere import reference_thickness
     from app.world import World
 
+    monkeypatch.setattr(lp, "_budget_limited_removal", lambda hc, n_remove, budget_hc, from_high: n_remove)
     spacing = line_spacing_rad(1.0)
 
     def _plate(pid, crust_type, theta_lo, theta_hi, n):
@@ -875,16 +886,25 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
     assert np.all(fields2["crustal_thickness_m"] <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
 
 
-def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion():
+def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accretion(monkeypatch):
     """The overlap a retreating continent-continent suture consumes is thrust onto the plate's
     own leading edge, not discarded: the retreated column's crustal volume reappears on the
     surviving edge nodes (so the belt thickens and the plate's total Hc is conserved). A
     retreat against an *oceanic* neighbour is a passive margin -- that column subducts, so the
-    edge does not thicken and total Hc drops."""
+    edge does not thicken and total Hc drops.
+
+    This scenario's plates are static (zero omega), so this step's arc-magmatic creation is
+    always zero and issue #177 direction 1's oceanic-override retreat budget would otherwise
+    block every oceanic-neighbour retreat outright (a real simulated world's plates always
+    carry a real omega, so this exact-zero-closing-rate case doesn't arise there) --
+    `_budget_limited_removal` is bypassed here so this test stays about the retreat/accretion
+    mechanic itself; the budget cap gets its own dedicated test below."""
+    from app import lithosphere_plate as lp
     from app.lithosphere import reference_thickness
     from app.lithosphere_plate import LithospherePlate
     from app.world import World
 
+    monkeypatch.setattr(lp, "_budget_limited_removal", lambda hc, n_remove, budget_hc, from_high: n_remove)
     hc0, hm0 = reference_thickness("continental")
     spacing = line_spacing_rad(1.0)
 
@@ -932,6 +952,88 @@ def test_continent_continent_suture_consumes_its_overlap_as_mass_conserving_accr
     # ...and the suture line keeps several consumed continental columns' worth of extra crust
     # that the oceanic-neighbour run simply loses.
     assert suture_hc_cc > suture_hc_co + 3 * 30_000.0
+
+
+def test_budget_limited_removal_caps_by_remaining_budget():
+    """`_budget_limited_removal` (issue #177 direction 1) takes the largest prefix of the
+    candidate removal window, counted in from the true (retreating) end, whose summed Hc fits
+    the remaining budget -- and debits exactly that much back out of the shared budget array."""
+    from app.lithosphere_plate import _budget_limited_removal
+
+    hc = np.array([10_000.0, 20_000.0, 30_000.0, 40_000.0, 50_000.0])
+
+    # from_high=True: the true end is the *last* node, so the window is scanned back-to-front
+    # (50_000 first, then 40_000, ...). A budget of 95_000 covers 50_000+40_000 (=90_000) but
+    # not another 30_000 (=120_000), so only the last 2 of the 4 candidates are allowed.
+    budget = np.array([95_000.0])
+    k = _budget_limited_removal(hc, 4, budget, from_high=True)
+    assert k == 2
+    assert budget[0] == pytest.approx(95_000.0 - 90_000.0)
+
+    # from_high=False: the true end is the *first* node (10_000, then 20_000, ...) -- same
+    # budget, different order, so it covers more nodes before running out.
+    budget = np.array([95_000.0])
+    k = _budget_limited_removal(hc, 4, budget, from_high=False)
+    assert k == 3  # 10_000 + 20_000 + 30_000 = 60_000 <= 95_000; + 40_000 = 100_000 > 95_000
+    assert budget[0] == pytest.approx(95_000.0 - 60_000.0)
+
+    # Exhausted budget refuses everything; a budget covering the whole window returns it whole
+    # and only spends what it actually removed.
+    assert _budget_limited_removal(hc, 3, np.array([0.0]), from_high=True) == 0
+    budget = np.array([1_000_000.0])
+    k = _budget_limited_removal(hc, 5, budget, from_high=True)
+    assert k == 5
+    assert budget[0] == pytest.approx(1_000_000.0 - hc.sum())
+
+    # n_remove <= 0 is a no-op that doesn't touch the budget.
+    budget = np.array([500.0])
+    assert _budget_limited_removal(hc, 0, budget, from_high=True) == 0
+    assert budget[0] == pytest.approx(500.0)
+
+
+def test_oceanic_override_retreat_is_blocked_without_arc_creation_but_suture_is_not():
+    """GitHub issue #177 direction 1: a continental margin's oceanic-override retreat is
+    capped by however much this same step's arc-magmatic creation is adding across the whole
+    plate -- so with these plates static (zero omega, hence zero closing rate, hence zero arc
+    creation), retreat against an *oceanic* neighbour is refused outright (no compensating
+    creation exists to spend the budget on), while retreat against a *continental* neighbour
+    (a suture, fully self-conserving and not the uncapped channel this targets) is completely
+    unaffected -- the two cases this file's own retreat test exercises with the cap bypassed,
+    now shown with the cap left in place."""
+    from app.lithosphere_plate import LithospherePlate
+    from app.lithosphere import reference_thickness
+    from app.world import World
+
+    spacing = line_spacing_rad(1.0)
+
+    def _plate(pid, crust_type, theta_lo, theta_hi, n):
+        hc0, hm0 = reference_thickness(crust_type)
+        theta = np.linspace(theta_lo, theta_hi, n)
+        line = ElevationLine(
+            phi=0.2, theta=theta, elevation=np.zeros(n),
+            crustal_thickness_m=np.full(n, hc0), mantle_lithosphere_thickness_m=np.full(n, hm0),
+        )
+        filler = ElevationLine(
+            phi=-0.6, theta=np.linspace(-0.2, 0.2, 8), elevation=np.zeros(8),
+            crustal_thickness_m=np.full(8, hc0), mantle_lithosphere_thickness_m=np.full(8, hm0),
+        )
+        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
+
+    def _high_end_retreat(neighbour_crust: str) -> float:
+        continent = _plate(0, "continental", -0.5, 0.5, 40)
+        neighbour = _plate(1, neighbour_crust, 0.15, 0.9, 40)
+        world = World(seed=0, plates=[continent, neighbour], mantle_centers=[], node_density=1.0)
+
+        def high_theta() -> float:
+            return max(ln.theta[-1] for ln in continent.lines if abs(ln.phi - 0.2) < 1e-6)
+
+        before = high_theta()
+        for _ in range(6):
+            continent.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
+        return before - high_theta()
+
+    assert _high_end_retreat("oceanic") == 0.0
+    assert _high_end_retreat("continental") > 0.0
 
 
 def test_lithosphere_continental_volume_budget_suppresses_growth():
