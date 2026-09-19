@@ -11,6 +11,12 @@ reproducible starting point a sweep can vary one knob against. `node_density=1.0
 production default, not debug_worlds.py's 0.5 fast-iteration density) so results reflect what a
 real save actually does; a 10,000,000-year step size (one of the UI's own "years per step"
 choices) keeps a 120 My run to 12 steps.
+
+Four of PARAM_SPECS's eight parameters (max_rotation_rate, rain_erosion, river_erosion,
+collision_uplift_distance) showed a clean, repeated null result across three independent runs
+of increasing power and were dropped from run_sweep.py's default --params by GitHub issue #199
+-- see CONFIRMED_NULL_PARAMS/DEFAULT_SWEEP_PARAMS and the per-parameter comments on PARAM_SPECS
+below for each one's confirming run. They're still fully available via an explicit --params.
 """
 
 from __future__ import annotations
@@ -71,20 +77,48 @@ PARAM_SPECS: dict[str, ParamSpec] = {
     "avg_rotation_rate": ParamSpec(
         "Average continental rotation rate", "cm/yr", BASELINE_AVG_RATE_CM_YR, rotation_kind="avg"
     ),
+    # Confirmed null (|z| < 2.4, mostly < 1) on all four outcome stats at n=200 in issue #171's
+    # Run D -- see https://github.com/adubey/mantle-bloom/issues/171#issuecomment-5736252594.
+    # Dropped from run_sweep.py's default --params by issue #199; still runnable via an explicit
+    # --params max_rotation_rate if a future change to the rotation-rate cap motivates rechecking.
     "max_rotation_rate": ParamSpec(
         "Maximum continental rotation rate", "cm/yr", BASELINE_MAX_RATE_CM_YR, rotation_kind="max"
     ),
+    # Confirmed null (|z| < 1) at n=200 in issue #171's Run D -- see
+    # https://github.com/adubey/mantle-bloom/issues/171#issuecomment-5736252594. Dropped from
+    # run_sweep.py's default --params by issue #199; still runnable via an explicit
+    # --params rain_erosion if a future change to erosion code motivates rechecking.
     "rain_erosion": ParamSpec("Rain erosion", "x baseline", 1.0, world_field="rain_erosion_multiplier"),
+    # Confirmed null (|z| < 1) at n=200 in issue #171's Run D -- see
+    # https://github.com/adubey/mantle-bloom/issues/171#issuecomment-5736252594. Dropped from
+    # run_sweep.py's default --params by issue #199; still runnable via an explicit
+    # --params river_erosion if a future change to erosion code motivates rechecking.
     "river_erosion": ParamSpec("River erosion", "x baseline", 1.0, world_field="river_erosion_multiplier"),
     "glacier_erosion": ParamSpec("Glacier erosion", "x baseline", 1.0, world_field="glacier_erosion_multiplier"),
     "volcanism": ParamSpec("Volcanism", "x baseline", 1.0, world_field="volcanism_multiplier"),
     "collision_uplift_amount": ParamSpec(
         "Collision uplift amount", "x baseline", 1.0, world_field="collision_uplift_multiplier"
     ),
+    # Confirmed null (|z| < 1) at n=200 in issue #171's Run D -- see
+    # https://github.com/adubey/mantle-bloom/issues/171#issuecomment-5736252594. Dropped from
+    # run_sweep.py's default --params by issue #199; still runnable via an explicit
+    # --params collision_uplift_distance if a future change to uplift-reach code motivates
+    # rechecking.
     "collision_uplift_distance": ParamSpec(
         "Collision uplift distance (reach)", "x baseline", 1.0, world_field="collision_uplift_reach_multiplier"
     ),
 }
+
+# Parameters with a repeated, clean null result across three independent runs of increasing
+# power (n=5, n=10, n=200) on all four outcome stats -- see the PARAM_SPECS comments above and
+# GitHub issue #199. Excluded from run_sweep.py's default --params so a routine sweep doesn't
+# keep re-verifying the same nulls (the n=200 Run D sweep of all 8 took ~13 hours on 4-8
+# workers); still fully available via an explicit --params.
+CONFIRMED_NULL_PARAMS = ("max_rotation_rate", "rain_erosion", "river_erosion", "collision_uplift_distance")
+
+# run_sweep.py's default --params: every PARAM_SPECS entry except the confirmed nulls above.
+# Order follows PARAM_SPECS so --help output and job ordering stay stable.
+DEFAULT_SWEEP_PARAMS = tuple(p for p in PARAM_SPECS if p not in CONFIRMED_NULL_PARAMS)
 
 # The sentinel param name for an un-overridden run (every multiplier at 1.0) -- run once per
 # seed and shared across every real parameter's own multiplier=1.0 point rather than re-run
