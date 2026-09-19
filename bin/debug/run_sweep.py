@@ -8,6 +8,12 @@ parameter at a time) and the harness script itself committed independently of an
 run's results -- see sweep_lib.py's own module docstring for the seeds/checkpoints/step size
 this uses and why.
 
+--params defaults to sweep_lib.DEFAULT_SWEEP_PARAMS, not every PARAM_SPECS entry: four
+parameters (max_rotation_rate, rain_erosion, river_erosion, collision_uplift_distance) showed a
+clean, repeated null result across three independent runs and were dropped from the default by
+GitHub issue #199 so a routine sweep doesn't keep re-verifying them -- pass one explicitly via
+--params to recheck it.
+
 Idempotent/resumable: before building the job list, reads whatever --out already has and skips
 any (parameter, multiplier, seed) triple that already has a record for every checkpoint, so
 re-running after a partial/interrupted sweep (or adding one more --params later) only computes
@@ -41,6 +47,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sweep_lib import (  # noqa: E402
     BASELINE_PARAM,
     CHECKPOINT_YEARS,
+    DEFAULT_SWEEP_PARAMS,
     MULTIPLIERS,
     NODE_DENSITY,
     PARAM_SPECS,
@@ -107,7 +114,13 @@ def build_jobs(params: list[str], multipliers: list[float], seeds: list[int]) ->
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
-        "--params", default=",".join(PARAM_SPECS), help=f"comma-separated subset of: {', '.join(PARAM_SPECS)}"
+        "--params",
+        default=",".join(DEFAULT_SWEEP_PARAMS),
+        help=(
+            f"comma-separated subset of: {', '.join(PARAM_SPECS)} (default excludes "
+            "confirmed-null params -- see sweep_lib.CONFIRMED_NULL_PARAMS -- pass them "
+            "explicitly to re-check one)"
+        ),
     )
     parser.add_argument("--multipliers", default=",".join(str(m) for m in MULTIPLIERS))
     parser.add_argument("--seeds", default=",".join(str(s) for s in SWEEP_SEEDS))
