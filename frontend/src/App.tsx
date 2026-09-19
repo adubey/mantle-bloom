@@ -24,6 +24,7 @@ import AnimationModal from "./AnimationModal";
 import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
+import ProgressBar from "./ProgressBar";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
@@ -1131,11 +1132,7 @@ export default function App() {
           >
             Generate World
           </button>
-          {busy && (
-            <div className="progress-track" aria-label="Generating world" role="progressbar">
-              <div className="progress-indeterminate" />
-            </div>
-          )}
+          {busy && <ProgressBar label="Generating world" />}
 
           <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
             📊 Stats
@@ -1224,11 +1221,7 @@ export default function App() {
                 ⏺
               </button>
             </div>
-            {stepping && (
-              <div className="progress-track" aria-label="Stepping world" role="progressbar" style={{ marginTop: 6 }}>
-                <div className="progress-indeterminate" />
-              </div>
-            )}
+            {stepping && <ProgressBar label="Stepping world" style={{ marginTop: 6 }} />}
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
@@ -1932,12 +1925,21 @@ export default function App() {
                   key={mode}
                   type="button"
                   onClick={() => {
-                    setGenerateMode(mode);
-                    // Reset to the mode-appropriate default (see DEFAULT_VORONOI_POINTS_RANDOM/
-                    // _SKETCH's own comments) so switching tabs doesn't leave a value picked for
-                    // a different mode's fidelity needs -- a manual adjustment within a mode is
-                    // kept until the next tab switch.
-                    setVoronoiPoints(mode === "random" ? DEFAULT_VORONOI_POINTS_RANDOM : DEFAULT_VORONOI_POINTS_SKETCH);
+                    // Only reset on an actual mode change -- re-clicking the already-active tab
+                    // must not discard a manual slider adjustment. "debug" is excluded from the
+                    // reset entirely: generateDebugWorld never reads voronoi_points at all (see
+                    // handleGenerate), so resetting it there would just be a misleading no-op
+                    // value shown in Advanced settings.
+                    if (mode !== generateMode) {
+                      setGenerateMode(mode);
+                      if (mode !== "debug") {
+                        // Reset to the mode-appropriate default (see DEFAULT_VORONOI_POINTS_RANDOM/
+                        // _SKETCH's own comments) so switching tabs doesn't leave a value picked
+                        // for a different mode's fidelity needs -- a manual adjustment within a
+                        // mode is kept until the next tab switch.
+                        setVoronoiPoints(mode === "random" ? DEFAULT_VORONOI_POINTS_RANDOM : DEFAULT_VORONOI_POINTS_SKETCH);
+                      }
+                    }
                   }}
                   style={{
                     flex: 1,

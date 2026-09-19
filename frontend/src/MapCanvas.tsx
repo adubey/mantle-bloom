@@ -348,8 +348,13 @@ export default function MapCanvas({
     // independently) is what LakeInspector.tsx's own projectSegment does, and for the same
     // reason: two independently-projected endpoints can bow a short real-world edge all the
     // way across the map at the antimeridian once the view is rotated.
+    //
+    // This runs on every raw mousemove during a drag (see useRotationDrag's onFrame below),
+    // with real-world coastlines running into the thousands of segments -- so each endpoint is
+    // projected exactly once (not once per color pass) and both passes stroke a single batched
+    // path each (one stroke() call apiece) rather than one beginPath/stroke() per segment.
     if (coastlineSegments && coastlineSegments.length > 0) {
-      const projectSegment = (a: Vec3, b: Vec3): [[number, number], [number, number]] => {
+      const projectedSegments: [[number, number], [number, number]][] = coastlineSegments.map(([a, b]) => {
         const ra = matApply(previewRotation, a);
         const latA = Math.asin(Math.min(1, Math.max(-1, ra[2])));
         const lonA = Math.atan2(ra[1], ra[0]);
@@ -359,19 +364,18 @@ export default function MapCanvas({
         const [xA, yA] = project(projection, latA, lonA);
         const [xB, yB] = project(projection, latB, lonB);
         return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
-      };
+      });
       const strokeCoastline = (color: string, lineWidth: number) => {
         ctx.strokeStyle = color;
         ctx.lineWidth = lineWidth;
-        for (const [a, b] of coastlineSegments) {
-          const [[x1, y1], [x2, y2]] = projectSegment(a, b);
-          ctx.beginPath();
+        ctx.beginPath();
+        for (const [[x1, y1], [x2, y2]] of projectedSegments) {
           ctx.moveTo(x1, y1);
           ctx.lineTo(x2, y2);
-          ctx.stroke();
         }
+        ctx.stroke();
       };
-      const coastlineWidth = width / 1100;
+      const coastlineWidth = Math.max(1, width / 1100);
       strokeCoastline(`rgba(${COASTLINE_HALO_RGB}, 1.0)`, coastlineWidth * 2.6);
       strokeCoastline(`rgba(${COASTLINE_RGB}, 1.0)`, coastlineWidth * 1.1);
     }

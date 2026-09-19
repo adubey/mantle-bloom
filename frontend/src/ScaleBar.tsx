@@ -6,10 +6,12 @@ import { PLANET_RADIUS_KM, backingPixelsToDisplayLatLon, getLocalPixelScale, typ
 // The map's scale bar (issue #158): normally a plain inline item in the Legend row below the
 // map, exact only at the equator (like any small-scale world map's static scale bar -- see the
 // comment on KM_PER_PIXEL_AT_EQUATOR below). It's a native <button> (rather than a plain <div>)
-// purely so it picks up the same clickable-looking chrome every other control in the app
-// already has for free -- nothing here is an actual click action, drag is still the only thing
-// that does anything (see onMouseDown below), but a bare div gave no visual hint it was
-// interactive at all. Grabbing and dragging it onto the map instead
+// for the semantics/focusability, but its docked (in-Legend) style below gives it an explicit
+// button-card look too -- a bare div gave no visual hint it was interactive at all, and nothing
+// here is an actual click action; drag is still the only thing that does anything (see
+// onMouseDown below). The dropped (on-map) style resets that chrome back off, since floating on
+// the globe it needs to stay the same borderless label-plus-ticks it always was, not a button-
+// shaped box sitting on top of the map. Grabbing and dragging it onto the map instead
 // *detaches* it into a `position: fixed` overlay pinned to that screen point, at which point it
 // switches to a live per-position calculation (rotation.ts's getLocalPixelScale) so its labeled
 // length stays accurate wherever it's been dropped -- dragging it back off the map re-docks it,
@@ -205,6 +207,15 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
         style={
           isDropped
             ? {
+                // Reset the native button chrome the plain <button> element would otherwise
+                // bring in (border/background/padding/font) -- floating on the map, this needs
+                // to stay the same borderless label-plus-ticks it always was, not a button-
+                // shaped box sitting on the globe. Only the docked style below actually wants
+                // to look like a button.
+                border: "none",
+                background: "none",
+                padding: 0,
+                font: "inherit",
                 position: "fixed",
                 left: dropped!.left,
                 top: dropped!.top,
@@ -218,6 +229,14 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
                 gap: 2,
               }
             : {
+                // Explicit button-card look (rather than relying on the browser's own default
+                // button chrome, which varies by browser/OS) -- same border color the rest of
+                // the sidebar's boxes use.
+                border: "1px solid #333",
+                borderRadius: 4,
+                background: "rgba(255, 255, 255, 0.04)",
+                padding: "3px 6px",
+                font: "inherit",
                 flexShrink: 0,
                 marginLeft: "auto",
                 fontSize: 10,
