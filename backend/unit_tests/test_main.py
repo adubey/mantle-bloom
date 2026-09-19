@@ -1,8 +1,11 @@
+import asyncio
 import base64
+import gc
 import io
 import json
 import math
 import threading
+import time
 import av
 import pytest
 from fastapi.testclient import TestClient
@@ -21,13 +24,136 @@ def _decode_image(body: dict) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(body["image_base64"])))
 
 
+class _NdjsonResponse:
+    """Wraps a TestClient response from /world/generate or /world/step -- both now stream
+    NDJSON progress (see backend app/main.py, issue #195) instead of returning one JSON body
+    -- so the many existing `resp.json()` assertions below still work unmodified: `.json()`
+    returns the stream's final `{"type": "done", ...}` message's fields, same shape the old
+    single-JSON-body response used to have. A non-200 response (400/404/503, raised before
+    the stream ever starts) is still ordinary single-line JSON, so `.json()` falls back to
+    the real response's own method for those. Every other attribute (`.status_code`, `.text`,
+    `.headers`, ...) passes straight through to the wrapped response, same as the real
+    `httpx.Response` would give -- see test_animate_* below for the lower-level
+    `resp.text.splitlines()` parsing this wraps, used directly where a test needs the
+    intermediate `"progress"` lines rather than just the final result."""
+
+    def __init__(self, resp):
+        self._resp = resp
+
+    def __getattr__(self, name):
+        return getattr(self._resp, name)
+
+    def json(self):
+        if self._resp.status_code != 200:
+            return self._resp.json()
+        messages = [json.loads(line) for line in self._resp.text.splitlines() if line.strip()]
+        done = messages[-1]
+        assert done["type"] == "done", f"expected a final done message, got {done}"
+        return done
+
+
+def _post_generate(client, **kwargs):
+    return _NdjsonResponse(client.post("/world/generate", **kwargs))
+
+
+def _post_step(client, **kwargs):
+    return _NdjsonResponse(client.post("/world/step", **kwargs))
+
+
+def _post_streaming_then_disconnect(path: str, body: dict, disconnect_after_chunks: int) -> int:
+    """Drives app.main's ASGI app directly for one streaming POST, with a hand-rolled
+    receive/send pair (the same technique Starlette's own test suite uses to simulate a
+    disconnect) that reports the client as gone exactly once `send()` has recorded
+    `disconnect_after_chunks` response body chunks -- TestClient's httpx-based streaming
+    doesn't expose enough control over response timing to cut a stream short at an exact
+    chunk deterministically, which is why this bypasses it. Used to prove /world/generate's
+    and /world/step's own GeneratorExit handling (see their comments on it) really does
+    finish the underlying world mutation when a client walks away mid-stream, rather than
+    leaving `_state["world"]` half-built/half-stepped forever. Returns the number of body
+    chunks actually delivered before the simulated disconnect (i.e. `disconnect_after_chunks`
+    itself, confirming the scenario really did cut the stream short rather than racing it to
+    a normal finish)."""
+
+    async def _drive() -> int:
+        body_bytes = json.dumps(body).encode()
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "root_path": "",
+            "headers": [
+                (b"host", b"testserver"),
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body_bytes)).encode()),
+            ],
+            "client": ("testclient", 123),
+            "server": ("testserver", 80),
+        }
+
+        request_body_sent = False
+        disconnect_now = asyncio.Event()
+        chunk_count = 0
+
+        async def receive():
+            nonlocal request_body_sent
+            if not request_body_sent:
+                request_body_sent = True
+                return {"type": "http.request", "body": body_bytes, "more_body": False}
+            # Starlette's listen_for_disconnect polls receive() in a loop once the response
+            # starts streaming -- block until send() below has recorded the target chunk
+            # count, then report the client as gone.
+            await disconnect_now.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            nonlocal chunk_count
+            if message["type"] == "http.response.body":
+                chunk_count += 1
+                if chunk_count == disconnect_after_chunks:
+                    disconnect_now.set()
+
+        await app(scope, receive, send)
+
+        # The GeneratorExit-triggered drain only runs once nothing references the endpoint's
+        # closed-over `_stream()` generator any more -- CPython's refcounting GC calls
+        # `.close()` on it, raising GeneratorExit at its suspended yield, as soon as the last
+        # reference drops, which can be slightly after `await app(...)` itself returns.
+        # Forcing collection here makes that prompt; the caller still polls for its own
+        # expected end state afterward (see _wait_until below) rather than this function
+        # guessing how long the drain's actual plate-geometry/world-generation work takes.
+        gc.collect()
+        return chunk_count
+
+    return asyncio.run(_drive())
+
+
+def _wait_until(predicate, timeout: float = 5.0, interval: float = 0.05) -> bool:
+    """Polls `predicate()` until it returns truthy or `timeout` seconds pass -- used below to
+    wait for _post_streaming_then_disconnect's GeneratorExit-triggered drain to actually
+    finish applying its world mutation, without hardcoding how long that background work
+    should take (a fixed sleep long enough for a 10-plate world locally could still be too
+    short under CI load). Returns the last (falsy) result on timeout rather than raising, so
+    the caller's own `assert` gives a clearer failure message than a bare timeout would."""
+    deadline = time.monotonic() + timeout
+    result = predicate()
+    while not result and time.monotonic() < deadline:
+        time.sleep(interval)
+        result = predicate()
+    return result
+
+
 def test_render_before_generate_returns_404(client):
     resp = client.get("/world/render")
     assert resp.status_code == 404
 
 
 def test_step_before_generate_returns_404(client):
-    resp = client.post("/world/step", json={"years": 1_000_000})
+    resp = _post_step(client, json={"years": 1_000_000})
     assert resp.status_code == 404
 
 
@@ -115,8 +241,42 @@ def test_stats_history_before_generate_returns_404(client):
     assert client.get("/world/stats_history").status_code == 404
 
 
+def test_step_disconnect_mid_stream_still_finishes_the_step(client):
+    # Regression test for a code-review finding on issue #195's streaming /world/step:
+    # step_world_progress mutates `world` in place across many per-plate yield points, so if
+    # main.py's step() just let a client disconnect abandon the generator wherever it
+    # happened to be suspended, the world would be left permanently half-stepped -- some
+    # plates shifted but not deformed, elapsed_years never advanced, no topology/climate/
+    # erosion/sea-level pass. step()'s own `except GeneratorExit` drains step_world_progress
+    # to completion first, so the step still fully applies -- proven here by disconnecting
+    # after only 3 of a 10-plate step's 22 total NDJSON lines (21 progress fractions + done).
+    _post_generate(client, json={"seed": 1, "num_plates": 10})
+    chunk_count = _post_streaming_then_disconnect("/world/step", {"years": 1_000_000}, disconnect_after_chunks=3)
+    assert chunk_count == 3  # confirms the scenario really did cut the stream short
+
+    _wait_until(lambda: client.get("/world/summary").json()["elapsed_years"] == 1_000_000.0)
+    assert client.get("/world/summary").json()["elapsed_years"] == 1_000_000.0
+
+
+def test_generate_disconnect_mid_stream_still_finishes_generating(client):
+    # Same regression test as test_step_disconnect_mid_stream_still_finishes_the_step above,
+    # for /world/generate -- disconnecting after just the first of generate_world_progress's
+    # three phase-boundary progress lines (plate/site generation) should still leave a
+    # complete, usable world in `_state` once mantle-center fitting and the
+    # finish_generation bootstrap finish server-side.
+    chunk_count = _post_streaming_then_disconnect(
+        "/world/generate", {"seed": 1, "num_plates": 10}, disconnect_after_chunks=1,
+    )
+    assert chunk_count == 1  # confirms the scenario really did cut the stream short
+
+    _wait_until(lambda: client.get("/world/summary").status_code == 200)
+    summary = client.get("/world/summary").json()
+    assert summary["seed"] == 1
+    assert summary["num_plates"] == 10
+
+
 def test_overlapping_step_returns_503(client, monkeypatch):
-    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    _post_generate(client, json={"seed": 1, "num_plates": 6})
 
     # Makes the first /world/step's own critical section deterministically overlap the
     # second's: the blocking replacement only runs (and lets app.main._world_lock be released)
@@ -125,21 +285,55 @@ def test_overlapping_step_returns_503(client, monkeypatch):
     entered_step_world = threading.Event()
     release_step_world = threading.Event()
 
-    def blocking_step_world(world, years):
+    def blocking_step_world_progress(world, years):
         entered_step_world.set()
         release_step_world.wait(timeout=5)
+        yield 1.0
 
     import app.main as main_module
 
-    monkeypatch.setattr(main_module, "step_world", blocking_step_world)
+    monkeypatch.setattr(main_module, "step_world_progress", blocking_step_world_progress)
 
     results: list[int] = []
-    t1 = threading.Thread(target=lambda: results.append(client.post("/world/step", json={"years": 1_000_000}).status_code))
+    t1 = threading.Thread(target=lambda: results.append(_post_step(client, json={"years": 1_000_000}).status_code))
     t1.start()
     assert entered_step_world.wait(timeout=5)
 
-    t2_response = client.post("/world/step", json={"years": 1_000_000})
+    t2_response = _post_step(client, json={"years": 1_000_000})
     release_step_world.set()
+    t1.join()
+
+    assert t2_response.status_code == 503
+    assert results == [200]
+
+
+def test_overlapping_generate_returns_503(client, monkeypatch):
+    # Same coverage as test_overlapping_step_returns_503 above, for /world/generate's own
+    # (now inline, since the shared _reject_if_busy helper this used to go through was
+    # removed -- see issue #195) non-blocking `_world_lock.acquire` + 503 path.
+    entered_generate = threading.Event()
+    release_generate = threading.Event()
+
+    from app.world import generate_world_progress as real_generate_world_progress
+
+    def blocking_generate_world_progress(seed, **kwargs):
+        entered_generate.set()
+        release_generate.wait(timeout=5)
+        yield from real_generate_world_progress(seed, **kwargs)
+
+    import app.main as main_module
+
+    monkeypatch.setattr(main_module, "generate_world_progress", blocking_generate_world_progress)
+
+    results: list[int] = []
+    t1 = threading.Thread(
+        target=lambda: results.append(_post_generate(client, json={"seed": 1, "num_plates": 6}).status_code)
+    )
+    t1.start()
+    assert entered_generate.wait(timeout=5)
+
+    t2_response = _post_generate(client, json={"seed": 2, "num_plates": 6})
+    release_generate.set()
     t1.join()
 
     assert t2_response.status_code == 503
@@ -156,21 +350,22 @@ def test_render_waits_for_an_in_progress_step_instead_of_racing_it(client, monke
     # time proving render *waits out* the lock (and then succeeds) rather than either racing
     # past it or being rejected with a 503 the way the write endpoints are -- a render is a
     # read, called far more often, so it should wait a moment, not fail.
-    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    _post_generate(client, json={"seed": 1, "num_plates": 6})
 
     entered_step_world = threading.Event()
     release_step_world = threading.Event()
 
-    def blocking_step_world(world, years):
+    def blocking_step_world_progress(world, years):
         entered_step_world.set()
         release_step_world.wait(timeout=5)
+        yield 1.0
 
     import app.main as main_module
 
-    monkeypatch.setattr(main_module, "step_world", blocking_step_world)
+    monkeypatch.setattr(main_module, "step_world_progress", blocking_step_world_progress)
 
     step_results: list[int] = []
-    t1 = threading.Thread(target=lambda: step_results.append(client.post("/world/step", json={"years": 1_000_000}).status_code))
+    t1 = threading.Thread(target=lambda: step_results.append(_post_step(client, json={"years": 1_000_000}).status_code))
     t1.start()
     assert entered_step_world.wait(timeout=5)
 
@@ -199,21 +394,22 @@ def test_step_compute_routes_do_not_race_an_in_progress_step(client, monkeypatch
     # threading layer is not safe against that and crashes the interpreter. They now share
     # `_world_lock` with step/render: the long writes (animate) 503 like an overlapping step,
     # the quick/read holders (controls, stats, generate) block and wait it out.
-    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    _post_generate(client, json={"seed": 1, "num_plates": 6})
 
     entered_step_world = threading.Event()
     release_step_world = threading.Event()
 
-    def blocking_step_world(world, years):
+    def blocking_step_world_progress(world, years):
         entered_step_world.set()
         release_step_world.wait(timeout=5)
+        yield 1.0
 
     import app.main as main_module
 
-    monkeypatch.setattr(main_module, "step_world", blocking_step_world)
+    monkeypatch.setattr(main_module, "step_world_progress", blocking_step_world_progress)
 
     step_results: list[int] = []
-    t1 = threading.Thread(target=lambda: step_results.append(client.post("/world/step", json={"years": 1_000_000}).status_code))
+    t1 = threading.Thread(target=lambda: step_results.append(_post_step(client, json={"years": 1_000_000}).status_code))
     t1.start()
     assert entered_step_world.wait(timeout=5)
 
@@ -238,7 +434,7 @@ def test_step_compute_routes_do_not_race_an_in_progress_step(client, monkeypatch
 
 
 def test_generate_returns_summary(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6})
     assert resp.status_code == 200
     body = resp.json()
     assert body["num_plates"] == 6
@@ -247,7 +443,7 @@ def test_generate_returns_summary(client):
 
 
 def test_generate_returns_a_generation_event(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "continental_fraction": 0.5})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "continental_fraction": 0.5})
     body = resp.json()
     assert len(body["events"]) == 1
     assert "6 plates" in body["events"][0]["message"]
@@ -285,7 +481,7 @@ def test_generate_debug_unknown_scenario_returns_400(client):
 
 
 def test_generate_debug_replaces_previous_world(client):
-    client.post("/world/generate", json={"seed": 1, "num_plates": 6})
+    _post_generate(client, json={"seed": 1, "num_plates": 6})
     resp = client.post("/world/generate_debug", json={"scenario": "four_plate_grid"})
     assert resp.status_code == 200
     assert resp.json()["num_plates"] == 4
@@ -295,65 +491,65 @@ def test_generate_with_continental_fraction_gives_exact_count(client):
     # crust_type per plate isn't part of the render response (see render_image.py) -- the
     # generation event log is the documented way to confirm the exact count (also covered by
     # test_generate_returns_a_generation_event above; this locks in a second seed/count pair).
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 10, "continental_fraction": 0.4})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 10, "continental_fraction": 0.4})
     assert "4 continental" in resp.json()["events"][0]["message"]
 
 
 def test_generate_with_land_fraction(client):
-    resp = client.post(
-        "/world/generate",
+    resp = _post_generate(
+        client,
         json={"seed": 1, "num_plates": 10, "continental_fraction": 0.7, "land_fraction": 0.29},
     )
     assert resp.status_code == 200
 
 
 def test_generate_with_node_density(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 4.0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 4.0})
     assert resp.status_code == 200
 
 
 def test_generate_with_the_coarsest_node_density(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 0.5})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 0.5})
     assert resp.status_code == 200
 
 
 def test_generate_with_unknown_node_density_returns_400(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "node_density": 2.5})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 2.5})
     assert resp.status_code == 400
 
 
 def test_generate_with_the_max_allowed_voronoi_points(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "voronoi_points": 2000})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "voronoi_points": 2000})
     assert resp.status_code == 200
 
 
 def test_generate_with_voronoi_points_over_the_max_returns_400(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "voronoi_points": 2001})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "voronoi_points": 2001})
     assert resp.status_code == 400
 
 
 def test_generate_with_zero_voronoi_points_returns_400(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "voronoi_points": 0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "voronoi_points": 0})
     assert resp.status_code == 400
 
 
 def test_generate_with_climate_density(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 2.0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "climate_density": 2.0})
     assert resp.status_code == 200
 
 
 def test_generate_with_the_finest_climate_density(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 4.0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "climate_density": 4.0})
     assert resp.status_code == 200
 
 
 def test_generate_with_unknown_climate_density_returns_400(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 3.0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "climate_density": 3.0})
     assert resp.status_code == 400
 
 
 def test_render_defaults_to_elevation_view_at_1100x611(client):
-    client.post("/world/generate", json={"seed": 3, "num_plates": 6})
+    _post_generate(client, json={"seed": 3, "num_plates": 6})
     resp = client.get("/world/render")
     assert resp.status_code == 200
     assert _decode_image(resp.json()).size == (1100, 611)
@@ -362,7 +558,7 @@ def test_render_defaults_to_elevation_view_at_1100x611(client):
 def test_render_different_views_produce_different_images(client):
     """Not a pixel-exact check (that would just re-derive render_image.py's own math) --
     just confirms the `view` param actually changes what's drawn, at the HTTP layer."""
-    client.post("/world/generate", json={"seed": 3, "num_plates": 8, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 3, "num_plates": 8, "continental_fraction": 0.5})
     bodies = {
         view: client.get("/world/render", params={"view": view, "width": 300, "height": 200}).json()["image_base64"]
         for view in ("elevation", "plates", "platesDetail")
@@ -371,7 +567,7 @@ def test_render_different_views_produce_different_images(client):
 
 
 def test_render_different_resolutions_produce_different_size_images(client):
-    client.post("/world/generate", json={"seed": 3, "num_plates": 6})
+    _post_generate(client, json={"seed": 3, "num_plates": 6})
     small = client.get("/world/render", params={"width": 200, "height": 100}).json()
     large = client.get("/world/render", params={"width": 800, "height": 400}).json()
     assert _decode_image(small).size == (200, 100)
@@ -379,38 +575,38 @@ def test_render_different_resolutions_produce_different_size_images(client):
 
 
 def test_render_unknown_projection_returns_400(client):
-    client.post("/world/generate", json={"seed": 4, "num_plates": 6})
+    _post_generate(client, json={"seed": 4, "num_plates": 6})
     resp = client.get("/world/render", params={"projection": "mercator"})
     assert resp.status_code == 400
 
 
 def test_render_unknown_view_returns_400(client):
-    client.post("/world/generate", json={"seed": 4, "num_plates": 6})
+    _post_generate(client, json={"seed": 4, "num_plates": 6})
     resp = client.get("/world/render", params={"view": "topographic"})
     assert resp.status_code == 400
 
 
 def test_render_out_of_range_dimensions_return_400(client):
-    client.post("/world/generate", json={"seed": 4, "num_plates": 6})
+    _post_generate(client, json={"seed": 4, "num_plates": 6})
     assert client.get("/world/render", params={"width": 0, "height": 100}).status_code == 400
     assert client.get("/world/render", params={"width": 100, "height": 0}).status_code == 400
     assert client.get("/world/render", params={"width": 100_000, "height": 100}).status_code == 400
 
 
 def test_generate_replaces_previous_world(client):
-    client.post("/world/generate", json={"seed": 5, "num_plates": 6})
-    resp = client.post("/world/generate", json={"seed": 6, "num_plates": 8})
+    _post_generate(client, json={"seed": 5, "num_plates": 6})
+    resp = _post_generate(client, json={"seed": 6, "num_plates": 8})
     assert resp.json()["num_plates"] == 8
 
 
 def test_generate_without_num_plates_picks_a_plausible_count(client):
-    resp = client.post("/world/generate", json={"seed": 7})
+    resp = _post_generate(client, json={"seed": 7})
     assert resp.status_code == 200
     assert MIN_AUTO_PLATES <= resp.json()["num_plates"] <= MAX_AUTO_PLATES
 
 
 def test_render_omitted_rotation_matches_explicit_identity(client):
-    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    _post_generate(client, json={"seed": 8, "num_plates": 8})
     identity = "1,0,0,0,1,0,0,0,1"
     default_body = client.get("/world/render", params={"width": 300, "height": 200}).json()
     explicit_body = client.get("/world/render", params={"width": 300, "height": 200, "rotation": identity}).json()
@@ -418,7 +614,7 @@ def test_render_omitted_rotation_matches_explicit_identity(client):
 
 
 def test_render_nontrivial_rotation_changes_the_image(client):
-    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    _post_generate(client, json={"seed": 8, "num_plates": 8})
     identity = "1,0,0,0,1,0,0,0,1"
     rotated = "0,0,1,0,1,0,-1,0,0"  # a valid 90-degree rotation matrix
     identity_body = client.get("/world/render", params={"width": 300, "height": 200, "rotation": identity}).json()
@@ -427,14 +623,14 @@ def test_render_nontrivial_rotation_changes_the_image(client):
 
 
 def test_render_malformed_rotation_returns_400(client):
-    client.post("/world/generate", json={"seed": 8, "num_plates": 8})
+    _post_generate(client, json={"seed": 8, "num_plates": 8})
     assert client.get("/world/render", params={"rotation": "1,0,0,0,1,0,0,0"}).status_code == 400  # only 8 values
     assert client.get("/world/render", params={"rotation": "not,a,valid,rotation,matrix,at,all,here,either"}).status_code == 400
     assert client.get("/world/render", params={"rotation": "1,0,0,0,1,0,0,0,nan"}).status_code == 400
 
 
 def test_plates_endpoint_matches_directly_generated_plate_state(client):
-    resp = client.post("/world/generate", json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
+    resp = _post_generate(client, json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
     assert resp.status_code == 200
 
     ground_truth = {p.plate_id: p for p in generate_plates(seed=11, num_plates=9, continental_fraction=0.5)}
@@ -458,7 +654,7 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
 def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
     from app import mantle
 
-    client.post("/world/generate", json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
     plates = client.get("/world/plates").json()["plates"]
 
     for entry in plates:
@@ -481,7 +677,7 @@ def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
 
 
 def test_plate_at_returns_the_owning_plate_id(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -494,13 +690,13 @@ def test_plate_at_returns_the_owning_plate_id(client):
 
 
 def test_plate_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     assert client.get("/world/plate_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/plate_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
 def test_sample_at_returns_a_full_point_report(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -522,7 +718,7 @@ def test_sample_at_returns_a_full_point_report(client):
 
 
 def test_sample_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     assert client.get("/world/sample_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/sample_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
@@ -530,7 +726,7 @@ def test_sample_at_rejects_non_finite_query(client):
 def test_node_at_returns_the_owning_node_phi_theta_and_creation_year(client):
     import numpy as np
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -560,7 +756,7 @@ def test_node_at_returns_the_owning_node_phi_theta_and_creation_year(client):
 
 
 def test_node_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     assert client.get("/world/node_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/node_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
@@ -569,7 +765,7 @@ def test_node_at_reports_a_nearby_removed_point(client):
     import numpy as np
     from app import geometry, main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     world = main._state["world"]
     query_lat_deg, query_lon_deg = 10.0, 20.0
     query_xyz = geometry.latlon_to_xyz(math.radians(query_lat_deg), math.radians(query_lon_deg))
@@ -590,13 +786,13 @@ def test_node_at_reports_a_nearby_removed_point(client):
 
 
 def test_elevation_point_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     assert client.get("/world/elevation_point_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/elevation_point_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
 def test_elevation_point_at_returns_point_and_line_info(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates_data = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates_data if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -622,7 +818,7 @@ def test_elevation_point_at_returns_point_and_line_info(client):
 
 
 def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates_data = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates_data if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -654,7 +850,7 @@ def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):
 
 
 def test_elevation_point_unknown_plate_returns_404(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
     resp = client.get(
         "/world/elevation_point", params={"plate_id": 999_999, "line_index": 0, "point_index": 0},
     )
@@ -665,7 +861,7 @@ def test_rivers_and_river_at_are_empty_before_the_first_step(client):
     # hydrology_cache is None until erosion.py runs once (see World.hydrology_cache) --
     # /world/rivers should degrade to an empty list rather than erroring, same spirit as
     # /world/plates always having *something* right after generate.
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/rivers")
     assert resp.status_code == 200
     assert resp.json()["rivers"] == []
@@ -673,7 +869,7 @@ def test_rivers_and_river_at_are_empty_before_the_first_step(client):
 
 
 def test_river_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/river_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/river_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
@@ -681,7 +877,7 @@ def test_river_at_rejects_non_finite_query(client):
 def test_lakes_and_lake_at_are_empty_before_the_first_step(client):
     # hydrology_cache is None until erosion.py runs once, same degrade-to-empty contract
     # /world/rivers already has -- see test_rivers_and_river_at_are_empty_before_the_first_step.
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/lakes")
     assert resp.status_code == 200
     assert resp.json()["lakes"] == []
@@ -690,14 +886,14 @@ def test_lakes_and_lake_at_are_empty_before_the_first_step(client):
 
 
 def test_lake_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/lake_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/lake_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
 def test_faults_is_empty_right_after_generate(client):
     # No fault spawns before the first step, same degrade-to-empty contract /world/rivers has.
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/faults")
     assert resp.status_code == 200
     assert resp.json()["faults"] == []
@@ -706,15 +902,15 @@ def test_faults_is_empty_right_after_generate(client):
 
 
 def test_fault_at_rejects_non_finite_query(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     assert client.get("/world/fault_at", params={"lat_deg": "nan", "lon_deg": 0}).status_code == 400
     assert client.get("/world/fault_at", params={"lat_deg": 0, "lon_deg": "inf"}).status_code == 400
 
 
 def test_faults_returns_well_formed_entries_after_stepping(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     for _ in range(20):
-        client.post("/world/step", json={"years": 1_000_000})
+        _post_step(client, json={"years": 1_000_000})
     body = client.get("/world/faults").json()
     assert body["faults"], "expected some faults after 20 Myr"
     f = body["faults"][0]
@@ -748,12 +944,12 @@ def test_faults_returns_well_formed_entries_after_stepping(client):
 
 
 def test_volcanoes_returns_well_formed_entries(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     # Empty (or at least well-formed) right after generate; degrade-to-empty like /world/faults.
     body = client.get("/world/volcanoes").json()
     assert body["volcanoes"] == []
     for _ in range(30):
-        client.post("/world/step", json={"years": 5_000_000})
+        _post_step(client, json={"years": 5_000_000})
     body = client.get("/world/volcanoes").json()
     assert body["volcanoes"], "expected some volcano nodes after 150 Myr of subduction"
     for v in body["volcanoes"]:
@@ -762,7 +958,7 @@ def test_volcanoes_returns_well_formed_entries(client):
 
 
 def test_stranded_basins_is_empty_before_the_first_step(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
     resp = client.get("/world/stranded_basins")
     assert resp.status_code == 200
     body = resp.json()
@@ -771,8 +967,8 @@ def test_stranded_basins_is_empty_before_the_first_step(client):
 
 
 def test_stranded_basins_returns_well_formed_entries_after_stepping(client):
-    client.post("/world/generate", json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
-    client.post("/world/step", json={"years": 3_000_000})
+    _post_generate(client, json={"seed": 20, "num_plates": 10, "continental_fraction": 0.5})
+    _post_step(client, json={"years": 3_000_000})
     body = client.get("/world/stranded_basins").json()
     for basin in body["stranded_basins"]:
         assert basin["depth_below_sea_level_m"] > 0.0
@@ -808,7 +1004,7 @@ def test_stranded_basin_summary_wire_shape():
 
 
 def test_stats_returns_expected_shape(client):
-    client.post("/world/generate", json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
     resp = client.get("/world/stats")
     assert resp.status_code == 200
     body = resp.json()
@@ -835,16 +1031,16 @@ def test_stats_returns_expected_shape(client):
 def test_stats_history_records_generate_and_each_step_and_survives_save_load(client):
     # The whole point of World.stats_history (see world.py/persistence.py): a save/load round
     # trip should keep the Stats panel's history charts, not silently drop them.
-    client.post("/world/generate", json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 13, "num_plates": 8, "continental_fraction": 0.5})
     history = client.get("/world/stats_history").json()["history"]
     assert [s["elapsed_years"] for s in history] == [0.0]
 
-    client.post("/world/step", json={"years": 1_000_000})
+    _post_step(client, json={"years": 1_000_000})
     history = client.get("/world/stats_history").json()["history"]
     assert [s["elapsed_years"] for s in history] == [0.0, 1_000_000.0]
 
     saved = client.get("/world/save").content
-    client.post("/world/generate", json={"seed": 99, "num_plates": 4})  # replace with something else
+    _post_generate(client, json={"seed": 99, "num_plates": 4})  # replace with something else
     assert [s["elapsed_years"] for s in client.get("/world/stats_history").json()["history"]] == [0.0]
 
     client.post("/world/load", content=saved)
@@ -854,8 +1050,8 @@ def test_stats_history_records_generate_and_each_step_and_survives_save_load(cli
 
 
 def test_save_then_load_round_trips_the_exact_world_state(client):
-    client.post("/world/generate", json={"seed": 5, "num_plates": 8, "continental_fraction": 0.5})
-    client.post("/world/step", json={"years": 2_000_000})
+    _post_generate(client, json={"seed": 5, "num_plates": 8, "continental_fraction": 0.5})
+    _post_step(client, json={"years": 2_000_000})
     generated_summary = client.get("/world/plates").json()
 
     saved = client.get("/world/save")
@@ -864,7 +1060,7 @@ def test_save_then_load_round_trips_the_exact_world_state(client):
     assert "attachment" in saved.headers["content-disposition"]
 
     # Advance further so the live world visibly differs from the snapshot just saved.
-    client.post("/world/step", json={"years": 2_000_000})
+    _post_step(client, json={"years": 2_000_000})
     assert client.get("/world/render").json()["elapsed_years"] == 4_000_000.0
 
     loaded = client.post("/world/load", content=saved.content)
@@ -881,7 +1077,7 @@ def test_load_with_malformed_bytes_returns_400(client):
 
 
 def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
         json={"projection": "eckert4", "view": "elevation", "width": 200, "height": 110, "step_years": 1_000_000, "num_frames": 3},
@@ -914,7 +1110,7 @@ def test_animate_progress_carries_a_live_stats_snapshot(client):
     # GET /world/stats blocks on the world lock that /world/animate holds throughout. Each
     # progress line should instead carry the latest World.stats_history snapshot so the
     # frontend can update it live off the stream, same as elapsed_years/frame already do.
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
         json={"projection": "eckert4", "view": "elevation", "width": 64, "height": 64, "step_years": 1_000_000, "num_frames": 3},
@@ -933,7 +1129,7 @@ def test_animate_steps_per_frame_runs_every_step_but_renders_only_the_last(clien
     # bigger step_world(world, steps_per_frame * step_years) call per frame.
     from app import main
 
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post(
         "/world/animate",
         json={"width": 64, "height": 64, "step_years": 250_000, "steps_per_frame": 4, "num_frames": 3},
@@ -955,7 +1151,7 @@ def test_animate_steps_per_frame_runs_every_step_but_renders_only_the_last(clien
 
 
 def test_animate_rejects_zero_or_negative_steps_per_frame(client):
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post("/world/animate", json={"step_years": 1_000_000, "steps_per_frame": 0, "num_frames": 2})
     assert resp.status_code == 400
     resp = client.post("/world/animate", json={"step_years": 1_000_000, "steps_per_frame": -1, "num_frames": 2})
@@ -963,7 +1159,7 @@ def test_animate_rejects_zero_or_negative_steps_per_frame(client):
 
 
 def test_animate_rejects_out_of_range_frame_counts(client):
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post("/world/animate", json={"step_years": 1_000_000, "num_frames": 0})
     assert resp.status_code == 400
     resp = client.post("/world/animate", json={"step_years": 1_000_000, "num_frames": 10_000})
@@ -971,7 +1167,7 @@ def test_animate_rejects_out_of_range_frame_counts(client):
 
 
 def test_animate_rejects_unknown_view(client):
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post("/world/animate", json={"view": "not-a-real-view", "step_years": 1_000_000, "num_frames": 2})
     assert resp.status_code == 400
 
@@ -982,7 +1178,7 @@ def test_animate_stop_is_a_no_op_when_nothing_is_running(client):
     resp = client.post("/world/animate/stop")
     assert resp.status_code == 200
 
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     resp = client.post("/world/animate/stop")
     assert resp.status_code == 200
 
@@ -991,7 +1187,7 @@ def test_animate_clears_a_stale_stop_signal_from_a_previous_call(client):
     # A stop request that arrives after its run already finished shouldn't truncate the
     # *next* run -- animate() clears the signal itself at the start of each call, so this
     # doesn't depend on ordering against a previous test.
-    client.post("/world/generate", json={"seed": 9, "num_plates": 6})
+    _post_generate(client, json={"seed": 9, "num_plates": 6})
     client.post("/world/animate/stop")  # simulate a stray/late stop signal
     resp = client.post(
         "/world/animate",
@@ -1004,7 +1200,7 @@ def test_animate_clears_a_stale_stop_signal_from_a_previous_call(client):
 
 
 def test_export_hexgrid_returns_the_requested_tile_count(client):
-    client.post("/world/generate", json={"seed": 11, "num_plates": 8})
+    _post_generate(client, json={"seed": 11, "num_plates": 8})
     resp = client.post("/world/export_hexgrid", json={"frequency": 8})
     assert resp.status_code == 200
     body = resp.json()
@@ -1013,27 +1209,27 @@ def test_export_hexgrid_returns_the_requested_tile_count(client):
 
 
 def test_export_hexgrid_rejects_unknown_frequency(client):
-    client.post("/world/generate", json={"seed": 11, "num_plates": 8})
+    _post_generate(client, json={"seed": 11, "num_plates": 8})
     resp = client.post("/world/export_hexgrid", json={"frequency": 5})
     assert resp.status_code == 400
 
 
 def test_generate_with_unknown_fluid_density_returns_400(client):
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "fluid_density": 3.0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "fluid_density": 3.0})
     assert resp.status_code == 400
 
 
 def test_generate_with_the_finest_allowed_fluid_density(client):
     # fluid_density is capped at 2.0 ("High") -- unlike climate_density, which allows 4.0 --
     # since Ocean/Atmospheric Fluid Dynamics now runs every step, not just opt-in.
-    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "fluid_density": 2.0})
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "fluid_density": 2.0})
     assert resp.status_code == 200
 
 
 def test_retired_cfd_sediment_views_are_not_available(client):
     # The ocean CFD (and its sediment concentration/deposition views) was retired -- see
     # render_image.py's VIEWS, which no longer lists them at all.
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
     for view in ["oceanCfdSediment", "oceanCfdDeposition"]:
         assert client.get("/world/render", params={"view": view}).status_code == 400
 
@@ -1044,8 +1240,8 @@ def test_climate_views_render_natively_off_the_healpix_grid(client):
     # grid first.
     from app import render_image
 
-    client.post("/world/generate", json={"seed": 21, "num_plates": 6, "node_density": 0.5, "climate_density": 0.5, "fluid_density": 0.5})
-    client.post("/world/step", json={"years": 2_000_000})
+    _post_generate(client, json={"seed": 21, "num_plates": 6, "node_density": 0.5, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_step(client, json={"years": 2_000_000})
     for view in render_image.CLIMATE_VIEWS:
         resp = client.get("/world/render", params={"view": view, "width": 100, "height": 50})
         assert resp.status_code == 200
@@ -1056,7 +1252,7 @@ def test_wind_and_ocean_currents_views_are_also_always_renderable(client):
     # `wind` draws the CFD-sourced wind; `oceanCurrents` draws climate.py's diagnostic
     # currents (see climate.py's own module docstring) -- both always renderable regardless of
     # what else the world is doing.
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "fluid_density": 0.5})
     assert client.get("/world/render", params={"view": "wind"}).status_code == 200
     assert client.get("/world/render", params={"view": "oceanCurrents"}).status_code == 200
 
@@ -1068,12 +1264,12 @@ def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
     # response.
     from app import atmosphere_cfd, main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     client.post("/world/controls", json={"wind_model": "cfd"})  # the CFD solve only advances under "cfd" (default is "diagnostic")
     world = main._state["world"]
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
-    resp = client.post("/world/step", json={"years": 1_000_000})
+    resp = _post_step(client, json={"years": 1_000_000})
     assert resp.status_code == 200
     assert world.atmosphere_cfd_state.elapsed_seconds == pytest.approx(atmosphere_cfd.SECONDS_PER_TECTONIC_STEP)
 
@@ -1081,11 +1277,11 @@ def test_step_advances_atmosphere_cfd_by_its_own_fixed_seconds(client):
 def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client):
     from app import main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     client.post("/world/controls", json={"simulate_climate_biomes": False})
     world = main._state["world"]
 
-    resp = client.post("/world/step", json={"years": 1_000_000})
+    resp = _post_step(client, json={"years": 1_000_000})
     assert resp.status_code == 200
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
@@ -1093,7 +1289,7 @@ def test_step_does_not_advance_fluid_dynamics_when_climate_biomes_paused(client)
 def test_controls_ice_age_frequency_round_trip(client):
     from app import main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
     assert world.ice_age_period_years == 0.0
     assert client.post("/world/controls", json={}).json()["ice_age_period_years"] == 0.0
@@ -1112,7 +1308,7 @@ def test_controls_ice_age_frequency_round_trip(client):
 def test_controls_debug_diagnostics_round_trip(client):
     from app import main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    _post_generate(client, json={"seed": 12, "num_plates": 6})
     world = main._state["world"]
     assert world.debug_diagnostics is False
     assert client.post("/world/controls", json={}).json()["debug_diagnostics"] is False
@@ -1124,13 +1320,13 @@ def test_controls_debug_diagnostics_round_trip(client):
 
 
 def test_corner_notch_log_stays_empty_until_diagnostics_enabled(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6})
+    _post_generate(client, json={"seed": 12, "num_plates": 6})
     resp = client.get("/world/corner_notch_log")
     assert resp.status_code == 200
     assert resp.json() == {"debug_diagnostics": False, "entries": []}
 
     client.post("/world/controls", json={"debug_diagnostics": True})
-    client.post("/world/step", json={"years": 1_000_000})
+    _post_step(client, json={"years": 1_000_000})
     resp = client.get("/world/corner_notch_log")
     assert resp.status_code == 200
     body = resp.json()
@@ -1142,7 +1338,7 @@ def test_corner_notch_log_stays_empty_until_diagnostics_enabled(client):
 def test_controls_wind_model_toggle_and_validation(client):
     from app import main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
     assert world.wind_model == "diagnostic"
 
@@ -1157,7 +1353,7 @@ def test_controls_wind_model_toggle_and_validation(client):
     assert world.wind_model == "diagnostic"
 
     # Diagnostic mode leaves the CFD solve unrun on a step.
-    client.post("/world/step", json={"years": 1_000_000})
+    _post_step(client, json={"years": 1_000_000})
     assert world.atmosphere_cfd_state.elapsed_seconds == 0.0
 
     # A climate render still succeeds against the diagnostic fields.
@@ -1170,7 +1366,7 @@ def test_controls_wind_model_toggle_and_validation(client):
 def test_controls_fault_deformation_mode_toggle_and_validation(client):
     from app import main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
     assert world.fault_deformation_mode == "fault"
 
@@ -1187,7 +1383,7 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
 def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
     from app import main
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
     assert world.node_cloud_resample_mode == "kdtree"
 
@@ -1201,10 +1397,10 @@ def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
 
 
 def test_earthquakes_endpoint(client):
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     assert client.get("/world/earthquakes").json()["earthquakes"] == []  # none before a step
     for _ in range(20):
-        client.post("/world/step", json={"years": 1_000_000})
+        _post_step(client, json={"years": 1_000_000})
     body = client.get("/world/earthquakes").json()
     for q in body["earthquakes"]:
         assert len(q["epicenter"]) == 3
@@ -1216,7 +1412,7 @@ def test_controls_tuning_multipliers_round_trip_and_validate(client):
     from app import main
     from app.world import TUNING_MULTIPLIER_FIELDS
 
-    client.post("/world/generate", json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
     world = main._state["world"]
 
     # Default: every knob reads 1.0, and an untouched POST echoes them all.

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import threading
-from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -38,7 +38,7 @@ from . import (
     stranded_basins,
     worldsketch,
 )
-from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, generate_world, step_world
+from .world import DEFAULT_MANTLE_CENTERS, TUNING_MULTIPLIER_FIELDS, World, generate_world_progress, step_world_progress
 
 # A generous ceiling on requested image dimensions -- width/height come straight from the
 # client's query string, and PIL will happily try to allocate whatever it's told, so an
@@ -63,6 +63,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_logger = logging.getLogger(__name__)
 
 _state: dict[str, World | None] = {"world": None}
 
@@ -91,19 +93,6 @@ _world_lock = threading.Lock()
 # anything). Cleared at the start of every new animate() call, not after it, so a stop
 # request that arrives after the stream has already ended has no effect on the next run.
 _animation_stop_event = threading.Event()
-
-
-@contextmanager
-def _reject_if_busy(detail: str):
-    """Hold `_world_lock` for the block, or 503 immediately if another request already has it
-    -- for the long-running writes (step, animate) where an overlap is a real conflict the
-    caller should retry, not something to silently queue behind."""
-    if not _world_lock.acquire(blocking=False):
-        raise HTTPException(status_code=503, detail=detail)
-    try:
-        yield
-    finally:
-        _world_lock.release()
 
 
 class SketchRequest(BaseModel):
@@ -585,8 +574,52 @@ def _lake_basin_summary(
     }
 
 
+def _drain_progress(progress) -> World | None:
+    """Finishes driving a generate_world_progress/step_world_progress generator to
+    completion with nobody left listening -- shared by generate()'s and step()'s own
+    `except GeneratorExit` handling below (see either's comment on it for why a disconnected
+    client can't just abandon one of these generators wherever it happened to be suspended).
+    Returns the World from generate_world_progress's final `("done", world)` message, or
+    `None` for step_world_progress (which mutates its own `world` argument in place and
+    yields plain floats, never a `("done", ...)` tuple -- there's nothing further for a
+    caller to do with its return value).
+
+    If generation/stepping itself raises while finishing up here, there's no request left to
+    report it to (the client that would have received a `{"type": "error"}` line is already
+    gone) -- letting that exception propagate out of this function would instead replace the
+    caller's pending `GeneratorExit` mid-`.close()`, which Python can only report as an
+    unreachable "exception ignored in generator" at GC time. Logging it here instead is the
+    difference between a genuine failure (e.g. a degenerate-geometry edge case) being visible
+    at all versus vanishing silently, at the cost of `_state["world"]`/the stepped world being
+    left however far the drain got before the error -- already true of a mid-request failure
+    on a normal (non-disconnected) call, so no worse a guarantee than that."""
+    world = None
+    try:
+        for message in progress:
+            if isinstance(message, tuple) and message[0] == "done":
+                world = message[1]
+    except Exception:
+        _logger.exception("world mutation failed while finishing up after a client disconnect")
+    return world
+
+
 @app.post("/world/generate")
-def generate(req: GenerateRequest) -> dict:
+def generate(req: GenerateRequest) -> StreamingResponse:
+    """Streams newline-delimited JSON progress while generating a fresh world, replacing
+    whatever world previously existed -- same NDJSON progress/done/error contract as
+    /world/animate (see that endpoint's own docstring): a `{"type": "progress", "fraction":
+    f}` line (`f` from 0 to 1) after each of world.generate_world_progress's three phase
+    boundaries (plate/site generation, mantle-center fitting, the finish_generation
+    bootstrap -- coarser-grained than /world/step's per-plate progress, see that generator's
+    own docstring for why), then a final `{"type": "done", ...summary fields}` once the world
+    is fully built, or a `{"type": "error", "detail": ...}` line if generation raises
+    partway through (the HTTP status is already 200 by then, same as animate). Unlike
+    /world/step, `404` doesn't apply here -- there's no existing world required -- but `503`
+    still does, same as /world/step/animate, if a generation/step/animation is already in
+    progress (see `_world_lock.acquire` below). Every other validation
+    (density/voronoi_points/premade_world_id/sketch) still happens synchronously before the
+    stream starts, so a bad request still gets an ordinary 400 response rather than an error
+    line."""
     if req.node_density not in plates.NODE_DENSITY_CHOICES:
         raise HTTPException(status_code=400, detail=f"unknown node_density {req.node_density!r}; choices are {plates.NODE_DENSITY_CHOICES}")
     if req.climate_density not in climate.CLIMATE_DENSITY_CHOICES:
@@ -609,8 +642,14 @@ def generate(req: GenerateRequest) -> dict:
             sketch_masks = worldsketch.parse_sketch_image(base64.b64decode(req.sketch.image_base64))
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"invalid sketch image: {exc}") from exc
-    with _world_lock:
-        world = generate_world(
+
+    # Acquire synchronously (like animate's own, see its comment) -- an overlapping
+    # generate/step/animation still 503s before the stream starts.
+    if not _world_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+
+    def _stream():
+        progress = generate_world_progress(
             req.seed,
             num_plates=req.num_plates,
             voronoi_points=req.voronoi_points,
@@ -625,8 +664,39 @@ def generate(req: GenerateRequest) -> dict:
             sketch=sketch_masks,
             premade_world_id=req.premade_world_id,
         )
-        _state["world"] = world
-    return _summary(world)
+        world = None
+        try:
+            for message in progress:
+                if message[0] == "progress":
+                    yield json.dumps({"type": "progress", "fraction": message[1]}) + "\n"
+                else:
+                    world = message[1]
+            _state["world"] = world
+            yield json.dumps({"type": "done", **_summary(world)}) + "\n"
+        except GeneratorExit:
+            # The client disconnected mid-stream -- Starlette closes a sync generator behind
+            # StreamingResponse by throwing this in at whichever `yield` above is suspended
+            # (see iterate_in_threadpool), same as it would for a `for` loop that `break`s
+            # early. Generation was never a resumable/abortable transaction (unlike
+            # /world/animate's per-frame stopEvent, which is deliberate and cooperative, and
+            # unlike animate's own `_stream` -- see its comment -- which doesn't need this at
+            # all) -- world.py's generate_world_progress mutates its own local `world` across
+            # multiple phases with no valid "half-generated" state to leave sitting in
+            # `_state`, so _drain_progress finishes driving it to completion here regardless
+            # of whether anyone is still listening, the same as this endpoint's single
+            # synchronous response body used to unconditionally do before it streamed
+            # progress. Only `_state` needs updating at this point -- there's no client left
+            # to send progress/done lines to.
+            world = _drain_progress(progress) or world
+            if world is not None:
+                _state["world"] = world
+            raise
+        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+            yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+        finally:
+            _world_lock.release()
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
 
 class GenerateDebugRequest(BaseModel):
@@ -677,15 +747,48 @@ def get_summary() -> dict:
 
 
 @app.post("/world/step")
-def step(req: StepRequest) -> dict:
-    """Advances plate tectonics/climate/erosion by `req.years` (see step_world) -- and, gated
-    on World.simulate_climate_biomes the same way erosion/hydrology already are, Ocean/
-    Atmospheric Fluid Dynamics by their own fixed real-time increment regardless of `req.years`
-    (see world.py's `_advance_fluid_dynamics`)."""
+def step(req: StepRequest) -> StreamingResponse:
+    """Advances plate tectonics/climate/erosion by `req.years` (see world.step_world_progress)
+    -- and, gated on World.simulate_climate_biomes the same way erosion/hydrology already
+    are, Ocean/Atmospheric Fluid Dynamics by their own fixed real-time increment regardless
+    of `req.years` (see world.py's `_advance_fluid_dynamics`). Streams newline-delimited
+    JSON progress the same shape /world/generate and /world/animate do: a `{"type":
+    "progress", "fraction": f}` line after each per-plate shift()/deform() call (see
+    step_world_progress's own docstring for why that's a real, if coarse, measure of
+    completion), then a final `{"type": "done", ...summary fields}`, or a `{"type": "error",
+    ...}` line if the step raises partway through. `404` if no world has been generated yet,
+    `503` (before the stream starts, same as /world/animate) if a generation, step, or
+    animation is already in progress."""
     world = _require_world()
-    with _reject_if_busy("a step is already in progress"):
-        step_world(world, req.years)
-        return _summary(world)
+    if not _world_lock.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
+
+    def _stream():
+        progress = step_world_progress(world, req.years)
+        try:
+            for fraction in progress:
+                yield json.dumps({"type": "progress", "fraction": fraction}) + "\n"
+            yield json.dumps({"type": "done", **_summary(world)}) + "\n"
+        except GeneratorExit:
+            # The client disconnected mid-stream (see /world/generate's own comment on this
+            # exact exception for why Starlette raises it here). A step mutates `world` in
+            # place across many per-plate checkpoints with no valid "half-stepped" state to
+            # leave it in -- world.elapsed_years not yet advanced but some plates already
+            # shifted/deformed, no topology/climate/erosion/sea-level pass -- so finish
+            # driving step_world_progress to completion here regardless, the same as this
+            # endpoint's single synchronous response body used to unconditionally do before
+            # it streamed progress. `world` is mutated in place (unlike generate_world_progress,
+            # which builds a fresh World to hand back), so there's nothing further to write to
+            # `_state` here -- just let the step finish.
+            for _ in progress:
+                pass
+            raise
+        except Exception as exc:  # noqa: BLE001 -- status is already 200, so surface it as a data line
+            yield json.dumps({"type": "error", "detail": f"{type(exc).__name__}: {exc}"}) + "\n"
+        finally:
+            _world_lock.release()
+
+    return StreamingResponse(_stream(), media_type="application/x-ndjson")
 
 
 @app.get("/world/save")
@@ -792,7 +895,7 @@ def animate(req: AnimateRequest) -> StreamingResponse:
     /world/render for projection/view/width/height/rotation, plus `num_frames` bounded to
     `[1, MAX_ANIMATION_FRAMES]` and `steps_per_frame` required to be `>= 1` (each frame costs
     up to `steps_per_frame` full step_world calls + one render). `404` if no world has been
-    generated yet, `503` if a step or another animation is already in progress."""
+    generated yet, `503` if a generation, step, or animation is already in progress."""
     world = _require_world()
     if req.projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {req.projection!r}")
@@ -806,11 +909,11 @@ def animate(req: AnimateRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail="steps_per_frame must be >= 1")
     view_rotation = _parse_view_rotation(req.rotation)
 
-    # Acquire `_world_lock` synchronously (like _reject_if_busy, but the response streams so
-    # the release has to happen in the generator's `finally`, not a `with` here) -- an
-    # overlapping step/animation still 503s before the stream starts.
+    # Acquire `_world_lock` synchronously, not via a `with` block -- the response streams, so
+    # the release has to happen in the generator's own `finally` instead. An overlapping
+    # step/animation still 503s before the stream starts.
     if not _world_lock.acquire(blocking=False):
-        raise HTTPException(status_code=503, detail="a step or animation is already in progress")
+        raise HTTPException(status_code=503, detail="a generation, step, or animation is already in progress")
 
     # Clear any stale signal from a previous run (e.g. a stop request that arrived after that
     # run had already finished on its own) so this fresh run starts unsignaled.

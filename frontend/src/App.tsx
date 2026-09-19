@@ -605,6 +605,13 @@ export default function App() {
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState(false);
   const [stepping, setStepping] = useState(false);
+  // Real percent-complete for the `busy`/`stepping` progress bars below, fed by
+  // generateWorld's/stepWorld's `onProgress` (see api.ts and issue #195) -- `undefined`
+  // until that run's first NDJSON progress line arrives (ProgressBar falls back to its old
+  // indeterminate animation for that brief window), and reset to `undefined` again once the
+  // run ends so a stale 100% doesn't flash before the bar disappears on the next one.
+  const [genProgress, setGenProgress] = useState<number | undefined>(undefined);
+  const [stepProgress, setStepProgress] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // Background animation (recording) -- see AnimationModal.tsx and handleStartAnimation
   // below. `animation` is non-null only while a run is in flight -- it holds the live frame
@@ -723,6 +730,7 @@ export default function App() {
 
   const handleGenerate = useCallback(async () => {
     setBusy(true);
+    setGenProgress(undefined);
     setError(null);
     try {
       // The "Human-made"/"Premade worlds" tabs' sketch rides along as a bare base64 payload --
@@ -732,6 +740,9 @@ export default function App() {
         (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl
           ? sketchImageDataUrl.split(",", 2)[1] ?? null
           : null;
+      // The "Debugging Worlds" tab's generateDebugWorld has no progress stream to report --
+      // its scripted scenarios are tiny and generate near-instantly (see debug_worlds.py) --
+      // so genProgress just stays undefined (indeterminate) for that path.
       const s =
         generateMode === "debug"
           ? await generateDebugWorld(debugScenario, seed)
@@ -739,6 +750,7 @@ export default function App() {
               seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
               climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
               generateMode === "premade" ? premadeWorldId : null,
+              setGenProgress,
             );
       setSummary(s);
       setSelectedPlateId(null);
@@ -763,6 +775,7 @@ export default function App() {
       setError(String(e));
     } finally {
       setBusy(false);
+      setGenProgress(undefined);
     }
   }, [
     seed, continentalPercent, landPercent, axialTiltDeg, detail, fluidDensity, initialSoilMaturityPercent, autoPlates, numPlates, voronoiPoints,
@@ -859,9 +872,10 @@ export default function App() {
   const handleStep = useCallback(async () => {
     if (!summary) return;
     setStepping(true);
+    setStepProgress(undefined);
     setError(null);
     try {
-      const s = await stepWorld(stepYears);
+      const s = await stepWorld(stepYears, setStepProgress);
       setSummary(s);
       setSelectedRiverId(null); // rivers are regrouped fresh every step -- a stale id could point at an unrelated network
       setSelectedBasin(null); // lakes are regrouped fresh every step too -- same reasoning
@@ -875,6 +889,7 @@ export default function App() {
       setPlaying(false);
     } finally {
       setStepping(false);
+      setStepProgress(undefined);
     }
   }, [summary, stepYears, projection, rotation, refresh, refreshPlates, refreshRivers, refreshLakes, refreshFaults, refreshCornerNotchLog, recordStats]);
 
@@ -1141,7 +1156,7 @@ export default function App() {
           >
             Generate World
           </button>
-          {busy && <ProgressBar label="Generating world" />}
+          {busy && <ProgressBar label="Generating world" fraction={genProgress} />}
 
           <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
             📊 Stats
@@ -1230,7 +1245,7 @@ export default function App() {
                 ⏺
               </button>
             </div>
-            {stepping && <ProgressBar label="Stepping world" style={{ marginTop: 6 }} />}
+            {stepping && <ProgressBar label="Stepping world" style={{ marginTop: 6 }} fraction={stepProgress} />}
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>

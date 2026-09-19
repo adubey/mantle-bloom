@@ -382,6 +382,76 @@ async function asBlob(resp: Response): Promise<Blob> {
   return resp.blob();
 }
 
+// Shared by readProgressStream and animateWorld below -- both consume a newline-delimited
+// JSON stream the same way: read a chunk, decode it, split on "\n", hand each complete line
+// to `onLine`, and keep the last (possibly partial) line buffered for the next chunk.
+// `onChunk`, if given, fires once per chunk read (animateWorld's own idle-timeout watchdog
+// rearms off this). Always releases the reader's lock on the way out, whether the stream
+// finished normally, `onLine` threw (both callers throw on a `{type: "error"}` line), or a
+// network error occurred -- otherwise a reused `resp.body` (neither caller does this today,
+// but nothing prevents a future one) would find itself permanently locked.
+async function readNdjsonLines(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  onLine: (line: string) => void,
+  onChunk?: () => void,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffered = "";
+  try {
+    for (;;) {
+      const { value, done: streamDone } = await reader.read();
+      if (streamDone) break;
+      onChunk?.();
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.trim()) onLine(line);
+      }
+    }
+    if (buffered.trim()) onLine(buffered);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// Shared by generateWorld/stepWorld below -- both stream newline-delimited JSON progress the
+// same shape /world/animate does (see AnimateProgress/animateWorld's own comment for that
+// established contract): a `{type: "progress", fraction}` line (0 to 1) per phase/plate
+// checkpoint (surfaced via `onProgress`), then a final `{type: "done", ...WorldSummary
+// fields}`, or a `{type: "error", detail}` line if generation/stepping raises partway
+// through (the HTTP status is already 200 by then, same as animate -- see backend
+// app/main.py's own comment on that). No idle-timeout watchdog the way animateWorld's own
+// reader has: a generate/step run is bounded to one server-side request's worth of work
+// (not up to 480 animation frames back-to-back), so a plain fetch (no AbortController) is
+// enough here.
+async function readProgressStream(resp: Response, onProgress?: (fraction: number) => void): Promise<WorldSummary> {
+  if (!resp.ok || !resp.body) {
+    const detail = await resp.text();
+    throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
+  }
+
+  let done: WorldSummary | null = null;
+  await readNdjsonLines(resp.body.getReader(), (line) => {
+    const msg = JSON.parse(line) as Record<string, unknown>;
+    if (msg.type === "progress") {
+      onProgress?.(msg.fraction as number);
+    } else if (msg.type === "error") {
+      throw new Error(String(msg.detail));
+    } else if (msg.type === "done") {
+      done = {
+        seed: msg.seed as number,
+        elapsed_years: msg.elapsed_years as number,
+        num_plates: msg.num_plates as number,
+        events: msg.events as WorldEvent[],
+      };
+    }
+  });
+
+  if (!done) throw new Error("stream ended without a result");
+  return done;
+}
+
 // `numPlates`: the "Number of plates" slider (see backend app/plates.py's MIN_AUTO_PLATES/
 // MAX_AUTO_PLATES) -- `null`/omitted means "Auto," the world's original behavior of tiling
 // itself into a plausible plate count drawn from the seed alone (see plates.generate_plates).
@@ -420,6 +490,10 @@ async function asBlob(resp: Response): Promise<Blob> {
 // real geometry/motion instead of the sketch alone (see world.generate_world's own
 // `premade_world_id` param). `null` (every other tab, "Dragons & Zombie World" included) is
 // unaffected.
+// `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
+// generate_world_progress passes its three phase boundaries (plate/site generation,
+// mantle-center fitting, the finish_generation bootstrap -- see backend app/main.py's
+// /world/generate for the NDJSON contract this reads, same shape as animateWorld's own).
 export function generateWorld(
   seed: number,
   continentalFraction: number,
@@ -433,6 +507,7 @@ export function generateWorld(
   voronoiPoints: number,
   sketchImageBase64: string | null = null,
   premadeWorldId: string | null = null,
+  onProgress?: (fraction: number) => void,
 ): Promise<WorldSummary> {
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
@@ -451,7 +526,7 @@ export function generateWorld(
       sketch: sketchImageBase64 ? { image_base64: sketchImageBase64 } : null,
       premade_world_id: premadeWorldId,
     }),
-  }).then(asJson<WorldSummary>);
+  }).then((resp) => readProgressStream(resp, onProgress));
 }
 
 export interface DebugScenario {
@@ -567,12 +642,16 @@ export function fetchCornerNotchLog(): Promise<{ debug_diagnostics: boolean; ent
 }
 
 // The backend rejects an overlapping /world/step with 503 (see backend app/main.py's
-// _step_lock) rather than queueing it, since a step already in flight can take seconds on a
+// _world_lock) rather than queueing it, since a step already in flight can take seconds on a
 // large world. Retry on a short delay until the in-flight step finishes and the lock frees up
 // -- any other error (network failure, 404 for no world, etc.) still propagates immediately.
 const STEP_RETRY_DELAY_MS = 300;
 
-export async function stepWorld(years: number): Promise<WorldSummary> {
+// `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
+// step_world_progress passes each per-plate shift()/deform() checkpoint (see backend
+// app/main.py's /world/step for the NDJSON contract this reads, same shape as
+// animateWorld's own).
+export async function stepWorld(years: number, onProgress?: (fraction: number) => void): Promise<WorldSummary> {
   for (;;) {
     const resp = await fetch(`${API_BASE}/world/step`, {
       method: "POST",
@@ -583,7 +662,7 @@ export async function stepWorld(years: number): Promise<WorldSummary> {
       await new Promise((resolve) => setTimeout(resolve, STEP_RETRY_DELAY_MS));
       continue;
     }
-    return asJson<WorldSummary>(resp);
+    return readProgressStream(resp, onProgress);
   }
 }
 
@@ -909,47 +988,35 @@ export async function animateWorld(
       throw new Error(`${resp.status} ${resp.statusText}: ${detail}`);
     }
 
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffered = "";
     let done: AnimateResponse | null = null;
-
-    const handleLine = (line: string) => {
-      if (!line.trim()) return;
-      const msg = JSON.parse(line) as Record<string, unknown>;
-      if (msg.type === "progress") {
-        onProgress?.({
-          frame: msg.frame as number,
-          total: msg.total as number,
-          imageBase64: msg.image_base64 as string | undefined,
-          elapsedYears: msg.elapsed_years as number,
-          stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
-        });
-      } else if (msg.type === "error") {
-        throw new Error(String(msg.detail));
-      } else if (msg.type === "done") {
-        done = {
-          seed: msg.seed as number,
-          elapsed_years: msg.elapsed_years as number,
-          num_plates: msg.num_plates as number,
-          events: msg.events as WorldEvent[],
-          videoBase64: msg.video_base64 as string,
-          mime: msg.mime as string,
-          stoppedEarly: Boolean(msg.stopped_early),
-        };
-      }
-    };
-
-    for (;;) {
-      const { value, done: streamDone } = await reader.read();
-      if (streamDone) break;
-      rearmIdleTimer();
-      buffered += decoder.decode(value, { stream: true });
-      const lines = buffered.split("\n");
-      buffered = lines.pop() ?? "";
-      for (const line of lines) handleLine(line);
-    }
-    if (buffered) handleLine(buffered);
+    await readNdjsonLines(
+      resp.body.getReader(),
+      (line) => {
+        const msg = JSON.parse(line) as Record<string, unknown>;
+        if (msg.type === "progress") {
+          onProgress?.({
+            frame: msg.frame as number,
+            total: msg.total as number,
+            imageBase64: msg.image_base64 as string | undefined,
+            elapsedYears: msg.elapsed_years as number,
+            stats: (msg.stats as WorldStats | null | undefined) ?? undefined,
+          });
+        } else if (msg.type === "error") {
+          throw new Error(String(msg.detail));
+        } else if (msg.type === "done") {
+          done = {
+            seed: msg.seed as number,
+            elapsed_years: msg.elapsed_years as number,
+            num_plates: msg.num_plates as number,
+            events: msg.events as WorldEvent[],
+            videoBase64: msg.video_base64 as string,
+            mime: msg.mime as string,
+            stoppedEarly: Boolean(msg.stopped_early),
+          };
+        }
+      },
+      rearmIdleTimer,
+    );
 
     if (!done) throw new Error("animation stream ended without a result");
     return done;
