@@ -163,6 +163,15 @@ function formatLatLon(latDeg: number, lonDeg: number): string {
   return `${Math.abs(latDeg).toFixed(1)}°${latDir}, ${Math.abs(lonDeg).toFixed(1)}°${lonDir}`;
 }
 
+// Pre-fills the center-edit popup's lat/lon inputs (see handleOpenCenterEdit) at full
+// precision but without the visual noise of trailing zeros -- 12.5 rather than 12.5000, but
+// 2.0 rather than a bare 2 (still reads as a decimal field, not truncated to an int). Only
+// used to populate the fields when the popup opens; once open, the user's own typing is kept
+// as raw text untouched (see centerEditValue's own comment) and never re-run through this.
+function formatCoordForEdit(deg: number): string {
+  return deg.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ".0");
+}
+
 function isIdentityRotation(rotation: Mat3): boolean {
   return rotation.every((v, i) => v === IDENTITY_ROTATION[i]);
 }
@@ -1013,7 +1022,7 @@ export default function App() {
   // state above).
   const handleOpenCenterEdit = useCallback(() => {
     if (busy || !summary || animating || editingCenter) return;
-    setCenterEditValue({ lat: centerLatLon.lat.toFixed(4), lon: centerLatLon.lon.toFixed(4) });
+    setCenterEditValue({ lat: formatCoordForEdit(centerLatLon.lat), lon: formatCoordForEdit(centerLatLon.lon) });
     setCenterEditError(null);
     setEditingCenter(true);
   }, [busy, summary, animating, editingCenter, centerLatLon]);
