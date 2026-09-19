@@ -460,6 +460,16 @@ COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT = 350.0
 # the taper itself continuous instead of a step.
 COLLISION_NEAR_FIELD_INNER_FACTOR = 0.8
 
+# GitHub issue #176: whether `deform()`'s near-field ring biases both its own ordinary
+# thickening rate and the delamination-melt overflow it can receive (below) toward ring
+# nodes still close to sea level (see rheology.LATERAL_SPREADING_BIAS_M's own comment) or
+# falls back to the old flat behaviour (an even taper, an even melt split). A real
+# module-level toggle -- same idiom issue #180's own now-superseded CRUMPLE_TRANSFER_FRACTION
+# used -- rather than something bin/debug/validate_lateral_spreading.py has to monkeypatch
+# `rheology` internals to flip, so that script can isolate this one change's marginal effect
+# on the sweep metric from the exact same checkout instead of diffing across commits.
+LATERAL_SPREADING_BIAS_ENABLED = True
+
 # Broad far-field collision stress: a genuine continent-continent collision transmits
 # uplift-inducing stress deep into the stable interior, well beyond the fold-thrust belt
 # itself (the Tibetan Plateau's own far-field effects raise terrain across much of interior
@@ -775,6 +785,20 @@ class LithospherePlate(PlateWithLines):
                 if near_field_dist is not None
                 else np.zeros(n, dtype=bool)
             )
+            # GitHub issue #176: bias the near-field ring's own thickening rate (right below)
+            # and the delamination-melt overflow it can receive (further below) toward ring
+            # nodes still close to sea level, so a widening belt is more likely to actually
+            # reclaim adjacent shelf as new land instead of only adding height to ring nodes
+            # that are already land -- see rheology.LATERAL_SPREADING_BIAS_M's own comment.
+            # Computed once here and reused at both call sites: `elevation_before` (this
+            # line's pre-step isostatic elevation) doesn't change again until deform()'s next
+            # call, so a near-field node's own bias weight is the same value at both points.
+            near_field_lateral_bias = None
+            if LATERAL_SPREADING_BIAS_ENABLED and np.any(near_field):
+                near_field_lateral_bias = 1.0 / (
+                    1.0
+                    + np.clip(elevation_before[near_field] - world.sea_level_m, 0.0, None) / rheology.LATERAL_SPREADING_BIAS_M
+                )
             orogen_strength = np.where(convergent, orogen_contested_strength, 0.0)
             if np.any(near_field):
                 # Cell-centered, not edge-to-edge: node `d` (1-indexed) is treated as sitting
@@ -786,9 +810,26 @@ class LithospherePlate(PlateWithLines):
                 # falloff problem this taper exists to fix. This also keeps the ring's mean
                 # strength at exactly COLLISION_NEAR_FIELD_INNER_FACTOR / 2 regardless of
                 # orogen_dilation_nodes (a symmetric linear ramp always averages to its
-                # midpoint), matching the old flat factor's total contribution.
+                # midpoint), matching the old flat factor's total contribution -- before the
+                # lateral bias below reallocates (not shrinks) it toward the ring's
+                # low-elevation end.
                 taper = np.clip(1.0 - (near_field_dist - 0.5) / orogen_dilation_nodes, 0.0, 1.0)
-                orogen_strength[near_field] = orogen_amount * COLLISION_NEAR_FIELD_INNER_FACTOR * taper[near_field]
+                near_field_strength = orogen_amount * COLLISION_NEAR_FIELD_INNER_FACTOR * taper[near_field]
+                if near_field_lateral_bias is not None:
+                    # Redistribute, don't shrink: rescale the biased strengths back up so the
+                    # ring's own total (this step's "how much orogenic thickening is on offer
+                    # across the whole near-field band") is unchanged -- only *which* nodes
+                    # get how much of it moves. A flat multiplicative damper instead (tried
+                    # first) changes that total, which both quietly re-implements the
+                    # rate-throttle approach this issue's history already found ineffective
+                    # (see the module's own #176 comments above) and broke
+                    # test_collision_uplift_reach_widens_the_thickened_belt's own invariant
+                    # (wider reach -> strictly more total Hc, since a flat damper's shrink
+                    # doesn't scale with reach the way the ring's own node count does).
+                    biased = near_field_strength * near_field_lateral_bias
+                    total_before, total_after = float(near_field_strength.sum()), float(biased.sum())
+                    near_field_strength = biased * (total_before / total_after) if total_after > 0.0 else near_field_strength
+                orogen_strength[near_field] = near_field_strength
             # "fault" mode: concentrate the shortening onto fault traces (no-op / all-ones
             # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
             orogen_strength = orogen_strength * fault_influence
@@ -830,7 +871,12 @@ class LithospherePlate(PlateWithLines):
                 # plate, which never gets one).
                 overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
                 if overflow_total > 0.0 and np.any(near_field):
-                    hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
+                    # Same sea-level bias as the near-field ring's own thickening rate above,
+                    # rather than splitting the intrusion evenly across the ring -- see
+                    # rheology.LATERAL_SPREADING_BIAS_M's own comment (issue #176).
+                    hc[near_field] = rheology.apply_delamination_melt_intrusion(
+                        hc[near_field], overflow_total, years_myr, weight=near_field_lateral_bias
+                    )
 
             # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
             # the mantle wedge and underplates juvenile crust across the whole arc band --

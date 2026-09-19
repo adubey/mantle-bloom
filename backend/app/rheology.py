@@ -275,25 +275,56 @@ def apply_arc_magmatic_thickening(
 GRANITIC_MELT_FRACTION = 0.35
 DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR = 300.0
 
+# GitHub issue #176: an evenly-spread melt intrusion (below) -- and, before that, the near-
+# field ring's own ordinary thickening rate (see lithosphere_plate.deform's `orogen_strength`
+# near-field taper) -- keeps growing the *same* ring nodes step after step: the ones nearest
+# the contested band, which are disproportionately likely to already be well above sea level
+# (they're the ones closest to the orogen's own peak). That reproduces #176's own complaint
+# one level removed: land volume keeps climbing while land area barely moves, because both
+# the routine near-field growth and the redirected ceiling overflow mostly land on ground
+# that was already dry. `lithosphere_plate.deform` now weights *both* of those by how close
+# each ring node's own pre-step elevation is to `world.sea_level_m` -- a node still near or
+# below sea level keeps (up to) its full rate/share, a node already `LATERAL_SPREADING_
+# BIAS_M` or more above it gets a fading fraction -- so a saturated collision's mass is
+# biased toward actually reclaiming adjacent shelf as new land (this function's own "widen
+# the massif" lever) rather than only adding height to ring nodes that are already land. Not
+# zeroed out above the bias distance (a real orogen's foreland still receives some growth) --
+# `1500m..3000m` is the rough scale of a continental shelf-to-foothill transition, comfortably
+# under `MAX_CRUSTAL_THICKNESS_M`'s own implied relief.
+LATERAL_SPREADING_BIAS_M = 2000.0
 
-def apply_delamination_melt_intrusion(hc_near_field_m: np.ndarray, overflow_hc_m: float, years_myr: float) -> np.ndarray:
+
+def apply_delamination_melt_intrusion(
+    hc_near_field_m: np.ndarray, overflow_hc_m: float, years_myr: float, weight: np.ndarray | None = None
+) -> np.ndarray:
     """New Hc for the near-field ring receiving this step's delamination melt, given the total
     Hc `overflow_hc_m` (a scalar, already summed over the core convergent band) that hit
     `apply_convergent_deformation`'s ceiling this step. Spreads whatever melt actually
     intrudes (`GRANITIC_MELT_FRACTION` of the overflow, capped by `DELAMINATION_MELT_
-    INTRUSION_RATE_M_PER_MYR` summed across the receiving ring) evenly across
-    `hc_near_field_m`, same as #161's own even-spread idiom -- just on a bounded melt budget
-    instead of the full overflow. Only Hc grows, matching `apply_arc_magmatic_thickening`'s
-    own convention: this is juvenile buoyant melt intruding, not shortened crust dragging its
-    own mantle-lithosphere root along, so Hm is left untouched here (unlike the mass-
-    conserving Hc/Hm coupling `_redistribute_accreted_column`'s suture-retreat path uses)."""
+    INTRUSION_RATE_M_PER_MYR` summed across the receiving ring) across `hc_near_field_m`,
+    evenly when `weight` is omitted (#161's own even-spread idiom, just on a bounded melt
+    budget instead of the full overflow), or in proportion to `weight` when the caller passes
+    one -- see `LATERAL_SPREADING_BIAS_M`'s own comment (issue #176) for why
+    `lithosphere_plate.deform` biases this toward near-field nodes closer to sea level rather
+    than always splitting evenly. `weight` need not sum to 1 (renormalized here); an
+    all-zero/all-negative `weight` falls back to an even split rather than dividing by zero.
+    Only Hc grows, matching `apply_arc_magmatic_thickening`'s own convention: this is juvenile
+    buoyant melt intruding, not shortened crust dragging its own mantle-lithosphere root
+    along, so Hm is left untouched here (unlike the mass-conserving Hc/Hm coupling
+    `_redistribute_accreted_column`'s suture-retreat path uses)."""
     n = len(hc_near_field_m)
     if n == 0 or overflow_hc_m <= 0.0:
         return hc_near_field_m
     melt_available = overflow_hc_m * GRANITIC_MELT_FRACTION
     melt_capacity = DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR * years_myr * n
     melt_to_intrude = min(melt_available, melt_capacity)
-    return np.minimum(hc_near_field_m + melt_to_intrude / n, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+    if weight is None:
+        share = np.full(n, melt_to_intrude / n)
+    else:
+        clipped_weight = np.clip(np.asarray(weight, dtype=float), 0.0, None)
+        total_weight = float(clipped_weight.sum())
+        share = melt_to_intrude * clipped_weight / total_weight if total_weight > 0.0 else np.full(n, melt_to_intrude / n)
+    return np.minimum(hc_near_field_m + share, lithosphere.MAX_CRUSTAL_THICKNESS_M)
 
 
 # Rift magmatic underplating: the "further rifting -> more volcanism" middle stage a real

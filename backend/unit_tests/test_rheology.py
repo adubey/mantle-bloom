@@ -174,6 +174,33 @@ def test_delamination_melt_intrusion_no_op_without_overflow_or_receivers():
     assert rheology.apply_delamination_melt_intrusion(empty, 50_000.0, years_myr=5.0).size == 0
 
 
+def test_delamination_melt_intrusion_weight_biases_the_split():
+    """GitHub issue #176: lithosphere_plate.deform biases the melt spread toward near-field
+    nodes closer to sea level instead of always splitting evenly, so a saturated collision's
+    overflow has a better chance of reclaiming adjacent low ground as new land rather than
+    only adding height where the ring is already tall. A heavily lopsided `weight` should
+    send most of the melt to the high-weight node and little to the low-weight one, while
+    still respecting the same overall rate/fraction cap as the unweighted split."""
+    hc_near = np.full(2, 40_000.0)
+    overflow_hc = 50_000.0
+
+    even = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=5.0)
+    weighted = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=5.0, weight=np.array([1.0, 0.0]))
+
+    even_added = even - hc_near
+    weighted_added = weighted - hc_near
+    assert weighted_added[0] > even_added[0] > weighted_added[1] >= 0.0
+    assert np.isclose(float(np.sum(weighted_added)), float(np.sum(even_added)))
+
+
+def test_delamination_melt_intrusion_weight_falls_back_to_even_split_when_all_zero():
+    hc_near = np.full(3, 40_000.0)
+    overflow_hc = 30_000.0
+    even = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=5.0)
+    zero_weighted = rheology.apply_delamination_melt_intrusion(hc_near, overflow_hc, years_myr=5.0, weight=np.zeros(3))
+    assert np.array_equal(even, zero_weighted)
+
+
 def test_arc_magmatism_caps_hc_at_the_same_ceiling_as_convergent_thickening():
     """Arc underplating is a second, independent (additive rather than multiplicative, so far
     slower) source of unbounded Hc growth -- a sustained multi-hundred-Myr arc with no cap at
