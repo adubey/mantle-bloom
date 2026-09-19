@@ -1131,6 +1131,11 @@ export default function App() {
           >
             Generate World
           </button>
+          {busy && (
+            <div className="progress-track" aria-label="Generating world" role="progressbar">
+              <div className="progress-indeterminate" />
+            </div>
+          )}
 
           <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
             📊 Stats
@@ -1219,6 +1224,11 @@ export default function App() {
                 ⏺
               </button>
             </div>
+            {stepping && (
+              <div className="progress-track" aria-label="Stepping world" role="progressbar" style={{ marginTop: 6 }}>
+                <div className="progress-indeterminate" />
+              </div>
+            )}
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
