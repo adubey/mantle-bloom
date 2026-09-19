@@ -24,6 +24,7 @@ import AnimationModal from "./AnimationModal";
 import SaveAnimationModal from "./SaveAnimationModal";
 import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
+import ProgressBar from "./ProgressBar";
 import { PREMADE_WORLDS } from "./premadeWorlds";
 import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
@@ -50,11 +51,6 @@ const RENDER_SCALE = 2;
 const RENDER_WIDTH = DISPLAY_WIDTH * RENDER_SCALE;
 const RENDER_HEIGHT = DISPLAY_HEIGHT * RENDER_SCALE;
 const STEP_YEARS_OPTIONS = [10_000, 100_000, 1_000_000, 10_000_000];
-// How long a press-and-hold on the "Center: ..." readout takes before it opens the editable
-// lat/lon fields (see the centerLatLon state below) -- long enough that an ordinary click or
-// tap-to-dismiss-something doesn't accidentally open it, same rationale as rotationDrag.ts's
-// own LONG_PRESS_MS for distinguishing a tap from a press-and-drag.
-const CENTER_EDIT_LONG_PRESS_MS = 500;
 const PLAY_INTERVAL_MS = 400;
 // Percent, matching backend app/plates.py's DEFAULT_CONTINENTAL_FRACTION/DEFAULT_LAND_FRACTION.
 const DEFAULT_CONTINENTAL_PERCENT = 70;
@@ -111,12 +107,24 @@ const MAX_PLATES = 40;
 const DEFAULT_PLATES = 14;
 // The Advanced-settings "Voronoi points" slider -- the total number of Voronoi seed points the
 // plate tiling scatters before merging cells down to the chosen plate count (see backend
-// lithosphere_plate.generate_plates' voronoi_points param). The default keeps the backend's
-// historical feel (EXTRA_SITES_PER_PLATE = 2, i.e. ~3x the plate count at 14 plates); higher
-// makes plate outlines lumpier and less convex, lower makes them smoother.
+// lithosphere_plate.generate_plates' voronoi_points param). Higher makes plate outlines
+// lumpier/less convex (and, for a sketch-driven world, makes the continental/oceanic boundary
+// hug the drawn coastline more tightly -- see DEFAULT_VORONOI_POINTS_SKETCH below); lower makes
+// them smoother/coarser. Max was 10,000 (down to 2,000, see issue #128): VoronoiPreview.tsx's
+// client-side preview does a brute-force O(240x120xpoints) scan that got noticeably slow near
+// the old max.
 const MIN_VORONOI_POINTS = 8;
-const MAX_VORONOI_POINTS = 10000;
-const DEFAULT_VORONOI_POINTS = 42;
+const MAX_VORONOI_POINTS = 2000;
+// Default for "random" (procedural, no sketch) worlds.
+const DEFAULT_VORONOI_POINTS_RANDOM = 500;
+// Default for sketch-driven worlds ("Human-made" and "Premade worlds", including Pangaea) --
+// the new max. A sketch's land/sea comes from the drawing itself, but only for nodes whose
+// plate is already continental/oceanic to begin with (see lithosphere_plate.generate_plates);
+// that continental/oceanic boundary is a Voronoi cell boundary between the sketch-placed sites,
+// not the sketch's own outline, so more points (smaller cells) makes generated coastlines
+// resemble the actual drawing much more closely instead of clipping/filling past a coarse,
+// blobby plate boundary.
+const DEFAULT_VORONOI_POINTS_SKETCH = MAX_VORONOI_POINTS;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
@@ -153,6 +161,15 @@ function formatLatLon(latDeg: number, lonDeg: number): string {
   const latDir = latDeg >= 0 ? "N" : "S";
   const lonDir = lonDeg >= 0 ? "E" : "W";
   return `${Math.abs(latDeg).toFixed(1)}°${latDir}, ${Math.abs(lonDeg).toFixed(1)}°${lonDir}`;
+}
+
+// Pre-fills the center-edit popup's lat/lon inputs (see handleOpenCenterEdit) at full
+// precision but without the visual noise of trailing zeros -- 12.5 rather than 12.5000, but
+// 2.0 rather than a bare 2 (still reads as a decimal field, not truncated to an int). Only
+// used to populate the fields when the popup opens; once open, the user's own typing is kept
+// as raw text untouched (see centerEditValue's own comment) and never re-run through this.
+function formatCoordForEdit(deg: number): string {
+  return deg.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, ".0");
 }
 
 function isIdentityRotation(rotation: Mat3): boolean {
@@ -280,7 +297,7 @@ export default function App() {
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
-  const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS);
+  const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS_RANDOM);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -316,7 +333,6 @@ export default function App() {
   const [editingCenter, setEditingCenter] = useState(false);
   const [centerEditValue, setCenterEditValue] = useState({ lat: "", lon: "" });
   const [centerEditError, setCenterEditError] = useState<string | null>(null);
-  const centerPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Legend-click-to-highlight (see Legend.tsx/MapCanvas.tsx) -- only ever meaningful on the
   // views whose legend swatches are clickable (Biome, Combined, "Last elevation change" and
   // "Plates & Faults"), so it's cleared any time the view changes away from all of them rather
@@ -1002,26 +1018,14 @@ export default function App() {
     setCenterLatLon({ lat: 0, lon: 0 });
   }, []);
 
-  // Press-and-hold on the "Center: ..." readout. Mirrors rotationDrag.ts's own long-press
-  // gesture (a timer armed on press, cancelled by an early release) but doesn't need that
-  // one's move-cancel-drag logic since this target never itself starts a drag.
-  const handleCenterPressStart = useCallback(() => {
+  // Click on the "Center: ..." readout opens the editable lat/lon popup (see the editingCenter
+  // state above).
+  const handleOpenCenterEdit = useCallback(() => {
     if (busy || !summary || animating || editingCenter) return;
-    if (centerPressTimer.current) clearTimeout(centerPressTimer.current);
-    centerPressTimer.current = setTimeout(() => {
-      centerPressTimer.current = null;
-      setCenterEditValue({ lat: centerLatLon.lat.toFixed(4), lon: centerLatLon.lon.toFixed(4) });
-      setCenterEditError(null);
-      setEditingCenter(true);
-    }, CENTER_EDIT_LONG_PRESS_MS);
+    setCenterEditValue({ lat: formatCoordForEdit(centerLatLon.lat), lon: formatCoordForEdit(centerLatLon.lon) });
+    setCenterEditError(null);
+    setEditingCenter(true);
   }, [busy, summary, animating, editingCenter, centerLatLon]);
-
-  const handleCenterPressEnd = useCallback(() => {
-    if (centerPressTimer.current) {
-      clearTimeout(centerPressTimer.current);
-      centerPressTimer.current = null;
-    }
-  }, []);
 
   const handleCancelCenterEdit = useCallback(() => {
     setEditingCenter(false);
@@ -1137,6 +1141,7 @@ export default function App() {
           >
             Generate World
           </button>
+          {busy && <ProgressBar label="Generating world" />}
 
           <button onClick={() => setShowStatsModal(true)} disabled={!summary} style={{ fontSize: 12 }}>
             📊 Stats
@@ -1225,6 +1230,7 @@ export default function App() {
                 ⏺
               </button>
             </div>
+            {stepping && <ProgressBar label="Stepping world" style={{ marginTop: 6 }} />}
           </fieldset>
 
           <fieldset style={{ border: "1px solid #333", borderRadius: 6, padding: 8, fontSize: 12 }}>
@@ -1271,70 +1277,82 @@ export default function App() {
               <option value="behrmann">Behrmann (cylindrical equal-area)</option>
               <option value="eckert4">Eckert IV (pseudocylindrical equal-area)</option>
             </select>
-            {editingCenter ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleCommitCenterEdit();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") handleCancelCenterEdit();
-                }}
-                style={{ marginTop: 6 }}
-              >
-                <div style={{ display: "flex", gap: 4 }}>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    min={-90}
-                    max={90}
-                    value={centerEditValue.lat}
-                    onChange={(e) => setCenterEditValue((v) => ({ ...v, lat: e.target.value }))}
-                    placeholder="lat (-90 to 90)"
-                    aria-label="Center latitude"
-                    autoFocus
-                    style={{ width: "50%", fontSize: 12 }}
-                  />
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="any"
-                    min={-180}
-                    max={180}
-                    value={centerEditValue.lon}
-                    onChange={(e) => setCenterEditValue((v) => ({ ...v, lon: e.target.value }))}
-                    placeholder="lon (-180 to 180)"
-                    aria-label="Center longitude"
-                    style={{ width: "50%", fontSize: 12 }}
-                  />
-                </div>
-                {centerEditError && (
-                  <div style={{ color: "#ff8080", fontSize: 10, marginTop: 2 }}>{centerEditError}</div>
-                )}
-                <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
-                  <button type="submit" style={{ flex: 1, fontSize: 12 }}>
-                    Set
-                  </button>
-                  <button type="button" onClick={handleCancelCenterEdit} style={{ flex: 1, fontSize: 12 }}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            ) : (
+            {/* position: relative anchors the popup below to this row specifically (not the
+                whole fieldset), so it floats over the Re-center button rather than pushing it
+                down -- same floating-card treatment the map's click-to-inspect probe popup uses
+                (see the `probe &&` block above). */}
+            <div style={{ position: "relative", marginTop: 6 }}>
               <div
-                title="Press and hold to type a center coordinate"
-                onMouseDown={handleCenterPressStart}
-                onMouseUp={handleCenterPressEnd}
-                onMouseLeave={handleCenterPressEnd}
-                onTouchStart={handleCenterPressStart}
-                onTouchEnd={handleCenterPressEnd}
-                onTouchCancel={handleCenterPressEnd}
-                style={{ marginTop: 6, opacity: 0.8, cursor: !summary || animating ? undefined : "pointer", userSelect: "none" }}
+                onClick={handleOpenCenterEdit}
+                title={!summary || animating || editingCenter ? undefined : "Click to type a center coordinate"}
+                style={{ opacity: 0.8, cursor: !summary || animating || editingCenter ? undefined : "pointer", userSelect: "none" }}
               >
                 Center: {formatLatLon(centerLatLon.lat, centerLatLon.lon)}
               </div>
-            )}
+              {editingCenter && (
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    handleCommitCenterEdit();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") handleCancelCenterEdit();
+                  }}
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 0,
+                    right: 0,
+                    marginTop: 4,
+                    zIndex: 30,
+                    background: "#151a2e",
+                    border: "1px solid #333",
+                    borderRadius: 6,
+                    padding: 8,
+                    boxShadow: "0 2px 10px rgba(0, 0, 0, 0.5)",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min={-90}
+                      max={90}
+                      value={centerEditValue.lat}
+                      onChange={(e) => setCenterEditValue((v) => ({ ...v, lat: e.target.value }))}
+                      placeholder="lat (-90 to 90)"
+                      aria-label="Center latitude"
+                      autoFocus
+                      style={{ width: "50%", fontSize: 12 }}
+                    />
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min={-180}
+                      max={180}
+                      value={centerEditValue.lon}
+                      onChange={(e) => setCenterEditValue((v) => ({ ...v, lon: e.target.value }))}
+                      placeholder="lon (-180 to 180)"
+                      aria-label="Center longitude"
+                      style={{ width: "50%", fontSize: 12 }}
+                    />
+                  </div>
+                  {centerEditError && (
+                    <div style={{ color: "#ff8080", fontSize: 10, marginTop: 2 }}>{centerEditError}</div>
+                  )}
+                  <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                    <button type="submit" style={{ flex: 1, fontSize: 12 }}>
+                      Set
+                    </button>
+                    <button type="button" onClick={handleCancelCenterEdit} style={{ flex: 1, fontSize: 12 }}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
             <button
               onClick={handleRecenter}
               disabled={busy || !summary || animating || isIdentityRotation(rotation) || editingCenter}
@@ -1650,6 +1668,7 @@ export default function App() {
                 }
                 alphaEncodedIds={mapView === "combined" || mapView === "biome"}
                 interactionDisabled={animating}
+                coastlineSegments={coastlineSegments}
               />
             </div>
           )}
@@ -1914,7 +1933,23 @@ export default function App() {
                 <button
                   key={mode}
                   type="button"
-                  onClick={() => setGenerateMode(mode)}
+                  onClick={() => {
+                    // Only reset on an actual mode change -- re-clicking the already-active tab
+                    // must not discard a manual slider adjustment. "debug" is excluded from the
+                    // reset entirely: generateDebugWorld never reads voronoi_points at all (see
+                    // handleGenerate), so resetting it there would just be a misleading no-op
+                    // value shown in Advanced settings.
+                    if (mode !== generateMode) {
+                      setGenerateMode(mode);
+                      if (mode !== "debug") {
+                        // Reset to the mode-appropriate default (see DEFAULT_VORONOI_POINTS_RANDOM/
+                        // _SKETCH's own comments) so switching tabs doesn't leave a value picked
+                        // for a different mode's fidelity needs -- a manual adjustment within a
+                        // mode is kept until the next tab switch.
+                        setVoronoiPoints(mode === "random" ? DEFAULT_VORONOI_POINTS_RANDOM : DEFAULT_VORONOI_POINTS_SKETCH);
+                      }
+                    }
+                  }}
                   style={{
                     flex: 1,
                     padding: "6px 0",

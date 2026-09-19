@@ -56,3 +56,31 @@ button:disabled {
   outline-offset: 2px;
   animation: generate-flash-outline 1s step-start infinite;
 }
+
+/* Indeterminate progress bars shown while world generation (`busy`) or a step (`stepping`) is
+   in flight (see App.tsx) -- neither request reports real incremental progress server-side
+   (unlike /world/animate's per-frame progress), so this is a plain "something's happening"
+   indicator, not a percentage. */
+.progress-track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #2a2f42;
+}
+
+@keyframes progress-indeterminate-slide {
+  0% { left: -30%; }
+  100% { left: 100%; }
+}
+
+.progress-indeterminate {
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  height: 100%;
+  background: #5b8cff;
+  border-radius: 2px;
+  animation: progress-indeterminate-slide 1.1s ease-in-out infinite;
+}

@@ -322,6 +322,21 @@ def test_generate_with_unknown_node_density_returns_400(client):
     assert resp.status_code == 400
 
 
+def test_generate_with_the_max_allowed_voronoi_points(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "voronoi_points": 2000})
+    assert resp.status_code == 200
+
+
+def test_generate_with_voronoi_points_over_the_max_returns_400(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "voronoi_points": 2001})
+    assert resp.status_code == 400
+
+
+def test_generate_with_zero_voronoi_points_returns_400(client):
+    resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "voronoi_points": 0})
+    assert resp.status_code == 400
+
+
 def test_generate_with_climate_density(client):
     resp = client.post("/world/generate", json={"seed": 1, "num_plates": 6, "climate_density": 2.0})
     assert resp.status_code == 200

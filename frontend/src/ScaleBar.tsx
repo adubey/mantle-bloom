@@ -5,7 +5,13 @@ import { PLANET_RADIUS_KM, backingPixelsToDisplayLatLon, getLocalPixelScale, typ
 
 // The map's scale bar (issue #158): normally a plain inline item in the Legend row below the
 // map, exact only at the equator (like any small-scale world map's static scale bar -- see the
-// comment on KM_PER_PIXEL_AT_EQUATOR below). Grabbing and dragging it onto the map instead
+// comment on KM_PER_PIXEL_AT_EQUATOR below). It's a native <button> (rather than a plain <div>)
+// for the semantics/focusability, but its docked (in-Legend) style below gives it an explicit
+// button-card look too -- a bare div gave no visual hint it was interactive at all, and nothing
+// here is an actual click action; drag is still the only thing that does anything (see
+// onMouseDown below). The dropped (on-map) style resets that chrome back off, since floating on
+// the globe it needs to stay the same borderless label-plus-ticks it always was, not a button-
+// shaped box sitting on top of the map. Grabbing and dragging it onto the map instead
 // *detaches* it into a `position: fixed` overlay pinned to that screen point, at which point it
 // switches to a live per-position calculation (rotation.ts's getLocalPixelScale) so its labeled
 // length stays accurate wherever it's been dropped -- dragging it back off the map re-docks it,
@@ -70,7 +76,7 @@ function niceScaleKm(roughKm: number): number {
 export default function ScaleBar({ projection, width, height, displayWidth, displayHeight, mapWrapperRef }: Props) {
   const [dropped, setDropped] = useState<{ left: number; top: number } | null>(null); // viewport px
   const [orientation, setOrientation] = useState<Orientation>("horizontal");
-  const barRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLButtonElement | null>(null);
   // Kept from the last position that actually landed on the globe, so a drag that briefly
   // crosses into the map's background padding doesn't make the bar disappear or snap to zero
   // mid-gesture -- it just holds its last reading until the pointer is back over the sphere.
@@ -188,9 +194,9 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
           <div>press &apos;space&apos; to rotate</div>
         </div>
       )}
-      <div
+      <button
         ref={barRef}
-        tabIndex={0}
+        type="button"
         onMouseDown={onMouseDown}
         onKeyDown={onKeyDown}
         title={
@@ -201,6 +207,15 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
         style={
           isDropped
             ? {
+                // Reset the native button chrome the plain <button> element would otherwise
+                // bring in (border/background/padding/font) -- floating on the map, this needs
+                // to stay the same borderless label-plus-ticks it always was, not a button-
+                // shaped box sitting on the globe. Only the docked style below actually wants
+                // to look like a button.
+                border: "none",
+                background: "none",
+                padding: 0,
+                font: "inherit",
                 position: "fixed",
                 left: dropped!.left,
                 top: dropped!.top,
@@ -214,6 +229,14 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
                 gap: 2,
               }
             : {
+                // Explicit button-card look (rather than relying on the browser's own default
+                // button chrome, which varies by browser/OS) -- same border color the rest of
+                // the sidebar's boxes use.
+                border: "1px solid #333",
+                borderRadius: 4,
+                background: "rgba(255, 255, 255, 0.04)",
+                padding: "3px 6px",
+                font: "inherit",
                 flexShrink: 0,
                 marginLeft: "auto",
                 fontSize: 10,
@@ -261,7 +284,7 @@ export default function ScaleBar({ projection, width, height, displayWidth, disp
         <div style={{ marginTop: isDropped ? 0 : 2, fontSize: 10, color: STROKE, opacity: 0.9, whiteSpace: "nowrap" }}>
           {label.toLocaleString()} km{isDropped ? "" : " at equator"}
         </div>
-      </div>
+      </button>
     </>
   );
 }
