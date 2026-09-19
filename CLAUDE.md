@@ -1,5 +1,12 @@
 # Working in this repo
 
+## Working trees
+
+Give each issue its own working tree (e.g. `git worktree add`) unless told
+otherwise, rather than switching branches in place. Don't use the default
+ports for anything you start from a worktree -- pick free ports per
+worktree so multiple issues can run side by side without colliding.
+
 ## Running backend tests
 
 Prefer `./bin/affected_test.sh` over `./bin/unit_test.sh` while iterating on
