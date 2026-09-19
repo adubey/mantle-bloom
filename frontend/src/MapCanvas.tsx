@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
-import type { Projection } from "./api";
+import type { Projection, Segment } from "./api";
 import type { HighlightTarget } from "./legendData";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import {
-  getGraticule, getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, xyzToLatLon,
+  getGraticule, getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject,
+  wrapLongitudeNear, xyzToLatLon,
 } from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
 
@@ -57,11 +58,23 @@ interface Props {
   // While a background animation holds the world lock (see App.tsx), the rotate-drag + probe
   // click are inert -- a rotation/render there would only 503.
   interactionDisabled?: boolean;
+  // The current world's coastline (land/lake/ocean boundary), same data LakeInspector/
+  // RiverInspector/PlatesAndFaults already draw -- see App.tsx's coastlineSegments. Only
+  // drawn during the rotate-drag preview (see drawGraticule below, issue #157): the idle
+  // path already shows the real server-rendered frame, which draws its own coastline where
+  // the view calls for one. Empty/omitted before the first step (climate_cache doesn't
+  // exist yet) just means no outline is drawn, same as every other coastline consumer.
+  coastlineSegments?: Segment[];
 }
 
 const BACKGROUND = "#0b1020";
 const GRATICULE_COLOR = "rgba(235, 238, 245, 0.85)";
 const GRATICULE_LINE_WIDTH = 1;
+// Matches backend render_image.py's COASTLINE_COLOR_RGB/COASTLINE_HALO_RGB -- same colors
+// LakeInspector.tsx/RiverInspector.tsx/PlatesAndFaults.tsx already draw their own coastline
+// overlays with.
+const COASTLINE_RGB = "235, 235, 235";
+const COASTLINE_HALO_RGB = "15, 15, 15";
 // A graticule line segment longer than this multiple of the line's own median segment length
 // is skipped -- the same "don't draw across a projection discontinuity" technique
 // render_image.py's _stroke_robust_loop uses for plate boundaries.
@@ -148,6 +161,7 @@ const CTX_OPTIONS: CanvasRenderingContext2DSettings = { willReadFrequently: true
 export default function MapCanvas({
   imageBase64, width, height, displayWidth, displayHeight, projection, rotation,
   onRotationPreview, onRotationCommitted, highlightTarget, onProbe, alphaEncodedIds, highlightLine, interactionDisabled,
+  coastlineSegments,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // One Image element, reused for the component's whole lifetime rather than a fresh
@@ -324,6 +338,42 @@ export default function MapCanvas({
         }
       }
       ctx.stroke();
+    }
+
+    // The coastline outline (issue #157): projected fresh every drag frame, same as the
+    // graticule above, but per-segment rather than per-polyline -- coastline edges are a
+    // flat, unordered edge list (see coastline.compute_coastline_segments), not loops that
+    // could reuse the graticule's own break-on-long-segment heuristic. Unwrapping each
+    // segment's second endpoint relative to its first (rather than projecting both
+    // independently) is what LakeInspector.tsx's own projectSegment does, and for the same
+    // reason: two independently-projected endpoints can bow a short real-world edge all the
+    // way across the map at the antimeridian once the view is rotated.
+    if (coastlineSegments && coastlineSegments.length > 0) {
+      const projectSegment = (a: Vec3, b: Vec3): [[number, number], [number, number]] => {
+        const ra = matApply(previewRotation, a);
+        const latA = Math.asin(Math.min(1, Math.max(-1, ra[2])));
+        const lonA = Math.atan2(ra[1], ra[0]);
+        const rb = matApply(previewRotation, b);
+        const latB = Math.asin(Math.min(1, Math.max(-1, rb[2])));
+        const lonB = wrapLongitudeNear(Math.atan2(rb[1], rb[0]), lonA);
+        const [xA, yA] = project(projection, latA, lonA);
+        const [xB, yB] = project(projection, latB, lonB);
+        return [toPixels(transform, xA, yA), toPixels(transform, xB, yB)];
+      };
+      const strokeCoastline = (color: string, lineWidth: number) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        for (const [a, b] of coastlineSegments) {
+          const [[x1, y1], [x2, y2]] = projectSegment(a, b);
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
+      };
+      const coastlineWidth = width / 1100;
+      strokeCoastline(`rgba(${COASTLINE_HALO_RGB}, 1.0)`, coastlineWidth * 2.6);
+      strokeCoastline(`rgba(${COASTLINE_RGB}, 1.0)`, coastlineWidth * 1.1);
     }
 
     drawHighlightLine(ctx, transform, previewRotation);

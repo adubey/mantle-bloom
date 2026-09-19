@@ -1650,6 +1650,7 @@ export default function App() {
                 }
                 alphaEncodedIds={mapView === "combined" || mapView === "biome"}
                 interactionDisabled={animating}
+                coastlineSegments={coastlineSegments}
               />
             </div>
           )}
