@@ -613,6 +613,55 @@ def generate_world(
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
     random centers."""
+    world = None
+    for message in generate_world_progress(
+        seed,
+        num_plates=num_plates,
+        continental_fraction=continental_fraction,
+        land_fraction=land_fraction,
+        num_mantle_centers=num_mantle_centers,
+        axial_tilt_deg=axial_tilt_deg,
+        node_density=node_density,
+        initial_soil_maturity=initial_soil_maturity,
+        climate_density=climate_density,
+        fluid_density=fluid_density,
+        extra_sites_per_plate=extra_sites_per_plate,
+        voronoi_points=voronoi_points,
+        sketch=sketch,
+        premade_world_id=premade_world_id,
+    ):
+        if message[0] == "done":
+            world = message[1]
+    return world
+
+
+def generate_world_progress(
+    seed: int,
+    num_plates: int | None = None,
+    continental_fraction: float | None = None,
+    land_fraction: float | None = None,
+    num_mantle_centers: int = DEFAULT_MANTLE_CENTERS,
+    axial_tilt_deg: float | None = None,
+    node_density: float = 1.0,
+    initial_soil_maturity: float | None = None,
+    climate_density: float = climate.DEFAULT_CLIMATE_DENSITY,
+    fluid_density: float = 1.0,
+    extra_sites_per_plate: int = lithosphere_plate.EXTRA_SITES_PER_PLATE,
+    voronoi_points: int | None = None,
+    sketch: worldsketch.SketchMasks | None = None,
+    premade_world_id: str | None = None,
+):
+    """Generator form of `generate_world`, driving the exact same work but yielding
+    `("progress", fraction)` at each of its three natural phase boundaries -- plate/site
+    generation, mantle-center fitting, then the `finish_generation` bootstrap -- before a
+    final `("done", world)` carrying the finished World, same progress/done contract as
+    render_image.stream_animation_mp4. `generate_world` itself just drains this to
+    completion and returns the `done` payload -- see that function's own docstring for what
+    every parameter means, unchanged here. Necessarily coarser-grained than
+    step_world_progress's per-plate resolution: unlike a step's shift()/deform() loops,
+    nothing here naturally subdivides further without reaching into
+    lithosphere_plate.generate_plates itself, so the three phases are treated as
+    equal-weight thirds rather than a measured cost split."""
     plates = generate_plates(
         seed,
         num_plates,
@@ -624,6 +673,8 @@ def generate_world(
         sketch=sketch,
         premade_world_id=premade_world_id,
     )
+    yield ("progress", 1 / 3)
+
     rng = np.random.default_rng(seed)
     if premade_world_id in ("earth", "pangaea"):
         # Local import, same reasoning as generate_plates' own (avoid paying for
@@ -640,6 +691,7 @@ def generate_world(
         mantle_centers = real_plates.fit_mantle_centers(real_plate_list, candidates, rng)
     else:
         mantle_centers = mantle.generate_convection_centers(rng, n_centers=num_mantle_centers)
+    yield ("progress", 2 / 3)
 
     world = World(
         seed=seed,
@@ -657,7 +709,8 @@ def generate_world(
 
     n_continents = sum(1 for p in plates if p.crust_type == "continental")
     finish_generation(world, f"World generated with {len(plates)} plates ({n_continents} continental).")
-    return world
+    yield ("progress", 1.0)
+    yield ("done", world)
 
 
 def finish_generation(world: World, log_message: str) -> None:
@@ -707,7 +760,25 @@ def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Pla
 
 
 def step_world(world: World, years: float) -> None:
-    """Advance the world by `years`.
+    """Advance the world by `years` -- thin wrapper draining step_world_progress to
+    completion for callers that don't need its per-plate progress (every caller but main.py's
+    streaming /world/step endpoint). See step_world_progress for what actually runs; this
+    function's own former docstring, describing that same behavior, now lives there."""
+    for _ in step_world_progress(world, years):
+        pass
+
+
+def step_world_progress(world: World, years: float):
+    """Generator form of step_world, advancing the world by `years` exactly as it did before
+    this function existed, but yielding a fraction-complete float (0 to 1) after each
+    per-plate `shift()`/`deform()` call -- main.py's /world/step endpoint streams these
+    directly to the client as NDJSON progress lines (see render_image.stream_animation_mp4
+    for the same streaming-generator shape elsewhere in this codebase). The two per-plate
+    passes are treated as `2 * len(world.plates)` equal-weight units (plus one more for
+    everything after them -- topology changes, climate/erosion/volcanism, sea level -- which
+    has no comparable natural subdivision), not a measured cost split, but plate movement
+    dominates a step's runtime on any world large enough for progress to matter, so this
+    still tracks real, if coarse, completion.
 
     Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
     `LithospherePlate.shift(world, years)` for every plate (refit Euler pole from torque
@@ -745,8 +816,17 @@ def step_world(world: World, years: float) -> None:
     world.node_healpix_index_cache = None
     world.node_kdtree_relief_cache = None
     world.node_hillshade_cache = None
+    # +1 for everything from here after the plate-movement phase (topology changes,
+    # climate/erosion/volcanism, sea level) -- see this generator's own docstring for why
+    # that's a single unit rather than further subdivided.
+    total_units = (2 * len(world.plates) if world.simulate_plate_movement else 0) + 1
+    done_units = 0
     if world.simulate_plate_movement:
-        distances = {plate.plate_id: plate.shift(world, years) for plate in world.plates}
+        distances = {}
+        for plate in world.plates:
+            distances[plate.plate_id] = plate.shift(world, years)
+            done_units += 1
+            yield done_units / total_units
         order = list(world.plates)
         # Deterministic per (seed, elapsed_years) so a replayed session still deforms plates
         # in the same order -- not the same order every turn, which is the whole point (see
@@ -755,6 +835,8 @@ def step_world(world: World, years: float) -> None:
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
             plate.deform(world, others, years, distances[plate.plate_id])
+            done_units += 1
+            yield done_units / total_units
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
@@ -814,5 +896,7 @@ def step_world(world: World, years: float) -> None:
     eustasy.update_sea_level(world)
 
     world.record_stats()
+    done_units += 1
+    yield done_units / total_units
 
 

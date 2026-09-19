@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import math
 import pytest
 from fastapi.testclient import TestClient
@@ -16,17 +17,29 @@ def _decode_image(body: dict) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(body["image_base64"])))
 
 
+def _post_step(client, **kwargs) -> dict:
+    """/world/step now streams NDJSON progress (see backend app/main.py, issue #195) instead
+    of returning one JSON body -- returns the final `{"type": "done", ...}` line's fields,
+    same shape a plain `resp.json()` used to give directly (see unit_tests/test_main.py's
+    own `_NdjsonResponse` for the fuller version of this wrapper)."""
+    resp = client.post("/world/step", **kwargs)
+    assert resp.status_code == 200
+    messages = [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+    done = messages[-1]
+    assert done["type"] == "done"
+    return done
+
+
 def test_step_response_includes_growing_event_log(client):
     client.post("/world/generate", json={"seed": 2, "num_plates": 6})
-    resp = client.post("/world/step", json={"years": 1_000_000})
-    assert len(resp.json()["events"]) >= 1  # at least the generation event
+    body = _post_step(client, json={"years": 1_000_000})
+    assert len(body["events"]) >= 1  # at least the generation event
 
 
 def test_step_advances_elapsed_years(client):
     client.post("/world/generate", json={"seed": 2, "num_plates": 6})
-    resp = client.post("/world/step", json={"years": 1_000_000})
-    assert resp.status_code == 200
-    assert resp.json()["elapsed_years"] == 1_000_000
+    body = _post_step(client, json={"years": 1_000_000})
+    assert body["elapsed_years"] == 1_000_000
 
 
 def test_render_returns_a_decodable_png_at_the_requested_size(client):
