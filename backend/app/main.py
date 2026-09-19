@@ -597,8 +597,8 @@ def generate(req: GenerateRequest) -> dict:
         raise HTTPException(
             status_code=400, detail=f"unknown fluid_density {req.fluid_density!r}; choices are {climate.FLUID_DENSITY_CHOICES}"
         )
-    if req.voronoi_points is not None and not 1 <= req.voronoi_points <= 10000:
-        raise HTTPException(status_code=400, detail="voronoi_points must be between 1 and 10000")
+    if req.voronoi_points is not None and not 1 <= req.voronoi_points <= 2000:
+        raise HTTPException(status_code=400, detail="voronoi_points must be between 1 and 2000")
     if req.premade_world_id is not None and req.premade_world_id not in ("earth", "pangaea", "got"):
         raise HTTPException(status_code=400, detail=f"unknown premade_world_id {req.premade_world_id!r}")
     if req.premade_world_id is not None and req.sketch is None:

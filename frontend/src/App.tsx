@@ -111,12 +111,24 @@ const MAX_PLATES = 40;
 const DEFAULT_PLATES = 14;
 // The Advanced-settings "Voronoi points" slider -- the total number of Voronoi seed points the
 // plate tiling scatters before merging cells down to the chosen plate count (see backend
-// lithosphere_plate.generate_plates' voronoi_points param). The default keeps the backend's
-// historical feel (EXTRA_SITES_PER_PLATE = 2, i.e. ~3x the plate count at 14 plates); higher
-// makes plate outlines lumpier and less convex, lower makes them smoother.
+// lithosphere_plate.generate_plates' voronoi_points param). Higher makes plate outlines
+// lumpier/less convex (and, for a sketch-driven world, makes the continental/oceanic boundary
+// hug the drawn coastline more tightly -- see DEFAULT_VORONOI_POINTS_SKETCH below); lower makes
+// them smoother/coarser. Max was 10,000 (down to 2,000, see issue #128): VoronoiPreview.tsx's
+// client-side preview does a brute-force O(240x120xpoints) scan that got noticeably slow near
+// the old max.
 const MIN_VORONOI_POINTS = 8;
-const MAX_VORONOI_POINTS = 10000;
-const DEFAULT_VORONOI_POINTS = 42;
+const MAX_VORONOI_POINTS = 2000;
+// Default for "random" (procedural, no sketch) worlds.
+const DEFAULT_VORONOI_POINTS_RANDOM = 500;
+// Default for sketch-driven worlds ("Human-made" and "Premade worlds", including Pangaea) --
+// the new max. A sketch's land/sea comes from the drawing itself, but only for nodes whose
+// plate is already continental/oceanic to begin with (see lithosphere_plate.generate_plates);
+// that continental/oceanic boundary is a Voronoi cell boundary between the sketch-placed sites,
+// not the sketch's own outline, so more points (smaller cells) makes generated coastlines
+// resemble the actual drawing much more closely instead of clipping/filling past a coarse,
+// blobby plate boundary.
+const DEFAULT_VORONOI_POINTS_SKETCH = MAX_VORONOI_POINTS;
 // Matching backend app/world.py's World.sea_level_m/World.solar_multiplier defaults.
 const DEFAULT_SEA_LEVEL_M = 0;
 const DEFAULT_SOLAR_MULTIPLIER = 1;
@@ -280,7 +292,7 @@ export default function App() {
   const [initialSoilMaturityPercent, setInitialSoilMaturityPercent] = useState(DEFAULT_INITIAL_SOIL_MATURITY_PERCENT);
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
-  const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS);
+  const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS_RANDOM);
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -1915,7 +1927,14 @@ export default function App() {
                 <button
                   key={mode}
                   type="button"
-                  onClick={() => setGenerateMode(mode)}
+                  onClick={() => {
+                    setGenerateMode(mode);
+                    // Reset to the mode-appropriate default (see DEFAULT_VORONOI_POINTS_RANDOM/
+                    // _SKETCH's own comments) so switching tabs doesn't leave a value picked for
+                    // a different mode's fidelity needs -- a manual adjustment within a mode is
+                    // kept until the next tab switch.
+                    setVoronoiPoints(mode === "random" ? DEFAULT_VORONOI_POINTS_RANDOM : DEFAULT_VORONOI_POINTS_SKETCH);
+                  }}
                   style={{
                     flex: 1,
                     padding: "6px 0",

@@ -10,11 +10,9 @@ import { plateColor } from "./platePalette";
 // distance.
 
 // Working grid (2:1 equirectangular, matching the sketch canvas aspect). Small on purpose --
-// the per-cell nearest-point scan below is O(cells x points).
-// TODO(perf): now that the "Voronoi points" slider goes up to 10,000, render()'s brute-force
-// scan (240x120 cells x points, so ~288M comparisons at the max) can take a noticeable beat per
-// recompute. Consider a spatial grid/bucket structure for the nearest-point lookup (mirroring
-// the node-cloud KD-tree sharing done for climate.py) if the high end feels sluggish.
+// the per-cell nearest-point scan below is O(cells x points) -- at the slider's current 2,000-
+// point max (see App.tsx's MAX_VORONOI_POINTS, issue #128) that's ~57.6M comparisons worst
+// case, down from ~288M when the slider went up to 10,000.
 const GW = 240;
 const GH = 120;
 // On-screen size the small grid is scaled up to (smoothing disabled, so cells stay crisp).
