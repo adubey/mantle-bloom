@@ -229,6 +229,74 @@ def test_rift_magmatism_ramps_up_as_crust_approaches_full_rupture():
     assert near_onset[0] < rheology.RIFT_VOLCANISM_ONSET_HC_M
 
 
+def test_magma_export_reduces_strength_and_reports_volume_for_a_node_with_headroom():
+    """GitHub issue #205: a core convergent node well below the export ceiling should have
+    part of its own strain increment diverted to an exported magma volume instead of
+    thickening in place -- `reduced_strength` must be strictly less than the input `strength`
+    and `export_hc_m` strictly positive."""
+    hc = np.array([35_000.0])
+    closing = np.array([_closing_m_per_s(5.0)])
+    strength = np.array([1.0])
+
+    reduced_strength, export_hc_m = rheology.magma_export_strength_and_volume(
+        hc, closing, years_myr=1.0, fault_factor=np.array([1.0]), strength=strength
+    )
+
+    assert reduced_strength[0] < strength[0]
+    assert np.isclose(reduced_strength[0], strength[0] * (1.0 - rheology.MAGMA_EXPORT_FRACTION))
+    assert export_hc_m[0] > 0.0
+
+
+def test_magma_export_reduced_strength_thickens_less_than_full_strength_in_place():
+    """The whole point of the mechanism: applying `apply_convergent_deformation` with the
+    reduced strength must build *less* in-place crust than the original, undiminished
+    strength would have -- the withheld difference is exactly what left as an exported
+    parcel, not free extra thickening on top."""
+    hc = np.array([35_000.0])
+    hm = np.array([100_000.0])
+    closing = np.array([_closing_m_per_s(5.0)])
+    fault_factor = np.array([1.0])
+    strength = np.array([1.0])
+
+    reduced_strength, _ = rheology.magma_export_strength_and_volume(hc, closing, years_myr=1.0, fault_factor=fault_factor, strength=strength)
+
+    full_hc, _, _ = rheology.apply_convergent_deformation(hc, hm, closing, years_myr=1.0, fault_factor=fault_factor, strength=strength)
+    reduced_hc, _, _ = rheology.apply_convergent_deformation(hc, hm, closing, years_myr=1.0, fault_factor=fault_factor, strength=reduced_strength)
+
+    assert reduced_hc[0] < full_hc[0]
+
+
+def test_magma_export_exempts_a_node_already_near_the_ceiling():
+    """A node already at/past MAGMA_EXPORT_HC_CEILING_FRACTION of the ceiling reverts to full,
+    undiminished strength and contributes nothing to the export pool -- its own ceiling-
+    overflow supply into the near-field ring (apply_delamination_melt_intrusion) must stay
+    exactly as it was before this mechanism existed (GitHub issue #205's round-2 review, point
+    1: skimming a near-ceiling node here too would starve that ring's other melt supply)."""
+    near_ceiling_hc = np.array([rheology.MAGMA_EXPORT_HC_CEILING_FRACTION * lithosphere.MAX_CRUSTAL_THICKNESS_M + 1.0])
+    closing = np.array([_closing_m_per_s(5.0)])
+    strength = np.array([1.0])
+
+    reduced_strength, export_hc_m = rheology.magma_export_strength_and_volume(
+        near_ceiling_hc, closing, years_myr=1.0, fault_factor=np.array([1.0]), strength=strength
+    )
+
+    assert reduced_strength[0] == strength[0]
+    assert export_hc_m[0] == 0.0
+
+
+def test_magma_export_volume_scales_with_export_fraction(monkeypatch):
+    hc = np.array([35_000.0])
+    closing = np.array([_closing_m_per_s(5.0)])
+    strength = np.array([1.0])
+
+    monkeypatch.setattr(rheology, "MAGMA_EXPORT_FRACTION", 0.05)
+    low = rheology.magma_export_strength_and_volume(hc, closing, years_myr=1.0, fault_factor=np.array([1.0]), strength=strength)[1]
+    monkeypatch.setattr(rheology, "MAGMA_EXPORT_FRACTION", 0.3)
+    high = rheology.magma_export_strength_and_volume(hc, closing, years_myr=1.0, fault_factor=np.array([1.0]), strength=strength)[1]
+
+    assert high[0] > low[0]
+
+
 def test_rift_magmatism_flux_saturates_at_a_fast_extension_rate():
     """The extension multiplier is capped, mirroring apply_arc_magmatic_thickening's own
     convergence cap -- an unusually fast rift can't flux unbounded melt."""

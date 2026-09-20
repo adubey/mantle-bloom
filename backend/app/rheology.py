@@ -143,6 +143,73 @@ def apply_convergent_deformation(
     return new_hc, new_hm, overflow_hc_m
 
 
+# Lateral magma transport (GitHub issue #205, follow-up to #120's "Land fraction slowly
+# declines"). Everything that thickens crust today acts right at a collision boundary (or, at
+# most, `lithosphere_plate.py`'s own fixed ~350km near-field ring on the *same* plate) -- #120's
+# own remaining land-loss driver is that nothing carries mass from a plate being over-thickened
+# by collision to a distant, over-stretched interior losing land to thinning. This is the
+# *source* half of the fix (the transport/deposit half lives in the new magma_transport.py,
+# called from world.step_world): a small, continuous skim off the same yield-driven strain flux
+# `apply_convergent_deformation` already computes, diverted to a mobile magma parcel instead of
+# thickening the node in place. It's melt, not diverted solid rock -- a fraction of the strain
+# that would otherwise pile up as coherent shortened crust instead partially melts at the point
+# of generation (real over-thickened collision-belt crust really does partially anatectically
+# melt), and melt is exactly the thing in this model that can travel (matching every other
+# magmatic-addition path here -- arc, delamination, rift underplating -- already being Hc-only,
+# no Hm coupling). Because this comes *out of* `apply_convergent_deformation`'s own strain
+# increment (not an independent addition on top), it correctly shrinks how much reaches that
+# function's existing ceiling-overflow path (`overflow_hc_m`) rather than being additive to it.
+#
+# Design discussion (GitHub issue #205) went through two full review rounds before landing here
+# (v3): the earlier drafts skimmed the near-field ring too, which turned out to starve that
+# ring's *other* melt supply (`apply_delamination_melt_intrusion`'s own overflow-fed intrusion,
+# lithosphere_plate.py) a second, independent way -- so this only ever applies to the core
+# `convergent` mask, never `near_field`. Earlier drafts also skimmed every convergent node
+# unconditionally; a node already close enough to `MAX_CRUSTAL_THICKNESS_M` to be generating (or
+# about to generate) ceiling overflow needs that overflow undisturbed (it is the near-field
+# ring's only supply), so `MAGMA_EXPORT_HC_CEILING_FRACTION` exempts nodes already past that
+# headroom threshold -- they get back their full, undiminished strength and contribute nothing
+# to the export pool.
+MAGMA_EXPORT_HC_CEILING_FRACTION = 0.9
+# Placeholder pending an #120-style empirical toggle sweep (against land fraction *and* #146's
+# own ELEV_CHANGE_COLLISION land-share diagnostic, per the issue's own agreed validation plan) --
+# no first-principles default exists for this any more than for GRANITIC_MELT_FRACTION above.
+MAGMA_EXPORT_FRACTION = 0.1
+
+
+def magma_export_strength_and_volume(
+    hc_m: np.ndarray,
+    closing_rate_m_per_s: np.ndarray,
+    years_myr: float,
+    fault_factor: np.ndarray,
+    strength: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """For the core convergent band only (never the near-field ring -- see module comment
+    above): splits `strength` into what stays in place (`reduced_strength`, to feed
+    `apply_convergent_deformation` in the caller's place of the original `strength`) and how
+    much Hc-equivalent volume per node is withheld into a mobile magma parcel instead
+    (`export_hc_m`).
+
+    Computed closed-form rather than by calling `apply_convergent_deformation` twice: `strength`
+    is a pure multiplier on `fractional_change`, so the volume withheld by scaling it down by
+    `MAGMA_EXPORT_FRACTION` is exactly `hc_m * full_fractional_change * MAGMA_EXPORT_FRACTION`,
+    where `full_fractional_change` is the *unreduced* fractional thickening
+    `apply_convergent_deformation` would otherwise apply (before any ceiling clip -- the clip
+    only matters to the in-place path, not to how much strain was available to skim from).
+
+    A node already at/past `MAGMA_EXPORT_HC_CEILING_FRACTION * MAX_CRUSTAL_THICKNESS_M` is left
+    completely undisturbed (`reduced_strength == strength`, `export_hc_m == 0`) -- it reverts to
+    ordinary full-strength behaviour so `apply_convergent_deformation`'s own ceiling-overflow
+    path, the near-field ring's only supply, is unaffected by this mechanism entirely."""
+    rate = np.clip(plastic_strain_rate_per_myr(closing_rate_m_per_s), 0.0, None)
+    full_fractional_change = rate * years_myr * fault_factor * strength
+    has_headroom = hc_m < MAGMA_EXPORT_HC_CEILING_FRACTION * lithosphere.MAX_CRUSTAL_THICKNESS_M
+    export_fraction = np.where(has_headroom, MAGMA_EXPORT_FRACTION, 0.0)
+    reduced_strength = strength * (1.0 - export_fraction)
+    export_hc_m = hc_m * full_fractional_change * export_fraction
+    return reduced_strength, export_hc_m
+
+
 def stretch_components(sep_theta: np.ndarray, sep_phi: np.ndarray, gap_rad: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(theta_gap, phi_gap): `gap_rad` of required rift-closing stretch, decomposed along a
     node's own local (theta, phi) tangent basis by the local separation direction

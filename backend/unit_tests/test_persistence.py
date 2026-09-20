@@ -108,6 +108,14 @@ def test_loading_a_world_pickled_before_corner_notch_log_existed_defaults_to_emp
     assert loaded.corner_notch_log == []
 
 
+def test_loading_a_world_pickled_before_pending_magma_parcels_existed_defaults_to_empty():
+    world = generate_world(seed=3, num_plates=4)
+    del world.__dict__["pending_magma_parcels"]
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.pending_magma_parcels == []
+
+
 def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
     # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).

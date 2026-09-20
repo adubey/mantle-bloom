@@ -129,6 +129,12 @@ ELEV_CHANGE_FAULT_STRIKE_SLIP = 17  # strike-slip transpressional ridge / transt
 # VOLCANIC_PLAIN_*) -- distinct from ELEV_CHANGE_VOLCANO, which is reserved for the sharp
 # point bump at the vent itself.
 ELEV_CHANGE_VOLCANIC_PLAIN = 18
+# Lateral magma transport deposit (GitHub issue #205, magma_transport.py): a cross-plate melt
+# deposit landing far from the collision boundary that generated it, so it can't ride along
+# inside lithosphere_plate.deform()'s own per-line reason-stamping block the way delamination
+# melt does (that one shares ELEV_CHANGE_COLLISION only because it's applied *inside* the same
+# deform() call). Structural, so it gets the same erosion-override protection as the other codes.
+ELEV_CHANGE_LATERAL_MAGMA = 19
 
 # Human-readable label per code, index == code -- kept here (not in render_image.py or the
 # frontend) as the single source both sync against, same precedent as biomes.BIOME_NAMES.
@@ -152,6 +158,7 @@ ELEV_CHANGE_LABELS = (
     "Fault: reverse (thrust)",
     "Fault: strike-slip",
     "Volcanic plain",
+    "Lateral magma transport deposit",
 )
 
 REGULARIZE_INTERVAL_STEPS = 5
