@@ -60,7 +60,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, lithosphere, mantle, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, lithosphere, magma_transport, mantle, rheology, terrain_noise, torque, worldsketch
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -808,9 +808,39 @@ class LithospherePlate(PlateWithLines):
                 # thrust onto the leading edge in `_grow_or_shrink_line_for_deform` (see
                 # `_redistribute_accreted_column`). This path is just the ordinary
                 # yield-limited plastic thickening.
+
+                # Lateral magma export (GitHub issue #205, follow-up to #120's "Land fraction
+                # slowly declines"): divert a fraction of the core convergent band's own strain
+                # increment to a mobile magma parcel instead of thickening the node in place --
+                # see rheology.magma_export_strength_and_volume's own docstring for the full
+                # mechanism/reasoning. Masked to `convergent` only (never the near-field ring
+                # below): the ring's own melt supply already comes from the delamination-
+                # overflow path a few lines down, and skimming it here too would starve that
+                # supply a second, independent way (see that function's own docstring on why
+                # near-ceiling nodes are exempt for the same reason).
+                core_idx = np.flatnonzero(thicken)[convergent[thicken]]
+                used_strength = orogen_strength[thicken]
+                if len(core_idx) > 0:
+                    reduced_strength, export_hc = rheology.magma_export_strength_and_volume(
+                        hc[core_idx], closing_rate[core_idx], years_myr, fault_factor[core_idx], orogen_strength[core_idx],
+                    )
+                    used_strength = used_strength.copy()
+                    used_strength[convergent[thicken]] = reduced_strength
+                    exporting = export_hc > 0.0
+                    if np.any(exporting):
+                        node_idx = core_idx[exporting]
+                        volumes_m3 = export_hc[exporting] * lithosphere.node_area_m2(spacing_rad)
+                        origins = own_points[sl][node_idx]
+                        world.pending_magma_parcels.extend(
+                            magma_transport.MagmaParcel(
+                                origin_xyz=origins[i], volume_m3=float(volumes_m3[i]), step_generated=world.steps_taken
+                            )
+                            for i in range(len(node_idx))
+                        )
+
                 new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
                     hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
-                    fault_factor[thicken], strength=orogen_strength[thicken],
+                    fault_factor[thicken], strength=used_strength,
                 )
                 hc[thicken] = new_hc
                 hm[thicken] = new_hm

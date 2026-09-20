@@ -175,6 +175,27 @@ def test_apply_erosion_stamps_geomorphic_provenance_but_leaves_a_sticky_structur
     assert np.any((after != ELEV_CHANGE_COLLISION) & (after != ELEV_CHANGE_NONE))
 
 
+def test_apply_erosion_treats_lateral_magma_as_a_sticky_structural_code():
+    """GitHub issue #205: ELEV_CHANGE_LATERAL_MAGMA is documented (elevation_lines.py,
+    magma_transport.py) as getting the same erosion-override protection as every other
+    structural code -- confirm `apply_erosion`'s own `prior_structural` mask actually includes
+    it, not just the comment claiming so."""
+    from app.elevation_lines import ELEV_CHANGE_LATERAL_MAGMA, ELEV_CHANGE_NONE
+
+    world = generate_world(seed=21, num_plates=8)
+    for p in world.plates:
+        for l in p.lines:
+            if len(l):
+                l.set_fields(elev_change_reason=np.full(len(l), ELEV_CHANGE_LATERAL_MAGMA, dtype=float))
+
+    erosion.apply_erosion(world, years=1_000_000)
+
+    after = plates.collect_all_elev_change_reason(world.plates)
+    kept = np.mean(after == ELEV_CHANGE_LATERAL_MAGMA)
+    assert kept > 0.8
+    assert np.any((after != ELEV_CHANGE_LATERAL_MAGMA) & (after != ELEV_CHANGE_NONE))
+
+
 def test_earthquake_erosion_multiplier_bumps_near_the_epicentre_only():
     world = World(seed=0, plates=[])
     world.elapsed_years = 1_000_000

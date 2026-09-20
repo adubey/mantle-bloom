@@ -480,6 +480,7 @@ _ELEV_REASON_RGB = np.array(
         (176, 60, 90),    # 16 FAULT_REVERSE -- magenta-red (intraplate shortening)
         (230, 190, 70),   # 17 FAULT_STRIKE_SLIP -- warm yellow (wrench)
         (224, 130, 24),   # 18 VOLCANIC_PLAIN -- burnt orange (distinct from VOLCANO's hot red)
+        (232, 90, 190),   # 19 LATERAL_MAGMA -- hot pink (melt arriving far from its own source)
     ],
     dtype=np.uint8,
 )

@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, mantle, merge_split, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, magma_transport, mantle, merge_split, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -137,6 +137,19 @@ class World:
     # basin does. Diagnostic only, nothing in the physics reads it back. A `default_factory`
     # field -> backfilled on load (see persistence._backfill_added_fields).
     gap_tracks: list = field(default_factory=list)
+    # Cross-step memory for lateral magma transport (GitHub issue #205, magma_transport.py):
+    # exported convergent-boundary melt banked here every step (by LithospherePlate.deform())
+    # and drained -- fully or partially, see MagmaParcel.unplaced_cycles -- every
+    # magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS'th step's magma_transport.
+    # run_magma_transport call below. A `default_factory` field -> backfilled on load (see
+    # persistence._backfill_added_fields).
+    pending_magma_parcels: list = field(default_factory=list)
+    # Years accumulated since the last run_magma_transport firing -- that pass's own per-
+    # destination-node rate cap needs the *banked* elapsed time (parcels queue across
+    # MAGMA_TRANSPORT_INTERVAL_STEPS steps), not just the current step's own `years`. Reset to
+    # 0.0 after each firing. A plain-float default, so an old pickle falls through to 0.0 with
+    # no persistence backfill needed (same as steps_taken).
+    magma_transport_banked_years: float = 0.0
     # Cross-step memory for the "Added/Removed Points" debug view's removed-node half (the
     # added half needs no cross-step state -- it reads straight off each live node's own
     # ElevationLine.node_created_years). A node vanishes from every plate's own node cloud the
@@ -841,6 +854,11 @@ def step_world_progress(world: World, years: float):
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
         faults.update_faults(world, years)
+        # Lateral magma export (magma_transport.py) just banked this step's own share of
+        # exported convergent-boundary melt into world.pending_magma_parcels above (inside
+        # deform()) -- bank the elapsed time alongside it so the eventual transport-pass firing
+        # below can rate-cap its deposit against the *banked* interval, not just its own step.
+        world.magma_transport_banked_years += years
     world.elapsed_years += years
     if world.simulate_plate_movement:
         for message in merge_split.apply_topology_changes(world, years):
@@ -863,6 +881,15 @@ def step_world_progress(world: World, years: float):
             # cadence as fill_gaps_by_growing_neighbours above, since both are the same
             # whole-sphere sweep -- see gaps.reconcile_gap_tracks.
             gaps.reconcile_gap_tracks(world)
+        # Lateral magma transport (GitHub issue #205, magma_transport.py): another whole-sphere
+        # pass, so gated the same way and (deliberately) placed after topology has fully
+        # settled for this step -- same reasoning as gaps.py's own placement here, since this
+        # pass writes into destination lines by (plate_id, line_index) and running it earlier
+        # could target a line that subducts, splits, or merges away in this same step.
+        if world.steps_taken % magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS == 0:
+            for message in magma_transport.run_magma_transport(world, world.magma_transport_banked_years / 1_000_000.0):
+                world.log_event(message)
+            world.magma_transport_banked_years = 0.0
 
     erosion_result = None
     if world.simulate_climate_biomes:
