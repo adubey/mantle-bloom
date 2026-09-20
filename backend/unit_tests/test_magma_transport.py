@@ -204,6 +204,31 @@ def test_stale_parcel_with_no_headroom_is_dropped_after_max_age_cycles():
     assert world.pending_magma_parcels == []
 
 
+def test_deposit_never_exceeds_a_destinations_own_headroom_to_the_ceiling():
+    """A destination's headroom to MAX_CRUSTAL_THICKNESS_M -- not just the per-step rate cap
+    (`cap_hc`) -- must bound both the actual Hc write (`_scatter_write_deposits` already clips
+    there) and this pass's own accounting (`placed_per_parcel` / the logged deposited total),
+    so an unusually large `banked_myr` (an outsized step's own `years`) can't make the pass
+    credit more than what actually landed."""
+    world, plate_a, plate_b = _two_adjacent_continental_plates()
+    target = geometry.normalize(np.array([-0.05, 0.0, 1.0]))
+    line_index, node_index, _ = _thin_nearest_node(plate_b, target, hc_m=34_000.0)
+
+    origin = geometry.normalize(np.array([0.05, 0.0, 1.0]))
+    world.pending_magma_parcels.append(magma_transport.MagmaParcel(origin_xyz=origin, volume_m3=1e16, step_generated=0))
+
+    banked_myr = 1_000.0  # cap_hc = 300,000 m -- far past this node's own ~50,000 m headroom
+    events = magma_transport.run_magma_transport(world, banked_myr=banked_myr)
+
+    hc_after = plate_b.lines[line_index].crustal_thickness_m[node_index]
+    assert hc_after == lithosphere.MAX_CRUSTAL_THICKNESS_M
+    actual_delta = hc_after - 34_000.0
+
+    assert len(events) == 1
+    reported_m = float(events[0].split(" ")[4])
+    assert np.isclose(reported_m, actual_delta, rtol=1e-3)
+
+
 def test_fully_placed_parcel_is_removed_in_one_firing():
     world, plate_a, plate_b = _two_adjacent_continental_plates()
     target = geometry.normalize(np.array([-0.05, 0.0, 1.0]))

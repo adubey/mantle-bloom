@@ -261,7 +261,19 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
         total_requested_hc = np.zeros(len(dest_index))
         np.add.at(total_requested_hc, dest_idx, requested_hc)
         cap_hc = max(MAGMA_DEPOSIT_RATE_M_PER_MYR * banked_myr, 0.0)
-        realized_at_dest = np.minimum(total_requested_hc, cap_hc)
+        # Also bounded by each destination's own headroom to MAX_CRUSTAL_THICKNESS_M (the same
+        # ceiling `_scatter_write_deposits` clips its actual Hc write to). Ordinary weighting
+        # already keeps destinations well under this -- weight goes to 0 at
+        # REFERENCE_HC_CONTINENTAL_M, far below the ceiling -- but an unusually large
+        # `banked_myr` (an outsized step's own `years`) could otherwise make `cap_hc` promise
+        # more than a near-ceiling destination has room for; without this, the promised amount
+        # (used below for `placed_per_parcel` and the logged deposited total) would silently
+        # drift from what `_scatter_write_deposits` actually writes, losing mass without
+        # accounting for it -- unlike every other bounded-rate melt path in this codebase
+        # (e.g. rheology.apply_delamination_melt_intrusion), where "can't be placed" is always
+        # reflected in what the caller is told was placed.
+        headroom_hc = np.clip(lithosphere.MAX_CRUSTAL_THICKNESS_M - dest_index.hc_m, 0.0, None)
+        realized_at_dest = np.minimum(np.minimum(total_requested_hc, cap_hc), headroom_hc)
         safe_total = np.where(total_requested_hc > 0.0, total_requested_hc, 1.0)
         ratio_at_dest = np.where(total_requested_hc > 0.0, realized_at_dest / safe_total, 0.0)
 
