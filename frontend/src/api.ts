@@ -330,6 +330,9 @@ export interface WorldStats {
   // match the world's actual current coastline. Absent on older records -- treat missing as
   // false (unknown). GitHub issue #121.
   land_fraction_stale?: boolean;
+  // Fraction of land cells within 5% of the current maximum height above sea level.
+  // Missing in older saved histories; null when there are no land cells.
+  land_near_max_elevation_fraction?: number | null;
   // Land only (height above the current sea level) -- see stats.py's module docstring.
   elevation_min_m: number | null;
   elevation_max_m: number | null;

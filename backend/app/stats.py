@@ -175,6 +175,15 @@ def compute_stats(world: World) -> dict:
     total = is_ocean.size
 
     elevation_min, elevation_max, elevation_mean, elevation_std = _min_max_mean_std(fields.elevation_m[is_land])
+    # Use the same reconciled land mask as the elevation stats. Measure the 5% band
+    # relative to sea level, including its lower boundary; abs also handles worlds
+    # whose highest land is a below-sea-level endorheic basin.
+    land_height = fields.elevation_m[is_land] - world.sea_level_m
+    land_near_max_elevation_fraction = None
+    if land_height.size:
+        peak = float(land_height.max())
+        land_near_max_elevation_fraction = float(np.mean(land_height >= peak - 0.05 * abs(peak)))
+
     ocean_depth = world.sea_level_m - fields.elevation_m[is_ocean]
     ocean_depth_min, ocean_depth_max, ocean_depth_mean, ocean_depth_std = _min_max_mean_std(ocean_depth)
     land_temp_min, land_temp_max, land_temp_mean, land_temp_std = _min_max_mean_std(fields.land_temperature_c[is_land])
@@ -225,6 +234,7 @@ def compute_stats(world: World) -> dict:
             world.hydrology_cache is not None
             and world.hydrology_cache_step != world.steps_taken
         ),
+        "land_near_max_elevation_fraction": land_near_max_elevation_fraction,
         "elevation_min_m": elevation_min,
         "elevation_max_m": elevation_max,
         "elevation_mean_m": elevation_mean,

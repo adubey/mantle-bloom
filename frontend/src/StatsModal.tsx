@@ -124,6 +124,10 @@ const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> =
     // Raw elevation>sea_level node fraction -- always fresh, unlike Land/Water above (see
     // WorldStats.land_fraction_node's own comment, GitHub issue #121).
     metricEntry(pctMetric("land_fraction_node", "Land (raw)", (s) => s.land_fraction_node ?? null)),
+    metricEntry(pctMetric(
+      "land_near_max_elevation_fraction", "Land within 5% of max elevation",
+      (s) => s.land_near_max_elevation_fraction ?? null,
+    )),
     groupEntry(
       numGroup(
         "elevation_m", "Elevation (land)",
