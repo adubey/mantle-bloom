@@ -1,5 +1,7 @@
 # Working in this repo
 
+Analysis scripts can be checked in under `bin/debug/`.
+
 ## Working trees
 
 Give each issue its own working tree (e.g. `git worktree add`) unless told
