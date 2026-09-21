@@ -341,21 +341,13 @@ crust type, and how far the effect reaches (and its shape with distance) differs
 The rates/reaches below are unchanged from the model `step_boundaries` used to run; only the
 trigger (contested, not a positive closing rate) changed:
 
-- **Continent-continent collision** (both plates continental) -> elevation rises
-  (`CONVERGENT_MOUNTAIN_RATE_M_PER_MYR`), scaled by an intensity that fades from 1 at zero
-  distance to 0 at `COLLISION_RANGE_RAD` (400km) -- a broad crumple zone, matching how wide a
-  real collision belt is (e.g. the Himalaya/Tibetan Plateau). The same collision also adds a
-  second, much gentler rise (`FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR`, well under a tenth of the
-  near-field rate) far inland: zero out to `FAR_FIELD_COLLISION_INNER_RAD` (1000km, leaving
-  the 400-1000km gap where the near-field crumple zone has already faded to nothing
-  untouched), ramping to full intensity there and back to zero by
-  `FAR_FIELD_COLLISION_OUTER_RAD` (3000km). Real collisions transmit stress this far into the
-  continental interior -- the Himalayan-Tibetan and Arabian-Eurasian (Zagros) collisions both
-  have deformation reaching comparable distances (Tien Shan/Baikal, Anatolia), the
-  Variscan-Appalachian and Uralian orogenies both left belts wider than their core sutures,
-  and the Laramide orogeny's basement-cored uplifts sat ~1000-1500km inland of the margin.
-  Unlike the divergent cases below, this doesn't relax toward a target -- it adds every step
-  it applies, so it can accumulate into a substantial rise over a long-lived collision.
+- **Continent-continent collision** (both plates continental) -> elevation rises through real
+  crustal thickening, scaled by the Mohr-Coulomb deformation model and the boundary-band /
+  near-field-ring intensity in `LithospherePlate.deform` -- a broad crumple zone, matching how
+  wide a real collision belt is (e.g. the Himalaya/Tibetan Plateau). Older builds also added a
+  direct far-field elevation delta, but issue #206 retired that hack now that lateral magma
+  transport can move collision-generated melt into distant thin continental crust and raise it
+  through isostasy-backed Hc growth instead.
 
   **Reverse faults: mountain ranges aren't uniformly smooth.** Real shortening in a collision
   belt isn't spread evenly across the whole zone -- fold-thrust belts partition it into
@@ -374,9 +366,7 @@ trigger (contested, not a positive closing rate) changed:
   the same crust as the plate rotates, a fixed geological feature rather than something that
   reshuffles every step, the same "attached to the crust, not the world" property every other
   persistent field in this codebase already has (see [Why not a grid](#why-not-a-grid)).
-  Deliberately not applied to the far-field term, which represents stress transmitted broadly
-  into the continental interior, not the belt's own discrete thrust-sheet structure. Confirmed
-  directly at a real seed run 20 steps (60 Myr): with this and the seismic-erosion addition
+  Confirmed directly at a real seed run 20 steps (60 Myr): with this and the seismic-erosion addition
   below, the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped from roughly 9% to
   under 2% versus the same run without either -- mountain ranges keep growing, but no longer
   collapse into a flat plateau at the elevation ceiling.
@@ -2877,19 +2867,12 @@ real "mountains look too narrow at higher detail" bug, not just a subjective imp
 km figure first, then dividing by this step's *actual* `spacing_rad` to get the node count --
 the belt now reads the same width across every `node_density` / detail-level setting.
 
-**Far-field collision uplift is now live.** `ELEV_CHANGE_COLLISION_FAR_FIELD` has existed in
-the "Last elevation change" legend since the removed v1 `PlateWithLines.deform`, but the live
-`LithospherePlate.deform` originally never applied an
-equivalent term, so the legend swatch could never actually paint. `LithospherePlate.deform` now
-carries its own far-field band (`FAR_FIELD_INNER_KM`/`FAR_FIELD_OUTER_KM`, 300-1000 km, rate
-`FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR` = 60 m/Myr, applied as a direct elevation delta rather than
-through `Hc`/`Hm`): a real continent-continent collision transmits uplift-inducing stress deep
-into the stable interior (the Tibetan Plateau's own far-field effects raise terrain across much
-of interior Asia). Gated on distance to the nearest *continental* neighbour (queried out to
-`FAR_FIELD_OUTER_KM`, well past the near-boundary `reach_rad` the rest of `deform()` uses) and
-on this plate having an active continent-continent collision *somewhere* on its edge this step
--- a quiet continent's interior never uplifts on its own. Zeroed wherever the near-field
-ring/contested band already applies, so the two bands never double-count the same node.
+**Far-field collision uplift is retired.** `ELEV_CHANGE_COLLISION_FAR_FIELD` remains a legacy
+"Last elevation change" code so old saves still render intelligibly, but
+`LithospherePlate.deform` no longer applies a direct far-field elevation delta. Issue #206
+retired that unbacked shortcut after lateral magma transport landed: collision-generated melt
+can now reach distant thin continental crust as real Hc growth, so far-field relief comes
+through isostasy rather than a separate raw elevation term.
 
 ### Effect sizes
 

@@ -362,7 +362,7 @@ const SOIL_QUALITY_GRADIENT: LegendGradient = {
 export const ELEV_REASON_RGB_ENTRIES: [string, [number, number, number]][] = [
   ["Unchanged since generation", [112, 112, 120]],
   ["Continental collision uplift", [150, 28, 28]],
-  ["Far-field collision uplift", [198, 120, 110]],
+  ["Legacy far-field collision uplift", [198, 120, 110]],
   ["Subduction-arc uplift", [214, 118, 40]],
   ["Oceanic trench subsidence", [86, 44, 110]],
   ["Transform pressure ridge", [198, 160, 30]],

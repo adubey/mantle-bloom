@@ -106,7 +106,7 @@ ELEV_CHANGE_STRUCTURAL_OVERRIDE_M_PER_MYR = 100.0
 
 ELEV_CHANGE_NONE = 0  # untouched since initial generation (or below the per-step threshold)
 ELEV_CHANGE_COLLISION = 1  # continent-continent near-field collision uplift
-ELEV_CHANGE_COLLISION_FAR_FIELD = 2  # broad far-field collision uplift, deep in the interior
+ELEV_CHANGE_COLLISION_FAR_FIELD = 2  # legacy broad far-field collision uplift, retired in #206
 ELEV_CHANGE_SUBDUCTION_ARC = 3  # oceanic-under-continental volcanic-arc uplift
 ELEV_CHANGE_TRENCH = 4  # subducting oceanic plate's own trench subsidence
 ELEV_CHANGE_TRANSFORM = 5  # transform-boundary pressure-ridge uplift
@@ -141,7 +141,7 @@ ELEV_CHANGE_LATERAL_MAGMA = 19
 ELEV_CHANGE_LABELS = (
     "Unchanged since generation",
     "Continental collision uplift",
-    "Far-field collision uplift",
+    "Legacy far-field collision uplift",
     "Subduction-arc uplift",
     "Oceanic trench subsidence",
     "Transform pressure ridge",

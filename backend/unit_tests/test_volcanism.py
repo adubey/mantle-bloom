@@ -67,7 +67,7 @@ def test_back_elevation_gain_does_not_launder_pre_existing_unbacked_drift_into_c
     # Code-review finding on issue #173's fix: solving crustal_thickness_m from a node's
     # *entire* current elevation (rather than the eruption's own incremental gain) would
     # retroactively bake any pre-existing unbacked drift -- e.g. from lithosphere_plate.deform()'s
-    # transform_uplift/far_field_uplift terms, kept as bare elevation deltas by design -- into
+    # transform_uplift, kept as a bare elevation delta by design -- into
     # real crust the moment that node erupts. The Hc bump one eruption produces must depend only
     # on ERUPTION_ELEVATION_M, not on how much unrelated drift the node happened to be carrying
     # beforehand.
