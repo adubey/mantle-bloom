@@ -187,10 +187,10 @@ def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_ma
     Anchored to the column's own current isostatic *equilibrium* (`isostatic_elevation(hc, hm,
     rho_c)`), never to raw `line.elevation` directly: a node can carry elevation
     `isostatic_elevation` doesn't actually back (e.g. lithosphere_plate.deform()'s
-    transform_uplift/far_field_uplift terms, kept as bare elevation deltas by design -- "local
-    relief without net crustal shortening"), and solving Hc from that raw value would
-    retroactively -- and hugely disproportionately -- launder that unrelated drift into real
-    crust the moment the node happens to erupt or slip again. Anchoring to the column's own
+    transform_uplift term, kept as a bare elevation delta by design -- "local relief without
+    net crustal shortening"), and solving Hc from that raw value would retroactively -- and
+    hugely disproportionately -- launder that unrelated drift into real crust the moment the
+    node happens to erupt or slip again. Anchoring to the column's own
     equilibrium instead means a caller only ever bills its own contribution; whatever debt/
     surplus already existed passes through untouched, riding along in the
     `line.elevation + isostatic_delta` sum below. v1/legacy lines with no Hc tracking

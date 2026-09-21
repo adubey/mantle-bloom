@@ -463,7 +463,7 @@ _ELEV_REASON_RGB = np.array(
     [
         (112, 112, 120),  # 0  NONE -- untouched since generation
         (150, 28, 28),    # 1  COLLISION -- dark red
-        (198, 120, 110),  # 2  COLLISION_FAR_FIELD -- dusty red
+        (198, 120, 110),  # 2  COLLISION_FAR_FIELD -- legacy dusty red
         (214, 118, 40),   # 3  SUBDUCTION_ARC -- orange
         (86, 44, 110),    # 4  TRENCH -- purple
         (198, 160, 30),   # 5  TRANSFORM -- gold

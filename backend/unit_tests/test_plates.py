@@ -1716,7 +1716,7 @@ def test_decompression_melting_at_or_below_sea_level_erupts_oceanic_crust():
     assert line.elevation[-1] < -3000.0
 
 
-# -- Issue #189 follow-up: unbacked transform_uplift/far_field_uplift debt decay -------------
+# -- Issue #189 follow-up: unbacked transform_uplift debt decay -----------------------------
 
 
 # A lone (no-neighbour) line's ends are free to `_stretch_end`/grow every step (nothing
@@ -1731,9 +1731,9 @@ _DEBT_TEST_INTERIOR = slice(10, -10)
 def _debt_test_plate(debt_m: float, hc0: float | None = None):
     """A single lone (no-neighbour) continental plate whose one line's `elevation` sits
     `debt_m` above what its own Hc/Hm isostatically support -- the same "unbacked debt" shape
-    transform_uplift/far_field_uplift leave behind (see UNBACKED_RELIEF_DECAY_PER_MYR's own
+    transform_uplift leaves behind (see UNBACKED_RELIEF_DECAY_PER_MYR's own
     comment in lithosphere_plate.py). No neighbours at all means classify_boundary_nodes
-    returns every mask empty (convergent/divergent/transform/near_field/far_field), so this
+    returns every mask empty (convergent/divergent/transform/near_field), so this
     isolates the new decay term from every other elevation-moving path in deform()."""
     from app.lithosphere import RHO_CONTINENTAL_CRUST, isostatic_elevation, reference_thickness
     from app.lithosphere_plate import LithospherePlate

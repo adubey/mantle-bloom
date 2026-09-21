@@ -206,14 +206,6 @@ RIFT_RANGE_RAD = RIFT_RANGE_KM / PLANET_RADIUS_KM
 COLLISION_RANGE_KM = 400.0
 COLLISION_RANGE_RAD = COLLISION_RANGE_KM / PLANET_RADIUS_KM
 
-# Collision's second, much weaker and much farther-reaching band -- zero out to
-# FAR_FIELD_COLLISION_INNER_RAD, then ramping down to zero by FAR_FIELD_COLLISION_OUTER_RAD.
-FAR_FIELD_COLLISION_INNER_KM = 1000.0
-FAR_FIELD_COLLISION_OUTER_KM = 3000.0
-FAR_FIELD_COLLISION_INNER_RAD = FAR_FIELD_COLLISION_INNER_KM / PLANET_RADIUS_KM
-FAR_FIELD_COLLISION_OUTER_RAD = FAR_FIELD_COLLISION_OUTER_KM / PLANET_RADIUS_KM
-FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR = 60.0
-
 # Reverse faults: real shortening in a collision belt isn't smooth vertical uplift spread
 # evenly across the whole zone -- fold-thrust belts partition it into discrete thrust sheets
 # (fast-rising ridges) separated by footwall synclines/intermontane basins that keep rising far
@@ -251,7 +243,6 @@ EXTEND_THRESHOLD_RAD = 1.3 * TARGET_LINE_SPACING_RAD
 MAX_BOUNDARY_EFFECT_RAD = max(
     FAR_THRESHOLD_RAD,
     COLLISION_RANGE_RAD,
-    FAR_FIELD_COLLISION_OUTER_RAD,
     SUBDUCTION_ARC_OUTER_RAD,
     TRANSFORM_RANGE_RAD,
     RIFT_RANGE_RAD,
@@ -322,14 +313,6 @@ def _band_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
     return np.clip(1.0 - np.abs(dist - mid) / half_width, 0.0, 1.0)
 
 
-def _far_field_intensity(dist: np.ndarray, inner: float, outer: float) -> np.ndarray:
-    """One-sided ramp: 0 below `inner`, 1.0 right at `inner`, decaying linearly to 0 by
-    `outer` -- the collision far-field band, offset inland rather than continuous with the
-    boundary itself."""
-    ramp = np.clip(1.0 - (dist - inner) / (outer - inner), 0.0, 1.0)
-    return np.where(dist < inner, 0.0, ramp)
-
-
 def _far_threshold_rad(spacing_rad: float) -> float:
     return 1.6 * spacing_rad
 
@@ -342,7 +325,6 @@ def _max_boundary_effect_rad(spacing_rad: float) -> float:
     return max(
         _far_threshold_rad(spacing_rad),
         COLLISION_RANGE_RAD,
-        FAR_FIELD_COLLISION_OUTER_RAD,
         SUBDUCTION_ARC_OUTER_RAD,
         TRANSFORM_RANGE_RAD,
         RIFT_RANGE_RAD,
@@ -1807,5 +1789,4 @@ def _land_noise_threshold(
     target_sub_fraction = min(land_fraction / continental_area_fraction, 1.0)
     continental_noise = noise.sample(sample_pts[is_continental])
     return float(np.quantile(continental_noise, 1.0 - target_sub_fraction)) - sealevel_noise_offset
-
 

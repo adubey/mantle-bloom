@@ -50,8 +50,8 @@ close a gap an earlier draft's review caught:
   that `apply_delamination_melt_intrusion` already had to fix once.
 - The deposit uses the same before/after isostasy-*delta* idiom `LithospherePlate.deform()`
   itself uses (see that method's own comment on why an elevation overwrite would silently
-  launder/erase erosion history or existing transform/far-field debt already baked into a
-  line's elevation), with per-node-resolved crust density (a destination can be a
+  launder/erase erosion history or existing transform debt already baked into a line's
+  elevation), with per-node-resolved crust density (a destination can be a
   diverged-type patch, same reason the continental filter above is per-node not per-plate).
 - Hc-only at both ends, no Hm coupling: this is genuinely mantle-derived melt (see
   `rheology.magma_export_strength_and_volume`'s own docstring for why), not relocated solid
@@ -84,12 +84,9 @@ if TYPE_CHECKING:
 # cadence as gaps.GAP_FILL_INTERVAL_STEPS, which world.step_world calls it alongside.
 MAGMA_TRANSPORT_INTERVAL_STEPS = 4
 
-# Starting sweep value only, not a physically-shared quantity: this reuses FAR_FIELD_OUTER_KM's
-# order of magnitude (lithosphere_plate.py) purely because it's a plausible "how far can a
-# collision's mass reach" scale to begin a sweep from -- that constant represents a different
-# process (elastic stress transmission backing a bare elevation delta), so the two are free to
-# diverge once this is actually tuned (see #120-style toggle-sweep note on rheology.
-# MAGMA_EXPORT_FRACTION).
+# Starting sweep value only, not a physically-shared quantity: broad enough to carry collision
+# melt well beyond the boundary, still regional rather than whole-continent/global. Tune with
+# the same #120-style toggle-sweep methodology as rheology.MAGMA_EXPORT_FRACTION.
 MAGMA_TRANSPORT_RANGE_KM = 1000.0
 
 # Same order of magnitude as rheology.DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR (300 m/Myr) --
@@ -191,12 +188,9 @@ def _weighted_destination_pairs(
     """Every (parcel, destination) pair within `range_rad` with nonzero weight, as three flat
     arrays `(parcel_idx, dest_idx, weight)` -- weight is thinness-relative-to-reference
     (`REFERENCE_HC_CONTINENTAL_M - hc`, floored at 0) times a linear inverse-distance falloff to
-    zero at `MAGMA_TRANSPORT_RANGE_KM`, the same ramp shape
-    `lithosphere_plate._far_field_intensity` already uses elsewhere in this codebase. Distance
-    is the plain cKDTree chord distance over unit-sphere points, times `PLANET_RADIUS_KM` -- the
-    same "chord stands in for great-circle arc length" approximation the far-field collision
-    code (lithosphere_plate.py) already relies on at this same ~1000 km scale (well under 1%
-    error there)."""
+    zero at `MAGMA_TRANSPORT_RANGE_KM`. Distance is the plain cKDTree chord distance over
+    unit-sphere points, times `PLANET_RADIUS_KM`; at this regional scale the chord/arc error is
+    well under 1%."""
     origin_tree = cKDTree(parcel_origins_xyz)
     candidates = origin_tree.query_ball_tree(dest_index.tree, range_rad)
 

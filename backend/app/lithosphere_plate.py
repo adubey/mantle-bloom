@@ -23,7 +23,6 @@ from scipy.spatial import cKDTree
 from . import geometry
 from .elevation_lines import (
     ELEV_CHANGE_COLLISION,
-    ELEV_CHANGE_COLLISION_FAR_FIELD,
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_NEW_CRUST,
     ELEV_CHANGE_RIFT,
@@ -143,28 +142,23 @@ OVERLAP_UPLIFT_SEVERITY_GAIN = 2.0
 # fault_influence-gated.
 TRANSFORM_UPLIFT_RATE_M_PER_MYR = 100.0
 
-# GitHub issue #189's "still open, separate from this fix" follow-up: transform_uplift and
-# far_field_uplift (below) are the last bare-elevation-delta paths deform() writes -- by
-# design (see their own comments: "no net crustal shortening", "doesn't need isostatic
-# bookkeeping"), unlike the faults.py bug #191 fixed, so they still don't go through
-# lithosphere.back_elevation_gain. But nothing ever pulls the elevation they add back down
-# either, and unlike every other write to `elevation` here (deform()'s own tectonic Hc
-# deltas, erosion.py's isostatic compensation, faults.py/volcanism.py's Hc-backed relief) this
-# is a source with literally no decay or consumption mechanism -- confirmed directly
-# (bin/debug/measure_transform_far_field_debt.py): the unbacked debt these two terms alone
-# create (`elevation` in excess of what the column's own Hc/Hm isostatically supports) grows
-# unboundedly over a long enough run, reaching 5-figure-meter gaps and real MAX_ELEVATION_M
-# pinning well past #189's original 120 My window. A real strike-slip pressure ridge or a
-# broad far-field swell isn't permanent the way a deep-rooted orogen is either -- lacking a
-# compensating crustal root, it's gravitationally unstable and works itself back down over
-# geologic time even without dedicated erosion attention. So any *existing* positive debt on
-# a line decays toward zero every step (this step's own fresh contribution is added after,
-# so it isn't clawed back before it even shows up) -- same age/relax-toward-target idiom
+# GitHub issue #189's "still open, separate from this fix" follow-up: transform_uplift is the
+# last bare-elevation-delta path deform() writes -- by design (see its own comment: no net
+# crustal shortening), unlike the faults.py bug #191 fixed, so it still doesn't go through
+# lithosphere.back_elevation_gain. But nothing ever pulls the elevation it adds back down
+# either, and unlike every other write to `elevation` here (deform()'s own tectonic Hc deltas,
+# erosion.py's isostatic compensation, faults.py/volcanism.py's Hc-backed relief) this is a
+# source with literally no decay or consumption mechanism. A real strike-slip pressure ridge
+# isn't permanent the way a deep-rooted orogen is either -- lacking a compensating crustal
+# root, it's gravitationally unstable and works itself back down over geologic time even
+# without dedicated erosion attention. So any *existing* positive debt on a line decays toward
+# zero every step (this step's own fresh contribution is added after, so it isn't clawed back
+# before it even shows up) -- same age/relax-toward-target idiom
 # `rheology.relax_young_oceanic_mantle_lithosphere` already uses for a different field. Picked
-# so a node sitting continuously in a fully-active transform/far-field band (worst case, no
-# relief from ever leaving the band) settles at a steady-state debt on the order of a
-# few thousand meters -- consistent with these being "modest"/"local"/"low-amplitude" relief
-# by design, not a second orogeny -- rather than drifting arbitrarily far before the hard clip.
+# so a node sitting continuously in a fully-active transform band (worst case, no relief from
+# ever leaving the band) settles at a steady-state debt on the order of a few thousand meters
+# -- consistent with transform relief being "modest"/"local" by design, not a second orogeny
+# -- rather than drifting arbitrarily far before the hard clip.
 UNBACKED_RELIEF_DECAY_PER_MYR = 0.05
 
 # A continental line's *contested* end is allowed to retreat -- one node per step -- whether
@@ -428,9 +422,8 @@ def _distance_to_mask_1d(mask: np.ndarray, width: int) -> np.ndarray:
 # erosion to plane down untouched).
 #
 # 2026-09-14 (GitHub issue #146, "Mountain ranges are too thin"): raised 200 -> 350 km. The
-# real-world target is the topographic belt itself, not the full India-Asia far-field
-# deformation zone (that's the separate FAR_FIELD_INNER/OUTER_KM band below, already 300-
-# 1000 km): the Himalaya proper (Main Frontal Thrust to the Indus-Tsangpo suture) runs
+# real-world target is the topographic belt itself: the Himalaya proper (Main Frontal Thrust
+# to the Indus-Tsangpo suture) runs
 # ~150-350 km depending on strike segment, widening toward the Pakistan/Nanga Parbat and
 # Arunachal syntaxes; the Andes run ~200-900 km along their length. 350 km sits at the wide
 # end of the Himalaya range and mid-pack for the Andes, plus this ring is additive on top of
@@ -459,33 +452,6 @@ COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT = 350.0
 # own existing tuning-knob tests, which only assert monotonicity, are unaffected) while making
 # the taper itself continuous instead of a step.
 COLLISION_NEAR_FIELD_INNER_FACTOR = 0.8
-
-# Broad far-field collision stress: a genuine continent-continent collision transmits
-# uplift-inducing stress deep into the stable interior, well beyond the fold-thrust belt
-# itself (the Tibetan Plateau's own far-field effects raise terrain across much of interior
-# Asia; the Ancestral Rockies formed ~1000+ km from the Marathon-Ouachita suture that drove
-# them). Zero within FAR_FIELD_INNER_KM -- where the much stronger near-field ring above
-# already dominates -- ramping to full strength there and fading back to zero by
-# FAR_FIELD_OUTER_KM. Applied as a direct elevation delta (like TRANSFORM_UPLIFT_RATE_M_PER_MYR
-# below), not routed through Hc/Hm -- a broad, low-amplitude regional swell doesn't need
-# isostatic bookkeeping the way real orogenic crustal thickening does. Ported from v1's
-# COLLISION_RANGE_KM/FAR_FIELD_COLLISION_* (plates.py) -- v1 gated this on the same `contested`
-# mask as the near-field belt, which is a geometric-overlap test that (by construction) never
-# reaches 1000 km out, so the term could never actually fire there; `ELEV_CHANGE_COLLISION_
-# FAR_FIELD` existed in the "Last elevation change" legend the whole time but nothing ever
-# painted it. Gated here purely by distance to the nearest continental neighbour, plus a
-# whole-plate "is this plate colliding with anyone right now" check, so a quiet continent's
-# interior doesn't uplift for no reason.
-FAR_FIELD_INNER_KM = 300.0
-FAR_FIELD_OUTER_KM = 1000.0
-FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR = 60.0
-
-
-def _far_field_intensity(dist_km: np.ndarray, inner_km: float, outer_km: float) -> np.ndarray:
-    """One-sided ramp: 0 below `inner_km`, 1.0 right at `inner_km`, decaying linearly to 0 by
-    `outer_km` -- same shape as v1's plates._far_field_intensity."""
-    ramp = np.clip(1.0 - (dist_km - inner_km) / (outer_km - inner_km), 0.0, 1.0)
-    return np.where(dist_km < inner_km, 0.0, ramp)
 
 
 def _redistribute_accreted_column(
@@ -680,32 +646,6 @@ class LithospherePlate(PlateWithLines):
             else 0
         )
 
-        # Far-field collision uplift (see FAR_FIELD_* above): only worth the extra KD-tree
-        # query when this plate is continental and actually has an active continent-continent
-        # collision somewhere on its edge this step -- a quiet plate's interior should never
-        # uplift. `far_neighbours` intentionally re-queries at FAR_FIELD_OUTER_KM (far wider
-        # than `reach_rad`, ~3 line-spacings) since the near-boundary `inputs.dist_to_neighbor`
-        # is `inf` past that reach and can't answer "how far to the nearest continent" out to
-        # 1000 km.
-        far_field_intensity_all = np.zeros(len(own_points))
-        if self.crust_type == "continental" and np.any(convergent_all & ~inputs.neighbor_is_oceanic):
-            far_reach_rad = FAR_FIELD_OUTER_KM / PLANET_RADIUS_KM
-            far_neighbours = self.get_neighbours(other_plates, threshold_rad=far_reach_rad)
-            far_pieces = [p.all_points_and_elevation()[0] for p in far_neighbours if p.node_count() > 0]
-            if far_pieces:
-                far_is_oceanic = np.concatenate(
-                    [np.full(len(pts), p.crust_type != "continental") for p, pts in zip(far_neighbours, far_pieces)]
-                )
-                far_pts = np.concatenate(far_pieces, axis=0)
-                far_tree = cKDTree(far_pts, balanced_tree=False, compact_nodes=False)
-                far_dist, far_idx = far_tree.query(own_points, workers=query_workers(len(own_points)))
-                far_continental_neighbor = ~far_is_oceanic[far_idx]
-                far_field_intensity_all = np.where(
-                    far_continental_neighbor,
-                    _far_field_intensity(far_dist * PLANET_RADIUS_KM, FAR_FIELD_INNER_KM, FAR_FIELD_OUTER_KM),
-                    0.0,
-                )
-
         fault_noise = (
             SphereNoise(np.random.default_rng((world.seed, self.plate_id, 9001)), octaves=3, base_freq=9.0)
             if self.crust_type == "continental"
@@ -729,7 +669,6 @@ class LithospherePlate(PlateWithLines):
             neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
             arc_band = arc_band_all[sl]
             arc_intensity = arc_intensity_all[sl]
-            far_field_intensity = far_field_intensity_all[sl]
             fault_influence = fault_influence_all[sl]  # all-ones except in "fault" mode
 
             # Active-margin growth seed per line end -- see ARC_MARGIN_SEED_HC_M. An end is an
@@ -934,29 +873,22 @@ class LithospherePlate(PlateWithLines):
                 TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * fault_influence[transform]
             )
 
-            # Far-field collision uplift (see FAR_FIELD_* above): zeroed wherever the much
-            # stronger near-field ring/contested band already applies, so the two bands never
-            # double-count the same node.
-            far_field_uplift = np.where(
-                convergent | near_field, 0.0, FAR_FIELD_MOUNTAIN_RATE_M_PER_MYR * years_myr * far_field_intensity
-            )
-
             elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
 
             # Issue #189 follow-up (see UNBACKED_RELIEF_DECAY_PER_MYR above): relax any
             # *existing* positive debt -- elevation this line already carries in excess of what
             # `elevation_before` says its own Hc/Hm column supports -- toward zero, before this
-            # step's own fresh transform_uplift/far_field_uplift (still bare deltas by design)
-            # potentially adds more. `line.crustal_thickness_m` (the column at the *start* of
-            # this step, matching what `elevation_before` was computed from), not `hc` (already
-            # mutated by the convergent/divergent passes above) -- and v1 lines with no Hc
-            # tracking at all (all-zero) are left alone, same has_column gating
+            # step's own fresh transform_uplift (still a bare delta by design) potentially
+            # adds more. `line.crustal_thickness_m` (the column at the *start* of this step,
+            # matching what `elevation_before` was computed from), not `hc` (already mutated
+            # by the convergent/divergent passes above) -- and v1 lines with no Hc tracking at
+            # all (all-zero) are left alone, same has_column gating
             # lithosphere.back_elevation_gain uses.
             existing_debt = np.where(line.crustal_thickness_m > 0.0, np.clip(line.elevation - elevation_before, 0.0, None), 0.0)
             debt_relief = existing_debt * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * years_myr))
 
             new_elevation = rheology.clip_elevation_bounds(
-                line.elevation - debt_relief + (elevation_after - elevation_before) + transform_uplift + far_field_uplift
+                line.elevation - debt_relief + (elevation_after - elevation_before) + transform_uplift
             )
             if np.any(melting):
                 # The delta above used this plate's single nominal `rho_c` for both
@@ -987,18 +919,17 @@ class LithospherePlate(PlateWithLines):
             if self.crust_type == "continental":
                 # near_field (the reach knob's dilated ring) is continent-continent orogenic
                 # belt too, so it carries the same COLLISION provenance as the converging core.
-                reason[(far_field_uplift > 0.0) & moved] = ELEV_CHANGE_COLLISION_FAR_FIELD
                 reason[(convergent | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
                 reason[convergent & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
                 reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
             else:
                 reason[convergent & moved] = ELEV_CHANGE_TRENCH
             reason[divergent & moved] = ELEV_CHANGE_RIFT
-            # Gated on transform_uplift itself, not just band membership (matching the
-            # far_field_uplift gate above) -- issue #189 follow-up's new debt-decay term can
-            # move a transform-band node's elevation on its own (fault_influence == 0 in
-            # "fault" mode zeroes transform_uplift there, but leftover debt still decays), which
-            # would otherwise mislabel a pure decay move as an active transform pressure ridge.
+            # Gated on transform_uplift itself, not just band membership -- issue #189
+            # follow-up's debt-decay term can move a transform-band node's elevation on its own
+            # (fault_influence == 0 in "fault" mode zeroes transform_uplift there, but leftover
+            # debt still decays), which would otherwise mislabel a pure decay move as an active
+            # transform pressure ridge.
             reason[(transform_uplift > 0.0) & moved] = ELEV_CHANGE_TRANSFORM
             reason[melting] = ELEV_CHANGE_VOLCANO
 

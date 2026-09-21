@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """Investigation for GitHub issue #189's "still open, separate from this fix" note:
 `lithosphere_plate.py`'s `deform()` adds `transform_uplift` (transform-boundary pressure-ridge
-relief) and `far_field_uplift` (broad far-field collision relief) as bare elevation deltas with
-no `crustal_thickness_m` backing -- by design ("local relief without net crustal shortening"),
-unlike the fault-relief bug #191 fixed. The issue asks whether this unbacked-by-design drift is
-actually a live problem worth bounding over long runs, the same shape of problem as #191's bug
-just intentional rather than an oversight.
+relief) as a bare elevation delta with no `crustal_thickness_m` backing -- by design ("local
+relief without net crustal shortening"), unlike the fault-relief bug #191 fixed. The issue asks
+whether this unbacked-by-design drift is actually a live problem worth bounding over long runs,
+the same shape of problem as #191's bug just intentional rather than an oversight.
 
 Same "debt" concept `drill_down_isostasy.py` uses per pinned node (`elevation -
 isostatic_elevation(hc, hm, rho_c)`), but sampled across *all* land at several checkpoints of a
 run several times longer than #189's original 120 My, not just nodes already pinned at
-MAX_ELEVATION_M -- since after #191, transform_uplift/far_field_uplift are the only remaining
-source of this debt for any line with real Hc/Hm tracking (every other elevation-moving path
-either derives elevation from Hc/Hm directly or -- faults.py, volcanism.py -- bills its own
-delta through lithosphere.back_elevation_gain), so debt growth over time is a direct read on
-how much these two terms alone are injecting.
+MAX_ELEVATION_M -- since after #191 and #206, transform_uplift is the only remaining source of
+this debt for any line with real Hc/Hm tracking (every other elevation-moving path either
+derives elevation from Hc/Hm directly or -- faults.py, volcanism.py -- bills its own delta
+through lithosphere.back_elevation_gain), so debt growth over time is a direct read on how much
+that term alone is injecting.
 
 Usage: backend/.venv/bin/python bin/debug/measure_transform_far_field_debt.py
 """
