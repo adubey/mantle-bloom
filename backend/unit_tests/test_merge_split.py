@@ -185,7 +185,13 @@ def test_collision_merges_once_sustained_threshold_is_crossed(monkeypatch):
     assert any("merged" in e and "million years" in e for e in events)
 
 
-def test_collision_progress_resets_if_convergence_stops():
+def test_collision_progress_resets_if_convergence_stops(monkeypatch):
+    # Neutralize the merge roll entirely (see merge_split._merge_probability) -- this test is
+    # isolating collision_progress's own bookkeeping, not whether a merge actually completes,
+    # and COLLISION_MERGE_MIN_YEARS == 0 means the pair below could otherwise legitimately
+    # merge within the first 10M-year step, which would empty collision_progress for a
+    # different reason (the pair became one plate) than the one this test means to check.
+    monkeypatch.setattr(merge_split, "_merge_probability", lambda world, pair: 0.0)
     world = _converging_pair_world()
     merge_split.apply_topology_changes(world, 10_000_000)
     assert (0, 1) in world.collision_progress
@@ -304,14 +310,17 @@ def test_merge_probability_decreases_with_combined_size_and_floors():
     world = World(seed=0, plates=[small_a, small_b, filler], next_plate_id=3)
 
     small_pair_probability = merge_split._merge_probability(world, (0, 1))
-    assert small_pair_probability > 0.85  # small combined share of a big filler-padded world
+    # small combined share of a big filler-padded world -- MERGE_PROBABILITY_SCALE is the
+    # ceiling every pair's own probability is scaled against (see that constant's own
+    # comment), so "near-certain" now reads as near that ceiling, not near 1.0.
+    assert small_pair_probability > 0.85 * merge_split.MERGE_PROBABILITY_SCALE
 
     big_a = _test_plate(3, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.01, 5000), np.zeros(5000))
     big_b = _test_plate(4, [1.0, 0.0, 0.0], "continental", np.linspace(-0.01, 0.01, 5000), np.zeros(5000))
     world_dominant = World(seed=0, plates=[big_a, big_b, filler], next_plate_id=5)
     big_pair_probability = merge_split._merge_probability(world_dominant, (3, 4))
-    # combined share well past the unlikely threshold, so this bottoms out at the floor
-    assert np.isclose(big_pair_probability, merge_split.MERGE_PROBABILITY_FLOOR)
+    # combined share well past the unlikely threshold, so this bottoms out at the (scaled) floor
+    assert np.isclose(big_pair_probability, merge_split.MERGE_PROBABILITY_FLOOR * merge_split.MERGE_PROBABILITY_SCALE)
 
     assert big_pair_probability < small_pair_probability
 
@@ -856,13 +865,16 @@ def test_merge_probability_speed_boost_raises_a_large_pairs_odds():
     world = World(seed=0, plates=[a, b, filler], next_plate_id=5)
 
     slow = merge_split._merge_probability(world, (3, 4))  # both plates motionless -> size floor
-    assert np.isclose(slow, merge_split.MERGE_PROBABILITY_FLOOR)
+    assert np.isclose(slow, merge_split.MERGE_PROBABILITY_FLOOR * merge_split.MERGE_PROBABILITY_SCALE)
 
     a.set_omega(np.array([0.0, 0.0, mantle.MAX_PLATE_RATE]))
     b.set_omega(np.array([0.0, 0.0, -mantle.MAX_PLATE_RATE]))  # relative rate 2x MAX -> speed_frac clamps to 1
     fast = merge_split._merge_probability(world, (3, 4))
     assert fast > slow
-    assert np.isclose(fast, slow + (1.0 - slow) * merge_split.SPEED_MERGE_BOOST)
+    # MERGE_PROBABILITY_SCALE applies uniformly on top of the unscaled base+speed formula, so
+    # the "remaining distance to certain" SPEED_MERGE_BOOST closes is the distance to the
+    # scale's own ceiling, not to 1.0.
+    assert np.isclose(fast, slow + (merge_split.MERGE_PROBABILITY_SCALE - slow) * merge_split.SPEED_MERGE_BOOST)
 
 
 def test_forced_merge_fires_only_after_a_sustained_deep_overlap():
