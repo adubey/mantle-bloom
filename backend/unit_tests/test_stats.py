@@ -39,6 +39,7 @@ def test_compute_stats_elevation_is_land_only():
     assert result["elevation_min_m"] is None
     assert result["elevation_max_m"] is None
     assert result["elevation_mean_m"] is None
+    assert result["land_near_max_elevation_fraction"] is None
 
 
 def test_compute_stats_ocean_depth_bounds_are_consistent():
@@ -213,3 +214,35 @@ def test_compute_stats_land_fraction_stale_true_once_climate_is_toggled_off():
     world.simulate_climate_biomes = False
     step_world(world, years=1_000_000)
     assert stats.compute_stats(world)["land_fraction_stale"] is True
+
+
+@pytest.mark.parametrize(
+    "heights, sea_level, expected",
+    [
+        ([1000, 950, 949, 100, -1000], 0, 0.5),
+        ([1000, 950, 949, 100, -1000], 200, 0.5),
+        ([500, 500, 500], 0, 1.0),
+        ([0, 0, 0], 0, 1.0),
+        ([-100, -105, -106], 0, 2 / 3),
+    ],
+)
+def test_land_near_max_elevation_fraction(monkeypatch, heights, sea_level, expected):
+    from types import SimpleNamespace
+
+    height = np.array(heights, dtype=float)
+    # Stub the climate grid so the exact 95% boundary is not blurred by resampling.
+    # Deliberately stale ocean labels on peaks must be reconciled before counting.
+    fields = SimpleNamespace(
+        elevation_m=height + sea_level,
+        is_ocean=height > 0,
+        lake_depth_m=np.zeros(height.size),
+        land_temperature_c=np.zeros(height.size),
+        air_temperature_c=np.zeros(height.size),
+        ocean_temperature_c=np.zeros(height.size),
+        precipitation_mm=np.zeros(height.size),
+        biome_ids=np.zeros(height.size, dtype=int),
+    )
+    monkeypatch.setattr(stats.climate, "compute_climate_cached", lambda world: fields)
+    world = _all_ocean_world()
+    world.sea_level_m = sea_level
+    assert stats.compute_stats(world)["land_near_max_elevation_fraction"] == pytest.approx(expected)
