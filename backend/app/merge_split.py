@@ -8,11 +8,22 @@ for routine per-step motion.
 
 Merging in particular is deliberately slow: a pair of continental plates has to stay
 continuously close and converging (see find_continental_collision_pairs) for a sustained,
-randomized 50-100 Myr (COLLISION_MERGE_MIN/MAX_YEARS, tracked in
-World.collision_progress) before they actually fuse, and at most one merge happens per
-step -- see update_collision_progress and apply_topology_changes. apply_topology_changes
-returns a list of human-readable event strings for whatever happened, which world.step_world
-threads through to the API for the frontend's event console.
+randomized 0-100 Myr (COLLISION_MERGE_MIN/MAX_YEARS, tracked in World.collision_progress)
+before they're even eligible to merge, and at most one merge happens per step -- see
+update_collision_progress and apply_topology_changes. apply_topology_changes returns a list
+of human-readable event strings for whatever happened, which world.step_world threads
+through to the API for the frontend's event console.
+
+COLLISION_MERGE_MIN_YEARS dropped 50M -> 0 (2026-09-20, issue #120: a #171-style sweep found
+this the single strongest lever on the long-run land-fraction decline -- shortening the
+wait window raised land fraction monotonically across every tested setting, see
+https://github.com/adubey/mantle-bloom/issues/120#issuecomment-5753096565). Zeroing the
+minimum removes the guaranteed wait entirely, so a pair becomes eligible to roll for merge
+from its very first continuously-colliding step -- MERGE_PROBABILITY_SCALE (see
+_merge_probability) is what now keeps that from reading as instant fusion the moment two
+continents touch, since _merge_probability's own size/speed formula already returns close to
+1.0 for a small pair regardless of MERGE_PROBABILITY_FLOOR (that floor only bites for a
+pair large enough to approach MERGE_SIZE_UNLIKELY_FRACTION).
 """
 
 from __future__ import annotations
@@ -47,7 +58,7 @@ MERGE_COVERAGE_RADIUS_RAD = 1.2 * TARGET_LINE_SPACING_RAD
 # continuously close-and-converging (see find_continental_collision_pairs) for a sustained
 # duration, randomized per pair within this range so unrelated collisions don't all resolve
 # in lockstep.
-COLLISION_MERGE_MIN_YEARS = 50_000_000
+COLLISION_MERGE_MIN_YEARS = 0
 COLLISION_MERGE_MAX_YEARS = 100_000_000
 
 # Even a pair that's collided long enough shouldn't merge for certain if the result would be
@@ -57,6 +68,16 @@ COLLISION_MERGE_MAX_YEARS = 100_000_000
 # merge actually produces: how much of the sphere the surviving plate would cover.
 MERGE_SIZE_UNLIKELY_FRACTION = 0.25
 MERGE_PROBABILITY_FLOOR = 0.02  # never impossible -- real supercontinents do form eventually
+
+# Uniform scale-down on _merge_probability's own size/speed-based value, introduced alongside
+# COLLISION_MERGE_MIN_YEARS -> 0 above. A pair no longer has to wait a guaranteed minimum
+# before its first merge roll -- but without this, a small/typical pair (whose own `base`
+# below is already close to 1.0 regardless of MERGE_PROBABILITY_FLOOR) would then be nearly
+# certain to fuse on the very next step it's continuously colliding, i.e. effectively the
+# instant two continents touch. This is a starting guess, "slightly" below 1.0, not derived
+# from a target annual rate -- needs its own #120-style sweep to actually tune, same as every
+# other constant this file's own review history has landed as a placeholder.
+MERGE_PROBABILITY_SCALE = 0.85
 
 # A fast relative motion between two colliding continental plates means a decisive, head-on
 # convergence rather than a slow oblique graze -- it should resolve more readily, even for a
@@ -330,22 +351,26 @@ def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
 
 
 def _collision_threshold_years(seed: int, pair: tuple[int, int]) -> float:
-    """How long `pair` needs to stay continuously close-and-converging before it actually
-    merges -- deterministic per (world seed, pair) so it doesn't need to be stored, just
-    recomputed whenever it's needed."""
+    """How long `pair` needs to stay continuously close-and-converging before it's eligible to
+    roll for a merge (see _merge_probability for the roll itself) -- deterministic per (world
+    seed, pair) so it doesn't need to be stored, just recomputed whenever it's needed. Can be
+    0 (COLLISION_MERGE_MIN_YEARS), so a pair may be eligible from its very first colliding
+    step."""
     rng = np.random.default_rng((seed, pair[0], pair[1]))
     return float(rng.uniform(COLLISION_MERGE_MIN_YEARS, COLLISION_MERGE_MAX_YEARS))
 
 
 def _merge_probability(world: "World", pair: tuple[int, int]) -> float:
-    """How likely `pair` is to actually merge this step, given it's already met the sustained-
-    duration requirement -- 1.0 for two small plates, relaxing linearly toward
+    """How likely `pair` is to actually merge this step, given it's already eligible (see
+    COLLISION_MERGE_MIN_YEARS) -- close to 1.0 for two small plates, relaxing linearly toward
     MERGE_PROBABILITY_FLOOR as their combined share of the world's total nodes approaches
-    MERGE_SIZE_UNLIKELY_FRACTION. Duration alone isn't enough for a pair that would produce a
-    large chunk of the whole world; this is an independent, size-only gate on top of it."""
+    MERGE_SIZE_UNLIKELY_FRACTION, then uniformly scaled by MERGE_PROBABILITY_SCALE (see that
+    constant's own comment for why this scale exists). Eligibility alone isn't enough for a
+    pair that would produce a large chunk of the whole world; this is an independent,
+    size-only gate on top of it."""
     total_nodes = sum(p.node_count() for p in world.plates)
     if total_nodes == 0:
-        return 1.0
+        return MERGE_PROBABILITY_SCALE
     a = next(p for p in world.plates if p.plate_id == pair[0])
     b = next(p for p in world.plates if p.plate_id == pair[1])
     combined_frac = (a.node_count() + b.node_count()) / total_nodes
@@ -355,7 +380,7 @@ def _merge_probability(world: "World", pair: tuple[int, int]) -> float:
     # a genuinely fast, decisive convergence that should merge more readily than a slow graze
     # regardless of size (see SPEED_MERGE_BOOST).
     speed_frac = min(1.0, float(np.linalg.norm(a.omega - b.omega)) / mantle.MAX_PLATE_RATE)
-    return base + (1.0 - base) * SPEED_MERGE_BOOST * speed_frac
+    return (base + (1.0 - base) * SPEED_MERGE_BOOST * speed_frac) * MERGE_PROBABILITY_SCALE
 
 
 def update_collision_progress(world: "World", years: float) -> list[tuple[int, int]]:
