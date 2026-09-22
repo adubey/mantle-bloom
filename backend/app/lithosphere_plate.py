@@ -513,22 +513,24 @@ def _redistribute_accreted_column(
     elevation: np.ndarray,
     rho_c: float,
     removed_hc: np.ndarray,
+    removed_hm: np.ndarray,
     accrete_removed: np.ndarray,
     from_high: bool,
 ) -> None:
-    """Conserve the crustal volume of the continental-suture nodes just dropped from a line
-    end (`removed_hc`, restricted to the `accrete_removed` subset) by thrusting it back onto
-    the `SUTURE_ACCRETION_SPREAD_NODES` surviving nodes nearest that same end -- the attached
-    mantle lithosphere thickening in proportion, and each node's elevation bumped by the
-    isostatic delta. Mutates `persistent_fields`' Hc/Hm arrays and `elevation` in place.
+    """Conserve the crustal volume *and* attached mantle lithosphere of the continental-suture
+    nodes just dropped from a line end (`removed_hc`/`removed_hm`, restricted to the
+    `accrete_removed` subset) by thrusting both back onto the `SUTURE_ACCRETION_SPREAD_NODES`
+    surviving nodes nearest that same end, each node's elevation bumped by the isostatic delta.
+    Mutates `persistent_fields`' Hc/Hm arrays and `elevation` in place.
 
     No-op when nothing dropped was flagged for accretion -- a passive-margin retreat against
     an *oceanic* neighbour leaves `accrete_removed` all-False, and that column is genuinely
-    subducted, not preserved. Node area is constant per node, so summed Hc *is* the conserved
+    subducted, not preserved. Node area is constant per node, so summed Hc/Hm *is* the conserved
     volume (see SUTURE_ACCRETION_SPREAD_NODES / SUTURE_ACCRETION_MAX_HC_M)."""
     if not np.any(accrete_removed):
         return
     add_hc = float(np.sum(removed_hc[accrete_removed]))
+    add_hm = float(np.sum(removed_hm[accrete_removed]))
     hc = persistent_fields["crustal_thickness_m"]
     hm = persistent_fields["mantle_lithosphere_thickness_m"]
     n = len(hc)
@@ -537,16 +539,16 @@ def _redistribute_accreted_column(
     k = min(SUTURE_ACCRETION_SPREAD_NODES, n)
     idx = np.arange(n - k, n) if from_high else np.arange(k)
     before = lithosphere.isostatic_elevation(hc[idx], hm[idx], rho_c)
-    # Crustal shortening drags the attached mantle lithosphere along in proportion (same as
-    # rheology.apply_convergent_deformation). Hc is capped at SUTURE_ACCRETION_MAX_HC_M -- the
-    # overflow delaminates (see the constant) -- and Hm thickens by whatever fraction Hc
-    # actually grew after that cap, itself also capped at MAX_MANTLE_LITHOSPHERE_THICKNESS_M
-    # (issue #161): a node that started thin can otherwise see a huge new_hc/hc ratio here
-    # (a large volume thrust onto a node that had almost none of its own), which would carry
-    # Hm along past its own ceiling even though Hc's own is respected.
-    new_hc = np.minimum(hc[idx] + add_hc / k, SUTURE_ACCRETION_MAX_HC_M)
-    hm[idx] = np.minimum(hm[idx] * (new_hc / hc[idx]), lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
-    hc[idx] = new_hc
+    # Both reservoirs are thrust onto the survivors the same way -- the dropped nodes' own
+    # summed Hc/Hm, spread evenly across the k survivors and added to what they already carry.
+    # Previously Hm was only scaled by the survivor's own Hc growth ratio, which never
+    # referenced the donor's actual removed_hm at all: the donor's mantle lithosphere was
+    # silently discarded rather than conserved (GitHub issue #216's phase-budget instrumentation
+    # flagged this while investigating the Hc/Hm decline). Each capped independently (issue
+    # #161): a node that started thin can otherwise absorb most of a suture's whole volume in
+    # one step.
+    hc[idx] = np.minimum(hc[idx] + add_hc / k, SUTURE_ACCRETION_MAX_HC_M)
+    hm[idx] = np.minimum(hm[idx] + add_hm / k, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
     after = lithosphere.isostatic_elevation(hc[idx], hm[idx], rho_c)
     elevation[idx] = rheology.clip_elevation_bounds(elevation[idx] + (after - before))
 
@@ -1250,6 +1252,7 @@ class LithospherePlate(PlateWithLines):
                 )
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][-n_remove:].copy()
+                removed_hm = persistent_fields["mantle_lithosphere_thickness_m"][-n_remove:].copy()
                 accrete_removed = accrete[-n_remove:].copy()
                 removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_remove, line.phi), theta[-n_remove:]))
                 world.record_removed_points(removed_world, self.plate_id)
@@ -1257,7 +1260,7 @@ class LithospherePlate(PlateWithLines):
                 contested, shrinkable, accrete, dist = contested[:-n_remove], shrinkable[:-n_remove], accrete[:-n_remove], dist[:-n_remove]
                 direction = direction[:-n_remove]
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
-                _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, accrete_removed, from_high=True)
+                _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, removed_hm, accrete_removed, from_high=True)
 
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
@@ -1270,6 +1273,7 @@ class LithospherePlate(PlateWithLines):
                 )
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][:n_remove].copy()
+                removed_hm = persistent_fields["mantle_lithosphere_thickness_m"][:n_remove].copy()
                 accrete_removed = accrete[:n_remove].copy()
                 removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_remove, line.phi), theta[:n_remove]))
                 world.record_removed_points(removed_world, self.plate_id)
@@ -1277,7 +1281,7 @@ class LithospherePlate(PlateWithLines):
                 contested, shrinkable, accrete, dist = contested[n_remove:], shrinkable[n_remove:], accrete[n_remove:], dist[n_remove:]
                 direction = direction[n_remove:]
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
-                _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, accrete_removed, from_high=False)
+                _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, removed_hm, accrete_removed, from_high=False)
 
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
