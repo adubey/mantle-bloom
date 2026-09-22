@@ -34,7 +34,9 @@ export type MapView =
   | "plateInspector"
   | "riverInspector"
   | "lakeInspector"
-  | "platesAndFaults";
+  | "platesAndFaults"
+  | "hc"
+  | "hm";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -303,6 +305,16 @@ export interface LakeAtResponse {
 // world with no ocean at all would similarly null out ocean_depth_*/ocean_temperature_*) --
 // StatsModal must handle that, not assume every field is always present.
 export interface WorldStats {
+  hc_at_max_fraction?: number | null;
+  hc_min_m?: number | null;
+  hc_max_m?: number | null;
+  hc_mean_m?: number | null;
+  hc_std_m?: number | null;
+  hm_at_max_fraction?: number | null;
+  hm_min_m?: number | null;
+  hm_max_m?: number | null;
+  hm_mean_m?: number | null;
+  hm_std_m?: number | null;
   elapsed_years: number;
   // Single running totals, not a spatial snapshot distribution like every field below --
   // the Simulation tab is what turns a run of these into a min/max/mean/std-dev over time.

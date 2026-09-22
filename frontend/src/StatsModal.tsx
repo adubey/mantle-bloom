@@ -183,6 +183,16 @@ const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> =
 // raw series over time, same dropdown+chart pattern as every other tab); Table mode instead
 // runs runHistoryStats over `history` to get an actual min/max/mean/std-dev out of them.
 const SIMULATION_METRICS: Metric[] = [
+  numMetric("hc_at_max_fraction", "% of Hc at max", (s) => s.hc_at_max_fraction == null ? null : 100 * s.hc_at_max_fraction, 2, "%"),
+  numMetric("hc_mean_m", "Avg Hc", (s) => s.hc_mean_m ?? null, 0, " m"),
+  numMetric("hc_max_m", "Max Hc", (s) => s.hc_max_m ?? null, 0, " m"),
+  numMetric("hc_min_m", "Min Hc", (s) => s.hc_min_m ?? null, 0, " m"),
+  numMetric("hc_std_m", "Std dev Hc", (s) => s.hc_std_m ?? null, 0, " m"),
+  numMetric("hm_at_max_fraction", "% of Hm at max", (s) => s.hm_at_max_fraction == null ? null : 100 * s.hm_at_max_fraction, 2, "%"),
+  numMetric("hm_mean_m", "Avg Hm", (s) => s.hm_mean_m ?? null, 0, " m"),
+  numMetric("hm_max_m", "Max Hm", (s) => s.hm_max_m ?? null, 0, " m"),
+  numMetric("hm_min_m", "Min Hm", (s) => s.hm_min_m ?? null, 0, " m"),
+  numMetric("hm_std_m", "Std dev Hm", (s) => s.hm_std_m ?? null, 0, " m"),
   numMetric("elevation_point_count", "Elevation points", (s) => s.elevation_point_count, 0),
   numMetric("plate_count", "Plates", (s) => s.plate_count, 0),
   // Land/volume-conservation check (see api.ts's own comment): land area is read straight off

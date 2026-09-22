@@ -10,8 +10,7 @@ come in sub-parallel families (Basin-and-Range horst/graben trains, en echelon s
 and stay individually active for a few to a few tens of Myr before locking up and surviving
 as inert scars.
 
-By default this module is an **additive** layer: it never touches the live deform()
-classification (`LithospherePlate.deform`). Each step it
+This module leaves the live deform() classification in place. Each step it
 
 1. ages every existing fault, accumulating slip on the active ones and retiring those past
    their drawn lifespan (kept forever after as an inactive scar, like `is_volcano`);
@@ -22,9 +21,9 @@ classification (`LithospherePlate.deform`). Each step it
    can't merge with -- is locally super-stressed crust), the regime (normal / reverse /
    strike-slip) picked from the local closing rate per Andersonian faulting theory, and with
    `SET_PROBABILITY` chance a whole sub-parallel family rather than a lone trace;
-3. applies each active fault's own relief to the nearby crust -- reverse: an uplift ridge;
-   normal: a hanging-wall graben with a footwall shoulder; strike-slip: a modest
-   transpressional ridge or transtensional sag -- and, for an active strike-slip trace,
+3. distributes normal-fault and strike-slip relief between local donor and recipient
+   columns; reverse-fault shortening is already placed by deform() through fault_influence
+   and receives no second additive uplift here. For an active strike-slip trace it also
    shears the node field's *values* across it by this step's along-strike slip
    (`_apply_plate_fault_shear`; nodes themselves stay put, see GitHub issue #125);
 4. rolls each active fault's **earthquakes** for the step (`_generate_earthquakes`): a
@@ -33,11 +32,11 @@ classification (`LithospherePlate.deform`). Each step it
    `World.earthquakes`, pruned after `EARTHQUAKE_RETAIN_MYR`. `erosion.py` reads them for a
    local seismic-erosion burst; the "Fault lines" view draws them as a fading overlay.
 
-When `World.fault_deformation_mode` is `"fault"` or `"both"` the layer stops being purely
-additive: `_apply_plate_fault_relief`'s rates/reach scale up (`FAULT_RELIEF_MODE_*`) and, in
+When `World.fault_deformation_mode` is `"fault"` or `"both"`,
+`_apply_plate_fault_relief`'s rates/reach scale up (`FAULT_RELIEF_MODE_*`) and, in
 `"fault"` mode, `LithospherePlate.deform` gates its own boundary thickening by
 `fault_influence()` so plate-boundary transformation localises onto fault lines rather than a
-smooth band at the polygon edge. `"boundary"` (the default) is bit-identical to before.
+smooth band at the polygon edge. `"boundary"` keeps the narrower relief scale.
 
 Geometry is stored in the owning plate's **local frame** (`local_phi` / `local_theta`), so
 a fault rides along with the crust as the plate rotates for free -- the same "attached to
@@ -1432,7 +1431,14 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
     rate_scale, reach_scale = _relief_mode_scales(world)
     reach_rad = reach_scale * MAX_FAULT_REACH_KM / PLANET_RADIUS_KM
 
-    delta = np.zeros(len(own_points))
+    # Work in crustal thickness, on the fixed post-deform node layout. A fault may
+    # redistribute a column, but cannot add a second shortening increment.
+    lines = [line for line in plate.lines if len(line)]
+    hc = np.concatenate([line.crustal_thickness_m for line in lines]).copy()
+    hm = np.concatenate([line.mantle_lithosphere_thickness_m for line in lines])
+    crust_type = np.concatenate([line.crust_type_code for line in lines])
+    rho = lithosphere.node_crust_density(crust_type, plate.crust_type)
+    original_hc = hc.copy()
     reason = np.zeros(len(own_points), dtype=float)
     for fault in active:
         trace = fault_world_points(fault, plate)
@@ -1458,16 +1464,40 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         mag = taper * slip_norm * years_myr * rate_scale * fault_scale
 
         if fault.kind == _KIND_REVERSE:
-            contrib = REVERSE_UPLIFT_M_PER_MYR * mag
+            # Boundary shortening is already localized by fault_influence in deform().
+            # An intraplate reverse trace has no realized shortening budget here.
+            continue
         elif fault.kind == _KIND_NORMAL:
             dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
             mid = trace[len(trace) // 2]
             hanging = (pts - mid) @ dip_dir_world > 0.0
             contrib = np.where(hanging, -NORMAL_THROW_M_PER_MYR, NORMAL_SHOULDER_UPLIFT_M_PER_MYR) * mag
         else:  # strike-slip
-            contrib = (STRIKE_SLIP_RIDGE_M_PER_MYR + fault.strike_sense * STRIKE_SLIP_BEND_M_PER_MYR) * mag
+            # Pure shear supplies no new crust. Put the restraining/releasing side
+            # opposite a compensating side within the same trace reach.
+            dip_dir_world = geometry.to_world(plate.frame, fault.dip_dir_local)
+            mid = trace[len(trace) // 2]
+            side = (pts - mid) @ dip_dir_world > 0.0
+            sign = 1.0 if fault.strike_sense >= 0 else -1.0
+            contrib = np.where(side, sign, -sign) * STRIKE_SLIP_BEND_M_PER_MYR * mag
 
-        delta[affected] += contrib
+        # Solve the requested isostatic thickness change, then match actual donor
+        # supply and recipient headroom by crust type. Sequential updates share the
+        # same arrays, so overlapping faults cannot spend a column twice.
+        equilibrium = lithosphere.isostatic_elevation(hc[affected], hm[affected], rho[affected])
+        target = lithosphere.crustal_thickness_for_elevation(equilibrium + contrib, hm[affected], rho[affected])
+        requested = target - hc[affected]
+        for kind in np.unique(crust_type[affected]):
+            group = crust_type[affected] == kind
+            donor = group & (requested < 0) & (hc[affected] > lithosphere.MIN_CRUSTAL_THICKNESS_M)
+            receiver = group & (requested > 0) & (hc[affected] < lithosphere.MAX_CRUSTAL_THICKNESS_M)
+            debit = np.minimum(-requested[donor], hc[affected][donor] - lithosphere.MIN_CRUSTAL_THICKNESS_M)
+            credit = np.minimum(requested[receiver], lithosphere.MAX_CRUSTAL_THICKNESS_M - hc[affected][receiver])
+            amount = min(float(debit.sum()), float(credit.sum()))
+            if amount <= 0:
+                continue
+            hc[affected[donor]] -= debit * (amount / debit.sum())
+            hc[affected[receiver]] += credit * (amount / credit.sum())
         # A boundary *reverse* fault sits exactly on a collision / subduction front, where
         # deform() already stamps the richer ELEV_CHANGE_COLLISION / _SUBDUCTION_ARC / _TRENCH
         # code (which also carries the oceanic-vs-continental distinction) -- relabelling it
@@ -1477,7 +1507,7 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         if not (fault.boundary and fault.kind == _KIND_REVERSE):
             reason[affected] = _KIND_REASON[fault.kind]
 
-    if not np.any(delta):
+    if not np.any(hc != original_hc):
         return
 
     new_lines = []
@@ -1488,19 +1518,27 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         if n == 0:
             new_lines.append(line)
             continue
-        seg_delta = delta[offset : offset + n]
+        seg_hc = hc[offset : offset + n]
+        old_hc = original_hc[offset : offset + n]
         seg_reason = reason[offset : offset + n]
         offset += n
-        if not np.any(seg_delta):
+        if not np.any(seg_hc != old_hc):
             new_lines.append(line)
             continue
-        # Issue #189: fault relief used to be a bare elevation delta with no crustal_thickness_m
-        # backing -- unlike deform()'s own convergent/divergent Hc-driven uplift, this let
-        # relief accumulate as permanent "isostatic debt" no erosion pass could ever repay,
-        # eventually pinning land at MAX_ELEVATION_M while its Hc sat nowhere near its own cap.
-        # Same Hc-backing as volcanism.py's eruptions/plains (issue #173) -- extensional throw
-        # (negative seg_delta) thins Hc the same way thrust/ridge uplift (positive) thickens it.
-        new_crustal_thickness, new_elev = lithosphere.back_elevation_gain(line, plate, seg_delta, seg_delta != 0.0)
+        # Apply only the equilibrium change supported by the transferred Hc. Any
+        # preexisting elevation offset remains unchanged (issue #189).
+        line_rho = lithosphere.node_crust_density(line.crust_type_code, plate.crust_type)
+        old_equilibrium = lithosphere.isostatic_elevation(
+            old_hc, line.mantle_lithosphere_thickness_m, line_rho
+        )
+        new_equilibrium = lithosphere.isostatic_elevation(
+            seg_hc, line.mantle_lithosphere_thickness_m, line_rho
+        )
+        new_crustal_thickness = seg_hc
+        new_elev = np.clip(
+            line.elevation + new_equilibrium - old_equilibrium,
+            lithosphere.MIN_ELEVATION_M, lithosphere.MAX_ELEVATION_M,
+        )
         moved = np.abs(new_elev - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
         new_reason = np.where(moved & (seg_reason > 0), seg_reason, line.elev_change_reason)
         new_lines.append(line.replace(elevation=new_elev, crustal_thickness_m=new_crustal_thickness, elev_change_reason=new_reason))

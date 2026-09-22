@@ -169,6 +169,10 @@ def _is_water(fields: "climate.ClimateFields", is_ocean: np.ndarray) -> np.ndarr
 
 
 def compute_stats(world: World) -> dict:
+    hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
+    hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
+    hc_min, hc_max, hc_mean, hc_std = _min_max_mean_std(hc)
+    hm_min, hm_max, hm_mean, hm_std = _min_max_mean_std(hm)
     fields = climate.compute_climate_cached(world)
     is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
     is_water = _is_water(fields, is_ocean)
@@ -210,6 +214,10 @@ def compute_stats(world: World) -> dict:
     }
 
     return {
+        "hc_at_max_fraction": float(np.mean(hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1e-6)) if hc.size else None,
+        "hc_min_m": hc_min, "hc_max_m": hc_max, "hc_mean_m": hc_mean, "hc_std_m": hc_std,
+        "hm_at_max_fraction": float(np.mean(hm >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)) if hm.size else None,
+        "hm_min_m": hm_min, "hm_max_m": hm_max, "hm_mean_m": hm_mean, "hm_std_m": hm_std,
         "elapsed_years": world.elapsed_years,
         "plate_count": len(world.plates),
         "elevation_point_count": elevation_point_count,
