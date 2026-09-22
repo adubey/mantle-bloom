@@ -177,36 +177,45 @@ const TAB_METRICS: Record<Exclude<TabKey, "simulation" | "biome">, TabEntry[]> =
   ],
 };
 
-// Unlike every other tab's metrics (a spatial min/max/mean snapshot of the *current* world,
-// straight off `current`), these two are single running totals with no per-call distribution
-// of their own -- see api.ts's WorldStats docstring. Reused for this tab's Graph mode (the
-// raw series over time, same dropdown+chart pattern as every other tab); Table mode instead
-// runs runHistoryStats over `history` to get an actual min/max/mean/std-dev out of them.
-const SIMULATION_METRICS: Metric[] = [
-  numMetric("hc_at_max_fraction", "% of Hc at max", (s) => s.hc_at_max_fraction == null ? null : 100 * s.hc_at_max_fraction, 2, "%"),
-  numMetric("hc_mean_m", "Avg Hc", (s) => s.hc_mean_m ?? null, 0, " m"),
-  numMetric("hc_max_m", "Max Hc", (s) => s.hc_max_m ?? null, 0, " m"),
-  numMetric("hc_min_m", "Min Hc", (s) => s.hc_min_m ?? null, 0, " m"),
-  numMetric("hc_std_m", "Std dev Hc", (s) => s.hc_std_m ?? null, 0, " m"),
-  numMetric("hm_at_max_fraction", "% of Hm at max", (s) => s.hm_at_max_fraction == null ? null : 100 * s.hm_at_max_fraction, 2, "%"),
-  numMetric("hm_mean_m", "Avg Hm", (s) => s.hm_mean_m ?? null, 0, " m"),
-  numMetric("hm_max_m", "Max Hm", (s) => s.hm_max_m ?? null, 0, " m"),
-  numMetric("hm_min_m", "Min Hm", (s) => s.hm_min_m ?? null, 0, " m"),
-  numMetric("hm_std_m", "Std dev Hm", (s) => s.hm_std_m ?? null, 0, " m"),
-  numMetric("elevation_point_count", "Elevation points", (s) => s.elevation_point_count, 0),
-  numMetric("plate_count", "Plates", (s) => s.plate_count, 0),
+// Hc/Hm are spatial min/max/mean/std-dev snapshots of the *current* world, same shape as
+// elevation/temperature/precipitation on the other tabs -- grouped the same way (one graph,
+// avg/min/max lines plus a std-dev band) rather than four separately-plottable lines. The
+// remaining entries here are single running totals with no per-call distribution of their
+// own -- see api.ts's WorldStats docstring -- so SimulationTab still runs historyStats over
+// `history` for their Table mode, unlike a StatGroup's own current-snapshot table.
+const SIMULATION_ENTRIES: TabEntry[] = [
+  metricEntry(numMetric(
+    "hc_at_max_fraction", "% of Hc at max",
+    (s) => s.hc_at_max_fraction == null ? null : 100 * s.hc_at_max_fraction, 2, "%",
+  )),
+  groupEntry(numGroup(
+    "hc_m", "Hc (crustal thickness)",
+    (s) => s.hc_min_m ?? null, (s) => s.hc_mean_m ?? null, (s) => s.hc_max_m ?? null, (s) => s.hc_std_m ?? null,
+    0, " m",
+  )),
+  metricEntry(numMetric(
+    "hm_at_max_fraction", "% of Hm at max",
+    (s) => s.hm_at_max_fraction == null ? null : 100 * s.hm_at_max_fraction, 2, "%",
+  )),
+  groupEntry(numGroup(
+    "hm_m", "Hm (mantle lithosphere thickness)",
+    (s) => s.hm_min_m ?? null, (s) => s.hm_mean_m ?? null, (s) => s.hm_max_m ?? null, (s) => s.hm_std_m ?? null,
+    0, " m",
+  )),
+  metricEntry(numMetric("elevation_point_count", "Elevation points", (s) => s.elevation_point_count, 0)),
+  metricEntry(numMetric("plate_count", "Plates", (s) => s.plate_count, 0)),
   // Land/volume-conservation check (see api.ts's own comment): land area is read straight off
   // world.plates -- immune to the climate-grid land_fraction's hydrology-cache staleness --
   // and crust volume is continental crust only, so a real mass-conservation bug (a topology
   // change that drops a column's volume instead of preserving it) shows up as this number
   // actually shrinking, distinct from land area swinging while volume holds roughly steady
   // (ordinary tectonics moving existing crust above/below sea level).
-  numMetric("total_land_area_km2", "Land area", (s) => s.total_land_area_km2, 0, " km²"),
-  numMetric(
+  metricEntry(numMetric("total_land_area_km2", "Land area", (s) => s.total_land_area_km2, 0, " km²")),
+  metricEntry(numMetric(
     "total_continental_crust_volume_km3", "Continental crust volume",
     (s) => s.total_continental_crust_volume_km3, 0, " km³",
-  ),
-  numMetric("sea_level_m", "Sea level", (s) => s.sea_level_m, 0, " m"),
+  )),
+  metricEntry(numMetric("sea_level_m", "Sea level", (s) => s.sea_level_m, 0, " m")),
 ];
 
 interface HistoryStats {
@@ -343,6 +352,21 @@ function biomeDomainDict(s: WorldStats, domain: BiomeDomain): Record<string, num
   return domain === "land" ? s.biome_land_fraction : s.biome_ocean_fraction ?? {};
 }
 
+// SimulationTab's Table mode for a plain Metric entry: a run-level historyStats summary (see
+// that component's own comment for why, as opposed to a StatGroup's current-snapshot rows).
+function MetricHistoryRow({ metric, history }: { metric: Metric; history: WorldStats[] }) {
+  const s = historyStats(history, (h) => metric.get(h) ?? 0);
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{metric.label}</div>
+      <Row label="Min" value={metric.tableFormat(s?.min ?? null)} />
+      <Row label="Max" value={metric.tableFormat(s?.max ?? null)} />
+      <Row label="Avg" value={metric.tableFormat(s?.mean ?? null)} />
+      <Row label="Std dev" value={metric.tableFormat(s?.stdDev ?? null)} />
+    </div>
+  );
+}
+
 // Summed fraction of `members`, or null when the domain has no cells at all this step (an
 // empty dict) so the chart draws a gap rather than a misleading 0.
 function biomeSeriesValue(s: WorldStats, domain: BiomeDomain, members: string[]): number | null {
@@ -411,43 +435,52 @@ function ViewModeToggle({ viewMode, onChange }: { viewMode: "table" | "graph"; o
   );
 }
 
+// Shared by MetricTab and SimulationTab's Graph mode: both plot one selected TabEntry at a
+// time, a plain Metric as a single accent-colored line and a StatGroup as avg/min/max lines
+// plus a std-dev band.
+function entryChartData(selected: TabEntry, history: WorldStats[]): ChartPoint[] {
+  if (selected.kind === "metric") {
+    const m = selected.metric;
+    return history.map((h) => ({ x: h.elapsed_years, values: { [m.key]: m.get(h) } }));
+  }
+  const g = selected.group;
+  return history.map((h) => {
+    const mean = g.mean(h);
+    const std = g.std(h);
+    const bandLow = mean !== null && std !== null ? mean - std : null;
+    const bandHigh = mean !== null && std !== null ? mean + std : null;
+    return { x: h.elapsed_years, values: { min: g.min(h), max: g.max(h), mean, bandLow, bandHigh } };
+  });
+}
+
+// For a StatGroup, "mean" is listed last so TimeSeriesChart paints the avg line on top of
+// the min/max lines and the std-dev band (see that component's own z-order comment).
+function entryChartSeries(selected: TabEntry): ChartSeries[] {
+  if (selected.kind === "metric") return [{ key: selected.metric.key, label: selected.metric.label, color: ACCENT_COLOR }];
+  return [
+    { key: "min", label: "Min", color: MIN_COLOR },
+    { key: "max", label: "Max", color: MAX_COLOR },
+    { key: "mean", label: "Avg", color: ACCENT_COLOR },
+  ];
+}
+
+function entryChartBands(selected: TabEntry): ChartBand[] | undefined {
+  return selected.kind === "group" ? [{ lowKey: "bandLow", highKey: "bandHigh", color: BAND_COLOR, label: "±1 std dev" }] : undefined;
+}
+
+function entryYFormat(selected: TabEntry): (v: number) => string {
+  return selected.kind === "metric" ? selected.metric.yFormat : selected.group.yFormat;
+}
+
 function MetricTab({ entries, history, current }: { entries: TabEntry[]; history: WorldStats[]; current: WorldStats }) {
   const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
   const [selectedKey, setSelectedKey] = useState(entryKey(entries[0]));
   const selected = entries.find((e) => entryKey(e) === selectedKey) ?? entries[0];
 
-  const chartData: ChartPoint[] = useMemo(() => {
-    if (selected.kind === "metric") {
-      const m = selected.metric;
-      return history.map((h) => ({ x: h.elapsed_years, values: { [m.key]: m.get(h) } }));
-    }
-    const g = selected.group;
-    return history.map((h) => {
-      const mean = g.mean(h);
-      const std = g.std(h);
-      const bandLow = mean !== null && std !== null ? mean - std : null;
-      const bandHigh = mean !== null && std !== null ? mean + std : null;
-      return { x: h.elapsed_years, values: { min: g.min(h), max: g.max(h), mean, bandLow, bandHigh } };
-    });
-  }, [history, selected]);
-
-  // For a StatGroup, "mean" is listed last so TimeSeriesChart paints the avg line on top of
-  // the min/max lines and the std-dev band (see that component's own z-order comment).
-  const chartSeries: ChartSeries[] = useMemo(() => {
-    if (selected.kind === "metric") return [{ key: selected.metric.key, label: selected.metric.label, color: ACCENT_COLOR }];
-    return [
-      { key: "min", label: "Min", color: MIN_COLOR },
-      { key: "max", label: "Max", color: MAX_COLOR },
-      { key: "mean", label: "Avg", color: ACCENT_COLOR },
-    ];
-  }, [selected]);
-
-  const chartBands: ChartBand[] | undefined = useMemo(
-    () => (selected.kind === "group" ? [{ lowKey: "bandLow", highKey: "bandHigh", color: BAND_COLOR, label: "±1 std dev" }] : undefined),
-    [selected],
-  );
-
-  const yFormat = selected.kind === "metric" ? selected.metric.yFormat : selected.group.yFormat;
+  const chartData = useMemo(() => entryChartData(selected, history), [history, selected]);
+  const chartSeries = useMemo(() => entryChartSeries(selected), [selected]);
+  const chartBands = useMemo(() => entryChartBands(selected), [selected]);
+  const yFormat = entryYFormat(selected);
 
   return (
     <>
@@ -573,21 +606,22 @@ function BiomeTab({ history, current }: { history: WorldStats[]; current: WorldS
   );
 }
 
-// `current` isn't enough on its own here (unlike MetricTab's tabs, "min/max/avg/std dev"
-// for these two metrics means over the *run*, not a snapshot) -- Table mode is a dedicated
-// historyStats summary per metric instead of MetricTab's plain current-value rows; Graph
-// mode reuses MetricTab's own dropdown+chart exactly, since the raw series over time is the
-// same shape for these metrics as for every other tab's.
-function SimulationTab({ history }: { history: WorldStats[] }) {
+// Graph mode reuses the same dropdown+chart pattern (and the entryChart* helpers) as every
+// other tab's MetricTab, since the raw series over time is the same shape for a plain Metric
+// or a StatGroup here as anywhere else. Table mode differs per entry kind: a StatGroup (Hc,
+// Hm) is already a spatial min/max/mean/std-dev snapshot of `current`, so it gets the same
+// current-value rows MetricTab's own table would show it; a plain Metric here is a single
+// running total with no per-call distribution of its own (see SIMULATION_ENTRIES' comment),
+// so it still needs a dedicated historyStats summary over `history` instead.
+function SimulationTab({ history, current }: { history: WorldStats[]; current: WorldStats }) {
   const [viewMode, setViewMode] = useState<"table" | "graph">("graph");
-  const [selectedKey, setSelectedKey] = useState(SIMULATION_METRICS[0].key);
-  const selected = SIMULATION_METRICS.find((m) => m.key === selectedKey) ?? SIMULATION_METRICS[0];
+  const [selectedKey, setSelectedKey] = useState(entryKey(SIMULATION_ENTRIES[0]));
+  const selected = SIMULATION_ENTRIES.find((e) => entryKey(e) === selectedKey) ?? SIMULATION_ENTRIES[0];
 
-  const chartData: ChartPoint[] = useMemo(
-    () => history.map((h) => ({ x: h.elapsed_years, values: { [selected.key]: selected.get(h) } })),
-    [history, selected],
-  );
-  const chartSeries: ChartSeries[] = useMemo(() => [{ key: selected.key, label: selected.label, color: ACCENT_COLOR }], [selected]);
+  const chartData = useMemo(() => entryChartData(selected, history), [history, selected]);
+  const chartSeries = useMemo(() => entryChartSeries(selected), [selected]);
+  const chartBands = useMemo(() => entryChartBands(selected), [selected]);
+  const yFormat = entryYFormat(selected);
 
   return (
     <>
@@ -596,18 +630,19 @@ function SimulationTab({ history }: { history: WorldStats[] }) {
         history.length === 0 ? (
           <div style={{ opacity: 0.6 }}>No history yet -- step the world to start tracking.</div>
         ) : (
-          SIMULATION_METRICS.map((m) => {
-            const s = historyStats(history, (h) => m.get(h) ?? 0);
-            return (
-              <div key={m.key} style={{ marginBottom: 14 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>{m.label}</div>
-                <Row label="Min" value={m.tableFormat(s?.min ?? null)} />
-                <Row label="Max" value={m.tableFormat(s?.max ?? null)} />
-                <Row label="Avg" value={m.tableFormat(s?.mean ?? null)} />
-                <Row label="Std dev" value={m.tableFormat(s?.stdDev ?? null)} />
+          SIMULATION_ENTRIES.map((e) =>
+            e.kind === "group" ? (
+              <div key={e.group.key} style={{ marginBottom: 14 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>{e.group.label}</div>
+                <Row label="Min" value={e.group.tableFormat(e.group.min(current))} />
+                <Row label="Avg" value={e.group.tableFormat(e.group.mean(current))} />
+                <Row label="Max" value={e.group.tableFormat(e.group.max(current))} />
+                <Row label="Std dev" value={e.group.tableFormat(e.group.std(current))} />
               </div>
-            );
-          })
+            ) : (
+              <MetricHistoryRow key={e.metric.key} metric={e.metric} history={history} />
+            ),
+          )
         )
       ) : (
         <>
@@ -616,13 +651,13 @@ function SimulationTab({ history }: { history: WorldStats[] }) {
             onChange={(e) => setSelectedKey(e.target.value)}
             style={{ width: "100%", padding: "5px 4px", marginBottom: 10, fontSize: 12 }}
           >
-            {SIMULATION_METRICS.map((m) => (
-              <option key={m.key} value={m.key}>
-                {m.label}
+            {SIMULATION_ENTRIES.map((e) => (
+              <option key={entryKey(e)} value={entryKey(e)}>
+                {entryLabel(e)}
               </option>
             ))}
           </select>
-          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={selected.yFormat} />
+          <TimeSeriesChart series={chartSeries} data={chartData} yFormat={yFormat} bands={chartBands} />
         </>
       )}
     </>
@@ -686,7 +721,7 @@ export default function StatsModal({ stats, history, onClose }: Props) {
                 Graph mode on and an arbitrary fallback metric selected right after
                 switching to a tab whose metrics don't include the old selection. */}
             {activeTab === "simulation" ? (
-              <SimulationTab history={history} />
+              <SimulationTab history={history} current={stats} />
             ) : activeTab === "biome" ? (
               <BiomeTab key={activeTab} history={history} current={stats} />
             ) : (
