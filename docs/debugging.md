@@ -256,8 +256,13 @@ mantle-bloom Hc/Hm phase budget (GitHub issue #216)
   phase                          calls    d(count)       d(sum Hc) m       d(sum Hm) m
   ------------------------------------------------------------------------------------
   line_growth_shrink             ...
-  line_regularization            ...
-  convergent_deformation         ...
+  line_end_stretch                ...
+  line_end_arc_grow               ...
+  line_end_retreat                ...
+  line_end_accretion              ...
+  line_interior_carve             ...
+  line_regularization             ...
+  convergent_deformation          ...
   ...
 
 continental/oceanic node-type split (per phase, resolved against crust_type_code)
@@ -275,11 +280,24 @@ continental/oceanic node-type split (per phase, resolved against crust_type_code
   resetting a column to almost the same reference thickness it already had); a small `calls`
   count with a large delta means a rare but individually large event (a merge, a relattice).
 - **`d(count)`** is the touched slice's own node-count change -- nonzero only for phases that
-  can add/remove nodes (`line_growth_shrink`, `corner_notch_fill`, cleanup/merge/relattice/
-  regularization); the pure Hc/Hm-mutation phases (`convergent_deformation`,
-  `divergent_deformation`, `arc_magmatism`, `oceanic_cooling_relaxation`,
-  `decompression_melting`) always report 0 here, so any thickness change they show is a real
-  per-node change, not a population effect.
+  can add/remove nodes (`line_growth_shrink` and its five sub-phases below, `corner_notch_fill`,
+  cleanup/merge/relattice/regularization); the pure Hc/Hm-mutation phases
+  (`convergent_deformation`, `divergent_deformation`, `arc_magmatism`,
+  `oceanic_cooling_relaxation`, `decompression_melting`) always report 0 here, so any thickness
+  change they show is a real per-node change, not a population effect.
+- **`line_growth_shrink`'s five sub-phases** -- `line_end_stretch` (endpoint stretch-thinning:
+  `d(count)` always 0, a genuine per-node Hc/Hm change), `line_end_arc_grow` (brand-new
+  arc-margin nodes: `d(count)` > 0, `d(sum)` is pure population growth at the seed column),
+  `line_end_retreat` (a line end or interior run dropped: `d(count)` < 0, `d(sum)` the volume
+  that left the line, whether or not it's later recovered), `line_end_accretion` (that volume,
+  where flagged for suture accretion, reappearing on the surviving edge nodes: `d(count)` == 0,
+  `d(sum)` the recovered share, capped -- so `line_end_retreat`'s loss plus `line_end_accretion`'s
+  gain nets to the accretion cap's own overflow, not the whole retreated volume), and
+  `line_interior_carve` (the oceanic-only mid-row subduction carve, never redistributed:
+  `d(count)` < 0). `line_growth_shrink` itself is still recorded as the whole call's net total --
+  a cross-check that these five sub-phases' own `d(count)`/`d(sum Hc)`/`d(sum Hm)` add up to its
+  own (their raw before/after counts aren't directly comparable, since `line_growth_shrink`
+  records the whole line on every call while each sub-phase records only the slice it touches).
 - **the node-type split table** separates a genuine Hc/Hm change (both columns move) from pure
   reclassification (one column drops while the other rises by roughly the same amount, with
   little net change in the top table's combined total) -- `decompression_melting` is the

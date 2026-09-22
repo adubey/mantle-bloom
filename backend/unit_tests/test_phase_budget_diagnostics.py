@@ -87,3 +87,42 @@ def test_main_generates_a_fresh_world_when_no_save_is_given(capsys):
 def test_main_errors_on_a_missing_file(tmp_path):
     with pytest.raises(SystemExit):
         main([str(tmp_path / "nope.mbworld"), "--years", "100000"])
+
+
+def test_line_growth_shrink_sub_phases_sum_to_the_aggregate():
+    # GitHub issue #216: line_growth_shrink bundles five mechanistically distinct sub-events
+    # (endpoint stretch-thinning, brand-new arc-margin nodes, plain end/interior deletion, and
+    # accreted-column redistribution) inside one call to _grow_or_shrink_line_for_deform. Each
+    # now gets its own phase_budget.record() call in addition to the whole call's own net
+    # total -- this asserts the five sub-phases actually cover every mutation that total makes.
+    #
+    # The *net* deltas must telescope to the aggregate's own net delta (each sub-phase records
+    # only the specific slice it touches, while the aggregate call records the whole line's
+    # count/sum on every call regardless of whether that line changed at all -- so raw
+    # count_before/count_after and sum_before/sum_after aren't comparable directly, only the
+    # before-after deltas are).
+    world = generate_world(seed=23, num_plates=8, node_density=1.0)
+    report = build_report(world, total_years=3_000_000)
+    rows = {row["phase"]: row for row in report["phases"]}
+    assert "line_growth_shrink" in rows
+
+    sub_phases = ["line_end_stretch", "line_end_arc_grow", "line_end_retreat", "line_end_accretion", "line_interior_carve"]
+    present = [name for name in sub_phases if name in rows]
+    assert present, "expected at least one line_growth_shrink sub-phase to fire over this replay"
+
+    for scope in SCOPES:
+        aggregate = rows["line_growth_shrink"]["scopes"][scope]
+        aggregate_delta_count = aggregate["count_after"] - aggregate["count_before"]
+        aggregate_delta_sum_hc = aggregate["sum_hc_after"] - aggregate["sum_hc_before"]
+        aggregate_delta_sum_hm = aggregate["sum_hm_after"] - aggregate["sum_hm_before"]
+
+        combined_delta_count = sum(rows[name]["scopes"][scope]["count_after"] - rows[name]["scopes"][scope]["count_before"] for name in present)
+        combined_delta_sum_hc = sum(rows[name]["scopes"][scope]["sum_hc_after"] - rows[name]["scopes"][scope]["sum_hc_before"] for name in present)
+        combined_delta_sum_hm = sum(rows[name]["scopes"][scope]["sum_hm_after"] - rows[name]["scopes"][scope]["sum_hm_before"] for name in present)
+
+        # rel tolerance, not abs -- both sides accumulate the same underlying per-node deltas
+        # across thousands of calls, just summed in a different grouping/order, so float64
+        # accumulation noise scales with the totals themselves (~1e6 m here), not a fixed floor.
+        assert combined_delta_count == aggregate_delta_count, scope
+        assert combined_delta_sum_hc == pytest.approx(aggregate_delta_sum_hc, rel=1e-6, abs=1.0), scope
+        assert combined_delta_sum_hm == pytest.approx(aggregate_delta_sum_hm, rel=1e-6, abs=1.0), scope
