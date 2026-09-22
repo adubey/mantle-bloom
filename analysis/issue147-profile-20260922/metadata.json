@@ -1,0 +1,21 @@
+{
+  "frames": 60,
+  "steps_per_frame": 10,
+  "step_years": 100000,
+  "total_years": 60000000,
+  "seed": 0,
+  "node_density": 4.0,
+  "climate_density": 4.0,
+  "fluid_density": 2.0,
+  "projection": "eckert4",
+  "view": "combined",
+  "width": 2200,
+  "height": 1222,
+  "generation_s": 1.5993069160031155,
+  "initial_nodes": 130587,
+  "initial_plates": 19,
+  "profiled_run_s": 6285.144274874998,
+  "final_nodes": 139705,
+  "final_plates": 36,
+  "mp4_bytes": 4457105
+}
