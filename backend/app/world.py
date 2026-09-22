@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, magma_transport, mantle, merge_split, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -179,6 +179,14 @@ class World:
     # meant for an active debugging session, not indefinite retention. A `default_factory`
     # field -> backfilled on load (see persistence._backfill_added_fields).
     corner_notch_log: list[dict] = field(default_factory=list)
+    # GitHub issue #216 (long-run Hc/Hm decline): cumulative per-phase Hc/Hm budget, populated
+    # only while `debug_diagnostics` is True -- see phase_budget.py's module docstring for the
+    # schema and `phase_budget.record`'s callers (lithosphere_plate.py, merge_split.py,
+    # erosion.py) for which mechanisms feed it. Unlike corner_notch_log this is a running total,
+    # not a capped event log -- reset it (`reset_phase_budget`) before stepping forward the
+    # interval you want to measure. A `default_factory` field -> backfilled on load (see
+    # persistence._backfill_added_fields).
+    phase_budget: dict = field(default_factory=dict)
     # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
     # LithospherePlate.shift uses verbatim every step, bypassing torque.shift_plate's own
     # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
@@ -532,6 +540,12 @@ class World:
         overflow = len(self.corner_notch_log) - MAX_CORNER_NOTCH_LOG_LENGTH
         if overflow > 0:
             del self.corner_notch_log[:overflow]
+
+    def reset_phase_budget(self) -> None:
+        """Clear `phase_budget` (see its own field comment) so the next stretch of stepping
+        measures only its own interval -- e.g. before replaying a fixed number of years from a
+        saved world to attribute that interval's Hc/Hm change to specific phases."""
+        self.phase_budget = {}
 
     def distance_from_land_approx(self, points: np.ndarray) -> np.ndarray:
         """Approximate distance from each given world-xyz point (shape (n, 3)) to the
@@ -905,7 +919,20 @@ def step_world_progress(world: World, years: float):
         # this step reads it first.
         world.land_kdtree_cache = None
         _advance_fluid_dynamics(world, node_cloud)
+        # GitHub issue #216 item 11: erosion books net geomorphic removal/deposition (plus
+        # isostatic rebound) straight into Hc, per plate, with no node-count change -- snapshot
+        # each plate around the one whole-world call rather than threading instrumentation
+        # into erosion.py itself.
+        if world.debug_diagnostics:
+            before_erosion = {p.plate_id: phase_budget.snapshot(p) for p in world.plates}
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
+        if world.debug_diagnostics:
+            for plate in world.plates:
+                before = before_erosion.get(plate.plate_id)
+                if before is None:
+                    continue
+                after_hc, after_hm, after_codes = phase_budget.snapshot(plate)
+                phase_budget.record(world, plate, "erosion", *before, after_hc, after_hm, after_codes)
         world.erosion_cache = erosion_result
     if world.simulate_plate_movement:
         volcanism.apply_volcanic_activity(world, years)
