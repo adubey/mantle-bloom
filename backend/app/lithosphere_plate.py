@@ -287,15 +287,44 @@ SUTURE_ACCRETION_MAX_HC_M = lithosphere.MAX_CRUSTAL_THICKNESS_M
 # unrelated to the runaway this exists to fix.
 OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER = 1.0
 
+# GitHub issue #216: an oceanic self-plate's own ordinary subduction (this constant's own
+# neighbour above used to call it "not a passive margin at all -- that loss is expected, not a
+# bug") is real geology -- subducted oceanic lithosphere genuinely leaves the surface reservoir
+# -- but the issue's own phase-budget instrumentation (#222) found its *rate* has exactly the
+# same uncapped-loss/capped-gain shape #177 already fixed for the continental case, just in the
+# one retreat path that fix didn't reach: bounded only by the geometric/count caps
+# (n_distance_cap/max_extend_nodes), with nothing tying how much Hc a step's subduction removes
+# to how much this same plate actually created that step. Measured across two windows (issue
+# comment), this uncompensated loss was the single largest net Hc/Hm driver once the
+# self-canceling stretch/regularize bookkeeping pair (line_end_stretch vs line_regularization)
+# was excluded.
+#
+# Arc magmatism doesn't apply here -- ARC_MARGIN_SEED_*/arc_band_all are continental-only, since
+# arc volcanism happens on the *overriding* plate in this model (growth_seed_thickness's own
+# land-runaway history is why only a continental leading edge ever seeds arc crust). The oceanic
+# analog of "genuinely new mass added from the mantle this step" is decompression-melting
+# eruption at this plate's own divergent/rift nodes (the `melting` mask
+# `rheology.apply_divergent_deformation` already returns) -- the only mechanism that adds Hc to
+# an oceanic self-plate at all. Same rationale and same 1:1 multiplier as
+# OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER: cap the loss side by this step's real creation
+# rather than invent an independent rate for it. Shares the same budget-spend plumbing
+# (`_budget_limited_removal`, the `oceanic_override_retreat_budget_hc` array threaded through
+# `_grow_or_shrink_line_for_deform`) -- only one of the two budget computations below ever
+# applies to a given plate, so reusing one array/parameter name is safe.
+OCEANIC_SELF_RETREAT_BUDGET_MULTIPLIER = 1.0
+
 
 def _budget_limited_removal(hc: np.ndarray, n_remove: int, budget_hc: np.ndarray, from_high: bool) -> int:
-    """How many of the candidate `n_remove` end nodes an oceanic-override retreat may actually
-    take this step, capped by `budget_hc[0]` (this plate's remaining same-step arc-magmatic
-    creation budget -- see deform()'s own `oceanic_override_retreat_budget_hc` and
-    OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER). `budget_hc` is a shared, mutable single-
-    element array -- every call across this plate's whole deform() pass (both ends, every
-    line) spends down the same plate-wide budget in place, in call order; once it hits zero,
-    every oceanic-override retreat still to come this step is refused, not just throttled.
+    """How many of the candidate `n_remove` end nodes a budget-limited retreat may actually
+    take this step, capped by `budget_hc[0]` (this plate's remaining same-step creation budget
+    -- see deform()'s own `oceanic_override_retreat_budget_hc`, filled from arc-magmatic
+    creation for a continental self-plate's oceanic-override retreat
+    (OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER, issue #177) or from decompression-melting
+    creation for an oceanic self-plate's own ordinary subduction
+    (OCEANIC_SELF_RETREAT_BUDGET_MULTIPLIER, issue #216)). `budget_hc` is a shared, mutable
+    single-element array -- every call across this plate's whole deform() pass (both ends,
+    every line) spends down the same plate-wide budget in place, in call order; once it hits
+    zero, every budget-limited retreat still to come this step is refused, not just throttled.
 
     Finds the largest prefix of the candidate window, counted in from the true (retreating)
     end, whose summed Hc stays within the remaining budget -- node area is constant per node,
@@ -681,6 +710,15 @@ class LithospherePlate(PlateWithLines):
         # comment for the full rationale. This step's real arc-magmatic creation across the
         # whole plate, computed once here (mirrors the per-line calculation below) into a
         # shared budget the per-line loop's oceanic-override retreats spend down in place.
+        #
+        # GitHub issue #216 -- see OCEANIC_SELF_RETREAT_BUDGET_MULTIPLIER's own comment. An
+        # oceanic self-plate has no arc-magmatic creation of its own (arc_band_all is always
+        # empty for it), so it gets the same budget array filled from a different source: this
+        # step's real decompression-melting eruption across the whole plate, previewed the same
+        # way (mirrors the per-line divergent-deformation call below) -- only the *melted*
+        # subset represents genuinely new mass; ordinary sub-critical thinning is a loss already
+        # counted elsewhere (divergent_deformation), not creation, and including it here would
+        # make the budget negative almost every step and block ordinary subduction outright.
         oceanic_override_retreat_budget_hc = np.zeros(1)
         if self.crust_type == "continental" and np.any(arc_band_all):
             hm_all = self.collect("mantle_lithosphere_thickness_m")
@@ -691,6 +729,17 @@ class LithospherePlate(PlateWithLines):
             oceanic_override_retreat_budget_hc[0] = (
                 OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER * float(np.sum(grown_hc - hc_all[arc_band_all]))
             )
+        elif self.crust_type == "oceanic" and np.any(divergent_all):
+            hc_div_all = self.collect("crustal_thickness_m")[divergent_all]
+            hm_div_all = self.collect("mantle_lithosphere_thickness_m")[divergent_all]
+            _, _, melting_all = rheology.apply_divergent_deformation(
+                hc_div_all, hm_div_all, closing_rate_all[divergent_all], years_myr,
+            )
+            if np.any(melting_all):
+                oceanic_override_retreat_budget_hc[0] = (
+                    OCEANIC_SELF_RETREAT_BUDGET_MULTIPLIER
+                    * float(np.sum(lithosphere.REFERENCE_HC_OCEANIC_M - hc_div_all[melting_all]))
+                )
 
         # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
         # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
@@ -1194,12 +1243,15 @@ class LithospherePlate(PlateWithLines):
         `accrete` marks end nodes whose crustal/mantle-lithosphere volume must be conserved
         when they retreat (a continental suture -- see `_redistribute_accreted_column`);
         elsewhere retreat drops the column (oceanic subduction, or a continental passive
-        margin against an oceanic slab) -- and, for a continental self-plate's oceanic-
-        override case specifically, is further rate-limited against
+        margin against an oceanic slab) and is further rate-limited against
         `oceanic_override_retreat_budget_hc` (see `_budget_limited_removal` /
-        OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER, issue #177 direction 1). That budget is
-        shared and mutable across this plate's whole deform() pass (every line, both ends),
-        so it must be threaded through from the caller rather than recomputed here.
+        OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER for a continental self-plate's oceanic-
+        override case, issue #177 direction 1; OCEANIC_SELF_RETREAT_BUDGET_MULTIPLIER for an
+        oceanic self-plate's own ordinary subduction, both end and interior-carve, issue #216 --
+        only one of the two ever applies to a given plate, so both share this one array). That
+        budget is shared and mutable across this plate's whole deform() pass (every line, both
+        ends, and the interior carve), so it must be threaded through from the caller rather
+        than recomputed here.
 
         `direction` (world-frame, this plate's own `torque.BoundaryForceInputs.
         direction_to_neighbor`, one per node) feeds the end-growth branch's own rift-stretch
@@ -1250,7 +1302,14 @@ class LithospherePlate(PlateWithLines):
 
         if len(shrinkable) > 0 and shrinkable[-1]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=True), n_distance_cap, max_extend_nodes, len(theta) - 1)
-            if n_remove > 0 and self.crust_type == "continental" and not accrete[-1]:
+            # Budget-limited whenever this retreat isn't conserved by accretion -- continental
+            # vs. oceanic-override (issue #177) or, now, an oceanic self-plate's own ordinary
+            # subduction (issue #216) -- `accrete[-1]` is always False for the latter (oceanic
+            # self-plates never accrete, see `accrete_all`), so dropping the old
+            # `self.crust_type == "continental"` restriction here just lets that case reach the
+            # same budget machinery, spending from whichever of the two budgets `deform()`
+            # actually populated for this plate's own crust_type.
+            if n_remove > 0 and not accrete[-1]:
                 n_remove = _budget_limited_removal(
                     persistent_fields["crustal_thickness_m"], n_remove, oceanic_override_retreat_budget_hc, from_high=True
                 )
@@ -1289,7 +1348,8 @@ class LithospherePlate(PlateWithLines):
 
         if shrinkable[0]:
             n_remove = min(contested_run_from_end(shrinkable, from_high=False), n_distance_cap, max_extend_nodes, len(theta) - 1)
-            if n_remove > 0 and self.crust_type == "continental" and not accrete[0]:
+            # See the mirrored high-end block above for why the crust-type restriction is gone.
+            if n_remove > 0 and not accrete[0]:
                 n_remove = _budget_limited_removal(
                     persistent_fields["crustal_thickness_m"], n_remove, oceanic_override_retreat_budget_hc, from_high=False
                 )
@@ -1346,6 +1406,19 @@ class LithospherePlate(PlateWithLines):
                 if end - start < _INTERIOR_SUBDUCTION_MIN_RUN or budget <= 0:
                     continue
                 take = min(end - start, budget)
+                # GitHub issue #216: this is oceanic self-plate subduction exactly like the end
+                # retreats above, just mid-row -- cap it by the same plate-wide Hc budget
+                # (oceanic_override_retreat_budget_hc) those spend from, rather than leaving it
+                # bounded only by node count. Counted in from the run's own start, mirroring
+                # `_budget_limited_removal`'s own prefix-sum approach.
+                run_hc = persistent_fields["crustal_thickness_m"][start : start + take]
+                cum_hc = np.cumsum(run_hc)
+                remaining_budget = max(float(oceanic_override_retreat_budget_hc[0]), 0.0)
+                within_budget = cum_hc <= remaining_budget
+                take = take if within_budget.all() else int(np.argmax(~within_budget))
+                if take <= 0:
+                    continue
+                oceanic_override_retreat_budget_hc[0] -= float(cum_hc[take - 1])
                 keep[start : start + take] = False
                 budget -= take
             if not keep.all():
