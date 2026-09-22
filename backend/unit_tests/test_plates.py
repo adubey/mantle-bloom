@@ -848,7 +848,10 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
     """`_redistribute_accreted_column` moves the exact summed Hc/Hm of the dropped, accretion-
     flagged nodes onto the surviving edge nodes (node area is constant, so summed thickness is
     the conserved volume), and lifts their elevation by the matching isostatic delta. Dropped
-    nodes not flagged (a passive margin against an oceanic slab) contribute nothing."""
+    nodes not flagged (a passive margin against an oceanic slab) contribute nothing. Hm is
+    conserved the same way as Hc -- the donor's own removed_hm must actually enter the
+    calculation, not just a ratio derived from the survivor's own prior Hc/Hm (GitHub issue
+    #216: that ratio-based scaling silently discarded the donor's Hm)."""
     from app.lithosphere import crust_density, isostatic_elevation
     from app.lithosphere_plate import _redistribute_accreted_column, SUTURE_ACCRETION_SPREAD_NODES
 
@@ -859,16 +862,21 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
     elevation = isostatic_elevation(hc, hm, rho_c).copy()
 
     removed_hc = np.array([35_000.0, 35_000.0, 35_000.0])
+    removed_hm = np.array([120_000.0, 90_000.0, 200_000.0])  # last one unused -> not accreted
     accrete_removed = np.array([True, True, False])  # last one was against ocean -> subducts
 
     total_hc_before = hc.sum()
-    _redistribute_accreted_column(fields, elevation, rho_c, removed_hc, accrete_removed, from_high=True)
+    total_hm_before = hm.sum()
+    _redistribute_accreted_column(fields, elevation, rho_c, removed_hc, removed_hm, accrete_removed, from_high=True)
 
     assert fields["crustal_thickness_m"].sum() == pytest.approx(total_hc_before + 2 * 35_000.0)
+    assert fields["mantle_lithosphere_thickness_m"].sum() == pytest.approx(total_hm_before + 120_000.0 + 90_000.0)
     # spread over the last SUTURE_ACCRETION_SPREAD_NODES nodes, evenly
     k = SUTURE_ACCRETION_SPREAD_NODES
     assert np.allclose(fields["crustal_thickness_m"][-k:], 35_000.0 + 2 * 35_000.0 / k)
     assert np.allclose(fields["crustal_thickness_m"][:-k], 35_000.0)
+    assert np.allclose(fields["mantle_lithosphere_thickness_m"][-k:], 100_000.0 + (120_000.0 + 90_000.0) / k)
+    assert np.allclose(fields["mantle_lithosphere_thickness_m"][:-k], 100_000.0)
     # thicker crust -> higher ground on exactly those nodes
     assert np.all(elevation[-k:] > elevation[:-k].max())
 
@@ -881,7 +889,7 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
     elev2 = isostatic_elevation(hc2, fields2["mantle_lithosphere_thickness_m"], rho_c).copy()
     _redistribute_accreted_column(
         fields2, elev2, rho_c,
-        np.full(5, 90_000.0), np.ones(5, dtype=bool), from_high=True,
+        np.full(5, 90_000.0), np.full(5, 90_000.0), np.ones(5, dtype=bool), from_high=True,
     )
     assert np.all(fields2["crustal_thickness_m"] <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
 
