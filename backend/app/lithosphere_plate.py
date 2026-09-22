@@ -1057,9 +1057,13 @@ class LithospherePlate(PlateWithLines):
             if world.debug_diagnostics:
                 # Endpoint stretch-thinning, end growth, end/interior retreat, and accreted-
                 # column redistribution all happen inside this one call (GitHub issue #216
-                # items 1-3) -- measured together as the net node-count/Hc/Hm change across the
-                # line's boundary, since none of those sub-mechanisms is separable without its
-                # own before/after snapshot deep inside _grow_or_shrink_line_for_deform.
+                # items 1-3). Each sub-mechanism now has its own before/after snapshot taken
+                # deep inside _grow_or_shrink_line_for_deform (line_end_stretch, line_end_
+                # arc_grow, line_end_retreat, line_end_accretion, line_interior_carve) -- this
+                # "line_growth_shrink" record is kept as the net line-boundary total, a
+                # cross-check that the five sub-phases' combined delta matches the whole call's
+                # actual effect (they should sum to it exactly, since together they cover every
+                # mutation this function makes).
                 grown_hc = np.concatenate([gl.crustal_thickness_m for gl in grown_lines]) if grown_lines else np.array([])
                 grown_hm = np.concatenate([gl.mantle_lithosphere_thickness_m for gl in grown_lines]) if grown_lines else np.array([])
                 grown_codes = (
@@ -1253,6 +1257,7 @@ class LithospherePlate(PlateWithLines):
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][-n_remove:].copy()
                 removed_hm = persistent_fields["mantle_lithosphere_thickness_m"][-n_remove:].copy()
+                removed_codes = persistent_fields["crust_type_code"][-n_remove:].copy()
                 accrete_removed = accrete[-n_remove:].copy()
                 removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_remove, line.phi), theta[-n_remove:]))
                 world.record_removed_points(removed_world, self.plate_id)
@@ -1260,7 +1265,24 @@ class LithospherePlate(PlateWithLines):
                 contested, shrinkable, accrete, dist = contested[:-n_remove], shrinkable[:-n_remove], accrete[:-n_remove], dist[:-n_remove]
                 direction = direction[:-n_remove]
                 persistent_fields = {name: values[:-n_remove] for name, values in persistent_fields.items()}
+                if world.debug_diagnostics:
+                    phase_budget.record(
+                        world, self, "line_end_retreat",
+                        removed_hc, removed_hm, removed_codes,
+                        np.array([]), np.array([]), np.array([], dtype=removed_codes.dtype),
+                    )
+                accrete_pre_hc = accrete_pre_hm = accrete_pre_codes = None
+                if world.debug_diagnostics and np.any(accrete_removed):
+                    accrete_pre_hc = persistent_fields["crustal_thickness_m"].copy()
+                    accrete_pre_hm = persistent_fields["mantle_lithosphere_thickness_m"].copy()
+                    accrete_pre_codes = persistent_fields["crust_type_code"].copy()
                 _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, removed_hm, accrete_removed, from_high=True)
+                if accrete_pre_hc is not None:
+                    phase_budget.record(
+                        world, self, "line_end_accretion",
+                        accrete_pre_hc, accrete_pre_hm, accrete_pre_codes,
+                        persistent_fields["crustal_thickness_m"], persistent_fields["mantle_lithosphere_thickness_m"], persistent_fields["crust_type_code"],
+                    )
 
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
@@ -1274,6 +1296,7 @@ class LithospherePlate(PlateWithLines):
             if n_remove > 0:
                 removed_hc = persistent_fields["crustal_thickness_m"][:n_remove].copy()
                 removed_hm = persistent_fields["mantle_lithosphere_thickness_m"][:n_remove].copy()
+                removed_codes = persistent_fields["crust_type_code"][:n_remove].copy()
                 accrete_removed = accrete[:n_remove].copy()
                 removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full(n_remove, line.phi), theta[:n_remove]))
                 world.record_removed_points(removed_world, self.plate_id)
@@ -1281,7 +1304,24 @@ class LithospherePlate(PlateWithLines):
                 contested, shrinkable, accrete, dist = contested[n_remove:], shrinkable[n_remove:], accrete[n_remove:], dist[n_remove:]
                 direction = direction[n_remove:]
                 persistent_fields = {name: values[n_remove:] for name, values in persistent_fields.items()}
+                if world.debug_diagnostics:
+                    phase_budget.record(
+                        world, self, "line_end_retreat",
+                        removed_hc, removed_hm, removed_codes,
+                        np.array([]), np.array([]), np.array([], dtype=removed_codes.dtype),
+                    )
+                accrete_pre_hc = accrete_pre_hm = accrete_pre_codes = None
+                if world.debug_diagnostics and np.any(accrete_removed):
+                    accrete_pre_hc = persistent_fields["crustal_thickness_m"].copy()
+                    accrete_pre_hm = persistent_fields["mantle_lithosphere_thickness_m"].copy()
+                    accrete_pre_codes = persistent_fields["crust_type_code"].copy()
                 _redistribute_accreted_column(persistent_fields, elevation, rho_c, removed_hc, removed_hm, accrete_removed, from_high=False)
+                if accrete_pre_hc is not None:
+                    phase_budget.record(
+                        world, self, "line_end_accretion",
+                        accrete_pre_hc, accrete_pre_hm, accrete_pre_codes,
+                        persistent_fields["crustal_thickness_m"], persistent_fields["mantle_lithosphere_thickness_m"], persistent_fields["crust_type_code"],
+                    )
 
         if len(theta) == 0:
             return [ElevationLine(phi=line.phi, theta=theta, elevation=elevation, **persistent_fields)]
@@ -1311,6 +1351,14 @@ class LithospherePlate(PlateWithLines):
             if not keep.all():
                 removed_world = geometry.to_world(self.frame, geometry.local_xyz(np.full((~keep).sum(), line.phi), theta[~keep]))
                 world.record_removed_points(removed_world, self.plate_id)
+                if world.debug_diagnostics:
+                    phase_budget.record(
+                        world, self, "line_interior_carve",
+                        persistent_fields["crustal_thickness_m"][~keep],
+                        persistent_fields["mantle_lithosphere_thickness_m"][~keep],
+                        persistent_fields["crust_type_code"][~keep],
+                        np.array([]), np.array([]), np.array([], dtype=persistent_fields["crust_type_code"].dtype),
+                    )
                 theta, elevation = theta[keep], elevation[keep]
                 contested, shrinkable, accrete, dist = contested[keep], shrinkable[keep], accrete[keep], dist[keep]
                 direction = direction[keep]
@@ -1389,6 +1437,10 @@ class LithospherePlate(PlateWithLines):
             if self._count_open_prefix(candidate, line.phi, neighbours) == 0:
                 return
             prior_elevation = float(elevation[index])
+            if world.debug_diagnostics:
+                stretch_before_hc = persistent_fields["crustal_thickness_m"][index, None].copy()
+                stretch_before_hm = persistent_fields["mantle_lithosphere_thickness_m"][index, None].copy()
+                stretch_before_codes = persistent_fields["crust_type_code"][index, None].copy()
             new_hc, new_hm, melt = rheology.apply_stretch_thinning(
                 persistent_fields["crustal_thickness_m"][index, None],
                 persistent_fields["mantle_lithosphere_thickness_m"][index, None],
@@ -1415,6 +1467,14 @@ class LithospherePlate(PlateWithLines):
                 persistent_fields["crustal_thickness_m"][index, None], persistent_fields["mantle_lithosphere_thickness_m"][index, None], node_rho_c
             )[0]
             persistent_fields["elev_change_reason"][index] = ELEV_CHANGE_VOLCANO if melt[0] else ELEV_CHANGE_RIFT
+            if world.debug_diagnostics:
+                phase_budget.record(
+                    world, self, "line_end_stretch",
+                    stretch_before_hc, stretch_before_hm, stretch_before_codes,
+                    persistent_fields["crustal_thickness_m"][index, None],
+                    persistent_fields["mantle_lithosphere_thickness_m"][index, None],
+                    persistent_fields["crust_type_code"][index, None],
+                )
 
         # `suppress_growth` (the continental area-budget gate) only applies to the arc-seed
         # append branch below, which conjures brand-new full-thickness nodes for free. The
@@ -1437,6 +1497,14 @@ class LithospherePlate(PlateWithLines):
                         elevation = np.append(elevation, np.full(n_new, elev_seed))
                         for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
                             persistent_fields[name] = np.append(persistent_fields[name], fill)
+                        if world.debug_diagnostics:
+                            phase_budget.record(
+                                world, self, "line_end_arc_grow",
+                                np.array([]), np.array([]), np.array([], dtype=persistent_fields["crust_type_code"].dtype),
+                                persistent_fields["crustal_thickness_m"][-n_new:],
+                                persistent_fields["mantle_lithosphere_thickness_m"][-n_new:],
+                                persistent_fields["crust_type_code"][-n_new:],
+                            )
             else:
                 _stretch_end(-1, 1.0, dist[-1], direction[-1])
 
@@ -1454,6 +1522,14 @@ class LithospherePlate(PlateWithLines):
                         elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
                         for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
                             persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
+                        if world.debug_diagnostics:
+                            phase_budget.record(
+                                world, self, "line_end_arc_grow",
+                                np.array([]), np.array([]), np.array([], dtype=persistent_fields["crust_type_code"].dtype),
+                                persistent_fields["crustal_thickness_m"][:n_new],
+                                persistent_fields["mantle_lithosphere_thickness_m"][:n_new],
+                                persistent_fields["crust_type_code"][:n_new],
+                            )
             else:
                 _stretch_end(0, -1.0, dist[0], direction[0])
 

@@ -14,6 +14,18 @@ different from its plate's nominal one, e.g. an accreted terrane), so a run can 
 genuine reservoir loss/gain in one mechanism from population change (more/fewer nodes) or
 reclassification (nodes changing type without any Hc/Hm change at all).
 
+Boundary growth/shrink (`LithospherePlate._grow_or_shrink_line_for_deform`) is itself split
+into five phases -- `line_end_stretch`, `line_end_arc_grow`, `line_end_retreat`,
+`line_end_accretion`, `line_interior_carve` -- rather than one lumped `line_growth_shrink`
+total, since that single call site bundles several mechanistically distinct sub-events
+(endpoint stretch-thinning, brand-new arc-margin nodes, plain end/interior deletion, and
+accreted-column redistribution) that the issue's own investigation found dominate the whole
+Hc/Hm budget yet couldn't be told apart without their own snapshots. `line_growth_shrink`
+itself is still recorded too, as the call's net total -- a cross-check that the five sub-phases'
+own before-after deltas sum to its delta exactly (their raw count_before/count_after and
+sum_before/sum_after aren't directly comparable to the aggregate's, since each sub-phase records
+only the slice it actually touches while the aggregate records the whole line on every call).
+
 `World.phase_budget` is a plain cumulative total since the world was created (or since the
 last `World.reset_phase_budget()`) -- there is no separate per-step history, by design: a
 caller investigating a specific interval (e.g. a short replay from a saved world) resets the
