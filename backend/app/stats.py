@@ -105,6 +105,8 @@ guess. See GitHub issue #121.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from . import biomes, climate, hydrology, lithosphere
@@ -112,10 +114,37 @@ from .elevation_lines import line_spacing_rad
 from .world import World
 
 
-def _min_max_mean_std(values: np.ndarray) -> tuple[float | None, float | None, float | None, float | None]:
-    if values.size == 0:
-        return None, None, None, None
-    return float(values.min()), float(values.max()), float(values.mean()), float(values.std())
+@dataclass(frozen=True)
+class Stat4:
+    """A min/max/mean/std-dev quadruple for one quantity's spatial distribution over the
+    current world (elevation, ocean depth, land/air/ocean temperature, precipitation, Hc/Hm)
+    -- the same grouping the frontend's own `StatGroup` (see StatsModal.tsx) plots as one
+    avg/min/max graph plus a std-dev band, rather than four separately-named numbers. Replaces
+    what used to be four parallel tuple-unpacked locals per quantity here, and `to_dict` below
+    replaces the four individually-spelled keys each quantity contributed to `compute_stats`'
+    returned dict -- the dict's actual key names (and thus the frontend/save-file contract)
+    are unchanged."""
+
+    min: float | None
+    max: float | None
+    mean: float | None
+    std: float | None
+
+    @classmethod
+    def of(cls, values: np.ndarray) -> "Stat4":
+        if values.size == 0:
+            return cls(None, None, None, None)
+        return cls(float(values.min()), float(values.max()), float(values.mean()), float(values.std()))
+
+    def to_dict(self, prefix: str, suffix: str = "") -> dict:
+        """`{prefix}_min{suffix}`/`_max{suffix}`/`_mean{suffix}`/`_std{suffix}` -- matches the
+        naming every quantity below already used, so this is a drop-in replacement via `**`."""
+        return {
+            f"{prefix}_min{suffix}": self.min,
+            f"{prefix}_max{suffix}": self.max,
+            f"{prefix}_mean{suffix}": self.mean,
+            f"{prefix}_std{suffix}": self.std,
+        }
 
 
 # How far below sea level an ordinary endorheic desert basin can plausibly sit -- Earth's most
@@ -171,14 +200,14 @@ def _is_water(fields: "climate.ClimateFields", is_ocean: np.ndarray) -> np.ndarr
 def compute_stats(world: World) -> dict:
     hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
     hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
-    hc_min, hc_max, hc_mean, hc_std = _min_max_mean_std(hc)
-    hm_min, hm_max, hm_mean, hm_std = _min_max_mean_std(hm)
+    hc_stats = Stat4.of(hc)
+    hm_stats = Stat4.of(hm)
     fields = climate.compute_climate_cached(world)
     is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
     is_water = _is_water(fields, is_ocean)
     total = is_ocean.size
 
-    elevation_min, elevation_max, elevation_mean, elevation_std = _min_max_mean_std(fields.elevation_m[is_land])
+    elevation_stats = Stat4.of(fields.elevation_m[is_land])
     # Use the same reconciled land mask as the elevation stats. Measure the 5% band
     # relative to sea level, including its lower boundary; abs also handles worlds
     # whose highest land is a below-sea-level endorheic basin.
@@ -189,11 +218,11 @@ def compute_stats(world: World) -> dict:
         land_near_max_elevation_fraction = float(np.mean(land_height >= peak - 0.05 * abs(peak)))
 
     ocean_depth = world.sea_level_m - fields.elevation_m[is_ocean]
-    ocean_depth_min, ocean_depth_max, ocean_depth_mean, ocean_depth_std = _min_max_mean_std(ocean_depth)
-    land_temp_min, land_temp_max, land_temp_mean, land_temp_std = _min_max_mean_std(fields.land_temperature_c[is_land])
-    air_temp_min, air_temp_max, air_temp_mean, air_temp_std = _min_max_mean_std(fields.air_temperature_c[is_land])
-    ocean_temp_min, ocean_temp_max, ocean_temp_mean, ocean_temp_std = _min_max_mean_std(fields.ocean_temperature_c[is_ocean])
-    precip_min, precip_max, precip_mean, precip_std = _min_max_mean_std(fields.precipitation_mm)
+    ocean_depth_stats = Stat4.of(ocean_depth)
+    land_temp_stats = Stat4.of(fields.land_temperature_c[is_land])
+    air_temp_stats = Stat4.of(fields.air_temperature_c[is_land])
+    ocean_temp_stats = Stat4.of(fields.ocean_temperature_c[is_ocean])
+    precip_stats = Stat4.of(fields.precipitation_mm)
 
     land_area_m2, continental_crust_volume_m3, land_node_count = _total_land_area_and_continental_volume(world)
     elevation_point_count = sum(p.node_count() for p in world.plates)
@@ -215,9 +244,9 @@ def compute_stats(world: World) -> dict:
 
     return {
         "hc_at_max_fraction": float(np.mean(hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1e-6)) if hc.size else None,
-        "hc_min_m": hc_min, "hc_max_m": hc_max, "hc_mean_m": hc_mean, "hc_std_m": hc_std,
+        **hc_stats.to_dict("hc", "_m"),
         "hm_at_max_fraction": float(np.mean(hm >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)) if hm.size else None,
-        "hm_min_m": hm_min, "hm_max_m": hm_max, "hm_mean_m": hm_mean, "hm_std_m": hm_std,
+        **hm_stats.to_dict("hm", "_m"),
         "elapsed_years": world.elapsed_years,
         "plate_count": len(world.plates),
         "elevation_point_count": elevation_point_count,
@@ -243,30 +272,12 @@ def compute_stats(world: World) -> dict:
             and world.hydrology_cache_step != world.steps_taken
         ),
         "land_near_max_elevation_fraction": land_near_max_elevation_fraction,
-        "elevation_min_m": elevation_min,
-        "elevation_max_m": elevation_max,
-        "elevation_mean_m": elevation_mean,
-        "elevation_std_m": elevation_std,
-        "ocean_depth_min_m": ocean_depth_min,
-        "ocean_depth_max_m": ocean_depth_max,
-        "ocean_depth_mean_m": ocean_depth_mean,
-        "ocean_depth_std_m": ocean_depth_std,
-        "land_temperature_min_c": land_temp_min,
-        "land_temperature_max_c": land_temp_max,
-        "land_temperature_mean_c": land_temp_mean,
-        "land_temperature_std_c": land_temp_std,
-        "air_temperature_min_c": air_temp_min,
-        "air_temperature_max_c": air_temp_max,
-        "air_temperature_mean_c": air_temp_mean,
-        "air_temperature_std_c": air_temp_std,
-        "ocean_temperature_min_c": ocean_temp_min,
-        "ocean_temperature_max_c": ocean_temp_max,
-        "ocean_temperature_mean_c": ocean_temp_mean,
-        "ocean_temperature_std_c": ocean_temp_std,
-        "precipitation_min_mm": precip_min,
-        "precipitation_max_mm": precip_max,
-        "precipitation_mean_mm": precip_mean,
-        "precipitation_std_mm": precip_std,
+        **elevation_stats.to_dict("elevation", "_m"),
+        **ocean_depth_stats.to_dict("ocean_depth", "_m"),
+        **land_temp_stats.to_dict("land_temperature", "_c"),
+        **air_temp_stats.to_dict("air_temperature", "_c"),
+        **ocean_temp_stats.to_dict("ocean_temperature", "_c"),
+        **precip_stats.to_dict("precipitation", "_mm"),
         "biome_land_fraction": biome_land_fraction,
         "biome_ocean_fraction": biome_ocean_fraction,
     }
