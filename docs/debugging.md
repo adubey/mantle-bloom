@@ -14,10 +14,13 @@ low-relief coastlines (see [GitHub issue #122](https://github.com/adubey/mantle-
 
 ## Debugging command-line tools
 
-Three offline, read-only dumps of a saved world. Each **never starts the server or binds a
-port** -- it loads a `.mbworld` file directly (same pickle format as *File > Load*, see
-[`persistence.py`](../backend/app/persistence.py)) and prints to stdout. Each reuses the exact
-code behind the equivalent API endpoint / UI panel, so the CLI and the UI can never disagree.
+Four offline, read-only dumps of a saved world. Each **never starts the server or binds a
+port** -- three load a `.mbworld` file directly (same pickle format as *File > Load*, see
+[`persistence.py`](../backend/app/persistence.py)) and print to stdout; `phase_budget_diagnostics`
+can do that too, but (unlike the other three, which only ever read a save) it also *steps* the
+world forward by a given number of years before reporting -- see its own section below. Each of
+the first three reuses the exact code behind the equivalent API endpoint / UI panel, so the CLI
+and the UI can never disagree.
 
 ```bash
 cd backend
@@ -25,6 +28,7 @@ source .venv/bin/activate
 python -m app.plate_diagnostics <save.mbworld>            # plate geometry
 python -m app.stranded_basins <save.mbworld>               # land-locked sub-sea-level pits
 python -m app.lake_hierarchy_diagnostics <save.mbworld>    # lake-merge-forest depth/size
+python -m app.phase_budget_diagnostics <save.mbworld> --years 1000000  # per-phase Hc/Hm budget
 ```
 
 Every tool also takes `--json` for structured, scriptable output.
@@ -216,6 +220,81 @@ measurement. Depth stayed bounded and self-resolving the whole run; no pre-fill 
 warranted.
 
 Test: [`unit_tests/test_lake_hierarchy_diagnostics.py`](../backend/unit_tests/test_lake_hierarchy_diagnostics.py).
+
+### `python -m app.phase_budget_diagnostics` -- per-phase Hc/Hm budget
+
+Built for [GitHub issue #216](https://github.com/adubey/mantle-bloom/issues/216)
+("Investigate long-run Hc/Hm decline"). Every mechanism that touches crustal thickness (Hc) /
+mantle-lithosphere thickness (Hm) -- convergent/divergent deformation, arc magmatism, oceanic
+cooling relaxation, decompression melting, boundary growth/shrink, row claiming,
+regularization, plate merges/cleanup/relatticing, failed rifts, erosion -- is individually
+instrumented (see [`phase_budget.py`](../backend/app/phase_budget.py)'s module docstring for
+the full mechanism-to-call-site mapping). This tool turns that instrumentation on, steps the
+world forward, and reports the accumulated before/after node count and sum(Hc)/sum(Hm) per
+phase, split by both plate type (`crust_type`) and per-node type (`crust_type_code`) -- so a
+mean-thickness decline can be attributed to a specific mechanism, to changing node population,
+or to reclassification, rather than treated as one undifferentiated trend.
+
+Unlike the other three tools above, this one *replays* rather than only reads: it takes
+`--years` (required) and steps the world forward that far, in ordinary 100 ky increments,
+with `debug_diagnostics` turned on and the budget reset first -- so the report always
+describes exactly the given interval, whether that's a short replay from a real save (the
+issue's own "replay short intervals from this save to establish current contributors") or a
+fresh world (`--seed`/`--node-density`, no save given, for a fully reproducible run):
+
+```bash
+python -m app.phase_budget_diagnostics <save.mbworld> --years 1000000
+python -m app.phase_budget_diagnostics --seed 611937962 --node-density 4 --years 1000000
+```
+
+```
+mantle-bloom Hc/Hm phase budget (GitHub issue #216)
+  seed:          611937962
+  node_density:  4.0
+  interval:      334,100,000 -> 335,100,000 yr  (10 steps @ 100,000 yr)
+
+  phase                          calls    d(count)       d(sum Hc) m       d(sum Hm) m
+  ------------------------------------------------------------------------------------
+  line_growth_shrink             ...
+  line_regularization            ...
+  convergent_deformation         ...
+  ...
+
+continental/oceanic node-type split (per phase, resolved against crust_type_code)
+  phase                          cont d(sum Hc)   ocean d(sum Hc)    cont d(sum Hm)   ocean d(sum Hm)
+  ---------------------------------------------------------------------------------------------------
+  ...
+```
+
+**How to read it:**
+
+- **`d(sum Hc)`/`d(sum Hm)`** are this interval's net change, summed over every node the phase
+  touched (`sum_hc_after - sum_hc_before`), not a mean -- comparable directly across phases
+  regardless of how many nodes each one happened to touch. A large `calls` count with a small
+  `d(sum Hc)` means the phase ran often but nearly canceled out (e.g. `decompression_melting`
+  resetting a column to almost the same reference thickness it already had); a small `calls`
+  count with a large delta means a rare but individually large event (a merge, a relattice).
+- **`d(count)`** is the touched slice's own node-count change -- nonzero only for phases that
+  can add/remove nodes (`line_growth_shrink`, `corner_notch_fill`, cleanup/merge/relattice/
+  regularization); the pure Hc/Hm-mutation phases (`convergent_deformation`,
+  `divergent_deformation`, `arc_magmatism`, `oceanic_cooling_relaxation`,
+  `decompression_melting`) always report 0 here, so any thickness change they show is a real
+  per-node change, not a population effect.
+- **the node-type split table** separates a genuine Hc/Hm change (both columns move) from pure
+  reclassification (one column drops while the other rises by roughly the same amount, with
+  little net change in the top table's combined total) -- `decompression_melting` is the
+  phase most likely to show this, since it can flip a node's effective type.
+- **`--json`**'s `scopes` dict on each phase row also has `continental_plate`/`oceanic_plate`
+  (split by the *owning plate's* `crust_type` rather than each node's own effective type --
+  the two disagree wherever a plate carries nodes of the other type, e.g. an accreted terrane)
+  and `area_before_m2`/`area_after_m2` (`count * node_area_m2(node_density)`, the "nominal
+  covered area" the issue's acceptance criteria ask for -- not runnable as an independent
+  areal integral over the globe; see the issue's own caveat on why summed Hc isn't one either).
+- This tool answers issue #216's first acceptance-criteria item (instrumentation); it does not
+  by itself separate genuine geological sinks from numerical drift -- that's a reading exercise
+  against the mechanism list in the issue itself, using this tool's own numbers as the evidence.
+
+Test: [`unit_tests/test_phase_budget_diagnostics.py`](../backend/unit_tests/test_phase_budget_diagnostics.py).
 
 ---
 

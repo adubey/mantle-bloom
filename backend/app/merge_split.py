@@ -34,7 +34,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle, plates as plates_mod
+from . import geometry, mantle, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
@@ -273,6 +273,13 @@ def remove_defunct_plates(world: "World") -> None:
     defunct = [p for p in world.plates if p.node_count() == 0 or p.has_negligible_territory()]
     for plate in defunct:
         world.record_removed_points(plate.all_points_and_elevation()[0], plate.plate_id)
+        if world.debug_diagnostics and plate.node_count() > 0:
+            # GitHub issue #216 item 4: budget this cleanup deletion separately from actual
+            # subduction -- a plate can reach here with real (if negligible) remaining
+            # territory that never went through a retreat/carve phase at all.
+            hc, hm, codes = phase_budget.snapshot(plate)
+            empty = np.array([])
+            phase_budget.record(world, plate, "plate_cleanup_removal", hc, hm, codes, empty, empty, np.array([], dtype=codes.dtype))
     world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
 
 
@@ -546,8 +553,21 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     # happens to re-adopt a given point at the same lattice position -- see
     # World.removed_points_log's own comment.
     world.record_removed_points(absorb.all_points_and_elevation()[0], absorb.plate_id)
+    if world.debug_diagnostics:
+        # GitHub issue #216 item 4: the whole-row resample folding the two node clouds
+        # together (Plate.merge_with) against both plates' own pre-merge totals. Keyed to
+        # `keep`'s own crust_type -- this path is only ever reached for a continental-
+        # continental pair (see this function's own docstring), so `absorb` shares it too.
+        keep_hc, keep_hm, keep_codes = phase_budget.snapshot(keep)
+        absorb_hc, absorb_hm, absorb_codes = phase_budget.snapshot(absorb)
+        before_hc = np.concatenate([keep_hc, absorb_hc])
+        before_hm = np.concatenate([keep_hm, absorb_hm])
+        before_codes = np.concatenate([keep_codes, absorb_codes])
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
+    if world.debug_diagnostics:
+        after_hc, after_hm, after_codes = phase_budget.snapshot(keep)
+        phase_budget.record(world, keep, "plate_merge", before_hc, before_hm, before_codes, after_hc, after_hm, after_codes)
 
 
 def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndarray) -> float:
@@ -648,7 +668,12 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
     if outcome_rng.random() >= RIFT_SUCCESS_PROBABILITY:
         failed_rift = getattr(plate, "apply_failed_rift", None)
         if callable(failed_rift):
+            if world.debug_diagnostics:
+                before_hc, before_hm, before_codes = phase_budget.snapshot(plate)
             failed_rift(cut_normal, line_spacing_rad(world.node_density))
+            if world.debug_diagnostics:
+                after_hc, after_hm, after_codes = phase_budget.snapshot(plate)
+                phase_budget.record(world, plate, "failed_rift_thinning", before_hc, before_hm, before_codes, after_hc, after_hm, after_codes)
         plate.reset_age()
         # The attempt released some, but not all, of the accumulated pressure that drove it --
         # see FAILED_RIFT_STRESS_RELIEF's own comment.
@@ -681,7 +706,12 @@ def relattice_continental_plates(world: "World") -> None:
     for plate in world.plates:
         relattice = getattr(plate, "relattice", None)
         if callable(relattice):
+            if world.debug_diagnostics:
+                before_hc, before_hm, before_codes = phase_budget.snapshot(plate)
             relattice(spacing_rad)
+            if world.debug_diagnostics:
+                after_hc, after_hm, after_codes = phase_budget.snapshot(plate)
+                phase_budget.record(world, plate, "continental_relattice", before_hc, before_hm, before_codes, after_hc, after_hm, after_codes)
 
 
 def defragment_plates(world: "World") -> list[str]:

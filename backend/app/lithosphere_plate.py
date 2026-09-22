@@ -59,7 +59,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, lithosphere, magma_transport, mantle, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -753,6 +753,11 @@ class LithospherePlate(PlateWithLines):
 
             hc = line.crustal_thickness_m.copy()
             hm = line.mantle_lithosphere_thickness_m.copy()
+            # GitHub issue #216 Hc/Hm budget checkpoints -- see phase_budget.py. `codes0` is
+            # this line's crust_type_code, unchanged until the decompression-melting checkpoint
+            # below, so every intermediate checkpoint below reuses it for both before/after.
+            codes0 = line.crust_type_code
+            checkpoint_hc, checkpoint_hm = (hc.copy(), hm.copy()) if world.debug_diagnostics else (None, None)
             # Isostasy-driven elevation change is applied as a *delta* on top of whatever
             # elevation already holds (elevation_before -> below), not a wholesale overwrite
             # -- erosion.py (run later this same step_world call, and every step
@@ -870,6 +875,10 @@ class LithospherePlate(PlateWithLines):
                 if overflow_total > 0.0 and np.any(near_field):
                     hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
 
+            if world.debug_diagnostics:
+                phase_budget.record(world, self, "convergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+                checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
+
             # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
             # the mantle wedge and underplates juvenile crust across the whole arc band --
             # extra Hc (added from the mantle, not conserved), the crust-building half of
@@ -881,6 +890,10 @@ class LithospherePlate(PlateWithLines):
                 hc[arc_band], hm[arc_band] = rheology.apply_arc_magmatic_thickening(
                     hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
                 )
+
+            if world.debug_diagnostics:
+                phase_budget.record(world, self, "arc_magmatism", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+                checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
 
             prior_hc = hc.copy()
             melting = np.zeros(n, dtype=bool)
@@ -910,10 +923,17 @@ class LithospherePlate(PlateWithLines):
                         magmatic_band & (prior_hc >= rheology.RIFT_VOLCANISM_ONSET_HC_M) & (hc < rheology.RIFT_VOLCANISM_ONSET_HC_M)
                     )
 
+            if world.debug_diagnostics:
+                phase_budget.record(world, self, "divergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+                checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
+
             prior_age = line.divergent_age_myr
             new_age = np.where(divergent, prior_age + years_myr, 0.0)
             if self.crust_type == "oceanic":
                 hm = rheology.relax_young_oceanic_mantle_lithosphere(hm, new_age, years_myr)
+                if world.debug_diagnostics:
+                    phase_budget.record(world, self, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+                    checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
 
             is_volcano = line.is_volcano.copy()
             volcano_remaining = line.volcano_active_years_remaining.copy()
@@ -929,6 +949,7 @@ class LithospherePlate(PlateWithLines):
             # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
             # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
             _erupt_melted_nodes(world, self.plate_id, line_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, line.elevation)
+            phase_budget.record(world, self, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code)
             _ignite_early_rift_volcanoes(world, self.plate_id, line_index, is_volcano, volcano_remaining, newly_below_rift_onset)
 
             # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
@@ -1031,10 +1052,35 @@ class LithospherePlate(PlateWithLines):
                 arc_end_low,
                 arc_end_high,
             )
+            if world.debug_diagnostics:
+                # Endpoint stretch-thinning, end growth, end/interior retreat, and accreted-
+                # column redistribution all happen inside this one call (GitHub issue #216
+                # items 1-3) -- measured together as the net node-count/Hc/Hm change across the
+                # line's boundary, since none of those sub-mechanisms is separable without its
+                # own before/after snapshot deep inside _grow_or_shrink_line_for_deform.
+                grown_hc = np.concatenate([gl.crustal_thickness_m for gl in grown_lines]) if grown_lines else np.array([])
+                grown_hm = np.concatenate([gl.mantle_lithosphere_thickness_m for gl in grown_lines]) if grown_lines else np.array([])
+                grown_codes = (
+                    np.concatenate([gl.crust_type_code for gl in grown_lines]) if grown_lines else np.array([], dtype=updated_line.crust_type_code.dtype)
+                )
+                phase_budget.record(
+                    world, self, "line_growth_shrink",
+                    updated_line.crustal_thickness_m, updated_line.mantle_lithosphere_thickness_m, updated_line.crust_type_code,
+                    grown_hc, grown_hm, grown_codes,
+                )
             new_lines.extend(gl for gl in grown_lines if len(gl) > 0)
 
         if self.crust_type == "continental":
+            if world.debug_diagnostics:
+                before_hc = np.concatenate([l.crustal_thickness_m for l in new_lines]) if new_lines else np.array([])
+                before_hm = np.concatenate([l.mantle_lithosphere_thickness_m for l in new_lines]) if new_lines else np.array([])
+                before_codes = np.concatenate([l.crust_type_code for l in new_lines]) if new_lines else np.array([])
             new_lines = self._retreat_contested_leading_rows(new_lines, contested_all, years)
+            if world.debug_diagnostics:
+                after_hc = np.concatenate([l.crustal_thickness_m for l in new_lines]) if new_lines else np.array([])
+                after_hm = np.concatenate([l.mantle_lithosphere_thickness_m for l in new_lines]) if new_lines else np.array([])
+                after_codes = np.concatenate([l.crust_type_code for l in new_lines]) if new_lines else np.array([])
+                phase_budget.record(world, self, "contested_leading_row_retreat", before_hc, before_hm, before_codes, after_hc, after_hm, after_codes)
 
         self.set_lines(new_lines)
         if not suppress_growth:
@@ -1050,12 +1096,32 @@ class LithospherePlate(PlateWithLines):
             # single combined tree stays the cheaper query shape.
             neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
             neighbour_tree = cKDTree(np.concatenate(neighbour_points, axis=0)) if neighbour_points else None
+            # GitHub issue #216 items: adjacent-row claiming and corner-notch fill both grow
+            # this plate's own node population at its own (plate-level, not per-line) expense
+            # -- snapshotted via `self.collect(...)` around each call rather than per-line
+            # since neither operates line-by-line.
+            before_claim = phase_budget.snapshot(self) if world.debug_diagnostics else None
             self._claim_adjacent_territory(world, neighbours, spacing_rad, neighbour_tree=neighbour_tree)
+            if world.debug_diagnostics:
+                after_claim = phase_budget.snapshot(self)
+                phase_budget.record(world, self, "adjacent_row_claim", *before_claim, *after_claim)
             self._fill_corner_notch_frontier(world, neighbours, spacing_rad, years, neighbour_tree=neighbour_tree)
+            if world.debug_diagnostics:
+                after_notch = phase_budget.snapshot(self)
+                phase_budget.record(world, self, "corner_notch_fill", *after_claim, *after_notch)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):
-                self.replace_line(line_index, regularize_line(line, spacing_rad))
+                if world.debug_diagnostics:
+                    before = (line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, line.crust_type_code)
+                    regularized = regularize_line(line, spacing_rad)
+                    phase_budget.record(
+                        world, self, "line_regularization",
+                        *before, regularized.crustal_thickness_m, regularized.mantle_lithosphere_thickness_m, regularized.crust_type_code,
+                    )
+                    self.replace_line(line_index, regularized)
+                else:
+                    self.replace_line(line_index, regularize_line(line, spacing_rad))
 
     def _count_open_prefix(self, theta_candidates: np.ndarray, phi: float, neighbours: list) -> int:
         if len(theta_candidates) == 0 or not neighbours:
