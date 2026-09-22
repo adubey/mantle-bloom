@@ -1,0 +1,547 @@
+{
+  "seed_count_requested": 30,
+  "seeds": [
+    829071382,
+    579428537,
+    896200538,
+    331006609,
+    673790085,
+    331015891,
+    875551829,
+    926698457,
+    495717634,
+    343559903,
+    163365827,
+    436875512,
+    236757880,
+    305158685,
+    21367338,
+    202813810,
+    447036469,
+    582281311,
+    548425394,
+    979752958,
+    332483451,
+    171925707,
+    373002709,
+    466511717,
+    559644017,
+    975269473,
+    234786260,
+    641083674,
+    361332628,
+    591448447
+  ],
+  "approaches": [
+    "old_additive",
+    "conserved"
+  ],
+  "step_years": 10000000,
+  "checkpoints": [
+    {
+      "checkpoint_years": 0,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20742.63121005447,
+          "new_mean": 20742.63121005447,
+          "paired_delta_mean": 0.0,
+          "paired_delta_se": 0.0
+        },
+        "hc_p95_m": {
+          "old_mean": 46165.45924095577,
+          "new_mean": 46165.45924095577,
+          "paired_delta_mean": 0.0,
+          "paired_delta_se": 0.0
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.00022978849345818778,
+          "new_mean": 0.00022978849345818778,
+          "paired_delta_mean": 0.0,
+          "paired_delta_se": 0.0
+        },
+        "hm_mean_m": {
+          "old_mean": 48485.74275769874,
+          "new_mean": 48485.74275769874,
+          "paired_delta_mean": 0.0,
+          "paired_delta_se": 0.0
+        },
+        "hm_p95_m": {
+          "old_mean": 100000.0,
+          "new_mean": 100000.0,
+          "paired_delta_mean": 0.0,
+          "paired_delta_se": 0.0
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.0,
+          "new_mean": 0.0,
+          "paired_delta_mean": 0.0,
+          "paired_delta_se": 0.0
+        }
+      }
+    },
+    {
+      "checkpoint_years": 30000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20909.927921012117,
+          "new_mean": 19877.03982913364,
+          "paired_delta_mean": -1032.88809187848,
+          "paired_delta_se": 44.46151228917225
+        },
+        "hc_p95_m": {
+          "old_mean": 51659.58296360987,
+          "new_mean": 47681.12846570448,
+          "paired_delta_mean": -3978.454497905394,
+          "paired_delta_se": 315.7207820293827
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.002095141616125716,
+          "new_mean": 0.001177767932279483,
+          "paired_delta_mean": -0.0009173736838462334,
+          "paired_delta_se": 9.775925381213773e-05
+        },
+        "hm_mean_m": {
+          "old_mean": 60192.20382511027,
+          "new_mean": 60140.591508504185,
+          "paired_delta_mean": -51.61231660609143,
+          "paired_delta_se": 30.812303199629913
+        },
+        "hm_p95_m": {
+          "old_mean": 104287.06736718825,
+          "new_mean": 104100.3724905389,
+          "paired_delta_mean": -186.69487664936364,
+          "paired_delta_se": 102.32746574512005
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.003369234920939898,
+          "new_mean": 0.002852086410418093,
+          "paired_delta_mean": -0.0005171485105218053,
+          "paired_delta_se": 0.0001544309254026492
+        }
+      }
+    },
+    {
+      "checkpoint_years": 60000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20622.58372164394,
+          "new_mean": 19085.160859742853,
+          "paired_delta_mean": -1537.4228619010862,
+          "paired_delta_se": 79.69085070008659
+        },
+        "hc_p95_m": {
+          "old_mean": 55085.224165417654,
+          "new_mean": 48057.558444459064,
+          "paired_delta_mean": -7027.665720958597,
+          "paired_delta_se": 543.5756496885475
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.00390708217900525,
+          "new_mean": 0.0019745305855223107,
+          "paired_delta_mean": -0.0019325515934829388,
+          "paired_delta_se": 0.00033290853720076573
+        },
+        "hm_mean_m": {
+          "old_mean": 57975.866357066625,
+          "new_mean": 57960.05708325069,
+          "paired_delta_mean": -15.809273815930403,
+          "paired_delta_se": 90.62483812918661
+        },
+        "hm_p95_m": {
+          "old_mean": 107266.41250969372,
+          "new_mean": 106969.89693393507,
+          "paired_delta_mean": -296.5155757586462,
+          "paired_delta_se": 125.84697715983205
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.005189698620205704,
+          "new_mean": 0.005028972766400132,
+          "paired_delta_mean": -0.00016072585380557267,
+          "paired_delta_se": 0.00011774979649319327
+        }
+      }
+    },
+    {
+      "checkpoint_years": 90000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20631.0287652547,
+          "new_mean": 18519.033650413345,
+          "paired_delta_mean": -2111.995114841352,
+          "paired_delta_se": 118.59032174368167
+        },
+        "hc_p95_m": {
+          "old_mean": 58506.18867301729,
+          "new_mean": 48545.72735017211,
+          "paired_delta_mean": -9960.461322845185,
+          "paired_delta_se": 657.8596475604692
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.004390023289189494,
+          "new_mean": 0.0021240468194471387,
+          "paired_delta_mean": -0.0022659764697423547,
+          "paired_delta_se": 0.00042349469896396007
+        },
+        "hm_mean_m": {
+          "old_mean": 55855.015810678036,
+          "new_mean": 55851.03904472245,
+          "paired_delta_mean": -3.9767659555834447,
+          "paired_delta_se": 120.04048810291191
+        },
+        "hm_p95_m": {
+          "old_mean": 110748.52004733257,
+          "new_mean": 109894.71964463791,
+          "paired_delta_mean": -853.8004026946559,
+          "paired_delta_se": 594.8783516266519
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.005998494151339014,
+          "new_mean": 0.006142193456154206,
+          "paired_delta_mean": 0.0001436993048151924,
+          "paired_delta_se": 0.0002622360627642045
+        }
+      }
+    },
+    {
+      "checkpoint_years": 120000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20751.982439980038,
+          "new_mean": 18104.327428030127,
+          "paired_delta_mean": -2647.6550119499143,
+          "paired_delta_se": 152.80689046518856
+        },
+        "hc_p95_m": {
+          "old_mean": 61297.701355775884,
+          "new_mean": 48734.58235448226,
+          "paired_delta_mean": -12563.119001293619,
+          "paired_delta_se": 781.4761398607403
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.0038369765015651663,
+          "new_mean": 0.0014422473916536804,
+          "paired_delta_mean": -0.0023947291099114857,
+          "paired_delta_se": 0.0004608212247205603
+        },
+        "hm_mean_m": {
+          "old_mean": 54183.588270253975,
+          "new_mean": 54314.00248687659,
+          "paired_delta_mean": 130.41421662261152,
+          "paired_delta_se": 148.9141553796829
+        },
+        "hm_p95_m": {
+          "old_mean": 113205.79835825948,
+          "new_mean": 112420.17964242246,
+          "paired_delta_mean": -785.6187158370061,
+          "paired_delta_se": 1022.0228226032233
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.0066760526177637525,
+          "new_mean": 0.006565244920811014,
+          "paired_delta_mean": -0.00011080769695273788,
+          "paired_delta_se": 0.00036663941448872024
+        }
+      }
+    },
+    {
+      "checkpoint_years": 150000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20668.810885323204,
+          "new_mean": 17546.694065409436,
+          "paired_delta_mean": -3122.116819913765,
+          "paired_delta_se": 197.8195389247469
+        },
+        "hc_p95_m": {
+          "old_mean": 63119.14010378347,
+          "new_mean": 49101.47251713628,
+          "paired_delta_mean": -14017.66758664719,
+          "paired_delta_se": 934.0351088508751
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.004590734814838,
+          "new_mean": 0.0017852848873692914,
+          "paired_delta_mean": -0.002805449927468708,
+          "paired_delta_se": 0.0005489451116790856
+        },
+        "hm_mean_m": {
+          "old_mean": 52363.88357349129,
+          "new_mean": 52404.95320372172,
+          "paired_delta_mean": 41.06963023043912,
+          "paired_delta_se": 215.29869431541044
+        },
+        "hm_p95_m": {
+          "old_mean": 117035.97164180133,
+          "new_mean": 115442.04620336942,
+          "paired_delta_mean": -1593.9254384319254,
+          "paired_delta_se": 1071.9685898378953
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.0063791833933486775,
+          "new_mean": 0.006377388681776496,
+          "paired_delta_mean": -1.7947115721817942e-06,
+          "paired_delta_se": 0.0003425847261603884
+        }
+      }
+    },
+    {
+      "checkpoint_years": 180000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20408.252651829167,
+          "new_mean": 17106.5432755375,
+          "paired_delta_mean": -3301.7093762916675,
+          "paired_delta_se": 209.60680484356138
+        },
+        "hc_p95_m": {
+          "old_mean": 62626.63153237072,
+          "new_mean": 48710.55540096311,
+          "paired_delta_mean": -13916.076131407608,
+          "paired_delta_se": 1026.2831757419
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.0032346096521276343,
+          "new_mean": 0.0015893041140771578,
+          "paired_delta_mean": -0.0016453055380504763,
+          "paired_delta_se": 0.0002779641309568873
+        },
+        "hm_mean_m": {
+          "old_mean": 50380.686315911895,
+          "new_mean": 50729.218740874785,
+          "paired_delta_mean": 348.5324249628963,
+          "paired_delta_se": 219.0083376717508
+        },
+        "hm_p95_m": {
+          "old_mean": 116161.53868484356,
+          "new_mean": 114994.02150248684,
+          "paired_delta_mean": -1167.5171823567332,
+          "paired_delta_se": 1146.9810663119295
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.005626509559122658,
+          "new_mean": 0.005667177774848389,
+          "paired_delta_mean": 4.066821572573172e-05,
+          "paired_delta_se": 0.0004322088249582175
+        }
+      }
+    },
+    {
+      "checkpoint_years": 210000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20187.364081029536,
+          "new_mean": 16542.47854830198,
+          "paired_delta_mean": -3644.8855327275555,
+          "paired_delta_se": 248.022098664754
+        },
+        "hc_p95_m": {
+          "old_mean": 62033.27908558468,
+          "new_mean": 48118.726539448864,
+          "paired_delta_mean": -13914.552546135812,
+          "paired_delta_se": 929.2423354800713
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.003571401143364121,
+          "new_mean": 0.000787120376124453,
+          "paired_delta_mean": -0.002784280767239668,
+          "paired_delta_se": 0.0009626078326843668
+        },
+        "hm_mean_m": {
+          "old_mean": 47559.127583927104,
+          "new_mean": 48113.16561582493,
+          "paired_delta_mean": 554.0380318978246,
+          "paired_delta_se": 349.6541754888072
+        },
+        "hm_p95_m": {
+          "old_mean": 116593.4853088747,
+          "new_mean": 114776.39060911148,
+          "paired_delta_mean": -1817.094699763236,
+          "paired_delta_se": 1667.174556365195
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.003951456204128188,
+          "new_mean": 0.00428392063917748,
+          "paired_delta_mean": 0.00033246443504929214,
+          "paired_delta_se": 0.0003731853477996779
+        }
+      }
+    },
+    {
+      "checkpoint_years": 240000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 20775.034086404925,
+          "new_mean": 16667.3182801766,
+          "paired_delta_mean": -4107.715806228321,
+          "paired_delta_se": 285.3633230259553
+        },
+        "hc_p95_m": {
+          "old_mean": 64299.29124313899,
+          "new_mean": 48813.56365712188,
+          "paired_delta_mean": -15485.727586017112,
+          "paired_delta_se": 994.2498964120555
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.0050609166847238925,
+          "new_mean": 0.0015199851032031107,
+          "paired_delta_mean": -0.0035409315815207822,
+          "paired_delta_se": 0.001419426934266287
+        },
+        "hm_mean_m": {
+          "old_mean": 46951.614917866864,
+          "new_mean": 47733.61112230867,
+          "paired_delta_mean": 781.9962044418105,
+          "paired_delta_se": 381.4170855905595
+        },
+        "hm_p95_m": {
+          "old_mean": 117607.93286207112,
+          "new_mean": 117064.5349201209,
+          "paired_delta_mean": -543.3979419502102,
+          "paired_delta_se": 2151.5249838217815
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.004827210286548169,
+          "new_mean": 0.0055212146837967345,
+          "paired_delta_mean": 0.0006940043972485653,
+          "paired_delta_se": 0.0007861129244995748
+        }
+      }
+    },
+    {
+      "checkpoint_years": 270000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 21004.79685736907,
+          "new_mean": 16422.56161649721,
+          "paired_delta_mean": -4582.235240871862,
+          "paired_delta_se": 304.20407531754023
+        },
+        "hc_p95_m": {
+          "old_mean": 64688.22327192493,
+          "new_mean": 48305.360119662364,
+          "paired_delta_mean": -16382.863152262564,
+          "paired_delta_se": 1222.055424107408
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.00382524805699634,
+          "new_mean": 0.0011934649672068946,
+          "paired_delta_mean": -0.0026317830897894454,
+          "paired_delta_se": 0.0005537945304728221
+        },
+        "hm_mean_m": {
+          "old_mean": 45785.13143637035,
+          "new_mean": 46622.83475539796,
+          "paired_delta_mean": 837.7033190276042,
+          "paired_delta_se": 433.76855737814316
+        },
+        "hm_p95_m": {
+          "old_mean": 117138.33938958976,
+          "new_mean": 115429.32695413545,
+          "paired_delta_mean": -1709.0124354543,
+          "paired_delta_se": 3308.410096186739
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.004214124684884587,
+          "new_mean": 0.005398107363237319,
+          "paired_delta_mean": 0.0011839826783527328,
+          "paired_delta_se": 0.0006941189945975599
+        }
+      }
+    },
+    {
+      "checkpoint_years": 300000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 21274.64822237326,
+          "new_mean": 16347.660248690638,
+          "paired_delta_mean": -4926.987973682622,
+          "paired_delta_se": 330.9349881463514
+        },
+        "hc_p95_m": {
+          "old_mean": 65126.16072439735,
+          "new_mean": 48184.47157362702,
+          "paired_delta_mean": -16941.689150770322,
+          "paired_delta_se": 1500.6691669931006
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.0036311678232142743,
+          "new_mean": 0.0017227248594149935,
+          "paired_delta_mean": -0.0019084429637992806,
+          "paired_delta_se": 0.0011351612827198408
+        },
+        "hm_mean_m": {
+          "old_mean": 44943.05199443624,
+          "new_mean": 45612.99653024633,
+          "paired_delta_mean": 669.9445358100852,
+          "paired_delta_se": 418.3116296430801
+        },
+        "hm_p95_m": {
+          "old_mean": 116071.19709243713,
+          "new_mean": 116271.35724199351,
+          "paired_delta_mean": 200.16014955639136,
+          "paired_delta_se": 2971.98528745174
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.0037330518353140066,
+          "new_mean": 0.004726628086004606,
+          "paired_delta_mean": 0.0009935762506906001,
+          "paired_delta_se": 0.0006928318105354139
+        }
+      }
+    },
+    {
+      "checkpoint_years": 320000000,
+      "paired_seeds": 30,
+      "metrics": {
+        "hc_mean_m": {
+          "old_mean": 21478.36664516181,
+          "new_mean": 16439.742148408714,
+          "paired_delta_mean": -5038.6244967530965,
+          "paired_delta_se": 325.95990354005295
+        },
+        "hc_p95_m": {
+          "old_mean": 65027.80680706873,
+          "new_mean": 48151.66749314406,
+          "paired_delta_mean": -16876.139313924665,
+          "paired_delta_se": 1465.865035183253
+        },
+        "hc_at_max_fraction": {
+          "old_mean": 0.003072209020342886,
+          "new_mean": 0.0009391523083484005,
+          "paired_delta_mean": -0.0021330567119944854,
+          "paired_delta_se": 0.00037425978383806243
+        },
+        "hm_mean_m": {
+          "old_mean": 44330.70813215344,
+          "new_mean": 45292.61071911014,
+          "paired_delta_mean": 961.9025869567083,
+          "paired_delta_se": 459.6114521726723
+        },
+        "hm_p95_m": {
+          "old_mean": 116138.09233677891,
+          "new_mean": 117221.1255112361,
+          "paired_delta_mean": 1083.0331744571974,
+          "paired_delta_se": 2957.245891584841
+        },
+        "hm_at_max_fraction": {
+          "old_mean": 0.003423331789655304,
+          "new_mean": 0.0046083599236913745,
+          "paired_delta_mean": 0.0011850281340360696,
+          "paired_delta_se": 0.0006425006808609141
+        }
+      }
+    }
+  ],
+  "node_density": 1.0
+}

@@ -182,7 +182,7 @@ def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_ma
     """Where `apply_mask` is set, raise `crustal_thickness_m` by whatever a real tectonic/
     magmatic process would need to isostatically support `gain` meters of *new* elevation, and
     move `elevation` by exactly that much -- issue #173's fix (originally volcanism-only, moved
-    here so faults.py's fault relief can share it -- issue #189).
+    here for other Hc-backed relief processes -- issue #189).
 
     Anchored to the column's own current isostatic *equilibrium* (`isostatic_elevation(hc, hm,
     rho_c)`), never to raw `line.elevation` directly: a node can carry elevation

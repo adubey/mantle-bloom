@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from app import faults, geometry, persistence
+from app import faults, geometry, lithosphere, persistence
 from app.elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
     ELEV_CHANGE_FAULT_REVERSE,
@@ -205,9 +205,9 @@ def test_fault_relief_stamps_a_fault_reason_code_on_nearby_crust():
     assert stamped & fault_reasons
 
 
-def test_reverse_fault_uplifts_and_normal_fault_drops_its_hanging_wall():
-    # Drive one plate's crust past a single hand-placed fault of each kind and check the
-    # sign of the relief it applies, isolated from the spawn model.
+def test_reverse_fault_has_no_second_uplift_and_normal_fault_balances_relief():
+    # Drive one plate's crust past a single hand-placed fault of each kind, isolated
+    # from the spawn model.
     world = generate_world(seed=2, num_plates=6)
     step_world(world, 1_000_000)
     world.boundary_faults = []  # isolate the hand-placed fault from the step's boundary mesh
@@ -236,24 +236,21 @@ def test_reverse_fault_uplifts_and_normal_fault_drops_its_hanging_wall():
         return after - before
 
     rev = relief_delta(_KIND_REVERSE)
-    assert np.max(rev) > 0.0 and np.min(rev) >= -1e-9  # thrust only pushes up
+    assert np.allclose(rev, 0.0)  # no second uplift after deform's shortening
 
     nrm = relief_delta(_KIND_NORMAL)
     assert np.min(nrm) < 0.0 and np.max(nrm) > 0.0  # graben down, footwall shoulder up
 
 
 def test_fault_relief_backs_elevation_change_with_crustal_thickness():
-    # Issue #189: fault relief used to be a bare elevation delta with no crustal_thickness_m
-    # (Hc) change -- unbacked relief that erosion's incremental, Hc-derived math could never
-    # repay, so it accumulated as permanent "isostatic debt" until land pinned at
-    # MAX_ELEVATION_M while Hc sat nowhere near its own cap. A reverse-fault (thrust) uplift
-    # should thicken Hc; a normal-fault (extensional) hanging-wall throw should thin it.
+    # Permanent relief is backed by Hc, with equal local donor debit and recipient
+    # credit. Reverse shortening was already placed by deform().
     world = generate_world(seed=2, num_plates=6)
     step_world(world, 1_000_000)
     world.boundary_faults = []  # isolate the hand-placed fault from the step's boundary mesh
     plate = max(world.plates, key=lambda p: p.node_count())
 
-    def relief_deltas(kind: str) -> tuple[np.ndarray, np.ndarray]:
+    def relief_deltas(kind: str, repeats: int = 1) -> tuple[np.ndarray, np.ndarray]:
         pts = plate.all_points_and_elevation()[0]
         mid = np.asarray(pts[len(pts) // 2])
         local_mid = mid @ plate.frame
@@ -269,7 +266,7 @@ def test_fault_relief_backs_elevation_change_with_crustal_thickness():
             lifespan_myr=1e9,
             plate_id=plate.plate_id,
         )
-        world.faults = [f]
+        world.faults = [f] * repeats
         hc_before = np.concatenate([ln.crustal_thickness_m.copy() for ln in plate.lines])
         elev_before = np.concatenate([ln.elevation.copy() for ln in plate.lines])
         faults._apply_plate_fault_relief(world, plate, years_myr=1.0)
@@ -278,15 +275,24 @@ def test_fault_relief_backs_elevation_change_with_crustal_thickness():
         return hc_after - hc_before, elev_after - elev_before
 
     hc_delta, elev_delta = relief_deltas(_KIND_REVERSE)
-    uplifted = elev_delta > 1e-9
-    assert np.any(uplifted)
-    assert np.all(hc_delta[uplifted] > 0.0)  # thrust uplift thickens Hc
-    assert np.allclose(hc_delta[~uplifted], 0.0)  # untouched nodes' crust doesn't move
+    assert np.allclose(hc_delta, 0.0)
+    assert np.allclose(elev_delta, 0.0)
 
     hc_delta, elev_delta = relief_deltas(_KIND_NORMAL)
     dropped = elev_delta < -1e-9
     assert np.any(dropped)
     assert np.all(hc_delta[dropped] < 0.0)  # extensional throw thins Hc
+    assert abs(hc_delta.sum()) < 1e-6
+    hc_delta, elev_delta = relief_deltas(_KIND_STRIKE_SLIP)
+    assert abs(hc_delta.sum()) < 1e-6
+    assert np.any(elev_delta > 0.0) and np.any(elev_delta < 0.0)
+    hc_delta, _ = relief_deltas(_KIND_NORMAL, repeats=4)
+    assert abs(hc_delta.sum()) < 1e-6
+    assert np.all(np.concatenate([ln.crustal_thickness_m for ln in plate.lines]) <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
+    world.fault_relief_multiplier = 0.0
+    hc_delta, elev_delta = relief_deltas(_KIND_NORMAL)
+    assert np.allclose(hc_delta, 0.0)
+    assert np.allclose(elev_delta, 0.0)
 
 
 def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_trace():

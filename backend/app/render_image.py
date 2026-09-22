@@ -28,7 +28,7 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, geology, geometry, healpix_grid, hydrology, mantle, plates, projections, volcanism
+from . import biomes, climate, coastline, geology, geometry, healpix_grid, hydrology, lithosphere, mantle, plates, projections, volcanism
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -2339,6 +2339,31 @@ def _render_crust_type_view(world: World, projection: str, width: int, height: i
     return _encode_image(image)
 
 
+def _render_thickness_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+    if not world.plates:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    _points, _elev, _owner, tree = _node_cloud_and_tree(world)
+    field = "crustal_thickness_m" if view == "hc" else "mantle_lithosphere_thickness_m"
+    cap = lithosphere.MAX_CRUSTAL_THICKNESS_M if view == "hc" else lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    values = np.concatenate([p.collect(field) for p in world.plates])
+    _, idx = tree.query(world_xyz.reshape(-1, 3), workers=plates.query_workers(grid_h * grid_w))
+    sampled = values[idx]
+    fraction = np.clip(sampled / cap, 0.0, 1.0)
+    colors = np.stack((35 + 175 * fraction, 55 + 120 * fraction, 105 - 65 * fraction), axis=-1).astype(np.uint8)
+    colors[sampled >= cap - 1e-6] = (255, 35, 210)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+    image = Image.fromarray(pixels, mode="RGB")
+    _draw_coastline(ImageDraw.Draw(image), world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
+    return _encode_image(image)
+
+
 def _percentile_rank(values: np.ndarray) -> np.ndarray:
     """0..1 percentile rank of each element of `values` among the others in the same array
     (0 = the smallest, 1 = the largest) via a double argsort -- evenly spread by construction
@@ -2530,6 +2555,8 @@ def render_png(
         return _render_overlap_age_view(world, projection, width, height, view_rotation)
     if view == "crustType":
         return _render_crust_type_view(world, projection, width, height, view_rotation)
+    if view in ("hc", "hm"):
+        return _render_thickness_view(world, projection, view, width, height, view_rotation)
     if view == "nodeAge":
         return _render_node_age_view(world, projection, width, height, view_rotation)
 
