@@ -80,8 +80,9 @@ from .elevation_lines import (
 if TYPE_CHECKING:
     from .world import World
 
-# Cadence: a whole-sphere lattice/tree pass, cheap but not free -- same reasoning and same
-# cadence as gaps.GAP_FILL_INTERVAL_STEPS, which world.step_world calls it alongside.
+# Cadence: a whole-sphere destination search, run alongside gap filling every four steps.
+# The pair search dominates long-run profiles, so each pass filters zero-weight destinations
+# before building its tree (see `_build_continental_node_index`).
 MAGMA_TRANSPORT_INTERVAL_STEPS = 4
 
 # Starting sweep value only, not a physically-shared quantity: broad enough to carry collision
@@ -121,7 +122,7 @@ class MagmaParcel:
 
 
 class _ContinentalNodeIndex:
-    """Whole-sphere snapshot of every live continental node, addressable back to its own
+    """Whole-sphere snapshot of eligible continental destination nodes, addressable back to their
     `(plate_id, line_index, node_index)` -- unlike `gaps.py`'s own whole-sphere tree (which
     only ever reads), this pass has to write back into whichever specific line a destination
     node lives on."""
@@ -147,9 +148,10 @@ class _ContinentalNodeIndex:
 
 def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
     """Mirrors `gaps._existing_node_tree`'s whole-sphere assembly, but per-line-addressable
-    (needed for the scatter-write below) and pre-filtered to continental nodes only (this
-    pass's destinations are never oceanic -- an oceanic destination is just ordinary seafloor
-    volcanism, not the land-fraction fix this exists for)."""
+    (needed for the scatter-write below) and pre-filtered to continental nodes whose crust
+    is thinner than the reference. At or above that thickness, `_weighted_destination_pairs`
+    always assigns zero weight, so omitting those nodes before building the tree preserves
+    every possible deposit while shrinking the radius search."""
     xyz_chunks, plate_id_chunks, line_index_chunks, node_index_chunks, hc_chunks = [], [], [], [], []
     for plate in world.plates:
         own_points, _ = plate.all_points_and_elevation()
@@ -163,14 +165,16 @@ def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
                 continue
             sl = slice(offset, offset + n)
             offset += n
-            is_continental = effective_is_continental_from_codes(line.crust_type_code, plate_is_continental)
-            if not np.any(is_continental):
+            eligible = effective_is_continental_from_codes(line.crust_type_code, plate_is_continental)
+            eligible &= line.crustal_thickness_m < lithosphere.REFERENCE_HC_CONTINENTAL_M
+            count = int(np.count_nonzero(eligible))
+            if count == 0:
                 continue
-            xyz_chunks.append(own_points[sl][is_continental])
-            plate_id_chunks.append(np.full(int(np.count_nonzero(is_continental)), plate.plate_id))
-            line_index_chunks.append(np.full(int(np.count_nonzero(is_continental)), line_index))
-            node_index_chunks.append(np.flatnonzero(is_continental))
-            hc_chunks.append(line.crustal_thickness_m[is_continental])
+            xyz_chunks.append(own_points[sl][eligible])
+            plate_id_chunks.append(np.full(count, plate.plate_id))
+            line_index_chunks.append(np.full(count, line_index))
+            node_index_chunks.append(np.flatnonzero(eligible))
+            hc_chunks.append(line.crustal_thickness_m[eligible])
     if not xyz_chunks:
         return _ContinentalNodeIndex(np.zeros((0, 3)), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0))
     return _ContinentalNodeIndex(

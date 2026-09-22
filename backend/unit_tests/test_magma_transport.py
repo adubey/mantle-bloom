@@ -126,10 +126,25 @@ def test_continental_node_index_excludes_oceanic_nodes():
 
     plate = new_plate(0, frame, "continental", spacing_rad, seed=1, is_owned=is_owned, node_is_continental=node_is_continental)
     world = World(seed=1, plates=[plate], next_plate_id=1, node_density=1.0, mantle_centers=[])
+    _thin_nearest_node(plate, geometry.normalize(np.array([0.05, 0.0, 1.0])), hc_m=5_000.0)
 
     dest_index = magma_transport._build_continental_node_index(world)
     assert len(dest_index) > 0
     assert np.all(dest_index.xyz[:, 0] >= 0.0)
+
+
+def test_continental_node_index_keeps_only_nodes_with_positive_destination_weight():
+    world, _, plate_b = _two_adjacent_continental_plates()
+    target = geometry.normalize(np.array([-0.05, 0.0, 1.0]))
+    line_index, node_index, actual_xyz = _thin_nearest_node(plate_b, target, hc_m=5_000.0)
+
+    dest_index = magma_transport._build_continental_node_index(world)
+
+    assert len(dest_index) == 1
+    assert int(dest_index.plate_id[0]) == plate_b.plate_id
+    assert int(dest_index.line_index[0]) == line_index
+    assert int(dest_index.node_index[0]) == node_index
+    np.testing.assert_array_equal(dest_index.xyz[0], actual_xyz)
 
 
 def test_run_magma_transport_is_a_no_op_with_no_pending_parcels():
