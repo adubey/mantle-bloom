@@ -1,0 +1,126 @@
+         9266571789 function calls (8887106715 primitive calls) in 6283.373 seconds
+
+   Ordered by: internal time
+   List reduced from 4082 to 120 due to restriction <120>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      150 1286.006    8.573 2149.464   14.330 magma_transport.py:185(_weighted_destination_pairs)
+ 46980048  435.071    0.000  435.126    0.000 {built-in method numpy.array}
+197955162  279.295    0.000  279.295    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+2584460/389233  251.274    0.000  207.745    0.001 threading.py:1013(run)
+   364252  244.489    0.001  347.493    0.001 faults.py:1265(fault_tangent_components)
+12922160/10337735  236.054    0.000  399.151    0.000 {method 'acquire' of '_thread.lock' objects}
+      150  146.553    0.977 2339.800   15.599 magma_transport.py:218(run_magma_transport)
+160377215  136.022    0.000  141.260    0.000 _methods.py:96(_clip)
+    17587  133.615    0.008  134.290    0.008 eustasy.py:149(_seeded_connected_mask)
+    18320  132.190    0.007 1547.142    0.084 lithosphere_plate.py:585(deform)
+ 63950750  111.818    0.000  266.765    0.000 _linalg.py:2598(norm)
+943687877/575781820   77.403    0.000  124.745    0.000 {built-in method builtins.len}
+    18320   71.784    0.004  210.939    0.012 faults.py:1423(_apply_plate_fault_relief)
+614739001/614738887   70.690    0.000  100.209    0.000 {built-in method builtins.getattr}
+160377215   69.338    0.000  304.312    0.000 fromnumeric.py:2245(clip)
+261286362   65.555    0.000  322.110    0.000 fromnumeric.py:48(_wrapfunc)
+1843140254   58.280    0.000   58.280    0.000 plates.py:421(plate_id)
+  1619435   55.357    0.000  139.602    0.000 plates.py:1197(collect)
+  2339416   49.875    0.000  181.366    0.000 plates.py:1106(contains_batch)
+367904329   47.342    0.000   69.969    0.000 elevation_lines.py:590(__len__)
+      600   47.012    0.078  210.167    0.350 faults.py:550(generate_boundary_faults)
+ 11258936   42.088    0.000   82.565    0.000 geometry.py:18(latlon_to_xyz)
+ 80858235   40.214    0.000   81.561    0.000 fromnumeric.py:86(_wrapreduction_any_all)
+  2584460   38.328    0.000   38.328    0.000 {built-in method _thread.start_joinable_thread}
+  7712662   37.942    0.000   89.646    0.000 geometry.py:112(angular_distance)
+    55218   34.969    0.001  100.334    0.002 plates.py:817(_plate_outline_loops)
+    36640   33.768    0.001  453.875    0.012 torque.py:125(gather_boundary_force_inputs)
+    31499   32.881    0.001   49.594    0.002 mantle.py:83(flow_at)
+  8250634   32.556    0.000   48.538    0.000 lithosphere.py:129(isostatic_elevation)
+ 11322140   31.633    0.000   36.925    0.000 shape_base.py:378(stack)
+155973311   30.966    0.000  168.819    0.000 {method 'clip' of 'numpy.ndarray' objects}
+    54960   30.168    0.001  209.572    0.004 plates.py:91(_plates_within)
+    17997   27.648    0.002   27.648    0.002 {method 'tolist' of 'numpy.ndarray' objects}
+2584460/389233   27.580    0.000  457.051    0.001 threading.py:1065(_bootstrap_inner)
+ 65386098   26.711    0.000   26.711    0.000 {method 'copy' of 'numpy.ndarray' objects}
+ 43648822   25.895    0.000   45.568    0.000 numeric.py:323(full)
+      600   25.712    0.043   62.977    0.105 erosion.py:607(_earthquake_erosion_multiplier)
+    16770   25.590    0.002  128.686    0.008 gap_fill_frontier.py:300(fill_gap_by_growing_plates)
+384154728   24.980    0.000   24.980    0.000 {method 'append' of 'list' objects}
+ 10109886   24.351    0.000   54.393    0.000 geometry.py:42(normalize)
+  2584460   24.331    0.000 1071.699    0.000 {method 'join' of '_thread._ThreadHandle' objects}
+ 78469310   24.100    0.000  103.259    0.000 fromnumeric.py:2474(any)
+  1780224   23.103    0.000  526.260    0.000 lithosphere_plate.py:1093(_grow_or_shrink_line_for_deform)
+175563579   22.179    0.000   22.348    0.000 {built-in method numpy.asarray}
+     2160   21.251    0.010   21.256    0.010 biomes.py:426(_soft_lt)
+  4408304   20.619    0.000   39.428    0.000 rheology.py:87(plastic_strain_rate_per_myr)
+      600   20.420    0.034   25.525    0.043 plates.py:1471(compute_node_overlap)
+      600   19.862    0.033  102.581    0.171 faults.py:1528(_generate_earthquakes)
+ 58715956   18.943    0.000   49.734    0.000 fromnumeric.py:1359(argmin)
+  1392867   18.764    0.000   34.018    0.000 gap_fill_frontier.py:234(_claim_row_points)
+      600   18.397    0.031   49.733    0.083 lakes.py:368(build_lake_hierarchy)
+     1200   18.393    0.015   34.131    0.028 hydrology.py:668(lake_components)
+      300   18.178    0.061   21.838    0.073 gaps.py:144(_find_gap_points)
+  6610726   17.708    0.000   24.082    0.000 elevation_lines.py:617(set_fields)
+  4834520   17.688    0.000   28.786    0.000 geometry.py:28(xyz_to_latlon)
+  2112996   16.613    0.000   71.402    0.000 lithosphere.py:181(back_elevation_gain)
+     6600   15.785    0.002   19.240    0.003 climate.py:308(_sample_at_offset)
+   330067   15.387    0.000   17.406    0.000 geometry.py:231(_winding_contains)
+ 26491172   15.320    0.000  100.955    0.000 fromnumeric.py:66(_wrapreduction)
+   314280   15.256    0.000   15.814    0.000 numeric.py:1226(roll)
+   142284   15.130    0.000   15.130    0.000 {method 'at' of 'numpy.ufunc' objects}
+  4049127   15.127    0.000   41.743    0.000 elevation_lines.py:600(replace)
+    18320   15.060    0.001  101.378    0.006 faults.py:810(_plate_stress)
+ 76198907   14.987    0.000   20.955    0.000 plates.py:882(direction)
+ 58833178   14.894    0.000   14.894    0.000 {method 'argmin' of 'numpy.ndarray' objects}
+      600   14.062    0.023   21.143    0.035 climate.py:1280(_humidity_zonal_sweep)
+  9797770   13.621    0.000   13.621    0.000 geometry.py:354(to_world)
+    18320   13.601    0.001   63.924    0.003 faults.py:1320(_apply_plate_fault_shear)
+   104794   12.777    0.000   20.947    0.000 plates.py:777(_row_intervals)
+ 27992868   12.708    0.000   12.708    0.000 {method 'round' of 'numpy.generic' objects}
+  2888426   12.618    0.000   13.962    0.000 _ufunc_config.py:496(inner)
+     1919   12.314    0.006   12.314    0.006 {built-in method scipy.ndimage._nd_image.euclidean_feature_transform}
+  2542076   12.124    0.000   62.337    0.000 faults.py:1537(build_quake)
+      600   11.978    0.020   17.816    0.030 lakes.py:323(_catchment_roots)
+160377215   11.390    0.000   11.390    0.000 fromnumeric.py:2240(_clip_dispatcher)
+ 27814308   11.316    0.000   37.228    0.000 gap_fill_frontier.py:82(_pole_aligned_row_key)
+ 22292959   11.251    0.000   70.474    0.000 fromnumeric.py:2342(sum)
+ 45430451   11.045    0.000   11.045    0.000 {built-in method numpy.empty}
+  4569468   10.990    0.000   12.632    0.000 _function_base_impl.py:1413(diff)
+    83855   10.864    0.000   10.864    0.000 {method 'sort' of 'numpy.ndarray' objects}
+  4408304   10.785    0.000   18.490    0.000 rheology.py:79(yield_excess)
+100412122   10.756    0.000   43.424    0.000 plates.py:1169(<genexpr>)
+ 98472022   10.730    0.000   10.730    0.000 elevation_lines.py:501(elevation)
+      600   10.606    0.018  643.970    1.073 erosion.py:1120(apply_erosion)
+      600   10.317    0.017   14.980    0.025 faults.py:712(reconcile_faults)
+      659   10.197    0.015   11.530    0.017 hydrology.py:587(_ocean_node_tree)
+    67800   10.095    0.000   36.393    0.001 plates.py:1233(set_fields_on_plate)
+     3000   10.088    0.003   11.455    0.004 plates.py:1388(cached_node_position_tree)
+    18320   10.013    0.001   46.343    0.003 faults.py:1239(fault_influence)
+   588154    9.772    0.000   22.768    0.000 numeric.py:1563(cross)
+121102041    9.720    0.000    9.720    0.000 {method 'items' of 'dict' objects}
+  1774638    9.703    0.000  122.171    0.000 faults.py:507(_emit_boundary_fault_run)
+102119469    9.353    0.000    9.399    0.000 {built-in method builtins.isinstance}
+ 20209282    9.223    0.000   15.123    0.000 plates.py:843(add_segment)
+  7311434    9.196    0.000    9.196    0.000 geometry.py:349(to_local)
+   771037    9.176    0.000   14.068    0.000 elevation_lines.py:609(masked)
+  6457962    9.127    0.000    9.127    0.000 {method 'astype' of 'numpy.ndarray' objects}
+    16770    9.030    0.001  197.651    0.012 lithosphere_plate.py:1726(_fill_corner_notch_frontier)
+179651430    8.830    0.000    8.830    0.000 lakes.py:393(find)
+  1467865    8.808    0.000   13.904    0.000 rheology.py:386(apply_rift_magmatic_thickening)
+ 38188584    8.269    0.000   22.724    0.000 plates.py:925(<lambda>)
+  2584460    8.220    0.000  433.669    0.000 threading.py:651(wait)
+  4819145    8.002    0.000   30.302    0.000 _methods.py:115(_mean)
+  9365996    7.734    0.000   20.390    0.000 fromnumeric.py:38(_wrapit)
+  2381787    7.568    0.000    7.568    0.000 {method 'searchsorted' of 'numpy.ndarray' objects}
+   219377    7.540    0.000   20.932    0.000 plates.py:607(get_node_kdtree)
+  2577923    7.450    0.000    7.781    0.000 lithosphere.py:98(node_crust_density)
+   461456    7.388    0.000    8.068    0.000 lithosphere_plate.py:447(_distance_to_mask_1d)
+ 49418399    7.354    0.000   30.281    0.000 {built-in method builtins.min}
+  2473542    7.329    0.000   62.833    0.000 faults.py:477(_make_boundary_fault)
+     4588    7.287    0.002   11.373    0.002 plates.py:351(node_components)
+       60    7.245    0.121   44.190    0.736 biomes.py:860(classify_biomes_soft)
+     1800    7.152    0.004   27.759    0.015 hydrology.py:825(route_downstream)
+    18337    7.071    0.000   22.297    0.001 volcanism.py:72(_apply_volcanic_activity_to_lines)
+     1319    7.010    0.005    7.488    0.006 biomes.py:315(_precip_season)
+    70807    7.001    0.000    7.911    0.000 plates.py:997(set_lines)
+     1320    6.706    0.005   23.995    0.018 biomes.py:950(_neighbour_vote)
+     1200    6.670    0.006    9.269    0.008 hydrology.py:719(_compute_flow_direction)
+ 39448344    6.533    0.000   11.776    0.000 numeric.py:483(count_nonzero)
+  2011624    6.483    0.000   12.100    0.000 lithosphere.py:163(crustal_thickness_for_elevation)
