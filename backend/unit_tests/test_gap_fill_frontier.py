@@ -116,53 +116,96 @@ def test_new_nodes_are_typed_oceanic_underwater_and_erupted_as_volcanoes_above()
     assert np.all(new_line.elevation < 0.0)
 
 
-def test_stretching_an_existing_line_thins_its_own_nearby_source_nodes():
-    """Extending a *pre-existing continental* line draws its material down from that line's own
-    nearest K_STRETCH_SOURCE_NODES end nodes -- their crustal thickness should measurably drop,
-    unlike a brand-new line's own first node, which has no source nodes to thin at all. Stretch
-    is continental-only (GitHub issue #216) -- see
-    test_oceanic_claim_erupts_fresh_crust_instead_of_stretching for the oceanic case."""
-    plate = _strip_plate(0, -0.1, 0.0, crust_type="continental")
+def _extend_one_end(plate, line, at_low_end: bool):
+    """Grow `line` by one node at whichever end `at_low_end` picks, returning
+    (grown_line, source_idx, new_idx) -- source_idx locates the K_STRETCH_SOURCE_NODES nearest
+    that end (by matching original thetas, since fill_gap_by_growing_plates re-sorts), new_idx
+    the freshly-added node."""
     world = _world([plate])
-    line = max((ln for ln in plate.lines if len(ln) > 3), key=len)
-    hc_before = line.crustal_thickness_m[-gff.K_STRETCH_SOURCE_NODES :].copy()
     dtheta = SPACING / max(np.cos(line.phi), 1e-3)
-    theta = float(line.theta[-1]) + dtheta
+    if at_low_end:
+        theta = float(line.theta[0]) - dtheta
+        source_thetas = line.theta[: gff.K_STRETCH_SOURCE_NODES]
+    else:
+        theta = float(line.theta[-1]) + dtheta
+        source_thetas = line.theta[-gff.K_STRETCH_SOURCE_NODES :]
     gap_pt = geometry.to_world(FRAME, geometry.local_xyz(np.array([line.phi]), np.array([theta])))
-
     gff.fill_gap_by_growing_plates(world, gap_pt, [plate], SPACING)
     grown = next(ln for ln in plate.lines if abs(ln.phi - line.phi) < 1e-9)
-    # The source nodes are wherever they ended up after re-sorting -- locate by matching the
-    # original thetas rather than assuming a fixed offset.
-    idx = np.searchsorted(grown.theta, line.theta[-gff.K_STRETCH_SOURCE_NODES :])
-    assert np.all(grown.crustal_thickness_m[idx] < hc_before)
+    source_idx = np.searchsorted(grown.theta, source_thetas)
+    new_idx = int(np.searchsorted(grown.theta, theta))
+    return grown, source_idx, new_idx
+
+
+def test_stretching_an_existing_line_thins_its_own_nearby_source_nodes():
+    """Extending a *pre-existing continental* line draws its material (Hc and Hm both) down
+    from that line's own nearest K_STRETCH_SOURCE_NODES end nodes, at either end -- unlike a
+    brand-new line's own first node, which has no source nodes to thin at all. Stretch is
+    continental-only (GitHub issue #216) -- see
+    test_oceanic_claim_erupts_fresh_crust_instead_of_stretching for the oceanic case and
+    test_mixed_plate_stretch_decision_uses_the_extended_ends_own_type for a plate that carries
+    both."""
+    plate = _strip_plate(0, -0.1, 0.0, crust_type="continental")
+    line = max((ln for ln in plate.lines if len(ln) > 3), key=len)
+    for at_low_end in (False, True):
+        hc_before = line.crustal_thickness_m.copy()
+        hm_before = line.mantle_lithosphere_thickness_m.copy()
+        grown, source_idx, _ = _extend_one_end(plate, line, at_low_end)
+        source_thetas = line.theta[:gff.K_STRETCH_SOURCE_NODES] if at_low_end else line.theta[-gff.K_STRETCH_SOURCE_NODES:]
+        before_idx = np.searchsorted(line.theta, source_thetas)
+        assert np.all(grown.crustal_thickness_m[source_idx] < hc_before[before_idx])
+        assert np.all(grown.mantle_lithosphere_thickness_m[source_idx] < hm_before[before_idx])
+        line = grown
 
 
 def test_oceanic_claim_erupts_fresh_crust_instead_of_stretching():
     """GitHub issue #216: an *oceanic* claimant extending a pre-existing line represents
     mid-ocean-ridge seafloor spreading (continuous fresh magma injection), not a fixed
     reservoir thinning to cover more area -- unlike the continental case above, its own nearest
-    end nodes must be left untouched, and the new node itself should land at (near) the full
-    oceanic reference column, not the stretched-down fraction _STRETCH_THIN_RATIO would give."""
-    from app.lithosphere import REFERENCE_HC_OCEANIC_M
+    end nodes (Hc and Hm both) must be left untouched at either end, and the new node itself
+    should land at the full oceanic reference column, not the stretched-down fraction
+    _STRETCH_THIN_RATIO would give."""
+    from app.lithosphere import REFERENCE_HC_OCEANIC_M, YOUNG_RIDGE_HM_M
 
     plate = _strip_plate(0, -0.1, 0.0)  # default crust_type="oceanic"
-    world = _world([plate])
     line = max((ln for ln in plate.lines if len(ln) > 3), key=len)
-    hc_before = line.crustal_thickness_m[-gff.K_STRETCH_SOURCE_NODES :].copy()
-    dtheta = SPACING / max(np.cos(line.phi), 1e-3)
-    theta = float(line.theta[-1]) + dtheta
-    gap_pt = geometry.to_world(FRAME, geometry.local_xyz(np.array([line.phi]), np.array([theta])))
+    for at_low_end in (False, True):
+        hc_before = line.crustal_thickness_m.copy()
+        hm_before = line.mantle_lithosphere_thickness_m.copy()
+        grown, source_idx, new_idx = _extend_one_end(plate, line, at_low_end)
+        source_thetas = line.theta[:gff.K_STRETCH_SOURCE_NODES] if at_low_end else line.theta[-gff.K_STRETCH_SOURCE_NODES:]
+        before_idx = np.searchsorted(line.theta, source_thetas)
+        assert np.allclose(grown.crustal_thickness_m[source_idx], hc_before[before_idx]), "source Hc must stay untouched"
+        assert np.allclose(grown.mantle_lithosphere_thickness_m[source_idx], hm_before[before_idx]), "source Hm must stay untouched"
+        # Seeded thin (_NEW_MAGMA_SEED_THIN_RATIO guarantees it melts straight through), so it
+        # lands exactly at the full oceanic reference column via _erupt_melted_nodes -- not the
+        # fractional _STRETCH_THIN_RATIO value stretching would have given instead.
+        assert grown.crustal_thickness_m[new_idx] == REFERENCE_HC_OCEANIC_M
+        assert grown.mantle_lithosphere_thickness_m[new_idx] == YOUNG_RIDGE_HM_M
+        line = grown
 
-    gff.fill_gap_by_growing_plates(world, gap_pt, [plate], SPACING)
-    grown = next(ln for ln in plate.lines if abs(ln.phi - line.phi) < 1e-9)
-    idx = np.searchsorted(grown.theta, line.theta[-gff.K_STRETCH_SOURCE_NODES :])
-    assert np.allclose(grown.crustal_thickness_m[idx], hc_before), "source nodes must stay untouched, not thinned"
-    new_idx = int(np.searchsorted(grown.theta, theta))
-    # Seeded thin (same convention as every other fresh eruption -- _NEW_MAGMA_SEED_THIN_RATIO
-    # guarantees it melts straight through), so it lands exactly at the full oceanic reference
-    # column via _erupt_melted_nodes -- not the fractional _STRETCH_THIN_RATIO value stretching
-    # from a full-thickness neighbour would have given instead.
+
+def test_mixed_plate_stretch_decision_uses_the_extended_ends_own_type():
+    """GitHub issue #216 code review: the stretch-vs-erupt decision must key off the *extended
+    end node's* own effective crust type (crust_type_code resolved against the plate), not the
+    owning plate's nominal crust_type alone -- a plate can carry the other type at one edge
+    (e.g. a drowned passive margin on a continental plate, exactly the case
+    growth_seed_thickness() already treats as genuinely oceanic). A continental plate with an
+    explicitly oceanic-coded high end must erupt fresh there, the same as a wholly-oceanic
+    plate would -- not stretch, as it would if the decision read the plate's own type instead."""
+    from app.elevation_lines import CRUST_TYPE_OCEANIC
+    from app.lithosphere import REFERENCE_HC_OCEANIC_M
+
+    plate = _strip_plate(0, -0.1, 0.0, crust_type="continental")
+    line = max((ln for ln in plate.lines if len(ln) > 3), key=len)
+    codes = line.crust_type_code.copy()
+    codes[-1] = CRUST_TYPE_OCEANIC
+    oceanic_end_line = line.replace(crust_type_code=codes)
+    plate.replace_line(next(i for i, ln in enumerate(plate.lines) if ln is line), oceanic_end_line)
+
+    grown, source_idx, new_idx = _extend_one_end(plate, oceanic_end_line, at_low_end=False)
+    hc_before = oceanic_end_line.crustal_thickness_m[-gff.K_STRETCH_SOURCE_NODES :]
+    assert np.allclose(grown.crustal_thickness_m[source_idx], hc_before), "oceanic-coded end must not thin its source nodes"
     assert grown.crustal_thickness_m[new_idx] == REFERENCE_HC_OCEANIC_M
 
 
