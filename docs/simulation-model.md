@@ -1103,15 +1103,20 @@ one node at a time, rather than either always creating disjoint new lines or spa
 new plate: it walks the connected frontier outward in `DEFRAG_CONNECT_RADIUS_MULT`-sized hops
 (so a claim can't outrun `merge_split.defragment_plates`'s own connectivity check); at each hop,
 every reachable gap point is assigned to whichever claimant's node cloud is nearest, then, per
-claimant/row, either **extends an existing line** by one node (a real "stretch" --
-mass-conserving, drawing the new node's material down from that line's own nearest
-`K_STRETCH_SOURCE_NODES` end nodes, the same row-claim draw-down `_claim_adjacent_territory`
-already does for a whole new phi row, applied here at single-node granularity) or, where no
-line is close enough to extend, **opens a brand-new single-node line** -- a genuine magma
-eruption with nothing thinned in exchange, same seeding `_seed_and_erupt_new_nodes` always
-uses. Either way the claimed node still routes through `_erupt_melted_nodes`, typed oceanic vs.
-continental/volcanic by whether it was above or below sea level the instant it erupted --
-never a free area grant.
+claimant/row, either **extends an existing line** by one node or, where no line is close enough
+to extend, **opens a brand-new single-node line**. Extending only draws material down from that
+line's own nearest `K_STRETCH_SOURCE_NODES` end nodes (a real "stretch," mass-conserving, the
+same row-claim draw-down `_claim_adjacent_territory` does for a whole new phi row, at
+single-node granularity here) when the extended end is *continental* (resolved against
+`crust_type_code`, not just the claimant's own `crust_type` -- a plate can carry the other type
+at one edge); a continental candidate with no line to extend, and every oceanic end regardless
+of whether a line is there to extend, instead **erupts fresh** -- thin-seeded from scratch, same
+seeding `_seed_and_erupt_new_nodes` always uses, nothing thinned in exchange. GitHub issue #216:
+oceanic gap-fill stands in for mid-ocean-ridge spreading (new crust from the mantle, not a fixed
+reservoir thinning to cover more area), so it never draws down existing material the way a
+continental claim can. Either way the claimed node still routes through `_erupt_melted_nodes`,
+typed oceanic vs. continental/volcanic by whether it was above or below sea level the instant it
+erupted -- never a free area grant.
 
 At the whole-sphere site in particular, this grows a plate's own existing territory into a
 vacated region instead of always spawning a new plate -- exactly the "absorb into a dominant

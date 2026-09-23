@@ -9,18 +9,29 @@ all). See docs/simulation-model.md's "Frontier gap-fill" section for the full wr
 Every claimed node is a real magma eruption, never a free area grant (see
 `_erupt_melted_nodes`'s own docstring). The two ways a node can be claimed:
 
-- **Stretch an existing line.** A candidate grid-adjacent to a line this plate already had
-  *before this call* draws its material down from that line's own nearest
-  `K_STRETCH_SOURCE_NODES` end nodes (same row-claim mass-conservation shape
-  `lithosphere_plate._claim_adjacent_territory` already uses for a whole new phi row, applied
-  here at single-node granularity -- see `_stretch_extend_line`), then both the new node and
-  the thinned source nodes run through the same decompression-melting eruption path
-  (`_erupt_melted_nodes`) as everything else. This is the "stretches the plate it's on" case.
-- **New magma-filled node.** A candidate with no existing line to extend -- including every
-  node added to a line *opened during this same call* (that line has no prior column of its
-  own to draw from either, no matter how many nodes it's grown to by the time this call ends)
-  -- is thin-seeded from scratch (`LithospherePlate._seed_and_erupt_new_nodes`, the same
-  seeding every other new-crust event in `deform()` uses) with nothing thinned in exchange.
+- **Stretch an existing line.** Only when the extended *end node* is continental (resolved via
+  `effective_is_continental_from_codes` against the owning plate's `crust_type`, not the plate's
+  type alone -- a plate can carry the other type at one edge, e.g. a drowned passive margin on a
+  continental plate). Draws material down from that line's own nearest `K_STRETCH_SOURCE_NODES`
+  end nodes (same mass-conservation shape `lithosphere_plate._claim_adjacent_territory` uses for
+  a whole new phi row, at single-node granularity -- see `_stretch_extend_line`); both the new
+  node and the thinned source nodes then run through the usual decompression-melting eruption
+  path (`_erupt_melted_nodes`).
+- **New magma-filled node.** Every oceanic end, plus any continental candidate with no existing
+  line to extend -- including every node on a line *opened during this same call* (no prior
+  column to draw from either) -- is thin-seeded from scratch
+  (`LithospherePlate._seed_and_erupt_new_nodes`) with nothing thinned in exchange.
+
+  GitHub issue #216: an oceanic end used to stretch too, thinning its own source nodes the same
+  way a continental one does. As a model approximation for mid-ocean-ridge spreading -- most
+  oceanic gap-fill stands in for a ridge continuously injecting new crust, not a fixed reservoir
+  redistributed thinner -- that was backwards, and put this call's own creation on the same
+  self-canceling "thin now, remelt-and-reset later" footing issue #216 found dominating a
+  similarly-shaped `deform()` growth path (`LithospherePlate._stretch_end` vs.
+  `regularize_line`). This module can't tell a genuine spreading center from an ordinary
+  geometric coverage gap (a lattice mismatch, a subduction-vacated hole with no local
+  divergence) -- treating every oceanic claim as spreading is the approximation, applied
+  uniformly rather than case by case.
 
 Either way, the freshly-erupted node is typed oceanic vs. continental by whether it was above
 or below sea level the instant it erupted (`_erupt_melted_nodes`'s own `melt_land`/`melt_ocean`
@@ -43,7 +54,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry, lithosphere, rheology, terrain_noise
-from .elevation_lines import CONTIGUOUS_RUN_GAP_MULT, DEFRAG_CONNECT_RADIUS_MULT, ElevationLine
+from .elevation_lines import CONTIGUOUS_RUN_GAP_MULT, DEFRAG_CONNECT_RADIUS_MULT, ElevationLine, effective_is_continental_from_codes
 from .lithosphere_plate import _TERRAIN_SEED_TAG, _erupt_melted_nodes, growth_seed_thickness
 
 if TYPE_CHECKING:
@@ -241,8 +252,9 @@ def _claim_row_points(
     resampling) as fit within `budget` real new nodes. Deliberately does *not* require exact
     grid alignment: a candidate within `gap_tol` (`CONTIGUOUS_RUN_GAP_MULT * dtheta`, the same
     threshold `split_into_contiguous_runs` already uses to call two nodes "still one contiguous
-    row") of a line's own low/high end extends that line (stretch if it pre-dates this call,
-    fresh eruption otherwise -- see module docstring); a candidate that already falls *inside*
+    row") of a line's own low/high end extends that line (stretch if it pre-dates this call
+    *and* that end is effectively continental, fresh eruption otherwise -- see module
+    docstring); a candidate that already falls *inside*
     an existing line's own theta span (within the same tolerance) is a duplicate/near-duplicate
     detection of an already-covered point and is silently absorbed, no new node. Anything with
     no nearby line opens a new one. `needs_regularizing`/`regularize_line` (run every `deform()`
@@ -280,7 +292,20 @@ def _claim_row_points(
         if best is not None:
             idx, at_low_end, _ = best
             line = wp.lines[idx]
-            stretch = idx in wp.pre_existing
+            # GitHub issue #216: only a continental *end* stretches (draws material down from
+            # its own nearest end nodes) -- see this module's own docstring for why an oceanic
+            # end always erupts fresh crust instead, regardless of whether it's extending a
+            # pre-existing line. Resolved against the *effective* type of the specific end node
+            # being extended (`crust_type_code`, which can disagree with the plate's own nominal
+            # `crust_type` -- e.g. a drowned passive margin on a continental plate, exactly the
+            # case `growth_seed_thickness` already treats as genuinely oceanic), not the plate's
+            # own type: a mixed plate's oceanic edge must erupt fresh even while its continental
+            # interior still stretches.
+            end_code = line.crust_type_code[0 if at_low_end else -1]
+            end_is_continental = bool(
+                effective_is_continental_from_codes(np.array([end_code]), wp.plate.crust_type == "continental")[0]
+            )
+            stretch = (idx in wp.pre_existing) and end_is_continental
             wp.lines[idx] = (
                 _stretch_extend_line(world, wp.plate, line, idx, at_low_end, theta, hc0, hm0, amp, texture)
                 if stretch
