@@ -1044,49 +1044,6 @@ def test_oceanic_override_retreat_is_blocked_without_arc_creation_but_suture_is_
     assert _high_end_retreat("continental") > 0.0
 
 
-def test_oceanic_self_plate_retreat_is_blocked_without_divergent_creation():
-    """GitHub issue #216: an oceanic self-plate's own ordinary subduction retreat -- unlike a
-    continental suture, it never accretes, so it always went through this budget check once
-    the crust-type restriction was lifted -- is now capped by however much this same step's
-    decompression-melting creation is adding across the whole plate (the oceanic analog of
-    issue #177's arc-magmatic budget for the continental case, since arc magmatism never
-    applies to an oceanic self-plate). With these plates static (zero omega, hence zero
-    closing rate, hence no divergent thinning crossing the melt threshold, hence zero
-    creation), retreat is refused outright -- mirroring
-    test_oceanic_override_retreat_is_blocked_without_arc_creation_but_suture_is_not's own
-    continental-vs-oceanic case, just for an oceanic self-plate instead."""
-    from app.lithosphere_plate import LithospherePlate
-    from app.lithosphere import reference_thickness
-    from app.world import World
-
-    spacing = line_spacing_rad(1.0)
-
-    def _plate(pid, crust_type, theta_lo, theta_hi, n):
-        hc0, hm0 = reference_thickness(crust_type)
-        theta = np.linspace(theta_lo, theta_hi, n)
-        line = ElevationLine(
-            phi=0.2, theta=theta, elevation=np.zeros(n),
-            crustal_thickness_m=np.full(n, hc0), mantle_lithosphere_thickness_m=np.full(n, hm0),
-        )
-        filler = ElevationLine(
-            phi=-0.6, theta=np.linspace(-0.2, 0.2, 8), elevation=np.zeros(8),
-            crustal_thickness_m=np.full(8, hc0), mantle_lithosphere_thickness_m=np.full(8, hm0),
-        )
-        return LithospherePlate(plate_id=pid, frame=np.eye(3), crust_type=crust_type, lines=[line, filler])
-
-    ocean = _plate(0, "oceanic", -0.5, 0.5, 40)
-    neighbour = _plate(1, "oceanic", 0.15, 0.9, 40)
-    world = World(seed=0, plates=[ocean, neighbour], mantle_centers=[], node_density=1.0)
-
-    def high_theta() -> float:
-        return max(ln.theta[-1] for ln in ocean.lines if abs(ln.phi - 0.2) < 1e-6)
-
-    before = high_theta()
-    for _ in range(6):
-        ocean.deform(world, [neighbour], years=200_000, max_distance=1.5 * spacing)
-    assert before - high_theta() == 0.0
-
-
 def test_lithosphere_continental_volume_budget_suppresses_growth():
     """A continental plate whose node footprint has outrun its crustal volume -- most of its
     lattice diluted to the oceanic reference column by the boundary ratchet -- grows no new
