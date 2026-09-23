@@ -1,4 +1,12 @@
 # Extra deps for producing the packaged desktop binary (see bin/mantle-bloom.spec).
-# Install on top of requirements.txt, in the same venv.
--r requirements.txt
+# Install on top of requirements-runtime.txt, in the same venv.
+#
+# Deliberately NOT `-r requirements.txt`: that also pulls in pytest, and having pytest
+# importable (even though nothing here runs it) breaks the PyInstaller build. astropy's
+# wcsaxes submodule does `pytest.importorskip("matplotlib")` at import time to skip itself
+# under test collection when matplotlib is missing; when pytest is installed but matplotlib
+# isn't, that raises pytest.skip.Exception instead of the ImportError the surrounding
+# `except ImportError: pass` expects, and PyInstaller's astropy hook (which imports every
+# astropy submodule to discover hidden imports) lets that exception crash the whole build.
+-r requirements-runtime.txt
 pyinstaller>=6.11

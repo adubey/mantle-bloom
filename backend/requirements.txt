@@ -1,11 +1,4 @@
-fastapi
-uvicorn[standard]
-numpy
-scipy
-numba
-astropy-healpix
-Pillow
-av
+-r requirements-runtime.txt
 pytest
 pytest-xdist
 httpx
