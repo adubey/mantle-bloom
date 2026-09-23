@@ -150,6 +150,9 @@ class World:
     # 0.0 after each firing. A plain-float default, so an old pickle falls through to 0.0 with
     # no persistence backfill needed (same as steps_taken).
     magma_transport_banked_years: float = 0.0
+    # Maximum nearby continental destinations considered for each magma parcel. A smaller
+    # value is faster but changes the deposit distribution (issue #205).
+    magma_transport_k: int = 256
     # Cross-step memory for the "Added/Removed Points" debug view's removed-node half (the
     # added half needs no cross-step state -- it reads straight off each live node's own
     # ElevationLine.node_created_years). A node vanishes from every plate's own node cloud the
@@ -887,7 +890,10 @@ def step_world_progress(world: World, years: float):
         # pass writes into destination lines by (plate_id, line_index) and running it earlier
         # could target a line that subducts, splits, or merges away in this same step.
         if world.steps_taken % magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS == 0:
-            for message in magma_transport.run_magma_transport(world, world.magma_transport_banked_years / 1_000_000.0):
+            for message in magma_transport.run_magma_transport(
+                world, world.magma_transport_banked_years / 1_000_000.0,
+                max_destinations_per_parcel=world.magma_transport_k,
+            ):
                 world.log_event(message)
             world.magma_transport_banked_years = 0.0
 
@@ -925,5 +931,4 @@ def step_world_progress(world: World, years: float):
     world.record_stats()
     done_units += 1
     yield done_units / total_units
-
 

@@ -1,5 +1,5 @@
 import numpy as np
-from app import climate, geometry
+from app import climate, geometry, magma_transport
 from app.world import generate_world, step_world
 
 
@@ -35,6 +35,22 @@ def test_step_world_skips_recording_stats_when_climate_is_off():
     step_world(world, years=1_000_000)
     assert world.climate_cache is None
     assert len(world.stats_history) == 1
+
+
+def test_step_world_uses_selected_magma_transport_k(monkeypatch):
+    world = generate_world(seed=10, num_plates=6, node_density=0.5, climate_density=0.5)
+    world.simulate_climate_biomes = False
+    world.steps_taken = magma_transport.MAGMA_TRANSPORT_INTERVAL_STEPS - 1
+    world.magma_transport_k = 128
+    seen = []
+
+    def capture_transport(_world, _banked_myr, max_destinations_per_parcel=None):
+        seen.append(max_destinations_per_parcel)
+        return []
+
+    monkeypatch.setattr(magma_transport, "run_magma_transport", capture_transport)
+    step_world(world, years=100_000)
+    assert seen == [128]
 
 
 def test_step_world_gives_plates_nonzero_omega():

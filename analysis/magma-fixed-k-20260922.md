@@ -38,9 +38,10 @@ they measure distribution change, not net lost volume.
 
 ## Decision
 
-Keep the complete radius search as the default. Fixed K is available only by passing the
-optional `max_destinations_per_parcel` argument to `run_magma_transport`. K = 64 gives a
-large search speedup but substantially changes where melt lands. K = 256 is a plausible
-quality/speed compromise for further study, but it still changes roughly 4-5% of the
-10-degree regional deposit totals by the L1 measure. The snapshots cover only 4 Myr of
-simulation history; this experiment does not establish its long-run land-fraction impact.
+World stepping now uses K = 256 by default, with K = 64 and 128 selectable in Controls
+under Tectonics. The exact complete-radius path remains available by passing `None` to
+`run_magma_transport` for comparisons. K = 64 gives a large search speedup but substantially
+changes where melt lands. K = 256 is a quality/speed compromise selected for further study;
+it still changes roughly 4-5% of the 10-degree regional deposit totals by the L1 measure.
+The snapshots cover only 4 Myr of simulation history; this experiment does not establish
+its long-run land-fraction impact.
