@@ -115,7 +115,9 @@ def test_weighted_destinations_ignores_a_candidate_past_the_transport_range():
 def test_fixed_k_matches_radius_search_when_all_candidates_fit():
     origin = np.array([1.0, 0.0, 0.0])
     destinations = geometry.normalize(np.array([
-        [1.0, 0.001, 0.0], [1.0, -0.002, 0.0], [1.0, 0.003, 0.0],
+        # Index order differs from distance order, so returned distances must follow
+        # destination IDs when the fixed-K path sorts them for accumulation.
+        [1.0, 0.003, 0.0], [1.0, -0.001, 0.0], [1.0, 0.002, 0.0],
     ]))
     dest_index = _dest_index(destinations, np.array([10_000.0, 20_000.0, 30_000.0]))
     exact = magma_transport._weighted_destination_pairs(np.array([origin]), dest_index, _range_rad())

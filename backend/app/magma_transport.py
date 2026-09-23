@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import lithosphere, rheology
+from . import lithosphere, plates, rheology
 from .elevation_lines import (
     ELEV_CHANGE_LATERAL_MAGMA,
     ELEV_CHANGE_MIN_DELTA_M,
@@ -191,11 +191,11 @@ def _weighted_destination_pairs(
     max_destinations_per_parcel: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Weighted (parcel, destination) pairs as three flat arrays
-    `(parcel_idx, dest_idx, weight)`. The default includes every positive-weight destination
-    within `range_rad`; `max_destinations_per_parcel` is an opt-in approximation that keeps
-    at most that many nearest destinations per parcel within the same range. Nearest-only
-    selection can concentrate deposits and leave more volume unplaced under the global
-    per-destination cap, so it is not the world-step default.
+    `(parcel_idx, dest_idx, weight)`. Passing `None` includes every positive-weight
+    destination within `range_rad`; world stepping uses a fixed K (256 by default) and
+    keeps at most that many nearest destinations per parcel within the same range.
+    Nearest-only selection can concentrate deposits and leave more volume unplaced under
+    the global per-destination cap.
 
     Weight is thinness-relative-to-reference
     (`REFERENCE_HC_CONTINENTAL_M - hc`, floored at 0) times a linear inverse-distance falloff to
@@ -208,17 +208,23 @@ def _weighted_destination_pairs(
         if len(parcel_origins_xyz) == 0 or len(dest_index) == 0:
             return np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0)
         k = min(max_destinations_per_parcel, len(dest_index))
-        _, nearest = dest_index.tree.query(parcel_origins_xyz, k=k, distance_upper_bound=range_rad)
+        distances, nearest = dest_index.tree.query(
+            parcel_origins_xyz, k=k, distance_upper_bound=range_rad,
+            workers=plates.query_workers(len(parcel_origins_xyz)),
+        )
+        distances = np.asarray(distances).reshape(len(parcel_origins_xyz), k)
         nearest = np.asarray(nearest).reshape(len(parcel_origins_xyz), k)
         # `query` orders by distance; sort each parcel's selected destination IDs so the
         # downstream accumulation retains the radius path's pair order where they overlap.
-        nearest.sort(axis=1)
+        order = np.argsort(nearest, axis=1)
+        nearest = np.take_along_axis(nearest, order, axis=1)
+        distances = np.take_along_axis(distances, order, axis=1)
         valid = nearest < len(dest_index)  # cKDTree pads out-of-range results with len(tree)
         parcel_idx = np.repeat(np.arange(len(parcel_origins_xyz)), k)[valid.ravel()]
         dest_idx = nearest[valid]
         if len(dest_idx) == 0:
             return np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0)
-        dist_km = np.linalg.norm(parcel_origins_xyz[parcel_idx] - dest_index.xyz[dest_idx], axis=1) * PLANET_RADIUS_KM
+        dist_km = distances[valid] * PLANET_RADIUS_KM
         thinness = np.clip(lithosphere.REFERENCE_HC_CONTINENTAL_M - dest_index.hc_m[dest_idx], 0.0, None)
         falloff = np.clip(1.0 - dist_km / MAGMA_TRANSPORT_RANGE_KM, 0.0, 1.0)
         weight = thinness * falloff
@@ -256,8 +262,8 @@ def run_magma_transport(world: "World", banked_myr: float, max_destinations_per_
     keep their remaining volume banked; fully-placed or stale parcels are dropped -- see module
     docstring / `MAGMA_PARCEL_MAX_AGE_CYCLES`). Returns event strings for `world.log_event`;
     a no-op (returns `[]`, mutates nothing) when there are no pending parcels.
-    `max_destinations_per_parcel` enables the experimental nearest-K search; normal world
-    stepping leaves it `None` and retains the complete radius search."""
+    World stepping passes `world.magma_transport_k` (256 by default); callers can pass
+    `None` for the complete radius search."""
     parcels = world.pending_magma_parcels
     if not parcels:
         return []

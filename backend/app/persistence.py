@@ -51,8 +51,6 @@ def _backfill_added_fields(world: World) -> None:
         world.gap_tracks = []
     if not hasattr(world, "pending_magma_parcels"):
         world.pending_magma_parcels = []
-    if not hasattr(world, "magma_transport_k"):
-        world.magma_transport_k = 256
     if not hasattr(world, "overlap_progress"):
         world.overlap_progress = {}
     if not hasattr(world, "faults"):
