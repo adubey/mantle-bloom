@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import lithosphere, rheology
+from . import lithosphere, plates, rheology
 from .elevation_lines import (
     ELEV_CHANGE_LATERAL_MAGMA,
     ELEV_CHANGE_MIN_DELTA_M,
@@ -187,14 +187,50 @@ def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
 
 
 def _weighted_destination_pairs(
-    parcel_origins_xyz: np.ndarray, dest_index: _ContinentalNodeIndex, range_rad: float
+    parcel_origins_xyz: np.ndarray, dest_index: _ContinentalNodeIndex, range_rad: float,
+    max_destinations_per_parcel: int | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Every (parcel, destination) pair within `range_rad` with nonzero weight, as three flat
-    arrays `(parcel_idx, dest_idx, weight)` -- weight is thinness-relative-to-reference
+    """Weighted (parcel, destination) pairs as three flat arrays
+    `(parcel_idx, dest_idx, weight)`. Passing `None` includes every positive-weight
+    destination within `range_rad`; world stepping uses a fixed K (256 by default) and
+    keeps at most that many nearest destinations per parcel within the same range.
+    Nearest-only selection can concentrate deposits and leave more volume unplaced under
+    the global per-destination cap.
+
+    Weight is thinness-relative-to-reference
     (`REFERENCE_HC_CONTINENTAL_M - hc`, floored at 0) times a linear inverse-distance falloff to
     zero at `MAGMA_TRANSPORT_RANGE_KM`. Distance is the plain cKDTree chord distance over
     unit-sphere points, times `PLANET_RADIUS_KM`; at this regional scale the chord/arc error is
     well under 1%."""
+    if max_destinations_per_parcel is not None:
+        if max_destinations_per_parcel < 1:
+            raise ValueError("max_destinations_per_parcel must be positive")
+        if len(parcel_origins_xyz) == 0 or len(dest_index) == 0:
+            return np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0)
+        k = min(max_destinations_per_parcel, len(dest_index))
+        distances, nearest = dest_index.tree.query(
+            parcel_origins_xyz, k=k, distance_upper_bound=range_rad,
+            workers=plates.query_workers(len(parcel_origins_xyz)),
+        )
+        distances = np.asarray(distances).reshape(len(parcel_origins_xyz), k)
+        nearest = np.asarray(nearest).reshape(len(parcel_origins_xyz), k)
+        # `query` orders by distance; sort each parcel's selected destination IDs so the
+        # downstream accumulation retains the radius path's pair order where they overlap.
+        order = np.argsort(nearest, axis=1)
+        nearest = np.take_along_axis(nearest, order, axis=1)
+        distances = np.take_along_axis(distances, order, axis=1)
+        valid = nearest < len(dest_index)  # cKDTree pads out-of-range results with len(tree)
+        parcel_idx = np.repeat(np.arange(len(parcel_origins_xyz)), k)[valid.ravel()]
+        dest_idx = nearest[valid]
+        if len(dest_idx) == 0:
+            return np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0)
+        dist_km = distances[valid] * PLANET_RADIUS_KM
+        thinness = np.clip(lithosphere.REFERENCE_HC_CONTINENTAL_M - dest_index.hc_m[dest_idx], 0.0, None)
+        falloff = np.clip(1.0 - dist_km / MAGMA_TRANSPORT_RANGE_KM, 0.0, 1.0)
+        weight = thinness * falloff
+        keep = weight > 0.0
+        return parcel_idx[keep], dest_idx[keep], weight[keep]
+
     origin_tree = cKDTree(parcel_origins_xyz)
     candidates = origin_tree.query_ball_tree(dest_index.tree, range_rad)
 
@@ -219,13 +255,15 @@ def _weighted_destination_pairs(
     return np.concatenate(parcel_idx_chunks), np.concatenate(dest_idx_chunks), np.concatenate(weight_chunks)
 
 
-def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
+def run_magma_transport(world: "World", banked_myr: float, max_destinations_per_parcel: int | None = None) -> list[str]:
     """Resolve every banked `world.pending_magma_parcels` entry against the current whole-sphere
     continental-node set, apply one global per-destination-node rate cap, scatter-write the
     realized deposits, and update `world.pending_magma_parcels` in place (partial placements
     keep their remaining volume banked; fully-placed or stale parcels are dropped -- see module
     docstring / `MAGMA_PARCEL_MAX_AGE_CYCLES`). Returns event strings for `world.log_event`;
-    a no-op (returns `[]`, mutates nothing) when there are no pending parcels."""
+    a no-op (returns `[]`, mutates nothing) when there are no pending parcels.
+    World stepping passes `world.magma_transport_k` (256 by default); callers can pass
+    `None` for the complete radius search."""
     parcels = world.pending_magma_parcels
     if not parcels:
         return []
@@ -244,7 +282,9 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
 
     parcel_origins = np.array([p.origin_xyz for p in parcels])
     parcel_volume = np.array([p.volume_m3 for p in parcels])
-    parcel_idx, dest_idx, weight = _weighted_destination_pairs(parcel_origins, dest_index, range_rad)
+    parcel_idx, dest_idx, weight = _weighted_destination_pairs(
+        parcel_origins, dest_index, range_rad, max_destinations_per_parcel
+    )
 
     placed_per_parcel = np.zeros(len(parcels))
     n_deposited = 0

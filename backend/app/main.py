@@ -206,6 +206,7 @@ class ControlsRequest(BaseModel):
     simulate_climate_biomes: bool | None = None
     wind_model: str | None = None
     fault_deformation_mode: str | None = None
+    magma_transport_k: int | None = None
     # Issue #133 phase-1 proving-out flag -- see World.node_cloud_resample_mode. "kdtree"
     # (default) or "healpix". Backend/API-only for now, no Controls-panel entry.
     node_cloud_resample_mode: str | None = None
@@ -234,6 +235,7 @@ class ControlsRequest(BaseModel):
 WIND_MODEL_CHOICES = ("cfd", "diagnostic")
 FAULT_DEFORMATION_MODE_CHOICES = faults.FAULT_DEFORMATION_MODES
 NODE_CLOUD_RESAMPLE_MODE_CHOICES = healpix_grid.NODE_CLOUD_RESAMPLE_MODE_CHOICES
+MAGMA_TRANSPORT_K_CHOICES = (64, 128, 256)
 
 
 def _parse_view_rotation(rotation: str | None) -> np.ndarray:
@@ -1009,6 +1011,8 @@ def set_controls(req: ControlsRequest) -> dict:
                 f"choices are {NODE_CLOUD_RESAMPLE_MODE_CHOICES}"
             ),
         )
+    if req.magma_transport_k is not None and req.magma_transport_k not in MAGMA_TRANSPORT_K_CHOICES:
+        raise HTTPException(status_code=400, detail=f"magma_transport_k must be one of {MAGMA_TRANSPORT_K_CHOICES}")
     tuning_updates = {name: getattr(req, name) for name in TUNING_MULTIPLIER_FIELDS if getattr(req, name) is not None}
     for name, value in tuning_updates.items():
         if value < 0.0:
@@ -1031,6 +1035,8 @@ def set_controls(req: ControlsRequest) -> dict:
             world.wind_model = req.wind_model
         if req.fault_deformation_mode is not None:
             world.fault_deformation_mode = req.fault_deformation_mode
+        if req.magma_transport_k is not None:
+            world.magma_transport_k = req.magma_transport_k
         if req.node_cloud_resample_mode is not None:
             world.node_cloud_resample_mode = req.node_cloud_resample_mode
         if req.debug_diagnostics is not None:
@@ -1046,6 +1052,7 @@ def set_controls(req: ControlsRequest) -> dict:
         "simulate_climate_biomes": world.simulate_climate_biomes,
         "wind_model": world.wind_model,
         "fault_deformation_mode": world.fault_deformation_mode,
+        "magma_transport_k": world.magma_transport_k,
         "node_cloud_resample_mode": world.node_cloud_resample_mode,
         "debug_diagnostics": world.debug_diagnostics,
         **{name: getattr(world, name) for name in TUNING_MULTIPLIER_FIELDS},

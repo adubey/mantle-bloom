@@ -3,6 +3,7 @@ magma_transport.py (the source half, rheology.magma_export_strength_and_volume, 
 tests in test_rheology.py)."""
 
 import numpy as np
+import pytest
 
 from app import geometry, lithosphere, magma_transport
 from app.elevation_lines import ELEV_CHANGE_LATERAL_MAGMA, line_spacing_rad
@@ -111,6 +112,48 @@ def test_weighted_destinations_ignores_a_candidate_past_the_transport_range():
     assert len(dest_idx) == 0
 
 
+def test_fixed_k_matches_radius_search_when_all_candidates_fit():
+    origin = np.array([1.0, 0.0, 0.0])
+    destinations = geometry.normalize(np.array([
+        # Index order differs from distance order, so returned distances must follow
+        # destination IDs when the fixed-K path sorts them for accumulation.
+        [1.0, 0.003, 0.0], [1.0, -0.001, 0.0], [1.0, 0.002, 0.0],
+    ]))
+    dest_index = _dest_index(destinations, np.array([10_000.0, 20_000.0, 30_000.0]))
+    exact = magma_transport._weighted_destination_pairs(np.array([origin]), dest_index, _range_rad())
+    capped = magma_transport._weighted_destination_pairs(np.array([origin]), dest_index, _range_rad(), 3)
+    for old, new in zip(exact, capped):
+        np.testing.assert_array_equal(old, new)
+
+
+def test_fixed_k_limits_destinations_per_parcel():
+    origin = np.array([1.0, 0.0, 0.0])
+    destinations = geometry.normalize(np.array([
+        [1.0, 0.001, 0.0], [1.0, 0.002, 0.0], [1.0, 0.003, 0.0],
+    ]))
+    dest_index = _dest_index(destinations, np.array([10_000.0, 20_000.0, 30_000.0]))
+    _, dest_idx, _ = magma_transport._weighted_destination_pairs(np.array([origin]), dest_index, _range_rad(), 2)
+    assert dest_idx.tolist() == [0, 1]
+
+
+def test_fixed_k_128_selects_only_nearest_in_range_destinations():
+    origin = np.array([1.0, 0.0, 0.0])
+    angles = np.linspace(0.001, 0.14, 150)
+    destinations = np.column_stack((np.cos(angles), np.sin(angles), np.zeros_like(angles)))
+    # The final node is outside the 1,000 km radius, despite being in the index.
+    destinations = np.vstack((destinations, geometry.normalize(np.array([1.0, 0.3, 0.0]))))
+    dest_index = _dest_index(destinations, np.full(len(destinations), 10_000.0))
+
+    parcel_idx, dest_idx, weight = magma_transport._weighted_destination_pairs(
+        np.array([origin]), dest_index, _range_rad(), 128
+    )
+
+    np.testing.assert_array_equal(parcel_idx, np.zeros(128, dtype=int))
+    np.testing.assert_array_equal(dest_idx, np.arange(128))
+    assert len(weight) == 128
+    assert np.all(weight > 0.0)
+
+
 def test_continental_node_index_excludes_oceanic_nodes():
     """GitHub issue #205's own destination filter: an oceanic destination is just ordinary
     seafloor volcanism, not the land-fraction fix this exists for -- a mixed-composition
@@ -174,7 +217,8 @@ def test_deposit_writes_into_a_different_plates_line_and_stamps_lateral_magma():
     assert updated_line.elev_change_reason[node_index] == ELEV_CHANGE_LATERAL_MAGMA
 
 
-def test_global_cap_bounds_a_single_destination_regardless_of_parcel_count():
+@pytest.mark.parametrize("max_destinations_per_parcel", [None, 1])
+def test_global_cap_bounds_a_single_destination_regardless_of_parcel_count(max_destinations_per_parcel):
     """GitHub issue #205's round-1 review point 4 / the #145-reopening regression this design
     specifically closes: several independent parcels all targeting the same thinnest node must
     not each get their own separate rate-capped share -- the node has exactly one ceiling,
@@ -192,7 +236,7 @@ def test_global_cap_bounds_a_single_destination_regardless_of_parcel_count():
         world.pending_magma_parcels.append(magma_transport.MagmaParcel(origin_xyz=origin, volume_m3=1e13, step_generated=0))
 
     banked_myr = 4.0
-    magma_transport.run_magma_transport(world, banked_myr=banked_myr)
+    magma_transport.run_magma_transport(world, banked_myr=banked_myr, max_destinations_per_parcel=max_destinations_per_parcel)
 
     hc_after = plate_b.lines[line_index].crustal_thickness_m[node_index]
     max_allowed = magma_transport.MAGMA_DEPOSIT_RATE_M_PER_MYR * banked_myr

@@ -591,6 +591,7 @@ export type ControlsState = {
   simulate_climate_biomes: boolean;
   wind_model: string;
   fault_deformation_mode: string;
+  magma_transport_k: number;
   // Gate for the verbose _fill_corner_notch decision log (see fetchCornerNotchLog) -- on by
   // default for a Debugging Worlds tab world, off/toggleable here for any other loaded save.
   debug_diagnostics: boolean;
@@ -604,6 +605,7 @@ export function updateControls(controls: {
   simulateClimateBiomes?: boolean;
   windModel?: string;
   faultDeformationMode?: string;
+  magmaTransportK?: number;
   debugDiagnostics?: boolean;
   tuning?: Partial<TuningMultipliers>;
 }): Promise<ControlsState> {
@@ -618,6 +620,7 @@ export function updateControls(controls: {
       simulate_climate_biomes: controls.simulateClimateBiomes,
       wind_model: controls.windModel,
       fault_deformation_mode: controls.faultDeformationMode,
+      magma_transport_k: controls.magmaTransportK,
       debug_diagnostics: controls.debugDiagnostics,
       ...controls.tuning,
     }),
