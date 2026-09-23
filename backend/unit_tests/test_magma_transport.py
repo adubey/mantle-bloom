@@ -134,6 +134,24 @@ def test_fixed_k_limits_destinations_per_parcel():
     assert dest_idx.tolist() == [0, 1]
 
 
+def test_fixed_k_128_selects_only_nearest_in_range_destinations():
+    origin = np.array([1.0, 0.0, 0.0])
+    angles = np.linspace(0.001, 0.14, 150)
+    destinations = np.column_stack((np.cos(angles), np.sin(angles), np.zeros_like(angles)))
+    # The final node is outside the 1,000 km radius, despite being in the index.
+    destinations = np.vstack((destinations, geometry.normalize(np.array([1.0, 0.3, 0.0]))))
+    dest_index = _dest_index(destinations, np.full(len(destinations), 10_000.0))
+
+    parcel_idx, dest_idx, weight = magma_transport._weighted_destination_pairs(
+        np.array([origin]), dest_index, _range_rad(), 128
+    )
+
+    np.testing.assert_array_equal(parcel_idx, np.zeros(128, dtype=int))
+    np.testing.assert_array_equal(dest_idx, np.arange(128))
+    assert len(weight) == 128
+    assert np.all(weight > 0.0)
+
+
 def test_continental_node_index_excludes_oceanic_nodes():
     """GitHub issue #205's own destination filter: an oceanic destination is just ordinary
     seafloor volcanism, not the land-fraction fix this exists for -- a mixed-composition
