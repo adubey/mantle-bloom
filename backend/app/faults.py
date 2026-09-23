@@ -1276,7 +1276,16 @@ def fault_tangent_components(world: "World", plate: Plate, phi: float, theta: fl
     `dtheta = spacing / cos(phi)`), so both the nearest-point search and the tangent itself
     scale `local_theta` by `cos(phi)` before comparing against `local_phi`, which needs no such
     correction. Not normalized -- `rheology.stretch_components` (every caller) normalizes."""
-    candidates = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active and len(f.local_phi) >= 2]
+    cache = getattr(world, "_fault_tangent_candidates", None)
+    if cache is None:
+        candidates = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active and len(f.local_phi) >= 2]
+    else:
+        if plate.plate_id not in cache:
+            cache[plate.plate_id] = [
+                f for f in _all_faults(world)
+                if f.plate_id == plate.plate_id and f.active and len(f.local_phi) >= 2
+            ]
+        candidates = cache[plate.plate_id]
     if not candidates:
         return None
     cos_p = np.cos(phi)

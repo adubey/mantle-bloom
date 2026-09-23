@@ -843,6 +843,9 @@ def step_world_progress(world: World, years: float):
     world.node_healpix_index_cache = None
     world.node_kdtree_relief_cache = None
     world.node_hillshade_cache = None
+    # Rift-stretch direction can query the same plate's active faults many times during
+    # deform(). Fault membership is fixed until update_faults() below ages/spawns faults.
+    world._fault_tangent_candidates = {}
     # +1 for everything from here after the plate-movement phase (topology changes,
     # climate/erosion/volcanism, sea level) -- see this generator's own docstring for why
     # that's a single unit rather than further subdivided.
@@ -867,12 +870,14 @@ def step_world_progress(world: World, years: float):
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
+        world._fault_tangent_candidates = None
         faults.update_faults(world, years)
         # Lateral magma export (magma_transport.py) just banked this step's own share of
         # exported convergent-boundary melt into world.pending_magma_parcels above (inside
         # deform()) -- bank the elapsed time alongside it so the eventual transport-pass firing
         # below can rate-cap its deposit against the *banked* interval, not just its own step.
         world.magma_transport_banked_years += years
+    world._fault_tangent_candidates = None
     world.elapsed_years += years
     if world.simulate_plate_movement:
         for message in merge_split.apply_topology_changes(world, years):
@@ -952,5 +957,3 @@ def step_world_progress(world: World, years: float):
     world.record_stats()
     done_units += 1
     yield done_units / total_units
-
-
