@@ -1379,6 +1379,23 @@ def test_controls_fault_deformation_mode_toggle_and_validation(client):
     assert client.post("/world/controls", json={"fault_deformation_mode": "nonsense"}).status_code == 400
 
 
+def test_controls_magma_transport_k_round_trip_and_validation(client):
+    from app import main
+
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "climate_density": 0.5, "fluid_density": 0.5})
+    world = main._state["world"]
+    assert world.magma_transport_k == 256
+    assert client.post("/world/controls", json={}).json()["magma_transport_k"] == 256
+
+    for k in (64, 128, 256):
+        resp = client.post("/world/controls", json={"magma_transport_k": k})
+        assert resp.status_code == 200
+        assert resp.json()["magma_transport_k"] == k
+        assert world.magma_transport_k == k
+
+    assert client.post("/world/controls", json={"magma_transport_k": 512}).status_code == 400
+
+
 
 def test_controls_node_cloud_resample_mode_toggle_and_validation(client):
     from app import main

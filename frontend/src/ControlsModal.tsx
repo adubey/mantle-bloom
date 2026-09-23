@@ -9,6 +9,7 @@ interface Props {
   simulateClimateBiomes: boolean;
   windModel: string;
   faultDeformationMode: string;
+  magmaTransportK: number;
   debugDiagnostics: boolean;
   tuning: TuningMultipliers;
   onSeaLevelChange: (v: number) => void;
@@ -18,6 +19,7 @@ interface Props {
   onSimulateClimateBiomesChange: (v: boolean) => void;
   onWindModelChange: (v: string) => void;
   onFaultDeformationModeChange: (v: string) => void;
+  onMagmaTransportKChange: (v: number) => void;
   onDebugDiagnosticsChange: (v: boolean) => void;
   onTuningChange: (key: TuningKey, v: number) => void;
   onTuningReset: () => void;
@@ -107,6 +109,7 @@ export default function ControlsModal({
   simulateClimateBiomes,
   windModel,
   faultDeformationMode,
+  magmaTransportK,
   debugDiagnostics,
   tuning,
   onSeaLevelChange,
@@ -116,6 +119,7 @@ export default function ControlsModal({
   onSimulateClimateBiomesChange,
   onWindModelChange,
   onFaultDeformationModeChange,
+  onMagmaTransportKChange,
   onDebugDiagnosticsChange,
   onTuningChange,
   onTuningReset,
@@ -344,6 +348,18 @@ export default function ControlsModal({
                 years, nothing else changes.
               </div>
             )}
+
+            <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 14 }}>
+              <label style={{ display: "block", marginBottom: 6 }}>Magma destinations per parcel (K)</label>
+              <select value={magmaTransportK} onChange={(e) => onMagmaTransportKChange(Number(e.target.value))} style={selectStyle}>
+                <option value={64}>64 (fastest)</option>
+                <option value={128}>128</option>
+                <option value={256}>256 (default)</option>
+              </select>
+              <div style={{ fontSize: 11, color: "#999", marginTop: 8 }}>
+                Limits each magma parcel to its K nearest eligible destinations within 1,000 km. Lower K is faster but changes where crust is deposited. Applies on the next magma transport pass.
+              </div>
+            </div>
 
             <div style={{ borderTop: "1px solid #333", paddingTop: 14, marginTop: 6 }}>
               <label style={{ display: "block", marginBottom: 6 }}>Fault deformation model</label>

@@ -116,6 +116,18 @@ def test_loading_a_world_pickled_before_pending_magma_parcels_existed_defaults_t
     assert loaded.pending_magma_parcels == []
 
 
+def test_magma_transport_k_survives_save_load_and_old_saves_use_default():
+    world = generate_world(seed=3, num_plates=4)
+    world.magma_transport_k = 64
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.magma_transport_k == 64
+
+    # Old pickles lack the instance key; the plain dataclass class default supplies 256.
+    world.__dict__.pop("magma_transport_k")
+    old_loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert old_loaded.magma_transport_k == 256
+
+
 def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
     # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).

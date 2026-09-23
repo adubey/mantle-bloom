@@ -150,6 +150,7 @@ const DEFAULT_WIND_MODEL = "diagnostic";
 // edge); "both" runs the boundary bands plus the scaled-up fault relief. See faults.py /
 // LithospherePlate.deform.
 const DEFAULT_FAULT_DEFORMATION_MODE = "fault";
+const DEFAULT_MAGMA_TRANSPORT_K = 256;
 // Off by default for an ordinarily-generated/loaded world -- see World.debug_diagnostics.
 const DEFAULT_DEBUG_DIAGNOSTICS = false;
 
@@ -582,6 +583,7 @@ export default function App() {
   // "boundary" / "fault" / "both" -- see backend app/world.py's World.fault_deformation_mode.
   // Live-adjustable via Controls like windModel.
   const [faultDeformationMode, setFaultDeformationMode] = useState(DEFAULT_FAULT_DEFORMATION_MODE);
+  const [magmaTransportK, setMagmaTransportK] = useState(DEFAULT_MAGMA_TRANSPORT_K);
   // Gate for the verbose _fill_corner_notch decision log -- see backend World.debug_diagnostics
   // / GET /world/corner_notch_log. Live-adjustable via Controls like windModel.
   const [debugDiagnostics, setDebugDiagnostics] = useState(DEFAULT_DEBUG_DIAGNOSTICS);
@@ -766,6 +768,7 @@ export default function App() {
       setSimulateClimateBiomes(DEFAULT_SIMULATE_CLIMATE_BIOMES);
       setWindModel(DEFAULT_WIND_MODEL);
       setFaultDeformationMode(DEFAULT_FAULT_DEFORMATION_MODE);
+      setMagmaTransportK(DEFAULT_MAGMA_TRANSPORT_K);
       // A debug world starts with diagnostics already on server-side (see debug_worlds.py) --
       // match that here rather than resetting to the ordinary default.
       setDebugDiagnostics(generateMode === "debug" ? true : DEFAULT_DEBUG_DIAGNOSTICS);
@@ -798,6 +801,7 @@ export default function App() {
     simulateClimateBiomes?: boolean;
     windModel?: string;
     faultDeformationMode?: string;
+    magmaTransportK?: number;
     debugDiagnostics?: boolean;
     tuning?: Partial<TuningMultipliers>;
   }>({});
@@ -862,6 +866,11 @@ export default function App() {
   const handleFaultDeformationModeChange = useCallback((v: string) => {
     setFaultDeformationMode(v);
     pushControls({ faultDeformationMode: v });
+  }, [pushControls]);
+
+  const handleMagmaTransportKChange = useCallback((v: number) => {
+    setMagmaTransportK(v);
+    pushControls({ magmaTransportK: v });
   }, [pushControls]);
 
   const handleDebugDiagnosticsChange = useCallback((v: boolean) => {
@@ -929,6 +938,7 @@ export default function App() {
       setSimulateClimateBiomes(controls.simulate_climate_biomes);
       setWindModel(controls.wind_model);
       setFaultDeformationMode(controls.fault_deformation_mode);
+      setMagmaTransportK(controls.magma_transport_k);
       setDebugDiagnostics(controls.debug_diagnostics);
       setTuning(Object.fromEntries(TUNING_MULTIPLIER_KEYS.map((k) => [k, controls[k]])) as TuningMultipliers);
       await Promise.all([refresh(projection, mapView, rotation), refreshPlates(), refreshRivers(), refreshLakes(), refreshFaults(), refreshCornerNotchLog(), recordStats()]);
@@ -2227,6 +2237,7 @@ export default function App() {
           simulateClimateBiomes={simulateClimateBiomes}
           windModel={windModel}
           faultDeformationMode={faultDeformationMode}
+          magmaTransportK={magmaTransportK}
           debugDiagnostics={debugDiagnostics}
           tuning={tuning}
           onSeaLevelChange={handleSeaLevelChange}
@@ -2236,6 +2247,7 @@ export default function App() {
           onSimulateClimateBiomesChange={handleSimulateClimateBiomesChange}
           onWindModelChange={handleWindModelChange}
           onFaultDeformationModeChange={handleFaultDeformationModeChange}
+          onMagmaTransportKChange={handleMagmaTransportKChange}
           onDebugDiagnosticsChange={handleDebugDiagnosticsChange}
           onTuningChange={handleTuningChange}
           onTuningReset={handleTuningReset}
