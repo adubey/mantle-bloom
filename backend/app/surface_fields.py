@@ -14,6 +14,7 @@ class RemapClass(str, Enum):
     COUNTDOWN = "countdown"
     CLOCK = "clock"
     HISTORY = "history"
+    WRITE_ONCE_HISTORY = "write_once_history"
     DERIVED = "derived"
 
 
@@ -33,7 +34,7 @@ def _field(dtype, default, remap_class, *, sentinel=None, coupled_to=()):
 # Phase 3 owns the algorithms that consume these classes. Phase 1 centralizes the policy so
 # adding a persistent field without declaring its transfer semantics fails a contract test.
 SURFACE_FIELDS: dict[str, SurfaceField] = {
-    "elevation": _field(float, 0.0, RemapClass.DERIVED, coupled_to=("crustal_thickness_m", "mantle_lithosphere_thickness_m")),
+    "elevation": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("crustal_thickness_m", "mantle_lithosphere_thickness_m")),
     "channel_depth": _field(float, 0.0, RemapClass.INTENSIVE),
     "channel_width": _field(float, 0.0, RemapClass.INTENSIVE, coupled_to=("channel_depth",)),
     "lake_depth": _field(float, 0.0, RemapClass.EXTENSIVE),
@@ -50,7 +51,7 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "divergent_age_myr": _field(float, 0.0, RemapClass.CLOCK),
     "elev_change_reason": _field(float, 0.0, RemapClass.CATEGORICAL),
     "overlap_onset_years": _field(float, 0.0, RemapClass.HISTORY, sentinel=0.0),
-    "node_created_years": _field(float, -1.0, RemapClass.HISTORY, sentinel=-1.0),
+    "node_created_years": _field(float, -1.0, RemapClass.WRITE_ONCE_HISTORY, sentinel=-1.0),
     "crustal_thickness_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "mantle_lithosphere_thickness_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "crust_type_code": _field(np.int8, 0, RemapClass.CATEGORICAL),

@@ -86,9 +86,10 @@ class SurfaceNodes:
     """Representation-neutral bulk view of a plate surface's live nodes.
 
     All arrays share one stable ordering for the lifetime of ``topology_revision``. The
-    position arrays are ``(n, 3)`` unit vectors; every requested field is an ``(n,)`` array.
-    Callers must treat this container as read-only and use ``set_fields_on_plate`` for
-    write-back.
+    position arrays are ``(n, 3)`` unit vectors; ``node_ids`` is an ``(n, 2)`` opaque uint64
+    identity; ``area_m2`` and every requested field are ``(n,)`` arrays. ``area_is_exact``
+    distinguishes cell-backed areas from the line adapter's best available estimate. Callers
+    must treat this container as read-only and use ``set_fields_on_plate`` for write-back.
     """
 
     local_xyz: np.ndarray
@@ -140,6 +141,14 @@ class PlateSurface(abc.ABC):
     def field_metadata(self) -> Mapping[str, SurfaceField]:
         """The complete persistent-field registry shared by every representation."""
         return SURFACE_FIELDS
+
+    def node_index_for_id(self, node_id: np.ndarray | tuple[int, int]) -> int | None:
+        """Resolve an opaque surface node ID in the current topology revision."""
+        target = np.asarray(node_id, dtype=np.uint64)
+        if target.shape != (2,):
+            raise ValueError("surface node ID must contain exactly two uint64 words")
+        matches = np.flatnonzero(np.all(self.surface_nodes().node_ids == target, axis=1))
+        return None if len(matches) == 0 else int(matches[0])
 
 
 # Two plates count as neighbours once the closest points of their two outlines come within

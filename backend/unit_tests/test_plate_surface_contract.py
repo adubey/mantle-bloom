@@ -151,4 +151,14 @@ def test_every_persistent_field_has_remap_metadata():
     assert set(surface.field_metadata()) == expected
     assert SURFACE_FIELDS["crustal_thickness_m"].remap_class is RemapClass.EXTENSIVE
     assert SURFACE_FIELDS["is_volcano"].remap_class is RemapClass.BOOLEAN_PROVENANCE
+    assert SURFACE_FIELDS["node_created_years"].remap_class is RemapClass.WRITE_ONCE_HISTORY
     assert SURFACE_FIELDS["node_created_years"].sentinel == -1.0
+
+
+def test_surface_node_id_lookup_is_storage_neutral_and_valid_only_in_its_revision():
+    surface = _surface()
+    node_id = surface.surface_nodes().node_ids[3]
+
+    assert surface.node_index_for_id(node_id) == 3
+    assert surface.node_index_for_id((int(node_id[0]), int(node_id[1]))) == 3
+    assert surface.node_index_for_id((0, 0)) is None
