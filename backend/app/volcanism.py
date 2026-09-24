@@ -34,7 +34,7 @@ from .elevation_lines import (
     VOLCANIC_PLAIN_ELEVATION_M,
     VOLCANIC_PLAIN_REACH_KM,
 )
-from .plates import PlateWithLines
+from .plates import Plate, PlateWithLines
 
 if TYPE_CHECKING:
     from .world import World
@@ -127,7 +127,7 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
     return erupted_points
 
 
-def _spread_volcanic_plains(plate: PlateWithLines, world: "World", years: float, erupted_points: list[np.ndarray]) -> None:
+def _spread_volcanic_plains(plate: Plate, world: "World", years: float, erupted_points: list[np.ndarray]) -> None:
     """Spread a broad, low-relief apron around every vent that erupted this step -- a
     flood-basalt/shield-flank plain, distinct from the sharp point bump `_apply_volcanic_
     activity_to_lines` already applied there. Tapers linearly from
@@ -156,23 +156,25 @@ def _spread_volcanic_plains(plate: PlateWithLines, world: "World", years: float,
     if not np.any(delta):
         return
 
-    new_lines = []
-    offset = 0
-    for line in plate.lines:
-        n = len(line)
-        seg_delta = delta[offset : offset + n]
-        offset += n
-        if not np.any(seg_delta):
-            new_lines.append(line)
-            continue
-        # Same Hc-backing as the point bump above (issue #173, lithosphere.back_elevation_gain)
-        # -- the apron's elevation gain is unchanged, but it's now paid for with a matching
-        # crustal_thickness_m addition instead of granted for free.
-        new_crustal_thickness, new_elev = lithosphere.back_elevation_gain(line, plate, seg_delta, seg_delta > 0.0)
-        moved = np.abs(new_elev - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
-        # Don't downgrade the vent's own sharper VOLCANO stamp to the plain's -- only claim
-        # nodes the point bump didn't already touch this step.
-        new_reason = np.where(moved & (line.elev_change_reason != ELEV_CHANGE_VOLCANO), ELEV_CHANGE_VOLCANIC_PLAIN, line.elev_change_reason)
-        new_lines.append(line.replace(elevation=new_elev, crustal_thickness_m=new_crustal_thickness, elev_change_reason=new_reason))
-    plate.set_lines(new_lines)
-
+    elevation = plate.collect("elevation")
+    new_hc, new_elevation = lithosphere.back_elevation_gain_fields(
+        elevation,
+        plate.collect("crustal_thickness_m"),
+        plate.collect("mantle_lithosphere_thickness_m"),
+        plate.collect("crust_type_code"),
+        plate.crust_type,
+        delta,
+        delta > 0.0,
+    )
+    moved = np.abs(new_elevation - elevation) >= ELEV_CHANGE_MIN_DELTA_M
+    old_reason = plate.collect("elev_change_reason")
+    new_reason = np.where(
+        moved & (old_reason != ELEV_CHANGE_VOLCANO),
+        ELEV_CHANGE_VOLCANIC_PLAIN,
+        old_reason,
+    )
+    plate.set_fields_on_plate(
+        elevation=new_elevation,
+        crustal_thickness_m=new_hc,
+        elev_change_reason=new_reason,
+    )

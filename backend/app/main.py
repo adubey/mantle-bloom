@@ -1206,6 +1206,53 @@ def _elevation_point_summary(plate, line, point_index: int, line_index: int, num
     }
 
 
+def _surface_node_summary(plate, flat_index: int) -> dict:
+    """Representation-neutral inspector payload for one current surface node."""
+    nodes = plate.surface_nodes("elevation", "node_created_years")
+    if not 0 <= flat_index < len(nodes.world_xyz):
+        raise IndexError("surface node index out of range")
+    return {
+        "plate_id": plate.plate_id,
+        # Decimal strings, not JSON numbers: the hash word spans uint64 and would lose
+        # precision in a browser's IEEE-754 Number before being sent back to the lookup API.
+        "node_id": [str(int(word)) for word in nodes.node_ids[flat_index]],
+        "topology_revision": plate.topology_revision,
+        "geometry_revision": plate.geometry_revision,
+        "local_xyz": [float(value) for value in nodes.local_xyz[flat_index]],
+        "world_xyz": [float(value) for value in nodes.world_xyz[flat_index]],
+        "area_m2": float(nodes.area_m2[flat_index]),
+        "area_is_exact": nodes.area_is_exact,
+        "elevation_m": float(nodes.fields["elevation"][flat_index]),
+        "node_created_years": float(nodes.fields["node_created_years"][flat_index]),
+    }
+
+
+def _parse_node_id_word(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="node ID words must be decimal uint64 strings") from exc
+    if not 0 <= parsed < 2**64:
+        raise HTTPException(status_code=400, detail="node ID words must be decimal uint64 strings")
+    return parsed
+
+
+@app.get("/world/surface_node")
+def surface_node(plate_id: int, node_id_hi: str, node_id_lo: str) -> dict:
+    """Look up a live node by its storage-neutral current surface address."""
+    world = _require_world()
+    with _world_lock:
+        plate = next((p for p in world.plates if p.plate_id == plate_id), None)
+        if plate is None:
+            raise HTTPException(status_code=404, detail=f"no plate {plate_id}")
+        flat_index = plate.node_index_for_id(
+            (_parse_node_id_word(node_id_hi), _parse_node_id_word(node_id_lo))
+        )
+        if flat_index is None:
+            raise HTTPException(status_code=404, detail="node is not live on this plate")
+        return _surface_node_summary(plate, flat_index)
+
+
 @app.get("/world/elevation_point_at")
 def elevation_point_at(lat_deg: float, lon_deg: float) -> dict:
     """The "Points" (`platesDetail`) debug view's click-to-inspect + line-highlight: the

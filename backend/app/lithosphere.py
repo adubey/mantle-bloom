@@ -178,6 +178,41 @@ def crustal_thickness_for_elevation(z_m: np.ndarray, hm_m: np.ndarray, rho_c: fl
     return np.where(z_m <= 0.0, wet_hc, dry_hc)
 
 
+def back_elevation_gain_fields(
+    elevation: np.ndarray,
+    crustal_thickness_m: np.ndarray,
+    mantle_lithosphere_thickness_m: np.ndarray,
+    crust_type_code: np.ndarray,
+    plate_crust_type: str,
+    gain: np.ndarray | float,
+    apply_mask: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Representation-neutral implementation of :func:`back_elevation_gain`."""
+    bare_elevation = np.clip(elevation + np.where(apply_mask, gain, 0.0), MIN_ELEVATION_M, MAX_ELEVATION_M)
+    if not np.any(apply_mask):
+        return crustal_thickness_m, bare_elevation
+
+    has_column = crustal_thickness_m > 0.0
+    backed = apply_mask & has_column
+    rho_c = node_crust_density(crust_type_code, plate_crust_type)
+    current_equilibrium = isostatic_elevation(crustal_thickness_m, mantle_lithosphere_thickness_m, rho_c)
+    target_hc = np.clip(
+        crustal_thickness_for_elevation(current_equilibrium + gain, mantle_lithosphere_thickness_m, rho_c),
+        MIN_CRUSTAL_THICKNESS_M,
+        MAX_CRUSTAL_THICKNESS_M,
+    )
+    new_crustal_thickness = np.where(backed, target_hc, crustal_thickness_m)
+    isostatic_delta = (
+        isostatic_elevation(new_crustal_thickness, mantle_lithosphere_thickness_m, rho_c) - current_equilibrium
+    )
+    new_elevation = np.where(
+        backed,
+        np.clip(elevation + isostatic_delta, MIN_ELEVATION_M, MAX_ELEVATION_M),
+        bare_elevation,
+    )
+    return new_crustal_thickness, new_elevation
+
+
 def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Where `apply_mask` is set, raise `crustal_thickness_m` by whatever a real tectonic/
     magmatic process would need to isostatically support `gain` meters of *new* elevation, and
@@ -197,29 +232,15 @@ def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_ma
     (`crustal_thickness_m` all zero) keep the old bare direct-elevation response. `gain` may be
     negative (e.g. a normal fault's extensional hanging-wall throw), which thins Hc the same way
     a positive gain thickens it."""
-    bare_elevation = np.clip(line.elevation + np.where(apply_mask, gain, 0.0), MIN_ELEVATION_M, MAX_ELEVATION_M)
-    if not np.any(apply_mask):
-        return line.crustal_thickness_m, bare_elevation
-
-    has_column = line.crustal_thickness_m > 0.0
-    backed = apply_mask & has_column
-    rho_c = node_crust_density(line.crust_type_code, plate.crust_type)
-    current_equilibrium = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-    target_hc = np.clip(
-        crustal_thickness_for_elevation(current_equilibrium + gain, line.mantle_lithosphere_thickness_m, rho_c),
-        MIN_CRUSTAL_THICKNESS_M,
-        MAX_CRUSTAL_THICKNESS_M,
+    return back_elevation_gain_fields(
+        line.elevation,
+        line.crustal_thickness_m,
+        line.mantle_lithosphere_thickness_m,
+        line.crust_type_code,
+        plate.crust_type,
+        gain,
+        apply_mask,
     )
-    new_crustal_thickness = np.where(backed, target_hc, line.crustal_thickness_m)
-    isostatic_delta = (
-        isostatic_elevation(new_crustal_thickness, line.mantle_lithosphere_thickness_m, rho_c) - current_equilibrium
-    )
-    new_elevation = np.where(
-        backed,
-        np.clip(line.elevation + isostatic_delta, MIN_ELEVATION_M, MAX_ELEVATION_M),
-        bare_elevation,
-    )
-    return new_crustal_thickness, new_elevation
 
 
 def sync_line_elevation(line, rho_c: float):
@@ -231,13 +252,15 @@ def sync_line_elevation(line, rho_c: float):
 
 
 def sync_plate_elevation(plate: "LithospherePlate") -> None:
-    """`sync_line_elevation` over every line on `plate`, written back via `set_lines` --
-    the one call site that makes `elevation` track Hc/Hm after a batch of lines change.
+    """Recompute elevation from Hc/Hm through the representation-neutral surface API.
     Density is per-node (`node_crust_density`, resolving each line's own `crust_type_code`
     against this plate's nominal `crust_type`) rather than one scalar for the whole plate, so
     a rift-typed or gap-filled patch whose composition genuinely differs from its plate isn't
     isostatically floated as if it were the plate's own usual crust."""
-    plate.set_lines([sync_line_elevation(line, node_crust_density(line.crust_type_code, plate.crust_type)) for line in plate.lines])
+    hc = plate.collect("crustal_thickness_m")
+    hm = plate.collect("mantle_lithosphere_thickness_m")
+    rho_c = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
+    plate.set_fields_on_plate(elevation=isostatic_elevation(hc, hm, rho_c))
 
 
 def node_area_m2(spacing_rad: float) -> float:

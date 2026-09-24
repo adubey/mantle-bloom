@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from app.lithosphere_plate import generate_plates
+from app import main
 from app.main import app
 from app.plates import MAX_AUTO_PLATES, MIN_AUTO_PLATES
 
@@ -815,6 +816,32 @@ def test_elevation_point_at_returns_point_and_line_info(client):
     # The selected point's own entry in line_points_xyz should land back near the query.
     px, py, pz = body["line_points_xyz"][point["index"]]
     assert abs(px * px + py * py + pz * pz - 1.0) < 1e-6
+
+
+def test_surface_node_lookup_uses_storage_neutral_node_id(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    world = main._state["world"]
+    plate = next(plate for plate in world.plates if plate.node_count() > 0)
+    node_id = plate.surface_nodes().node_ids[0]
+
+    response = client.get(
+        "/world/surface_node",
+        params={"plate_id": plate.plate_id, "node_id_hi": str(int(node_id[0])), "node_id_lo": str(int(node_id[1]))},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["plate_id"] == plate.plate_id
+    assert body["node_id"] == [str(int(node_id[0])), str(int(node_id[1]))]
+    assert len(body["world_xyz"]) == len(body["local_xyz"]) == 3
+    assert body["area_m2"] > 0.0
+    assert body["area_is_exact"] is False
+
+    invalid = client.get(
+        "/world/surface_node",
+        params={"plate_id": plate.plate_id, "node_id_hi": str(2**64), "node_id_lo": "0"},
+    )
+    assert invalid.status_code == 400
 
 
 def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):

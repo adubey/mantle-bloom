@@ -10,13 +10,12 @@ from app.lithosphere_plate import new_plate
 from app.world import World
 
 
-def _dest_index(xyz, hc, plate_id=None, line_index=None, node_index=None):
+def _dest_index(xyz, hc, plate_id=None, flat_index=None):
     n = len(xyz)
     return magma_transport._ContinentalNodeIndex(
         np.asarray(xyz, dtype=float),
         np.zeros(n, dtype=int) if plate_id is None else plate_id,
-        np.zeros(n, dtype=int) if line_index is None else line_index,
-        np.arange(n) if node_index is None else node_index,
+        np.arange(n) if flat_index is None else flat_index,
         np.asarray(hc, dtype=float),
     )
 

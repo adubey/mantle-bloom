@@ -122,23 +122,19 @@ class MagmaParcel:
 
 class _ContinentalNodeIndex:
     """Whole-sphere snapshot of every live continental node, addressable back to its own
-    `(plate_id, line_index, node_index)` -- unlike `gaps.py`'s own whole-sphere tree (which
-    only ever reads), this pass has to write back into whichever specific line a destination
-    node lives on."""
+    representation-neutral ``(plate_id, flat_index)`` surface address."""
 
     def __init__(
         self,
         xyz: np.ndarray,
         plate_id: np.ndarray,
-        line_index: np.ndarray,
-        node_index: np.ndarray,
+        flat_index: np.ndarray,
         hc_m: np.ndarray,
     ) -> None:
         self.tree = cKDTree(xyz) if len(xyz) > 0 else None
         self.xyz = xyz
         self.plate_id = plate_id
-        self.line_index = line_index
-        self.node_index = node_index
+        self.flat_index = flat_index
         self.hc_m = hc_m
 
     def __len__(self) -> int:
@@ -146,38 +142,30 @@ class _ContinentalNodeIndex:
 
 
 def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
-    """Mirrors `gaps._existing_node_tree`'s whole-sphere assembly, but per-line-addressable
-    (needed for the scatter-write below) and pre-filtered to continental nodes only (this
+    """Build a surface-order-addressable index, pre-filtered to continental nodes (this
     pass's destinations are never oceanic -- an oceanic destination is just ordinary seafloor
     volcanism, not the land-fraction fix this exists for)."""
-    xyz_chunks, plate_id_chunks, line_index_chunks, node_index_chunks, hc_chunks = [], [], [], [], []
+    xyz_chunks, plate_id_chunks, flat_index_chunks, hc_chunks = [], [], [], []
     for plate in world.plates:
         own_points, _ = plate.all_points_and_elevation()
         if len(own_points) == 0:
             continue
         plate_is_continental = plate.crust_type == "continental"
-        offset = 0
-        for line_index, line in enumerate(plate.lines):
-            n = len(line)
-            if n == 0:
-                continue
-            sl = slice(offset, offset + n)
-            offset += n
-            is_continental = effective_is_continental_from_codes(line.crust_type_code, plate_is_continental)
-            if not np.any(is_continental):
-                continue
-            xyz_chunks.append(own_points[sl][is_continental])
-            plate_id_chunks.append(np.full(int(np.count_nonzero(is_continental)), plate.plate_id))
-            line_index_chunks.append(np.full(int(np.count_nonzero(is_continental)), line_index))
-            node_index_chunks.append(np.flatnonzero(is_continental))
-            hc_chunks.append(line.crustal_thickness_m[is_continental])
+        crust_codes = plate.collect("crust_type_code")
+        hc = plate.collect("crustal_thickness_m")
+        is_continental = effective_is_continental_from_codes(crust_codes, plate_is_continental)
+        if not np.any(is_continental):
+            continue
+        xyz_chunks.append(own_points[is_continental])
+        plate_id_chunks.append(np.full(int(np.count_nonzero(is_continental)), plate.plate_id))
+        flat_index_chunks.append(np.flatnonzero(is_continental))
+        hc_chunks.append(hc[is_continental])
     if not xyz_chunks:
-        return _ContinentalNodeIndex(np.zeros((0, 3)), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0))
+        return _ContinentalNodeIndex(np.zeros((0, 3)), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0))
     return _ContinentalNodeIndex(
         np.concatenate(xyz_chunks, axis=0),
         np.concatenate(plate_id_chunks),
-        np.concatenate(line_index_chunks),
-        np.concatenate(node_index_chunks),
+        np.concatenate(flat_index_chunks),
         np.concatenate(hc_chunks),
     )
 
@@ -300,44 +288,41 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
 def _scatter_write_deposits(
     world: "World", dest_index: _ContinentalNodeIndex, deposit_mask: np.ndarray, realized_at_dest: np.ndarray
 ) -> None:
-    """Group the capped per-destination-node deposits by `(plate_id, line_index)` and issue one
-    `replace_line` per touched line -- `PlateWithLines.replace_line` (plates.py) already exists
-    as the mutate-one-line-by-index primitive; this is what's new is the *dispatch* across
-    plates to reach it, since every existing cKDTree use in lithosphere_plate.py is a read-only
-    query into another plate's own node cloud, never a write. Reuses `deform()`'s own
+    """Group deposits by plate and write through the representation-neutral surface API.
+
+    Reuses `deform()`'s own
     before/after isostasy-delta idiom (see module docstring) -- never a raw isostasy overwrite,
     which would silently erase erosion history or existing unbacked-relief debt already baked
     into a line's elevation."""
     plates_by_id = {plate.plate_id: plate for plate in world.plates}
     deposit_indices = np.flatnonzero(deposit_mask)
 
-    groups: dict[tuple[int, int], list[tuple[int, float]]] = {}
+    groups: dict[int, list[tuple[int, float]]] = {}
     for d in deposit_indices:
-        key = (int(dest_index.plate_id[d]), int(dest_index.line_index[d]))
-        groups.setdefault(key, []).append((int(dest_index.node_index[d]), float(realized_at_dest[d])))
+        key = int(dest_index.plate_id[d])
+        groups.setdefault(key, []).append((int(dest_index.flat_index[d]), float(realized_at_dest[d])))
 
-    for (plate_id, line_index), entries in groups.items():
+    for plate_id, entries in groups.items():
         plate = plates_by_id.get(plate_id)
-        if plate is None or line_index >= len(plate.lines):
+        if plate is None:
             continue  # defensive -- shouldn't happen, this pass runs after topology settles
-        line = plate.lines[line_index]
         node_idx = np.array([e[0] for e in entries])
         delta_hc = np.array([e[1] for e in entries])
 
-        hc = line.crustal_thickness_m.copy()
-        hm = line.mantle_lithosphere_thickness_m
-        rho_c = lithosphere.node_crust_density(line.crust_type_code[node_idx], plate.crust_type)
+        hc = plate.collect("crustal_thickness_m").copy()
+        hm = plate.collect("mantle_lithosphere_thickness_m")
+        rho_c = lithosphere.node_crust_density(plate.collect("crust_type_code")[node_idx], plate.crust_type)
         elevation_before = lithosphere.isostatic_elevation(hc[node_idx], hm[node_idx], rho_c)
         new_hc_touched = np.minimum(hc[node_idx] + delta_hc, lithosphere.MAX_CRUSTAL_THICKNESS_M)
         elevation_after = lithosphere.isostatic_elevation(new_hc_touched, hm[node_idx], rho_c)
         hc[node_idx] = new_hc_touched
 
-        elevation = line.elevation.copy()
+        elevation = plate.collect("elevation").copy()
         new_elevation_touched = rheology.clip_elevation_bounds(elevation[node_idx] + (elevation_after - elevation_before))
         moved = np.abs(new_elevation_touched - elevation[node_idx]) >= ELEV_CHANGE_MIN_DELTA_M
         elevation[node_idx] = new_elevation_touched
 
-        reason = line.elev_change_reason.copy()
+        reason = plate.collect("elev_change_reason").copy()
         reason[node_idx[moved]] = ELEV_CHANGE_LATERAL_MAGMA
 
-        plate.replace_line(line_index, line.replace(crustal_thickness_m=hc, elevation=elevation, elev_change_reason=reason))
+        plate.set_fields_on_plate(crustal_thickness_m=hc, elevation=elevation, elev_change_reason=reason)
