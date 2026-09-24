@@ -339,6 +339,21 @@ def test_mixed_level_adjacency_is_symmetric_and_boundary_has_no_crack():
     assert len(plate.boundary_loops_world()) == 1
 
 
+def test_boundary_loop_includes_exposed_half_of_coarse_side():
+    # The fine cell covers only the lower half of the coarse cell's right side. The upper
+    # half must remain in the outline even though one of that side's probes found a neighbour.
+    coarse = pack_cell_keys(0, 0, 0)
+    fine = pack_cell_keys(0, 2, 0, level=1)
+    plate = _plate(np.array([coarse, fine]), n=8)
+
+    loops = plate.boundary_loops_world()
+
+    assert len(loops) == 1
+    assert len(loops[0]) == 7
+    centres = plate.surface_nodes().world_xyz
+    assert np.all(geometry.points_in_spherical_polygon(centres, loops[0]))
+
+
 def test_coarsen_applies_every_field_policy_and_conserves_extensive_integrals():
     root = int(pack_cell_keys(0, 4, 4))
     children = child_cell_keys(np.array([root]))[0]

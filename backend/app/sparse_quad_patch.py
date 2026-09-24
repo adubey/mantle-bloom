@@ -582,19 +582,34 @@ class PlateWithSparseQuadPatch(Plate):
             self._local_loops_cache = []
             return self._local_loops_cache
 
-        # Only genuinely exposed sides contribute. A coarse/fine interior interface has two
-        # successful probes; unlike finest-global segmentation, the cost stays O(leaves)
-        # regardless of the depth range elsewhere on the plate.
-        exposed = np.all(self._probe_neighbour_indices() < 0, axis=2)
-        cell, direction = np.nonzero(exposed)
-        corners = np.asarray(_EDGE_CORNERS)[direction]
+        # A side may be only half exposed when a coarse cell touches one finer leaf while
+        # the sibling across its other half is absent. Emit one whole edge when both probes
+        # are empty, or the appropriate half edge when exactly one is empty. This remains
+        # O(leaves), unlike subdividing every edge to the deepest level anywhere on a plate.
+        empty = self._probe_neighbour_indices() < 0
+        full_cell, full_direction = np.nonzero(np.all(empty, axis=2))
+        partial_cell, partial_direction, partial_half = np.nonzero(empty & ~np.all(empty, axis=2)[..., None])
+        cell = np.concatenate([full_cell, partial_cell])
+        direction = np.concatenate([full_direction, partial_direction])
+
+        whole_corners = 2 * np.asarray(_EDGE_CORNERS)[full_direction]
+        half_corners = np.array(
+            [
+                [[[0, 0], [1, 0]], [[1, 0], [2, 0]]],
+                [[[2, 0], [2, 1]], [[2, 1], [2, 2]]],
+                [[[2, 2], [1, 2]], [[1, 2], [0, 2]]],
+                [[[0, 2], [0, 1]], [[0, 1], [0, 0]]],
+            ],
+            dtype=np.int64,
+        )[partial_direction, partial_half]
+        corners = np.concatenate([whole_corners, half_corners])
         f, lev = face[cell], level[cell]
-        resolution = self._n * np.left_shift(1, lev)
+        resolution = 2 * self._n * np.left_shift(1, lev)
         common_resolution = int(resolution.max(initial=self._n))
-        start_i = i[cell] + corners[:, 0, 0]
-        start_j = j[cell] + corners[:, 0, 1]
-        end_i = i[cell] + corners[:, 1, 0]
-        end_j = j[cell] + corners[:, 1, 1]
+        start_i = 2 * i[cell] + corners[:, 0, 0]
+        start_j = 2 * j[cell] + corners[:, 0, 1]
+        end_i = 2 * i[cell] + corners[:, 1, 0]
+        end_j = 2 * j[cell] + corners[:, 1, 1]
         start_key = _corner_coordinates(f, start_i, start_j, resolution, common_resolution)
         end_key = _corner_coordinates(f, end_i, end_j, resolution, common_resolution)
         # Integer cube coordinates are identities, not geometric positions: the lattice is
