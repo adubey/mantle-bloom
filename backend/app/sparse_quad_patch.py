@@ -942,6 +942,12 @@ class PlateWithSparseQuadPatch(Plate):
         result = self._plates_from_node_masks([side, ~side], [self.plate_id, new_id])
         if len(result) != 2:
             return None
+        # A tectonic split creates two fresh plates for the split cooldown. The shared
+        # partition helper preserves the first fragment's age for defragmentation, where the
+        # largest surviving piece keeps the parent's identity and history, so override that
+        # policy here just as LithospherePlate.split does for both line-backed daughters.
+        result[0].reset_age()
+        result[1].reset_age()
         return result[0], result[1]
 
     def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
