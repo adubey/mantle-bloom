@@ -480,3 +480,79 @@ def test_deep_refinement_boundary_corner_identity_does_not_overflow():
 
     assert len(loops) == 1
     assert np.all(np.isfinite(loops[0]))
+
+
+def test_split_partitions_cells_and_fields_without_resampling():
+    keys = pack_cell_keys(np.zeros(8, dtype=int), np.arange(2, 10), np.full(8, 5))
+    values = np.arange(8, dtype=float) + 100.0
+    plate = PlateWithSparseQuadPatch(
+        7,
+        np.eye(3),
+        "continental",
+        N,
+        keys,
+        fields={"elevation": values},
+        omega=np.array([1.0, 2.0, 3.0]),
+        age_steps=9,
+        internal_stress=4.0,
+    )
+
+    result = plate.split(12, np.array([0.0, 1.0, 0.0]), min_nodes=2)
+
+    assert result is not None
+    left, right = result
+    assert (left.plate_id, right.plate_id) == (7, 12)
+    assert (left.age_steps, right.age_steps) == (9, 0)
+    assert (left.internal_stress, right.internal_stress) == (4.0, 0.0)
+    np.testing.assert_allclose(left.omega, plate.omega)
+    np.testing.assert_allclose(right.omega, plate.omega)
+    combined = {
+        int(key): elevation
+        for daughter in result
+        for key, elevation in zip(daughter.cell_keys, daughter.collect("elevation"))
+    }
+    assert combined == {int(key): elevation for key, elevation in zip(keys, values)}
+
+
+def test_partition_chooses_crust_type_by_exact_cell_area():
+    keys = pack_cell_keys(np.zeros(3, dtype=int), np.array([4, 5, 6]), np.full(3, 5))
+    plate = PlateWithSparseQuadPatch(
+        7,
+        np.eye(3),
+        "oceanic",
+        N,
+        keys,
+        fields={"crust_type_code": np.array([2, 2, 1], dtype=np.int8)},
+    )
+
+    daughter = plate._plates_from_node_masks([np.ones(3, dtype=bool)], [7])[0]
+
+    assert daughter.crust_type == "continental"
+
+
+def test_failed_rift_thins_only_the_cut_band_and_preserves_topology():
+    from app.elevation_lines import ELEV_CHANGE_RIFT
+
+    keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+    plate = PlateWithSparseQuadPatch(
+        7,
+        np.eye(3),
+        "continental",
+        N,
+        keys,
+        fields={
+            "elevation": np.full(5, 1000.0),
+            "crustal_thickness_m": np.full(5, 35_000.0),
+            "mantle_lithosphere_thickness_m": np.full(5, 100_000.0),
+        },
+    )
+    original_keys = plate.cell_keys.copy()
+
+    # Face 0's local y=0 great circle crosses the middle cell of this row.
+    plate.apply_failed_rift(np.array([0.0, 1.0, 0.0]), spacing_rad=0.1)
+
+    np.testing.assert_array_equal(plate.cell_keys, original_keys)
+    thinned = plate.collect("crustal_thickness_m") < 35_000.0
+    assert np.any(thinned)
+    assert np.any(~thinned)
+    assert np.all(plate.collect("elev_change_reason")[thinned] == ELEV_CHANGE_RIFT)

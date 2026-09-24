@@ -1,4 +1,4 @@
-"""Sparse plate-local quad patches -- the static quad surface of issue #228's Phase 2.
+"""Sparse plate-local quad patches for issue #228's quad-surface migration.
 
 `PlateWithSparseQuadPatch` is a second implementation of the `PlateSurface` contract
 (plates.py) alongside `PlateWithLines`. Its territory is a sparse set of active cells on an
@@ -18,8 +18,8 @@ equiangular cube-sphere lattice laid out in the plate's own local frame:
 - The cell set is authoritative. Adjacency, boundary loops, row/column intervals, node
   positions, and areas are derived from it and cached per topology revision; rigid rotation
   only changes `frame` and invalidates world-space caches (geometry revision), never the
-  local ones. Phase 2 has no topology-changing operation at all -- remeshing is Phase 3 and
-  tectonics Phase 4 -- so a static patch's `topology_revision` stays where it was built.
+  local ones. Refinement/coarsening changes topology through conservative field transfer;
+  Phase 4 partitioning keeps existing leaves and their stable IDs intact.
 
 Cells are addressed by a packed `int64` key -- face, refinement level, row `j`, column `i`
 -- whose sort order is the canonical node order, so the key doubles as the stable,
@@ -38,7 +38,10 @@ from scipy.spatial import cKDTree
 from . import geometry
 from .elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
     CRUST_TYPE_OCEANIC,
+    ELEV_CHANGE_MIN_DELTA_M,
+    ELEV_CHANGE_RIFT,
     PLANET_RADIUS_KM,
     ElevationPoint,
     install_point_field_accessors,
@@ -293,8 +296,9 @@ class ElevationPointInPatch:
 
 class PlateWithSparseQuadPatch(Plate):
     """A plate whose terrain is a sparse set of active cube-sphere cells -- see the module
-    docstring. Static in Phase 2: it can be generated, queried, rendered, rigidly rotated,
-    and saved, but not deformed, split, merged, or defragmented."""
+    docstring. It can be generated, queried, rendered, remeshed, rigidly rotated, partitioned,
+    and saved. Per-step boundary deformation and cross-plate merge transfer remain separate
+    Phase 4 operations."""
 
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
@@ -877,10 +881,114 @@ class PlateWithSparseQuadPatch(Plate):
         self._replace_topology(np.asarray(new_keys), {name: np.asarray(values) for name, values in output.items()})
         return {child: parent for parent, children in groups.items() for child in children}
 
-    # --- Topology changes (later phases) ---------------------------------------------------
+    # --- Topology changes -----------------------------------------------------------------
+
+    def _crust_type_for_mask(self, mask: np.ndarray) -> str:
+        """Nominal crust type for a newly partitioned patch.
+
+        Explicit per-cell composition wins by area; inherited cells retain the parent's
+        nominal type. Ties deliberately keep the parent type, matching the line surface.
+        """
+        codes = self.collect("crust_type_code")[mask]
+        areas = self.node_areas_m2()[mask]
+        inherited = self.crust_type == "continental"
+        continental = np.where(
+            codes == CRUST_TYPE_INHERIT,
+            inherited,
+            codes == CRUST_TYPE_CONTINENTAL,
+        )
+        continental_area = float(areas[continental].sum())
+        oceanic_area = float(areas[~continental].sum())
+        if np.isclose(continental_area, oceanic_area):
+            return self.crust_type
+        return "continental" if continental_area > oceanic_area else "oceanic"
 
     def _plates_from_node_masks(self, masks: list[np.ndarray], ids: list[int]) -> list[Plate]:
-        raise NotImplementedError("sparse quad patches are static until issue #228 Phase 4")
+        """Partition leaf cells without resampling or changing their stable IDs."""
+        if len(masks) != len(ids):
+            raise ValueError("one plate id is required for each node mask")
+        plates: list[Plate] = []
+        for k, (mask, plate_id) in enumerate(zip(masks, ids)):
+            mask = np.asarray(mask, dtype=bool)
+            if mask.shape != (len(self._keys),):
+                raise ValueError(f"node masks must have shape ({len(self._keys)},)")
+            if not np.any(mask):
+                continue
+            plates.append(
+                type(self)(
+                    plate_id=plate_id,
+                    frame=self._frame.copy(),
+                    crust_type=self._crust_type_for_mask(mask),
+                    cells_per_edge=self._n,
+                    cell_keys=self._keys[mask],
+                    fields={name: values[mask] for name, values in self._fields.items()},
+                    omega=self._omega.copy(),
+                    age_steps=self._age_steps if k == 0 else 0,
+                    internal_stress=self._internal_stress if k == 0 else 0.0,
+                )
+            )
+        return plates
+
+    def split(
+        self, new_id: int, cut_normal: np.ndarray, min_nodes: int
+    ) -> tuple["PlateWithSparseQuadPatch", "PlateWithSparseQuadPatch"] | None:
+        """Split on a world-space great circle while preserving every leaf and field."""
+        cut_normal = np.asarray(cut_normal, dtype=float)
+        if cut_normal.shape != (3,) or not np.isfinite(cut_normal).all():
+            return None
+        side = self._get_world_points() @ cut_normal > 0.0
+        if int(side.sum()) < min_nodes or int((~side).sum()) < min_nodes:
+            return None
+        result = self._plates_from_node_masks([side, ~side], [self.plate_id, new_id])
+        if len(result) != 2:
+            return None
+        return result[0], result[1]
+
+    def apply_failed_rift(self, cut_normal: np.ndarray, spacing_rad: float) -> None:
+        """Thin a tapered band around an aborted rift without changing quad topology."""
+        from . import lithosphere, rheology
+        from .merge_split import FAILED_RIFT_BAND_MULT, FAILED_RIFT_THINNING_FRACTION
+
+        cut_normal = np.asarray(cut_normal, dtype=float)
+        if (
+            cut_normal.shape != (3,)
+            or not np.isfinite(cut_normal).all()
+            or abs(np.linalg.norm(cut_normal) - 1.0) > 1.0e-3
+        ):
+            return
+        band_sin = float(np.sin(FAILED_RIFT_BAND_MULT * spacing_rad))
+        if band_sin <= 0.0:
+            return
+        distance = np.abs(self._get_world_points() @ cut_normal)
+        in_band = distance < band_sin
+        if not np.any(in_band):
+            return
+
+        elevation = self.collect("elevation")
+        hc = self.collect("crustal_thickness_m")
+        hm = self.collect("mantle_lithosphere_thickness_m")
+        reason = self.collect("elev_change_reason")
+        density = lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
+        before = lithosphere.isostatic_elevation(hc, hm, density)
+        taper = np.clip(1.0 - distance / band_sin, 0.0, 1.0)
+        factor = 1.0 - FAILED_RIFT_THINNING_FRACTION * taper
+        hc[in_band] = np.maximum(
+            hc[in_band] * factor[in_band], lithosphere.MIN_CRUSTAL_THICKNESS_M
+        )
+        hm[in_band] = np.maximum(
+            hm[in_band] * factor[in_band],
+            lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M,
+        )
+        after = lithosphere.isostatic_elevation(hc, hm, density)
+        new_elevation = rheology.clip_elevation_bounds(elevation + after - before)
+        moved = np.abs(new_elevation - elevation) >= ELEV_CHANGE_MIN_DELTA_M
+        reason[in_band & moved] = ELEV_CHANGE_RIFT
+        self.set_fields_on_plate(
+            elevation=new_elevation,
+            crustal_thickness_m=hc,
+            mantle_lithosphere_thickness_m=hm,
+            elev_change_reason=reason,
+        )
 
     # --- Persistence -----------------------------------------------------------------------
 
