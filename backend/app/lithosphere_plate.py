@@ -51,6 +51,7 @@ from .plates import (
     MAX_AUTO_PLATES,
     MIN_OCEANIC_PLATES,
     POLE_CAP_MARGIN_MULT,
+    Plate,
     PlateWithLines,
     _INTERIOR_SUBDUCTION_MIN_RUN,
     _ROW_FULL_REVOLUTION_SLACK,
@@ -60,6 +61,11 @@ from .plates import (
     query_workers,
 )
 from . import bathymetry, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
+from .sparse_quad_patch import PlateWithSparseQuadPatch
+
+# `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` (the only
+# one the simulation can step) and issue #228's static `PlateWithSparseQuadPatch`.
+SURFACE_REPRESENTATIONS = ("lines", "quad")
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
 MAX_EXTEND_NODES_PER_STEP = 400
@@ -2409,7 +2415,8 @@ def generate_plates(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-) -> list[LithospherePlate]:
+    surface: str = "lines",
+) -> list[Plate]:
     """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
     each plate owns the union of several adjacent Voronoi cells (see `build_plate_tiling` and
     `EXTRA_SITES_PER_PLATE`) rather than a single cell -- still deterministic per `seed`, still
@@ -2463,7 +2470,15 @@ def generate_plates(
     `sketch` is still required alongside it and still decides land/sea/mountain/river in each
     continental plate's `hc_at` exactly as it does for "Human-made". `"got"` has no real-plate
     analog, so its site placement falls through to the ordinary sketch-driven path, same as
-    "Human-made"."""
+    "Human-made".
+
+    `surface` picks the terrain representation each plate is built with (see
+    `SURFACE_REPRESENTATIONS`). Everything above -- sites, tiling, crust types, relief
+    fields, and the `rng` draw order -- is shared, so `"quad"` samples the same Hc/Hm fields
+    over the same ownership test, just at cube-sphere cell centres instead of line nodes
+    (issue #228 Phase 2). Quad plates are static: generation, rendering, and saves only."""
+    if surface not in SURFACE_REPRESENTATIONS:
+        raise ValueError(f"unknown surface representation {surface!r}")
     rng = np.random.default_rng(seed)
     if num_plates is None:
         num_plates = int(rng.integers(MIN_AUTO_PLATES, MAX_AUTO_PLATES + 1))
@@ -2584,7 +2599,7 @@ def generate_plates(
         )
 
     spacing_rad = line_spacing_rad(node_density)
-    plates: list[LithospherePlate] = []
+    plates: list[Plate] = []
     for i in range(num_plates):
         crust_type = crust_types[i]
         hc0, hm0 = lithosphere.reference_thickness(crust_type)
@@ -2635,6 +2650,16 @@ def generate_plates(
 
         def elevation_at(world_pts: np.ndarray) -> np.ndarray:
             return np.zeros(len(world_pts))  # placeholder; synced from Hc/Hm below
+
+        if surface == "quad":
+            plate = PlateWithSparseQuadPatch.from_lattice(i, frame, crust_type, spacing_rad, is_owned)
+            world_pts = plate.all_points_and_elevation()[0]
+            # Same clip as the line path below (issue #161).
+            hc = np.clip(hc_at(world_pts), lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+            plate.set_fields_on_plate(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=np.full(len(hc), hm0))
+            lithosphere.sync_plate_elevation(plate)
+            plates.append(plate)
+            continue
 
         lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
         hc_lines = []

@@ -23,15 +23,32 @@ import pickle
 from .world import World
 
 
+# The saved file is a pickled `{"format": SAVE_FORMAT, "version": N, "world": World}`
+# envelope. Version 1 is the original bare pickled `World` (no envelope), still loadable.
+# Version 2 added the envelope itself so a save can carry, and a loader can check, which
+# surface representations it may contain -- see sparse_quad_patch.py, whose plates also
+# version their own pickled state. Bump on any change an older build can't read.
+SAVE_FORMAT = "mantle-bloom-world"
+SAVE_FORMAT_VERSION = 2
+
+
 def save_world_bytes(world: World) -> bytes:
-    return pickle.dumps(world)
+    return pickle.dumps({"format": SAVE_FORMAT, "version": SAVE_FORMAT_VERSION, "world": world})
 
 
 def load_world_bytes(data: bytes) -> World:
     """Raises whatever pickle itself raises on malformed/foreign input (UnpicklingError,
     EOFError, AttributeError for an unknown class, etc.) -- the caller (main.py) is
-    responsible for catching broadly and mapping to a 400, not this function."""
-    world = pickle.loads(data)
+    responsible for catching broadly and mapping to a 400, not this function. A save from a
+    newer build (a `version` above `SAVE_FORMAT_VERSION`) raises `ValueError`."""
+    payload = pickle.loads(data)
+    if isinstance(payload, dict) and payload.get("format") == SAVE_FORMAT:
+        version = payload.get("version")
+        if not isinstance(version, int) or not 2 <= version <= SAVE_FORMAT_VERSION:
+            raise ValueError(f"unsupported save format version {version!r}; this build reads 1-{SAVE_FORMAT_VERSION}")
+        world = payload.get("world")
+    else:
+        world = payload  # version 1: a bare pickled World
     if not isinstance(world, World):
         raise TypeError(f"expected a World, got {type(world).__name__}")
     _backfill_added_fields(world)
