@@ -142,3 +142,27 @@ def test_loading_garbage_bytes_raises():
 def test_loading_a_pickle_of_the_wrong_type_raises():
     with pytest.raises(TypeError):
         persistence.load_world_bytes(pickle.dumps(42))
+
+
+def test_saves_carry_a_format_version_envelope():
+    world = generate_world(seed=3, num_plates=4)
+    envelope = pickle.loads(persistence.save_world_bytes(world))
+
+    assert envelope["format"] == persistence.SAVE_FORMAT
+    assert envelope["version"] == persistence.SAVE_FORMAT_VERSION
+
+
+def test_loading_a_version_1_bare_world_pickle_still_works():
+    world = generate_world(seed=3, num_plates=4)
+
+    loaded = persistence.load_world_bytes(pickle.dumps(world))
+    assert loaded.seed == world.seed
+    assert len(loaded.plates) == len(world.plates)
+
+
+def test_loading_a_save_from_a_newer_format_version_raises():
+    world = generate_world(seed=3, num_plates=4)
+    data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": persistence.SAVE_FORMAT_VERSION + 1, "world": world})
+
+    with pytest.raises(ValueError, match="format version"):
+        persistence.load_world_bytes(data)

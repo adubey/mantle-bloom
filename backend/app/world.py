@@ -601,6 +601,7 @@ def generate_world(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
+    surface: str = "lines",
 ) -> World:
     """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
@@ -639,7 +640,9 @@ def generate_world(
     ones fit to reproduce known (or, for Pangaea, directionally-approximated) real plate
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
-    random centers."""
+    random centers. `surface` (`"lines"` or `"quad"`) picks the plates' terrain
+    representation -- see lithosphere_plate.generate_plates; a `"quad"` world is static
+    (issue #228 Phase 2) and `step_world` refuses to move its plates."""
     world = None
     for message in generate_world_progress(
         seed,
@@ -656,6 +659,7 @@ def generate_world(
         voronoi_points=voronoi_points,
         sketch=sketch,
         premade_world_id=premade_world_id,
+        surface=surface,
     ):
         if message[0] == "done":
             world = message[1]
@@ -677,6 +681,7 @@ def generate_world_progress(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
+    surface: str = "lines",
 ):
     """Generator form of `generate_world`, driving the exact same work but yielding
     `("progress", fraction)` at each of its three natural phase boundaries -- plate/site
@@ -699,6 +704,7 @@ def generate_world_progress(
         voronoi_points=voronoi_points,
         sketch=sketch,
         premade_world_id=premade_world_id,
+        surface=surface,
     )
     yield ("progress", 1 / 3)
 
@@ -830,6 +836,10 @@ def step_world_progress(world: World, years: float):
     World.simulate_plate_movement/World.simulate_climate_biomes (see their own docstrings and
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
+    if world.simulate_plate_movement and not all(isinstance(p, lithosphere_plate.LithospherePlate) for p in world.plates):
+        # Static quad-patch plates (issue #228 Phase 2) have no shift/deform/topology
+        # mechanics yet -- fail before mutating anything rather than part-way through a step.
+        raise NotImplementedError("plate movement needs line-backed plates; quad surfaces are static until issue #228 Phase 4")
     world.steps_taken += 1
     # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) and its
     # positions-only sibling shared with climate.py (World.node_position_tree_cache) are both
