@@ -1032,6 +1032,10 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     new_coal_deposit_m = np.interp(new_theta, line.theta, line.coal_deposit_m)
     new_oil_gas_deposit_m = np.interp(new_theta, line.theta, line.oil_gas_deposit_m)
     new_mineral_deposit_m = np.interp(new_theta, line.theta, line.mineral_deposit_m)
+    # divergent_age_myr is a continuous Myr counter -- interpolated the same way. Leaving it
+    # out (as this function once did) zero-filled it, so every regularize pass made a line's
+    # nodes look freshly divergent again to deform()/rheology's young-lithosphere checks.
+    new_divergent_age_myr = np.interp(new_theta, line.theta, line.divergent_age_myr)
     # v2's crustal/mantle-lithosphere thickness columns -- interpolated the same way as every
     # other persistent field so a regularize pass (which runs every deform() call) doesn't
     # silently reset a v2 line's isostatic state to zero, the exact bug class this module's
@@ -1073,6 +1077,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         coal_deposit_m=new_coal_deposit_m,
         oil_gas_deposit_m=new_oil_gas_deposit_m,
         mineral_deposit_m=new_mineral_deposit_m,
+        divergent_age_myr=new_divergent_age_myr,
         elev_change_reason=new_elev_change_reason,
         overlap_onset_years=new_overlap_onset_years,
         node_created_years=new_node_created_years,
