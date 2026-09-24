@@ -343,3 +343,33 @@ def test_regularize_line_unwinds_an_over_wound_ring_to_one_revolution():
     assert len(fixed) < len(wound)  # the inner windings are gone
     # It kept the *outermost* revolution (theta near the wound row's own high end).
     assert fixed.theta[-1] == wound.theta[-1]
+
+
+def test_regularize_line_carries_divergent_age_myr():
+    # Issue #231's own reproducer -- regularize_line used to omit divergent_age_myr, so the
+    # constructor zero-filled it.
+    theta = np.array([0.0, 0.01, 0.02, 0.05, 0.06])
+    line = ElevationLine(
+        0.1, theta, np.zeros(5), divergent_age_myr=np.full(5, 12.0), node_created_years=np.full(5, 3e6)
+    )
+    regularized = regularize_line(line, 0.0098)
+    assert len(regularized) != len(line)
+    assert np.allclose(regularized.divergent_age_myr, 12.0)
+
+
+def test_regularize_line_carries_every_optional_field():
+    # Guards the whole bug class: any OPTIONAL_FIELDS member regularize_line forgets to pass
+    # through comes back as the constructor's default (all zeros / False / -1.0).
+    theta = np.array([0.0, 0.01, 0.02, 0.05, 0.06])
+    fields = {}
+    for name in ElevationLine.OPTIONAL_FIELDS:
+        default = getattr(ElevationLine(0.1, theta, np.zeros(5)), name)
+        if default.dtype == bool:
+            fields[name] = np.ones(5, dtype=bool)
+        else:
+            fields[name] = np.full(5, 7, dtype=default.dtype)
+    line = ElevationLine(0.1, theta, np.zeros(5), **fields)
+    regularized = regularize_line(line, 0.0098)
+    assert len(regularized) != len(line)
+    for name, values in fields.items():
+        assert np.all(getattr(regularized, name) == values[0]), name
