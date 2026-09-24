@@ -1213,7 +1213,9 @@ def _surface_node_summary(plate, flat_index: int) -> dict:
         raise IndexError("surface node index out of range")
     return {
         "plate_id": plate.plate_id,
-        "node_id": [int(word) for word in nodes.node_ids[flat_index]],
+        # Decimal strings, not JSON numbers: the hash word spans uint64 and would lose
+        # precision in a browser's IEEE-754 Number before being sent back to the lookup API.
+        "node_id": [str(int(word)) for word in nodes.node_ids[flat_index]],
         "topology_revision": plate.topology_revision,
         "geometry_revision": plate.geometry_revision,
         "local_xyz": [float(value) for value in nodes.local_xyz[flat_index]],
@@ -1225,18 +1227,27 @@ def _surface_node_summary(plate, flat_index: int) -> dict:
     }
 
 
+def _parse_node_id_word(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="node ID words must be decimal uint64 strings") from exc
+    if not 0 <= parsed < 2**64:
+        raise HTTPException(status_code=400, detail="node ID words must be decimal uint64 strings")
+    return parsed
+
+
 @app.get("/world/surface_node")
-def surface_node(plate_id: int, node_id_hi: int, node_id_lo: int) -> dict:
+def surface_node(plate_id: int, node_id_hi: str, node_id_lo: str) -> dict:
     """Look up a live node by its storage-neutral current surface address."""
     world = _require_world()
     with _world_lock:
         plate = next((p for p in world.plates if p.plate_id == plate_id), None)
         if plate is None:
             raise HTTPException(status_code=404, detail=f"no plate {plate_id}")
-        try:
-            flat_index = plate.node_index_for_id((node_id_hi, node_id_lo))
-        except (OverflowError, ValueError):
-            raise HTTPException(status_code=400, detail="node ID words must be unsigned 64-bit integers")
+        flat_index = plate.node_index_for_id(
+            (_parse_node_id_word(node_id_hi), _parse_node_id_word(node_id_lo))
+        )
         if flat_index is None:
             raise HTTPException(status_code=404, detail="node is not live on this plate")
         return _surface_node_summary(plate, flat_index)

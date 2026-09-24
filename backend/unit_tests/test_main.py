@@ -826,16 +826,22 @@ def test_surface_node_lookup_uses_storage_neutral_node_id(client):
 
     response = client.get(
         "/world/surface_node",
-        params={"plate_id": plate.plate_id, "node_id_hi": int(node_id[0]), "node_id_lo": int(node_id[1])},
+        params={"plate_id": plate.plate_id, "node_id_hi": str(int(node_id[0])), "node_id_lo": str(int(node_id[1]))},
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["plate_id"] == plate.plate_id
-    assert body["node_id"] == [int(node_id[0]), int(node_id[1])]
+    assert body["node_id"] == [str(int(node_id[0])), str(int(node_id[1]))]
     assert len(body["world_xyz"]) == len(body["local_xyz"]) == 3
     assert body["area_m2"] > 0.0
     assert body["area_is_exact"] is False
+
+    invalid = client.get(
+        "/world/surface_node",
+        params={"plate_id": plate.plate_id, "node_id_hi": str(2**64), "node_id_lo": "0"},
+    )
+    assert invalid.status_code == 400
 
 
 def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):
