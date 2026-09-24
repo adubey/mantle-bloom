@@ -15,10 +15,13 @@ from app.sparse_quad_patch import (
     PLANET_RADIUS_M,
     QUAD_SURFACE_FORMAT_VERSION,
     PlateWithSparseQuadPatch,
+    cell_areas_sr,
     cells_per_face_edge,
     lattice_points,
     locate_cells,
+    child_cell_keys,
     pack_cell_keys,
+    parent_cell_keys,
     unpack_cell_keys,
 )
 from app.world import generate_world, step_world
@@ -297,3 +300,183 @@ def test_quad_world_refuses_plate_movement_without_mutating():
 def test_unknown_surface_representation_is_rejected():
     with pytest.raises(ValueError):
         generate_plates(3, num_plates=4, surface="hexes")
+
+
+def test_refine_and_coarsen_round_trip_geometry_identity_and_revisions():
+    root = int(pack_cell_keys(0, 4, 4))
+    neighbour = int(pack_cell_keys(0, 5, 4))
+    plate = _plate(np.array([root, neighbour]), elevation=np.array([12.0, 20.0]))
+    area_before = plate.node_areas_m2().sum()
+
+    lineage = plate.refine_cells(np.array([root]))
+
+    assert lineage[root] == tuple(map(int, child_cell_keys(np.array([root]))[0]))
+    np.testing.assert_array_equal(parent_cell_keys(np.array(lineage[root])), root)
+    assert plate.node_count() == 5
+    assert (plate.topology_revision, plate.geometry_revision) == (1, 1)
+    np.testing.assert_allclose(plate.node_areas_m2().sum(), area_before, rtol=1e-12)
+    for child in lineage[root]:
+        assert plate.node_index_for_id((child, 0)) is not None
+
+    reverse = plate.coarsen_cells(np.array([root]))
+
+    assert all(reverse[child] == root for child in lineage[root])
+    np.testing.assert_array_equal(plate.cell_keys, [root, neighbour])
+    np.testing.assert_allclose(plate.collect("elevation"), [12.0, 20.0])
+    assert (plate.topology_revision, plate.geometry_revision) == (2, 2)
+
+
+def test_mixed_level_adjacency_is_symmetric_and_boundary_has_no_crack():
+    roots = np.array([pack_cell_keys(0, 4, 4), pack_cell_keys(0, 5, 4)])
+    plate = _plate(roots)
+    plate.refine_cells(roots[:1])
+    graph = plate.adjacency()
+    edges = {(a, int(b)) for a in range(plate.node_count()) for b in graph.neighbours[graph.offsets[a] : graph.offsets[a + 1]]}
+
+    assert all((b, a) in edges for a, b in edges)
+    # The union is still a rectangle: refinement adds hanging boundary vertices but no
+    # internal loop along the coarse/fine interface.
+    assert len(plate.boundary_loops_world()) == 1
+
+
+def test_boundary_loop_includes_exposed_half_of_coarse_side():
+    # The fine cell covers only the lower half of the coarse cell's right side. The upper
+    # half must remain in the outline even though one of that side's probes found a neighbour.
+    coarse = pack_cell_keys(0, 0, 0)
+    fine = pack_cell_keys(0, 2, 0, level=1)
+    plate = _plate(np.array([coarse, fine]), n=8)
+
+    loops = plate.boundary_loops_world()
+
+    assert len(loops) == 1
+    assert len(loops[0]) == 7
+    centres = plate.surface_nodes().world_xyz
+    assert np.all(geometry.points_in_spherical_polygon(centres, loops[0]))
+
+
+def test_constructor_and_loader_reject_unbalanced_leaf_layouts():
+    coarse = pack_cell_keys(0, 0, 0)
+    two_levels_finer = pack_cell_keys(0, 4, 0, level=2)
+    invalid_keys = np.array([coarse, two_levels_finer])
+
+    with pytest.raises(ValueError, match="2:1 balanced"):
+        _plate(invalid_keys, n=8)
+
+    state = _plate(np.array([coarse]), n=8).__getstate__()
+    state["_keys"] = invalid_keys
+    fresh = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
+    with pytest.raises(ValueError, match="2:1 balanced"):
+        fresh.__setstate__(state)
+
+
+def test_constructor_rejects_active_ancestor_and_descendant():
+    root = pack_cell_keys(0, 0, 0)
+    child = child_cell_keys(np.array([root]))[0, 0]
+
+    with pytest.raises(ValueError, match="active ancestor"):
+        _plate(np.array([root, child]), n=8)
+
+
+def test_coarsen_applies_every_field_policy_and_conserves_extensive_integrals():
+    root = int(pack_cell_keys(0, 4, 4))
+    children = child_cell_keys(np.array([root]))[0]
+    plate = _plate(
+        children,
+        crustal_thickness_m=np.array([10.0, 20.0, 30.0, 40.0]),
+        crust_type_code=np.array([2, 1, 2, 1], dtype=np.int8),
+        is_volcano=np.array([False, False, True, False]),
+        volcano_active_years_remaining=np.array([1.0, 7.0, 3.0, 2.0]),
+        node_created_years=np.array([-1.0, 9.0, 5.0, -1.0]),
+    )
+    before = np.sum(plate.collect("crustal_thickness_m") * plate.node_areas_m2())
+
+    plate.coarsen_cells(np.array([root]))
+
+    after = np.sum(plate.collect("crustal_thickness_m") * plate.node_areas_m2())
+    np.testing.assert_allclose(after, before, rtol=1e-12)
+    assert plate.collect("crust_type_code")[0] == 0  # winning plate type stays inherited
+    assert plate.collect("is_volcano")[0]
+    assert plate.collect("volcano_active_years_remaining")[0] == 7.0
+    assert plate.collect("node_created_years")[0] == 5.0
+
+
+def test_refinement_balances_a_coarser_neighbour():
+    left_root = int(pack_cell_keys(0, 4, 4))
+    right_root = int(pack_cell_keys(0, 5, 4))
+    plate = _plate(np.array([left_root, right_root]))
+    first_child = int(plate.refine_cells(np.array([left_root]))[left_root][1])
+
+    lineage = plate.refine_cells(np.array([first_child]))
+
+    assert right_root in lineage
+    levels = unpack_cell_keys(plate.cell_keys)[1]
+    graph = plate.adjacency()
+    for cell in range(plate.node_count()):
+        neighbours = graph.neighbours[graph.offsets[cell] : graph.offsets[cell + 1]]
+        assert np.all(np.abs(levels[neighbours] - levels[cell]) <= 1)
+
+
+def test_coarsening_preserves_inherited_crust_type_and_uses_it_for_relief():
+    root = int(pack_cell_keys(0, 4, 4))
+    children = child_cell_keys(np.array([root]))[0]
+    plate = PlateWithSparseQuadPatch(
+        1,
+        np.eye(3),
+        "continental",
+        N,
+        children,
+        fields={
+            "elevation": np.array([100.0, 200.0, 300.0, 400.0]),
+            "crustal_thickness_m": np.full(4, 35_000.0),
+            "mantle_lithosphere_thickness_m": np.full(4, 100_000.0),
+            "crust_type_code": np.array([0, 2, 0, 2], dtype=np.int8),
+        },
+    )
+
+    plate.coarsen_cells(np.array([root]))
+
+    assert plate.collect("crust_type_code")[0] == 0
+    # Equal columns mean preserving the area-weighted residual is exactly an area-weighted
+    # elevation mean; this exercises the isostatic path while code 0 remains implicit.
+    expected = np.average([100.0, 200.0, 300.0, 400.0], weights=cell_areas_sr(*unpack_cell_keys(children)[2:], N * 2))
+    np.testing.assert_allclose(plate.collect("elevation")[0], expected)
+
+
+def test_default_crust_code_does_not_skip_isostatic_elevation_transfer():
+    from app import lithosphere
+
+    root = int(pack_cell_keys(0, 4, 4))
+    children = child_cell_keys(np.array([root]))[0]
+    hc = np.array([30_000.0, 35_000.0, 40_000.0, 45_000.0])
+    hm = np.full(4, 100_000.0)
+    equilibrium = lithosphere.isostatic_elevation(hc, hm, np.full(4, lithosphere.RHO_CONTINENTAL_CRUST))
+    plate = PlateWithSparseQuadPatch(
+        1,
+        np.eye(3),
+        "continental",
+        N,
+        children,
+        fields={"elevation": equilibrium + 125.0, "crustal_thickness_m": hc, "mantle_lithosphere_thickness_m": hm},
+    )
+
+    plate.coarsen_cells(np.array([root]))
+
+    expected_equilibrium = lithosphere.isostatic_elevation(
+        plate.collect("crustal_thickness_m"),
+        plate.collect("mantle_lithosphere_thickness_m"),
+        np.array([lithosphere.RHO_CONTINENTAL_CRUST]),
+    )
+    np.testing.assert_allclose(plate.collect("elevation"), expected_equilibrium + 125.0)
+
+
+def test_deep_refinement_boundary_corner_identity_does_not_overflow():
+    root = int(pack_cell_keys(0, 4, 4))
+    plate = _plate(np.array([root]))
+    leaf = root
+    for _ in range(18):
+        leaf = plate.refine_cells(np.array([leaf]))[leaf][0]
+
+    loops = plate.boundary_loops_world()
+
+    assert len(loops) == 1
+    assert np.all(np.isfinite(loops[0]))

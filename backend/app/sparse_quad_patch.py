@@ -11,7 +11,7 @@ equiangular cube-sphere lattice laid out in the plate's own local frame:
   still representable without a coordinate singularity. That answers the issue's "one patch
   or several charts?" question for Phase 2: one lattice, six charts, seams handled by
   construction because neighbouring faces' cells match edge for edge.
-- Fields live on cells (one node per active cell, at the cell's angular centre). Cells give
+- Fields live on leaf cells (one node per active cell, at the cell's angular centre). Cells give
   every node an exact footprint (`SurfaceNodes.area_is_exact`), which is what Phase 3's
   conservative remapping needs, and cell-centred values are the finite-volume reading of
   the extensive fields in `surface_fields.SURFACE_FIELDS`.
@@ -23,8 +23,8 @@ equiangular cube-sphere lattice laid out in the plate's own local frame:
 
 Cells are addressed by a packed `int64` key -- face, refinement level, row `j`, column `i`
 -- whose sort order is the canonical node order, so the key doubles as the stable,
-storage-independent node ID Phase 0a asked for. Every Phase 2 cell is level 0; the level is
-in the key (and the save format) so Phase 3's refinement doesn't need a format break.
+storage-independent node ID Phase 0a asked for. Refinement replaces a leaf by its four
+children and coarsening reverses that operation. The key itself therefore records lineage.
 """
 
 from __future__ import annotations
@@ -36,9 +36,15 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import geometry
-from .elevation_lines import PLANET_RADIUS_KM, ElevationPoint, install_point_field_accessors
+from .elevation_lines import (
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_OCEANIC,
+    PLANET_RADIUS_KM,
+    ElevationPoint,
+    install_point_field_accessors,
+)
 from .plates import NEIGHBOUR_DISTANCE_RAD, Plate, SurfaceAdjacency, SurfaceNodes, _plates_within
-from .surface_fields import SURFACE_FIELDS
+from .surface_fields import SURFACE_FIELDS, RemapClass
 
 # Bumped whenever the pickled state of a `PlateWithSparseQuadPatch` changes shape. A save
 # carrying a newer version than this code understands is rejected on load rather than
@@ -165,6 +171,22 @@ def cell_areas_sr(i: np.ndarray, j: np.ndarray, n: int) -> np.ndarray:
     return corner(x1, y1) - corner(x0, y1) - corner(x1, y0) + corner(x0, y0)
 
 
+def parent_cell_keys(keys: np.ndarray) -> np.ndarray:
+    """Immediate parent IDs, or ``-1`` for level-zero roots."""
+    face, level, i, j = unpack_cell_keys(keys)
+    return np.where(level == 0, -1, pack_cell_keys(face, i // 2, j // 2, level - 1))
+
+
+def child_cell_keys(keys: np.ndarray) -> np.ndarray:
+    """The four child IDs of each cell. Cell IDs themselves encode lineage."""
+    face, level, i, j = unpack_cell_keys(keys)
+    children = [
+        pack_cell_keys(face, 2 * i + di, 2 * j + dj, level + 1)
+        for di, dj in ((0, 0), (1, 0), (0, 1), (1, 1))
+    ]
+    return np.stack(children, axis=-1)
+
+
 def _corner_keys(face: np.ndarray, ci: np.ndarray, cj: np.ndarray, n: int) -> np.ndarray:
     """A lattice-corner identity shared by every face that corner touches. Each corner maps
     to an integer point on the cube surface, `n * normal + (2ci - n) * u + (2cj - n) * v`:
@@ -181,6 +203,29 @@ def _corner_keys(face: np.ndarray, ci: np.ndarray, cj: np.ndarray, n: int) -> np
     return (shifted[..., 0] << 42) | (shifted[..., 1] << 21) | shifted[..., 2]
 
 
+def _corner_coordinates(
+    face: np.ndarray,
+    ci: np.ndarray,
+    cj: np.ndarray,
+    resolution: np.ndarray,
+    common_resolution: int,
+) -> np.ndarray:
+    """Exact cube-surface coordinates at one common dyadic resolution.
+
+    Unlike the compact level-zero corner key, three explicit int64 coordinates cannot
+    collide at deep refinement. All active resolutions differ by powers of two, so scaling
+    to the finest active level is exact across levels and cube-face seams.
+    """
+    face = np.asarray(face, dtype=np.int64)
+    resolution = np.asarray(resolution, dtype=np.int64)
+    point = (
+        resolution[..., None] * _FACE_AXES[face, 0]
+        + (2 * np.asarray(ci, dtype=np.int64) - resolution)[..., None] * _FACE_AXES[face, 1]
+        + (2 * np.asarray(cj, dtype=np.int64) - resolution)[..., None] * _FACE_AXES[face, 2]
+    )
+    return point * (common_resolution // resolution)[..., None]
+
+
 @dataclass(frozen=True)
 class CellIntervals:
     """Runs of consecutive active cells along one lattice direction, sorted by
@@ -194,20 +239,22 @@ class CellIntervals:
     start: np.ndarray
     end: np.ndarray
     node_run: np.ndarray
+    level: np.ndarray
 
 
-def _intervals(face: np.ndarray, line: np.ndarray, position: np.ndarray) -> CellIntervals:
-    order = np.lexsort((position, line, face))
-    f, l, p = face[order], line[order], position[order]
+def _intervals(face: np.ndarray, line: np.ndarray, position: np.ndarray, level: np.ndarray | None = None) -> CellIntervals:
+    level = np.zeros(len(face), dtype=np.int64) if level is None else np.asarray(level)
+    order = np.lexsort((position, line, level, face))
+    f, lev, l, p = face[order], level[order], line[order], position[order]
     breaks = np.ones(len(order), dtype=bool)
     if len(order) > 1:
-        breaks[1:] = (f[1:] != f[:-1]) | (l[1:] != l[:-1]) | (p[1:] != p[:-1] + 1)
+        breaks[1:] = (f[1:] != f[:-1]) | (lev[1:] != lev[:-1]) | (l[1:] != l[:-1]) | (p[1:] != p[:-1] + 1)
     run_of_sorted = np.cumsum(breaks) - 1
     starts = np.flatnonzero(breaks)
     ends = np.append(starts[1:], len(order)) - 1
     node_run = np.empty(len(order), dtype=np.int64)
     node_run[order] = run_of_sorted
-    return CellIntervals(face=f[starts], line=l[starts], start=p[starts], end=p[ends], node_run=node_run)
+    return CellIntervals(face=f[starts], line=l[starts], start=p[starts], end=p[ends], node_run=node_run, level=lev[starts])
 
 
 def _stitch_xyz_loops(loops: list[np.ndarray]) -> np.ndarray:
@@ -258,6 +305,7 @@ class PlateWithSparseQuadPatch(Plate):
         "_local_loops_cache",
         "_row_intervals_cache",
         "_column_intervals_cache",
+        "_probe_neighbours_cache",
     )
     _GEOMETRY_CACHES = (
         "_world_points_cache",
@@ -283,8 +331,11 @@ class PlateWithSparseQuadPatch(Plate):
             raise ValueError(f"cells_per_edge must be in [1, {_INDEX_MASK}], got {cells_per_edge}")
         keys = np.asarray(cell_keys, dtype=np.int64).reshape(-1)
         face, level, i, j = unpack_cell_keys(keys)
-        if np.any((face < 0) | (face > 5) | (level != 0) | (i >= cells_per_edge) | (j >= cells_per_edge)):
-            raise ValueError("cell keys must address level-0 cells of this lattice")
+        max_level = int(np.floor(np.log2(_INDEX_MASK / cells_per_edge)))
+        invalid_level = level > max_level
+        resolution = np.array([cells_per_edge * (1 << int(value)) for value in level])
+        if np.any((face < 0) | (face > 5) | invalid_level | (i >= resolution) | (j >= resolution)):
+            raise ValueError("cell keys must address cells of this lattice")
         order = np.argsort(keys, kind="stable")
         keys = keys[order]
         if len(keys) > 1 and np.any(keys[1:] == keys[:-1]):
@@ -296,6 +347,7 @@ class PlateWithSparseQuadPatch(Plate):
             self._check_field(name, values, len(order))
             self._fields[name] = np.asarray(values, dtype=SURFACE_FIELDS[name].dtype)[order].copy()
         self._reset_caches()
+        self._validate_leaf_topology()
 
     @classmethod
     def from_lattice(
@@ -362,14 +414,17 @@ class PlateWithSparseQuadPatch(Plate):
         super()._invalidate_bounding_polygon()
         self._world_points_cache = None
 
-    def _unpacked(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        face, _, i, j = unpack_cell_keys(self._keys)
-        return face, i, j
+    def _unpacked(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        return unpack_cell_keys(self._keys)
 
     def _local_centres(self) -> np.ndarray:
         if self._local_cache is None:
-            face, i, j = self._unpacked()
-            self._local_cache = lattice_points(face, i + 0.5, j + 0.5, self._n) if len(face) else np.zeros((0, 3))
+            face, level, i, j = self._unpacked()
+            if len(face):
+                scale = np.left_shift(1, level)
+                self._local_cache = lattice_points(face, (i + 0.5) / scale, (j + 0.5) / scale, self._n)
+            else:
+                self._local_cache = np.zeros((0, 3))
         return self._local_cache
 
     def _node_latlon(self) -> tuple[np.ndarray, np.ndarray]:
@@ -386,22 +441,24 @@ class PlateWithSparseQuadPatch(Plate):
 
     def node_areas_m2(self) -> np.ndarray:
         if self._area_cache is None:
-            _, i, j = self._unpacked()
-            self._area_cache = cell_areas_sr(i, j, self._n) * PLANET_RADIUS_M**2
+            _, level, i, j = self._unpacked()
+            self._area_cache = np.array(
+                [cell_areas_sr(np.array([ii]), np.array([jj]), self._n * (1 << int(ll)))[0] for ll, ii, jj in zip(level, i, j)]
+            ) * PLANET_RADIUS_M**2
         return self._area_cache
 
     def row_intervals(self) -> CellIntervals:
         """Runs of active cells along each face row (constant `j`)."""
         if self._row_intervals_cache is None:
-            face, i, j = self._unpacked()
-            self._row_intervals_cache = _intervals(face, j, i)
+            face, level, i, j = self._unpacked()
+            self._row_intervals_cache = _intervals(face, j, i, level)
         return self._row_intervals_cache
 
     def column_intervals(self) -> CellIntervals:
         """Runs of active cells along each face column (constant `i`)."""
         if self._column_intervals_cache is None:
-            face, i, j = self._unpacked()
-            self._column_intervals_cache = _intervals(face, i, j)
+            face, level, i, j = self._unpacked()
+            self._column_intervals_cache = _intervals(face, i, j, level)
         return self._column_intervals_cache
 
     def _index_of_keys(self, keys: np.ndarray) -> np.ndarray:
@@ -412,22 +469,78 @@ class PlateWithSparseQuadPatch(Plate):
         pos = np.clip(np.searchsorted(self._keys, keys), 0, len(self._keys) - 1)
         return np.where(self._keys[pos] == keys, pos, -1)
 
-    def _neighbour_keys(self) -> np.ndarray:
-        """(n, 4) keys of each cell's edge neighbour, in `_DIRECTION_OFFSETS` order, found by
-        probing just past each edge -- uniform across interior edges and cube-face seams."""
-        face, i, j = self._unpacked()
-        result = np.empty((len(face), 4), dtype=np.int64)
-        for d, (da, db) in enumerate(_DIRECTION_OFFSETS):
-            probe = lattice_points(face, i + da, j + db, self._n)
-            nf, ni, nj = locate_cells(probe, self._n)
-            result[:, d] = pack_cell_keys(nf, ni, nj)
+    def _validate_leaf_topology(self) -> None:
+        """Reject imported layouts that violate the balanced, non-overlapping leaf model.
+
+        Remeshing preserves these invariants itself. Validation belongs at construction and
+        load boundaries so malformed future topology edits fail clearly instead of surfacing
+        later as a broken adjacency or boundary-loop traversal.
+        """
+        _, levels, _, _ = unpack_cell_keys(self._keys)
+        if len(levels) == 0 or np.all(levels == 0):
+            return
+        active = set(map(int, self._keys))
+        for key, level in zip(self._keys, levels):
+            ancestor = int(key)
+            for _ in range(int(level)):
+                ancestor = int(parent_cell_keys(np.array([ancestor]))[0])
+                if ancestor in active:
+                    raise ValueError("active sparse-quad leaves must not overlap an active ancestor")
+
+        graph = self.adjacency()
+        for cell in range(len(self._keys)):
+            neighbours = graph.neighbours[graph.offsets[cell] : graph.offsets[cell + 1]]
+            if np.any(np.abs(levels[neighbours] - levels[cell]) > 1):
+                raise ValueError("sparse-quad leaf topology must be 2:1 balanced across every edge")
+
+    def _leaf_key_at(self, points: np.ndarray) -> np.ndarray:
+        """Active leaf containing each local point, or -1 outside this patch."""
+        result = np.full(len(points), -1, dtype=np.int64)
+        max_level = int(unpack_cell_keys(self._keys)[1].max(initial=0))
+        for level in range(max_level + 1):
+            face, i, j = locate_cells(points, self._n * (1 << level))
+            keys = pack_cell_keys(face, i, j, level)
+            found = self._index_of_keys(keys) >= 0
+            result[found] = keys[found]
         return result
 
     def _neighbour_indices(self) -> np.ndarray:
-        """(n, 4) node index of each edge neighbour, -1 where that side is exposed."""
+        """Unique edge-neighbour indices, padded with -1 for the internal cache."""
         if self._adjacency_cache is None:
-            self._adjacency_cache = self._index_of_keys(self._neighbour_keys())
+            probes = np.sort(self._probe_neighbour_indices().reshape(len(self._keys), -1), axis=1)
+            keep = probes >= 0
+            if probes.shape[1] > 1:
+                keep[:, 1:] &= probes[:, 1:] != probes[:, :-1]
+            counts = keep.sum(axis=1)
+            width = int(counts.max(initial=0))
+            self._adjacency_cache = np.full((len(probes), width), -1, dtype=np.int64)
+            if width:
+                columns = np.cumsum(keep, axis=1) - 1
+                row = np.broadcast_to(np.arange(len(probes))[:, None], probes.shape)[keep]
+                self._adjacency_cache[row, columns[keep]] = probes[keep]
         return self._adjacency_cache
+
+    def _probe_neighbour_indices(self) -> np.ndarray:
+        """(node, side, half) leaf indices found just across each edge, fully batched."""
+        if self._probe_neighbours_cache is None:
+            face, level, i, j = self._unpacked()
+            scale = np.left_shift(1, level)
+            a = np.empty((len(face), 4, 2), dtype=float)
+            b = np.empty_like(a)
+            along = np.array([0.25, 0.75])
+            a[:, 0, :], b[:, 0, :] = i[:, None] + along, j[:, None] - _NEIGHBOUR_PROBE_FRACTION
+            a[:, 1, :], b[:, 1, :] = i[:, None] + 1 + _NEIGHBOUR_PROBE_FRACTION, j[:, None] + along
+            a[:, 2, :], b[:, 2, :] = i[:, None] + 1 - along, j[:, None] + 1 + _NEIGHBOUR_PROBE_FRACTION
+            a[:, 3, :], b[:, 3, :] = i[:, None] - _NEIGHBOUR_PROBE_FRACTION, j[:, None] + 1 - along
+            points = lattice_points(
+                np.broadcast_to(face[:, None, None], a.shape).reshape(-1),
+                (a / scale[:, None, None]).reshape(-1),
+                (b / scale[:, None, None]).reshape(-1),
+                self._n,
+            )
+            keys = self._leaf_key_at(points)
+            self._probe_neighbours_cache = self._index_of_keys(keys).reshape(len(face), 4, 2)
+        return self._probe_neighbours_cache
 
     # --- PlateSurface ------------------------------------------------------------------
 
@@ -489,27 +602,52 @@ class PlateWithSparseQuadPatch(Plate):
         each loop simple instead of figure-eighting through the pinch."""
         if self._local_loops_cache is not None:
             return self._local_loops_cache
-        face, i, j = self._unpacked()
-        exposed = self._neighbour_indices() < 0
-        cell, direction = np.nonzero(exposed)
-        if len(cell) == 0:
+        face, level, i, j = self._unpacked()
+        if not len(face):
             self._local_loops_cache = []
             return self._local_loops_cache
-        corners = np.array(_EDGE_CORNERS)[direction]  # (m, 2, 2): start/end, (di, dj)
-        f = face[cell]
-        start_i, start_j = i[cell] + corners[:, 0, 0], j[cell] + corners[:, 0, 1]
-        end_i, end_j = i[cell] + corners[:, 1, 0], j[cell] + corners[:, 1, 1]
-        start_key = _corner_keys(f, start_i, start_j, self._n)
-        end_key = _corner_keys(f, end_i, end_j, self._n)
-        start_xyz = lattice_points(f, start_i, start_j, self._n)
-        end_xyz = lattice_points(f, end_i, end_j, self._n)
 
-        by_start: dict[int, list[int]] = {}
-        for e, key in enumerate(start_key.tolist()):
+        # A side may be only half exposed when a coarse cell touches one finer leaf while
+        # the sibling across its other half is absent. Emit one whole edge when both probes
+        # are empty, or the appropriate half edge when exactly one is empty. This remains
+        # O(leaves), unlike subdividing every edge to the deepest level anywhere on a plate.
+        empty = self._probe_neighbour_indices() < 0
+        full_cell, full_direction = np.nonzero(np.all(empty, axis=2))
+        partial_cell, partial_direction, partial_half = np.nonzero(empty & ~np.all(empty, axis=2)[..., None])
+        cell = np.concatenate([full_cell, partial_cell])
+        direction = np.concatenate([full_direction, partial_direction])
+
+        whole_corners = 2 * np.asarray(_EDGE_CORNERS)[full_direction]
+        half_corners = np.array(
+            [
+                [[[0, 0], [1, 0]], [[1, 0], [2, 0]]],
+                [[[2, 0], [2, 1]], [[2, 1], [2, 2]]],
+                [[[2, 2], [1, 2]], [[1, 2], [0, 2]]],
+                [[[0, 2], [0, 1]], [[0, 1], [0, 0]]],
+            ],
+            dtype=np.int64,
+        )[partial_direction, partial_half]
+        corners = np.concatenate([whole_corners, half_corners])
+        f, lev = face[cell], level[cell]
+        resolution = 2 * self._n * np.left_shift(1, lev)
+        common_resolution = int(resolution.max(initial=self._n))
+        start_i = 2 * i[cell] + corners[:, 0, 0]
+        start_j = 2 * j[cell] + corners[:, 0, 1]
+        end_i = 2 * i[cell] + corners[:, 1, 0]
+        end_j = 2 * j[cell] + corners[:, 1, 1]
+        start_key = _corner_coordinates(f, start_i, start_j, resolution, common_resolution)
+        end_key = _corner_coordinates(f, end_i, end_j, resolution, common_resolution)
+        # Integer cube coordinates are identities, not geometric positions: the lattice is
+        # equiangular rather than uniformly spaced on a gnomonic cube face.
+        start_xyz = lattice_points(f, start_i, start_j, resolution)
+        end_xyz = lattice_points(f, end_i, end_j, resolution)
+
+        by_start: dict[tuple[int, int, int], list[int]] = {}
+        for e, key in enumerate(map(tuple, start_key.tolist())):
             by_start.setdefault(key, []).append(e)
 
         def successor(e: int) -> int:
-            candidates = by_start[int(end_key[e])]
+            candidates = by_start[tuple(end_key[e])]
             if len(candidates) == 1:
                 return candidates[0]
             vertex = end_xyz[e]
@@ -548,8 +686,7 @@ class PlateWithSparseQuadPatch(Plate):
         points_xyz = np.asarray(points_xyz, dtype=float).reshape(-1, 3)
         if len(points_xyz) == 0 or len(self._keys) == 0:
             return np.zeros(len(points_xyz), dtype=bool)
-        face, i, j = locate_cells(geometry.to_local(self._frame, points_xyz), self._n)
-        return self._index_of_keys(pack_cell_keys(face, i, j)) >= 0
+        return self._leaf_key_at(geometry.to_local(self._frame, points_xyz)) >= 0
 
     def contains(self, lat: float, lon: float) -> bool:
         return bool(self.contains_batch(geometry.latlon_to_xyz(np.asarray(lat), np.asarray(lon)))[0])
@@ -574,12 +711,171 @@ class PlateWithSparseQuadPatch(Plate):
         along its line."""
         world = self._get_world_points()
         rows = self.row_intervals()
-        _, i, _ = self._unpacked()
+        _, _, i, _ = self._unpacked()
         start = rows.start[rows.node_run]
         span = rows.end[rows.node_run] - start
         fraction = np.where(span == 0, 0.5, (i - start) / np.maximum(span, 1))
         for index in range(len(self._keys)):
             yield ElevationPointInPatch(self, index), world[index], float(fraction[index])
+
+    # --- Adaptive remeshing ---------------------------------------------------------------
+
+    def _replace_topology(self, keys: np.ndarray, fields: Mapping[str, np.ndarray]) -> None:
+        order = np.argsort(keys, kind="stable")
+        self._keys = np.asarray(keys, dtype=np.int64)[order]
+        self._fields = {
+            name: np.asarray(values, dtype=SURFACE_FIELDS[name].dtype)[order]
+            for name, values in fields.items()
+        }
+        self._topology_revision += 1
+        self._geometry_revision += 1
+        self._reset_caches()
+
+    def refine_cells(self, cell_ids: np.ndarray) -> dict[int, tuple[int, ...]]:
+        """Subdivide selected leaves and any coarser edge neighbours needed for 2:1 balance.
+
+        Returns explicit old-ID -> child-ID lineage. Unselected cell IDs remain stable.
+        """
+        requested = {int(key) for key in np.asarray(cell_ids, dtype=np.int64).reshape(-1)}
+        active = set(map(int, self._keys))
+        missing = requested - active
+        if missing:
+            raise ValueError(f"can only refine active leaf cells: {sorted(missing)}")
+        max_level = int(np.floor(np.log2(_INDEX_MASK / self._n)))
+        requested_levels = unpack_cell_keys(np.asarray(sorted(requested), dtype=np.int64))[1]
+        if np.any(requested_levels >= max_level):
+            raise ValueError(f"cannot refine past level {max_level}")
+        selected = set(requested)
+        changed = True
+        while changed:
+            changed = False
+            graph = self.adjacency()
+            _, levels, _, _ = unpack_cell_keys(self._keys)
+            for index, key in enumerate(self._keys):
+                if int(key) not in selected:
+                    continue
+                for neighbour in graph.neighbours[graph.offsets[index] : graph.offsets[index + 1]]:
+                    if levels[neighbour] < levels[index] and int(self._keys[neighbour]) not in selected:
+                        selected.add(int(self._keys[neighbour]))
+                        changed = True
+        lineage = {key: tuple(map(int, child_cell_keys(np.array([key]))[0])) for key in sorted(selected)}
+        new_keys: list[int] = []
+        sources: list[int] = []
+        for index, key in enumerate(self._keys):
+            children = lineage.get(int(key))
+            if children is None:
+                new_keys.append(int(key))
+                sources.append(index)
+            else:
+                new_keys.extend(children)
+                sources.extend([index] * 4)
+        fields = {name: values[np.asarray(sources)] for name, values in self._fields.items()}
+        self._replace_topology(np.asarray(new_keys), fields)
+        return lineage
+
+    def _coarsened_value(
+        self,
+        name: str,
+        values: np.ndarray,
+        areas: np.ndarray,
+        all_fields: Mapping[str, np.ndarray],
+    ) -> float | int | bool:
+        spec = SURFACE_FIELDS[name]
+        if name == "elevation":
+            from . import lithosphere
+
+            hc = all_fields.get(
+                "crustal_thickness_m",
+                np.full(len(values), SURFACE_FIELDS["crustal_thickness_m"].default),
+            )
+            hm = all_fields.get(
+                "mantle_lithosphere_thickness_m",
+                np.full(len(values), SURFACE_FIELDS["mantle_lithosphere_thickness_m"].default),
+            )
+            codes = all_fields.get(
+                "crust_type_code",
+                np.full(len(values), SURFACE_FIELDS["crust_type_code"].default, dtype=np.int8),
+            )
+            density = lithosphere.node_crust_density(codes, self.crust_type)
+            residual = values - lithosphere.isostatic_elevation(hc, hm, density)
+            new_hc = float(np.average(hc, weights=areas))
+            new_hm = float(np.average(hm, weights=areas))
+            new_code = self._coarsened_value("crust_type_code", codes, areas, all_fields)
+            new_density = lithosphere.node_crust_density(np.array([new_code]), self.crust_type)
+            return float(
+                lithosphere.isostatic_elevation(np.array([new_hc]), np.array([new_hm]), new_density)[0]
+                + np.average(residual, weights=areas)
+            )
+        if name == "channel_depth":
+            return float(np.max(values))
+        if name == "channel_width":
+            return float(values[np.argmax(all_fields.get("channel_depth", np.zeros(len(values))))])
+        weights = areas
+        if name in ("soil_mineral_content", "soil_organic_content"):
+            weights = weights * all_fields.get("soil_depth", np.ones(len(values)))
+        if spec.remap_class in (RemapClass.EXTENSIVE, RemapClass.INTENSIVE, RemapClass.CLOCK):
+            return float(np.average(values, weights=weights)) if weights.sum() else float(np.mean(values))
+        if spec.remap_class == RemapClass.CATEGORICAL:
+            if name == "crust_type_code":
+                inherited = CRUST_TYPE_CONTINENTAL if self.crust_type == "continental" else CRUST_TYPE_OCEANIC
+                values = np.where(values == 0, inherited, values)
+            choices = np.unique(values)
+            totals = np.array([areas[values == choice].sum() for choice in choices])
+            tied = choices[totals == totals.max()]
+            if name == "elev_change_reason":
+                structural = tied[
+                    ((tied >= 1) & (tied <= 8)) | ((tied >= 15) & (tied <= 17)) | (tied == 19)
+                ]
+                if len(structural):
+                    tied = structural
+            winner = tied[0]
+            if name == "crust_type_code" and winner == inherited:
+                return 0
+            return winner
+        if spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
+            return bool(np.any(values))
+        if spec.remap_class == RemapClass.COUNTDOWN:
+            return float(np.max(values))
+        if spec.remap_class in (RemapClass.HISTORY, RemapClass.WRITE_ONCE_HISTORY):
+            valid = values != spec.sentinel
+            return spec.sentinel if not np.any(valid) else float(np.min(values[valid]))
+        return float(np.average(values, weights=areas))
+
+    def coarsen_cells(self, parent_ids: np.ndarray) -> dict[int, int]:
+        """Replace complete sibling quartets by their parent, conservatively by exact area.
+
+        A coarsen that would break the mesh's 2:1 level balance is rejected.
+        Returns child-ID -> parent-ID lineage.
+        """
+        parents = {int(key) for key in np.asarray(parent_ids, dtype=np.int64).reshape(-1)}
+        active = set(map(int, self._keys))
+        groups = {parent: tuple(map(int, child_cell_keys(np.array([parent]))[0])) for parent in parents}
+        incomplete = [parent for parent, children in groups.items() if not set(children) <= active]
+        if incomplete:
+            raise ValueError(f"coarsening requires four active children: {sorted(incomplete)}")
+        graph = self.adjacency()
+        _, levels, _, _ = unpack_cell_keys(self._keys)
+        index = {int(key): k for k, key in enumerate(self._keys)}
+        removing = {child for children in groups.values() for child in children}
+        for parent, children in groups.items():
+            parent_level = int(unpack_cell_keys(np.array([parent]))[1][0])
+            for child in children:
+                ci = index[child]
+                for neighbour in graph.neighbours[graph.offsets[ci] : graph.offsets[ci + 1]]:
+                    if int(self._keys[neighbour]) not in removing and int(levels[neighbour]) > parent_level + 1:
+                        raise ValueError("coarsening would violate 2:1 balance")
+        old_areas = self.node_areas_m2()
+        new_keys = [int(key) for key in self._keys if int(key) not in removing] + sorted(parents)
+        output = {name: [] for name in self._fields}
+        retained = [k for k, key in enumerate(self._keys) if int(key) not in removing]
+        for name, values in self._fields.items():
+            output[name].extend(values[retained].tolist())
+            for parent in sorted(parents):
+                child_indices = np.array([index[child] for child in groups[parent]])
+                child_fields = {field: stored[child_indices] for field, stored in self._fields.items()}
+                output[name].append(self._coarsened_value(name, values[child_indices], old_areas[child_indices], child_fields))
+        self._replace_topology(np.asarray(new_keys), {name: np.asarray(values) for name, values in output.items()})
+        return {child: parent for parent, children in groups.items() for child in children}
 
     # --- Topology changes (later phases) ---------------------------------------------------
 
@@ -608,3 +904,4 @@ class PlateWithSparseQuadPatch(Plate):
         del state["_surface_format_version"]
         self.__dict__.update(state)
         self._reset_caches()
+        self._validate_leaf_topology()
