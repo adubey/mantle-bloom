@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterator, Protocol
+from typing import TYPE_CHECKING, Iterator, Mapping, Protocol
 
 import numpy as np
 from scipy.sparse import coo_matrix
@@ -78,6 +78,60 @@ class SpherePolygon(Protocol):
     def contains(self, lat: float, lon: float) -> bool:
         """True if the geographic point (lat, lon, radians) falls inside this polygon."""
         ...
+
+
+@dataclass(frozen=True)
+class SurfaceNodes:
+    """Representation-neutral bulk view of a plate surface's live nodes.
+
+    All arrays share one stable ordering for the lifetime of ``topology_revision``. The
+    position arrays are ``(n, 3)`` unit vectors; every requested field is an ``(n,)`` array.
+    Callers must treat this container as read-only and use ``set_fields_on_plate`` for
+    write-back.
+    """
+
+    local_xyz: np.ndarray
+    world_xyz: np.ndarray
+    fields: Mapping[str, np.ndarray]
+
+
+@dataclass(frozen=True)
+class SurfaceAdjacency:
+    """CSR adjacency over the node ordering used by :class:`SurfaceNodes`."""
+
+    offsets: np.ndarray
+    neighbours: np.ndarray
+
+
+class PlateSurface(abc.ABC):
+    """Storage-neutral compatibility boundary for terrain carried by a plate.
+
+    Phase 1 deliberately describes capabilities, not rows, vertices, or quads. Topology
+    operations and conservative remapping remain implementation-specific until later phases.
+    """
+
+    @property
+    @abc.abstractmethod
+    def topology_revision(self) -> int: ...
+
+    @property
+    @abc.abstractmethod
+    def geometry_revision(self) -> int: ...
+
+    @abc.abstractmethod
+    def surface_nodes(self, *field_names: str) -> SurfaceNodes: ...
+
+    @abc.abstractmethod
+    def set_fields_on_plate(self, **fields: np.ndarray) -> None: ...
+
+    @abc.abstractmethod
+    def adjacency(self) -> SurfaceAdjacency: ...
+
+    @abc.abstractmethod
+    def boundary_loops_world(self) -> tuple[np.ndarray, ...]: ...
+
+    @abc.abstractmethod
+    def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray: ...
 
 
 # Two plates count as neighbours once the closest points of their two outlines come within
@@ -366,7 +420,7 @@ def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.nda
     return labels
 
 
-class Plate(abc.ABC):
+class Plate(PlateSurface, abc.ABC):
     """A plate's shared identity/motion state plus an abstract interface over however it
     represents its own terrain nodes -- `PlateWithLines` (parallel `ElevationLine`s, see
     elevation_lines.py) and `PlateWithRTree` (an R-tree-indexed point cloud, see below).
@@ -395,6 +449,8 @@ class Plate(abc.ABC):
         # on a failed rift -- see reset_age's own precedent for "a topology event releases
         # accumulated pressure."
         self._internal_stress = internal_stress
+        self._topology_revision = 0
+        self._geometry_revision = 0
         # Lazily (re)computed by get_bounding_polygon() below -- None means "stale, recompute
         # on next call," not "empty polygon" (an empty plate's real outline is a valid
         # np.zeros((0, 3)), which must stay distinguishable from "not computed yet").
@@ -456,7 +512,16 @@ class Plate(abc.ABC):
         """Apply an incremental rotation matrix to this plate's frame -- the one place a
         plate's rigid motion actually advances `frame` each step (see world.py)."""
         self._frame = increment @ self._frame
+        self._geometry_revision += 1
         self._invalidate_bounding_polygon()
+
+    @property
+    def topology_revision(self) -> int:
+        return self._topology_revision
+
+    @property
+    def geometry_revision(self) -> int:
+        return self._geometry_revision
 
     def age_one_step(self) -> None:
         self._age_steps += 1
@@ -482,9 +547,10 @@ class Plate(abc.ABC):
         default it to 0.0, the same "quiet, unstressed plate" reading a fresh Plate.__init__
         gives, rather than raising. Mirrors ElevationLine.__getattr__'s own precedent for the
         same class of backward-compatibility gap."""
-        if name == "_internal_stress":
-            object.__setattr__(self, name, 0.0)
-            return 0.0
+        defaults = {"_internal_stress": 0.0, "_topology_revision": 0, "_geometry_revision": 0}
+        if name in defaults:
+            object.__setattr__(self, name, defaults[name])
+            return defaults[name]
         raise AttributeError(name)
 
     @abc.abstractmethod
@@ -616,6 +682,51 @@ class Plate(abc.ABC):
                 return None
             self._node_kdtree_cache = cKDTree(points, balanced_tree=False, compact_nodes=False)
         return self._node_kdtree_cache
+
+    def surface_nodes(self, *field_names: str) -> SurfaceNodes:
+        """Bulk positions and fields in the surface's canonical per-revision order."""
+        world_xyz, _ = self.all_points_and_elevation()
+        local_xyz = geometry.to_local(self._frame, world_xyz)
+        return SurfaceNodes(
+            local_xyz=local_xyz,
+            world_xyz=world_xyz,
+            fields={name: self.collect(name) for name in field_names},
+        )
+
+    def adjacency(self) -> SurfaceAdjacency:
+        """Local proximity adjacency for compatibility implementations.
+
+        A future mesh surface overrides this with connectivity from its authoritative cells.
+        The compatibility implementation infers the current surface's typical spacing and
+        uses a 1.6-spacing neighbourhood. This includes immediate lattice neighbours without
+        baking the configured line density into the contract.
+        """
+        points = self.all_points_and_elevation()[0]
+        n = len(points)
+        if n == 0:
+            return SurfaceAdjacency(np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64))
+        tree = cKDTree(points)
+        if n == 1:
+            return SurfaceAdjacency(np.zeros(2, dtype=np.int64), np.zeros(0, dtype=np.int64))
+        nearest = tree.query(points, k=2)[0][:, 1]
+        finite_positive = nearest[np.isfinite(nearest) & (nearest > 0.0)]
+        if len(finite_positive) == 0:
+            return SurfaceAdjacency(np.zeros(n + 1, dtype=np.int64), np.zeros(0, dtype=np.int64))
+        radius = 1.6 * float(np.median(finite_positive))
+        pairs = tree.query_pairs(radius, output_type="ndarray")
+        neighbours: list[list[int]] = [[] for _ in range(n)]
+        for a, b in pairs:
+            neighbours[int(a)].append(int(b))
+            neighbours[int(b)].append(int(a))
+        offsets = np.zeros(n + 1, dtype=np.int64)
+        offsets[1:] = np.cumsum([len(values) for values in neighbours])
+        flat = np.fromiter((j for values in neighbours for j in sorted(values)), dtype=np.int64)
+        return SurfaceAdjacency(offsets, flat)
+
+    def boundary_loops_world(self) -> tuple[np.ndarray, ...]:
+        """Outer/inner boundary loops; generic surfaces expose their single outline."""
+        outline = self.outline_world()
+        return () if len(outline) == 0 else (outline,)
 
     def _invalidate_bounding_polygon(self) -> None:
         self._bounding_polygon_cache = None
@@ -995,11 +1106,26 @@ class PlateWithLines(Plate):
         return tuple(self._lines)
 
     def set_lines(self, new_lines: list[ElevationLine]) -> None:
-        self._lines = list(new_lines)
+        new_lines = list(new_lines)
+        geometry_changed = len(new_lines) != len(self._lines) or any(
+            old.phi != new.phi or not np.array_equal(old.theta, new.theta)
+            for old, new in zip(self._lines, new_lines)
+        )
+        self._lines = new_lines
+        if geometry_changed:
+            self._topology_revision += 1
+            self._geometry_revision += 1
+        # Preserve the legacy mutation-boundary guarantee: callers may have replaced an
+        # array in place before handing the line back, which equality cannot reliably spot.
         self._invalidate_bounding_polygon()
 
     def replace_line(self, index: int, new_line: ElevationLine) -> None:
+        old_line = self._lines[index]
+        geometry_changed = old_line.phi != new_line.phi or not np.array_equal(old_line.theta, new_line.theta)
         self._lines[index] = new_line
+        if geometry_changed:
+            self._topology_revision += 1
+            self._geometry_revision += 1
         self._invalidate_bounding_polygon()
 
     def has_negligible_territory(self) -> bool:
@@ -1056,6 +1182,19 @@ class PlateWithLines(Plate):
         theta_arr = np.array([t for _, t in loop])
         loop_local = geometry.local_xyz(phi_arr, theta_arr)
         return geometry.to_world(self._frame, loop_local)
+
+    def boundary_loops_world(self) -> tuple[np.ndarray, ...]:
+        """Every derived territory loop, preserving holes instead of keyhole-stitching."""
+        lines = [line for line in self._lines if len(line) > 0]
+        loops = _plate_outline_loops(_row_intervals(lines)) if lines else []
+        result = []
+        for loop in loops:
+            if len(loop) < 3:
+                continue
+            phi = np.asarray([p for p, _ in loop])
+            theta = np.asarray([t for _, t in loop])
+            result.append(geometry.to_world(self._frame, geometry.local_xyz(phi, theta)))
+        return tuple(result)
 
     def _get_row_lookup(self) -> _RowLookup | None:
         """`_RowLookup`, cached and invalidated the same way `get_bounding_polygon` is (see
@@ -1231,6 +1370,13 @@ class PlateWithLines(Plate):
                 yield point, world_xyz, fraction
 
     def set_fields_on_plate(self, **fields: np.ndarray) -> None:
+        expected = self.node_count()
+        invalid = [name for name in fields if name != "elevation" and name not in ElevationLine.OPTIONAL_FIELDS]
+        if invalid:
+            raise ValueError(f"unknown surface field(s): {', '.join(sorted(invalid))}")
+        wrong = {name: np.asarray(values).shape for name, values in fields.items() if np.asarray(values).shape != (expected,)}
+        if wrong:
+            raise ValueError(f"surface fields must have shape ({expected},); got {wrong}")
         offset = 0
         for line in self._lines:
             n = len(line)
@@ -1789,4 +1935,3 @@ def _land_noise_threshold(
     target_sub_fraction = min(land_fraction / continental_area_fraction, 1.0)
     continental_noise = noise.sample(sample_pts[is_continental])
     return float(np.quantile(continental_noise, 1.0 - target_sub_fraction)) - sealevel_noise_offset
-

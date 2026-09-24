@@ -1347,8 +1347,6 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
     generic-field-list choice `ElevationLine`'s own docstring already argues for (the
     alternative -- a hand-picked field subset -- is exactly what silently dropped
     is_volcano/volcano_active_years_remaining before OPTIONAL_FIELDS existed)."""
-    if not hasattr(plate, "lines"):
-        return
     active = [
         f for f in _all_faults(world)
         if f.plate_id == plate.plate_id and f.active and f.kind == _KIND_STRIKE_SLIP
@@ -1420,8 +1418,6 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
 
 
 def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _cache: dict | None = None) -> None:
-    if not hasattr(plate, "lines"):
-        return
     active = [f for f in _all_faults(world) if f.plate_id == plate.plate_id and f.active]
     if not active:
         return
@@ -1433,10 +1429,9 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
 
     # Work in crustal thickness, on the fixed post-deform node layout. A fault may
     # redistribute a column, but cannot add a second shortening increment.
-    lines = [line for line in plate.lines if len(line)]
-    hc = np.concatenate([line.crustal_thickness_m for line in lines]).copy()
-    hm = np.concatenate([line.mantle_lithosphere_thickness_m for line in lines])
-    crust_type = np.concatenate([line.crust_type_code for line in lines])
+    hc = plate.collect("crustal_thickness_m").copy()
+    hm = plate.collect("mantle_lithosphere_thickness_m")
+    crust_type = plate.collect("crust_type_code")
     rho = lithosphere.node_crust_density(crust_type, plate.crust_type)
     original_hc = hc.copy()
     reason = np.zeros(len(own_points), dtype=float)
@@ -1510,41 +1505,22 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
     if not np.any(hc != original_hc):
         return
 
-    new_lines = []
-    offset = 0
-    changed = False
-    for line in plate.lines:
-        n = len(line)
-        if n == 0:
-            new_lines.append(line)
-            continue
-        seg_hc = hc[offset : offset + n]
-        old_hc = original_hc[offset : offset + n]
-        seg_reason = reason[offset : offset + n]
-        offset += n
-        if not np.any(seg_hc != old_hc):
-            new_lines.append(line)
-            continue
-        # Apply only the equilibrium change supported by the transferred Hc. Any
-        # preexisting elevation offset remains unchanged (issue #189).
-        line_rho = lithosphere.node_crust_density(line.crust_type_code, plate.crust_type)
-        old_equilibrium = lithosphere.isostatic_elevation(
-            old_hc, line.mantle_lithosphere_thickness_m, line_rho
-        )
-        new_equilibrium = lithosphere.isostatic_elevation(
-            seg_hc, line.mantle_lithosphere_thickness_m, line_rho
-        )
-        new_crustal_thickness = seg_hc
-        new_elev = np.clip(
-            line.elevation + new_equilibrium - old_equilibrium,
-            lithosphere.MIN_ELEVATION_M, lithosphere.MAX_ELEVATION_M,
-        )
-        moved = np.abs(new_elev - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
-        new_reason = np.where(moved & (seg_reason > 0), seg_reason, line.elev_change_reason)
-        new_lines.append(line.replace(elevation=new_elev, crustal_thickness_m=new_crustal_thickness, elev_change_reason=new_reason))
-        changed = True
-    if changed:
-        plate.set_lines(new_lines)
+    elevation = plate.collect("elevation")
+    old_equilibrium = lithosphere.isostatic_elevation(original_hc, hm, rho)
+    new_equilibrium = lithosphere.isostatic_elevation(hc, hm, rho)
+    new_elevation = np.clip(
+        elevation + new_equilibrium - old_equilibrium,
+        lithosphere.MIN_ELEVATION_M,
+        lithosphere.MAX_ELEVATION_M,
+    )
+    moved = np.abs(new_elevation - elevation) >= ELEV_CHANGE_MIN_DELTA_M
+    old_reason = plate.collect("elev_change_reason")
+    new_reason = np.where(moved & (reason > 0), reason, old_reason)
+    plate.set_fields_on_plate(
+        elevation=new_elevation,
+        crustal_thickness_m=hc,
+        elev_change_reason=new_reason,
+    )
 
 
 # --------------------------------------------------------------------------- earthquakes
