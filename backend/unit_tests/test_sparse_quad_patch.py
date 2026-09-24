@@ -354,6 +354,29 @@ def test_boundary_loop_includes_exposed_half_of_coarse_side():
     assert np.all(geometry.points_in_spherical_polygon(centres, loops[0]))
 
 
+def test_constructor_and_loader_reject_unbalanced_leaf_layouts():
+    coarse = pack_cell_keys(0, 0, 0)
+    two_levels_finer = pack_cell_keys(0, 4, 0, level=2)
+    invalid_keys = np.array([coarse, two_levels_finer])
+
+    with pytest.raises(ValueError, match="2:1 balanced"):
+        _plate(invalid_keys, n=8)
+
+    state = _plate(np.array([coarse]), n=8).__getstate__()
+    state["_keys"] = invalid_keys
+    fresh = PlateWithSparseQuadPatch.__new__(PlateWithSparseQuadPatch)
+    with pytest.raises(ValueError, match="2:1 balanced"):
+        fresh.__setstate__(state)
+
+
+def test_constructor_rejects_active_ancestor_and_descendant():
+    root = pack_cell_keys(0, 0, 0)
+    child = child_cell_keys(np.array([root]))[0, 0]
+
+    with pytest.raises(ValueError, match="active ancestor"):
+        _plate(np.array([root, child]), n=8)
+
+
 def test_coarsen_applies_every_field_policy_and_conserves_extensive_integrals():
     root = int(pack_cell_keys(0, 4, 4))
     children = child_cell_keys(np.array([root]))[0]

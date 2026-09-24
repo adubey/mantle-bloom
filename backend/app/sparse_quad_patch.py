@@ -347,6 +347,7 @@ class PlateWithSparseQuadPatch(Plate):
             self._check_field(name, values, len(order))
             self._fields[name] = np.asarray(values, dtype=SURFACE_FIELDS[name].dtype)[order].copy()
         self._reset_caches()
+        self._validate_leaf_topology()
 
     @classmethod
     def from_lattice(
@@ -467,6 +468,30 @@ class PlateWithSparseQuadPatch(Plate):
             return np.full(keys.shape, -1, dtype=np.int64)
         pos = np.clip(np.searchsorted(self._keys, keys), 0, len(self._keys) - 1)
         return np.where(self._keys[pos] == keys, pos, -1)
+
+    def _validate_leaf_topology(self) -> None:
+        """Reject imported layouts that violate the balanced, non-overlapping leaf model.
+
+        Remeshing preserves these invariants itself. Validation belongs at construction and
+        load boundaries so malformed future topology edits fail clearly instead of surfacing
+        later as a broken adjacency or boundary-loop traversal.
+        """
+        _, levels, _, _ = unpack_cell_keys(self._keys)
+        if len(levels) == 0 or np.all(levels == 0):
+            return
+        active = set(map(int, self._keys))
+        for key, level in zip(self._keys, levels):
+            ancestor = int(key)
+            for _ in range(int(level)):
+                ancestor = int(parent_cell_keys(np.array([ancestor]))[0])
+                if ancestor in active:
+                    raise ValueError("active sparse-quad leaves must not overlap an active ancestor")
+
+        graph = self.adjacency()
+        for cell in range(len(self._keys)):
+            neighbours = graph.neighbours[graph.offsets[cell] : graph.offsets[cell + 1]]
+            if np.any(np.abs(levels[neighbours] - levels[cell]) > 1):
+                raise ValueError("sparse-quad leaf topology must be 2:1 balanced across every edge")
 
     def _leaf_key_at(self, points: np.ndarray) -> np.ndarray:
         """Active leaf containing each local point, or -1 outside this patch."""
@@ -879,3 +904,4 @@ class PlateWithSparseQuadPatch(Plate):
         del state["_surface_format_version"]
         self.__dict__.update(state)
         self._reset_caches()
+        self._validate_leaf_topology()
