@@ -4,6 +4,7 @@ import numpy as np
 
 from app.elevation_lines import ElevationLine
 from app.plates import PlateSurface, PlateWithLines
+from app.surface_fields import SURFACE_FIELDS, RemapClass
 
 
 def _surface() -> PlateSurface:
@@ -20,6 +21,11 @@ def test_surface_bulk_view_has_one_stable_order_for_positions_and_fields():
     nodes = surface.surface_nodes("elevation", "is_volcano")
 
     assert nodes.local_xyz.shape == nodes.world_xyz.shape == (9, 3)
+    assert nodes.node_ids.shape == (9, 2)
+    assert len({tuple(node_id) for node_id in nodes.node_ids}) == 9
+    assert nodes.area_m2.shape == (9,)
+    assert np.all(nodes.area_m2 > 0.0)
+    assert not nodes.area_is_exact
     np.testing.assert_allclose(nodes.local_xyz, nodes.world_xyz)
     np.testing.assert_array_equal(nodes.fields["elevation"], np.arange(1.0, 10.0))
     assert nodes.fields["is_volcano"].dtype == bool
@@ -53,11 +59,13 @@ def test_surface_adjacency_is_valid_symmetric_csr():
 
 def test_surface_revisions_distinguish_fields_rigid_motion_and_topology_change():
     surface = _surface()
+    ids0 = surface.surface_nodes().node_ids.copy()
     topology0, geometry0 = surface.topology_revision, surface.geometry_revision
     surface.rotate(np.eye(3))  # type: ignore[attr-defined]
 
     assert surface.topology_revision == topology0
     assert surface.geometry_revision == geometry0 + 1
+    np.testing.assert_array_equal(surface.surface_nodes().node_ids, ids0)
 
     line_surface = surface
     assert isinstance(line_surface, PlateWithLines)
@@ -120,3 +128,27 @@ def test_surface_boundary_api_preserves_inner_loops():
 
     assert len(loops) == 2
     assert all(loop.shape[1] == 3 for loop in loops)
+
+
+def test_surface_ids_distinguish_coincident_legacy_nodes_and_area_is_not_double_counted():
+    duplicate_a = ElevationLine(phi=0.0, theta=np.array([0.0]), elevation=np.zeros(1))
+    duplicate_b = ElevationLine(phi=0.0, theta=np.array([0.0]), elevation=np.zeros(1))
+    neighbour = ElevationLine(phi=0.0, theta=np.array([0.01]), elevation=np.zeros(1))
+    surface: PlateSurface = PlateWithLines(9, np.eye(3), "oceanic", [duplicate_a, duplicate_b, neighbour])
+
+    nodes = surface.surface_nodes()
+
+    assert len({tuple(node_id) for node_id in nodes.node_ids}) == 3
+    np.testing.assert_allclose(nodes.area_m2[0], nodes.area_m2[1])
+    np.testing.assert_allclose(nodes.area_m2[0] + nodes.area_m2[1], nodes.area_m2[2])
+
+
+def test_every_persistent_field_has_remap_metadata():
+    expected = {"elevation", *ElevationLine.OPTIONAL_FIELDS}
+    surface = _surface()
+
+    assert surface.field_metadata() is SURFACE_FIELDS
+    assert set(surface.field_metadata()) == expected
+    assert SURFACE_FIELDS["crustal_thickness_m"].remap_class is RemapClass.EXTENSIVE
+    assert SURFACE_FIELDS["is_volcano"].remap_class is RemapClass.BOOLEAN_PROVENANCE
+    assert SURFACE_FIELDS["node_created_years"].sentinel == -1.0

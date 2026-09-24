@@ -35,6 +35,7 @@ from .elevation_lines import (
     line_spacing_rad,
     split_into_contiguous_runs,
 )
+from .surface_fields import SURFACE_FIELDS, SurfaceField
 
 if TYPE_CHECKING:
     from . import terrain_noise
@@ -92,6 +93,9 @@ class SurfaceNodes:
 
     local_xyz: np.ndarray
     world_xyz: np.ndarray
+    node_ids: np.ndarray
+    area_m2: np.ndarray
+    area_is_exact: bool
     fields: Mapping[str, np.ndarray]
 
 
@@ -132,6 +136,10 @@ class PlateSurface(abc.ABC):
 
     @abc.abstractmethod
     def contains_batch(self, points_xyz: np.ndarray) -> np.ndarray: ...
+
+    def field_metadata(self) -> Mapping[str, SurfaceField]:
+        """The complete persistent-field registry shared by every representation."""
+        return SURFACE_FIELDS
 
 
 # Two plates count as neighbours once the closest points of their two outlines come within
@@ -420,6 +428,62 @@ def node_components(points_xyz: np.ndarray, connect_radius_rad: float) -> np.nda
     return labels
 
 
+def _surface_node_ids(local_xyz: np.ndarray) -> np.ndarray:
+    """Stable topology-local IDs as ``(position hash, collision ordinal)`` uint64 pairs.
+
+    The position hash is independent of backing-store indices and rigid rotation. The second
+    word keeps coincident legacy nodes distinct (issue #230) without pretending they are one
+    material sample. Phase 3 may replace this compatibility identity with explicit lineage.
+    """
+    n = len(local_xyz)
+    if n == 0:
+        return np.zeros((0, 2), dtype=np.uint64)
+    quantized = np.rint(local_xyz * 1.0e12).astype(np.int64).view(np.uint64)
+    hashes = (
+        quantized[:, 0] * np.uint64(0x9E3779B185EBCA87)
+        ^ quantized[:, 1] * np.uint64(0xC2B2AE3D27D4EB4F)
+        ^ quantized[:, 2] * np.uint64(0x165667B19E3779F9)
+    )
+    ordinals = np.zeros(n, dtype=np.uint64)
+    seen: dict[int, int] = {}
+    for i, value in enumerate(hashes):
+        key = int(value)
+        ordinals[i] = seen.get(key, 0)
+        seen[key] = int(ordinals[i]) + 1
+    return np.column_stack([hashes, ordinals])
+
+
+def _surface_node_areas_m2(points_xyz: np.ndarray) -> np.ndarray:
+    """Legacy line-surface area weights, corrected for co-located same-plate samples.
+
+    The line representation has no authoritative cells, so these remain compatibility
+    estimates (``SurfaceNodes.area_is_exact`` is false). A typical nearest-neighbour spacing
+    supplies the nominal footprint; connected samples closer than half that spacing share one
+    footprint. This removes issue #230's most serious over-count while making the limitation
+    explicit until quad cells provide exact areas.
+    """
+    n = len(points_xyz)
+    if n == 0:
+        return np.zeros(0)
+    if n == 1:
+        return np.zeros(1)
+    tree = cKDTree(points_xyz)
+    nearest = tree.query(points_xyz, k=2)[0][:, 1]
+    positive = nearest[np.isfinite(nearest) & (nearest > 1.0e-12)]
+    if len(positive) == 0:
+        return np.zeros(n)
+    chord = float(np.median(positive))
+    spacing_rad = 2.0 * np.arcsin(min(chord / 2.0, 1.0))
+    nominal = (PLANET_RADIUS_KM * 1000.0 * spacing_rad) ** 2
+    pairs = tree.query_pairs(0.5 * chord, output_type="ndarray")
+    if len(pairs) == 0:
+        return np.full(n, nominal)
+    graph = coo_matrix((np.ones(len(pairs)), (pairs[:, 0], pairs[:, 1])), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+    counts = np.bincount(labels)
+    return nominal / counts[labels]
+
+
 class Plate(PlateSurface, abc.ABC):
     """A plate's shared identity/motion state plus an abstract interface over however it
     represents its own terrain nodes -- `PlateWithLines` (parallel `ElevationLine`s, see
@@ -690,6 +754,9 @@ class Plate(PlateSurface, abc.ABC):
         return SurfaceNodes(
             local_xyz=local_xyz,
             world_xyz=world_xyz,
+            node_ids=_surface_node_ids(local_xyz),
+            area_m2=_surface_node_areas_m2(world_xyz),
+            area_is_exact=False,
             fields={name: self.collect(name) for name in field_names},
         )
 
@@ -1332,6 +1399,24 @@ class PlateWithLines(Plate):
         `get_bounding_polygon()`); elevation is gathered fresh every call since it changes
         without a node-set mutation."""
         return self._get_world_points(), self.collect("elevation")
+
+    def surface_nodes(self, *field_names: str) -> SurfaceNodes:
+        lines = [line for line in self._lines if len(line) > 0]
+        if lines:
+            theta = np.concatenate([line.theta for line in lines])
+            phi = np.repeat(np.asarray([line.phi for line in lines]), [len(line) for line in lines])
+            local_xyz = geometry.local_xyz(phi, theta)
+        else:
+            local_xyz = np.zeros((0, 3))
+        world_xyz = self._get_world_points()
+        return SurfaceNodes(
+            local_xyz=local_xyz,
+            world_xyz=world_xyz,
+            node_ids=_surface_node_ids(local_xyz),
+            area_m2=_surface_node_areas_m2(world_xyz),
+            area_is_exact=False,
+            fields={name: self.collect(name) for name in field_names},
+        )
 
     def collect(self, field_name: str) -> np.ndarray:
         chunks = [getattr(line, field_name) for line in self._lines if len(line) > 0]
