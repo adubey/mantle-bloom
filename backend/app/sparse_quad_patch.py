@@ -203,6 +203,29 @@ def _corner_keys(face: np.ndarray, ci: np.ndarray, cj: np.ndarray, n: int) -> np
     return (shifted[..., 0] << 42) | (shifted[..., 1] << 21) | shifted[..., 2]
 
 
+def _corner_coordinates(
+    face: np.ndarray,
+    ci: np.ndarray,
+    cj: np.ndarray,
+    resolution: np.ndarray,
+    common_resolution: int,
+) -> np.ndarray:
+    """Exact cube-surface coordinates at one common dyadic resolution.
+
+    Unlike the compact level-zero corner key, three explicit int64 coordinates cannot
+    collide at deep refinement. All active resolutions differ by powers of two, so scaling
+    to the finest active level is exact across levels and cube-face seams.
+    """
+    face = np.asarray(face, dtype=np.int64)
+    resolution = np.asarray(resolution, dtype=np.int64)
+    point = (
+        resolution[..., None] * _FACE_AXES[face, 0]
+        + (2 * np.asarray(ci, dtype=np.int64) - resolution)[..., None] * _FACE_AXES[face, 1]
+        + (2 * np.asarray(cj, dtype=np.int64) - resolution)[..., None] * _FACE_AXES[face, 2]
+    )
+    return point * (common_resolution // resolution)[..., None]
+
+
 @dataclass(frozen=True)
 class CellIntervals:
     """Runs of consecutive active cells along one lattice direction, sorted by
@@ -282,6 +305,7 @@ class PlateWithSparseQuadPatch(Plate):
         "_local_loops_cache",
         "_row_intervals_cache",
         "_column_intervals_cache",
+        "_probe_neighbours_cache",
     )
     _GEOMETRY_CACHES = (
         "_world_points_cache",
@@ -456,34 +480,42 @@ class PlateWithSparseQuadPatch(Plate):
         return result
 
     def _neighbour_indices(self) -> np.ndarray:
-        """(n, 4) node index of each edge neighbour, -1 where that side is exposed."""
+        """Unique edge-neighbour indices, padded with -1 for the internal cache."""
         if self._adjacency_cache is None:
-            face, level, i, j = self._unpacked()
-            rows: list[list[int]] = []
-            for f, lev, ii, jj in zip(face, level, i, j):
-                scale = 1 << int(lev)
-                neighbours: list[int] = []
-                for direction in range(4):
-                    for along in (0.25, 0.75):
-                        if direction == 0:
-                            a, b = ii + along, jj - _NEIGHBOUR_PROBE_FRACTION
-                        elif direction == 1:
-                            a, b = ii + 1 + _NEIGHBOUR_PROBE_FRACTION, jj + along
-                        elif direction == 2:
-                            a, b = ii + 1 - along, jj + 1 + _NEIGHBOUR_PROBE_FRACTION
-                        else:
-                            a, b = ii - _NEIGHBOUR_PROBE_FRACTION, jj + 1 - along
-                        point = lattice_points(np.array([f]), np.array([a / scale]), np.array([b / scale]), self._n)
-                        key = int(self._leaf_key_at(point)[0])
-                        index = int(self._index_of_keys(np.array([key]))[0]) if key >= 0 else -1
-                        if index >= 0 and index not in neighbours:
-                            neighbours.append(index)
-                rows.append(sorted(neighbours))
-            width = max((len(row) for row in rows), default=0)
-            self._adjacency_cache = np.full((len(rows), width), -1, dtype=np.int64)
-            for row_index, row in enumerate(rows):
-                self._adjacency_cache[row_index, : len(row)] = row
+            probes = np.sort(self._probe_neighbour_indices().reshape(len(self._keys), -1), axis=1)
+            keep = probes >= 0
+            if probes.shape[1] > 1:
+                keep[:, 1:] &= probes[:, 1:] != probes[:, :-1]
+            counts = keep.sum(axis=1)
+            width = int(counts.max(initial=0))
+            self._adjacency_cache = np.full((len(probes), width), -1, dtype=np.int64)
+            if width:
+                columns = np.cumsum(keep, axis=1) - 1
+                row = np.broadcast_to(np.arange(len(probes))[:, None], probes.shape)[keep]
+                self._adjacency_cache[row, columns[keep]] = probes[keep]
         return self._adjacency_cache
+
+    def _probe_neighbour_indices(self) -> np.ndarray:
+        """(node, side, half) leaf indices found just across each edge, fully batched."""
+        if self._probe_neighbours_cache is None:
+            face, level, i, j = self._unpacked()
+            scale = np.left_shift(1, level)
+            a = np.empty((len(face), 4, 2), dtype=float)
+            b = np.empty_like(a)
+            along = np.array([0.25, 0.75])
+            a[:, 0, :], b[:, 0, :] = i[:, None] + along, j[:, None] - _NEIGHBOUR_PROBE_FRACTION
+            a[:, 1, :], b[:, 1, :] = i[:, None] + 1 + _NEIGHBOUR_PROBE_FRACTION, j[:, None] + along
+            a[:, 2, :], b[:, 2, :] = i[:, None] + 1 - along, j[:, None] + 1 + _NEIGHBOUR_PROBE_FRACTION
+            a[:, 3, :], b[:, 3, :] = i[:, None] - _NEIGHBOUR_PROBE_FRACTION, j[:, None] + 1 - along
+            points = lattice_points(
+                np.broadcast_to(face[:, None, None], a.shape).reshape(-1),
+                (a / scale[:, None, None]).reshape(-1),
+                (b / scale[:, None, None]).reshape(-1),
+                self._n,
+            )
+            keys = self._leaf_key_at(points)
+            self._probe_neighbours_cache = self._index_of_keys(keys).reshape(len(face), 4, 2)
+        return self._probe_neighbours_cache
 
     # --- PlateSurface ------------------------------------------------------------------
 
@@ -546,57 +578,45 @@ class PlateWithSparseQuadPatch(Plate):
         if self._local_loops_cache is not None:
             return self._local_loops_cache
         face, level, i, j = self._unpacked()
-        max_level = int(level.max(initial=0))
-        max_n = self._n * (1 << max_level)
-        # Express every leaf edge as finest-level atomic segments. Shared edges then cancel
-        # exactly, including a coarse edge facing two fine cells and cube-face seams.
-        segments: dict[tuple[int, int], tuple[int, int, np.ndarray, np.ndarray]] = {}
-        for f, lev, ii, jj in zip(face, level, i, j):
-            scale = 1 << (max_level - int(lev))
-            x0, y0 = int(ii) * scale, int(jj) * scale
-            oriented = []
-            for k in range(scale):
-                oriented.extend(
-                    [
-                        ((x0 + k, y0), (x0 + k + 1, y0)),
-                        ((x0 + scale, y0 + k), (x0 + scale, y0 + k + 1)),
-                        ((x0 + scale - k, y0 + scale), (x0 + scale - k - 1, y0 + scale)),
-                        ((x0, y0 + scale - k), (x0, y0 + scale - k - 1)),
-                    ]
-                )
-            for (ai, aj), (bi, bj) in oriented:
-                akey = int(_corner_keys(np.array([f]), np.array([ai]), np.array([aj]), max_n)[0])
-                bkey = int(_corner_keys(np.array([f]), np.array([bi]), np.array([bj]), max_n)[0])
-                identity = tuple(sorted((akey, bkey)))
-                if identity in segments:
-                    del segments[identity]
-                else:
-                    axyz = lattice_points(np.array([f]), np.array([ai]), np.array([aj]), max_n)[0]
-                    bxyz = lattice_points(np.array([f]), np.array([bi]), np.array([bj]), max_n)[0]
-                    segments[identity] = (akey, bkey, axyz, bxyz)
-        if not segments:
+        if not len(face):
             self._local_loops_cache = []
             return self._local_loops_cache
-        start_key = np.array([segment[0] for segment in segments.values()])
-        end_key = np.array([segment[1] for segment in segments.values()])
-        start_xyz = np.array([segment[2] for segment in segments.values()])
-        end_xyz = np.array([segment[3] for segment in segments.values()])
 
-        by_start: dict[int, list[int]] = {}
-        for e, key in enumerate(start_key.tolist()):
+        # Only genuinely exposed sides contribute. A coarse/fine interior interface has two
+        # successful probes; unlike finest-global segmentation, the cost stays O(leaves)
+        # regardless of the depth range elsewhere on the plate.
+        exposed = np.all(self._probe_neighbour_indices() < 0, axis=2)
+        cell, direction = np.nonzero(exposed)
+        corners = np.asarray(_EDGE_CORNERS)[direction]
+        f, lev = face[cell], level[cell]
+        resolution = self._n * np.left_shift(1, lev)
+        common_resolution = int(resolution.max(initial=self._n))
+        start_i = i[cell] + corners[:, 0, 0]
+        start_j = j[cell] + corners[:, 0, 1]
+        end_i = i[cell] + corners[:, 1, 0]
+        end_j = j[cell] + corners[:, 1, 1]
+        start_key = _corner_coordinates(f, start_i, start_j, resolution, common_resolution)
+        end_key = _corner_coordinates(f, end_i, end_j, resolution, common_resolution)
+        # Integer cube coordinates are identities, not geometric positions: the lattice is
+        # equiangular rather than uniformly spaced on a gnomonic cube face.
+        start_xyz = lattice_points(f, start_i, start_j, resolution)
+        end_xyz = lattice_points(f, end_i, end_j, resolution)
+
+        by_start: dict[tuple[int, int, int], list[int]] = {}
+        for e, key in enumerate(map(tuple, start_key.tolist())):
             by_start.setdefault(key, []).append(e)
 
         def successor(e: int) -> int:
-            candidates = by_start[int(end_key[e])]
+            candidates = by_start[tuple(end_key[e])]
             if len(candidates) == 1:
                 return candidates[0]
             vertex = end_xyz[e]
             incoming = vertex - start_xyz[e]
             return max(candidates, key=lambda c: float(np.dot(np.cross(incoming, end_xyz[c] - vertex), vertex)))
 
-        used = np.zeros(len(segments), dtype=bool)
+        used = np.zeros(len(cell), dtype=bool)
         loops: list[np.ndarray] = []
-        for first in range(len(segments)):
+        for first in range(len(cell)):
             if used[first]:
                 continue
             chain = []
@@ -721,15 +741,21 @@ class PlateWithSparseQuadPatch(Plate):
         all_fields: Mapping[str, np.ndarray],
     ) -> float | int | bool:
         spec = SURFACE_FIELDS[name]
-        if name == "elevation" and all(
-            field in all_fields
-            for field in ("crustal_thickness_m", "mantle_lithosphere_thickness_m", "crust_type_code")
-        ):
+        if name == "elevation":
             from . import lithosphere
 
-            hc = all_fields["crustal_thickness_m"]
-            hm = all_fields["mantle_lithosphere_thickness_m"]
-            codes = all_fields["crust_type_code"]
+            hc = all_fields.get(
+                "crustal_thickness_m",
+                np.full(len(values), SURFACE_FIELDS["crustal_thickness_m"].default),
+            )
+            hm = all_fields.get(
+                "mantle_lithosphere_thickness_m",
+                np.full(len(values), SURFACE_FIELDS["mantle_lithosphere_thickness_m"].default),
+            )
+            codes = all_fields.get(
+                "crust_type_code",
+                np.full(len(values), SURFACE_FIELDS["crust_type_code"].default, dtype=np.int8),
+            )
             density = lithosphere.node_crust_density(codes, self.crust_type)
             residual = values - lithosphere.isostatic_elevation(hc, hm, density)
             new_hc = float(np.average(hc, weights=areas))
@@ -762,7 +788,10 @@ class PlateWithSparseQuadPatch(Plate):
                 ]
                 if len(structural):
                     tied = structural
-            return tied[0]
+            winner = tied[0]
+            if name == "crust_type_code" and winner == inherited:
+                return 0
+            return winner
         if spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
             return bool(np.any(values))
         if spec.remap_class == RemapClass.COUNTDOWN:
