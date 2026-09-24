@@ -1,0 +1,11 @@
+{
+ "load_s": 1.147,
+ "advance_s": 80.65,
+ "line_topology_s": 0.01694,
+ "sample_cloud_s": 0.8308,
+ "implied_cells_s": 0.301,
+ "outline_rebuild_s": 0.05102,
+ "contains_batch_samples_s": 1.671,
+ "coverage_s": 3.909,
+ "conservation_s": 1.125
+}
