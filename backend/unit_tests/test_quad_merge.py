@@ -1,6 +1,8 @@
 """Cross-plate merge on sparse quad plates (issue #228 Phase 4): the frame remap of an absorbed
 plate onto the surviving plate's lattice, checked by exact cell area -- see quad_merge.py."""
 
+import copy
+
 import numpy as np
 import pytest
 
@@ -263,19 +265,113 @@ def test_merged_elevation_is_isostatic_plus_the_carried_residual():
     assert np.allclose((keep.collect("elevation") - isostatic)[new], -250.0)
 
 
-def test_merge_conserves_angular_momentum():
+def _momentum(*plates) -> np.ndarray:
+    return sum(quad_merge._inertia(p) @ p.omega for p in plates)
+
+
+def test_merge_conserves_angular_momentum_against_the_merged_plates_own_inertia():
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
     keep.set_omega(np.array([0.0, 0.0, 1e-9]))
     absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
-    inertia_keep = quad_merge._inertia(keep)
-    inertia_absorb = quad_merge._inertia(absorb)
-    momentum = inertia_keep @ keep.omega + inertia_absorb @ absorb.omega
+    momentum = _momentum(keep, absorb)
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
-    assert np.allclose((inertia_keep + inertia_absorb) @ keep.omega, momentum, rtol=1e-9)
+    assert np.allclose(quad_merge._inertia(keep) @ keep.omega, momentum, rtol=1e-12, atol=0.0)
     assert keep.age_steps == 0
+
+
+def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentum():
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
+    keep.set_fields_on_plate(crustal_thickness_m=np.full(keep.node_count(), 0.95 * SUTURE_ACCRETION_MAX_HC_M))
+    keep.set_omega(np.array([0.0, 0.0, 1e-9]))
+    absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
+    momentum = _momentum(keep, absorb)
+    probe_keep, probe_absorb = copy.deepcopy(keep), copy.deepcopy(absorb)
+    lost = quad_merge._transfer(probe_keep, probe_absorb, np.zeros((0, 3)))
+    assert np.linalg.norm(lost) > 0.0
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    retained = momentum - lost @ absorb.omega
+    assert np.allclose(quad_merge._inertia(keep) @ keep.omega, retained, rtol=1e-12, atol=0.0)
+    assert not np.allclose(retained, momentum, rtol=1e-6, atol=0.0)
+
+
+def _overlapping_pair():
+    """A survivor and an absorbed plate on the same lattice, the absorbed one wholly on top
+    of the survivor: every absorbed cell lands on exactly one survivor cell (the suture)."""
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, np.eye(3), _direction(0.0), radius=0.5 * RADIUS)
+    hc, _ = lithosphere.reference_thickness("continental")
+    keep.set_fields_on_plate(crustal_thickness_m=np.full(keep.node_count(), 0.5 * hc))
+    absorb.set_fields_on_plate(crustal_thickness_m=np.full(absorb.node_count(), 0.5 * hc))
+    lithosphere.sync_plate_elevation(keep)
+    lithosphere.sync_plate_elevation(absorb)
+    under = keep.contains_batch(absorb.all_points_and_elevation()[0])
+    assert under.all()
+    stacked = np.isin(keep.cell_keys, absorb.cell_keys)
+    return keep, absorb, stacked
+
+
+def test_a_wholly_overlapping_merge_keeps_the_absorbed_volcanoes():
+    keep, absorb, stacked = _overlapping_pair()
+    absorb.set_fields_on_plate(
+        is_volcano=np.ones(absorb.node_count(), dtype=bool),
+        volcano_active_years_remaining=np.full(absorb.node_count(), 5e5),
+    )
+    count = keep.node_count()
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    assert keep.node_count() == count
+    assert np.all(keep.collect("is_volcano")[stacked])
+    assert np.all(keep.collect("volcano_active_years_remaining")[stacked] == 5e5)
+    assert not np.any(keep.collect("is_volcano")[~stacked])
+
+
+def test_suture_cells_combine_both_plates_by_remap_class():
+    keep, absorb, stacked = _overlapping_pair()
+    keep.set_fields_on_plate(
+        divergent_age_myr=np.full(keep.node_count(), 10.0),
+        node_created_years=np.full(keep.node_count(), 3e6),
+        overlap_onset_years=np.zeros(keep.node_count()),
+        elev_change_reason=np.full(keep.node_count(), 3.0),
+    )
+    absorb.set_fields_on_plate(
+        divergent_age_myr=np.full(absorb.node_count(), 30.0),
+        node_created_years=np.full(absorb.node_count(), 1e6),
+        overlap_onset_years=np.full(absorb.node_count(), 2e6),
+        elev_change_reason=np.full(absorb.node_count(), 5.0),
+        # Thinner explicitly oceanic crust: outvoted by the survivor's by volume.
+        crust_type_code=np.full(absorb.node_count(), CRUST_TYPE_OCEANIC, dtype=np.int8),
+        crustal_thickness_m=np.full(absorb.node_count(), 7000.0),
+    )
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    # Intensive: area-weighted mean of two equal-area contributions.
+    assert np.allclose(keep.collect("divergent_age_myr")[stacked], 20.0)
+    assert np.allclose(keep.collect("divergent_age_myr")[~stacked], 10.0)
+    # History: the earliest valid time, ignoring the sentinel.
+    assert np.all(keep.collect("node_created_years")[stacked] == 1e6)
+    assert np.all(keep.collect("overlap_onset_years")[stacked] == 2e6)
+    # Categorical: an equal-area tie keeps the survivor's; composition votes by volume.
+    assert np.all(keep.collect("elev_change_reason")[stacked] == 3.0)
+    assert np.all(keep.collect("crust_type_code")[stacked] == CRUST_TYPE_INHERIT)
+
+
+def test_suture_elevation_blends_both_residuals():
+    keep, absorb, stacked = _overlapping_pair()
+    absorb.set_fields_on_plate(elevation=absorb.collect("elevation") - 200.0)
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    density = lithosphere.node_crust_density(keep.collect("crust_type_code"), keep.crust_type)
+    isostatic = lithosphere.isostatic_elevation(keep.collect("crustal_thickness_m"), keep.collect("mantle_lithosphere_thickness_m"), density)
+    assert np.allclose((keep.collect("elevation") - isostatic)[stacked], -100.0)
 
 
 def test_quad_pairs_are_offered_to_merge_and_fuse_through_merge_plates():

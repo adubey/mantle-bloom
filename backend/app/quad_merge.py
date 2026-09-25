@@ -23,7 +23,8 @@ onto that plate's lattice by exact area:
   the surviving one (the suture), its volume stacks onto the surviving column, with Hc
   capped at `SUTURE_ACCRETION_MAX_HC_M` as in the line merge. That cap, and Hm's own
   ceiling, are the only places volume can leave. Every other field follows its
-  `surface_fields.RemapClass`, with the same rules `coarsen_cells` uses.
+  `surface_fields.RemapClass`, with the same rules `coarsen_cells` uses; on a suture cell
+  both plates' values combine that way, the survivor's weighted by its own cell area.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, rheology, torque
+from . import geometry, lithosphere, mantle, rheology
 from .elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC
 from .lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 from .surface_fields import SURFACE_FIELDS, RemapClass
@@ -56,14 +57,19 @@ NEW_CELL_MIN_COVERAGE = 0.5
 def merge(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> None:
     """Fuse `absorb` into `keep` in place: `keep`'s frame, cells, and cell IDs survive, and
     `absorb`'s territory and fields are remapped onto `keep`'s lattice by exact area (see the
-    module docstring). `omega` is the angular-momentum-conserving blend of both plates,
-    with inertia from exact cell areas. `other_points_xyz` are every other live plate's
-    nodes (world xyz), which `keep` doesn't grow over."""
-    inertia_keep = _inertia(keep)
-    inertia_absorb = _inertia(absorb)
+    module docstring). `other_points_xyz` are every other live plate's nodes (world xyz),
+    which `keep` doesn't grow over.
+
+    `omega` conserves angular momentum through the transfer: both plates' momentum before,
+    solved against the merged plate's own inertia after -- the remap moves material to new
+    cell centres, so the sum of the two plates' inertias isn't the merged plate's. Crust
+    removed at the suture cap takes its momentum with it; that is absorbed material stacked
+    over the cap, so it leaves moving with `absorb`."""
+    momentum = lithosphere.angular_momentum(_inertia(keep), keep.omega) + lithosphere.angular_momentum(_inertia(absorb), absorb.omega)
     if absorb.node_count():
-        _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3))
-    keep.set_omega(torque.merge_omega(keep, inertia_keep, absorb, inertia_absorb))
+        lost = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3))
+        momentum = momentum - lithosphere.angular_momentum(lost, absorb.omega)
+    keep.set_omega(mantle.clamp_rate(lithosphere.omega_from_angular_momentum(_inertia(keep), momentum)))
     keep.reset_age()
 
 
@@ -129,7 +135,9 @@ def _explicit_codes(codes: np.ndarray, crust_type: str) -> np.ndarray:
     return np.where(codes == CRUST_TYPE_INHERIT, inherited, codes).astype(codes.dtype)
 
 
-def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> None:
+def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> np.ndarray:
+    """Remap `absorb` onto `keep` in place; returns the inertia tensor of the mass the suture
+    caps removed (zero when nothing was capped)."""
     source, absorb_local, sub_area = subsample_cells(absorb, MERGE_REMAP_SUBSAMPLES)
     sub_world = geometry.to_world(absorb.frame, absorb_local)
     sub_local = geometry.to_local(keep.frame, sub_world)
@@ -202,68 +210,105 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
         orphan_volume = summed(values, sub_area, orphan) / target_area
         return orphan_volume, added + np.where(is_new, 0.0, orphan_volume)
 
+    # Existing cells that take in absorbed sub-cells (the suture) combine both plates' values
+    # by each field's remap class, with the survivor's own value weighted by its cell area;
+    # a new cell is the same combination with no survivor share.
+    receiving = is_new | (mapped_area > 0.0)
+    own_weight = np.where(is_new, 0.0, target_area)
+
+    def own_values(name: str) -> np.ndarray:
+        spec = SURFACE_FIELDS[name]
+        values = np.full(n, spec.default, dtype=spec.dtype)
+        values[~is_new] = old_fields[name][old_index]
+        return values
+
+    coupled = {"soil_mineral_content": "soil_depth", "soil_organic_content": "soil_depth", "channel_width": "channel_depth"}
     out: dict[str, np.ndarray] = {}
-    added_hc = np.zeros(n)
     for name in old_fields:
         spec = SURFACE_FIELDS[name]
-        merged = np.full(n, spec.default, dtype=spec.dtype)
-        merged[~is_new] = old_fields[name][old_index]
+        own = own_values(name)
+        merged = own.copy()
         values = absorb_fields[name][source]
         if spec.remap_class == RemapClass.EXTENSIVE:
             new_values, added = extensive(values)
             merged[is_new] = new_values[is_new]
             merged[~is_new] += added[~is_new]
-            if name == "crustal_thickness_m":
-                added_hc = added
         elif name == "channel_depth" or spec.remap_class == RemapClass.COUNTDOWN:
-            peak = np.full(n, -np.inf)
+            peak = np.where(is_new, -np.inf, own.astype(float))
             np.maximum.at(peak, target[mapped], values[mapped])
-            merged[is_new] = peak[is_new]
+            merged[receiving] = peak[receiving]
         elif spec.remap_class in (RemapClass.HISTORY, RemapClass.WRITE_ONCE_HISTORY):
+            earliest = np.where(~is_new & (own != spec.sentinel), own.astype(float), np.inf)
             valid = mapped & (values != spec.sentinel)
-            earliest = np.full(n, np.inf)
             np.minimum.at(earliest, target[valid], values[valid])
-            merged[is_new] = np.where(np.isfinite(earliest), earliest, spec.sentinel)[is_new]
+            merged[receiving] = np.where(np.isfinite(earliest), earliest, spec.sentinel)[receiving]
         elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
-            merged[is_new] = (summed(values.astype(float), np.ones(len(values))) > 0.0)[is_new]
+            absorbed = summed(values.astype(float), np.ones(len(values))) > 0.0
+            merged[receiving] = ((~is_new & own.astype(bool)) | absorbed)[receiving]
         elif spec.remap_class == RemapClass.CATEGORICAL:
-            choices = np.unique(values)
-            votes = np.stack([summed((values == c).astype(float), sub_area) for c in choices])
-            merged[is_new] = choices[np.argmax(votes, axis=0)][is_new]
+            # Composition votes by crust volume -- a stacked column's density follows the
+            # crust that makes it up; other categories by area. Ties keep the survivor's.
+            weight, own_vote = sub_area, own_weight
+            if name == "crust_type_code":
+                weight = sub_area * absorb_fields["crustal_thickness_m"][source]
+                own_vote = own_weight * own_values("crustal_thickness_m")
+            choices = np.unique(np.concatenate([values, own[~is_new]]))
+            votes = np.stack([summed((values == c).astype(float), weight) + own_vote * (own == c) for c in choices])
+            best = votes.max(axis=0)
+            own_votes = votes[np.minimum(np.searchsorted(choices, own), len(choices) - 1), np.arange(n)]
+            # Relative tolerance: equal areas summed from sub-cells differ in the last ulp.
+            winner = np.where(~is_new & (own_votes >= best * (1.0 - 1e-9)), own, choices[np.argmax(votes, axis=0)])
+            merged[receiving] = winner[receiving]
         elif name != "elevation":
-            weights = sub_area
-            coupled = {"soil_mineral_content": "soil_depth", "soil_organic_content": "soil_depth", "channel_width": "channel_depth"}
+            weight, own_w = sub_area, own_weight
             if name in coupled:
-                weights = sub_area * absorb_fields[coupled[name]][source]
-            merged[is_new] = weighted_mean(values, weights)[is_new]
+                weight = sub_area * absorb_fields[coupled[name]][source]
+                own_w = own_weight * own_values(coupled[name])
+            total = summed(np.ones(len(values)), weight) + own_w
+            blended = summed(values, weight) + own_w * own
+            mixed = receiving & (total > 0.0)
+            merged[mixed] = (blended / np.where(total > 0.0, total, 1.0))[mixed]
+            merged[is_new & (total <= 0.0)] = 0.0
         out[name] = merged
 
     # Crust: the suture cap applies to stacked columns only, never lowers a column already
     # past it, and caps Hm the way `quad_tectonics._accrete_onto_survivors` does.
-    stacked = ~is_new & (added_hc > 0.0)
-    old_hc = np.zeros(n)
-    old_hm = np.zeros(n)
-    old_hc[~is_new] = old_fields["crustal_thickness_m"][old_index]
-    old_hm[~is_new] = old_fields["mantle_lithosphere_thickness_m"][old_index]
+    old_hc = own_values("crustal_thickness_m")
+    old_hm = own_values("mantle_lithosphere_thickness_m")
     hc, hm = out["crustal_thickness_m"], out["mantle_lithosphere_thickness_m"]
+    uncapped_hc, uncapped_hm = hc.copy(), hm.copy()
+    stacked = ~is_new & ((hc != old_hc) | (hm != old_hm))
     hc[stacked] = np.maximum(old_hc[stacked], np.minimum(hc[stacked], SUTURE_ACCRETION_MAX_HC_M))
     hm[stacked] = np.maximum(old_hm[stacked], np.minimum(hm[stacked], lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M))
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
-    # `coarsen_cells`; a stacked column keeps its own residual and moves by the isostatic change.
+    # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
     density = lithosphere.node_crust_density(out["crust_type_code"], keep.crust_type)
     absorb_residual = absorb_fields["elevation"] - lithosphere.isostatic_elevation(
         absorb.collect("crustal_thickness_m"),
         absorb.collect("mantle_lithosphere_thickness_m"),
         lithosphere.node_crust_density(absorb.collect("crust_type_code"), absorb.crust_type),
     )
-    residual = weighted_mean(absorb_residual[source], sub_area)
+    own_residual = own_values("elevation") - lithosphere.isostatic_elevation(
+        old_hc, old_hm, lithosphere.node_crust_density(own_values("crust_type_code"), keep.crust_type)
+    )
+    total = own_weight + mapped_area
+    residual = (own_weight * own_residual + summed(absorb_residual[source], sub_area)) / np.where(total > 0.0, total, 1.0)
+    changed = receiving | stacked
     elevation = out["elevation"]
-    new_isostatic = lithosphere.isostatic_elevation(hc, hm, density)
-    elevation[is_new] = new_isostatic[is_new] + residual[is_new]
-    elevation[stacked] += new_isostatic[stacked] - lithosphere.isostatic_elevation(old_hc[stacked], old_hm[stacked], density[stacked])
-    out["elevation"] = rheology.clip_elevation_bounds(elevation)
+    elevation[changed] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc, hm, density) + residual)[changed]
+    out["elevation"] = elevation
     keep.set_fields_on_plate(**out)
+
+    # The mass the caps removed, as an inertia tensor at the cells it was removed from.
+    return lithosphere.moment_of_inertia_tensor(
+        keep.all_points_and_elevation()[0],
+        uncapped_hc - hc,
+        uncapped_hm - hm,
+        density,
+        0.0,
+        area_m2=target_area,
+    )
 
 
 def _materialised(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch") -> list[str]:
