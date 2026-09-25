@@ -275,7 +275,9 @@ def node_area_m2(spacing_rad: float) -> float:
     return (spacing_rad * PLANET_RADIUS_M) ** 2
 
 
-def moment_of_inertia_tensor(points_xyz: np.ndarray, hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float, spacing_rad: float) -> np.ndarray:
+def moment_of_inertia_tensor(
+    points_xyz: np.ndarray, hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float, spacing_rad: float, area_m2: np.ndarray | None = None
+) -> np.ndarray:
     """Eq. 6's mass moment of inertia tensor, discretized as a sum over nodes rather than a
     continuum integral: I_p = sum_i sigma_i * A_i * (R^2 * I_3x3 - x_i x_i^T), where
     `sigma_i = Hc_i*rho_c + Hm_i*rho_lith_mantle` is each node's own areal mass density
@@ -285,11 +287,14 @@ def moment_of_inertia_tensor(points_xyz: np.ndarray, hc_m: np.ndarray, hm_m: np.
     dimensionally inconsistent (a volumetric density integrated over an area gives mass per
     unit length, not mass) -- the physically sensible reading, used here, is the full areal
     mass density of the moving lithospheric column (crust *and* the rigid mantle lid riding
-    with it), not the crust alone."""
+    with it), not the crust alone.
+
+    `area_m2`, when given, is each node's exact footprint (a quad surface's cell areas) in
+    place of the nominal `node_area_m2(spacing_rad)`."""
     if len(points_xyz) == 0:
         return np.zeros((3, 3))
     sigma = hc_m * rho_c + hm_m * RHO_LITHOSPHERE_MANTLE
-    mass = sigma * node_area_m2(spacing_rad)
+    mass = sigma * (node_area_m2(spacing_rad) if area_m2 is None else area_m2)
     r2 = PLANET_RADIUS_M**2
     eye = np.eye(3)
     # points_xyz are unit vectors (world xyz on the unit sphere); x_i x_i^T for the *physical*

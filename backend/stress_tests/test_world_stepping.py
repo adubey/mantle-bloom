@@ -296,3 +296,44 @@ def test_quad_world_stepping_is_deterministic():
         assert id_a == id_b
         np.testing.assert_array_equal(keys_a, keys_b)
         np.testing.assert_array_equal(hc_a, hc_b)
+
+
+def test_quad_merge_of_neighbouring_plates_in_a_stepped_world():
+    # Issue #228 Phase 4: fusing two real neighbouring quad plates after some stepping keeps
+    # a valid leaf mesh, conserves crustal volume by exact cell area, and claims no more of
+    # the other plates' territory than the pair already overlapped.
+    from app import merge_split
+
+    world = generate_world(seed=5, num_plates=6, surface="quad", node_density=0.5)
+    world.simulate_climate_biomes = False
+    for _ in range(3):
+        step_world(world, years=1_000_000)
+    keep = max(world.plates, key=lambda p: p.node_count())
+    absorb = max(keep.get_neighbours(world.plates), key=lambda p: p.node_count())
+    others = [p for p in world.plates if p not in (keep, absorb)]
+
+    def volume(plates):
+        return sum(float(np.sum(p.collect("crustal_thickness_m") * p.node_areas_m2())) for p in plates)
+
+    def area_on_others(plates):
+        total = 0.0
+        for p in plates:
+            points = p.all_points_and_elevation()[0]
+            on_other = np.zeros(len(points), dtype=bool)
+            for other in others:
+                on_other |= other.contains_batch(points)
+            total += float(p.node_areas_m2()[on_other].sum())
+        return total
+
+    before = volume([keep, absorb])
+    overlap_before = area_on_others([keep, absorb])
+    merge_split.merge_plates(world, keep.plate_id, absorb.plate_id)
+
+    assert absorb not in world.plates
+    keep._validate_leaf_topology()
+    after = volume([keep])
+    # Only the suture cap may remove crust.
+    assert after <= before * (1 + 1e-12)
+    assert after > 0.99 * before
+    overlap_after = area_on_others([keep])
+    assert overlap_after <= overlap_before * (1 + 1e-9)

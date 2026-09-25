@@ -34,7 +34,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle, phase_budget, plates as plates_mod
+from . import geometry, lithosphere, mantle, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
@@ -535,6 +535,19 @@ def pop_ready_forced_merge(world: "World", can_merge=None) -> tuple[int, int] | 
     return (a, b) if live[a].node_count() >= live[b].node_count() else (b, a)
 
 
+def _merge_budget_snapshot(plate: Plate, spacing_rad: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`phase_budget.snapshot`, with Hc/Hm scaled to nominal-node equivalents by each node's
+    exact area where the surface has one. A quad merge remaps onto a rotated lattice whose
+    cells differ in size from the absorbed plate's, so a plain sum of Hc would book that
+    change of cell size as crust gained or lost."""
+    hc, hm, codes = phase_budget.snapshot(plate)
+    nodes = plate.surface_nodes()
+    if nodes.area_is_exact:
+        weight = nodes.area_m2 / lithosphere.node_area_m2(spacing_rad)
+        hc, hm = hc * weight, hm * weight
+    return hc, hm, codes
+
+
 def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     """Fuse `id_absorb` into `id_keep`: keep `id_keep`'s frame, absorb `id_absorb`'s territory
     (see Plate.merge_with for how each representation actually folds the two node sets
@@ -561,15 +574,15 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
         # together (Plate.merge_with) against both plates' own pre-merge totals. Keyed to
         # `keep`'s own crust_type -- this path is only ever reached for a continental-
         # continental pair (see this function's own docstring), so `absorb` shares it too.
-        keep_hc, keep_hm, keep_codes = phase_budget.snapshot(keep)
-        absorb_hc, absorb_hm, absorb_codes = phase_budget.snapshot(absorb)
+        keep_hc, keep_hm, keep_codes = _merge_budget_snapshot(keep, spacing_rad)
+        absorb_hc, absorb_hm, absorb_codes = _merge_budget_snapshot(absorb, spacing_rad)
         before_hc = np.concatenate([keep_hc, absorb_hc])
         before_hm = np.concatenate([keep_hm, absorb_hm])
         before_codes = np.concatenate([keep_codes, absorb_codes])
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
     if world.debug_diagnostics:
-        after_hc, after_hm, after_codes = phase_budget.snapshot(keep)
+        after_hc, after_hm, after_codes = _merge_budget_snapshot(keep, spacing_rad)
         phase_budget.record(world, keep, "plate_merge", before_hc, before_hm, before_codes, after_hc, after_hm, after_codes)
 
 
@@ -795,11 +808,13 @@ def update_overlap_tracking(world: "World", years: float) -> None:
 
 
 def _supports_merge(world: "World", id_keep: int, id_absorb: int) -> bool:
-    """Whether `merge_plates` can fuse this pair. Quad-surface plates have no cross-plate
-    merge transfer yet (issue #228 Phase 4 follow-up), so a pair involving one keeps colliding
-    -- its overlap is still consumed by each plate's own boundary retreat -- instead of fusing."""
+    """Whether `merge_plates` can fuse this pair: both plates share one `merge_with`, i.e.
+    one surface representation. A line plate and a quad plate never meet in a generated
+    world, but a mixed pair has no transfer between the two lattices, so it keeps colliding
+    instead of fusing."""
     plates = [p for p in world.plates if p.plate_id in (id_keep, id_absorb)]
-    return all(callable(getattr(type(p), "merge_with", None)) for p in plates)
+    methods = {getattr(type(p), "merge_with", None) for p in plates}
+    return len(methods) == 1 and callable(next(iter(methods)))
 
 
 def apply_topology_changes(world: "World", years: float) -> list[str]:
