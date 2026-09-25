@@ -6,7 +6,7 @@ save's history.
 Each scenario places a handful of explicit seed points directly (no Voronoi tiling -- see
 `_build_plates`'s nearest-seed-wins ownership predicate), assigns every plate an explicit
 `World.pinned_omegas` entry so it moves exactly as scripted every step regardless of what the
-real torque balance would have done (see `LithospherePlate.shift`), and runs at the coarsest
+real torque balance would have done (see `Plate.shift`), and runs at the coarsest
 real `node_density` choice so a step is fast enough to iterate on quickly. `debug_diagnostics`
 is on by default so the corner-notch decision log (docs/debugging.md) is populated from the
 very first step; both are ordinary Controls the user can change afterward.

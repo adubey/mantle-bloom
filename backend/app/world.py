@@ -188,7 +188,7 @@ class World:
     # persistence._backfill_added_fields).
     phase_budget: dict = field(default_factory=dict)
     # Debug-world-only: plate_id -> a fixed world-frame angular velocity (rad/s) that
-    # LithospherePlate.shift uses verbatim every step, bypassing torque.shift_plate's own
+    # Plate.shift uses verbatim every step, bypassing torque.shift_plate's own
     # torque-balance recompute entirely for that plate (see torque.py) -- the "Debugging
     # Worlds" tab's scripted-motion mechanism (see debug_worlds.py), so a tiny hand-built
     # scenario moves exactly as scripted every step rather than however real ridge-push/
@@ -814,9 +814,10 @@ def step_world_progress(world: World, years: float):
     still tracks real, if coarse, completion.
 
     Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
-    `LithospherePlate.shift(world, years)` for every plate (refit Euler pole from torque
-    balance, rotate rigidly), then `LithospherePlate.deform(world, other_plates, years, D)` for every plate in a freshly
-    randomized order each turn (Mohr-Coulomb yield/isostasy -- see lithosphere_plate.py).
+    `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
+    rigidly), then `LithospherePlate.deform(world, other_plates, years, D)` for every plate
+    in a freshly randomized order each turn (Mohr-Coulomb yield/isostasy -- see
+    lithosphere_plate.py).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -962,5 +963,3 @@ def step_world_progress(world: World, years: float):
     world.record_stats()
     done_units += 1
     yield done_units / total_units
-
-
