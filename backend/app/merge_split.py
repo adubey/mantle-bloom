@@ -508,18 +508,21 @@ def accumulate_plate_stress(world: "World", years: float, overlap: dict[int, dic
         plate.set_internal_stress(plate.internal_stress * decay + rate * years_myr)
 
 
-def pop_ready_forced_merge(world: "World") -> tuple[int, int] | None:
+def pop_ready_forced_merge(world: "World", can_merge=None) -> tuple[int, int] | None:
     """The continental pair that has sustained a deep overlap longest past
     `FORCED_MERGE_SUSTAINED_YEARS`, as `(id_keep, id_absorb)` with `id_keep` the larger plate
     (more territory, more stable frame -- `merge_plates`' own keep/absorb sense) -- removed
     from `world.overlap_progress` and returned, or `None`. At most one per step, same as every
     other topology change. A pair whose plate has since vanished (subducted, defragmented) is
-    silently dropped."""
+    silently dropped. `can_merge(a, b)`, when given, excludes pairs that can't be fused yet
+    *before* one is chosen, so an excluded pair keeps its accumulated overlap time instead of
+    losing it every time it comes due."""
     live = {p.plate_id: p for p in world.plates if p.crust_type == "continental" and p.node_count() > 0}
     ready = [
         pair
         for pair, acc in world.overlap_progress.items()
         if acc >= FORCED_MERGE_SUSTAINED_YEARS and pair[0] in live and pair[1] in live
+        and (can_merge is None or can_merge(*pair))
     ]
     for pair in list(world.overlap_progress):
         if pair[0] not in live or pair[1] not in live:
@@ -855,8 +858,8 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     # above never fired (see update_overlap_progress / FORCED_MERGE_OVERLAP_FRACTION). Still at
     # most one fusion per step; skipped on a step that already merged a ready pair.
     if not merged_this_step:
-        forced = pop_ready_forced_merge(world)
-        if forced is not None and _supports_merge(world, *forced):
+        forced = pop_ready_forced_merge(world, can_merge=lambda a, b: _supports_merge(world, a, b))
+        if forced is not None:
             id_keep, id_absorb = forced
             merge_plates(world, id_keep, id_absorb)
             events.append(

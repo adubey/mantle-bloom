@@ -316,3 +316,15 @@ def test_quad_plates_are_not_offered_to_merge():
     b = _plate(2, _block((20, 30), (20, 30)), "continental")
 
     assert not merge_split._supports_merge(_world(a, b), 1, 2)
+
+
+def test_forced_merge_keeps_an_unmergeable_pairs_overlap_time():
+    a = _plate(1, _block((10, 20), (20, 30)), "continental")
+    b = _plate(2, _block((20, 30), (20, 30)), "continental")
+    world = _world(a, b)
+    world.overlap_progress[(1, 2)] = merge_split.FORCED_MERGE_SUSTAINED_YEARS * 2
+
+    forced = merge_split.pop_ready_forced_merge(world, can_merge=lambda x, y: merge_split._supports_merge(world, x, y))
+
+    assert forced is None
+    assert world.overlap_progress[(1, 2)] == merge_split.FORCED_MERGE_SUSTAINED_YEARS * 2
