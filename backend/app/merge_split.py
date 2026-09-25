@@ -791,6 +791,14 @@ def update_overlap_tracking(world: "World", years: float) -> None:
         plate.set_fields_on_plate(overlap_onset_years=onset)
 
 
+def _supports_merge(world: "World", id_keep: int, id_absorb: int) -> bool:
+    """Whether `merge_plates` can fuse this pair. Quad-surface plates have no cross-plate
+    merge transfer yet (issue #228 Phase 4 follow-up), so a pair involving one keeps colliding
+    -- its overlap is still consumed by each plate's own boundary retreat -- instead of fusing."""
+    plates = [p for p in world.plates if p.plate_id in (id_keep, id_absorb)]
+    return all(callable(getattr(type(p), "merge_with", None)) for p in plates)
+
+
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate
@@ -827,7 +835,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     if world.steps_taken % RELATTICE_INTERVAL_STEPS == 0:
         relattice_continental_plates(world)
 
-    ready_pairs = update_collision_progress(world, years)
+    ready_pairs = [pair for pair in update_collision_progress(world, years) if _supports_merge(world, *pair)]
     merged_this_step = False
     if ready_pairs:
         # Real continental collisions don't resolve all at once, and merging every ready
@@ -848,7 +856,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     # most one fusion per step; skipped on a step that already merged a ready pair.
     if not merged_this_step:
         forced = pop_ready_forced_merge(world)
-        if forced is not None:
+        if forced is not None and _supports_merge(world, *forced):
             id_keep, id_absorb = forced
             merge_plates(world, id_keep, id_absorb)
             events.append(

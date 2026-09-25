@@ -64,8 +64,8 @@ from .plates import (
 from . import bathymetry, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 
-# `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` (the only
-# one the simulation can step) and issue #228's static `PlateWithSparseQuadPatch`.
+# `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` and issue
+# #228's `PlateWithSparseQuadPatch` (stepped by quad_tectonics.py).
 SURFACE_REPRESENTATIONS = ("lines", "quad")
 
 EXTEND_THRESHOLD_MULTIPLIER = 1.3  # same shape as v1's plates.EXTEND_THRESHOLD_RAD
@@ -560,6 +560,574 @@ def _redistribute_accreted_column(
     elevation[idx] = rheology.clip_elevation_bounds(elevation[idx] + (after - before))
 
 
+def seed_and_erupt_new_nodes(
+    world: "World", plate: Plate, rng_index: int, world_pts: np.ndarray, thin_ratio: float | np.ndarray,  # noqa: F821
+    hc0: float, hm0: float, amp: float, texture: "terrain_noise.FractalTexture"
+) -> dict[str, np.ndarray]:
+    """Brand-new nodes carry no prior column to conserve, so -- exactly like ordinary
+    divergent thinning and `_grow_or_shrink_line_for_deform`'s `_stretch_end` -- they are
+    seeded thin (`thin_ratio` share of the oceanic reference column, `growth_seed_thickness`;
+    a scalar, or one ratio per node) and run straight through `_erupt_melted_nodes`, the same
+    decompression-melting/magma-upwelling path every other new-crust event in `deform()` uses.
+    This makes every node this produces a real eruption (typed, `is_volcano`-stamped, timed)
+    rather than a distinct silent "spawn" concept."""
+    n = len(world_pts)
+    hc = np.full(n, hc0 * thin_ratio) + amp * texture.sample(world_pts)
+    hm = np.full(n, hm0 * thin_ratio)
+    elevation = lithosphere.isostatic_elevation(hc, hm, lithosphere.crust_density(plate.crust_type))
+    crust_type_code = np.zeros(n, dtype=np.int8)
+    is_volcano = np.zeros(n, dtype=bool)
+    volcano_remaining = np.zeros(n)
+    melting = hc < rheology.RIFT_CRITICAL_THICKNESS_M
+    _erupt_melted_nodes(
+        world, plate.plate_id, rng_index,
+        hc, hm, crust_type_code, is_volcano, volcano_remaining,
+        melting, elevation,
+    )
+    elevation = lithosphere.isostatic_elevation(hc, hm, lithosphere.node_crust_density(crust_type_code, plate.crust_type))
+    return {
+        "elevation": elevation,
+        "crustal_thickness_m": hc,
+        "mantle_lithosphere_thickness_m": hm,
+        "crust_type_code": crust_type_code,
+        "is_volcano": is_volcano,
+        "volcano_active_years_remaining": volcano_remaining,
+        "elev_change_reason": np.full(n, ELEV_CHANGE_NEW_CRUST, dtype=float),
+        "node_created_years": np.full(n, world.elapsed_years, dtype=float),
+    }
+
+
+@dataclass
+class BoundaryContext:
+    """One plate's per-step boundary classification and the per-plate knobs derived from it --
+    everything `deform()` decides before touching any node, shared by `LithospherePlate` and
+    the quad-surface engine (quad_tectonics.py). Every array is per node, in the plate's own
+    node order at the start of deform()."""
+
+    own_points: np.ndarray
+    spacing_rad: float
+    reach_rad: float
+    neighbours: list
+    inputs: torque.BoundaryForceInputs
+    convergent: np.ndarray
+    divergent: np.ndarray
+    transform: np.ndarray
+    contested: np.ndarray
+    shrinkable: np.ndarray
+    accrete: np.ndarray
+    closing_rate: np.ndarray
+    arc_band: np.ndarray
+    arc_intensity: np.ndarray
+    fault_influence: np.ndarray
+    suppress_growth: bool
+    # Single-element and mutable -- see `_budget_limited_removal`.
+    oceanic_override_retreat_budget_hc: np.ndarray
+    orogen_amount: float
+    orogen_contested_strength: float
+    orogen_dilation_nodes: int
+    fault_noise: SphereNoise | None
+
+
+def boundary_context(
+    world: "World",  # noqa: F821
+    plate: Plate,
+    other_plates: list,
+    years: float,
+    continental_retreat_runs,
+    node_weight: np.ndarray | float = 1.0,
+) -> BoundaryContext:
+    """Classify `plate`'s boundary for this step's deform() and derive every per-plate knob
+    the column and topology updates read -- see `LithospherePlate.deform`'s own comments
+    below for each piece's rationale.
+
+    The two surface representations differ only in how they measure a node set:
+    `continental_retreat_runs(contested)` keeps the contested nodes that form a genuine
+    multi-node stretch (`_runs_of_at_least` along a line; connected components on a quad
+    surface), and `node_weight` is each node's footprint in nominal-node units (1.0 on the
+    constant-area line lattice, `cell area / lithosphere.node_area_m2` on quads) so the
+    continental area budget and the issue #177 retreat budget count area, not nodes."""
+    own_points, _ = plate.all_points_and_elevation()
+    hc_all = plate.collect("crustal_thickness_m")
+
+    # Volume-budget growth gate -- see CONTINENTAL_AREA_BUDGET_MULT. Continental crust
+    # only: oceanic footprint is already bounded by subduction. Over budget -> this step
+    # grows no new areal crust, but still retreats / thins / thickens toward the budget.
+    suppress_growth = False
+    if plate.crust_type == "continental":
+        genuine = hc_all >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M
+        if np.ndim(node_weight) == 0:
+            suppress_growth = len(own_points) > CONTINENTAL_AREA_BUDGET_MULT * int(np.count_nonzero(genuine))
+        else:
+            suppress_growth = float(np.sum(node_weight)) > CONTINENTAL_AREA_BUDGET_MULT * float(np.sum(node_weight[genuine]))
+
+    spacing_rad = line_spacing_rad(world.node_density)
+    reach_rad = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
+
+    neighbours = plate.get_neighbours(other_plates, threshold_rad=reach_rad)
+    inputs = torque.gather_boundary_force_inputs(plate, neighbours, spacing_rad, reach_rad)
+    # Motion-based: `convergent` is the whole converging band (not just the nodes that
+    # already overlap a neighbour polygon), so a boundary builds an orogen before any overlap
+    # accumulates; `contested` (the geometric overlap subset, folded into `convergent`) still
+    # gates node deletion / continental retreat.
+    convergent, divergent, transform, contested = torque.classify_boundary_nodes(plate, neighbours, inputs, reach_rad)
+
+    # Fault-localised deformation (World.fault_deformation_mode == "fault"): scale this
+    # step's convergent thickening and divergent thinning by proximity to an active fault
+    # trace, so plate-boundary transformation concentrates onto fault lines instead of a
+    # smooth band at the polygon edge. `fault_influence` is all-ones (i.e. a no-op) in
+    # every other mode, when the plate has no active fault, or before the first fault has
+    # spawned in a fresh contested zone -- Piece-1 overlap spawning fills those in within
+    # a step or two. Deliberately NOT applied to the arc band below: a volcanic arc is a
+    # genuinely broad magmatic swath, not a fault-localised structure.
+    if getattr(world, "fault_deformation_mode", "fault") == "fault":
+        from . import faults
+
+        fault_influence = faults.fault_influence(world, plate, own_points)
+    else:
+        fault_influence = np.ones(len(own_points))
+
+    closing_rate = rheology.normal_closing_rate_m_per_s(plate.omega, inputs.neighbor_omega, own_points, inputs.direction_to_neighbor)
+
+    # What may retreat this step. Oceanic crust: any contested node subducts. Continental
+    # crust: any contested boundary node in a run of >= CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
+    # contested nodes -- whether the overriding neighbour is oceanic (passive margin) or
+    # continental (a suture whose overlap is consumed into the orogen, the retreated
+    # column's volume thrust onto the plate's own leading edge -- see
+    # _redistribute_accreted_column). Envelope fuzz (a lone contested node) still can't
+    # nibble a stable margin. See CONTINENTAL_CONTESTED_RETREAT_MIN_RUN for the ratchet /
+    # frozen-overlap this breaks.
+    if plate.crust_type != "continental":
+        shrinkable = contested
+    else:
+        shrinkable = continental_retreat_runs(contested)
+
+    # Continental suture retreat conserves the consumed column's volume by accreting it
+    # onto this plate's own leading edge; a retreat where the overriding neighbour is
+    # *oceanic* does not -- that column subducts and is lost. Oceanic self-plates never
+    # accrete.
+    if plate.crust_type == "continental":
+        accrete = shrinkable & ~inputs.neighbor_is_oceanic
+    else:
+        accrete = np.zeros_like(shrinkable)
+
+    # Continental arc band: this plate's own nodes within `reach_rad` of a *converging
+    # oceanic* neighbour -- the volcanic arc + accreted forearc / underplated wedge sits
+    # inboard of the trench, a swath (~500 km at default density), not just the contact
+    # line (which is only a few tens of nodes -- far too narrow to counter the land
+    # decline). `arc_intensity` fades from 1 at the contact to ~0.3 at the band edge.
+    # Feeds both the magmatic Hc thickening and the arc-crust growth seed. See
+    # ARC_MARGIN_SEED_HC_M.
+    arc_band = np.zeros(len(own_points), dtype=bool)
+    arc_intensity = np.zeros(len(own_points))
+    if plate.crust_type == "continental":
+        arc_band = (
+            inputs.neighbor_is_oceanic
+            & np.isfinite(inputs.dist_to_neighbor)
+            & (closing_rate > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
+        )
+        arc_intensity = np.where(arc_band, np.clip(1.0 - 0.7 * (inputs.dist_to_neighbor / reach_rad), 0.3, 1.0), 0.0)
+
+    years_myr = years / 1_000_000.0
+
+    # GitHub issue #177 direction 1 -- see OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER's own
+    # comment for the full rationale. This step's real arc-magmatic creation across the
+    # whole plate, computed once here (mirrors the per-node calculation in
+    # `deform_columns`) into a shared budget the oceanic-override retreats spend down in place.
+    oceanic_override_retreat_budget_hc = np.zeros(1)
+    if plate.crust_type == "continental" and np.any(arc_band):
+        hm_all = plate.collect("mantle_lithosphere_thickness_m")
+        grown_hc, _ = rheology.apply_arc_magmatic_thickening(
+            hc_all[arc_band], hm_all[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band],
+        )
+        grown = grown_hc - hc_all[arc_band]
+        if np.ndim(node_weight) != 0:
+            grown = grown * node_weight[arc_band]
+        oceanic_override_retreat_budget_hc[0] = OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER * float(np.sum(grown))
+
+    # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
+    # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
+    # widens (>1) or narrows (<1) the belt it acts on -- see _distance_to_mask_1d /
+    # COLLISION_NEAR_FIELD_*. At 1.0, `orogen_amount` leaves apply_convergent_deformation's
+    # contested-band strength at exactly 1.0, same as ever -- but `orogen_reach` no longer
+    # means "no near-field ring below/at 1.0, only above": the ring is linear in the knob
+    # from 0 (see COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT's own comment for why the model's
+    # own baseline collision belt already carries one at the knob's untuned value).
+    orogen_amount = world.collision_uplift_multiplier
+    orogen_reach = world.collision_uplift_reach_multiplier
+    # How much of this plate's own active margin is currently jammed in overlap right now
+    # -- normalized against the near-boundary band, not the whole plate (a huge plate's
+    # boundary is a small fraction of its own node count, which would dilute this to
+    # near-zero for exactly the large-plate case that matters). A deeper/wider overlap
+    # should crumple faster than a light graze, on top of the existing distance-decay
+    # shape within the belt -- see OVERLAP_UPLIFT_SEVERITY_GAIN.
+    band = inputs.dist_to_neighbor <= reach_rad
+    overlap_severity = float(np.count_nonzero(contested)) / max(1, int(np.count_nonzero(band)))
+    orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0) * (1.0 + OVERLAP_UPLIFT_SEVERITY_GAIN * overlap_severity)
+    orogen_dilation_nodes = (
+        round(orogen_reach * COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT / (spacing_rad * PLANET_RADIUS_KM))
+        if orogen_reach > 0.0 and plate.crust_type == "continental"
+        else 0
+    )
+
+    fault_noise = (
+        SphereNoise(np.random.default_rng((world.seed, plate.plate_id, 9001)), octaves=3, base_freq=9.0)
+        if plate.crust_type == "continental"
+        else None
+    )
+
+    return BoundaryContext(
+        own_points=own_points,
+        spacing_rad=spacing_rad,
+        reach_rad=reach_rad,
+        neighbours=neighbours,
+        inputs=inputs,
+        convergent=convergent,
+        divergent=divergent,
+        transform=transform,
+        contested=contested,
+        shrinkable=shrinkable,
+        accrete=accrete,
+        closing_rate=closing_rate,
+        arc_band=arc_band,
+        arc_intensity=arc_intensity,
+        fault_influence=fault_influence,
+        suppress_growth=suppress_growth,
+        oceanic_override_retreat_budget_hc=oceanic_override_retreat_budget_hc,
+        orogen_amount=orogen_amount,
+        orogen_contested_strength=orogen_contested_strength,
+        orogen_dilation_nodes=orogen_dilation_nodes,
+        fault_noise=fault_noise,
+    )
+
+
+# The per-node fields `deform_columns` reads and returns.
+COLUMN_FIELDS = (
+    "elevation",
+    "crustal_thickness_m",
+    "mantle_lithosphere_thickness_m",
+    "divergent_age_myr",
+    "is_volcano",
+    "volcano_active_years_remaining",
+    "elev_change_reason",
+    "crust_type_code",
+)
+
+
+def deform_columns(
+    world: "World",  # noqa: F821
+    plate: Plate,
+    ctx: BoundaryContext,
+    sl: slice | np.ndarray,
+    fields: dict[str, np.ndarray],
+    near_field_dist: np.ndarray | None,
+    local_xyz,
+    node_area_m2: np.ndarray | float,
+    rng_index: int,
+    years: float,
+) -> dict[str, np.ndarray]:
+    """This step's in-place lithospheric column update for the nodes `sl` selects out of
+    `ctx`'s per-plate arrays -- convergent/near-field thickening, arc magmatism, divergent
+    thinning and decompression melting, oceanic cooling, transform pressure ridges, and
+    provenance stamping. No topology change: returns new values for every `COLUMN_FIELDS`
+    name, same length as `fields`' own arrays.
+
+    Shared by `LithospherePlate.deform` (called once per line) and the quad-surface engine
+    (once per plate). What the caller supplies is exactly what differs between the two
+    surfaces: `near_field_dist` (hop distance to the convergent band, within
+    `ctx.orogen_dilation_nodes` -- along the line, or across the cell graph), `local_xyz()`
+    (lazily, for the fault-noise texture), `node_area_m2` (scalar on the constant-area line
+    lattice, per node on quads) and `rng_index` (the eruption rng's per-plate stream key)."""
+    convergent = ctx.convergent[sl]
+    divergent = ctx.divergent[sl]
+    transform = ctx.transform[sl]
+    closing_rate = ctx.closing_rate[sl]
+    neighbor_oceanic = ctx.inputs.neighbor_is_oceanic[sl]
+    arc_band = ctx.arc_band[sl]
+    arc_intensity = ctx.arc_intensity[sl]
+    fault_influence = ctx.fault_influence[sl]  # all-ones except in "fault" mode
+    elevation = fields["elevation"]
+    n = len(elevation)
+    years_myr = years / 1_000_000.0
+    orogen_dilation_nodes = ctx.orogen_dilation_nodes
+
+    hc = fields["crustal_thickness_m"].copy()
+    hm = fields["mantle_lithosphere_thickness_m"].copy()
+    # GitHub issue #216 Hc/Hm budget checkpoints -- see phase_budget.py. `codes0` is
+    # this line's crust_type_code, unchanged until the decompression-melting checkpoint
+    # below, so every intermediate checkpoint below reuses it for both before/after.
+    codes0 = fields["crust_type_code"]
+    checkpoint_hc, checkpoint_hm = (hc.copy(), hm.copy()) if world.debug_diagnostics else (None, None)
+    # Isostasy-driven elevation change is applied as a *delta* on top of whatever
+    # elevation already holds (elevation_before -> below), not a wholesale overwrite
+    # -- erosion.py (run later this same step_world call, and every step
+    # thereafter until the next deform()) mutates `elevation` directly, with no
+    # notion of Hc/Hm at all. An unconditional overwrite here would silently erase
+    # every step's worth of erosion the instant the *next* deform() call ran,
+    # confirmed directly as a real bug (a 3-step run's own elevation stopped
+    # matching isostasy(Hc, Hm) exactly the way an unconditional-overwrite design
+    # would have predicted, because erosion's own contribution was still baked into
+    # the *un-clipped* portion of `elevation` between tectonic uplift events -- the
+    # fix is this delta, not forcing elevation back to a bare isostasy readout).
+    rho_c = lithosphere.crust_density(plate.crust_type)
+    elevation_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
+
+    # The band that plastically thickens: the whole converging band at
+    # `orogen_contested_strength`, plus (reach knob > 1) a dilated near-field ring
+    # that tapers linearly from COLLISION_NEAR_FIELD_INNER_FACTOR right outside the
+    # contested band down to 0 at the ring's own outer edge -- see that constant's own
+    # comment (issue #146). `orogen_strength` is the per-node multiplier handed to
+    # apply_convergent_deformation; > 0 exactly on the nodes that thicken.
+    # `apply_convergent_deformation` still gates on each node's own closing rate
+    # (below yield / not actually closing -> zero strain), so a node that is
+    # `convergent` only via the `contested` deep-overlap fold and is no longer
+    # actively closing simply thickens at zero.
+    near_field = (
+        (near_field_dist <= orogen_dilation_nodes) & ~convergent & ~divergent
+        if near_field_dist is not None
+        else np.zeros(n, dtype=bool)
+    )
+    orogen_strength = np.where(convergent, ctx.orogen_contested_strength, 0.0)
+    if np.any(near_field):
+        # Cell-centered, not edge-to-edge: node `d` (1-indexed) is treated as sitting
+        # at the middle of its own step, so the outermost ring node still gets a small
+        # nonzero share (COLLISION_NEAR_FIELD_INNER_FACTOR / (2*orogen_dilation_nodes))
+        # instead of tapering all the way to exactly 0 right at the last real node --
+        # an edge-to-edge ramp would otherwise re-introduce a (smaller) hard step at a
+        # small reach (e.g. a 1-2 node ring at coarse node_density), the same shelf-vs-
+        # falloff problem this taper exists to fix. This also keeps the ring's mean
+        # strength at exactly COLLISION_NEAR_FIELD_INNER_FACTOR / 2 regardless of
+        # orogen_dilation_nodes (a symmetric linear ramp always averages to its
+        # midpoint), matching the old flat factor's total contribution.
+        taper = np.clip(1.0 - (near_field_dist - 0.5) / orogen_dilation_nodes, 0.0, 1.0)
+        orogen_strength[near_field] = ctx.orogen_amount * COLLISION_NEAR_FIELD_INNER_FACTOR * taper[near_field]
+    # "fault" mode: concentrate the shortening onto fault traces (no-op / all-ones
+    # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
+    orogen_strength = orogen_strength * fault_influence
+    thicken = orogen_strength > 0.0
+    if np.any(thicken):
+        fault_factor = (
+            np.where(
+                ctx.fault_noise.sample(local_xyz()) < -0.15,
+                rheology.REVERSE_FAULT_VALLEY_UPLIFT_FACTOR,
+                1.0,
+            )
+            if ctx.fault_noise is not None
+            else np.ones(n)
+        )
+        # The overlapping crust a continent-continent suture retreats over is not
+        # lost here via a `fault_factor` boost -- its actual volume is conserved and
+        # thrust onto the leading edge by the retreat step (see
+        # `_redistribute_accreted_column`). This path is just the ordinary
+        # yield-limited plastic thickening.
+
+        # Lateral magma export (GitHub issue #205, follow-up to #120's "Land fraction
+        # slowly declines"): divert a fraction of the core convergent band's own strain
+        # increment to a mobile magma parcel instead of thickening the node in place --
+        # see rheology.magma_export_strength_and_volume's own docstring for the full
+        # mechanism/reasoning. Masked to `convergent` only (never the near-field ring
+        # below): the ring's own melt supply already comes from the delamination-
+        # overflow path a few lines down, and skimming it here too would starve that
+        # supply a second, independent way (see that function's own docstring on why
+        # near-ceiling nodes are exempt for the same reason).
+        core_idx = np.flatnonzero(thicken)[convergent[thicken]]
+        used_strength = orogen_strength[thicken]
+        if len(core_idx) > 0:
+            reduced_strength, export_hc = rheology.magma_export_strength_and_volume(
+                hc[core_idx], closing_rate[core_idx], years_myr, fault_factor[core_idx], orogen_strength[core_idx],
+            )
+            used_strength = used_strength.copy()
+            used_strength[convergent[thicken]] = reduced_strength
+            exporting = export_hc > 0.0
+            if np.any(exporting):
+                node_idx = core_idx[exporting]
+                area = node_area_m2 if np.ndim(node_area_m2) == 0 else node_area_m2[node_idx]
+                volumes_m3 = export_hc[exporting] * area
+                origins = ctx.own_points[sl][node_idx]
+                world.pending_magma_parcels.extend(
+                    magma_transport.MagmaParcel(
+                        origin_xyz=origins[i], volume_m3=float(volumes_m3[i]), step_generated=world.steps_taken
+                    )
+                    for i in range(len(node_idx))
+                )
+
+        new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
+            hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
+            fault_factor[thicken], strength=used_strength,
+        )
+        hc[thicken] = new_hc
+        hm[thicken] = new_hm
+
+        # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
+        # #161) -- but it also doesn't reappear whole and instant on the foreland
+        # either (issue #145's reopened investigation: that turned out to over-
+        # thicken/elevate the majority of a run's continental land within tens of
+        # Myr). It delaminates, partially remelts, and the buoyant melt fraction
+        # intrudes the near-field ring at a bounded rate -- see
+        # rheology.apply_delamination_melt_intrusion's own docstring for the full
+        # reasoning. Only the core band's overflow is conserved (partially) this way;
+        # the near-field ring's own overflow (rarer -- it thickens at a faded rate
+        # already) has nowhere further out to spread to on this pass and delaminates
+        # in full, same as suture accretion's own overflow past its cap. No-op when
+        # there's no near-field ring to receive it (reach knob at 0, or an oceanic
+        # plate, which never gets one).
+        overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
+        if overflow_total > 0.0 and np.any(near_field):
+            hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
+
+    if world.debug_diagnostics:
+        phase_budget.record(world, plate, "convergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+        checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
+
+    # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
+    # the mantle wedge and underplates juvenile crust across the whole arc band --
+    # extra Hc (added from the mantle, not conserved), the crust-building half of
+    # "subduction under a continent makes more continent" (GitHub issue #120, "Land fraction
+    # slowly declines"). Separate from the contested shortening above: the band is far
+    # wider than the contact line. Bounded long-term by the CONTINENTAL_AREA_BUDGET_MULT
+    # volume gate.
+    if np.any(arc_band):
+        hc[arc_band], hm[arc_band] = rheology.apply_arc_magmatic_thickening(
+            hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
+        )
+
+    if world.debug_diagnostics:
+        phase_budget.record(world, plate, "arc_magmatism", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+        checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
+
+    prior_hc = hc.copy()
+    melting = np.zeros(n, dtype=bool)
+    newly_below_rift_onset = np.zeros(n, dtype=bool)
+    if np.any(divergent):
+        new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
+        # "fault" mode: scale the thinning delta by fault proximity (all-ones
+        # otherwise). Melt (decompression volcanism) still fires on the geometric
+        # rift threshold -- it's a discrete event, not a rate.
+        infl = fault_influence[divergent]
+        hc[divergent] = hc[divergent] + infl * (new_hc - hc[divergent])
+        hm[divergent] = hm[divergent] + infl * (new_hm - hm[divergent])
+        melting[divergent] = melt
+
+        # Rift magmatic underplating (see rheology.apply_rift_magmatic_thickening): a
+        # partial Hc offset for nodes that thinned past RIFT_VOLCANISM_ONSET_HC_M but
+        # didn't melt all the way through this step -- nodes that did melt already got
+        # the full reference-column reset below and don't need this on top of it.
+        magmatic_band = divergent & ~melting
+        if np.any(magmatic_band):
+            new_hc_mag, new_hm_mag = rheology.apply_rift_magmatic_thickening(
+                hc[magmatic_band], hm[magmatic_band], closing_rate[magmatic_band], years_myr
+            )
+            hc[magmatic_band] = new_hc_mag
+            hm[magmatic_band] = new_hm_mag
+            newly_below_rift_onset = (
+                magmatic_band & (prior_hc >= rheology.RIFT_VOLCANISM_ONSET_HC_M) & (hc < rheology.RIFT_VOLCANISM_ONSET_HC_M)
+            )
+
+    if world.debug_diagnostics:
+        phase_budget.record(world, plate, "divergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+        checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
+
+    prior_age = fields["divergent_age_myr"]
+    new_age = np.where(divergent, prior_age + years_myr, 0.0)
+    if plate.crust_type == "oceanic":
+        hm = rheology.relax_young_oceanic_mantle_lithosphere(hm, new_age, years_myr)
+        if world.debug_diagnostics:
+            phase_budget.record(world, plate, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+            checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
+
+    is_volcano = fields["is_volcano"].copy()
+    volcano_remaining = fields["volcano_active_years_remaining"].copy()
+    crust_type_code = fields["crust_type_code"].copy()
+    # Decompression melting (spec 2.3): a rift that just thinned past the critical
+    # threshold erupts fresh crust in place -- same one-guaranteed-eruption convention
+    # v1's stretch-volcano growth used. The erupted material's type depends on where it
+    # surfaces: still standing above sea level (this node's *pre-melt* elevation, i.e.
+    # its own elevation before today's deform() pass touched it) is
+    # continental-type magmatism -- real continental rifts stay bimodal-volcanic land
+    # for a long stretch before a true ocean opens (the East African Rift, well before
+    # the Red Sea stage) -- while a node already at or below sea level (a drowned
+    # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
+    # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
+    _erupt_melted_nodes(world, plate.plate_id, rng_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, elevation)
+    phase_budget.record(world, plate, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code)
+    _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, is_volcano, volcano_remaining, newly_below_rift_onset)
+
+    # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
+    # bump on the transform band, kept as a direct elevation delta (like erosion's
+    # own contributions) rather than an Hc change -- a strike-slip contact shoulders
+    # up local relief without net crustal shortening. Gated by `fault_influence` in
+    # "fault" mode so it tracks the boundary strike-slip fault families rather than
+    # smearing along the whole polygon edge.
+    transform_uplift = np.zeros(n)
+    transform_uplift[transform] = TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * fault_influence[transform]
+
+    elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
+
+    # Issue #189 follow-up (see UNBACKED_RELIEF_DECAY_PER_MYR above): relax any
+    # *existing* positive debt -- elevation this node already carries in excess of what
+    # `elevation_before` says its own Hc/Hm column supports -- toward zero, before this
+    # step's own fresh transform_uplift (still a bare delta by design) potentially
+    # adds more. The column at the *start* of this step (`fields`, matching what
+    # `elevation_before` was computed from), not `hc` (already mutated by the
+    # convergent/divergent passes above) -- and v1 nodes with no Hc tracking at all
+    # (all-zero) are left alone, same has_column gating lithosphere.back_elevation_gain uses.
+    start_hc = fields["crustal_thickness_m"]
+    existing_debt = np.where(start_hc > 0.0, np.clip(elevation - elevation_before, 0.0, None), 0.0)
+    debt_relief = existing_debt * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * years_myr))
+
+    new_elevation = rheology.clip_elevation_bounds(elevation - debt_relief + (elevation_after - elevation_before) + transform_uplift)
+    if np.any(melting):
+        # The delta above used this plate's single nominal `rho_c` for both
+        # `elevation_before`/`elevation_after` -- fine for every ordinary node, whose
+        # crust_type_code is still CRUST_TYPE_INHERIT, but wrong for a node that just
+        # melted into the *other* type (e.g. a continental plate's drowned margin
+        # melting through to real oceanic crust): its fresh Hc/Hm reference column
+        # should float at the density of what it actually is now, not the plate's own
+        # nominal density. This is a brand-new column with no prior erosion history to
+        # preserve (same "hard reset, not a delta" character the Hc/Hm reset above
+        # already has), so read it exactly rather than folding it into the delta.
+        melt_rho_c = lithosphere.node_crust_density(crust_type_code[melting], plate.crust_type)
+        new_elevation[melting] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc[melting], hm[melting], melt_rho_c))
+
+    # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
+    # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
+    # node this step, gated on ELEV_CHANGE_MIN_DELTA_M so a node barely grazed by a
+    # fading boundary force keeps its older provenance. The masks partition the
+    # near-boundary band by motion (convergent / divergent / transform), so a plain
+    # per-mask assignment needs no priority order. `faults._apply_plate_fault_relief`
+    # runs after this pass and overwrites these with a FAULT_* code wherever a
+    # boundary fault of the matching regime moved the node -- that is what paints the
+    # fault families along every boundary in the elevReason view.
+    reason = fields["elev_change_reason"].copy()
+    moved = np.abs(new_elevation - elevation) >= ELEV_CHANGE_MIN_DELTA_M
+    if plate.crust_type == "continental":
+        # near_field (the reach knob's dilated ring) is continent-continent orogenic
+        # belt too, so it carries the same COLLISION provenance as the converging core.
+        reason[(convergent | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
+        reason[convergent & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
+        reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
+    else:
+        reason[convergent & moved] = ELEV_CHANGE_TRENCH
+    reason[divergent & moved] = ELEV_CHANGE_RIFT
+    # Gated on transform_uplift itself, not just band membership -- issue #189
+    # follow-up's debt-decay term can move a transform-band node's elevation on its own
+    # (fault_influence == 0 in "fault" mode zeroes transform_uplift there, but leftover
+    # debt still decays), which would otherwise mislabel a pure decay move as an active
+    # transform pressure ridge.
+    reason[(transform_uplift > 0.0) & moved] = ELEV_CHANGE_TRANSFORM
+    reason[melting] = ELEV_CHANGE_VOLCANO
+
+    return {
+        "elevation": new_elevation,
+        "crustal_thickness_m": hc,
+        "mantle_lithosphere_thickness_m": hm,
+        "divergent_age_myr": new_age,
+        "is_volcano": is_volcano,
+        "volcano_active_years_remaining": volcano_remaining,
+        "elev_change_reason": reason,
+        "crust_type_code": crust_type_code,
+    }
+
+
 class LithospherePlate(PlateWithLines):
     """A `PlateWithLines` whose per-node state is a lithospheric column (Hc/Hm) rather than
     an independently-set elevation -- see elevation_lines.py's own note on the two new
@@ -575,143 +1143,20 @@ class LithospherePlate(PlateWithLines):
     # -- Deformation: rheology.py's Mohr-Coulomb/isostasy update ---------------------------
 
     def deform(self, world: "World", other_plates: list, years: float, max_distance: float) -> None:  # noqa: F821
-        own_points, _ = self.all_points_and_elevation()
-        if not self.lines or len(own_points) == 0:
+        if not self.lines or self.node_count() == 0:
             return
 
-        # Volume-budget growth gate -- see CONTINENTAL_AREA_BUDGET_MULT. Continental crust
-        # only: oceanic footprint is already bounded by subduction. Over budget -> this step
-        # grows no new areal crust (end-growth below and `_claim_adjacent_territory`), but
-        # still retreats / thins / thickens toward the budget.
-        suppress_growth = False
-        if self.crust_type == "continental":
-            hc_all = self.collect("crustal_thickness_m")
-            n_continental = int(np.count_nonzero(hc_all >= CONTINENTAL_BUDGET_HC_FRACTION * lithosphere.REFERENCE_HC_CONTINENTAL_M))
-            suppress_growth = len(own_points) > CONTINENTAL_AREA_BUDGET_MULT * n_continental
-
-        spacing_rad = line_spacing_rad(world.node_density)
-        reach_rad = torque.BOUNDARY_FORCE_REACH_MULTIPLIER * spacing_rad
+        ctx = boundary_context(
+            world, self, other_plates, years, lambda contested: _runs_of_at_least(contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
+        )
+        spacing_rad = ctx.spacing_rad
+        neighbours = ctx.neighbours
+        inputs = ctx.inputs
+        contested_all = ctx.contested
+        suppress_growth = ctx.suppress_growth
         extend_threshold_rad = EXTEND_THRESHOLD_MULTIPLIER * spacing_rad
         max_extend_nodes = max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(world.node_density)))
-
-        neighbours = self.get_neighbours(other_plates, threshold_rad=reach_rad)
-        inputs = torque.gather_boundary_force_inputs(self, neighbours, spacing_rad, reach_rad)
-        # Motion-based: `convergent_all` is the whole converging band (not just the nodes
-        # that already overlap a neighbour polygon), so a boundary builds an orogen before
-        # any overlap accumulates; `contested_all` (the geometric overlap subset, folded into
-        # `convergent_all`) still gates node deletion / continental retreat below.
-        convergent_all, divergent_all, transform_all, contested_all = torque.classify_boundary_nodes(
-            self, neighbours, inputs, reach_rad
-        )
-
-        # Fault-localised deformation (World.fault_deformation_mode == "fault"): scale this
-        # step's convergent thickening and divergent thinning by proximity to an active fault
-        # trace, so plate-boundary transformation concentrates onto fault lines instead of a
-        # smooth band at the polygon edge. `fault_influence` is all-ones (i.e. a no-op) in
-        # every other mode, when the plate has no active fault, or before the first fault has
-        # spawned in a fresh contested zone -- Piece-1 overlap spawning fills those in within
-        # a step or two. Deliberately NOT applied to the arc band below: a volcanic arc is a
-        # genuinely broad magmatic swath, not a fault-localised structure.
-        if getattr(world, "fault_deformation_mode", "fault") == "fault":
-            from . import faults
-
-            fault_influence_all = faults.fault_influence(world, self, own_points)
-        else:
-            fault_influence_all = np.ones(len(own_points))
-
-        neighbor_omega_all = inputs.neighbor_omega
-        closing_rate_all = rheology.normal_closing_rate_m_per_s(self.omega, neighbor_omega_all, own_points, inputs.direction_to_neighbor)
-
-        # What may retreat this step. Oceanic crust: any contested node subducts. Continental
-        # crust: any contested end-node in a run of >= CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
-        # consecutive contested nodes -- whether the overriding neighbour is oceanic (passive
-        # margin) or continental (a suture whose overlap is consumed into the orogen, the
-        # retreated column's volume thrust onto the plate's own leading edge -- see
-        # _redistribute_accreted_column). Envelope fuzz (a lone contested node) still can't
-        # nibble a stable margin, and the interior carve below stays oceanic-only so a
-        # continental row is never severed mid-line. See CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
-        # for the ratchet / frozen-overlap this breaks.
-        if self.crust_type != "continental":
-            shrinkable_all = contested_all
-        else:
-            shrinkable_all = _runs_of_at_least(contested_all, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
-
-        # Continental suture retreat conserves the consumed column's volume by accreting it
-        # onto this plate's own leading edge (_redistribute_accreted_column); a retreat where
-        # the overriding neighbour is *oceanic* does not -- that column subducts and is lost.
-        # Oceanic self-plates never accrete.
-        if self.crust_type == "continental":
-            accrete_all = shrinkable_all & ~inputs.neighbor_is_oceanic
-        else:
-            accrete_all = np.zeros_like(shrinkable_all)
-
-        # Continental arc band: this plate's own nodes within `reach_rad` of a *converging
-        # oceanic* neighbour -- the volcanic arc + accreted forearc / underplated wedge sits
-        # inboard of the trench, a swath (~500 km at default density), not just the contact
-        # line (which is only a few tens of nodes -- far too narrow to counter the land
-        # decline). `arc_intensity_all` fades from 1 at the contact to ~0.3 at the band edge.
-        # Feeds both the magmatic Hc thickening (below) and the arc-crust growth seed
-        # (`arc_end_*` -> `_grow_or_shrink_line_for_deform`). See ARC_MARGIN_SEED_HC_M.
-        arc_band_all = np.zeros(len(own_points), dtype=bool)
-        arc_intensity_all = np.zeros(len(own_points))
-        if self.crust_type == "continental":
-            arc_band_all = (
-                inputs.neighbor_is_oceanic
-                & np.isfinite(inputs.dist_to_neighbor)
-                & (closing_rate_all > rheology.ARC_MIN_CONVERGENCE_M_PER_S)
-            )
-            arc_intensity_all = np.where(
-                arc_band_all, np.clip(1.0 - 0.7 * (inputs.dist_to_neighbor / reach_rad), 0.3, 1.0), 0.0
-            )
-
-        years_myr = years / 1_000_000.0
-        rho_c = self.crust_density()
-
-        # GitHub issue #177 direction 1 -- see OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER's own
-        # comment for the full rationale. This step's real arc-magmatic creation across the
-        # whole plate, computed once here (mirrors the per-line calculation below) into a
-        # shared budget the per-line loop's oceanic-override retreats spend down in place.
-        oceanic_override_retreat_budget_hc = np.zeros(1)
-        if self.crust_type == "continental" and np.any(arc_band_all):
-            hm_all = self.collect("mantle_lithosphere_thickness_m")
-            grown_hc, _ = rheology.apply_arc_magmatic_thickening(
-                hc_all[arc_band_all], hm_all[arc_band_all], closing_rate_all[arc_band_all],
-                years_myr, arc_intensity_all[arc_band_all],
-            )
-            oceanic_override_retreat_budget_hc[0] = (
-                OCEANIC_OVERRIDE_RETREAT_BUDGET_MULTIPLIER * float(np.sum(grown_hc - hc_all[arc_band_all]))
-            )
-
-        # Collision-uplift tuning knobs (the "Controls" window, 1.0 == untuned -- see World).
-        # `orogen_amount` scales the plastic thickening rate at contested nodes; `orogen_reach`
-        # widens (>1) or narrows (<1) the belt it acts on -- see _distance_to_mask_1d /
-        # COLLISION_NEAR_FIELD_*. At 1.0, `orogen_amount` leaves apply_convergent_deformation's
-        # contested-band strength at exactly 1.0, same as ever -- but `orogen_reach` no longer
-        # means "no near-field ring below/at 1.0, only above": the ring is linear in the knob
-        # from 0 (see COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT's own comment for why the model's
-        # own baseline collision belt already carries one at the knob's untuned value).
-        orogen_amount = world.collision_uplift_multiplier
-        orogen_reach = world.collision_uplift_reach_multiplier
-        # How much of this plate's own active margin is currently jammed in overlap right now
-        # -- normalized against the near-boundary band, not the whole plate (a huge plate's
-        # boundary is a small fraction of its own node count, which would dilute this to
-        # near-zero for exactly the large-plate case that matters). A deeper/wider overlap
-        # should crumple faster than a light graze, on top of the existing distance-decay
-        # shape within the belt -- see OVERLAP_UPLIFT_SEVERITY_GAIN.
-        band_all = inputs.dist_to_neighbor <= reach_rad
-        overlap_severity = float(np.count_nonzero(contested_all)) / max(1, int(np.count_nonzero(band_all)))
-        orogen_contested_strength = orogen_amount * min(orogen_reach, 1.0) * (1.0 + OVERLAP_UPLIFT_SEVERITY_GAIN * overlap_severity)
-        orogen_dilation_nodes = (
-            round(orogen_reach * COLLISION_NEAR_FIELD_REACH_KM_PER_UNIT / (spacing_rad * PLANET_RADIUS_KM))
-            if orogen_reach > 0.0 and self.crust_type == "continental"
-            else 0
-        )
-
-        fault_noise = (
-            SphereNoise(np.random.default_rng((world.seed, self.plate_id, 9001)), octaves=3, base_freq=9.0)
-            if self.crust_type == "continental"
-            else None
-        )
+        node_area_m2 = lithosphere.node_area_m2(spacing_rad)
 
         new_lines: list[ElevationLine] = []
         offset = 0
@@ -720,318 +1165,40 @@ class LithospherePlate(PlateWithLines):
             sl = slice(offset, offset + n)
             offset += n
 
-            contested = contested_all[sl]
-            convergent = convergent_all[sl]
-            divergent = divergent_all[sl]
-            transform = transform_all[sl]
-            shrinkable = shrinkable_all[sl]
-            accrete = accrete_all[sl]
-            closing_rate = closing_rate_all[sl]
-            neighbor_oceanic = inputs.neighbor_is_oceanic[sl]
-            arc_band = arc_band_all[sl]
-            arc_intensity = arc_intensity_all[sl]
-            fault_influence = fault_influence_all[sl]  # all-ones except in "fault" mode
-
             # Active-margin growth seed per line end -- see ARC_MARGIN_SEED_HC_M. An end is an
             # active margin if a node within ARC_MARGIN_END_SCAN_NODES of it is in the arc
             # band, or still carries a subduction-arc provenance stamp from a recent step (the
             # ocean's edge can retreat a step before this plate's edge grows into the gap).
             arc_end_low = arc_end_high = False
             if self.crust_type == "continental" and n > 0:
-                arc_signal = arc_band | (line.elev_change_reason == ELEV_CHANGE_SUBDUCTION_ARC)
+                arc_signal = ctx.arc_band[sl] | (line.elev_change_reason == ELEV_CHANGE_SUBDUCTION_ARC)
                 k = ARC_MARGIN_END_SCAN_NODES
                 arc_end_low = bool(arc_signal[:k].any())
                 arc_end_high = bool(arc_signal[-k:].any())
 
-            hc = line.crustal_thickness_m.copy()
-            hm = line.mantle_lithosphere_thickness_m.copy()
-            # GitHub issue #216 Hc/Hm budget checkpoints -- see phase_budget.py. `codes0` is
-            # this line's crust_type_code, unchanged until the decompression-melting checkpoint
-            # below, so every intermediate checkpoint below reuses it for both before/after.
-            codes0 = line.crust_type_code
-            checkpoint_hc, checkpoint_hm = (hc.copy(), hm.copy()) if world.debug_diagnostics else (None, None)
-            # Isostasy-driven elevation change is applied as a *delta* on top of whatever
-            # elevation already holds (elevation_before -> below), not a wholesale overwrite
-            # -- erosion.py (run later this same step_world call, and every step
-            # thereafter until the next deform()) mutates `elevation` directly, with no
-            # notion of Hc/Hm at all. An unconditional overwrite here would silently erase
-            # every step's worth of erosion the instant the *next* deform() call ran,
-            # confirmed directly as a real bug (a 3-step run's own elevation stopped
-            # matching isostasy(Hc, Hm) exactly the way an unconditional-overwrite design
-            # would have predicted, because erosion's own contribution was still baked into
-            # the *un-clipped* portion of `elevation` between tectonic uplift events -- the
-            # fix is this delta, not forcing elevation back to a bare isostasy readout).
-            rho_c = self.crust_density()
-            elevation_before = lithosphere.isostatic_elevation(hc, hm, rho_c)
-
-            # The band that plastically thickens: the whole converging band at
-            # `orogen_contested_strength`, plus (reach knob > 1) a dilated near-field ring
-            # that tapers linearly from COLLISION_NEAR_FIELD_INNER_FACTOR right outside the
-            # contested band down to 0 at the ring's own outer edge -- see that constant's own
-            # comment (issue #146). `orogen_strength` is the per-node multiplier handed to
-            # apply_convergent_deformation; > 0 exactly on the nodes that thicken.
-            # `apply_convergent_deformation` still gates on each node's own closing rate
-            # (below yield / not actually closing -> zero strain), so a node that is
-            # `convergent` only via the `contested` deep-overlap fold and is no longer
-            # actively closing simply thickens at zero.
-            near_field_dist = _distance_to_mask_1d(convergent, orogen_dilation_nodes) if orogen_dilation_nodes > 0 else None
-            near_field = (
-                (near_field_dist <= orogen_dilation_nodes) & ~convergent & ~divergent
-                if near_field_dist is not None
-                else np.zeros(n, dtype=bool)
+            near_field_dist = (
+                _distance_to_mask_1d(ctx.convergent[sl], ctx.orogen_dilation_nodes) if ctx.orogen_dilation_nodes > 0 else None
             )
-            orogen_strength = np.where(convergent, orogen_contested_strength, 0.0)
-            if np.any(near_field):
-                # Cell-centered, not edge-to-edge: node `d` (1-indexed) is treated as sitting
-                # at the middle of its own step, so the outermost ring node still gets a small
-                # nonzero share (COLLISION_NEAR_FIELD_INNER_FACTOR / (2*orogen_dilation_nodes))
-                # instead of tapering all the way to exactly 0 right at the last real node --
-                # an edge-to-edge ramp would otherwise re-introduce a (smaller) hard step at a
-                # small reach (e.g. a 1-2 node ring at coarse node_density), the same shelf-vs-
-                # falloff problem this taper exists to fix. This also keeps the ring's mean
-                # strength at exactly COLLISION_NEAR_FIELD_INNER_FACTOR / 2 regardless of
-                # orogen_dilation_nodes (a symmetric linear ramp always averages to its
-                # midpoint), matching the old flat factor's total contribution.
-                taper = np.clip(1.0 - (near_field_dist - 0.5) / orogen_dilation_nodes, 0.0, 1.0)
-                orogen_strength[near_field] = orogen_amount * COLLISION_NEAR_FIELD_INNER_FACTOR * taper[near_field]
-            # "fault" mode: concentrate the shortening onto fault traces (no-op / all-ones
-            # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
-            orogen_strength = orogen_strength * fault_influence
-            thicken = orogen_strength > 0.0
-            if np.any(thicken):
-                fault_factor = (
-                    np.where(
-                        fault_noise.sample(geometry.local_xyz(np.full(n, line.phi), line.theta)) < -0.15,
-                        rheology.REVERSE_FAULT_VALLEY_UPLIFT_FACTOR,
-                        1.0,
-                    )
-                    if fault_noise is not None
-                    else np.ones(n)
-                )
-                # The overlapping crust a continent-continent suture retreats over is not
-                # lost here via a `fault_factor` boost -- its actual volume is conserved and
-                # thrust onto the leading edge in `_grow_or_shrink_line_for_deform` (see
-                # `_redistribute_accreted_column`). This path is just the ordinary
-                # yield-limited plastic thickening.
-
-                # Lateral magma export (GitHub issue #205, follow-up to #120's "Land fraction
-                # slowly declines"): divert a fraction of the core convergent band's own strain
-                # increment to a mobile magma parcel instead of thickening the node in place --
-                # see rheology.magma_export_strength_and_volume's own docstring for the full
-                # mechanism/reasoning. Masked to `convergent` only (never the near-field ring
-                # below): the ring's own melt supply already comes from the delamination-
-                # overflow path a few lines down, and skimming it here too would starve that
-                # supply a second, independent way (see that function's own docstring on why
-                # near-ceiling nodes are exempt for the same reason).
-                core_idx = np.flatnonzero(thicken)[convergent[thicken]]
-                used_strength = orogen_strength[thicken]
-                if len(core_idx) > 0:
-                    reduced_strength, export_hc = rheology.magma_export_strength_and_volume(
-                        hc[core_idx], closing_rate[core_idx], years_myr, fault_factor[core_idx], orogen_strength[core_idx],
-                    )
-                    used_strength = used_strength.copy()
-                    used_strength[convergent[thicken]] = reduced_strength
-                    exporting = export_hc > 0.0
-                    if np.any(exporting):
-                        node_idx = core_idx[exporting]
-                        volumes_m3 = export_hc[exporting] * lithosphere.node_area_m2(spacing_rad)
-                        origins = own_points[sl][node_idx]
-                        world.pending_magma_parcels.extend(
-                            magma_transport.MagmaParcel(
-                                origin_xyz=origins[i], volume_m3=float(volumes_m3[i]), step_generated=world.steps_taken
-                            )
-                            for i in range(len(node_idx))
-                        )
-
-                new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
-                    hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
-                    fault_factor[thicken], strength=used_strength,
-                )
-                hc[thicken] = new_hc
-                hm[thicken] = new_hm
-
-                # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
-                # #161) -- but it also doesn't reappear whole and instant on the foreland
-                # either (issue #145's reopened investigation: that turned out to over-
-                # thicken/elevate the majority of a run's continental land within tens of
-                # Myr). It delaminates, partially remelts, and the buoyant melt fraction
-                # intrudes the near-field ring at a bounded rate -- see
-                # rheology.apply_delamination_melt_intrusion's own docstring for the full
-                # reasoning. Only the core band's overflow is conserved (partially) this way;
-                # the near-field ring's own overflow (rarer -- it thickens at a faded rate
-                # already) has nowhere further out to spread to on this pass and delaminates
-                # in full, same as suture accretion's own overflow past its cap. No-op when
-                # there's no near-field ring to receive it (reach knob at 0, or an oceanic
-                # plate, which never gets one).
-                overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
-                if overflow_total > 0.0 and np.any(near_field):
-                    hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
-
-            if world.debug_diagnostics:
-                phase_budget.record(world, self, "convergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
-                checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
-
-            # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
-            # the mantle wedge and underplates juvenile crust across the whole arc band --
-            # extra Hc (added from the mantle, not conserved), the crust-building half of
-            # "subduction under a continent makes more continent" (GitHub issue #120, "Land fraction
-            # slowly declines"). Separate from the contested shortening above: the band is far
-            # wider than the contact line. Bounded long-term by the CONTINENTAL_AREA_BUDGET_MULT
-            # volume gate.
-            if np.any(arc_band):
-                hc[arc_band], hm[arc_band] = rheology.apply_arc_magmatic_thickening(
-                    hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
-                )
-
-            if world.debug_diagnostics:
-                phase_budget.record(world, self, "arc_magmatism", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
-                checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
-
-            prior_hc = hc.copy()
-            melting = np.zeros(n, dtype=bool)
-            newly_below_rift_onset = np.zeros(n, dtype=bool)
-            if np.any(divergent):
-                new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
-                # "fault" mode: scale the thinning delta by fault proximity (all-ones
-                # otherwise). Melt (decompression volcanism) still fires on the geometric
-                # rift threshold -- it's a discrete event, not a rate.
-                infl = fault_influence[divergent]
-                hc[divergent] = hc[divergent] + infl * (new_hc - hc[divergent])
-                hm[divergent] = hm[divergent] + infl * (new_hm - hm[divergent])
-                melting[divergent] = melt
-
-                # Rift magmatic underplating (see rheology.apply_rift_magmatic_thickening): a
-                # partial Hc offset for nodes that thinned past RIFT_VOLCANISM_ONSET_HC_M but
-                # didn't melt all the way through this step -- nodes that did melt already got
-                # the full reference-column reset below and don't need this on top of it.
-                magmatic_band = divergent & ~melting
-                if np.any(magmatic_band):
-                    new_hc_mag, new_hm_mag = rheology.apply_rift_magmatic_thickening(
-                        hc[magmatic_band], hm[magmatic_band], closing_rate[magmatic_band], years_myr
-                    )
-                    hc[magmatic_band] = new_hc_mag
-                    hm[magmatic_band] = new_hm_mag
-                    newly_below_rift_onset = (
-                        magmatic_band & (prior_hc >= rheology.RIFT_VOLCANISM_ONSET_HC_M) & (hc < rheology.RIFT_VOLCANISM_ONSET_HC_M)
-                    )
-
-            if world.debug_diagnostics:
-                phase_budget.record(world, self, "divergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
-                checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
-
-            prior_age = line.divergent_age_myr
-            new_age = np.where(divergent, prior_age + years_myr, 0.0)
-            if self.crust_type == "oceanic":
-                hm = rheology.relax_young_oceanic_mantle_lithosphere(hm, new_age, years_myr)
-                if world.debug_diagnostics:
-                    phase_budget.record(world, self, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
-                    checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
-
-            is_volcano = line.is_volcano.copy()
-            volcano_remaining = line.volcano_active_years_remaining.copy()
-            crust_type_code = line.crust_type_code.copy()
-            # Decompression melting (spec 2.3): a rift that just thinned past the critical
-            # threshold erupts fresh crust in place -- same one-guaranteed-eruption convention
-            # v1's stretch-volcano growth used. The erupted material's type depends on where it
-            # surfaces: still standing above sea level (this node's *pre-melt* elevation, i.e.
-            # this line's own elevation before today's deform() pass touched it) is
-            # continental-type magmatism -- real continental rifts stay bimodal-volcanic land
-            # for a long stretch before a true ocean opens (the East African Rift, well before
-            # the Red Sea stage) -- while a node already at or below sea level (a drowned
-            # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
-            # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
-            _erupt_melted_nodes(world, self.plate_id, line_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, line.elevation)
-            phase_budget.record(world, self, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code)
-            _ignite_early_rift_volcanoes(world, self.plate_id, line_index, is_volcano, volcano_remaining, newly_below_rift_onset)
-
-            # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
-            # bump on the transform band, kept as a direct elevation delta (like erosion's
-            # own contributions) rather than an Hc change -- a strike-slip contact shoulders
-            # up local relief without net crustal shortening. Gated by `fault_influence` in
-            # "fault" mode so it tracks the boundary strike-slip fault families rather than
-            # smearing along the whole polygon edge.
-            transform_uplift = np.zeros(n)
-            transform_uplift[transform] = (
-                TRANSFORM_UPLIFT_RATE_M_PER_MYR * years_myr * fault_influence[transform]
+            columns = deform_columns(
+                world,
+                self,
+                ctx,
+                sl,
+                {name: getattr(line, name) for name in COLUMN_FIELDS},
+                near_field_dist,
+                lambda line=line, n=n: geometry.local_xyz(np.full(n, line.phi), line.theta),
+                node_area_m2,
+                line_index,
+                years,
             )
-
-            elevation_after = lithosphere.isostatic_elevation(hc, hm, rho_c)
-
-            # Issue #189 follow-up (see UNBACKED_RELIEF_DECAY_PER_MYR above): relax any
-            # *existing* positive debt -- elevation this line already carries in excess of what
-            # `elevation_before` says its own Hc/Hm column supports -- toward zero, before this
-            # step's own fresh transform_uplift (still a bare delta by design) potentially
-            # adds more. `line.crustal_thickness_m` (the column at the *start* of this step,
-            # matching what `elevation_before` was computed from), not `hc` (already mutated
-            # by the convergent/divergent passes above) -- and v1 lines with no Hc tracking at
-            # all (all-zero) are left alone, same has_column gating
-            # lithosphere.back_elevation_gain uses.
-            existing_debt = np.where(line.crustal_thickness_m > 0.0, np.clip(line.elevation - elevation_before, 0.0, None), 0.0)
-            debt_relief = existing_debt * (1.0 - np.exp(-UNBACKED_RELIEF_DECAY_PER_MYR * years_myr))
-
-            new_elevation = rheology.clip_elevation_bounds(
-                line.elevation - debt_relief + (elevation_after - elevation_before) + transform_uplift
-            )
-            if np.any(melting):
-                # The delta above used this plate's single nominal `rho_c` for both
-                # `elevation_before`/`elevation_after` -- fine for every ordinary node, whose
-                # crust_type_code is still CRUST_TYPE_INHERIT, but wrong for a node that just
-                # melted into the *other* type (e.g. a continental plate's drowned margin
-                # melting through to real oceanic crust): its fresh Hc/Hm reference column
-                # should float at the density of what it actually is now, not the plate's own
-                # nominal density. This is a brand-new column with no prior erosion history to
-                # preserve (same "hard reset, not a delta" character the Hc/Hm reset above
-                # already has), so read it exactly rather than folding it into the delta.
-                melt_rho_c = lithosphere.node_crust_density(crust_type_code[melting], self.crust_type)
-                new_elevation[melting] = rheology.clip_elevation_bounds(
-                    lithosphere.isostatic_elevation(hc[melting], hm[melting], melt_rho_c)
-                )
-
-            # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_*
-            # and render_image's "elevReason" view). Stamp whichever tectonic process moved a
-            # node this step, gated on ELEV_CHANGE_MIN_DELTA_M so a node barely grazed by a
-            # fading boundary force keeps its older provenance. The masks partition the
-            # near-boundary band by motion (convergent / divergent / transform), so a plain
-            # per-mask assignment needs no priority order. `faults._apply_plate_fault_relief`
-            # runs after this pass and overwrites these with a FAULT_* code wherever a
-            # boundary fault of the matching regime moved the node -- that is what paints the
-            # fault families along every boundary in the elevReason view.
-            reason = line.elev_change_reason.copy()
-            moved = np.abs(new_elevation - line.elevation) >= ELEV_CHANGE_MIN_DELTA_M
-            if self.crust_type == "continental":
-                # near_field (the reach knob's dilated ring) is continent-continent orogenic
-                # belt too, so it carries the same COLLISION provenance as the converging core.
-                reason[(convergent | near_field) & moved & ~neighbor_oceanic] = ELEV_CHANGE_COLLISION
-                reason[convergent & moved & neighbor_oceanic] = ELEV_CHANGE_SUBDUCTION_ARC
-                reason[arc_band & moved] = ELEV_CHANGE_SUBDUCTION_ARC
-            else:
-                reason[convergent & moved] = ELEV_CHANGE_TRENCH
-            reason[divergent & moved] = ELEV_CHANGE_RIFT
-            # Gated on transform_uplift itself, not just band membership -- issue #189
-            # follow-up's debt-decay term can move a transform-band node's elevation on its own
-            # (fault_influence == 0 in "fault" mode zeroes transform_uplift there, but leftover
-            # debt still decays), which would otherwise mislabel a pure decay move as an active
-            # transform pressure ridge.
-            reason[(transform_uplift > 0.0) & moved] = ELEV_CHANGE_TRANSFORM
-            reason[melting] = ELEV_CHANGE_VOLCANO
-
-            updated_line = line.replace(
-                elevation=new_elevation,
-                crustal_thickness_m=hc,
-                mantle_lithosphere_thickness_m=hm,
-                divergent_age_myr=new_age,
-                is_volcano=is_volcano,
-                volcano_active_years_remaining=volcano_remaining,
-                elev_change_reason=reason,
-                crust_type_code=crust_type_code,
-            )
+            updated_line = line.replace(**columns)
             grown_lines = self._grow_or_shrink_line_for_deform(
                 updated_line,
                 inputs.dist_to_neighbor[sl],
                 inputs.direction_to_neighbor[sl],
-                contested,
-                shrinkable,
-                accrete,
+                contested_all[sl],
+                ctx.shrinkable[sl],
+                ctx.accrete[sl],
                 spacing_rad,
                 extend_threshold_rad,
                 max_extend_nodes,
@@ -1039,7 +1206,7 @@ class LithospherePlate(PlateWithLines):
                 world,
                 line_index,
                 neighbours,
-                oceanic_override_retreat_budget_hc,
+                ctx.oceanic_override_retreat_budget_hc,
                 suppress_growth,
                 arc_end_low,
                 arc_end_high,
@@ -1554,38 +1721,9 @@ class LithospherePlate(PlateWithLines):
         self, world: "World", line_index: int, world_pts: np.ndarray, thin_ratio: float,  # noqa: F821
         hc0: float, hm0: float, amp: float, texture: "terrain_noise.FractalTexture"
     ) -> dict[str, np.ndarray]:
-        """Brand-new nodes carry no prior column to conserve, so -- exactly like ordinary
-        divergent thinning and `_grow_or_shrink_line_for_deform`'s `_stretch_end` -- they are
-        seeded thin (`thin_ratio` share of the oceanic reference column, `growth_seed_thickness`)
-        and run straight through `_erupt_melted_nodes`, the same decompression-melting/magma-
-        upwelling path every other new-crust event in `deform()` uses. This makes every node
-        this produces a real eruption (typed, `is_volcano`-stamped, timed) rather than a
-        distinct silent "spawn" concept -- shared by `_claim_adjacent_territory` and
+        """See `seed_and_erupt_new_nodes` -- shared by `_claim_adjacent_territory` and
         `_fill_corner_notch_frontier`, the two callers that ever originate genuinely new areal crust."""
-        n = len(world_pts)
-        hc = np.full(n, hc0 * thin_ratio) + amp * texture.sample(world_pts)
-        hm = np.full(n, hm0 * thin_ratio)
-        elevation = lithosphere.isostatic_elevation(hc, hm, self.crust_density())
-        crust_type_code = np.zeros(n, dtype=np.int8)
-        is_volcano = np.zeros(n, dtype=bool)
-        volcano_remaining = np.zeros(n)
-        melting = hc < rheology.RIFT_CRITICAL_THICKNESS_M
-        _erupt_melted_nodes(
-            world, self.plate_id, line_index,
-            hc, hm, crust_type_code, is_volcano, volcano_remaining,
-            melting, elevation,
-        )
-        elevation = lithosphere.isostatic_elevation(hc, hm, lithosphere.node_crust_density(crust_type_code, self.crust_type))
-        return {
-            "elevation": elevation,
-            "crustal_thickness_m": hc,
-            "mantle_lithosphere_thickness_m": hm,
-            "crust_type_code": crust_type_code,
-            "is_volcano": is_volcano,
-            "volcano_active_years_remaining": volcano_remaining,
-            "elev_change_reason": np.full(n, ELEV_CHANGE_NEW_CRUST, dtype=float),
-            "node_created_years": np.full(n, world.elapsed_years, dtype=float),
-        }
+        return seed_and_erupt_new_nodes(world, self, line_index, world_pts, thin_ratio, hc0, hm0, amp, texture)
 
     def _claim_adjacent_territory(
         self, world: "World", neighbours: list, spacing_rad: float, neighbour_tree: cKDTree | None = None  # noqa: F821
@@ -2462,7 +2600,7 @@ def generate_plates(
     `SURFACE_REPRESENTATIONS`). Everything above -- sites, tiling, crust types, relief
     fields, and the `rng` draw order -- is shared, so `"quad"` samples the same Hc/Hm fields
     over the same ownership test, just at cube-sphere cell centres instead of line nodes
-    (issue #228 Phase 2). Quad plates are static: generation, rendering, and saves only."""
+    (issue #228 Phase 2)."""
     if surface not in SURFACE_REPRESENTATIONS:
         raise ValueError(f"unknown surface representation {surface!r}")
     rng = np.random.default_rng(seed)
@@ -2679,8 +2817,9 @@ def new_plate(
     seed: int,
     is_owned=None,
     node_is_continental=None,
-) -> LithospherePlate:
-    """A brand-new `LithospherePlate` seeded with reference Hc/Hm plus the same composite
+    surface: str = "lines",
+) -> Plate:
+    """A brand-new `LithospherePlate` (or, for `surface="quad"`, `PlateWithSparseQuadPatch`) seeded with reference Hc/Hm plus the same composite
     relief field `generate_plates` uses (see `terrain_noise.py`) -- the v2 analogue of
     `plates.generate_plates`' own per-plate initial-line construction. Keyed off
     `(seed, plate_id, _TERRAIN_SEED_TAG)` so the crust stays attached to this plate.
@@ -2734,6 +2873,31 @@ def new_plate(
 
     def elevation_at(world_pts: np.ndarray) -> np.ndarray:
         return np.zeros(len(world_pts))
+
+    if surface == "quad":
+        cells = PlateWithSparseQuadPatch.from_lattice(plate_id, frame, crust_type, spacing_rad, is_owned)
+        world_pts = cells.all_points_and_elevation()[0]
+        is_continental = np.asarray(node_is_continental(world_pts), dtype=bool)
+        areas = cells.node_areas_m2()
+        continental_area, oceanic_area = float(areas[is_continental].sum()), float(areas[~is_continental].sum())
+        majority = crust_type
+        if not np.isclose(continental_area, oceanic_area):
+            majority = "continental" if continental_area > oceanic_area else "oceanic"
+        plate = PlateWithSparseQuadPatch(
+            plate_id,
+            frame,
+            majority,
+            cells.cells_per_edge,
+            cells.cell_keys,
+            fields={
+                # Also upper-clipped (issue #161) -- see generate_plates' own note.
+                "crustal_thickness_m": np.clip(hc_at(world_pts, is_continental), lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M),
+                "mantle_lithosphere_thickness_m": np.where(is_continental, hm0_continental, hm0_oceanic),
+                "crust_type_code": np.where(is_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(np.int8),
+            },
+        )
+        lithosphere.sync_plate_elevation(plate)
+        return plate
 
     lines = build_lines_from_lattice(frame, is_owned, elevation_at, spacing_rad=spacing_rad)
     hc_lines = []

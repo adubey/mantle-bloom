@@ -1,6 +1,7 @@
 import numpy as np
 from app import debug_worlds, erosion, geometry, lithosphere
 from app import lithosphere_plate
+from app.sparse_quad_patch import PlateWithSparseQuadPatch
 from app.world import generate_world, step_world
 
 
@@ -252,3 +253,46 @@ def test_coastal_feedback_stays_stable_over_many_steps():
     # fill halves nudge the coast toward its local datum, they don't run away with it.
     still_near = float(np.mean(np.abs(after - sl) <= 200.0))
     assert still_near > 0.05
+
+
+def _uncovered_fraction(plates_list, samples: int = 5000) -> float:
+    points = np.random.default_rng(0).normal(size=(samples, 3))
+    points /= np.linalg.norm(points, axis=1, keepdims=True)
+    covered = np.zeros(samples, dtype=bool)
+    for plate in plates_list:
+        covered |= plate.contains_batch(points)
+    return float(np.mean(~covered))
+
+
+def test_quad_world_steps_with_bounded_coverage_and_valid_topology():
+    # Issue #228 Phase 4: a quad world steps with plate movement. Boundary retreat/advance
+    # must keep every plate a valid balanced leaf mesh, and keep the sphere covered about as
+    # well as it started -- neither leaking territory nor piling it up.
+    world = generate_world(seed=5, num_plates=6, surface="quad", node_density=0.5)
+    world.simulate_climate_biomes = False
+    cells_before = sum(p.node_count() for p in world.plates)
+    for _ in range(12):
+        step_world(world, years=1_000_000)
+        assert all(isinstance(p, PlateWithSparseQuadPatch) for p in world.plates)
+        assert _uncovered_fraction(world.plates) < 0.04
+        assert _sampled_overlap_fraction(world.plates) < 0.05
+
+    assert world.steps_taken == 12
+    for plate in world.plates:
+        plate._validate_leaf_topology()
+        assert np.all(plate.collect("crustal_thickness_m") > 0.0)
+    assert abs(sum(p.node_count() for p in world.plates) / cells_before - 1.0) < 0.05
+
+
+def test_quad_world_stepping_is_deterministic():
+    def run():
+        world = generate_world(seed=9, num_plates=4, surface="quad", node_density=0.5)
+        world.simulate_climate_biomes = False
+        for _ in range(2):
+            step_world(world, 1_000_000)
+        return [(p.plate_id, p.cell_keys.copy(), p.collect("crustal_thickness_m")) for p in world.plates]
+
+    for (id_a, keys_a, hc_a), (id_b, keys_b, hc_b) in zip(run(), run(), strict=True):
+        assert id_a == id_b
+        np.testing.assert_array_equal(keys_a, keys_b)
+        np.testing.assert_array_equal(hc_a, hc_b)

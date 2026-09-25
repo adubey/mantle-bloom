@@ -8,6 +8,7 @@
 - [Human-made worlds (sketch-driven generation)](#worldsketch)
 - [Mantle flow](#mantle-flow)
 - [Plate motion: shift and deform](#boundary-evolution)
+- [Quad-surface deformation](#quad-deformation)
 - [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback](#gap-filling)
@@ -743,6 +744,44 @@ passes `FORCED_MERGE_SUSTAINED_YEARS` it is fused regardless of the size/closing
 already merged a ready closing-rate pair). Separately, `_merge_probability` now also lifts a
 large pair's odds toward certainty in proportion to `|omega_a - omega_b| / MAX_PLATE_RATE` --
 a fast, decisive convergence merges more readily than a slow oblique graze.
+
+<a id="quad-deformation"></a>
+## Quad-surface deformation (`quad_tectonics.py`)
+
+A world generated with `surface="quad"` (issue #228) steps through the same pipeline as a
+line world. Only the per-plate `deform()` differs. The boundary classification and every
+per-node column update above are shared code: `lithosphere_plate.boundary_context` and
+`deform_columns`. The line engine calls `deform_columns` once per line and the quad engine
+once per plate. The line engine's row-shaped operations, which are end-trim, end-stretch, row
+claims, the corner-notch filler, the leading-row drop and regularization, are replaced by two
+operations on the cell graph:
+
+- **Retreat.** Any retreatable cell (the same `shrinkable` set, with the continental
+  minimum-run rule applied to connected components instead of runs along a line) that has a
+  wholly exposed side is removed. The newly exposed layer is considered next, up to this
+  step's displacement in cells and the usual per-step cell cap. A continental suture's
+  consumed volume goes onto the surviving cells within `SUTURE_ACCRETION_SPREAD_NODES` hops
+  behind that suture front, conserved by exact cell area up to the usual caps. This matches
+  the line engine, which spreads a retreating end over that many nodes inward along its row.
+  The issue #177 retreat budget is spent in area-weighted Hc.
+- **Advance.** Each uncontested boundary cell with open water in front of it (the line
+  engine's end-growth test) activates the same-level empty cell across each exposed side,
+  for up to `MAX_CLAIM_ROWS_PER_STEP` layers. A candidate cell must not lie inside any
+  neighbour, and must be farther than `EXTEND_THRESHOLD_MULTIPLIER` spacings from every
+  neighbour node. New cells are fresh crust through `seed_and_erupt_new_nodes`, the same path
+  the line engine's row claims use. They stretch-thin the `K_NEIGHBOUR_ROWS_FOR_MASS_
+  CONSERVATION` layers of cells behind them by the row-claim share, scaled by how well the
+  growth direction lines up with the direction to the nearest neighbour. An active
+  continental margin grows `ARC_MARGIN_SEED_*` arc crust instead. The continental
+  area-budget gate is measured in area, not node count.
+
+Growth never follows a lattice axis, so a plate advances isotropically and there are no row
+stubs to regularize. Cell insertion keeps the mesh 2:1 balanced by rejecting any candidate
+that would border a leaf two levels away. The same frontier walk (`grow_frontier`) grows
+quad plates into gaps for `gaps.fill_gaps_by_growing_neighbours`. A gap in a quad world
+spawns a quad plate (`new_plate(surface="quad")`), and quad volcanoes erupt through the
+field API. Quad plates don't merge yet (`merge_split._supports_merge`), so a quad collision
+is resolved only by each plate's own retreat and accretion.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)

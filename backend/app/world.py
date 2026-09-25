@@ -641,8 +641,7 @@ def generate_world(
     motion, for `"earth"`/`"pangaea"` specifically -- see real_plates.py's
     `fit_mantle_centers`. `"got"` has no real-world motion to fit to and keeps the ordinary
     random centers. `surface` (`"lines"` or `"quad"`) picks the plates' terrain
-    representation -- see lithosphere_plate.generate_plates; a `"quad"` world is static
-    (issue #228 Phase 2) and `step_world` refuses to move its plates."""
+    representation -- see lithosphere_plate.generate_plates."""
     world = None
     for message in generate_world_progress(
         seed,
@@ -815,9 +814,9 @@ def step_world_progress(world: World, years: float):
 
     Plate movement (skippable via World.simulate_plate_movement) is two per-plate passes:
     `Plate.shift(world, years)` for every plate (integrate the torque balance and rotate
-    rigidly), then `LithospherePlate.deform(world, other_plates, years, D)` for every plate
-    in a freshly randomized order each turn (Mohr-Coulomb yield/isostasy -- see
-    lithosphere_plate.py).
+    rigidly), then `deform(world, other_plates, years, D)` for every plate in a freshly
+    randomized order each turn (Mohr-Coulomb yield/isostasy -- see lithosphere_plate.py for
+    line-backed plates and quad_tectonics.py for quad-surface ones).
     Randomizing the processing order each turn is what keeps two neighbors from both claiming
     the same contested/unclaimed space in the same turn.
 
@@ -837,10 +836,6 @@ def step_world_progress(world: World, years: float):
     World.simulate_plate_movement/World.simulate_climate_biomes (see their own docstrings and
     main.py's /world/controls) -- elapsed_years always advances regardless of either flag.
     """
-    if world.simulate_plate_movement and not all(isinstance(p, lithosphere_plate.LithospherePlate) for p in world.plates):
-        # Static quad-patch plates (issue #228 Phase 2) have no shift/deform/topology
-        # mechanics yet -- fail before mutating anything rather than part-way through a step.
-        raise NotImplementedError("plate movement needs line-backed plates; quad surfaces are static until issue #228 Phase 4")
     world.steps_taken += 1
     # The render path's cached node-cloud k-d tree (see World.node_kdtree_cache) and its
     # positions-only sibling shared with climate.py (World.node_position_tree_cache) are both

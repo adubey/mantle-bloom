@@ -24,7 +24,7 @@ from app.sparse_quad_patch import (
     parent_cell_keys,
     unpack_cell_keys,
 )
-from app.world import generate_world, step_world
+from app.world import generate_world
 
 N = 12
 
@@ -286,15 +286,6 @@ def test_quad_world_round_trips_through_the_versioned_save_format():
         np.testing.assert_array_equal(restored.cell_keys, original.cell_keys)
         for name in ("elevation", "crustal_thickness_m", "soil_depth"):
             np.testing.assert_array_equal(restored.collect(name), original.collect(name))
-
-
-def test_quad_world_refuses_plate_movement_without_mutating():
-    world = generate_world(seed=5, num_plates=5, surface="quad")
-
-    with pytest.raises(NotImplementedError):
-        step_world(world, 1_000_000)
-    assert world.steps_taken == 0
-    assert world.elapsed_years == 0.0
 
 
 def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
