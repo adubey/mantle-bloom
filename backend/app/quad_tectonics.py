@@ -12,13 +12,16 @@ module replaces all of them with two operations on the cell graph:
   layer is considered, up to this step's displacement in cells. A continental suture's
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
   conserved up to the usual accretion cap), exactly as `_redistribute_accreted_column` does
-  for a line end.
+  for a line end. An oceanic plate also carves out contested patches the peel can't reach
+  from its edge (the line engine's interior-subduction carve-out, `_carve_interior`).
 - **Advance** activates the empty cell across each exposed side of an eligible boundary
-  cell, wherever no neighbour already covers it, again in layers. New cells are fresh crust
-  through the same `seed_and_erupt_new_nodes` path the line engine's row claims use, and the
-  cells behind them are stretch-thinned by the same share (`K_NEIGHBOUR_ROWS_FOR_MASS_
-  CONSERVATION` layers instead of rows). An active continental margin grows juvenile arc crust
-  instead (`ARC_MARGIN_SEED_*`).
+  cell, wherever no neighbour already covers it, again in layers. Ordinary new ground is a
+  rift opening (`_open_rift`): the share of each new cell's footprint that lines up with the
+  plates' separation is covered by stretching the crust within
+  `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` cells behind it, volume-conservingly -- the 2D
+  form of the line engine's `_stretch_end` -- and the rest is fresh magmatic oceanic crust.
+  Columns stretched through `RIFT_CRITICAL_THICKNESS_M` erupt (breakup / ridge accretion).
+  An active continental margin grows juvenile arc crust instead (`ARC_MARGIN_SEED_*`).
 
 Boundary classification and the per-node column physics (convergent/arc/divergent/transform
 updates, melting, provenance) are shared with the line engine unchanged -- see
@@ -36,7 +39,17 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import geometry, lithosphere, phase_budget, rheology, terrain_noise
-from .elevation_lines import COVERAGE_RADIUS_MULT, ELEV_CHANGE_SUBDUCTION_ARC, line_spacing_rad
+from .elevation_lines import (
+    COVERAGE_RADIUS_MULT,
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_OCEANIC,
+    ELEV_CHANGE_NEW_CRUST,
+    ELEV_CHANGE_RIFT,
+    ELEV_CHANGE_SUBDUCTION_ARC,
+    ELEV_CHANGE_VOLCANO,
+    effective_is_continental_from_codes,
+    line_spacing_rad,
+)
 from .lithosphere_plate import (
     ARC_MARGIN_END_SCAN_NODES,
     ARC_MARGIN_SEED_HC_M,
@@ -54,9 +67,8 @@ from .lithosphere_plate import (
     boundary_context,
     deform_columns,
     growth_seed_thickness,
-    seed_and_erupt_new_nodes,
 )
-from .plates import _contested_by_any
+from .plates import _INTERIOR_SUBDUCTION_MIN_RUN, _contested_by_any
 from .surface_fields import SURFACE_FIELDS
 
 if TYPE_CHECKING:
@@ -67,10 +79,10 @@ if TYPE_CHECKING:
 # line engine's row claim uses (MAX_CLAIM_ROWS_PER_STEP), now applying in every direction.
 MAX_ADVANCE_LAYERS_PER_STEP = MAX_CLAIM_ROWS_PER_STEP
 
-# The eruption rng stream keys `deform_columns` / `seed_and_erupt_new_nodes` use in place of a
-# line index. Distinct values keep the column pass's melting draw and each advance layer's
-# new-crust and thinning draws from sharing one (seed, step, plate) stream: the advance uses
-# `_ADVANCE_RNG_INDEX + 2 * layer` for new cells and the next value for the cells behind them.
+# The eruption rng stream keys `deform_columns` / `_open_rift` use in place of a line index.
+# Distinct values keep the column pass's melting draw and each advance layer's draws from
+# sharing one (seed, step, plate) stream: the advance uses `_ADVANCE_RNG_INDEX + 2 * layer` for
+# new cells and the next value for the stretched cells behind them.
 _COLUMN_RNG_INDEX = 0
 _ADVANCE_RNG_INDEX = 1
 
@@ -204,6 +216,8 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
         remaining -= len(chosen)
         if remaining <= 0:
             break
+    if plate.crust_type == "oceanic" and remaining > 0:
+        removed |= _carve_interior(plate, retreatable & ~removed, ~has_probe | removed[safe_probes], remaining)
     if not np.any(removed):
         return survivors
 
@@ -214,6 +228,32 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
         _accrete_onto_survivors(plate, donors, ~removed)
     plate.remove_cells(removed)
     return ~removed
+
+
+def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, open_half: np.ndarray, max_cells: int) -> np.ndarray:
+    """Interior subduction: the `retreatable` patches the layered peel can never reach,
+    because no cell of theirs touches open ground (`open_half`: per cell, side and probe,
+    whether that half-side borders nothing or an already-peeled cell) -- a neighbour
+    overriding this plate somewhere other than its edge. Each such edge-connected patch of at
+    least `_INTERIOR_SUBDUCTION_MIN_RUN` cells subducts whole, up to `max_cells` in total --
+    the 2D form of the line engine's mid-row carve-out, leaving a hole the quad surface
+    represents directly. Oceanic plates only, as there: carving a continent's middle would
+    sever it into a spurious defragmentation plate. Returns the mask to remove."""
+    carved = np.zeros(len(retreatable), dtype=bool)
+    members = np.flatnonzero(retreatable)
+    if len(members) < _INTERIOR_SUBDUCTION_MIN_RUN:
+        return carved
+    touches_open = np.any(open_half[members], axis=(1, 2))
+    _, labels = connected_components(_adjacency_matrix(plate)[members][:, members], directed=False)
+    sizes = np.bincount(labels)
+    reachable = np.bincount(labels, weights=touches_open) > 0
+    budget = max_cells
+    for label in np.flatnonzero((sizes >= _INTERIOR_SUBDUCTION_MIN_RUN) & ~reachable):
+        if sizes[label] > budget:
+            continue
+        carved[members[labels == label]] = True
+        budget -= int(sizes[label])
+    return carved
 
 
 def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarray, survivors: np.ndarray) -> None:
@@ -339,8 +379,8 @@ def grow_frontier(
         if not len(candidates):
             break
         arc = state["arc"][sources]
-        seed_rng, thin_rng = _ADVANCE_RNG_INDEX + 2 * layer, _ADVANCE_RNG_INDEX + 2 * layer + 1
-        fields, thin_ratio = _new_cell_fields(plate, world, seed_rng, local, world_pts, gap_direction, sources, arc, hc0, hm0, amp, texture)
+        stretch_share = _stretch_share(plate, local, sources, gap_direction, arc)
+        fields = _new_cell_fields(plate, world, world_pts, arc, hc0, hm0, amp, texture)
         inserted = plate.insert_cells(candidates, fields)
         if not np.any(inserted):
             break
@@ -363,34 +403,25 @@ def grow_frontier(
         state["eligible"][new_index] = True
         keys = new_keys.copy()
 
-        ordinary = ~arc[inserted]
-        if np.any(ordinary):
-            _thin_behind(plate, world, thin_rng, new_index[ordinary], thin_ratio[inserted][ordinary])
+        rifted = ~arc[inserted]
+        if np.any(rifted):
+            _open_rift(plate, world, _ADVANCE_RNG_INDEX + 2 * layer, new_index, new_index[rifted], stretch_share[inserted][rifted])
     return max_cells - budget
 
 
-def _new_cell_fields(
+def _stretch_share(
     plate: "PlateWithSparseQuadPatch",
-    world: "World",
-    rng_index: int,
     local: np.ndarray,
-    world_pts: np.ndarray,
-    gap_direction: np.ndarray,
     sources: np.ndarray,
+    gap_direction: np.ndarray,
     arc: np.ndarray,
-    hc0: float,
-    hm0: float,
-    amp: float,
-    texture: "terrain_noise.FractalTexture",
-) -> tuple[dict[str, np.ndarray], np.ndarray]:
-    """Field values for each candidate cell, and the stretch ratio its growth imposes on the
-    cells behind it (1.0 for arc crust, which is fed by the slab rather than by stretching).
-
-    The ratio is the line engine's row-claim share, `1 - f (S - 1) / S` with
-    `S = K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION + 1`: `f` is how much of this cell's growth
-    runs along the separation direction (the component of the outward step toward the nearest
-    neighbour -- 1 with no neighbour in view, where the whole step is open ground)."""
-    count = len(local)
+) -> np.ndarray:
+    """Per candidate cell, the share of its footprint the plate covers by stretching its own
+    crust rather than by fresh magmatic accretion: how much of the outward step from its
+    source runs along the separation direction (toward the nearest neighbour node -- 1 with
+    no neighbour in view, where the whole step is the plate pulling apart). The 2D form of
+    the line engine's `rheology.stretch_components` split between end-stretch and row claim.
+    Arc cells are fed by the slab, not by stretching: 0."""
     source_local = plate.surface_nodes().local_xyz[sources]
     outward = geometry.normalize(local - source_local)
     toward = np.zeros_like(outward)
@@ -398,73 +429,134 @@ def _new_cell_fields(
     if np.any(has_gap):
         toward[has_gap] = geometry.normalize(geometry.to_local(plate.frame, gap_direction[has_gap]))
     alignment = np.where(has_gap, np.abs(np.sum(outward * toward, axis=1)), 1.0)
-    share = K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION + 1
-    thin_ratio = np.where(arc, 1.0, 1.0 - np.clip(alignment, 0.0, 1.0) * (share - 1) / share)
+    return np.where(arc, 0.0, np.clip(alignment, 0.0, 1.0))
 
+
+def _new_cell_fields(
+    plate: "PlateWithSparseQuadPatch",
+    world: "World",
+    world_pts: np.ndarray,
+    arc: np.ndarray,
+    hc0: float,
+    hm0: float,
+    amp: float,
+    texture: "terrain_noise.FractalTexture",
+) -> dict[str, np.ndarray]:
+    """Field values each candidate cell is inserted with. Arc cells are final: juvenile arc
+    crust (`ARC_MARGIN_SEED_*`). Every other cell starts as the fresh magmatic column -- the
+    oceanic growth seed plus the plate's terrain texture, explicitly typed oceanic -- which
+    `_open_rift` then blends with the stretched crust it draws from behind."""
+    count = len(world_pts)
     fields = {name: np.full(count, SURFACE_FIELDS[name].default, dtype=SURFACE_FIELDS[name].dtype) for name in (
-        "elevation", "crustal_thickness_m", "mantle_lithosphere_thickness_m", "crust_type_code", "is_volcano",
-        "volcano_active_years_remaining", "elev_change_reason", "node_created_years",
+        "elevation", "crustal_thickness_m", "mantle_lithosphere_thickness_m", "crust_type_code",
+        "elev_change_reason", "node_created_years",
     )}
+    fields["node_created_years"][:] = world.elapsed_years
     ordinary = ~arc
     if np.any(ordinary):
-        seeded = seed_and_erupt_new_nodes(world, plate, rng_index, world_pts[ordinary], thin_ratio[ordinary], hc0, hm0, amp, texture)
-        for name, values in seeded.items():
-            fields[name][ordinary] = values
+        hc = hc0 + amp * texture.sample(world_pts[ordinary])
+        fields["crustal_thickness_m"][ordinary] = hc
+        fields["mantle_lithosphere_thickness_m"][ordinary] = hm0
+        fields["crust_type_code"][ordinary] = CRUST_TYPE_OCEANIC
+        fields["elevation"][ordinary] = lithosphere.isostatic_elevation(hc, np.full(len(hc), hm0), lithosphere.RHO_OCEANIC_CRUST)
+        fields["elev_change_reason"][ordinary] = ELEV_CHANGE_NEW_CRUST
     if np.any(arc):
         density = lithosphere.crust_density(plate.crust_type)
         fields["crustal_thickness_m"][arc] = ARC_MARGIN_SEED_HC_M
         fields["mantle_lithosphere_thickness_m"][arc] = ARC_MARGIN_SEED_HM_M
         fields["elevation"][arc] = lithosphere.isostatic_elevation(np.array([ARC_MARGIN_SEED_HC_M]), np.array([ARC_MARGIN_SEED_HM_M]), density)[0]
         fields["elev_change_reason"][arc] = ELEV_CHANGE_SUBDUCTION_ARC
-        fields["node_created_years"][arc] = world.elapsed_years
-    return fields, thin_ratio
+    return fields
 
 
-def _thin_behind(plate: "PlateWithSparseQuadPatch", world: "World", rng_index: int, grown: np.ndarray, ratio: np.ndarray) -> None:
-    """Stretch-thin the `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` layers of older cells behind
-    freshly grown ones by each new cell's share -- the per-cell form of the line engine's
-    row-claim draw-down, including erupting any column that thins past the rift threshold.
-    A cell behind several new ones takes the strongest (smallest) ratio."""
+def _open_rift(
+    plate: "PlateWithSparseQuadPatch",
+    world: "World",
+    rng_index: int,
+    layer: np.ndarray,
+    rifted: np.ndarray,
+    stretch_share: np.ndarray,
+) -> None:
+    """Rift opening for this layer's `rifted` cells (node indices; `layer` is every cell this
+    layer inserted). Each new cell covers `stretch_share` of its footprint by stretching the
+    older cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops of it, and the rest with
+    the fresh magmatic column it was inserted with.
+
+    Stretching is exactly volume-conserving (the areal form of `rheology.
+    apply_stretch_thinning`, the line engine's `_stretch_end`): a donor asked to cover `D` m^2
+    of new ground on top of its own area `a` thins by `a / (a + D)`, and the Hc/Hm it loses
+    moves into the cells that asked, in proportion to what each asked of it. A new cell's
+    demand is spread over its donor band by donor area. So a continental margin pulled apart
+    thins into a widening band of stretched continental crust instead of losing it, and only
+    once a column thins past `RIFT_CRITICAL_THICKNESS_M` does it erupt -- continental breakup
+    or ridge accretion, through the same `_erupt_melted_nodes` path the column pass uses.
+    Magmatic share is new crust from the mantle, as at any spreading ridge."""
     n = plate.node_count()
-    adjacency = _adjacency_matrix(plate)
-    grown_mask = np.zeros(n, dtype=bool)
-    grown_mask[grown] = True
-    node_ratio = np.ones(n)
-    node_ratio[grown] = ratio
-    applied = np.ones(n)
-    frontier = grown_mask.copy()
-    reached = grown_mask.copy()
-    for _ in range(K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION):
-        rows, cols = adjacency[np.flatnonzero(frontier)].nonzero()
-        sources = np.flatnonzero(frontier)[rows]
-        step = np.ones(n)
-        np.minimum.at(step, cols, node_ratio[sources])
-        nxt = np.zeros(n, dtype=bool)
-        nxt[cols] = True
-        nxt &= ~reached
-        if not np.any(nxt):
-            break
-        applied[nxt] = step[nxt]
-        node_ratio[nxt] = step[nxt]
-        reached |= nxt
-        frontier = nxt
-    thinned = applied < 1.0
-    if not np.any(thinned):
-        return
+    areas = plate.node_areas_m2()
+    old = np.ones(n, dtype=bool)
+    old[layer] = False
+    old_idx = np.flatnonzero(old)
+    adjacency = _adjacency_matrix(plate).astype(float)
+    reach = adjacency[rifted][:, old_idx]
+    band = reach.copy()
+    old_adjacency = adjacency[old_idx][:, old_idx]
+    for _ in range(K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION - 1):
+        reach = reach @ old_adjacency
+        band = band + reach
+    band = (band > 0).astype(float).multiply(areas[old_idx][None, :]).tocsr()
+    band_area = np.asarray(band.sum(axis=1)).ravel()
+    new_area = areas[rifted]
+    demand = np.where(band_area > 0.0, stretch_share * new_area, 0.0)
+    # asked[c, d]: footprint new cell c asks of donor d.
+    asked = csr_matrix(band.multiply((demand / np.where(band_area > 0.0, band_area, 1.0))[:, None]))
+    donor_demand = np.asarray(asked.sum(axis=0)).ravel()
+    donor_area = areas[old_idx]
+    ratio = donor_area / (donor_area + donor_demand)
+    share_of_donor = csr_matrix(asked.multiply((1.0 / np.where(donor_demand > 0.0, donor_demand, 1.0))[None, :]))
+
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     codes = plate.collect("crust_type_code")
     is_volcano = plate.collect("is_volcano")
     remaining = plate.collect("volcano_active_years_remaining")
     elevation = plate.collect("elevation")
-    new_hc = hc[thinned] * applied[thinned]
-    new_hm = hm[thinned] * applied[thinned]
-    melting = (hc[thinned] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
-    sub_codes, sub_volcano, sub_remaining = codes[thinned], is_volcano[thinned], remaining[thinned]
-    _erupt_melted_nodes(world, plate.plate_id, rng_index, new_hc, new_hm, sub_codes, sub_volcano, sub_remaining, melting, elevation[thinned])
-    hc[thinned], hm[thinned] = new_hc, new_hm
-    codes[thinned], is_volcano[thinned], remaining[thinned] = sub_codes, sub_volcano, sub_remaining
-    elevation[thinned] = lithosphere.isostatic_elevation(new_hc, new_hm, lithosphere.node_crust_density(sub_codes, plate.crust_type))
+    reason = plate.collect("elev_change_reason")
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+
+    lost_hc = hc[old_idx] * donor_area * (1.0 - ratio)
+    lost_hm = hm[old_idx] * donor_area * (1.0 - ratio)
+    got_hc = share_of_donor @ lost_hc
+    got_hm = share_of_donor @ lost_hm
+    got_continental = share_of_donor @ (lost_hc * continental[old_idx])
+
+    # Donors: thin in place, erupting any column that thins through the rift threshold.
+    donors = old_idx[donor_demand > 0.0]
+    donor_ratio = ratio[donor_demand > 0.0]
+    if len(donors):
+        before = lithosphere.isostatic_elevation(hc[donors], hm[donors], lithosphere.node_crust_density(codes[donors], plate.crust_type))
+        new_hc, new_hm = hc[donors] * donor_ratio, hm[donors] * donor_ratio
+        melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
+        sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
+        _erupt_melted_nodes(world, plate.plate_id, rng_index + 1, new_hc, new_hm, sub_codes, sub_volcano, sub_remaining, melting, elevation[donors])
+        after = lithosphere.isostatic_elevation(new_hc, new_hm, lithosphere.node_crust_density(sub_codes, plate.crust_type))
+        elevation[donors] = rheology.clip_elevation_bounds(elevation[donors] + (after - before))
+        hc[donors], hm[donors] = new_hc, new_hm
+        codes[donors], is_volcano[donors], remaining[donors] = sub_codes, sub_volcano, sub_remaining
+        reason[donors[melting]] = ELEV_CHANGE_VOLCANO
+
+    # New cells: stretched crust from behind plus the magmatic remainder.
+    magmatic = (1.0 - stretch_share) * new_area
+    cell_hc = (got_hc + magmatic * hc[rifted]) / new_area
+    cell_hm = (got_hm + magmatic * hm[rifted]) / new_area
+    cell_codes = np.where(got_continental > 0.5 * cell_hc * new_area, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(codes.dtype)
+    cell_elevation = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
+    melting = cell_hc < rheology.RIFT_CRITICAL_THICKNESS_M
+    sub_volcano, sub_remaining = is_volcano[rifted], remaining[rifted]
+    _erupt_melted_nodes(world, plate.plate_id, rng_index, cell_hc, cell_hm, cell_codes, sub_volcano, sub_remaining, melting, cell_elevation)
+    hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
+    is_volcano[rifted], remaining[rifted] = sub_volcano, sub_remaining
+    elevation[rifted] = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
+    reason[rifted] = np.where(melting, ELEV_CHANGE_VOLCANO, np.where(stretch_share >= 0.5, ELEV_CHANGE_RIFT, ELEV_CHANGE_NEW_CRUST))
     plate.set_fields_on_plate(
         crustal_thickness_m=hc,
         mantle_lithosphere_thickness_m=hm,
@@ -472,6 +564,7 @@ def _thin_behind(plate: "PlateWithSparseQuadPatch", world: "World", rng_index: i
         is_volcano=is_volcano,
         volcano_active_years_remaining=remaining,
         elevation=elevation,
+        elev_change_reason=reason,
     )
 
 

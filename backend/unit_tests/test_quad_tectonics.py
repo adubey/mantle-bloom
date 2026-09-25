@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from app import gaps, lithosphere, merge_split, quad_tectonics, volcanism
-from app.elevation_lines import CRUST_TYPE_CONTINENTAL, line_spacing_rad
+from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
     EXTEND_THRESHOLD_MULTIPLIER,
@@ -186,6 +186,79 @@ def test_new_cells_thin_the_cells_behind_them():
     assert hc_after[interior] == pytest.approx(hc_before[interior])
 
 
+def _volume(plate) -> float:
+    return float(np.sum(plate.node_areas_m2() * plate.collect("crustal_thickness_m")))
+
+
+def _grow(plate, world, neighbours, layers):
+    n = plate.node_count()
+    return quad_tectonics.grow_frontier(
+        plate, world, np.ones(n, dtype=bool), np.zeros(n, dtype=bool), neighbours, SPACING, layers, 10_000
+    )
+
+
+def test_rift_opening_with_nothing_in_view_stretches_crust_without_losing_volume():
+    a = _plate(1, _block((10, 20), (20, 30)), "continental")
+    world = _world(a)
+    volume_before = _volume(a)
+    old = set(map(int, a.cell_keys))
+
+    assert _grow(a, world, [], 2) > 0
+
+    # Pure stretching: every new cell's crust came from the margin behind it.
+    assert _volume(a) == pytest.approx(volume_before, rel=1e-9)
+    hc = dict(zip(map(int, a.cell_keys), a.collect("crustal_thickness_m")))
+    new = np.array([k not in old for k in map(int, a.cell_keys)])
+    codes = a.collect("crust_type_code")
+    assert np.all(codes[new] == CRUST_TYPE_CONTINENTAL)
+    # A stretched margin, thinning outward: edge < one row in < untouched interior.
+    reference = lithosphere.REFERENCE_HC_CONTINENTAL_M
+    edge, inner, interior = (hc[int(pack_cell_keys(0, i, 25))] for i in (19, 18, 15))
+    assert edge < inner < interior == pytest.approx(reference)
+    assert hc[int(pack_cell_keys(0, 20, 25))] < edge
+
+
+def test_ocean_ridge_between_separating_plates_accretes_fresh_crust():
+    # Oceanic crust already near the rift threshold breaks up rather than stretching on.
+    keys = _block((10, 20), (20, 30))
+    a = _plate(1, keys, crustal_thickness_m=np.full(len(keys), 5_200.0))
+    b = _plate(2, _block((30, 40), (20, 30)))
+    world = _world(a, b)
+    old = set(map(int, a.cell_keys))
+
+    _grow(a, world, [b], 1)
+
+    new = np.array([k not in old for k in map(int, a.cell_keys)])
+    assert np.any(new)
+    codes = a.collect("crust_type_code")
+    hc = a.collect("crustal_thickness_m")
+    assert np.all(codes[new] == CRUST_TYPE_OCEANIC)
+    # The margin facing b stretched through the threshold and erupted a fresh column.
+    erupted = a.collect("is_volcano") & ~new
+    assert np.any(erupted)
+    np.testing.assert_allclose(hc[erupted], lithosphere.REFERENCE_HC_OCEANIC_M)
+
+
+def test_growth_across_the_separation_direction_is_mostly_magmatic():
+    # b sits beyond a's +i edge, so cells a grows off its +/-j sides step across the
+    # separation direction: little stretch share, mostly fresh ocean floor.
+    a = _plate(1, _block((10, 20), (20, 30)), "continental")
+    b = _plate(2, _block((24, 34), (20, 30)), "continental")
+    world = _world(a, b)
+    old = set(map(int, a.cell_keys))
+
+    _grow(a, world, [b], 1)
+
+    hc = dict(zip(map(int, a.cell_keys), a.collect("crustal_thickness_m")))
+    codes = dict(zip(map(int, a.cell_keys), a.collect("crust_type_code")))
+    side = int(pack_cell_keys(0, 15, 30))
+    toward_b = int(pack_cell_keys(0, 20, 25))
+    assert side not in old and toward_b not in old
+    assert codes[side] == CRUST_TYPE_OCEANIC
+    assert codes[toward_b] == CRUST_TYPE_CONTINENTAL
+    assert hc[toward_b] > hc[side]
+
+
 def test_over_budget_continental_plate_does_not_grow():
     thin = lithosphere.REFERENCE_HC_OCEANIC_M
     keys = _block((10, 20), (20, 30))
@@ -246,6 +319,39 @@ def test_continental_suture_retreat_conserves_crustal_volume():
     volume_after = float(np.sum(a.node_areas_m2() * a.collect("crustal_thickness_m")))
     assert volume_after == pytest.approx(volume_before, rel=1e-9)
     assert a.collect("elevation").max() > elevation_before
+
+
+def _plate_with_overlay(crust_type):
+    a = _plate(1, _block((10, 30), (10, 30)), crust_type)
+    # b has slid onto a just inside a's edge: a's own edge rows in front of it stay uncovered,
+    # so no contested cell of a touches open ground.
+    b = _plate(2, _block((12, 16), (18, 22)), "continental")
+    return a, b
+
+
+def test_oceanic_plate_carves_out_an_interior_overlap_the_edge_peel_cannot_reach():
+    a, b = _plate_with_overlay("oceanic")
+    world = _world(a, b)
+    covered = b.contains_batch(a.all_points_and_elevation()[0])
+    assert covered.sum() == 16
+
+    a.deform(world, [b], 1_000_000, SPACING)
+
+    assert not np.any(b.contains_batch(a.all_points_and_elevation()[0]))
+    assert len(world.removed_points_log) == 16
+    a._validate_leaf_topology()
+    # The carve leaves a hole: a now has an inner boundary loop.
+    assert len(a.boundary_loops_world()) == 2
+
+
+def test_continental_plate_is_never_carved_mid_plate():
+    a, b = _plate_with_overlay("continental")
+    world = _world(a, b)
+    covered = b.contains_batch(a.all_points_and_elevation()[0])
+
+    a.deform(world, [b], 1_000_000, SPACING)
+
+    assert b.contains_batch(a.all_points_and_elevation()[0]).sum() == covered.sum() == 16
 
 
 def test_a_lone_contested_continental_cell_does_not_retreat():
