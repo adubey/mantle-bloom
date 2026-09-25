@@ -354,6 +354,38 @@ def test_continental_plate_is_never_carved_mid_plate():
     assert b.contains_batch(a.all_points_and_elevation()[0]).sum() == covered.sum() == 16
 
 
+def _interior_patch():
+    """A 10x10 oceanic plate with a 4x4 contested patch two cells in from every edge, and
+    an `open_half` with nothing peeled."""
+    a = _plate(1, _block((10, 20), (10, 20)))
+    i, j = _columns(a)
+    patch = (i >= 13) & (i < 17) & (j >= 13) & (j < 17)
+    open_half = a._probe_neighbour_indices() < 0
+    return a, patch, open_half
+
+
+def test_interior_carve_opens_a_connected_hole_in_a_patch_larger_than_its_budget():
+    a, patch, open_half = _interior_patch()
+
+    carved = quad_tectonics._carve_interior(a, patch, open_half, 5)
+
+    assert carved.sum() == 5
+    assert not np.any(carved & ~patch)
+    assert len(quad_tectonics.components_of_at_least(a, carved, 5).nonzero()[0]) == 5
+
+
+def test_interior_carve_treats_a_half_open_side_as_unreachable():
+    a, patch, open_half = _interior_patch()
+    # One probe on one side of a patch cell opens onto nothing -- a coarse/fine partial
+    # boundary. The peel needs a wholly open side, so it can't take this cell either.
+    cell = np.flatnonzero(patch)[0]
+    open_half[cell, 0, 0] = True
+
+    carved = quad_tectonics._carve_interior(a, patch, open_half, 100)
+
+    np.testing.assert_array_equal(carved, patch)
+
+
 def test_a_lone_contested_continental_cell_does_not_retreat():
     a = _plate(1, _block((10, 20), (20, 30)), "continental")
     # One cell of b pokes onto a's edge.

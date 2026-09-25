@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.sparse import csr_matrix
-from scipy.sparse.csgraph import connected_components
+from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
 from . import geometry, lithosphere, phase_budget, rheology, terrain_noise
@@ -232,27 +232,36 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
 
 def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, open_half: np.ndarray, max_cells: int) -> np.ndarray:
     """Interior subduction: the `retreatable` patches the layered peel can never reach,
-    because no cell of theirs touches open ground (`open_half`: per cell, side and probe,
-    whether that half-side borders nothing or an already-peeled cell) -- a neighbour
-    overriding this plate somewhere other than its edge. Each such edge-connected patch of at
-    least `_INTERIOR_SUBDUCTION_MIN_RUN` cells subducts whole, up to `max_cells` in total --
-    the 2D form of the line engine's mid-row carve-out, leaving a hole the quad surface
-    represents directly. Oceanic plates only, as there: carving a continent's middle would
-    sever it into a spurious defragmentation plate. Returns the mask to remove."""
+    because no cell of theirs has a wholly open side (`open_half`: per cell, side and probe,
+    whether that half-side borders nothing or an already-peeled cell -- the same whole-side
+    test the peel uses, so a patch touching open ground only through a half-side still
+    counts as unreachable) -- a neighbour overriding this plate somewhere other than its
+    edge. Each such edge-connected patch of at least `_INTERIOR_SUBDUCTION_MIN_RUN` cells
+    subducts, up to `max_cells` in total -- the 2D form of the line engine's mid-row
+    carve-out, leaving a hole the quad surface represents directly. A patch larger than the
+    remaining budget is carved partway, as a connected breadth-first prefix from one cell,
+    so the hole it opens gives next step's peel an exposed edge to continue from. Oceanic
+    plates only, as there: carving a continent's middle would sever it into a spurious
+    defragmentation plate. Returns the mask to remove."""
     carved = np.zeros(len(retreatable), dtype=bool)
     members = np.flatnonzero(retreatable)
-    if len(members) < _INTERIOR_SUBDUCTION_MIN_RUN:
+    if len(members) < _INTERIOR_SUBDUCTION_MIN_RUN or max_cells <= 0:
         return carved
-    touches_open = np.any(open_half[members], axis=(1, 2))
-    _, labels = connected_components(_adjacency_matrix(plate)[members][:, members], directed=False)
+    exposed = np.any(np.all(open_half[members], axis=2), axis=1)
+    sub = _adjacency_matrix(plate)[members][:, members]
+    _, labels = connected_components(sub, directed=False)
     sizes = np.bincount(labels)
-    reachable = np.bincount(labels, weights=touches_open) > 0
+    reachable = np.bincount(labels, weights=exposed) > 0
     budget = max_cells
     for label in np.flatnonzero((sizes >= _INTERIOR_SUBDUCTION_MIN_RUN) & ~reachable):
-        if sizes[label] > budget:
-            continue
-        carved[members[labels == label]] = True
-        budget -= int(sizes[label])
+        if budget <= 0:
+            break
+        patch = np.flatnonzero(labels == label)
+        if len(patch) > budget:
+            order = breadth_first_order(sub, patch[0], directed=False, return_predecessors=False)
+            patch = order[:budget]
+        carved[members[patch]] = True
+        budget -= len(patch)
     return carved
 
 
