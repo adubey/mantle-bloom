@@ -64,7 +64,10 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain
     apron around each vent that erupted this step. Mutates world.plates in place."""
     for plate in world.plates:
-        erupted_points = _apply_volcanic_activity_to_lines(plate, world, years)
+        if isinstance(plate, PlateWithLines):
+            erupted_points = _apply_volcanic_activity_to_lines(plate, world, years)
+        else:
+            erupted_points = _apply_volcanic_activity_to_surface(plate, world, years)
         if erupted_points:
             _spread_volcanic_plains(plate, world, years, erupted_points)
 
@@ -125,6 +128,47 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
             ),
         )
     return erupted_points
+
+
+def _apply_volcanic_activity_to_surface(plate: Plate, world: "World", years: float) -> list[np.ndarray]:
+    """The same eruption roll as `_apply_volcanic_activity_to_lines`, over the whole plate at
+    once through the representation-neutral field API (issue #228's quad surface). One rng
+    draw per plate per step, in canonical node order, instead of one per line."""
+    is_volcano = plate.collect("is_volcano")
+    if not np.any(is_volcano):
+        return []
+    remaining = plate.collect("volcano_active_years_remaining")
+    active_mask = is_volcano & (remaining > 0)
+    if not np.any(active_mask):
+        return []
+
+    active_years_this_step = np.minimum(years, remaining)
+    p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * world.volcanism_multiplier * active_years_this_step / 1_000_000.0)
+    rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id))
+    erupts = active_mask & (rng.random(len(active_mask)) < p_erupt)
+
+    elevation = plate.collect("elevation")
+    new_crustal_thickness, new_elevation = lithosphere.back_elevation_gain_fields(
+        elevation,
+        plate.collect("crustal_thickness_m"),
+        plate.collect("mantle_lithosphere_thickness_m"),
+        plate.collect("crust_type_code"),
+        plate.crust_type,
+        ERUPTION_ELEVATION_M * world.volcanism_multiplier,
+        erupts,
+    )
+    new_mineral_deposit = np.clip(
+        plate.collect("mineral_deposit_m") + np.where(erupts, MINERAL_DEPOSIT_PER_ERUPTION_M, 0.0), 0.0, MAX_MINERAL_DEPOSIT_M
+    )
+    plate.set_fields_on_plate(
+        elevation=new_elevation,
+        crustal_thickness_m=new_crustal_thickness,
+        volcano_active_years_remaining=np.clip(remaining - years, 0.0, None),
+        mineral_deposit_m=new_mineral_deposit,
+        elev_change_reason=np.where(erupts, ELEV_CHANGE_VOLCANO, plate.collect("elev_change_reason")),
+    )
+    world_points, _ = plate.all_points_and_elevation()
+    return [world_points[erupts]] if np.any(erupts) else []
 
 
 def _spread_volcanic_plains(plate: Plate, world: "World", years: float, erupted_points: list[np.ndarray]) -> None:

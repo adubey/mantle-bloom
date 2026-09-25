@@ -40,7 +40,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import gap_fill_frontier, geometry, mantle
+from . import gap_fill_frontier, geometry, mantle, quad_tectonics
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT as _SHARED_COVERAGE_RADIUS_MULT,
     effective_is_continental_from_codes,
@@ -48,6 +48,8 @@ from .elevation_lines import (
     line_spacing_rad,
 )
 from .lithosphere_plate import LithospherePlate, new_plate
+from .plates import Plate, PlateWithLines
+from .sparse_quad_patch import PlateWithSparseQuadPatch
 
 if TYPE_CHECKING:
     from .world import World
@@ -168,7 +170,7 @@ def _cluster(points: np.ndarray, radius_rad: float) -> np.ndarray:
 
 def _spawn_plate_from_gap(
     world: "World", cluster_points: np.ndarray, spacing_rad: float, existing_context: _ExistingNodeContext
-) -> LithospherePlate:
+) -> Plate:
     centroid = geometry.normalize(cluster_points.mean(axis=0))
     frame = geometry.plate_frame_from_seed(centroid)
     cluster_tree = cKDTree(cluster_points)
@@ -189,8 +191,17 @@ def _spawn_plate_from_gap(
         borders_land = existing_context.is_continental[idx] & (existing_context.elevation[idx] > 0.0)
         return borders_land & (dist <= land_adoption_radius_rad)
 
+    # A quad world spawns quad crust, so gap filling never mixes representations into it.
+    surface = "quad" if any(isinstance(p, PlateWithSparseQuadPatch) for p in world.plates) else "lines"
     plate = new_plate(
-        world.next_plate_id, frame, "oceanic", spacing_rad, world.seed, is_owned=is_owned, node_is_continental=node_is_continental
+        world.next_plate_id,
+        frame,
+        "oceanic",
+        spacing_rad,
+        world.seed,
+        is_owned=is_owned,
+        node_is_continental=node_is_continental,
+        surface=surface,
     )
     world.next_plate_id += 1
 
@@ -201,7 +212,7 @@ def _spawn_plate_from_gap(
     return plate
 
 
-def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spacing_rad: float) -> list[LithospherePlate]:
+def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spacing_rad: float) -> list[Plate]:
     """Live plates with at least one node within `ADJACENT_PLATE_REACH_MULT * spacing_rad` of
     `cluster_points` -- "detect adjacent plates" for `fill_gaps_by_growing_neighbours`. Can
     come back empty (a fully-vacated region with no live plate left nearby), which its caller
@@ -255,10 +266,38 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
                 f"New {plate.crust_type} crust formed as plate {plate.plate_id} ({plate.node_count()} nodes) {where} (no adjacent plate to grow)."
             )
             continue
-        added = gap_fill_frontier.fill_gap_by_growing_plates(world, cluster_points, adjacent, spacing_rad)
+        added = _grow_adjacent_into_gap(world, cluster_points, adjacent, spacing_rad)
         for plate_id, n in added.items():
             events.append(f"Plate {plate_id} grew by {n} nodes into a long-vacated gap.")
     return events
+
+
+def _grow_adjacent_into_gap(world: "World", cluster_points: np.ndarray, adjacent: list[Plate], spacing_rad: float) -> dict[int, int]:
+    """Grow `adjacent` plates into one gap cluster. Line-backed plates share
+    `gap_fill_frontier.fill_gap_by_growing_plates`' own frontier walk exactly as before; when
+    quad plates are adjacent too, each gap point first goes to whichever adjacent plate has the
+    nearest node, and each quad plate grows into its own share through
+    `quad_tectonics.fill_gap`."""
+    line_plates = [p for p in adjacent if isinstance(p, PlateWithLines)]
+    quad_plates = [p for p in adjacent if isinstance(p, PlateWithSparseQuadPatch)]
+    if not quad_plates:
+        return gap_fill_frontier.fill_gap_by_growing_plates(world, cluster_points, line_plates, spacing_rad)
+
+    distances = np.stack([p.get_node_kdtree().query(cluster_points)[0] for p in adjacent])
+    owner = np.argmin(distances, axis=0)
+    _, radius_rad = geometry.bounding_sphere(cluster_points)
+    max_layers = max(gap_fill_frontier.MIN_FRONTIER_HOPS, int(np.ceil(2.0 * radius_rad / spacing_rad)) + 1)
+    added: dict[int, int] = {}
+    line_points = cluster_points[np.isin(owner, [adjacent.index(p) for p in line_plates])]
+    if line_plates and len(line_points):
+        added.update(gap_fill_frontier.fill_gap_by_growing_plates(world, line_points, line_plates, spacing_rad))
+    for plate in quad_plates:
+        points = cluster_points[owner == adjacent.index(plate)]
+        others = [p for p in world.plates if p.plate_id != plate.plate_id]
+        n = quad_tectonics.fill_gap(world, plate, points, others, spacing_rad, max_layers)
+        if n:
+            added[plate.plate_id] = n
+    return added
 
 
 @dataclass

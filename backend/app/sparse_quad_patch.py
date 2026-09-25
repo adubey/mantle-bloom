@@ -297,8 +297,8 @@ class ElevationPointInPatch:
 class PlateWithSparseQuadPatch(Plate):
     """A plate whose terrain is a sparse set of active cube-sphere cells -- see the module
     docstring. It can be generated, queried, rendered, remeshed, rigidly rotated, partitioned,
-    and saved. Per-step boundary deformation and cross-plate merge transfer remain separate
-    Phase 4 operations."""
+    deformed (quad_tectonics.py), and saved. Cross-plate merge transfer remains a separate
+    Phase 4 operation."""
 
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
@@ -446,9 +446,11 @@ class PlateWithSparseQuadPatch(Plate):
     def node_areas_m2(self) -> np.ndarray:
         if self._area_cache is None:
             _, level, i, j = self._unpacked()
-            self._area_cache = np.array(
-                [cell_areas_sr(np.array([ii]), np.array([jj]), self._n * (1 << int(ll)))[0] for ll, ii, jj in zip(level, i, j)]
-            ) * PLANET_RADIUS_M**2
+            areas = np.empty(len(level))
+            for lev in np.unique(level):
+                at = level == lev
+                areas[at] = cell_areas_sr(i[at], j[at], self._n * (1 << int(lev)))
+            self._area_cache = areas * PLANET_RADIUS_M**2
         return self._area_cache
 
     def row_intervals(self) -> CellIntervals:
@@ -882,6 +884,128 @@ class PlateWithSparseQuadPatch(Plate):
         return {child: parent for parent, children in groups.items() for child in children}
 
     # --- Topology changes -----------------------------------------------------------------
+
+    def cell_centres_local(self, keys: np.ndarray) -> np.ndarray:
+        """Local unit vector at the centre of each (not necessarily active) cell key."""
+        face, level, i, j = unpack_cell_keys(np.asarray(keys, dtype=np.int64).reshape(-1))
+        if not len(face):
+            return np.zeros((0, 3))
+        scale = np.left_shift(1, level)
+        return lattice_points(face, (i + 0.5) / scale, (j + 0.5) / scale, self._n)
+
+    def exposed_sides(self) -> np.ndarray:
+        """(node, side) -- True where that whole cell side borders no active leaf. The
+        per-cell form of the exposed edges `boundary_loops_world` traces; a side half-covered
+        by a finer neighbour is not exposed."""
+        return np.all(self._probe_neighbour_indices() < 0, axis=2)
+
+    def empty_neighbour_keys(self, indices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """(source index, candidate key) for every wholly exposed side of the given nodes: the
+        same-level cell just across that side, which no active leaf covers. A candidate
+        reachable from two sources is listed once, against the first of them."""
+        indices = np.asarray(indices, dtype=np.int64).reshape(-1)
+        if not len(indices):
+            return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
+        node, side = np.nonzero(self.exposed_sides()[indices])
+        source = indices[node]
+        face, level, i, j = unpack_cell_keys(self._keys[source])
+        a = i + np.array([0.5, 1.0 + _NEIGHBOUR_PROBE_FRACTION, 0.5, -_NEIGHBOUR_PROBE_FRACTION])[side]
+        b = j + np.array([-_NEIGHBOUR_PROBE_FRACTION, 0.5, 1.0 + _NEIGHBOUR_PROBE_FRACTION, 0.5])[side]
+        scale = np.left_shift(1, level)
+        points = lattice_points(face, a / scale, b / scale, self._n)
+        keys = np.empty(len(source), dtype=np.int64)
+        for lev in np.unique(level):
+            at = level == lev
+            f, ci, cj = locate_cells(points[at], self._n * (1 << int(lev)))
+            keys[at] = pack_cell_keys(f, ci, cj, lev)
+        keys, first = np.unique(keys, return_index=True)
+        order = np.argsort(first, kind="stable")
+        return source[first[order]], keys[order]
+
+    def _overlaps_active(self, keys: np.ndarray) -> np.ndarray:
+        """Whether each key is itself active, or has an active ancestor or descendant."""
+        keys = np.asarray(keys, dtype=np.int64)
+        overlaps = self._index_of_keys(keys) >= 0
+        _, level, i, j = unpack_cell_keys(keys)
+        ancestor = keys
+        for _ in range(int(level.max(initial=0))):
+            ancestor = np.where(ancestor >= 0, parent_cell_keys(ancestor), -1)
+            overlaps |= (ancestor >= 0) & (self._index_of_keys(np.maximum(ancestor, 0)) >= 0)
+        active_face, active_level, active_i, active_j = self._unpacked()
+        for lev in np.unique(level):
+            finer = active_level > lev
+            if not np.any(finer):
+                continue
+            shift = active_level[finer] - lev
+            covered = pack_cell_keys(active_face[finer], active_i[finer] >> shift, active_j[finer] >> shift, lev)
+            at = level == lev
+            overlaps[at] |= np.isin(keys[at], covered)
+        return overlaps
+
+    def insert_cells(self, keys: np.ndarray, fields: Mapping[str, np.ndarray] | None = None) -> np.ndarray:
+        """Activate new leaves -- the areal-growth primitive for deformation and gap filling.
+
+        `fields` gives each new cell's values (fields not named get their registry default).
+        A key that overlaps an active leaf, or whose insertion would break the mesh's 2:1
+        level balance, is skipped rather than raising, since a growth step proposes candidates
+        before it knows the final mesh. Returns a mask of which `keys` were inserted. Existing
+        cells keep their IDs and values."""
+        keys = np.asarray(keys, dtype=np.int64).reshape(-1)
+        fields = dict(fields or {})
+        for name, values in fields.items():
+            self._check_field(name, values, len(keys))
+        _, unique_first = np.unique(keys, return_index=True)
+        accepted = np.zeros(len(keys), dtype=bool)
+        accepted[unique_first] = True
+        accepted &= ~self._overlaps_active(keys)
+        if not np.any(accepted):
+            return accepted
+        old_count = len(self._keys)
+        names = set(self._fields) | set(fields)
+        combined = {}
+        for name in names:
+            spec = SURFACE_FIELDS[name]
+            added = fields.get(name)
+            added = np.full(len(keys), spec.default, dtype=spec.dtype) if added is None else np.asarray(added, dtype=spec.dtype)
+            combined[name] = np.concatenate([self._field_storage(name), added[accepted]])
+        self._replace_topology(np.concatenate([self._keys, keys[accepted]]), combined)
+
+        # Removing leaves never breaks 2:1 balance, so dropping every inserted cell that
+        # borders a leaf more than one level away is enough to restore it in one pass.
+        inserted = self._index_of_keys(keys[accepted])
+        graph = self.adjacency()
+        levels = unpack_cell_keys(self._keys)[1]
+        unbalanced = np.array(
+            [
+                np.any(np.abs(levels[graph.neighbours[graph.offsets[cell] : graph.offsets[cell + 1]]] - levels[cell]) > 1)
+                for cell in inserted
+            ],
+            dtype=bool,
+        )
+        if np.any(unbalanced):
+            keep = np.ones(len(self._keys), dtype=bool)
+            keep[inserted[unbalanced]] = False
+            self.remove_cells(~keep)
+            accepted[np.flatnonzero(accepted)[unbalanced]] = False
+        assert len(self._keys) == old_count + int(accepted.sum())
+        return accepted
+
+    def remove_cells(self, mask: np.ndarray) -> None:
+        """Deactivate the leaves `mask` selects (node order) -- retreat's primitive. Survivors
+        keep their IDs and values; an empty mask is a no-op."""
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != (len(self._keys),):
+            raise ValueError(f"cell mask must have shape ({len(self._keys)},)")
+        if not np.any(mask):
+            return
+        keep = ~mask
+        self._replace_topology(self._keys[keep], {name: values[keep] for name, values in self._fields.items()})
+
+    def deform(self, world, other_plates: list, years: float, max_distance: float) -> None:
+        """Per-step boundary deformation -- see quad_tectonics.py."""
+        from . import quad_tectonics
+
+        quad_tectonics.deform(self, world, other_plates, years, max_distance)
 
     def _crust_type_for_mask(self, mask: np.ndarray) -> str:
         """Nominal crust type for a newly partitioned patch.
