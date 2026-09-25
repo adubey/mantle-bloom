@@ -216,6 +216,25 @@ def majority_crust_type(lines: list["ElevationLine"], fallback: str) -> str:
         return fallback
     return "continental" if continental * 2 > total else "oceanic"
 
+
+def freeze_inherited_crust_type(lines: list["ElevationLine"], parent_crust_type: str, new_crust_type: str) -> list["ElevationLine"]:
+    """`lines` about to move from a `parent_crust_type` plate onto a new `new_crust_type`
+    plate (split/defragment -- see majority_crust_type). CRUST_TYPE_INHERIT is relative to
+    the owning plate, so if the type changes, a still-inheriting node would silently take on
+    the new plate's composition (and density). Stamp those nodes with the parent's explicit
+    code first. Returns `lines` unchanged when the type doesn't change."""
+    if new_crust_type == parent_crust_type:
+        return lines
+    parent_code = CRUST_TYPE_CONTINENTAL if parent_crust_type == "continental" else CRUST_TYPE_OCEANIC
+    frozen: list["ElevationLine"] = []
+    for line in lines:
+        codes = line.crust_type_code
+        inherit = codes == CRUST_TYPE_INHERIT
+        if np.any(inherit):
+            line = line.replace(crust_type_code=np.where(inherit, parent_code, codes).astype(codes.dtype))
+        frozen.append(line)
+    return frozen
+
 # Shared between volcanism.py (per-step eruption rolling for every existing volcano node)
 # and plates.py (PlateWithLines.deform spawning a brand-new volcano when a rift has
 # stretched too thin to keep filling with plain ridge/rift crust) -- kept here, rather than

@@ -1,7 +1,13 @@
 import numpy as np
 import pytest
 from app import geometry
-from app.elevation_lines import ElevationLine, line_spacing_rad
+from app.elevation_lines import (
+    CRUST_TYPE_CONTINENTAL,
+    CRUST_TYPE_INHERIT,
+    CRUST_TYPE_OCEANIC,
+    ElevationLine,
+    line_spacing_rad,
+)
 from app.lithosphere_plate import build_plate_tiling, generate_plates
 from app import healpix_grid
 from app.plates import (
@@ -554,7 +560,7 @@ _DEFRAG_SPACING_RAD = line_spacing_rad(1.0)
 _DEFRAG_CONNECT_RAD = 2.5 * _DEFRAG_SPACING_RAD
 
 
-def _lobed_plate(lobes, plate_id=0, rows=12, per_row=8, **plate_kwargs):
+def _lobed_plate(lobes, plate_id=0, rows=12, per_row=8, crust_type="oceanic", **plate_kwargs):
     """A `PlateWithLines` (frame = identity, so plate-local phi/theta are world lat/lon)
     whose nodes form one connected blob per entry in `lobes`. Each entry is either a theta
     centre (radians) or a `(centre, nodes_per_row)` tuple; centres must sit far enough apart
@@ -568,7 +574,7 @@ def _lobed_plate(lobes, plate_id=0, rows=12, per_row=8, **plate_kwargs):
             chunks.append(centre + np.arange(count) * _DEFRAG_SPACING_RAD)
         theta = np.concatenate(chunks)
         lines.append(ElevationLine(phi=r * _DEFRAG_SPACING_RAD, theta=theta, elevation=np.zeros(len(theta))))
-    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="oceanic", lines=lines, **plate_kwargs)
+    return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type=crust_type, lines=lines, **plate_kwargs)
 
 
 def test_node_components_labels_isolated_clusters_separately():
@@ -671,6 +677,73 @@ def test_defragment_partition_carries_each_nodes_own_fields_to_the_right_fragmen
     )
     recombined = np.concatenate([p.collect("channel_depth") for p in replacements])
     assert sorted(recombined.tolist()) == sorted(marker.tolist())
+
+
+def test_defragment_freezes_inherited_crust_when_a_fragment_changes_type():
+    # Issue #239: a continental plate whose second lobe was mostly re-marked oceanic by a
+    # magma-typing event. That lobe's fragment comes out oceanic, but its one
+    # still-CRUST_TYPE_INHERIT node per row was never re-marked -- it must stay continental
+    # rather than silently turning oceanic with its new plate.
+    from app.lithosphere import node_crust_density
+    from app.world import World
+
+    plate = _lobed_plate([0.0, 0.6], plate_id=4, crust_type="continental")
+    for i, line in enumerate(plate.lines):
+        codes = np.full(len(line), CRUST_TYPE_INHERIT, dtype=line.crust_type_code.dtype)
+        codes[8:15] = CRUST_TYPE_OCEANIC  # second lobe: 7 of 8 nodes oceanic, last inherits
+        plate.replace_line(i, line.replace(crust_type_code=codes))
+    points_before, _ = plate.all_points_and_elevation()
+    density_before = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
+
+    world = World(seed=0, plates=[plate], mantle_centers=[])
+    replacements, _ = plate.defragment(
+        next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world
+    )
+    by_type = {p.crust_type: p for p in replacements}
+    assert set(by_type) == {"continental", "oceanic"}
+    assert set(by_type["continental"].collect("crust_type_code").tolist()) == {CRUST_TYPE_INHERIT}
+    oceanic_codes = by_type["oceanic"].collect("crust_type_code")
+    assert np.count_nonzero(oceanic_codes == CRUST_TYPE_CONTINENTAL) == 12
+    assert not np.any(oceanic_codes == CRUST_TYPE_INHERIT)
+
+    # Every node's own crust density is exactly what it was before the partition.
+    before = {tuple(np.round(pt, 12)): rho for pt, rho in zip(points_before, density_before)}
+    for p in replacements:
+        pts, _ = p.all_points_and_elevation()
+        rho = node_crust_density(p.collect("crust_type_code"), p.crust_type)
+        assert [before[tuple(np.round(pt, 12))] for pt in pts] == rho.tolist()
+
+
+def test_lithosphere_split_freezes_inherited_crust_when_a_daughter_changes_type():
+    # Issue #239, LithospherePlate.split path: continental parent, the +y half mostly
+    # re-marked oceanic by rift melting, so daughter A comes out oceanic. Its remaining
+    # inheriting node per row must keep reading as continental.
+    from app.lithosphere import node_crust_density
+    from app.lithosphere_plate import LithospherePlate
+
+    theta = (np.arange(10) - 4.5) * 0.05  # indices 5..9 have theta > 0, i.e. world y > 0
+    lines = []
+    for r in range(4):
+        codes = np.full(10, CRUST_TYPE_INHERIT, dtype=np.int8)
+        codes[5:9] = CRUST_TYPE_OCEANIC
+        lines.append(ElevationLine(phi=r * 0.05, theta=theta.copy(), elevation=np.zeros(10), crust_type_code=codes))
+    plate = LithospherePlate(plate_id=1, frame=np.eye(3), crust_type="continental", lines=lines)
+    points_before, _ = plate.all_points_and_elevation()
+    density_before = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
+
+    plate_a, plate_b = plate.split(9, np.array([0.0, 1.0, 0.0]), min_nodes=4)
+    assert plate_a.crust_type == "oceanic"
+    assert plate_b.crust_type == "continental"
+    codes_a = plate_a.collect("crust_type_code")
+    assert np.count_nonzero(codes_a == CRUST_TYPE_CONTINENTAL) == 4
+    assert not np.any(codes_a == CRUST_TYPE_INHERIT)
+    assert set(plate_b.collect("crust_type_code").tolist()) == {CRUST_TYPE_INHERIT}
+
+    before = {tuple(np.round(pt, 12)): rho for pt, rho in zip(points_before, density_before)}
+    for p in (plate_a, plate_b):
+        pts, _ = p.all_points_and_elevation()
+        rho = node_crust_density(p.collect("crust_type_code"), p.crust_type)
+        assert [before[tuple(np.round(pt, 12))] for pt in pts] == rho.tolist()
 
 
 def test_has_negligible_territory_flags_a_comb_of_one_node_stubs():

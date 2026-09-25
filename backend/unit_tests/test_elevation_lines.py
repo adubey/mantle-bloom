@@ -9,6 +9,7 @@ from app.elevation_lines import (
     ElevationLine,
     _crumple_elevation,
     effective_is_continental,
+    freeze_inherited_crust_type,
     iter_local_lattice,
     largest_contiguous_run,
     line_spacing_rad,
@@ -278,6 +279,19 @@ def test_majority_crust_type_falls_back_on_a_tie_or_no_nodes():
     tied_line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(4), crust_type_code=codes)
     assert majority_crust_type([tied_line], "continental") == "continental"
     assert majority_crust_type([], "oceanic") == "oceanic"
+
+
+def test_freeze_inherited_crust_type_stamps_parent_code_only_on_a_type_change():
+    codes = np.array([CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, CRUST_TYPE_INHERIT, CRUST_TYPE_CONTINENTAL], dtype=np.int8)
+    line = ElevationLine(phi=0.0, theta=np.arange(4, dtype=float), elevation=np.zeros(4), crust_type_code=codes)
+    # Same type: nothing to freeze, the very same lines come back.
+    assert freeze_inherited_crust_type([line], "continental", "continental")[0] is line
+    frozen = freeze_inherited_crust_type([line], "continental", "oceanic")[0]
+    assert frozen.crust_type_code.tolist() == [CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL]
+    assert frozen.crust_type_code.dtype == codes.dtype
+    assert line.crust_type_code.tolist() == codes.tolist()  # input line untouched
+    frozen = freeze_inherited_crust_type([line], "oceanic", "continental")[0]
+    assert frozen.crust_type_code.tolist() == [CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC, CRUST_TYPE_OCEANIC, CRUST_TYPE_CONTINENTAL]
 
 
 def test_crust_type_code_rides_through_regularize_line_by_nearest_node():

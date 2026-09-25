@@ -1507,6 +1507,7 @@ class PlateWithLines(Plate):
             # for every plate that's never had a magma-typing event (rift decompression
             # melting or gap-fill), which is every fragment before that feature existed.
             fragment_crust_type = elevation_lines.majority_crust_type(lines, self._crust_type)
+            lines = elevation_lines.freeze_inherited_crust_type(lines, self._crust_type, fragment_crust_type)
             plates.append(
                 type(self)(
                     plate_id=pid,

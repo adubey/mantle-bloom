@@ -38,6 +38,7 @@ from .elevation_lines import (
     IRREGULARITY_TOLERANCE,
     PLANET_RADIUS_KM,
     build_lines_from_lattice,
+    freeze_inherited_crust_type,
     line_spacing_rad,
     majority_crust_type,
     needs_regularizing,
@@ -1976,6 +1977,8 @@ class LithospherePlate(PlateWithLines):
         # event (rift decompression melting) whose composition ended up lopsided across the cut.
         crust_type_a = majority_crust_type(lines_a, self.crust_type)
         crust_type_b = majority_crust_type(lines_b, self.crust_type)
+        lines_a = freeze_inherited_crust_type(lines_a, self.crust_type, crust_type_a)
+        lines_b = freeze_inherited_crust_type(lines_b, self.crust_type, crust_type_b)
         plate_a = LithospherePlate(plate_id=self.plate_id, frame=self.frame.copy(), crust_type=crust_type_a, lines=lines_a)
         plate_b = LithospherePlate(plate_id=new_id, frame=self.frame.copy(), crust_type=crust_type_b, lines=lines_b)
         return plate_a, plate_b
