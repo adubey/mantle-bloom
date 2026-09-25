@@ -496,7 +496,7 @@ def classify_boundary_nodes(
 
 
 def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, years: float) -> float:
-    """Shared tail of `shift_plate`'s real torque-balance path and `LithospherePlate.shift`'s
+    """Shared tail of `shift_plate`'s real torque-balance path and `Plate.shift`'s
     pinned-omega override (see `World.pinned_omegas`): set `omega`, rotate rigidly by it over
     `years`, and report the same `D` (max node displacement) contract every `shift`
     implementation returns. `old_points` is the plate's own pre-rotation node cloud (the
@@ -510,7 +510,7 @@ def apply_omega_and_rotate(plate, old_points: np.ndarray, omega: np.ndarray, yea
 
 
 def shift_plate(plate, world, other_plates: list, years: float) -> float:
-    """`LithospherePlate.shift`'s real (non-pinned) implementation: gather this step's
+    """`Plate.shift`'s real (non-pinned) implementation: gather this step's
     driving/resisting torques from the plate's *current* (pre-rotation) boundary
     configuration, integrate omega, then rotate rigidly -- see `apply_omega_and_rotate` for
     the shared tail with the pinned-omega override."""

@@ -5,6 +5,8 @@ as equivalent small patches around the local seed; representation-specific behav
 line mutation, coincident line nodes) is tested separately below.
 """
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -140,6 +142,23 @@ def test_surface_rigid_rotation_moves_world_views_but_not_local_ones(surface):
     np.testing.assert_allclose(after.world_xyz, before.world_xyz @ quarter_turn.T)
     np.testing.assert_allclose(after.area_m2, before.area_m2)
     np.testing.assert_array_equal(surface.contains_batch(np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 0.0]])), [True, False])
+
+
+def test_surface_pinned_shift_is_representation_neutral(surface):
+    before = surface.surface_nodes()
+    topology0, geometry0 = surface.topology_revision, surface.geometry_revision
+    pinned = np.array([0.0, 0.0, 0.05])
+    world = SimpleNamespace(pinned_omegas={surface.plate_id: pinned}, plates=[surface])
+
+    distance = surface.shift(world, years=2.0)
+    after = surface.surface_nodes()
+
+    np.testing.assert_allclose(surface.omega, pinned)
+    assert distance == pytest.approx(0.1)
+    assert surface.topology_revision == topology0
+    assert surface.geometry_revision == geometry0 + 1
+    np.testing.assert_allclose(after.local_xyz, before.local_xyz)
+    assert not np.allclose(after.world_xyz, before.world_xyz)
 
 
 def test_surface_rejects_misaligned_or_unknown_field_write_before_mutating(surface):
