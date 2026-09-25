@@ -571,23 +571,6 @@ class LithospherePlate(PlateWithLines):
         """Per-node counterpart of `crust_density()` -- see `lithosphere.node_crust_density`."""
         return lithosphere.node_crust_density(self.collect("crust_type_code"), self.crust_type)
 
-    # -- Motion: torque.py's real implementation -----------------------------------------
-
-    def shift(self, world: "World", years: float) -> float:  # noqa: F821 (World only for typing)
-        # Debug-world-only escape hatch (see World.pinned_omegas): a scripted "Debugging
-        # Worlds" scenario wants a plate to move exactly as configured every step, not
-        # whatever the real torque balance (ridge-push/slab-pull/basal-drag against
-        # world.mantle_centers) happens to settle it to -- empty for every ordinarily
-        # generated world, so this is a no-op there.
-        pinned = world.pinned_omegas.get(self.plate_id)
-        if pinned is not None:
-            old_points, _ = self.all_points_and_elevation()
-            if len(old_points) == 0:
-                return 0.0
-            return torque.apply_omega_and_rotate(self, old_points, np.asarray(pinned, dtype=float), years)
-        other_plates = [p for p in world.plates if p.plate_id != self.plate_id]
-        return torque.shift_plate(self, world, other_plates, years)
-
     # -- Deformation: rheology.py's Mohr-Coulomb/isostasy update ---------------------------
 
     def deform(self, world: "World", other_plates: list, years: float, max_distance: float) -> None:  # noqa: F821

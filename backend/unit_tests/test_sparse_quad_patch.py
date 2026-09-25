@@ -297,6 +297,19 @@ def test_quad_world_refuses_plate_movement_without_mutating():
     assert world.elapsed_years == 0.0
 
 
+def test_quad_plate_uses_shared_torque_pipeline_for_rigid_motion():
+    world = generate_world(seed=5, num_plates=5, surface="quad")
+    plate = world.plates[0]
+    topology0, geometry0 = plate.topology_revision, plate.geometry_revision
+
+    displacement = plate.shift(world, 1_000_000)
+
+    assert np.isfinite(displacement)
+    assert np.all(np.isfinite(plate.omega))
+    assert plate.topology_revision == topology0
+    assert plate.geometry_revision == geometry0 + 1
+
+
 def test_unknown_surface_representation_is_rejected():
     with pytest.raises(ValueError):
         generate_plates(3, num_plates=4, surface="hexes")

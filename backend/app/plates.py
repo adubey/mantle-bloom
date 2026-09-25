@@ -588,6 +588,29 @@ class Plate(PlateSurface, abc.ABC):
         self._geometry_revision += 1
         self._invalidate_bounding_polygon()
 
+    def shift(self, world: "World", years: float) -> float:  # noqa: F821
+        """Integrate this plate's rigid motion through the shared torque model.
+
+        Torque inputs consume only the representation-neutral surface API, so rigid motion
+        belongs here rather than on the legacy line-backed tectonics implementation. Quad
+        topology remains fixed by this operation: only the frame and geometry revision move.
+        """
+        # Local import avoids plates <-> torque's module-level dependency cycle.
+        from . import torque
+
+        # Debug-world-only escape hatch (see World.pinned_omegas): scripted scenarios move
+        # exactly as configured rather than through the real torque balance.
+        pinned = world.pinned_omegas.get(self.plate_id)
+        if pinned is not None:
+            old_points, _ = self.all_points_and_elevation()
+            if len(old_points) == 0:
+                return 0.0
+            return torque.apply_omega_and_rotate(
+                self, old_points, np.asarray(pinned, dtype=float), years
+            )
+        other_plates = [plate for plate in world.plates if plate.plate_id != self.plate_id]
+        return torque.shift_plate(self, world, other_plates, years)
+
     @property
     def topology_revision(self) -> int:
         return self._topology_revision
