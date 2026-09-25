@@ -530,6 +530,28 @@ def test_partition_chooses_crust_type_by_exact_cell_area():
     assert daughter.crust_type == "continental"
 
 
+def test_partition_freezes_inherited_composition_when_fragment_type_changes():
+    keys = pack_cell_keys(np.zeros(5, dtype=int), np.arange(4, 9), np.full(5, 5))
+    plate = PlateWithSparseQuadPatch(
+        7,
+        np.eye(3),
+        "continental",
+        N,
+        keys,
+        fields={"crust_type_code": np.array([0, 0, 1, 1, 1], dtype=np.int8)},
+    )
+
+    daughter = plate._plates_from_node_masks([np.ones(5, dtype=bool)], [7])[0]
+
+    assert daughter.crust_type == "oceanic"
+    # Cells that inherited continental composition from the parent must remain continental
+    # after moving under an oceanic nominal plate type.
+    np.testing.assert_array_equal(
+        daughter.collect("crust_type_code"),
+        np.array([2, 2, 1, 1, 1], dtype=np.int8),
+    )
+
+
 def test_failed_rift_thins_only_the_cut_band_and_preserves_topology():
     from app.elevation_lines import ELEV_CHANGE_RIFT
 

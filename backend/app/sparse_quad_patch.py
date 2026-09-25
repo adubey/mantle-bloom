@@ -914,14 +914,28 @@ class PlateWithSparseQuadPatch(Plate):
                 raise ValueError(f"node masks must have shape ({len(self._keys)},)")
             if not np.any(mask):
                 continue
+            fragment_crust_type = self._crust_type_for_mask(mask)
+            fragment_fields = {name: values[mask].copy() for name, values in self._fields.items()}
+            if fragment_crust_type != self.crust_type:
+                # CRUST_TYPE_INHERIT is relative to the owning plate. Once a fragment's
+                # nominal type changes, leaving those zeroes intact would silently change
+                # their material composition (and therefore density) to the new plate type.
+                # Freeze them to the parent's explicit type before transferring ownership.
+                codes = fragment_fields["crust_type_code"]
+                parent_code = (
+                    CRUST_TYPE_CONTINENTAL
+                    if self.crust_type == "continental"
+                    else CRUST_TYPE_OCEANIC
+                )
+                codes[codes == CRUST_TYPE_INHERIT] = parent_code
             plates.append(
                 type(self)(
                     plate_id=plate_id,
                     frame=self._frame.copy(),
-                    crust_type=self._crust_type_for_mask(mask),
+                    crust_type=fragment_crust_type,
                     cells_per_edge=self._n,
                     cell_keys=self._keys[mask],
-                    fields={name: values[mask] for name, values in self._fields.items()},
+                    fields=fragment_fields,
                     omega=self._omega.copy(),
                     age_steps=self._age_steps if k == 0 else 0,
                     internal_stress=self._internal_stress if k == 0 else 0.0,
