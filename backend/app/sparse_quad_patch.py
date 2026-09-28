@@ -297,8 +297,7 @@ class ElevationPointInPatch:
 class PlateWithSparseQuadPatch(Plate):
     """A plate whose terrain is a sparse set of active cube-sphere cells -- see the module
     docstring. It can be generated, queried, rendered, remeshed, rigidly rotated, partitioned,
-    deformed (quad_tectonics.py), and saved. Cross-plate merge transfer remains a separate
-    Phase 4 operation."""
+    deformed (quad_tectonics.py), merged with another quad plate (quad_merge.py), and saved."""
 
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
@@ -1006,6 +1005,16 @@ class PlateWithSparseQuadPatch(Plate):
         from . import quad_tectonics
 
         quad_tectonics.deform(self, world, other_plates, years, max_distance)
+
+    def merge_with(
+        self, other: "PlateWithSparseQuadPatch", spacing_rad: float, coverage_radius_rad: float, other_points_xyz: np.ndarray
+    ) -> None:
+        """Absorb `other` onto this plate's lattice by exact-area remap -- see quad_merge.py.
+        `spacing_rad` and `coverage_radius_rad` are the line merge's resampling parameters;
+        cells need neither."""
+        from . import quad_merge
+
+        quad_merge.merge(self, other, other_points_xyz)
 
     def _crust_type_for_mask(self, mask: np.ndarray) -> str:
         """Nominal crust type for a newly partitioned patch.
