@@ -712,19 +712,6 @@ class PlateWithSparseQuadPatch(Plate):
         for index in range(len(self._keys)):
             yield ElevationPointInPatch(self, index), world[index]
 
-    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
-        """The "how far across the plate" fraction is measured along the node's own row run
-        (0 and 1 at the run's end cells), the quad analogue of `PlateWithLines` measuring
-        along its line."""
-        world = self._get_world_points()
-        rows = self.row_intervals()
-        _, _, i, _ = self._unpacked()
-        start = rows.start[rows.node_run]
-        span = rows.end[rows.node_run] - start
-        fraction = np.where(span == 0, 0.5, (i - start) / np.maximum(span, 1))
-        for index in range(len(self._keys)):
-            yield ElevationPointInPatch(self, index), world[index], float(fraction[index])
-
     # --- Adaptive remeshing ---------------------------------------------------------------
 
     def _replace_topology(self, keys: np.ndarray, fields: Mapping[str, np.ndarray]) -> None:

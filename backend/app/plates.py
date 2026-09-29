@@ -892,23 +892,11 @@ class Plate(PlateSurface, abc.ABC):
         ...
 
     @abc.abstractmethod
-    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
-        """Same as `map_world_points`, with each pair additionally carrying how far across
-        this plate the node sits, normalized to [0, 1] -- 0 and 1 at the plate's own
-        boundary, values in between toward the interior. `PlateWithLines` measures this
-        along the node's own row: 0/1 at its `ElevationLine`'s own low/high theta endpoints,
-        the same two points `outline_world()` already traces as that row's edge.
-        `PlateWithRTree` has no row structure to measure along, so it approximates the same
-        thing against the plate's own overall theta range instead -- cheaper than a true
-        per-node distance-to-outline query, at the cost of not accounting for phi."""
-        ...
-
-    @abc.abstractmethod
     def set_fields_on_plate(self, **fields: np.ndarray) -> None:
         """Bulk in-place write for `elevation` and/or any `ElevationLine.OPTIONAL_FIELDS`
         name: each keyword's array must be exactly this plate's own node count, in the same
-        order `map_world_points_on_plate`/`collect` already read/traverse it in. The
-        vectorized counterpart to looping `map_world_points_on_plate` and calling each
+        order `map_world_points`/`collect` already read/traverse it in. The
+        vectorized counterpart to looping `map_world_points` and calling each
         point's own `set_*` -- for a caller that already has a full per-node array computed
         (erosion/bathymetry/geology's per-step recompute), this writes it back without
         constructing a `Plate.__iter__`-style point object per node."""
@@ -1482,17 +1470,6 @@ class PlateWithLines(Plate):
             for point, world_xyz in zip(line, world_pts):
                 yield point, world_xyz
 
-    def map_world_points_on_plate(self) -> Iterator[tuple[ElevationPoint, np.ndarray, float]]:
-        for line in self._lines:
-            if len(line) == 0:
-                continue
-            world_pts = line.world_xyz(self._frame)
-            low_theta = line.theta[0]
-            span = line.theta[-1] - low_theta
-            for point, world_xyz in zip(line, world_pts):
-                fraction = 0.5 if span == 0 else float((point.get_theta() - low_theta) / span)
-                yield point, world_xyz, fraction
-
     def set_fields_on_plate(self, **fields: np.ndarray) -> None:
         expected = self.node_count()
         invalid = [name for name in fields if name != "elevation" and name not in ElevationLine.OPTIONAL_FIELDS]
@@ -1643,7 +1620,7 @@ def gather_node_positions(plate_list: list[Plate]) -> tuple[np.ndarray, list[Pla
     `plates_in_order` -- not, as an earlier version of this function returned, (plate,
     line_index, start, end) references into `PlateWithLines`' own `.lines` -- is what makes
     this representation-agnostic: any bulk per-field gather (`collect_all_elevation` and
-    friends, below) or per-plate write-back loop (`Plate.map_world_points_on_plate`) already
+    friends, below) or per-plate write-back loop (`Plate.set_fields_on_plate`) already
     visits nodes in this same plate-major order, so a caller never needs to reach into any one
     representation's own storage just to stay aligned with `points`. Each caller still gathers
     its own elevation/other per-node fields fresh (via those bulk collectors) -- only the

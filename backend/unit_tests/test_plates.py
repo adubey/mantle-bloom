@@ -358,39 +358,6 @@ def test_get_node_kdtree_is_cached_until_geometry_changes():
     assert p.get_node_kdtree() is not rotated  # invalidated by set_lines
 
 
-def test_map_world_points_on_plate_fraction_spans_zero_to_one_along_each_line():
-    frame = geometry.plate_frame_from_seed(np.array([1.0, 0.0, 0.0]))
-    theta = np.array([0.0, 0.25, 1.0])
-    line = ElevationLine(phi=0.0, theta=theta, elevation=np.zeros(3))
-    plate = PlateWithLines(plate_id=1, frame=frame, crust_type="continental", lines=[line])
-
-    fractions = [fraction for _, _, fraction in plate.map_world_points_on_plate()]
-    assert np.allclose(fractions, [0.0, 0.25, 1.0])
-
-
-def test_map_world_points_on_plate_single_node_line_gives_midpoint_fraction():
-    frame = geometry.plate_frame_from_seed(np.array([0.0, 1.0, 0.0]))
-    line = ElevationLine(phi=0.1, theta=np.array([0.3]), elevation=np.zeros(1))
-    plate = PlateWithLines(plate_id=2, frame=frame, crust_type="oceanic", lines=[line])
-
-    ((_, _, fraction),) = list(plate.map_world_points_on_plate())
-    assert fraction == 0.5
-
-
-def test_map_world_points_on_plate_matches_map_world_points_order_and_positions():
-    world_plates = generate_plates(seed=11, num_plates=6)
-    for p in world_plates:
-        if p.node_count() == 0:
-            continue
-        base = list(p.map_world_points())
-        extended = list(p.map_world_points_on_plate())
-        assert len(base) == len(extended)
-        for (point_a, xyz_a), (point_b, xyz_b, fraction) in zip(base, extended):
-            assert point_a.get_theta() == point_b.get_theta()
-            assert np.allclose(xyz_a, xyz_b)
-            assert 0.0 <= fraction <= 1.0
-
-
 def test_plate_bounding_ellipse_empty_for_no_points():
     assert plate_bounding_ellipse(np.zeros((0, 3))) is None
 
