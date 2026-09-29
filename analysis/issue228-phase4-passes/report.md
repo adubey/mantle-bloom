@@ -41,10 +41,10 @@ plate's `contains_batch`. That is exact for quad plates, whose cells are their t
 - **Overlap tracking.** `PlateSurface.territory_is_exact` (true on quad). When every plate
   is exact, `compute_node_overlap` flags a node whose centre another plate contains.
   Candidate pairs come from bounding caps, so a buried plate is still seen.
-- **Gap filling.** On exact worlds the sweep uses containment. Every sub-floor cluster is
-  pooled and grown into by its adjacent plates, once per plate, with no standoff from
-  neighbour nodes and without logging events. `MIN_GAP_NODES` still gates spawns and the
-  logged per-cluster growth.
+- **Gap filling.** On exact worlds the sweep uses containment. Every cluster below
+  `MIN_GAP_NODES` is pooled and grown into by its adjacent plates, once per plate, with no
+  standoff from neighbour nodes and without logging events. `MIN_GAP_NODES` still gates
+  spawns and the logged per-cluster growth.
 - **Volcanism.** A new cell that is mostly magmatic (stretch share < 0.5) ignites as a
   volcano without changing its column. The quad eruption roll is keyed by each node's stable
   ID (`_node_uniforms`), so inserting or removing cells no longer reshuffles other draws.

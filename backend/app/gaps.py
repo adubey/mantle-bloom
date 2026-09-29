@@ -15,11 +15,14 @@ see GitHub issue #126's "Very-long-run collapse" section): ~42% of the sphere ha
 nodes, all of it sphere area no live plate's lines reached.
 
 This module finds those genuinely-uncovered regions periodically (same cadence as
-`merge_split.defragment_plates` -- a whole-world k-d-tree pass, cheap but not free) and, for
-each big-enough one, grows the plate(s) genuinely adjacent to it into the gap node by node
-(`fill_gaps_by_growing_neighbours`, via `gap_fill_frontier.fill_gap_by_growing_plates`) --
-falling back to spawning a brand-new neutral plate (`_spawn_plate_from_gap`) only when nothing
-is adjacent at all (a fully-vacated region with no live plate left nearby to grow).
+`merge_split.defragment_plates` -- a whole-world k-d-tree pass, cheap but not free) and grows
+the plate(s) genuinely adjacent to each one into it (`fill_gaps_by_growing_neighbours`, via
+`gap_fill_frontier.fill_gap_by_growing_plates` on line plates and `quad_tectonics.fill_gap` on
+quad plates) -- falling back to spawning a brand-new neutral plate (`_spawn_plate_from_gap`)
+only when nothing is adjacent at all (a fully-vacated region with no live plate left nearby to
+grow). On line plates only regions of at least `MIN_GAP_NODES` are handled. On cell surfaces
+(`PlateSurface.territory_is_exact`) smaller regions are grown into as well, since there they
+are seams boundary advance leaves for good; only spawning needs `MIN_GAP_NODES`.
 
 The new plate's own composition (spawn fallback) is decided per node, not blanket-oceanic: real
 new crust in open water is oceanic (the same crust type any mid-ocean ridge produces), but a gap
@@ -70,8 +73,10 @@ CLUSTER_RADIUS_MULT = 2.0
 # A node count, not a distance -- scales with node_density directly, same reasoning as
 # merge_split.SPLIT_MIN_NODES/DEFRAG_FRAGMENT_MIN_NODES. Deliberately in the same range as
 # SPLIT_MIN_NODES (a split's own minimum daughter size): anything smaller than "big enough to
-# be its own plate" is left alone as ordinary boundary-growth catch-up lag rather than
-# spawning a sliver plate at every busy divergent boundary every interval.
+# be its own plate" never spawns a plate, so a busy divergent boundary doesn't shed a sliver
+# plate every interval. On line plates a smaller gap is also left alone, as ordinary
+# boundary-growth catch-up lag. On cell surfaces it is still grown into by its adjacent plates
+# (see fill_gaps_by_growing_neighbours).
 MIN_GAP_NODES = 500
 
 # `fill_gaps_by_growing_neighbours`'s own "detect adjacent plates" gate: a plate with at least
@@ -151,7 +156,7 @@ def _territory_is_exact(world: "World") -> bool:
 
 
 def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float, plates: list[Plate] | None = None) -> np.ndarray:
-    """Sweep points no plate covers. With `plates` given and every one's territory exact, a
+    """Sweep points no plate covers. With `plates` given and every plate's territory exact, a
     point is uncovered when no plate contains it. Otherwise it is uncovered when no node lies
     within `COVERAGE_RADIUS_MULT` spacings -- the line engine's reading, where a node stands
     for the ground around it. That radius is wide enough to hide the one-cell seams quad
@@ -242,14 +247,18 @@ def _adjacent_plates_to_cluster(world: "World", cluster_points: np.ndarray, spac
 
 
 def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
-    """Find every sphere region no live plate currently covers and, for each one at least
-    `MIN_GAP_NODES` (scaled by `world.node_density`) large, first look for plate(s) actually
-    adjacent to it (`_adjacent_plates_to_cluster`) and, when there are any, grow those
-    *existing* plates into the cluster node by node (`gap_fill_frontier.fill_gap_by_growing_
-    plates` -- see that module's own docstring). Falls back to `_spawn_plate_from_gap` only
-    when a cluster has no adjacent plate at all -- a fully-vacated region with nothing nearby
-    to grow. Mutates `world.plates`/`world.next_plate_id` (spawn fallback) or existing plates'
-    own lines (grow path) in place; returns event strings for the UI's console."""
+    """Find every sphere region no live plate currently covers (`_find_gap_points`) and grow
+    the plates adjacent to it into it (`_adjacent_plates_to_cluster`,
+    `_grow_adjacent_into_gap`), falling back to `_spawn_plate_from_gap` when a cluster has no
+    adjacent plate at all -- a fully-vacated region with nothing nearby to grow.
+
+    Clusters of at least `MIN_GAP_NODES` (scaled by `world.node_density`) are handled one by
+    one and logged. Smaller clusters are skipped on line plates. On cell surfaces
+    (`PlateSurface.territory_is_exact`) they are pooled and grown into once per adjacent
+    plate, unlogged, and never spawn a plate.
+
+    Mutates `world.plates`/`world.next_plate_id` (spawn) and the adjacent plates' surfaces
+    (growth) in place; returns event strings for the UI's console."""
     existing_context = _existing_node_tree(world)
     if existing_context is None:
         return []
@@ -262,11 +271,11 @@ def fill_gaps_by_growing_neighbours(world: "World") -> list[str]:
 
     labels = _cluster(gap_points, CLUSTER_RADIUS_MULT * spacing_rad)
     min_gap_nodes = max(1, round(MIN_GAP_NODES * world.node_density))
-    # On cells a small uncovered cluster is not catch-up lag the next advance will close: it is
-    # a seam the advance's standoff from neighbouring nodes leaves for good (issue #228 Phase
-    # 4). Growing an adjacent plate into it is cheap and local, so the floor only gates spawns.
-    # There are typically a couple of hundred such seams, so they're pooled and each plate
-    # grows into its share once -- routine upkeep, not logged as a gap event.
+    # On cells a cluster below MIN_GAP_NODES is not catch-up lag the next advance will close: it
+    # is a seam the advance's standoff from neighbouring nodes leaves for good (issue #228 Phase
+    # 4). Growing an adjacent plate into it is cheap and local, so MIN_GAP_NODES only gates
+    # spawns there. There are typically a couple of hundred such seams, so they're pooled and
+    # each plate grows into its share once -- routine upkeep, not logged as a gap event.
     grow_any_size = _territory_is_exact(world)
     seams: list[np.ndarray] = []
 

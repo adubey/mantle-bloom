@@ -764,6 +764,16 @@ operations on the cell graph:
   behind that suture front, conserved by exact cell area up to the usual caps. This matches
   the line engine, which spreads a retreating end over that many nodes inward along its row.
   The issue #177 retreat budget is spent in area-weighted Hc.
+
+  An oceanic plate also subducts contested patches the peel can't reach (`_carve_interior`,
+  the line engine's mid-row carve-out). A patch qualifies when it is an edge-connected
+  component of at least `_INTERIOR_SUBDUCTION_MIN_RUN` retreatable cells and none of its
+  cells has a wholly open side; touching open ground only through half a side doesn't count.
+  It is removed whole, which opens a hole in the plate. The carve shares the step's cell cap
+  with the peel: a patch larger than what is left is carved partway, as a connected
+  breadth-first prefix, so the hole gives next step's peel an edge to continue from.
+  Continental plates are never carved, since cutting a continent's middle would sever it
+  into a spurious defragmentation plate.
 - **Advance.** Each uncontested boundary cell with open water in front of it (the line
   engine's end-growth test) activates the same-level empty cell across each exposed side,
   for up to `MAX_CLAIM_ROWS_PER_STEP` layers. A candidate cell must not lie inside any
@@ -792,18 +802,17 @@ The whole-world passes read a quad world's territory from its cells
   forced-merge timer and the plate stress accumulator all read this.
 - **Gap filling.** The sweep counts a point as uncovered when no plate contains it. The
   line reading, no node within `COVERAGE_RADIUS_MULT` spacings, can't see the seam about one
-  cell wide that advance's standoff leaves between two plates: on seed 7, 2.2-3.1% of the
-  sphere was seam that the sweep reported as covered. Adjacent plates grow into every
-  uncovered cluster through the same frontier walk (`grow_frontier`), with no standoff and no
-  `MIN_GAP_NODES` floor; the floor still gates spawning a new quad plate
-  (`new_plate(surface="quad")`). Sub-floor clusters are pooled so each plate grows once per
-  pass, and aren't logged as gap events. Right after a pass about 0.7% of the sphere is still
-  uncovered, and about as much doubly covered: two plates' lattices sit in different frames,
-  so whole cells can't tile the boundary between them exactly. Advance reopens seams between
-  passes, to about 2% by the next one.
+  cell wide that advance's standoff leaves between two plates. Adjacent plates grow into
+  every uncovered cluster through the same frontier walk (`grow_frontier`), with no standoff.
+  Clusters below `MIN_GAP_NODES` are pooled, so each plate grows once per pass, and aren't
+  logged as gap events. `MIN_GAP_NODES` still gates spawning a new quad plate
+  (`new_plate(surface="quad")`). Two plates' lattices sit in different frames, so whole cells
+  can't tile the boundary between them exactly, and a thin uncovered and doubly covered
+  margin always remains. Measurements are in
+  [analysis/issue228-phase4-passes/report.md](../analysis/issue228-phase4-passes/report.md).
 - **Volcanism.** Quad volcanoes erupt through the field API. Each node's eruption draw is
-  keyed by its stable cell key, so adding or removing cells elsewhere on the plate doesn't
-  change it.
+  keyed by the seed, step, plate and the node's stable ID (`SurfaceNodes.node_ids`; the cell
+  key on quad plates), so adding or removing cells elsewhere on the plate doesn't change it.
 - **Relattice.** Quad plates have none. `relattice_continental_plates` repairs row-to-row
   phase drift, and cells never drift off their lattice.
 
