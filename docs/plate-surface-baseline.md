@@ -193,7 +193,8 @@ Only `*.timings.json` may differ, and it should not get meaningfully slower.
 | Subduction/retreat (deliberate sinks) | removed Hc/Hm | recorded by `phase_budget` (#216), never silent |
 | Long-run parity (Phase 5), ensemble of seeds | land_fraction_node, Voronoi-weighted continental Hc, plate count, elevation p05/p50/p95, sea level | quad ensemble mean within 2σ of the line ensemble's seed-to-seed spread at 30/60/120 Myr |
 
-Parity has to be statistical, not bitwise, because of §4.4.
+Parity has to be statistical, not bitwise, because of §4.4. The Phase 5 parity harness
+(docs/surface-parity.md) implements these bounds as gates.
 
 ## 4. Findings for the migration
 
