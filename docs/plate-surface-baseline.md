@@ -159,6 +159,12 @@ Only `*.timings.json` may differ, and it should not get meaningfully slower.
 
 ### 3.3 Quad representation (Phases 2–5)
 
+The shared surface contract exposes canonical node order through `surface_nodes`, `collect`,
+`map_world_points`, and `set_fields_on_plate`. It deliberately does not expose a node's
+fractional position between row ends: that value has no representation-neutral meaning and
+had no production consumer. Quad `row_intervals()` and `column_intervals()` remain derived
+topology caches for cell-native algorithms, not shared `PlateSurface` capabilities.
+
 | Metric | Now: fresh → 352.4 Myr | Proposed quad bound |
 |---|---|---|
 | Stacked fraction | 0 → 27.5% | 0 (hard: authoritative topology cannot hold the same patch twice) |
