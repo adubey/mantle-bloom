@@ -19,7 +19,9 @@ cd backend
 It exits with status 1 when the verdict is `fail`. Other subcommands:
 
 - `run --seed S --surface quad|lines --out DIR` runs one world. Use it to spread a campaign
-  across processes or machines.
+  across processes or machines. `--from-world SAVE.mbworld` continues a saved world instead of
+  generating one; checkpoint ages then count from the save's age, and the save's own
+  densities apply.
 - `compare DIR` re-judges every run in a directory, for example after collecting runs made
   separately.
 

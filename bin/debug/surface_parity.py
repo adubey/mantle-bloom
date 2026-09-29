@@ -7,8 +7,8 @@
 `paired` runs every (seed, surface) combination -- in parallel with `--jobs` -- then compares
 them: `comparison.json` holds every gate result and `report.md` a readable summary. The exit
 status is 1 when the verdict is `fail`, so a script can gate on it. `run` does one
-(seed, surface) world; `compare` re-judges an existing output directory, e.g. after
-combining runs made on several machines.
+(seed, surface) world, optionally continuing a saved one (`--from-world`); `compare`
+re-judges an existing output directory, e.g. after combining runs made on several machines.
 
 Presets (`surface_parity.PRESETS`): `smoke` (CI-sized, density 0.5, 4 Myr), `standard`
 (density 1, 120 Myr), `long` (density 1, 400 Myr), `issue147` (the issue #147 profile world:
@@ -73,8 +73,8 @@ def provenance(argv: list[str]) -> dict:
     }
 
 
-def _run_one(config: surface_parity.RunConfig, seed: int, surface: str, out: Path) -> str:
-    surface_parity.run_surface(config, seed, surface, out, log=lambda message: print(message, flush=True))
+def _run_one(config: surface_parity.RunConfig, seed: int, surface: str, out: Path, initial_world: Path | None = None) -> str:
+    surface_parity.run_surface(config, seed, surface, out, log=lambda message: print(message, flush=True), initial_world=initial_world)
     return surface_parity.run_name(seed, surface)
 
 
@@ -118,6 +118,7 @@ def main(argv: list[str]) -> int:
         if name == "run":
             p.add_argument("--seed", type=int, required=True)
             p.add_argument("--surface", choices=surface_parity.SURFACES, required=True)
+            p.add_argument("--from-world", type=Path, help="continue this .mbworld instead of generating (its seed/surface must match)")
         else:
             p.add_argument("--seeds", default="3", help="comma-separated seeds")
             p.add_argument("--surfaces", default=",".join(surface_parity.SURFACES))
@@ -134,7 +135,7 @@ def main(argv: list[str]) -> int:
     meta = provenance(argv) | {"config": config.to_json()}
     if args.command == "run":
         (args.out / f"provenance-{surface_parity.run_name(args.seed, args.surface)}.json").write_text(json.dumps(meta, indent=2) + "\n")
-        _run_one(config, args.seed, args.surface, args.out)
+        _run_one(config, args.seed, args.surface, args.out, args.from_world)
         return 0
 
     meta["jobs"] = args.jobs

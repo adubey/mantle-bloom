@@ -7,7 +7,7 @@ import pickle
 import numpy as np
 import pytest
 
-from app import lithosphere, plates as plates_mod, surface_parity as sp, surface_parity_gates as gates
+from app import lithosphere, persistence, plates as plates_mod, surface_parity as sp, surface_parity_gates as gates
 from app.elevation_lines import ElevationLine, line_spacing_rad
 from app.plates import PlateWithLines, gather_node_positions
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
@@ -416,3 +416,18 @@ def test_presets_have_consistent_checkpoints():
         assert config.checkpoint_steps[0] == 0 and config.steps == config.checkpoint_steps[-1]
     with pytest.raises(ValueError):
         sp.RunConfig("bad", 1.0, 1e6, (2.5,), 1, 10).checkpoint_steps
+
+
+def test_run_can_continue_a_saved_world(tmp_path):
+    from app.world import generate_world
+
+    world = generate_world(seed=4, node_density=0.25)
+    path = tmp_path / "w.mbworld"
+    path.write_bytes(persistence.save_world_bytes(world))
+    config = sp.RunConfig("resume", node_density=0.25, step_years=1e6, checkpoints_myr=(), audit_every=1, samples=500, load_checks=False)
+
+    document, _ = sp.run_surface(config, 4, "lines", initial_world=path, log=lambda _: None)
+    assert document["initial_world"]["name"] == "w.mbworld"
+    assert document["checkpoints"][0]["totals"]["nodes"] == sum(p.node_count() for p in world.plates)
+    with pytest.raises(ValueError):
+        sp.run_surface(config, 4, "quad", initial_world=path, log=lambda _: None)

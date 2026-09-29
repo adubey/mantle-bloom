@@ -1095,9 +1095,20 @@ def run_name(seed: int, surface: str) -> str:
     return f"seed{seed}-{surface}"
 
 
-def run_surface(config: RunConfig, seed: int, surface: str, out_dir: Path | None = None, log=print) -> tuple[dict, dict]:
+def surface_of(world) -> str:
+    kinds = {"quad" if isinstance(p, PlateWithSparseQuadPatch) else "lines" for p in world.plates}
+    if len(kinds) != 1:
+        raise ValueError(f"world mixes plate surfaces: {sorted(kinds)}")
+    return kinds.pop()
+
+
+def run_surface(
+    config: RunConfig, seed: int, surface: str, out_dir: Path | None = None, log=print, initial_world: Path | None = None
+) -> tuple[dict, dict]:
     """Generate and step one world, returning (metrics document, timings document) and writing
-    both under `out_dir` when given."""
+    both under `out_dir` when given. With `initial_world`, continue a saved `.mbworld`
+    instead of generating one: `seed` and `surface` must match the save, checkpoint ages count
+    from the save's own age, and the world's own densities apply (the config's are ignored)."""
     if surface not in SURFACES:
         raise ValueError(f"surface must be one of {SURFACES}, got {surface!r}")
     checkpoint_steps = set(config.checkpoint_steps)
@@ -1118,12 +1129,21 @@ def run_surface(config: RunConfig, seed: int, surface: str, out_dir: Path | None
         "series": [],
         "load_checks": [],
     }
+    if initial_world is not None:
+        data = Path(initial_world).read_bytes()
+        document["initial_world"] = {"name": Path(initial_world).name, "sha256": hashlib.sha256(data).hexdigest()}
     timings: dict = {"schema_version": RESULT_SCHEMA_VERSION, "seed": seed, "surface": surface, "steps": [], "checkpoints": []}
     renders_dir = out_dir / "renders" if out_dir is not None and config.render else None
 
     with instrumentation.installed():
         started = time.perf_counter()
-        world = world_mod.generate_world(**generation_kwargs)
+        if initial_world is None:
+            world = world_mod.generate_world(**generation_kwargs)
+        else:
+            world = persistence.load_world_bytes(data)
+            del data
+            if world.seed != seed or surface_of(world) != surface:
+                raise ValueError(f"{initial_world} is seed {world.seed} on {surface_of(world)}, not seed {seed} on {surface}")
         timings["generation_s"] = time.perf_counter() - started
         signatures: dict[int, dict] = {}
         atmosphere = atmosphere_signature(world)
