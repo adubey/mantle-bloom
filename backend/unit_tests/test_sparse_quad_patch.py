@@ -170,13 +170,6 @@ def test_rows_split_by_a_notch_carry_several_intervals():
     np.testing.assert_array_equal(rows.end, [3, 7])
 
 
-def test_boundary_fraction_is_measured_along_each_row_run():
-    keys = [pack_cell_keys(0, i, 4) for i in range(2, 7)] + [pack_cell_keys(0, 9, 4)]
-    fractions = [fraction for _, _, fraction in _plate(np.array(keys)).map_world_points_on_plate()]
-
-    np.testing.assert_allclose(fractions, [0.0, 0.25, 0.5, 0.75, 1.0, 0.5])
-
-
 def test_point_views_write_through_to_bulk_fields():
     plate = _plate(np.array([pack_cell_keys(0, 4, 4), pack_cell_keys(0, 5, 4)]))
     points = list(plate)

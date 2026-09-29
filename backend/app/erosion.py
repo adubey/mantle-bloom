@@ -586,7 +586,7 @@ def _gather_nodes(
     glacier_depth, concatenated, alongside the ordered list of plates that contributed them --
     unlike reassign.py's own _gather_nodes (which needs per-node plate/line identity, since
     nodes there can move between lines), this only needs each field in the same order
-    `points` and the write-back loop below (`plate.map_world_points_on_plate`) already agree
+    `points` and the write-back loop below (`plate.set_fields_on_plate`) already agree
     on, since erosion never moves a node or changes line topology. `node_cloud`, when passed
     (see apply_erosion), reuses an already-gathered (points, plates_in_order) pair instead of
     re-deriving every node's world position from scratch -- see plates.gather_node_positions's

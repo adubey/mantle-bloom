@@ -242,9 +242,10 @@ elevation_lines.py  ElevationLine data structure, node density/spacing (TARGET_L
                     merge, and periodic line-spacing regularization (formerly line_regrid.py)
 rtree_index.py      minimal bulk-loaded (STR-packed) R-tree over 2D points -- box/nearest-
                     neighbor queries, used by PlateWithRTree
-plates.py          Plate (ABC) / PlateWithLines data structures -- identity, territory,
-                    the plate-local lattice, the per-row outline / row-lookup fast path,
-                    node iteration and field access -- plus initial plate generation
+plates.py          PlateSurface / Plate (ABC) and PlateWithLines -- representation-neutral
+                    node iteration and bulk field access, plate identity and territory,
+                    plus the line surface's plate-local lattice, per-row outline / row-lookup
+                    fast path, and initial plate generation
                     (nearest-seed tiling), the live per-plate outline used by the "Plates"
                     map view and by `deform()`'s own contested/open classification, and
                     the Plate Inspector's bounding-ellipse fit and nearest-plate click
@@ -254,6 +255,10 @@ plates.py          Plate (ABC) / PlateWithLines data structures -- identity, ter
                     stretched-rift volcano spawning, claiming adjacent territory, and
                     inline line regularization -- lives on `LithospherePlate`
                     (lithosphere_plate.py)
+sparse_quad_patch.py
+                   PlateWithSparseQuadPatch, the cell-backed PlateSurface implementation.
+                   Its row/column intervals are derived topology caches used by cell-native
+                   algorithms; they do not expose row ends through the shared surface API.
 mantle.py           cubed-sphere convection-cell flow field, per-plate Euler-pole
                     least-squares fit
 boundary.py         `closing_rate` (used only by merge_split.py now, to confirm two
