@@ -717,7 +717,14 @@ def relattice_continental_plates(world: "World") -> None:
     checks for `apply_failed_rift`, since v1's `plates.PlateWithLines` has no equivalent (this
     mechanism, like the rest of the continental-ratchet work, only applies to the running v2
     engine). A no-op per plate if `crust_type` isn't continental or it has no nodes -- see
-    that method."""
+    that method.
+
+    Quad plates (`PlateWithSparseQuadPatch`) deliberately have no `relattice`. What it repairs
+    is row-to-row phase drift from growing each row's ends independently; cells are fixed
+    lattice keys that grow and retreat across every side at once, so there is no drift to
+    refit. Measured on seed 7 over 150 Myr, the quad lattice stays unrefined, under 1% of
+    cells are one cell thin and at most one transient hole opens, where the line lattice
+    reaches 15% one-node lines by 60 Myr (issue #228 Phase 4, `bin/debug/measure_quad_passes.py`)."""
     spacing_rad = line_spacing_rad(world.node_density)
     for plate in world.plates:
         relattice = getattr(plate, "relattice", None)

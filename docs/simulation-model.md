@@ -768,20 +768,44 @@ operations on the cell graph:
   engine's end-growth test) activates the same-level empty cell across each exposed side,
   for up to `MAX_CLAIM_ROWS_PER_STEP` layers. A candidate cell must not lie inside any
   neighbour, and must be farther than `EXTEND_THRESHOLD_MULTIPLIER` spacings from every
-  neighbour node. New cells are fresh crust through `seed_and_erupt_new_nodes`, the same path
-  the line engine's row claims use. They stretch-thin the `K_NEIGHBOUR_ROWS_FOR_MASS_
-  CONSERVATION` layers of cells behind them by the row-claim share, scaled by how well the
-  growth direction lines up with the direction to the nearest neighbour. An active
-  continental margin grows `ARC_MARGIN_SEED_*` arc crust instead. The continental
-  area-budget gate is measured in area, not node count.
+  neighbour node. Each new cell is a rift opening (`_open_rift`). The share of its footprint
+  that lines up with the direction to the nearest neighbour is covered by stretching the
+  `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` layers of cells behind it, with volume conserved
+  exactly. The rest is fresh magmatic oceanic crust. A cell that is mostly magmatic is a
+  vent: it starts a volcano lifecycle without changing its column. This matches the line
+  engine, where every node a row claim or gap fill creates erupts
+  (`seed_and_erupt_new_nodes`). An active continental margin grows `ARC_MARGIN_SEED_*` arc
+  crust instead. The continental area-budget gate is measured in area, not node count.
 
 Growth never follows a lattice axis, so a plate advances isotropically and there are no row
 stubs to regularize. Cell insertion keeps the mesh 2:1 balanced by rejecting any candidate
-that would border a leaf two levels away. The same frontier walk (`grow_frontier`) grows
-quad plates into gaps for `gaps.fill_gaps_by_growing_neighbours`. A gap in a quad world
-spawns a quad plate (`new_plate(surface="quad")`), and quad volcanoes erupt through the
-field API. Quad plates don't merge yet (`merge_split._supports_merge`), so a quad collision
-is resolved only by each plate's own retreat and accretion.
+that would border a leaf two levels away. Quad pairs merge through `quad_merge.py`.
+
+The whole-world passes read a quad world's territory from its cells
+(`PlateSurface.territory_is_exact`) rather than from node distances:
+
+- **Overlap tracking.** `plates.compute_node_overlap` flags a node when its centre lies
+  inside another plate, the same containment test the contested classification uses.
+  Candidate pairs come from bounding caps, so a plate buried wholly inside another is still
+  seen. The node-proximity tolerance line worlds use misses about a third of real overlap
+  here, because two plates' lattices never line up node for node. `overlap_onset_years`, the
+  forced-merge timer and the plate stress accumulator all read this.
+- **Gap filling.** The sweep counts a point as uncovered when no plate contains it. The
+  line reading, no node within `COVERAGE_RADIUS_MULT` spacings, can't see the seam about one
+  cell wide that advance's standoff leaves between two plates: on seed 7, 2.2-3.1% of the
+  sphere was seam that the sweep reported as covered. Adjacent plates grow into every
+  uncovered cluster through the same frontier walk (`grow_frontier`), with no standoff and no
+  `MIN_GAP_NODES` floor; the floor still gates spawning a new quad plate
+  (`new_plate(surface="quad")`). Sub-floor clusters are pooled so each plate grows once per
+  pass, and aren't logged as gap events. Right after a pass about 0.7% of the sphere is still
+  uncovered, and about as much doubly covered: two plates' lattices sit in different frames,
+  so whole cells can't tile the boundary between them exactly. Advance reopens seams between
+  passes, to about 2% by the next one.
+- **Volcanism.** Quad volcanoes erupt through the field API. Each node's eruption draw is
+  keyed by its stable cell key, so adding or removing cells elsewhere on the plate doesn't
+  change it.
+- **Relattice.** Quad plates have none. `relattice_continental_plates` repairs row-to-row
+  phase drift, and cells never drift off their lattice.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)

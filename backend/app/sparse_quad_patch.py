@@ -299,6 +299,8 @@ class PlateWithSparseQuadPatch(Plate):
     docstring. It can be generated, queried, rendered, remeshed, rigidly rotated, partitioned,
     deformed (quad_tectonics.py), merged with another quad plate (quad_merge.py), and saved."""
 
+    territory_is_exact = True
+
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
         "_local_cache",

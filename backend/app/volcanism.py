@@ -12,7 +12,8 @@ volcano node came to exist: each individual volcano point has its own
 at creation), decremented every step. While active, it rolls a per-step eruption chance
 (`1 - exp(-ERUPTION_RATE_PER_MYR * active_years_this_step / 1e6)`) and, if it erupts, adds
 `elevation_lines.ERUPTION_ELEVATION_M` of new land and grows `mineral_deposit_m`.
-Deterministic per `(seed, elapsed_years, plate_id, line_index)`.
+Deterministic per `(seed, elapsed_years, plate_id, line_index)` on line plates, and per
+`(seed, elapsed_years, plate_id, node ID)` on other surfaces (`_node_uniforms`).
 """
 
 from __future__ import annotations
@@ -130,10 +131,29 @@ def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", yea
     return erupted_points
 
 
+def _splitmix64(x: np.ndarray) -> np.ndarray:
+    """SplitMix64's finaliser, elementwise on uint64 (wrapping arithmetic)."""
+    x = x + np.uint64(0x9E3779B97F4A7C15)
+    x = (x ^ (x >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+    x = (x ^ (x >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+    return x ^ (x >> np.uint64(31))
+
+
+def _node_uniforms(stream: tuple[int, ...], node_ids: np.ndarray) -> np.ndarray:
+    """One uniform in [0, 1) per node, a pure function of `stream` and that node's own
+    two-word surface ID (`SurfaceNodes.node_ids`) -- so a node's draw doesn't change when
+    cells elsewhere on the plate are added or removed, which a single stream consumed in node
+    order can't promise (issue #228 Phase 0a asked for exactly this of stable node IDs)."""
+    salt = np.random.SeedSequence(list(stream)).generate_state(2, dtype=np.uint64)
+    ids = np.asarray(node_ids, dtype=np.uint64).reshape(-1, 2)
+    x = _splitmix64(_splitmix64(ids[:, 0] ^ salt[0]) ^ ids[:, 1] ^ salt[1])
+    return (x >> np.uint64(11)).astype(float) * 2.0**-53
+
+
 def _apply_volcanic_activity_to_surface(plate: Plate, world: "World", years: float) -> list[np.ndarray]:
     """The same eruption roll as `_apply_volcanic_activity_to_lines`, over the whole plate at
-    once through the representation-neutral field API (issue #228's quad surface). One rng
-    draw per plate per step, in canonical node order, instead of one per line."""
+    once through the representation-neutral field API (issue #228's quad surface). Each
+    node's draw is keyed by its stable node ID rather than its line (`_node_uniforms`)."""
     is_volcano = plate.collect("is_volcano")
     if not np.any(is_volcano):
         return []
@@ -144,8 +164,8 @@ def _apply_volcanic_activity_to_surface(plate: Plate, world: "World", years: flo
 
     active_years_this_step = np.minimum(years, remaining)
     p_erupt = 1.0 - np.exp(-ERUPTION_RATE_PER_MYR * world.volcanism_multiplier * active_years_this_step / 1_000_000.0)
-    rng = np.random.default_rng((world.seed, round(world.elapsed_years), plate.plate_id))
-    erupts = active_mask & (rng.random(len(active_mask)) < p_erupt)
+    draws = _node_uniforms((world.seed, round(world.elapsed_years), plate.plate_id), plate.surface_nodes().node_ids)
+    erupts = active_mask & (draws < p_erupt)
 
     elevation = plate.collect("elevation")
     new_crustal_thickness, new_elevation = lithosphere.back_elevation_gain_fields(

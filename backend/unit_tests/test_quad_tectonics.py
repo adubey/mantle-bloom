@@ -1,11 +1,12 @@
 """Per-step deformation on sparse quad plates (issue #228 Phase 4): the cell-graph topology
 primitives, 2D boundary retreat/advance, and the step passes that had to learn about quad
-plates (volcanism, gap filling, merge eligibility) -- see quad_tectonics.py."""
+plates (volcanism, gap filling, overlap tracking, merge eligibility, relattice) -- see
+quad_tectonics.py."""
 
 import numpy as np
 import pytest
 
-from app import gaps, lithosphere, merge_split, quad_tectonics, volcanism
+from app import gaps, geometry, lithosphere, merge_split, plates, quad_tectonics, volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
@@ -26,7 +27,7 @@ def _block(i_range, j_range, face: int = 0) -> np.ndarray:
     return pack_cell_keys(np.full(ii.size, face), ii.ravel(), jj.ravel())
 
 
-def _plate(plate_id, keys, crust_type="oceanic", **fields) -> PlateWithSparseQuadPatch:
+def _plate(plate_id, keys, crust_type="oceanic", frame=None, **fields) -> PlateWithSparseQuadPatch:
     count = len(keys)
     hc, hm = lithosphere.reference_thickness(crust_type)
     defaults = {
@@ -34,7 +35,7 @@ def _plate(plate_id, keys, crust_type="oceanic", **fields) -> PlateWithSparseQua
         "mantle_lithosphere_thickness_m": np.full(count, hm),
     }
     defaults.update(fields)
-    plate = PlateWithSparseQuadPatch(plate_id, np.eye(3), crust_type, N, keys, fields=defaults)
+    plate = PlateWithSparseQuadPatch(plate_id, np.eye(3) if frame is None else frame, crust_type, N, keys, fields=defaults)
     if "elevation" not in fields:
         lithosphere.sync_plate_elevation(plate)
     return plate
@@ -460,3 +461,186 @@ def test_a_quad_pair_past_its_forced_merge_time_comes_due():
     forced = merge_split.pop_ready_forced_merge(world, can_merge=lambda x, y: merge_split._supports_merge(world, x, y))
 
     assert set(forced) == {1, 2}
+
+
+def test_mostly_magmatic_new_cells_are_volcanic_vents_and_stretched_ones_are_not():
+    # Same layout as the test above: the +/-j side cells are fresh magma, the cells toward b
+    # are stretched continental margin.
+    a = _plate(1, _block((10, 20), (20, 30)), "continental")
+    b = _plate(2, _block((24, 34), (20, 30)), "continental")
+    world = _world(a, b)
+
+    _grow(a, world, [b], 1)
+
+    index = {k: n for n, k in enumerate(map(int, a.cell_keys))}
+    side, toward_b = index[int(pack_cell_keys(0, 15, 30))], index[int(pack_cell_keys(0, 20, 25))]
+    is_volcano = a.collect("is_volcano")
+    remaining = a.collect("volcano_active_years_remaining")
+    assert is_volcano[side] and remaining[side] > 0.0
+    assert not is_volcano[toward_b]
+    # Igniting leaves the column alone: the vent keeps the fresh magmatic crust it was grown with.
+    assert a.collect("crust_type_code")[side] == CRUST_TYPE_OCEANIC
+    assert a.collect("crustal_thickness_m")[side] > 5_000.0
+
+
+def test_quad_eruption_draw_is_keyed_by_cell_not_node_order():
+    keys = _block((10, 14), (20, 24))
+    count = len(keys)
+    vent = 9
+    is_volcano = np.zeros(count, dtype=bool)
+    is_volcano[vent] = True
+    fields = dict(is_volcano=is_volcano, volcano_active_years_remaining=np.where(is_volcano, 5e8, 0.0))
+    a = _plate(1, keys, **fields)
+    # The same plate with extra cells ahead of the vent in node order.
+    b = _plate(1, keys, **fields)
+    b.insert_cells(_block((10, 14), (18, 20)))
+    world_a, world_b = _world(a), _world(b)
+    vent_key = int(keys[vent])
+    outcomes = []
+    for step in range(40):
+        for world in (world_a, world_b):
+            world.elapsed_years = step * 1_000_000.0
+            # ~50% per step: p = 1 - exp(-rate * multiplier * 1 Myr).
+            world.volcanism_multiplier = np.log(2.0) / volcanism.ERUPTION_RATE_PER_MYR
+        hc_a = a.collect("crustal_thickness_m")[a._index_of_keys(np.array([vent_key]))[0]]
+        hc_b = b.collect("crustal_thickness_m")[b._index_of_keys(np.array([vent_key]))[0]]
+        volcanism.apply_volcanic_activity(world_a, 1_000_000)
+        volcanism.apply_volcanic_activity(world_b, 1_000_000)
+        erupted_a = a.collect("crustal_thickness_m")[a._index_of_keys(np.array([vent_key]))[0]] > hc_a
+        erupted_b = b.collect("crustal_thickness_m")[b._index_of_keys(np.array([vent_key]))[0]] > hc_b
+        assert erupted_a == erupted_b
+        outcomes.append(erupted_a)
+    assert any(outcomes) and not all(outcomes)
+
+
+def _misaligned_frame() -> np.ndarray:
+    """A frame whose face-0 cells sit half a cell off the identity frame's along both axes, so
+    each node is ~0.7 spacings from the nearest node of an identity-frame plate: farther than
+    the node-proximity overlap tolerance, though well inside that plate's cells."""
+    half_cell = 0.5 * (np.pi / 2.0) / N
+    z = geometry.rotation_matrix(np.array([0.0, 0.0, 1.0]), half_cell)
+    y = geometry.rotation_matrix(np.array([0.0, 1.0, 0.0]), half_cell)
+    return z @ y
+
+
+def test_quad_overlap_is_read_by_containment():
+    a = _plate(1, _block((10, 30), (20, 40)))
+    b = _plate(2, _block((26, 40), (20, 40)), frame=_misaligned_frame())
+    world = _world(a, b)
+    tol = plates.OVERLAP_TOLERANCE_MULT * SPACING
+
+    overlap = plates.compute_node_overlap(world.plates, tol)
+
+    # The node-proximity reading line plates use misses this overlap entirely.
+    points = [p.all_points_and_elevation()[0] for p in (a, b)]
+    assert np.arccos(np.clip(points[0] @ points[1].T, -1.0, 1.0)).min() > tol
+    for plate, other in ((a, b), (b, a)):
+        inside = other.contains_batch(plate.all_points_and_elevation()[0])
+        assert np.any(inside)
+        np.testing.assert_array_equal(overlap[plate.plate_id]["overlap_mask"], inside)
+        assert overlap[plate.plate_id]["by_partner"] == {other.plate_id: int(inside.sum())}
+
+
+def test_quad_overlap_sees_a_plate_buried_inside_another():
+    big = _plate(1, _block((0, N), (0, N)), "continental")
+    buried = _plate(2, _block((N // 2 - 3, N // 2 + 3), (N // 2 - 3, N // 2 + 3)), "continental", frame=_misaligned_frame())
+    world = _world(big, buried)
+
+    overlap = plates.compute_node_overlap(world.plates, plates.OVERLAP_TOLERANCE_MULT * SPACING)
+
+    assert overlap[2]["overlap_mask"].all()
+    assert overlap[1]["by_partner"][2] > 0
+
+
+def test_overlap_tracking_stamps_onset_on_quad_plates():
+    a = _plate(1, _block((10, 30), (20, 40)))
+    b = _plate(2, _block((26, 40), (20, 40)), frame=_misaligned_frame())
+    world = _world(a, b)
+    world.elapsed_years = 7e6
+
+    merge_split.update_overlap_tracking(world, 1_000_000)
+
+    inside = a.contains_batch(b.all_points_and_elevation()[0])
+    onset = b.collect("overlap_onset_years")
+    np.testing.assert_array_equal(onset > 0.0, inside)
+    assert np.all(onset[inside] == 7e6)
+
+
+def _seam_world():
+    """Two plates one empty column apart -- the seam boundary advance leaves, since a cell
+    there is within EXTEND_THRESHOLD_MULTIPLIER spacings of the neighbour's nodes -- and a
+    third plate covering the rest of the sphere, so the seam is the only uncovered ground."""
+    a = _plate(1, _block((10, 20), (20, 40)))
+    b = _plate(2, _block((21, 31), (20, 40)))
+    seam = _block((20, 21), (20, 40))
+    everything = np.concatenate([_block((0, N), (0, N), face) for face in range(6)])
+    rest = _plate(3, everything[~np.isin(everything, np.concatenate([a.cell_keys, b.cell_keys, seam]))])
+    return a, b, _world(a, b, rest), seam
+
+
+def test_boundary_advance_leaves_a_one_cell_seam():
+    a, b, world, seam = _seam_world()
+    a, b = (_plate(p.plate_id, p.cell_keys) for p in (a, b))
+    world = _world(a, b)
+
+    a.deform(world, [b], 1_000_000, 0.0)
+    b.deform(world, [a], 1_000_000, 0.0)
+
+    assert not np.any(a._index_of_keys(seam) >= 0) and not np.any(b._index_of_keys(seam) >= 0)
+
+
+def test_gap_fill_closes_a_one_cell_seam_between_quad_plates():
+    a, b, world, seam = _seam_world()
+    context = gaps._existing_node_tree(world)
+    # Node distance can't see the seam; containment finds it and nothing else.
+    assert len(gaps._find_gap_points(context, SPACING)) == 0
+    found = gaps._find_gap_points(context, SPACING, world.plates)
+    assert len(found) > 0 and np.all(_plate(9, seam).contains_batch(found))
+
+    gaps.fill_gaps_by_growing_neighbours(world)
+
+    seam_points = geometry.to_world(np.eye(3), a.cell_centres_local(seam))
+    covered = np.zeros(len(seam_points), dtype=bool)
+    for plate in world.plates:
+        covered |= plate.contains_batch(seam_points)
+        plate._validate_leaf_topology()
+    assert covered.all()
+    # Filled, not overlapped: no plate took a cell another holds.
+    overlap = plates.compute_node_overlap(world.plates, plates.OVERLAP_TOLERANCE_MULT * SPACING)
+    assert not any(info["overlap_mask"].any() for info in overlap.values())
+
+
+def test_a_small_isolated_quad_gap_is_not_spawned_into_a_plate():
+    whole = _plate(1, np.concatenate([_block((0, N), (0, N), face) for face in range(6)]))
+    points = whole.all_points_and_elevation()[0]
+    # A hole well under MIN_GAP_NODES, deep enough that nothing lies within
+    # ADJACENT_PLATE_REACH_MULT spacings of its middle... except its own rim, so the plate
+    # grows into it rather than a new plate spawning there.
+    whole.remove_cells(points @ np.array([1.0, 0.0, 0.0]) > np.cos(3 * SPACING))
+    world = _world(whole)
+
+    gaps.fill_gaps_by_growing_neighbours(world)
+
+    assert len(world.plates) == 1
+    assert len(gaps._find_gap_points(gaps._existing_node_tree(world), SPACING, world.plates)) == 0
+
+
+def test_gap_tracks_on_a_quad_world_see_the_seam():
+    _, _, world, _ = _seam_world()
+
+    gaps.reconcile_gap_tracks(world)
+
+    assert len(world.gap_tracks) >= 1
+
+
+def test_relattice_leaves_quad_plates_alone():
+    keys = _block((10, 20), (20, 30))
+    a = _plate(1, keys, "continental", crustal_thickness_m=np.linspace(30_000.0, 40_000.0, len(keys)))
+    world = _world(a)
+    world.steps_taken = merge_split.RELATTICE_INTERVAL_STEPS
+    hc_before = a.collect("crustal_thickness_m")
+
+    merge_split.relattice_continental_plates(world)
+
+    np.testing.assert_array_equal(a.cell_keys, keys)
+    np.testing.assert_array_equal(a.collect("crustal_thickness_m"), hc_before)

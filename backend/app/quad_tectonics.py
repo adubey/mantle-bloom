@@ -64,6 +64,7 @@ from .lithosphere_plate import (
     SUTURE_ACCRETION_SPREAD_NODES,
     _TERRAIN_SEED_TAG,
     _erupt_melted_nodes,
+    _ignite_early_rift_volcanoes,
     boundary_context,
     deform_columns,
     growth_seed_thickness,
@@ -345,11 +346,12 @@ def grow_frontier(
     max_layers: int,
     max_cells: int,
     claimable=None,
+    standoff: bool = True,
 ) -> int:
     """Activate open empty cells across the exposed sides of `eligible` cells, then across
     the newest layer's, for up to `max_layers` layers and `max_cells` cells -- the shared
     areal-growth walk behind boundary advance and gap filling. A candidate is open when no
-    plate in `neighbours` contains it and none of their nodes lies within
+    plate in `neighbours` contains it and, with `standoff`, none of their nodes lies within
     `EXTEND_THRESHOLD_MULTIPLIER` spacings; `claimable(world_pts)`, when given, narrows that
     further. Cells grown from an `arc_source` cell are arc crust; the rest are fresh crust
     that stretch-thins the cells behind them. Returns how many cells were added."""
@@ -379,7 +381,8 @@ def grow_frontier(
         gap_direction = np.zeros((len(candidates), 3))
         if neighbour_tree is not None:
             dist, idx = neighbour_tree.query(world_pts)
-            open_mask &= dist > extend_threshold_rad
+            if standoff:
+                open_mask &= dist > extend_threshold_rad
             finite = np.isfinite(dist)
             gap_direction[finite] = neighbour_tree.data[idx[finite]] - world_pts[finite]
         sources, candidates, local, world_pts, gap_direction = (
@@ -489,7 +492,9 @@ def _open_rift(
     """Rift opening for this layer's `rifted` cells (node indices; `layer` is every cell this
     layer inserted). Each new cell covers `stretch_share` of its footprint by stretching the
     older cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops of it, and the rest with
-    the fresh magmatic column it was inserted with.
+    the fresh magmatic column it was inserted with. A cell that is mostly magmatic is a vent:
+    it starts a volcano lifecycle without changing its column, as every node the line
+    engine's row claims and gap filling create does (`seed_and_erupt_new_nodes`).
 
     Stretching is exactly volume-conserving (the areal form of `rheology.
     apply_stretch_thinning`, the line engine's `_stretch_end`): a donor asked to cover `D` m^2
@@ -562,6 +567,7 @@ def _open_rift(
     melting = cell_hc < rheology.RIFT_CRITICAL_THICKNESS_M
     sub_volcano, sub_remaining = is_volcano[rifted], remaining[rifted]
     _erupt_melted_nodes(world, plate.plate_id, rng_index, cell_hc, cell_hm, cell_codes, sub_volcano, sub_remaining, melting, cell_elevation)
+    _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
     is_volcano[rifted], remaining[rifted] = sub_volcano, sub_remaining
     elevation[rifted] = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
@@ -583,8 +589,12 @@ def fill_gap(
     """Grow `plate` into the uncovered `gap_points` (world xyz) -- the quad counterpart of
     `gap_fill_frontier.fill_gap_by_growing_plates` for one claimant. The same frontier walk as
     boundary advance, from every boundary cell, restricted to cells whose centre lies within
-    `COVERAGE_RADIUS_MULT` spacings of a gap point and kept clear of `others`. Returns how many
-    cells were added."""
+    `COVERAGE_RADIUS_MULT` spacings of a gap point and that no plate in `others` contains.
+
+    Unlike boundary advance there is no standoff from the neighbours' nodes. Advance keeps a
+    new cell's centre `EXTEND_THRESHOLD_MULTIPLIER` spacings from them, which is what leaves
+    a seam about one cell wide between two plates that stopped short of each other; gap
+    filling is what closes it. Returns how many cells were added."""
     if plate.node_count() == 0 or len(gap_points) == 0:
         return 0
     gap_tree = cKDTree(gap_points)
@@ -598,5 +608,5 @@ def fill_gap(
     n = plate.node_count()
     return grow_frontier(
         plate, world, np.ones(n, dtype=bool), np.zeros(n, dtype=bool), neighbours, spacing_rad,
-        max_layers, max(1, 2 * len(gap_points)), claimable=near_gap,
+        max_layers, max(1, 2 * len(gap_points)), claimable=near_gap, standoff=False,
     )
