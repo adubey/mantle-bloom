@@ -115,6 +115,13 @@ class PlateSurface(abc.ABC):
     operations and conservative remapping remain implementation-specific until later phases.
     """
 
+    # Whether `contains_batch` is the territory itself rather than an approximation of it --
+    # true for cell surfaces, whose active cells *are* the territory, false for line rows,
+    # whose outline polygon only approximates the node cloud. Passes that decide coverage or
+    # overlap (`compute_node_overlap`, gaps.py) answer by containment when every plate's
+    # territory is exact, and by node proximity otherwise.
+    territory_is_exact: bool = False
+
     @property
     @abc.abstractmethod
     def topology_revision(self) -> int: ...
@@ -1744,12 +1751,21 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
 
     One global `cKDTree.query_pairs` over every node, so O(N log N) once rather than a
     per-pair envelope test -- the same construction main._plate_overlaps used inline before
-    this was factored out so the API view and merge_split's onset tracker can't drift."""
+    this was factored out so the API view and merge_split's onset tracker can't drift.
+
+    When every plate's territory is exact (`PlateSurface.territory_is_exact`, i.e. cells), a
+    node overlaps instead when its centre lies inside another plate's territory -- the same
+    containment test deform's contested classification uses. Two cell lattices in different
+    frames never line up node for node, so a proximity tolerance there misses about a third
+    of the nodes that really sit on another plate (issue #228 Phase 4)."""
     active = [p for p in plate_list if p.node_count() > 0]
     result: dict[int, dict] = {
         p.plate_id: {"overlap_mask": np.zeros(p.node_count(), dtype=bool), "by_partner": {}} for p in active
     }
     if len(active) < 2:
+        return result
+    if all(p.territory_is_exact for p in active):
+        _contained_node_overlap(active, result)
         return result
 
     clouds = [p.all_points_and_elevation()[0] for p in active]
@@ -1778,6 +1794,30 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
                     continue
                 result[src_plate.plate_id]["by_partner"][dst_plate.plate_id] = int(len(np.unique(local[on_j])))
     return result
+
+
+def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> None:
+    """`compute_node_overlap`'s exact-territory form, filling `result` in place. Candidate
+    pairs come from bounding caps rather than outline proximity (`_plates_within`), so a plate
+    buried wholly inside another -- the superimposed case the forced merge exists for -- is
+    still tested."""
+    clouds = [p.all_points_and_elevation()[0] for p in active]
+    caps = [geometry.bounding_sphere(c) for c in clouds]
+    # Cell centres sit up to a cell's half-diagonal inside the territory's edge, so each cap is
+    # padded by one of its plate's largest cells before a pair is ruled out.
+    pads = [float(np.sqrt(np.max(p.surface_nodes().area_m2))) / (elevation_lines.PLANET_RADIUS_KM * 1000.0) for p in active]
+    for i, plate in enumerate(active):
+        centre_i, radius_i = caps[i]
+        for j, other in enumerate(active):
+            if i == j:
+                continue
+            centre_j, radius_j = caps[j]
+            if float(geometry.angular_distance(centre_i, centre_j)) > radius_i + radius_j + pads[j]:
+                continue
+            inside = other.contains_batch(clouds[i])
+            if np.any(inside):
+                result[plate.plate_id]["overlap_mask"] |= inside
+                result[plate.plate_id]["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
 
 
 def _collect_all(plate_list: list[Plate], field_name: str) -> np.ndarray:

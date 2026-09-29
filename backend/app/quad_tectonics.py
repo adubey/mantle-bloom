@@ -31,6 +31,7 @@ cells never drift off the lattice.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -64,6 +65,7 @@ from .lithosphere_plate import (
     SUTURE_ACCRETION_SPREAD_NODES,
     _TERRAIN_SEED_TAG,
     _erupt_melted_nodes,
+    _ignite_early_rift_volcanoes,
     boundary_context,
     deform_columns,
     growth_seed_thickness,
@@ -231,18 +233,26 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
 
 
 def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, open_half: np.ndarray, max_cells: int) -> np.ndarray:
-    """Interior subduction: the `retreatable` patches the layered peel can never reach,
-    because no cell of theirs has a wholly open side (`open_half`: per cell, side and probe,
-    whether that half-side borders nothing or an already-peeled cell -- the same whole-side
-    test the peel uses, so a patch touching open ground only through a half-side still
-    counts as unreachable) -- a neighbour overriding this plate somewhere other than its
-    edge. Each such edge-connected patch of at least `_INTERIOR_SUBDUCTION_MIN_RUN` cells
-    subducts, up to `max_cells` in total -- the 2D form of the line engine's mid-row
-    carve-out, leaving a hole the quad surface represents directly. A patch larger than the
-    remaining budget is carved partway, as a connected breadth-first prefix from one cell,
-    so the hole it opens gives next step's peel an exposed edge to continue from. Oceanic
-    plates only, as there: carving a continent's middle would sever it into a spurious
-    defragmentation plate. Returns the mask to remove."""
+    """Interior subduction -- the 2D form of the line engine's mid-row carve-out: remove
+    contested patches the layered peel can never reach, leaving a hole the quad surface
+    represents directly. Returns the mask to remove.
+
+    Eligibility. A patch is an edge-connected component of `retreatable` cells (contested by
+    a neighbour overriding this plate somewhere other than its edge) with at least
+    `_INTERIOR_SUBDUCTION_MIN_RUN` cells. Oceanic plates only, as in the line engine; the
+    caller never passes a continental plate, since carving a continent's middle would sever
+    it into a spurious defragmentation plate.
+
+    Reachability. A patch is left to the peel when any of its cells has a wholly open side.
+    `open_half` is per cell, side and half-side probe: whether that half-side borders nothing
+    or an already-peeled cell. A side is open only when both halves are, the same whole-side
+    test the peel uses, so a patch touching open ground only through a half-side is
+    unreachable and is carved here.
+
+    Partial carve. At most `max_cells` cells go in total. A patch larger than what remains of
+    that budget is carved partway, as a breadth-first prefix grown from one of its cells, so
+    the removed part is connected and the hole it opens gives next step's peel an exposed
+    edge to continue from."""
     carved = np.zeros(len(retreatable), dtype=bool)
     members = np.flatnonzero(retreatable)
     if len(members) < _INTERIOR_SUBDUCTION_MIN_RUN or max_cells <= 0:
@@ -345,11 +355,12 @@ def grow_frontier(
     max_layers: int,
     max_cells: int,
     claimable=None,
+    standoff: bool = True,
 ) -> int:
     """Activate open empty cells across the exposed sides of `eligible` cells, then across
     the newest layer's, for up to `max_layers` layers and `max_cells` cells -- the shared
     areal-growth walk behind boundary advance and gap filling. A candidate is open when no
-    plate in `neighbours` contains it and none of their nodes lies within
+    plate in `neighbours` contains it and, with `standoff`, none of their nodes lies within
     `EXTEND_THRESHOLD_MULTIPLIER` spacings; `claimable(world_pts)`, when given, narrows that
     further. Cells grown from an `arc_source` cell are arc crust; the rest are fresh crust
     that stretch-thins the cells behind them. Returns how many cells were added."""
@@ -379,7 +390,8 @@ def grow_frontier(
         gap_direction = np.zeros((len(candidates), 3))
         if neighbour_tree is not None:
             dist, idx = neighbour_tree.query(world_pts)
-            open_mask &= dist > extend_threshold_rad
+            if standoff:
+                open_mask &= dist > extend_threshold_rad
             finite = np.isfinite(dist)
             gap_direction[finite] = neighbour_tree.data[idx[finite]] - world_pts[finite]
         sources, candidates, local, world_pts, gap_direction = (
@@ -478,51 +490,97 @@ def _new_cell_fields(
     return fields
 
 
+@dataclass(frozen=True)
+class _StretchTransfer:
+    """How a rift layer's stretched share is paid for, from `_allocate_stretch`. Donors are
+    the pre-existing cells that cover some new cell's stretched footprint; every volume is in
+    m * m^2 (thickness times area) and aligned to the rifted cells it is received by."""
+
+    donor_indices: np.ndarray  # node indices of cells that thin
+    donor_thinning_ratio: np.ndarray  # a / (a + D) per donor: its new thickness / its old
+    received_hc_volume: np.ndarray  # Hc volume each rifted cell receives from its donors
+    received_hm_volume: np.ndarray  # Hm volume each rifted cell receives
+    received_continental_hc_volume: np.ndarray  # the part of received_hc_volume that was continental
+
+
+def _allocate_stretch(
+    plate: "PlateWithSparseQuadPatch",
+    inserted_indices: np.ndarray,
+    rifted: np.ndarray,
+    stretch_share: np.ndarray,
+    hc: np.ndarray,
+    hm: np.ndarray,
+    continental: np.ndarray,
+) -> _StretchTransfer:
+    """Share each rifted cell's stretched footprint (`stretch_share` of its area) out over its
+    donor band -- the pre-existing cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops,
+    weighted by donor area -- and work out what each donor loses and each rifted cell receives.
+
+    A donor asked to cover `D` m^2 of new ground on top of its own area `a` thins by
+    `a / (a + D)`; the volume that removes, `thickness * a * (1 - ratio)`, goes to the cells
+    that asked, in proportion to how much each asked. Total volume is unchanged by
+    construction. A rifted cell with no pre-existing cell in reach asks for nothing."""
+    areas = plate.node_areas_m2()
+    preexisting_mask = np.ones(plate.node_count(), dtype=bool)
+    preexisting_mask[inserted_indices] = False
+    preexisting = np.flatnonzero(preexisting_mask)
+    adjacency = _adjacency_matrix(plate).astype(float)
+    reach = adjacency[rifted][:, preexisting]
+    band = reach.copy()
+    preexisting_adjacency = adjacency[preexisting][:, preexisting]
+    for _ in range(K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION - 1):
+        reach = reach @ preexisting_adjacency
+        band = band + reach
+    # band_area_by_donor[c, d]: donor d's area if it is in rifted cell c's band, else 0.
+    band_area_by_donor = (band > 0).astype(float).multiply(areas[preexisting][None, :]).tocsr()
+    band_area = np.asarray(band_area_by_donor.sum(axis=1)).ravel()
+    requested_area_by_cell = np.where(band_area > 0.0, stretch_share * areas[rifted], 0.0)
+    # requested_area[c, d]: footprint rifted cell c asks of donor d, in m^2.
+    requested_area = csr_matrix(
+        band_area_by_donor.multiply((requested_area_by_cell / np.where(band_area > 0.0, band_area, 1.0))[:, None])
+    )
+    requested_area_by_donor = np.asarray(requested_area.sum(axis=0)).ravel()
+    donor_area = areas[preexisting]
+    thinning_ratio = donor_area / (donor_area + requested_area_by_donor)
+    # share_of_donor[c, d]: the fraction of donor d's lost volume rifted cell c receives.
+    share_of_donor = csr_matrix(
+        requested_area.multiply((1.0 / np.where(requested_area_by_donor > 0.0, requested_area_by_donor, 1.0))[None, :])
+    )
+
+    lost_hc_volume = hc[preexisting] * donor_area * (1.0 - thinning_ratio)
+    lost_hm_volume = hm[preexisting] * donor_area * (1.0 - thinning_ratio)
+    is_donor = requested_area_by_donor > 0.0
+    return _StretchTransfer(
+        donor_indices=preexisting[is_donor],
+        donor_thinning_ratio=thinning_ratio[is_donor],
+        received_hc_volume=share_of_donor @ lost_hc_volume,
+        received_hm_volume=share_of_donor @ lost_hm_volume,
+        received_continental_hc_volume=share_of_donor @ (lost_hc_volume * continental[preexisting]),
+    )
+
+
 def _open_rift(
     plate: "PlateWithSparseQuadPatch",
     world: "World",
     rng_index: int,
-    layer: np.ndarray,
+    inserted_indices: np.ndarray,
     rifted: np.ndarray,
     stretch_share: np.ndarray,
 ) -> None:
-    """Rift opening for this layer's `rifted` cells (node indices; `layer` is every cell this
-    layer inserted). Each new cell covers `stretch_share` of its footprint by stretching the
-    older cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops of it, and the rest with
-    the fresh magmatic column it was inserted with.
+    """Rift opening for this layer's `rifted` cells (node indices; `inserted_indices` is every
+    cell this layer inserted, arc cells included). Each rifted cell covers `stretch_share` of
+    its footprint by stretching the pre-existing cells behind it (`_allocate_stretch`), and
+    the rest with the fresh magmatic column it was inserted with. The areal form of
+    `rheology.apply_stretch_thinning`, the line engine's `_stretch_end`, and exactly
+    volume-conserving.
 
-    Stretching is exactly volume-conserving (the areal form of `rheology.
-    apply_stretch_thinning`, the line engine's `_stretch_end`): a donor asked to cover `D` m^2
-    of new ground on top of its own area `a` thins by `a / (a + D)`, and the Hc/Hm it loses
-    moves into the cells that asked, in proportion to what each asked of it. A new cell's
-    demand is spread over its donor band by donor area. So a continental margin pulled apart
-    thins into a widening band of stretched continental crust instead of losing it, and only
-    once a column thins past `RIFT_CRITICAL_THICKNESS_M` does it erupt -- continental breakup
-    or ridge accretion, through the same `_erupt_melted_nodes` path the column pass uses.
-    Magmatic share is new crust from the mantle, as at any spreading ridge."""
-    n = plate.node_count()
-    areas = plate.node_areas_m2()
-    old = np.ones(n, dtype=bool)
-    old[layer] = False
-    old_idx = np.flatnonzero(old)
-    adjacency = _adjacency_matrix(plate).astype(float)
-    reach = adjacency[rifted][:, old_idx]
-    band = reach.copy()
-    old_adjacency = adjacency[old_idx][:, old_idx]
-    for _ in range(K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION - 1):
-        reach = reach @ old_adjacency
-        band = band + reach
-    band = (band > 0).astype(float).multiply(areas[old_idx][None, :]).tocsr()
-    band_area = np.asarray(band.sum(axis=1)).ravel()
-    new_area = areas[rifted]
-    demand = np.where(band_area > 0.0, stretch_share * new_area, 0.0)
-    # asked[c, d]: footprint new cell c asks of donor d.
-    asked = csr_matrix(band.multiply((demand / np.where(band_area > 0.0, band_area, 1.0))[:, None]))
-    donor_demand = np.asarray(asked.sum(axis=0)).ravel()
-    donor_area = areas[old_idx]
-    ratio = donor_area / (donor_area + donor_demand)
-    share_of_donor = csr_matrix(asked.multiply((1.0 / np.where(donor_demand > 0.0, donor_demand, 1.0))[None, :]))
-
+    So a continental margin pulled apart thins into a widening band of stretched continental
+    crust instead of losing it, and only once a column thins past `RIFT_CRITICAL_THICKNESS_M`
+    does it erupt -- continental breakup or ridge accretion, through the same
+    `_erupt_melted_nodes` path the column pass uses. Magmatic share is new crust from the
+    mantle, as at any spreading ridge. A cell that is mostly magmatic is a vent: it starts a
+    volcano lifecycle without changing its column, as every node the line engine's row claims
+    and gap filling create does (`seed_and_erupt_new_nodes`)."""
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     codes = plate.collect("crust_type_code")
@@ -531,19 +589,13 @@ def _open_rift(
     elevation = plate.collect("elevation")
     reason = plate.collect("elev_change_reason")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
-
-    lost_hc = hc[old_idx] * donor_area * (1.0 - ratio)
-    lost_hm = hm[old_idx] * donor_area * (1.0 - ratio)
-    got_hc = share_of_donor @ lost_hc
-    got_hm = share_of_donor @ lost_hm
-    got_continental = share_of_donor @ (lost_hc * continental[old_idx])
+    transfer = _allocate_stretch(plate, inserted_indices, rifted, stretch_share, hc, hm, continental)
 
     # Donors: thin in place, erupting any column that thins through the rift threshold.
-    donors = old_idx[donor_demand > 0.0]
-    donor_ratio = ratio[donor_demand > 0.0]
+    donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
     if len(donors):
         before = lithosphere.isostatic_elevation(hc[donors], hm[donors], lithosphere.node_crust_density(codes[donors], plate.crust_type))
-        new_hc, new_hm = hc[donors] * donor_ratio, hm[donors] * donor_ratio
+        new_hc, new_hm = hc[donors] * ratio, hm[donors] * ratio
         melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
         sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
         _erupt_melted_nodes(world, plate.plate_id, rng_index + 1, new_hc, new_hm, sub_codes, sub_volcano, sub_remaining, melting, elevation[donors])
@@ -553,15 +605,18 @@ def _open_rift(
         codes[donors], is_volcano[donors], remaining[donors] = sub_codes, sub_volcano, sub_remaining
         reason[donors[melting]] = ELEV_CHANGE_VOLCANO
 
-    # New cells: stretched crust from behind plus the magmatic remainder.
-    magmatic = (1.0 - stretch_share) * new_area
-    cell_hc = (got_hc + magmatic * hc[rifted]) / new_area
-    cell_hm = (got_hm + magmatic * hm[rifted]) / new_area
-    cell_codes = np.where(got_continental > 0.5 * cell_hc * new_area, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(codes.dtype)
+    # Rifted cells: stretched crust received from behind plus the magmatic remainder.
+    cell_area = plate.node_areas_m2()[rifted]
+    magmatic_area = (1.0 - stretch_share) * cell_area
+    cell_hc = (transfer.received_hc_volume + magmatic_area * hc[rifted]) / cell_area
+    cell_hm = (transfer.received_hm_volume + magmatic_area * hm[rifted]) / cell_area
+    mostly_continental = transfer.received_continental_hc_volume > 0.5 * cell_hc * cell_area
+    cell_codes = np.where(mostly_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(codes.dtype)
     cell_elevation = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
     melting = cell_hc < rheology.RIFT_CRITICAL_THICKNESS_M
     sub_volcano, sub_remaining = is_volcano[rifted], remaining[rifted]
     _erupt_melted_nodes(world, plate.plate_id, rng_index, cell_hc, cell_hm, cell_codes, sub_volcano, sub_remaining, melting, cell_elevation)
+    _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
     is_volcano[rifted], remaining[rifted] = sub_volcano, sub_remaining
     elevation[rifted] = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
@@ -583,8 +638,12 @@ def fill_gap(
     """Grow `plate` into the uncovered `gap_points` (world xyz) -- the quad counterpart of
     `gap_fill_frontier.fill_gap_by_growing_plates` for one claimant. The same frontier walk as
     boundary advance, from every boundary cell, restricted to cells whose centre lies within
-    `COVERAGE_RADIUS_MULT` spacings of a gap point and kept clear of `others`. Returns how many
-    cells were added."""
+    `COVERAGE_RADIUS_MULT` spacings of a gap point and that no plate in `others` contains.
+
+    Unlike boundary advance there is no standoff from the neighbours' nodes. Advance keeps a
+    new cell's centre `EXTEND_THRESHOLD_MULTIPLIER` spacings from them, which is what leaves
+    a seam about one cell wide between two plates that stopped short of each other; gap
+    filling is what closes it. Returns how many cells were added."""
     if plate.node_count() == 0 or len(gap_points) == 0:
         return 0
     gap_tree = cKDTree(gap_points)
@@ -598,5 +657,5 @@ def fill_gap(
     n = plate.node_count()
     return grow_frontier(
         plate, world, np.ones(n, dtype=bool), np.zeros(n, dtype=bool), neighbours, spacing_rad,
-        max_layers, max(1, 2 * len(gap_points)), claimable=near_gap,
+        max_layers, max(1, 2 * len(gap_points)), claimable=near_gap, standoff=False,
     )
