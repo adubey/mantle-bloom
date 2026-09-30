@@ -454,6 +454,10 @@ class PlateWithSparseQuadPatch(Plate):
             self._area_cache = areas * PLANET_RADIUS_M**2
         return self._area_cache
 
+    def accounting_areas_m2(self, spacing_rad: float) -> np.ndarray:
+        """Exact cell areas -- cube-sphere cells are not equal-area (issue #257)."""
+        return self.node_areas_m2()
+
     def row_intervals(self) -> CellIntervals:
         """Runs of active cells along each face row (constant `j`)."""
         if self._row_intervals_cache is None:

@@ -365,13 +365,13 @@ class World:
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
     # Eustatic sea level (see eustasy.py). `sea_level_m` above is no longer a fixed input --
-    # `step_world` re-solves it every step so it tracks the ocean volume this conserved
-    # water-column budget represents against the world's changing hypsometry (deeper basins /
-    # drowned continents -> lower stand). `None` until first initialized (a freshly built
-    # World, or a save written before eustasy existed); `eustasy.initialize_water_budget`
-    # snapshots it from the flat starting sea level at generation. The `/world/controls`
-    # slider sets this budget rather than `sea_level_m` directly (adds/removes ocean water).
-    ocean_water_column_m: float | None = None
+    # `step_world` re-solves it every step so it tracks this conserved water volume (m^3)
+    # against the world's changing hypsometry (deeper basins / drowned continents -> lower
+    # stand). `None` until first initialized (a freshly built World, or a save written before
+    # the budget was kept in m^3); `eustasy.initialize_water_budget` snapshots it from the flat
+    # starting sea level at generation. The `/world/controls` slider sets this budget rather
+    # than `sea_level_m` directly (adds/removes ocean water).
+    ocean_water_volume_m3: float | None = None
     solar_multiplier: float = 1.0
     # The "Ice Age Frequency" Controls slider (Climate tab): the full period, in years, of a
     # slow glacial<->interglacial temperature oscillation driven purely by `elapsed_years`.

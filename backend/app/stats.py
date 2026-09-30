@@ -81,8 +81,8 @@ total, added to give the Simulation tab a mass/volume-conservation check indepen
 land_fraction -- read straight off `world.plates`' own Hc columns and current elevation,
 *not* the climate grid `is_land`/`is_ocean` above (so, unlike every stat above, immune to
 the hydrology-cache staleness `_reconcile_land_ocean`'s own docstring describes, and not an
-approximation of a non-equal-area grid either -- every lattice node really is the same
-physical footprint, `lithosphere.node_area_m2`). The distinction they're for: land area can
+approximation of a non-equal-area grid either -- each node is weighted by its accounting
+area, `Plate.accounting_areas_m2`). The distinction they're for: land area can
 swing a lot from tectonics moving existing crust above/below sea level (isostasy, sea-level
 change, redistribution within a colliding pair) while the underlying crustal *volume* barely
 moves -- vs. a genuine mass-conservation bug (a topology change that drops a column's volume
@@ -171,22 +171,26 @@ def _total_land_area_and_continental_volume(world: World) -> tuple[float, float,
     """(total land area m^2, total continental crustal volume m^3, total land node count)
     straight off `world.plates` -- see this module's own docstring for why these are computed
     here rather than off the climate grid `compute_stats` otherwise uses throughout.
-    `node_area_m2` is (almost exactly) constant across latitude by construction, so both are a
-    plain node-count sum, not an integral -- one pass per plate, no grid resample. The node
-    count is also `land_fraction_node`'s numerator (see `compute_stats`) -- a raw
+    Each node is weighted by its accounting area (`Plate.accounting_areas_m2`: exact cells on
+    quad plates, which are not equal-area; nominal on line plates) -- one pass per plate, no
+    grid resample. The node count is also `land_fraction_node`'s numerator (see `compute_stats`) -- a raw
     `elevation > sea_level_m` count, immune to the same hydrology-cache staleness as
     `land_area`/`continental_volume`, for the same reason."""
-    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+    spacing_rad = line_spacing_rad(world.node_density)
     land_nodes = 0
+    land_area = 0.0
     continental_volume = 0.0
     for plate in world.plates:
         _, elevation = plate.all_points_and_elevation()
         if len(elevation) == 0:
             continue
-        land_nodes += int(np.count_nonzero(elevation > world.sea_level_m))
+        area_m2 = plate.accounting_areas_m2(spacing_rad)
+        is_land = elevation > world.sea_level_m
+        land_nodes += int(np.count_nonzero(is_land))
+        land_area += float(np.sum(area_m2[is_land]))
         if plate.crust_type == "continental":
-            continental_volume += float(np.sum(plate.collect("crustal_thickness_m"))) * area_m2
-    return land_nodes * area_m2, continental_volume, land_nodes
+            continental_volume += float(np.dot(plate.collect("crustal_thickness_m"), area_m2))
+    return land_area, continental_volume, land_nodes
 
 
 def _is_water(fields: "climate.ClimateFields", is_ocean: np.ndarray) -> np.ndarray:

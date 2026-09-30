@@ -2865,32 +2865,38 @@ ocean water volume*, so the shoreline responds to tectonics and erosion the way 
 the real Earth: open a new ocean basin and sea level drops, handing that volume of coastline
 back to the continents as freeboard.
 
-Every lattice node covers the same area (`lithosphere.node_area_m2` depends only on spacing),
-so ocean volume is proportional to the summed water column
+Ocean volume is summed over each node's accounting area `A_i` (`Plate.accounting_areas_m2`:
+exact cell areas on quad plates, the nominal `lithosphere.node_area_m2` on line plates):
 
 ```
-W = sum over all nodes of  max(0, sea_level - z_i)
+V = sum over all nodes of  A_i * max(0, sea_level - z_i)
 ```
 
-`W` is snapshotted once at generation (`eustasy.initialize_water_budget`, from the flat
-`sea_level_m = 0` starting datum) and stored on `World.ocean_water_column_m`. Each step,
+Quad cells are not equal-area and their count changes with topology, so weighting quad nodes
+by the nominal area would drift the budget as water moves between cells of different sizes
+(issue #257). Line plates stay nominal: their only per-node area is an estimate that drifts
+badly once rows stack (issue #230).
+
+`V` (m³) is snapshotted once at generation (`eustasy.initialize_water_budget`, from the flat
+`sea_level_m = 0` starting datum) and stored on `World.ocean_water_volume_m3`. Each step,
 `eustasy.update_sea_level` (called unconditionally at the end of `step_world`) solves the
-monotonic 1-D equation `total_water_column(h) == W` for the new `h` by bisection (~40
-iterations, each one vectorized sum). `total_water_column` is strictly increasing in `h`, so
+monotonic 1-D equation `total_water_volume(h) == V` for the new `h` by bisection (~40
+iterations, each one vectorized sum). `total_water_volume` is strictly increasing in `h`, so
 the bracket `[min z, max z + headroom]` always contains exactly one root.
 
 - **Deepening a basin** (sea-floor spreading, a subducting slab, `growth_seed_thickness`
-  tiling drowned oceanic column) raises `total_water_column(h)` at every `h`, so the solved
+  tiling drowned oceanic column) raises `total_water_volume(h)` at every `h`, so the solved
   `h` **falls** -- the eustatic response that a fixed sea level never produced, and the
   reason continental subsidence is no longer a one-way loss of dry land.
 - **Node-count creep** (the continental boundary ratchet) grows total represented area; the
   same water volume over more ocean area also lowers the stand, which is physically right.
 - The `POST /world/controls` sea-level slider now calls `eustasy.set_sea_level_via_water_
   budget`: "put sea level at X" is interpreted as "add or remove ocean water until the
-  *current* hypsometry floats at X", and that new `W` is then conserved going forward (a
+  *current* hypsometry floats at X", and that new `V` is then conserved going forward (a
   glacio-eustatic / bigger-ocean change, not a one-frame override the next step erases).
-- Persistence backfills `ocean_water_column_m` for a save written before this existed, from
-  that save's own hypsometry and `sea_level_m`, so loading it doesn't jump the shoreline.
+- Persistence backfills `ocean_water_volume_m3` for a save written before it existed
+  (including saves carrying the older, nominal-area `ocean_water_column_m`, which is dropped),
+  from that save's own hypsometry and `sea_level_m`, so loading it doesn't jump the shoreline.
 
 Measured (seed 926698457, node_density 0.5, climate off, 100 My): the land-fraction decline
 roughly halves against a fixed sea level (~-0.025 vs ~-0.052), and the trajectory changes

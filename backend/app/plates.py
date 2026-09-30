@@ -20,7 +20,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import ConvexHull, QhullError, cKDTree
 
-from . import ellipse, geometry, healpix_grid
+from . import ellipse, geometry, healpix_grid, lithosphere
 from . import elevation_lines
 from .elevation_lines import (
     DEFAULT_NODE_DENSITY,
@@ -655,6 +655,16 @@ class Plate(PlateSurface, abc.ABC):
             object.__setattr__(self, name, defaults[name])
             return defaults[name]
         raise AttributeError(name)
+
+    def accounting_areas_m2(self, spacing_rad: float) -> np.ndarray:
+        """Each node's area for whole-world sums (ocean water volume, land area, crustal
+        volume, basal drag), in `all_points_and_elevation` order.
+
+        Surfaces with real cells override this with their exact areas. The line surface only
+        has an estimate (`SurfaceNodes.area_is_exact` is false), and it drifts badly once rows
+        stack (issue #230), so line plates keep the nominal `lithosphere.node_area_m2` per
+        node (issue #257)."""
+        return np.full(self.node_count(), lithosphere.node_area_m2(spacing_rad))
 
     @abc.abstractmethod
     def node_count(self) -> int: ...
@@ -1859,6 +1869,13 @@ def collect_all_node_created_years(plate_list: list[Plate]) -> np.ndarray:
     genesis node from initial world generation) -- used by render_image.py's `nodeAge` debug
     view. See ElevationLine.node_created_years."""
     return _collect_all(plate_list, "node_created_years")
+
+
+def collect_all_accounting_areas_m2(plate_list: list[Plate], spacing_rad: float) -> np.ndarray:
+    """Every node's `Plate.accounting_areas_m2`, in the same order as the other
+    `collect_all_*` gathers -- the per-node weight for any whole-world area or volume sum."""
+    chunks = [p.accounting_areas_m2(spacing_rad) for p in plate_list if p.node_count() > 0]
+    return np.concatenate(chunks) if chunks else np.zeros(0)
 
 
 def collect_all_elevation(plate_list: list[Plate]) -> np.ndarray:

@@ -7,7 +7,7 @@ import pickle
 import numpy as np
 import pytest
 
-from app import lithosphere, persistence, plates as plates_mod, surface_parity as sp, surface_parity_gates as gates
+from app import eustasy, lithosphere, persistence, plates as plates_mod, surface_parity as sp, surface_parity_gates as gates
 from app.elevation_lines import ElevationLine, line_spacing_rad
 from app.plates import PlateWithLines, gather_node_positions
 from app.sparse_quad_patch import PlateWithSparseQuadPatch
@@ -239,6 +239,9 @@ def test_pickling_drops_every_derived_cache(make):
 
 def test_world_load_drops_every_derived_index_and_keeps_authoritative_state():
     world = World(seed=0, plates=[_cap(), _line_plate()], next_plate_id=3, node_density=DENSITY)
+    # A generated world always has its water budget; without one, load's backfill would
+    # rebuild the area caches it reads.
+    eustasy.initialize_water_budget(world)
     for plate in world.plates:
         _prime(plate)
     points, _ = gather_node_positions(world.plates)

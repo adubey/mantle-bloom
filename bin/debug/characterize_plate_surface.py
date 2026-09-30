@@ -682,7 +682,7 @@ def conservation(world, spacing: float) -> dict:
     return {
         "node_area_km2_nominal": area_m2 / 1e6,
         "sea_level_m": float(world.sea_level_m),
-        "ocean_water_column_m": None if world.ocean_water_column_m is None else float(world.ocean_water_column_m),
+        "ocean_water_volume_m3": None if world.ocean_water_volume_m3 is None else float(world.ocean_water_volume_m3),
         "plates": len(world.plates),
         "continental_plates": sum(1 for p in world.plates if p.crust_type == "continental"),
         "nodes": int(len(elevation)),

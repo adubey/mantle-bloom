@@ -30,7 +30,7 @@ from app.world import generate_world, step_world  # noqa: E402
 def report(world, surface: str) -> str:
     live = [p for p in world.plates if p.node_count()]
     area = np.concatenate([p.surface_nodes().area_m2 for p in live])
-    elevation = eustasy.all_elevations(world)
+    elevation = eustasy.hypsometry(world)[0]
     nominal = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
     depth = np.clip(world.sea_level_m - elevation, 0.0, None)
     land = elevation > world.sea_level_m
