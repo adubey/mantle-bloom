@@ -1,0 +1,22 @@
+{
+  "lines": {
+    "804913535": {
+      "climate_erosion_hydrology": 1.00878,
+      "deform": 2.47346,
+      "deform_topology": 2.74403,
+      "faults": 0.710984,
+      "fluid_dynamics": 3.2916e-06,
+      "gap_fill": 0.0335841,
+      "magma_transport": 1.68751,
+      "overlap_tracking": 0.0542252,
+      "record_stats": 0.00928545,
+      "resource_formation": 0.0406241,
+      "sea_level": 0.240424,
+      "shift": 0.63462,
+      "step_total": 7.16731,
+      "stranded_basins": 0.00211504,
+      "topology": 0.182763,
+      "volcanism": 0.0858774
+    }
+  }
+}

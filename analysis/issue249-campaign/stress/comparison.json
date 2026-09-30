@@ -1,0 +1,4209 @@
+{
+  "configs": [
+    "long"
+  ],
+  "gates": {
+    "C1:uncovered": {
+      "gate": "C1",
+      "name": "uncovered",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "fail_above": 0.03696,
+        "gate": "C1",
+        "lines": 0.03196,
+        "name": "uncovered",
+        "quad": 0.00836,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "C2:void": {
+      "gate": "C2",
+      "name": "void",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "fail_above": 0.0005,
+        "gate": "C2",
+        "lines": 0.0,
+        "name": "void",
+        "quad": 0.0,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "C3:multiply_covered": {
+      "gate": "C3",
+      "name": "multiply_covered",
+      "results": 12,
+      "status": "fail",
+      "worst": {
+        "age_myr": 100.0,
+        "fail_above": 0.01163,
+        "gate": "C3",
+        "lines": 0.00663,
+        "name": "multiply_covered",
+        "quad": 0.01215,
+        "seed": 1,
+        "status": "fail"
+      }
+    },
+    "C4:nodes_inside_other_plate": {
+      "gate": "C4",
+      "name": "nodes_inside_other_plate",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "fail_above": 0.0236979,
+        "gate": "C4",
+        "lines": 0.0186979,
+        "name": "nodes_inside_other_plate",
+        "quad": 0.0163724,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "H10:quad_no_stacked_nodes": {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "description": "No two quad nodes of one plate closer than 0.5 spacing",
+        "gate": "H10",
+        "name": "quad_no_stacked_nodes",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad"
+      }
+    },
+    "H11:field_caps": {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "line_baseline_findings": 2,
+      "name": "field_caps",
+      "results": 4,
+      "status": "warn",
+      "worst": {
+        "description": "Elevation, Hc and Hm stay within their caps",
+        "first": {
+          "detail": "mantle_lithosphere_thickness_m: 3 values outside [2000, 240000] (range 1696.08..240000)",
+          "kind": "field_bounds",
+          "plate_id": 2,
+          "step": 60,
+          "surface": "quad"
+        },
+        "gate": "H11",
+        "name": "field_caps",
+        "seed": 1,
+        "status": "warn",
+        "surface": "quad",
+        "violations": 312
+      }
+    },
+    "H1:quad_topology": {
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+        "gate": "H1",
+        "name": "quad_topology",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H2:quad_neighbours": {
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "Quad neighbours in range, symmetric, and sharing an edge",
+        "gate": "H2",
+        "name": "quad_neighbours",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H3:quad_folded": {
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "No folded quad cells",
+        "gate": "H3",
+        "name": "quad_folded",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H4:fields": {
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "Every field finite, correctly sized and within its caps; areas positive",
+        "gate": "H4",
+        "name": "fields",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines",
+        "violations": 0
+      }
+    },
+    "H5:frames": {
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "Plate frames are proper rotations",
+        "gate": "H5",
+        "name": "frames",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines",
+        "violations": 0
+      }
+    },
+    "H6:derived_caches": {
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+        "gate": "H6",
+        "name": "derived_caches",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines",
+        "violations": 0
+      }
+    },
+    "H7:revisions": {
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "audits": 81,
+        "description": "Local node-set / frame changes always bump topology / geometry revisions",
+        "gate": "H7",
+        "name": "revisions",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines",
+        "violations": 0
+      }
+    },
+    "H8:load_round_trip": {
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "checks": 6,
+        "description": "Save/load reproduces authoritative state and drops every derived index",
+        "gate": "H8",
+        "name": "load_round_trip",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines"
+      }
+    },
+    "H9:load_continuation": {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "description": "A step from the loaded world matches a step from the in-memory world",
+        "gate": "H9",
+        "name": "load_continuation",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines"
+      }
+    },
+    "K1:hc_volume_km3_drift": {
+      "gate": "K1",
+      "name": "hc_volume_km3_drift",
+      "results": 10,
+      "status": "warn",
+      "worst": {
+        "age_myr": 400.0,
+        "fail_above": 0.1,
+        "gap": 0.0712489,
+        "gate": "K1",
+        "lines": -0.293782,
+        "name": "hc_volume_km3_drift",
+        "quad": -0.365031,
+        "seed": 1,
+        "status": "warn",
+        "warn_above": 0.05
+      }
+    },
+    "K2:continental_hc_volume_km3_drift": {
+      "gate": "K2",
+      "name": "continental_hc_volume_km3_drift",
+      "results": 10,
+      "status": "fail",
+      "worst": {
+        "age_myr": 200.0,
+        "fail_above": 0.1,
+        "gap": 0.181825,
+        "gate": "K2",
+        "lines": -0.00433066,
+        "name": "continental_hc_volume_km3_drift",
+        "quad": -0.186155,
+        "seed": 1,
+        "status": "fail",
+        "warn_above": 0.05
+      }
+    },
+    "K3:quad_area_accounting": {
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "results": 10,
+      "status": "pass",
+      "worst": {
+        "age_myr": 100.0,
+        "expected": 1.001,
+        "gate": "K3",
+        "name": "quad_area_accounting",
+        "quad": 1.00122,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 0.01
+      }
+    },
+    "K4:hm_volume_km3_drift": {
+      "gate": "K4",
+      "name": "hm_volume_km3_drift",
+      "results": 10,
+      "status": "fail",
+      "worst": {
+        "age_myr": 600.0,
+        "fail_above": 0.1,
+        "gap": 0.118332,
+        "gate": "K4",
+        "lines": -0.367008,
+        "name": "hm_volume_km3_drift",
+        "quad": -0.248675,
+        "seed": 1,
+        "status": "fail",
+        "warn_above": 0.05
+      }
+    },
+    "M1:anisotropic_fraction": {
+      "gate": "M1",
+      "name": "anisotropic_fraction",
+      "results": 12,
+      "status": "warn",
+      "worst": {
+        "age_myr": 800.0,
+        "gate": "M1",
+        "lines": 0.0946299,
+        "name": "anisotropic_fraction",
+        "quad": 0.0109426,
+        "seed": 1,
+        "status": "warn",
+        "warn_above": 0.01
+      }
+    },
+    "M2:row_alignment": {
+      "gate": "M2",
+      "name": "row_alignment",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "M2",
+        "name": "row_alignment",
+        "note": "too few anisotropic nodes to have a direction",
+        "quad": 0.126333,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "M3:thin_fraction": {
+      "gate": "M3",
+      "name": "thin_fraction",
+      "results": 12,
+      "status": "warn",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "M3",
+        "lines": 0.000367827,
+        "name": "thin_fraction",
+        "quad": 0.000385233,
+        "seed": 1,
+        "status": "warn",
+        "warn_above": 0.000367827
+      }
+    },
+    "M4:aspect_gt_4": {
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "M4",
+        "name": "aspect_gt_4",
+        "quad": 0.0,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 0.001
+      }
+    },
+    "M5:skew_gt_45": {
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "M5",
+        "name": "skew_gt_45",
+        "quad": 0.0,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 0.001
+      }
+    },
+    "M6:fragments": {
+      "gate": "M6",
+      "name": "fragments",
+      "results": 12,
+      "status": "warn",
+      "worst": {
+        "age_myr": 800.0,
+        "gate": "M6",
+        "lines": 2,
+        "name": "fragments",
+        "quad": 3,
+        "seed": 1,
+        "status": "warn"
+      }
+    },
+    "P1:continental_hc_volume_km3": {
+      "gate": "P1",
+      "name": "continental_hc_volume_km3",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": 5770980000.0,
+        "name": "continental_hc_volume_km3",
+        "note": "needs >= 3 seeds",
+        "quad_mean": 5826140000.0,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:elevation_p05": {
+      "gate": "P1",
+      "name": "elevation_p05",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": -6172.01,
+        "name": "elevation_p05",
+        "note": "needs >= 3 seeds",
+        "quad_mean": -5853.21,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:elevation_p50": {
+      "gate": "P1",
+      "name": "elevation_p50",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": -5113.7,
+        "name": "elevation_p50",
+        "note": "needs >= 3 seeds",
+        "quad_mean": -4952.91,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:elevation_p95": {
+      "gate": "P1",
+      "name": "elevation_p95",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": 3400.34,
+        "name": "elevation_p95",
+        "note": "needs >= 3 seeds",
+        "quad_mean": 2962.31,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:hc_volume_km3": {
+      "gate": "P1",
+      "name": "hc_volume_km3",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": 9146930000.0,
+        "name": "hc_volume_km3",
+        "note": "needs >= 3 seeds",
+        "quad_mean": 9313300000.0,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:land_fraction": {
+      "gate": "P1",
+      "name": "land_fraction",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": 0.214714,
+        "name": "land_fraction",
+        "note": "needs >= 3 seeds",
+        "quad_mean": 0.224614,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:plates": {
+      "gate": "P1",
+      "name": "plates",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": 21.5,
+        "name": "plates",
+        "note": "needs >= 3 seeds",
+        "quad_mean": 21.0,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "P1:sea_level_m": {
+      "gate": "P1",
+      "name": "sea_level_m",
+      "results": 5,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 100.0,
+        "gate": "P1",
+        "lines_mean": -1015.35,
+        "name": "sea_level_m",
+        "note": "needs >= 3 seeds",
+        "quad_mean": -817.722,
+        "seeds": 2,
+        "status": "insufficient"
+      }
+    },
+    "R1:deform_topology_s_per_step": {
+      "gate": "R1",
+      "name": "deform_topology_s_per_step",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "gate": "R1",
+        "lines": 1.70464,
+        "name": "deform_topology_s_per_step",
+        "quad": 0.519617,
+        "ratio": 0.304825,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 1.25
+      }
+    },
+    "R2:step_total_s_per_step": {
+      "gate": "R2",
+      "name": "step_total_s_per_step",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "gate": "R2",
+        "lines": 3.60095,
+        "name": "step_total_s_per_step",
+        "quad": 2.20636,
+        "ratio": 0.612715,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 1.25
+      }
+    },
+    "S1:climate_hydrology_finite": {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "results": 4,
+      "status": "pass",
+      "worst": {
+        "description": "Climate stats and hydrology fields finite at every checkpoint",
+        "gate": "S1",
+        "name": "climate_hydrology_finite",
+        "seed": 1,
+        "status": "pass",
+        "surface": "lines"
+      }
+    },
+    "S2:stability_air_temperature_mean_c": {
+      "gate": "S2",
+      "name": "stability_air_temperature_mean_c",
+      "results": 2,
+      "status": "warn",
+      "worst": {
+        "gate": "S2",
+        "lines": 0.317046,
+        "name": "stability_air_temperature_mean_c",
+        "quad": 2.35817,
+        "seed": 2,
+        "status": "warn",
+        "warn_above": 0.684091
+      }
+    },
+    "S2:stability_land_fraction": {
+      "gate": "S2",
+      "name": "stability_land_fraction",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "gate": "S2",
+        "lines": 0.00121795,
+        "name": "stability_land_fraction",
+        "quad": 0.00148612,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 0.00443591
+      }
+    },
+    "S2:stability_ocean_temperature_mean_c": {
+      "gate": "S2",
+      "name": "stability_ocean_temperature_mean_c",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "gate": "S2",
+        "lines": 0.0100426,
+        "name": "stability_ocean_temperature_mean_c",
+        "quad": 0.0116845,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 0.0700853
+      }
+    },
+    "S2:stability_precipitation_mean_mm": {
+      "gate": "S2",
+      "name": "stability_precipitation_mean_mm",
+      "results": 2,
+      "status": "pass",
+      "worst": {
+        "gate": "S2",
+        "lines": 5.32662,
+        "name": "stability_precipitation_mean_mm",
+        "quad": 5.40742,
+        "seed": 1,
+        "status": "pass",
+        "warn_above": 15.6532
+      }
+    },
+    "S2:stability_sea_level_m": {
+      "gate": "S2",
+      "name": "stability_sea_level_m",
+      "results": 2,
+      "status": "warn",
+      "worst": {
+        "gate": "S2",
+        "lines": 10.7124,
+        "name": "stability_sea_level_m",
+        "quad": 68.5981,
+        "seed": 1,
+        "status": "warn",
+        "warn_above": 22.4247
+      }
+    },
+    "X1:healpix_all": {
+      "gate": "X1",
+      "name": "healpix_all",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "X1",
+        "lines_distance_p95": 1.07382,
+        "lines_same_node": 0.50066,
+        "name": "healpix_all",
+        "quad_distance_p95": 1.11249,
+        "quad_same_node": 0.50577,
+        "samples": 100000,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "X1:healpix_antimeridian": {
+      "gate": "X1",
+      "name": "healpix_antimeridian",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "X1",
+        "lines_distance_p95": 1.14103,
+        "lines_same_node": 0.473022,
+        "name": "healpix_antimeridian",
+        "quad_distance_p95": 1.22722,
+        "quad_same_node": 0.508993,
+        "samples": 1668,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "X1:healpix_coast": {
+      "gate": "X1",
+      "name": "healpix_coast",
+      "results": 12,
+      "status": "warn",
+      "worst": {
+        "age_myr": 600.0,
+        "gate": "X1",
+        "lines_distance_p95": 1.2768,
+        "lines_same_node": 0.470704,
+        "name": "healpix_coast",
+        "quad_distance_p95": 0.991528,
+        "quad_same_node": 0.404255,
+        "samples": 47,
+        "seed": 2,
+        "status": "warn"
+      }
+    },
+    "X1:healpix_hole": {
+      "gate": "X1",
+      "name": "healpix_hole",
+      "results": 12,
+      "status": "insufficient",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "X1",
+        "name": "healpix_hole",
+        "samples": 0,
+        "seed": 1,
+        "status": "insufficient"
+      }
+    },
+    "X1:healpix_plate_boundary": {
+      "gate": "X1",
+      "name": "healpix_plate_boundary",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "X1",
+        "lines_distance_p95": 1.16298,
+        "lines_same_node": 0.485045,
+        "name": "healpix_plate_boundary",
+        "quad_distance_p95": 1.19291,
+        "quad_same_node": 0.491275,
+        "samples": 12435,
+        "seed": 1,
+        "status": "pass"
+      }
+    },
+    "X1:healpix_pole": {
+      "gate": "X1",
+      "name": "healpix_pole",
+      "results": 12,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "gate": "X1",
+        "lines_distance_p95": 1.12815,
+        "lines_same_node": 0.478289,
+        "name": "healpix_pole",
+        "quad_distance_p95": 1.20855,
+        "quad_same_node": 0.544079,
+        "samples": 1520,
+        "seed": 1,
+        "status": "pass"
+      }
+    }
+  },
+  "line_baseline_findings": [
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "first": {
+        "detail": "mantle_lithosphere_thickness_m: 1 values outside [2000, 240000] (range 1104.97..240000)",
+        "kind": "field_bounds",
+        "plate_id": 2,
+        "step": 10,
+        "surface": "lines"
+      },
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 1,
+      "status": "info",
+      "surface": "lines",
+      "violations": 983
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "first": {
+        "detail": "mantle_lithosphere_thickness_m: 6 values outside [2000, 240000] (range 691.045..52143.1)",
+        "kind": "field_bounds",
+        "plate_id": 6,
+        "step": 10,
+        "surface": "lines"
+      },
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 2,
+      "status": "info",
+      "surface": "lines",
+      "violations": 1177
+    }
+  ],
+  "results": [
+    {
+      "audits": 81,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "first": {
+        "detail": "mantle_lithosphere_thickness_m: 1 values outside [2000, 240000] (range 1104.97..240000)",
+        "kind": "field_bounds",
+        "plate_id": 2,
+        "step": 10,
+        "surface": "lines"
+      },
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 1,
+      "status": "info",
+      "surface": "lines",
+      "violations": 983
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines"
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 1,
+      "status": "pass",
+      "surface": "lines"
+    },
+    {
+      "audits": 81,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "first": {
+        "detail": "mantle_lithosphere_thickness_m: 3 values outside [2000, 240000] (range 1696.08..240000)",
+        "kind": "field_bounds",
+        "plate_id": 2,
+        "step": 60,
+        "surface": "quad"
+      },
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 1,
+      "status": "warn",
+      "surface": "quad",
+      "violations": 312
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "audits": 81,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "first": {
+        "detail": "mantle_lithosphere_thickness_m: 6 values outside [2000, 240000] (range 691.045..52143.1)",
+        "kind": "field_bounds",
+        "plate_id": 6,
+        "step": 10,
+        "surface": "lines"
+      },
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 2,
+      "status": "info",
+      "surface": "lines",
+      "violations": 1177
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines"
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 2,
+      "status": "pass",
+      "surface": "lines"
+    },
+    {
+      "audits": 81,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 81,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "first": {
+        "detail": "mantle_lithosphere_thickness_m: 1 values outside [2000, 240000] (range 1948.57..240000)",
+        "kind": "field_bounds",
+        "plate_id": 2,
+        "step": 60,
+        "surface": "quad"
+      },
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 2,
+      "status": "warn",
+      "surface": "quad",
+      "violations": 124
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.03696,
+      "gate": "C1",
+      "lines": 0.03196,
+      "name": "uncovered",
+      "quad": 0.00836,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.02023,
+      "gate": "C3",
+      "lines": 0.01523,
+      "name": "multiply_covered",
+      "quad": 0.01004,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.0236979,
+      "gate": "C4",
+      "lines": 0.0186979,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.0163724,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.0,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M1",
+      "lines": 0.00104218,
+      "name": "anisotropic_fraction",
+      "quad": 0.000321027,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M2",
+      "name": "row_alignment",
+      "note": "too few anisotropic nodes to have a direction",
+      "quad": 0.126333,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M3",
+      "lines": 0.000367827,
+      "name": "thin_fraction",
+      "quad": 0.000385233,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.000367827
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.07382,
+      "lines_same_node": 0.50066,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.11249,
+      "quad_same_node": 0.50577,
+      "samples": 100000,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.14103,
+      "lines_same_node": 0.473022,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.22722,
+      "quad_same_node": 0.508993,
+      "samples": 1668,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.09756,
+      "lines_same_node": 0.490645,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.12814,
+      "quad_same_node": 0.49937,
+      "samples": 8727,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "name": "healpix_hole",
+      "samples": 0,
+      "seed": 1,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.16298,
+      "lines_same_node": 0.485045,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.19291,
+      "quad_same_node": 0.491275,
+      "samples": 12435,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.12815,
+      "lines_same_node": 0.478289,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.20855,
+      "quad_same_node": 0.544079,
+      "samples": 1520,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.0508,
+      "gate": "C1",
+      "lines": 0.0458,
+      "name": "uncovered",
+      "quad": 0.01115,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.01163,
+      "gate": "C3",
+      "lines": 0.00663,
+      "name": "multiply_covered",
+      "quad": 0.01215,
+      "seed": 1,
+      "status": "fail"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.0178961,
+      "gate": "C4",
+      "lines": 0.0128961,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00714823,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00072,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.1,
+      "gap": 0.0166468,
+      "gate": "K1",
+      "lines": -0.0520187,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.0686655,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.1,
+      "gap": 0.0502676,
+      "gate": "K2",
+      "lines": 0.0448827,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.00538491,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.1,
+      "gap": 0.0513516,
+      "gate": "K4",
+      "lines": 0.310042,
+      "name": "hm_volume_km3_drift",
+      "quad": 0.258691,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 100.0,
+      "expected": 1.001,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 1.00122,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M1",
+      "lines": 0.00589536,
+      "name": "anisotropic_fraction",
+      "quad": 0.00250815,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M2",
+      "lines": 0.0931843,
+      "name": "row_alignment",
+      "quad": -0.272984,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M3",
+      "lines": 0.00589536,
+      "name": "thin_fraction",
+      "quad": 0.00627038,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.00589536
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.09895,
+      "lines_same_node": 0.49807,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.11419,
+      "quad_same_node": 0.49998,
+      "samples": 100000,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.14355,
+      "lines_same_node": 0.497602,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.2542,
+      "quad_same_node": 0.496403,
+      "samples": 1668,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.12646,
+      "lines_same_node": 0.492724,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.12105,
+      "quad_same_node": 0.49253,
+      "samples": 10174,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "name": "healpix_hole",
+      "samples": 0,
+      "seed": 1,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.40737,
+      "lines_same_node": 0.478357,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.14675,
+      "quad_same_node": 0.489744,
+      "samples": 17258,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.2008,
+      "lines_same_node": 0.475658,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.3202,
+      "quad_same_node": 0.478947,
+      "samples": 1520,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.08141,
+      "gate": "C1",
+      "lines": 0.07641,
+      "name": "uncovered",
+      "quad": 0.01431,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.01617,
+      "gate": "C3",
+      "lines": 0.01117,
+      "name": "multiply_covered",
+      "quad": 0.01696,
+      "seed": 1,
+      "status": "fail"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.034849,
+      "gate": "C4",
+      "lines": 0.029849,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.0113622,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00201,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.1,
+      "gap": 0.0389599,
+      "gate": "K1",
+      "lines": -0.107721,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.146681,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.1,
+      "gap": 0.181825,
+      "gate": "K2",
+      "lines": -0.00433066,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.186155,
+      "seed": 1,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.1,
+      "gap": 0.060744,
+      "gate": "K4",
+      "lines": 0.146623,
+      "name": "hm_volume_km3_drift",
+      "quad": 0.0858788,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 200.0,
+      "expected": 1.00265,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 1.00261,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M1",
+      "lines": 0.0145801,
+      "name": "anisotropic_fraction",
+      "quad": 0.00500185,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M2",
+      "lines": 0.093741,
+      "name": "row_alignment",
+      "quad": 0.0604716,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M3",
+      "lines": 0.00993054,
+      "name": "thin_fraction",
+      "quad": 0.00636038,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.00993054
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.15317,
+      "lines_same_node": 0.47771,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.1116,
+      "quad_same_node": 0.4961,
+      "samples": 100000,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.22821,
+      "lines_same_node": 0.47542,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.18686,
+      "quad_same_node": 0.491007,
+      "samples": 1668,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.18798,
+      "lines_same_node": 0.49262,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.09257,
+      "quad_same_node": 0.496667,
+      "samples": 12300,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.18091,
+      "lines_same_node": 0.457014,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.07101,
+      "quad_same_node": 0.511364,
+      "samples": 528,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.52929,
+      "lines_same_node": 0.455911,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.15575,
+      "quad_same_node": 0.484082,
+      "samples": 23841,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.29952,
+      "lines_same_node": 0.453947,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.17031,
+      "quad_same_node": 0.507895,
+      "samples": 1520,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.10441,
+      "gate": "C1",
+      "lines": 0.09941,
+      "name": "uncovered",
+      "quad": 0.01809,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.01168,
+      "gate": "C3",
+      "lines": 0.00668,
+      "name": "multiply_covered",
+      "quad": 0.01916,
+      "seed": 1,
+      "status": "fail"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.0381699,
+      "gate": "C4",
+      "lines": 0.0331699,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00971174,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00027,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.1,
+      "gap": 0.0712489,
+      "gate": "K1",
+      "lines": -0.293782,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.365031,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.1,
+      "gap": 0.255006,
+      "gate": "K2",
+      "lines": -0.406045,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.661051,
+      "seed": 1,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.1,
+      "gap": 0.0286844,
+      "gate": "K4",
+      "lines": -0.17761,
+      "name": "hm_volume_km3_drift",
+      "quad": -0.148926,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 400.0,
+      "expected": 1.00107,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 1.00099,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M1",
+      "lines": 0.0322883,
+      "name": "anisotropic_fraction",
+      "quad": 0.00816529,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M2",
+      "lines": 0.216078,
+      "name": "row_alignment",
+      "quad": 0.0729312,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M3",
+      "lines": 0.0265579,
+      "name": "thin_fraction",
+      "quad": 0.0105159,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M6",
+      "lines": 1,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.15572,
+      "lines_same_node": 0.47278,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.10506,
+      "quad_same_node": 0.49651,
+      "samples": 100000,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.19944,
+      "lines_same_node": 0.461631,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.28285,
+      "quad_same_node": 0.478417,
+      "samples": 1668,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.17869,
+      "lines_same_node": 0.489806,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.10396,
+      "quad_same_node": 0.495505,
+      "samples": 9677,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.54364,
+      "lines_same_node": 0.440945,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.13757,
+      "quad_same_node": 0.445172,
+      "samples": 611,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.41889,
+      "lines_same_node": 0.455681,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.15802,
+      "quad_same_node": 0.48713,
+      "samples": 26962,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.46858,
+      "lines_same_node": 0.460526,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.21722,
+      "quad_same_node": 0.475,
+      "samples": 1520,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.12411,
+      "gate": "C1",
+      "lines": 0.11911,
+      "name": "uncovered",
+      "quad": 0.01809,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.01357,
+      "gate": "C3",
+      "lines": 0.00857,
+      "name": "multiply_covered",
+      "quad": 0.01681,
+      "seed": 1,
+      "status": "fail"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.0382666,
+      "gate": "C4",
+      "lines": 0.0332666,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00441393,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00034,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.1,
+      "gap": 0.00123556,
+      "gate": "K1",
+      "lines": -0.452878,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.451642,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.1,
+      "gap": 0.206854,
+      "gate": "K2",
+      "lines": -0.611355,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.818209,
+      "seed": 1,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.1,
+      "gap": 0.118332,
+      "gate": "K4",
+      "lines": -0.367008,
+      "name": "hm_volume_km3_drift",
+      "quad": -0.248675,
+      "seed": 1,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 600.0,
+      "expected": 0.99872,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 0.998378,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M1",
+      "lines": 0.0617947,
+      "name": "anisotropic_fraction",
+      "quad": 0.00870525,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M2",
+      "lines": 0.504733,
+      "name": "row_alignment",
+      "quad": 0.0450788,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M3",
+      "lines": 0.0319476,
+      "name": "thin_fraction",
+      "quad": 0.00987003,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.17603,
+      "lines_same_node": 0.44409,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.0952,
+      "quad_same_node": 0.49743,
+      "samples": 100000,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.21651,
+      "lines_same_node": 0.447242,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.21804,
+      "quad_same_node": 0.480216,
+      "samples": 1668,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.20163,
+      "lines_same_node": 0.467091,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.07444,
+      "quad_same_node": 0.503203,
+      "samples": 7804,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.36013,
+      "lines_same_node": 0.421613,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.11156,
+      "quad_same_node": 0.452107,
+      "samples": 261,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.42408,
+      "lines_same_node": 0.443226,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.13536,
+      "quad_same_node": 0.494574,
+      "samples": 27094,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.19325,
+      "lines_same_node": 0.448684,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.13964,
+      "quad_same_node": 0.482237,
+      "samples": 1520,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.12556,
+      "gate": "C1",
+      "lines": 0.12056,
+      "name": "uncovered",
+      "quad": 0.01888,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.01264,
+      "gate": "C3",
+      "lines": 0.00764,
+      "name": "multiply_covered",
+      "quad": 0.01843,
+      "seed": 1,
+      "status": "fail"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.0437446,
+      "gate": "C4",
+      "lines": 0.0387446,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00354389,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00108,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.1,
+      "gap": 0.061346,
+      "gate": "K1",
+      "lines": -0.466944,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.52829,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.1,
+      "gap": 0.237799,
+      "gate": "K2",
+      "lines": -0.646789,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.884588,
+      "seed": 1,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.1,
+      "gap": 0.149436,
+      "gate": "K4",
+      "lines": -0.416594,
+      "name": "hm_volume_km3_drift",
+      "quad": -0.267158,
+      "seed": 1,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 800.0,
+      "expected": 0.99955,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 0.99928,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M1",
+      "lines": 0.0946299,
+      "name": "anisotropic_fraction",
+      "quad": 0.0109426,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M2",
+      "lines": 0.515453,
+      "name": "row_alignment",
+      "quad": 0.0304975,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M3",
+      "lines": 0.050235,
+      "name": "thin_fraction",
+      "quad": 0.0141756,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M6",
+      "lines": 2,
+      "name": "fragments",
+      "quad": 3,
+      "seed": 1,
+      "status": "warn"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.20497,
+      "lines_same_node": 0.44054,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.11348,
+      "quad_same_node": 0.49207,
+      "samples": 100000,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.26697,
+      "lines_same_node": 0.467626,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.26168,
+      "quad_same_node": 0.495803,
+      "samples": 1668,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.16488,
+      "lines_same_node": 0.472684,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.05718,
+      "quad_same_node": 0.500407,
+      "samples": 3689,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.71268,
+      "lines_same_node": 0.388451,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.14444,
+      "quad_same_node": 0.493292,
+      "samples": 969,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.44998,
+      "lines_same_node": 0.43912,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.16422,
+      "quad_same_node": 0.481222,
+      "samples": 28544,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.20883,
+      "lines_same_node": 0.369079,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.22692,
+      "quad_same_node": 0.483553,
+      "samples": 1520,
+      "seed": 1,
+      "status": "pass"
+    },
+    {
+      "gate": "S2",
+      "lines": 0.182035,
+      "name": "stability_air_temperature_mean_c",
+      "quad": 0.301921,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.41407
+    },
+    {
+      "gate": "S2",
+      "lines": 0.0100426,
+      "name": "stability_ocean_temperature_mean_c",
+      "quad": 0.0116845,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.0700853
+    },
+    {
+      "gate": "S2",
+      "lines": 5.32662,
+      "name": "stability_precipitation_mean_mm",
+      "quad": 5.40742,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 15.6532
+    },
+    {
+      "gate": "S2",
+      "lines": 10.7124,
+      "name": "stability_sea_level_m",
+      "quad": 68.5981,
+      "seed": 1,
+      "status": "warn",
+      "warn_above": 22.4247
+    },
+    {
+      "gate": "S2",
+      "lines": 0.00121795,
+      "name": "stability_land_fraction",
+      "quad": 0.00148612,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 0.00443591
+    },
+    {
+      "gate": "R1",
+      "lines": 1.70464,
+      "name": "deform_topology_s_per_step",
+      "quad": 0.519617,
+      "ratio": 0.304825,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 1.25
+    },
+    {
+      "gate": "R2",
+      "lines": 3.60095,
+      "name": "step_total_s_per_step",
+      "quad": 2.20636,
+      "ratio": 0.612715,
+      "seed": 1,
+      "status": "pass",
+      "warn_above": 1.25
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.03941,
+      "gate": "C1",
+      "lines": 0.03441,
+      "name": "uncovered",
+      "quad": 0.00999,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.10583,
+      "gate": "C3",
+      "lines": 0.10083,
+      "name": "multiply_covered",
+      "quad": 0.01114,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.0915838,
+      "gate": "C4",
+      "lines": 0.0865838,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.0160738,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.0,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M1",
+      "lines": 0.000857265,
+      "name": "anisotropic_fraction",
+      "quad": 0.000258214,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M2",
+      "name": "row_alignment",
+      "note": "too few anisotropic nodes to have a direction",
+      "quad": -0.399942,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M3",
+      "lines": 0.000306166,
+      "name": "thin_fraction",
+      "quad": 0.000322768,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.000306166
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.08097,
+      "lines_same_node": 0.50065,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.12537,
+      "quad_same_node": 0.5039,
+      "samples": 100000,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.16241,
+      "lines_same_node": 0.497602,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.18194,
+      "quad_same_node": 0.496403,
+      "samples": 1668,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.08642,
+      "lines_same_node": 0.496925,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.1818,
+      "quad_same_node": 0.498881,
+      "samples": 6701,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "name": "healpix_hole",
+      "samples": 0,
+      "seed": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.11767,
+      "lines_same_node": 0.492122,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.18636,
+      "quad_same_node": 0.494075,
+      "samples": 14599,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 0.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.10289,
+      "lines_same_node": 0.496711,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.20987,
+      "quad_same_node": 0.467105,
+      "samples": 1520,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.078,
+      "gate": "C1",
+      "lines": 0.073,
+      "name": "uncovered",
+      "quad": 0.01328,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.02337,
+      "gate": "C3",
+      "lines": 0.01837,
+      "name": "multiply_covered",
+      "quad": 0.01625,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.0362847,
+      "gate": "C4",
+      "lines": 0.0312847,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00872057,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00012,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.1,
+      "gap": 0.0554926,
+      "gate": "K1",
+      "lines": -0.164187,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.108695,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.1,
+      "gap": 0.107821,
+      "gate": "K2",
+      "lines": -0.162355,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.0545345,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 100.0,
+      "fail_above": 0.1,
+      "gap": 0.0126254,
+      "gate": "K4",
+      "lines": 0.380711,
+      "name": "hm_volume_km3_drift",
+      "quad": 0.368086,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 100.0,
+      "expected": 1.00297,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 1.00273,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M1",
+      "lines": 0.0127478,
+      "name": "anisotropic_fraction",
+      "quad": 0.00492089,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M2",
+      "lines": -0.0798767,
+      "name": "row_alignment",
+      "quad": 0.0168132,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M3",
+      "lines": 0.0125724,
+      "name": "thin_fraction",
+      "quad": 0.00660272,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "M6",
+      "lines": 1,
+      "name": "fragments",
+      "quad": 3,
+      "seed": 2,
+      "status": "warn"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.14124,
+      "lines_same_node": 0.48236,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.10562,
+      "quad_same_node": 0.49914,
+      "samples": 100000,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.17993,
+      "lines_same_node": 0.491007,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.20933,
+      "quad_same_node": 0.463429,
+      "samples": 1668,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.18456,
+      "lines_same_node": 0.486665,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.09783,
+      "quad_same_node": 0.505079,
+      "samples": 9648,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "name": "healpix_hole",
+      "samples": 0,
+      "seed": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.47015,
+      "lines_same_node": 0.473818,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.14028,
+      "quad_same_node": 0.492188,
+      "samples": 22272,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.26023,
+      "lines_same_node": 0.4375,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.13946,
+      "quad_same_node": 0.486842,
+      "samples": 1520,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.11334,
+      "gate": "C1",
+      "lines": 0.10834,
+      "name": "uncovered",
+      "quad": 0.01846,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.00973,
+      "gate": "C3",
+      "lines": 0.00473,
+      "name": "multiply_covered",
+      "quad": 0.02013,
+      "seed": 2,
+      "status": "fail"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.0278848,
+      "gate": "C4",
+      "lines": 0.0228848,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.0103621,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.0017,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.1,
+      "gap": 0.0925304,
+      "gate": "K1",
+      "lines": -0.338481,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.245951,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.1,
+      "gap": 0.027813,
+      "gate": "K2",
+      "lines": -0.413041,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.440854,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 200.0,
+      "fail_above": 0.1,
+      "gap": 0.01668,
+      "gate": "K4",
+      "lines": 0.0584954,
+      "name": "hm_volume_km3_drift",
+      "quad": 0.0418154,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 200.0,
+      "expected": 1.00167,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 1.00166,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M1",
+      "lines": 0.0223476,
+      "name": "anisotropic_fraction",
+      "quad": 0.00950872,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M2",
+      "lines": -0.0711352,
+      "name": "row_alignment",
+      "quad": -0.0180221,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M3",
+      "lines": 0.0225087,
+      "name": "thin_fraction",
+      "quad": 0.0120078,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.16933,
+      "lines_same_node": 0.46094,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.09956,
+      "quad_same_node": 0.49406,
+      "samples": 100000,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.089,
+      "lines_same_node": 0.494005,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.14442,
+      "quad_same_node": 0.468825,
+      "samples": 1668,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.27689,
+      "lines_same_node": 0.4702,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.08425,
+      "quad_same_node": 0.502394,
+      "samples": 8354,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.57885,
+      "lines_same_node": 0.468293,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.09136,
+      "quad_same_node": 0.429688,
+      "samples": 128,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.43978,
+      "lines_same_node": 0.45939,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.15533,
+      "quad_same_node": 0.489755,
+      "samples": 28306,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.21712,
+      "lines_same_node": 0.431579,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.14462,
+      "quad_same_node": 0.485526,
+      "samples": 1520,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.12335,
+      "gate": "C1",
+      "lines": 0.11835,
+      "name": "uncovered",
+      "quad": 0.02064,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.00994,
+      "gate": "C3",
+      "lines": 0.00494,
+      "name": "multiply_covered",
+      "quad": 0.01958,
+      "seed": 2,
+      "status": "fail"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.0345694,
+      "gate": "C4",
+      "lines": 0.0295694,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00585087,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00033,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.1,
+      "gap": 0.0667574,
+      "gate": "K1",
+      "lines": -0.495853,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.429096,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.1,
+      "gap": 0.173718,
+      "gate": "K2",
+      "lines": -0.706312,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -0.88003,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.1,
+      "gap": 0.213856,
+      "gate": "K4",
+      "lines": -0.218984,
+      "name": "hm_volume_km3_drift",
+      "quad": -0.00512742,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 400.0,
+      "expected": 0.99894,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 0.999111,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M1",
+      "lines": 0.0660561,
+      "name": "anisotropic_fraction",
+      "quad": 0.0102701,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M2",
+      "lines": 0.458338,
+      "name": "row_alignment",
+      "quad": 0.052231,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M3",
+      "lines": 0.0361945,
+      "name": "thin_fraction",
+      "quad": 0.0128221,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "M6",
+      "lines": 3,
+      "name": "fragments",
+      "quad": 2,
+      "seed": 2,
+      "status": "warn"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.17562,
+      "lines_same_node": 0.44693,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.10646,
+      "quad_same_node": 0.49859,
+      "samples": 100000,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.2239,
+      "lines_same_node": 0.495803,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.21455,
+      "quad_same_node": 0.497002,
+      "samples": 1668,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.31978,
+      "lines_same_node": 0.469494,
+      "name": "healpix_coast",
+      "quad_distance_p95": 1.05951,
+      "quad_same_node": 0.489235,
+      "samples": 3019,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.21394,
+      "lines_same_node": 0.440989,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.06298,
+      "quad_same_node": 0.455823,
+      "samples": 498,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.4517,
+      "lines_same_node": 0.450981,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.15474,
+      "quad_same_node": 0.490299,
+      "samples": 29739,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.43256,
+      "lines_same_node": 0.422368,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.28941,
+      "quad_same_node": 0.484211,
+      "samples": 1520,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.12949,
+      "gate": "C1",
+      "lines": 0.12449,
+      "name": "uncovered",
+      "quad": 0.02131,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.00906,
+      "gate": "C3",
+      "lines": 0.00406,
+      "name": "multiply_covered",
+      "quad": 0.01998,
+      "seed": 2,
+      "status": "fail"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.0364103,
+      "gate": "C4",
+      "lines": 0.0314103,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00436762,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00048,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.1,
+      "gap": 0.0968418,
+      "gate": "K1",
+      "lines": -0.584401,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.487559,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.1,
+      "gap": 0.207841,
+      "gate": "K2",
+      "lines": -0.792159,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -1.0,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 600.0,
+      "fail_above": 0.1,
+      "gap": 0.356558,
+      "gate": "K4",
+      "lines": -0.377571,
+      "name": "hm_volume_km3_drift",
+      "quad": -0.0210131,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 600.0,
+      "expected": 0.99867,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 0.998052,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M1",
+      "lines": 0.0661296,
+      "name": "anisotropic_fraction",
+      "quad": 0.0110728,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M2",
+      "lines": 0.387692,
+      "name": "row_alignment",
+      "quad": -0.0275901,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M3",
+      "lines": 0.0351508,
+      "name": "thin_fraction",
+      "quad": 0.0151944,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 2,
+      "seed": 2,
+      "status": "warn"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.16755,
+      "lines_same_node": 0.43986,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.08536,
+      "quad_same_node": 0.49816,
+      "samples": 100000,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.28158,
+      "lines_same_node": 0.370504,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.13212,
+      "quad_same_node": 0.507194,
+      "samples": 1668,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.2768,
+      "lines_same_node": 0.470704,
+      "name": "healpix_coast",
+      "quad_distance_p95": 0.991528,
+      "quad_same_node": 0.404255,
+      "samples": 47,
+      "seed": 2,
+      "status": "warn"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "name": "healpix_hole",
+      "samples": 0,
+      "seed": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.40302,
+      "lines_same_node": 0.441083,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.12832,
+      "quad_same_node": 0.49687,
+      "samples": 30513,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.29015,
+      "lines_same_node": 0.386842,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.24325,
+      "quad_same_node": 0.492763,
+      "samples": 1520,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.14062,
+      "gate": "C1",
+      "lines": 0.13562,
+      "name": "uncovered",
+      "quad": 0.02189,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.01017,
+      "gate": "C3",
+      "lines": 0.00517,
+      "name": "multiply_covered",
+      "quad": 0.01993,
+      "seed": 2,
+      "status": "fail"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.0496246,
+      "gate": "C4",
+      "lines": 0.0446246,
+      "name": "nodes_inside_other_plate",
+      "quad": 0.00520206,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.0005,
+      "gate": "C2",
+      "lines": 0.00017,
+      "name": "void",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.1,
+      "gap": 0.0914451,
+      "gate": "K1",
+      "lines": -0.58267,
+      "name": "hc_volume_km3_drift",
+      "quad": -0.491225,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.1,
+      "gap": 0.151915,
+      "gate": "K2",
+      "lines": -0.848085,
+      "name": "continental_hc_volume_km3_drift",
+      "quad": -1.0,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 800.0,
+      "fail_above": 0.1,
+      "gap": 0.364754,
+      "gate": "K4",
+      "lines": -0.39882,
+      "name": "hm_volume_km3_drift",
+      "quad": -0.0340658,
+      "seed": 2,
+      "status": "fail",
+      "warn_above": 0.05
+    },
+    {
+      "age_myr": 800.0,
+      "expected": 0.99804,
+      "gate": "K3",
+      "name": "quad_area_accounting",
+      "quad": 0.998404,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M1",
+      "lines": 0.0776699,
+      "name": "anisotropic_fraction",
+      "quad": 0.0122439,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M2",
+      "lines": 0.37382,
+      "name": "row_alignment",
+      "quad": -0.0581719,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.3
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M3",
+      "lines": 0.0492563,
+      "name": "thin_fraction",
+      "quad": 0.0176997,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.01
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M4",
+      "name": "aspect_gt_4",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M5",
+      "name": "skew_gt_45",
+      "quad": 0.0,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.001
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "M6",
+      "lines": 0,
+      "name": "fragments",
+      "quad": 1,
+      "seed": 2,
+      "status": "warn"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.17168,
+      "lines_same_node": 0.42548,
+      "name": "healpix_all",
+      "quad_distance_p95": 1.12387,
+      "quad_same_node": 0.49993,
+      "samples": 100000,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.29775,
+      "lines_same_node": 0.416667,
+      "name": "healpix_antimeridian",
+      "quad_distance_p95": 1.16047,
+      "quad_same_node": 0.480815,
+      "samples": 1668,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "name": "healpix_coast",
+      "samples": 0,
+      "seed": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.21753,
+      "lines_same_node": 0.459064,
+      "name": "healpix_hole",
+      "quad_distance_p95": 1.02037,
+      "quad_same_node": 0.544828,
+      "samples": 435,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.43253,
+      "lines_same_node": 0.430619,
+      "name": "healpix_plate_boundary",
+      "quad_distance_p95": 1.16589,
+      "quad_same_node": 0.493407,
+      "samples": 31702,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "X1",
+      "lines_distance_p95": 1.31215,
+      "lines_same_node": 0.355921,
+      "name": "healpix_pole",
+      "quad_distance_p95": 1.22321,
+      "quad_same_node": 0.491447,
+      "samples": 1520,
+      "seed": 2,
+      "status": "pass"
+    },
+    {
+      "gate": "S2",
+      "lines": 0.317046,
+      "name": "stability_air_temperature_mean_c",
+      "quad": 2.35817,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 0.684091
+    },
+    {
+      "gate": "S2",
+      "lines": 0.0109158,
+      "name": "stability_ocean_temperature_mean_c",
+      "quad": 0.00266544,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.0718315
+    },
+    {
+      "gate": "S2",
+      "lines": 5.5444,
+      "name": "stability_precipitation_mean_mm",
+      "quad": 5.6611,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 16.0888
+    },
+    {
+      "gate": "S2",
+      "lines": 11.665,
+      "name": "stability_sea_level_m",
+      "quad": 84.6316,
+      "seed": 2,
+      "status": "warn",
+      "warn_above": 24.3299
+    },
+    {
+      "gate": "S2",
+      "lines": 0.00097806,
+      "name": "stability_land_fraction",
+      "quad": 0.000243966,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 0.00395612
+    },
+    {
+      "gate": "R1",
+      "lines": 1.75888,
+      "name": "deform_topology_s_per_step",
+      "quad": 0.451417,
+      "ratio": 0.25665,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 1.25
+    },
+    {
+      "gate": "R2",
+      "lines": 3.45113,
+      "name": "step_total_s_per_step",
+      "quad": 1.66765,
+      "ratio": 0.483218,
+      "seed": 2,
+      "status": "pass",
+      "warn_above": 1.25
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": 0.214714,
+      "name": "land_fraction",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 0.224614,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": 5770980000.0,
+      "name": "continental_hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 5826140000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": 9146930000.0,
+      "name": "hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 9313300000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": 21.5,
+      "name": "plates",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 21.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": -1015.35,
+      "name": "sea_level_m",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -817.722,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": -6172.01,
+      "name": "elevation_p05",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5853.21,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": -5113.7,
+      "name": "elevation_p50",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -4952.91,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 100.0,
+      "gate": "P1",
+      "lines_mean": 3400.34,
+      "name": "elevation_p95",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 2962.31,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": 0.206301,
+      "name": "land_fraction",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 0.176914,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": 5047800000.0,
+      "name": "continental_hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 4309980000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": 8052740000.0,
+      "name": "hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 8255300000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": 37.0,
+      "name": "plates",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 30.5,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": -1538.92,
+      "name": "sea_level_m",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -1106.55,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": -6241.91,
+      "name": "elevation_p05",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5914.72,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": -4964.8,
+      "name": "elevation_p50",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -4929.5,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 200.0,
+      "gate": "P1",
+      "lines_mean": 3557.36,
+      "name": "elevation_p95",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 2756.82,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": 0.156759,
+      "name": "land_fraction",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 0.0801459,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": 2890560000.0,
+      "name": "continental_hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 1554310000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": 6287140000.0,
+      "name": "hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 6186420000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": 51.0,
+      "name": "plates",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 40.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": -2072.84,
+      "name": "sea_level_m",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -1737.18,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": -6281.94,
+      "name": "elevation_p05",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5967.23,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": -5228.09,
+      "name": "elevation_p50",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5290.55,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 400.0,
+      "gate": "P1",
+      "lines_mean": 2260.46,
+      "name": "elevation_p95",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -900.565,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": 0.151514,
+      "name": "land_fraction",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 0.0515199,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": 1924880000.0,
+      "name": "continental_hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 696455000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": 4982080000.0,
+      "name": "hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 5428740000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": 56.5,
+      "name": "plates",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 42.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": -2446.74,
+      "name": "sea_level_m",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -1944.26,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": -6246.59,
+      "name": "elevation_p05",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5980.35,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": -5211.97,
+      "name": "elevation_p50",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5350.3,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 600.0,
+      "gate": "P1",
+      "lines_mean": 1241.76,
+      "name": "elevation_p95",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -1913.86,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": 0.178582,
+      "name": "land_fraction",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 0.0287797,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": 1670370000.0,
+      "name": "continental_hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 442153000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": 4909210000.0,
+      "name": "hc_volume_km3",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 4971600000.0,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": 61.0,
+      "name": "plates",
+      "note": "needs >= 3 seeds",
+      "quad_mean": 44.5,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": -2570.55,
+      "name": "sea_level_m",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -1977.9,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": -6293.29,
+      "name": "elevation_p05",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5974.44,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": -5199.34,
+      "name": "elevation_p50",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -5396.68,
+      "seeds": 2,
+      "status": "insufficient"
+    },
+    {
+      "age_myr": 800.0,
+      "gate": "P1",
+      "lines_mean": 1286.8,
+      "name": "elevation_p95",
+      "note": "needs >= 3 seeds",
+      "quad_mean": -3257.66,
+      "seeds": 2,
+      "status": "insufficient"
+    }
+  ],
+  "seeds": [
+    1,
+    2
+  ],
+  "verdict": "fail"
+}
