@@ -241,6 +241,21 @@ def test_fault_tangent_components_none_when_only_other_plates_have_faults():
     assert faults.fault_tangent_components(world, plate, 0.1, 0.2) is None
 
 
+def test_fault_tangent_candidates_reused_only_during_deform_phase():
+    plate = types.SimpleNamespace(plate_id=7)
+    fault = _straight_fault(plate_id=7, phi0=0.1, theta0=0.2, angle_rad=0.0)
+    world = types.SimpleNamespace(faults=[fault], boundary_faults=[], _fault_tangent_candidates={})
+
+    first = faults.fault_tangent_components(world, plate, 0.1, 0.2)
+    assert first is not None
+    assert world._fault_tangent_candidates[7] == [fault]
+    assert faults.fault_tangent_components(world, plate, 0.1, 0.2) == first
+
+    fault.active = False
+    world._fault_tangent_candidates = None  # step_world clears it before update_faults
+    assert faults.fault_tangent_components(world, plate, 0.1, 0.2) is None
+
+
 # --------------------------------------------------------------------------------------------
 # Regularize carries the thinning through: a widened end gap, resampled back to target
 # density, must keep the thinned Hc profile rather than reverting to a flat reference value.

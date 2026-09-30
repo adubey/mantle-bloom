@@ -1012,6 +1012,15 @@ numbers above are reproducible via `backend/stress_tests/test_healpix_resample.p
 
 ## Issue #147 ("World stepping is slow"): full re-profile at 100 kyr/step, steps/frame=10 (2026-09-14)
 
+**2026-09-22 follow-up:** Suggestions 1 and 2 below already landed in commits `acaf260`
+(numba union-find for eustasy) and `333961a` (shared fault KD-tree). For suggestion 3,
+`fault_tangent_components` now reuses a per-plate active-fault list during the deform phase
+and clears it before faults age/spawn. A focused synthetic benchmark with 120 faults and 158
+lookups (8 runs, median, same process) measured **10.74 ms uncached vs 9.78 ms cached**;
+outputs matched. This is a ~1 ms saving at that workload, not a material reduction in full
+step time. The earlier ~0.23 s/step profile included the actual per-fault nearest-trace
+calculations, not just the list filter.
+
 **Measured:** commit `9cfb1af` (branch `feat/lake-hierarchy-diagnostics`, even with `main`;
 two untracked/uncommitted files -- `backend/app/lake_hierarchy_diagnostics.py` and its test --
 are unrelated in-progress work, not imported by anything in `app/__init__.py` or `main.py`, so
