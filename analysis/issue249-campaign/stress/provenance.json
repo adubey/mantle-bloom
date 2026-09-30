@@ -1,0 +1,33 @@
+{
+  "command": "bin/debug/surface_parity.py paired --preset long --node-density 0.5 --checkpoints-myr 100,200,400,600,800 --audit-every 10 --samples 100000 --seeds 1,2 --jobs 2 --out ../analysis/issue249-campaign/stress",
+  "git_commit": "f345cc5a676608b68c68765c61cba26c1b8bd7b2",
+  "git_dirty": true,
+  "python": "3.14.6",
+  "numpy": "2.5.2",
+  "scipy": "1.18.0",
+  "machine": "arm64",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "config": {
+    "name": "long",
+    "node_density": 0.5,
+    "step_years": 1000000.0,
+    "checkpoints_myr": [
+      100.0,
+      200.0,
+      400.0,
+      600.0,
+      800.0
+    ],
+    "audit_every": 10,
+    "samples": 100000,
+    "climate_density": null,
+    "fluid_density": 1.0,
+    "load_checks": true,
+    "render": false,
+    "render_size": [
+      720,
+      400
+    ]
+  },
+  "jobs": 2
+}

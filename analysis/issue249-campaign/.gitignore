@@ -1,0 +1,9 @@
+# Per-step timings are large and were taken with several worlds running in parallel;
+# each set's phase-means.json keeps the per-phase means. Logs are console noise.
+*.timings.json
+*.log
+# Keep only the representative renders: the reproducer seed at 352 Myr on both surfaces
+# and the real 352.4 Myr line save.
+*/renders/*
+!repro-equivalent/renders/seed804913535-*-352myr-*.png
+!repro-lines/renders/seed804913535-lines-352.4myr-*.png

@@ -1,0 +1,127 @@
+{
+  "seed": 1,
+  "density": 1.0,
+  "start_km3": 7651199567.604767,
+  "rows": [
+    {
+      "step": 20,
+      "continental_now": 1.0052288177384252,
+      "removed_continental": 0.024833621403493353,
+      "subducted_oceanic_plate": 0.0,
+      "accreted_kept": 0.022106457664935537,
+      "accretion_cap_loss": 0.0013131158239869471,
+      "calls": 241.0,
+      "subducted_continental_plate": 0.0014140479145708649
+    },
+    {
+      "step": 40,
+      "continental_now": 1.0057820740050993,
+      "removed_continental": 0.04471730576036107,
+      "subducted_oceanic_plate": 0.0,
+      "accreted_kept": 0.03882443195495758,
+      "accretion_cap_loss": 0.0042573877625619195,
+      "calls": 492.0,
+      "subducted_continental_plate": 0.0016354860428415819
+    },
+    {
+      "step": 60,
+      "continental_now": 1.0045772492520257,
+      "removed_continental": 0.07376326014430307,
+      "subducted_oceanic_plate": 0.0,
+      "accreted_kept": 0.06046745791350508,
+      "accretion_cap_loss": 0.011253149027166492,
+      "calls": 754.0,
+      "subducted_continental_plate": 0.0020426532036314764
+    },
+    {
+      "step": 80,
+      "continental_now": 1.0018909147062802,
+      "removed_continental": 0.12997251754122918,
+      "subducted_oceanic_plate": 0.0,
+      "accreted_kept": 0.1047600915437606,
+      "accretion_cap_loss": 0.02295270621532123,
+      "calls": 1050.0,
+      "subducted_continental_plate": 0.002259719782147386
+    },
+    {
+      "step": 100,
+      "continental_now": 0.9883539391903244,
+      "removed_continental": 0.19997228648088575,
+      "subducted_oceanic_plate": 0.0,
+      "accreted_kept": 0.1528059085455191,
+      "accretion_cap_loss": 0.044268994841645856,
+      "calls": 1366.0,
+      "subducted_continental_plate": 0.0028973830937208457
+    },
+    {
+      "step": 120,
+      "continental_now": 0.9600163087515882,
+      "removed_continental": 0.28030660550782116,
+      "subducted_oceanic_plate": 0.011253301664713361,
+      "accreted_kept": 0.19538817883230988,
+      "accretion_cap_loss": 0.06890465345143795,
+      "calls": 1724.0,
+      "subducted_continental_plate": 0.004760471559360202
+    },
+    {
+      "step": 140,
+      "continental_now": 0.9375708984522433,
+      "removed_continental": 0.357211496023637,
+      "subducted_oceanic_plate": 0.018502587785792682,
+      "accreted_kept": 0.24220964557211705,
+      "accretion_cap_loss": 0.09108985904155138,
+      "calls": 2070.0,
+      "subducted_continental_plate": 0.005409403624175913
+    },
+    {
+      "step": 160,
+      "continental_now": 0.9236290708347645,
+      "removed_continental": 0.4135647482034875,
+      "subducted_oceanic_plate": 0.02443991187892892,
+      "accreted_kept": 0.27825081783967665,
+      "accretion_cap_loss": 0.10364995530799789,
+      "calls": 2402.0,
+      "subducted_continental_plate": 0.007224063176884041
+    },
+    {
+      "step": 180,
+      "continental_now": 0.9023325492927962,
+      "removed_continental": 0.4704393651781097,
+      "subducted_oceanic_plate": 0.03213289605806903,
+      "accreted_kept": 0.3103614584120934,
+      "accretion_cap_loss": 0.11925566181390629,
+      "calls": 2770.0,
+      "subducted_continental_plate": 0.008689348894041013
+    },
+    {
+      "step": 200,
+      "continental_now": 0.8589463006994912,
+      "removed_continental": 0.557808174156487,
+      "subducted_oceanic_plate": 0.07434321956056124,
+      "accreted_kept": 0.34323668587165923,
+      "accretion_cap_loss": 0.12945567407594155,
+      "calls": 3151.0,
+      "subducted_continental_plate": 0.010772594648325124
+    },
+    {
+      "step": 220,
+      "continental_now": 0.8116831341069443,
+      "removed_continental": 0.6821047046607434,
+      "subducted_oceanic_plate": 0.10618053237034164,
+      "accreted_kept": 0.40575954543246134,
+      "accretion_cap_loss": 0.159126303773511,
+      "calls": 3574.0,
+      "subducted_continental_plate": 0.011038323084430288
+    },
+    {
+      "step": 240,
+      "continental_now": 0.7387919543050852,
+      "removed_continental": 0.8284529720161631,
+      "subducted_oceanic_plate": 0.12782065194329512,
+      "accreted_kept": 0.4683930901009807,
+      "accretion_cap_loss": 0.22120090688745836,
+      "calls": 4026.0,
+      "subducted_continental_plate": 0.011038323084430288
+    }
+  ]
+}
