@@ -958,8 +958,11 @@ def climate_hydrology(world) -> dict:
             "lake_fraction_of_land": float(np.count_nonzero((fields.lake_depth > 0) & land) / land_count),
             "glacier_fraction_of_land": float(np.count_nonzero((fields.glacier_depth > 0) & land) / land_count),
             "land_sink_fraction": float(np.count_nonzero((fields.flow_target < 0) & land) / land_count),
+            # `filled_elevation` is +inf by design for a basin with no spill rim
+            # (lakes.compute_spill_routing); anything else non-finite is a real fault.
             "finite": bool(
-                all(np.all(np.isfinite(np.asarray(getattr(fields, name), dtype=float))) for name in ("flow_accum", "filled_elevation", "lake_depth", "glacier_depth"))
+                all(np.all(np.isfinite(np.asarray(getattr(fields, name), dtype=float))) for name in ("flow_accum", "lake_depth", "glacier_depth"))
+                and not np.any(np.isnan(fields.filled_elevation) | np.isneginf(fields.filled_elevation))
             ),
         }
     return result

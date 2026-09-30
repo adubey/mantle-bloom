@@ -431,3 +431,23 @@ def test_run_can_continue_a_saved_world(tmp_path):
     assert document["checkpoints"][0]["totals"]["nodes"] == sum(p.node_count() for p in world.plates)
     with pytest.raises(ValueError):
         sp.run_surface(config, 4, "quad", initial_world=path, log=lambda _: None)
+
+
+def test_hydrology_finite_check_allows_the_no_rim_sentinel_only():
+    from types import SimpleNamespace
+
+    n = 4
+    fields = SimpleNamespace(
+        points=np.zeros((n, 3)),
+        is_ocean=np.zeros(n, dtype=bool),
+        is_river=np.zeros(n, dtype=bool),
+        lake_depth=np.zeros(n),
+        glacier_depth=np.zeros(n),
+        flow_target=np.zeros(n, dtype=int),
+        flow_accum=np.ones(n),
+        filled_elevation=np.array([0.0, 1.0, np.inf, 2.0]),
+    )
+    world = SimpleNamespace(stats_history=[], hydrology_cache=fields)
+    assert sp.climate_hydrology(world)["hydrology"]["finite"]
+    fields.filled_elevation[0] = np.nan
+    assert not sp.climate_hydrology(world)["hydrology"]["finite"]
