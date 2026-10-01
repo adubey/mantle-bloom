@@ -169,3 +169,46 @@ def test_respects_max_nodes_budget_leaving_the_rest_uncovered():
 
     added = gff.fill_gap_by_growing_plates(world, gap_pts, [plate], SPACING, max_hops=5, max_nodes=3)
     assert added == {0: 3}
+
+
+def test_repeated_stretching_never_thins_source_hm_below_its_floor():
+    """Issue #256: a source node whose Hc is already below the rift threshold never melts
+    through, so each stretch used to scale its Hm by another 1/3 with no floor -- a line
+    extended a few times in a row drove Hm toward zero."""
+    from app import lithosphere, rheology, terrain_noise
+    from app.lithosphere_plate import growth_seed_thickness
+
+    plate = _strip_plate(0, -0.1, 0.0)
+    world = _world([plate])
+    line_index, line = max(enumerate(plate.lines), key=lambda item: len(item[1]))
+    n = len(line)
+    line = line.replace(
+        crustal_thickness_m=np.full(n, 0.5 * rheology.RIFT_CRITICAL_THICKNESS_M),
+        mantle_lithosphere_thickness_m=np.full(n, 3_000.0),
+    )
+    hc0, hm0 = growth_seed_thickness()
+    texture = terrain_noise.FractalTexture(np.random.default_rng(1))
+    dtheta = SPACING / max(np.cos(line.phi), 1e-3)
+    for _ in range(4):
+        theta = float(line.theta[-1]) + dtheta
+        line = gff._stretch_extend_line(world, plate, line, line_index, False, theta, hc0, hm0, 0.0, texture)
+
+    assert np.all(line.mantle_lithosphere_thickness_m >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
+    expected = lithosphere.isostatic_elevation(
+        line.crustal_thickness_m, line.mantle_lithosphere_thickness_m,
+        lithosphere.node_crust_density(line.crust_type_code, plate.crust_type),
+    )
+    np.testing.assert_allclose(line.elevation[-gff.K_STRETCH_SOURCE_NODES - 1 :], expected[-gff.K_STRETCH_SOURCE_NODES - 1 :])
+
+
+def test_new_node_seed_never_starts_below_the_hm_floor():
+    """A seed ratio small enough to put `hm0 * thin_ratio` under the floor still seeds at it
+    (Hc kept above the rift threshold so the node doesn't melt and reset its column)."""
+    from app import lithosphere, terrain_noise
+    from app.lithosphere_plate import seed_and_erupt_new_nodes
+
+    plate = _strip_plate(0, -0.1, 0.0)
+    world = _world([plate])
+    pts = geometry.to_world(FRAME, geometry.local_xyz(np.zeros(3), np.array([0.1, 0.11, 0.12])))
+    seeded = seed_and_erupt_new_nodes(world, plate, 0, pts, 0.01, 1_000_000.0, 8_000.0, 0.0, terrain_noise.FractalTexture(np.random.default_rng(1)))
+    assert np.all(seeded["mantle_lithosphere_thickness_m"] >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)

@@ -207,7 +207,10 @@ def _stretch_extend_line(
 
     old_hc = hc[source_idx].copy()
     new_hc = old_hc * _STRETCH_THIN_RATIO
-    new_hm = hm[source_idx] * _STRETCH_THIN_RATIO
+    # Floored like `rheology.apply_stretch_thinning`: a source node whose Hc is already below
+    # the rift threshold never melts, so repeated stretches would otherwise compound Hm toward
+    # zero (issue #256).
+    new_hm = np.maximum(hm[source_idx] * _STRETCH_THIN_RATIO, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
     melting = (old_hc >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
     hc[source_idx] = new_hc
     hm[source_idx] = new_hm
