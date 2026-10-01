@@ -715,6 +715,21 @@ new-Hc/old-Hc ratio when a whole dropped row/column's volume lands on it, and th
 multiplies Hm too. Every one of those sites now also clips its own Hm result at
 `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`.
 
+The floor needed the same treatment ([GitHub issue #256](https://github.com/adubey/mantle-bloom/issues/256)).
+Thinning by a fractional share -- new-node seeds (`seed_and_erupt_new_nodes`), the source
+nodes `gap_fill_frontier._stretch_extend_line` draws a new node from, the rolling window of
+rows `_claim_adjacent_territory` thins on every claim, and the quad donors
+`quad_tectonics._open_rift` stretches -- only resets a column when its Hc melts through
+`RIFT_CRITICAL_THICKNESS_M`. Oceanic crust already below that threshold never does, so
+repeated claims compounded its Hm (and, on lines, its Hc) toward zero. Each of those sites
+now floors Hm at `MIN_MANTLE_LITHOSPHERE_THICKNESS_M`, the line sites also floor Hc at
+`MIN_CRUSTAL_THICKNESS_M`, and `quad_merge`'s remap holds newly created cells to
+both caps, not only the stacked suture cells. As a backstop, `step_world` runs
+`lithosphere.clamp_column_caps` on every plate once the step's last Hc/Hm writer (volcanism)
+has finished. It clips both fields into their caps, shifts elevation by the isostatic change,
+and books anything it adds or removes under `phase_budget`'s `column_cap_clamp` phase. That
+phase should stay empty. A nonzero entry means some writer upstream is missing its own cap.
+
 Every node's onset year is also stamped onto
 `ElevationLine.overlap_onset_years` each step (`merge_split.update_overlap_tracking`) and
 surfaced as `since_years` in `GET /world/plates` and the `overlapAge` debug render view --

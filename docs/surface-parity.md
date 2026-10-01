@@ -160,11 +160,11 @@ indices (docs/plate-surface-baseline.md §4.4), so line and quad trajectories di
 first step. Coverage gates compare each quad run with its own paired line run. P1 compares
 the two ensembles.
 
-H11 warns instead of failing. The engine clamps the Hc/Hm caps only in specific code paths, and
-at the time of writing both surfaces breach the Hm floor or ceiling within 15 Myr at density 1:
-the line surface down to about 290 m, and quad up to 242 km against the 240 km cap. The Phase 0a
-table lists the caps as exact, so a breach is an engine finding to fix or re-document, not a
-quad regression.
+H11 warns instead of failing. Before issue #256, the engine clamped the Hc/Hm caps only in
+specific code paths, and both surfaces breached the Hm floor or ceiling within 15 Myr at
+density 1: the line surface down to about 290 m, and quad up to 242 km against the 240 km cap.
+Every step now ends with a clamp on every plate (`lithosphere.clamp_column_caps`), so an H11
+finding means the clamp itself has regressed. The Phase 0a table lists the caps as exact.
 
 Performance only warns. #228 asks that a dominant-phase regression be explicitly accepted or
 fixed, so a `warn` on R1/R2 needs a decision in the campaign report (#249), not a silent pass.
