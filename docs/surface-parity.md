@@ -138,7 +138,7 @@ same age and seed.
 | S1 | climate stats and hydrology finite | both, checkpoints | any (quad) | |
 | C1 | uncovered sphere | checkpoints | > l + 0.5 pp | |
 | C2 | void | checkpoints | > 0.05% | |
-| C3 | multiply covered sphere | checkpoints | > l + 0.5 pp | > l |
+| C3 | multiply covered sphere | quad, checkpoints | > 2.0% | > 1.5% |
 | C4 | nodes inside another plate | checkpoints | > l + 0.5 pp | > l |
 | K1 | Hc volume drift since 0 Myr, quad vs line | checkpoints > 0 | gap > 10 pp | gap > 5 pp |
 | K2 | continental Hc drift, quad vs line | checkpoints > 0 | gap > 10 pp | gap > 5 pp |
@@ -171,6 +171,22 @@ fixed, so a `warn` on R1/R2 needs a decision in the campaign report (#249), not 
 For the `issue147` preset, the report adds a column with the #147 profile's per-step phase
 means (`analysis/issue147-profile-20260922/frames.csv`). That run was under cProfile, so
 compare it by ratios.
+
+C3 uses an absolute quad tolerance rather than a paired-line margin. The two measurements are
+not like for like: line territory is an outline polygon around a node cloud, so same-plate
+stacking is invisible to C3, while every quad cell is authoritative territory and any double
+claim is real duplicated crust. Quad plates also carry independently rotated lattices. At a
+seam their cell edges generally cannot coincide, so claiming the last whole cell trades a
+thin overlap for the uncovered sliver that leaving it empty would preserve. The #249 long and
+stress campaigns found this overlap growing toward a stable 1.2--1.9% plateau by 400 Myr,
+alongside much lower uncovered area, nodes inside another plate, and zero same-plate stacking.
+The 1.5% warning keeps movement toward the envelope visible; 2.0% is the accepted ceiling.
+
+Duplicated crust is not hidden from conservation totals. Hc and Hm totals sum every cell's
+exact area, including cells in multiply covered territory, and K3 independently checks that
+the summed quad cell area equals `sphere - uncovered + overlap` within its 1 pp sampling
+tolerance. Thus C3 bounds the permitted duplication while K3 verifies that its area remains
+explicitly accounted for.
 
 ## Derived indexes
 

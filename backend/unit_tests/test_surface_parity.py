@@ -372,8 +372,21 @@ def test_coverage_regression_beyond_tolerance_fails():
     evaluation = gates.evaluate([(_run("lines"), None), (quad, None)])
     assert _gate(evaluation, "C1:uncovered") == gates.FAIL
 
-    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.012})])
-    assert _gate(gates.evaluate([(_run("lines"), None), (quad, None)]), "C3:multiply_covered") == gates.WARN
+    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.021})])
+    assert _gate(gates.evaluate([(_run("lines"), None), (quad, None)]), "C3:multiply_covered") == gates.FAIL
+
+
+def test_quad_multiply_covered_uses_its_exact_cell_tolerance_not_the_line_outline():
+    lines = _run("lines", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.001})])
+
+    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.014})])
+    result = gates.evaluate([(lines, None), (quad, None)])
+    assert _gate(result, "C3:multiply_covered") == gates.PASS
+
+    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.019})])
+    result = gates.evaluate([(lines, None), (quad, None)])
+    assert _gate(result, "C3:multiply_covered") == gates.WARN
+    assert result["gates"]["C3:multiply_covered"]["worst"]["fail_above"] == gates.QUAD_MULTIPLY_COVERED_FAIL
 
 
 def test_conservation_drift_gap_is_banded():

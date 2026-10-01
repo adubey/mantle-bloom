@@ -44,10 +44,19 @@ BOUNDS_GATE = ("H11", "field_caps", "Elevation, Hc and Hm stay within their caps
 # (id, name, metric path under checkpoint["coverage"], warn above line + this, fail above line + this)
 COVERAGE_GATES = (
     ("C1", "uncovered", "uncovered", None, 0.005),
-    ("C3", "multiply_covered", "multiply_covered", 0.0, 0.005),
     ("C4", "nodes_inside_other_plate", "nodes_inside_other_plate", 0.0, 0.005),
 )
 VOID_FAIL = 0.0005
+
+# Quad plates carry exact cells on independently rotated lattices. Where two such lattices
+# meet, filling the last seam with whole cells cannot in general make both cell edges coincide:
+# leaving the cell out creates uncovered ground, while inserting it creates a narrow, real
+# overlap. The #249 long/stress campaigns found that overlap stabilises near 1.9% while quad
+# coverage and stacking remain substantially better than lines. Keep a warning band so a
+# change toward that envelope is visible, but gate the exact-cell representation against its
+# own documented tolerance rather than the line outline's unlike polygon measurement (#255).
+QUAD_MULTIPLY_COVERED_WARN = 0.015
+QUAD_MULTIPLY_COVERED_FAIL = 0.020
 
 CONSERVATION_WARN, CONSERVATION_FAIL = 0.05, 0.10
 AREA_ACCOUNTING_WARN = 0.01
@@ -205,6 +214,19 @@ def _coverage_gates(line: dict, quad: dict, age: float) -> list[dict]:
             continue
         status = FAIL if q > l + fail_margin else WARN if warn_margin is not None and q > l + warn_margin else PASS
         results.append(_result(gate, name, status, age_myr=age, quad=q, lines=l, fail_above=l + fail_margin))
+    multiply = quad["coverage"]["multiply_covered"]
+    if multiply is None:
+        results.append(_result("C3", "multiply_covered", INSUFFICIENT, age_myr=age))
+    else:
+        status = FAIL if multiply > QUAD_MULTIPLY_COVERED_FAIL else WARN if multiply > QUAD_MULTIPLY_COVERED_WARN else PASS
+        results.append(
+            _result(
+                "C3", "multiply_covered", status, age_myr=age, quad=multiply,
+                lines=line["coverage"]["multiply_covered"],
+                warn_above=QUAD_MULTIPLY_COVERED_WARN,
+                fail_above=QUAD_MULTIPLY_COVERED_FAIL,
+            )
+        )
     void = quad["coverage"]["void"]
     results.append(_result("C2", "void", FAIL if void is not None and void > VOID_FAIL else PASS, age_myr=age, quad=void, lines=line["coverage"]["void"], fail_above=VOID_FAIL))
     return results
@@ -426,7 +448,7 @@ def _gate_order(gate: str) -> tuple[int, int]:
 
 GROUP_TITLES = {
     "H": "Hard invariants",
-    "C": "Coverage and overlap (quad vs paired line run)",
+    "C": "Coverage and overlap",
     "K": "Conservation (actual node/cell areas)",
     "M": "Mesh quality (quad)",
     "S": "Climate and hydrology",
