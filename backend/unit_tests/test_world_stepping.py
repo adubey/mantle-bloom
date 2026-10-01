@@ -143,6 +143,20 @@ def test_step_world_reconciles_gap_tracks_alongside_fill_gaps():
     assert all(track.node_count < gaps.MIN_GAP_NODES for track in world.gap_tracks)
 
 
+def test_quad_world_keeps_its_represented_area_between_gap_fill_intervals():
+    """Issue #259: quad retreat removes cells every step, so gap repair has to keep up every
+    step -- otherwise the area the surface represents sags ~0.5% of the sphere per step until
+    the next interval and eustatic sea level jumps with it."""
+    from app.sparse_quad_patch import PLANET_RADIUS_M
+
+    world = generate_world(seed=3, node_density=0.5, surface="quad")
+    sphere_m2 = 4.0 * np.pi * PLANET_RADIUS_M**2
+    for _ in range(2):
+        step_world(world, years=1_000_000)
+        represented = sum(float(np.sum(p.surface_nodes().area_m2)) for p in world.plates if p.node_count())
+        assert represented / sphere_m2 > 0.995
+
+
 def test_record_removed_points_is_a_noop_for_an_empty_array():
     world = generate_world(seed=10, num_plates=4)
     world.record_removed_points(np.zeros((0, 3)), plate_id=0)

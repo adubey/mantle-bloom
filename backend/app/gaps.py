@@ -60,6 +60,8 @@ if TYPE_CHECKING:
 # Cadence: `fill_gaps_by_growing_neighbours` is a whole-sphere lattice sweep (O(nodes) at full
 # density), cheap but not free, and coverage doesn't collapse fast -- same reasoning and same
 # cadence as merge_split.DEFRAG_INTERVAL_STEPS, which world.step_world calls it alongside.
+# Line worlds only: on cell surfaces (`PlateSurface.territory_is_exact`) the pass runs every
+# step -- see `gap_fill_due`.
 GAP_FILL_INTERVAL_STEPS = 4
 
 # "Covered" (see elevation_lines.COVERAGE_RADIUS_MULT, shared with LithospherePlate's own
@@ -153,6 +155,16 @@ def _territory_is_exact(world: "World") -> bool:
     world. Coverage is then a containment question, not a node-distance one."""
     live = [p for p in world.plates if p.node_count() > 0]
     return bool(live) and all(p.territory_is_exact for p in live)
+
+
+def gap_fill_due(world: "World") -> bool:
+    """Whether `world.step_world` should run `fill_gaps_by_growing_neighbours` this step. Every
+    step on cell surfaces (`_territory_is_exact`): quad retreat drops cells immediately, and
+    left to `GAP_FILL_INTERVAL_STEPS` the represented area sags ~0.5% of the sphere per step
+    and snaps back on the fourth, which drags eustatic sea level ~50 m/step with it (GitHub
+    issue #259). Line worlds keep the interval -- a node there already stands for the ground
+    around it, so the same lag never shows up as missing area."""
+    return _territory_is_exact(world) or world.steps_taken % GAP_FILL_INTERVAL_STEPS == 0
 
 
 def _find_gap_points(existing_tree: _ExistingNodeContext, spacing_rad: float, plates: list[Plate] | None = None) -> np.ndarray:
@@ -378,9 +390,10 @@ def reconcile_gap_tracks(world: "World") -> None:
     reconcile `world.gap_tracks` by centroid proximity: a cluster matching a previous track
     keeps its `first_seen_years` and bumps `steps_seen`; an unmatched cluster starts a fresh
     track; a track with no matching cluster this step is dropped by omission. Same "replace
-    wholesale" pattern as `stranded_basins.reconcile_world_tracks`. Called at the same cadence
-    as `fill_gaps_by_growing_neighbours` (`GAP_FILL_INTERVAL_STEPS`) from `world.step_world`,
-    right alongside it."""
+    wholesale" pattern as `stranded_basins.reconcile_world_tracks`. Called every
+    `GAP_FILL_INTERVAL_STEPS` from `world.step_world`, right after
+    `fill_gaps_by_growing_neighbours` (which on quad worlds also runs in between -- see
+    `gap_fill_due`)."""
     existing_context = _existing_node_tree(world)
     if existing_context is None:
         world.gap_tracks = []
