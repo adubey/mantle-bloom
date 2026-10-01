@@ -219,6 +219,25 @@ def test_rift_opening_with_nothing_in_view_stretches_crust_without_losing_volume
     assert hc[int(pack_cell_keys(0, 20, 25))] < edge
 
 
+def test_rift_opening_never_thins_donor_hm_below_its_floor():
+    """Issue #256: donors behind a rifted cell thin by `ratio` in both Hc and Hm. A thick
+    crust over a thin mantle lid never melts through, so Hm used to drop past
+    `MIN_MANTLE_LITHOSPHERE_THICKNESS_M` with nothing to reset it."""
+    keys = _block((10, 20), (20, 30))
+    thin_hm = 1.05 * lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+    a = _plate(1, keys, "continental", mantle_lithosphere_thickness_m=np.full(len(keys), thin_hm))
+    world = _world(a)
+
+    assert _grow(a, world, [], 2) > 0
+
+    hc, hm = a.collect("crustal_thickness_m"), a.collect("mantle_lithosphere_thickness_m")
+    old = np.isin(a.cell_keys, keys)
+    assert np.any(old & (hc < lithosphere.REFERENCE_HC_CONTINENTAL_M)), "some donor must have thinned"
+    assert np.all(hm >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
+    density = lithosphere.node_crust_density(a.collect("crust_type_code"), a.crust_type)
+    np.testing.assert_allclose(a.collect("elevation")[old], lithosphere.isostatic_elevation(hc, hm, density)[old])
+
+
 def test_ocean_ridge_between_separating_plates_accretes_fresh_crust():
     # Oceanic crust already near the rift threshold breaks up rather than stretching on.
     keys = _block((10, 20), (20, 30))

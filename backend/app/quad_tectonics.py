@@ -595,7 +595,10 @@ def _open_rift(
     donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
     if len(donors):
         before = lithosphere.isostatic_elevation(hc[donors], hm[donors], lithosphere.node_crust_density(codes[donors], plate.crust_type))
-        new_hc, new_hm = hc[donors] * ratio, hm[donors] * ratio
+        # Hm floored like `rheology.apply_stretch_thinning`: a donor too thin to melt through
+        # is never reset, and repeated rifts would otherwise thin it without limit (issue #256).
+        new_hc = hc[donors] * ratio
+        new_hm = np.maximum(hm[donors] * ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
         melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
         sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
         _erupt_melted_nodes(world, plate.plate_id, rng_index + 1, new_hc, new_hm, sub_codes, sub_volcano, sub_remaining, melting, elevation[donors])
@@ -609,7 +612,9 @@ def _open_rift(
     cell_area = plate.node_areas_m2()[rifted]
     magmatic_area = (1.0 - stretch_share) * cell_area
     cell_hc = (transfer.received_hc_volume + magmatic_area * hc[rifted]) / cell_area
-    cell_hm = (transfer.received_hm_volume + magmatic_area * hm[rifted]) / cell_area
+    cell_hm = np.maximum(
+        (transfer.received_hm_volume + magmatic_area * hm[rifted]) / cell_area, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+    )
     mostly_continental = transfer.received_continental_hc_volume > 0.5 * cell_hc * cell_area
     cell_codes = np.where(mostly_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(codes.dtype)
     cell_elevation = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
