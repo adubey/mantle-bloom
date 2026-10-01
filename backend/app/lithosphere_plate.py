@@ -572,8 +572,9 @@ def seed_and_erupt_new_nodes(
     This makes every node this produces a real eruption (typed, `is_volcano`-stamped, timed)
     rather than a distinct silent "spawn" concept."""
     n = len(world_pts)
-    hc = np.full(n, hc0 * thin_ratio) + amp * texture.sample(world_pts)
-    # Hm floored like every other thinning path; a small `thin_ratio` can seed below it.
+    # Floored like every other thinning path; a small `thin_ratio` (plus texture, for Hc) can
+    # seed below either floor.
+    hc = np.maximum(np.full(n, hc0 * thin_ratio) + amp * texture.sample(world_pts), lithosphere.MIN_CRUSTAL_THICKNESS_M)
     hm = np.maximum(np.full(n, hm0 * thin_ratio), lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
     elevation = lithosphere.isostatic_elevation(hc, hm, lithosphere.crust_density(plate.crust_type))
     crust_type_code = np.zeros(n, dtype=np.int8)
@@ -1879,10 +1880,10 @@ class LithospherePlate(PlateWithLines):
                 # further each time).
                 for original_row in recent_rows:
                     row = thinned.get(id(original_row), original_row)
-                    new_hc_row = row.crustal_thickness_m * thin_ratio
                     # Floored (issue #256): a row that keeps sliding along the window is
                     # thinned again on every later claim, and without melting through
-                    # (already-thin oceanic Hc) nothing else resets its Hm.
+                    # (already-thin oceanic Hc) nothing else resets its column.
+                    new_hc_row = np.maximum(row.crustal_thickness_m * thin_ratio, lithosphere.MIN_CRUSTAL_THICKNESS_M)
                     new_hm_row = np.maximum(row.mantle_lithosphere_thickness_m * thin_ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
                     melting_row = (row.crustal_thickness_m >= rheology.RIFT_CRITICAL_THICKNESS_M) & (
                         new_hc_row < rheology.RIFT_CRITICAL_THICKNESS_M

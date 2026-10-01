@@ -387,17 +387,17 @@ def test_claim_adjacent_territory_gates_and_conserves_mass_by_angle(angle_deg, m
     assert mean_hc_after < mean_hc_before
 
 
-def test_claim_adjacent_territory_never_thins_window_rows_below_the_hm_floor(monkeypatch):
+def test_claim_adjacent_territory_never_thins_window_rows_below_the_column_floors(monkeypatch):
     """Issue #256: every row in the rolling mass-conservation window -- original rows and
     rows claimed earlier in the same call alike -- is thinned again on each later claim. Rows
     whose Hc is already below the rift threshold never melt and reset, so their Hm used to
-    compound past `MIN_MANTLE_LITHOSPHERE_THICKNESS_M`."""
+    compound past `MIN_MANTLE_LITHOSPHERE_THICKNESS_M` (and Hc past `MIN_CRUSTAL_THICKNESS_M`)."""
     from app import lithosphere
 
     plate, spacing_rad = _small_oceanic_disk(radius_rad=0.5)
     plate.set_lines([
         line.replace(
-            crustal_thickness_m=np.full(len(line), 0.5 * rheology.RIFT_CRITICAL_THICKNESS_M),
+            crustal_thickness_m=np.full(len(line), 1.2 * MIN_CRUSTAL_THICKNESS_M),
             mantle_lithosphere_thickness_m=np.full(len(line), 1.2 * MIN_MANTLE_LITHOSPHERE_THICKNESS_M),
         )
         for line in plate.lines
@@ -411,5 +411,6 @@ def test_claim_adjacent_territory_never_thins_window_rows_below_the_hm_floor(mon
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     assert np.all(hm >= MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
+    assert np.all(hc >= MIN_CRUSTAL_THICKNESS_M)
     expected = lithosphere.isostatic_elevation(hc, hm, lithosphere.node_crust_density(plate.collect("crust_type_code"), plate.crust_type))
     np.testing.assert_allclose(plate.collect("elevation"), expected)

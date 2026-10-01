@@ -171,10 +171,10 @@ def test_respects_max_nodes_budget_leaving_the_rest_uncovered():
     assert added == {0: 3}
 
 
-def test_repeated_stretching_never_thins_source_hm_below_its_floor():
+def test_repeated_stretching_never_thins_source_columns_below_their_floors():
     """Issue #256: a source node whose Hc is already below the rift threshold never melts
-    through, so each stretch used to scale its Hm by another 1/3 with no floor -- a line
-    extended a few times in a row drove Hm toward zero."""
+    through, so each stretch used to scale its Hc and Hm by another 1/3 with no floor -- a
+    line extended a few times in a row drove both toward zero."""
     from app import lithosphere, rheology, terrain_noise
     from app.lithosphere_plate import growth_seed_thickness
 
@@ -194,6 +194,7 @@ def test_repeated_stretching_never_thins_source_hm_below_its_floor():
         line = gff._stretch_extend_line(world, plate, line, line_index, False, theta, hc0, hm0, 0.0, texture)
 
     assert np.all(line.mantle_lithosphere_thickness_m >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
+    assert np.all(line.crustal_thickness_m >= lithosphere.MIN_CRUSTAL_THICKNESS_M)
     expected = lithosphere.isostatic_elevation(
         line.crustal_thickness_m, line.mantle_lithosphere_thickness_m,
         lithosphere.node_crust_density(line.crust_type_code, plate.crust_type),
