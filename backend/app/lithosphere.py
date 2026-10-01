@@ -263,6 +263,27 @@ def sync_plate_elevation(plate: "LithospherePlate") -> None:
     plate.set_fields_on_plate(elevation=isostatic_elevation(hc, hm, rho_c))
 
 
+def clamp_column_caps(plate: "Plate") -> bool:
+    """Clip every node's Hc/Hm into [MIN, MAX] and shift its elevation by the isostatic change
+    the clip makes, keeping whatever erosion/texture residual it carried. Each Hc/Hm writer
+    applies its own caps; this is the once-per-step backstop that makes "Hc, Hm within caps"
+    (docs/plate-surface-baseline.md section 3.1) hold even when one doesn't (GitHub issue
+    #256). Returns whether any node changed."""
+    hc = plate.collect("crustal_thickness_m")
+    hm = plate.collect("mantle_lithosphere_thickness_m")
+    new_hc = np.clip(hc, MIN_CRUSTAL_THICKNESS_M, MAX_CRUSTAL_THICKNESS_M)
+    new_hm = np.clip(hm, MIN_MANTLE_LITHOSPHERE_THICKNESS_M, MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+    changed = (new_hc != hc) | (new_hm != hm)
+    if not np.any(changed):
+        return False
+    rho_c = node_crust_density(plate.collect("crust_type_code")[changed], plate.crust_type)
+    elevation = np.array(plate.collect("elevation"), dtype=float)
+    shift = isostatic_elevation(new_hc[changed], new_hm[changed], rho_c) - isostatic_elevation(hc[changed], hm[changed], rho_c)
+    elevation[changed] = np.clip(elevation[changed] + shift, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    plate.set_fields_on_plate(crustal_thickness_m=new_hc, mantle_lithosphere_thickness_m=new_hm, elevation=elevation)
+    return True
+
+
 def node_area_m2(spacing_rad: float) -> float:
     """Physical footprint area (m^2) of one lattice node at this world's line spacing.
 

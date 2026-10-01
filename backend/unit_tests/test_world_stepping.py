@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from app import climate, geometry
 from app.world import generate_world, step_world
 
@@ -190,3 +191,37 @@ def test_record_removed_points_caps_the_log_evicting_oldest_first():
     surviving_years = {removed_years for _, removed_years, _ in world.removed_points_log}
     assert min(surviving_years) == float(over_cap - MAX_REMOVED_POINTS_LOG)
     assert max(surviving_years) == float(over_cap - 1)
+
+
+@pytest.mark.parametrize("surface", ["lines", "quad"])
+def test_step_world_ends_with_every_column_inside_its_caps(surface, monkeypatch):
+    """Issue #256: "Hc, Hm within caps" is a hard per-step invariant (docs/plate-surface-
+    baseline.md section 3.1). A writer that leaves a column outside them -- simulated here by
+    the last Hc/Hm writer in the step -- is caught by the end-of-step clamp, which books what
+    it changed in `phase_budget`."""
+    from app import lithosphere, volcanism
+
+    world = generate_world(seed=3, node_density=0.5, surface=surface)
+    world.simulate_climate_biomes = False
+    world.debug_diagnostics = True
+    original = volcanism.apply_volcanic_activity
+
+    def breach(world, years):
+        original(world, years)
+        plate = max(world.plates, key=lambda p: p.node_count())
+        hm = plate.collect("mantle_lithosphere_thickness_m").copy()
+        hc = plate.collect("crustal_thickness_m").copy()
+        hm[0], hm[1], hc[2] = 1.0, 1.5 * lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M, 0.0
+        plate.set_fields_on_plate(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm)
+
+    monkeypatch.setattr(volcanism, "apply_volcanic_activity", breach)
+    step_world(world, years=1_000_000)
+
+    for plate in world.plates:
+        hc = plate.collect("crustal_thickness_m")
+        hm = plate.collect("mantle_lithosphere_thickness_m")
+        assert np.all((hc >= lithosphere.MIN_CRUSTAL_THICKNESS_M) & (hc <= lithosphere.MAX_CRUSTAL_THICKNESS_M))
+        assert np.all((hm >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M) & (hm <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M))
+    clamp = world.phase_budget["column_cap_clamp"]["scopes"]["all"]
+    assert clamp["sum_hc_after"] > clamp["sum_hc_before"]
+    assert clamp["sum_hm_after"] != clamp["sum_hm_before"]

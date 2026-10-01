@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -768,6 +768,16 @@ def finish_generation(world: World, log_message: str) -> None:
     world.record_stats(force=True)  # the elapsed_years=0 baseline entry -- see World.stats_history
 
 
+def _clamp_column_caps(world: World) -> None:
+    """`lithosphere.clamp_column_caps` on every plate, booking what it adds or removes under the
+    "column_cap_clamp" phase of `World.phase_budget` -- nonzero there means some writer
+    upstream left a column outside its caps this step."""
+    for plate in world.plates:
+        before = phase_budget.snapshot(plate) if world.debug_diagnostics else None
+        if lithosphere.clamp_column_caps(plate) and before is not None:
+            phase_budget.record(world, plate, "column_cap_clamp", *before, *phase_budget.snapshot(plate))
+
+
 def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
     """Advances World.atmosphere_cfd_state by its fixed SECONDS_PER_TECTONIC_STEP (one
     simulated day) once per tectonics step, *before* erosion/hydrology each step (unlike a
@@ -950,6 +960,11 @@ def step_world_progress(world: World, years: float):
         # hierarchy (world.hydrology_cache, just set by erosion) -- only on a step that
         # actually recomputed hydrology, so persistence timers count simulated hydrology steps.
         stranded_basins.reconcile_world_tracks(world)
+
+    # Every Hc/Hm writer has run for this step: hold each column to its caps (issue #256), so
+    # the hard invariant holds even where a writer misses one. Sea level below then sees the
+    # clamped hypsometry.
+    _clamp_column_caps(world)
 
     # Eustatic sea level: re-solve world.sea_level_m against this step's final hypsometry,
     # holding the conserved ocean water volume fixed (see eustasy.py). Unconditional -- both

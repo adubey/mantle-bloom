@@ -101,3 +101,32 @@ def test_omega_from_angular_momentum_inverts_angular_momentum():
     l = lithosphere.angular_momentum(inertia, omega)
     recovered = lithosphere.omega_from_angular_momentum(inertia, l)
     assert np.allclose(recovered, omega, rtol=1e-6)
+
+
+def test_clamp_column_caps_clips_both_bounds_and_keeps_the_elevation_residual():
+    from app.elevation_lines import line_spacing_rad
+    from app.lithosphere_plate import new_plate
+
+    plate = new_plate(0, np.eye(3), "continental", line_spacing_rad(1.0), seed=1, is_owned=lambda pts: pts[:, 2] > 0.95)
+    n = plate.node_count()
+    assert n >= 4
+    hc = np.full(n, lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    hm = np.full(n, lithosphere.REFERENCE_HM_CONTINENTAL_M)
+    hc[0], hm[1] = 1.5 * lithosphere.MAX_CRUSTAL_THICKNESS_M, 0.5 * lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+    hm[2] = 1.01 * lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    residual = np.linspace(-50.0, 50.0, n)
+    rho_c = lithosphere.crust_density("continental")
+    plate.set_fields_on_plate(
+        crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm, elevation=lithosphere.isostatic_elevation(hc, hm, rho_c) + residual
+    )
+
+    assert lithosphere.clamp_column_caps(plate)
+
+    new_hc = plate.collect("crustal_thickness_m")
+    new_hm = plate.collect("mantle_lithosphere_thickness_m")
+    assert new_hc[0] == lithosphere.MAX_CRUSTAL_THICKNESS_M
+    assert new_hm[1] == lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
+    assert new_hm[2] == lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    np.testing.assert_array_equal(new_hc[1:], hc[1:])
+    np.testing.assert_allclose(plate.collect("elevation"), lithosphere.isostatic_elevation(new_hc, new_hm, rho_c) + residual)
+    assert not lithosphere.clamp_column_caps(plate)
