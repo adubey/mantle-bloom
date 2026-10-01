@@ -136,8 +136,8 @@ def _explicit_codes(codes: np.ndarray, crust_type: str) -> np.ndarray:
 
 
 def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", other_points_xyz: np.ndarray) -> np.ndarray:
-    """Remap `absorb` onto `keep` in place; returns the inertia tensor of the mass the suture
-    caps removed (zero when nothing was capped)."""
+    """Remap `absorb` onto `keep` in place; returns the inertia tensor of the mass the caps
+    removed (zero when nothing was capped)."""
     source, absorb_local, sub_area = subsample_cells(absorb, MERGE_REMAP_SUBSAMPLES)
     sub_world = geometry.to_world(absorb.frame, absorb_local)
     sub_local = geometry.to_local(keep.frame, sub_world)
@@ -280,6 +280,10 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     stacked = ~is_new & ((hc != old_hc) | (hm != old_hm))
     hc[stacked] = np.maximum(old_hc[stacked], np.minimum(hc[stacked], SUTURE_ACCRETION_MAX_HC_M))
     hm[stacked] = np.maximum(old_hm[stacked], np.minimum(hm[stacked], lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M))
+    # New cells are held to both caps: `extensive`'s restoring ratio can lift a column the
+    # absorbed plate held at a cap past it, or lower one held at a floor below it (issue #256).
+    hc[is_new] = np.clip(hc[is_new], lithosphere.MIN_CRUSTAL_THICKNESS_M, SUTURE_ACCRETION_MAX_HC_M)
+    hm[is_new] = np.clip(hm[is_new], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
     # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
@@ -300,7 +304,8 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     out["elevation"] = elevation
     keep.set_fields_on_plate(**out)
 
-    # The mass the caps removed, as an inertia tensor at the cells it was removed from.
+    # The mass the caps removed (negative where a floor added some), as an inertia tensor at
+    # the cells it was removed from.
     return lithosphere.moment_of_inertia_tensor(
         keep.all_points_and_elevation()[0],
         uncapped_hc - hc,

@@ -190,6 +190,32 @@ def test_suture_cap_is_the_only_volume_that_leaves(monkeypatch):
     assert lost == pytest.approx(excess, rel=1e-9)
 
 
+@pytest.mark.parametrize("hc, hm", [
+    (lithosphere.MAX_CRUSTAL_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M),
+    (lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M),
+])
+def test_new_cells_stay_within_both_column_caps(hc, hm):
+    """Issue #256: the suture cap covered stacked cells only. A new cell's column is its
+    sub-cells' mean scaled by `extensive`'s restoring ratio, which can carry a plate held at
+    a cap past it -- the seed-7 parity run's 242,448 m Hm."""
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
+    n = absorb.node_count()
+    absorb.set_fields_on_plate(crustal_thickness_m=np.full(n, hc), mantle_lithosphere_thickness_m=np.full(n, hm))
+    lithosphere.sync_plate_elevation(absorb)
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    merged_hc = keep.collect("crustal_thickness_m")
+    merged_hm = keep.collect("mantle_lithosphere_thickness_m")
+    assert np.all((merged_hc >= lithosphere.MIN_CRUSTAL_THICKNESS_M) & (merged_hc <= lithosphere.MAX_CRUSTAL_THICKNESS_M))
+    assert np.all(
+        (merged_hm >= lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M) & (merged_hm <= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+    )
+    density = lithosphere.node_crust_density(keep.collect("crust_type_code"), keep.crust_type)
+    np.testing.assert_allclose(keep.collect("elevation"), lithosphere.isostatic_elevation(merged_hc, merged_hm, density), atol=1e-6)
+
+
 def test_merge_does_not_grow_over_a_third_plate_and_still_conserves():
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS + 0.5 * SPACING))
