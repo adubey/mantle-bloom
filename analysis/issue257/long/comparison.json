@@ -1,0 +1,1121 @@
+{
+  "configs": [
+    "long"
+  ],
+  "gates": {
+    "C3:multiply_covered": {
+      "gate": "C3",
+      "name": "multiply_covered",
+      "results": 30,
+      "status": "pass",
+      "worst": {
+        "age_myr": 0.0,
+        "fail_above": 0.02,
+        "gate": "C3",
+        "name": "multiply_covered",
+        "quad": 0.006475,
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "warn_above": 0.015
+      }
+    },
+    "H10:quad_no_stacked_nodes": {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "description": "No two quad nodes of one plate closer than 0.5 spacing",
+        "gate": "H10",
+        "name": "quad_no_stacked_nodes",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad"
+      }
+    },
+    "H11:field_caps": {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "name": "field_caps",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "description": "Elevation, Hc and Hm stay within their caps",
+        "gate": "H11",
+        "name": "field_caps",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H1:quad_topology": {
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+        "gate": "H1",
+        "name": "quad_topology",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H2:quad_neighbours": {
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "Quad neighbours in range, symmetric, and sharing an edge",
+        "gate": "H2",
+        "name": "quad_neighbours",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H3:quad_folded": {
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "No folded quad cells",
+        "gate": "H3",
+        "name": "quad_folded",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H4:fields": {
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "Every field finite, correctly sized and within its caps; areas positive",
+        "gate": "H4",
+        "name": "fields",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H5:frames": {
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "Plate frames are proper rotations",
+        "gate": "H5",
+        "name": "frames",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H6:derived_caches": {
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+        "gate": "H6",
+        "name": "derived_caches",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H7:revisions": {
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "audits": 41,
+        "description": "Local node-set / frame changes always bump topology / geometry revisions",
+        "gate": "H7",
+        "name": "revisions",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad",
+        "violations": 0
+      }
+    },
+    "H8:load_round_trip": {
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "checks": 6,
+        "description": "Save/load reproduces authoritative state and drops every derived index",
+        "gate": "H8",
+        "name": "load_round_trip",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad"
+      }
+    },
+    "H9:load_continuation": {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "description": "A step from the loaded world matches a step from the in-memory world",
+        "gate": "H9",
+        "name": "load_continuation",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad"
+      }
+    },
+    "S1:climate_hydrology_finite": {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "results": 5,
+      "status": "pass",
+      "worst": {
+        "description": "Climate stats and hydrology fields finite at every checkpoint",
+        "gate": "S1",
+        "name": "climate_hydrology_finite",
+        "seed": 1,
+        "status": "pass",
+        "surface": "quad"
+      }
+    }
+  },
+  "line_baseline_findings": [],
+  "results": [
+    {
+      "audits": 41,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.006475,
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 30.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.006545,
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 60.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.007545,
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 120.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01131,
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 240.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01301,
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01253,
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 1,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "audits": 41,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.007265,
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 30.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00897,
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 60.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00921,
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 120.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.010445,
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 240.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.012495,
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.013515,
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 2,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "audits": 41,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00755,
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 30.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01032,
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 60.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.009135,
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 120.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01002,
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 240.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01052,
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.012285,
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 3,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "audits": 41,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00729,
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 30.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00819,
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 60.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00877,
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 120.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.010115,
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 240.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.013415,
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01263,
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 4,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "audits": 41,
+      "description": "Quad leaf topology valid: no overlapping or duplicate leaves, 2:1 balanced",
+      "gate": "H1",
+      "name": "quad_topology",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Quad neighbours in range, symmetric, and sharing an edge",
+      "gate": "H2",
+      "name": "quad_neighbours",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "No folded quad cells",
+      "gate": "H3",
+      "name": "quad_folded",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every field finite, correctly sized and within its caps; areas positive",
+      "gate": "H4",
+      "name": "fields",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Plate frames are proper rotations",
+      "gate": "H5",
+      "name": "frames",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Every populated derived cache equals a fresh rebuild; atmosphere grid fixed",
+      "gate": "H6",
+      "name": "derived_caches",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "audits": 41,
+      "description": "Local node-set / frame changes always bump topology / geometry revisions",
+      "gate": "H7",
+      "name": "revisions",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "description": "Elevation, Hc and Hm stay within their caps",
+      "gate": "H11",
+      "name": "field_caps",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "violations": 0
+    },
+    {
+      "checks": 6,
+      "description": "Save/load reproduces authoritative state and drops every derived index",
+      "gate": "H8",
+      "name": "load_round_trip",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "A step from the loaded world matches a step from the in-memory world",
+      "gate": "H9",
+      "name": "load_continuation",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "description": "No two quad nodes of one plate closer than 0.5 spacing",
+      "gate": "H10",
+      "name": "quad_no_stacked_nodes",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad"
+    },
+    {
+      "age_myr": 0.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00718,
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 30.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.00821,
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 60.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.009195,
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 120.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.0104,
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 240.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01155,
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "age_myr": 400.0,
+      "fail_above": 0.02,
+      "gate": "C3",
+      "name": "multiply_covered",
+      "quad": 0.01201,
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad",
+      "warn_above": 0.015
+    },
+    {
+      "description": "Climate stats and hydrology fields finite at every checkpoint",
+      "gate": "S1",
+      "name": "climate_hydrology_finite",
+      "seed": 5,
+      "status": "pass",
+      "surface": "quad"
+    }
+  ],
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "verdict": "pass"
+}
