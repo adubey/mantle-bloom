@@ -98,7 +98,7 @@ or merged. "Current" is what the line code does today; "Phase 3" is the proposed
 | `mantle_lithosphere_thickness_m` (Hm) | **Extensive** | interp / nearest + scaled with Hc / nearest | As Hc. Capped at `MAX_MANTLE_LITHOSPHERE_THICKNESS_M`. |
 | `crust_type_code` | Categorical (0 inherit / 1 oceanic / 2 continental) | nearest | Before voting, resolve `INHERIT` against the owning plate so a merge of two differently typed plates doesn't flip meaning. |
 | `lake_depth` | Extensive (water volume) | interp / nearest / nearest | Recomputed by hydrology every climate step, so conservation matters only within a step. |
-| `glacier_depth` | Extensive (ice volume) | interp / nearest / nearest | Coupled to the eustatic water budget (`ocean_water_column_m`), so transfers must conserve it. |
+| `glacier_depth` | Extensive (ice volume) | interp / nearest / nearest | Coupled to the eustatic water budget (`ocean_water_volume_m3`), so transfers must conserve it. |
 | `silt_depth` | Extensive, non-decreasing | interp / nearest / nearest | Only meaningful inside a lake. |
 | `soil_depth` | Extensive | interp / nearest / nearest | |
 | `coal_deposit_m`, `oil_gas_deposit_m`, `mineral_deposit_m` | Extensive, non-decreasing | interp / nearest / nearest | A remap must not make any node's value drop below what the same material held before, except where shear brings in different material (fault shear already accepts that). |
