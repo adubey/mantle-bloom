@@ -389,6 +389,15 @@ def test_quad_multiply_covered_uses_its_exact_cell_tolerance_not_the_line_outlin
     assert result["gates"]["C3:multiply_covered"]["worst"]["fail_above"] == gates.QUAD_MULTIPLY_COVERED_FAIL
 
 
+def test_quad_multiply_covered_gates_unpaired_checkpoints():
+    quad_only = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.05})])
+    assert _gate(gates.evaluate([(quad_only, None)]), "C3:multiply_covered") == gates.FAIL
+
+    lines = _run("lines", checkpoints=[_checkpoint(0.0)])
+    quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"coverage.multiply_covered": 0.05})])
+    assert _gate(gates.evaluate([(lines, None), (quad, None)]), "C3:multiply_covered") == gates.FAIL
+
+
 def test_conservation_drift_gap_is_banded():
     quad = _run("quad", checkpoints=[_checkpoint(0.0), _checkpoint(10.0, **{"totals.hc_volume_km3": 88.0})])
     assert _gate(gates.evaluate([(_run("lines"), None), (quad, None)]), "K1:hc_volume_km3_drift") == gates.FAIL

@@ -168,6 +168,20 @@ def run_gates(run: dict) -> list[dict]:
     if surface == "quad":
         stacked = [(_myr(c), c["sample_cloud"]["stacked"]) for c in run["checkpoints"] if c["sample_cloud"]["stacked"] > 0]
         results.append(_result("H10", "quad_no_stacked_nodes", FAIL if stacked else PASS, description="No two quad nodes of one plate closer than 0.5 spacing", first=stacked[0] if stacked else None))
+        for checkpoint in run["checkpoints"]:
+            age = _myr(checkpoint)
+            multiply = checkpoint["coverage"]["multiply_covered"]
+            if multiply is None:
+                results.append(_result("C3", "multiply_covered", INSUFFICIENT, age_myr=age))
+                continue
+            status = FAIL if multiply > QUAD_MULTIPLY_COVERED_FAIL else WARN if multiply > QUAD_MULTIPLY_COVERED_WARN else PASS
+            results.append(
+                _result(
+                    "C3", "multiply_covered", status, age_myr=age, quad=multiply,
+                    warn_above=QUAD_MULTIPLY_COVERED_WARN,
+                    fail_above=QUAD_MULTIPLY_COVERED_FAIL,
+                )
+            )
     finite = []
     for checkpoint in run["checkpoints"]:
         climate = checkpoint["climate_hydrology"]
@@ -214,19 +228,6 @@ def _coverage_gates(line: dict, quad: dict, age: float) -> list[dict]:
             continue
         status = FAIL if q > l + fail_margin else WARN if warn_margin is not None and q > l + warn_margin else PASS
         results.append(_result(gate, name, status, age_myr=age, quad=q, lines=l, fail_above=l + fail_margin))
-    multiply = quad["coverage"]["multiply_covered"]
-    if multiply is None:
-        results.append(_result("C3", "multiply_covered", INSUFFICIENT, age_myr=age))
-    else:
-        status = FAIL if multiply > QUAD_MULTIPLY_COVERED_FAIL else WARN if multiply > QUAD_MULTIPLY_COVERED_WARN else PASS
-        results.append(
-            _result(
-                "C3", "multiply_covered", status, age_myr=age, quad=multiply,
-                lines=line["coverage"]["multiply_covered"],
-                warn_above=QUAD_MULTIPLY_COVERED_WARN,
-                fail_above=QUAD_MULTIPLY_COVERED_FAIL,
-            )
-        )
     void = quad["coverage"]["void"]
     results.append(_result("C2", "void", FAIL if void is not None and void > VOID_FAIL else PASS, age_myr=age, quad=void, lines=line["coverage"]["void"], fail_above=VOID_FAIL))
     return results
