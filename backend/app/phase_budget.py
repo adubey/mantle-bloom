@@ -5,9 +5,9 @@ Gated entirely by `World.debug_diagnostics` (the same flag `World.log_corner_not
 uses) so it costs nothing on an ordinary world. Each call site that mutates crustal thickness
 (Hc) / mantle-lithosphere thickness (Hm) -- convergent/divergent deformation, arc magmatism,
 oceanic cooling relaxation, decompression melting, boundary growth/shrink, row claiming,
-regularization, plate merges/cleanup/relatticing, failed rifts, erosion -- calls `record()`
-with the same node slice's Hc/Hm (and `crust_type_code`) just before and just after that
-phase ran. `record()` accumulates the delta into `World.phase_budget[phase_name]`, broken out
+regularization, plate merges/cleanup/relatticing, failed rifts, erosion, the end-of-step cap
+clamp -- calls `record()` with the same node slice's Hc/Hm (and `crust_type_code`) just
+before and just after that phase ran. `record()` accumulates the delta into `World.phase_budget[phase_name]`, broken out
 by plate type (the owning plate's own `crust_type`) and by node type (`crust_type_code`,
 resolved via `elevation_lines.effective_is_continental_from_codes` -- a node can carry a type
 different from its plate's nominal one, e.g. an accreted terrane), so a run can separate a

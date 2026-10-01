@@ -227,8 +227,8 @@ Built for [GitHub issue #216](https://github.com/adubey/mantle-bloom/issues/216)
 ("Investigate long-run Hc/Hm decline"). Every mechanism that touches crustal thickness (Hc) /
 mantle-lithosphere thickness (Hm) -- convergent/divergent deformation, arc magmatism, oceanic
 cooling relaxation, decompression melting, boundary growth/shrink, row claiming,
-regularization, plate merges/cleanup/relatticing, failed rifts, erosion -- is individually
-instrumented (see [`phase_budget.py`](../backend/app/phase_budget.py)'s module docstring for
+regularization, plate merges/cleanup/relatticing, failed rifts, erosion, the end-of-step cap
+clamp -- is individually instrumented (see [`phase_budget.py`](../backend/app/phase_budget.py)'s module docstring for
 the full mechanism-to-call-site mapping). This tool turns that instrumentation on, steps the
 world forward, and reports the accumulated before/after node count and sum(Hc)/sum(Hm) per
 phase, split by both plate type (`crust_type`) and per-node type (`crust_type_code`) -- so a
