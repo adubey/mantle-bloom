@@ -892,14 +892,16 @@ def step_world_progress(world: World, years: float):
         # Whole-sphere coverage maintenance: spawn new oceanic crust into any region no plate
         # has reached in a long time (see gaps.py) -- e.g. ocean floor a fully-subducted
         # plate vacated with no neighbour left nearby to grow into it. Gated to the same
-        # cadence as defragment_plates above (a whole-world pass, not needed every step).
-        if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
+        # cadence as defragment_plates above (a whole-world pass, not needed every step) on
+        # line worlds; every step on quad worlds -- see gaps.gap_fill_due.
+        if gaps.gap_fill_due(world):
             for message in gaps.fill_gaps_by_growing_neighbours(world):
                 world.log_event(message)
-            # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
-            # world.gap_tracks against this step's uncovered-lattice clusters at the same
-            # cadence as fill_gaps_by_growing_neighbours above, since both are the same
-            # whole-sphere sweep -- see gaps.reconcile_gap_tracks.
+        # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
+        # world.gap_tracks against this step's uncovered-lattice clusters -- the same
+        # whole-sphere sweep as fill_gaps_by_growing_neighbours, kept on the interval on every
+        # surface since nothing in the physics reads it -- see gaps.reconcile_gap_tracks.
+        if world.steps_taken % gaps.GAP_FILL_INTERVAL_STEPS == 0:
             gaps.reconcile_gap_tracks(world)
         # Lateral magma transport (GitHub issue #205, magma_transport.py): another whole-sphere
         # pass, so gated the same way and (deliberately) placed after topology has fully

@@ -157,6 +157,28 @@ def test_reconcile_gap_tracks_surfaces_a_cluster_smaller_than_min_gap_nodes(monk
     assert gaps.fill_gaps_by_growing_neighbours(world) == []
 
 
+# -- gap_fill_due --------------------------------------------------------------------------
+
+
+def test_gap_fill_due_keeps_the_interval_on_line_worlds():
+    world = _small_world()
+    due = []
+    for steps_taken in range(2 * gaps.GAP_FILL_INTERVAL_STEPS):
+        world.steps_taken = steps_taken
+        due.append(gaps.gap_fill_due(world))
+    assert due == [s % gaps.GAP_FILL_INTERVAL_STEPS == 0 for s in range(2 * gaps.GAP_FILL_INTERVAL_STEPS)]
+
+
+def test_gap_fill_due_every_step_on_quad_worlds():
+    """Issue #259: quad retreat drops cells immediately, so waiting for the interval lets the
+    represented area (and with it sea level) sawtooth."""
+    plates = generate_plates(seed=1, num_plates=4, node_density=0.5, surface="quad")
+    world = World(seed=1, plates=plates, next_plate_id=len(plates), node_density=0.5, mantle_centers=[])
+    for steps_taken in range(gaps.GAP_FILL_INTERVAL_STEPS):
+        world.steps_taken = steps_taken
+        assert gaps.gap_fill_due(world)
+
+
 # -- fill_gaps_by_growing_neighbours -------------------------------------------------------
 
 
