@@ -28,8 +28,8 @@ stale-cache fallback below. Every *other* stat here (`elevation_*`, `ocean_depth
 temperature stats, `biome_land_fraction`/`biome_ocean_fraction`) deliberately keeps reading
 the narrower `is_land`/`is_ocean` split unchanged -- a lake sitting over dry-land elevation
 isn't ocean bathymetry, and biome classification has no separate "lake" class to route it to.
-Fractions are a plain count over grid cells, not cos(lat)-weighted -- the climate grid is a
-plain equirectangular lattice, not an equal-area projection, so this is an approximation.
+All spatial fractions, means, and standard deviations derived from that equirectangular
+climate grid use exact spherical-strip area weights. Extrema remain ordinary extrema.
 
 `elevation_*_m` covers land cells only (height above sea level); `ocean_depth_*_m` is the
 mirror for ocean cells (positive depth below sea level, i.e. `sea_level_m - elevation`) --
@@ -131,10 +131,16 @@ class Stat4:
     std: float | None
 
     @classmethod
-    def of(cls, values: np.ndarray) -> "Stat4":
+    def of(cls, values: np.ndarray, weights: np.ndarray | None = None) -> "Stat4":
         if values.size == 0:
             return cls(None, None, None, None)
-        return cls(float(values.min()), float(values.max()), float(values.mean()), float(values.std()))
+        if weights is None:
+            mean = float(values.mean())
+            variance = float(values.var())
+        else:
+            mean = float(np.average(values, weights=weights))
+            variance = float(np.average((values - mean) ** 2, weights=weights))
+        return cls(float(values.min()), float(values.max()), mean, float(np.sqrt(variance)))
 
     def to_dict(self, prefix: str, suffix: str = "") -> dict:
         """`{prefix}_min{suffix}`/`_max{suffix}`/`_mean{suffix}`/`_std{suffix}` -- matches the
@@ -145,6 +151,36 @@ class Stat4:
             f"{prefix}_mean{suffix}": self.mean,
             f"{prefix}_std{suffix}": self.std,
         }
+def _spherical_area_weights(lat_deg: np.ndarray, width: int) -> np.ndarray:
+    """Relative cell areas for a full-globe equirectangular grid.
+
+    Latitude values are row centers, ordered north-to-south as in ``climate._build_grid``.
+    Boundaries lie halfway between adjacent centers, with the outer boundaries at the
+    poles. The area of a spherical strip is proportional to ``sin(north) - sin(south)``;
+    equal-width longitude cells therefore share that row weight. The common radius and
+    longitude-width factors cancel from every normalized statistic.
+    """
+    lat_deg = np.asarray(lat_deg, dtype=float)
+    if lat_deg.ndim != 1 or lat_deg.size == 0:
+        raise ValueError("lat_deg must be a non-empty one-dimensional array")
+    if width <= 0:
+        raise ValueError("width must be positive")
+    boundaries_deg = np.empty(lat_deg.size + 1, dtype=float)
+    boundaries_deg[0] = 90.0
+    boundaries_deg[-1] = -90.0
+    boundaries_deg[1:-1] = 0.5 * (lat_deg[:-1] + lat_deg[1:])
+    row_weights = np.sin(np.radians(boundaries_deg[:-1])) - np.sin(np.radians(boundaries_deg[1:]))
+    if np.any(row_weights <= 0.0):
+        raise ValueError("lat_deg must be strictly ordered north-to-south")
+    return np.broadcast_to(row_weights[:, None], (lat_deg.size, width))
+
+
+def _weighted_fraction(mask: np.ndarray, weights: np.ndarray) -> float:
+    if np.all(mask):
+        return 1.0
+    if not np.any(mask):
+        return 0.0
+    return float(weights[mask].sum() / weights.sum())
 
 
 # How far below sea level an ordinary endorheic desert basin can plausibly sit -- Earth's most
@@ -207,11 +243,13 @@ def compute_stats(world: World) -> dict:
     hc_stats = Stat4.of(hc)
     hm_stats = Stat4.of(hm)
     fields = climate.compute_climate_cached(world)
+    area_weights = _spherical_area_weights(fields.lat_deg, fields.elevation_m.shape[1])
     is_ocean, is_land = _reconcile_land_ocean(fields, world.sea_level_m)
     is_water = _is_water(fields, is_ocean)
-    total = is_ocean.size
 
-    elevation_stats = Stat4.of(fields.elevation_m[is_land])
+    land_weights = area_weights[is_land]
+    ocean_weights = area_weights[is_ocean]
+    elevation_stats = Stat4.of(fields.elevation_m[is_land], land_weights)
     # Use the same reconciled land mask as the elevation stats. Measure the 5% band
     # relative to sea level, including its lower boundary; abs also handles worlds
     # whose highest land is a below-sea-level endorheic basin.
@@ -219,31 +257,32 @@ def compute_stats(world: World) -> dict:
     land_near_max_elevation_fraction = None
     if land_height.size:
         peak = float(land_height.max())
-        land_near_max_elevation_fraction = float(np.mean(land_height >= peak - 0.05 * abs(peak)))
+        near_peak = land_height >= peak - 0.05 * abs(peak)
+        land_near_max_elevation_fraction = float(land_weights[near_peak].sum() / land_weights.sum())
 
     ocean_depth = world.sea_level_m - fields.elevation_m[is_ocean]
-    ocean_depth_stats = Stat4.of(ocean_depth)
-    land_temp_stats = Stat4.of(fields.land_temperature_c[is_land])
-    air_temp_stats = Stat4.of(fields.air_temperature_c[is_land])
-    ocean_temp_stats = Stat4.of(fields.ocean_temperature_c[is_ocean])
-    precip_stats = Stat4.of(fields.precipitation_mm)
+    ocean_depth_stats = Stat4.of(ocean_depth, ocean_weights)
+    land_temp_stats = Stat4.of(fields.land_temperature_c[is_land], land_weights)
+    air_temp_stats = Stat4.of(fields.air_temperature_c[is_land], land_weights)
+    ocean_temp_stats = Stat4.of(fields.ocean_temperature_c[is_ocean], ocean_weights)
+    precip_stats = Stat4.of(fields.precipitation_mm.ravel(), area_weights.ravel())
 
     land_area_m2, continental_crust_volume_m3, land_node_count = _total_land_area_and_continental_volume(world)
     elevation_point_count = sum(p.node_count() for p in world.plates)
 
     land_biome_ids = fields.biome_ids[is_land]
-    n_land = int(is_land.sum())
+    land_weight = float(land_weights.sum())
     biome_land_fraction = {
-        name: float(np.count_nonzero(land_biome_ids == i)) / n_land
+        name: float(land_weights[land_biome_ids == i].sum()) / land_weight
         for i, name in enumerate(biomes.BIOME_NAMES)
-        if i not in biomes.OCEAN_IDS and n_land > 0
+        if i not in biomes.OCEAN_IDS and land_weight > 0.0
     }
     ocean_biome_ids = fields.biome_ids[is_ocean]
-    n_ocean = int(is_ocean.sum())
+    ocean_weight = float(ocean_weights.sum())
     biome_ocean_fraction = {
-        name: float(np.count_nonzero(ocean_biome_ids == i)) / n_ocean
+        name: float(ocean_weights[ocean_biome_ids == i].sum()) / ocean_weight
         for i, name in enumerate(biomes.BIOME_NAMES)
-        if i in biomes.OCEAN_IDS and n_ocean > 0
+        if i in biomes.OCEAN_IDS and ocean_weight > 0.0
     }
 
     return {
@@ -257,8 +296,8 @@ def compute_stats(world: World) -> dict:
         "sea_level_m": world.sea_level_m,
         "total_land_area_km2": land_area_m2 / 1.0e6,
         "total_continental_crust_volume_km3": continental_crust_volume_m3 / 1.0e9,
-        "land_fraction": float((~is_water).sum()) / total,
-        "ocean_fraction": float(is_water.sum()) / total,
+        "land_fraction": _weighted_fraction(~is_water, area_weights),
+        "ocean_fraction": _weighted_fraction(is_water, area_weights),
         # A raw `elevation > sea_level_m` node count (see `_total_land_area_and_continental_
         # volume`'s docstring) -- unlike `land_fraction` above, not connectivity-aware (an
         # enclosed sub-sea-level pit with no lake fill yet still counts as land here) and not

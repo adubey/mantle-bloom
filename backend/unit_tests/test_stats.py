@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from app import lithosphere, stats
+from app import climate, lithosphere, stats
 from app.elevation_lines import line_spacing_rad
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world
@@ -13,11 +13,60 @@ def _all_ocean_world() -> World:
     return World(seed=0, plates=[plate])
 
 
+@pytest.mark.parametrize("climate_density", [0.5, 2.0])
+def test_spherical_area_weights_match_analytic_latitude_band(climate_density):
+    height, width = climate.grid_dimensions(climate_density)
+    lat_deg, _, _ = climate._build_grid(height, width)
+    weights = stats._spherical_area_weights(lat_deg, width)
+
+    # Choose boundaries that coincide exactly with this grid at both tested resolutions.
+    band = (lat_deg <= 30.0) & (lat_deg >= -30.0)
+    actual = weights[band].sum() / weights.sum()
+    expected = (np.sin(np.radians(30.0)) - np.sin(np.radians(-30.0))) / 2.0
+    assert actual == pytest.approx(expected, abs=1e-12)
+
+
+@pytest.mark.parametrize("climate_density", [0.5, 2.0])
+def test_equal_cell_counts_at_equator_and_pole_use_physical_area(climate_density):
+    height, width = climate.grid_dimensions(climate_density)
+    lat_deg, _, _ = climate._build_grid(height, width)
+    weights = stats._spherical_area_weights(lat_deg, width)
+    cell_count = width // 4
+
+    equatorial = np.zeros((height, width), dtype=bool)
+    polar = np.zeros_like(equatorial)
+    equatorial[np.argmin(np.abs(lat_deg)), :cell_count] = True
+    polar[0, :cell_count] = True
+
+    assert equatorial.sum() == polar.sum()
+    assert weights[equatorial].sum() > weights[polar].sum()
+
+
+def test_weighted_summary_preserves_extrema_and_weights_mean_and_std():
+    values = np.array([0.0, 10.0])
+    weights = np.array([3.0, 1.0])
+    summary = stats.Stat4.of(values, weights)
+    assert summary.min == 0.0
+    assert summary.max == 10.0
+    assert summary.mean == pytest.approx(2.5)
+    assert summary.std == pytest.approx(np.sqrt(18.75))
+
+
 def test_compute_stats_land_and_ocean_fractions_sum_to_one():
     world = _all_ocean_world()
     result = stats.compute_stats(world)
     assert result["land_fraction"] == 0.0
     assert result["ocean_fraction"] == 1.0
+
+
+def test_compute_stats_all_land_is_exactly_one():
+    world = _all_ocean_world()
+    for plate in world.plates:
+        for line in plate.lines:
+            line.elevation[:] = 500.0
+    result = stats.compute_stats(world)
+    assert result["land_fraction"] == 1.0
+    assert result["ocean_fraction"] == 0.0
 
 
 def test_compute_stats_land_temperature_none_for_all_ocean_world():
@@ -170,12 +219,14 @@ def test_compute_stats_biome_land_fraction_reads_the_stored_climate_cache_biome_
 
     biome_ids = world.climate_cache.biome_ids
     is_land = ~world.climate_cache.is_ocean
+    weights = stats._spherical_area_weights(world.climate_cache.lat_deg, biome_ids.shape[1])
     land_biome_ids = biome_ids[is_land]
-    n_land = int(is_land.sum())
+    land_weights = weights[is_land]
+    land_weight = float(land_weights.sum())
     expected = {
-        name: float(np.count_nonzero(land_biome_ids == i)) / n_land
+        name: float(land_weights[land_biome_ids == i].sum()) / land_weight
         for i, name in enumerate(biomes.BIOME_NAMES)
-        if i not in biomes.OCEAN_IDS and n_land > 0
+        if i not in biomes.OCEAN_IDS and land_weight > 0.0
     }
     assert result["biome_land_fraction"] == expected
 
@@ -248,14 +299,15 @@ def test_land_near_max_elevation_fraction(monkeypatch, heights, sea_level, expec
     # Stub the climate grid so the exact 95% boundary is not blurred by resampling.
     # Deliberately stale ocean labels on peaks must be reconciled before counting.
     fields = SimpleNamespace(
-        elevation_m=height + sea_level,
-        is_ocean=height > 0,
-        lake_depth_m=np.zeros(height.size),
-        land_temperature_c=np.zeros(height.size),
-        air_temperature_c=np.zeros(height.size),
-        ocean_temperature_c=np.zeros(height.size),
-        precipitation_mm=np.zeros(height.size),
-        biome_ids=np.zeros(height.size, dtype=int),
+        lat_deg=np.array([0.0]),
+        elevation_m=(height + sea_level)[None, :],
+        is_ocean=(height > 0)[None, :],
+        lake_depth_m=np.zeros((1, height.size)),
+        land_temperature_c=np.zeros((1, height.size)),
+        air_temperature_c=np.zeros((1, height.size)),
+        ocean_temperature_c=np.zeros((1, height.size)),
+        precipitation_mm=np.zeros((1, height.size)),
+        biome_ids=np.zeros((1, height.size), dtype=int),
     )
     monkeypatch.setattr(stats.climate, "compute_climate_cached", lambda world: fields)
     world = _all_ocean_world()
