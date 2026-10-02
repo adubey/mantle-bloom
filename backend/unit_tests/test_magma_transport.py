@@ -17,6 +17,7 @@ def _dest_index(xyz, hc, plate_id=None, flat_index=None):
         np.zeros(n, dtype=int) if plate_id is None else plate_id,
         np.arange(n) if flat_index is None else flat_index,
         np.asarray(hc, dtype=float),
+        np.full(n, lithosphere.node_area_m2(line_spacing_rad(1.0))),
     )
 
 

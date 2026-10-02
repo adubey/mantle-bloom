@@ -859,6 +859,10 @@ def deform_columns(
     # below, so every intermediate checkpoint below reuses it for both before/after.
     codes0 = fields["crust_type_code"]
     checkpoint_hc, checkpoint_hm = (hc.copy(), hm.copy()) if world.debug_diagnostics else (None, None)
+    # Every phase below changes columns in place on the same nodes, so before and after share
+    # each node's area (issue #257: per-cell on quad plates).
+    budget_area_m2 = np.broadcast_to(node_area_m2, hc.shape)
+    budget_areas = {"area_before_m2": budget_area_m2, "area_after_m2": budget_area_m2}
     # Isostasy-driven elevation change is applied as a *delta* on top of whatever
     # elevation already holds (elevation_before -> below), not a wholesale overwrite
     # -- erosion.py (run later this same step_world call, and every step
@@ -977,7 +981,7 @@ def deform_columns(
             hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
 
     if world.debug_diagnostics:
-        phase_budget.record(world, plate, "convergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+        phase_budget.record(world, plate, "convergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0, **budget_areas)
         checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
 
     # Continental arc magmatism: an oceanic slab subducting under this margin fluxes
@@ -993,7 +997,7 @@ def deform_columns(
         )
 
     if world.debug_diagnostics:
-        phase_budget.record(world, plate, "arc_magmatism", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+        phase_budget.record(world, plate, "arc_magmatism", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0, **budget_areas)
         checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
 
     prior_hc = hc.copy()
@@ -1025,7 +1029,7 @@ def deform_columns(
             )
 
     if world.debug_diagnostics:
-        phase_budget.record(world, plate, "divergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+        phase_budget.record(world, plate, "divergent_deformation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0, **budget_areas)
         checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
 
     prior_age = fields["divergent_age_myr"]
@@ -1033,7 +1037,7 @@ def deform_columns(
     if plate.crust_type == "oceanic":
         hm = rheology.relax_young_oceanic_mantle_lithosphere(hm, new_age, years_myr)
         if world.debug_diagnostics:
-            phase_budget.record(world, plate, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0)
+            phase_budget.record(world, plate, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0, **budget_areas)
             checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()
 
     is_volcano = fields["is_volcano"].copy()
@@ -1050,7 +1054,7 @@ def deform_columns(
     # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
     # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
     _erupt_melted_nodes(world, plate.plate_id, rng_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, elevation)
-    phase_budget.record(world, plate, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code)
+    phase_budget.record(world, plate, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code, **budget_areas)
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, is_volcano, volcano_remaining, newly_below_rift_onset)
 
     # Transform (strike-slip) pressure-ridge uplift: a modest, always-transpressional
@@ -1261,15 +1265,15 @@ class LithospherePlate(PlateWithLines):
             # this plate's own node population at its own (plate-level, not per-line) expense
             # -- snapshotted via `self.collect(...)` around each call rather than per-line
             # since neither operates line-by-line.
-            before_claim = phase_budget.snapshot(self) if world.debug_diagnostics else None
+            before_claim = phase_budget.snapshot(self, spacing_rad) if world.debug_diagnostics else None
             self._claim_adjacent_territory(world, neighbours, spacing_rad, neighbour_tree=neighbour_tree)
             if world.debug_diagnostics:
-                after_claim = phase_budget.snapshot(self)
-                phase_budget.record(world, self, "adjacent_row_claim", *before_claim, *after_claim)
+                after_claim = phase_budget.snapshot(self, spacing_rad)
+                phase_budget.record_snapshots(world, self, "adjacent_row_claim", before_claim, after_claim)
             self._fill_corner_notch_frontier(world, neighbours, spacing_rad, years, neighbour_tree=neighbour_tree)
             if world.debug_diagnostics:
-                after_notch = phase_budget.snapshot(self)
-                phase_budget.record(world, self, "corner_notch_fill", *after_claim, *after_notch)
+                after_notch = phase_budget.snapshot(self, spacing_rad)
+                phase_budget.record_snapshots(world, self, "corner_notch_fill", after_claim, after_notch)
 
         for line_index, line in enumerate(self.lines):
             if needs_regularizing(line, spacing_rad):

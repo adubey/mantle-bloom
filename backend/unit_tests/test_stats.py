@@ -4,7 +4,7 @@ import pytest
 from app import lithosphere, stats
 from app.elevation_lines import line_spacing_rad
 from app.plates import ElevationLine, PlateWithLines
-from app.world import World
+from app.world import World, generate_world
 
 
 def _all_ocean_world() -> World:
@@ -63,9 +63,9 @@ def test_compute_stats_total_land_area_and_continental_volume_are_zero_for_all_o
 
 
 def test_compute_stats_total_continental_crust_volume_matches_hand_computed_sum():
-    # One continental plate, every node holding a known Hc -- total volume should be exactly
-    # node_area_m2 * sum(Hc), converted to km^3, regardless of how that Hc happens to be
-    # distributed across nodes (see _total_land_area_and_continental_volume's own docstring).
+    # One continental line plate, every node holding a known Hc -- total volume should be
+    # exactly node_area_m2 * sum(Hc), converted to km^3: line plates weight every node by the
+    # nominal area (see Plate.accounting_areas_m2).
     n = 20
     hc = np.linspace(20_000.0, 40_000.0, n)
     line = ElevationLine(
@@ -81,6 +81,21 @@ def test_compute_stats_total_continental_crust_volume_matches_hand_computed_sum(
     assert result["total_continental_crust_volume_km3"] == pytest.approx(expected_km3)
     # Every node here sits above the default sea_level_m=0.0, so the whole plate is land.
     assert result["total_land_area_km2"] == pytest.approx(n * area_m2 / 1.0e6)
+
+
+def test_total_land_area_uses_each_quad_cells_own_area():
+    # Issue #257: quad cells are not equal-area, so land area is the sum of the land cells'
+    # own areas, not land-node count times the nominal area.
+    world = generate_world(seed=5, num_plates=5, surface="quad")
+    land_area = 0.0
+    for plate in world.plates:
+        nodes = plate.surface_nodes("elevation")
+        land_area += float(nodes.area_m2[nodes.fields["elevation"] > world.sea_level_m].sum())
+    land_area_m2, _, land_nodes = stats._total_land_area_and_continental_volume(world)
+    assert land_nodes > 0
+    assert land_area_m2 == pytest.approx(land_area)
+    nominal = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+    assert land_area_m2 != pytest.approx(land_nodes * nominal, rel=1e-3)
 
 
 def test_compute_stats_biome_land_fraction_excludes_ocean_and_sums_to_one():

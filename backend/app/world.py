@@ -8,7 +8,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
-from .elevation_lines import DEFAULT_NODE_DENSITY
+from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
 from .plates import Plate, gather_node_positions, query_workers
@@ -365,13 +365,13 @@ class World:
     # /world/render and /world/stats reflect it right away, without waiting for a step.
     sea_level_m: float = 0.0
     # Eustatic sea level (see eustasy.py). `sea_level_m` above is no longer a fixed input --
-    # `step_world` re-solves it every step so it tracks the ocean volume this conserved
-    # water-column budget represents against the world's changing hypsometry (deeper basins /
-    # drowned continents -> lower stand). `None` until first initialized (a freshly built
-    # World, or a save written before eustasy existed); `eustasy.initialize_water_budget`
-    # snapshots it from the flat starting sea level at generation. The `/world/controls`
-    # slider sets this budget rather than `sea_level_m` directly (adds/removes ocean water).
-    ocean_water_column_m: float | None = None
+    # `step_world` re-solves it every step so it tracks this conserved water volume (m^3)
+    # against the world's changing hypsometry (deeper basins / drowned continents -> lower
+    # stand). `None` until first initialized (a freshly built World, or a save written before
+    # the budget was kept in m^3); `eustasy.initialize_water_budget` snapshots it from the flat
+    # starting sea level at generation. The `/world/controls` slider sets this budget rather
+    # than `sea_level_m` directly (adds/removes ocean water).
+    ocean_water_volume_m3: float | None = None
     solar_multiplier: float = 1.0
     # The "Ice Age Frequency" Controls slider (Climate tab): the full period, in years, of a
     # slow glacial<->interglacial temperature oscillation driven purely by `elapsed_years`.
@@ -772,10 +772,11 @@ def _clamp_column_caps(world: World) -> None:
     """`lithosphere.clamp_column_caps` on every plate, booking what it adds or removes under the
     "column_cap_clamp" phase of `World.phase_budget` -- nonzero there means some writer
     upstream left a column outside its caps this step."""
+    spacing_rad = line_spacing_rad(world.node_density)
     for plate in world.plates:
-        before = phase_budget.snapshot(plate) if world.debug_diagnostics else None
+        before = phase_budget.snapshot(plate, spacing_rad) if world.debug_diagnostics else None
         if lithosphere.clamp_column_caps(plate) and before is not None:
-            phase_budget.record(world, plate, "column_cap_clamp", *before, *phase_budget.snapshot(plate))
+            phase_budget.record_snapshots(world, plate, "column_cap_clamp", before, phase_budget.snapshot(plate, spacing_rad))
 
 
 def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
@@ -942,15 +943,15 @@ def step_world_progress(world: World, years: float):
         # each plate around the one whole-world call rather than threading instrumentation
         # into erosion.py itself.
         if world.debug_diagnostics:
-            before_erosion = {p.plate_id: phase_budget.snapshot(p) for p in world.plates}
+            spacing_rad = line_spacing_rad(world.node_density)
+            before_erosion = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         if world.debug_diagnostics:
             for plate in world.plates:
                 before = before_erosion.get(plate.plate_id)
                 if before is None:
                     continue
-                after_hc, after_hm, after_codes = phase_budget.snapshot(plate)
-                phase_budget.record(world, plate, "erosion", *before, after_hc, after_hm, after_codes)
+                phase_budget.record_snapshots(world, plate, "erosion", before, phase_budget.snapshot(plate, spacing_rad))
         world.erosion_cache = erosion_result
     if world.simulate_plate_movement:
         volcanism.apply_volcanic_activity(world, years)

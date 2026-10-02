@@ -160,11 +160,11 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
     plate.set_fields_on_plate(**columns)
 
     max_cells = max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(world.node_density)))
-    before = phase_budget.snapshot(plate) if world.debug_diagnostics else None
+    before = phase_budget.snapshot(plate, spacing_rad) if world.debug_diagnostics else None
     survivors = _retreat(plate, world, ctx, max_distance, max_cells)
     if world.debug_diagnostics:
-        after = phase_budget.snapshot(plate)
-        phase_budget.record(world, plate, "boundary_retreat", *before, *after)
+        after = phase_budget.snapshot(plate, spacing_rad)
+        phase_budget.record_snapshots(world, plate, "boundary_retreat", before, after)
         before = after
 
     if not ctx.suppress_growth:
@@ -175,7 +175,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         )
         _advance(plate, world, ctx, survivors, growth_neighbours, spacing_rad, max_cells)
         if world.debug_diagnostics:
-            phase_budget.record(world, plate, "boundary_advance", *before, *phase_budget.snapshot(plate))
+            phase_budget.record_snapshots(world, plate, "boundary_advance", before, phase_budget.snapshot(plate, spacing_rad))
 
 
 def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distance: float, max_cells: int) -> np.ndarray:

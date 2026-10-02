@@ -275,9 +275,9 @@ def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarra
     actual radius `R`), so the whole-plate drag torque `sum_i (R p_i) x F_i` is affine in
     `omega`:
 
-        K = c * sum_i (I3 - p_i p_i^T)      -- symmetric, positive-semidefinite
-        b = c * sum_i p_i x flow_i          -- `flow_i` = mantle.flow_at, this codebase's rad/yr units
-        c = (mu / d_s) * A * R^2 / SECONDS_PER_YEAR
+        K = sum_i c_i (I3 - p_i p_i^T)      -- symmetric, positive-semidefinite
+        b = sum_i c_i p_i x flow_i          -- `flow_i` = mantle.flow_at, this codebase's rad/yr units
+        c_i = (mu / d_s) * A_i * R^2 / SECONDS_PER_YEAR
 
     (`c`'s `R^2 / SECONDS_PER_YEAR` folds in the two rad/yr-to-m/s conversions (`v_mantle_i` and
     `v_plate_i` each contribute one power of `R / SECONDS_PER_YEAR`) plus the `R` lever arm;
@@ -291,15 +291,16 @@ def basal_drag_coefficients(plate, world, spacing_rad: float) -> tuple[np.ndarra
     own_points, _ = plate.all_points_and_elevation()
     if len(own_points) == 0:
         return np.zeros(3), np.zeros((3, 3))
+    # (N,) -- `c` above per node, each with its own area `A_i` (`plate.accounting_areas_m2`).
     c = (
         (ASTHENOSPHERE_VISCOSITY_PA_S / SHEAR_ZONE_THICKNESS_M)
-        * lithosphere.node_area_m2(spacing_rad)
+        * plate.accounting_areas_m2(spacing_rad)
         * lithosphere.PLANET_RADIUS_M**2
         / SECONDS_PER_YEAR
     )
     flow = mantle.flow_at(own_points, world.mantle_centers)
-    b = c * np.cross(own_points, flow).sum(axis=0)
-    k = c * (len(own_points) * np.eye(3) - np.einsum("ni,nj->nij", own_points, own_points).sum(axis=0))
+    b = np.einsum("n,ni->i", c, np.cross(own_points, flow))
+    k = c.sum() * np.eye(3) - np.einsum("n,ni,nj->ij", c, own_points, own_points)
     return b, k
 
 
@@ -350,9 +351,9 @@ def collision_drag_coefficients(
         COLLISION_FRICTION_REFERENCE_PA
         * (1.0 + OVERLAP_FRICTION_SEVERITY_GAIN * overlap_severity)
         * (1.0 + COLLISION_RELIEF_FRICTION_GAIN * relief_factor)
-    )  # (k,) -- one coefficient per contested node, same role `basal_drag_coefficients`' single
-    # scalar `c` plays, just node-varying here since relief varies node to node.
-    c = reference_pa * lithosphere.node_area_m2(spacing_rad) * lithosphere.PLANET_RADIUS_M**2 / SECONDS_PER_YEAR
+    )  # (k,) -- one coefficient per contested node, varying with each node's relief.
+    area_m2 = plate.accounting_areas_m2(spacing_rad)[collision_mask]
+    c = reference_pa * area_m2 * lithosphere.PLANET_RADIUS_M**2 / SECONDS_PER_YEAR
     raw_neighbor = np.cross(neighbor_omega, own_points)  # rad/yr-equivalent, not yet real m/s -- see basal_drag_coefficients
     b = np.einsum("n,ni->i", c, np.cross(own_points, raw_neighbor))
     k = np.einsum("n,nij->ij", c, np.eye(3)[None, :, :] - np.einsum("ni,nj->nij", own_points, own_points))
@@ -528,7 +529,9 @@ def shift_plate(plate, world, other_plates: list, years: float) -> float:
     subducting = subducting_boundary_mask(plate, inputs, reach_rad)
 
     rho_c = lithosphere.node_crust_density(inputs.own_crust_type_codes, plate.crust_type)
-    inertia = lithosphere.moment_of_inertia_tensor(inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad)
+    inertia = lithosphere.moment_of_inertia_tensor(
+        inputs.own_points, inputs.own_hc, inputs.own_hm, rho_c, spacing_rad, area_m2=plate.accounting_areas_m2(spacing_rad)
+    )
 
     # A deeper/wider overlap should brake a collision harder, not just proportionally more
     # (more contested nodes already sum to a bigger torque) -- see collision_drag_coefficients'

@@ -72,7 +72,7 @@ def budget_summary(world) -> dict:
         s = entry["scopes"]["all"]
         out[phase] = {
             "d_nodes": s["count_after"] - s["count_before"],
-            "d_sum_hc_km": (s["sum_hc_after"] - s["sum_hc_before"]) / 1e3,
+            "d_hc_volume_km3": (s["hc_volume_after_m3"] - s["hc_volume_before_m3"]) / 1e9,
         }
     return out
 
@@ -104,7 +104,7 @@ def main() -> int:
                 print(surface, json.dumps(row), flush=True)
         report[surface] = {"rows": rows, "phase_budget": budget_summary(world)}
         for phase, v in sorted(report[surface]["phase_budget"].items()):
-            print(f"  {surface:5s} {phase:32s} d_nodes={v['d_nodes']:>9.0f}  d_sum_hc_km={v['d_sum_hc_km']:>12.1f}")
+            print(f"  {surface:5s} {phase:32s} d_nodes={v['d_nodes']:>9.0f}  d_hc_volume_km3={v['d_hc_volume_km3']:>14.1f}")
     if args.out:
         args.out.write_text(json.dumps(report, indent=2))
     return 0

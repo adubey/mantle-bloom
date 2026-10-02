@@ -130,12 +130,14 @@ class _ContinentalNodeIndex:
         plate_id: np.ndarray,
         flat_index: np.ndarray,
         hc_m: np.ndarray,
+        area_m2: np.ndarray,
     ) -> None:
         self.tree = cKDTree(xyz) if len(xyz) > 0 else None
         self.xyz = xyz
         self.plate_id = plate_id
         self.flat_index = flat_index
         self.hc_m = hc_m
+        self.area_m2 = area_m2  # each node's `Plate.accounting_areas_m2`
 
     def __len__(self) -> int:
         return len(self.xyz)
@@ -145,7 +147,8 @@ def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
     """Build a surface-order-addressable index, pre-filtered to continental nodes (this
     pass's destinations are never oceanic -- an oceanic destination is just ordinary seafloor
     volcanism, not the land-fraction fix this exists for)."""
-    xyz_chunks, plate_id_chunks, flat_index_chunks, hc_chunks = [], [], [], []
+    spacing_rad = line_spacing_rad(world.node_density)
+    xyz_chunks, plate_id_chunks, flat_index_chunks, hc_chunks, area_chunks = [], [], [], [], []
     for plate in world.plates:
         own_points, _ = plate.all_points_and_elevation()
         if len(own_points) == 0:
@@ -160,13 +163,15 @@ def _build_continental_node_index(world: "World") -> _ContinentalNodeIndex:
         plate_id_chunks.append(np.full(int(np.count_nonzero(is_continental)), plate.plate_id))
         flat_index_chunks.append(np.flatnonzero(is_continental))
         hc_chunks.append(hc[is_continental])
+        area_chunks.append(plate.accounting_areas_m2(spacing_rad)[is_continental])
     if not xyz_chunks:
-        return _ContinentalNodeIndex(np.zeros((0, 3)), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0))
+        return _ContinentalNodeIndex(np.zeros((0, 3)), np.zeros(0, dtype=int), np.zeros(0, dtype=int), np.zeros(0), np.zeros(0))
     return _ContinentalNodeIndex(
         np.concatenate(xyz_chunks, axis=0),
         np.concatenate(plate_id_chunks),
         np.concatenate(flat_index_chunks),
         np.concatenate(hc_chunks),
+        np.concatenate(area_chunks),
     )
 
 
@@ -222,8 +227,6 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
         world.pending_magma_parcels = [p for p in parcels if p.unplaced_cycles < MAGMA_PARCEL_MAX_AGE_CYCLES]
         return []
 
-    spacing_rad = line_spacing_rad(world.node_density)
-    node_area_m2 = lithosphere.node_area_m2(spacing_rad)
     range_rad = MAGMA_TRANSPORT_RANGE_KM / PLANET_RADIUS_KM
 
     parcel_origins = np.array([p.origin_xyz for p in parcels])
@@ -238,7 +241,8 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
         sum_weight_per_parcel = np.zeros(len(parcels))
         np.add.at(sum_weight_per_parcel, parcel_idx, weight)
         share = weight / sum_weight_per_parcel[parcel_idx]
-        requested_hc = parcel_volume[parcel_idx] * share / node_area_m2
+        pair_area_m2 = dest_index.area_m2[dest_idx]
+        requested_hc = parcel_volume[parcel_idx] * share / pair_area_m2
 
         total_requested_hc = np.zeros(len(dest_index))
         np.add.at(total_requested_hc, dest_idx, requested_hc)
@@ -260,7 +264,7 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
         ratio_at_dest = np.where(total_requested_hc > 0.0, realized_at_dest / safe_total, 0.0)
 
         realized_hc_per_pair = requested_hc * ratio_at_dest[dest_idx]
-        np.add.at(placed_per_parcel, parcel_idx, realized_hc_per_pair * node_area_m2)
+        np.add.at(placed_per_parcel, parcel_idx, realized_hc_per_pair * pair_area_m2)
 
         deposit_mask = realized_at_dest > 0.0
         n_deposited = int(np.count_nonzero(deposit_mask))

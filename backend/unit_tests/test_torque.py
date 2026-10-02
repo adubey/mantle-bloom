@@ -20,6 +20,9 @@ def test_basal_drag_vanishes_when_plate_matches_mantle_flow():
         def all_points_and_elevation(self):
             return self._points, np.zeros(len(self._points))
 
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(len(self._points), lithosphere.node_area_m2(spacing_rad))
+
     class FakeWorld:
         def __init__(self, omega, points):
             self.mantle_centers = []  # flow_at with no centers returns zero field
@@ -241,6 +244,9 @@ def test_basal_drag_coefficients_reproduce_the_plain_torque():
         def all_points_and_elevation(self):
             return self._points, np.zeros(len(self._points))
 
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(len(self._points), lithosphere.node_area_m2(spacing_rad))
+
     class FakeWorld:
         mantle_centers = mantle.generate_convection_centers(np.random.default_rng(1), n_centers=8)
 
@@ -270,6 +276,9 @@ def test_integrate_omega_relaxes_to_the_mantle_rate_instead_of_railing():
 
         def all_points_and_elevation(self):
             return self._points, np.zeros(len(self._points))
+
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(len(self._points), lithosphere.node_area_m2(spacing_rad))
 
     class FakeWorld:
         mantle_centers = mantle.generate_convection_centers(np.random.default_rng(936513024), n_centers=8)
@@ -410,6 +419,9 @@ def test_collision_friction_torque_brakes_harder_for_a_more_severe_overlap():
         crust_type = "continental"
         omega = np.array([0.0, 0.0, 0.02])
 
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(n, lithosphere.node_area_m2(spacing_rad))
+
     plate = FakePlate()
     light = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)
     severe = torque.collision_friction_torque(plate, inputs, collision_mask, spacing_rad=0.02, overlap_severity=1.0)
@@ -444,6 +456,9 @@ def test_collision_friction_torque_brakes_harder_for_a_taller_orogen():
     class FakePlate:
         crust_type = "continental"
         omega = np.array([0.0, 0.0, 0.02])
+
+        def accounting_areas_m2(self, spacing_rad):
+            return np.full(n, lithosphere.node_area_m2(spacing_rad))
 
     plate = FakePlate()
     flat = torque.collision_friction_torque(plate, flat_inputs, collision_mask, spacing_rad=0.02, overlap_severity=0.0)

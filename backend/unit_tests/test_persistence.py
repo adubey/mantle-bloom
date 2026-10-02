@@ -116,6 +116,20 @@ def test_loading_a_world_pickled_before_pending_magma_parcels_existed_defaults_t
     assert loaded.pending_magma_parcels == []
 
 
+def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
+    # Issue #257: saves before the budget was area-weighted carry `ocean_water_column_m`
+    # (summed metres over nominal-area nodes). Loading drops it and re-snapshots the budget
+    # as a volume from the save's own hypsometry, so sea level stays put.
+    world = generate_world(seed=3, num_plates=4)
+    budget = world.ocean_water_volume_m3
+    del world.__dict__["ocean_water_volume_m3"]
+    world.__dict__["ocean_water_column_m"] = 1.0e7
+
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert "ocean_water_column_m" not in loaded.__dict__
+    assert loaded.ocean_water_volume_m3 == pytest.approx(budget, rel=1e-9)
+
+
 def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # An ElevationLine pickled before the elev_change_reason OPTIONAL_FIELD existed has no
     # _elev_change_reason backing attr (pickle restores __dict__, never calls __init__).

@@ -91,7 +91,11 @@ def _backfill_added_fields(world: World) -> None:
     # Eustatic sea level (eustasy.py): a save written before this existed has a fixed
     # sea_level_m and no water budget -- snapshot the budget from that save's own hypsometry
     # + sea level so loading it doesn't jump the shoreline, then let it be conserved onward.
-    if getattr(world, "ocean_water_column_m", None) is None:
+    # Saves from before issue #257 kept the budget as a summed water column over nominal-area
+    # nodes (`ocean_water_column_m`); that can't be converted exactly, so it is dropped and
+    # re-snapshotted in m^3 the same way.
+    world.__dict__.pop("ocean_water_column_m", None)
+    if getattr(world, "ocean_water_volume_m3", None) is None:
         from . import eustasy
 
         eustasy.initialize_water_budget(world)

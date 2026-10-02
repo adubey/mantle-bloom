@@ -38,11 +38,14 @@ def test_build_report_rows_have_every_scope_and_derived_field(fresh_world):
             assert fields["delta_sum_hm"] == pytest.approx(fields["sum_hm_after"] - fields["sum_hm_before"])
             assert fields["area_before_m2"] >= 0.0
             assert fields["area_after_m2"] >= 0.0
+            assert fields["delta_area_m2"] == pytest.approx(fields["area_after_m2"] - fields["area_before_m2"])
+            assert fields["delta_hc_volume_m3"] == pytest.approx(fields["hc_volume_after_m3"] - fields["hc_volume_before_m3"])
+            assert fields["delta_hm_volume_m3"] == pytest.approx(fields["hm_volume_after_m3"] - fields["hm_volume_before_m3"])
 
 
 def test_build_report_sorts_phases_by_descending_hc_impact(fresh_world):
     report = build_report(fresh_world, total_years=500_000)
-    deltas = [abs(row["scopes"]["all"]["delta_sum_hc"]) for row in report["phases"]]
+    deltas = [abs(row["scopes"]["all"]["delta_hc_volume_m3"]) for row in report["phases"]]
     assert deltas == sorted(deltas, reverse=True)
 
 
