@@ -981,7 +981,10 @@ def fill_gap(
 
     def claimable(keys: np.ndarray, world_pts: np.ndarray) -> np.ndarray:
         dist, _ = gap_tree.query(world_pts)
-        return (dist <= coverage_radius_rad) & _gap_cells_mostly_uncovered(plate, keys, others)
+        near = dist <= coverage_radius_rad
+        if np.any(near):
+            near[near] &= _gap_cells_mostly_uncovered(plate, keys[near], neighbours)
+        return near
 
     neighbours = plate.get_neighbours(others, threshold_rad=(max_layers + 1) * spacing_rad)
     n = plate.node_count()
