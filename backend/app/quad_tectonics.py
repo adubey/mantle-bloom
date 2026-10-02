@@ -71,6 +71,7 @@ from .lithosphere_plate import (
     growth_seed_thickness,
 )
 from .plates import _INTERIOR_SUBDUCTION_MIN_RUN, _contested_by_any
+from .sparse_quad_patch import lattice_points, unpack_cell_keys
 from .surface_fields import SURFACE_FIELDS
 
 if TYPE_CHECKING:
@@ -87,6 +88,12 @@ MAX_ADVANCE_LAYERS_PER_STEP = MAX_CLAIM_ROWS_PER_STEP
 # new cells and the next value for the stretched cells behind them.
 _COLUMN_RNG_INDEX = 0
 _ADVANCE_RNG_INDEX = 1
+
+# Gap fill is allowed to bridge the sub-cell sliver between independently rotated quad
+# lattices, but not by claiming a cell whose centre happens to be free while most of its
+# footprint already belongs to a neighbour. Four samples per axis avoid making that decision
+# depend on the centre point that the frontier's ordinary openness test already checks.
+_GAP_FILL_SAMPLE_FRACTIONS = np.array([0.125, 0.375, 0.625, 0.875])
 
 # A saturated suture may carry overflow through three additional belts of the same width.
 # Past that finite broad-orogen footprint, over-thickened lower crust delaminates at the
@@ -653,8 +660,8 @@ def grow_frontier(
     the newest layer's, for up to `max_layers` layers and `max_cells` cells -- the shared
     areal-growth walk behind boundary advance and gap filling. A candidate is open when no
     plate in `neighbours` contains it and, with `standoff`, none of their nodes lies within
-    `EXTEND_THRESHOLD_MULTIPLIER` spacings; `claimable(world_pts)`, when given, narrows that
-    further. Cells grown from an `arc_source` cell are arc crust; the rest are fresh crust
+    `EXTEND_THRESHOLD_MULTIPLIER` spacings; `claimable(keys, world_pts)`, when given, narrows
+    that further. Cells grown from an `arc_source` cell are arc crust; the rest are fresh crust
     that stretch-thins the cells behind them. Returns how many cells were added."""
     extend_threshold_rad = EXTEND_THRESHOLD_MULTIPLIER * spacing_rad
     neighbour_points = [p.all_points_and_elevation()[0] for p in neighbours if p.node_count() > 0]
@@ -678,7 +685,7 @@ def grow_frontier(
         world_pts = geometry.to_world(plate.frame, local)
         open_mask = ~_contested_by_any(world_pts, neighbours)
         if claimable is not None:
-            open_mask &= claimable(world_pts)
+            open_mask &= claimable(candidates, world_pts)
         gap_direction = np.zeros((len(candidates), 3))
         if neighbour_tree is not None:
             dist, idx = neighbour_tree.query(world_pts)
@@ -929,6 +936,30 @@ def _open_rift(
     )
 
 
+def _gap_cells_mostly_uncovered(
+    plate: "PlateWithSparseQuadPatch", keys: np.ndarray, others: list
+) -> np.ndarray:
+    """Whether more than half of each candidate cell's sampled footprint is unclaimed."""
+    keys = np.asarray(keys, dtype=np.int64).reshape(-1)
+    if len(keys) == 0 or not others:
+        return np.ones(len(keys), dtype=bool)
+    face, level, i, j = unpack_cell_keys(keys)
+    scale = np.left_shift(1, level)
+    u, v = np.meshgrid(_GAP_FILL_SAMPLE_FRACTIONS, _GAP_FILL_SAMPLE_FRACTIONS, indexing="xy")
+    u, v = u.ravel(), v.ravel()
+    a = (i[:, None] + u) / scale[:, None]
+    b = (j[:, None] + v) / scale[:, None]
+    local = lattice_points(
+        np.broadcast_to(face[:, None], a.shape).ravel(),
+        a.ravel(),
+        b.ravel(),
+        plate._n,
+    )
+    world_points = geometry.to_world(plate.frame, local)
+    covered = _contested_by_any(world_points, others).reshape(len(keys), len(u))
+    return np.mean(~covered, axis=1) > 0.5
+
+
 def fill_gap(
     world: "World", plate: "PlateWithSparseQuadPatch", gap_points: np.ndarray, others: list, spacing_rad: float, max_layers: int
 ) -> int:
@@ -936,6 +967,8 @@ def fill_gap(
     `gap_fill_frontier.fill_gap_by_growing_plates` for one claimant. The same frontier walk as
     boundary advance, from every boundary cell, restricted to cells whose centre lies within
     `COVERAGE_RADIUS_MULT` spacings of a gap point and that no plate in `others` contains.
+    A 4x4 interior sample must also show that most of the candidate footprint is uncovered;
+    checking only its centre lets a rotated neighbour already own most of the cell (#268).
 
     Unlike boundary advance there is no standoff from the neighbours' nodes. Advance keeps a
     new cell's centre `EXTEND_THRESHOLD_MULTIPLIER` spacings from them, which is what leaves
@@ -946,13 +979,16 @@ def fill_gap(
     gap_tree = cKDTree(gap_points)
     coverage_radius_rad = COVERAGE_RADIUS_MULT * spacing_rad
 
-    def near_gap(world_pts: np.ndarray) -> np.ndarray:
+    def claimable(keys: np.ndarray, world_pts: np.ndarray) -> np.ndarray:
         dist, _ = gap_tree.query(world_pts)
-        return dist <= coverage_radius_rad
+        near = dist <= coverage_radius_rad
+        if np.any(near):
+            near[near] &= _gap_cells_mostly_uncovered(plate, keys[near], neighbours)
+        return near
 
     neighbours = plate.get_neighbours(others, threshold_rad=(max_layers + 1) * spacing_rad)
     n = plate.node_count()
     return grow_frontier(
         plate, world, np.ones(n, dtype=bool), np.zeros(n, dtype=bool), neighbours, spacing_rad,
-        max_layers, max(1, 2 * len(gap_points)), claimable=near_gap, standoff=False,
+        max_layers, max(1, 2 * len(gap_points)), claimable=claimable, standoff=False,
     )

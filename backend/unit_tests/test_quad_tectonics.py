@@ -794,6 +794,25 @@ def test_gap_fill_closes_a_one_cell_seam_between_quad_plates():
     assert not any(info["overlap_mask"].any() for info in overlap.values())
 
 
+def test_gap_fill_requires_most_of_a_candidate_cell_to_be_uncovered():
+    plate = _plate(1, _block((10, 11), (20, 21)))
+    candidates = _block((11, 13), (20, 21))
+
+    class SampleMask:
+        def contains_batch(self, points):
+            covered = np.zeros(len(points), dtype=bool)
+            # Candidate 0 is 9/16 covered and must be rejected; candidate 1 is 7/16 covered
+            # and must remain claimable. The helper batches 16 footprint probes per cell.
+            covered[:9] = True
+            covered[16:23] = True
+            return covered
+
+    np.testing.assert_array_equal(
+        quad_tectonics._gap_cells_mostly_uncovered(plate, candidates, [SampleMask()]),
+        [False, True],
+    )
+
+
 def test_a_small_isolated_quad_gap_is_not_spawned_into_a_plate():
     whole = _plate(1, np.concatenate([_block((0, N), (0, N), face) for face in range(6)]))
     points = whole.all_points_and_elevation()[0]

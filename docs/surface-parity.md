@@ -183,6 +183,12 @@ stress campaigns found this overlap growing toward a stable 1.2--1.9% plateau by
 alongside much lower uncovered area, nodes inside another plate, and zero same-plate stacking.
 The 1.5% warning keeps movement toward the envelope visible; 2.0% is the accepted ceiling.
 
+Gap filling limits that tradeoff by sampling each candidate quad cell's interior and claiming
+it only when more than half of the sampled footprint is still uncovered. A free cell centre
+alone is insufficient: on independently rotated lattices the neighbour may already own most
+of the cell around it. The density-0.5 issue #268 stress rerun reduced the 100--800 Myr C3
+range from 1.5--2.2% to 1.1--1.8% without changing the fixed C3 bands.
+
 Duplicated crust is not hidden from conservation totals. Hc and Hm totals sum every cell's
 exact area, including cells in multiply covered territory, and K3 independently checks that
 the summed quad cell area equals `sphere - uncovered + overlap` within its 1 pp sampling
