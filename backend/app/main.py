@@ -1218,6 +1218,30 @@ def _elevation_point_summary(plate, line, point_index: int, line_index: int, num
     }
 
 
+def _surface_point_summary(plate: plates.Plate, point_index: int) -> dict:
+    """Representation-neutral Points-view payload for a non-line surface.
+
+    There is no meaningful owning row to highlight or navigate, so `line` is null and the
+    highlight contains only the selected node. The common point fields still use real
+    plate-local coordinates and authoritative surface fields.
+    """
+    nodes = plate.surface_nodes("elevation", "node_created_years")
+    point_index = max(0, min(point_index, len(nodes.world_xyz) - 1))
+    phi, theta = geometry.xyz_to_latlon(nodes.local_xyz[point_index])
+    return {
+        "plate_id": plate.plate_id,
+        "point": {
+            "phi": float(phi),
+            "theta": float(theta),
+            "elevation_m": float(nodes.fields["elevation"][point_index]),
+            "node_created_years": float(nodes.fields["node_created_years"][point_index]),
+            "index": 0,
+        },
+        "line": None,
+        "line_points_xyz": [[float(value) for value in nodes.world_xyz[point_index]]],
+    }
+
+
 def _surface_node_summary(plate, flat_index: int) -> dict:
     """Representation-neutral inspector payload for one current surface node."""
     nodes = plate.surface_nodes("elevation", "node_created_years")
@@ -1267,13 +1291,13 @@ def surface_node(plate_id: int, node_id_hi: str, node_id_lo: str) -> dict:
 
 @app.get("/world/elevation_point_at")
 def elevation_point_at(lat_deg: float, lon_deg: float) -> dict:
-    """The "Points" (`platesDetail`) debug view's click-to-inspect + line-highlight: the
-    single live `ElevationLine` node nearest (lat_deg, lon_deg), plus its line's summary and
-    every node's world position on that line (see `_elevation_point_summary`). `line_index`/
-    `num_lines` order the owning plate's lines by ascending plate-local `phi` (see
-    `plates.sorted_nonempty_lines`) -- the same stable order arrow-key line navigation
-    (`GET /world/elevation_point`) steps through. `400` for non-finite input, `404` if no
-    world has been generated yet or no plate has any live nodes."""
+    """The "Points" (`platesDetail`) debug view's representation-neutral inspector.
+
+    Returns the nearest terrain node. Line surfaces also return the owning line and its world
+    positions for highlighting/navigation; quad surfaces return ``line: null`` and highlight
+    only the selected node. `400` for non-finite input, `404` if no world has been generated
+    yet or no plate has any live nodes.
+    """
     world = _require_world()
     if not (np.isfinite(lat_deg) and np.isfinite(lon_deg)):
         raise HTTPException(status_code=400, detail="lat_deg/lon_deg must be finite")
@@ -1285,6 +1309,12 @@ def elevation_point_at(lat_deg: float, lon_deg: float) -> dict:
         points, _elevation, owner = plates.collect_all_points(world.plates)
         plate_id = int(owner[idx])
         plate = next((p for p in world.plates if p.plate_id == plate_id), None)
+        if plate is not None and not isinstance(plate, plates.PlateWithLines):
+            tree = plate.get_node_kdtree()
+            if tree is None:
+                raise HTTPException(status_code=404, detail="owning plate has no live nodes")
+            _distance, point_index = tree.query(points[idx])
+            return _surface_point_summary(plate, int(point_index))
         found = plates.nearest_line_point(plate, points[idx]) if plate is not None else None
         if found is None:
             raise HTTPException(status_code=404, detail="owning plate not found")
@@ -1302,12 +1332,15 @@ def elevation_point(plate_id: int, line_index: int, point_index: int) -> dict:
     `[0, num_lines)` and `point_index` into the resulting line's `[0, num_points)`, so a
     caller passing an index that just fell out of range (e.g. a step just ran and shrank a
     line) lands on the nearest valid one rather than erroring. `404` if no world has been
-    generated yet, the plate doesn't exist, or it has no live nodes."""
+    generated yet, the plate doesn't exist, or it has no live nodes. `400` when the current
+    surface has no elevation-line navigation."""
     world = _require_world()
     with _world_lock:
         plate = next((p for p in world.plates if p.plate_id == plate_id), None)
         if plate is None:
             raise HTTPException(status_code=404, detail=f"no plate {plate_id}")
+        if not isinstance(plate, plates.PlateWithLines):
+            raise HTTPException(status_code=400, detail="line navigation is unavailable for quad surfaces")
         sorted_lines = plates.sorted_nonempty_lines(plate)
         if not sorted_lines:
             raise HTTPException(status_code=404, detail=f"plate {plate_id} has no live nodes")

@@ -441,6 +441,7 @@ def test_generate_returns_summary(client):
     assert body["num_plates"] == 6
     assert body["elapsed_years"] == 0.0
     assert body["seed"] == 1
+    assert body["surface"] == "quad"
 
 
 def test_generate_defaults_to_quad_surfaces(client):
@@ -842,6 +843,39 @@ def test_elevation_point_at_returns_point_and_line_info(client):
     assert abs(px * px + py * py + pz * pz - 1.0) < 1e-6
 
 
+def test_elevation_point_at_returns_point_info_for_default_quad_surface(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    plates_data = client.get("/world/plates").json()["plates"]
+    target = next(p for p in plates_data if p["num_points"] > 0)
+    x, y, z = target["points"][0]
+    lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
+    lon_deg = math.degrees(math.atan2(y, x))
+
+    resp = client.get("/world/elevation_point_at", params={"lat_deg": lat_deg, "lon_deg": lon_deg})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["plate_id"] == target["plate_id"]
+    assert body["line"] is None
+    assert len(body["line_points_xyz"]) == 1
+    assert body["point"]["index"] == 0
+    assert math.isfinite(body["point"]["phi"])
+    assert math.isfinite(body["point"]["theta"])
+
+
+def test_elevation_point_line_navigation_rejects_default_quad_surface(client):
+    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    plate_id = main._state["world"].plates[0].plate_id
+
+    resp = client.get(
+        "/world/elevation_point",
+        params={"plate_id": plate_id, "line_index": 0, "point_index": 0},
+    )
+
+    assert resp.status_code == 400
+    assert "unavailable for quad" in resp.json()["detail"]
+
+
 def test_surface_node_lookup_uses_storage_neutral_node_id(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
     world = main._state["world"]
@@ -1142,7 +1176,7 @@ def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
 def test_load_converts_a_line_save_to_quads_only_when_asked(client):
     # docs/save-compatibility.md: before the sparse-quad cutover a line-backed save loads as
     # lines unless the caller opts in to the one-way conversion.
-    _post_generate(client, json={"seed": 5, "num_plates": 6})
+    _post_generate(client, json={"seed": 5, "num_plates": 6, "surface": "lines"})
     _post_step(client, json={"years": 1_000_000})
     saved = client.get("/world/save").content
 

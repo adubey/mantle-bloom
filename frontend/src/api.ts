@@ -43,10 +43,14 @@ export interface WorldEvent {
   message: string;
 }
 
+export type WorldSurface = "quad" | "lines";
+
 export interface WorldSummary {
   seed: number;
   elapsed_years: number;
   num_plates: number;
+  // `empty` is only possible for a loaded save with no plates.
+  surface: WorldSurface | "empty";
   events: WorldEvent[];
 }
 
@@ -458,6 +462,7 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
         seed: msg.seed as number,
         elapsed_years: msg.elapsed_years as number,
         num_plates: msg.num_plates as number,
+        surface: msg.surface as WorldSummary["surface"],
         events: msg.events as WorldEvent[],
       };
     }
@@ -480,7 +485,7 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // combine). axialTiltDeg is the dialog's fourth slider (degrees) -- doesn't affect plate
 // generation, only climate.py's insolation at render time (see world.py's
 // World.axial_tilt_deg). nodeDensity is the dialog's "point density" choice (0.5, 1, 2, or 4,
-// see plates.NODE_DENSITY_CHOICES) -- how many elevation-line nodes each plate starts with, and
+// see plates.NODE_DENSITY_CHOICES) -- how many terrain nodes each plate starts with, and
 // stays scaled to for the rest of that world's life (see world.py's World.node_density).
 // initialSoilMaturity is the dialog's fifth slider (0 to 1) -- how much soil the world starts
 // with (0 = fully barren, matching every other persistent field's own zero-start default; see
@@ -511,22 +516,29 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // generate_world_progress passes its three phase boundaries (plate/site generation,
 // mantle-center fitting, the finish_generation bootstrap -- see backend app/main.py's
 // /world/generate for the NDJSON contract this reads, same shape as animateWorld's own).
-export function generateWorld(
-  seed: number,
-  continentalFraction: number,
-  landFraction: number,
-  axialTiltDeg: number,
-  nodeDensity: number,
-  initialSoilMaturity: number,
-  climateDensity: number,
-  fluidDensity: number,
-  numPlates: number | null,
-  voronoiPoints: number,
-  surface: "quad" | "lines",
-  sketchImageBase64: string | null = null,
-  premadeWorldId: string | null = null,
-  onProgress?: (fraction: number) => void,
-): Promise<WorldSummary> {
+export interface GenerateWorldOptions {
+  seed: number;
+  continentalFraction: number;
+  landFraction: number;
+  axialTiltDeg: number;
+  nodeDensity: number;
+  initialSoilMaturity: number;
+  climateDensity: number;
+  fluidDensity: number;
+  numPlates: number | null;
+  voronoiPoints: number;
+  surface: WorldSurface;
+  sketchImageBase64?: string | null;
+  premadeWorldId?: string | null;
+  onProgress?: (fraction: number) => void;
+}
+
+export function generateWorld(options: GenerateWorldOptions): Promise<WorldSummary> {
+  const {
+    seed, continentalFraction, landFraction, axialTiltDeg, nodeDensity,
+    initialSoilMaturity, climateDensity, fluidDensity, numPlates, voronoiPoints,
+    surface, sketchImageBase64 = null, premadeWorldId = null, onProgress,
+  } = options;
   return fetch(`${API_BASE}/world/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -772,12 +784,10 @@ export function fetchNodeAt(latDeg: number, lonDeg: number): Promise<NodeAtRespo
   return fetch(`${API_BASE}/world/node_at?${params}`).then(asJson<NodeAtResponse>);
 }
 
-// The "Points" (platesDetail) debug view's click-to-inspect + arrow-key navigation (see
-// App.tsx) -- the selected node's own plate-local phi/theta, its owning ElevationLine's
-// summary, and every node's world position on that line (so the client can draw the whole
-// line highlighted on the map, see MapCanvas.tsx's highlightLine prop). `line.line_index`/
-// `line.num_lines` order the owning plate's lines by ascending plate-local phi (see backend
-// plates.sorted_nonempty_lines) -- the stable order Shift+ArrowLeft/Right steps through.
+// The "Points" (platesDetail) debug view's click-to-inspect response. Every representation
+// reports the selected node's plate-local coordinates and elevation. Line worlds additionally
+// provide the owning ElevationLine and keyboard-navigation metadata; quad worlds return null
+// for `line` and highlight only the selected terrain node.
 export interface ElevationPointResponse {
   plate_id: number;
   point: {
@@ -792,9 +802,9 @@ export interface ElevationPointResponse {
     num_points: number;
     line_index: number; // this line's position among the plate's lines, ascending phi
     num_lines: number;
-  };
-  // Every node's world-space xyz on this line, in the same order as `point.index` indexes
-  // into -- length always equals line.num_points.
+  } | null;
+  // Line worlds return every node's world-space xyz on this line, in the same order as
+  // `point.index`; quad worlds return the selected node as a one-element highlight.
   line_points_xyz: [number, number, number][];
 }
 
@@ -1027,6 +1037,7 @@ export async function animateWorld(
             seed: msg.seed as number,
             elapsed_years: msg.elapsed_years as number,
             num_plates: msg.num_plates as number,
+            surface: msg.surface as WorldSummary["surface"],
             events: msg.events as WorldEvent[],
             videoBase64: msg.video_base64 as string,
             mime: msg.mime as string,

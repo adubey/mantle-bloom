@@ -2,13 +2,12 @@
 
 ## Sparse-quad world cutover
 
-New worlds now use sparse adaptive quad surfaces by default. The Generate World dialog keeps
-an **Elevation lines (legacy / diagnostic)** option for short-term rollback and parity work;
-it is not a second supported production format.
+New worlds now use sparse adaptive quad surfaces by default. Generate World's Advanced
+Settings keeps a **Legacy elevation lines (for comparison)** option for short-term rollback
+and parity work; it is not a second supported production format. The choice resets to
+**Standard** after generation, while a legacy-lines badge identifies the current world.
 
 Existing line-backed `.mbworld` files remain loadable under the current compatibility policy.
-New saves carry explicit `surface.kind` and `surface.version` metadata in their versioned
-envelope (`mixed` is reserved for synthetic diagnostic worlds). A save whose metadata
-conflicts with its actual plate representation is rejected rather than guessed or converted.
-There is no automatic conversion between line and quad worlds: the selected representation
-remains authoritative for that world's lifetime.
+New saves declare their authoritative surface in the versioned envelope, and a save whose
+declaration conflicts with its actual plates is rejected. Line worlds remain line-backed when
+loaded normally; the existing explicit `convert_lines` load option can migrate one to quads.

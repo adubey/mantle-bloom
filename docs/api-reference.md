@@ -72,8 +72,8 @@ Replaces whatever world previously existed.
 `surface` selects the authoritative plate terrain representation: `"quad"` (the default)
 uses sparse adaptive quad patches and is the supported production path. `"lines"` retains
 the former elevation-line representation as a temporary legacy/diagnostic rollback option.
-Any other value is rejected during request validation. The Generate World dialog exposes
-the same choice and defaults to quad.
+Any other value is rejected during request validation. Generate World's Advanced Settings
+exposes the same choice as **Terrain model**, defaulting to **Standard** (quad).
 
 `sketch` (the Generate World dialog's "Human-made" tab) is optional and omitted by the
 "Random" tab entirely -- `{"image_base64": "<a PNG>"}`, the drawn or loaded coastline (see
@@ -96,9 +96,13 @@ Response: a summary --
   "seed": 1,
   "elapsed_years": 0.0,
   "num_plates": 13,
+  "surface": "quad",
   "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }]
 }
 ```
+
+`surface` is `"quad"` or `"lines"` for generated worlds and lets clients identify a loaded
+legacy line save. A loaded save with no plates reports `"empty"`.
 
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
 entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
@@ -136,12 +140,6 @@ format (contrast with `/world/export_hexgrid` below): pickling by class identity
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
 yet.
-
-The versioned save envelope records the authoritative surface kind (`quad` or `lines`) and
-that representation's serialization version. Synthetic diagnostic worlds that deliberately
-combine both are marked `mixed`; production generation never creates one. Loading rejects
-metadata that disagrees with the plate objects instead of silently treating a save as another
-representation.
 
 Loading a file back is equivalent to running arbitrary code from its bytes (a standard
 pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
