@@ -148,14 +148,25 @@ def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     step_world(loaded, years=1_000_000)  # must not raise
 
 
-def test_loading_garbage_bytes_raises():
-    with pytest.raises(Exception):
+def test_loading_garbage_bytes_raises_a_corrupt_save_error():
+    with pytest.raises(persistence.CorruptSaveError, match="not a readable mantle-bloom save"):
         persistence.load_world_bytes(b"not a pickle at all")
 
 
+def test_loading_a_truncated_save_raises_a_corrupt_save_error():
+    data = persistence.save_world_bytes(generate_world(seed=3, num_plates=4))
+    with pytest.raises(persistence.CorruptSaveError):
+        persistence.load_world_bytes(data[: len(data) // 2])
+
+
 def test_loading_a_pickle_of_the_wrong_type_raises():
-    with pytest.raises(TypeError):
+    with pytest.raises(persistence.CorruptSaveError, match="expected a World"):
         persistence.load_world_bytes(pickle.dumps(42))
+
+
+def test_loading_another_programs_envelope_raises():
+    with pytest.raises(persistence.CorruptSaveError, match="not a mantle-bloom save"):
+        persistence.load_world_bytes(pickle.dumps({"format": "something-else", "version": 1, "world": None}))
 
 
 def test_saves_carry_a_format_version_envelope():
@@ -180,3 +191,70 @@ def test_loading_a_save_from_a_newer_format_version_raises():
 
     with pytest.raises(ValueError, match="format version"):
         persistence.load_world_bytes(data)
+
+
+def test_loading_a_version_2_envelope_without_a_surface_still_works():
+    world = generate_world(seed=3, num_plates=4)
+    loaded = persistence.load_world_bytes(pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": world}))
+    assert len(loaded.plates) == len(world.plates)
+
+
+@pytest.mark.parametrize("version", [0, 1, True, "3", None, 3.0])
+def test_loading_an_envelope_with_an_invalid_version_raises(version):
+    world = generate_world(seed=3, num_plates=4)
+    data = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": version, "surface": "lines", "world": world})
+    with pytest.raises(persistence.UnsupportedSaveVersionError):
+        persistence.load_world_bytes(data)
+
+
+def test_saves_declare_their_surface_and_the_loader_checks_it():
+    lines = generate_world(seed=3, num_plates=4)
+    quad = generate_world(seed=3, num_plates=4, surface="quad")
+    assert pickle.loads(persistence.save_world_bytes(lines))["surface"] == "lines"
+    assert pickle.loads(persistence.save_world_bytes(quad))["surface"] == "quad"
+
+    lying = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "quad", "world": lines})
+    with pytest.raises(persistence.CorruptSaveError, match="declares a 'quad' world"):
+        persistence.load_world_bytes(lying)
+    unknown = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 3, "surface": "hexes", "world": lines})
+    with pytest.raises(persistence.CorruptSaveError, match="unknown surface"):
+        persistence.load_world_bytes(unknown)
+
+
+def test_a_world_mixing_line_and_quad_plates_is_refused():
+    lines = generate_world(seed=3, num_plates=4)
+    quad = generate_world(seed=3, num_plates=4, surface="quad")
+    lines.plates.append(quad.plates[0])
+    with pytest.raises(persistence.CorruptSaveError, match="mixes"):
+        persistence.save_world_bytes(lines)
+    with pytest.raises(persistence.CorruptSaveError, match="mixes"):
+        persistence.load_world_bytes(pickle.dumps({"format": persistence.SAVE_FORMAT, "version": 2, "world": lines}))
+
+
+def test_a_quad_plate_from_a_newer_build_makes_the_save_unsupported(monkeypatch):
+    from app import sparse_quad_patch
+
+    world = generate_world(seed=3, num_plates=4, surface="quad")
+    monkeypatch.setattr(sparse_quad_patch, "QUAD_SURFACE_FORMAT_VERSION", sparse_quad_patch.QUAD_SURFACE_FORMAT_VERSION + 1)
+    data = persistence.save_world_bytes(world)
+    monkeypatch.undo()
+    with pytest.raises(persistence.UnsupportedSaveVersionError, match="sparse quad surface format version"):
+        persistence.load_world_bytes(data)
+
+
+def test_a_line_save_loads_as_lines_unless_conversion_is_asked_for():
+    world = generate_world(seed=3, num_plates=4)
+    data = pickle.dumps(world)  # a version 1 save, like every save written before #228
+
+    legacy = persistence.load_world_bytes(data)
+    assert persistence.world_surface(legacy) == "lines"
+    assert legacy.surface_conversion is None
+
+    converted = persistence.load_world_bytes(data, convert_lines=True)
+    assert persistence.world_surface(converted) == "quad"
+    assert converted.surface_conversion["from"] == "lines"
+    assert converted.ocean_water_volume_m3 is not None
+    assert converted.sea_level_m == legacy.sea_level_m
+    # Asking to convert a world that is already quad is a no-op.
+    again = persistence.load_world_bytes(persistence.save_world_bytes(converted), convert_lines=True)
+    assert again.surface_conversion == converted.surface_conversion

@@ -1,0 +1,628 @@
+{
+  "saves": {
+    "mantle-bloom-seed125087475-11600000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000622
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 6.64852e-05
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 2.4e-11
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.001344
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.00105561
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.00524,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.00562738
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.00998
+        }
+      },
+      "pass": true
+    },
+    "mantle-bloom-seed19335323-33200000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000545
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.00629669
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 1.8e-05
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.00285
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.00355967
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 3.336e-05
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.01571,
+          "warn": true
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.00324829
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.034865
+        }
+      },
+      "pass": true
+    },
+    "mantle-bloom-seed331006609-239700000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.001401
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0017105
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 6.844e-05
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": false,
+          "value": 0.010165
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0011262
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 5.499e-05
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.005515,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.00419342
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.01184
+        }
+      },
+      "pass": false
+    },
+    "mantle-bloom-seed343559903-104700000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000564
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": false,
+          "value": 0.0114709
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 1.618e-05
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.006405
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0015341
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 3.102e-05
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.007505,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.00223248
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.003185
+        }
+      },
+      "pass": false
+    },
+    "mantle-bloom-seed579428537-626500000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0001615
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000447755
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000318
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.000827557
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.01035,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.00274288
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.02266
+        }
+      },
+      "pass": true
+    },
+    "mantle-bloom-seed745352920-0y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 1e-05
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000625
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.00309,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.000845471
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.00556
+        }
+      },
+      "pass": true
+    },
+    "mantle-bloom-seed804913535-352400000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.001027
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.000434641
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.002719
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.000646677
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 7.5e-09
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.00713,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.00476568
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.014915
+        }
+      },
+      "pass": true
+    },
+    "mantle-bloom-seed875551829-363100000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 4.47e-05
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 4.71567e-05
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.001227
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.0
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.000207036
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.010325,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.0012928
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.02573
+        }
+      },
+      "pass": true
+    },
+    "mantle-bloom-seed896200538-1063700000y.mbworld": {
+      "checks": {
+        "audit_clean": {
+          "pass": true
+        },
+        "continental_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 8.7e-05
+        },
+        "crust_delamination": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.0038573
+        },
+        "crust_transfer_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 6.29e-05
+        },
+        "land_fraction_delta": {
+          "limit": 0.01,
+          "pass": true,
+          "value": 0.002702
+        },
+        "mantle_delamination": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 0.00014216
+        },
+        "mantle_transfer_delta": {
+          "limit": 0.015,
+          "pass": true,
+          "value": 2.78e-07
+        },
+        "multiply_covered": {
+          "limit": 0.02,
+          "pass": true,
+          "value": 0.008855,
+          "warn": false
+        },
+        "plate_crust_volume_delta": {
+          "limit": 0.05,
+          "pass": true,
+          "value": 0.0133057
+        },
+        "provenance_kept": {
+          "pass": true
+        },
+        "round_trip_identical": {
+          "pass": true
+        },
+        "sea_level_jump_m": {
+          "limit": 1e-06,
+          "pass": true,
+          "value": 0.0
+        },
+        "steps_audit_clean": {
+          "pass": true
+        },
+        "uncovered_increase": {
+          "limit": 0.005,
+          "pass": true,
+          "value": -0.074155
+        }
+      },
+      "pass": true
+    }
+  },
+  "tolerances": {
+    "continental_fraction_delta": 0.01,
+    "crust_delamination": 0.01,
+    "crust_transfer_delta": 0.01,
+    "land_fraction_delta": 0.01,
+    "mantle_delamination": 0.015,
+    "mantle_transfer_delta": 0.015,
+    "multiply_covered": 0.02,
+    "plate_crust_volume_delta": 0.05,
+    "sea_level_jump_m": 1e-06,
+    "uncovered_increase": 0.005
+  }
+}

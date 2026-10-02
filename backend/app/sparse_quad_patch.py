@@ -180,6 +180,14 @@ def parent_cell_keys(keys: np.ndarray) -> np.ndarray:
     return np.where(level == 0, -1, pack_cell_keys(face, i // 2, j // 2, level - 1))
 
 
+def is_structural_reason(codes: np.ndarray) -> np.ndarray:
+    """Which `elev_change_reason` codes are structural (collision through volcano, the fault
+    codes, lateral magma) rather than geomorphic. An area-weighted vote between cells prefers
+    these on a tie, per docs/plate-surface-baseline.md's field policy."""
+    codes = np.asarray(codes)
+    return ((codes >= 1) & (codes <= 8)) | ((codes >= 15) & (codes <= 17)) | (codes == 19)
+
+
 def child_cell_keys(keys: np.ndarray) -> np.ndarray:
     """The four child IDs of each cell. Cell IDs themselves encode lineage."""
     face, level, i, j = unpack_cell_keys(keys)
@@ -821,9 +829,7 @@ class PlateWithSparseQuadPatch(Plate):
             totals = np.array([areas[values == choice].sum() for choice in choices])
             tied = choices[totals == totals.max()]
             if name == "elev_change_reason":
-                structural = tied[
-                    ((tied >= 1) & (tied <= 8)) | ((tied >= 15) & (tied <= 17)) | (tied == 19)
-                ]
+                structural = tied[is_structural_reason(tied)]
                 if len(structural):
                     tied = structural
             winner = tied[0]
@@ -1148,9 +1154,11 @@ class PlateWithSparseQuadPatch(Plate):
         return state
 
     def __setstate__(self, state: dict) -> None:
+        from .persistence import UnsupportedSaveVersionError
+
         version = state.get("_surface_format_version")
         if version != QUAD_SURFACE_FORMAT_VERSION:
-            raise ValueError(
+            raise UnsupportedSaveVersionError(
                 f"unsupported sparse quad surface format version {version!r}; "
                 f"this build reads version {QUAD_SURFACE_FORMAT_VERSION}"
             )

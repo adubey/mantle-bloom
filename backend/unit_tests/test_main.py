@@ -1101,6 +1101,38 @@ def test_save_then_load_round_trips_the_exact_world_state(client):
 def test_load_with_malformed_bytes_returns_400(client):
     resp = client.post("/world/load", content=b"definitely not a saved world")
     assert resp.status_code == 400
+    assert "not a readable mantle-bloom save" in resp.json()["detail"]
+
+
+def test_load_reports_a_save_from_a_newer_build_as_unsupported(client):
+    import pickle
+
+    from app import persistence
+
+    newer = pickle.dumps({"format": persistence.SAVE_FORMAT, "version": persistence.SAVE_FORMAT_VERSION + 1, "world": None})
+    resp = client.post("/world/load", content=newer)
+    assert resp.status_code == 400
+    assert "unsupported save format version" in resp.json()["detail"]
+
+
+def test_load_converts_a_line_save_to_quads_only_when_asked(client):
+    # docs/save-compatibility.md: before the sparse-quad cutover a line-backed save loads as
+    # lines unless the caller opts in to the one-way conversion.
+    _post_generate(client, json={"seed": 5, "num_plates": 6})
+    _post_step(client, json={"years": 1_000_000})
+    saved = client.get("/world/save").content
+
+    as_lines = client.post("/world/load", content=saved).json()
+    assert as_lines["surface"] == "lines"
+    assert as_lines["surface_conversion"] is None
+
+    converted = client.post("/world/load?convert_lines=true", content=saved).json()
+    assert converted["surface"] == "quad"
+    assert converted["surface_conversion"]["from"] == "lines"
+    assert converted["num_plates"] == as_lines["num_plates"]
+    assert client.get("/world/render").status_code == 200
+    resaved = client.get("/world/save").content
+    assert client.post("/world/load", content=resaved).json()["surface"] == "quad"
 
 
 def test_animate_advances_the_world_and_streams_progress_then_an_mp4(client):

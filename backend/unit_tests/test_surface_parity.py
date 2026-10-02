@@ -237,8 +237,10 @@ def test_pickling_drops_every_derived_cache(make):
     assert sp.stale_plate_caches(loaded) == []
 
 
-def test_world_load_drops_every_derived_index_and_keeps_authoritative_state():
-    world = World(seed=0, plates=[_cap(), _line_plate()], next_plate_id=3, node_density=DENSITY)
+@pytest.mark.parametrize("make_plate", [_cap, _line_plate], ids=["quad", "lines"])
+def test_world_load_drops_every_derived_index_and_keeps_authoritative_state(make_plate):
+    # One surface per world: saves refuse to mix them (docs/save-compatibility.md).
+    world = World(seed=0, plates=[make_plate()], next_plate_id=3, node_density=DENSITY)
     # A generated world always has its water budget; without one, load's backfill would
     # rebuild the area caches it reads.
     eustasy.initialize_water_budget(world)
