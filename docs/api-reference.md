@@ -123,11 +123,12 @@ shape as `/world/generate`, with `events` reflecting anything logged up through 
 The "File > Save World" download -- the *entire* current world (every plate/line, mantle
 field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
 pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
-attachment`), not JSON (see `backend/app/persistence.py`). Deliberately makes no promise of
-compatibility across app versions -- pickling by class identity means a later
-renamed/restructured field on `World` breaks old files, an accepted trade for "just get me
-back what I had," not a stable interchange format (contrast with `/world/export_hexgrid`
-below). `404` if no world has been generated yet.
+attachment`), not JSON (see `backend/app/persistence.py`). The file is a versioned envelope
+that declares the world's plate surface (`lines` or `quad`). It is not a stable interchange
+format (contrast with `/world/export_hexgrid` below): pickling by class identity ties it to
+the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
+reads and how line-backed saves move to sparse quads. `404` if no world has been generated
+yet.
 
 Loading a file back is equivalent to running arbitrary code from its bytes (a standard
 pickle caveat) -- acceptable given this server is a single-user localhost dev tool already
@@ -138,9 +139,17 @@ pickle caveat) -- acceptable given this server is a single-user localhost dev to
 The "File > Load World" upload -- the raw bytes of a file `/world/save` previously
 produced, as the request body (`Content-Type: application/octet-stream`, not JSON).
 Replaces whatever world previously existed, same as `/world/generate`. Returns the same
-summary shape `/world/generate` does. `400` if the bytes aren't a valid mantle-bloom world
-file (pickle can raise many different exception types on malformed or foreign input, so
-this is caught broadly).
+summary shape `/world/generate` does; its `surface` is `"lines"`, `"quad"` or `"empty"`.
+
+Query parameter `convert_lines` (default `false`): convert a line-backed save to sparse quads
+on load, one way (see [save-compatibility.md](save-compatibility.md)). The summary's
+`surface_conversion` then reports what the conversion changed; it is `null` for a world that
+was never converted, and stays with the world through later saves.
+
+`400` with `detail` `"invalid or incompatible world file: <reason>"` when the bytes aren't a
+readable save (corrupt, truncated, or not a mantle-bloom file) or are in a format version
+newer than this build reads (the save envelope or one of its sparse-quad plates). Nothing
+falls back to a partial load.
 
 ## `POST /world/controls`
 

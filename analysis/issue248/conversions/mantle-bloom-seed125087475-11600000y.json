@@ -1,0 +1,685 @@
+{
+  "audit": [],
+  "checks": {
+    "audit_clean": {
+      "pass": true
+    },
+    "continental_fraction_delta": {
+      "limit": 0.01,
+      "pass": true,
+      "value": 0.000622
+    },
+    "crust_delamination": {
+      "limit": 0.01,
+      "pass": true,
+      "value": 6.64852e-05
+    },
+    "crust_transfer_delta": {
+      "limit": 0.01,
+      "pass": true,
+      "value": 2.4e-11
+    },
+    "land_fraction_delta": {
+      "limit": 0.01,
+      "pass": true,
+      "value": 0.001344
+    },
+    "mantle_delamination": {
+      "limit": 0.015,
+      "pass": true,
+      "value": 0.0
+    },
+    "mantle_transfer_delta": {
+      "limit": 0.015,
+      "pass": true,
+      "value": 0.00105561
+    },
+    "multiply_covered": {
+      "limit": 0.02,
+      "pass": true,
+      "value": 0.00524,
+      "warn": false
+    },
+    "plate_crust_volume_delta": {
+      "limit": 0.05,
+      "pass": true,
+      "value": 0.00562738
+    },
+    "provenance_kept": {
+      "pass": true
+    },
+    "round_trip_identical": {
+      "pass": true
+    },
+    "sea_level_jump_m": {
+      "limit": 1e-06,
+      "pass": true,
+      "value": 0.0
+    },
+    "steps_audit_clean": {
+      "pass": true
+    },
+    "uncovered_increase": {
+      "limit": 0.005,
+      "pass": true,
+      "value": -0.00998
+    }
+  },
+  "elapsed_years": 11800000.0,
+  "pass": true,
+  "report": {
+    "area_fractions": {
+      "continental": {
+        "after": 0.65536,
+        "before": 0.654738
+      },
+      "land": {
+        "after": 0.332245,
+        "before": 0.330901
+      }
+    },
+    "cells_per_edge": 148,
+    "clamped": {
+      "crustal_thickness_m": 6.72151e-05,
+      "mantle_lithosphere_thickness_m": 0.00240221
+    },
+    "coverage": {
+      "after": {
+        "multiply_covered": 0.00524,
+        "uncovered": 0.009865
+      },
+      "before": {
+        "multiply_covered": 0.00261,
+        "uncovered": 0.019845
+      }
+    },
+    "extensive": {
+      "coal_deposit_m": {
+        "delta_vs_deduplicated": -0.00019303,
+        "delta_vs_nominal": -0.00019303,
+        "line_deduplicated": 3603400000000.0,
+        "line_nominal": 3603400000000.0,
+        "quad": 3602700000000.0
+      },
+      "crustal_thickness_m": {
+        "delta_vs_capped": -6.64852e-05,
+        "delta_vs_deduplicated": -6.72151e-05,
+        "delta_vs_nominal": -7.10499e-05,
+        "line_capped": 1.13089e+19,
+        "line_deduplicated": 1.13089e+19,
+        "line_nominal": 1.13089e+19,
+        "quad": 1.13081e+19
+      },
+      "glacier_depth": {
+        "delta_vs_deduplicated": -2.91948e-16,
+        "delta_vs_nominal": -2.91948e-16,
+        "line_deduplicated": 1712640000000000.0,
+        "line_nominal": 1712640000000000.0,
+        "quad": 1712640000000000.0
+      },
+      "lake_depth": {
+        "delta_vs_deduplicated": -0.00247166,
+        "delta_vs_nominal": -0.00247166,
+        "line_deduplicated": 337781000000000.0,
+        "line_nominal": 337781000000000.0,
+        "quad": 336947000000000.0
+      },
+      "mantle_lithosphere_thickness_m": {
+        "delta_vs_capped": 0.00105561,
+        "delta_vs_deduplicated": -0.00240221,
+        "delta_vs_nominal": -0.00240305,
+        "line_capped": 3.72452e+19,
+        "line_deduplicated": 3.73743e+19,
+        "line_nominal": 3.73743e+19,
+        "quad": 3.72845e+19
+      },
+      "mineral_deposit_m": {
+        "delta_vs_deduplicated": 0.0,
+        "delta_vs_nominal": 0.0,
+        "line_deduplicated": 0.0,
+        "line_nominal": 0.0,
+        "quad": 0.0
+      },
+      "oil_gas_deposit_m": {
+        "delta_vs_deduplicated": -1.29512e-16,
+        "delta_vs_nominal": -2.59024e-16,
+        "line_deduplicated": 30161300000000.0,
+        "line_nominal": 30161300000000.0,
+        "quad": 30161300000000.0
+      },
+      "silt_depth": {
+        "delta_vs_deduplicated": 0.0,
+        "delta_vs_nominal": -3.6505e-16,
+        "line_deduplicated": 32101800000000.0,
+        "line_nominal": 32101800000000.0,
+        "quad": 32101800000000.0
+      },
+      "soil_depth": {
+        "delta_vs_deduplicated": 1.32848e-16,
+        "delta_vs_nominal": 1.32848e-16,
+        "line_deduplicated": 1881850000000000.0,
+        "line_nominal": 1881850000000000.0,
+        "quad": 1881850000000000.0
+      }
+    },
+    "plates": [
+      {
+        "area_delta": -0.0082144,
+        "crust_conservation_ratio": 1.00295,
+        "crust_volume_delta": 0.00797908,
+        "line_components": 1,
+        "line_nodes": 7254,
+        "lines": 116,
+        "plate_id": 0,
+        "quad_cells": 7148,
+        "quad_components": 2,
+        "stacked_nodes": 60,
+        "stacked_onto": 90
+      },
+      {
+        "area_delta": -0.000763304,
+        "crust_conservation_ratio": 0.995763,
+        "crust_volume_delta": 0.0103076,
+        "line_components": 1,
+        "line_nodes": 5115,
+        "lines": 97,
+        "plate_id": 1,
+        "quad_cells": 5060,
+        "quad_components": 1,
+        "stacked_nodes": 24,
+        "stacked_onto": 58
+      },
+      {
+        "area_delta": 0.00862004,
+        "crust_conservation_ratio": 0.99548,
+        "crust_volume_delta": 0.000643444,
+        "line_components": 1,
+        "line_nodes": 4155,
+        "lines": 83,
+        "plate_id": 19,
+        "quad_cells": 4027,
+        "quad_components": 1,
+        "stacked_nodes": 5,
+        "stacked_onto": 11
+      },
+      {
+        "area_delta": -0.0250801,
+        "crust_conservation_ratio": 1.00975,
+        "crust_volume_delta": -0.00456314,
+        "line_components": 1,
+        "line_nodes": 3309,
+        "lines": 85,
+        "plate_id": 2,
+        "quad_cells": 2927,
+        "quad_components": 1,
+        "stacked_nodes": 57,
+        "stacked_onto": 63
+      },
+      {
+        "area_delta": -0.0118696,
+        "crust_conservation_ratio": 1.00492,
+        "crust_volume_delta": -0.00439759,
+        "line_components": 1,
+        "line_nodes": 3624,
+        "lines": 74,
+        "plate_id": 21,
+        "quad_cells": 3430,
+        "quad_components": 1,
+        "stacked_nodes": 38,
+        "stacked_onto": 41
+      },
+      {
+        "area_delta": -0.011405,
+        "crust_conservation_ratio": 1.00254,
+        "crust_volume_delta": 0.00456505,
+        "line_components": 1,
+        "line_nodes": 3076,
+        "lines": 79,
+        "plate_id": 3,
+        "quad_cells": 2714,
+        "quad_components": 1,
+        "stacked_nodes": 21,
+        "stacked_onto": 27
+      },
+      {
+        "area_delta": -0.000554031,
+        "crust_conservation_ratio": 0.989794,
+        "crust_volume_delta": -0.00619521,
+        "line_components": 1,
+        "line_nodes": 3160,
+        "lines": 84,
+        "plate_id": 4,
+        "quad_cells": 2835,
+        "quad_components": 2,
+        "stacked_nodes": 37,
+        "stacked_onto": 16
+      },
+      {
+        "area_delta": -0.00188187,
+        "crust_conservation_ratio": 0.998943,
+        "crust_volume_delta": 0.000955092,
+        "line_components": 1,
+        "line_nodes": 13503,
+        "lines": 153,
+        "plate_id": 5,
+        "quad_cells": 13448,
+        "quad_components": 3,
+        "stacked_nodes": 36,
+        "stacked_onto": 39
+      },
+      {
+        "area_delta": -0.00735428,
+        "crust_conservation_ratio": 0.997597,
+        "crust_volume_delta": -0.00135907,
+        "line_components": 1,
+        "line_nodes": 3024,
+        "lines": 87,
+        "plate_id": 6,
+        "quad_cells": 2640,
+        "quad_components": 1,
+        "stacked_nodes": 30,
+        "stacked_onto": 20
+      },
+      {
+        "area_delta": -0.00300128,
+        "crust_conservation_ratio": 0.99187,
+        "crust_volume_delta": -0.00293809,
+        "line_components": 1,
+        "line_nodes": 2881,
+        "lines": 78,
+        "plate_id": 20,
+        "quad_cells": 2784,
+        "quad_components": 1,
+        "stacked_nodes": 33,
+        "stacked_onto": 23
+      },
+      {
+        "area_delta": -0.00222831,
+        "crust_conservation_ratio": 0.99776,
+        "crust_volume_delta": 0.00562738,
+        "line_components": 1,
+        "line_nodes": 9668,
+        "lines": 130,
+        "plate_id": 7,
+        "quad_cells": 9443,
+        "quad_components": 1,
+        "stacked_nodes": 30,
+        "stacked_onto": 53
+      },
+      {
+        "area_delta": 0.00258967,
+        "crust_conservation_ratio": 0.98912,
+        "crust_volume_delta": -0.00105152,
+        "line_components": 1,
+        "line_nodes": 3846,
+        "lines": 80,
+        "plate_id": 8,
+        "quad_cells": 3473,
+        "quad_components": 1,
+        "stacked_nodes": 19,
+        "stacked_onto": 15
+      },
+      {
+        "area_delta": -0.00857783,
+        "crust_conservation_ratio": 1.0002,
+        "crust_volume_delta": -0.00226687,
+        "line_components": 1,
+        "line_nodes": 2300,
+        "lines": 73,
+        "plate_id": 9,
+        "quad_cells": 2025,
+        "quad_components": 1,
+        "stacked_nodes": 20,
+        "stacked_onto": 11
+      },
+      {
+        "area_delta": -0.0107338,
+        "crust_conservation_ratio": 1.00181,
+        "crust_volume_delta": -0.00672144,
+        "line_components": 1,
+        "line_nodes": 3451,
+        "lines": 89,
+        "plate_id": 10,
+        "quad_cells": 3055,
+        "quad_components": 1,
+        "stacked_nodes": 32,
+        "stacked_onto": 14
+      },
+      {
+        "area_delta": -0.0138341,
+        "crust_conservation_ratio": 1.0026,
+        "crust_volume_delta": 0.00827982,
+        "line_components": 1,
+        "line_nodes": 4468,
+        "lines": 75,
+        "plate_id": 11,
+        "quad_cells": 3931,
+        "quad_components": 1,
+        "stacked_nodes": 47,
+        "stacked_onto": 62
+      },
+      {
+        "area_delta": -0.0318748,
+        "crust_conservation_ratio": 1.00323,
+        "crust_volume_delta": -0.0490442,
+        "line_components": 1,
+        "line_nodes": 1830,
+        "lines": 58,
+        "plate_id": 12,
+        "quad_cells": 1569,
+        "quad_components": 4,
+        "stacked_nodes": 51,
+        "stacked_onto": 37
+      },
+      {
+        "area_delta": 0.00117384,
+        "crust_conservation_ratio": 0.99868,
+        "crust_volume_delta": -0.00203316,
+        "line_components": 1,
+        "line_nodes": 4003,
+        "lines": 60,
+        "plate_id": 13,
+        "quad_cells": 3597,
+        "quad_components": 1,
+        "stacked_nodes": 14,
+        "stacked_onto": 5
+      },
+      {
+        "area_delta": 4.27443e-05,
+        "crust_conservation_ratio": 0.991419,
+        "crust_volume_delta": 0.00171629,
+        "line_components": 1,
+        "line_nodes": 1044,
+        "lines": 33,
+        "plate_id": 14,
+        "quad_cells": 905,
+        "quad_components": 1,
+        "stacked_nodes": 8,
+        "stacked_onto": 13
+      },
+      {
+        "area_delta": -0.000835229,
+        "crust_conservation_ratio": 0.998748,
+        "crust_volume_delta": -0.00028212,
+        "line_components": 1,
+        "line_nodes": 6880,
+        "lines": 167,
+        "plate_id": 15,
+        "quad_cells": 7032,
+        "quad_components": 5,
+        "stacked_nodes": 20,
+        "stacked_onto": 19
+      },
+      {
+        "area_delta": -0.00106476,
+        "crust_conservation_ratio": 0.997839,
+        "crust_volume_delta": 0.00107049,
+        "line_components": 1,
+        "line_nodes": 8291,
+        "lines": 149,
+        "plate_id": 22,
+        "quad_cells": 8325,
+        "quad_components": 1,
+        "stacked_nodes": 23,
+        "stacked_onto": 20
+      },
+      {
+        "area_delta": -0.016385,
+        "crust_conservation_ratio": 1.00168,
+        "crust_volume_delta": -0.0103952,
+        "line_components": 1,
+        "line_nodes": 9122,
+        "lines": 147,
+        "plate_id": 16,
+        "quad_cells": 8339,
+        "quad_components": 1,
+        "stacked_nodes": 140,
+        "stacked_onto": 112
+      },
+      {
+        "area_delta": -0.00388052,
+        "crust_conservation_ratio": 0.999765,
+        "crust_volume_delta": 0.000666302,
+        "line_components": 1,
+        "line_nodes": 17720,
+        "lines": 191,
+        "plate_id": 17,
+        "quad_cells": 17428,
+        "quad_components": 2,
+        "stacked_nodes": 78,
+        "stacked_onto": 86
+      },
+      {
+        "area_delta": -0.00338531,
+        "crust_conservation_ratio": 0.99957,
+        "crust_volume_delta": -0.00153925,
+        "line_components": 1,
+        "line_nodes": 8925,
+        "lines": 164,
+        "plate_id": 18,
+        "quad_cells": 8435,
+        "quad_components": 3,
+        "stacked_nodes": 44,
+        "stacked_onto": 32
+      }
+    ],
+    "preserved": {
+      "elevation_range_after": [
+        -9511.87,
+        9000.0
+      ],
+      "elevation_range_before": [
+        -9509.25,
+        8591.54
+      ],
+      "provenance_violations": {
+        "is_volcano": 0,
+        "node_created_years": 0,
+        "untargeted": 0,
+        "volcano_active_years_remaining": 0
+      },
+      "volcano_cells_after": 0,
+      "volcano_nodes_before": 0
+    },
+    "result": {
+      "area_m2": 507634000000000.0,
+      "cells": 124570,
+      "plates": 23
+    },
+    "sea_level": {
+      "after_m": -221.325,
+      "before_m": -221.325,
+      "water_budget_after_m3": 1.42273e+18,
+      "water_budget_before_m3": 1.43054e+18
+    },
+    "source": {
+      "deduplicated_area_m2": 510344000000000.0,
+      "lines": 2352,
+      "nodes": 130649,
+      "nominal_area_m2": 510348000000000.0,
+      "one_node_lines": 179,
+      "plates": 23
+    },
+    "source_over_cap": {
+      "crustal_thickness_m": 7.29924e-07,
+      "mantle_lithosphere_thickness_m": 0.00345418
+    },
+    "spacing_rad": 0.00981008,
+    "targets": {
+      "stacked": 867,
+      "stacked_fraction": 0.0066361,
+      "stray_fraction": 0.00366631,
+      "strays": 479
+    }
+  },
+  "round_trip_identical": true,
+  "save": "mantle-bloom-seed125087475-11600000y.mbworld",
+  "seconds": {
+    "convert": 2.30677,
+    "load": 0.276875
+  },
+  "step_audits": [
+    [],
+    []
+  ],
+  "steps": [
+    {
+      "lines": {
+        "area_is_exact": false,
+        "area_over_sphere": 1.00002,
+        "continental_area_fraction": 0.655072,
+        "continental_hc_volume_km3": 9235770000.0,
+        "continental_plates": 14,
+        "elevation": {
+          "p05": -5222.22,
+          "p50": -4501.28,
+          "p95": 1499.76
+        },
+        "hc_volume_km3": 11301400000.0,
+        "hm_volume_km3": 37236100000.0,
+        "land_elevation": {
+          "p05": -167.962,
+          "p50": 277.728,
+          "p95": 2854.18
+        },
+        "land_fraction": 0.331473,
+        "live_plates": 22,
+        "nodes": 130588,
+        "nominal_area_over_sphere": 1.00009,
+        "plates": 22,
+        "sea_level_m": -221.119
+      },
+      "quad": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00047,
+        "continental_area_fraction": 0.652966,
+        "continental_hc_volume_km3": 9244020000.0,
+        "continental_plates": 14,
+        "elevation": {
+          "p05": -5232.69,
+          "p50": -4503.54,
+          "p95": 1524.09
+        },
+        "hc_volume_km3": 11313200000.0,
+        "hm_volume_km3": 37257300000.0,
+        "land_elevation": {
+          "p05": -178.087,
+          "p50": 286.037,
+          "p95": 2974.42
+        },
+        "land_fraction": 0.335081,
+        "live_plates": 23,
+        "nodes": 125124,
+        "nominal_area_over_sphere": 0.958243,
+        "plates": 23,
+        "sea_level_m": -259.062
+      },
+      "step": 1
+    },
+    {
+      "lines": {
+        "area_is_exact": false,
+        "area_over_sphere": 1.00012,
+        "continental_area_fraction": 0.655204,
+        "continental_hc_volume_km3": 9238030000.0,
+        "continental_plates": 14,
+        "elevation": {
+          "p05": -5222.22,
+          "p50": -4495.86,
+          "p95": 1500.0
+        },
+        "hc_volume_km3": 11302100000.0,
+        "hm_volume_km3": 37252200000.0,
+        "land_elevation": {
+          "p05": -169.204,
+          "p50": 277.44,
+          "p95": 2850.89
+        },
+        "land_fraction": 0.331932,
+        "live_plates": 22,
+        "nodes": 130603,
+        "nominal_area_over_sphere": 1.0002,
+        "plates": 22,
+        "sea_level_m": -222.101
+      },
+      "quad": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00036,
+        "continental_area_fraction": 0.653159,
+        "continental_hc_volume_km3": 9244370000.0,
+        "continental_plates": 14,
+        "elevation": {
+          "p05": -5232.69,
+          "p50": -4488.77,
+          "p95": 1524.09
+        },
+        "hc_volume_km3": 11313300000.0,
+        "hm_volume_km3": 37266000000.0,
+        "land_elevation": {
+          "p05": -176.804,
+          "p50": 287.332,
+          "p95": 2974.02
+        },
+        "land_fraction": 0.334435,
+        "live_plates": 23,
+        "nodes": 125111,
+        "nominal_area_over_sphere": 0.958143,
+        "plates": 23,
+        "sea_level_m": -257.758
+      },
+      "step": 2
+    }
+  ],
+  "totals_at_conversion": {
+    "lines": {
+      "area_is_exact": false,
+      "area_over_sphere": 1.00053,
+      "continental_area_fraction": 0.655287,
+      "continental_hc_volume_km3": 9241840000.0,
+      "continental_plates": 15,
+      "elevation": {
+        "p05": -5222.22,
+        "p50": -4498.57,
+        "p95": 1489.37
+      },
+      "hc_volume_km3": 11308700000.0,
+      "hm_volume_km3": 37373700000.0,
+      "land_elevation": {
+        "p05": -167.018,
+        "p50": 278.622,
+        "p95": 2809.76
+      },
+      "land_fraction": 0.331438,
+      "live_plates": 23,
+      "nodes": 130649,
+      "nominal_area_over_sphere": 1.00056,
+      "plates": 23,
+      "sea_level_m": -221.325
+    },
+    "quad": {
+      "area_is_exact": true,
+      "area_over_sphere": 0.995236,
+      "continental_area_fraction": 0.654543,
+      "continental_hc_volume_km3": 9248770000.0,
+      "continental_plates": 15,
+      "elevation": {
+        "p05": -5232.69,
+        "p50": -4504.14,
+        "p95": 1530.56
+      },
+      "hc_volume_km3": 11308100000.0,
+      "hm_volume_km3": 37284500000.0,
+      "land_elevation": {
+        "p05": -160.333,
+        "p50": 288.858,
+        "p95": 3001.38
+      },
+      "land_fraction": 0.332576,
+      "live_plates": 23,
+      "nodes": 124570,
+      "nominal_area_over_sphere": 0.954,
+      "plates": 23,
+      "sea_level_m": -221.325
+    }
+  }
+}

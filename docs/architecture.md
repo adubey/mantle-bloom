@@ -356,8 +356,11 @@ render_image.py      renders /world/render's requested view/resolution to a PNG 
                      (see simulation-model.md#render-image and simulation-model.md#climate),
                      plus /world/animate's streamed H.264/MP4 rendering (stream_animation_mp4)
                      and the "speckle" coastal-dither debug overlay (see docs/debugging.md)
-persistence.py       whole-World save/load to a single opaque pickle file (File > Save/Load
-                     World -- see api-reference.md's /world/save//world/load)
+persistence.py       whole-World save/load to a single versioned pickle envelope (File >
+                     Save/Load World -- see api-reference.md's /world/save//world/load and
+                     save-compatibility.md)
+legacy_conversion.py one-way conversion of line-backed saves to sparse quads (issue #248,
+                     see save-compatibility.md)
 geodesic.py          geodesic-icosahedron hex/pentagon dome tiling + elevation/biome
                      sampling for File > Export Hex Grid (see docs/hex-export-format.md),
                      independent of the plate simulation's own node cloud

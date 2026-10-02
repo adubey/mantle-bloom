@@ -372,6 +372,11 @@ class World:
     # starting sea level at generation. The `/world/controls` slider sets this budget rather
     # than `sea_level_m` directly (adds/removes ocean water).
     ocean_water_volume_m3: float | None = None
+    # Set once when a line-backed save is converted to sparse quads (legacy_conversion.py,
+    # issue #248): `ConversionReport.summary()`, so a converted world says where it came from
+    # and what the conversion changed. `None` for a world generated as either surface. A plain
+    # default an old pickle falls through to, so no persistence backfill is needed.
+    surface_conversion: dict | None = None
     solar_multiplier: float = 1.0
     # The "Ice Age Frequency" Controls slider (Climate tab): the full period, in years, of a
     # slow glacial<->interglacial temperature oscillation driven purely by `elapsed_years`.

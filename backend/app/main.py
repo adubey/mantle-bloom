@@ -271,6 +271,8 @@ def _summary(world: World) -> dict:
         "seed": world.seed,
         "elapsed_years": world.elapsed_years,
         "num_plates": len(world.plates),
+        "surface": persistence.world_surface(world),
+        "surface_conversion": world.surface_conversion,
         # Full current log (bounded, see world.MAX_EVENT_LOG_LENGTH) every time -- simpler
         # for the frontend than diffing "new since last call", and small enough not to
         # matter on the wire.
@@ -795,8 +797,8 @@ def step(req: StepRequest) -> StreamingResponse:
 def save_world() -> Response:
     """The "File > Save World" download -- the *entire* current world (every plate/line,
     mantle field, caches, event log -- see World) pickled as a single opaque file (see
-    persistence.py for why pickle, deliberately with no cross-version compatibility
-    promise). `404` if no world has been generated yet."""
+    persistence.py for why pickle, and docs/save-compatibility.md for which older saves load).
+    `404` if no world has been generated yet."""
     world = _require_world()
     body = persistence.save_world_bytes(world)
     filename = f"mantle-bloom-seed{world.seed}-{int(world.elapsed_years)}y.mbworld"
@@ -806,15 +808,19 @@ def save_world() -> Response:
 
 
 @app.post("/world/load")
-async def load_world(request: Request) -> dict:
+async def load_world(request: Request, convert_lines: bool = False) -> dict:
     """The "File > Load World" upload -- the raw bytes of a file /world/save previously
     produced, as the request body (not JSON -- see persistence.py). Replaces whatever world
-    previously existed, same as /world/generate. `400` if the bytes aren't a valid
-    mantle-bloom world file (pickle can raise many different exception types on malformed
-    or foreign input, so this is caught broadly)."""
+    previously existed, same as /world/generate. `convert_lines=true` converts a line-backed
+    (legacy) save to sparse quads on load, one way -- see docs/save-compatibility.md; the
+    summary's `surface_conversion` then reports what changed. `400` with the reason if the
+    bytes are corrupt or in a save format this build doesn't read; any other failure is
+    still a `400`, without detail."""
     body = await request.body()
     try:
-        world = persistence.load_world_bytes(body)
+        world = persistence.load_world_bytes(body, convert_lines=convert_lines)
+    except persistence.SaveFormatError as exc:
+        raise HTTPException(status_code=400, detail=f"invalid or incompatible world file: {exc}") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="invalid or incompatible world file") from exc
     _state["world"] = world
