@@ -8,7 +8,7 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.000622
+          "value": 0.000622459
         },
         "crust_delamination": {
           "limit": 0.01,
@@ -18,12 +18,12 @@
         "crust_transfer_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 2.4e-11
+          "value": 4.85295e-11
         },
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.001344
+          "value": 0.00133889
         },
         "mantle_delamination": {
           "limit": 0.015,
@@ -81,17 +81,17 @@
         "crust_delamination": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.00629669
+          "value": 0.00629668
         },
         "crust_transfer_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 1.8e-05
+          "value": 1.80067e-05
         },
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.00285
+          "value": 0.002815
         },
         "mantle_delamination": {
           "limit": 0.015,
@@ -101,7 +101,7 @@
         "mantle_transfer_delta": {
           "limit": 0.015,
           "pass": true,
-          "value": 3.336e-05
+          "value": 3.33657e-05
         },
         "multiply_covered": {
           "limit": 0.02,
@@ -144,32 +144,32 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.001401
+          "value": 0.00140151
         },
         "crust_delamination": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.0017105
+          "value": 0.00171048
         },
         "crust_transfer_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 6.844e-05
+          "value": 6.84625e-05
         },
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": false,
-          "value": 0.010165
+          "value": 0.0103258
         },
         "mantle_delamination": {
           "limit": 0.015,
           "pass": true,
-          "value": 0.0011262
+          "value": 0.00112623
         },
         "mantle_transfer_delta": {
           "limit": 0.015,
           "pass": true,
-          "value": 5.499e-05
+          "value": 5.49674e-05
         },
         "multiply_covered": {
           "limit": 0.02,
@@ -212,7 +212,7 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.000564
+          "value": 0.000563753
         },
         "crust_delamination": {
           "limit": 0.01,
@@ -222,22 +222,22 @@
         "crust_transfer_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 1.618e-05
+          "value": 1.61287e-05
         },
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.006405
+          "value": 0.00652616
         },
         "mantle_delamination": {
           "limit": 0.015,
           "pass": true,
-          "value": 0.0015341
+          "value": 0.00153406
         },
         "mantle_transfer_delta": {
           "limit": 0.015,
           "pass": true,
-          "value": 3.102e-05
+          "value": 3.10656e-05
         },
         "multiply_covered": {
           "limit": 0.02,
@@ -280,7 +280,7 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.0001615
+          "value": 0.000161523
         },
         "crust_delamination": {
           "limit": 0.01,
@@ -295,7 +295,7 @@
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.000318
+          "value": 0.00180498
         },
         "mantle_delamination": {
           "limit": 0.015,
@@ -416,7 +416,7 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.001027
+          "value": 0.00102673
         },
         "crust_delamination": {
           "limit": 0.01,
@@ -426,22 +426,22 @@
         "crust_transfer_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.0
+          "value": 1.08366e-16
         },
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.002719
+          "value": 0.00267875
         },
         "mantle_delamination": {
           "limit": 0.015,
           "pass": true,
-          "value": 0.000646677
+          "value": 0.000646676
         },
         "mantle_transfer_delta": {
           "limit": 0.015,
           "pass": true,
-          "value": 7.5e-09
+          "value": 7.21201e-09
         },
         "multiply_covered": {
           "limit": 0.02,
@@ -484,7 +484,7 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 4.47e-05
+          "value": 4.4731e-05
         },
         "crust_delamination": {
           "limit": 0.01,
@@ -499,7 +499,7 @@
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.001227
+          "value": 0.00159279
         },
         "mantle_delamination": {
           "limit": 0.015,
@@ -552,32 +552,32 @@
         "continental_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 8.7e-05
+          "value": 8.71588e-05
         },
         "crust_delamination": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.0038573
+          "value": 0.00385725
         },
         "crust_transfer_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 6.29e-05
+          "value": 6.29471e-05
         },
         "land_fraction_delta": {
           "limit": 0.01,
           "pass": true,
-          "value": 0.002702
+          "value": 0.00269661
         },
         "mantle_delamination": {
           "limit": 0.015,
           "pass": true,
-          "value": 0.00014216
+          "value": 0.000142162
         },
         "mantle_transfer_delta": {
           "limit": 0.015,
           "pass": true,
-          "value": 2.78e-07
+          "value": 2.76579e-07
         },
         "multiply_covered": {
           "limit": 0.02,

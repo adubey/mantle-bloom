@@ -44,9 +44,12 @@ when that cell is active, otherwise the nearest active cell of any plate.
   plus the carried non-isostatic residual. A cell no node targets
   copies its nearest same-plate node, except for volcanoes, which are point features.
 - A node whose target belongs to another plate is crust the line world held twice, in an
-  overlap. It stacks onto that cell as `quad_merge` stacks a suture: its extensive volume adds
-  to the cell, volcano flags OR, countdowns and channel depth take the max, history takes the
-  earliest set value, and composition is voted by crust volume.
+  overlap. It stacks onto that cell as `quad_merge` stacks a suture, every field by its remap
+  class: its extensive volume adds to the cell; volcano flags OR; countdowns and channel depth
+  take the max; history takes the earliest set value; composition is voted by crust volume and
+  other categories by area, ties keeping the cell's own; intensive and clock fields blend by
+  area (soil contents by soil depth, channel width by channel depth); and the non-isostatic
+  elevation residual blends by area.
 - Thickness stacking pushes past the Hc/Hm caps spreads onto neighbouring cells with room,
   out to `OVERFLOW_SPREAD_RINGS`, so a suture thickens a belt rather than one column. Hc and
   Hm are then clamped into their caps (the suture-accretion limit), shifting elevation by the
@@ -224,8 +227,8 @@ class LegacyPlate:
 
 def read_line_plate(plate: object) -> LegacyPlate:
     """The persistent state of a line plate, from `__dict__` alone (see the module docstring).
-    Raises `ValueError` on state it doesn't recognise, mismatched field lengths, or
-    non-finite values."""
+    Raises `ValueError` on state it doesn't recognise, mismatched field lengths, non-finite
+    fields or coordinates, or malformed plate motion (frame, omega, age, stress, crust type)."""
     state = plate.__dict__
     unknown = sorted(set(state) - _LINE_PLATE_STATE - _LINE_PLATE_DROPPED)
     if unknown:
@@ -256,19 +259,52 @@ def read_line_plate(plate: object) -> LegacyPlate:
     for name, values in fields.items():
         if values.dtype.kind == "f" and not np.all(np.isfinite(values)):
             raise ValueError(f"plate {state.get('_plate_id')!r}: field {name!r} holds non-finite values")
-    local = geometry.local_xyz(np.concatenate(phi), np.concatenate(theta)) if phi else np.zeros((0, 3))
+    phi = np.concatenate(phi) if phi else np.zeros(0)
+    theta = np.concatenate(theta) if theta else np.zeros(0)
+    if not (np.all(np.isfinite(phi)) and np.all(np.isfinite(theta))):
+        raise ValueError(f"plate {state.get('_plate_id')!r}: line coordinates hold non-finite values")
+    local = geometry.local_xyz(phi, theta) if len(phi) else np.zeros((0, 3))
+    frame, omega, age_steps, internal_stress, crust_type = _plate_motion_state(state)
     return LegacyPlate(
         plate_id=int(state["_plate_id"]),
-        frame=np.asarray(state["_frame"], dtype=float),
-        crust_type=str(state["_crust_type"]),
-        omega=np.asarray(state.get("_omega", np.zeros(3)), dtype=float),
-        age_steps=int(state.get("_age_steps", 0)),
-        internal_stress=float(state.get("_internal_stress", 0.0)),
+        frame=frame,
+        crust_type=crust_type,
+        omega=omega,
+        age_steps=age_steps,
+        internal_stress=internal_stress,
         local_xyz=np.asarray(local, dtype=float).reshape(-1, 3),
         fields=fields,
         line_count=len(lines),
         one_node_lines=sum(len(line.__dict__["_theta"]) == 1 for line in lines),
     )
+
+
+# How far a pickled frame may be from a proper rotation (the stress tests' own tolerance).
+FRAME_TOLERANCE = 1e-6
+
+
+def _plate_motion_state(state: dict) -> tuple[np.ndarray, np.ndarray, int, float, str]:
+    """(frame, omega, age_steps, internal_stress, crust_type) of a pickled plate, checked:
+    a converted world would carry anything malformed here straight into its simulation."""
+    plate_id = state.get("_plate_id")
+    frame = np.asarray(state["_frame"], dtype=float)
+    if frame.shape != (3, 3) or not np.all(np.isfinite(frame)):
+        raise ValueError(f"plate {plate_id!r}: frame must be a finite 3x3 matrix")
+    if not np.allclose(frame @ frame.T, np.eye(3), atol=FRAME_TOLERANCE) or np.linalg.det(frame) <= 0.0:
+        raise ValueError(f"plate {plate_id!r}: frame is not a proper rotation")
+    omega = np.asarray(state.get("_omega", np.zeros(3)), dtype=float)
+    if omega.shape != (3,) or not np.all(np.isfinite(omega)):
+        raise ValueError(f"plate {plate_id!r}: omega must be a finite 3-vector")
+    internal_stress = float(state.get("_internal_stress", 0.0))
+    if not np.isfinite(internal_stress):
+        raise ValueError(f"plate {plate_id!r}: internal stress is not finite")
+    age_steps = state.get("_age_steps", 0)
+    if isinstance(age_steps, bool) or not isinstance(age_steps, (int, np.integer)) or age_steps < 0:
+        raise ValueError(f"plate {plate_id!r}: age must be a non-negative step count")
+    crust_type = state["_crust_type"]
+    if crust_type not in ("continental", "oceanic"):
+        raise ValueError(f"plate {plate_id!r}: unknown crust type {crust_type!r}")
+    return frame.copy(), omega.copy(), int(age_steps), internal_stress, crust_type
 
 
 @dataclass
@@ -812,46 +848,92 @@ def _stack_foreign(
         receiving[cell] = True
 
         fields = {name: quad.collect(name) for name in SURFACE_FIELDS}
-        old_hc, old_hm = fields["crustal_thickness_m"].copy(), fields["mantle_lithosphere_thickness_m"].copy()
-        residual = fields["elevation"] - lithosphere.isostatic_elevation(
-            old_hc, old_hm, lithosphere.node_crust_density(fields["crust_type_code"], quad.crust_type)
-        )
+        own = {name: values.copy() for name, values in fields.items()}
+        old_hc, old_hm = own["crustal_thickness_m"], own["mantle_lithosphere_thickness_m"]
 
         # Composition: explicit codes on both sides, voted by crust volume, then re-encoded
         # relative to the receiving plate.
         own_code = CRUST_TYPE_CONTINENTAL if quad.crust_type == "continental" else CRUST_TYPE_OCEANIC
-        cell_explicit = np.where(fields["crust_type_code"] == CRUST_TYPE_INHERIT, own_code, fields["crust_type_code"])
+        cell_explicit = np.where(own["crust_type_code"] == CRUST_TYPE_INHERIT, own_code, own["crust_type_code"])
         src_volume = node_area * np.maximum(source("crustal_thickness_m"), 0.0)
         continental = area * old_hc * (cell_explicit == CRUST_TYPE_CONTINENTAL)
         oceanic = area * old_hc * (cell_explicit != CRUST_TYPE_CONTINENTAL)
         continental += np.bincount(cell, weights=src_volume * (src_explicit == CRUST_TYPE_CONTINENTAL), minlength=count)
         oceanic += np.bincount(cell, weights=src_volume * (src_explicit != CRUST_TYPE_CONTINENTAL), minlength=count)
         winner = np.where(continental > oceanic, CRUST_TYPE_CONTINENTAL, np.where(oceanic > continental, CRUST_TYPE_OCEANIC, cell_explicit))
-        fields["crust_type_code"] = np.where(receiving, np.where(winner == own_code, CRUST_TYPE_INHERIT, winner), fields["crust_type_code"]).astype(np.int8)
+        fields["crust_type_code"] = np.where(receiving, np.where(winner == own_code, CRUST_TYPE_INHERIT, winner), own["crust_type_code"]).astype(np.int8)
 
+        # Every other field combines the cell's own value (weighted by its area) with the
+        # incoming nodes' (weighted by theirs) by remap class -- quad_merge's suture rules.
         for name, spec in SURFACE_FIELDS.items():
             if name in ("elevation", "crust_type_code"):
                 continue
             values = source(name)
             if spec.remap_class == RemapClass.EXTENSIVE:
-                fields[name] = fields[name] + np.bincount(cell, weights=values * node_area, minlength=count) / area
+                fields[name] = own[name] + np.bincount(cell, weights=values * node_area, minlength=count) / area
                 if name in _CAPS:
-                    fields[name] = _spread_overflow(quad, fields[name], old_hc if name == "crustal_thickness_m" else old_hm, _CAPS[name][1])
+                    fields[name] = _spread_overflow(quad, fields[name], own[name], _CAPS[name][1])
             elif spec.remap_class == RemapClass.BOOLEAN_PROVENANCE:
-                fields[name] = fields[name] | (np.bincount(cell, weights=values.astype(float), minlength=count) > 0.0)
+                fields[name] = own[name] | (np.bincount(cell, weights=values.astype(float), minlength=count) > 0.0)
             elif name == "channel_depth" or spec.remap_class == RemapClass.COUNTDOWN:
                 np.maximum.at(fields[name], cell, values)
             elif spec.remap_class in (RemapClass.HISTORY, RemapClass.WRITE_ONCE_HISTORY):
-                earliest = np.where(fields[name] != spec.sentinel, fields[name], np.inf)
+                earliest = np.where(own[name] != spec.sentinel, own[name], np.inf)
                 set_ = values != spec.sentinel
                 np.minimum.at(earliest, cell[set_], values[set_])
                 fields[name] = np.where(np.isfinite(earliest), earliest, spec.sentinel)
+            elif spec.remap_class == RemapClass.CATEGORICAL:
+                fields[name] = _vote_with_own(cell, values, node_area, own[name], area, receiving)
+            else:
+                # Intensive and clock fields: an area-weighted blend; a concentration or a
+                # channel width is weighted by the column or channel it describes.
+                coupled = _COUPLED_WEIGHTS.get(name)
+                own_weight = area * (own[coupled] if coupled else 1.0)
+                incoming_weight = node_area * (source(coupled) if coupled else 1.0)
+                total = own_weight + np.bincount(cell, weights=incoming_weight, minlength=count)
+                blended = own_weight * own[name] + np.bincount(cell, weights=incoming_weight * values, minlength=count)
+                mixed = receiving & (total > 0.0)
+                fields[name] = np.where(mixed, blended / np.where(total > 0.0, total, 1.0), own[name])
 
+        # Elevation: isostasy from the stacked column, plus both sides' non-isostatic residual
+        # blended by area, as quad_merge does at a suture.
+        own_residual = own["elevation"] - lithosphere.isostatic_elevation(old_hc, old_hm, lithosphere.node_crust_density(own["crust_type_code"], quad.crust_type))
+        incoming_residual = np.empty(len(cell))
+        for k in np.unique(src_plate):
+            mine = src_plate == k
+            plate_fields = legacy[k].fields
+            nodes = src_node[mine]
+            density = lithosphere.node_crust_density(plate_fields["crust_type_code"][nodes], legacy[k].crust_type)
+            incoming_residual[mine] = plate_fields["elevation"][nodes] - lithosphere.isostatic_elevation(
+                plate_fields["crustal_thickness_m"][nodes], plate_fields["mantle_lithosphere_thickness_m"][nodes], density
+            )
+        residual = (area * own_residual + np.bincount(cell, weights=node_area * incoming_residual, minlength=count)) / (
+            area + np.bincount(cell, weights=node_area, minlength=count)
+        )
         density = lithosphere.node_crust_density(fields["crust_type_code"], quad.crust_type)
         rebuilt = lithosphere.isostatic_elevation(fields["crustal_thickness_m"], fields["mantle_lithosphere_thickness_m"], density) + residual
         changed = receiving | (fields["crustal_thickness_m"] != old_hc) | (fields["mantle_lithosphere_thickness_m"] != old_hm)
-        fields["elevation"] = np.where(changed, rheology.clip_elevation_bounds(rebuilt), fields["elevation"])
+        fields["elevation"] = np.where(changed, rheology.clip_elevation_bounds(rebuilt), own["elevation"])
         quad.set_fields_on_plate(**fields)
+
+
+# Intensive fields whose blend is weighted by another field: a concentration in the soil by
+# the soil's depth, a channel's width by its depth (as quad_merge weights them).
+_COUPLED_WEIGHTS = {"soil_mineral_content": "soil_depth", "soil_organic_content": "soil_depth", "channel_width": "channel_depth"}
+
+
+def _vote_with_own(cell: np.ndarray, values: np.ndarray, weight: np.ndarray, own: np.ndarray, own_weight: np.ndarray, receiving: np.ndarray) -> np.ndarray:
+    """A categorical field on cells receiving incoming nodes: the area-weighted vote between
+    the cell's own value (weighted by its area) and the incoming nodes'. Ties keep the cell's
+    own value, as quad_merge does."""
+    choices = np.unique(np.concatenate([values, own[receiving]]))
+    count = len(own)
+    votes = np.stack([np.bincount(cell, weights=weight * (values == c), minlength=count) + own_weight * (own == c) for c in choices])
+    best = votes.max(axis=0)
+    own_votes = votes[np.minimum(np.searchsorted(choices, own), len(choices) - 1), np.arange(count)]
+    own_votes = np.where(choices[np.minimum(np.searchsorted(choices, own), len(choices) - 1)] == own, own_votes, -np.inf)
+    winner = np.where(own_votes >= best * (1.0 - 1e-9), own, choices[np.argmax(votes, axis=0)])
+    return np.where(receiving, winner, own).astype(own.dtype)
 
 
 def _spread_overflow(quad: PlateWithSparseQuadPatch, values: np.ndarray, before: np.ndarray, cap: float) -> np.ndarray:
