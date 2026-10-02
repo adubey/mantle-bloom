@@ -505,6 +505,8 @@ async function readProgressStream(resp: Response, onProgress?: (fraction: number
 // real geometry/motion instead of the sketch alone (see world.generate_world's own
 // `premade_world_id` param). `null` (every other tab, "Dragons & Zombie World" included) is
 // unaffected.
+// surface is the authoritative plate terrain representation. `"quad"` is the production
+// default selected by App.tsx; `"lines"` remains an explicitly labelled diagnostic option.
 // `onProgress`, if given, is called with a fraction (0 to 1) as the backend's
 // generate_world_progress passes its three phase boundaries (plate/site generation,
 // mantle-center fitting, the finish_generation bootstrap -- see backend app/main.py's
@@ -520,6 +522,7 @@ export function generateWorld(
   fluidDensity: number,
   numPlates: number | null,
   voronoiPoints: number,
+  surface: "quad" | "lines",
   sketchImageBase64: string | null = null,
   premadeWorldId: string | null = null,
   onProgress?: (fraction: number) => void,
@@ -538,6 +541,7 @@ export function generateWorld(
       initial_soil_maturity: initialSoilMaturity,
       climate_density: climateDensity,
       fluid_density: fluidDensity,
+      surface,
       sketch: sketchImageBase64 ? { image_base64: sketchImageBase64 } : null,
       premade_world_id: premadeWorldId,
     }),

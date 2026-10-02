@@ -443,6 +443,30 @@ def test_generate_returns_summary(client):
     assert body["seed"] == 1
 
 
+def test_generate_defaults_to_quad_surfaces(client):
+    from app.sparse_quad_patch import PlateWithSparseQuadPatch
+
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 0.5})
+
+    assert resp.status_code == 200
+    assert all(isinstance(plate, PlateWithSparseQuadPatch) for plate in main._state["world"].plates)
+
+
+def test_generate_accepts_the_legacy_line_surface(client):
+    from app.lithosphere_plate import LithospherePlate
+
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "node_density": 0.5, "surface": "lines"})
+
+    assert resp.status_code == 200
+    assert all(isinstance(plate, LithospherePlate) for plate in main._state["world"].plates)
+
+
+def test_generate_rejects_an_unknown_surface(client):
+    resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "surface": "triangles"})
+
+    assert resp.status_code == 422
+
+
 def test_generate_returns_a_generation_event(client):
     resp = _post_generate(client, json={"seed": 1, "num_plates": 6, "continental_fraction": 0.5})
     body = resp.json()
@@ -642,7 +666,7 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
         truth = ground_truth[entry["plate_id"]]
         assert entry["crust_type"] == truth.crust_type
         assert entry["num_points"] == truth.node_count()
-        assert entry["num_rows"] == sum(1 for line in truth.lines if len(line.theta) > 0)
+        assert entry["num_rows"] is None
         assert len(entry["outline"]) == len(truth.outline_world())
         assert len(entry["points"]) == truth.node_count()
         if truth.node_count() > 0:
@@ -655,7 +679,7 @@ def test_plates_endpoint_matches_directly_generated_plate_state(client):
 def test_plates_endpoint_reports_motion_shape_and_overlap_diagnostics(client):
     from app import mantle
 
-    _post_generate(client, json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5})
+    _post_generate(client, json={"seed": 11, "num_plates": 9, "continental_fraction": 0.5, "surface": "lines"})
     plates = client.get("/world/plates").json()["plates"]
 
     for entry in plates:
@@ -681,7 +705,7 @@ def test_plate_at_returns_the_owning_plate_id(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates if p["num_points"] > 0)
-    x, y, z = target["outline"][0]
+    x, y, z = target["points"][0]
     lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
     lon_deg = math.degrees(math.atan2(y, x))
 
@@ -700,7 +724,7 @@ def test_sample_at_returns_a_full_point_report(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates if p["num_points"] > 0)
-    x, y, z = target["outline"][0]
+    x, y, z = target["points"][0]
     lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
     lon_deg = math.degrees(math.atan2(y, x))
 
@@ -730,7 +754,7 @@ def test_node_at_returns_the_owning_node_phi_theta_and_creation_year(client):
     _post_generate(client, json={"seed": 12, "num_plates": 8})
     plates = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates if p["num_points"] > 0)
-    x, y, z = target["outline"][0]
+    x, y, z = target["points"][0]
     lat_deg = math.degrees(math.asin(max(-1.0, min(1.0, z))))
     lon_deg = math.degrees(math.atan2(y, x))
 
@@ -793,7 +817,7 @@ def test_elevation_point_at_rejects_non_finite_query(client):
 
 
 def test_elevation_point_at_returns_point_and_line_info(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8, "surface": "lines"})
     plates_data = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates_data if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -835,7 +859,7 @@ def test_surface_node_lookup_uses_storage_neutral_node_id(client):
     assert body["node_id"] == [str(int(node_id[0])), str(int(node_id[1]))]
     assert len(body["world_xyz"]) == len(body["local_xyz"]) == 3
     assert body["area_m2"] > 0.0
-    assert body["area_is_exact"] is False
+    assert body["area_is_exact"] is True
 
     invalid = client.get(
         "/world/surface_node",
@@ -845,7 +869,7 @@ def test_surface_node_lookup_uses_storage_neutral_node_id(client):
 
 
 def test_elevation_point_navigates_by_index_and_clamps_out_of_range(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 8})
+    _post_generate(client, json={"seed": 12, "num_plates": 8, "surface": "lines"})
     plates_data = client.get("/world/plates").json()["plates"]
     target = next(p for p in plates_data if p["num_points"] > 0)
     x, y, z = target["outline"][0]
@@ -1379,7 +1403,7 @@ def test_controls_debug_diagnostics_round_trip(client):
 
 
 def test_corner_notch_log_stays_empty_until_diagnostics_enabled(client):
-    _post_generate(client, json={"seed": 12, "num_plates": 6})
+    _post_generate(client, json={"seed": 12, "num_plates": 6, "surface": "lines"})
     resp = client.get("/world/corner_notch_log")
     assert resp.status_code == 200
     assert resp.json() == {"debug_diagnostics": False, "entries": []}

@@ -8,7 +8,7 @@ from app.elevation_lines import (
     ElevationLine,
     line_spacing_rad,
 )
-from app.lithosphere_plate import build_plate_tiling, generate_plates
+from app.lithosphere_plate import build_plate_tiling, generate_plates as _generate_plates
 from app import healpix_grid
 from app.plates import (
     ELLIPSE_OUTLINE_POINTS,
@@ -29,7 +29,18 @@ from app.plates import (
     node_components,
     plate_bounding_ellipse,
 )
-from app.world import generate_world, step_world
+from app.world import generate_world as _generate_world, step_world
+
+
+def generate_plates(*args, **kwargs):
+    """This module exercises the legacy row/line implementation unless a test opts into quad."""
+    kwargs.setdefault("surface", "lines")
+    return _generate_plates(*args, **kwargs)
+
+
+def generate_world(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_world(*args, **kwargs)
 
 
 def _measured_land_fraction(plates_list) -> float:

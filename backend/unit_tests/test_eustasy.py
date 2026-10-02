@@ -5,7 +5,12 @@ import numpy as np
 import pytest
 
 from app import eustasy
-from app.world import generate_world, step_world
+from app.world import generate_world as _generate_world, step_world
+
+
+def generate_world(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_world(*args, **kwargs)
 
 
 def test_total_water_volume_is_monotonic_and_area_weighted():

@@ -606,7 +606,7 @@ def generate_world(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-    surface: str = "lines",
+    surface: str = "quad",
 ) -> World:
     """`num_plates` is optional -- see lithosphere_plate.generate_plates for why: the world
     tiles itself into a plausible number of plates rather than requiring the caller to pick
@@ -685,7 +685,7 @@ def generate_world_progress(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-    surface: str = "lines",
+    surface: str = "quad",
 ):
     """Generator form of `generate_world`, driving the exact same work but yielding
     `("progress", fraction)` at each of its three natural phase boundaries -- plate/site

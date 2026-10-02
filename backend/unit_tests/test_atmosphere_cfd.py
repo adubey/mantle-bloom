@@ -6,7 +6,7 @@ from app.world import generate_world
 # Coarse settings throughout -- same rationale as test_world_smoke.py's own
 # _COARSE_KWARGS: these are regression/boundedness checks, not physics-precision tests, so
 # a small fast-to-run grid is preferable.
-_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6)
+_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6, surface="lines")
 
 
 def _world(seed=1):

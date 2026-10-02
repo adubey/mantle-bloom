@@ -298,6 +298,9 @@ export default function App() {
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
   const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS_RANDOM);
+  // Sparse quads are the production surface. Keep the legacy line representation available
+  // here as an explicitly labelled diagnostic/rollback option during the initial cutover.
+  const [worldSurface, setWorldSurface] = useState<"quad" | "lines">("quad");
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -748,7 +751,7 @@ export default function App() {
           ? await generateDebugWorld(debugScenario, seed)
           : await generateWorld(
               seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-              climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
+              climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, worldSurface, sketchBase64,
               generateMode === "premade" ? premadeWorldId : null,
               setGenProgress,
             );
@@ -2135,6 +2138,24 @@ export default function App() {
                 </div>
               )}
             </label>
+
+            {generateMode !== "debug" && (
+              <label style={{ display: "block", marginBottom: 16 }}>
+                World surface
+                <select
+                  value={worldSurface}
+                  onChange={(e) => setWorldSurface(e.target.value as "quad" | "lines")}
+                  style={{ width: "100%", marginTop: 4 }}
+                >
+                  <option value="quad">Quad grid (default)</option>
+                  <option value="lines">Elevation lines (legacy / diagnostic)</option>
+                </select>
+                <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+                  Quad is the supported production representation. Elevation lines are kept
+                  temporarily for diagnostics and rollback comparisons.
+                </div>
+              </label>
+            )}
 
             {generateMode !== "debug" && (
               <label style={{ display: "block", marginBottom: 16 }}>

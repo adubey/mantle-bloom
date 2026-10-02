@@ -8,6 +8,7 @@ import logging
 import os
 import threading
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -105,6 +106,10 @@ class SketchRequest(BaseModel):
 
 class GenerateRequest(BaseModel):
     seed: int = 0
+    # Sparse quads are the production representation. Lines remain selectable as a narrow
+    # diagnostic/rollback path while the cutover settles, but are no longer the implicit API
+    # behavior (issue #250).
+    surface: Literal["quad", "lines"] = "quad"
     # Optional: the world tiles itself into a plausible plate count when omitted (see
     # plates.generate_plates) -- the frontend doesn't ask for one.
     num_plates: int | None = None
@@ -665,6 +670,7 @@ def generate(req: GenerateRequest) -> StreamingResponse:
             fluid_density=req.fluid_density,
             sketch=sketch_masks,
             premade_world_id=req.premade_world_id,
+            surface=req.surface,
         )
         world = None
         try:

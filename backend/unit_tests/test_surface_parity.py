@@ -448,7 +448,7 @@ def test_presets_have_consistent_checkpoints():
 def test_run_can_continue_a_saved_world(tmp_path):
     from app.world import generate_world
 
-    world = generate_world(seed=4, node_density=0.25)
+    world = generate_world(seed=4, node_density=0.25, surface="lines")
     path = tmp_path / "w.mbworld"
     path.write_bytes(persistence.save_world_bytes(world))
     config = sp.RunConfig("resume", node_density=0.25, step_years=1e6, checkpoints_myr=(), audit_every=1, samples=500, load_checks=False)

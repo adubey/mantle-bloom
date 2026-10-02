@@ -11,6 +11,7 @@ Request body:
 ```json
 {
   "seed": 1,
+  "surface": "quad",
   "num_plates": null,
   "continental_fraction": 0.7,
   "land_fraction": 0.29,
@@ -68,6 +69,12 @@ a coarser (faster) resolution, or vice versa -- see
 [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
 Replaces whatever world previously existed.
 
+`surface` selects the authoritative plate terrain representation: `"quad"` (the default)
+uses sparse adaptive quad patches and is the supported production path. `"lines"` retains
+the former elevation-line representation as a temporary legacy/diagnostic rollback option.
+Any other value is rejected during request validation. The Generate World dialog exposes
+the same choice and defaults to quad.
+
 `sketch` (the Generate World dialog's "Human-made" tab) is optional and omitted by the
 "Random" tab entirely -- `{"image_base64": "<a PNG>"}`, the drawn or loaded coastline (see
 [simulation-model.md#worldsketch](simulation-model.md#worldsketch) for the ink convention and
@@ -120,7 +127,7 @@ shape as `/world/generate`, with `events` reflecting anything logged up through 
 
 ## `GET /world/save`
 
-The "File > Save World" download -- the *entire* current world (every plate/line, mantle
+The "File > Save World" download -- the *entire* current world (every plate surface, mantle
 field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
 pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
 attachment`), not JSON (see `backend/app/persistence.py`). The file is a versioned envelope
@@ -129,6 +136,12 @@ format (contrast with `/world/export_hexgrid` below): pickling by class identity
 the code. [save-compatibility.md](save-compatibility.md) lists which older saves this build
 reads and how line-backed saves move to sparse quads. `404` if no world has been generated
 yet.
+
+The versioned save envelope records the authoritative surface kind (`quad` or `lines`) and
+that representation's serialization version. Synthetic diagnostic worlds that deliberately
+combine both are marked `mixed`; production generation never creates one. Loading rejects
+metadata that disagrees with the plate objects instead of silently treating a save as another
+representation.
 
 Loading a file back is equivalent to running arbitrary code from its bytes (a standard
 pickle caveat) -- acceptable given this server is a single-user localhost dev tool already

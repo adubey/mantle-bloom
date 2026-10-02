@@ -3,7 +3,7 @@ import io
 import numpy as np
 import pytest
 from app import worldsketch
-from app.lithosphere_plate import build_plate_tiling, generate_plates
+from app.lithosphere_plate import build_plate_tiling, generate_plates as _generate_plates
 from app.worldsketch import (
     SKETCH_GRID_H,
     SKETCH_GRID_W,
@@ -12,6 +12,11 @@ from app.worldsketch import (
     sketch_plate_sites,
 )
 from PIL import Image, ImageDraw
+
+
+def generate_plates(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_plates(*args, **kwargs)
 
 
 def _png_bytes(img: Image.Image) -> bytes:

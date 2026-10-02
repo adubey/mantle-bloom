@@ -7,7 +7,7 @@ from app.world import generate_world, step_world
 
 
 def test_round_trip_preserves_a_freshly_generated_world():
-    world = generate_world(seed=42, num_plates=6)
+    world = generate_world(seed=42, num_plates=6, surface="lines")
     data = persistence.save_world_bytes(world)
     loaded = persistence.load_world_bytes(data)
 
@@ -136,7 +136,7 @@ def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # ElevationLine.__getattr__ backfills it lazily as zeros so load + step still work.
     from app.world import step_world
 
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, surface="lines")
     for plate in world.plates:
         for line in plate.lines:
             line.__dict__.pop("_elev_change_reason", None)
