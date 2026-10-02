@@ -6,7 +6,7 @@ from app.world import generate_world, step_world
 # Coarse settings throughout -- this is a smoke test (nothing crashes, state stays finite and
 # in a sane range across several real steps), not a physics-precision test; see
 # unit_tests/test_lithosphere.py/test_torque.py/test_healpix_grid.py for those.
-_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6)
+_COARSE_KWARGS = dict(node_density=0.5, climate_density=0.5, fluid_density=0.5, num_plates=6, surface="lines")
 
 
 @pytest.fixture(scope="module")

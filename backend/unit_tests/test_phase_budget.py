@@ -1,7 +1,12 @@
 import numpy as np
 import pytest
 from app import elevation_lines, lithosphere, phase_budget
-from app.world import generate_world, step_world
+from app.world import generate_world as _generate_world, step_world
+
+
+def generate_world(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_world(*args, **kwargs)
 
 
 class _FakeWorld:

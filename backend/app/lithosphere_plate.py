@@ -2548,7 +2548,7 @@ def generate_plates(
     voronoi_points: int | None = None,
     sketch: worldsketch.SketchMasks | None = None,
     premade_world_id: str | None = None,
-    surface: str = "lines",
+    surface: str = "quad",
 ) -> list[Plate]:
     """`plates.generate_plates`'s own seed-placement/Voronoi-tiling algorithm, extended so
     each plate owns the union of several adjacent Voronoi cells (see `build_plate_tiling` and

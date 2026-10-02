@@ -21,7 +21,12 @@ from app.faults import (
     update_faults,
 )
 from app.plates import PlateWithLines
-from app.world import World, generate_world, step_world
+from app.world import World, generate_world as _generate_world, step_world
+
+
+def generate_world(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_world(*args, **kwargs)
 
 # A high BASE_SPAWN_RATE keeps the step-count (and so the runtime) of the integration tests
 # low while still exercising spawn/age/retire/reconcile -- the default rate is tuned for

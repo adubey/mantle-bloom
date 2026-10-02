@@ -11,6 +11,7 @@ Request body:
 ```json
 {
   "seed": 1,
+  "surface": "quad",
   "num_plates": null,
   "continental_fraction": 0.7,
   "land_fraction": 0.29,
@@ -68,6 +69,12 @@ a coarser (faster) resolution, or vice versa -- see
 [simulation-model.md#ocean-atmospheric-fluid-dynamics](simulation-model.md#ocean-atmospheric-fluid-dynamics).
 Replaces whatever world previously existed.
 
+`surface` selects the authoritative plate terrain representation: `"quad"` (the default)
+uses sparse adaptive quad patches and is the supported production path. `"lines"` retains
+the former elevation-line representation as a temporary legacy/diagnostic rollback option.
+Any other value is rejected during request validation. Generate World's Advanced Settings
+exposes the same choice as **Terrain model**, defaulting to **Standard** (quad).
+
 `sketch` (the Generate World dialog's "Human-made" tab) is optional and omitted by the
 "Random" tab entirely -- `{"image_base64": "<a PNG>"}`, the drawn or loaded coastline (see
 [simulation-model.md#worldsketch](simulation-model.md#worldsketch) for the ink convention and
@@ -89,9 +96,13 @@ Response: a summary --
   "seed": 1,
   "elapsed_years": 0.0,
   "num_plates": 13,
+  "surface": "quad",
   "events": [{ "elapsed_years": 0.0, "message": "World generated with 13 plates (4 continental)." }]
 }
 ```
+
+`surface` is `"quad"` or `"lines"` for generated worlds and lets clients identify a loaded
+legacy line save. A loaded save with no plates reports `"empty"`.
 
 `events` is the *entire* current event log (capped at `world.MAX_EVENT_LOG_LENGTH = 200`
 entries, oldest dropped first), not just what changed this call -- simplest for the frontend,
@@ -120,7 +131,7 @@ shape as `/world/generate`, with `events` reflecting anything logged up through 
 
 ## `GET /world/save`
 
-The "File > Save World" download -- the *entire* current world (every plate/line, mantle
+The "File > Save World" download -- the *entire* current world (every plate surface, mantle
 field, caches, event log -- see [architecture.md#world-state](architecture.md#world-state))
 pickled as a single opaque `application/octet-stream` file (`Content-Disposition:
 attachment`), not JSON (see `backend/app/persistence.py`). The file is a versioned envelope

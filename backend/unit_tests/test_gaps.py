@@ -12,7 +12,7 @@ from app.world import World
 
 
 def _small_world(seed=1, num_plates=4, node_density=1.0):
-    plates = generate_plates(seed=seed, num_plates=num_plates, node_density=node_density)
+    plates = generate_plates(seed=seed, num_plates=num_plates, node_density=node_density, surface="lines")
     return World(seed=seed, plates=plates, next_plate_id=len(plates), node_density=node_density, mantle_centers=[])
 
 

@@ -11,7 +11,7 @@ from app.world import World, generate_world, step_world
 
 
 def _world(seed=1, num_plates=10, continental_fraction=0.4):
-    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction)
+    return generate_world(seed, num_plates=num_plates, continental_fraction=continental_fraction, surface="lines")
 
 
 def _set_one_node_channel(world, depth_m, width_m):

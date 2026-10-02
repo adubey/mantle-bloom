@@ -2,7 +2,12 @@ import numpy as np
 
 from app import erosion, faults, geometry, plates
 from app.elevation_lines import MAX_ELEVATION_M, MIN_ELEVATION_M
-from app.world import World, generate_world
+from app.world import World, generate_world as _generate_world
+
+
+def generate_world(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_world(*args, **kwargs)
 
 
 def test_climate_grid_indices_matches_build_grid_convention():

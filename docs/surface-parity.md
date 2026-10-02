@@ -2,8 +2,9 @@
 
 Issue #247 (Phase 5a of #228). The harness runs line-backed and sparse-quad worlds from the same
 seed and settings, records the same measurements for both, and judges them against the gates
-below. It does not change production defaults. Diagnostic and test runs pick the surface with
-`generate_world(surface="lines" | "quad")`; the harness exposes this as `--surfaces`.
+below. Sparse quad is the production default as of issue #250; diagnostic and parity runs can
+still pick `generate_world(surface="lines" | "quad")`, and the harness exposes this as
+`--surfaces`.
 
 Code: `backend/app/surface_parity.py` (runs, audits, metrics),
 `backend/app/surface_parity_gates.py` (gates, report), `bin/debug/surface_parity.py` (CLI).

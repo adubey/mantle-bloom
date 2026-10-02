@@ -7,7 +7,7 @@ from app.world import generate_world, step_world
 
 
 def test_round_trip_preserves_a_freshly_generated_world():
-    world = generate_world(seed=42, num_plates=6)
+    world = generate_world(seed=42, num_plates=6, surface="lines")
     data = persistence.save_world_bytes(world)
     loaded = persistence.load_world_bytes(data)
 
@@ -136,7 +136,7 @@ def test_loading_a_world_whose_lines_predate_elev_change_reason_still_steps():
     # ElevationLine.__getattr__ backfills it lazily as zeros so load + step still work.
     from app.world import step_world
 
-    world = generate_world(seed=4, num_plates=6)
+    world = generate_world(seed=4, num_plates=6, surface="lines")
     for plate in world.plates:
         for line in plate.lines:
             line.__dict__.pop("_elev_change_reason", None)
@@ -208,7 +208,7 @@ def test_loading_an_envelope_with_an_invalid_version_raises(version):
 
 
 def test_saves_declare_their_surface_and_the_loader_checks_it():
-    lines = generate_world(seed=3, num_plates=4)
+    lines = generate_world(seed=3, num_plates=4, surface="lines")
     quad = generate_world(seed=3, num_plates=4, surface="quad")
     assert pickle.loads(persistence.save_world_bytes(lines))["surface"] == "lines"
     assert pickle.loads(persistence.save_world_bytes(quad))["surface"] == "quad"
@@ -222,7 +222,7 @@ def test_saves_declare_their_surface_and_the_loader_checks_it():
 
 
 def test_a_world_mixing_line_and_quad_plates_is_refused():
-    lines = generate_world(seed=3, num_plates=4)
+    lines = generate_world(seed=3, num_plates=4, surface="lines")
     quad = generate_world(seed=3, num_plates=4, surface="quad")
     lines.plates.append(quad.plates[0])
     with pytest.raises(persistence.CorruptSaveError, match="mixes"):
@@ -243,7 +243,7 @@ def test_a_quad_plate_from_a_newer_build_makes_the_save_unsupported(monkeypatch)
 
 
 def test_a_line_save_loads_as_lines_unless_conversion_is_asked_for():
-    world = generate_world(seed=3, num_plates=4)
+    world = generate_world(seed=3, num_plates=4, surface="lines")
     data = pickle.dumps(world)  # a version 1 save, like every save written before #228
 
     legacy = persistence.load_world_bytes(data)

@@ -1,4 +1,5 @@
 import VoronoiPreview from "./VoronoiPreview";
+import type { WorldSurface } from "./api";
 
 interface Props {
   landPercent: number;
@@ -29,6 +30,7 @@ interface Props {
   axialTiltDeg: number;
   initialSoilMaturityPercent: number;
   fluidDensity: number;
+  worldSurface: WorldSurface;
   // Same {value, label} choices App.tsx's own "Detail" dropdown uses (App.tsx's
   // DETAIL_CHOICES) -- passed down rather than imported here to avoid a circular import
   // between this file and App.tsx.
@@ -41,6 +43,7 @@ interface Props {
   onAxialTiltDegChange: (v: number) => void;
   onInitialSoilMaturityPercentChange: (v: number) => void;
   onFluidDensityChange: (v: number) => void;
+  onWorldSurfaceChange: (v: WorldSurface) => void;
   onClose: () => void;
 }
 
@@ -65,6 +68,7 @@ export default function AdvancedSettingsModal({
   axialTiltDeg,
   initialSoilMaturityPercent,
   fluidDensity,
+  worldSurface,
   fluidDensityChoices,
   onLandPercentChange,
   onContinentalPercentChange,
@@ -74,6 +78,7 @@ export default function AdvancedSettingsModal({
   onAxialTiltDegChange,
   onInitialSoilMaturityPercentChange,
   onFluidDensityChange,
+  onWorldSurfaceChange,
   onClose,
 }: Props) {
   const showVoronoiPreview = (generateMode === "human" || generateMode === "premade") && sketchImageDataUrl != null;
@@ -117,6 +122,21 @@ export default function AdvancedSettingsModal({
             ✕
           </button>
         </div>
+
+        <label style={{ display: "block", marginBottom: 16 }}>
+          Terrain model
+          <select
+            value={worldSurface}
+            onChange={(e) => onWorldSurfaceChange(e.target.value as WorldSurface)}
+            style={{ width: "100%", marginTop: 4 }}
+          >
+            <option value="quad">Standard</option>
+            <option value="lines">Legacy elevation lines (for comparison)</option>
+          </select>
+          <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
+            Legacy mode is temporary and only for comparing against older worlds.
+          </div>
+        </label>
 
         <label style={{ display: "block", marginBottom: 16 }}>
           Initial land: {landPercent}%

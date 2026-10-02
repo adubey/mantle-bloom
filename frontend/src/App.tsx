@@ -6,7 +6,7 @@ import {
   TUNING_MULTIPLIER_KEYS,
 } from "./api";
 import type {
-  AnimateResponse, CornerNotchLogEntry, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary,
+  AnimateResponse, CornerNotchLogEntry, DebugScenario, EarthquakeSummary, ElevationPointResponse, FaultSummary, FaultSystemSummary, LakeAtResponse, LakeSummary, MapView, NodeAtResponse, PlateSummary, PointSample, Projection, RenderResponse, RiverSummary, Segment, TuningKey, TuningMultipliers, VolcanoSummary, WorldStats, WorldSummary, WorldSurface,
 } from "./api";
 import MapCanvas from "./MapCanvas";
 import SketchEditor from "./SketchEditor";
@@ -298,6 +298,9 @@ export default function App() {
   const [autoPlates, setAutoPlates] = useState(true);
   const [numPlates, setNumPlates] = useState(DEFAULT_PLATES);
   const [voronoiPoints, setVoronoiPoints] = useState(DEFAULT_VORONOI_POINTS_RANDOM);
+  // Sparse quads are the production surface. Keep the legacy line representation available
+  // here as an explicitly labelled diagnostic/rollback option during the initial cutover.
+  const [worldSurface, setWorldSurface] = useState<WorldSurface>("quad");
 
   const [stepYears, setStepYears] = useState(STEP_YEARS_OPTIONS[1]);
   const [projection, setProjection] = useState<Projection>(initialView?.projection ?? "eckert4");
@@ -536,6 +539,7 @@ export default function App() {
       if (!result) return;
       const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
       if (dir === 0) return;
+      if (!result.line) return; // quad nodes have no row/line navigation
       e.preventDefault();
       const requestId = ++pointProbeRequestIdRef.current;
       const lineIndex = e.shiftKey
@@ -746,18 +750,29 @@ export default function App() {
       const s =
         generateMode === "debug"
           ? await generateDebugWorld(debugScenario, seed)
-          : await generateWorld(
-              seed, continentalPercent / 100, landPercent / 100, axialTiltDeg, detail, initialSoilMaturityPercent / 100,
-              climateDensityForDetail(detail), fluidDensity, autoPlates ? null : numPlates, voronoiPoints, sketchBase64,
-              generateMode === "premade" ? premadeWorldId : null,
-              setGenProgress,
-            );
+          : await generateWorld({
+              seed,
+              continentalFraction: continentalPercent / 100,
+              landFraction: landPercent / 100,
+              axialTiltDeg,
+              nodeDensity: detail,
+              initialSoilMaturity: initialSoilMaturityPercent / 100,
+              climateDensity: climateDensityForDetail(detail),
+              fluidDensity,
+              numPlates: autoPlates ? null : numPlates,
+              voronoiPoints,
+              surface: worldSurface,
+              sketchImageBase64: sketchBase64,
+              premadeWorldId: generateMode === "premade" ? premadeWorldId : null,
+              onProgress: setGenProgress,
+            });
       setSummary(s);
       setSelectedPlateId(null);
       setSelectedRiverId(null);
       setSelectedBasin(null);
       setSelectedBasinKind(null);
       setShowGenerateDialog(false);
+      setWorldSurface("quad"); // legacy comparison is one-shot; the next dialog defaults to production
       setStatsHistory([]); // plate ids and elapsed_years both reset with a fresh world
       setSeaLevelM(DEFAULT_SEA_LEVEL_M); // live controls reset with a fresh world too
       setSolarMultiplier(DEFAULT_SOLAR_MULTIPLIER);
@@ -1562,6 +1577,7 @@ export default function App() {
             <div style={{ fontSize: 11, opacity: 0.8 }}>
               <div>seed: {summary.seed}</div>
               <div>plates: {summary.num_plates}</div>
+              {summary.surface === "lines" && <div style={{ color: "#e9b96e" }}>terrain: legacy elevation lines</div>}
               <div>elapsed: {(summary.elapsed_years / 1e6).toFixed(stepYears === 10_000 ? 2 : 1)} Myr</div>
               {animation && <div>{animation.frame} frames recorded</div>}
             </div>
@@ -1858,17 +1874,19 @@ export default function App() {
                     <span style={{ opacity: 0.55 }}>Elevation</span>
                     <span>{Math.round(pointProbe.result.point.elevation_m).toLocaleString()} m</span>
                   </div>
-                  <div
-                    style={{
-                      marginTop: 6, paddingTop: 6, borderTop: "1px solid #333",
-                      display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1,
-                    }}
-                  >
-                    <span style={{ opacity: 0.55 }}>Point</span>
-                    <span>{pointProbe.result.point.index + 1} of {pointProbe.result.line.num_points}</span>
-                    <span style={{ opacity: 0.55 }}>Line</span>
-                    <span>{pointProbe.result.line.line_index + 1} of {pointProbe.result.line.num_lines}</span>
-                  </div>
+                  {pointProbe.result.line && (
+                    <div
+                      style={{
+                        marginTop: 6, paddingTop: 6, borderTop: "1px solid #333",
+                        display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 1,
+                      }}
+                    >
+                      <span style={{ opacity: 0.55 }}>Point</span>
+                      <span>{pointProbe.result.point.index + 1} of {pointProbe.result.line.num_points}</span>
+                      <span style={{ opacity: 0.55 }}>Line</span>
+                      <span>{pointProbe.result.line.line_index + 1} of {pointProbe.result.line.num_lines}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -2153,7 +2171,7 @@ export default function App() {
                 <div style={{ fontSize: 11, color: "#999", marginTop: 4 }}>
                   Elevation point density and climate & biome resolution together. Higher is
                   sharper -- less pixelated Temperature/Wind/Currents/Humidity/Precipitation/
-                  Biome/Elevation &amp; Biome/Resources/Soil Quality maps and more elevation-line nodes -- but
+                  Biome/Elevation &amp; Biome/Resources/Soil Quality maps and more terrain nodes -- but
                   simulation steps and rendering both run slower. Lower runs faster but coarser.
                 </div>
               </label>
@@ -2203,6 +2221,7 @@ export default function App() {
           axialTiltDeg={axialTiltDeg}
           initialSoilMaturityPercent={initialSoilMaturityPercent}
           fluidDensity={fluidDensity}
+          worldSurface={worldSurface}
           fluidDensityChoices={FLUID_DETAIL_CHOICES}
           onLandPercentChange={setLandPercent}
           onContinentalPercentChange={setContinentalPercent}
@@ -2212,6 +2231,7 @@ export default function App() {
           onAxialTiltDegChange={setAxialTiltDeg}
           onInitialSoilMaturityPercentChange={setInitialSoilMaturityPercent}
           onFluidDensityChange={setFluidDensity}
+          onWorldSurfaceChange={setWorldSurface}
           onClose={() => setShowAdvancedSettings(false)}
         />
       )}

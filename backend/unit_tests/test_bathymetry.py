@@ -3,7 +3,12 @@ from scipy.spatial import cKDTree
 
 from app import bathymetry, lithosphere
 from app.elevation_lines import line_spacing_rad
-from app.lithosphere_plate import generate_plates
+from app.lithosphere_plate import generate_plates as _generate_plates
+
+
+def generate_plates(*args, **kwargs):
+    kwargs.setdefault("surface", "lines")
+    return _generate_plates(*args, **kwargs)
 
 _GEN_KWARGS = dict(seed=7, num_plates=12, continental_fraction=0.5, land_fraction=0.2, node_density=1.0)
 
