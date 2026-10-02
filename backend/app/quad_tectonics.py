@@ -88,6 +88,15 @@ MAX_ADVANCE_LAYERS_PER_STEP = MAX_CLAIM_ROWS_PER_STEP
 _COLUMN_RNG_INDEX = 0
 _ADVANCE_RNG_INDEX = 1
 
+# A saturated suture may carry overflow through three additional belts of the same width.
+# Past that finite broad-orogen footprint, over-thickened lower crust delaminates at the
+# existing Hc cap instead of spreading without limit across the plate (issue #253).
+SUTURE_ACCRETION_MAX_HOPS = 4 * SUTURE_ACCRETION_SPREAD_NODES
+# At most this share of any one donated column may delaminate after the finite belt fills.
+# Larger overflow must find room farther across the same crustal reservoir, preventing a
+# long-lived suture from becoming an effectively unbounded continental-crust sink.
+SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION = 0.20
+
 
 def _adjacency_matrix(plate: "PlateWithSparseQuadPatch") -> csr_matrix:
     graph = plate.adjacency()
@@ -225,7 +234,13 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
 
     own_points = ctx.own_points
     world.record_removed_points(own_points[removed], plate.plate_id)
-    donors = removed & ctx.accrete
+    codes = plate.collect("crust_type_code")
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    # A continental terrane keeps being continental even when it rides an oceanic plate.
+    # Treat those cells like the explicit continent-continent suture donors instead of
+    # subducting them with their nominal owning plate (issue #253).
+    terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
+    donors = removed & (ctx.accrete | terrane)
     if np.any(donors):
         _accrete_onto_survivors(plate, donors, ~removed)
     plate.remove_cells(removed)
@@ -280,9 +295,12 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening -- the 2D form of
     `_redistribute_accreted_column`, which spreads a retreating line end's volume over that
     many nodes *inward along the row*. Each edge-connected run of donor cells is one suture
-    front with its own band, so separate sutures on one plate don't share volume. Conserves
-    volume by exact cell area up to the same caps; a front with no survivor in reach feeds its
-    nearest survivor instead."""
+    front with its own band, so separate sutures on one plate don't share volume. When that
+    first band fills, the excess continues into successive graph-hop bands instead of being
+    silently clipped. Donors and receivers are matched by effective crust type, which keeps
+    continental terranes on nominally oceanic plates in the continental reservoir. A regular
+    suture's finite four-belt footprint still delaminates any remainder at the physical cap;
+    a terrane on an oceanic plate instead relocates onto oceanic footprint when necessary."""
     survivor_idx = np.flatnonzero(survivors)
     if not len(survivor_idx):
         return
@@ -290,32 +308,261 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     elevation = plate.collect("elevation")
-    add_hc = np.zeros(len(hc))
-    add_hm = np.zeros(len(hm))
+    codes = plate.collect("crust_type_code")
+    codes_before = codes.copy()
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    adjacency = _adjacency_matrix(plate)
+    changed = np.zeros(len(hc), dtype=bool)
+    elevation_before = elevation.copy()
+    hc_before = hc.copy()
+    hm_before = hm.copy()
 
-    donor_idx = np.flatnonzero(donors)
-    _, labels = connected_components(_adjacency_matrix(plate)[donor_idx][:, donor_idx], directed=False)
-    for label in np.unique(labels):
-        front = donor_idx[labels == label]
-        mask = np.zeros(len(hc), dtype=bool)
-        mask[front] = True
-        band = survivors & (hop_distance(plate, mask, SUTURE_ACCRETION_SPREAD_NODES) <= SUTURE_ACCRETION_SPREAD_NODES)
-        if not np.any(band):
-            points = plate.surface_nodes().local_xyz
-            _, nearest = cKDTree(points[survivor_idx]).query(points[front].mean(axis=0))
-            band[survivor_idx[nearest]] = True
-        band_area = float(areas[band].sum())
-        add_hc[band] += float(np.sum(hc[front] * areas[front])) / band_area
-        add_hm[band] += float(np.sum(hm[front] * areas[front])) / band_area
+    for donor_type in (False, True):
+        typed_donors = donors & (continental == donor_type)
+        donor_idx = np.flatnonzero(typed_donors)
+        if not len(donor_idx):
+            continue
+        _, labels = connected_components(adjacency[donor_idx][:, donor_idx], directed=False)
+        for label in np.unique(labels):
+            front = donor_idx[labels == label]
+            typed_survivors = survivors & (continental == donor_type)
+            hc_volume = float(np.sum(hc[front] * areas[front]))
+            hm_volume = float(np.sum(hm[front] * areas[front]))
+            hc_room = float(
+                np.sum(
+                    np.maximum(SUTURE_ACCRETION_MAX_HC_M - hc[typed_survivors], 0.0)
+                    * areas[typed_survivors]
+                )
+            )
+            hm_room = float(
+                np.sum(
+                    np.maximum(lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - hm[typed_survivors], 0.0)
+                    * areas[typed_survivors]
+                )
+            )
+            needs_new_footprint = hc_room < hc_volume * (1.0 - 1e-12) or hm_room < hm_volume * (1.0 - 1e-12)
+            if (
+                plate.crust_type == "oceanic"
+                and donor_type
+                and needs_new_footprint
+                and np.any(survivors & ~continental)
+            ):
+                # The retreat consumed an isolated terrane, or every remaining continental
+                # receiver is full. Move this front's column onto the nearest surviving
+                # oceanic footprint, displacing that footprint's old oceanic column back into
+                # the oceanic reservoir. This preserves both categorical Hc volume and total
+                # Hc instead of either losing the fragment or counting its oceanic substrate
+                # as newly continental.
+                relocated = _relocate_terrane_column(
+                    hc, hm, codes, continental, areas, adjacency, front, survivors, hc_volume, hm_volume
+                )
+                changed |= relocated
+                continue
+            if not np.any(typed_survivors):
+                continue
+            changed |= _spread_accretion_volume(
+                hc,
+                areas,
+                adjacency,
+                front,
+                typed_survivors,
+                hc_volume,
+                SUTURE_ACCRETION_MAX_HC_M,
+                SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION,
+            )
+            changed |= _spread_accretion_volume(
+                hm,
+                areas,
+                adjacency,
+                front,
+                typed_survivors,
+                hm_volume,
+                lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
+            )
 
-    gained = np.flatnonzero(add_hc > 0.0)
-    density = lithosphere.node_crust_density(plate.collect("crust_type_code")[gained], plate.crust_type)
-    before = lithosphere.isostatic_elevation(hc[gained], hm[gained], density)
-    hc[gained] = np.minimum(hc[gained] + add_hc[gained], SUTURE_ACCRETION_MAX_HC_M)
-    hm[gained] = np.minimum(hm[gained] + add_hm[gained], lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
-    after = lithosphere.isostatic_elevation(hc[gained], hm[gained], density)
-    elevation[gained] = rheology.clip_elevation_bounds(elevation[gained] + (after - before))
-    plate.set_fields_on_plate(crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm, elevation=elevation)
+    gained = np.flatnonzero(changed)
+    density_before = lithosphere.node_crust_density(codes_before[gained], plate.crust_type)
+    density_after = lithosphere.node_crust_density(codes[gained], plate.crust_type)
+    before = lithosphere.isostatic_elevation(hc_before[gained], hm_before[gained], density_before)
+    after = lithosphere.isostatic_elevation(hc[gained], hm[gained], density_after)
+    elevation[gained] = rheology.clip_elevation_bounds(elevation_before[gained] + (after - before))
+    plate.set_fields_on_plate(
+        crustal_thickness_m=hc,
+        mantle_lithosphere_thickness_m=hm,
+        crust_type_code=codes,
+        elevation=elevation,
+    )
+
+
+def _relocate_terrane_column(
+    hc: np.ndarray,
+    hm: np.ndarray,
+    codes: np.ndarray,
+    continental: np.ndarray,
+    areas: np.ndarray,
+    adjacency: csr_matrix,
+    front: np.ndarray,
+    survivors: np.ndarray,
+    hc_volume: float,
+    hm_volume: float,
+) -> np.ndarray:
+    """Re-home a fully consumed continental fragment without mixing reservoir labels.
+
+    The nearest oceanic survivor cells become the fragment and receive exactly its Hc/Hm
+    volumes. Their displaced oceanic columns spread back into the remaining oceanic plate.
+    """
+    oceanic = survivors & ~continental
+    changed = np.zeros(len(hc), dtype=bool)
+    if not np.any(oceanic):
+        return changed
+
+    reached = np.zeros(len(hc), dtype=bool)
+    reached[front] = True
+    frontier = reached.copy()
+    chosen = np.zeros(len(hc), dtype=bool)
+    chosen_area = 0.0
+    while (
+        chosen_area * SUTURE_ACCRETION_MAX_HC_M < hc_volume
+        or chosen_area * lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M < hm_volume
+    ):
+        next_frontier = (adjacency @ frontier.astype(np.int8) > 0) & ~reached
+        if not np.any(next_frontier):
+            # A plate can be briefly disconnected before the topology cleanup pass. Preserve
+            # the fragment on its nearest reachable component when possible, then fall back
+            # to the other surviving components rather than silently losing it.
+            layer = oceanic & ~chosen
+            chosen |= layer
+            chosen_area += float(areas[layer].sum())
+            break
+        frontier = next_frontier
+        reached |= frontier
+        layer = frontier & oceanic
+        chosen |= layer
+        chosen_area += float(areas[layer].sum())
+    if not np.any(chosen):
+        return changed
+
+    displaced_hc = float(np.sum(hc[chosen] * areas[chosen]))
+    displaced_hm = float(np.sum(hm[chosen] * areas[chosen]))
+    hc[chosen] = min(hc_volume / chosen_area, SUTURE_ACCRETION_MAX_HC_M)
+    hm[chosen] = min(hm_volume / chosen_area, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+    codes[chosen] = CRUST_TYPE_CONTINENTAL
+    continental[chosen] = True
+    changed |= chosen
+
+    oceanic_receivers = survivors & ~continental
+    if np.any(oceanic_receivers):
+        changed |= _spread_accretion_volume(
+            hc,
+            areas,
+            adjacency,
+            np.flatnonzero(chosen),
+            oceanic_receivers,
+            displaced_hc,
+            SUTURE_ACCRETION_MAX_HC_M,
+            SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION,
+        )
+        changed |= _spread_accretion_volume(
+            hm,
+            areas,
+            adjacency,
+            np.flatnonzero(chosen),
+            oceanic_receivers,
+            displaced_hm,
+            lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
+        )
+    return changed
+
+
+def _spread_accretion_volume(
+    thickness: np.ndarray,
+    areas: np.ndarray,
+    adjacency: csr_matrix,
+    front: np.ndarray,
+    eligible: np.ndarray,
+    volume: float,
+    cap: float,
+    max_delamination_fraction: float = 1.0,
+) -> np.ndarray:
+    """Spread one reservoir outward from a donor front, carrying cap overflow onward.
+
+    The ordinary suture width remains the first receiving band. Only overflow reaches cells
+    farther inland, one graph-hop layer at a time, through three additional suture-width belts.
+    Within each accumulated band the added thickness is uniform except where a cell hits
+    `cap`; water-filling then gives the rest to cells with remaining room. Anything the four
+    belts cannot hold delaminates, up to `max_delamination_fraction` of this donation; larger
+    overflow must find room elsewhere in the same reservoir. Mantle lithosphere keeps the
+    pre-existing full-delamination default while issue #253 bounds continental-crust loss.
+    Returns the cells whose thickness changed.
+    """
+    changed = np.zeros(len(thickness), dtype=bool)
+    if volume <= 0.0 or not np.any(eligible):
+        return changed
+
+    reached = np.zeros(len(thickness), dtype=bool)
+    reached[front] = True
+    frontier = reached.copy()
+    receivers = np.zeros(len(thickness), dtype=bool)
+    hops = 0
+    remaining = volume
+    while remaining > max(volume, 1.0) * 1e-12:
+        if hops > 0:
+            receivers |= frontier & eligible
+        if hops >= SUTURE_ACCRETION_SPREAD_NODES and np.any(receivers):
+            remaining, filled = _fill_capped_volume(thickness, areas, receivers, remaining, cap)
+            changed |= filled
+            receivers[:] = False
+        if hops >= SUTURE_ACCRETION_MAX_HOPS:
+            must_place = max(remaining - max_delamination_fraction * volume, 0.0)
+            if must_place > 0.0:
+                _, filled = _fill_capped_volume(thickness, areas, eligible, must_place, cap)
+                changed |= filled
+            break
+        next_frontier = (adjacency @ frontier.astype(np.int8) > 0) & ~reached
+        if not np.any(next_frontier):
+            # Preserve the old nearest-survivor fallback for a temporarily disconnected
+            # plate, but only after every graph-reachable band has had first call.
+            if remaining > max(volume, 1.0) * 1e-12:
+                remaining, filled = _fill_capped_volume(thickness, areas, eligible, remaining, cap)
+                changed |= filled
+            break
+        reached |= next_frontier
+        frontier = next_frontier
+        hops += 1
+    return changed
+
+
+def _fill_capped_volume(
+    thickness: np.ndarray,
+    areas: np.ndarray,
+    receivers: np.ndarray,
+    volume: float,
+    cap: float,
+) -> tuple[float, np.ndarray]:
+    """Water-fill `volume` across receivers, returning (unplaced volume, changed mask)."""
+    changed = np.zeros(len(thickness), dtype=bool)
+    idx = np.flatnonzero(receivers & (thickness < cap))
+    if not len(idx) or volume <= 0.0:
+        return volume, changed
+    room = np.maximum(cap - thickness[idx], 0.0)
+    take = min(volume, float(np.dot(room, areas[idx])))
+    if take <= 0.0:
+        return volume, changed
+
+    # Find the common added thickness whose capped per-cell volumes sum to `take` despite
+    # unequal quad-cell areas.
+    lo, hi = 0.0, float(room.max())
+    for _ in range(52):
+        mid = 0.5 * (lo + hi)
+        if float(np.dot(np.minimum(room, mid), areas[idx])) < take:
+            lo = mid
+        else:
+            hi = mid
+    add = np.minimum(room, hi)
+    thickness[idx] += add
+    changed[idx[add > 0.0]] = True
+    placed = min(float(np.dot(add, areas[idx])), volume)
+    return volume - placed, changed
 
 
 def _advance(

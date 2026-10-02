@@ -11,6 +11,8 @@ from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
     EXTEND_THRESHOLD_MULTIPLIER,
+    SUTURE_ACCRETION_MAX_HC_M,
+    SUTURE_ACCRETION_SPREAD_NODES,
     boundary_context,
     new_plate,
 )
@@ -339,6 +341,100 @@ def test_continental_suture_retreat_conserves_crustal_volume():
     volume_after = float(np.sum(a.node_areas_m2() * a.collect("crustal_thickness_m")))
     assert volume_after == pytest.approx(volume_before, rel=1e-9)
     assert a.collect("elevation").max() > elevation_before
+
+
+def test_suture_accretion_carries_cap_overflow_into_later_bands():
+    keys = _block((10, 20), (20, 21))
+    near_cap = SUTURE_ACCRETION_MAX_HC_M - 4_000.0
+    hc = np.full(len(keys), near_cap)
+    hc[0] = 20_000.0
+    a = _plate(1, keys, "continental", crustal_thickness_m=hc)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    survivors = ~donors
+    areas = a.node_areas_m2()
+    expected = float(np.sum(hc[donors] * areas[donors]) + np.sum(hc[survivors] * areas[survivors]))
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+
+    after = a.collect("crustal_thickness_m")
+    actual = float(np.sum(after[survivors] * areas[survivors]))
+    assert actual == pytest.approx(expected, rel=1e-11)
+    # The ordinary three-hop band only has 12 km of room, so most of the donor must reach
+    # farther inland instead of disappearing at the cap.
+    assert np.any(after[SUTURE_ACCRETION_SPREAD_NODES + 1 :] > near_cap)
+    assert np.all(after[survivors] <= SUTURE_ACCRETION_MAX_HC_M)
+
+
+def test_suture_delamination_is_bounded_when_the_local_belts_fill():
+    keys = _block((10, 30), (20, 21))
+    near_cap = SUTURE_ACCRETION_MAX_HC_M - 1_500.0
+    hc = np.full(len(keys), near_cap)
+    hc[0] = 30_000.0
+    a = _plate(1, keys, "continental", crustal_thickness_m=hc)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    survivors = ~donors
+    areas = a.node_areas_m2()
+    donated = float(hc[0] * areas[0])
+    before = float(np.sum(hc[survivors] * areas[survivors]))
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+
+    gained = float(np.sum(a.collect("crustal_thickness_m")[survivors] * areas[survivors])) - before
+    assert gained >= donated * (1.0 - quad_tectonics.SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION - 1e-10)
+
+
+def test_oceanic_plate_retreat_accretes_continental_terrane_onto_terrane_survivors():
+    keys = _block((10, 24), (20, 30))
+    a = _plate(1, keys, "oceanic")
+    i, _ = _columns(a)
+    codes = a.collect("crust_type_code")
+    codes[i >= 18] = CRUST_TYPE_CONTINENTAL
+    a.set_fields_on_plate(crust_type_code=codes)
+    b = _plate(2, _block((20, 34), (20, 30)), "continental")
+    world = _world(a, b)
+    ctx = boundary_context(
+        world,
+        a,
+        [b],
+        1_000_000,
+        lambda contested: quad_tectonics.components_of_at_least(a, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
+        node_weight=a.node_areas_m2() / lithosphere.node_area_m2(SPACING),
+    )
+    continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
+    volume_before = float(np.sum((a.collect("crustal_thickness_m") * a.node_areas_m2())[continental]))
+
+    survivors = quad_tectonics._retreat(a, world, ctx, 1.5 * SPACING, 1_000)
+
+    assert not np.all(survivors)
+    continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
+    volume_after = float(np.sum((a.collect("crustal_thickness_m") * a.node_areas_m2())[continental]))
+    assert volume_after == pytest.approx(volume_before, rel=1e-9)
+
+
+def test_fully_consumed_terrane_relocates_without_relabeling_oceanic_volume():
+    keys = _block((10, 20), (20, 21))
+    a = _plate(1, keys, "oceanic")
+    codes = a.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_CONTINENTAL
+    a.set_fields_on_plate(crust_type_code=codes)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    survivors = ~donors
+    areas = a.node_areas_m2()
+    hc_before = a.collect("crustal_thickness_m")
+    continental_before = float(hc_before[0] * areas[0])
+    total_before = float(np.dot(hc_before, areas))
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+
+    hc_after = a.collect("crustal_thickness_m")
+    continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
+    assert float(np.dot(hc_after[continental & survivors], areas[continental & survivors])) == pytest.approx(
+        continental_before, rel=1e-11
+    )
+    assert float(np.dot(hc_after[survivors], areas[survivors])) == pytest.approx(total_before, rel=1e-11)
 
 
 def _plate_with_overlay(crust_type):

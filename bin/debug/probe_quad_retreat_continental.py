@@ -5,8 +5,8 @@
 on quad worlds. This splits every retreat call's removed continental volume (effective
 crust type continental, sum(Hc * area)) by what happens to it:
 
-- `accreted_kept`: suture donors (`ctx.accrete`) whose volume `_accrete_onto_survivors` put
-  back onto surviving cells;
+- `accreted_kept`: suture donors (`ctx.accrete`) plus continental terranes riding oceanic
+  plates whose volume `_accrete_onto_survivors` put back onto surviving cells;
 - `accretion_cap_loss`: donor volume clipped by `SUTURE_ACCRETION_MAX_HC_M`;
 - `subducted_continental_plate`: removed non-donor cells of continental plates (the
   arc-magmatism-budgeted override retreat);
@@ -74,7 +74,8 @@ def main() -> int:
         continental = elevation_lines.effective_is_continental_from_codes(codes, plate.crust_type == "continental")
         removed = ~survivors
         volume = (hc * areas / 1e9)[removed & continental]
-        donors = (removed & ctx.accrete)[removed & continental]
+        terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
+        donors = (removed & (ctx.accrete | terrane))[removed & continental]
         totals["removed_continental"] += float(volume.sum())
         if plate.crust_type == "continental":
             totals["subducted_continental_plate"] += float(volume[~donors].sum())
