@@ -8,7 +8,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
-from .elevation_lines import DEFAULT_NODE_DENSITY
+from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
 from .plates import Plate, gather_node_positions, query_workers
@@ -772,10 +772,11 @@ def _clamp_column_caps(world: World) -> None:
     """`lithosphere.clamp_column_caps` on every plate, booking what it adds or removes under the
     "column_cap_clamp" phase of `World.phase_budget` -- nonzero there means some writer
     upstream left a column outside its caps this step."""
+    spacing_rad = line_spacing_rad(world.node_density)
     for plate in world.plates:
-        before = phase_budget.snapshot(plate) if world.debug_diagnostics else None
+        before = phase_budget.snapshot(plate, spacing_rad) if world.debug_diagnostics else None
         if lithosphere.clamp_column_caps(plate) and before is not None:
-            phase_budget.record(world, plate, "column_cap_clamp", *before, *phase_budget.snapshot(plate))
+            phase_budget.record_snapshots(world, plate, "column_cap_clamp", before, phase_budget.snapshot(plate, spacing_rad))
 
 
 def _advance_fluid_dynamics(world: World, node_cloud: tuple[np.ndarray, list[Plate]]) -> None:
@@ -942,15 +943,15 @@ def step_world_progress(world: World, years: float):
         # each plate around the one whole-world call rather than threading instrumentation
         # into erosion.py itself.
         if world.debug_diagnostics:
-            before_erosion = {p.plate_id: phase_budget.snapshot(p) for p in world.plates}
+            spacing_rad = line_spacing_rad(world.node_density)
+            before_erosion = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
         if world.debug_diagnostics:
             for plate in world.plates:
                 before = before_erosion.get(plate.plate_id)
                 if before is None:
                     continue
-                after_hc, after_hm, after_codes = phase_budget.snapshot(plate)
-                phase_budget.record(world, plate, "erosion", *before, after_hc, after_hm, after_codes)
+                phase_budget.record_snapshots(world, plate, "erosion", before, phase_budget.snapshot(plate, spacing_rad))
         world.erosion_cache = erosion_result
     if world.simulate_plate_movement:
         volcanism.apply_volcanic_activity(world, years)

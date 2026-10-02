@@ -253,27 +253,32 @@ mantle-bloom Hc/Hm phase budget (GitHub issue #216)
   node_density:  4.0
   interval:      334,100,000 -> 335,100,000 yr  (10 steps @ 100,000 yr)
 
-  phase                          calls    d(count)       d(sum Hc) m       d(sum Hm) m
-  ------------------------------------------------------------------------------------
+  phase                          calls    d(count)     d(area) km2     d(Hc vol) km3     d(Hm vol) km3
+  ---------------------------------------------------------------------------------------------------
   line_growth_shrink             ...
   line_regularization            ...
   convergent_deformation         ...
   ...
 
 continental/oceanic node-type split (per phase, resolved against crust_type_code)
-  phase                          cont d(sum Hc)   ocean d(sum Hc)    cont d(sum Hm)   ocean d(sum Hm)
+  phase                          cont d(Hc) km3   ocean d(Hc) km3    cont d(Hm) km3   ocean d(Hm) km3
   ---------------------------------------------------------------------------------------------------
   ...
 ```
 
 **How to read it:**
 
-- **`d(sum Hc)`/`d(sum Hm)`** are this interval's net change, summed over every node the phase
-  touched (`sum_hc_after - sum_hc_before`), not a mean -- comparable directly across phases
-  regardless of how many nodes each one happened to touch. A large `calls` count with a small
-  `d(sum Hc)` means the phase ran often but nearly canceled out (e.g. `decompression_melting`
+- **`d(Hc vol)`/`d(Hm vol)`** are this interval's net volume change, summed over every node
+  the phase touched with each node weighted by its own accounting area
+  (`Plate.accounting_areas_m2`: exact cells on quad plates, nominal on line plates), not a
+  mean -- comparable directly across phases regardless of how many nodes each one happened to
+  touch. Rows are sorted by `|d(Hc vol)|`. A large `calls` count with a small
+  `d(Hc vol)` means the phase ran often but nearly canceled out (e.g. `decompression_melting`
   resetting a column to almost the same reference thickness it already had); a small `calls`
   count with a large delta means a rare but individually large event (a merge, a relattice).
+- **`d(area)`** is the touched slice's change in covered area, from the same per-node areas.
+  On a quad world `d(count)` and `d(area)` can disagree in sign, since a phase can swap large
+  cells for small ones.
 - **`d(count)`** is the touched slice's own node-count change -- nonzero only for phases that
   can add/remove nodes (`line_growth_shrink`, `corner_notch_fill`, cleanup/merge/relattice/
   regularization); the pure Hc/Hm-mutation phases (`convergent_deformation`,
@@ -287,9 +292,10 @@ continental/oceanic node-type split (per phase, resolved against crust_type_code
 - **`--json`**'s `scopes` dict on each phase row also has `continental_plate`/`oceanic_plate`
   (split by the *owning plate's* `crust_type` rather than each node's own effective type --
   the two disagree wherever a plate carries nodes of the other type, e.g. an accreted terrane)
-  and `area_before_m2`/`area_after_m2` (`count * node_area_m2(node_density)`, the "nominal
-  covered area" the issue's acceptance criteria ask for -- not runnable as an independent
-  areal integral over the globe; see the issue's own caveat on why summed Hc isn't one either).
+  and, per scope, the raw `count_*`, unweighted per-node `sum_hc_*`/`sum_hm_*`, area-weighted
+  `area_*_m2` and `hc_volume_*_m3`/`hm_volume_*_m3` totals behind the table. The area fields
+  are recorded per node as each phase runs (issue #257) -- on a quad world they can't be
+  recovered from the counts afterwards.
 - This tool answers issue #216's first acceptance-criteria item (instrumentation); it does not
   by itself separate genuine geological sinks from numerical drift -- that's a reading exercise
   against the mechanism list in the issue itself, using this tool's own numbers as the evidence.

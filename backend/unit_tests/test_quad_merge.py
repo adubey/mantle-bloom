@@ -416,7 +416,7 @@ def test_quad_pairs_are_offered_to_merge_and_fuse_through_merge_plates():
     # The phase budget books the merge by exact area: no spurious gain or loss from the
     # remap onto differently sized cells.
     scope = world.phase_budget["plate_merge"]["scopes"]["all"]
-    assert scope["sum_hc_after"] == pytest.approx(scope["sum_hc_before"], rel=1e-12)
+    assert scope["hc_volume_after_m3"] == pytest.approx(scope["hc_volume_before_m3"], rel=1e-12)
 
 
 def test_a_line_plate_and_a_quad_plate_are_not_offered_to_merge():

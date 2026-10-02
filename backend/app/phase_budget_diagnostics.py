@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import elevation_lines, lithosphere, persistence
+from . import persistence
 from .phase_budget import SCOPES
 from .world import World, generate_world, step_world
 
@@ -40,7 +40,6 @@ def build_report(world: World, total_years: float) -> dict:
     it); pass an already-loaded/generated world you're fine stepping forward."""
     world.debug_diagnostics = True
     world.reset_phase_budget()
-    node_area_m2 = lithosphere.node_area_m2(elevation_lines.line_spacing_rad(world.node_density))
     steps = max(1, round(total_years / CONVENTIONAL_YEARS_PER_STEP))
     start_years = world.elapsed_years
 
@@ -54,16 +53,18 @@ def build_report(world: World, total_years: float) -> dict:
             s = totals["scopes"][scope]
             scopes[scope] = {
                 **s,
-                "area_before_m2": s["count_before"] * node_area_m2,
-                "area_after_m2": s["count_after"] * node_area_m2,
                 "delta_count": s["count_after"] - s["count_before"],
+                "delta_area_m2": s["area_after_m2"] - s["area_before_m2"],
+                "delta_hc_volume_m3": s["hc_volume_after_m3"] - s["hc_volume_before_m3"],
+                "delta_hm_volume_m3": s["hm_volume_after_m3"] - s["hm_volume_before_m3"],
                 "delta_sum_hc": s["sum_hc_after"] - s["sum_hc_before"],
                 "delta_sum_hm": s["sum_hm_after"] - s["sum_hm_before"],
             }
         phases.append({"phase": phase, "calls": totals["calls"], "scopes": scopes})
     # Biggest net Hc mover first -- the ordering the issue's own "which mechanism actually
-    # moves the needle" question cares about.
-    phases.sort(key=lambda row: -abs(row["scopes"]["all"]["delta_sum_hc"]))
+    # moves the needle" question cares about. By volume, not the plain Hc sum: quad cells
+    # differ in size (issue #257).
+    phases.sort(key=lambda row: -abs(row["scopes"]["all"]["delta_hc_volume_m3"]))
 
     return {
         "seed": world.seed,
@@ -87,28 +88,28 @@ def format_report(report: dict) -> str:
     lines.append("")
 
     header = (
-        f"  {'phase':<28} {'calls':>7}  {'d(count)':>10}  {'d(sum Hc) m':>16}  {'d(sum Hm) m':>16}"
+        f"  {'phase':<28} {'calls':>7}  {'d(count)':>10}  {'d(area) km2':>14}  {'d(Hc vol) km3':>16}  {'d(Hm vol) km3':>16}"
     )
     lines.append(header)
     lines.append("  " + "-" * (len(header) - 2))
     for row in report["phases"]:
         all_scope = row["scopes"]["all"]
         lines.append(
-            f"  {row['phase']:<28} {row['calls']:>7,}  {all_scope['delta_count']:>10,}"
-            f"  {all_scope['delta_sum_hc']:>16,.1f}  {all_scope['delta_sum_hm']:>16,.1f}"
+            f"  {row['phase']:<28} {row['calls']:>7,}  {all_scope['delta_count']:>10,}  {all_scope['delta_area_m2'] / 1e6:>14,.0f}"
+            f"  {all_scope['delta_hc_volume_m3'] / 1e9:>16,.1f}  {all_scope['delta_hm_volume_m3'] / 1e9:>16,.1f}"
         )
     lines.append("")
 
     lines.append("continental/oceanic node-type split (per phase, resolved against crust_type_code)")
-    sub_header = f"  {'phase':<28} {'cont d(sum Hc)':>16}  {'ocean d(sum Hc)':>16}  {'cont d(sum Hm)':>16}  {'ocean d(sum Hm)':>16}"
+    sub_header = f"  {'phase':<28} {'cont d(Hc) km3':>16}  {'ocean d(Hc) km3':>16}  {'cont d(Hm) km3':>16}  {'ocean d(Hm) km3':>16}"
     lines.append(sub_header)
     lines.append("  " + "-" * (len(sub_header) - 2))
     for row in report["phases"]:
         cont = row["scopes"]["continental_node"]
         ocean = row["scopes"]["oceanic_node"]
         lines.append(
-            f"  {row['phase']:<28} {cont['delta_sum_hc']:>16,.1f}  {ocean['delta_sum_hc']:>16,.1f}"
-            f"  {cont['delta_sum_hm']:>16,.1f}  {ocean['delta_sum_hm']:>16,.1f}"
+            f"  {row['phase']:<28} {cont['delta_hc_volume_m3'] / 1e9:>16,.1f}  {ocean['delta_hc_volume_m3'] / 1e9:>16,.1f}"
+            f"  {cont['delta_hm_volume_m3'] / 1e9:>16,.1f}  {ocean['delta_hm_volume_m3'] / 1e9:>16,.1f}"
         )
     return "\n".join(line.rstrip() for line in lines)
 
