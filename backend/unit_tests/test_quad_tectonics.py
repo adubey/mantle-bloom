@@ -385,6 +385,50 @@ def test_suture_delamination_is_bounded_when_the_local_belts_fill():
     assert gained >= donated * (1.0 - quad_tectonics.SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION - 1e-10)
 
 
+def test_suture_accretion_reaches_a_distant_same_type_survivor_when_local_band_is_empty():
+    keys = _block((10, 30), (20, 21))
+    a = _plate(1, keys, "continental")
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    survivors = np.zeros(len(keys), dtype=bool)
+    survivors[-1] = True  # 19 hops away, beyond SUTURE_ACCRETION_MAX_HOPS.
+    areas = a.node_areas_m2()
+    hc_before = a.collect("crustal_thickness_m")
+    hm_before = a.collect("mantle_lithosphere_thickness_m")
+    expected = float(hc_before[donors] @ areas[donors] + hc_before[survivors] @ areas[survivors])
+    expected_hm = float(hm_before[donors] @ areas[donors] + hm_before[survivors] @ areas[survivors])
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+
+    actual = float(a.collect("crustal_thickness_m")[survivors] @ areas[survivors])
+    assert actual == pytest.approx(expected, rel=1e-11)
+    actual_hm = float(a.collect("mantle_lithosphere_thickness_m")[survivors] @ areas[survivors])
+    assert actual_hm == pytest.approx(expected_hm, rel=1e-11)
+
+
+def test_accretion_falls_back_to_any_type_when_no_same_type_survivor_exists():
+    keys = _block((10, 20), (20, 21))
+    a = _plate(1, keys, "continental")
+    codes = a.collect("crust_type_code")
+    codes[0] = CRUST_TYPE_OCEANIC
+    a.set_fields_on_plate(crust_type_code=codes)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    survivors = ~donors
+    areas = a.node_areas_m2()
+    hc_before = a.collect("crustal_thickness_m")
+    hm_before = a.collect("mantle_lithosphere_thickness_m")
+    expected = float(np.dot(hc_before, areas))
+    expected_hm = float(np.dot(hm_before, areas))
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+
+    actual = float(a.collect("crustal_thickness_m")[survivors] @ areas[survivors])
+    assert actual == pytest.approx(expected, rel=1e-11)
+    actual_hm = float(a.collect("mantle_lithosphere_thickness_m")[survivors] @ areas[survivors])
+    assert actual_hm == pytest.approx(expected_hm, rel=1e-11)
+
+
 def test_oceanic_plate_retreat_accretes_continental_terrane_onto_terrane_survivors():
     keys = _block((10, 24), (20, 30))
     a = _plate(1, keys, "oceanic")
@@ -435,6 +479,31 @@ def test_fully_consumed_terrane_relocates_without_relabeling_oceanic_volume():
         continental_before, rel=1e-11
     )
     assert float(np.dot(hc_after[survivors], areas[survivors])) == pytest.approx(total_before, rel=1e-11)
+
+
+def test_disconnected_terrane_relocation_takes_only_the_footprint_it_needs():
+    keys = np.sort(np.concatenate([_block((10, 11), (10, 11)), _block((30, 35), (30, 31))]))
+    a = _plate(1, keys, "oceanic")
+    codes = a.collect("crust_type_code")
+    donor = int(a._index_of_keys(_block((10, 11), (10, 11)))[0])
+    codes[donor] = CRUST_TYPE_CONTINENTAL
+    a.set_fields_on_plate(crust_type_code=codes)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[donor] = True
+    survivors = ~donors
+    areas = a.node_areas_m2()
+    total_before = float(np.dot(a.collect("crustal_thickness_m"), areas))
+    hm_before = float(np.dot(a.collect("mantle_lithosphere_thickness_m"), areas))
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+
+    continental = a.collect("crust_type_code") == CRUST_TYPE_CONTINENTAL
+    assert np.count_nonzero(continental & survivors) == 1
+    assert np.any(~continental & survivors)
+    total_after = float(a.collect("crustal_thickness_m")[survivors] @ areas[survivors])
+    assert total_after == pytest.approx(total_before, rel=1e-11)
+    hm_after = float(a.collect("mantle_lithosphere_thickness_m")[survivors] @ areas[survivors])
+    assert hm_after == pytest.approx(hm_before, rel=1e-11)
 
 
 def _plate_with_overlay(crust_type):

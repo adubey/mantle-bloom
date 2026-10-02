@@ -312,6 +312,7 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
     codes_before = codes.copy()
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     adjacency = _adjacency_matrix(plate)
+    points = plate.surface_nodes().local_xyz
     changed = np.zeros(len(hc), dtype=bool)
     elevation_before = elevation.copy()
     hc_before = hc.copy()
@@ -354,12 +355,16 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
                 # Hc instead of either losing the fragment or counting its oceanic substrate
                 # as newly continental.
                 relocated = _relocate_terrane_column(
-                    hc, hm, codes, continental, areas, adjacency, front, survivors, hc_volume, hm_volume
+                    hc, hm, codes, continental, areas, points, adjacency, front, survivors, hc_volume, hm_volume
                 )
-                changed |= relocated
-                continue
+                if np.any(relocated):
+                    changed |= relocated
+                    continue
             if not np.any(typed_survivors):
-                continue
+                # Preserve the old any-type nearest-survivor fallback. Same-type placement is
+                # preferred because it preserves the categorical reservoir, but the column's
+                # actual Hc/Hm volume must not vanish when that representation has no receiver.
+                typed_survivors = survivors
             changed |= _spread_accretion_volume(
                 hc,
                 areas,
@@ -400,6 +405,7 @@ def _relocate_terrane_column(
     codes: np.ndarray,
     continental: np.ndarray,
     areas: np.ndarray,
+    points: np.ndarray,
     adjacency: csr_matrix,
     front: np.ndarray,
     survivors: np.ndarray,
@@ -428,11 +434,24 @@ def _relocate_terrane_column(
         next_frontier = (adjacency @ frontier.astype(np.int8) > 0) & ~reached
         if not np.any(next_frontier):
             # A plate can be briefly disconnected before the topology cleanup pass. Preserve
-            # the fragment on its nearest reachable component when possible, then fall back
-            # to the other surviving components rather than silently losing it.
-            layer = oceanic & ~chosen
-            chosen |= layer
-            chosen_area += float(areas[layer].sum())
+            # the fragment on its nearest reachable component when possible, then take only
+            # as much of the nearest other component(s) as the terrane column actually needs.
+            remaining = np.flatnonzero(oceanic & ~chosen)
+            if not len(remaining):
+                break
+            # `front` and candidates are already in one plate-local frame. Chord distance is
+            # monotonic with spherical distance, so sorting by it avoids building another
+            # spatial index for this rare cleanup path.
+            centre = points[front].mean(axis=0)
+            order = np.argsort(np.linalg.norm(points[remaining] - centre, axis=1), kind="stable")
+            for idx in remaining[order]:
+                chosen[idx] = True
+                chosen_area += float(areas[idx])
+                if (
+                    chosen_area * SUTURE_ACCRETION_MAX_HC_M >= hc_volume
+                    and chosen_area * lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M >= hm_volume
+                ):
+                    break
             break
         frontier = next_frontier
         reached |= frontier
@@ -441,16 +460,32 @@ def _relocate_terrane_column(
         chosen_area += float(areas[layer].sum())
     if not np.any(chosen):
         return changed
+    if (
+        chosen_area * SUTURE_ACCRETION_MAX_HC_M < hc_volume * (1.0 - 1e-12)
+        or chosen_area * lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M < hm_volume * (1.0 - 1e-12)
+    ):
+        return changed
 
     displaced_hc = float(np.sum(hc[chosen] * areas[chosen]))
     displaced_hm = float(np.sum(hm[chosen] * areas[chosen]))
+    oceanic_receivers = survivors & ~continental & ~chosen
+    hc_room = float(
+        np.sum(np.maximum(SUTURE_ACCRETION_MAX_HC_M - hc[oceanic_receivers], 0.0) * areas[oceanic_receivers])
+    )
+    hm_room = float(
+        np.sum(
+            np.maximum(lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - hm[oceanic_receivers], 0.0)
+            * areas[oceanic_receivers]
+        )
+    )
+    if hc_room < displaced_hc * (1.0 - 1e-12) or hm_room < displaced_hm * (1.0 - 1e-12):
+        return changed
     hc[chosen] = min(hc_volume / chosen_area, SUTURE_ACCRETION_MAX_HC_M)
     hm[chosen] = min(hm_volume / chosen_area, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
     codes[chosen] = CRUST_TYPE_CONTINENTAL
     continental[chosen] = True
     changed |= chosen
 
-    oceanic_receivers = survivors & ~continental
     if np.any(oceanic_receivers):
         changed |= _spread_accretion_volume(
             hc,
@@ -460,7 +495,7 @@ def _relocate_terrane_column(
             oceanic_receivers,
             displaced_hc,
             SUTURE_ACCRETION_MAX_HC_M,
-            SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION,
+            0.0,
         )
         changed |= _spread_accretion_volume(
             hm,
@@ -470,6 +505,7 @@ def _relocate_terrane_column(
             oceanic_receivers,
             displaced_hm,
             lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
+            0.0,
         )
     return changed
 
@@ -505,19 +541,28 @@ def _spread_accretion_volume(
     receivers = np.zeros(len(thickness), dtype=bool)
     hops = 0
     remaining = volume
+    placed_locally = False
+    far_fallback = False
     while remaining > max(volume, 1.0) * 1e-12:
         if hops > 0:
             receivers |= frontier & eligible
         if hops >= SUTURE_ACCRETION_SPREAD_NODES and np.any(receivers):
+            before_fill = remaining
             remaining, filled = _fill_capped_volume(thickness, areas, receivers, remaining, cap)
             changed |= filled
+            placed_locally |= remaining < before_fill
             receivers[:] = False
         if hops >= SUTURE_ACCRETION_MAX_HOPS:
-            must_place = max(remaining - max_delamination_fraction * volume, 0.0)
-            if must_place > 0.0:
-                _, filled = _fill_capped_volume(thickness, areas, eligible, must_place, cap)
-                changed |= filled
-            break
+            # If the finite belt found no receiver with room, retain the old unbounded search
+            # instead of treating mere distance as delamination. Once that fallback starts it
+            # walks every farther graph layer until the column is placed or the graph ends.
+            far_fallback |= not placed_locally
+            if not far_fallback:
+                must_place = max(remaining - max_delamination_fraction * volume, 0.0)
+                if must_place > 0.0:
+                    _, filled = _fill_capped_volume(thickness, areas, eligible, must_place, cap)
+                    changed |= filled
+                break
         next_frontier = (adjacency @ frontier.astype(np.int8) > 0) & ~reached
         if not np.any(next_frontier):
             # Preserve the old nearest-survivor fallback for a temporarily disconnected
