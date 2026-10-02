@@ -95,8 +95,10 @@ dropping it.
 | `World.surface_conversion` | new: the conversion summary, kept through later saves |
 
 **Refused rather than dropped.** A plate attribute or line field not in the tables above,
-non-finite field values, and field arrays whose length disagrees with their line all raise
-`ValueError`. That's the "no silent field loss" guarantee for state added by a build this
+non-finite field values or line coordinates, field arrays whose length disagrees with their
+line, and malformed plate motion (a frame that isn't a finite proper rotation, a non-finite
+or misshapen omega, a non-finite internal stress, a negative or fractional age, an unknown
+crust type) all raise `ValueError`. That's the "no silent field loss" guarantee for state added by a build this
 converter predates.
 
 **Not carried, by design.** The line engine's random streams are keyed by line index
@@ -124,8 +126,11 @@ world's even where its state matches. Comparisons are statistical, as in #247/#2
   isostasy from the new column plus the carried residual. A cell no node reaches copies its
   nearest node, but not its volcano.
 - **Overlaps.** A node whose target cell is on another plate is crust the line world held
-  twice. It stacks onto that cell the way `quad_merge` stacks a suture: volume adds, and
-  provenance and composition combine.
+  twice. It stacks onto that cell the way `quad_merge` stacks a suture, every field by its
+  remap class. Volume adds and provenance and history combine as above. Composition is voted
+  by crust volume, and other categories by area with ties keeping the cell's own. Intensive
+  and clock fields blend by area (soil contents by soil depth, channel width by channel
+  depth), and so does the elevation residual.
 - **Caps.** Thickness that stacking pushes past the Hc/Hm caps diffuses outward across the
   receiving plate's cells, through full ones, for up to 12 rings (~750 km at the default
   density), so a converted collision thickens a belt instead of one column. Hc/Hm are then
@@ -177,15 +182,15 @@ original. Results are in [`analysis/issue248/`](../analysis/issue248/): the inve
 
 | save | Myr | line nodes | quad cells | Hc Δ | Hm Δ | Hc over cap in save | Hc delaminated | worst untouched plate Hc Δ | stacked nodes | land line→quad | continental line→quad | uncovered line→quad | multiply covered line→quad | sea level after steps, line / quad | result |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|---|
-| seed745352920-0y | 0.2 | 130578 | 129210 | +0.00% | +0.00% | 0.00% | 0.00% | 0.08% | 0.11% | 0.290 → 0.289 | 0.766 → 0.766 | 0.85% → 0.30% | 1.52% → 0.31% | -0 / -3 | pass |
-| seed125087475-11600000y | 11.8 | 130649 | 124570 | -0.01% | +0.11% | 0.00% | 0.01% | 0.56% | 0.66% | 0.331 → 0.332 | 0.655 → 0.655 | 1.98% → 0.99% | 0.26% → 0.52% | -222 / -258 | pass |
-| seed19335323-33200000y | 33.4 | 16557 | 15386 | -0.63% | -0.36% | 0.29% | 0.63% | 0.32% | 2.04% | 0.251 → 0.254 | 0.292 → 0.293 | 5.09% → 1.60% | 1.17% → 1.57% | -871 / -874 | pass (warn: multiply_covered) |
-| seed343559903-104700000y | 104.9 | 110465 | 104430 | -1.15% | -0.16% | 0.14% | 1.15% | 0.22% | 3.00% | 0.204 → 0.211 | 0.698 → 0.698 | 20.80% → 20.49% | 2.25% → 0.75% | -327 / -1082 | FAIL: crust_delamination |
-| seed331006609-239700000y | 239.9 | 163177 | 130845 | -0.18% | -0.12% | 3.85% | 0.17% | 0.42% | 0.97% | 0.269 → 0.279 | 0.368 → 0.370 | 1.96% → 0.77% | 0.34% → 0.55% | -1943 / -2036 | FAIL: land_fraction_delta |
-| seed804913535-352400000y | 352.6 | 158589 | 129602 | -0.04% | -0.06% | 0.00% | 0.04% | 0.48% | 1.14% | 0.329 → 0.331 | 0.420 → 0.421 | 2.32% → 0.83% | 0.47% → 0.71% | -820 / -816 | pass |
-| seed875551829-363100000y | 363.3 | 229650 | 129889 | +0.00% | +0.02% | 0.03% | 0.00% | 0.13% | 1.20% | 0.132 → 0.134 | 0.042 → 0.042 | 4.21% → 1.64% | 0.12% → 1.03% | -3256 / -3251 | pass |
-| seed579428537-626500000y | 626.7 | 222068 | 130346 | +0.04% | +0.08% | 7.62% | 0.00% | 0.27% | 1.45% | 0.195 → 0.195 | 0.043 → 0.043 | 4.28% → 2.01% | 0.24% → 1.03% | -3161 / -3158 | pass |
-| seed896200538-1063700000y | 1063.9 | 151091 | 126176 | -0.39% | -0.01% | 1.61% | 0.39% | 1.33% | 1.90% | 0.136 → 0.138 | 0.177 → 0.177 | 11.55% → 4.13% | 0.57% → 0.89% | -2486 / -2474 | pass |
+| seed745352920-0y | 0.0 | 130578 | 129210 | +0.00% | +0.00% | 0.00% | 0.00% | 0.08% | 0.11% | 0.290 → 0.289 | 0.766 → 0.766 | 0.85% → 0.30% | 1.52% → 0.31% | -0 / -3 | pass |
+| seed125087475-11600000y | 11.6 | 130649 | 124570 | -0.01% | +0.11% | 0.00% | 0.01% | 0.56% | 0.66% | 0.331 → 0.332 | 0.655 → 0.655 | 1.98% → 0.99% | 0.26% → 0.52% | -222 / -258 | pass |
+| seed19335323-33200000y | 33.2 | 16557 | 15386 | -0.63% | -0.36% | 0.29% | 0.63% | 0.32% | 2.04% | 0.251 → 0.254 | 0.292 → 0.293 | 5.09% → 1.60% | 1.17% → 1.57% | -871 / -874 | pass (warn: multiply_covered) |
+| seed343559903-104700000y | 104.7 | 110465 | 104430 | -1.15% | -0.16% | 0.14% | 1.15% | 0.22% | 3.00% | 0.204 → 0.211 | 0.698 → 0.698 | 20.80% → 20.49% | 2.25% → 0.75% | -327 / -1082 | FAIL: crust_delamination |
+| seed331006609-239700000y | 239.7 | 163177 | 130845 | -0.18% | -0.12% | 3.85% | 0.17% | 0.42% | 0.97% | 0.269 → 0.279 | 0.368 → 0.370 | 1.96% → 0.77% | 0.34% → 0.55% | -1943 / -2036 | FAIL: land_fraction_delta |
+| seed804913535-352400000y | 352.4 | 158589 | 129602 | -0.04% | -0.06% | 0.00% | 0.04% | 0.48% | 1.14% | 0.329 → 0.331 | 0.420 → 0.421 | 2.32% → 0.83% | 0.47% → 0.71% | -820 / -816 | pass |
+| seed875551829-363100000y | 363.1 | 229650 | 129889 | +0.00% | +0.02% | 0.03% | 0.00% | 0.13% | 1.20% | 0.132 → 0.134 | 0.042 → 0.042 | 4.21% → 1.64% | 0.12% → 1.03% | -3256 / -3251 | pass |
+| seed579428537-626500000y | 626.5 | 222068 | 130346 | +0.04% | +0.08% | 7.62% | 0.00% | 0.27% | 1.45% | 0.195 → 0.196 | 0.043 → 0.043 | 4.28% → 2.01% | 0.24% → 1.03% | -3161 / -3158 | pass |
+| seed896200538-1063700000y | 1063.7 | 151091 | 126176 | -0.39% | -0.01% | 1.61% | 0.39% | 1.33% | 1.90% | 0.136 → 0.138 | 0.177 → 0.177 | 11.55% → 4.13% | 0.57% → 0.89% | -2486 / -2475 | pass |
 
 Every save passes the exact checks: no audit violations at conversion or after either step,
 identical round trips, and no provenance violations. Sea level is unchanged at conversion. It
@@ -198,7 +203,7 @@ re-tuned away:
 - **104.7 Myr, Hc delamination 1.15% (limit 1%).** 3% of this save's nodes sit in overlaps,
   the most of any save, and their crust lands on columns already near the cap. The overflow
   spreads 12 rings before the rest is removed.
-- **239.7 Myr, land share +1.02 pp (limit 1 pp).** The per-plate conservation ratio thins
+- **239.7 Myr, land share +1.03 pp (limit 1 pp).** The per-plate conservation ratio thins
   or thickens a few small plates by up to 7.5%, which moves coasts. Crust volume itself is
   within 0.2%.
 

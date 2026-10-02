@@ -7,7 +7,7 @@
     "continental_fraction_delta": {
       "limit": 0.01,
       "pass": true,
-      "value": 0.0001615
+      "value": 0.000161523
     },
     "crust_delamination": {
       "limit": 0.01,
@@ -22,7 +22,7 @@
     "land_fraction_delta": {
       "limit": 0.01,
       "pass": true,
-      "value": 0.000318
+      "value": 0.00180498
     },
     "mantle_delamination": {
       "limit": 0.015,
@@ -65,7 +65,7 @@
       "value": -0.02266
     }
   },
-  "elapsed_years": 626700000.0,
+  "elapsed_years": 626500000.0,
   "pass": true,
   "report": {
     "area_fractions": {
@@ -74,7 +74,7 @@
         "before": 0.0430061
       },
       "land": {
-        "after": 0.194871,
+        "after": 0.196358,
         "before": 0.194553
       }
     },
@@ -1204,7 +1204,7 @@
     "sea_level": {
       "after_m": -3154.55,
       "before_m": -3154.55,
-      "water_budget_after_m3": 9.24568e+17,
+      "water_budget_after_m3": 9.21183e+17,
       "water_budget_before_m3": 1.4831e+18
     },
     "source": {
@@ -1230,8 +1230,8 @@
   "round_trip_identical": true,
   "save": "mantle-bloom-seed579428537-626500000y.mbworld",
   "seconds": {
-    "convert": 4.64812,
-    "load": 0.875474
+    "convert": 6.67373,
+    "load": 1.4811
   },
   "step_audits": [
     [],
@@ -1271,23 +1271,23 @@
         "continental_hc_volume_km3": 1222790000.0,
         "continental_plates": 3,
         "elevation": {
-          "p05": -6905.47,
-          "p50": -5098.05,
-          "p95": 1093.37
+          "p05": -6903.16,
+          "p50": -5092.58,
+          "p95": 1104.38
         },
-        "hc_volume_km3": 6109010000.0,
+        "hc_volume_km3": 6108990000.0,
         "hm_volume_km3": 17720000000.0,
         "land_elevation": {
-          "p05": -3030.74,
-          "p50": -1268.73,
-          "p95": 7871.38
+          "p05": -3030.05,
+          "p50": -1266.04,
+          "p95": 7847.76
         },
-        "land_fraction": 0.19213,
+        "land_fraction": 0.193415,
         "live_plates": 78,
         "nodes": 131277,
         "nominal_area_over_sphere": 1.00536,
         "plates": 78,
-        "sea_level_m": -3160.27
+        "sea_level_m": -3160.36
       },
       "step": 1
     },
@@ -1324,23 +1324,23 @@
         "continental_hc_volume_km3": 1222400000.0,
         "continental_plates": 3,
         "elevation": {
-          "p05": -6905.14,
-          "p50": -5098.86,
-          "p95": 1062.22
+          "p05": -6902.13,
+          "p50": -5093.24,
+          "p95": 1085.14
         },
-        "hc_volume_km3": 6120770000.0,
+        "hc_volume_km3": 6120650000.0,
         "hm_volume_km3": 17713000000.0,
         "land_elevation": {
-          "p05": -3028.88,
-          "p50": -1267.04,
-          "p95": 7864.33
+          "p05": -3028.35,
+          "p50": -1266.58,
+          "p95": 7836.36
         },
-        "land_fraction": 0.191227,
+        "land_fraction": 0.192479,
         "live_plates": 78,
         "nodes": 131208,
         "nominal_area_over_sphere": 1.00484,
         "plates": 78,
-        "sea_level_m": -3157.83
+        "sea_level_m": -3158.12
       },
       "step": 2
     }
@@ -1378,18 +1378,18 @@
       "continental_hc_volume_km3": 1221880000.0,
       "continental_plates": 3,
       "elevation": {
-        "p05": -6912.75,
-        "p50": -5100.63,
-        "p95": 1169.23
+        "p05": -6908.61,
+        "p50": -5094.37,
+        "p95": 1175.32
       },
       "hc_volume_km3": 6076570000.0,
       "hm_volume_km3": 17813400000.0,
       "land_elevation": {
-        "p05": -3019.93,
-        "p50": -1244.74,
-        "p95": 7886.53
+        "p05": -3019.3,
+        "p50": -1246.61,
+        "p95": 7860.48
       },
-      "land_fraction": 0.195855,
+      "land_fraction": 0.197308,
       "live_plates": 78,
       "nodes": 130346,
       "nominal_area_over_sphere": 0.998235,

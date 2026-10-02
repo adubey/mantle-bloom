@@ -111,6 +111,8 @@ def _checks(report: dict, audit: list, round_trip: bool, step_audits: list) -> d
 def convert_one(path: Path, out_dir: Path, steps: int, step_years: float, render: bool, write_converted: bool) -> dict:
     started = time.perf_counter()
     lines = persistence.load_world_bytes(path.read_bytes())
+    # The save's own age: both worlds are stepped further below.
+    elapsed_years = lines.elapsed_years
     load_s = time.perf_counter() - started
     quad = copy.deepcopy(lines)
     line_totals = surface_parity.totals(lines)
@@ -137,7 +139,7 @@ def convert_one(path: Path, out_dir: Path, steps: int, step_years: float, render
 
     document = {
         "save": path.name,
-        "elapsed_years": lines.elapsed_years,
+        "elapsed_years": elapsed_years,
         "seconds": {"load": load_s, "convert": convert_s},
         "report": report,
         "totals_at_conversion": {"lines": line_totals, "quad": quad_totals},

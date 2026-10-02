@@ -345,3 +345,79 @@ def test_stacking_overflow_spreads_across_the_plate_and_conserves_volume():
     # A column a legacy save already held past the cap is not spread: the line engine clamps it.
     legacy_over = legacy_conversion._spread_overflow(plate, stacked, stacked, cap)
     np.testing.assert_array_equal(legacy_over, stacked)
+
+
+def test_overlap_nodes_bring_every_field_onto_the_cell_they_stack_on():
+    # Plate 0 is pushed into its neighbours, and every field on it is stamped differently from
+    # theirs. Where its nodes stack onto a neighbour's cell, each field must combine by its
+    # remap class (quad_merge's suture rules), not keep only the receiving cell's value.
+    from app import lithosphere
+
+    world = generate_world(seed=7, num_plates=8, node_density=DENSITY)
+    for plate in world.plates:
+        count = plate.node_count()
+        mine = plate is world.plates[0]
+        plate.set_fields_on_plate(
+            soil_depth=np.ones(count),
+            soil_mineral_content=np.full(count, 0.9 if mine else 0.1),
+            divergent_age_myr=np.full(count, 7.0 if mine else 1.0),
+            channel_depth=np.ones(count),
+            channel_width=np.full(count, 50.0 if mine else 10.0),
+            elev_change_reason=np.full(count, 5.0 if mine else 11.0),
+        )
+        lithosphere.sync_plate_elevation(plate)
+        if mine:
+            plate.set_fields_on_plate(elevation=plate.collect("elevation") + 500.0)
+    plate = world.plates[0]
+    centre = plate.all_points_and_elevation()[0].mean(axis=0)
+    axis = np.cross(centre, [0.0, 0.0, 1.0])
+    plate.rotate(geometry.rotation_matrix(axis / np.linalg.norm(axis), 3.0 * SPACING))
+
+    report = legacy_conversion.convert_world_to_quad(world)
+    assert report.targets["stacked"] > 0
+    blended, residuals, reasons = 0, [], set()
+    for quad in world.plates[1:]:
+        if not quad.node_count():
+            continue
+        soil = quad.collect("soil_mineral_content")
+        receiving = (soil > 0.1 + 1e-9) & (soil < 0.9 - 1e-9)
+        blended += int(receiving.sum())
+        for name, low, high in (("divergent_age_myr", 1.0, 7.0), ("channel_width", 10.0, 50.0)):
+            values = quad.collect(name)[receiving]
+            assert np.all((values > low) & (values < high)), name
+        density = lithosphere.node_crust_density(quad.collect("crust_type_code"), quad.crust_type)
+        residual = quad.collect("elevation") - lithosphere.isostatic_elevation(
+            quad.collect("crustal_thickness_m"), quad.collect("mantle_lithosphere_thickness_m"), density
+        )
+        residuals.append(residual[receiving])
+        reasons |= set(np.unique(quad.collect("elev_change_reason")[receiving]))
+    assert blended > 0
+    residuals = np.concatenate(residuals)
+    # Elevation keeps a share of the incoming crust's +500 m residual (clipping aside).
+    assert np.median(residuals) > 1.0 and np.all(residuals < 500.0 + 1e-6)
+    assert reasons <= {5.0, 11.0}
+    assert 5.0 in {float(r) for quad in world.plates[1:] if quad.node_count() for r in np.unique(quad.collect("elev_change_reason"))}
+
+
+@pytest.mark.parametrize(
+    "corrupt, message",
+    [
+        (lambda p: p.__dict__.__setitem__("_frame", np.full((3, 3), np.nan)), "frame must be a finite"),
+        (lambda p: p.__dict__.__setitem__("_frame", np.eye(3)[:2]), "frame must be a finite"),
+        (lambda p: p.__dict__.__setitem__("_frame", 2.0 * np.asarray(p.__dict__["_frame"])), "proper rotation"),
+        (lambda p: p.__dict__.__setitem__("_frame", -np.asarray(p.__dict__["_frame"])), "proper rotation"),
+        (lambda p: p.__dict__.__setitem__("_omega", np.array([np.nan, 0.0, 0.0])), "omega"),
+        (lambda p: p.__dict__.__setitem__("_omega", np.zeros(2)), "omega"),
+        (lambda p: p.__dict__.__setitem__("_internal_stress", np.inf), "internal stress"),
+        (lambda p: p.__dict__.__setitem__("_age_steps", -1), "age"),
+        (lambda p: p.__dict__.__setitem__("_age_steps", 2.5), "age"),
+        (lambda p: p.__dict__.__setitem__("_crust_type", "basaltic"), "crust type"),
+        (lambda p: p.lines[0].__dict__["_theta"].__setitem__(0, np.nan), "coordinates"),
+        (lambda p: p.lines[0].__dict__.__setitem__("_phi", np.inf), "coordinates"),
+    ],
+)
+def test_malformed_plate_state_is_refused(corrupt, message):
+    world = _shape_world()
+    corrupt(world.plates[2])
+    with pytest.raises(ValueError, match=message):
+        legacy_conversion.convert_world_to_quad(world)

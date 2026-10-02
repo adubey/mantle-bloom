@@ -65,7 +65,7 @@
       "value": -0.00556
     }
   },
-  "elapsed_years": 200000.0,
+  "elapsed_years": 0.0,
   "pass": true,
   "report": {
     "area_fractions": {
@@ -333,8 +333,8 @@
   "round_trip_identical": true,
   "save": "mantle-bloom-seed745352920-0y.mbworld",
   "seconds": {
-    "convert": 1.8096,
-    "load": 0.0684164
+    "convert": 3.0641,
+    "load": 0.323942
   },
   "step_audits": [
     [],
