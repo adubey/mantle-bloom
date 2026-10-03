@@ -869,8 +869,10 @@ def render(
     world = _require_world()
     if projection not in projections.PROJECTIONS:
         raise HTTPException(status_code=400, detail=f"unknown projection {projection!r}")
-    if view not in render_image.VIEWS:
-        raise HTTPException(status_code=400, detail=f"unknown view {view!r}; choices are {render_image.VIEWS}")
+    if view not in render_image.VIEWS + render_image.LAYER_VIEWS:
+        raise HTTPException(
+            status_code=400, detail=f"unknown view {view!r}; choices are {render_image.VIEWS + render_image.LAYER_VIEWS}"
+        )
     if not (1 <= width <= MAX_RENDER_DIMENSION_PX and 1 <= height <= MAX_RENDER_DIMENSION_PX):
         raise HTTPException(status_code=400, detail=f"width/height must be in [1, {MAX_RENDER_DIMENSION_PX}]")
     view_rotation = _parse_view_rotation(rotation)
