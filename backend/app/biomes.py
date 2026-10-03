@@ -8,7 +8,7 @@ state, nothing cached here.
 The real Köppen scheme keys off *sub-annual* quantities this model never produces -- coldest-
 and warmest-month temperature, and the seasonal (summer vs. winter) split of precipitation.
 We synthesize those from what we do have: latitude, continentality (distance inland), and the
-world's axial tilt drive a seasonal temperature amplitude (`_seasonal_temp_amplitude`);
+world's axial tilt drive a seasonal temperature amplitude (`seasonal_temp_amplitude`);
 latitude alone drives a summer precipitation share and a seasonality concentration
 (`_precip_season`). A tilt-0 world gets amplitude 0 -- no seasons -- so its `s`/`w`/`d`
 classes simply never occur, which is the physically right behavior. The boundary values below
@@ -37,7 +37,6 @@ from scipy.special import erf
 from scipy.stats import rankdata
 
 from .elevation_lines import PLANET_RADIUS_KM
-from .hydrology import GLACIER_ACCUMULATION_TEMP_C
 
 # Earth's real tilt -- the reference the seasonal-amplitude synthesis is calibrated against,
 # and the default when a caller has no World handy (kept in sync with world.DEFAULT_AXIAL_TILT_DEG
@@ -45,11 +44,10 @@ from .hydrology import GLACIER_ACCUMULATION_TEMP_C
 # world -> biomes import edge).
 DEFAULT_AXIAL_TILT_DEG = 23.5
 
-# Same threshold hydrology.py's own glacier accumulation logic already uses for "cold enough
-# to permanently freeze" -- reused rather than inventing a second, potentially-inconsistent
-# cold cutoff, so the Ice Cap class lines up with where the simulation would actually grow a
-# glacier.
-ICE_TEMP_C = GLACIER_ACCUMULATION_TEMP_C
+# Annual-mean cutoff below which a flat, wet lowland reads as frozen ground rather than
+# wetland (`classify_wetland`). It used to be shared with hydrology.py's glacier melt floor;
+# glacier melt now runs on a synthesized seasonal cycle (`seasonal_temp_amplitude`) instead.
+ICE_TEMP_C = -10.0
 COLD_TEMP_C = 5.0
 # Köppen's tropical / arid `h`-vs-`k` isotherm, and the warmth at which soil biomass
 # productivity saturates in geology.py -- one shared constant, same precedent as ICE_TEMP_C.
@@ -299,16 +297,30 @@ _SEASON_TILT_REFERENCE_DEG = 23.5
 # synthesized value near there so an extreme cold + fully-continental cell doesn't get an
 # unphysical +30 C summer bump lifting it out of the polar classes.
 _SEASON_MAX_AMPLITUDE_C = 33.0
+# Optional relief boost (`relief_m`, used by hydrology's seasonal glacier melt, not by Köppen):
+# mountain valleys see larger swings than the lowland at the same latitude -- thin dry air,
+# strong summer insolation, winter cold-air pooling -- the 15-30 C summer-to-winter ranges
+# #272 cites for mountain regions. Added per km above sea level, saturating at
+# _SEASON_RELIEF_MAX_C so a high plateau gets a mid-latitude-interior-sized swing, not more.
+_SEASON_RELIEF_GAIN_C_PER_KM = 2.5
+_SEASON_RELIEF_MAX_C = 8.0
 
 
-def _seasonal_temp_amplitude(lat_deg: np.ndarray, continentality: np.ndarray, axial_tilt_deg: float) -> np.ndarray:
+def seasonal_temp_amplitude(
+    lat_deg: np.ndarray, continentality: np.ndarray, axial_tilt_deg: float, relief_m: np.ndarray | None = None
+) -> np.ndarray:
     """Half of (warmest-month mean - coldest-month mean), same shape as `lat_deg`.
-    `continentality` is 0 at the coast, 1 deep in a landmass' interior."""
+    `continentality` is 0 at the coast, 1 deep in a landmass' interior. `relief_m` (height
+    above sea level, metres; negative reads as 0) adds the mountain boost above; omitted, the
+    amplitude is the Köppen synthesis exactly."""
     lat_deg = np.asarray(lat_deg, dtype=float)
     cont = np.clip(np.asarray(continentality, dtype=float), 0.0, 1.0)
     tilt_factor = np.clip(axial_tilt_deg / _SEASON_TILT_REFERENCE_DEG, 0.0, 1.7)
     lat_term = _SEASON_LAT_AMPLITUDE_C * (np.abs(lat_deg) / 90.0) ** _SEASON_LAT_EXPONENT
     amplitude = lat_term * (1.0 + _SEASON_CONTINENTAL_GAIN * cont) + _SEASON_CONTINENTAL_OFFSET_C * cont
+    if relief_m is not None:
+        relief_km = np.clip(np.asarray(relief_m, dtype=float), 0.0, None) / 1000.0
+        amplitude = amplitude + np.minimum(_SEASON_RELIEF_GAIN_C_PER_KM * relief_km, _SEASON_RELIEF_MAX_C)
     return tilt_factor * np.minimum(amplitude, _SEASON_MAX_AMPLITUDE_C)
 
 
@@ -355,7 +367,7 @@ def _seasonal_extremes(
     """Everything the Köppen decision needs beyond the raw annual pair, all same-shape:
     (t_cold, t_warm, amplitude, driest_month_mm, wettest_summer_month_mm,
     driest_summer_month_mm, wettest_winter_month_mm, summer_share)."""
-    amplitude = _seasonal_temp_amplitude(lat_deg, continentality, axial_tilt_deg)
+    amplitude = seasonal_temp_amplitude(lat_deg, continentality, axial_tilt_deg)
     t_annual = np.asarray(t_annual, dtype=float)
     precip_mm = np.asarray(precip_mm, dtype=float)
     t_cold = t_annual - amplitude

@@ -2181,7 +2181,7 @@ classes** (`classify_pelagic`), with `is_ocean` settling the land/water split. `
 
 Real Köppen keys off sub-annual quantities this model never produces -- coldest/warmest-month
 temperature and the summer/winter precipitation split -- so `biomes.py` **synthesizes** them:
-`_seasonal_temp_amplitude` drives a mean-to-peak seasonal swing from `|lat|`, continentality
+`seasonal_temp_amplitude` drives a mean-to-peak seasonal swing from `|lat|`, continentality
 (distance inland, 0 at the coast), and `axial_tilt_deg` (a tilt-0 world gets amplitude 0, so
 its `s`/`w`/`d` subtypes never occur); `_precip_season` drives a summer precipitation share
 and a seasonality concentration from latitude (monsoon belt summer-wet and peaked, a narrow
@@ -2191,8 +2191,8 @@ erosion.py's `RAIN_EROSION_COEFFICIENT`), calibrated so an Earth-like world land
 zones roughly where Earth's are -- latitude alone can't tell a west coast (Mediterranean) from
 an east coast (humid) at the same latitude, so `s` is further gated on maritime
 continentality and modest precipitation, and some regimes (the East-Asian-monsoon `Dw` belt)
-read as their `f` sibling instead. `ICE_TEMP_C` still reuses
-`hydrology.GLACIER_ACCUMULATION_TEMP_C`.
+read as their `f` sibling instead. The same `seasonal_temp_amplitude` (plus an optional relief
+boost) also drives glacier melt -- see [Glaciation](#glaciation).
 
 **Pelagic classes** are PPOW's abiotic hierarchy rather than its Earth-geographic province
 names (which can't transfer to a different planet): a thermal realm from sea-surface
@@ -3561,23 +3561,37 @@ a real stepped world (a river's own classification genuinely stops at a lake's s
 <a id="glaciation"></a>
 ## Glaciation (`hydrology.py`)
 
-**Two separate cold thresholds, not one.** `FREEZE_POINT_C` (0C, the real phase-change point)
-governs whether precipitation falls as snow/ice rather than rain, and whether standing lake
-water or flowing river water freezes solid *this same step* -- a node below it never holds
-liquid water at all: any precipitation there is treated as fully frozen (no partial
-liquid/frozen split, matching `erosion.py`'s existing "use precipitation is enough"
-simplification), an existing lake sitting there freezes solid into `glacier_depth`, and a
-river reaching it stops flowing entirely this step. `GLACIER_ACCUMULATION_TEMP_C` (-10C) stays
-a separate, colder reference used only by the melt-rate formula below (where melt bottoms out
-at zero) -- this model has no seasons, so a mean annual temperature only slightly below
-freezing represents a place with seasonal snow/ice that still melts back down every step, not
-permanent glaciation; only the much colder zone keeps enough of its own snowfall through every
-step's melt term to actually build a permanent ice sheet. Confirmed directly this stays
-self-correcting: a node at, say, -3C genuinely freezes its lake/river solid every step (the
-warmer threshold), but the ice it forms also melts back at a real, if reduced, rate the very
-same step, converging to a near-zero *net* accumulation there rather than a spreading glacier.
+**Freezing uses the annual mean; melt uses an imputed seasonal cycle.** `FREEZE_POINT_C` (0C,
+the real phase-change point) governs whether precipitation falls as snow/ice rather than rain,
+and whether standing lake water or flowing river water freezes solid *this same step* -- a node
+whose annual mean is below it never holds liquid water at all: any precipitation there is
+treated as fully frozen (no partial liquid/frozen split, matching `erosion.py`'s existing "use
+precipitation is enough" simplification), an existing lake sitting there freezes solid into
+`glacier_depth`, and a river reaching it stops flowing entirely this step.
 
-Freezing (whichever threshold) happens *before* `flow_target` is (re)computed, so a lake that
+A step spans thousands of years or more, so seasons are never stepped through, but their
+effect on glacier melt is imputed (issue #275 phase 2). Each node gets a seasonal
+half-amplitude from `biomes.seasonal_temp_amplitude` -- the same latitude x continentality x
+axial-tilt synthesis Köppen classification uses ([Biomes](#biomes)), plus a relief boost of
+`_SEASON_RELIEF_GAIN_C_PER_KM` (2.5C/km above sea level, saturating at 8C) for the larger
+swings of mountain valleys -- computed in `erosion.apply_erosion` and passed to
+`compute_hydrology` as `seasonal_amplitude_at_nodes`. Surface melt then scales with the mean
+positive degrees above `GLACIER_MELT_THRESHOLD_C` (0C) of a sinusoidal annual cycle around the
+annual mean (`hydrology.seasonal_positive_degrees`, a closed-form positive-degree-day
+integral). A valley at -8C with a 15C half-amplitude thaws every summer and melts; a maritime
+cell at the same -8C with a 4C swing never does. The ice margin settles where a summer's
+positive degrees just balance snowfall -- for typical precipitation, where the warmest month
+sits a degree or two above freezing (about -12.5C annual mean under a 15C half-amplitude),
+close to real glacier equilibrium lines. With zero amplitude (a tilt-0 world, or a caller that
+passes none) melt starts at a 0C annual mean.
+
+This replaced `GLACIER_ACCUMULATION_TEMP_C` (-10C), a fixed annual-mean floor below which ice
+never melted -- a stand-in for seasons that kept permanent ice in high-amplitude continental
+and mountain interiors whose summers are well above freezing, while melting ice in
+low-amplitude places that never thaw. A node at, say, -3C still freezes its lake/river solid
+every step, and the ice it forms still melts back at a real rate when its summer clears 0C.
+
+Freezing happens *before* `flow_target` is (re)computed, so a lake that
 just froze is correctly treated as a genuine sink again this step rather than immediately
 re-filling from this same step's routed water (see `lakes.step_lakes`'s own docstring). This
 ordering avoids a specific failure mode: without the freeze-before-routing ordering and an
@@ -3612,12 +3626,10 @@ this module evaporates, since climate.py runs *before* this module each step).
   for lakes. The *same* rate also converts the water a river deposits when it freezes solid
   at a cold sink (`water_deposited`, an accumulated flux -- not added 1:1 the way a standing
   frozen lake's own `lake_depth`, already a depth, is).
-- **Melt**: `GLACIER_MELT_RATE_M_PER_MYR`, scaled by how far the node's temperature sits above
-  `GLACIER_ACCUMULATION_TEMP_C` specifically (capped at `GLACIER_MELT_MAX_FACTOR`) -- not
-  `FREEZE_POINT_C` -- melts ice back down every step regardless of whether that step's water
-  is currently freezing solid or not (this is exactly what keeps the 0C-to--10C band from
-  building a permanent ice sheet, see above), capped so a step can't melt more than actually
-  exists. On top of that, a **depth-squared basal melt/sublimation** term
+- **Melt**: `GLACIER_MELT_RATE_M_PER_MYR`, scaled by the node's seasonal positive degrees over
+  `GLACIER_MELT_REFERENCE_DEGREES_C` (capped at `GLACIER_MELT_MAX_FACTOR`; see above), melts
+  ice back down every step regardless of whether that step's water is currently freezing solid
+  or not, capped so a step can't melt more than actually exists. On top of that, a **depth-squared basal melt/sublimation** term
   (`GLACIER_BASAL_MELT_M_PER_MYR * (depth / GLACIER_BASAL_MELT_REFERENCE_DEPTH_M) ** 2`) runs
   *unconditionally*, even where the surface melt factor is zero: without an always-on,
   thickness-scaled sink, ice converging on a flat-floored interior sink (glacier flow scales
@@ -3660,7 +3672,8 @@ this module evaporates, since climate.py runs *before* this module each step).
 layer beyond the same `LAKE_COLOR_RGB`-style baking treatment lakes get (mantle-bloom has no
 SNOW biome, so this uses its own `GLACIER_COLOR_RGB`, distinct from both `LAKE_COLOR_RGB` and
 `elevation_colors`' own high-peak white/gray stops, applied the same nearest-neighbor-grid-resample way as lakes via
-`plates.collect_all_glacier_depth`), no seasonal accumulation/ablation cycle. Interior/convergence
+`plates.collect_all_glacier_depth`), no stepped seasonal cycle (seasons are imputed into melt
+only; accumulation is still annual-mean-gated, with no seasonal rain/snow split). Interior/convergence
 ice depth is bounded three ways -- the ice-surface spill redirect (drains overfull closed
 basins toward the ocean), the depth-squared basal melt (a soft equilibrium in the
 low-thousands of metres), and `GLACIER_MAX_DEPTH_M` (a hard ~5 km backstop, excess shed to
