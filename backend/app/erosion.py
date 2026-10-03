@@ -101,6 +101,7 @@ from .plates import (
     collect_all_elev_change_reason,
     collect_all_elevation,
     collect_all_glacier_depth,
+    collect_all_ice_load_deflection,
     collect_all_mantle_lithosphere_thickness,
     gather_node_positions,
     query_workers,
@@ -579,6 +580,12 @@ class ErosionResult:
     precipitation_mm: np.ndarray
     # Issue #275: this step's area-weighted material budget (m^3) -- see apply_erosion.
     budget: dict[str, float] | None = None
+    # Issue #275 phase 3: the vertical stress (Pa) this step's grounded ice puts on each
+    # column, its change since last step (negative = unloading), and the resulting
+    # isostatic elevation change (m) -- also *not* part of net_elevation_change_m.
+    ice_load_pa: np.ndarray | None = None
+    ice_load_change_pa: np.ndarray | None = None
+    ice_deflection_change_m: np.ndarray | None = None
 
 
 def _gather_nodes(
@@ -1597,7 +1604,19 @@ def apply_erosion(
         new_crustal_thickness, prior_hm, rho_c_per_node
     ) - lithosphere.isostatic_elevation(prior_hc, prior_hm, rho_c_per_node)
     applied_delta = np.where(has_column, isostatic_delta, geomorphic_delta)
-    new_elevation = np.clip(elevation + applied_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    eroded_elevation = np.clip(elevation + applied_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
+
+    # Ice loading (issue #275, phase 3). `ice_load_deflection_m` is how far the ice load has
+    # pushed `elevation` down; it's recomputed from this step's final ice and elevation moves
+    # by only the change, so melting the ice rebounds the surface by exactly what loading it
+    # took. The load is evaluated on the bed with the old deflection removed, so the
+    # depression it makes can't feed back into its own flotation test.
+    prior_deflection = collect_all_ice_load_deflection(plates_in_order)
+    prior_load = lithosphere.grounded_ice_load_kg_m2(prior_glacier_depth, elevation - prior_deflection, world.sea_level_m)
+    unloaded_bed = eroded_elevation - prior_deflection
+    ice_load = lithosphere.grounded_ice_load_kg_m2(hydro.glacier_depth, unloaded_bed, world.sea_level_m)
+    new_deflection = lithosphere.ice_load_deflection(new_crustal_thickness, prior_hm, rho_c_per_node, ice_load)
+    new_elevation = np.clip(unloaded_bed + new_deflection, MIN_ELEVATION_M, MAX_ELEVATION_M)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
@@ -1697,6 +1716,7 @@ def apply_erosion(
             silt_depth=hydro.silt_depth[offset : offset + n],
             elev_change_reason=new_elev_change_reason[offset : offset + n],
             continental_material_m=new_material[offset : offset + n],
+            ice_load_deflection_m=new_deflection[offset : offset + n],
         )
         offset += n
 
@@ -1709,8 +1729,11 @@ def apply_erosion(
         weathering=weathering,
         sediment_deposited=total_deposited,
         is_river_depositing=is_depositing,
-        net_elevation_change_m=new_elevation - elevation,
+        net_elevation_change_m=eroded_elevation - elevation,
         temperature_c=temperature,
         precipitation_mm=precipitation_mm,
         budget=budget,
+        ice_load_pa=lithosphere.ice_load_pa(ice_load),
+        ice_load_change_pa=lithosphere.ice_load_pa(ice_load - prior_load),
+        ice_deflection_change_m=new_deflection - prior_deflection,
     )

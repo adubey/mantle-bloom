@@ -10,6 +10,13 @@ def generate_world(*args, **kwargs):
     return _generate_world(*args, **kwargs)
 
 
+def _unloaded_elevation(world) -> np.ndarray:
+    """Elevation with the ice-load depression (issue #275 phase 3) taken back out, so a test
+    about erosion isn't fooled by a glaciated node sinking under its ice."""
+    _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    return elevation - plates.collect_all_ice_load_deflection(plates_in_order)
+
+
 def test_climate_grid_indices_matches_build_grid_convention():
     # Row 0 = north pole, row increases southward; column increases eastward from lon=-180.
     world_xyz = np.array(
@@ -125,7 +132,8 @@ def test_apply_erosion_thins_crust_where_it_erodes_and_isostasy_compensates():
 
     erosion.apply_erosion(world, years=5_000_000)
 
-    _, elev_after, _, _, _, plates_after = erosion._gather_nodes(world)
+    _, _, _, _, _, plates_after = erosion._gather_nodes(world)
+    elev_after = _unloaded_elevation(world)
     hc_after = plates.collect_all_crustal_thickness(plates_after)
 
     eroded = elev_after < elev_before - 5.0  # nodes that lost real height
@@ -224,7 +232,7 @@ def test_earthquakes_increase_seismic_erosion_on_a_generated_world():
     base = generate_world(seed=21, num_plates=8)
     pts0, elev0, _, _, _, _ = erosion._gather_nodes(base)
     erosion.apply_erosion(base, years=1_000_000)
-    _, elev_no_quake, _, _, _, _ = erosion._gather_nodes(base)
+    elev_no_quake = _unloaded_elevation(base)
     # Highest land node that actually eroded on the plain run -- it has the height + slope the
     # seismic term keys off (and isn't submerged, where subaerial erosion is zeroed).
     eroded_land = np.where((elev0 > 800.0) & (elev0 - elev_no_quake > 1.0), elev0, -np.inf)
@@ -240,7 +248,7 @@ def test_earthquakes_increase_seismic_erosion_on_a_generated_world():
         )
     ]
     erosion.apply_erosion(quaked, years=1_000_000)
-    _, elev_quake, _, _, _, _ = erosion._gather_nodes(quaked)
+    elev_quake = _unloaded_elevation(quaked)
     assert elev_quake[target] < elev_no_quake[target] - 1.0
 
 
@@ -570,3 +578,59 @@ def test_apply_erosion_passes_seasonal_amplitude_to_hydrology(monkeypatch):
     amplitude = seen["amplitude"]
     assert amplitude is not None and np.all(np.isfinite(amplitude)) and np.all(amplitude >= 0.0)
     assert amplitude.max() > 10.0  # a real high-latitude / interior swing somewhere
+
+
+# --- Issue #275 phase 3: reversible ice loading ----------------------------------------------
+
+
+def _force_glacier_depth(monkeypatch, depth_for_step):
+    """Make compute_hydrology return its real fields but with `glacier_depth` replaced by
+    `depth_for_step(n)` for the current call."""
+    import dataclasses
+
+    from app import hydrology
+
+    real = hydrology.compute_hydrology
+
+    def forced(*args, **kwargs):
+        hydro = real(*args, **kwargs)
+        return dataclasses.replace(hydro, glacier_depth=depth_for_step(len(hydro.glacier_depth)))
+
+    monkeypatch.setattr(hydrology, "compute_hydrology", forced)
+
+
+def test_ice_load_depresses_the_surface_and_meltback_rebounds_it_exactly(monkeypatch):
+    from app import lithosphere
+
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    hc = np.concatenate([p.collect("crustal_thickness_m") for p in plates_in_order])
+    # Thick ice on high, comfortably-dry continental columns only.
+    loaded = (elevation > world.sea_level_m + 1500.0) & (hc > 0.0)
+    assert loaded.sum() > 10
+    ice_m = 2000.0
+    schedule = iter([np.where(loaded, ice_m, 0.0), np.zeros(len(loaded))])
+    _force_glacier_depth(monkeypatch, lambda n: next(schedule))
+
+    def deflection():
+        return np.concatenate([p.collect("ice_load_deflection_m") for p in world.plates])
+
+    # Loading step: the surface sinks by the Airy response to the ice, on top of erosion.
+    before = erosion._gather_nodes(world)[1]
+    loading = erosion.apply_erosion(world, years=1_000_000)
+    after_load = erosion._gather_nodes(world)[1]
+    expected_w = -ice_m * lithosphere.RHO_ICE / lithosphere.RHO_ASTHENOSPHERE
+    assert np.allclose(deflection()[loaded], expected_w, rtol=0.02)
+    assert np.all(deflection()[~loaded] == 0.0)
+    assert np.allclose(after_load - before, loading.net_elevation_change_m + loading.ice_deflection_change_m, atol=1e-6)
+    assert np.allclose(loading.ice_load_pa[loaded], ice_m * lithosphere.RHO_ICE * lithosphere.GRAVITY_M_S2)
+    assert np.all(loading.ice_load_change_pa[loaded] > 0.0)
+
+    # Meltback step: the deflection comes off exactly, through the same explicit path.
+    applied = deflection().copy()
+    unloading = erosion.apply_erosion(world, years=1_000_000)
+    after_melt = erosion._gather_nodes(world)[1]
+    assert np.all(deflection() == 0.0)
+    assert np.allclose(unloading.ice_deflection_change_m, -applied)
+    assert np.allclose(after_melt - after_load, unloading.net_elevation_change_m - applied, atol=1e-6)
+    assert np.all(unloading.ice_load_change_pa[loaded] < 0.0)

@@ -1828,6 +1828,10 @@ def collect_all_glacier_depth(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "glacier_depth")
 
 
+def collect_all_ice_load_deflection(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "ice_load_deflection_m")
+
+
 def collect_all_silt_depth(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "silt_depth")
 

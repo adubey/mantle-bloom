@@ -3730,6 +3730,18 @@ this module evaporates, since climate.py runs *before* this module each step).
 - **Erosion and flattening**: see [Erosion](#erosion) -- both driven by the *previous* step's
   `glacier_depth` (this step's fresh value isn't ready until this module runs, just before
   those terms are computed), the same one-step lag `channel_boost` already uses.
+- **Ice loading** (issue #275 phase 3; `erosion.apply_erosion`,
+  `lithosphere.ice_load_deflection`): grounded ice sinks its column. The load is the ice's
+  mass per area (`RHO_ICE` = 917 kg/m³) less the water it displaces below sea level
+  (`lithosphere.grounded_ice_load_kg_m2`), so floating sea ice and ice shelves load nothing.
+  The deflection is the loaded column's `isostatic_elevation` minus the unloaded one's, about
+  0.28 m per metre of ice on land and deeper once the depression is submerged. Glacial
+  isostatic adjustment takes ~10 kyr, so each step the column is in equilibrium with its
+  current ice. The applied depression is stored per node in `ice_load_deflection_m`, and
+  elevation moves by only its change each step, so meltback rebounds the surface by exactly
+  what loading took. `sync_line_elevation`/`sync_plate_elevation` keep it when they recompute
+  elevation from Hc/Hm. `ErosionResult.ice_load_pa`/`ice_load_change_pa` expose the vertical
+  load and this step's loading or unloading for fault coupling (phase 5).
 
 **Deliberately left out**: no rendering as a distinct color/
 layer beyond the same `LAKE_COLOR_RGB`-style baking treatment lakes get (mantle-bloom has no

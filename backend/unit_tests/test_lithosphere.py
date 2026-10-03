@@ -130,3 +130,61 @@ def test_clamp_column_caps_clips_both_bounds_and_keeps_the_elevation_residual():
     np.testing.assert_array_equal(new_hc[1:], hc[1:])
     np.testing.assert_allclose(plate.collect("elevation"), lithosphere.isostatic_elevation(new_hc, new_hm, rho_c) + residual)
     assert not lithosphere.clamp_column_caps(plate)
+
+
+# --- Issue #275 phase 3: reversible ice loading ----------------------------------------------
+
+
+def test_grounded_ice_load_counts_only_ice_the_water_column_cannot_float():
+    sea = 0.0
+    depth = np.array([1000.0, 1000.0, 1000.0, 1000.0, 0.0])
+    bed = np.array([500.0, -500.0, -917.0, -2000.0, 500.0])
+    load = lithosphere.grounded_ice_load_kg_m2(depth, bed, sea)
+    assert load[0] == lithosphere.RHO_ICE * 1000.0  # on land: the whole ice column
+    assert np.isclose(load[1], lithosphere.RHO_ICE * 1000.0 - lithosphere.RHO_WATER * 500.0)
+    assert np.isclose(load[2], 0.0)  # exactly at flotation
+    assert load[3] == 0.0 and load[4] == 0.0  # floating shelf / sea ice, and no ice
+
+
+def test_ice_load_deflection_sinks_dry_land_by_rho_ice_over_rho_a():
+    hc, hm = lithosphere.reference_thickness("continental")
+    hc = np.full(3, hc + 5_000.0)  # comfortably above sea level, so the dry branch holds
+    hm = np.full(3, hm)
+    ice = np.array([0.0, 1000.0, 2000.0])
+    load = lithosphere.RHO_ICE * ice
+    w = lithosphere.ice_load_deflection(hc, hm, lithosphere.RHO_CONTINENTAL_CRUST, load)
+    assert w[0] == 0.0
+    assert np.allclose(w[1:], -ice[1:] * lithosphere.RHO_ICE / lithosphere.RHO_ASTHENOSPHERE)
+    # No Hc tracking (v1 lines): the same dry-land response.
+    v1 = lithosphere.ice_load_deflection(np.zeros(3), np.zeros(3), lithosphere.RHO_CONTINENTAL_CRUST, load)
+    assert np.allclose(v1, w)
+
+
+def test_ice_load_deflection_is_deeper_once_the_depression_floods():
+    hm = np.full(1, lithosphere.REFERENCE_HM_CONTINENTAL_M)
+    hc = lithosphere.crustal_thickness_for_elevation(np.array([-1000.0]), hm, lithosphere.RHO_CONTINENTAL_CRUST)
+    load = np.array([lithosphere.RHO_ICE * 3000.0])
+    w = lithosphere.ice_load_deflection(hc, hm, lithosphere.RHO_CONTINENTAL_CRUST, load)
+    dry = -load / lithosphere.RHO_ASTHENOSPHERE
+    assert np.isclose(w[0], dry[0] * lithosphere.RHO_ASTHENOSPHERE / (lithosphere.RHO_ASTHENOSPHERE - lithosphere.RHO_WATER))
+
+
+def test_ice_load_pa_is_weight_per_area():
+    assert np.isclose(lithosphere.ice_load_pa(np.array([1000.0]))[0], 1000.0 * lithosphere.GRAVITY_M_S2)
+
+
+def test_sync_line_elevation_keeps_the_ice_load_deflection():
+    from app.elevation_lines import ElevationLine
+
+    hc, hm = lithosphere.reference_thickness("continental")
+    line = ElevationLine(
+        phi=0.0,
+        theta=np.array([0.1, 0.2]),
+        elevation=np.zeros(2),
+        crustal_thickness_m=np.full(2, hc),
+        mantle_lithosphere_thickness_m=np.full(2, hm),
+        ice_load_deflection_m=np.array([0.0, -300.0]),
+    )
+    synced = lithosphere.sync_line_elevation(line, lithosphere.RHO_CONTINENTAL_CRUST)
+    bare = lithosphere.isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, lithosphere.RHO_CONTINENTAL_CRUST)
+    assert np.allclose(synced.elevation, bare + np.array([0.0, -300.0]))

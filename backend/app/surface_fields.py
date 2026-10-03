@@ -71,4 +71,8 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "craton_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "craton_formed_years": _field(float, CRATON_UNFORMED_YEARS, RemapClass.HISTORY, sentinel=CRATON_UNFORMED_YEARS),
     "stable_continental_myr": _field(float, 0.0, RemapClass.CLOCK),
+    # The (<= 0) isostatic depression the current ice load has applied to `elevation` (see
+    # lithosphere.ice_load_deflection). It records what is baked into `elevation`, so it
+    # remaps the way `elevation` does rather than the way `glacier_depth` does.
+    "ice_load_deflection_m": _field(float, 0.0, RemapClass.INTENSIVE),
 }
