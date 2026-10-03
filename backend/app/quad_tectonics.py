@@ -149,6 +149,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
     """The quad counterpart of `LithospherePlate.deform` -- see this module's docstring."""
     if plate.node_count() == 0:
         return
+    continental_ledger.ensure_initialized(world)
     spacing_rad = line_spacing_rad(world.node_density)
     nominal_area_m2 = lithosphere.node_area_m2(spacing_rad)
     areas = plate.node_areas_m2()
@@ -792,6 +793,13 @@ def grow_frontier(
         old_pos = np.searchsorted(keys, new_keys)
         is_old = (old_pos < len(keys)) & (keys[np.minimum(old_pos, len(keys) - 1)] == new_keys)
         new_index = plate._index_of_keys(candidates[inserted])
+        arc_added = arc[inserted]
+        if np.any(arc_added):
+            continental_ledger.record(
+                world,
+                "juvenile_additions_m3",
+                float(np.dot(fields["continental_material_m"][inserted], plate.node_areas_m2()[new_index])),
+            )
         grown_from = sources[inserted]
         for name, values in state.items():
             aligned = np.zeros((len(new_keys),) + values.shape[1:], dtype=values.dtype)
@@ -849,7 +857,7 @@ def _new_cell_fields(
     count = len(world_pts)
     fields = {name: np.full(count, SURFACE_FIELDS[name].default, dtype=SURFACE_FIELDS[name].dtype) for name in (
         "elevation", "crustal_thickness_m", "mantle_lithosphere_thickness_m", "crust_type_code",
-        "elev_change_reason", "node_created_years",
+        "elev_change_reason", "node_created_years", "continental_material_m",
     )}
     fields["node_created_years"][:] = world.elapsed_years
     ordinary = ~arc
@@ -866,6 +874,7 @@ def _new_cell_fields(
         fields["mantle_lithosphere_thickness_m"][arc] = ARC_MARGIN_SEED_HM_M
         fields["elevation"][arc] = lithosphere.isostatic_elevation(np.array([ARC_MARGIN_SEED_HC_M]), np.array([ARC_MARGIN_SEED_HM_M]), density)[0]
         fields["elev_change_reason"][arc] = ELEV_CHANGE_SUBDUCTION_ARC
+        fields["continental_material_m"][arc] = ARC_MARGIN_SEED_HC_M
     return fields
 
 
@@ -881,6 +890,7 @@ class _StretchTransfer:
     received_hm_volume: np.ndarray  # Hm volume each rifted cell receives
     received_continental_hc_volume: np.ndarray  # the part of received_hc_volume that was continental
     withheld_area: np.ndarray  # m^2 of each rifted cell's stretched share cratonic donors withheld
+    received_continental_material_volume: np.ndarray
 
 
 def _allocate_stretch(
@@ -891,6 +901,7 @@ def _allocate_stretch(
     hc: np.ndarray,
     hm: np.ndarray,
     continental: np.ndarray,
+    continental_material: np.ndarray,
     craton: np.ndarray | None = None,
 ) -> _StretchTransfer:
     """Share each rifted cell's stretched footprint (`stretch_share` of its area) out over its
@@ -949,6 +960,9 @@ def _allocate_stretch(
         received_hm_volume=share_of_donor @ lost_hm_volume,
         received_continental_hc_volume=share_of_donor @ (lost_hc_volume * continental[preexisting]),
         withheld_area=requested_area_by_cell - np.asarray(requested_area.sum(axis=1)).ravel(),
+        received_continental_material_volume=share_of_donor @ (
+            continental_material[preexisting] * donor_area * (1.0 - thinning_ratio)
+        ),
     )
 
 
@@ -982,8 +996,12 @@ def _open_rift(
     elevation = plate.collect("elevation")
     reason = plate.collect("elev_change_reason")
     craton = plate.collect("craton_crust_m")
+    material = plate.collect("continental_material_m")
+    craton = plate.collect("craton_crust_m")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
-    transfer = _allocate_stretch(plate, inserted_indices, rifted, stretch_share, hc, hm, continental, craton)
+    transfer = _allocate_stretch(
+        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton
+    )
 
     # Donors: thin in place, erupting any column that thins through the rift threshold.
     donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
@@ -995,7 +1013,17 @@ def _open_rift(
         new_hm = np.maximum(hm[donors] * ratio, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M)
         melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
         sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
+        material[donors] *= ratio
+        hc_before_melting = new_hc.copy()
         _erupt_melted_nodes(world, plate.plate_id, rng_index + 1, new_hc, new_hm, sub_codes, sub_volcano, sub_remaining, melting, elevation[donors])
+        donor_continental = effective_is_continental_from_codes(sub_codes, plate.crust_type == "continental")
+        donor_juvenile = np.where(melting & donor_continental, np.maximum(new_hc - hc_before_melting, 0.0), 0.0)
+        material[donors] += donor_juvenile
+        continental_ledger.record(
+            world,
+            "juvenile_additions_m3",
+            float(np.dot(donor_juvenile, plate.node_areas_m2()[donors])),
+        )
         after = lithosphere.isostatic_elevation(new_hc, new_hm, lithosphere.node_crust_density(sub_codes, plate.crust_type))
         elevation[donors] = rheology.clip_elevation_bounds(elevation[donors] + (after - before))
         hc[donors], hm[donors] = new_hc, new_hm
@@ -1015,12 +1043,27 @@ def _open_rift(
     )
     mostly_continental = transfer.received_continental_hc_volume > 0.5 * cell_hc * cell_area
     cell_codes = np.where(mostly_continental, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC).astype(codes.dtype)
+    cell_material = transfer.received_continental_material_volume / cell_area
+    magmatic_material = np.where(
+        mostly_continental, magmatic_area * hc[rifted] / cell_area, 0.0
+    )
+    cell_material += magmatic_material
     cell_elevation = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
     melting = cell_hc < rheology.RIFT_CRITICAL_THICKNESS_M
     sub_volcano, sub_remaining = is_volcano[rifted], remaining[rifted]
+    hc_before_melting = cell_hc.copy()
     _erupt_melted_nodes(world, plate.plate_id, rng_index, cell_hc, cell_hm, cell_codes, sub_volcano, sub_remaining, melting, cell_elevation)
+    cell_continental = effective_is_continental_from_codes(cell_codes, plate.crust_type == "continental")
+    melt_juvenile = np.where(melting & cell_continental, np.maximum(cell_hc - hc_before_melting, 0.0), 0.0)
+    cell_material += melt_juvenile
+    continental_ledger.record(
+        world,
+        "juvenile_additions_m3",
+        float(np.dot(magmatic_material + melt_juvenile, cell_area)),
+    )
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
+    material[rifted] = cell_material
     is_volcano[rifted], remaining[rifted] = sub_volcano, sub_remaining
     elevation[rifted] = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
     reason[rifted] = np.where(melting, ELEV_CHANGE_VOLCANO, np.where(stretch_share >= 0.5, ELEV_CHANGE_RIFT, ELEV_CHANGE_NEW_CRUST))
@@ -1033,6 +1076,7 @@ def _open_rift(
         elevation=elevation,
         elev_change_reason=reason,
         craton_crust_m=craton,
+        continental_material_m=material,
     )
 
 

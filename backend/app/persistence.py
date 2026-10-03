@@ -150,7 +150,8 @@ def _backfill_added_fields(world: World) -> None:
         world.stats_history = []
     if not hasattr(world, "phase_budget"):
         world.phase_budget = {}
-    if not hasattr(world, "continental_material_ledger"):
+    ledger_missing = not hasattr(world, "continental_material_ledger")
+    if ledger_missing:
         world.continental_material_ledger = {}
         from . import continental_ledger
 
@@ -184,6 +185,10 @@ def _drop_derived_caches(world: World) -> None:
     result, or a `_RowLookup` from before it grew per-arc intervals -- would otherwise be
     trusted as-is on load. Cheap: each rebuilds on first use after this."""
     for plate in world.plates:
+        reset = getattr(plate, "_reset_caches", None)
+        if callable(reset):
+            reset()
+            continue
         invalidate = getattr(plate, "_invalidate_bounding_polygon", None)
         if callable(invalidate):
             invalidate()

@@ -39,6 +39,7 @@ from .elevation_lines import (
     PLANET_RADIUS_KM,
     build_lines_from_lattice,
     freeze_inherited_crust_type,
+    effective_is_continental_from_codes,
     line_spacing_rad,
     majority_crust_type,
     needs_regularizing,
@@ -61,7 +62,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, cratons, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, continental_ledger, cratons, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 
 # `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` and issue
@@ -586,6 +587,18 @@ def seed_and_erupt_new_nodes(
         hc, hm, crust_type_code, is_volcano, volcano_remaining,
         melting, elevation,
     )
+    continental = effective_is_continental_from_codes(
+        crust_type_code, plate.crust_type == "continental"
+    )
+    continental_material = np.where(continental, hc, 0.0)
+    # Some low-level unit tests exercise growth with a minimal world stub.  Real simulation
+    # worlds always expose plates/node_density and receive the persisted volume entry.
+    if hasattr(world, "plates"):
+        continental_ledger.record(
+            world,
+            "juvenile_additions_m3",
+            float(np.sum(continental_material)) * lithosphere.node_area_m2(line_spacing_rad(world.node_density)),
+        )
     elevation = lithosphere.isostatic_elevation(hc, hm, lithosphere.node_crust_density(crust_type_code, plate.crust_type))
     return {
         "elevation": elevation,
@@ -596,6 +609,7 @@ def seed_and_erupt_new_nodes(
         "volcano_active_years_remaining": volcano_remaining,
         "elev_change_reason": np.full(n, ELEV_CHANGE_NEW_CRUST, dtype=float),
         "node_created_years": np.full(n, world.elapsed_years, dtype=float),
+        "continental_material_m": continental_material,
     }
 
 
@@ -813,6 +827,7 @@ COLUMN_FIELDS = (
     "elev_change_reason",
     "crust_type_code",
     "craton_crust_m",
+    "continental_material_m",
 )
 
 
@@ -855,6 +870,7 @@ def deform_columns(
 
     hc = fields["crustal_thickness_m"].copy()
     hm = fields["mantle_lithosphere_thickness_m"].copy()
+    continental_material = fields["continental_material_m"].copy()
     # GitHub issue #216 Hc/Hm budget checkpoints -- see phase_budget.py. `codes0` is
     # this line's crust_type_code, unchanged until the decompression-melting checkpoint
     # below, so every intermediate checkpoint below reuses it for both before/after.
@@ -992,9 +1008,18 @@ def deform_columns(
     # slowly declines"). Separate from the contested shortening above: the band is far
     # wider than the contact line. Bounded long-term by the CONTINENTAL_AREA_BUDGET_MULT
     # volume gate.
+    hc_before_arc = hc.copy()
     if np.any(arc_band):
         hc[arc_band], hm[arc_band] = rheology.apply_arc_magmatic_thickening(
             hc[arc_band], hm[arc_band], closing_rate[arc_band], years_myr, arc_intensity[arc_band]
+        )
+        continental_arc = effective_is_continental_from_codes(codes0, plate.crust_type == "continental")
+        juvenile = np.where(
+            arc_band & continental_arc, np.maximum(hc - hc_before_arc, 0.0), 0.0
+        )
+        continental_material += juvenile
+        continental_ledger.record(
+            world, "juvenile_additions_m3", float(np.dot(juvenile, budget_area_m2))
         )
 
     if world.debug_diagnostics:
@@ -1025,11 +1050,22 @@ def deform_columns(
         # the full reference-column reset below and don't need this on top of it.
         magmatic_band = divergent & ~melting
         if np.any(magmatic_band):
+            hc_before_rift_magmatism = hc.copy()
             new_hc_mag, new_hm_mag = rheology.apply_rift_magmatic_thickening(
                 hc[magmatic_band], hm[magmatic_band], closing_rate[magmatic_band], years_myr
             )
             hc[magmatic_band] = new_hc_mag
             hm[magmatic_band] = new_hm_mag
+            continental_now = effective_is_continental_from_codes(codes0, plate.crust_type == "continental")
+            juvenile = np.where(
+                magmatic_band & continental_now,
+                np.maximum(hc - hc_before_rift_magmatism, 0.0),
+                0.0,
+            )
+            continental_material += juvenile
+            continental_ledger.record(
+                world, "juvenile_additions_m3", float(np.dot(juvenile, budget_area_m2))
+            )
             newly_below_rift_onset = (
                 magmatic_band & (prior_hc >= rheology.RIFT_VOLCANISM_ONSET_HC_M) & (hc < rheology.RIFT_VOLCANISM_ONSET_HC_M)
             )
@@ -1059,7 +1095,20 @@ def deform_columns(
     # the Red Sea stage) -- while a node already at or below sea level (a drowned
     # margin, or an ordinary oceanic ridge) erupts ordinary mid-ocean-ridge oceanic
     # crust. See docs/simulation-model.md's "Magma-typed decompression melting".
+    hc_before_melting = hc.copy()
     _erupt_melted_nodes(world, plate.plate_id, rng_index, hc, hm, crust_type_code, is_volcano, volcano_remaining, melting, elevation)
+    continental_after_melting = effective_is_continental_from_codes(
+        crust_type_code, plate.crust_type == "continental"
+    )
+    juvenile = np.where(
+        melting & continental_after_melting,
+        np.maximum(hc - hc_before_melting, 0.0),
+        0.0,
+    )
+    continental_material += juvenile
+    continental_ledger.record(
+        world, "juvenile_additions_m3", float(np.dot(juvenile, budget_area_m2))
+    )
     phase_budget.record(world, plate, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code, **budget_areas)
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, is_volcano, volcano_remaining, newly_below_rift_onset)
 
@@ -1146,6 +1195,7 @@ def deform_columns(
         "elev_change_reason": reason,
         "crust_type_code": crust_type_code,
         "craton_crust_m": new_craton,
+        "continental_material_m": continental_material,
     }
 
 
@@ -1166,6 +1216,7 @@ class LithospherePlate(PlateWithLines):
     def deform(self, world: "World", other_plates: list, years: float, max_distance: float) -> None:  # noqa: F821
         if not self.lines or self.node_count() == 0:
             return
+        continental_ledger.ensure_initialized(world)
 
         ctx = boundary_context(
             world, self, other_plates, years, lambda contested: _runs_of_at_least(contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN)
@@ -2276,6 +2327,10 @@ class LithospherePlate(PlateWithLines):
             overrides = dict(fields)
             elevation = overrides.pop("elevation")
             overrides["crustal_thickness_m"] = final_hc[offset : offset + n]
+            overrides["continental_material_m"] = np.minimum(
+                overrides["continental_material_m"] * hm_ratio[offset : offset + n],
+                final_hc[offset : offset + n],
+            )
             overrides["mantle_lithosphere_thickness_m"] = np.clip(
                 overrides["mantle_lithosphere_thickness_m"] * hm_ratio[offset : offset + n],
                 lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M,

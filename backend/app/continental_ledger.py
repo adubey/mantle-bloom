@@ -64,10 +64,10 @@ def ensure_initialized(world: "World") -> None:
     """Backfill old saves and seed untracked line or quad surfaces."""
     if not hasattr(world, "continental_material_ledger"):
         world.continental_material_ledger = empty_ledger()
+    ledger_is_new = not world.continental_material_ledger
     for key in LEDGER_KEYS:
         world.continental_material_ledger.setdefault(key, 0.0)
 
-    ledger_is_new = not any(world.continental_material_ledger.values())
     tracer_is_empty = not any(
         np.any(plate.collect("continental_material_m"))
         for plate in world.plates
@@ -83,7 +83,7 @@ def ensure_initialized(world: "World") -> None:
                     is_continental, plate.collect("crustal_thickness_m"), 0.0
                 )
             )
-    if ledger_is_new and world.continental_material_ledger["initial_continental_m3"] == 0.0:
+    if ledger_is_new:
         world.continental_material_ledger["initial_continental_m3"] = surface_volume_m3(world)
 
 
@@ -107,6 +107,38 @@ def record(world: "World", account: LedgerAccount, volume_m3: float) -> None:
     if account not in LEDGER_KEYS:
         raise KeyError(f"unknown continental-material ledger account: {account}")
     world.continental_material_ledger[account] += float(volume_m3)
+
+
+def add_material_thickness(
+    world: "World",
+    plate,
+    delta_m: np.ndarray,
+    account: LedgerAccount,
+    *,
+    eligible: np.ndarray | None = None,
+) -> float:
+    """Add provenance thickness to existing nodes and book its exact volume.
+
+    ``delta_m`` is node-aligned and may contain zeros; negative values are rejected.  This is
+    the common write path for juvenile volcanism and recycled magma returns, keeping the
+    per-node tracer and the persisted volume account impossible to update separately.
+    """
+    ensure_initialized(world)
+    delta = np.asarray(delta_m, dtype=float)
+    if delta.shape != (plate.node_count(),):
+        raise ValueError(f"material thickness must have shape ({plate.node_count()},), got {delta.shape}")
+    if np.any(~np.isfinite(delta)) or np.any(delta < 0.0):
+        raise ValueError("material thickness must be finite and non-negative")
+    if eligible is not None:
+        delta = np.where(np.asarray(eligible, dtype=bool), delta, 0.0)
+    if not np.any(delta):
+        return 0.0
+    material = plate.collect("continental_material_m") + delta
+    plate.set_fields_on_plate(continental_material_m=material)
+    areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+    volume = float(np.dot(delta, areas))
+    record(world, account, volume)
+    return volume
 
 
 def inventories(world: "World") -> dict[str, float]:
@@ -136,7 +168,12 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
     ledger = world.continental_material_ledger
     if surface is None:
         surface = surface_volume_m3(world)
-    sources = ledger["initial_continental_m3"] + ledger["juvenile_additions_m3"]
+    sources = (
+        ledger["initial_continental_m3"]
+        + ledger["juvenile_additions_m3"]
+        + ledger["accreted_thickened_m3"]
+        + ledger["remelted_relaminated_returns_m3"]
+    )
     sinks_and_live = (
         surface
         + ledger["delaminated_lower_crust_m3"]

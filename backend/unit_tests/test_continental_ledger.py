@@ -96,3 +96,30 @@ def test_quad_refinement_conserves_continental_material_volume():
     plate = world.plates[0]
     plate.refine_cells(plate.cell_keys[:1])
     assert continental_ledger.surface_volume_m3(world) == pytest.approx(before)
+
+
+def test_add_material_thickness_updates_tracer_account_and_balance_together():
+    world = _quad_world()
+    continental_ledger.ensure_initialized(world)
+    plate = world.plates[0]
+    delta = np.array([125.0, 0.0])
+    expected = float(np.dot(delta, plate.node_areas_m2()))
+
+    booked = continental_ledger.add_material_thickness(
+        world, plate, delta, "juvenile_additions_m3"
+    )
+
+    assert booked == pytest.approx(expected)
+    assert world.continental_material_ledger["juvenile_additions_m3"] == pytest.approx(expected)
+    assert continental_ledger.balance_error_m3(world) == pytest.approx(0.0, abs=1.0)
+
+
+def test_balance_treats_relaminated_returns_as_a_surface_source():
+    world = _world()
+    continental_ledger.ensure_initialized(world)
+    plate = world.plates[0]
+    delta = np.array([0.0, 10.0])
+    continental_ledger.add_material_thickness(
+        world, plate, delta, "remelted_relaminated_returns_m3"
+    )
+    continental_ledger.assert_closed(world)
