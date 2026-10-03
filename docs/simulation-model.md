@@ -2181,7 +2181,7 @@ classes** (`classify_pelagic`), with `is_ocean` settling the land/water split. `
 
 Real Köppen keys off sub-annual quantities this model never produces -- coldest/warmest-month
 temperature and the summer/winter precipitation split -- so `biomes.py` **synthesizes** them:
-`_seasonal_temp_amplitude` drives a mean-to-peak seasonal swing from `|lat|`, continentality
+`seasonal_temp_amplitude` drives a mean-to-peak seasonal swing from `|lat|`, continentality
 (distance inland, 0 at the coast), and `axial_tilt_deg` (a tilt-0 world gets amplitude 0, so
 its `s`/`w`/`d` subtypes never occur); `_precip_season` drives a summer precipitation share
 and a seasonality concentration from latitude (monsoon belt summer-wet and peaked, a narrow
