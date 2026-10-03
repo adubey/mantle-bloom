@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, faults, geometry, hydrology, lithosphere
+from . import climate, continental_ledger, faults, geometry, hydrology, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -90,6 +90,7 @@ from .elevation_lines import (
     MAX_ELEVATION_M,
     MIN_ELEVATION_M,
     PLANET_RADIUS_KM,
+    line_spacing_rad,
 )
 from .plates import (
     Plate,
@@ -551,9 +552,9 @@ class ErosionResult:
 
     `net_elevation_change_m` is this step's total geomorphic elevation delta per node
     (post-erosion `new_elevation` minus the pre-erosion `elevation` above): erosion removed,
-    every deposition pathway added, plus the small non-conservative flatten/lake-siltation
-    terms -- but *not* tectonic deform, isostasy, or volcanism, which move elevation outside
-    this module. Signed (negative where the step net-lowered a node, positive where it
+    every deposition pathway added, plus the glacial-flattening exchange and the small
+    non-conservative lake-siltation term -- but *not* tectonic deform, isostasy, or
+    volcanism, which move elevation outside this module. Signed (negative where the step net-lowered a node, positive where it
     net-raised it). Retained on `World.erosion_cache` for the Geomorph Rate debug view
     (`render_image._render_geomorph_view`) -- the lumpiness of near-sea-level deposition (a
     +200 m spike on one node, ~0 on its neighbour) is invisible in every other view but is
@@ -576,6 +577,8 @@ class ErosionResult:
     net_elevation_change_m: np.ndarray
     temperature_c: np.ndarray
     precipitation_mm: np.ndarray
+    # Issue #275: this step's area-weighted material budget (m^3) -- see apply_erosion.
+    budget: dict[str, float] | None = None
 
 
 def _gather_nodes(
@@ -602,6 +605,16 @@ def _gather_nodes(
         collect_all_glacier_depth(plates_in_order),
         plates_in_order,
     )
+
+
+def _gather_areas(world: "World", plates_in_order: list[Plate]) -> np.ndarray:
+    """Every node's accounting area (m^2), in `_gather_nodes` order -- the same per-plate
+    `accounting_areas_m2` continental_ledger.py integrates the tracer over, so erosion's volume
+    transfers and the ledger agree exactly (exact cell areas on quad surfaces)."""
+    spacing = line_spacing_rad(world.node_density)
+    if not plates_in_order:
+        return np.zeros(0)
+    return np.concatenate([p.accounting_areas_m2(spacing) for p in plates_in_order])
 
 
 def _earthquake_erosion_multiplier(world: "World", points: np.ndarray) -> np.ndarray:
@@ -711,16 +724,36 @@ def climate_grid_indices(world_xyz: np.ndarray, height: int, width: int) -> tupl
     return row, col
 
 
-def _flatten(hydro: "hydrology.HydrologyFields", ice_factor: np.ndarray, years: float) -> np.ndarray:
-    """Glacier flattening (mantle-bloom-original, see module docstring): relaxes each node's
-    elevation toward the mean of its hydrology.py flow-graph neighbors, scaled by
-    GLACIER_FLATTEN_RATE_PER_MYR and the same ice_factor glacier erosion uses -- a genuine
-    local blur (can raise a valley or lower a peak), not a directional erosion/deposition
-    term, so it's returned as a signed delta rather than folded into erosion_amount."""
+def _flatten(
+    hydro: "hydrology.HydrologyFields",
+    ice_factor: np.ndarray,
+    years: float,
+    removable_m: np.ndarray | None = None,
+    multiplier: float = 1.0,
+) -> np.ndarray:
+    """Glacier flattening (mantle-bloom-original, see module docstring): ice relaxes each
+    node toward its hydrology.py flow-graph neighbors, scaled by GLACIER_FLATTEN_RATE_PER_MYR
+    and the same ice_factor glacier erosion uses -- a genuine local blur (can raise a valley
+    or lower a peak).
+
+    Issue #275: done as a pairwise exchange rather than a per-node relaxation toward the
+    neighbour mean, so it moves rock rather than creating/destroying it. A node passes
+    `relax * (its height - lower neighbour's height) / k` thickness to each lower neighbour
+    (k = neighbour count) -- the same per-edge rate the old relaxation applied, only the
+    downhill half of it, since the lower node receives what the higher one sheds. Returns the
+    (n, k) thickness each node sends along each `hydro.neighbor_idx` edge, scaled down per
+    node so it never sends more than `removable_m` (its Hc headroom above the floor).
+    `multiplier` is World.glacier_erosion_multiplier, applied before that cap."""
     years_myr = years / 1_000_000.0
-    local_mean = hydro.elevation[hydro.neighbor_idx].mean(axis=1)
     relax = 1.0 - np.exp(-GLACIER_FLATTEN_RATE_PER_MYR * ice_factor * years_myr)
-    return (local_mean - hydro.elevation) * relax
+    k = hydro.neighbor_idx.shape[1]
+    drop = hydro.elevation[:, None] - hydro.elevation[hydro.neighbor_idx]
+    send = multiplier * relax[:, None] * np.clip(drop, 0.0, None) / max(k, 1)
+    if removable_m is not None:
+        total = send.sum(axis=1)
+        scale = np.divide(removable_m, total, out=np.ones_like(total), where=total > removable_m)
+        send = send * scale[:, None]
+    return send
 
 
 def _route_wind_deposit(
@@ -1002,7 +1035,9 @@ def _spread_coastal_leveling(
     source_amount: np.ndarray,
     dt_myr: float,
     local_relief_m: np.ndarray | None = None,
-) -> np.ndarray:
+    area_m2: np.ndarray | None = None,
+    tagged_amount: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """Redistributes `source_amount` (ground-off rock + the redirected share of submarine/
     coastal erosion + the redirected distributary share of the river-deposition lump) onto
     band nodes sitting *below* their local `datum_m` (see `leveling_datum_m`) -- the fill /
@@ -1025,12 +1060,23 @@ def _spread_coastal_leveling(
     BARRIER_ATTRACT_FLOOR. A source that is itself a below-datum node keeps
     LEVELING_LOCAL_FRACTION (its own hollow to fill); a pure source spreads in full. The
     spread never returns to its own source node; whatever no sink had room for after the last
-    pass stays on the source. Exactly conserves source_amount's total via np.add.at."""
+    pass stays on the source. Exactly conserves source_amount's total via np.add.at.
+
+    `area_m2` (issue #275), when passed, makes `source_amount` a *volume* per node rather than
+    a thickness: each sink's per-step capacity becomes its thickness capacity times its own
+    area, so the result is a volume too and conserves area-weighted material on unequal
+    cells. `tagged_amount` is a sub-share of `source_amount` (continental-derived material,
+    never more than it) carried along exactly the same transfers; returns `(result,
+    tagged_result)`, the second all-zero when `tagged_amount` is omitted."""
     n = len(points)
     result = np.zeros(n)
+    tagged_result = np.zeros(n)
+    area = np.ones(n) if area_m2 is None else area_m2
+    tagged = np.zeros(n) if tagged_amount is None else tagged_amount
+    tag_fraction = np.divide(tagged, source_amount, out=np.zeros(n), where=source_amount > 0)
     source_idx = np.nonzero(source_amount > 0)[0]
     if len(source_idx) == 0:
-        return result
+        return result, tagged_result
 
     height_above_sea_m = elevation - sea_level_m
     below_datum_m = datum_m - elevation
@@ -1039,7 +1085,7 @@ def _spread_coastal_leveling(
     sink_idx = np.nonzero(is_sink)[0]
     if len(sink_idx) == 0:
         result[source_idx] = source_amount[source_idx]
-        return result
+        return result, tagged.copy()
 
     # Only sources within INFILL_RANGE_RAD of some sink can place anything. On a mostly-ocean
     # world `source_idx` is ~every ocean node (each carries a sliver of redirected submarine/
@@ -1053,15 +1099,17 @@ def _spread_coastal_leveling(
     )
     out_of_range = source_idx[near_sink_count == 0]
     result[out_of_range] = source_amount[out_of_range]
+    tagged_result[out_of_range] = tagged[out_of_range]
     source_idx = source_idx[near_sink_count > 0]
     if len(source_idx) == 0:
-        return result
+        return result, tagged_result
 
     # Per-step capacity: room to the datum, but never more than the grind side can take off in
     # the same step -- so a checkerboard hollow and its neighbouring bump both move ~one
     # LEVELING_RATE step toward the datum, damping the dither instead of slamming the hollow
     # shut in a single step and setting up a new oscillation.
-    capacity_m = np.minimum(below_datum_m[sink_idx], LEVELING_RATE_M_PER_MYR * dt_myr)
+    # In the units of `source_amount` -- a volume when `area_m2` is passed.
+    capacity = np.minimum(below_datum_m[sink_idx], LEVELING_RATE_M_PER_MYR * dt_myr) * area[sink_idx]
     shelter = np.clip(1.0 - openness[sink_idx] / INFILL_SHELTER_REF, 0.0, 1.0)
     if local_relief_m is None:
         hollow = 1.0
@@ -1093,12 +1141,15 @@ def _spread_coastal_leveling(
     )
     amt = total - local_share  # per-source amount still to place
     result[source_idx] += local_share
+    source_tag = tag_fraction[source_idx]
+    tagged_result[source_idx] += local_share * source_tag
+    tagged_received = np.zeros(len(sink_idx))
 
     received = np.zeros(len(sink_idx))
     for _ in range(LEVELING_FILL_ITERS):
         if amt.sum() <= 1e-6:
             break
-        room_left = np.clip(capacity_m - received, 0.0, None)
+        room_left = np.clip(capacity - received, 0.0, None)
         weight = pref * room_left[nearby]
         weight_sum = weight.sum(axis=1)
         frac = np.divide(weight, weight_sum[:, None], out=np.zeros_like(weight), where=weight_sum[:, None] > 0)
@@ -1110,11 +1161,14 @@ def _spread_coastal_leveling(
         scale = np.where(tentative > room_left, np.divide(room_left, tentative, out=np.ones_like(tentative), where=tentative > 0), 1.0)
         given = want * scale[nearby]
         np.add.at(received, nearby.ravel(), given.ravel())
+        np.add.at(tagged_received, nearby.ravel(), (given * source_tag[:, None]).ravel())
         amt = amt - given.sum(axis=1)
 
     result[source_idx] += amt  # whatever no sink had room for stays on the source
+    tagged_result[source_idx] += amt * source_tag
     np.add.at(result, sink_idx, received)
-    return result
+    np.add.at(tagged_result, sink_idx, tagged_received)
+    return result, tagged_result
 
 
 def apply_erosion(
@@ -1164,6 +1218,9 @@ def apply_erosion(
     step (node positions don't move again until the next step's rotation, so one gather
     upfront is enough for all three)."""
     node_cloud = node_cloud if node_cloud is not None else gather_node_positions(world.plates)
+    # Seeds the continental-material tracer on a world that never had one (a hand-built test
+    # world, or a save predating it) before this step starts moving it.
+    continental_ledger.ensure_initialized(world)
     fields = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density), node_cloud=node_cloud)
     world.climate_cache = fields
 
@@ -1250,6 +1307,16 @@ def apply_erosion(
     raw_erosion_total = rain + river + weathering + glacier + seismic
     erosion_amount = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
+    # Issue #275: every removal below is also capped at its column's Hc headroom above
+    # lithosphere.MIN_CRUSTAL_THICKNESS_M *before* anything is routed. The Hc floor clip at the
+    # write-back used to be the only guard, so a column eroded to the floor still handed its
+    # full computed load downstream -- rock its source never gave up. Nodes with no column (v1
+    # PlateWithLines, Hc 0) keep the bare elevation-only caps.
+    prior_hc = collect_all_crustal_thickness(plates_in_order)
+    prior_hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
+    has_column = prior_hc > 0.0
+    removable_m = np.where(has_column, np.clip(prior_hc - lithosphere.MIN_CRUSTAL_THICKNESS_M, 0.0, None), np.inf)
+    erosion_amount = np.minimum(erosion_amount, removable_m)
     # channel_depth is the terrain's own carved-channel record, so it must never grow past
     # what actually got taken off this point's elevation: when the neighbor-drop cap above
     # holds erosion_amount below raw_erosion_total, scale river's contribution down by the
@@ -1279,57 +1346,6 @@ def apply_erosion(
     weathering_routed = applied_weathering - wind_redeposit_source
     water_routed_amount = (rain * applied_scale) + applied_river + weathering_routed + applied_seismic
 
-    # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
-    # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
-    # of the material passing through settles right there instead of continuing downstream
-    # -- route_downstream still conserves the total exactly either way.
-    river_speed = hydrology.compute_river_speed(slope, hydro.flow_accum)
-    is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
-    # river_deposition_multiplier scales the settle-out fraction; clamped below 1.0 so a big
-    # multiplier can't make a reach retain more than passes through it (route_downstream still
-    # conserves the routed total exactly at any fraction in [0, 1)).
-    deposition_fraction = float(np.clip(DEPOSITION_FRACTION * world.river_deposition_multiplier, 0.0, 0.95))
-    retain_fraction = np.where(is_depositing, deposition_fraction, 0.0)
-    _, water_routed_deposit = hydrology.route_downstream(
-        elevation, is_ocean_node, hydro.flow_target, water_routed_amount, retain_fraction=retain_fraction
-    )
-
-    # Marine/beach sediment: whatever water_routed_deposit above piled onto a single ocean
-    # node (wherever that node's flow path happened to terminate) spreads across nearby
-    # shallow coast instead -- see _spread_beach_sediment's own docstring.
-    ocean_terminal_deposit = np.where(is_ocean_node, water_routed_deposit, 0.0)
-    # ocean_deposition_multiplier scales the *settled* marine sediment (here and marine_deposit
-    # below), not the pre-spread pool -- scaling the pool would desync the mass-conserving
-    # np.add.at spread against the deep-water remainder. At 1.0 this is exact; away from 1.0
-    # it's a deliberate small non-conservative shelf-building / shelf-starving source, same
-    # character as flatten_delta and lake siltation.
-    beach_deposit = _spread_beach_sediment(points, elevation, is_ocean_node, ocean_terminal_deposit) * world.ocean_deposition_multiplier
-    # Land-side deposits (floodplain retention, dead-end-basin sinks) spread across a lake/sea's
-    # whole flooded extent instead of piling onto its single sink node -- see
-    # LAKE_SEDIMENT_UNIFORM_FRACTION/_spread_lake_sediment's own comments. A dry closed basin (no
-    # standing water yet) is untouched by this, same old single-point-pile behavior.
-    land_terminal_deposit = np.where(is_ocean_node, 0.0, water_routed_deposit)
-    lake_deposit = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, land_terminal_deposit)
-    sediment_deposited = np.where(is_ocean_node, beach_deposit, lake_deposit)
-
-    wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_redeposit_source, world=world)
-
-    # Glacial transport: glacier_carried travels along the ice's own real flow path
-    # (hydro.ice_flow_target, not water's flow_target -- see GLACIER_TILL_FRACTION's own
-    # comment) and settles the moment it reaches a node that's genuinely outside the ice
-    # (glacier_depth below hydrology.GLACIER_VISIBLE_DEPTH_M) -- a terminal moraine/outwash
-    # deposit at the glacier's melting margin, pushed there by the glacier's own flow rather
-    # than left buried under the ice interior. Reuses hydro.glacier_depth (this step's already-
-    # flowed, *final* ice depth) to find the margin, not the one-step-lagged prior_glacier_depth
-    # ice_factor above is deliberately built from -- this is about where the ice sits *after*
-    # this step's own flow, not about damping the erosion-rate formula.
-    at_glacier_margin = np.where(hydro.glacier_depth < hydrology.GLACIER_VISIBLE_DEPTH_M, 1.0, 0.0)
-    _, glacier_transport_deposit = hydrology.route_downstream(
-        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried, retain_fraction=at_glacier_margin
-    )
-
-    total_deposited = sediment_deposited + glacier_till + glacier_transport_deposit + wind_deposit
-
     # Submarine + coastal erosion: the sea floor's and the shoreline's counterparts to the
     # subaerial sources above (all of which were just zeroed over ocean nodes). Submarine
     # erosion slumps a freshly-uplifted submerged range back down (bottom currents +
@@ -1338,13 +1354,14 @@ def apply_erosion(
     # near-sea-level band on both sides of the shoreline (wave attack + frost shattering),
     # including the crest of a mid-ocean range that rises into that band. See the
     # SUBMARINE_EROSION_* / COASTAL_EROSION_* constants and their helper functions. Both draw
-    # against whatever drop to the lowest neighbor subaerial erosion didn't already claim, so a
-    # single step still can't carve a node below the sea floor / valley it drains into. Their
-    # rock sheds seaward onto the surrounding sea floor as marine sediment (_spread_marine_
-    # sediment) -- underwater currents and slope failure, not any river's flow graph.
+    # against whatever drop to the lowest neighbor (and Hc headroom) subaerial erosion didn't
+    # already claim, so a single step still can't carve a node below the sea floor / valley it
+    # drains into. Their rock sheds seaward onto the surrounding sea floor as marine sediment
+    # (_spread_marine_sediment) -- underwater currents and slope failure, not any river's flow
+    # graph.
     submarine = submarine_erosion_amount(elevation, slope, is_ocean_node, dt_myr)
     coastal = coastal_erosion_amount(elevation, temperature, dt_myr)
-    remaining_drop_m = np.clip(drop_to_lowest_neighbor_m - erosion_amount, 0.0, None)
+    remaining_drop_m = np.clip(np.minimum(drop_to_lowest_neighbor_m, removable_m) - erosion_amount, 0.0, None)
     # ocean_erosion_multiplier scales both the sea-floor slump and the shoreline wave/frost
     # attack together (still capped at the remaining drop to the lowest neighbour).
     sea_side_erosion = np.minimum(
@@ -1370,6 +1387,113 @@ def apply_erosion(
     # graph.
     local_relief_m = elevation - elevation[hydro.neighbor_idx].mean(axis=1)
     leveling_datum = leveling_datum_m(world.sea_level_m, coastal_openness, dist_to_land)
+    # coastal_leveling_multiplier scales the near-shore planation grind (a prime long-run land
+    # drain) -- applied before the one-step "can't be shoved below its datum" safety cap, which
+    # then still holds, and feeds through to leveling_source/erosion_amount consistently.
+    ground_off = coastal_leveling_grind(elevation, world.sea_level_m, coastal_openness, leveling_datum, dt_myr, local_relief_m)
+    ground_off = ground_off * world.coastal_leveling_multiplier
+    ground_off = np.minimum(ground_off, np.clip(elevation - erosion_amount - leveling_datum, 0.0, None))
+    ground_off = np.minimum(ground_off, np.clip(removable_m - erosion_amount - sea_side_erosion, 0.0, None))
+
+    # Glacial flattening rides the same knob as glacial abrasion -- both are "heavier / more
+    # active ice reworks the bed harder". A per-edge send (see _flatten), capped at whatever Hc
+    # headroom the removals above left.
+    flatten_send = _flatten(
+        hydro,
+        ice_factor,
+        years,
+        removable_m=np.clip(removable_m - erosion_amount - sea_side_erosion - ground_off, 0.0, None),
+        multiplier=world.glacier_erosion_multiplier,
+    )
+    flatten_removed = flatten_send.sum(axis=1)
+
+    # Volume and provenance (issue #275). Every transport below carries *volume*
+    # (thickness x the node's own accounting area -- exact cell areas on a quad surface, which
+    # is not equal-area) and is converted back to thickness at the receiving node, so moving
+    # rock between a large and a small cell no longer creates or destroys material. Alongside
+    # each pool travels its continental-derived share (`continental_material_m`, the tracer
+    # continental_ledger.py persists): a node gives up continental material first, up to its
+    # tracer (it sits on top -- continental sediment draped over an oceanic host is the first
+    # thing eroded off it), so `tag` is the continental fraction of everything leaving it this
+    # step, and every pathway below moves `volume * tag` along exactly the same transfers.
+    area = _gather_areas(world, plates_in_order)
+    # A stored tracer above its column's Hc is material some *other* step already removed
+    # without updating the tracer (tectonic thinning, not yet instrumented -- see #272). The
+    # ledger's inventories never count that excess, so writing back the clipped value is
+    # budget-neutral; `stale_tracer_excess_m3` reports how much of it this step made permanent.
+    stored_material = np.concatenate([p.collect("continental_material_m") for p in plates_in_order])
+    prior_material = np.clip(stored_material, 0.0, prior_hc)
+    removed_m = erosion_amount + sea_side_erosion + ground_off + flatten_removed
+    continental_removed_m = np.minimum(removed_m, prior_material)
+    tag = np.divide(continental_removed_m, removed_m, out=np.zeros(n), where=removed_m > 0)
+
+    # ocean_deposition_multiplier scales the *settled* marine sediment (beach + marine below),
+    # not the pre-spread pool -- scaling the pool would desync the mass-conserving np.add.at
+    # spread against the deep-water remainder. At 1.0 this is exact; away from 1.0 it's a
+    # deliberate shelf-building / shelf-starving knob. Above 1.0 the extra is ordinary
+    # (non-continental) material; below 1.0 the continental share it declines to settle goes
+    # to the ledger's declared discarded_marine_sediment_m3 sink rather than vanishing.
+    ocean_multiplier = world.ocean_deposition_multiplier
+    ocean_tag_keep = min(ocean_multiplier, 1.0)
+    discarded_tagged_m3 = 0.0
+
+    # Deposition: wherever a big (water_accum_m > DEPOSITION_MIN_FLOW_M), slow
+    # (river_speed < DEPOSITION_SPEED_THRESHOLD) river passes through, DEPOSITION_FRACTION
+    # of the material passing through settles right there instead of continuing downstream
+    # -- route_downstream still conserves the total exactly either way.
+    river_speed = hydrology.compute_river_speed(slope, hydro.flow_accum)
+    is_depositing = (river_speed < DEPOSITION_SPEED_THRESHOLD) & (water_accum_m > DEPOSITION_MIN_FLOW_M)
+    # river_deposition_multiplier scales the settle-out fraction; clamped below 1.0 so a big
+    # multiplier can't make a reach retain more than passes through it (route_downstream still
+    # conserves the routed total exactly at any fraction in [0, 1)).
+    deposition_fraction = float(np.clip(DEPOSITION_FRACTION * world.river_deposition_multiplier, 0.0, 0.95))
+    retain_fraction = np.where(is_depositing, deposition_fraction, 0.0)
+    water_routed_vol = water_routed_amount * area
+    _, water_routed_deposit = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.flow_target, water_routed_vol, retain_fraction=retain_fraction
+    )
+    _, water_routed_tagged = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.flow_target, water_routed_vol * tag, retain_fraction=retain_fraction
+    )
+
+    # Marine/beach sediment: whatever water_routed_deposit above piled onto a single ocean
+    # node (wherever that node's flow path happened to terminate) spreads across nearby
+    # shallow coast instead -- see _spread_beach_sediment's own docstring.
+    beach_deposit = _spread_beach_sediment(points, elevation, is_ocean_node, np.where(is_ocean_node, water_routed_deposit, 0.0))
+    beach_tagged = _spread_beach_sediment(points, elevation, is_ocean_node, np.where(is_ocean_node, water_routed_tagged, 0.0))
+    discarded_tagged_m3 += float(beach_tagged.sum()) * (1.0 - ocean_tag_keep)
+    # Land-side deposits (floodplain retention, dead-end-basin sinks) spread across a lake/sea's
+    # whole flooded extent instead of piling onto its single sink node -- see
+    # LAKE_SEDIMENT_UNIFORM_FRACTION/_spread_lake_sediment's own comments. A dry closed basin (no
+    # standing water yet) is untouched by this, same old single-point-pile behavior. The beach
+    # spread only ever lands on ocean nodes and the lake spread only on land, so their sum is
+    # the old per-node `where(is_ocean, beach, lake)` pick without risking dropping either.
+    lake_deposit = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, np.where(is_ocean_node, 0.0, water_routed_deposit))
+    lake_tagged = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, np.where(is_ocean_node, 0.0, water_routed_tagged))
+    sediment_vol = beach_deposit * ocean_multiplier + lake_deposit
+    sediment_tagged = beach_tagged * ocean_tag_keep + lake_tagged
+
+    wind_vol = wind_redeposit_source * area
+    wind_deposit = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_vol, world=world)
+    wind_tagged = _route_wind_deposit(points, wind_u_at_nodes, wind_v_at_nodes, wind_vol * tag, world=world)
+
+    # Glacial transport: glacier_carried travels along the ice's own real flow path
+    # (hydro.ice_flow_target, not water's flow_target -- see GLACIER_TILL_FRACTION's own
+    # comment) and settles the moment it reaches a node that's genuinely outside the ice
+    # (glacier_depth below hydrology.GLACIER_VISIBLE_DEPTH_M) -- a terminal moraine/outwash
+    # deposit at the glacier's melting margin, pushed there by the glacier's own flow rather
+    # than left buried under the ice interior. Reuses hydro.glacier_depth (this step's already-
+    # flowed, *final* ice depth) to find the margin, not the one-step-lagged prior_glacier_depth
+    # ice_factor above is deliberately built from -- this is about where the ice sits *after*
+    # this step's own flow, not about damping the erosion-rate formula.
+    at_glacier_margin = np.where(hydro.glacier_depth < hydrology.GLACIER_VISIBLE_DEPTH_M, 1.0, 0.0)
+    glacier_carried_vol = glacier_carried * area
+    _, glacier_transport_deposit = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol, retain_fraction=at_glacier_margin
+    )
+    _, glacier_transport_tagged = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol * tag, retain_fraction=at_glacier_margin
+    )
 
     # Distributary redirect: route_downstream funnels a slow river's retained load down one
     # discretised channel and drops it on whichever single near-sea-level node that channel
@@ -1377,34 +1501,49 @@ def apply_erosion(
     # whole flat fan -- pull DELTA_REDIRECT_FRACTION of it back off those band land nodes and
     # hand it to the leveling fill spread, which scatters it across the band's hollows.
     in_delta_band = (~is_ocean_node) & is_depositing & (np.abs(elevation - world.sea_level_m) <= COASTAL_LEVELING_BAND_M)
-    delta_redirect = np.where(in_delta_band, DELTA_REDIRECT_FRACTION * sediment_deposited, 0.0)
-    total_deposited = total_deposited - delta_redirect
+    delta_redirect = np.where(in_delta_band, DELTA_REDIRECT_FRACTION * sediment_vol, 0.0)
+    delta_redirect_tagged = np.where(in_delta_band, DELTA_REDIRECT_FRACTION * sediment_tagged, 0.0)
+    sediment_vol = sediment_vol - delta_redirect
+    sediment_tagged = sediment_tagged - delta_redirect_tagged
 
-    # coastal_leveling_multiplier scales the near-shore planation grind (a prime long-run land
-    # drain) -- applied before the one-step "can't be shoved below its datum" safety cap, which
-    # then still holds, and feeds through to leveling_source/erosion_amount consistently.
-    ground_off = coastal_leveling_grind(elevation, world.sea_level_m, coastal_openness, leveling_datum, dt_myr, local_relief_m)
-    ground_off = ground_off * world.coastal_leveling_multiplier
-    ground_off = np.minimum(ground_off, np.clip(elevation - erosion_amount - leveling_datum, 0.0, None))
-    leveling_source = ground_off + COASTAL_INFILL_MARINE_FRACTION * sea_side_erosion + delta_redirect
-    marine_deposit = _spread_marine_sediment(
-        points, elevation, is_ocean_node, sea_side_erosion * (1.0 - COASTAL_INFILL_MARINE_FRACTION)
-    ) * world.ocean_deposition_multiplier
-    leveling_fill = _spread_coastal_leveling(
-        points, elevation, coastal_openness, dist_to_land, world.sea_level_m, leveling_datum, leveling_source, dt_myr, local_relief_m
+    leveling_source = (ground_off + COASTAL_INFILL_MARINE_FRACTION * sea_side_erosion) * area + delta_redirect
+    leveling_source_tagged = (ground_off + COASTAL_INFILL_MARINE_FRACTION * sea_side_erosion) * area * tag + delta_redirect_tagged
+    marine_source = sea_side_erosion * (1.0 - COASTAL_INFILL_MARINE_FRACTION) * area
+    marine_unscaled = _spread_marine_sediment(points, elevation, is_ocean_node, marine_source)
+    marine_tagged = _spread_marine_sediment(points, elevation, is_ocean_node, marine_source * tag)
+    discarded_tagged_m3 += float(marine_tagged.sum()) * (1.0 - ocean_tag_keep)
+    marine_deposit = marine_unscaled * ocean_multiplier
+    marine_tagged = marine_tagged * ocean_tag_keep
+    leveling_fill, leveling_tagged = _spread_coastal_leveling(
+        points, elevation, coastal_openness, dist_to_land, world.sea_level_m, leveling_datum, leveling_source, dt_myr, local_relief_m,
+        area_m2=area, tagged_amount=leveling_source_tagged,
     )
-    erosion_amount = erosion_amount + sea_side_erosion + ground_off
-    total_deposited = total_deposited + marine_deposit + leveling_fill
 
-    # Glacial flattening rides the same knob as glacial abrasion -- both are "heavier / more
-    # active ice reworks the bed harder".
-    flatten_delta = _flatten(hydro, ice_factor, years) * world.glacier_erosion_multiplier
+    # Flattening's per-edge sends land on the neighbour they were sent to.
+    flatten_vol = flatten_send * area[:, None]
+    flatten_received = np.zeros(n)
+    flatten_received_tagged = np.zeros(n)
+    np.add.at(flatten_received, hydro.neighbor_idx.ravel(), flatten_vol.ravel())
+    np.add.at(flatten_received_tagged, hydro.neighbor_idx.ravel(), (flatten_vol * tag[:, None]).ravel())
+
+    # Everything above is a volume per receiving node; back to thickness there.
+    till_vol = glacier_till * area
+    plain_deposit_vol = sediment_vol + till_vol + glacier_transport_deposit + wind_deposit
+    deposited_vol = plain_deposit_vol + marine_deposit + leveling_fill + flatten_received
+    deposited_tagged = (
+        sediment_tagged + till_vol * tag + glacier_transport_tagged + wind_tagged + marine_tagged + leveling_tagged + flatten_received_tagged
+    )
+    plain_deposition = plain_deposit_vol / area
+    marine_deposit_m = marine_deposit / area
+    leveling_fill_m = leveling_fill / area
+    flatten_delta = flatten_received / area - flatten_removed
+    total_deposited = plain_deposition + marine_deposit_m + leveling_fill_m
 
     # Lake / endorheic-basin siltation raises real terrain: the sediment that settled out of
     # standing water this step (hydrology.step_lakes -> silt_deposited) is folded straight into
     # elevation, so a still-water basin genuinely fills in and stays filled. A small
-    # non-conservative source, same character as flatten_delta -- the amounts are tiny per step.
-    geomorphic_delta = -erosion_amount + total_deposited + flatten_delta + hydro.silt_deposited
+    # non-continental source (it isn't drawn from any eroded pool), declared in the budget below.
+    geomorphic_delta = -removed_m + deposited_vol / area + hydro.silt_deposited
 
     # Erosional isostatic compensation. Every term above moves rock between columns but, on
     # its own, never told isostasy: `elevation` used to absorb the whole change, drifting
@@ -1418,26 +1557,22 @@ def apply_erosion(
     # for tectonic Hc/Hm changes. `elevation` stays a faithful readout of the column, so
     # deform()'s mechanism stays exact. v1 PlateWithLines carries no Hc (all-zero) -- those
     # nodes keep the bare 1:1 response.
-    prior_hc = collect_all_crustal_thickness(plates_in_order)
-    prior_hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
     rho_c_per_node = np.concatenate(
         [lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order]
     )
-    has_column = prior_hc > 0.0
     # Upper-clipped at MAX_CRUSTAL_THICKNESS_M too (issue #161), same ceiling `rheology`'s
-    # tectonic thickening paths enforce -- without it, ordinary sediment deposition piling
-    # onto a column deform() had already driven right up to that ceiling this same step could
-    # push it over. Unlike the tectonic paths, this overflow isn't conserved elsewhere: it's a
-    # thin, incidental sliver (a column already at ~2.4x reference Hc catching net deposition
-    # in the very same step), not a source of runaway growth the way unbounded multiplicative
-    # thickening was -- the deposited sediment that doesn't fit here is simply not booked this
-    # step, rather than threading a conservation path through erosion's own already-elsewhere
-    # (marine/coastal/fluvial) redistribution accounting.
+    # tectonic thickening paths enforce -- ordinary sediment deposition piling onto a column
+    # deform() had already driven right up to that ceiling this same step could push it over.
+    # The removal caps above keep the lower clip from ever binding on a column that started
+    # above the floor; what the upper clip turns away is reported as `hc_cap_overflow_m3` in
+    # the budget, and its continental share goes to the ledger's numerical_unplaced_m3 sink.
+    raw_crustal_thickness = prior_hc + geomorphic_delta
     new_crustal_thickness = np.where(
         has_column,
-        np.clip(prior_hc + geomorphic_delta, lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M),
+        np.clip(raw_crustal_thickness, lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M),
         prior_hc,
     )
+    hc_cap_overflow_m = np.where(has_column, np.clip(raw_crustal_thickness - lithosphere.MAX_CRUSTAL_THICKNESS_M, 0.0, None), 0.0)
     isostatic_delta = lithosphere.isostatic_elevation(
         new_crustal_thickness, prior_hm, rho_c_per_node
     ) - lithosphere.isostatic_elevation(prior_hc, prior_hm, rho_c_per_node)
@@ -1449,6 +1584,32 @@ def apply_erosion(
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
+    # The tracer moves with its rock and can never exceed the column holding it; whatever the
+    # column can't hold (Hc cap overflow, or a no-column v1 node) is declared, not dropped.
+    raw_material = prior_material - continental_removed_m + deposited_tagged / area
+    new_material = np.clip(raw_material, 0.0, new_crustal_thickness)
+    unplaced_tagged_m3 = float(np.sum((raw_material - new_material) * area))
+    if unplaced_tagged_m3 > 0.0:
+        continental_ledger.record(world, "numerical_unplaced_m3", unplaced_tagged_m3)
+    if discarded_tagged_m3 > 0.0:
+        continental_ledger.record(world, "discarded_marine_sediment_m3", discarded_tagged_m3)
+    removed_m3 = float(np.sum(removed_m * area))
+    deposited_m3 = float(deposited_vol.sum())
+    lake_silt_m3 = float(np.sum(hydro.silt_deposited * area))
+    budget = {
+        "removed_m3": removed_m3,
+        "deposited_m3": deposited_m3,
+        # Net material the ocean_deposition_multiplier knob adds (> 1) or withholds (< 1).
+        "ocean_deposition_knob_m3": float(beach_deposit.sum() + marine_unscaled.sum()) * (ocean_multiplier - 1.0),
+        "lake_silt_m3": lake_silt_m3,
+        "hc_cap_overflow_m3": float(np.sum(hc_cap_overflow_m * area)),
+        "continental_removed_m3": float(np.sum(continental_removed_m * area)),
+        "continental_deposited_m3": float(deposited_tagged.sum()),
+        "continental_discarded_m3": discarded_tagged_m3,
+        "continental_unplaced_m3": unplaced_tagged_m3,
+        "stale_tracer_excess_m3": float(np.sum((stored_material - prior_material) * area)),
+    }
+
     # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_* and
     # render_image's "elevReason" view). Group this step's geomorphic contributions and stamp
     # each node with whichever moved it most -- but only where |net change| clears
@@ -1456,14 +1617,12 @@ def apply_erosion(
     # only brush by sub-metre keeps whatever last genuinely shaped it (tectonics, or NONE --
     # untouched since generation). That gate is the point of the view: it separates land
     # that's actually being planed flat now from land that was simply never built up.
-    subaerial_erosion = erosion_amount - sea_side_erosion - ground_off  # undo the line-1178 merge
-    plain_deposition = total_deposited - marine_deposit - leveling_fill  # undo the line-1179 merge
     reason_contrib = np.stack(
         [
-            subaerial_erosion,
+            erosion_amount,
             plain_deposition,
-            ground_off + leveling_fill,
-            sea_side_erosion + marine_deposit,
+            ground_off + leveling_fill_m,
+            sea_side_erosion + marine_deposit_m,
             np.abs(flatten_delta),
             hydro.silt_deposited,
         ],
@@ -1517,6 +1676,7 @@ def apply_erosion(
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=hydro.silt_depth[offset : offset + n],
             elev_change_reason=new_elev_change_reason[offset : offset + n],
+            continental_material_m=new_material[offset : offset + n],
         )
         offset += n
 
@@ -1532,4 +1692,5 @@ def apply_erosion(
         net_elevation_change_m=new_elevation - elevation,
         temperature_c=temperature,
         precipitation_mm=precipitation_mm,
+        budget=budget,
     )

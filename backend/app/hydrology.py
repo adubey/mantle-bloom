@@ -81,6 +81,8 @@ not just the trickle of ordinary flow passing through that one point (see
 
 from __future__ import annotations
 
+import heapq
+
 from collections import deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -822,6 +824,49 @@ def compute_river_speed(slope: np.ndarray, flow_accum: np.ndarray) -> np.ndarray
     return RIVER_SPEED_COEFFICIENT * np.sqrt(np.clip(slope, 0.0, None)) * np.power(np.clip(flow_accum, 0.0, None), RIVER_SPEED_DISCHARGE_EXPONENT)
 
 
+def _routing_order(elevation: np.ndarray, is_ocean: np.ndarray, flow_target: np.ndarray) -> tuple[list[int], list[int]]:
+    """Land nodes in an order where every node comes before its own flow_target, plus any
+    nodes that can't be ordered at all (on, or downstream of, a flow cycle).
+
+    Elevation-descending is such an order whenever every land->land edge runs strictly
+    downhill, which is the common case. But spill routing (a filled lake's outlet) and ice
+    routing (`ice_flow_target`, judged against elevation + lake + ice) can point a node at a
+    higher neighbour, and an elevation sweep then adds that node's flux to a target it already
+    visited -- flux that is never passed on or deposited (issue #275: ~0.1% of routed
+    sediment and ~9% of glacier-carried sediment silently vanished per step). In that case
+    this falls back to Kahn's algorithm, highest available node first, so the order still
+    matches the elevation sweep wherever the graph allows."""
+    land_indices = np.nonzero(~is_ocean)[0]
+    targets = flow_target[land_indices]
+    land_edge = targets >= 0
+    land_edge[land_edge] = ~is_ocean[targets[land_edge]]
+    if not np.any(elevation[targets[land_edge]] >= elevation[land_indices[land_edge]]):
+        return land_indices[np.argsort(-elevation[land_indices])].tolist(), []
+
+    n = len(elevation)
+    indegree = np.bincount(targets[land_edge], minlength=n)
+    heap = [(-float(elevation[i]), int(i)) for i in land_indices[indegree[land_indices] == 0]]
+    heapq.heapify(heap)
+    flow_target_list = flow_target.tolist()
+    is_ocean_list = is_ocean.tolist()
+    indegree_list = indegree.tolist()
+    elevation_list = elevation.tolist()
+    order = []
+    while heap:
+        _, i = heapq.heappop(heap)
+        order.append(i)
+        target = flow_target_list[i]
+        if target >= 0 and not is_ocean_list[target]:
+            indegree_list[target] -= 1
+            if indegree_list[target] == 0:
+                heapq.heappush(heap, (-elevation_list[target], target))
+    if len(order) == len(land_indices):
+        return order, []
+    placed = np.zeros(n, dtype=bool)
+    placed[order] = True
+    return order, land_indices[~placed[land_indices]].tolist()
+
+
 def route_downstream(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -832,8 +877,8 @@ def route_downstream(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Single forward sweep over land nodes in elevation-descending order, accumulating
     `source_amount` downstream along `flow_target` edges. Correct in one pass because every
-    node's target is guaranteed strictly lower in elevation, so it's always visited *later*
-    in this same order. `loss_fraction` is an in-transit evaporative loss (see
+    node's target is visited *later* in this same order -- see `_routing_order` for the
+    spill/ice edges that point uphill and the topological order used when they exist. `loss_fraction` is an in-transit evaporative loss (see
     hydrology.RIVER_EVAPORATION_* constants): unlike `retain_fraction`, which *deposits* the
     retained share locally (sediment settling out of the flow), a lost share simply vanishes
     -- it isn't added to `deposited` at all, since it left as atmospheric moisture, not as
@@ -850,9 +895,7 @@ def route_downstream(
     is_ocean_list = is_ocean.tolist()
     flow_target_list = flow_target.tolist()
 
-    land_indices = np.nonzero(~is_ocean)[0]
-    order = land_indices[np.argsort(-elevation[land_indices])].tolist()
-
+    order, stuck = _routing_order(elevation, is_ocean, flow_target)
     for i in order:
         evaporated_here = through_flux[i] * loss[i]
         through_flux[i] -= evaporated_here
@@ -869,6 +912,10 @@ def route_downstream(
             deposited[target] += through_flux[i]
         else:
             through_flux[target] += through_flux[i]
+    # A node on a flow cycle has no valid place in the sweep: it keeps what it received,
+    # like a sink, rather than losing it.
+    for i in stuck:
+        deposited[i] += through_flux[i]
 
     return np.array(through_flux), np.array(deposited)
 

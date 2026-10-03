@@ -2739,15 +2739,15 @@ coastline the stable state instead:
 **Glacier flattening** (`_flatten`, mantle-bloom-original): real
 continental ice sheets grind down local relief over broad areas (the Canadian Shield and
 Fennoscandia read as glacially smoothed bedrock today, not just eroded lower) -- a genuine
-local blur, not a directional erosion/deposition term, so it's applied as a separate signed
-elevation delta rather than folded into `erosion_amount`. Each node relaxes toward the mean
-elevation of its own `hydrology.py` flow-graph neighbors (reusing that graph rather than a
-separate query), scaled by `GLACIER_FLATTEN_RATE_PER_MYR` (0.3, also raised from 0.2 alongside
-the glacier-erosion coefficients above, same "heavier ice grinds harder" reasoning) and the
-same `ice_factor` glacier erosion uses -- glacier-free nodes (`ice_factor = 0`) are completely
-untouched. Confirmed directly on a real run: near-zero delta at nodes with little local relief,
-tens to 100+ meters at nodes combining real local relief with thick ice, consistent with
-"smooths sharp terrain under ice, leaves already-flat terrain alone."
+local blur that can lower a peak or raise a valley. It is a pairwise exchange over each node's
+`hydrology.py` flow-graph neighbours (reusing that graph rather than a separate query): a node
+sends `relax * (its height - neighbour's height) / k` of thickness to every *lower* neighbour,
+where `relax` grows with `GLACIER_FLATTEN_RATE_PER_MYR` (0.3, raised from 0.2 alongside the
+glacier-erosion coefficients above, same "heavier ice grinds harder" reasoning) and the same
+`ice_factor` glacier erosion uses. Glacier-free nodes (`ice_factor = 0`) send nothing. Since
+issue #275 it moves rock (and its continental share) rather than relaxing each node toward its
+neighbourhood mean independently, which created or destroyed material. Each node's sends are
+capped at its Hc headroom above the floor.
 
 **Glacial sediment transport pushes material outside the range.** A glacier's scoured load
 splits two ways: `GLACIER_TILL_FRACTION` (0.5) settles immediately as subglacial till, right
@@ -2791,6 +2791,32 @@ coastal + submarine erosion exporting continental crust to the deep ocean planed
 continent flat over a few hundred Myr once orogeny slowed ([GitHub issue #120](https://github.com/adubey/mantle-bloom/issues/120)); with it, `elevation`
 also stays a faithful readout of `isostatic_elevation(Hc, Hm)` between tectonic events rather
 than drifting away from it.
+
+**Conservation and provenance ([issue #275](https://github.com/adubey/mantle-bloom/issues/275)).**
+Every transport pathway above carries *volume*: each node's thickness change times its own
+accounting area (`Plate.accounting_areas_m2`, exact cell areas on the quad surface, which is
+not equal-area), converted back to thickness at the receiving node. So moving rock between a
+large and a small cell no longer creates or destroys material. Every removal (subaerial,
+sea-side, the coastal grind, flattening) is capped at the column's Hc headroom above
+`MIN_CRUSTAL_THICKNESS_M` *before* anything is routed, so the floor clip at write-back can't
+hand downstream nodes rock their source never gave up. `hydrology.route_downstream` visits nodes
+in a topological order whenever a spill or ice edge points uphill. Previously an
+elevation-ordered sweep silently lost the flux it added to an already-visited node: about 0.1%
+of water-routed and about 9% of glacier-carried sediment per step. Nodes on a flow cycle keep
+their own load.
+
+Alongside the volume, each pool carries its continental-derived share: the per-node
+`continental_material_m` tracer `continental_ledger.py` persists. A node gives up continental
+material first, up to its tracer, because it sits on top: continental sediment draped over an
+oceanic host is the first thing eroded off it. Every pathway moves that share along exactly
+the same transfers, so continental sediment shed onto oceanic plates stays identifiable. The
+step's area-weighted totals come back as `ErosionResult.budget`. With the default knobs,
+`removed_m3` equals `deposited_m3` to rounding. The remaining non-conservative terms are
+declared there: lake silt (a non-continental source), the `ocean_deposition_multiplier`
+knob, and deposition clipped at `MAX_CRUSTAL_THICKNESS_M`. Continental material that
+can't be placed goes to declared ledger sinks: `numerical_unplaced_m3` for the Hc cap, and
+`discarded_marine_sediment_m3` for the ocean-deposition knob below 1. `bin/debug/
+measure_erosion_budget.py` measures closure per call.
 
 **Cadence: every step, no lag on climate -- but a deliberate change from erosion's own
 earlier no-hydrology version regarding flow routing.** This module still calls
@@ -2933,11 +2959,14 @@ rejected with a `400`.
 
 **Mass-conservation caveats.** The erosion terms are scaled where they are computed, so the
 neighbour-drop cap, the transport split and the isostatic bookkeeping downstream all see a
-consistent scaled amount. The two *deposition* knobs instead scale the already-spread settled
-sediment (scaling the pre-spread pool would desync the mass-conserving `np.add.at` spread
-against the deep-water remainder), so away from `1.0` they are a small deliberate
-non-conservative shelf-building / shelf-starving source -- the same character as
-`flatten_delta` or lake siltation.
+consistent scaled amount. `river_deposition_multiplier` only changes where routed sediment
+settles, so it conserves. `ocean_deposition_multiplier` instead scales the already-spread
+settled beach and marine sediment (scaling the pre-spread pool would desync the mass-conserving
+`np.add.at` spread against the deep-water remainder). Away from `1.0` it is a small, deliberate
+shelf-building / shelf-starving source, the same character as lake siltation. Its net effect is
+reported as `ErosionResult.budget["ocean_deposition_knob_m3"]`. Below `1.0`, the continental
+share it withholds is booked to the ledger's `discarded_marine_sediment_m3` sink (see
+[issue #275](https://github.com/adubey/mantle-bloom/issues/275) above).
 
 **Collision uplift is in the real engine.** The live mountain-building path is
 `LithospherePlate.deform` -> `rheology.apply_convergent_deformation` (thicken `Hc`/`Hm`, then

@@ -801,3 +801,33 @@ def test_sample_is_ocean_fallback_before_first_hydrology_pass_is_mode_independen
         world.node_cloud_resample_mode = mode
         result = hydrology.sample_is_ocean(world, world_xyz, fallback)
         assert np.array_equal(result, fallback)
+
+
+def test_route_downstream_conserves_across_uphill_edges_and_cycles():
+    # Issue #275: spill/ice routing can point a node at a *higher* neighbour. An elevation
+    # sweep used to add that flux to a node it had already visited, so it was never passed on.
+    elevation = np.array([100.0, 50.0, 80.0, 10.0, 0.0, 30.0, 31.0])
+    is_ocean = np.array([False, False, False, False, True, False, False])
+    # 0 -> 1 -> 2 (uphill spill) -> 3 -> ocean 4; 5 <-> 6 is a cycle.
+    flow_target = np.array([1, 2, 3, 4, -1, 6, 5])
+    source = np.array([1.0, 2.0, 3.0, 4.0, 0.0, 5.0, 6.0])
+    retain = np.array([0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0])
+    flux, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
+    assert np.isclose(deposited.sum(), source.sum())
+    assert np.isclose(flux[2], 6.0)  # nodes 0 and 1 both reached the spill node
+    assert np.isclose(deposited[3], 5.0) and np.isclose(deposited[4], 5.0)
+    assert np.isclose(deposited[5] + deposited[6], 11.0)  # a cycle keeps its own load
+
+
+def test_route_downstream_conserves_on_an_all_downhill_graph():
+    rng = np.random.default_rng(0)
+    n = 200
+    elevation = rng.uniform(0.0, 1000.0, n)
+    is_ocean = elevation < 100.0
+    order = np.argsort(elevation)
+    flow_target = np.full(n, -1)
+    for rank, i in enumerate(order[1:], start=1):
+        flow_target[i] = order[rng.integers(0, rank)]  # always a strictly lower node
+    source = rng.uniform(0.0, 1.0, n)
+    flux, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, source)
+    assert np.isclose(deposited.sum(), source[~is_ocean].sum())

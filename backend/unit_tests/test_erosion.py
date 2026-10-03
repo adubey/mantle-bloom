@@ -339,14 +339,41 @@ def test_spread_coastal_leveling_conserves_mass_including_fallback():
     source = np.zeros(n)
     source[rng.choice(n, 5, replace=False)] = rng.uniform(1.0, 10.0, 5)
 
-    out = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
+    out, _ = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
     assert np.isclose(out.sum(), source.sum())
 
     # No band node below its datum anywhere -> every source keeps its own amount in place.
-    no_sink = erosion._spread_coastal_leveling(
+    no_sink, _ = erosion._spread_coastal_leveling(
         points, elevation, openness, dist_to_land, 0.0, elevation - 100.0, source, dt_myr=5.0
     )
     assert np.allclose(no_sink, source)
+
+
+def test_spread_coastal_leveling_carries_a_tagged_share_and_conserves_volume_on_unequal_areas():
+    # Issue #275: with per-node areas the pool is a volume, sinks hold their thickness capacity
+    # times their own area, and a tagged (continental) sub-share follows the same transfers.
+    rng = np.random.default_rng(1)
+    points = _equator_lattice(half_span_deg=3.0, step_deg=0.5)
+    n = len(points)
+    elevation = rng.uniform(-30.0, 30.0, n)
+    openness = rng.uniform(0.0, 1.0, n)
+    dist_to_land = rng.uniform(0.0, 0.02, n)
+    datum = erosion.leveling_datum_m(0.0, openness, dist_to_land)
+    area = rng.uniform(1.0e9, 4.0e9, n)
+    source = np.zeros(n)
+    picked = rng.choice(n, 8, replace=False)
+    source[picked] = rng.uniform(1.0, 50.0, 8) * area[picked]
+    tagged = source * rng.uniform(0.0, 1.0, n)
+
+    out, out_tagged = erosion._spread_coastal_leveling(
+        points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0, area_m2=area, tagged_amount=tagged
+    )
+    assert np.isclose(out.sum(), source.sum())
+    assert np.isclose(out_tagged.sum(), tagged.sum())
+    assert np.all(out_tagged <= out * (1.0 + 1e-12))
+    # No sink was filled past its own datum (capacity is thickness x area).
+    received = np.where(source > 0.0, 0.0, out) / area
+    assert np.all(received <= np.clip(datum - elevation, 0.0, None) + 1e-9)
 
 
 def test_spread_coastal_leveling_prefers_sheltered_hollow_and_barrier_sinks():
@@ -360,7 +387,7 @@ def test_spread_coastal_leveling_prefers_sheltered_hollow_and_barrier_sinks():
     datum = erosion.leveling_datum_m(0.0, openness, dist_to_land)
     source = np.array([100.0, 0.0, 0.0, 0.0])
 
-    out = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
+    out, _ = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
     assert out[1] > 0.0  # sheltered shallow water silts up
     assert out[3] > 0.0  # barrier candidate accretes despite facing open water
     assert out[2] < out[1] and out[2] < out[3]  # deep node is out of band -> gets ~nothing
@@ -378,7 +405,7 @@ def test_spread_coastal_leveling_declumps_a_single_source_across_neighbours():
     source = np.zeros(n)
     source[n // 2] = 500.0
 
-    out = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
+    out, _ = erosion._spread_coastal_leveling(points, elevation, openness, dist_to_land, 0.0, datum, source, dt_myr=5.0)
     assert np.isclose(out.sum(), 500.0)
     assert np.count_nonzero(out > 1.0) >= 6  # the lump reached many neighbours
     assert out[n // 2] < 500.0  # and did not all stay on the source node
@@ -446,3 +473,82 @@ def test_apply_erosion_coastal_feedback_keeps_a_generated_world_sane():
     assert np.all(after >= MIN_ELEVATION_M - 1e-6) and np.all(after <= MAX_ELEVATION_M + 1e-6)
     # The feedback nudges the coast, it doesn't rewrite the whole map in one step.
     assert np.median(np.abs(after - before)) < 50.0
+
+
+# --- Issue #275: conservative, provenance-aware redistribution -------------------------------
+
+_LEDGER_SINKS = ("delaminated_lower_crust_m3", "deeply_subducted_m3", "numerical_unplaced_m3", "discarded_marine_sediment_m3")
+
+
+def _tracked_continental_m3(world) -> float:
+    """Live continental-derived material plus every declared sink -- constant across a step
+    that only moves material."""
+    from app import continental_ledger
+
+    inventory = continental_ledger.inventories(world)
+    return inventory["surface_continental_derived_m3"] + sum(inventory[k] for k in _LEDGER_SINKS)
+
+
+def test_apply_erosion_closes_volume_and_continental_ledger_on_a_quad_world():
+    from app import continental_ledger
+
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    assert continental_ledger.inventories(world)["continental_sediment_on_oceanic_hosts_m3"] == 0.0
+    # Two steps: the second has glaciers and spill/ice edges that point uphill.
+    for _ in range(2):
+        tracked_before = _tracked_continental_m3(world)
+        result = erosion.apply_erosion(world, years=5_000_000)
+        budget = result.budget
+        assert budget["removed_m3"] > 0.0
+        assert np.isclose(budget["deposited_m3"], budget["removed_m3"], rtol=1e-9)
+        assert np.isclose(budget["continental_deposited_m3"] + budget["continental_discarded_m3"], budget["continental_removed_m3"], rtol=1e-9)
+        assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
+    # Continental-derived sediment shed off the coast stays identifiable on oceanic hosts.
+    assert continental_ledger.inventories(world)["continental_sediment_on_oceanic_hosts_m3"] > 0.0
+
+
+def test_apply_erosion_never_routes_more_than_a_column_can_give_up():
+    from app import lithosphere
+
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    headroom_m = 5.0
+    for plate in world.plates:
+        hc = np.full(plate.node_count(), lithosphere.MIN_CRUSTAL_THICKNESS_M + headroom_m)
+        plate.set_fields_on_plate(crustal_thickness_m=hc, continental_material_m=hc)
+    tracked_before = _tracked_continental_m3(world)
+    result = erosion.apply_erosion(world, years=5_000_000)
+    assert np.isclose(result.budget["deposited_m3"], result.budget["removed_m3"], rtol=1e-9)
+    assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
+    hc_after = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates])
+    assert hc_after.min() >= lithosphere.MIN_CRUSTAL_THICKNESS_M - 1e-6
+
+
+def test_ocean_deposition_knob_below_one_declares_the_continental_sediment_it_withholds():
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world.ocean_deposition_multiplier = 0.5
+    tracked_before = _tracked_continental_m3(world)
+    result = erosion.apply_erosion(world, years=5_000_000)
+    assert result.budget["ocean_deposition_knob_m3"] < 0.0
+    assert world.continental_material_ledger["discarded_marine_sediment_m3"] == result.budget["continental_discarded_m3"] > 0.0
+    assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
+
+
+def test_flatten_is_a_volume_conserving_downhill_exchange():
+    from types import SimpleNamespace
+
+    rng = np.random.default_rng(2)
+    n, k = 40, 6
+    neighbor_idx = np.array([rng.choice(np.delete(np.arange(n), i), k, replace=False) for i in range(n)])
+    hydro = SimpleNamespace(elevation=rng.uniform(0.0, 3000.0, n), neighbor_idx=neighbor_idx)
+    ice_factor = rng.uniform(0.0, 2.0, n)
+    area = rng.uniform(1.0e9, 4.0e9, n)
+    removable = rng.uniform(0.0, 50.0, n)
+
+    send = erosion._flatten(hydro, ice_factor, years=5_000_000, removable_m=removable)
+    assert np.all(send >= 0.0)
+    # Only ever sends downhill, and never more than the column's headroom.
+    assert np.all(send[hydro.elevation[:, None] <= hydro.elevation[neighbor_idx]] == 0.0)
+    assert np.all(send.sum(axis=1) <= removable + 1e-9)
+    received = np.zeros(n)
+    np.add.at(received, neighbor_idx.ravel(), (send * area[:, None]).ravel())
+    assert np.isclose(received.sum(), (send.sum(axis=1) * area).sum())
