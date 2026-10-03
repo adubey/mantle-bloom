@@ -106,25 +106,23 @@ const WATER_LAYER_ALPHA = 0.4;
 
 const sameRotation = (a: Mat3, b: Mat3) => a.length === b.length && a.every((v, i) => v === b[i]);
 
-// Decodes a base64 PNG into an <img>, null until it has loaded.
+// Decodes a base64 PNG into an <img>, null until *this* base64 has loaded -- the decoded image
+// is kept with its source, so a new layer never shows the previous one while it decodes.
 function useDecodedImage(base64: string | null | undefined): HTMLImageElement | null {
-  const [image, setImage] = useState<HTMLImageElement | null>(null);
+  const [decoded, setDecoded] = useState<{ src: string; image: HTMLImageElement } | null>(null);
   useEffect(() => {
-    if (!base64) {
-      setImage(null);
-      return;
-    }
+    if (!base64) return;
     let cancelled = false;
     const img = new Image();
     img.onload = () => {
-      if (!cancelled) setImage(img);
+      if (!cancelled) setDecoded({ src: base64, image: img });
     };
     img.src = `data:image/png;base64,${base64}`;
     return () => {
       cancelled = true;
     };
   }, [base64]);
-  return image;
+  return base64 && decoded?.src === base64 ? decoded.image : null;
 }
 
 // Unit-vector centroid of a loop of world points -- the anchor for the motion arc and the

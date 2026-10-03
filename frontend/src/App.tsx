@@ -712,6 +712,11 @@ export default function App() {
   // The legend's Cratons row isolates cratons, so it wants the craton layer even when unchecked.
   const highlightCratons = mapView === "platesAndFaults" && highlightedBiome === CRATON_LEGEND_LABEL;
   const wantCratonLayer = showCratons || highlightCratons;
+  // A new world invalidates the layers outright (they'd otherwise stay drawable, since the
+  // canvas only checks projection + rotation) -- nothing is drawn until its own render lands.
+  useEffect(() => {
+    setPlatesLayers(null);
+  }, [summary]);
   useEffect(() => {
     if (mapView !== "platesAndFaults" || !summary || (!wantCratonLayer && !showWater)) return;
     let cancelled = false;
