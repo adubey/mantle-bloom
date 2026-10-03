@@ -11,6 +11,7 @@ from app import continental_ledger, cratons, lithosphere, persistence, quad_merg
 from app import world as world_mod
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, ElevationLine, line_spacing_rad, regularize_line
 from app.lithosphere_plate import deform_columns
+from app.surface_fields import CRATON_UNFORMED_YEARS
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, cells_per_face_edge, pack_cell_keys
 from app.world import World
 
@@ -62,7 +63,7 @@ def _volume(plate, name) -> float:
 def _set_craton(plate, mask, formed=-1.0e9) -> None:
     hc = plate.collect("crustal_thickness_m")
     plate.set_fields_on_plate(
-        craton_crust_m=np.where(mask, hc, 0.0), craton_formed_years=np.where(mask, formed, 0.0)
+        craton_crust_m=np.where(mask, hc, 0.0), craton_formed_years=np.where(mask, formed, CRATON_UNFORMED_YEARS)
     )
 
 
@@ -170,8 +171,8 @@ def test_retyped_columns_lose_their_craton_and_its_date(monkeypatch):
     cratons.clip_to_column(world, plate, "rifted_m3")
 
     assert plate.collect("craton_crust_m")[0] == 0.0
-    assert plate.collect("craton_formed_years")[0] == 0.0
-    assert plate.collect("craton_formed_years")[1] != 0.0
+    assert plate.collect("craton_formed_years")[0] == CRATON_UNFORMED_YEARS
+    assert plate.collect("craton_formed_years")[1] != CRATON_UNFORMED_YEARS
 
 
 def test_retreat_waits_for_a_sustained_overlap_scaled_by_strength(monkeypatch):
@@ -348,6 +349,19 @@ def test_partition_and_merge_conserve_craton_volume_and_keep_the_oldest_date():
     assert sum(_volume(p, "craton_crust_m") for p in halves) == pytest.approx(before, rel=1e-12)
 
 
+def test_a_craton_formed_at_year_zero_keeps_its_date_through_a_merge():
+    keep = _cap(1)
+    absorb = _cap(2, centre=np.array([np.cos(0.4), np.sin(0.4), 0.0]))
+    _set_craton(keep, np.ones(keep.node_count(), dtype=bool), formed=0.0)
+    _set_craton(absorb, np.ones(absorb.node_count(), dtype=bool), formed=5.0e8)
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    formed = keep.collect("craton_formed_years")[keep.collect("craton_crust_m") > 0.0]
+    assert formed.min() == 0.0
+    assert np.all(formed <= 5.0e8)
+
+
 def test_phase_audit_books_vanished_craton_to_the_residual_account(monkeypatch):
     a = _cap(1)
     b = _cap(2, centre=np.array([-1.0, 0.0, 0.0]))
@@ -428,3 +442,29 @@ def test_stepping_a_world_keeps_the_craton_ledger_closed():
     assert abs(world.craton_ledger["unattributed_m3"]) <= 1e-6 * world.craton_ledger["initial_m3"]
     stats = world.stats_history[-1]
     assert stats["craton_volume_km3"] == pytest.approx(cratons.live_volume_m3(world) / 1e9)
+
+
+def test_a_craton_resists_glacial_flattening_like_every_other_erosion_source(monkeypatch):
+    from app import erosion
+
+    def run(send_m):
+        world = world_mod.generate_world(21, num_plates=8, node_density=0.25)
+        plate = next(p for p in world.plates if p.crust_type == "continental")
+        hc = plate.collect("crustal_thickness_m")
+        target = int(np.argmax(hc))
+        craton = np.zeros(plate.node_count())
+        craton[target] = hc[target]
+        plate.set_fields_on_plate(craton_crust_m=craton)
+        offset = sum(p.node_count() for p in world.plates[: world.plates.index(plate)])
+
+        def flatten(hydro, ice_factor, years, removable_m, multiplier=1.0):
+            send = np.zeros(hydro.neighbor_idx.shape)
+            send[offset + target, 0] = min(send_m, removable_m[offset + target])
+            return send
+
+        monkeypatch.setattr(erosion, "_flatten", flatten)
+        erosion.apply_erosion(world, years=1_000_000)
+        return plate.collect("crustal_thickness_m")[target]
+
+    sent = run(0.0) - run(40.0)
+    assert sent == pytest.approx((1.0 - cratons.CRATON_EROSION_RESISTANCE) * 40.0, rel=1e-6)

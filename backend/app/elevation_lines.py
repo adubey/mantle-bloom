@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Protocol
 import numpy as np
 
 from . import geometry
+from .surface_fields import CRATON_UNFORMED_YEARS
 
 if TYPE_CHECKING:
     from .plates import PlateWithLines
@@ -427,7 +428,8 @@ class ElevationLine:
         # column's binary crust type.  This is a conserved tracer, not another type flag.
         "continental_material_m",
         # Cratons -- see cratons.py: the cratonic share of Hc (extensive), the year the
-        # craton stabilised (0.0 = none), and the quiet-interior formation clock (Myr).
+        # craton stabilised (surface_fields.CRATON_UNFORMED_YEARS = none), and the
+        # quiet-interior formation clock (Myr).
         "craton_crust_m",
         "craton_formed_years",
         "stable_continental_myr",
@@ -499,7 +501,9 @@ class ElevationLine:
             continental_material_m if continental_material_m is not None else np.zeros_like(theta)
         )
         self._craton_crust_m = craton_crust_m if craton_crust_m is not None else np.zeros_like(theta)
-        self._craton_formed_years = craton_formed_years if craton_formed_years is not None else np.zeros_like(theta)
+        self._craton_formed_years = (
+            craton_formed_years if craton_formed_years is not None else np.full_like(theta, CRATON_UNFORMED_YEARS)
+        )
         self._stable_continental_myr = stable_continental_myr if stable_continental_myr is not None else np.zeros_like(theta)
 
     def __getattr__(self, name: str) -> np.ndarray:
@@ -521,6 +525,8 @@ class ElevationLine:
                 # -1.0 sentinel ("predates tracking"), not the generic zeros default -- see
                 # OPTIONAL_FIELDS' own comment on node_created_years.
                 value = np.full_like(self._theta, -1.0, dtype=dtype)
+            elif name == "_craton_formed_years":
+                value = np.full_like(self._theta, CRATON_UNFORMED_YEARS, dtype=dtype)
             else:
                 value = np.zeros_like(self._theta, dtype=dtype)
             object.__setattr__(self, name, value)
@@ -1121,7 +1127,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # stamp, carried nearest-neighbour like node_created_years.
     new_craton_crust_m = np.interp(new_theta, line.theta, line.craton_crust_m)
     new_stable_continental_myr = np.interp(new_theta, line.theta, line.stable_continental_myr)
-    new_craton_formed_years = np.where(new_craton_crust_m > 0.0, line.craton_formed_years[nearest_original], 0.0)
+    new_craton_formed_years = np.where(new_craton_crust_m > 0.0, line.craton_formed_years[nearest_original], CRATON_UNFORMED_YEARS)
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,

@@ -72,7 +72,7 @@ from .lithosphere_plate import (
 )
 from .plates import _INTERIOR_SUBDUCTION_MIN_RUN, _contested_by_any
 from .sparse_quad_patch import lattice_points, unpack_cell_keys
-from .surface_fields import SURFACE_FIELDS
+from .surface_fields import CRATON_UNFORMED_YEARS, SURFACE_FIELDS
 
 if TYPE_CHECKING:
     from .sparse_quad_patch import PlateWithSparseQuadPatch
@@ -482,8 +482,8 @@ def _relocate_tracers(
         material += displaced * gained / placed
     material[chosen] = material_volume / chosen_area
     craton[chosen] = craton_volume / chosen_area
-    dated = formed[front][formed[front] != 0.0]
-    formed[chosen] = float(dated.min()) if len(dated) and craton_volume > 0.0 else 0.0
+    dated = formed[front][formed[front] != CRATON_UNFORMED_YEARS]
+    formed[chosen] = float(dated.min()) if len(dated) and craton_volume > 0.0 else CRATON_UNFORMED_YEARS
 
 
 def _relocate_terrane_column(

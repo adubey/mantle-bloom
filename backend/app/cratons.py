@@ -8,8 +8,9 @@ State. Three per-node surface fields carry everything (see surface_fields.py):
   resetting or averaging a flag away. Crust added on top later (sediment, accreted belts,
   arc magmatism) is ordinary continental crust: the cratonic volume only grows by formation.
 - ``craton_formed_years`` -- provenance: the ``elapsed_years`` at which the craton's column
-  stabilised (negative for cratons seeded at generation, which predate the simulation). A
-  HISTORY field, so a merged or coarsened cell keeps its oldest contributor's date.
+  stabilised (negative for cratons seeded at generation, which predate the simulation;
+  surface_fields.CRATON_UNFORMED_YEARS where there is no craton). A HISTORY field, so a merged
+  or coarsened cell keeps its oldest contributor's date.
 - ``stable_continental_myr`` -- the formation clock: how long the column has sat as quiet
   continental interior.
 
@@ -44,6 +45,7 @@ import numpy as np
 from . import lithosphere
 from .elevation_lines import effective_is_continental_from_codes, line_spacing_rad
 from .mantle import PLANET_RADIUS_KM
+from .surface_fields import CRATON_UNFORMED_YEARS
 
 if TYPE_CHECKING:
     from .plates import Plate
@@ -246,7 +248,7 @@ def _write(plate: "Plate", craton: np.ndarray) -> None:
     formed = plate.collect("craton_formed_years")
     plate.set_fields_on_plate(
         craton_crust_m=craton,
-        craton_formed_years=np.where(craton > 0.0, formed, 0.0),
+        craton_formed_years=np.where(craton > 0.0, formed, CRATON_UNFORMED_YEARS),
     )
 
 
@@ -328,7 +330,7 @@ def update(world: "World", years: float) -> None:
         plate.set_fields_on_plate(
             stable_continental_myr=stable,
             craton_crust_m=craton,
-            craton_formed_years=np.where(craton > 0.0, formed, 0.0),
+            craton_formed_years=np.where(craton > 0.0, formed, CRATON_UNFORMED_YEARS),
         )
 
 

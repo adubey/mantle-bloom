@@ -1422,6 +1422,9 @@ def apply_erosion(
         removable_m=np.clip(removable_m - erosion_amount - sea_side_erosion - ground_off, 0.0, None),
         multiplier=world.glacier_erosion_multiplier,
     )
+    # Cratons resist glacial flattening like every other source above: scaling each source
+    # node's sends keeps the removal, the transport and the deposits consistent.
+    flatten_send = flatten_send * craton_keep[:, None]
     flatten_removed = flatten_send.sum(axis=1)
 
     # Volume and provenance (issue #275). Every transport below carries *volume*
