@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from app.elevation_lines import (
     CRUST_TYPE_CONTINENTAL,
     CRUST_TYPE_INHERIT,
@@ -386,4 +387,8 @@ def test_regularize_line_carries_every_optional_field():
     regularized = regularize_line(line, 0.0098)
     assert len(regularized) != len(line)
     for name, values in fields.items():
-        assert np.all(getattr(regularized, name) == values[0]), name
+        if name == "continental_material_m":
+            assert np.sum(getattr(regularized, name)) == pytest.approx(np.sum(values))
+            assert np.all(regularized.continental_material_m <= regularized.crustal_thickness_m)
+        else:
+            assert np.all(getattr(regularized, name) == values[0]), name

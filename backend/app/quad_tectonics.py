@@ -997,7 +997,6 @@ def _open_rift(
     reason = plate.collect("elev_change_reason")
     craton = plate.collect("craton_crust_m")
     material = plate.collect("continental_material_m")
-    craton = plate.collect("craton_crust_m")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     transfer = _allocate_stretch(
         plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton

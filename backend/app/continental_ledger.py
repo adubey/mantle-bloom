@@ -26,6 +26,7 @@ LedgerAccount = Literal[
     "delaminated_lower_crust_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
+    "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
 ]
@@ -38,6 +39,7 @@ class ContinentalMaterialLedger(TypedDict):
     delaminated_lower_crust_m3: float
     deeply_subducted_m3: float
     remelted_relaminated_returns_m3: float
+    rift_thinned_m3: float
     numerical_unplaced_m3: float
     # Continental sediment the `ocean_deposition_multiplier` knob (< 1) declines to settle --
     # a deliberate user-tuned shelf-starving sink, kept apart from numerical clipping.
@@ -51,6 +53,7 @@ LEDGER_KEYS: tuple[LedgerAccount, ...] = (
     "delaminated_lower_crust_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
+    "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
 )
@@ -176,6 +179,7 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
         surface
         + ledger["delaminated_lower_crust_m3"]
         + ledger["deeply_subducted_m3"]
+        + ledger["rift_thinned_m3"]
         + ledger["numerical_unplaced_m3"]
         + ledger["discarded_marine_sediment_m3"]
     )

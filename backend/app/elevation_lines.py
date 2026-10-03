@@ -1113,6 +1113,16 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # Continental material is a continuous thickness, so interpolate it with the lithosphere
     # columns above to preserve the ledger inventory across regularization.
     new_continental_material_m = np.interp(new_theta, line.theta, line.continental_material_m)
+    material_total = float(np.sum(line.continental_material_m))
+    interpolated_total = float(np.sum(new_continental_material_m))
+    if material_total > 0.0 and interpolated_total > 0.0:
+        new_continental_material_m *= material_total / interpolated_total
+        new_continental_material_m = np.minimum(new_continental_material_m, new_crustal_thickness_m)
+        residual = material_total - float(np.sum(new_continental_material_m))
+        if residual > 0.0:
+            headroom = np.maximum(new_crustal_thickness_m - new_continental_material_m, 0.0)
+            if float(np.sum(headroom)) > 0.0:
+                new_continental_material_m += residual * headroom / float(np.sum(headroom))
     # Interpolated like elevation, which it is a component of.
     new_ice_load_deflection_m = np.interp(new_theta, line.theta, line.ice_load_deflection_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto

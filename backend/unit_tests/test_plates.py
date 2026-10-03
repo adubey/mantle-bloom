@@ -909,7 +909,11 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
     rho_c = crust_density("continental")
     hc = np.full(10, 35_000.0)
     hm = np.full(10, 100_000.0)
-    fields = {"crustal_thickness_m": hc, "mantle_lithosphere_thickness_m": hm}
+    fields = {
+        "crustal_thickness_m": hc,
+        "mantle_lithosphere_thickness_m": hm,
+        "continental_material_m": hc.copy(),
+    }
     elevation = isostatic_elevation(hc, hm, rho_c).copy()
 
     removed_hc = np.array([35_000.0, 35_000.0, 35_000.0])
@@ -918,7 +922,10 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
 
     total_hc_before = hc.sum()
     total_hm_before = hm.sum()
-    _redistribute_accreted_column(fields, elevation, rho_c, removed_hc, removed_hm, accrete_removed, from_high=True)
+    _redistribute_accreted_column(
+        fields, elevation, rho_c, removed_hc, removed_hm, removed_hc,
+        accrete_removed, from_high=True,
+    )
 
     assert fields["crustal_thickness_m"].sum() == pytest.approx(total_hc_before + 2 * 35_000.0)
     assert fields["mantle_lithosphere_thickness_m"].sum() == pytest.approx(total_hm_before + 120_000.0 + 90_000.0)
@@ -936,11 +943,16 @@ def test_redistribute_accreted_column_conserves_crustal_volume():
     from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M
 
     hc2 = np.full(6, 60_000.0)
-    fields2 = {"crustal_thickness_m": hc2, "mantle_lithosphere_thickness_m": np.full(6, 100_000.0)}
+    fields2 = {
+        "crustal_thickness_m": hc2,
+        "mantle_lithosphere_thickness_m": np.full(6, 100_000.0),
+        "continental_material_m": hc2.copy(),
+    }
     elev2 = isostatic_elevation(hc2, fields2["mantle_lithosphere_thickness_m"], rho_c).copy()
     _redistribute_accreted_column(
         fields2, elev2, rho_c,
-        np.full(5, 90_000.0), np.full(5, 90_000.0), np.ones(5, dtype=bool), from_high=True,
+        np.full(5, 90_000.0), np.full(5, 90_000.0), np.full(5, 90_000.0),
+        np.ones(5, dtype=bool), from_high=True,
     )
     assert np.all(fields2["crustal_thickness_m"] <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
 

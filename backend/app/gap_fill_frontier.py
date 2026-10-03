@@ -225,24 +225,26 @@ def _stretch_extend_line(
     material[source_idx] *= np.divide(
         new_hc, old_hc, out=np.zeros_like(new_hc), where=old_hc > 0.0,
     )
+    sub_hc = hc[source_idx].copy()
+    sub_hm = hm[source_idx].copy()
     sub_crust_type = crust_type_code[source_idx]
     sub_is_volcano = is_volcano[source_idx]
     sub_volcano_remaining = volcano_remaining[source_idx]
     _erupt_melted_nodes(
         world, plate.plate_id, line_index,
-        hc[source_idx], hm[source_idx], sub_crust_type, sub_is_volcano, sub_volcano_remaining,
+        sub_hc, sub_hm, sub_crust_type, sub_is_volcano, sub_volcano_remaining,
         melting, prior_elevation[source_idx],
     )
     continental = effective_is_continental_from_codes(
         sub_crust_type, plate.crust_type == "continental"
     )
     juvenile = np.where(
-        melting & continental, np.maximum(hc[source_idx] - new_hc, 0.0), 0.0
+        melting & continental, np.maximum(sub_hc - new_hc, 0.0), 0.0
     )
     material[source_idx] += juvenile
     node_area = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
     continental_ledger.record(
-        world, "numerical_unplaced_m3",
+        world, "rift_thinned_m3",
         float(np.sum(np.maximum(material_before_stretch - material[source_idx], 0.0))) * node_area,
     )
     continental_ledger.record(
@@ -254,6 +256,8 @@ def _stretch_extend_line(
         world, "numerical_unplaced_m3", float(np.sum(removed)) * node_area
     )
     crust_type_code[source_idx] = sub_crust_type
+    hc[source_idx] = sub_hc
+    hm[source_idx] = sub_hm
     is_volcano[source_idx] = sub_is_volcano
     volcano_remaining[source_idx] = sub_volcano_remaining
     node_rho_c = lithosphere.node_crust_density(crust_type_code[source_idx], plate.crust_type)

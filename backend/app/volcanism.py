@@ -31,6 +31,7 @@ from .elevation_lines import (
     ERUPTION_ELEVATION_M,
     MAX_ELEVATION_M,
     MIN_ELEVATION_M,
+    effective_is_continental_from_codes,
     PLANET_RADIUS_KM,
     VOLCANIC_PLAIN_ELEVATION_M,
     VOLCANIC_PLAIN_REACH_KM,
@@ -74,9 +75,9 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
         if erupted_points:
             _spread_volcanic_plains(plate, world, years, erupted_points)
         hc_after = plate.collect("crustal_thickness_m")
-        continental = lithosphere.node_crust_density(
-            plate.collect("crust_type_code"), plate.crust_type
-        ) == lithosphere.RHO_CONTINENTAL_CRUST
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
         continental_ledger.add_material_thickness(
             world,
             plate,

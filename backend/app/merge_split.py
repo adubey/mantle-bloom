@@ -719,7 +719,7 @@ def relattice_continental_plates(world: "World") -> None:
         if callable(relattice):
             if world.debug_diagnostics:
                 before = phase_budget.snapshot(plate, spacing_rad)
-            relattice(spacing_rad)
+            relattice(spacing_rad, world)
             if world.debug_diagnostics:
                 after = phase_budget.snapshot(plate, spacing_rad)
                 phase_budget.record_snapshots(world, plate, "continental_relattice", before, after)
