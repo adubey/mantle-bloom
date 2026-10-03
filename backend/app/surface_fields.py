@@ -31,6 +31,12 @@ def _field(dtype, default, remap_class, *, sentinel=None, coupled_to=()):
     return SurfaceField(np.dtype(dtype), default, remap_class, sentinel, coupled_to)
 
 
+# `craton_formed_years`' "no craton" sentinel. Not 0.0: a column quiet from year zero
+# legitimately forms with that date. Finite, so the surface audits' finiteness checks hold, and
+# far beyond any reachable simulation year.
+CRATON_UNFORMED_YEARS = 1.0e18
+
+
 # Phase 3 owns the algorithms that consume these classes. Phase 1 centralizes the policy so
 # adding a persistent field without declaring its transfer semantics fails a contract test.
 SURFACE_FIELDS: dict[str, SurfaceField] = {
@@ -59,4 +65,10 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # coarsening, merge and partition conserve its area-integrated volume independently of
     # the receiving cell's binary crust type.
     "continental_material_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    # Cratons (cratons.py). The cratonic share of Hc is extensive so every remap conserves its
+    # volume; its formation date keeps the oldest contributor's (CRATON_UNFORMED_YEARS: no
+    # craton); the formation clock blends.
+    "craton_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    "craton_formed_years": _field(float, CRATON_UNFORMED_YEARS, RemapClass.HISTORY, sentinel=CRATON_UNFORMED_YEARS),
+    "stable_continental_myr": _field(float, 0.0, RemapClass.CLOCK),
 }

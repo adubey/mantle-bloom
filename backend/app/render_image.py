@@ -28,7 +28,8 @@ from numba import njit
 from PIL import Image, ImageDraw, ImageFilter
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, coastline, geology, geometry, healpix_grid, hydrology, lithosphere, mantle, plates, projections, volcanism
+from . import biomes, climate, coastline, cratons, geology, geometry, healpix_grid, hydrology, lithosphere, mantle, plates, projections, volcanism
+from .elevation_lines import effective_is_continental_from_codes
 from .world import World, step_world
 
 # Climate views draw from climate.py's own fixed (H, W) grid, not the render grid below --
@@ -69,7 +70,10 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # live nodes coloured by how recently they were removed (World.removed_points_log, since a
 # removed node has no live ElevationLine to carry a field on). Its own dispatch branch
 # (_render_node_age_view). See docs/debugging.md.
-DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge")
+# "craton" is node-cloud-derived from the craton fields (cratons.py): where the cratons are,
+# which predate the simulation and which formed during it, and how far each quiet continental
+# interior's formation clock has run. Its own dispatch branch (_render_craton_view).
+DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge", "craton")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
@@ -2339,6 +2343,59 @@ def _render_crust_type_view(world: World, projection: str, width: int, height: i
     return _encode_image(image)
 
 
+# Craton debug view (see _render_craton_view). Oceanic crust is dark; ordinary continental crust
+# is grey, warming toward amber as its craton formation clock runs (a proto-craton); cratons are
+# deep red if seeded at generation, orange if they formed during the run, faded toward grey as
+# their cratonic share of the column thins.
+CRATON_VIEW_OCEANIC_RGB = np.array((24, 38, 72), dtype=float)
+CRATON_VIEW_CONTINENTAL_RGB = np.array((128, 126, 118), dtype=float)
+CRATON_VIEW_PROTO_RGB = np.array((214, 186, 96), dtype=float)
+CRATON_VIEW_SEEDED_RGB = np.array((150, 34, 40), dtype=float)
+CRATON_VIEW_FORMED_RGB = np.array((232, 112, 38), dtype=float)
+
+
+def craton_colors(continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray) -> np.ndarray:
+    """Per-node craton view colour -- see the CRATON_VIEW_* constants."""
+    proto = np.clip(stable_myr / cratons.CRATON_FORMATION_MYR, 0.0, 1.0)[:, None]
+    colors = CRATON_VIEW_CONTINENTAL_RGB + proto * (CRATON_VIEW_PROTO_RGB - CRATON_VIEW_CONTINENTAL_RGB)
+    craton_rgb = np.where((formed_years < 0.0)[:, None], CRATON_VIEW_SEEDED_RGB, CRATON_VIEW_FORMED_RGB)
+    share = (0.35 + 0.65 * cratons.strength(craton_m))[:, None]
+    colors = np.where((craton_m > 0.0)[:, None], CRATON_VIEW_CONTINENTAL_RGB + share * (craton_rgb - CRATON_VIEW_CONTINENTAL_RGB), colors)
+    colors = np.where(continental[:, None], colors, CRATON_VIEW_OCEANIC_RGB)
+    return colors.astype(np.uint8)
+
+
+def _render_craton_view(world: World, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders "craton" (see DEBUG_VIEWS) -- same nearest-node-resampled-onto-the-biome-grid
+    technique as "crustType"."""
+    pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
+    if not world.plates:
+        return _encode_image(Image.fromarray(pixels, mode="RGB"))
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    _points, _elev, _owner, tree = _node_cloud_and_tree(world)
+    live = [p for p in world.plates if p.node_count() > 0]
+    continental = np.concatenate(
+        [effective_is_continental_from_codes(p.collect("crust_type_code"), p.crust_type == "continental") for p in live]
+    )
+    fields = {
+        name: np.concatenate([p.collect(name) for p in live])
+        for name in ("craton_crust_m", "craton_formed_years", "stable_continental_myr")
+    }
+    _, idx = tree.query(world_xyz.reshape(-1, 3), workers=plates.query_workers(grid_h * grid_w))
+    colors = craton_colors(
+        continental[idx], fields["craton_crust_m"][idx], fields["craton_formed_years"][idx], fields["stable_continental_myr"][idx]
+    )
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    centers, half_w, half_h, scale, offset_x, offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    _fill_rects(pixels, centers, half_w, half_h, colors)
+    image = Image.fromarray(pixels, mode="RGB")
+    _draw_coastline(ImageDraw.Draw(image), world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
+    return _encode_image(image)
+
+
 def _render_thickness_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
     pixels = np.full((height, width, 3), BACKGROUND_RGB, dtype=np.uint8)
     if not world.plates:
@@ -2557,6 +2614,8 @@ def render_png(
         return _render_crust_type_view(world, projection, width, height, view_rotation)
     if view in ("hc", "hm"):
         return _render_thickness_view(world, projection, view, width, height, view_rotation)
+    if view == "craton":
+        return _render_craton_view(world, projection, width, height, view_rotation)
     if view == "nodeAge":
         return _render_node_age_view(world, projection, width, height, view_rotation)
 

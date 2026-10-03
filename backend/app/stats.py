@@ -109,7 +109,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import biomes, climate, hydrology, lithosphere
+from . import biomes, climate, cratons, hydrology, lithosphere
 from .elevation_lines import line_spacing_rad
 from .world import World
 
@@ -270,6 +270,8 @@ def compute_stats(world: World) -> dict:
     land_area_m2, continental_crust_volume_m3, land_node_count = _total_land_area_and_continental_volume(world)
     elevation_point_count = sum(p.node_count() for p in world.plates)
 
+    craton = cratons.diagnostics(world)
+
     land_biome_ids = fields.biome_ids[is_land]
     land_weight = float(land_weights.sum())
     biome_land_fraction = {
@@ -323,4 +325,12 @@ def compute_stats(world: World) -> dict:
         **precip_stats.to_dict("precipitation", "_mm"),
         "biome_land_fraction": biome_land_fraction,
         "biome_ocean_fraction": biome_ocean_fraction,
+        # Cratons (cratons.py): live extent, and the persisted ledger's cumulative formation
+        # and destruction by mechanism -- the per-snapshot history makes destruction events
+        # attributable over a long run.
+        "craton_area_km2": craton["craton_area_m2"] / 1.0e6,
+        "craton_continental_fraction": craton["craton_area_fraction_of_continental"],
+        "craton_volume_km3": craton["craton_volume_m3"] / 1.0e9,
+        "craton_destroyed_km3": sum(craton[f"craton_{key}"] for key in cratons.CRATON_SINK_ACCOUNTS) / 1.0e9,
+        "craton_ledger_km3": {key: craton[f"craton_{key}"] / 1.0e9 for key in cratons.CRATON_ACCOUNTS},
     }

@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Protocol
 import numpy as np
 
 from . import geometry
+from .surface_fields import CRATON_UNFORMED_YEARS
 
 if TYPE_CHECKING:
     from .plates import PlateWithLines
@@ -426,6 +427,12 @@ class ElevationLine:
         # Thickness-equivalent continental-derived material, independent of the receiving
         # column's binary crust type.  This is a conserved tracer, not another type flag.
         "continental_material_m",
+        # Cratons -- see cratons.py: the cratonic share of Hc (extensive), the year the
+        # craton stabilised (surface_fields.CRATON_UNFORMED_YEARS = none), and the
+        # quiet-interior formation clock (Myr).
+        "craton_crust_m",
+        "craton_formed_years",
+        "stable_continental_myr",
     )
 
     def __init__(
@@ -454,6 +461,9 @@ class ElevationLine:
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
         crust_type_code: np.ndarray | None = None,
         continental_material_m: np.ndarray | None = None,
+        craton_crust_m: np.ndarray | None = None,
+        craton_formed_years: np.ndarray | None = None,
+        stable_continental_myr: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -490,6 +500,11 @@ class ElevationLine:
         self._continental_material_m = (
             continental_material_m if continental_material_m is not None else np.zeros_like(theta)
         )
+        self._craton_crust_m = craton_crust_m if craton_crust_m is not None else np.zeros_like(theta)
+        self._craton_formed_years = (
+            craton_formed_years if craton_formed_years is not None else np.full_like(theta, CRATON_UNFORMED_YEARS)
+        )
+        self._stable_continental_myr = stable_continental_myr if stable_continental_myr is not None else np.zeros_like(theta)
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -510,6 +525,8 @@ class ElevationLine:
                 # -1.0 sentinel ("predates tracking"), not the generic zeros default -- see
                 # OPTIONAL_FIELDS' own comment on node_created_years.
                 value = np.full_like(self._theta, -1.0, dtype=dtype)
+            elif name == "_craton_formed_years":
+                value = np.full_like(self._theta, CRATON_UNFORMED_YEARS, dtype=dtype)
             else:
                 value = np.zeros_like(self._theta, dtype=dtype)
             object.__setattr__(self, name, value)
@@ -611,6 +628,18 @@ class ElevationLine:
     @property
     def continental_material_m(self) -> np.ndarray:
         return self._continental_material_m
+
+    @property
+    def craton_crust_m(self) -> np.ndarray:
+        return self._craton_crust_m
+
+    @property
+    def craton_formed_years(self) -> np.ndarray:
+        return self._craton_formed_years
+
+    @property
+    def stable_continental_myr(self) -> np.ndarray:
+        return self._stable_continental_myr
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -1093,6 +1122,12 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # crust_type_code is likewise categorical (CRUST_TYPE_INHERIT/OCEANIC/CONTINENTAL) --
     # nearest-neighbour carry, same reasoning as elev_change_reason.
     new_crust_type_code = line.crust_type_code[nearest_original]
+    # Cratonic thickness is an extensive tracer like Hc, interpolated the same way; the
+    # formation clock is a counter like divergent_age_myr; the craton's formation year is a
+    # stamp, carried nearest-neighbour like node_created_years.
+    new_craton_crust_m = np.interp(new_theta, line.theta, line.craton_crust_m)
+    new_stable_continental_myr = np.interp(new_theta, line.theta, line.stable_continental_myr)
+    new_craton_formed_years = np.where(new_craton_crust_m > 0.0, line.craton_formed_years[nearest_original], CRATON_UNFORMED_YEARS)
     return ElevationLine(
         phi=line.phi,
         theta=new_theta,
@@ -1118,6 +1153,9 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
         crust_type_code=new_crust_type_code,
         continental_material_m=new_continental_material_m,
+        craton_crust_m=new_craton_crust_m,
+        craton_formed_years=new_craton_formed_years,
+        stable_continental_myr=new_stable_continental_myr,
     )
 
 

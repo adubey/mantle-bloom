@@ -568,6 +568,24 @@ is the shared hit-test helper (mirrors `nearest_plate_id`, but returns the node'
 into the `collect_all_points` order rather than just its owning plate id, so a caller wanting
 both plate ownership and per-node fields needn't build the k-d tree twice).
 
+#### Cratons (`craton`)
+
+`GET /world/render?view=craton` (Debug > Cratons) colours every node by its craton state
+(`render_image._render_craton_view` / `craton_colors`, see `cratons.py`). Deep red marks
+cratons that predate the run, seeded at generation. Orange marks cratons that formed during
+it. Both fade toward grey as a column's cratonic share thins. Ordinary continental crust is
+grey, warming to amber as its formation clock (`stable_continental_myr`) approaches
+`CRATON_FORMATION_MYR`. Oceanic crust is dark blue.
+
+Destruction is recorded in `World.craton_ledger`, one account per mechanism (rifting,
+subduction, delamination, collisional reworking, erosion, topology removal), and
+`cratons.balance_error_m3` checks it against the live volume. `unattributed_m3` should stay
+near zero; anything there escaped every instrumented site. Every stats snapshot carries the
+ledger (`craton_ledger_km3`), so the Stats window's *Craton destroyed (cumulative)* series
+shows when cratons were lost. A step whose losses to one mechanism exceed
+`CRATON_EVENT_FRACTION` of the live cratons is also written to the Event Console.
+`bin/debug/compare_cratons.py` runs long multi-seed comparisons with cratons on and off.
+
 #### Plate Inspector, Rivers, Lake Inspector, Plates & Faults
 
 The remaining four entries in the "Debug >" group are documented as their own feature views,

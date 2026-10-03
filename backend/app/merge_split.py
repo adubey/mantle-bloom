@@ -34,7 +34,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import geometry, mantle, phase_budget, plates as plates_mod
+from . import cratons, geometry, mantle, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
@@ -672,7 +672,9 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
         if callable(failed_rift):
             if world.debug_diagnostics:
                 before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
+            hc_before = plate.collect("crustal_thickness_m")
             failed_rift(cut_normal, line_spacing_rad(world.node_density))
+            cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
             if world.debug_diagnostics:
                 after = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
                 phase_budget.record_snapshots(world, plate, "failed_rift_thinning", before, after)
@@ -810,6 +812,14 @@ def _supports_merge(world: "World", id_keep: int, id_absorb: int) -> bool:
     return len(methods) == 1 and callable(next(iter(methods)))
 
 
+def _merge_plates_with_craton_audit(world: "World", id_keep: int, id_absorb: int) -> None:
+    """`merge_plates`, booking any cratonic crust the suture cap shaved off a stacked column as
+    delamination -- the cap is the merge's delamination of over-thickened crust."""
+    audit = cratons.PhaseAudit(world)
+    merge_plates(world, id_keep, id_absorb)
+    audit.settle("delaminated_m3")
+
+
 def apply_topology_changes(world: "World", years: float) -> list[str]:
     """Consumption, then at most one collision merge, then splits. Returns human-readable
     event messages for anything that happened, for the UI's event console -- a plate
@@ -854,7 +864,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
         # step -- fuse at most one collision per step, same as every other change here.
         id_keep, id_absorb = ready_pairs[0]
         elapsed_years = world.collision_progress.pop((id_keep, id_absorb), 0.0)
-        merge_plates(world, id_keep, id_absorb)
+        _merge_plates_with_craton_audit(world, id_keep, id_absorb)
         merged_this_step = True
         events.append(
             f"Plates {id_keep} and {id_absorb} collided and merged into plate {id_keep} "
@@ -869,7 +879,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
         forced = pop_ready_forced_merge(world, can_merge=lambda a, b: _supports_merge(world, a, b))
         if forced is not None:
             id_keep, id_absorb = forced
-            merge_plates(world, id_keep, id_absorb)
+            _merge_plates_with_craton_audit(world, id_keep, id_absorb)
             events.append(
                 f"Plates {id_keep} and {id_absorb} had overlapped so long they fused into plate {id_keep}."
             )

@@ -724,6 +724,19 @@ export function legendFor(view: MapView): LegendSpec | null {
           COASTLINE_SYMBOL,
         ],
       };
+    case "craton":
+      // render_image.py's CRATON_VIEW_* colours (craton_colors).
+      return {
+        title: "Cratons",
+        symbols: [
+          { kind: "square", color: "rgb(150, 34, 40)", label: "Craton (predates the run)" },
+          { kind: "square", color: "rgb(232, 112, 38)", label: "Craton (formed during the run)" },
+          { kind: "square", color: "rgb(214, 186, 96)", label: "Quiet interior near cratonising" },
+          { kind: "square", color: "rgb(128, 126, 118)", label: "Other continental crust" },
+          { kind: "square", color: "rgb(24, 38, 72)", label: "Oceanic crust" },
+          COASTLINE_SYMBOL,
+        ],
+      };
     case "nodeAge":
       return {
         title: "Added/Removed Points",
