@@ -2718,7 +2718,9 @@ needed no rescaling.
   `CONVERGENT_MOUNTAIN_RATE_M_PER_MYR` (800 m/Myr). Confirmed directly at a real seed run 20
   steps (60 Myr): together with reverse-fault valleys (see [Plate motion: shift and
   deform](#boundary-evolution)), the fraction of land nodes pegged at `MAX_ELEVATION_M` dropped
-  from roughly 9% to under 2% versus the same run without either addition.
+  from roughly 9% to under 2% versus the same run without either addition. Its debris runs
+  out by gravity rather than joining the water-routed pool -- see "Landslide debris runs out
+  by gravity" below.
 - All five summed, zeroed over ocean nodes (`elevation <= 0`, the sea-level convention used
   everywhere else) -- every source above is a subaerial process. The combined result is
   capped at the node's own drop-to-lowest-neighbor (in meters, not the normalized slope), so
@@ -2825,6 +2827,26 @@ there to carry it. This is a real terminal moraine/outwash deposit built beyond 
 not debris stranded throughout the glacier's interior. Confirmed directly on a real run: land
 nodes sitting right at a glacier's edge (ice-free themselves, with at least one glaciated
 neighbor) received roughly 7x the mean sediment deposit of ordinary land elsewhere.
+
+**Landslide debris runs out by gravity ([issue #275](https://github.com/adubey/mantle-bloom/issues/275) phase 4).**
+Seismic erosion's debris doesn't join the water-routed pool. That pool stops dead at a frozen
+node, because hydrology gives frozen land no flow target, and nearly every column at
+`MAX_CRUSTAL_THICKNESS_M` is a frozen summit. So its landslide debris used to settle straight
+back where it came from, and the highest collision belts never lost any net rock.
+`_route_mass_wasting` instead hands each node's debris to its lowest strictly-lower neighbour on
+the bare-rock surface, frozen or not, with no lake-spill or ice edges. Debris leaves its source.
+From the first node downslope, a share settles wherever it passes. None settles on ground at or
+above `MASS_WASTING_RUNOUT_SLOPE` (0.005, a mountain flank), all of it on flat ground, and a
+linear share in between: the foreland basin at the foot of the range. A column within
+`MASS_WASTING_HEADROOM_TAPER_M` (2 km) of the Hc cap takes proportionally less, and a column at
+the cap takes none. So debris runs on past a saturated plateau instead of overflowing it, and
+no node takes more than the room it has below the cap. A land pit fills only to that room; the
+rest spills over the basin rim to hydrology's `spill_target` and runs on, for up to
+`MASS_WASTING_SPILL_PASSES` (4) sweeps. Debris still left after that, or in a pit with no
+spill outlet, settles in its pit even past the cap. Debris reaching the sea is spread by `_spread_marine_sediment` onto the shelf and down
+into the ocean basin, under the same `ocean_deposition_multiplier` as the other marine sediment.
+Each deposit carries the continental fraction of the flux it came from. The budget reports
+`mass_wasting_removed_m3`, `mass_wasting_foreland_m3` and `mass_wasting_marine_m3`.
 
 **Deposition.** The capped, combined erosion amount is routed downstream (see
 `hydrology.route_downstream`) with a `retain_fraction` wherever a river qualifies as "big and
