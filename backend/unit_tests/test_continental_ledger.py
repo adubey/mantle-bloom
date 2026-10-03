@@ -51,6 +51,31 @@ def test_initializes_area_weighted_provenance_and_survives_retyping():
     assert inventory["continental_sediment_on_oceanic_hosts_m3"] == initial
 
 
+def test_initializes_legacy_world_when_ledger_attribute_is_absent():
+    world = _world()
+    del world.continental_material_ledger
+
+    continental_ledger.ensure_initialized(world)
+
+    assert np.array_equal(
+        world.plates[0].collect("continental_material_m"),
+        world.plates[0].collect("crustal_thickness_m"),
+    )
+    assert world.continental_material_ledger["initial_continental_m3"] > 0.0
+
+
+def test_assert_closed_rejects_material_above_host_crust():
+    world = _world()
+    continental_ledger.ensure_initialized(world)
+    plate = world.plates[0]
+    plate.set_fields_on_plate(
+        continental_material_m=plate.collect("crustal_thickness_m") + 1.0
+    )
+
+    with pytest.raises(AssertionError, match="within \\[0, Hc\\]"):
+        continental_ledger.assert_closed(world)
+
+
 def test_record_rejects_invalid_or_unknown_entries():
     world = _world()
     continental_ledger.record(world, "juvenile_additions_m3", 12.5)
@@ -119,6 +144,9 @@ def test_balance_treats_relaminated_returns_as_a_surface_source():
     continental_ledger.ensure_initialized(world)
     plate = world.plates[0]
     delta = np.array([0.0, 10.0])
+    plate.set_fields_on_plate(
+        crustal_thickness_m=plate.collect("crustal_thickness_m") + delta
+    )
     continental_ledger.add_material_thickness(
         world, plate, delta, "remelted_relaminated_returns_m3"
     )

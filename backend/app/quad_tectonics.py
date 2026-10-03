@@ -1024,6 +1024,14 @@ def _open_rift(
             "juvenile_additions_m3",
             float(np.dot(donor_juvenile, plate.node_areas_m2()[donors])),
         )
+        donor_oceanic = melting & ~donor_continental
+        if np.any(donor_oceanic):
+            removed = np.where(donor_oceanic, material[donors], 0.0)
+            material[donors[donor_oceanic]] = 0.0
+            continental_ledger.record(
+                world, "numerical_unplaced_m3",
+                float(np.dot(removed, plate.node_areas_m2()[donors])),
+            )
         after = lithosphere.isostatic_elevation(new_hc, new_hm, lithosphere.node_crust_density(sub_codes, plate.crust_type))
         elevation[donors] = rheology.clip_elevation_bounds(elevation[donors] + (after - before))
         hc[donors], hm[donors] = new_hc, new_hm
@@ -1061,6 +1069,13 @@ def _open_rift(
         "juvenile_additions_m3",
         float(np.dot(magmatic_material + melt_juvenile, cell_area)),
     )
+    cell_oceanic = melting & ~cell_continental
+    if np.any(cell_oceanic):
+        removed = np.where(cell_oceanic, cell_material, 0.0)
+        cell_material[cell_oceanic] = 0.0
+        continental_ledger.record(
+            world, "numerical_unplaced_m3", float(np.dot(removed, cell_area))
+        )
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
     material[rifted] = cell_material

@@ -1031,6 +1031,7 @@ def deform_columns(
     newly_below_rift_onset = np.zeros(n, dtype=bool)
     craton = fields["craton_crust_m"]
     if np.any(divergent):
+        material_before_stretch = continental_material.copy()
         new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
         # "fault" mode: scale the thinning delta by fault proximity (all-ones
         # otherwise). Melt (decompression volcanism) still fires on the geometric
@@ -1042,7 +1043,21 @@ def deform_columns(
         old_hc = hc[divergent]
         hc[divergent] = old_hc + infl * (1.0 - resisted) * (new_hc - old_hc)
         hm[divergent] = hm[divergent] + infl * (1.0 - resisted) * (new_hm - hm[divergent])
-        melting[divergent] = np.where(resisted > 0.0, melt & (hc[divergent] < rheology.RIFT_CRITICAL_THICKNESS_M), melt)
+        # Stretching spreads the same material over the enlarged footprint.  Keep its
+        # thickness fraction locked to Hc before adding any genuinely juvenile rift magma.
+        continental_material[divergent] *= np.divide(
+            hc[divergent], prior_hc[divergent],
+            out=np.zeros_like(hc[divergent]), where=prior_hc[divergent] > 0.0,
+        )
+        stretch_loss = np.maximum(material_before_stretch - continental_material, 0.0)
+        continental_ledger.record(
+            world, "numerical_unplaced_m3", float(np.dot(stretch_loss, budget_area_m2))
+        )
+        melting[divergent] = np.where(
+            resisted > 0.0,
+            melt & (hc[divergent] < rheology.RIFT_CRITICAL_THICKNESS_M),
+            melt,
+        )
 
         # Rift magmatic underplating (see rheology.apply_rift_magmatic_thickening): a
         # partial Hc offset for nodes that thinned past RIFT_VOLCANISM_ONSET_HC_M but
@@ -1109,6 +1124,13 @@ def deform_columns(
     continental_ledger.record(
         world, "juvenile_additions_m3", float(np.dot(juvenile, budget_area_m2))
     )
+    became_oceanic = melting & ~continental_after_melting
+    if np.any(became_oceanic):
+        removed = np.where(became_oceanic, continental_material, 0.0)
+        continental_material[became_oceanic] = 0.0
+        continental_ledger.record(
+            world, "numerical_unplaced_m3", float(np.dot(removed, budget_area_m2))
+        )
     phase_budget.record(world, plate, "decompression_melting", checkpoint_hc, checkpoint_hm, codes0, hc, hm, crust_type_code, **budget_areas)
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, is_volcano, volcano_remaining, newly_below_rift_onset)
 
@@ -1576,6 +1598,8 @@ class LithospherePlate(PlateWithLines):
                     # real creation time explicitly, same as _seed_and_erupt_new_nodes does for
                     # its own two callers.
                     fill = np.full(n_new, world.elapsed_years, dtype=values.dtype)
+                elif name == "continental_material_m":
+                    fill = np.full(n_new, hc_seed if reason_seed == ELEV_CHANGE_SUBDUCTION_ARC else 0.0)
                 else:
                     fill = np.zeros(n_new, dtype=values.dtype)
                 out[name] = fill
@@ -1618,6 +1642,8 @@ class LithospherePlate(PlateWithLines):
             if self._count_open_prefix(candidate, line.phi, neighbours) == 0:
                 return
             prior_elevation = float(elevation[index])
+            prior_hc = float(persistent_fields["crustal_thickness_m"][index])
+            prior_material = float(persistent_fields["continental_material_m"][index])
             new_hc, new_hm, melt = rheology.apply_stretch_thinning(
                 persistent_fields["crustal_thickness_m"][index, None],
                 persistent_fields["mantle_lithosphere_thickness_m"][index, None],
@@ -1626,6 +1652,13 @@ class LithospherePlate(PlateWithLines):
             )
             persistent_fields["crustal_thickness_m"][index] = new_hc[0]
             persistent_fields["mantle_lithosphere_thickness_m"][index] = new_hm[0]
+            persistent_fields["continental_material_m"][index] *= new_hc[0] / prior_hc if prior_hc > 0.0 else 0.0
+            continental_ledger.record(
+                world, "numerical_unplaced_m3",
+                max(prior_material - float(persistent_fields["continental_material_m"][index]), 0.0)
+                * lithosphere.node_area_m2(line_spacing_rad(world.node_density)),
+            )
+            hc_before_melting = float(new_hc[0])
             _erupt_melted_nodes(
                 world,
                 self.plate_id,
@@ -1638,6 +1671,21 @@ class LithospherePlate(PlateWithLines):
                 melt,
                 np.array([prior_elevation]),
             )
+            node_continental = effective_is_continental_from_codes(
+                persistent_fields["crust_type_code"][index, None], self.crust_type == "continental"
+            )[0]
+            if melt[0] and node_continental:
+                juvenile = max(float(new_hc[0]) - hc_before_melting, 0.0)
+                persistent_fields["continental_material_m"][index] += juvenile
+                continental_ledger.record(
+                    world, "juvenile_additions_m3", juvenile * lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+                )
+            elif melt[0]:
+                removed = float(persistent_fields["continental_material_m"][index])
+                persistent_fields["continental_material_m"][index] = 0.0
+                continental_ledger.record(
+                    world, "numerical_unplaced_m3", removed * lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+                )
             theta[index] = candidate[0]
             node_rho_c = lithosphere.node_crust_density(persistent_fields["crust_type_code"][index, None], self.crust_type)
             elevation[index] = lithosphere.isostatic_elevation(
@@ -1666,6 +1714,10 @@ class LithospherePlate(PlateWithLines):
                         elevation = np.append(elevation, np.full(n_new, elev_seed))
                         for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
                             persistent_fields[name] = np.append(persistent_fields[name], fill)
+                        continental_ledger.record(
+                            world, "juvenile_additions_m3",
+                            n_new * hc_seed * lithosphere.node_area_m2(line_spacing_rad(world.node_density)),
+                        )
             else:
                 _stretch_end(-1, 1.0, dist[-1], direction[-1])
 
@@ -1683,6 +1735,10 @@ class LithospherePlate(PlateWithLines):
                         elevation = np.insert(elevation, 0, np.full(n_new, elev_seed))
                         for name, fill in _fill_new_nodes(n_new, hc_seed, hm_seed, reason_seed).items():
                             persistent_fields[name] = np.insert(persistent_fields[name], 0, fill)
+                        continental_ledger.record(
+                            world, "juvenile_additions_m3",
+                            n_new * hc_seed * lithosphere.node_area_m2(line_spacing_rad(world.node_density)),
+                        )
             else:
                 _stretch_end(0, -1.0, dist[0], direction[0])
 
@@ -1961,11 +2017,42 @@ class LithospherePlate(PlateWithLines):
                     crust_type_row = row.crust_type_code.copy()
                     is_volcano_row = row.is_volcano.copy()
                     volcano_remaining_row = row.volcano_active_years_remaining.copy()
+                    material_row = row.continental_material_m.copy() * np.divide(
+                        new_hc_row, row.crustal_thickness_m,
+                        out=np.zeros_like(new_hc_row), where=row.crustal_thickness_m > 0.0,
+                    )
+                    stretch_loss = np.maximum(row.continental_material_m - material_row, 0.0)
+                    if hasattr(world, "plates"):
+                        continental_ledger.record(
+                            world, "numerical_unplaced_m3",
+                            float(np.sum(stretch_loss)) * lithosphere.node_area_m2(spacing_rad),
+                        )
+                    hc_before_melting = new_hc_row.copy()
                     _erupt_melted_nodes(
                         world, self.plate_id, line_index_by_id.get(id(original_row), -1),
                         new_hc_row, new_hm_row, crust_type_row, is_volcano_row, volcano_remaining_row,
                         melting_row, row.elevation,
                     )
+                    continental_row = effective_is_continental_from_codes(
+                        crust_type_row, self.crust_type == "continental"
+                    )
+                    juvenile = np.where(
+                        melting_row & continental_row,
+                        np.maximum(new_hc_row - hc_before_melting, 0.0), 0.0,
+                    )
+                    material_row += juvenile
+                    if hasattr(world, "plates"):
+                        continental_ledger.record(
+                            world, "juvenile_additions_m3",
+                            float(np.sum(juvenile)) * lithosphere.node_area_m2(spacing_rad),
+                        )
+                    removed = np.where(melting_row & ~continental_row, material_row, 0.0)
+                    material_row[melting_row & ~continental_row] = 0.0
+                    if hasattr(world, "plates"):
+                        continental_ledger.record(
+                            world, "numerical_unplaced_m3",
+                            float(np.sum(removed)) * lithosphere.node_area_m2(spacing_rad),
+                        )
                     new_elevation_row = lithosphere.isostatic_elevation(
                         new_hc_row, new_hm_row, lithosphere.node_crust_density(crust_type_row, self.crust_type)
                     )
@@ -1975,6 +2062,7 @@ class LithospherePlate(PlateWithLines):
                         crust_type_code=crust_type_row,
                         is_volcano=is_volcano_row,
                         volcano_active_years_remaining=volcano_remaining_row,
+                        continental_material_m=material_row,
                         elevation=new_elevation_row,
                     )
 
@@ -2277,6 +2365,7 @@ class LithospherePlate(PlateWithLines):
         field_names = ("elevation",) + ElevationLine.OPTIONAL_FIELDS
         own_fields = {name: self.collect(name) for name in field_names}
         total_hc_before = float(np.sum(own_fields["crustal_thickness_m"]))
+        total_material_before = float(np.sum(own_fields["continental_material_m"]))
         if total_hc_before <= 0.0:
             return
 
@@ -2320,6 +2409,21 @@ class LithospherePlate(PlateWithLines):
         final_hc = np.maximum(capped_hc, lithosphere.MIN_CRUSTAL_THICKNESS_M)
         hm_ratio = final_hc / pre_scale_hc
 
+        # Provenance is its own extensive field: conserve its plate-wide total independently
+        # of the Hc rescale, then distribute any cap overflow into remaining Hc headroom.
+        pre_material = np.concatenate([fields["continental_material_m"] for _, _, fields in raw_rows])
+        if total_material_before > 0.0 and float(np.sum(pre_material)) > 0.0:
+            final_material = pre_material * (total_material_before / float(np.sum(pre_material)))
+            final_material = np.minimum(final_material, final_hc)
+            residual = total_material_before - float(np.sum(final_material))
+            if residual > 0.0:
+                headroom = np.maximum(final_hc - final_material, 0.0)
+                total_headroom = float(np.sum(headroom))
+                if total_headroom > 0.0:
+                    final_material += residual * (headroom / total_headroom)
+        else:
+            final_material = np.zeros_like(final_hc)
+
         new_lines = []
         offset = 0
         for phi, theta_owned, fields in raw_rows:
@@ -2327,10 +2431,7 @@ class LithospherePlate(PlateWithLines):
             overrides = dict(fields)
             elevation = overrides.pop("elevation")
             overrides["crustal_thickness_m"] = final_hc[offset : offset + n]
-            overrides["continental_material_m"] = np.minimum(
-                overrides["continental_material_m"] * hm_ratio[offset : offset + n],
-                final_hc[offset : offset + n],
-            )
+            overrides["continental_material_m"] = final_material[offset : offset + n]
             overrides["mantle_lithosphere_thickness_m"] = np.clip(
                 overrides["mantle_lithosphere_thickness_m"] * hm_ratio[offset : offset + n],
                 lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M,

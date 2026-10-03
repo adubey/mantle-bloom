@@ -62,9 +62,9 @@ def empty_ledger() -> ContinentalMaterialLedger:
 
 def ensure_initialized(world: "World") -> None:
     """Backfill old saves and seed untracked line or quad surfaces."""
+    ledger_is_new = not hasattr(world, "continental_material_ledger") or not world.continental_material_ledger
     if not hasattr(world, "continental_material_ledger"):
-        world.continental_material_ledger = empty_ledger()
-    ledger_is_new = not world.continental_material_ledger
+        world.continental_material_ledger = {}
     for key in LEDGER_KEYS:
         world.continental_material_ledger.setdefault(key, 0.0)
 
@@ -148,9 +148,7 @@ def inventories(world: "World") -> dict[str, float]:
     surface = 0.0
     sediment_on_ocean = 0.0
     for plate in world.plates:
-        material = np.clip(
-            plate.collect("continental_material_m"), 0.0, plate.collect("crustal_thickness_m")
-        )
+        material = plate.collect("continental_material_m")
         areas = plate.accounting_areas_m2(spacing)
         surface += float(np.sum(material * areas))
         host_continental = effective_is_continental_from_codes(
@@ -187,6 +185,11 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
 def assert_closed(world: "World", *, relative_tolerance: float = 1e-10) -> None:
     """Fail a diagnostic check when instrumented sources, live material and sinks differ."""
     ensure_initialized(world)
+    for plate in world.plates:
+        material = plate.collect("continental_material_m")
+        hc = plate.collect("crustal_thickness_m")
+        if np.any(~np.isfinite(material)) or np.any(material < -1e-9) or np.any(material > hc + 1e-9):
+            raise AssertionError("continental material must be finite and remain within [0, Hc]")
     ledger = world.continental_material_ledger
     error = balance_error_m3(world)
     tolerance = max(1.0, relative_tolerance * max(ledger["initial_continental_m3"], 1.0))
