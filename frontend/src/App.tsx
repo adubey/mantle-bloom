@@ -14,6 +14,7 @@ import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
 import LakeInspector from "./LakeInspector";
 import PlatesAndFaults from "./PlatesAndFaults";
+import type { PlatesLayers } from "./PlatesAndFaults";
 import EventConsole from "./EventConsole";
 import CornerNotchLogPanel from "./CornerNotchLogPanel";
 import StatsModal from "./StatsModal";
@@ -26,7 +27,7 @@ import Legend from "./Legend";
 import MeasureOverlay from "./MeasureOverlay";
 import ProgressBar from "./ProgressBar";
 import { PREMADE_WORLDS } from "./premadeWorlds";
-import { faultKindForLegendLabel, highlightTargetFor } from "./legendData";
+import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, highlightTargetFor } from "./legendData";
 import { centerOfRotation, IDENTITY_ROTATION, rotationForCenter } from "./rotation";
 import type { Mat3 } from "./rotation";
 import { getCookie, setCookie } from "./cookies";
@@ -414,6 +415,13 @@ export default function App() {
   const [earthquakesData, setEarthquakesData] = useState<EarthquakeSummary[]>([]);
   const [volcanoesData, setVolcanoesData] = useState<VolcanoSummary[]>([]);
   const [showQuakesVolcanoes, setShowQuakesVolcanoes] = useState(true);
+  // The view's other Overlays checkboxes. Faults are vectors already in faultsData; cratons
+  // and ocean/lake are server-rendered transparent layers (`platesLayers`, fetched below
+  // only while one is wanted), drawn under the vectors.
+  const [showFaults, setShowFaults] = useState(true);
+  const [showCratons, setShowCratons] = useState(false);
+  const [showWater, setShowWater] = useState(false);
+  const [platesLayers, setPlatesLayers] = useState<PlatesLayers | null>(null);
   // The Elevation & Biome / Elevation / Biome views' click-to-inspect popup (see
   // MapCanvas.tsx's onProbe and the popup JSX below). `displayX`/`displayY` place it over the
   // map in CSS pixels; `sample` fills in once GET /world/sample_at resolves. Cleared on any
@@ -698,6 +706,37 @@ export default function App() {
       setError(String(e));
     }
   }, []);
+
+  // The "Plates & Faults" raster layers: rendered for the committed projection + rotation, and
+  // refetched whenever those or the world (`summary` changes on every generate/step/load) do.
+  // The legend's Cratons row isolates cratons, so it wants the craton layer even when unchecked.
+  const highlightCratons = mapView === "platesAndFaults" && highlightedBiome === CRATON_LEGEND_LABEL;
+  const wantCratonLayer = showCratons || highlightCratons;
+  // A new world invalidates the layers outright (they'd otherwise stay drawable, since the
+  // canvas only checks projection + rotation) -- nothing is drawn until its own render lands.
+  useEffect(() => {
+    setPlatesLayers(null);
+  }, [summary]);
+  useEffect(() => {
+    if (mapView !== "platesAndFaults" || !summary || (!wantCratonLayer && !showWater)) return;
+    let cancelled = false;
+    Promise.all([
+      wantCratonLayer ? renderWorld(projection, "cratonLayer", RENDER_WIDTH, RENDER_HEIGHT, rotation) : null,
+      showWater ? renderWorld(projection, "waterLayer", RENDER_WIDTH, RENDER_HEIGHT, rotation) : null,
+    ])
+      .then(([craton, water]) => {
+        if (cancelled) return;
+        setPlatesLayers({
+          projection, rotation, craton: craton?.image_base64 ?? null, water: water?.image_base64 ?? null,
+        });
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mapView, summary, projection, rotation, wantCratonLayer, showWater]);
 
   // Best-effort, same spirit as recordStats -- a failed fetch here shouldn't surface as the
   // main error line or block generate/step, since this is a debug-only side panel.
@@ -1498,6 +1537,18 @@ export default function App() {
                 />
                 Earthquakes &amp; volcanoes
               </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={showFaults} onChange={(e) => setShowFaults(e.target.checked)} />
+                Faults
+              </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={showCratons} onChange={(e) => setShowCratons(e.target.checked)} />
+                Cratons
+              </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={showWater} onChange={(e) => setShowWater(e.target.checked)} />
+                Ocean / lake (translucent)
+              </label>
             </fieldset>
           )}
 
@@ -1656,6 +1707,11 @@ export default function App() {
               volcanoes={volcanoesData}
               coastlineSegments={coastlineSegments}
               showQuakesVolcanoes={showQuakesVolcanoes}
+              showFaults={showFaults}
+              showCratons={showCratons}
+              showWater={showWater}
+              layers={platesLayers}
+              highlightCratons={highlightCratons}
               highlightedFaultKind={highlightedBiome ? faultKindForLegendLabel(highlightedBiome) : null}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}
@@ -1925,7 +1981,7 @@ export default function App() {
                 : mapView === "lakeInspector"
                   ? "Click a lake or any point on land to inspect its basin. Tab / Shift+Tab cycles lakes. Press and hold, then drag to rotate."
                   : mapView === "platesAndFaults"
-                  ? "Click a plate to select it (its fault strands emphasise, and its Euler pole + a speed-scaled motion arc appear). Tab / Shift+Tab cycles plates. Click a fault type in the legend to isolate that regime. Toggle the earthquake & volcano overlay in the sidebar. Press and hold, then drag to rotate."
+                  ? "Click a plate to select it (its fault strands emphasise, and its Euler pole + a speed-scaled motion arc appear). Tab / Shift+Tab cycles plates. Click a fault type or Cratons in the legend to isolate it. Toggle faults, cratons, ocean/lake and the earthquake & volcano overlay in the sidebar. Press and hold, then drag to rotate."
                   : mapView === "combined" || mapView === "elevation" || mapView === "biome"
                     ? "Click any point for its elevation, biome, precipitation, temperature, and plate. Press and hold, then drag to rotate."
                     : mapView === "platesDetail"

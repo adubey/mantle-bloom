@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import type {
   EarthquakeSummary, FaultKind, FaultSummary, FaultSystemSummary, PlateSummary, Projection, Segment, VolcanoSummary,
@@ -12,6 +12,16 @@ import {
 import { useRotationDrag } from "./rotationDrag";
 import { plateColor } from "./platePalette";
 
+// The server-rendered transparent layers (backend render_image.LAYER_VIEWS) drawn under the
+// vectors, tagged with the projection + rotation they were rendered for -- a raster can't be
+// re-projected per drag frame, so it's only drawn while the view matches (see draw()).
+export interface PlatesLayers {
+  projection: Projection;
+  rotation: Mat3;
+  craton: string | null; // base64 PNG, null when not requested
+  water: string | null;
+}
+
 interface Props {
   plates: PlateSummary[];
   faults: FaultSummary[];
@@ -23,6 +33,15 @@ interface Props {
   // overlays together (both are seismic/magmatic activity markers, distinct from the standing
   // plate + fault geometry the view always shows).
   showQuakesVolcanoes: boolean;
+  // The sidebar's other Overlays checkboxes: fault systems + strands, the craton layer, and
+  // the translucent ocean/lake layer (drawn over the cratons so they show through).
+  showFaults: boolean;
+  showCratons: boolean;
+  showWater: boolean;
+  layers: PlatesLayers | null;
+  // Set when the legend's Cratons row is clicked: the craton layer is drawn (whatever
+  // showCratons says) and everything else is dimmed, like a fault-type isolation.
+  highlightCratons: boolean;
   // Set when a fault-type row in the legend is clicked (see Legend.tsx / legendData.ts's
   // faultKindForLegendLabel): that kind's strands + systems are haloed and everything else on
   // the map is dimmed right back, so you can see where that regime sits. null = no isolation.
@@ -81,6 +100,31 @@ const VOLCANO_RGB = "255, 120, 40";
 const COASTLINE_RGB = "150, 170, 200";
 const COASTLINE_HALO_RGB = "15, 15, 15";
 
+// Layer opacities: cratons near-solid, water translucent enough to see the cratons beneath.
+const CRATON_LAYER_ALPHA = 0.85;
+const WATER_LAYER_ALPHA = 0.4;
+
+const sameRotation = (a: Mat3, b: Mat3) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+// Decodes a base64 PNG into an <img>, null until *this* base64 has loaded -- the decoded image
+// is kept with its source, so a new layer never shows the previous one while it decodes.
+function useDecodedImage(base64: string | null | undefined): HTMLImageElement | null {
+  const [decoded, setDecoded] = useState<{ src: string; image: HTMLImageElement } | null>(null);
+  useEffect(() => {
+    if (!base64) return;
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) setDecoded({ src: base64, image: img });
+    };
+    img.src = `data:image/png;base64,${base64}`;
+    return () => {
+      cancelled = true;
+    };
+  }, [base64]);
+  return base64 && decoded?.src === base64 ? decoded.image : null;
+}
+
 // Unit-vector centroid of a loop of world points -- the anchor for the motion arc and the
 // longitude-unwrap centre for projecting the outline.
 const loopCentroid = (pts: Vec3[]): Vec3 => {
@@ -103,12 +147,14 @@ const loopCentroid = (pts: Vec3[]): Vec3 => {
 // same "raw JSON, the client renders it" approach as the other inspectors.
 export default function PlatesAndFaults({
   plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
-  highlightedFaultKind,
+  showFaults, showCratons, showWater, layers, highlightCratons, highlightedFaultKind,
   width, height, displayWidth, displayHeight, projection, rotation,
   selectedPlateId, onSelectPlate, onRotationPreview, onRotationCommitted, interactionDisabled,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const cratonImage = useDecodedImage(layers?.craton);
+  const waterImage = useDecodedImage(layers?.water);
 
   const selectedSystemIds = new Set<number>(
     faults
@@ -181,13 +227,14 @@ export default function PlatesAndFaults({
     const transform = getRenderTransform(projection, width, height);
     const pixelScale = width / 1100;
     const lineWidth = Math.max(1, pixelScale);
-    // A fault type is isolated from the legend -- dim the standing geometry (coastline, plate
-    // outlines, other regimes, the activity overlay) so that regime reads clearly on top.
+    // A fault type (or the cratons) is isolated from the legend -- dim the standing geometry
+    // (coastline, plate outlines, other regimes, the activity overlay) so it reads clearly.
     const hk = highlightedFaultKind;
-    const contextDim = hk ? 0.32 : 1;
+    const isolating = hk != null || highlightCratons;
+    const contextDim = isolating ? 0.32 : 1;
     // The transient activity overlay isn't a fault regime -- push it further back than the
     // standing geometry while a regime is isolated so it doesn't compete.
-    const activityDim = hk ? 0.12 : 1;
+    const activityDim = isolating ? 0.12 : 1;
     // A pixel jump longer than this between consecutive projected points is the antimeridian
     // seam wrapping, not a real edge -- skip it (see strokeRobustLoop's own break logic).
     const seamJump = Math.max(40 * pixelScale, width * 0.25);
@@ -239,6 +286,20 @@ export default function PlatesAndFaults({
       return edges;
     };
 
+    // 0. Raster layers -- cratons, then translucent water over them. Only while the view still
+    // matches what they were rendered for (not mid-drag, not before a refetch lands).
+    if (layers && layers.projection === projection && sameRotation(layers.rotation, previewRotation)) {
+      if (cratonImage && (showCratons || highlightCratons)) {
+        ctx.globalAlpha = highlightCratons ? 1 : CRATON_LAYER_ALPHA * contextDim;
+        ctx.drawImage(cratonImage, 0, 0, width, height);
+      }
+      if (waterImage && showWater) {
+        ctx.globalAlpha = WATER_LAYER_ALPHA * (highlightCratons ? 0.5 : contextDim);
+        ctx.drawImage(waterImage, 0, 0, width, height);
+      }
+      ctx.globalAlpha = 1;
+    }
+
     // 1. Coastline for orientation (halo then a lighter line on top).
     strokeEdges(coastlineSegments, `rgba(${COASTLINE_HALO_RGB}, ${0.9 * activityDim})`, lineWidth * 2.6);
     strokeEdges(coastlineSegments, `rgba(${COASTLINE_RGB}, ${contextDim})`, lineWidth * 1.1);
@@ -261,10 +322,12 @@ export default function PlatesAndFaults({
     if (selectedPlate) drawPlate(selectedPlate, true);
 
     // 3. Fault-system master lineaments -- broad translucent belt + thin dashed centerline.
-    for (const sys of faultSystems) {
+    // Faults are hidden when their overlay is off, unless a regime is isolated from the legend.
+    const drawFaults = showFaults || hk != null;
+    for (const sys of drawFaults ? faultSystems : []) {
       const rgb = KIND_RGB[sys.kind];
       const sel = selectedSystemIds.has(sys.system_id);
-      const muted = hk != null && sys.kind !== hk;
+      const muted = (hk != null && sys.kind !== hk) || highlightCratons;
       const beltBase = sys.active ? (sel ? 0.26 : 0.12) : 0.06;
       const beltAlpha = muted ? beltBase * 0.1 : hk != null ? Math.min(0.4, beltBase * 1.7) : beltBase;
       strokePolyline(sys.trace, `rgba(${rgb}, ${beltAlpha})`, lineWidth * (sel ? 24 : 16));
@@ -278,7 +341,7 @@ export default function PlatesAndFaults({
     // 4. Fault strands -- scars (recessive) first, then active, then the isolated regime on top.
     const drawFault = (fault: FaultSummary) => {
       const onSelectedPlate = fault.plate_id === selectedPlateId;
-      const muted = hk != null && fault.kind !== hk;
+      const muted = (hk != null && fault.kind !== hk) || highlightCratons;
       const isolated = hk != null && fault.kind === hk;
       // Boundary faults (faults.generate_boundary_faults) line every plate edge and are
       // numerous -- draw them a touch lighter/thinner and skip the midpoint dot so they read
@@ -305,11 +368,11 @@ export default function PlatesAndFaults({
       ctx.stroke();
     };
     const faultRank = (f: FaultSummary) => (hk != null && f.kind === hk ? 2 : 0) + (f.active ? 1 : 0);
-    for (const f of [...faults].sort((a, b) => faultRank(a) - faultRank(b))) drawFault(f);
+    if (drawFaults) for (const f of [...faults].sort((a, b) => faultRank(a) - faultRank(b))) drawFault(f);
 
     // 4b. Selected plate's Euler pole + a motion arc whose ground length tracks plate speed.
     if (selectedPlate && selectedPlate.euler_pole && selectedPlate.outline.length > 0) {
-      const ma = hk ? 0.3 : 0.95;
+      const ma = isolating ? 0.3 : 0.95;
       const poleAxis = latLonToXyz(
         (selectedPlate.euler_pole.lat_deg * Math.PI) / 180,
         (selectedPlate.euler_pole.lon_deg * Math.PI) / 180,
@@ -420,6 +483,7 @@ export default function PlatesAndFaults({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     plates, faults, faultSystems, earthquakes, volcanoes, coastlineSegments, showQuakesVolcanoes,
+    showFaults, showCratons, showWater, layers, cratonImage, waterImage, highlightCratons,
     highlightedFaultKind, selectedPlateId, projection, rotation, width, height,
   ]);
 

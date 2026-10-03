@@ -39,6 +39,10 @@ export type MapView =
   | "hm"
   | "craton";
 
+// Transparent RGBA layers /world/render also serves (backend render_image.LAYER_VIEWS) -- not
+// maps of their own: the client-drawn "Plates & Faults" view composites them under its vectors.
+export type OverlayLayer = "cratonLayer" | "waterLayer";
+
 export interface WorldEvent {
   elapsed_years: number;
   message: string;
@@ -717,7 +721,7 @@ export async function stepWorld(years: number, onProgress?: (fraction: number) =
 // query string entirely when false/omitted so every other call's URL is unchanged.
 export function renderWorld(
   projection: Projection,
-  view: MapView,
+  view: MapView | OverlayLayer,
   width: number,
   height: number,
   rotation?: number[],
