@@ -55,4 +55,8 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     "crustal_thickness_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "mantle_lithosphere_thickness_m": _field(float, 0.0, RemapClass.EXTENSIVE),
     "crust_type_code": _field(np.int8, 0, RemapClass.CATEGORICAL),
+    # Thickness-equivalent continental-derived material.  Extensive so quad refinement,
+    # coarsening, merge and partition conserve its area-integrated volume independently of
+    # the receiving cell's binary crust type.
+    "continental_material_m": _field(float, 0.0, RemapClass.EXTENSIVE),
 }

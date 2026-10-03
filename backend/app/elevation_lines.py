@@ -423,6 +423,9 @@ class ElevationLine:
         # whole-sphere gap-fill (gaps.py) -- see effective_is_continental/majority_crust_type
         # below and docs/simulation-model.md.
         "crust_type_code",
+        # Thickness-equivalent continental-derived material, independent of the receiving
+        # column's binary crust type.  This is a conserved tracer, not another type flag.
+        "continental_material_m",
     )
 
     def __init__(
@@ -450,6 +453,7 @@ class ElevationLine:
         crustal_thickness_m: np.ndarray | None = None,
         mantle_lithosphere_thickness_m: np.ndarray | None = None,
         crust_type_code: np.ndarray | None = None,
+        continental_material_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -482,6 +486,9 @@ class ElevationLine:
         )
         self._crust_type_code = (
             crust_type_code if crust_type_code is not None else np.zeros_like(theta, dtype=np.int8)
+        )
+        self._continental_material_m = (
+            continental_material_m if continental_material_m is not None else np.zeros_like(theta)
         )
 
     def __getattr__(self, name: str) -> np.ndarray:
@@ -600,6 +607,10 @@ class ElevationLine:
     @property
     def crust_type_code(self) -> np.ndarray:
         return self._crust_type_code
+
+    @property
+    def continental_material_m(self) -> np.ndarray:
+        return self._continental_material_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)

@@ -150,6 +150,11 @@ def _backfill_added_fields(world: World) -> None:
         world.stats_history = []
     if not hasattr(world, "phase_budget"):
         world.phase_budget = {}
+    if not hasattr(world, "continental_material_ledger"):
+        world.continental_material_ledger = {}
+    from . import continental_ledger
+
+    continental_ledger.ensure_initialized(world)
 
 
 def _backfill_water_budget(world: World) -> None:

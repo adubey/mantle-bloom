@@ -63,6 +63,9 @@ class World:
     # and step sizes vary. A plain-int default is a class attribute, so worlds pickled
     # before this field existed still load (reading 0) -- see persistence.py.
     steps_taken: int = 0
+    # Persistent source/sink accounts for the per-node continental-material tracer.  Live
+    # inventories are derived from nodes; see continental_ledger.py.
+    continental_material_ledger: dict[str, float] = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
@@ -769,6 +772,11 @@ def finish_generation(world: World, log_message: str) -> None:
     # step_world re-solves sea_level_m against this fixed budget every step (see eustasy.py).
     eustasy.initialize_water_budget(world)
 
+    # Seed the persistent continental-material tracer before the baseline stats/save state.
+    # Later terrain work records transfers through continental_ledger's public API.
+    from . import continental_ledger
+
+    continental_ledger.ensure_initialized(world)
     world.log_event(log_message)
     world.record_stats(force=True)  # the elapsed_years=0 baseline entry -- see World.stats_history
 
