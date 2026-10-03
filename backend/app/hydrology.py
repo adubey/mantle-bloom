@@ -199,23 +199,30 @@ LAKE_BREACH_EROSION_COEFFICIENT = 4000.0
 # the lake evaporation rate above -- so they don't blow up the same way at mantle-bloom's
 # larger typical step size -- a bigger step just melts/grows proportionally more, same
 # character as every other elevation delta in this codebase (boundary.py's uplift/trench
-# rates are also flat per-Myr rates applied directly). No seasons modeled here either
-# (consistent with mantle-bloom's climate.py generally).
+# rates are also flat per-Myr rates applied directly).
 #
-# Two separate cold thresholds, not one. FREEZE_POINT_C (below) is the real phase-change
-# point: precipitation below it falls as snow/ice rather than rain, and standing lake water or
-# flowing river water below it freezes solid *this same step* (see compute_hydrology). But a
-# real place that's merely below freezing on average doesn't necessarily hold a permanent ice
-# sheet -- GLACIER_ACCUMULATION_TEMP_C stays a separate, colder reference (unchanged from
-# before this distinction existed) used only by the melt-rate formula below: it's where
-# melt_factor bottoms out at 0, i.e. the temperature below which ice simply never melts. A
-# tundra lake at, say, -3C now genuinely freezes solid (FREEZE_POINT_C), but the ice it forms
-# still melts back at a real (if reduced) rate every step -- confirmed directly this stays a
-# self-correcting near-zero *net* accumulation there, not a spreading permanent glacier --
-# while only the much colder GLACIER_ACCUMULATION_TEMP_C-and-below zone keeps enough of its own
-# snowfall through every step's melt term to actually build one.
+# A step spans far more than a year, so seasons aren't stepped through, but their effect on
+# melt is imputed. Each node's annual cycle is taken as a sinusoid of its annual-mean
+# temperature with a half-amplitude synthesized from latitude, continentality, relief and
+# axial tilt (`biomes.seasonal_temp_amplitude`, passed in by erosion.py), and surface melt
+# scales with that cycle's mean positive degrees above GLACIER_MELT_THRESHOLD_C
+# (`seasonal_positive_degrees`) -- a positive-degree-day melt model. A valley whose annual
+# mean is -8C but whose summer peaks at +7C melts every summer; a maritime cell at the same
+# -8C with a 4C swing never thaws. With zero amplitude (a tilt-0 world, or a caller that
+# passes none) this reduces to melt above an annual mean of 0C.
+#
+# Melt still competes with accumulation every step, so the ice margin settles where a
+# summer's positive degrees just balance that node's snowfall -- for typical precipitation,
+# where the warmest-month mean is a degree or two above freezing (about an annual mean of
+# -12.5C under a 15C half-amplitude), close to where real glacier equilibrium lines sit.
+#
+# FREEZE_POINT_C is the real phase-change point: precipitation below it falls as snow/ice
+# rather than rain, and standing lake water or flowing river water below it freezes solid
+# *this same step* (see compute_hydrology). That stays annual-mean-gated; a node between the
+# two (annual mean below 0C, summer above it) freezes its lake/river for the step but the ice
+# it forms still melts back every step, so it doesn't build a permanent glacier.
 FREEZE_POINT_C = 0.0
-GLACIER_ACCUMULATION_TEMP_C = -10.0
+GLACIER_MELT_THRESHOLD_C = 0.0
 GLACIER_ACCUMULATION_RATE = 0.02
 GLACIER_MELT_RATE_M_PER_MYR = 400.0
 GLACIER_MELT_REFERENCE_DEGREES_C = 20.0
@@ -225,8 +232,8 @@ GLACIER_MAX_FLOW_FRACTION = 0.5
 GLACIER_VISIBLE_DEPTH_M = 10.0
 
 # Basal melt / sublimation loss that applies to *all* ice every step, independent of the
-# surface-temperature-driven melt_factor above (which bottoms out at zero below
-# GLACIER_ACCUMULATION_TEMP_C -- see that constant's comment). Without an always-on sink,
+# surface-temperature-driven melt_factor above (which is zero wherever the seasonal cycle
+# never reaches GLACIER_MELT_THRESHOLD_C -- see seasonal_positive_degrees). Without an always-on sink,
 # ice that flows into a closed interior basin with no route to the ocean -- and ice from a
 # whole catchment converging on one flat-floored downstream node it can't drain off of
 # (glacier flow scales with bed slope, ~0 there) -- accumulates without bound (the no-cap
@@ -751,8 +758,8 @@ def _compute_flow_direction(
     know which lakes just found a real outlet, for the breach-erosion term (see its own
     docstring in `compute_hydrology`).
 
-    A frozen node (`is_frozen`, gated at the real freezing point `FREEZE_POINT_C` -- colder
-    than, and unrelated to, the permanent-glacier `GLACIER_ACCUMULATION_TEMP_C`) can't pass
+    A frozen node (`is_frozen`, gated at the real freezing point `FREEZE_POINT_C` on the
+    annual mean -- unrelated to the seasonal glacier-melt cycle) can't pass
     liquid water downstream at all this step -- rivers freeze over. This override is applied
     *after* the should_spill redirect above, unconditionally, rather than folded into the same
     is_sink/should_spill check that redirect uses: an ordinary, otherwise-unobstructed
@@ -924,6 +931,25 @@ def route_downstream(
     return np.array(through_flux), np.array(deposited)
 
 
+def seasonal_positive_degrees(mean_c: np.ndarray, amplitude_c: np.ndarray, threshold_c: float = GLACIER_MELT_THRESHOLD_C) -> np.ndarray:
+    """Year-averaged degrees above `threshold_c` of a sinusoidal annual cycle with annual mean
+    `mean_c` and half-amplitude `amplitude_c`: mean of max(mean + amplitude * cos(t) -
+    threshold, 0) over t. Closed form, with d = mean - threshold and phi = arccos(-d /
+    amplitude) the half-width of the above-threshold part of the cycle:
+    (d * phi + sqrt(amplitude^2 - d^2)) / pi when |d| < amplitude, d when the whole year is
+    above, 0 when it's all below. Zero amplitude reduces to max(d, 0). Smooth and increasing
+    in both `mean_c` and `amplitude_c` (for d < amplitude)."""
+    d = np.asarray(mean_c, dtype=float) - threshold_c
+    amp = np.clip(np.asarray(amplitude_c, dtype=float), 0.0, None)
+    d, amp = np.broadcast_arrays(d, amp)
+    out = np.clip(d, 0.0, None)
+    partial = np.abs(d) < amp
+    if np.any(partial):
+        dp, ap = d[partial], amp[partial]
+        out[partial] = (dp * np.arccos(-dp / ap) + np.sqrt(ap * ap - dp * dp)) / np.pi
+    return out
+
+
 def _update_glaciers(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
@@ -936,6 +962,7 @@ def _update_glaciers(
     temperature: np.ndarray,
     years: float,
     allow_ocean_ice: np.ndarray | None = None,
+    seasonal_amplitude: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Grows/melts/flows glacier ice, generalized from grid 8-neighbor D8 routing to this
     module's flow_target graph. Returns (new_glacier_depth, melt): melt feeds back into this
@@ -945,7 +972,13 @@ def _update_glaciers(
 
     `allow_ocean_ice` is the per-node mask of freezing polar ocean nodes that an active ice
     age lets ice accumulate over (see SEA_ICE_FORMATION_TEMP_C); `None` (the default) means
-    all-False, reproducing the old unconditional calve-at-the-coast behaviour exactly."""
+    all-False, reproducing the old unconditional calve-at-the-coast behaviour exactly.
+
+    `seasonal_amplitude` is each node's imputed seasonal half-amplitude (C) around its annual
+    mean `temperature`; surface melt scales with that cycle's positive degrees (see
+    GLACIER_MELT_THRESHOLD_C's comment). `None` means no seasons: melt above a 0C mean only."""
+    if seasonal_amplitude is None:
+        seasonal_amplitude = np.zeros_like(temperature, dtype=float)
     if allow_ocean_ice is None:
         allow_ocean_ice = np.zeros_like(is_ocean, dtype=bool)
     years_myr = years / 1_000_000.0
@@ -953,7 +986,7 @@ def _update_glaciers(
     depth_before_flow = prev_glacier_depth + frozen_from_lake + accumulation
 
     melt_factor = np.clip(
-        (temperature - GLACIER_ACCUMULATION_TEMP_C) / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
+        seasonal_positive_degrees(temperature, seasonal_amplitude) / GLACIER_MELT_REFERENCE_DEGREES_C, 0.0, GLACIER_MELT_MAX_FACTOR
     )
     melt = np.minimum(GLACIER_MELT_RATE_M_PER_MYR * melt_factor * years_myr, depth_before_flow)
     # Depth-squared basal melt/sublimation, applied even where melt_factor is zero -- see
@@ -993,6 +1026,7 @@ def compute_hydrology(
     temperature_at_nodes: np.ndarray,
     years: float,
     node_cloud: tuple[np.ndarray, list[Plate]] | None = None,
+    seasonal_amplitude_at_nodes: np.ndarray | None = None,
 ) -> HydrologyFields:
     """Runs the full flow-routing pipeline against the world's current node cloud and this
     step's climate: (lake freeze, if cold enough) -> depression hierarchy + spill routing (see
@@ -1022,10 +1056,11 @@ def compute_hydrology(
     a lake that just froze is correctly treated as a genuine sink again this step (see
     `lakes.step_lakes`'s own docstring for the freeze handling this feeds into), and a frozen
     river node is correctly forced to a sink in `_compute_flow_direction` (see its own
-    docstring for why that override can't reuse the ordinary should_spill escape valve). This
-    is deliberately a *different*, warmer threshold than GLACIER_ACCUMULATION_TEMP_C (see that
-    constant's own comment) -- freezing solid for a step doesn't imply building a *permanent*
-    glacier.
+    docstring for why that override can't reuse the ordinary should_spill escape valve).
+    Freezing solid for a step doesn't imply building a *permanent* glacier: glacier surface
+    melt runs on the node's imputed seasonal cycle (`seasonal_amplitude_at_nodes`, see
+    GLACIER_MELT_THRESHOLD_C's comment), so ice formed where only the annual mean is below
+    freezing still melts back in summer. `None` means no seasonal swing anywhere.
 
     **`should_spill` (below) and a lake's own `is_spilling` (`lakes._resolve`, set inside
     `lakes.resolve_lakes` near the end of this function) are now the same test -- "is this
@@ -1131,7 +1166,8 @@ def compute_hydrology(
 
     slope_to_ice_target = _slope_to_flow_target(points, elevation, ice_flow_target)
     new_glacier_depth, melt = _update_glaciers(
-        elevation, is_ocean, ice_flow_target, slope_to_ice_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years, allow_ocean_ice=allow_ocean_ice
+        elevation, is_ocean, ice_flow_target, slope_to_ice_target, prev_glacier_depth, frozen_precip, frozen_from_lake, is_frozen, temperature_at_nodes, years, allow_ocean_ice=allow_ocean_ice,
+        seasonal_amplitude=seasonal_amplitude_at_nodes,
     )
 
     # A spilling lake's own surface area feeds extra erosive "water" in at its sink, on top of

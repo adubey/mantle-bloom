@@ -552,3 +552,21 @@ def test_flatten_is_a_volume_conserving_downhill_exchange():
     received = np.zeros(n)
     np.add.at(received, neighbor_idx.ravel(), (send * area[:, None]).ravel())
     assert np.isclose(received.sum(), (send.sum(axis=1) * area).sum())
+
+
+def test_apply_erosion_passes_seasonal_amplitude_to_hydrology(monkeypatch):
+    from app import hydrology
+
+    world = generate_world(seed=20, num_plates=8)
+    seen = {}
+    real = hydrology.compute_hydrology
+
+    def spy(*args, **kwargs):
+        seen["amplitude"] = kwargs.get("seasonal_amplitude_at_nodes")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(hydrology, "compute_hydrology", spy)
+    erosion.apply_erosion(world, years=1_000_000)
+    amplitude = seen["amplitude"]
+    assert amplitude is not None and np.all(np.isfinite(amplitude)) and np.all(amplitude >= 0.0)
+    assert amplitude.max() > 10.0  # a real high-latitude / interior swing somewhere

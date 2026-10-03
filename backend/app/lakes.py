@@ -543,9 +543,8 @@ def _water_balance(
     raised. Clamped so one step's fill can't lift the bed past the basin rim (`max_depth`).
 
     A lake with any member currently below freezing (`hydrology.FREEZE_POINT_C` -- the real 0C
-    freezing point, colder than nothing else in this codebase; deliberately *not* the much
-    colder `hydrology.GLACIER_ACCUMULATION_TEMP_C` reserved for permanent glacier accumulation,
-    see that constant's own comment) freezes solid this step -- forced to its own dry floor
+    freezing point, on the annual mean; glacier melt instead runs on an imputed seasonal cycle,
+    see `hydrology.GLACIER_MELT_THRESHOLD_C`) freezes solid this step -- forced to its own dry floor
     (`out_lake_depth` reads 0 everywhere for it, matching the old system's all-or-nothing
     freeze simplification generalized from one node to a lake's whole connected surface) -- but
     still deposits silt. This step's inflow is still routed here at the mild 0C threshold (a

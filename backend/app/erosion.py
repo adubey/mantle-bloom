@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import climate, continental_ledger, faults, geometry, hydrology, lithosphere
+from . import biomes, climate, continental_ledger, faults, geometry, hydrology, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -1250,7 +1250,17 @@ def apply_erosion(
     slope, drop_to_lowest_neighbor_m = compute_slope(points, elevation, world=world)
     dt_myr = years / 1_000_000.0
 
-    hydro = hydrology.compute_hydrology(world, precipitation_mm, temperature, years, node_cloud=node_cloud)
+    # Seasons aren't stepped through, but glacier melt imputes them: each node's seasonal
+    # half-amplitude around its annual mean (see hydrology.GLACIER_MELT_THRESHOLD_C).
+    seasonal_amplitude = biomes.seasonal_temp_amplitude(
+        fields.lat_deg[row],
+        biomes.grid_continentality(fields.is_ocean)[row, col],
+        world.axial_tilt_deg,
+        relief_m=elevation - world.sea_level_m,
+    )
+    hydro = hydrology.compute_hydrology(
+        world, precipitation_mm, temperature, years, node_cloud=node_cloud, seasonal_amplitude_at_nodes=seasonal_amplitude
+    )
     world.hydrology_cache = hydro
     world.hydrology_cache_step = world.steps_taken
     # From here on use hydrology's connectivity-aware mask: an interior pit that dipped below

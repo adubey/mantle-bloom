@@ -325,3 +325,16 @@ def test_smooth_biome_field_keeps_a_small_solid_region():
     smoothed = _smooth(d)
     assert len(np.unique(smoothed[2:5, 2:5])) == 1
     assert smoothed[2, 2] != smoothed[0, 0]
+
+
+def test_seasonal_temp_amplitude_relief_boost():
+    lat = np.array([10.0, 45.0, 45.0, 45.0, 45.0])
+    cont = np.array([0.0, 0.5, 0.5, 0.5, 0.5])
+    base = biomes.seasonal_temp_amplitude(lat, cont, 23.5)
+    relief = np.array([3000.0, -500.0, 0.0, 2000.0, 20_000.0])
+    boosted = biomes.seasonal_temp_amplitude(lat, cont, 23.5, relief_m=relief)
+    assert boosted[1] == base[1] and boosted[2] == base[2]  # at/below sea level: no boost
+    assert boosted[3] > base[3] and boosted[0] > base[0]
+    assert boosted[4] - base[4] == pytest.approx(biomes._SEASON_RELIEF_MAX_C)  # saturates
+    # No tilt, no seasons -- relief included.
+    assert np.all(biomes.seasonal_temp_amplitude(lat, cont, 0.0, relief_m=relief) == 0.0)
