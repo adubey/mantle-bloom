@@ -287,7 +287,7 @@ def test_conversion_reads_saves_whose_line_classes_are_retired(shape_world):
 
 @pytest.fixture(scope="module")
 def stepped_line_world() -> World:
-    world = generate_world(seed=7, num_plates=8, node_density=DENSITY)
+    world = generate_world(seed=7, num_plates=8, node_density=DENSITY, surface="lines")
     for _ in range(4):
         step_world(world, 1_000_000)
     return world
@@ -353,7 +353,7 @@ def test_overlap_nodes_bring_every_field_onto_the_cell_they_stack_on():
     # remap class (quad_merge's suture rules), not keep only the receiving cell's value.
     from app import lithosphere
 
-    world = generate_world(seed=7, num_plates=8, node_density=DENSITY)
+    world = generate_world(seed=7, num_plates=8, node_density=DENSITY, surface="lines")
     for plate in world.plates:
         count = plate.node_count()
         mine = plate is world.plates[0]

@@ -152,9 +152,10 @@ def _backfill_added_fields(world: World) -> None:
         world.phase_budget = {}
     if not hasattr(world, "continental_material_ledger"):
         world.continental_material_ledger = {}
-    from . import continental_ledger
+        from . import continental_ledger
 
-    continental_ledger.ensure_initialized(world)
+        # Infer the tracer and opening balance only for saves that predate the ledger.
+        continental_ledger.ensure_initialized(world)
 
 
 def _backfill_water_budget(world: World) -> None:
