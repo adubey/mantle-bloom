@@ -283,14 +283,22 @@ def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_ma
     )
 
 
+def _with_ice_deflection(bare_elevation: np.ndarray, deflection: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """`bare_elevation` plus the stored ice-load `deflection`, clipped to the elevation
+    bounds, and the deflection that clip actually let through -- stored back so a later
+    meltback rebounds by exactly what was applied (see erosion._apply_ice_load)."""
+    z = np.clip(bare_elevation + deflection, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    return z, z - bare_elevation
+
+
 def sync_line_elevation(line, rho_c: float):
     """Recompute `line.elevation` from its current Hc/Hm columns -- call after any mutation
     to `crustal_thickness_m`/`mantle_lithosphere_thickness_m`. Returns a new `ElevationLine`
     (this module never mutates a line's arrays in place). Keeps the line's current ice-load
     deflection (see `ice_load_deflection`), so a resync doesn't silently unload the ice."""
-    z = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-    z = np.clip(z + line.ice_load_deflection_m, MIN_ELEVATION_M, MAX_ELEVATION_M)
-    return line.replace(elevation=z)
+    bare = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
+    z, deflection = _with_ice_deflection(bare, line.ice_load_deflection_m)
+    return line.replace(elevation=z, ice_load_deflection_m=deflection)
 
 
 def sync_plate_elevation(plate: "LithospherePlate") -> None:
@@ -303,8 +311,8 @@ def sync_plate_elevation(plate: "LithospherePlate") -> None:
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     rho_c = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
-    z = isostatic_elevation(hc, hm, rho_c) + plate.collect("ice_load_deflection_m")
-    plate.set_fields_on_plate(elevation=np.clip(z, MIN_ELEVATION_M, MAX_ELEVATION_M))
+    z, deflection = _with_ice_deflection(isostatic_elevation(hc, hm, rho_c), plate.collect("ice_load_deflection_m"))
+    plate.set_fields_on_plate(elevation=z, ice_load_deflection_m=deflection)
 
 
 def clamp_column_caps(plate: "Plate") -> bool:

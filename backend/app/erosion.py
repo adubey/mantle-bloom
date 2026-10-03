@@ -763,6 +763,31 @@ def _flatten(
     return send
 
 
+def _apply_ice_load(
+    elevation: np.ndarray,
+    prior_deflection: np.ndarray,
+    glacier_depth: np.ndarray,
+    hc: np.ndarray,
+    hm: np.ndarray,
+    rho_c: np.ndarray,
+    sea_level_m: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Move `elevation` (which carries `prior_deflection` of ice depression) to the
+    depression this step's `glacier_depth` implies. Returns (new elevation, new deflection,
+    grounded load in kg/m^2) -- issue #275 phase 3.
+
+    The load is evaluated on the bed with the old deflection taken out, so the depression
+    can't feed back into its own flotation test. Elevation moves by only the change in
+    deflection, so melting the ice rebounds the surface by exactly what loading took. The
+    stored deflection is what the elevation bounds actually let through, not the raw Airy
+    response: storing more than was applied would rebuild too high an unloaded bed on melt."""
+    unloaded_bed = elevation - prior_deflection
+    load = lithosphere.grounded_ice_load_kg_m2(glacier_depth, unloaded_bed, sea_level_m)
+    target = lithosphere.ice_load_deflection(hc, hm, rho_c, load)
+    new_elevation = np.clip(unloaded_bed + target, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    return new_elevation, new_elevation - unloaded_bed, load
+
+
 def _route_wind_deposit(
     points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, source_amount: np.ndarray, world: "World | None" = None
 ) -> np.ndarray:
@@ -1606,17 +1631,12 @@ def apply_erosion(
     applied_delta = np.where(has_column, isostatic_delta, geomorphic_delta)
     eroded_elevation = np.clip(elevation + applied_delta, MIN_ELEVATION_M, MAX_ELEVATION_M)
 
-    # Ice loading (issue #275, phase 3). `ice_load_deflection_m` is how far the ice load has
-    # pushed `elevation` down; it's recomputed from this step's final ice and elevation moves
-    # by only the change, so melting the ice rebounds the surface by exactly what loading it
-    # took. The load is evaluated on the bed with the old deflection removed, so the
-    # depression it makes can't feed back into its own flotation test.
+    # Ice loading (issue #275, phase 3) -- see `_apply_ice_load`.
     prior_deflection = collect_all_ice_load_deflection(plates_in_order)
     prior_load = lithosphere.grounded_ice_load_kg_m2(prior_glacier_depth, elevation - prior_deflection, world.sea_level_m)
-    unloaded_bed = eroded_elevation - prior_deflection
-    ice_load = lithosphere.grounded_ice_load_kg_m2(hydro.glacier_depth, unloaded_bed, world.sea_level_m)
-    new_deflection = lithosphere.ice_load_deflection(new_crustal_thickness, prior_hm, rho_c_per_node, ice_load)
-    new_elevation = np.clip(unloaded_bed + new_deflection, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    new_elevation, new_deflection, ice_load = _apply_ice_load(
+        eroded_elevation, prior_deflection, hydro.glacier_depth, new_crustal_thickness, prior_hm, rho_c_per_node, world.sea_level_m
+    )
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.

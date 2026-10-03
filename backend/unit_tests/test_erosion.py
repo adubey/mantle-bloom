@@ -634,3 +634,28 @@ def test_ice_load_depresses_the_surface_and_meltback_rebounds_it_exactly(monkeyp
     assert np.allclose(unloading.ice_deflection_change_m, -applied)
     assert np.allclose(after_melt - after_load, unloading.net_elevation_change_m - applied, atol=1e-6)
     assert np.all(unloading.ice_load_change_pa[loaded] < 0.0)
+
+
+def test_ice_load_near_the_elevation_floor_stores_only_the_applied_deflection():
+    # A legacy (no-Hc) column 100 m above MIN_ELEVATION_M under 2 km of grounded ice: the raw
+    # dry-land response (~-564 m) would push it through the floor. The stored deflection must
+    # be the 100 m the clip actually let through, so meltback lands back on the original bed
+    # rather than ~464 m above it.
+    from app import lithosphere
+
+    bed = np.array([MIN_ELEVATION_M + 100.0, 500.0])
+    zeros = np.zeros(2)
+    rho = np.full(2, lithosphere.RHO_CONTINENTAL_CRUST)
+    sea_level = MIN_ELEVATION_M - 1000.0  # both columns dry, so the full ice column loads
+    ice = np.full(2, 2000.0)
+
+    loaded, deflection, load = erosion._apply_ice_load(bed, zeros, ice, zeros, zeros, rho, sea_level)
+    raw = -ice * lithosphere.RHO_ICE / lithosphere.RHO_ASTHENOSPHERE
+    assert np.all(load > 0.0)
+    assert loaded[0] == MIN_ELEVATION_M and np.isclose(deflection[0], -100.0)
+    assert np.isclose(deflection[1], raw[1]) and np.isclose(loaded[1], 500.0 + raw[1])
+    assert np.allclose(loaded - bed, deflection)
+
+    melted, after, _ = erosion._apply_ice_load(loaded, deflection, zeros, zeros, zeros, rho, sea_level)
+    assert np.all(after == 0.0)
+    assert np.allclose(melted, bed)

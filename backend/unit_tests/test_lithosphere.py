@@ -188,3 +188,21 @@ def test_sync_line_elevation_keeps_the_ice_load_deflection():
     synced = lithosphere.sync_line_elevation(line, lithosphere.RHO_CONTINENTAL_CRUST)
     bare = lithosphere.isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, lithosphere.RHO_CONTINENTAL_CRUST)
     assert np.allclose(synced.elevation, bare + np.array([0.0, -300.0]))
+
+
+def test_sync_line_elevation_stores_only_the_deflection_the_floor_lets_through():
+    from app.elevation_lines import MIN_ELEVATION_M, ElevationLine
+
+    hm = np.full(1, lithosphere.REFERENCE_HM_CONTINENTAL_M)
+    hc = lithosphere.crustal_thickness_for_elevation(np.array([MIN_ELEVATION_M + 50.0]), hm, lithosphere.RHO_CONTINENTAL_CRUST)
+    line = ElevationLine(
+        phi=0.0,
+        theta=np.array([0.1]),
+        elevation=np.zeros(1),
+        crustal_thickness_m=hc,
+        mantle_lithosphere_thickness_m=hm,
+        ice_load_deflection_m=np.array([-300.0]),
+    )
+    synced = lithosphere.sync_line_elevation(line, lithosphere.RHO_CONTINENTAL_CRUST)
+    assert synced.elevation[0] == MIN_ELEVATION_M
+    assert np.isclose(synced.ice_load_deflection_m[0], -50.0)
