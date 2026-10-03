@@ -1,0 +1,29 @@
+{
+  "command": "bin/debug/surface_parity.py run --preset issue147 --seed 804913535 --surface lines --from-world /Users/adubey/Downloads/mantle-bloom-seed804913535-352400000y.mbworld --step-years 100000 --checkpoints-myr 0.5,1 --audit-every 1 --render --out ../analysis/issue249-final/repro-lines",
+  "git_commit": "2bba51d62eaeca3dce72d5c2a3b3514db36d9cba",
+  "git_dirty": false,
+  "python": "3.14.6",
+  "numpy": "2.5.2",
+  "scipy": "1.18.0",
+  "machine": "arm64",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "config": {
+    "name": "issue147",
+    "node_density": 4.0,
+    "step_years": 100000.0,
+    "checkpoints_myr": [
+      0.5,
+      1.0
+    ],
+    "audit_every": 1,
+    "samples": 200000,
+    "climate_density": 4.0,
+    "fluid_density": 2.0,
+    "load_checks": true,
+    "render": true,
+    "render_size": [
+      720,
+      400
+    ]
+  }
+}

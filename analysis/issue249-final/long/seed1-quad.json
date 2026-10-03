@@ -1,0 +1,5607 @@
+{
+  "audits": 41,
+  "checkpoints": [
+    {
+      "atmosphere": {
+        "npix": 12288,
+        "nside": 32,
+        "temperature_len": 12288
+      },
+      "climate_hydrology": {
+        "biome_land_fraction": {
+          "Cold Desert": 0.322906,
+          "Cold Semi-Arid": 0.0592115,
+          "Cold Subtropical Highland": 0.00200014,
+          "Cold-Summer Mediterranean": 5.4058e-05,
+          "Extremely Cold Mediterranean Subarctic": 0.0,
+          "Extremely Cold Monsoon Subarctic": 0.0,
+          "Extremely Cold Subarctic": 0.00542381,
+          "Hot Desert": 0.13956,
+          "Hot Semi-Arid": 0.0255874,
+          "Hot-Summer Humid Continental": 0.0258217,
+          "Hot-Summer Mediterranean": 0.000198212,
+          "Humid Subtropical": 0.0142353,
+          "Humid Subtropical (Dry Winter)": 0.00529768,
+          "Ice Cap": 0.146407,
+          "Mediterranean Continental (Hot Summer)": 0.0,
+          "Mediterranean Continental (Warm Summer)": 0.0,
+          "Mediterranean Subarctic": 0.000594637,
+          "Monsoon Continental (Hot Summer)": 0.0,
+          "Monsoon Continental (Warm Summer)": 3.60386e-05,
+          "Monsoon Subarctic": 0.000666715,
+          "Oceanic": 0.0458772,
+          "Subarctic (Boreal)": 0.055031,
+          "Subpolar Oceanic": 0.000846908,
+          "Subtropical Highland": 0.00949618,
+          "Tropical Monsoon": 0.00174787,
+          "Tropical Rainforest": 0.0192086,
+          "Tropical Savanna": 0.0157669,
+          "Tropical Savanna (Dry Summer)": 0.0,
+          "Tundra": 0.0854296,
+          "Warm-Summer Humid Continental": 0.01683,
+          "Warm-Summer Mediterranean": 0.00176589
+        },
+        "stats": {
+          "air_temperature_mean_c": 4.48126,
+          "elevation_mean_m": 1860.68,
+          "elevation_std_m": 2000.79,
+          "hc_mean_m": 22820.8,
+          "hm_mean_m": 45449.9,
+          "land_fraction": 0.214105,
+          "land_temperature_mean_c": 4.23433,
+          "ocean_depth_mean_m": 4195.44,
+          "ocean_temperature_mean_c": 15.3649,
+          "precipitation_mean_mm": 987.01,
+          "sea_level_m": 0.0
+        }
+      },
+      "coverage": {
+        "multiply_covered": 0.006475,
+        "nodes_inside_other_plate": 0.00965294,
+        "territory_is_exact": true,
+        "uncovered": 0.005985,
+        "void": 0.0
+      },
+      "elapsed_myr": 0.0,
+      "index_parity": {
+        "cached_kdtree_mismatches": 0,
+        "healpix": {
+          "categories": {
+            "all": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.70944,
+                "p99": 6.92327
+              },
+              "distance_spacing": {
+                "p50": 0.531604,
+                "p95": 1.19477,
+                "p99": 1.51151
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 347.853,
+                "p99": 1225.65
+              },
+              "same_node": 0.551455,
+              "samples": 200000,
+              "wrong_land_sea": 0.00824,
+              "wrong_plate": 0.01188
+            },
+            "antimeridian": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.80034,
+                "p99": 6.91984
+              },
+              "distance_spacing": {
+                "p50": 0.556337,
+                "p95": 1.28311,
+                "p99": 1.67337
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 124.349,
+                "p99": 825.766
+              },
+              "same_node": 0.558056,
+              "samples": 3333,
+              "wrong_land_sea": 0.00480048,
+              "wrong_plate": 0.00840084
+            },
+            "coast": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.67702,
+                "p99": 6.73992
+              },
+              "distance_spacing": {
+                "p50": 0.53178,
+                "p95": 1.21197,
+                "p99": 1.52485
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 3453.93,
+                "p99": 4315.66
+              },
+              "same_node": 0.549863,
+              "samples": 12454,
+              "wrong_land_sea": 0.131604,
+              "wrong_plate": 0.0597398
+            },
+            "hole": {
+              "distance_ratio": {
+                "p50": null,
+                "p95": null,
+                "p99": null
+              },
+              "distance_spacing": {
+                "p50": null,
+                "p95": null,
+                "p99": null
+              },
+              "elevation_error_m": {
+                "p50": null,
+                "p95": null,
+                "p99": null
+              },
+              "same_node": null,
+              "samples": 0,
+              "wrong_land_sea": null,
+              "wrong_plate": null
+            },
+            "plate_boundary": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.72624,
+                "p99": 6.92317
+              },
+              "distance_spacing": {
+                "p50": 0.541411,
+                "p95": 1.25742,
+                "p99": 1.59428
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 2112.29,
+                "p99": 4286.34
+              },
+              "same_node": 0.539916,
+              "samples": 17562,
+              "wrong_land_sea": 0.0415101,
+              "wrong_plate": 0.134723
+            },
+            "pole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.987,
+                "p99": 7.30665
+              },
+              "distance_spacing": {
+                "p50": 0.573385,
+                "p95": 1.35289,
+                "p99": 1.73459
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 85.8636,
+                "p99": 116.726
+              },
+              "same_node": 0.525016,
+              "samples": 3038,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.0154707
+            }
+          },
+          "nside": 64
+        },
+        "nearest_distance_spacing": {
+          "p100": 1.01023,
+          "p50": 0.406627,
+          "p95": 0.61514,
+          "p99": 0.687914
+        },
+        "nodes": 31493
+      },
+      "line_topology": null,
+      "quad_lattice": {
+        "aspect_gt_4": 0.0,
+        "cells": 31493,
+        "degree_le_1": 0.000381037,
+        "folded": 0,
+        "hole_loops": 0,
+        "max_level": 0,
+        "one_cell_thin": 0.000381037,
+        "refined": 0.0,
+        "skew_gt_45": 0.0
+      },
+      "sample_cloud": {
+        "anisotropic": 0.000158765,
+        "anisotropic_row_alignment": 0.0845742,
+        "boundary": 0.0598546,
+        "extra_components": 0,
+        "isolated_nodes": 0,
+        "stacked": 0.0,
+        "thin": 0.000190519
+      },
+      "step": 0,
+      "totals": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00024,
+        "continental_area_fraction": 0.378825,
+        "continental_hc_volume_km3": 7651200000.0,
+        "continental_plates": 4,
+        "elevation": {
+          "p05": -4768.08,
+          "p50": -4353.44,
+          "p95": 2983.58
+        },
+        "hc_volume_km3": 11531300000.0,
+        "hm_volume_km3": 22886900000.0,
+        "land_elevation": {
+          "p05": 51.8332,
+          "p50": 1320.58,
+          "p95": 6492.04
+        },
+        "land_fraction": 0.27932,
+        "live_plates": 14,
+        "nodes": 31493,
+        "nominal_area_over_sphere": 0.964737,
+        "plates": 14,
+        "sea_level_m": 0.0
+      }
+    },
+    {
+      "atmosphere": {
+        "npix": 12288,
+        "nside": 32,
+        "temperature_len": 12288
+      },
+      "climate_hydrology": {
+        "biome_land_fraction": {
+          "Cold Desert": 0.269953,
+          "Cold Semi-Arid": 0.0536946,
+          "Cold Subtropical Highland": 0.00166237,
+          "Cold-Summer Mediterranean": 0.000182861,
+          "Extremely Cold Mediterranean Subarctic": 0.0,
+          "Extremely Cold Monsoon Subarctic": 0.0,
+          "Extremely Cold Subarctic": 0.0,
+          "Hot Desert": 0.168731,
+          "Hot Semi-Arid": 0.032117,
+          "Hot-Summer Humid Continental": 0.0411271,
+          "Hot-Summer Mediterranean": 0.000997423,
+          "Humid Subtropical": 0.0151442,
+          "Humid Subtropical (Dry Winter)": 0.0198653,
+          "Ice Cap": 0.142715,
+          "Mediterranean Continental (Hot Summer)": 0.0,
+          "Mediterranean Continental (Warm Summer)": 0.000332474,
+          "Mediterranean Subarctic": 0.00172887,
+          "Monsoon Continental (Hot Summer)": 3.32474e-05,
+          "Monsoon Continental (Warm Summer)": 0.00249356,
+          "Monsoon Subarctic": 1.66237e-05,
+          "Oceanic": 0.02969,
+          "Subarctic (Boreal)": 0.0480758,
+          "Subpolar Oceanic": 0.000731444,
+          "Subtropical Highland": 0.0103898,
+          "Tropical Monsoon": 0.0062339,
+          "Tropical Rainforest": 0.0501039,
+          "Tropical Savanna": 0.0165074,
+          "Tropical Savanna (Dry Summer)": 0.0,
+          "Tundra": 0.0612584,
+          "Warm-Summer Humid Continental": 0.014712,
+          "Warm-Summer Mediterranean": 0.00229407
+        },
+        "hydrology": {
+          "finite": true,
+          "glacier_fraction_of_land": 0.222524,
+          "lake_fraction_of_land": 0.0195901,
+          "land_sink_fraction": 0.222524,
+          "river_fraction_of_land": 0.114326
+        },
+        "stats": {
+          "air_temperature_mean_c": 6.52029,
+          "elevation_mean_m": 1734.33,
+          "elevation_std_m": 2190.22,
+          "hc_mean_m": 21918.6,
+          "hm_mean_m": 59532.9,
+          "land_fraction": 0.228503,
+          "land_temperature_mean_c": 6.27885,
+          "ocean_depth_mean_m": 4335.14,
+          "ocean_temperature_mean_c": 14.9809,
+          "precipitation_mean_mm": 1008.49,
+          "sea_level_m": -639.862
+        }
+      },
+      "coverage": {
+        "multiply_covered": 0.007395,
+        "nodes_inside_other_plate": 0.0042046,
+        "territory_is_exact": true,
+        "uncovered": 0.00697,
+        "void": 0.0
+      },
+      "elapsed_myr": 30.0,
+      "index_parity": {
+        "cached_kdtree_mismatches": 0,
+        "healpix": {
+          "categories": {
+            "all": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.71911,
+                "p99": 6.90607
+              },
+              "distance_spacing": {
+                "p50": 0.530728,
+                "p95": 1.20308,
+                "p99": 1.51555
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 684.21,
+                "p99": 1833.78
+              },
+              "same_node": 0.55056,
+              "samples": 200000,
+              "wrong_land_sea": 0.008355,
+              "wrong_plate": 0.01531
+            },
+            "antimeridian": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.90018,
+                "p99": 7.08504
+              },
+              "distance_spacing": {
+                "p50": 0.566768,
+                "p95": 1.28809,
+                "p99": 1.67406
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 695.003,
+                "p99": 1743.53
+              },
+              "same_node": 0.539454,
+              "samples": 3333,
+              "wrong_land_sea": 0.00570057,
+              "wrong_plate": 0.00870087
+            },
+            "coast": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.70094,
+                "p99": 6.97377
+              },
+              "distance_spacing": {
+                "p50": 0.527172,
+                "p95": 1.18635,
+                "p99": 1.49062
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 3127.56,
+                "p99": 6268.4
+              },
+              "same_node": 0.54878,
+              "samples": 12413,
+              "wrong_land_sea": 0.134134,
+              "wrong_plate": 0.0453557
+            },
+            "hole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.43469,
+                "p99": 7.90186
+              },
+              "distance_spacing": {
+                "p50": 0.568404,
+                "p95": 1.21878,
+                "p99": 1.4898
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1181.63,
+                "p99": 1728.18
+              },
+              "same_node": 0.52071,
+              "samples": 169,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.106509
+            },
+            "plate_boundary": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.65328,
+                "p99": 6.75803
+              },
+              "distance_spacing": {
+                "p50": 0.540783,
+                "p95": 1.24577,
+                "p99": 1.54196
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1682.01,
+                "p99": 5137.03
+              },
+              "same_node": 0.537316,
+              "samples": 21613,
+              "wrong_land_sea": 0.0252163,
+              "wrong_plate": 0.141258
+            },
+            "pole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.82556,
+                "p99": 6.99034
+              },
+              "distance_spacing": {
+                "p50": 0.569353,
+                "p95": 1.29921,
+                "p99": 1.65561
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 119.713,
+                "p99": 470.034
+              },
+              "same_node": 0.528308,
+              "samples": 3038,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.0187623
+            }
+          },
+          "nside": 64
+        },
+        "nearest_distance_spacing": {
+          "p100": 1.01127,
+          "p50": 0.405695,
+          "p95": 0.613457,
+          "p99": 0.68393
+        },
+        "nodes": 31632
+      },
+      "line_topology": null,
+      "quad_lattice": {
+        "aspect_gt_4": 0.0,
+        "cells": 31632,
+        "degree_le_1": 0.00638594,
+        "folded": 0,
+        "hole_loops": 1,
+        "max_level": 0,
+        "one_cell_thin": 0.00720789,
+        "refined": 0.0,
+        "skew_gt_45": 0.0
+      },
+      "sample_cloud": {
+        "anisotropic": 0.00189681,
+        "anisotropic_row_alignment": 0.0029595,
+        "boundary": 0.0670524,
+        "extra_components": 1,
+        "isolated_nodes": 0,
+        "stacked": 0.0,
+        "thin": 0.00366717
+      },
+      "step": 30,
+      "totals": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00032,
+        "continental_area_fraction": 0.386542,
+        "continental_hc_volume_km3": 7711040000.0,
+        "continental_plates": 4,
+        "elevation": {
+          "p05": -5473.24,
+          "p50": -4985.85,
+          "p95": 3329.71
+        },
+        "hc_volume_km3": 11105800000.0,
+        "hm_volume_km3": 30281400000.0,
+        "land_elevation": {
+          "p05": -308.668,
+          "p50": 1024.22,
+          "p95": 6663.68
+        },
+        "land_fraction": 0.31194,
+        "live_plates": 15,
+        "nodes": 31632,
+        "nominal_area_over_sphere": 0.968995,
+        "plates": 15,
+        "sea_level_m": -639.862
+      }
+    },
+    {
+      "atmosphere": {
+        "npix": 12288,
+        "nside": 32,
+        "temperature_len": 12288
+      },
+      "climate_hydrology": {
+        "biome_land_fraction": {
+          "Cold Desert": 0.29331,
+          "Cold Semi-Arid": 0.0511863,
+          "Cold Subtropical Highland": 0.000942184,
+          "Cold-Summer Mediterranean": 6.85225e-05,
+          "Extremely Cold Mediterranean Subarctic": 0.0,
+          "Extremely Cold Monsoon Subarctic": 0.0,
+          "Extremely Cold Subarctic": 0.0,
+          "Hot Desert": 0.153696,
+          "Hot Semi-Arid": 0.0241884,
+          "Hot-Summer Humid Continental": 0.025439,
+          "Hot-Summer Mediterranean": 0.00119914,
+          "Humid Subtropical": 0.00957602,
+          "Humid Subtropical (Dry Winter)": 0.00743469,
+          "Ice Cap": 0.16812,
+          "Mediterranean Continental (Hot Summer)": 0.0,
+          "Mediterranean Continental (Warm Summer)": 0.000359743,
+          "Mediterranean Subarctic": 0.00220985,
+          "Monsoon Continental (Hot Summer)": 5.13919e-05,
+          "Monsoon Continental (Warm Summer)": 0.000188437,
+          "Monsoon Subarctic": 0.000616702,
+          "Oceanic": 0.0181585,
+          "Subarctic (Boreal)": 0.0460471,
+          "Subpolar Oceanic": 0.00197002,
+          "Subtropical Highland": 0.0104497,
+          "Tropical Monsoon": 0.00717773,
+          "Tropical Rainforest": 0.0492677,
+          "Tropical Savanna": 0.0300128,
+          "Tropical Savanna (Dry Summer)": 0.0,
+          "Tundra": 0.0684197,
+          "Warm-Summer Humid Continental": 0.0148009,
+          "Warm-Summer Mediterranean": 0.00287794
+        },
+        "hydrology": {
+          "finite": true,
+          "glacier_fraction_of_land": 0.275503,
+          "lake_fraction_of_land": 0.00845797,
+          "land_sink_fraction": 0.270758,
+          "river_fraction_of_land": 0.131821
+        },
+        "stats": {
+          "air_temperature_mean_c": 5.8898,
+          "elevation_mean_m": 1867.13,
+          "elevation_std_m": 2295.03,
+          "hc_mean_m": 21691.7,
+          "hm_mean_m": 58900.8,
+          "land_fraction": 0.223866,
+          "land_temperature_mean_c": 5.54426,
+          "ocean_depth_mean_m": 4287.75,
+          "ocean_temperature_mean_c": 14.994,
+          "precipitation_mean_mm": 993.86,
+          "sea_level_m": -700.648
+        }
+      },
+      "coverage": {
+        "multiply_covered": 0.0081,
+        "nodes_inside_other_plate": 0.0045972,
+        "territory_is_exact": true,
+        "uncovered": 0.008125,
+        "void": 0.0
+      },
+      "elapsed_myr": 60.0,
+      "index_parity": {
+        "cached_kdtree_mismatches": 0,
+        "healpix": {
+          "categories": {
+            "all": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.76278,
+                "p99": 7.00467
+              },
+              "distance_spacing": {
+                "p50": 0.529359,
+                "p95": 1.20618,
+                "p99": 1.52202
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 820.223,
+                "p99": 2324.21
+              },
+              "same_node": 0.54923,
+              "samples": 200000,
+              "wrong_land_sea": 0.009695,
+              "wrong_plate": 0.017245
+            },
+            "antimeridian": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.89202,
+                "p99": 6.42639
+              },
+              "distance_spacing": {
+                "p50": 0.558392,
+                "p95": 1.31355,
+                "p99": 1.74115
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 906.421,
+                "p99": 2575.03
+              },
+              "same_node": 0.533753,
+              "samples": 3333,
+              "wrong_land_sea": 0.00840084,
+              "wrong_plate": 0.0177018
+            },
+            "coast": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.78037,
+                "p99": 7.27415
+              },
+              "distance_spacing": {
+                "p50": 0.525916,
+                "p95": 1.20535,
+                "p99": 1.52045
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 3285.56,
+                "p99": 6558.26
+              },
+              "same_node": 0.54853,
+              "samples": 14218,
+              "wrong_land_sea": 0.135673,
+              "wrong_plate": 0.0398087
+            },
+            "hole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.00635,
+                "p99": 5.57811
+              },
+              "distance_spacing": {
+                "p50": 0.535832,
+                "p95": 1.14576,
+                "p99": 1.41146
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 538.506,
+                "p99": 978.832
+              },
+              "same_node": 0.586806,
+              "samples": 288,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.09375
+            },
+            "plate_boundary": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.72402,
+                "p99": 6.72791
+              },
+              "distance_spacing": {
+                "p50": 0.538937,
+                "p95": 1.23371,
+                "p99": 1.55375
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1705.42,
+                "p99": 4941.96
+              },
+              "same_node": 0.53985,
+              "samples": 23940,
+              "wrong_land_sea": 0.0226399,
+              "wrong_plate": 0.143734
+            },
+            "pole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.99717,
+                "p99": 8.22872
+              },
+              "distance_spacing": {
+                "p50": 0.563893,
+                "p95": 1.28632,
+                "p99": 1.62957
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 508.972,
+                "p99": 1039.64
+              },
+              "same_node": 0.536866,
+              "samples": 3038,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.00625411
+            }
+          },
+          "nside": 64
+        },
+        "nearest_distance_spacing": {
+          "p100": 0.928522,
+          "p50": 0.403694,
+          "p95": 0.61128,
+          "p99": 0.681862
+        },
+        "nodes": 31976
+      },
+      "line_topology": null,
+      "quad_lattice": {
+        "aspect_gt_4": 0.0,
+        "cells": 31976,
+        "degree_le_1": 0.00688016,
+        "folded": 0,
+        "hole_loops": 2,
+        "max_level": 0,
+        "one_cell_thin": 0.00741181,
+        "refined": 0.0,
+        "skew_gt_45": 0.0
+      },
+      "sample_cloud": {
+        "anisotropic": 0.00197023,
+        "anisotropic_row_alignment": 0.223074,
+        "boundary": 0.0744934,
+        "extra_components": 0,
+        "isolated_nodes": 0,
+        "stacked": 0.0,
+        "thin": 0.00397173
+      },
+      "step": 60,
+      "totals": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00007,
+        "continental_area_fraction": 0.381511,
+        "continental_hc_volume_km3": 7773710000.0,
+        "continental_plates": 5,
+        "elevation": {
+          "p05": -5661.92,
+          "p50": -4980.98,
+          "p95": 4402.84
+        },
+        "hc_volume_km3": 11039800000.0,
+        "hm_volume_km3": 30077400000.0,
+        "land_elevation": {
+          "p05": -420.783,
+          "p50": 1164.64,
+          "p95": 6690.18
+        },
+        "land_fraction": 0.303906,
+        "live_plates": 17,
+        "nodes": 31976,
+        "nominal_area_over_sphere": 0.979533,
+        "plates": 17,
+        "sea_level_m": -700.648
+      }
+    },
+    {
+      "atmosphere": {
+        "npix": 12288,
+        "nside": 32,
+        "temperature_len": 12288
+      },
+      "climate_hydrology": {
+        "biome_land_fraction": {
+          "Cold Desert": 0.153556,
+          "Cold Semi-Arid": 0.0573304,
+          "Cold Subtropical Highland": 0.00127644,
+          "Cold-Summer Mediterranean": 7.29395e-05,
+          "Extremely Cold Mediterranean Subarctic": 0.0,
+          "Extremely Cold Monsoon Subarctic": 0.0,
+          "Extremely Cold Subarctic": 0.0,
+          "Hot Desert": 0.0897155,
+          "Hot Semi-Arid": 0.0334245,
+          "Hot-Summer Humid Continental": 0.0448578,
+          "Hot-Summer Mediterranean": 0.00275346,
+          "Humid Subtropical": 0.0371809,
+          "Humid Subtropical (Dry Winter)": 0.0340992,
+          "Ice Cap": 0.289661,
+          "Mediterranean Continental (Hot Summer)": 0.0,
+          "Mediterranean Continental (Warm Summer)": 0.000127644,
+          "Mediterranean Subarctic": 0.00176878,
+          "Monsoon Continental (Hot Summer)": 0.000364697,
+          "Monsoon Continental (Warm Summer)": 0.0043946,
+          "Monsoon Subarctic": 0.00381109,
+          "Oceanic": 0.0169037,
+          "Subarctic (Boreal)": 0.0360868,
+          "Subpolar Oceanic": 0.000984683,
+          "Subtropical Highland": 0.0175237,
+          "Tropical Monsoon": 0.0063275,
+          "Tropical Rainforest": 0.0295587,
+          "Tropical Savanna": 0.0335704,
+          "Tropical Savanna (Dry Summer)": 1.82349e-05,
+          "Tundra": 0.0686725,
+          "Warm-Summer Humid Continental": 0.0206236,
+          "Warm-Summer Mediterranean": 0.00552516
+        },
+        "hydrology": {
+          "finite": true,
+          "glacier_fraction_of_land": 0.389581,
+          "lake_fraction_of_land": 0.0228266,
+          "land_sink_fraction": 0.380625,
+          "river_fraction_of_land": 0.160769
+        },
+        "stats": {
+          "air_temperature_mean_c": 1.31995,
+          "elevation_mean_m": 2501.43,
+          "elevation_std_m": 2789.56,
+          "hc_mean_m": 21615.6,
+          "hm_mean_m": 56353.6,
+          "land_fraction": 0.207342,
+          "land_temperature_mean_c": 0.785086,
+          "ocean_depth_mean_m": 4169.75,
+          "ocean_temperature_mean_c": 15.1821,
+          "precipitation_mean_mm": 1045.9,
+          "sea_level_m": -811.282
+        }
+      },
+      "coverage": {
+        "multiply_covered": 0.01106,
+        "nodes_inside_other_plate": 0.00858041,
+        "territory_is_exact": true,
+        "uncovered": 0.00904,
+        "void": 0.0
+      },
+      "elapsed_myr": 120.0,
+      "index_parity": {
+        "cached_kdtree_mismatches": 0,
+        "healpix": {
+          "categories": {
+            "all": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.75246,
+                "p99": 6.9338
+              },
+              "distance_spacing": {
+                "p50": 0.522775,
+                "p95": 1.19,
+                "p99": 1.51647
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 970.138,
+                "p99": 2785.86
+              },
+              "same_node": 0.55035,
+              "samples": 200000,
+              "wrong_land_sea": 0.011305,
+              "wrong_plate": 0.020815
+            },
+            "antimeridian": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.84704,
+                "p99": 6.5066
+              },
+              "distance_spacing": {
+                "p50": 0.530334,
+                "p95": 1.26192,
+                "p99": 1.568
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1035.66,
+                "p99": 2482.65
+              },
+              "same_node": 0.548455,
+              "samples": 3333,
+              "wrong_land_sea": 0.00720072,
+              "wrong_plate": 0.0354035
+            },
+            "coast": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.7849,
+                "p99": 7.16506
+              },
+              "distance_spacing": {
+                "p50": 0.522375,
+                "p95": 1.18463,
+                "p99": 1.49888
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 3657.52,
+                "p99": 9803.97
+              },
+              "same_node": 0.546615,
+              "samples": 16454,
+              "wrong_land_sea": 0.136623,
+              "wrong_plate": 0.0272274
+            },
+            "hole": {
+              "distance_ratio": {
+                "p50": null,
+                "p95": null,
+                "p99": null
+              },
+              "distance_spacing": {
+                "p50": null,
+                "p95": null,
+                "p99": null
+              },
+              "elevation_error_m": {
+                "p50": null,
+                "p95": null,
+                "p99": null
+              },
+              "same_node": null,
+              "samples": 0,
+              "wrong_land_sea": null,
+              "wrong_plate": null
+            },
+            "plate_boundary": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.75732,
+                "p99": 7.08858
+              },
+              "distance_spacing": {
+                "p50": 0.534865,
+                "p95": 1.23213,
+                "p99": 1.55755
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1437.02,
+                "p99": 4319.26
+              },
+              "same_node": 0.537402,
+              "samples": 29330,
+              "wrong_land_sea": 0.0160927,
+              "wrong_plate": 0.14105
+            },
+            "pole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.9374,
+                "p99": 6.67027
+              },
+              "distance_spacing": {
+                "p50": 0.537278,
+                "p95": 1.2547,
+                "p99": 1.64329
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 630.077,
+                "p99": 1215.03
+              },
+              "same_node": 0.550362,
+              "samples": 3038,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.0233706
+            }
+          },
+          "nside": 64
+        },
+        "nearest_distance_spacing": {
+          "p100": 0.938356,
+          "p50": 0.398866,
+          "p95": 0.602837,
+          "p99": 0.672724
+        },
+        "nodes": 32749
+      },
+      "line_topology": null,
+      "quad_lattice": {
+        "aspect_gt_4": 0.0,
+        "cells": 32749,
+        "degree_le_1": 0.00763382,
+        "folded": 0,
+        "hole_loops": 0,
+        "max_level": 0,
+        "one_cell_thin": 0.00818346,
+        "refined": 0.0,
+        "skew_gt_45": 0.0
+      },
+      "sample_cloud": {
+        "anisotropic": 0.00244282,
+        "anisotropic_row_alignment": -0.0570851,
+        "boundary": 0.0881248,
+        "extra_components": 0,
+        "isolated_nodes": 0,
+        "stacked": 0.0,
+        "thin": 0.00332835
+      },
+      "step": 120,
+      "totals": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00183,
+        "continental_area_fraction": 0.344224,
+        "continental_hc_volume_km3": 7787550000.0,
+        "continental_plates": 8,
+        "elevation": {
+          "p05": -5783.03,
+          "p50": -4776.73,
+          "p95": 6335.8
+        },
+        "hc_volume_km3": 11162400000.0,
+        "hm_volume_km3": 29185500000.0,
+        "land_elevation": {
+          "p05": -544.985,
+          "p50": 1489.98,
+          "p95": 7193.18
+        },
+        "land_fraction": 0.281658,
+        "live_plates": 20,
+        "nodes": 32749,
+        "nominal_area_over_sphere": 1.00321,
+        "plates": 20,
+        "sea_level_m": -811.282
+      }
+    },
+    {
+      "atmosphere": {
+        "npix": 12288,
+        "nside": 32,
+        "temperature_len": 12288
+      },
+      "climate_hydrology": {
+        "biome_land_fraction": {
+          "Cold Desert": 0.102817,
+          "Cold Semi-Arid": 0.0466978,
+          "Cold Subtropical Highland": 0.00118917,
+          "Cold-Summer Mediterranean": 0.000182949,
+          "Extremely Cold Mediterranean Subarctic": 0.0,
+          "Extremely Cold Monsoon Subarctic": 0.0,
+          "Extremely Cold Subarctic": 0.0,
+          "Hot Desert": 0.0203531,
+          "Hot Semi-Arid": 0.022983,
+          "Hot-Summer Humid Continental": 0.0259788,
+          "Hot-Summer Mediterranean": 0.00114343,
+          "Humid Subtropical": 0.0354235,
+          "Humid Subtropical (Dry Winter)": 0.0538328,
+          "Ice Cap": 0.383027,
+          "Mediterranean Continental (Hot Summer)": 0.0,
+          "Mediterranean Continental (Warm Summer)": 0.000708928,
+          "Mediterranean Subarctic": 0.000640322,
+          "Monsoon Continental (Hot Summer)": 0.0,
+          "Monsoon Continental (Warm Summer)": 0.00276711,
+          "Monsoon Subarctic": 0.00242408,
+          "Oceanic": 0.0270765,
+          "Subarctic (Boreal)": 0.0243322,
+          "Subpolar Oceanic": 0.000914746,
+          "Subtropical Highland": 0.021588,
+          "Tropical Monsoon": 0.0121661,
+          "Tropical Rainforest": 0.051363,
+          "Tropical Savanna": 0.0354235,
+          "Tropical Savanna (Dry Summer)": 0.0,
+          "Tundra": 0.0916575,
+          "Warm-Summer Humid Continental": 0.0167398,
+          "Warm-Summer Mediterranean": 0.00345317
+        },
+        "hydrology": {
+          "finite": true,
+          "glacier_fraction_of_land": 0.516295,
+          "lake_fraction_of_land": 0.0142986,
+          "land_sink_fraction": 0.507149,
+          "river_fraction_of_land": 0.183048
+        },
+        "stats": {
+          "air_temperature_mean_c": -0.89583,
+          "elevation_mean_m": 3041.92,
+          "elevation_std_m": 2893.74,
+          "hc_mean_m": 20492.0,
+          "hm_mean_m": 46837.2,
+          "land_fraction": 0.167315,
+          "land_temperature_mean_c": -1.7375,
+          "ocean_depth_mean_m": 3898.79,
+          "ocean_temperature_mean_c": 15.4779,
+          "precipitation_mean_mm": 1093.88,
+          "sea_level_m": -1085.24
+        }
+      },
+      "coverage": {
+        "multiply_covered": 0.013525,
+        "nodes_inside_other_plate": 0.0108072,
+        "territory_is_exact": true,
+        "uncovered": 0.010755,
+        "void": 0.0
+      },
+      "elapsed_myr": 240.0,
+      "index_parity": {
+        "cached_kdtree_mismatches": 0,
+        "healpix": {
+          "categories": {
+            "all": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.72529,
+                "p99": 6.848
+              },
+              "distance_spacing": {
+                "p50": 0.519488,
+                "p95": 1.17283,
+                "p99": 1.50124
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1071.09,
+                "p99": 3111.15
+              },
+              "same_node": 0.55117,
+              "samples": 200000,
+              "wrong_land_sea": 0.01253,
+              "wrong_plate": 0.026605
+            },
+            "antimeridian": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.92979,
+                "p99": 8.00999
+              },
+              "distance_spacing": {
+                "p50": 0.519708,
+                "p95": 1.21746,
+                "p99": 1.66965
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1709.45,
+                "p99": 4381.84
+              },
+              "same_node": 0.536154,
+              "samples": 3333,
+              "wrong_land_sea": 0.0120012,
+              "wrong_plate": 0.0489049
+            },
+            "coast": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.63905,
+                "p99": 6.99486
+              },
+              "distance_spacing": {
+                "p50": 0.511829,
+                "p95": 1.14084,
+                "p99": 1.45732
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 4128.02,
+                "p99": 8858.0
+              },
+              "same_node": 0.556007,
+              "samples": 17703,
+              "wrong_land_sea": 0.141332,
+              "wrong_plate": 0.0445687
+            },
+            "hole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.62193,
+                "p99": 8.21135
+              },
+              "distance_spacing": {
+                "p50": 0.525028,
+                "p95": 1.14807,
+                "p99": 1.37728
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 666.1,
+                "p99": 1168.92
+              },
+              "same_node": 0.548822,
+              "samples": 297,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.138047
+            },
+            "plate_boundary": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.77801,
+                "p99": 6.88626
+              },
+              "distance_spacing": {
+                "p50": 0.529022,
+                "p95": 1.22337,
+                "p99": 1.57928
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1547.09,
+                "p99": 4635.7
+              },
+              "same_node": 0.540175,
+              "samples": 36042,
+              "wrong_land_sea": 0.0222518,
+              "wrong_plate": 0.14694
+            },
+            "pole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 4.02327,
+                "p99": 6.80075
+              },
+              "distance_spacing": {
+                "p50": 0.527747,
+                "p95": 1.25643,
+                "p99": 1.67589
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 885.821,
+                "p99": 1270.61
+              },
+              "same_node": 0.544108,
+              "samples": 3038,
+              "wrong_land_sea": 0.00493746,
+              "wrong_plate": 0.0414747
+            }
+          },
+          "nside": 64
+        },
+        "nearest_distance_spacing": {
+          "p100": 0.961861,
+          "p50": 0.397025,
+          "p95": 0.598334,
+          "p99": 0.671159
+        },
+        "nodes": 33126
+      },
+      "line_topology": null,
+      "quad_lattice": {
+        "aspect_gt_4": 0.0,
+        "cells": 33126,
+        "degree_le_1": 0.00959971,
+        "folded": 0,
+        "hole_loops": 2,
+        "max_level": 0,
+        "one_cell_thin": 0.0107167,
+        "refined": 0.0,
+        "skew_gt_45": 0.0
+      },
+      "sample_cloud": {
+        "anisotropic": 0.00498098,
+        "anisotropic_row_alignment": -0.0923454,
+        "boundary": 0.108706,
+        "extra_components": 1,
+        "isolated_nodes": 0,
+        "stacked": 0.0,
+        "thin": 0.00642999
+      },
+      "step": 240,
+      "totals": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.0031,
+        "continental_area_fraction": 0.240566,
+        "continental_hc_volume_km3": 6218810000.0,
+        "continental_plates": 8,
+        "elevation": {
+          "p05": -5884.39,
+          "p50": -4766.41,
+          "p95": 6337.29
+        },
+        "hc_volume_km3": 10453600000.0,
+        "hm_volume_km3": 24277700000.0,
+        "land_elevation": {
+          "p05": -752.655,
+          "p50": 2554.27,
+          "p95": 7141.13
+        },
+        "land_fraction": 0.230989,
+        "live_plates": 27,
+        "nodes": 33126,
+        "nominal_area_over_sphere": 1.01476,
+        "plates": 27,
+        "sea_level_m": -1085.24
+      }
+    },
+    {
+      "atmosphere": {
+        "npix": 12288,
+        "nside": 32,
+        "temperature_len": 12288
+      },
+      "climate_hydrology": {
+        "biome_land_fraction": {
+          "Cold Desert": 0.0858548,
+          "Cold Semi-Arid": 0.0600667,
+          "Cold Subtropical Highland": 0.00256559,
+          "Cold-Summer Mediterranean": 0.000343843,
+          "Extremely Cold Mediterranean Subarctic": 0.0,
+          "Extremely Cold Monsoon Subarctic": 0.0,
+          "Extremely Cold Subarctic": 0.0,
+          "Hot Desert": 0.0115848,
+          "Hot Semi-Arid": 0.0115848,
+          "Hot-Summer Humid Continental": 0.00856961,
+          "Hot-Summer Mediterranean": 0.00216885,
+          "Humid Subtropical": 0.0352835,
+          "Humid Subtropical (Dry Winter)": 0.0737146,
+          "Ice Cap": 0.409464,
+          "Mediterranean Continental (Hot Summer)": 0.0,
+          "Mediterranean Continental (Warm Summer)": 0.000661236,
+          "Mediterranean Subarctic": 0.00193081,
+          "Monsoon Continental (Hot Summer)": 0.000290944,
+          "Monsoon Continental (Warm Summer)": 0.00203661,
+          "Monsoon Subarctic": 0.00277719,
+          "Oceanic": 0.0321096,
+          "Subarctic (Boreal)": 0.0177211,
+          "Subpolar Oceanic": 0.000740584,
+          "Subtropical Highland": 0.0393303,
+          "Tropical Monsoon": 0.0145472,
+          "Tropical Rainforest": 0.0280364,
+          "Tropical Savanna": 0.0259469,
+          "Tropical Savanna (Dry Summer)": 0.0,
+          "Tundra": 0.0866748,
+          "Warm-Summer Humid Continental": 0.016716,
+          "Warm-Summer Mediterranean": 0.00452285
+        },
+        "hydrology": {
+          "finite": true,
+          "glacier_fraction_of_land": 0.531348,
+          "lake_fraction_of_land": 0.0597037,
+          "land_sink_fraction": 0.5101,
+          "river_fraction_of_land": 0.217866
+        },
+        "stats": {
+          "air_temperature_mean_c": -2.8073,
+          "elevation_mean_m": 3305.82,
+          "elevation_std_m": 3048.91,
+          "hc_mean_m": 19079.6,
+          "hm_mean_m": 43131.8,
+          "land_fraction": 0.140687,
+          "land_temperature_mean_c": -4.20526,
+          "ocean_depth_mean_m": 3661.04,
+          "ocean_temperature_mean_c": 15.7187,
+          "precipitation_mean_mm": 1137.79,
+          "sea_level_m": -1490.4
+        }
+      },
+      "coverage": {
+        "multiply_covered": 0.014185,
+        "nodes_inside_other_plate": 0.00809877,
+        "territory_is_exact": true,
+        "uncovered": 0.01249,
+        "void": 0.0
+      },
+      "elapsed_myr": 400.0,
+      "index_parity": {
+        "cached_kdtree_mismatches": 0,
+        "healpix": {
+          "categories": {
+            "all": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.77881,
+                "p99": 6.97541
+              },
+              "distance_spacing": {
+                "p50": 0.525192,
+                "p95": 1.2072,
+                "p99": 1.54663
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1147.82,
+                "p99": 3908.44
+              },
+              "same_node": 0.54571,
+              "samples": 200000,
+              "wrong_land_sea": 0.012935,
+              "wrong_plate": 0.029265
+            },
+            "antimeridian": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.99222,
+                "p99": 7.38532
+              },
+              "distance_spacing": {
+                "p50": 0.553875,
+                "p95": 1.29425,
+                "p99": 1.64654
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1054.79,
+                "p99": 2143.98
+              },
+              "same_node": 0.521452,
+              "samples": 3333,
+              "wrong_land_sea": 0.0132013,
+              "wrong_plate": 0.0345035
+            },
+            "coast": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.587,
+                "p99": 6.78503
+              },
+              "distance_spacing": {
+                "p50": 0.51993,
+                "p95": 1.16546,
+                "p99": 1.45995
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 5780.26,
+                "p99": 11508.1
+              },
+              "same_node": 0.547622,
+              "samples": 18752,
+              "wrong_land_sea": 0.137319,
+              "wrong_plate": 0.0609535
+            },
+            "hole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.87553,
+                "p99": 7.89985
+              },
+              "distance_spacing": {
+                "p50": 0.525036,
+                "p95": 1.13887,
+                "p99": 1.48322
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1041.33,
+                "p99": 1977.12
+              },
+              "same_node": 0.535469,
+              "samples": 874,
+              "wrong_land_sea": 0.0102975,
+              "wrong_plate": 0.114416
+            },
+            "plate_boundary": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 3.73358,
+                "p99": 6.91607
+              },
+              "distance_spacing": {
+                "p50": 0.536007,
+                "p95": 1.23423,
+                "p99": 1.58065
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1905.42,
+                "p99": 9057.95
+              },
+              "same_node": 0.534103,
+              "samples": 39938,
+              "wrong_land_sea": 0.0298212,
+              "wrong_plate": 0.145951
+            },
+            "pole": {
+              "distance_ratio": {
+                "p50": 1.0,
+                "p95": 4.05527,
+                "p99": 7.18111
+              },
+              "distance_spacing": {
+                "p50": 0.560172,
+                "p95": 1.31561,
+                "p99": 1.70664
+              },
+              "elevation_error_m": {
+                "p50": 0.0,
+                "p95": 1011.65,
+                "p99": 1442.37
+              },
+              "same_node": 0.526004,
+              "samples": 3038,
+              "wrong_land_sea": 0.0,
+              "wrong_plate": 0.0645161
+            }
+          },
+          "nside": 64
+        },
+        "nearest_distance_spacing": {
+          "p100": 0.95657,
+          "p50": 0.399345,
+          "p95": 0.604675,
+          "p99": 0.675965
+        },
+        "nodes": 32721
+      },
+      "line_topology": null,
+      "quad_lattice": {
+        "aspect_gt_4": 0.0,
+        "cells": 32721,
+        "degree_le_1": 0.0115828,
+        "folded": 0,
+        "hole_loops": 4,
+        "max_level": 0,
+        "one_cell_thin": 0.0123162,
+        "refined": 0.0,
+        "skew_gt_45": 0.0
+      },
+      "sample_cloud": {
+        "anisotropic": 0.00382018,
+        "anisotropic_row_alignment": 0.0277269,
+        "boundary": 0.120809,
+        "extra_components": 1,
+        "isolated_nodes": 1,
+        "stacked": 0.0,
+        "thin": 0.00553162
+      },
+      "step": 400,
+      "totals": {
+        "area_is_exact": true,
+        "area_over_sphere": 1.00166,
+        "continental_area_fraction": 0.159052,
+        "continental_hc_volume_km3": 4726420000.0,
+        "continental_plates": 5,
+        "elevation": {
+          "p05": -5904.78,
+          "p50": -5140.37,
+          "p95": 5967.75
+        },
+        "hc_volume_km3": 9654040000.0,
+        "hm_volume_km3": 22026000000.0,
+        "land_elevation": {
+          "p05": -1089.2,
+          "p50": 2862.79,
+          "p95": 8055.66
+        },
+        "land_fraction": 0.198469,
+        "live_plates": 36,
+        "nodes": 32721,
+        "nominal_area_over_sphere": 1.00235,
+        "plates": 36,
+        "sea_level_m": -1490.4
+      }
+    }
+  ],
+  "config": {
+    "audit_every": 10,
+    "checkpoints_myr": [
+      30.0,
+      60.0,
+      120.0,
+      240.0,
+      400.0
+    ],
+    "climate_density": null,
+    "fluid_density": 1.0,
+    "load_checks": true,
+    "name": "long",
+    "node_density": 1.0,
+    "render": false,
+    "render_size": [
+      720,
+      400
+    ],
+    "samples": 200000,
+    "step_years": 1000000.0
+  },
+  "load_checks": [
+    {
+      "derived_state_after_load": [],
+      "state_identical": true,
+      "step": 0
+    },
+    {
+      "derived_state_after_load": [],
+      "state_identical": true,
+      "step": 30
+    },
+    {
+      "derived_state_after_load": [],
+      "state_identical": true,
+      "step": 60
+    },
+    {
+      "derived_state_after_load": [],
+      "state_identical": true,
+      "step": 120
+    },
+    {
+      "derived_state_after_load": [],
+      "state_identical": true,
+      "step": 240
+    },
+    {
+      "continuation_identical": true,
+      "derived_state_after_load": [],
+      "state_identical": true,
+      "step": 400
+    }
+  ],
+  "schema_version": 1,
+  "seed": 1,
+  "series": [
+    {
+      "air_temperature_mean_c": 5.36764,
+      "land_fraction": 0.220802,
+      "nodes": 31493,
+      "ocean_temperature_mean_c": 15.2647,
+      "plates": 14,
+      "precipitation_mean_mm": 983.04,
+      "sea_level_m": -50.2475,
+      "step": 1
+    },
+    {
+      "air_temperature_mean_c": 5.7774,
+      "land_fraction": 0.223314,
+      "nodes": 31495,
+      "ocean_temperature_mean_c": 15.2135,
+      "plates": 14,
+      "precipitation_mean_mm": 1005.38,
+      "sea_level_m": -101.789,
+      "step": 2
+    },
+    {
+      "air_temperature_mean_c": 6.0142,
+      "land_fraction": 0.225502,
+      "nodes": 31496,
+      "ocean_temperature_mean_c": 15.1605,
+      "plates": 14,
+      "precipitation_mean_mm": 999.545,
+      "sea_level_m": -155.435,
+      "step": 3
+    },
+    {
+      "air_temperature_mean_c": 6.15311,
+      "land_fraction": 0.227168,
+      "nodes": 31512,
+      "ocean_temperature_mean_c": 15.1241,
+      "plates": 14,
+      "precipitation_mean_mm": 997.69,
+      "sea_level_m": -205.008,
+      "step": 4
+    },
+    {
+      "air_temperature_mean_c": 6.25003,
+      "land_fraction": 0.227357,
+      "nodes": 31507,
+      "ocean_temperature_mean_c": 15.1001,
+      "plates": 14,
+      "precipitation_mean_mm": 1003.99,
+      "sea_level_m": -244.775,
+      "step": 5
+    },
+    {
+      "air_temperature_mean_c": 6.29329,
+      "land_fraction": 0.228924,
+      "nodes": 31498,
+      "ocean_temperature_mean_c": 15.0819,
+      "plates": 14,
+      "precipitation_mean_mm": 1005.77,
+      "sea_level_m": -281.564,
+      "step": 6
+    },
+    {
+      "air_temperature_mean_c": 6.32212,
+      "land_fraction": 0.229568,
+      "nodes": 31494,
+      "ocean_temperature_mean_c": 15.0729,
+      "plates": 14,
+      "precipitation_mean_mm": 998.384,
+      "sea_level_m": -317.213,
+      "step": 7
+    },
+    {
+      "air_temperature_mean_c": 6.36019,
+      "land_fraction": 0.229568,
+      "nodes": 31507,
+      "ocean_temperature_mean_c": 15.0636,
+      "plates": 14,
+      "precipitation_mean_mm": 999.493,
+      "sea_level_m": -350.848,
+      "step": 8
+    },
+    {
+      "air_temperature_mean_c": 6.32615,
+      "land_fraction": 0.229406,
+      "nodes": 31497,
+      "ocean_temperature_mean_c": 15.0609,
+      "plates": 14,
+      "precipitation_mean_mm": 999.116,
+      "sea_level_m": -382.822,
+      "step": 9
+    },
+    {
+      "air_temperature_mean_c": 6.36388,
+      "land_fraction": 0.230031,
+      "nodes": 31485,
+      "ocean_temperature_mean_c": 15.0518,
+      "plates": 14,
+      "precipitation_mean_mm": 999.213,
+      "sea_level_m": -407.001,
+      "step": 10
+    },
+    {
+      "air_temperature_mean_c": 6.39261,
+      "land_fraction": 0.230729,
+      "nodes": 31504,
+      "ocean_temperature_mean_c": 15.0458,
+      "plates": 14,
+      "precipitation_mean_mm": 1002.01,
+      "sea_level_m": -433.745,
+      "step": 11
+    },
+    {
+      "air_temperature_mean_c": 6.38441,
+      "land_fraction": 0.231462,
+      "nodes": 31492,
+      "ocean_temperature_mean_c": 15.0456,
+      "plates": 14,
+      "precipitation_mean_mm": 998.924,
+      "sea_level_m": -454.982,
+      "step": 12
+    },
+    {
+      "air_temperature_mean_c": 6.40869,
+      "land_fraction": 0.231103,
+      "nodes": 31502,
+      "ocean_temperature_mean_c": 15.0384,
+      "plates": 14,
+      "precipitation_mean_mm": 995.082,
+      "sea_level_m": -475.547,
+      "step": 13
+    },
+    {
+      "air_temperature_mean_c": 6.37563,
+      "land_fraction": 0.230729,
+      "nodes": 31502,
+      "ocean_temperature_mean_c": 15.032,
+      "plates": 14,
+      "precipitation_mean_mm": 999.504,
+      "sea_level_m": -497.676,
+      "step": 14
+    },
+    {
+      "air_temperature_mean_c": 6.41908,
+      "land_fraction": 0.229448,
+      "nodes": 31501,
+      "ocean_temperature_mean_c": 15.0285,
+      "plates": 14,
+      "precipitation_mean_mm": 1003.28,
+      "sea_level_m": -512.487,
+      "step": 15
+    },
+    {
+      "air_temperature_mean_c": 6.48689,
+      "land_fraction": 0.22988,
+      "nodes": 31521,
+      "ocean_temperature_mean_c": 15.0203,
+      "plates": 14,
+      "precipitation_mean_mm": 998.034,
+      "sea_level_m": -529.747,
+      "step": 16
+    },
+    {
+      "air_temperature_mean_c": 6.55466,
+      "land_fraction": 0.229919,
+      "nodes": 31528,
+      "ocean_temperature_mean_c": 15.0155,
+      "plates": 14,
+      "precipitation_mean_mm": 999.782,
+      "sea_level_m": -541.61,
+      "step": 17
+    },
+    {
+      "air_temperature_mean_c": 6.53304,
+      "land_fraction": 0.229086,
+      "nodes": 31536,
+      "ocean_temperature_mean_c": 15.0113,
+      "plates": 14,
+      "precipitation_mean_mm": 999.314,
+      "sea_level_m": -555.658,
+      "step": 18
+    },
+    {
+      "air_temperature_mean_c": 6.53996,
+      "land_fraction": 0.229379,
+      "nodes": 31550,
+      "ocean_temperature_mean_c": 15.0133,
+      "plates": 14,
+      "precipitation_mean_mm": 999.794,
+      "sea_level_m": -568.013,
+      "step": 19
+    },
+    {
+      "air_temperature_mean_c": 6.52749,
+      "land_fraction": 0.229595,
+      "nodes": 31559,
+      "ocean_temperature_mean_c": 15.0028,
+      "plates": 15,
+      "precipitation_mean_mm": 1000.24,
+      "sea_level_m": -579.769,
+      "step": 20
+    },
+    {
+      "air_temperature_mean_c": 6.51864,
+      "land_fraction": 0.230073,
+      "nodes": 31570,
+      "ocean_temperature_mean_c": 14.9949,
+      "plates": 15,
+      "precipitation_mean_mm": 995.843,
+      "sea_level_m": -590.294,
+      "step": 21
+    },
+    {
+      "air_temperature_mean_c": 6.4562,
+      "land_fraction": 0.22939,
+      "nodes": 31544,
+      "ocean_temperature_mean_c": 14.9973,
+      "plates": 15,
+      "precipitation_mean_mm": 995.626,
+      "sea_level_m": -592.234,
+      "step": 22
+    },
+    {
+      "air_temperature_mean_c": 6.44827,
+      "land_fraction": 0.228684,
+      "nodes": 31532,
+      "ocean_temperature_mean_c": 14.9922,
+      "plates": 15,
+      "precipitation_mean_mm": 1000.69,
+      "sea_level_m": -597.817,
+      "step": 23
+    },
+    {
+      "air_temperature_mean_c": 6.42266,
+      "land_fraction": 0.229147,
+      "nodes": 31544,
+      "ocean_temperature_mean_c": 14.9941,
+      "plates": 15,
+      "precipitation_mean_mm": 994.193,
+      "sea_level_m": -605.913,
+      "step": 24
+    },
+    {
+      "air_temperature_mean_c": 6.39189,
+      "land_fraction": 0.22902,
+      "nodes": 31558,
+      "ocean_temperature_mean_c": 14.9938,
+      "plates": 15,
+      "precipitation_mean_mm": 1000.01,
+      "sea_level_m": -614.068,
+      "step": 25
+    },
+    {
+      "air_temperature_mean_c": 6.43728,
+      "land_fraction": 0.227851,
+      "nodes": 31559,
+      "ocean_temperature_mean_c": 14.9887,
+      "plates": 15,
+      "precipitation_mean_mm": 992.271,
+      "sea_level_m": -616.643,
+      "step": 26
+    },
+    {
+      "air_temperature_mean_c": 6.42158,
+      "land_fraction": 0.228333,
+      "nodes": 31564,
+      "ocean_temperature_mean_c": 14.9903,
+      "plates": 15,
+      "precipitation_mean_mm": 997.751,
+      "sea_level_m": -620.928,
+      "step": 27
+    },
+    {
+      "air_temperature_mean_c": 6.48964,
+      "land_fraction": 0.227766,
+      "nodes": 31596,
+      "ocean_temperature_mean_c": 14.9864,
+      "plates": 15,
+      "precipitation_mean_mm": 1008.72,
+      "sea_level_m": -629.235,
+      "step": 28
+    },
+    {
+      "air_temperature_mean_c": 6.47828,
+      "land_fraction": 0.228885,
+      "nodes": 31610,
+      "ocean_temperature_mean_c": 14.9845,
+      "plates": 15,
+      "precipitation_mean_mm": 1000.48,
+      "sea_level_m": -635.255,
+      "step": 29
+    },
+    {
+      "air_temperature_mean_c": 6.52029,
+      "land_fraction": 0.228503,
+      "nodes": 31632,
+      "ocean_temperature_mean_c": 14.9809,
+      "plates": 15,
+      "precipitation_mean_mm": 1008.49,
+      "sea_level_m": -639.862,
+      "step": 30
+    },
+    {
+      "air_temperature_mean_c": 6.57163,
+      "land_fraction": 0.22826,
+      "nodes": 31645,
+      "ocean_temperature_mean_c": 14.9792,
+      "plates": 15,
+      "precipitation_mean_mm": 1004.39,
+      "sea_level_m": -643.389,
+      "step": 31
+    },
+    {
+      "air_temperature_mean_c": 6.62151,
+      "land_fraction": 0.227596,
+      "nodes": 31662,
+      "ocean_temperature_mean_c": 14.9809,
+      "plates": 15,
+      "precipitation_mean_mm": 999.246,
+      "sea_level_m": -645.027,
+      "step": 32
+    },
+    {
+      "air_temperature_mean_c": 6.61452,
+      "land_fraction": 0.228021,
+      "nodes": 31669,
+      "ocean_temperature_mean_c": 14.9835,
+      "plates": 16,
+      "precipitation_mean_mm": 997.601,
+      "sea_level_m": -645.53,
+      "step": 33
+    },
+    {
+      "air_temperature_mean_c": 6.69687,
+      "land_fraction": 0.228071,
+      "nodes": 31687,
+      "ocean_temperature_mean_c": 14.9811,
+      "plates": 16,
+      "precipitation_mean_mm": 1001.41,
+      "sea_level_m": -645.343,
+      "step": 34
+    },
+    {
+      "air_temperature_mean_c": 6.66545,
+      "land_fraction": 0.227083,
+      "nodes": 31670,
+      "ocean_temperature_mean_c": 14.9837,
+      "plates": 16,
+      "precipitation_mean_mm": 1000.26,
+      "sea_level_m": -643.351,
+      "step": 35
+    },
+    {
+      "air_temperature_mean_c": 6.71019,
+      "land_fraction": 0.227342,
+      "nodes": 31695,
+      "ocean_temperature_mean_c": 14.9821,
+      "plates": 16,
+      "precipitation_mean_mm": 1002.17,
+      "sea_level_m": -647.976,
+      "step": 36
+    },
+    {
+      "air_temperature_mean_c": 6.72546,
+      "land_fraction": 0.226535,
+      "nodes": 31705,
+      "ocean_temperature_mean_c": 14.9792,
+      "plates": 16,
+      "precipitation_mean_mm": 1002.36,
+      "sea_level_m": -655.639,
+      "step": 37
+    },
+    {
+      "air_temperature_mean_c": 6.71897,
+      "land_fraction": 0.22179,
+      "nodes": 31723,
+      "ocean_temperature_mean_c": 14.9684,
+      "plates": 16,
+      "precipitation_mean_mm": 1012.8,
+      "sea_level_m": -654.344,
+      "step": 38
+    },
+    {
+      "air_temperature_mean_c": 6.70564,
+      "land_fraction": 0.223831,
+      "nodes": 31732,
+      "ocean_temperature_mean_c": 14.9685,
+      "plates": 16,
+      "precipitation_mean_mm": 1005.7,
+      "sea_level_m": -655.533,
+      "step": 39
+    },
+    {
+      "air_temperature_mean_c": 6.68431,
+      "land_fraction": 0.224028,
+      "nodes": 31762,
+      "ocean_temperature_mean_c": 14.9697,
+      "plates": 16,
+      "precipitation_mean_mm": 1006.71,
+      "sea_level_m": -661.124,
+      "step": 40
+    },
+    {
+      "air_temperature_mean_c": 6.64027,
+      "land_fraction": 0.224313,
+      "nodes": 31759,
+      "ocean_temperature_mean_c": 14.9987,
+      "plates": 16,
+      "precipitation_mean_mm": 997.562,
+      "sea_level_m": -660.507,
+      "step": 41
+    },
+    {
+      "air_temperature_mean_c": 6.70243,
+      "land_fraction": 0.223943,
+      "nodes": 31789,
+      "ocean_temperature_mean_c": 14.9851,
+      "plates": 16,
+      "precipitation_mean_mm": 1003.03,
+      "sea_level_m": -666.722,
+      "step": 42
+    },
+    {
+      "air_temperature_mean_c": 6.62865,
+      "land_fraction": 0.221393,
+      "nodes": 31789,
+      "ocean_temperature_mean_c": 14.9924,
+      "plates": 16,
+      "precipitation_mean_mm": 1002.18,
+      "sea_level_m": -667.094,
+      "step": 43
+    },
+    {
+      "air_temperature_mean_c": 6.61998,
+      "land_fraction": 0.2225,
+      "nodes": 31787,
+      "ocean_temperature_mean_c": 14.9898,
+      "plates": 16,
+      "precipitation_mean_mm": 1003.26,
+      "sea_level_m": -668.797,
+      "step": 44
+    },
+    {
+      "air_temperature_mean_c": 6.51817,
+      "land_fraction": 0.221578,
+      "nodes": 31800,
+      "ocean_temperature_mean_c": 14.9741,
+      "plates": 16,
+      "precipitation_mean_mm": 1004.2,
+      "sea_level_m": -673.105,
+      "step": 45
+    },
+    {
+      "air_temperature_mean_c": 6.48947,
+      "land_fraction": 0.220822,
+      "nodes": 31830,
+      "ocean_temperature_mean_c": 14.9721,
+      "plates": 17,
+      "precipitation_mean_mm": 1009.87,
+      "sea_level_m": -678.182,
+      "step": 46
+    },
+    {
+      "air_temperature_mean_c": 6.42007,
+      "land_fraction": 0.223229,
+      "nodes": 31834,
+      "ocean_temperature_mean_c": 14.9753,
+      "plates": 17,
+      "precipitation_mean_mm": 999.518,
+      "sea_level_m": -678.793,
+      "step": 47
+    },
+    {
+      "air_temperature_mean_c": 6.35924,
+      "land_fraction": 0.223395,
+      "nodes": 31834,
+      "ocean_temperature_mean_c": 14.9816,
+      "plates": 17,
+      "precipitation_mean_mm": 1006.15,
+      "sea_level_m": -679.428,
+      "step": 48
+    },
+    {
+      "air_temperature_mean_c": 6.35983,
+      "land_fraction": 0.221775,
+      "nodes": 31862,
+      "ocean_temperature_mean_c": 14.9821,
+      "plates": 17,
+      "precipitation_mean_mm": 1006.97,
+      "sea_level_m": -684.195,
+      "step": 49
+    },
+    {
+      "air_temperature_mean_c": 6.3313,
+      "land_fraction": 0.220347,
+      "nodes": 31867,
+      "ocean_temperature_mean_c": 14.9814,
+      "plates": 17,
+      "precipitation_mean_mm": 999.811,
+      "sea_level_m": -683.981,
+      "step": 50
+    },
+    {
+      "air_temperature_mean_c": 6.30827,
+      "land_fraction": 0.221061,
+      "nodes": 31893,
+      "ocean_temperature_mean_c": 14.9782,
+      "plates": 17,
+      "precipitation_mean_mm": 1000.92,
+      "sea_level_m": -688.737,
+      "step": 51
+    },
+    {
+      "air_temperature_mean_c": 6.27601,
+      "land_fraction": 0.221636,
+      "nodes": 31910,
+      "ocean_temperature_mean_c": 14.9731,
+      "plates": 17,
+      "precipitation_mean_mm": 1007.75,
+      "sea_level_m": -691.57,
+      "step": 52
+    },
+    {
+      "air_temperature_mean_c": 6.21809,
+      "land_fraction": 0.221964,
+      "nodes": 31919,
+      "ocean_temperature_mean_c": 14.9762,
+      "plates": 17,
+      "precipitation_mean_mm": 998.9,
+      "sea_level_m": -694.193,
+      "step": 53
+    },
+    {
+      "air_temperature_mean_c": 6.17463,
+      "land_fraction": 0.222469,
+      "nodes": 31930,
+      "ocean_temperature_mean_c": 14.9846,
+      "plates": 17,
+      "precipitation_mean_mm": 996.843,
+      "sea_level_m": -695.413,
+      "step": 54
+    },
+    {
+      "air_temperature_mean_c": 6.13815,
+      "land_fraction": 0.220536,
+      "nodes": 31939,
+      "ocean_temperature_mean_c": 14.9834,
+      "plates": 17,
+      "precipitation_mean_mm": 999.784,
+      "sea_level_m": -698.064,
+      "step": 55
+    },
+    {
+      "air_temperature_mean_c": 6.13805,
+      "land_fraction": 0.221223,
+      "nodes": 31951,
+      "ocean_temperature_mean_c": 14.9824,
+      "plates": 17,
+      "precipitation_mean_mm": 998.73,
+      "sea_level_m": -697.681,
+      "step": 56
+    },
+    {
+      "air_temperature_mean_c": 6.07058,
+      "land_fraction": 0.221084,
+      "nodes": 31955,
+      "ocean_temperature_mean_c": 14.9834,
+      "plates": 17,
+      "precipitation_mean_mm": 995.526,
+      "sea_level_m": -696.976,
+      "step": 57
+    },
+    {
+      "air_temperature_mean_c": 6.02289,
+      "land_fraction": 0.222041,
+      "nodes": 31963,
+      "ocean_temperature_mean_c": 14.9968,
+      "plates": 17,
+      "precipitation_mean_mm": 992.581,
+      "sea_level_m": -696.732,
+      "step": 58
+    },
+    {
+      "air_temperature_mean_c": 5.93422,
+      "land_fraction": 0.222434,
+      "nodes": 31976,
+      "ocean_temperature_mean_c": 14.9987,
+      "plates": 17,
+      "precipitation_mean_mm": 989.832,
+      "sea_level_m": -699.195,
+      "step": 59
+    },
+    {
+      "air_temperature_mean_c": 5.8898,
+      "land_fraction": 0.223866,
+      "nodes": 31976,
+      "ocean_temperature_mean_c": 14.994,
+      "plates": 17,
+      "precipitation_mean_mm": 993.86,
+      "sea_level_m": -700.648,
+      "step": 60
+    },
+    {
+      "air_temperature_mean_c": 5.83806,
+      "land_fraction": 0.223997,
+      "nodes": 31990,
+      "ocean_temperature_mean_c": 14.9925,
+      "plates": 17,
+      "precipitation_mean_mm": 991.735,
+      "sea_level_m": -702.691,
+      "step": 61
+    },
+    {
+      "air_temperature_mean_c": 5.87582,
+      "land_fraction": 0.224248,
+      "nodes": 32027,
+      "ocean_temperature_mean_c": 14.9886,
+      "plates": 17,
+      "precipitation_mean_mm": 993.038,
+      "sea_level_m": -707.235,
+      "step": 62
+    },
+    {
+      "air_temperature_mean_c": 5.92088,
+      "land_fraction": 0.224815,
+      "nodes": 32068,
+      "ocean_temperature_mean_c": 14.9814,
+      "plates": 17,
+      "precipitation_mean_mm": 992.705,
+      "sea_level_m": -716.859,
+      "step": 63
+    },
+    {
+      "air_temperature_mean_c": 5.79811,
+      "land_fraction": 0.223438,
+      "nodes": 32042,
+      "ocean_temperature_mean_c": 14.9812,
+      "plates": 17,
+      "precipitation_mean_mm": 995.856,
+      "sea_level_m": -711.085,
+      "step": 64
+    },
+    {
+      "air_temperature_mean_c": 5.71309,
+      "land_fraction": 0.223935,
+      "nodes": 32061,
+      "ocean_temperature_mean_c": 14.9827,
+      "plates": 17,
+      "precipitation_mean_mm": 993.93,
+      "sea_level_m": -715.694,
+      "step": 65
+    },
+    {
+      "air_temperature_mean_c": 5.606,
+      "land_fraction": 0.222782,
+      "nodes": 32060,
+      "ocean_temperature_mean_c": 14.9921,
+      "plates": 17,
+      "precipitation_mean_mm": 991.226,
+      "sea_level_m": -713.668,
+      "step": 66
+    },
+    {
+      "air_temperature_mean_c": 5.56101,
+      "land_fraction": 0.222041,
+      "nodes": 32060,
+      "ocean_temperature_mean_c": 14.9912,
+      "plates": 17,
+      "precipitation_mean_mm": 988.802,
+      "sea_level_m": -716.257,
+      "step": 67
+    },
+    {
+      "air_temperature_mean_c": 5.63445,
+      "land_fraction": 0.221366,
+      "nodes": 32110,
+      "ocean_temperature_mean_c": 14.9887,
+      "plates": 17,
+      "precipitation_mean_mm": 995.397,
+      "sea_level_m": -720.414,
+      "step": 68
+    },
+    {
+      "air_temperature_mean_c": 5.56454,
+      "land_fraction": 0.222049,
+      "nodes": 32103,
+      "ocean_temperature_mean_c": 15.0045,
+      "plates": 17,
+      "precipitation_mean_mm": 1000.71,
+      "sea_level_m": -718.205,
+      "step": 69
+    },
+    {
+      "air_temperature_mean_c": 5.41446,
+      "land_fraction": 0.222245,
+      "nodes": 32104,
+      "ocean_temperature_mean_c": 14.9871,
+      "plates": 17,
+      "precipitation_mean_mm": 994.088,
+      "sea_level_m": -715.579,
+      "step": 70
+    },
+    {
+      "air_temperature_mean_c": 5.36901,
+      "land_fraction": 0.223094,
+      "nodes": 32120,
+      "ocean_temperature_mean_c": 14.999,
+      "plates": 17,
+      "precipitation_mean_mm": 993.693,
+      "sea_level_m": -716.017,
+      "step": 71
+    },
+    {
+      "air_temperature_mean_c": 5.34394,
+      "land_fraction": 0.223349,
+      "nodes": 32146,
+      "ocean_temperature_mean_c": 15.0006,
+      "plates": 17,
+      "precipitation_mean_mm": 993.184,
+      "sea_level_m": -718.542,
+      "step": 72
+    },
+    {
+      "air_temperature_mean_c": 5.4181,
+      "land_fraction": 0.223329,
+      "nodes": 32168,
+      "ocean_temperature_mean_c": 14.9973,
+      "plates": 17,
+      "precipitation_mean_mm": 989.961,
+      "sea_level_m": -721.086,
+      "step": 73
+    },
+    {
+      "air_temperature_mean_c": 5.44027,
+      "land_fraction": 0.224691,
+      "nodes": 32167,
+      "ocean_temperature_mean_c": 14.987,
+      "plates": 17,
+      "precipitation_mean_mm": 995.638,
+      "sea_level_m": -734.093,
+      "step": 74
+    },
+    {
+      "air_temperature_mean_c": 5.36422,
+      "land_fraction": 0.218434,
+      "nodes": 32179,
+      "ocean_temperature_mean_c": 14.9925,
+      "plates": 17,
+      "precipitation_mean_mm": 1000.86,
+      "sea_level_m": -735.39,
+      "step": 75
+    },
+    {
+      "air_temperature_mean_c": 5.16675,
+      "land_fraction": 0.217824,
+      "nodes": 32168,
+      "ocean_temperature_mean_c": 15.0008,
+      "plates": 17,
+      "precipitation_mean_mm": 1004.63,
+      "sea_level_m": -725.25,
+      "step": 76
+    },
+    {
+      "air_temperature_mean_c": 5.12315,
+      "land_fraction": 0.221258,
+      "nodes": 32191,
+      "ocean_temperature_mean_c": 15.0119,
+      "plates": 17,
+      "precipitation_mean_mm": 1005.74,
+      "sea_level_m": -733.332,
+      "step": 77
+    },
+    {
+      "air_temperature_mean_c": 5.12751,
+      "land_fraction": 0.218503,
+      "nodes": 32214,
+      "ocean_temperature_mean_c": 15.0057,
+      "plates": 17,
+      "precipitation_mean_mm": 1009.55,
+      "sea_level_m": -742.077,
+      "step": 78
+    },
+    {
+      "air_temperature_mean_c": 5.03,
+      "land_fraction": 0.216678,
+      "nodes": 32196,
+      "ocean_temperature_mean_c": 15.0152,
+      "plates": 18,
+      "precipitation_mean_mm": 1010.1,
+      "sea_level_m": -732.425,
+      "step": 79
+    },
+    {
+      "air_temperature_mean_c": 5.01901,
+      "land_fraction": 0.218808,
+      "nodes": 32186,
+      "ocean_temperature_mean_c": 15.0106,
+      "plates": 18,
+      "precipitation_mean_mm": 1006.08,
+      "sea_level_m": -734.023,
+      "step": 80
+    },
+    {
+      "air_temperature_mean_c": 4.94643,
+      "land_fraction": 0.21593,
+      "nodes": 32248,
+      "ocean_temperature_mean_c": 15.018,
+      "plates": 18,
+      "precipitation_mean_mm": 1007.35,
+      "sea_level_m": -744.29,
+      "step": 81
+    },
+    {
+      "air_temperature_mean_c": 4.90916,
+      "land_fraction": 0.216022,
+      "nodes": 32267,
+      "ocean_temperature_mean_c": 15.0169,
+      "plates": 18,
+      "precipitation_mean_mm": 1008.91,
+      "sea_level_m": -746.833,
+      "step": 82
+    },
+    {
+      "air_temperature_mean_c": 4.86898,
+      "land_fraction": 0.21608,
+      "nodes": 32297,
+      "ocean_temperature_mean_c": 15.0205,
+      "plates": 18,
+      "precipitation_mean_mm": 1008.5,
+      "sea_level_m": -751.512,
+      "step": 83
+    },
+    {
+      "air_temperature_mean_c": 4.82448,
+      "land_fraction": 0.215667,
+      "nodes": 32294,
+      "ocean_temperature_mean_c": 15.0246,
+      "plates": 18,
+      "precipitation_mean_mm": 1006.22,
+      "sea_level_m": -749.915,
+      "step": 84
+    },
+    {
+      "air_temperature_mean_c": 4.87185,
+      "land_fraction": 0.215656,
+      "nodes": 32344,
+      "ocean_temperature_mean_c": 15.0211,
+      "plates": 18,
+      "precipitation_mean_mm": 1010.67,
+      "sea_level_m": -755.567,
+      "step": 85
+    },
+    {
+      "air_temperature_mean_c": 4.6754,
+      "land_fraction": 0.215077,
+      "nodes": 32349,
+      "ocean_temperature_mean_c": 15.0271,
+      "plates": 18,
+      "precipitation_mean_mm": 1006.96,
+      "sea_level_m": -757.531,
+      "step": 86
+    },
+    {
+      "air_temperature_mean_c": 4.58217,
+      "land_fraction": 0.214745,
+      "nodes": 32337,
+      "ocean_temperature_mean_c": 15.0247,
+      "plates": 18,
+      "precipitation_mean_mm": 1011.26,
+      "sea_level_m": -756.374,
+      "step": 87
+    },
+    {
+      "air_temperature_mean_c": 4.53724,
+      "land_fraction": 0.215147,
+      "nodes": 32348,
+      "ocean_temperature_mean_c": 15.0298,
+      "plates": 18,
+      "precipitation_mean_mm": 1013.87,
+      "sea_level_m": -758.907,
+      "step": 88
+    },
+    {
+      "air_temperature_mean_c": 4.47273,
+      "land_fraction": 0.214811,
+      "nodes": 32378,
+      "ocean_temperature_mean_c": 15.0381,
+      "plates": 18,
+      "precipitation_mean_mm": 1016.47,
+      "sea_level_m": -756.484,
+      "step": 89
+    },
+    {
+      "air_temperature_mean_c": 4.39024,
+      "land_fraction": 0.220131,
+      "nodes": 32381,
+      "ocean_temperature_mean_c": 15.0241,
+      "plates": 19,
+      "precipitation_mean_mm": 1004.97,
+      "sea_level_m": -764.585,
+      "step": 90
+    },
+    {
+      "air_temperature_mean_c": 4.32508,
+      "land_fraction": 0.215413,
+      "nodes": 32396,
+      "ocean_temperature_mean_c": 15.034,
+      "plates": 19,
+      "precipitation_mean_mm": 1006.41,
+      "sea_level_m": -764.53,
+      "step": 91
+    },
+    {
+      "air_temperature_mean_c": 4.30532,
+      "land_fraction": 0.21554,
+      "nodes": 32420,
+      "ocean_temperature_mean_c": 15.0462,
+      "plates": 20,
+      "precipitation_mean_mm": 1012.85,
+      "sea_level_m": -763.428,
+      "step": 92
+    },
+    {
+      "air_temperature_mean_c": 4.17758,
+      "land_fraction": 0.214552,
+      "nodes": 32438,
+      "ocean_temperature_mean_c": 15.0508,
+      "plates": 20,
+      "precipitation_mean_mm": 1011.47,
+      "sea_level_m": -765.011,
+      "step": 93
+    },
+    {
+      "air_temperature_mean_c": 4.06596,
+      "land_fraction": 0.214576,
+      "nodes": 32462,
+      "ocean_temperature_mean_c": 15.0483,
+      "plates": 20,
+      "precipitation_mean_mm": 1011.88,
+      "sea_level_m": -769.403,
+      "step": 94
+    },
+    {
+      "air_temperature_mean_c": 3.84922,
+      "land_fraction": 0.213573,
+      "nodes": 32443,
+      "ocean_temperature_mean_c": 15.0601,
+      "plates": 20,
+      "precipitation_mean_mm": 1018.52,
+      "sea_level_m": -764.608,
+      "step": 95
+    },
+    {
+      "air_temperature_mean_c": 3.86122,
+      "land_fraction": 0.213708,
+      "nodes": 32484,
+      "ocean_temperature_mean_c": 15.0614,
+      "plates": 20,
+      "precipitation_mean_mm": 1009.89,
+      "sea_level_m": -765.989,
+      "step": 96
+    },
+    {
+      "air_temperature_mean_c": 3.66491,
+      "land_fraction": 0.215448,
+      "nodes": 32482,
+      "ocean_temperature_mean_c": 15.0804,
+      "plates": 20,
+      "precipitation_mean_mm": 1002.68,
+      "sea_level_m": -766.701,
+      "step": 97
+    },
+    {
+      "air_temperature_mean_c": 3.4916,
+      "land_fraction": 0.211551,
+      "nodes": 32500,
+      "ocean_temperature_mean_c": 15.0837,
+      "plates": 20,
+      "precipitation_mean_mm": 1017.12,
+      "sea_level_m": -770.412,
+      "step": 98
+    },
+    {
+      "air_temperature_mean_c": 3.32431,
+      "land_fraction": 0.209718,
+      "nodes": 32498,
+      "ocean_temperature_mean_c": 15.094,
+      "plates": 20,
+      "precipitation_mean_mm": 1018.42,
+      "sea_level_m": -768.56,
+      "step": 99
+    },
+    {
+      "air_temperature_mean_c": 3.37287,
+      "land_fraction": 0.210648,
+      "nodes": 32559,
+      "ocean_temperature_mean_c": 15.081,
+      "plates": 21,
+      "precipitation_mean_mm": 1023.06,
+      "sea_level_m": -778.554,
+      "step": 100
+    },
+    {
+      "air_temperature_mean_c": 3.24418,
+      "land_fraction": 0.210027,
+      "nodes": 32538,
+      "ocean_temperature_mean_c": 15.0954,
+      "plates": 21,
+      "precipitation_mean_mm": 1024.28,
+      "sea_level_m": -773.379,
+      "step": 101
+    },
+    {
+      "air_temperature_mean_c": 3.22035,
+      "land_fraction": 0.209904,
+      "nodes": 32594,
+      "ocean_temperature_mean_c": 15.0986,
+      "plates": 22,
+      "precipitation_mean_mm": 1020.72,
+      "sea_level_m": -781.343,
+      "step": 102
+    },
+    {
+      "air_temperature_mean_c": 3.13904,
+      "land_fraction": 0.209861,
+      "nodes": 32606,
+      "ocean_temperature_mean_c": 15.1058,
+      "plates": 22,
+      "precipitation_mean_mm": 1022.9,
+      "sea_level_m": -783.256,
+      "step": 103
+    },
+    {
+      "air_temperature_mean_c": 2.90829,
+      "land_fraction": 0.212029,
+      "nodes": 32598,
+      "ocean_temperature_mean_c": 15.1094,
+      "plates": 22,
+      "precipitation_mean_mm": 1022.08,
+      "sea_level_m": -785.952,
+      "step": 104
+    },
+    {
+      "air_temperature_mean_c": 2.82605,
+      "land_fraction": 0.210602,
+      "nodes": 32644,
+      "ocean_temperature_mean_c": 15.1174,
+      "plates": 22,
+      "precipitation_mean_mm": 1024.26,
+      "sea_level_m": -786.359,
+      "step": 105
+    },
+    {
+      "air_temperature_mean_c": 2.81186,
+      "land_fraction": 0.215058,
+      "nodes": 32672,
+      "ocean_temperature_mean_c": 15.1195,
+      "plates": 22,
+      "precipitation_mean_mm": 1024.18,
+      "sea_level_m": -792.563,
+      "step": 106
+    },
+    {
+      "air_temperature_mean_c": 2.55552,
+      "land_fraction": 0.212303,
+      "nodes": 32633,
+      "ocean_temperature_mean_c": 15.128,
+      "plates": 22,
+      "precipitation_mean_mm": 1024.67,
+      "sea_level_m": -786.264,
+      "step": 107
+    },
+    {
+      "air_temperature_mean_c": 2.49698,
+      "land_fraction": 0.211968,
+      "nodes": 32662,
+      "ocean_temperature_mean_c": 15.1282,
+      "plates": 22,
+      "precipitation_mean_mm": 1024.64,
+      "sea_level_m": -791.894,
+      "step": 108
+    },
+    {
+      "air_temperature_mean_c": 2.22717,
+      "land_fraction": 0.211327,
+      "nodes": 32649,
+      "ocean_temperature_mean_c": 15.1507,
+      "plates": 22,
+      "precipitation_mean_mm": 1024.14,
+      "sea_level_m": -791.386,
+      "step": 109
+    },
+    {
+      "air_temperature_mean_c": 2.37412,
+      "land_fraction": 0.212612,
+      "nodes": 32700,
+      "ocean_temperature_mean_c": 15.1418,
+      "plates": 22,
+      "precipitation_mean_mm": 1021.61,
+      "sea_level_m": -800.803,
+      "step": 110
+    },
+    {
+      "air_temperature_mean_c": 2.3105,
+      "land_fraction": 0.212049,
+      "nodes": 32705,
+      "ocean_temperature_mean_c": 15.1369,
+      "plates": 21,
+      "precipitation_mean_mm": 1024.91,
+      "sea_level_m": -800.493,
+      "step": 111
+    },
+    {
+      "air_temperature_mean_c": 2.3449,
+      "land_fraction": 0.213376,
+      "nodes": 32714,
+      "ocean_temperature_mean_c": 15.1439,
+      "plates": 21,
+      "precipitation_mean_mm": 1026.56,
+      "sea_level_m": -804.367,
+      "step": 112
+    },
+    {
+      "air_temperature_mean_c": 1.99999,
+      "land_fraction": 0.20934,
+      "nodes": 32692,
+      "ocean_temperature_mean_c": 15.1627,
+      "plates": 21,
+      "precipitation_mean_mm": 1032.7,
+      "sea_level_m": -800.672,
+      "step": 113
+    },
+    {
+      "air_temperature_mean_c": 1.89701,
+      "land_fraction": 0.210698,
+      "nodes": 32720,
+      "ocean_temperature_mean_c": 15.1592,
+      "plates": 21,
+      "precipitation_mean_mm": 1030.35,
+      "sea_level_m": -810.795,
+      "step": 114
+    },
+    {
+      "air_temperature_mean_c": 1.86884,
+      "land_fraction": 0.210876,
+      "nodes": 32746,
+      "ocean_temperature_mean_c": 15.1506,
+      "plates": 21,
+      "precipitation_mean_mm": 1041.62,
+      "sea_level_m": -814.938,
+      "step": 115
+    },
+    {
+      "air_temperature_mean_c": 1.78869,
+      "land_fraction": 0.210741,
+      "nodes": 32749,
+      "ocean_temperature_mean_c": 15.155,
+      "plates": 21,
+      "precipitation_mean_mm": 1032.58,
+      "sea_level_m": -814.586,
+      "step": 116
+    },
+    {
+      "air_temperature_mean_c": 1.67554,
+      "land_fraction": 0.209884,
+      "nodes": 32756,
+      "ocean_temperature_mean_c": 15.1642,
+      "plates": 21,
+      "precipitation_mean_mm": 1037.96,
+      "sea_level_m": -813.632,
+      "step": 117
+    },
+    {
+      "air_temperature_mean_c": 1.61172,
+      "land_fraction": 0.209035,
+      "nodes": 32767,
+      "ocean_temperature_mean_c": 15.1669,
+      "plates": 20,
+      "precipitation_mean_mm": 1038.23,
+      "sea_level_m": -815.92,
+      "step": 118
+    },
+    {
+      "air_temperature_mean_c": 1.51395,
+      "land_fraction": 0.208148,
+      "nodes": 32763,
+      "ocean_temperature_mean_c": 15.1759,
+      "plates": 19,
+      "precipitation_mean_mm": 1040.87,
+      "sea_level_m": -809.772,
+      "step": 119
+    },
+    {
+      "air_temperature_mean_c": 1.31995,
+      "land_fraction": 0.207342,
+      "nodes": 32749,
+      "ocean_temperature_mean_c": 15.1821,
+      "plates": 20,
+      "precipitation_mean_mm": 1045.9,
+      "sea_level_m": -811.282,
+      "step": 120
+    },
+    {
+      "air_temperature_mean_c": 1.26121,
+      "land_fraction": 0.20674,
+      "nodes": 32782,
+      "ocean_temperature_mean_c": 15.1882,
+      "plates": 20,
+      "precipitation_mean_mm": 1045.53,
+      "sea_level_m": -815.226,
+      "step": 121
+    },
+    {
+      "air_temperature_mean_c": 1.06535,
+      "land_fraction": 0.206833,
+      "nodes": 32771,
+      "ocean_temperature_mean_c": 15.1957,
+      "plates": 20,
+      "precipitation_mean_mm": 1044.6,
+      "sea_level_m": -813.908,
+      "step": 122
+    },
+    {
+      "air_temperature_mean_c": 1.04721,
+      "land_fraction": 0.207006,
+      "nodes": 32765,
+      "ocean_temperature_mean_c": 15.1918,
+      "plates": 20,
+      "precipitation_mean_mm": 1047.45,
+      "sea_level_m": -813.552,
+      "step": 123
+    },
+    {
+      "air_temperature_mean_c": 1.10436,
+      "land_fraction": 0.207404,
+      "nodes": 32797,
+      "ocean_temperature_mean_c": 15.1876,
+      "plates": 20,
+      "precipitation_mean_mm": 1044.0,
+      "sea_level_m": -827.16,
+      "step": 124
+    },
+    {
+      "air_temperature_mean_c": 1.13111,
+      "land_fraction": 0.206871,
+      "nodes": 32821,
+      "ocean_temperature_mean_c": 15.1973,
+      "plates": 20,
+      "precipitation_mean_mm": 1049.71,
+      "sea_level_m": -828.256,
+      "step": 125
+    },
+    {
+      "air_temperature_mean_c": 0.950657,
+      "land_fraction": 0.206319,
+      "nodes": 32806,
+      "ocean_temperature_mean_c": 15.2065,
+      "plates": 20,
+      "precipitation_mean_mm": 1045.42,
+      "sea_level_m": -826.778,
+      "step": 126
+    },
+    {
+      "air_temperature_mean_c": 0.747593,
+      "land_fraction": 0.204869,
+      "nodes": 32802,
+      "ocean_temperature_mean_c": 15.2115,
+      "plates": 21,
+      "precipitation_mean_mm": 1052.69,
+      "sea_level_m": -830.762,
+      "step": 127
+    },
+    {
+      "air_temperature_mean_c": 0.667195,
+      "land_fraction": 0.202685,
+      "nodes": 32775,
+      "ocean_temperature_mean_c": 15.2165,
+      "plates": 21,
+      "precipitation_mean_mm": 1047.53,
+      "sea_level_m": -831.564,
+      "step": 128
+    },
+    {
+      "air_temperature_mean_c": 0.619695,
+      "land_fraction": 0.203187,
+      "nodes": 32800,
+      "ocean_temperature_mean_c": 15.2169,
+      "plates": 21,
+      "precipitation_mean_mm": 1045.78,
+      "sea_level_m": -844.105,
+      "step": 129
+    },
+    {
+      "air_temperature_mean_c": 0.577101,
+      "land_fraction": 0.202558,
+      "nodes": 32824,
+      "ocean_temperature_mean_c": 15.2153,
+      "plates": 21,
+      "precipitation_mean_mm": 1054.13,
+      "sea_level_m": -853.746,
+      "step": 130
+    },
+    {
+      "air_temperature_mean_c": 0.585624,
+      "land_fraction": 0.203958,
+      "nodes": 32809,
+      "ocean_temperature_mean_c": 15.2203,
+      "plates": 21,
+      "precipitation_mean_mm": 1059.7,
+      "sea_level_m": -859.516,
+      "step": 131
+    },
+    {
+      "air_temperature_mean_c": 0.55325,
+      "land_fraction": 0.202998,
+      "nodes": 32825,
+      "ocean_temperature_mean_c": 15.232,
+      "plates": 21,
+      "precipitation_mean_mm": 1054.92,
+      "sea_level_m": -867.346,
+      "step": 132
+    },
+    {
+      "air_temperature_mean_c": 0.482515,
+      "land_fraction": 0.200123,
+      "nodes": 32836,
+      "ocean_temperature_mean_c": 15.2297,
+      "plates": 21,
+      "precipitation_mean_mm": 1048.83,
+      "sea_level_m": -874.608,
+      "step": 133
+    },
+    {
+      "air_temperature_mean_c": 0.398032,
+      "land_fraction": 0.199657,
+      "nodes": 32865,
+      "ocean_temperature_mean_c": 15.2317,
+      "plates": 21,
+      "precipitation_mean_mm": 1049.93,
+      "sea_level_m": -885.337,
+      "step": 134
+    },
+    {
+      "air_temperature_mean_c": 0.161417,
+      "land_fraction": 0.1987,
+      "nodes": 32861,
+      "ocean_temperature_mean_c": 15.233,
+      "plates": 21,
+      "precipitation_mean_mm": 1043.81,
+      "sea_level_m": -892.472,
+      "step": 135
+    },
+    {
+      "air_temperature_mean_c": 0.0493162,
+      "land_fraction": 0.197079,
+      "nodes": 32886,
+      "ocean_temperature_mean_c": 15.2407,
+      "plates": 21,
+      "precipitation_mean_mm": 1048.09,
+      "sea_level_m": -898.957,
+      "step": 136
+    },
+    {
+      "air_temperature_mean_c": -0.161838,
+      "land_fraction": 0.196192,
+      "nodes": 32869,
+      "ocean_temperature_mean_c": 15.2443,
+      "plates": 21,
+      "precipitation_mean_mm": 1049.11,
+      "sea_level_m": -904.258,
+      "step": 137
+    },
+    {
+      "air_temperature_mean_c": -0.155049,
+      "land_fraction": 0.196968,
+      "nodes": 32877,
+      "ocean_temperature_mean_c": 15.2495,
+      "plates": 21,
+      "precipitation_mean_mm": 1044.38,
+      "sea_level_m": -909.423,
+      "step": 138
+    },
+    {
+      "air_temperature_mean_c": -0.347794,
+      "land_fraction": 0.194271,
+      "nodes": 32916,
+      "ocean_temperature_mean_c": 15.2518,
+      "plates": 21,
+      "precipitation_mean_mm": 1052.93,
+      "sea_level_m": -918.341,
+      "step": 139
+    },
+    {
+      "air_temperature_mean_c": -0.341767,
+      "land_fraction": 0.195012,
+      "nodes": 32921,
+      "ocean_temperature_mean_c": 15.2545,
+      "plates": 21,
+      "precipitation_mean_mm": 1051.91,
+      "sea_level_m": -925.009,
+      "step": 140
+    },
+    {
+      "air_temperature_mean_c": -0.533076,
+      "land_fraction": 0.192982,
+      "nodes": 32947,
+      "ocean_temperature_mean_c": 15.2687,
+      "plates": 22,
+      "precipitation_mean_mm": 1053.77,
+      "sea_level_m": -941.931,
+      "step": 141
+    },
+    {
+      "air_temperature_mean_c": -0.523569,
+      "land_fraction": 0.191512,
+      "nodes": 32933,
+      "ocean_temperature_mean_c": 15.2812,
+      "plates": 22,
+      "precipitation_mean_mm": 1049.67,
+      "sea_level_m": -950.45,
+      "step": 142
+    },
+    {
+      "air_temperature_mean_c": -0.714035,
+      "land_fraction": 0.190594,
+      "nodes": 32954,
+      "ocean_temperature_mean_c": 15.2888,
+      "plates": 22,
+      "precipitation_mean_mm": 1052.42,
+      "sea_level_m": -963.166,
+      "step": 143
+    },
+    {
+      "air_temperature_mean_c": -0.540839,
+      "land_fraction": 0.189043,
+      "nodes": 32938,
+      "ocean_temperature_mean_c": 15.2869,
+      "plates": 22,
+      "precipitation_mean_mm": 1054.12,
+      "sea_level_m": -968.946,
+      "step": 144
+    },
+    {
+      "air_temperature_mean_c": -0.740637,
+      "land_fraction": 0.188846,
+      "nodes": 32968,
+      "ocean_temperature_mean_c": 15.2884,
+      "plates": 22,
+      "precipitation_mean_mm": 1048.43,
+      "sea_level_m": -983.088,
+      "step": 145
+    },
+    {
+      "air_temperature_mean_c": -0.803989,
+      "land_fraction": 0.1886,
+      "nodes": 32943,
+      "ocean_temperature_mean_c": 15.2865,
+      "plates": 22,
+      "precipitation_mean_mm": 1054.56,
+      "sea_level_m": -985.349,
+      "step": 146
+    },
+    {
+      "air_temperature_mean_c": -1.11273,
+      "land_fraction": 0.188306,
+      "nodes": 32948,
+      "ocean_temperature_mean_c": 15.2862,
+      "plates": 23,
+      "precipitation_mean_mm": 1046.82,
+      "sea_level_m": -996.743,
+      "step": 147
+    },
+    {
+      "air_temperature_mean_c": -1.25918,
+      "land_fraction": 0.186721,
+      "nodes": 32994,
+      "ocean_temperature_mean_c": 15.2937,
+      "plates": 23,
+      "precipitation_mean_mm": 1047.38,
+      "sea_level_m": -994.47,
+      "step": 148
+    },
+    {
+      "air_temperature_mean_c": -1.09759,
+      "land_fraction": 0.187396,
+      "nodes": 33017,
+      "ocean_temperature_mean_c": 15.2843,
+      "plates": 23,
+      "precipitation_mean_mm": 1052.23,
+      "sea_level_m": -1000.57,
+      "step": 149
+    },
+    {
+      "air_temperature_mean_c": -1.35304,
+      "land_fraction": 0.18674,
+      "nodes": 32995,
+      "ocean_temperature_mean_c": 15.2967,
+      "plates": 23,
+      "precipitation_mean_mm": 1051.67,
+      "sea_level_m": -1001.33,
+      "step": 150
+    },
+    {
+      "air_temperature_mean_c": -1.32214,
+      "land_fraction": 0.186285,
+      "nodes": 33040,
+      "ocean_temperature_mean_c": 15.302,
+      "plates": 23,
+      "precipitation_mean_mm": 1051.06,
+      "sea_level_m": -1003.96,
+      "step": 151
+    },
+    {
+      "air_temperature_mean_c": -1.35605,
+      "land_fraction": 0.186717,
+      "nodes": 33033,
+      "ocean_temperature_mean_c": 15.3052,
+      "plates": 23,
+      "precipitation_mean_mm": 1046.66,
+      "sea_level_m": -1005.77,
+      "step": 152
+    },
+    {
+      "air_temperature_mean_c": -1.46139,
+      "land_fraction": 0.18691,
+      "nodes": 33064,
+      "ocean_temperature_mean_c": 15.3075,
+      "plates": 23,
+      "precipitation_mean_mm": 1049.03,
+      "sea_level_m": -1017.88,
+      "step": 153
+    },
+    {
+      "air_temperature_mean_c": -1.66926,
+      "land_fraction": 0.185733,
+      "nodes": 33064,
+      "ocean_temperature_mean_c": 15.3189,
+      "plates": 23,
+      "precipitation_mean_mm": 1046.43,
+      "sea_level_m": -1014.63,
+      "step": 154
+    },
+    {
+      "air_temperature_mean_c": -1.67067,
+      "land_fraction": 0.185475,
+      "nodes": 33026,
+      "ocean_temperature_mean_c": 15.3148,
+      "plates": 23,
+      "precipitation_mean_mm": 1050.47,
+      "sea_level_m": -1007.0,
+      "step": 155
+    },
+    {
+      "air_temperature_mean_c": -1.71933,
+      "land_fraction": 0.184738,
+      "nodes": 33053,
+      "ocean_temperature_mean_c": 15.3171,
+      "plates": 23,
+      "precipitation_mean_mm": 1055.47,
+      "sea_level_m": -1012.57,
+      "step": 156
+    },
+    {
+      "air_temperature_mean_c": -1.55723,
+      "land_fraction": 0.184807,
+      "nodes": 33086,
+      "ocean_temperature_mean_c": 15.3153,
+      "plates": 23,
+      "precipitation_mean_mm": 1050.87,
+      "sea_level_m": -1015.99,
+      "step": 157
+    },
+    {
+      "air_temperature_mean_c": -1.46935,
+      "land_fraction": 0.184252,
+      "nodes": 33049,
+      "ocean_temperature_mean_c": 15.3088,
+      "plates": 22,
+      "precipitation_mean_mm": 1053.56,
+      "sea_level_m": -1009.71,
+      "step": 158
+    },
+    {
+      "air_temperature_mean_c": -1.45305,
+      "land_fraction": 0.185143,
+      "nodes": 33067,
+      "ocean_temperature_mean_c": 15.3034,
+      "plates": 22,
+      "precipitation_mean_mm": 1051.95,
+      "sea_level_m": -1008.64,
+      "step": 159
+    },
+    {
+      "air_temperature_mean_c": -1.57144,
+      "land_fraction": 0.184487,
+      "nodes": 33093,
+      "ocean_temperature_mean_c": 15.2978,
+      "plates": 22,
+      "precipitation_mean_mm": 1053.51,
+      "sea_level_m": -1012.33,
+      "step": 160
+    },
+    {
+      "air_temperature_mean_c": -1.50643,
+      "land_fraction": 0.184869,
+      "nodes": 33066,
+      "ocean_temperature_mean_c": 15.3058,
+      "plates": 22,
+      "precipitation_mean_mm": 1058.66,
+      "sea_level_m": -1008.96,
+      "step": 161
+    },
+    {
+      "air_temperature_mean_c": -1.52217,
+      "land_fraction": 0.184178,
+      "nodes": 33090,
+      "ocean_temperature_mean_c": 15.2896,
+      "plates": 22,
+      "precipitation_mean_mm": 1052.96,
+      "sea_level_m": -1010.32,
+      "step": 162
+    },
+    {
+      "air_temperature_mean_c": -1.51809,
+      "land_fraction": 0.184012,
+      "nodes": 33088,
+      "ocean_temperature_mean_c": 15.2826,
+      "plates": 22,
+      "precipitation_mean_mm": 1058.86,
+      "sea_level_m": -1008.74,
+      "step": 163
+    },
+    {
+      "air_temperature_mean_c": -1.54916,
+      "land_fraction": 0.184097,
+      "nodes": 33088,
+      "ocean_temperature_mean_c": 15.2803,
+      "plates": 22,
+      "precipitation_mean_mm": 1057.94,
+      "sea_level_m": -1007.97,
+      "step": 164
+    },
+    {
+      "air_temperature_mean_c": -1.59926,
+      "land_fraction": 0.182751,
+      "nodes": 33090,
+      "ocean_temperature_mean_c": 15.3085,
+      "plates": 22,
+      "precipitation_mean_mm": 1064.91,
+      "sea_level_m": -1007.68,
+      "step": 165
+    },
+    {
+      "air_temperature_mean_c": -1.55752,
+      "land_fraction": 0.182242,
+      "nodes": 33122,
+      "ocean_temperature_mean_c": 15.3097,
+      "plates": 22,
+      "precipitation_mean_mm": 1066.59,
+      "sea_level_m": -1016.62,
+      "step": 166
+    },
+    {
+      "air_temperature_mean_c": -1.41079,
+      "land_fraction": 0.181343,
+      "nodes": 33104,
+      "ocean_temperature_mean_c": 15.3118,
+      "plates": 22,
+      "precipitation_mean_mm": 1067.86,
+      "sea_level_m": -1015.73,
+      "step": 167
+    },
+    {
+      "air_temperature_mean_c": -1.3554,
+      "land_fraction": 0.181208,
+      "nodes": 33090,
+      "ocean_temperature_mean_c": 15.2962,
+      "plates": 22,
+      "precipitation_mean_mm": 1056.65,
+      "sea_level_m": -1017.25,
+      "step": 168
+    },
+    {
+      "air_temperature_mean_c": -1.56698,
+      "land_fraction": 0.180405,
+      "nodes": 33067,
+      "ocean_temperature_mean_c": 15.3035,
+      "plates": 22,
+      "precipitation_mean_mm": 1064.43,
+      "sea_level_m": -1018.75,
+      "step": 169
+    },
+    {
+      "air_temperature_mean_c": -1.49869,
+      "land_fraction": 0.180162,
+      "nodes": 33091,
+      "ocean_temperature_mean_c": 15.3022,
+      "plates": 22,
+      "precipitation_mean_mm": 1065.88,
+      "sea_level_m": -1024.92,
+      "step": 170
+    },
+    {
+      "air_temperature_mean_c": -1.46772,
+      "land_fraction": 0.178993,
+      "nodes": 33068,
+      "ocean_temperature_mean_c": 15.3171,
+      "plates": 22,
+      "precipitation_mean_mm": 1063.48,
+      "sea_level_m": -1022.57,
+      "step": 171
+    },
+    {
+      "air_temperature_mean_c": -1.35061,
+      "land_fraction": 0.179008,
+      "nodes": 33095,
+      "ocean_temperature_mean_c": 15.3084,
+      "plates": 22,
+      "precipitation_mean_mm": 1061.46,
+      "sea_level_m": -1030.65,
+      "step": 172
+    },
+    {
+      "air_temperature_mean_c": -1.33579,
+      "land_fraction": 0.178175,
+      "nodes": 33079,
+      "ocean_temperature_mean_c": 15.3312,
+      "plates": 22,
+      "precipitation_mean_mm": 1070.92,
+      "sea_level_m": -1029.51,
+      "step": 173
+    },
+    {
+      "air_temperature_mean_c": -1.33247,
+      "land_fraction": 0.179904,
+      "nodes": 33111,
+      "ocean_temperature_mean_c": 15.3352,
+      "plates": 22,
+      "precipitation_mean_mm": 1073.21,
+      "sea_level_m": -1035.03,
+      "step": 174
+    },
+    {
+      "air_temperature_mean_c": -1.35576,
+      "land_fraction": 0.178468,
+      "nodes": 33066,
+      "ocean_temperature_mean_c": 15.3507,
+      "plates": 22,
+      "precipitation_mean_mm": 1065.02,
+      "sea_level_m": -1032.0,
+      "step": 175
+    },
+    {
+      "air_temperature_mean_c": -1.26008,
+      "land_fraction": 0.178557,
+      "nodes": 33090,
+      "ocean_temperature_mean_c": 15.3516,
+      "plates": 22,
+      "precipitation_mean_mm": 1065.04,
+      "sea_level_m": -1038.85,
+      "step": 176
+    },
+    {
+      "air_temperature_mean_c": -0.941413,
+      "land_fraction": 0.179753,
+      "nodes": 33115,
+      "ocean_temperature_mean_c": 15.3603,
+      "plates": 22,
+      "precipitation_mean_mm": 1078.95,
+      "sea_level_m": -1042.94,
+      "step": 177
+    },
+    {
+      "air_temperature_mean_c": -0.926475,
+      "land_fraction": 0.179819,
+      "nodes": 33115,
+      "ocean_temperature_mean_c": 15.3516,
+      "plates": 23,
+      "precipitation_mean_mm": 1067.28,
+      "sea_level_m": -1043.67,
+      "step": 178
+    },
+    {
+      "air_temperature_mean_c": -0.943747,
+      "land_fraction": 0.179093,
+      "nodes": 33099,
+      "ocean_temperature_mean_c": 15.3602,
+      "plates": 24,
+      "precipitation_mean_mm": 1076.54,
+      "sea_level_m": -1045.8,
+      "step": 179
+    },
+    {
+      "air_temperature_mean_c": -0.479131,
+      "land_fraction": 0.178441,
+      "nodes": 33138,
+      "ocean_temperature_mean_c": 15.3292,
+      "plates": 24,
+      "precipitation_mean_mm": 1077.71,
+      "sea_level_m": -1058.59,
+      "step": 180
+    },
+    {
+      "air_temperature_mean_c": -0.537198,
+      "land_fraction": 0.177805,
+      "nodes": 33141,
+      "ocean_temperature_mean_c": 15.3491,
+      "plates": 24,
+      "precipitation_mean_mm": 1072.35,
+      "sea_level_m": -1061.28,
+      "step": 181
+    },
+    {
+      "air_temperature_mean_c": -0.572217,
+      "land_fraction": 0.177515,
+      "nodes": 33155,
+      "ocean_temperature_mean_c": 15.346,
+      "plates": 24,
+      "precipitation_mean_mm": 1070.13,
+      "sea_level_m": -1064.95,
+      "step": 182
+    },
+    {
+      "air_temperature_mean_c": -0.685712,
+      "land_fraction": 0.176771,
+      "nodes": 33150,
+      "ocean_temperature_mean_c": 15.3652,
+      "plates": 24,
+      "precipitation_mean_mm": 1076.96,
+      "sea_level_m": -1067.26,
+      "step": 183
+    },
+    {
+      "air_temperature_mean_c": -0.778314,
+      "land_fraction": 0.177041,
+      "nodes": 33175,
+      "ocean_temperature_mean_c": 15.3638,
+      "plates": 24,
+      "precipitation_mean_mm": 1072.48,
+      "sea_level_m": -1073.84,
+      "step": 184
+    },
+    {
+      "air_temperature_mean_c": -0.680351,
+      "land_fraction": 0.176474,
+      "nodes": 33157,
+      "ocean_temperature_mean_c": 15.3505,
+      "plates": 24,
+      "precipitation_mean_mm": 1073.45,
+      "sea_level_m": -1074.05,
+      "step": 185
+    },
+    {
+      "air_temperature_mean_c": -0.862661,
+      "land_fraction": 0.175725,
+      "nodes": 33157,
+      "ocean_temperature_mean_c": 15.345,
+      "plates": 24,
+      "precipitation_mean_mm": 1078.14,
+      "sea_level_m": -1078.69,
+      "step": 186
+    },
+    {
+      "air_temperature_mean_c": -0.862066,
+      "land_fraction": 0.174078,
+      "nodes": 33185,
+      "ocean_temperature_mean_c": 15.3619,
+      "plates": 24,
+      "precipitation_mean_mm": 1082.22,
+      "sea_level_m": -1081.58,
+      "step": 187
+    },
+    {
+      "air_temperature_mean_c": -0.824008,
+      "land_fraction": 0.174726,
+      "nodes": 33217,
+      "ocean_temperature_mean_c": 15.3605,
+      "plates": 24,
+      "precipitation_mean_mm": 1080.89,
+      "sea_level_m": -1081.8,
+      "step": 188
+    },
+    {
+      "air_temperature_mean_c": -0.788285,
+      "land_fraction": 0.175293,
+      "nodes": 33209,
+      "ocean_temperature_mean_c": 15.354,
+      "plates": 24,
+      "precipitation_mean_mm": 1082.2,
+      "sea_level_m": -1094.26,
+      "step": 189
+    },
+    {
+      "air_temperature_mean_c": -0.616445,
+      "land_fraction": 0.170814,
+      "nodes": 33207,
+      "ocean_temperature_mean_c": 15.3501,
+      "plates": 24,
+      "precipitation_mean_mm": 1091.22,
+      "sea_level_m": -1095.53,
+      "step": 190
+    },
+    {
+      "air_temperature_mean_c": -0.621525,
+      "land_fraction": 0.171408,
+      "nodes": 33207,
+      "ocean_temperature_mean_c": 15.3498,
+      "plates": 24,
+      "precipitation_mean_mm": 1080.33,
+      "sea_level_m": -1104.93,
+      "step": 191
+    },
+    {
+      "air_temperature_mean_c": -0.56632,
+      "land_fraction": 0.170822,
+      "nodes": 33192,
+      "ocean_temperature_mean_c": 15.3697,
+      "plates": 25,
+      "precipitation_mean_mm": 1083.75,
+      "sea_level_m": -1106.38,
+      "step": 192
+    },
+    {
+      "air_temperature_mean_c": -0.468679,
+      "land_fraction": 0.171547,
+      "nodes": 33169,
+      "ocean_temperature_mean_c": 15.3782,
+      "plates": 25,
+      "precipitation_mean_mm": 1087.14,
+      "sea_level_m": -1111.27,
+      "step": 193
+    },
+    {
+      "air_temperature_mean_c": -0.565123,
+      "land_fraction": 0.170926,
+      "nodes": 33146,
+      "ocean_temperature_mean_c": 15.3778,
+      "plates": 25,
+      "precipitation_mean_mm": 1087.32,
+      "sea_level_m": -1116.81,
+      "step": 194
+    },
+    {
+      "air_temperature_mean_c": -0.559888,
+      "land_fraction": 0.168962,
+      "nodes": 33140,
+      "ocean_temperature_mean_c": 15.3666,
+      "plates": 25,
+      "precipitation_mean_mm": 1084.04,
+      "sea_level_m": -1118.65,
+      "step": 195
+    },
+    {
+      "air_temperature_mean_c": -0.501741,
+      "land_fraction": 0.169934,
+      "nodes": 33152,
+      "ocean_temperature_mean_c": 15.3649,
+      "plates": 25,
+      "precipitation_mean_mm": 1088.87,
+      "sea_level_m": -1125.28,
+      "step": 196
+    },
+    {
+      "air_temperature_mean_c": -0.665029,
+      "land_fraction": 0.167492,
+      "nodes": 33106,
+      "ocean_temperature_mean_c": 15.3836,
+      "plates": 25,
+      "precipitation_mean_mm": 1084.04,
+      "sea_level_m": -1119.8,
+      "step": 197
+    },
+    {
+      "air_temperature_mean_c": -0.569483,
+      "land_fraction": 0.168098,
+      "nodes": 33127,
+      "ocean_temperature_mean_c": 15.3841,
+      "plates": 25,
+      "precipitation_mean_mm": 1094.58,
+      "sea_level_m": -1120.58,
+      "step": 198
+    },
+    {
+      "air_temperature_mean_c": -0.576179,
+      "land_fraction": 0.169487,
+      "nodes": 33088,
+      "ocean_temperature_mean_c": 15.3968,
+      "plates": 25,
+      "precipitation_mean_mm": 1088.85,
+      "sea_level_m": -1114.88,
+      "step": 199
+    },
+    {
+      "air_temperature_mean_c": -0.572537,
+      "land_fraction": 0.169344,
+      "nodes": 33129,
+      "ocean_temperature_mean_c": 15.3985,
+      "plates": 25,
+      "precipitation_mean_mm": 1092.06,
+      "sea_level_m": -1121.09,
+      "step": 200
+    },
+    {
+      "air_temperature_mean_c": -0.638087,
+      "land_fraction": 0.169549,
+      "nodes": 33129,
+      "ocean_temperature_mean_c": 15.3979,
+      "plates": 25,
+      "precipitation_mean_mm": 1092.75,
+      "sea_level_m": -1123.6,
+      "step": 201
+    },
+    {
+      "air_temperature_mean_c": -0.674434,
+      "land_fraction": 0.16907,
+      "nodes": 33091,
+      "ocean_temperature_mean_c": 15.4038,
+      "plates": 25,
+      "precipitation_mean_mm": 1090.54,
+      "sea_level_m": -1119.84,
+      "step": 202
+    },
+    {
+      "air_temperature_mean_c": -0.620248,
+      "land_fraction": 0.169437,
+      "nodes": 33122,
+      "ocean_temperature_mean_c": 15.3966,
+      "plates": 25,
+      "precipitation_mean_mm": 1091.82,
+      "sea_level_m": -1121.54,
+      "step": 203
+    },
+    {
+      "air_temperature_mean_c": -0.561381,
+      "land_fraction": 0.169491,
+      "nodes": 33112,
+      "ocean_temperature_mean_c": 15.4028,
+      "plates": 25,
+      "precipitation_mean_mm": 1094.72,
+      "sea_level_m": -1118.91,
+      "step": 204
+    },
+    {
+      "air_temperature_mean_c": -0.561608,
+      "land_fraction": 0.169066,
+      "nodes": 33125,
+      "ocean_temperature_mean_c": 15.4081,
+      "plates": 25,
+      "precipitation_mean_mm": 1095.28,
+      "sea_level_m": -1120.2,
+      "step": 205
+    },
+    {
+      "air_temperature_mean_c": -0.67989,
+      "land_fraction": 0.168738,
+      "nodes": 33093,
+      "ocean_temperature_mean_c": 15.4071,
+      "plates": 25,
+      "precipitation_mean_mm": 1091.25,
+      "sea_level_m": -1116.27,
+      "step": 206
+    },
+    {
+      "air_temperature_mean_c": -0.668717,
+      "land_fraction": 0.170096,
+      "nodes": 33123,
+      "ocean_temperature_mean_c": 15.4094,
+      "plates": 25,
+      "precipitation_mean_mm": 1099.24,
+      "sea_level_m": -1118.27,
+      "step": 207
+    },
+    {
+      "air_temperature_mean_c": -0.637724,
+      "land_fraction": 0.170058,
+      "nodes": 33094,
+      "ocean_temperature_mean_c": 15.4099,
+      "plates": 24,
+      "precipitation_mean_mm": 1092.61,
+      "sea_level_m": -1110.67,
+      "step": 208
+    },
+    {
+      "air_temperature_mean_c": -0.583888,
+      "land_fraction": 0.169938,
+      "nodes": 33103,
+      "ocean_temperature_mean_c": 15.4106,
+      "plates": 24,
+      "precipitation_mean_mm": 1088.53,
+      "sea_level_m": -1109.33,
+      "step": 209
+    },
+    {
+      "air_temperature_mean_c": -0.633911,
+      "land_fraction": 0.169583,
+      "nodes": 33064,
+      "ocean_temperature_mean_c": 15.4092,
+      "plates": 24,
+      "precipitation_mean_mm": 1092.96,
+      "sea_level_m": -1100.39,
+      "step": 210
+    },
+    {
+      "air_temperature_mean_c": -0.66601,
+      "land_fraction": 0.17022,
+      "nodes": 33058,
+      "ocean_temperature_mean_c": 15.4061,
+      "plates": 24,
+      "precipitation_mean_mm": 1096.21,
+      "sea_level_m": -1099.11,
+      "step": 211
+    },
+    {
+      "air_temperature_mean_c": -0.683346,
+      "land_fraction": 0.169838,
+      "nodes": 33053,
+      "ocean_temperature_mean_c": 15.4121,
+      "plates": 24,
+      "precipitation_mean_mm": 1093.82,
+      "sea_level_m": -1095.92,
+      "step": 212
+    },
+    {
+      "air_temperature_mean_c": -0.674882,
+      "land_fraction": 0.170945,
+      "nodes": 33062,
+      "ocean_temperature_mean_c": 15.4131,
+      "plates": 25,
+      "precipitation_mean_mm": 1095.29,
+      "sea_level_m": -1096.66,
+      "step": 213
+    },
+    {
+      "air_temperature_mean_c": -0.785635,
+      "land_fraction": 0.170787,
+      "nodes": 33050,
+      "ocean_temperature_mean_c": 15.4219,
+      "plates": 25,
+      "precipitation_mean_mm": 1096.45,
+      "sea_level_m": -1096.12,
+      "step": 214
+    },
+    {
+      "air_temperature_mean_c": -0.832258,
+      "land_fraction": 0.169788,
+      "nodes": 33068,
+      "ocean_temperature_mean_c": 15.4212,
+      "plates": 26,
+      "precipitation_mean_mm": 1098.43,
+      "sea_level_m": -1096.77,
+      "step": 215
+    },
+    {
+      "air_temperature_mean_c": -0.852866,
+      "land_fraction": 0.169618,
+      "nodes": 33037,
+      "ocean_temperature_mean_c": 15.4273,
+      "plates": 26,
+      "precipitation_mean_mm": 1094.56,
+      "sea_level_m": -1090.88,
+      "step": 216
+    },
+    {
+      "air_temperature_mean_c": -0.75719,
+      "land_fraction": 0.170015,
+      "nodes": 33045,
+      "ocean_temperature_mean_c": 15.4221,
+      "plates": 26,
+      "precipitation_mean_mm": 1098.93,
+      "sea_level_m": -1087.13,
+      "step": 217
+    },
+    {
+      "air_temperature_mean_c": -0.790821,
+      "land_fraction": 0.169877,
+      "nodes": 33026,
+      "ocean_temperature_mean_c": 15.4276,
+      "plates": 26,
+      "precipitation_mean_mm": 1095.25,
+      "sea_level_m": -1081.06,
+      "step": 218
+    },
+    {
+      "air_temperature_mean_c": -0.747204,
+      "land_fraction": 0.169464,
+      "nodes": 33092,
+      "ocean_temperature_mean_c": 15.4286,
+      "plates": 27,
+      "precipitation_mean_mm": 1090.56,
+      "sea_level_m": -1087.01,
+      "step": 219
+    },
+    {
+      "air_temperature_mean_c": -0.639816,
+      "land_fraction": 0.170505,
+      "nodes": 33059,
+      "ocean_temperature_mean_c": 15.4261,
+      "plates": 27,
+      "precipitation_mean_mm": 1097.02,
+      "sea_level_m": -1079.44,
+      "step": 220
+    },
+    {
+      "air_temperature_mean_c": -0.641424,
+      "land_fraction": 0.17049,
+      "nodes": 33065,
+      "ocean_temperature_mean_c": 15.4251,
+      "plates": 27,
+      "precipitation_mean_mm": 1096.63,
+      "sea_level_m": -1075.53,
+      "step": 221
+    },
+    {
+      "air_temperature_mean_c": -0.759903,
+      "land_fraction": 0.16961,
+      "nodes": 33056,
+      "ocean_temperature_mean_c": 15.4319,
+      "plates": 27,
+      "precipitation_mean_mm": 1087.71,
+      "sea_level_m": -1074.39,
+      "step": 222
+    },
+    {
+      "air_temperature_mean_c": -0.747939,
+      "land_fraction": 0.169545,
+      "nodes": 33067,
+      "ocean_temperature_mean_c": 15.4369,
+      "plates": 27,
+      "precipitation_mean_mm": 1096.51,
+      "sea_level_m": -1071.3,
+      "step": 223
+    },
+    {
+      "air_temperature_mean_c": -0.752875,
+      "land_fraction": 0.169618,
+      "nodes": 33054,
+      "ocean_temperature_mean_c": 15.436,
+      "plates": 27,
+      "precipitation_mean_mm": 1093.18,
+      "sea_level_m": -1065.37,
+      "step": 224
+    },
+    {
+      "air_temperature_mean_c": -0.817288,
+      "land_fraction": 0.169456,
+      "nodes": 33067,
+      "ocean_temperature_mean_c": 15.4416,
+      "plates": 27,
+      "precipitation_mean_mm": 1095.39,
+      "sea_level_m": -1064.36,
+      "step": 225
+    },
+    {
+      "air_temperature_mean_c": -0.766035,
+      "land_fraction": 0.168931,
+      "nodes": 33062,
+      "ocean_temperature_mean_c": 15.4486,
+      "plates": 26,
+      "precipitation_mean_mm": 1097.63,
+      "sea_level_m": -1059.51,
+      "step": 226
+    },
+    {
+      "air_temperature_mean_c": -0.852039,
+      "land_fraction": 0.168846,
+      "nodes": 33051,
+      "ocean_temperature_mean_c": 15.4501,
+      "plates": 26,
+      "precipitation_mean_mm": 1096.14,
+      "sea_level_m": -1059.53,
+      "step": 227
+    },
+    {
+      "air_temperature_mean_c": -0.733,
+      "land_fraction": 0.169105,
+      "nodes": 33041,
+      "ocean_temperature_mean_c": 15.4475,
+      "plates": 26,
+      "precipitation_mean_mm": 1093.08,
+      "sea_level_m": -1057.7,
+      "step": 228
+    },
+    {
+      "air_temperature_mean_c": -0.815482,
+      "land_fraction": 0.169228,
+      "nodes": 33107,
+      "ocean_temperature_mean_c": 15.4472,
+      "plates": 26,
+      "precipitation_mean_mm": 1101.15,
+      "sea_level_m": -1066.77,
+      "step": 229
+    },
+    {
+      "air_temperature_mean_c": -0.802951,
+      "land_fraction": 0.169117,
+      "nodes": 33048,
+      "ocean_temperature_mean_c": 15.4537,
+      "plates": 26,
+      "precipitation_mean_mm": 1102.52,
+      "sea_level_m": -1056.01,
+      "step": 230
+    },
+    {
+      "air_temperature_mean_c": -0.773018,
+      "land_fraction": 0.169109,
+      "nodes": 33057,
+      "ocean_temperature_mean_c": 15.4486,
+      "plates": 25,
+      "precipitation_mean_mm": 1103.26,
+      "sea_level_m": -1053.52,
+      "step": 231
+    },
+    {
+      "air_temperature_mean_c": -0.745885,
+      "land_fraction": 0.168434,
+      "nodes": 33029,
+      "ocean_temperature_mean_c": 15.4517,
+      "plates": 26,
+      "precipitation_mean_mm": 1093.8,
+      "sea_level_m": -1049.08,
+      "step": 232
+    },
+    {
+      "air_temperature_mean_c": -0.733822,
+      "land_fraction": 0.167855,
+      "nodes": 33102,
+      "ocean_temperature_mean_c": 15.4534,
+      "plates": 27,
+      "precipitation_mean_mm": 1106.65,
+      "sea_level_m": -1062.4,
+      "step": 233
+    },
+    {
+      "air_temperature_mean_c": -0.786097,
+      "land_fraction": 0.167199,
+      "nodes": 33078,
+      "ocean_temperature_mean_c": 15.4608,
+      "plates": 27,
+      "precipitation_mean_mm": 1100.52,
+      "sea_level_m": -1060.83,
+      "step": 234
+    },
+    {
+      "air_temperature_mean_c": -0.823361,
+      "land_fraction": 0.167411,
+      "nodes": 33102,
+      "ocean_temperature_mean_c": 15.4684,
+      "plates": 27,
+      "precipitation_mean_mm": 1104.56,
+      "sea_level_m": -1065.97,
+      "step": 235
+    },
+    {
+      "air_temperature_mean_c": -0.875172,
+      "land_fraction": 0.167041,
+      "nodes": 33107,
+      "ocean_temperature_mean_c": 15.4689,
+      "plates": 27,
+      "precipitation_mean_mm": 1100.1,
+      "sea_level_m": -1068.59,
+      "step": 236
+    },
+    {
+      "air_temperature_mean_c": -0.919068,
+      "land_fraction": 0.167546,
+      "nodes": 33035,
+      "ocean_temperature_mean_c": 15.4752,
+      "plates": 27,
+      "precipitation_mean_mm": 1101.3,
+      "sea_level_m": -1061.85,
+      "step": 237
+    },
+    {
+      "air_temperature_mean_c": -0.925512,
+      "land_fraction": 0.16784,
+      "nodes": 33090,
+      "ocean_temperature_mean_c": 15.4769,
+      "plates": 27,
+      "precipitation_mean_mm": 1099.33,
+      "sea_level_m": -1074.01,
+      "step": 238
+    },
+    {
+      "air_temperature_mean_c": -0.955307,
+      "land_fraction": 0.168036,
+      "nodes": 33105,
+      "ocean_temperature_mean_c": 15.4763,
+      "plates": 27,
+      "precipitation_mean_mm": 1100.04,
+      "sea_level_m": -1078.25,
+      "step": 239
+    },
+    {
+      "air_temperature_mean_c": -0.89583,
+      "land_fraction": 0.167315,
+      "nodes": 33126,
+      "ocean_temperature_mean_c": 15.4779,
+      "plates": 27,
+      "precipitation_mean_mm": 1093.88,
+      "sea_level_m": -1085.24,
+      "step": 240
+    },
+    {
+      "air_temperature_mean_c": -0.912251,
+      "land_fraction": 0.166964,
+      "nodes": 33101,
+      "ocean_temperature_mean_c": 15.4801,
+      "plates": 27,
+      "precipitation_mean_mm": 1098.88,
+      "sea_level_m": -1085.73,
+      "step": 241
+    },
+    {
+      "air_temperature_mean_c": -1.00847,
+      "land_fraction": 0.166775,
+      "nodes": 33109,
+      "ocean_temperature_mean_c": 15.4792,
+      "plates": 27,
+      "precipitation_mean_mm": 1100.6,
+      "sea_level_m": -1088.15,
+      "step": 242
+    },
+    {
+      "air_temperature_mean_c": -0.990648,
+      "land_fraction": 0.166609,
+      "nodes": 33137,
+      "ocean_temperature_mean_c": 15.4757,
+      "plates": 28,
+      "precipitation_mean_mm": 1099.32,
+      "sea_level_m": -1092.54,
+      "step": 243
+    },
+    {
+      "air_temperature_mean_c": -1.18485,
+      "land_fraction": 0.166327,
+      "nodes": 33122,
+      "ocean_temperature_mean_c": 15.4782,
+      "plates": 28,
+      "precipitation_mean_mm": 1094.44,
+      "sea_level_m": -1103.75,
+      "step": 244
+    },
+    {
+      "air_temperature_mean_c": -1.47691,
+      "land_fraction": 0.164136,
+      "nodes": 33164,
+      "ocean_temperature_mean_c": 15.4944,
+      "plates": 28,
+      "precipitation_mean_mm": 1101.7,
+      "sea_level_m": -1119.51,
+      "step": 245
+    },
+    {
+      "air_temperature_mean_c": -1.391,
+      "land_fraction": 0.164082,
+      "nodes": 33141,
+      "ocean_temperature_mean_c": 15.4946,
+      "plates": 28,
+      "precipitation_mean_mm": 1097.81,
+      "sea_level_m": -1121.21,
+      "step": 246
+    },
+    {
+      "air_temperature_mean_c": -1.58714,
+      "land_fraction": 0.163503,
+      "nodes": 33161,
+      "ocean_temperature_mean_c": 15.4971,
+      "plates": 28,
+      "precipitation_mean_mm": 1088.81,
+      "sea_level_m": -1129.51,
+      "step": 247
+    },
+    {
+      "air_temperature_mean_c": -1.74472,
+      "land_fraction": 0.163738,
+      "nodes": 33193,
+      "ocean_temperature_mean_c": 15.5029,
+      "plates": 28,
+      "precipitation_mean_mm": 1097.5,
+      "sea_level_m": -1139.12,
+      "step": 248
+    },
+    {
+      "air_temperature_mean_c": -1.9981,
+      "land_fraction": 0.162384,
+      "nodes": 33169,
+      "ocean_temperature_mean_c": 15.5026,
+      "plates": 28,
+      "precipitation_mean_mm": 1093.38,
+      "sea_level_m": -1140.0,
+      "step": 249
+    },
+    {
+      "air_temperature_mean_c": -1.99187,
+      "land_fraction": 0.162596,
+      "nodes": 33205,
+      "ocean_temperature_mean_c": 15.5159,
+      "plates": 28,
+      "precipitation_mean_mm": 1092.4,
+      "sea_level_m": -1148.16,
+      "step": 250
+    },
+    {
+      "air_temperature_mean_c": -2.08897,
+      "land_fraction": 0.162407,
+      "nodes": 33194,
+      "ocean_temperature_mean_c": 15.515,
+      "plates": 28,
+      "precipitation_mean_mm": 1093.22,
+      "sea_level_m": -1150.24,
+      "step": 251
+    },
+    {
+      "air_temperature_mean_c": -2.14389,
+      "land_fraction": 0.162589,
+      "nodes": 33213,
+      "ocean_temperature_mean_c": 15.5166,
+      "plates": 29,
+      "precipitation_mean_mm": 1089.89,
+      "sea_level_m": -1153.02,
+      "step": 252
+    },
+    {
+      "air_temperature_mean_c": -2.14683,
+      "land_fraction": 0.162388,
+      "nodes": 33211,
+      "ocean_temperature_mean_c": 15.5306,
+      "plates": 29,
+      "precipitation_mean_mm": 1093.19,
+      "sea_level_m": -1156.05,
+      "step": 253
+    },
+    {
+      "air_temperature_mean_c": -2.20012,
+      "land_fraction": 0.162812,
+      "nodes": 33195,
+      "ocean_temperature_mean_c": 15.5281,
+      "plates": 29,
+      "precipitation_mean_mm": 1096.49,
+      "sea_level_m": -1153.6,
+      "step": 254
+    },
+    {
+      "air_temperature_mean_c": -2.50024,
+      "land_fraction": 0.162346,
+      "nodes": 33185,
+      "ocean_temperature_mean_c": 15.5405,
+      "plates": 30,
+      "precipitation_mean_mm": 1091.04,
+      "sea_level_m": -1156.51,
+      "step": 255
+    },
+    {
+      "air_temperature_mean_c": -2.31917,
+      "land_fraction": 0.162843,
+      "nodes": 33218,
+      "ocean_temperature_mean_c": 15.5487,
+      "plates": 30,
+      "precipitation_mean_mm": 1084.66,
+      "sea_level_m": -1161.92,
+      "step": 256
+    },
+    {
+      "air_temperature_mean_c": -2.50787,
+      "land_fraction": 0.16228,
+      "nodes": 33204,
+      "ocean_temperature_mean_c": 15.5405,
+      "plates": 30,
+      "precipitation_mean_mm": 1094.79,
+      "sea_level_m": -1165.4,
+      "step": 257
+    },
+    {
+      "air_temperature_mean_c": -2.35294,
+      "land_fraction": 0.161856,
+      "nodes": 33237,
+      "ocean_temperature_mean_c": 15.537,
+      "plates": 30,
+      "precipitation_mean_mm": 1090.02,
+      "sea_level_m": -1167.06,
+      "step": 258
+    },
+    {
+      "air_temperature_mean_c": -2.39306,
+      "land_fraction": 0.161944,
+      "nodes": 33230,
+      "ocean_temperature_mean_c": 15.5377,
+      "plates": 30,
+      "precipitation_mean_mm": 1086.71,
+      "sea_level_m": -1171.73,
+      "step": 259
+    },
+    {
+      "air_temperature_mean_c": -2.46991,
+      "land_fraction": 0.161312,
+      "nodes": 33240,
+      "ocean_temperature_mean_c": 15.5475,
+      "plates": 30,
+      "precipitation_mean_mm": 1090.77,
+      "sea_level_m": -1167.95,
+      "step": 260
+    },
+    {
+      "air_temperature_mean_c": -2.62574,
+      "land_fraction": 0.161103,
+      "nodes": 33266,
+      "ocean_temperature_mean_c": 15.5347,
+      "plates": 30,
+      "precipitation_mean_mm": 1086.37,
+      "sea_level_m": -1172.14,
+      "step": 261
+    },
+    {
+      "air_temperature_mean_c": -2.56657,
+      "land_fraction": 0.159792,
+      "nodes": 33273,
+      "ocean_temperature_mean_c": 15.5386,
+      "plates": 30,
+      "precipitation_mean_mm": 1093.23,
+      "sea_level_m": -1168.89,
+      "step": 262
+    },
+    {
+      "air_temperature_mean_c": -2.51618,
+      "land_fraction": 0.159992,
+      "nodes": 33357,
+      "ocean_temperature_mean_c": 15.5369,
+      "plates": 30,
+      "precipitation_mean_mm": 1090.56,
+      "sea_level_m": -1181.58,
+      "step": 263
+    },
+    {
+      "air_temperature_mean_c": -2.59493,
+      "land_fraction": 0.159159,
+      "nodes": 33348,
+      "ocean_temperature_mean_c": 15.5517,
+      "plates": 30,
+      "precipitation_mean_mm": 1101.2,
+      "sea_level_m": -1175.16,
+      "step": 264
+    },
+    {
+      "air_temperature_mean_c": -2.7015,
+      "land_fraction": 0.158719,
+      "nodes": 33340,
+      "ocean_temperature_mean_c": 15.5561,
+      "plates": 30,
+      "precipitation_mean_mm": 1095.55,
+      "sea_level_m": -1178.64,
+      "step": 265
+    },
+    {
+      "air_temperature_mean_c": -2.69951,
+      "land_fraction": 0.15865,
+      "nodes": 33314,
+      "ocean_temperature_mean_c": 15.5561,
+      "plates": 30,
+      "precipitation_mean_mm": 1092.8,
+      "sea_level_m": -1183.42,
+      "step": 266
+    },
+    {
+      "air_temperature_mean_c": -2.72706,
+      "land_fraction": 0.157164,
+      "nodes": 33331,
+      "ocean_temperature_mean_c": 15.5582,
+      "plates": 30,
+      "precipitation_mean_mm": 1097.5,
+      "sea_level_m": -1184.82,
+      "step": 267
+    },
+    {
+      "air_temperature_mean_c": -2.62373,
+      "land_fraction": 0.157535,
+      "nodes": 33352,
+      "ocean_temperature_mean_c": 15.561,
+      "plates": 30,
+      "precipitation_mean_mm": 1101.17,
+      "sea_level_m": -1191.95,
+      "step": 268
+    },
+    {
+      "air_temperature_mean_c": -2.66932,
+      "land_fraction": 0.156956,
+      "nodes": 33369,
+      "ocean_temperature_mean_c": 15.5597,
+      "plates": 30,
+      "precipitation_mean_mm": 1099.33,
+      "sea_level_m": -1198.86,
+      "step": 269
+    },
+    {
+      "air_temperature_mean_c": -2.64302,
+      "land_fraction": 0.156181,
+      "nodes": 33395,
+      "ocean_temperature_mean_c": 15.5611,
+      "plates": 30,
+      "precipitation_mean_mm": 1093.52,
+      "sea_level_m": -1207.44,
+      "step": 270
+    },
+    {
+      "air_temperature_mean_c": -2.6521,
+      "land_fraction": 0.155691,
+      "nodes": 33370,
+      "ocean_temperature_mean_c": 15.5688,
+      "plates": 30,
+      "precipitation_mean_mm": 1097.63,
+      "sea_level_m": -1202.36,
+      "step": 271
+    },
+    {
+      "air_temperature_mean_c": -2.66618,
+      "land_fraction": 0.155617,
+      "nodes": 33360,
+      "ocean_temperature_mean_c": 15.5714,
+      "plates": 30,
+      "precipitation_mean_mm": 1099.96,
+      "sea_level_m": -1201.04,
+      "step": 272
+    },
+    {
+      "air_temperature_mean_c": -2.61271,
+      "land_fraction": 0.155093,
+      "nodes": 33408,
+      "ocean_temperature_mean_c": 15.5659,
+      "plates": 30,
+      "precipitation_mean_mm": 1102.16,
+      "sea_level_m": -1207.47,
+      "step": 273
+    },
+    {
+      "air_temperature_mean_c": -2.58709,
+      "land_fraction": 0.156748,
+      "nodes": 33401,
+      "ocean_temperature_mean_c": 15.5622,
+      "plates": 30,
+      "precipitation_mean_mm": 1101.8,
+      "sea_level_m": -1206.03,
+      "step": 274
+    },
+    {
+      "air_temperature_mean_c": -2.45195,
+      "land_fraction": 0.1575,
+      "nodes": 33427,
+      "ocean_temperature_mean_c": 15.5617,
+      "plates": 30,
+      "precipitation_mean_mm": 1103.49,
+      "sea_level_m": -1205.77,
+      "step": 275
+    },
+    {
+      "air_temperature_mean_c": -2.42289,
+      "land_fraction": 0.157106,
+      "nodes": 33433,
+      "ocean_temperature_mean_c": 15.5529,
+      "plates": 31,
+      "precipitation_mean_mm": 1104.01,
+      "sea_level_m": -1205.22,
+      "step": 276
+    },
+    {
+      "air_temperature_mean_c": -2.27384,
+      "land_fraction": 0.156389,
+      "nodes": 33465,
+      "ocean_temperature_mean_c": 15.5513,
+      "plates": 31,
+      "precipitation_mean_mm": 1099.48,
+      "sea_level_m": -1210.62,
+      "step": 277
+    },
+    {
+      "air_temperature_mean_c": -2.11847,
+      "land_fraction": 0.155378,
+      "nodes": 33444,
+      "ocean_temperature_mean_c": 15.556,
+      "plates": 31,
+      "precipitation_mean_mm": 1104.84,
+      "sea_level_m": -1209.13,
+      "step": 278
+    },
+    {
+      "air_temperature_mean_c": -2.12697,
+      "land_fraction": 0.155351,
+      "nodes": 33415,
+      "ocean_temperature_mean_c": 15.5521,
+      "plates": 31,
+      "precipitation_mean_mm": 1105.12,
+      "sea_level_m": -1206.97,
+      "step": 279
+    },
+    {
+      "air_temperature_mean_c": -1.99049,
+      "land_fraction": 0.154587,
+      "nodes": 33416,
+      "ocean_temperature_mean_c": 15.5556,
+      "plates": 31,
+      "precipitation_mean_mm": 1104.18,
+      "sea_level_m": -1209.12,
+      "step": 280
+    },
+    {
+      "air_temperature_mean_c": -1.77215,
+      "land_fraction": 0.153623,
+      "nodes": 33428,
+      "ocean_temperature_mean_c": 15.5553,
+      "plates": 32,
+      "precipitation_mean_mm": 1110.19,
+      "sea_level_m": -1219.27,
+      "step": 281
+    },
+    {
+      "air_temperature_mean_c": -1.70364,
+      "land_fraction": 0.153071,
+      "nodes": 33458,
+      "ocean_temperature_mean_c": 15.5588,
+      "plates": 32,
+      "precipitation_mean_mm": 1104.5,
+      "sea_level_m": -1230.13,
+      "step": 282
+    },
+    {
+      "air_temperature_mean_c": -1.60885,
+      "land_fraction": 0.152149,
+      "nodes": 33419,
+      "ocean_temperature_mean_c": 15.5531,
+      "plates": 32,
+      "precipitation_mean_mm": 1109.65,
+      "sea_level_m": -1232.77,
+      "step": 283
+    },
+    {
+      "air_temperature_mean_c": -1.6621,
+      "land_fraction": 0.148056,
+      "nodes": 33460,
+      "ocean_temperature_mean_c": 15.5585,
+      "plates": 33,
+      "precipitation_mean_mm": 1113.47,
+      "sea_level_m": -1245.14,
+      "step": 284
+    },
+    {
+      "air_temperature_mean_c": -1.52945,
+      "land_fraction": 0.146798,
+      "nodes": 33448,
+      "ocean_temperature_mean_c": 15.558,
+      "plates": 33,
+      "precipitation_mean_mm": 1108.39,
+      "sea_level_m": -1254.04,
+      "step": 285
+    },
+    {
+      "air_temperature_mean_c": -1.46181,
+      "land_fraction": 0.145602,
+      "nodes": 33484,
+      "ocean_temperature_mean_c": 15.5638,
+      "plates": 33,
+      "precipitation_mean_mm": 1106.96,
+      "sea_level_m": -1269.43,
+      "step": 286
+    },
+    {
+      "air_temperature_mean_c": -1.38686,
+      "land_fraction": 0.144128,
+      "nodes": 33516,
+      "ocean_temperature_mean_c": 15.5632,
+      "plates": 33,
+      "precipitation_mean_mm": 1111.64,
+      "sea_level_m": -1286.03,
+      "step": 287
+    },
+    {
+      "air_temperature_mean_c": -1.48232,
+      "land_fraction": 0.142986,
+      "nodes": 33492,
+      "ocean_temperature_mean_c": 15.5669,
+      "plates": 33,
+      "precipitation_mean_mm": 1113.61,
+      "sea_level_m": -1290.22,
+      "step": 288
+    },
+    {
+      "air_temperature_mean_c": -1.36763,
+      "land_fraction": 0.142894,
+      "nodes": 33488,
+      "ocean_temperature_mean_c": 15.5731,
+      "plates": 34,
+      "precipitation_mean_mm": 1110.91,
+      "sea_level_m": -1300.83,
+      "step": 289
+    },
+    {
+      "air_temperature_mean_c": -1.33707,
+      "land_fraction": 0.141744,
+      "nodes": 33477,
+      "ocean_temperature_mean_c": 15.5749,
+      "plates": 34,
+      "precipitation_mean_mm": 1118.01,
+      "sea_level_m": -1307.91,
+      "step": 290
+    },
+    {
+      "air_temperature_mean_c": -1.15284,
+      "land_fraction": 0.143268,
+      "nodes": 33480,
+      "ocean_temperature_mean_c": 15.5713,
+      "plates": 34,
+      "precipitation_mean_mm": 1114.61,
+      "sea_level_m": -1308.38,
+      "step": 291
+    },
+    {
+      "air_temperature_mean_c": -1.1297,
+      "land_fraction": 0.144518,
+      "nodes": 33504,
+      "ocean_temperature_mean_c": 15.5742,
+      "plates": 34,
+      "precipitation_mean_mm": 1118.66,
+      "sea_level_m": -1313.54,
+      "step": 292
+    },
+    {
+      "air_temperature_mean_c": -1.09615,
+      "land_fraction": 0.144657,
+      "nodes": 33496,
+      "ocean_temperature_mean_c": 15.5729,
+      "plates": 34,
+      "precipitation_mean_mm": 1111.3,
+      "sea_level_m": -1316.12,
+      "step": 293
+    },
+    {
+      "air_temperature_mean_c": -1.18663,
+      "land_fraction": 0.144873,
+      "nodes": 33513,
+      "ocean_temperature_mean_c": 15.5679,
+      "plates": 34,
+      "precipitation_mean_mm": 1118.9,
+      "sea_level_m": -1323.37,
+      "step": 294
+    },
+    {
+      "air_temperature_mean_c": -1.13288,
+      "land_fraction": 0.143295,
+      "nodes": 33490,
+      "ocean_temperature_mean_c": 15.5633,
+      "plates": 35,
+      "precipitation_mean_mm": 1114.02,
+      "sea_level_m": -1324.06,
+      "step": 295
+    },
+    {
+      "air_temperature_mean_c": -1.16729,
+      "land_fraction": 0.142164,
+      "nodes": 33485,
+      "ocean_temperature_mean_c": 15.5623,
+      "plates": 36,
+      "precipitation_mean_mm": 1117.14,
+      "sea_level_m": -1340.42,
+      "step": 296
+    },
+    {
+      "air_temperature_mean_c": -1.29153,
+      "land_fraction": 0.141177,
+      "nodes": 33438,
+      "ocean_temperature_mean_c": 15.5689,
+      "plates": 36,
+      "precipitation_mean_mm": 1121.83,
+      "sea_level_m": -1343.25,
+      "step": 297
+    },
+    {
+      "air_temperature_mean_c": -1.46624,
+      "land_fraction": 0.140783,
+      "nodes": 33384,
+      "ocean_temperature_mean_c": 15.5685,
+      "plates": 36,
+      "precipitation_mean_mm": 1114.84,
+      "sea_level_m": -1347.05,
+      "step": 298
+    },
+    {
+      "air_temperature_mean_c": -1.40321,
+      "land_fraction": 0.141046,
+      "nodes": 33383,
+      "ocean_temperature_mean_c": 15.5734,
+      "plates": 36,
+      "precipitation_mean_mm": 1120.09,
+      "sea_level_m": -1352.16,
+      "step": 299
+    },
+    {
+      "air_temperature_mean_c": -1.53803,
+      "land_fraction": 0.140181,
+      "nodes": 33409,
+      "ocean_temperature_mean_c": 15.5754,
+      "plates": 36,
+      "precipitation_mean_mm": 1112.91,
+      "sea_level_m": -1354.94,
+      "step": 300
+    },
+    {
+      "air_temperature_mean_c": -1.44052,
+      "land_fraction": 0.143002,
+      "nodes": 33370,
+      "ocean_temperature_mean_c": 15.5862,
+      "plates": 36,
+      "precipitation_mean_mm": 1120.83,
+      "sea_level_m": -1354.09,
+      "step": 301
+    },
+    {
+      "air_temperature_mean_c": -1.59367,
+      "land_fraction": 0.142743,
+      "nodes": 33358,
+      "ocean_temperature_mean_c": 15.5966,
+      "plates": 36,
+      "precipitation_mean_mm": 1118.33,
+      "sea_level_m": -1359.68,
+      "step": 302
+    },
+    {
+      "air_temperature_mean_c": -1.56891,
+      "land_fraction": 0.140621,
+      "nodes": 33377,
+      "ocean_temperature_mean_c": 15.5927,
+      "plates": 36,
+      "precipitation_mean_mm": 1115.37,
+      "sea_level_m": -1364.92,
+      "step": 303
+    },
+    {
+      "air_temperature_mean_c": -1.66706,
+      "land_fraction": 0.140868,
+      "nodes": 33376,
+      "ocean_temperature_mean_c": 15.5917,
+      "plates": 36,
+      "precipitation_mean_mm": 1122.62,
+      "sea_level_m": -1366.81,
+      "step": 304
+    },
+    {
+      "air_temperature_mean_c": -1.71916,
+      "land_fraction": 0.141505,
+      "nodes": 33332,
+      "ocean_temperature_mean_c": 15.5986,
+      "plates": 36,
+      "precipitation_mean_mm": 1113.33,
+      "sea_level_m": -1363.51,
+      "step": 305
+    },
+    {
+      "air_temperature_mean_c": -1.72399,
+      "land_fraction": 0.142948,
+      "nodes": 33339,
+      "ocean_temperature_mean_c": 15.6017,
+      "plates": 36,
+      "precipitation_mean_mm": 1128.23,
+      "sea_level_m": -1370.38,
+      "step": 306
+    },
+    {
+      "air_temperature_mean_c": -1.70568,
+      "land_fraction": 0.140876,
+      "nodes": 33335,
+      "ocean_temperature_mean_c": 15.6123,
+      "plates": 36,
+      "precipitation_mean_mm": 1111.97,
+      "sea_level_m": -1367.6,
+      "step": 307
+    },
+    {
+      "air_temperature_mean_c": -1.83366,
+      "land_fraction": 0.142361,
+      "nodes": 33361,
+      "ocean_temperature_mean_c": 15.6177,
+      "plates": 36,
+      "precipitation_mean_mm": 1113.35,
+      "sea_level_m": -1372.99,
+      "step": 308
+    },
+    {
+      "air_temperature_mean_c": -1.91817,
+      "land_fraction": 0.143059,
+      "nodes": 33307,
+      "ocean_temperature_mean_c": 15.625,
+      "plates": 36,
+      "precipitation_mean_mm": 1113.57,
+      "sea_level_m": -1370.72,
+      "step": 309
+    },
+    {
+      "air_temperature_mean_c": -2.01729,
+      "land_fraction": 0.142103,
+      "nodes": 33292,
+      "ocean_temperature_mean_c": 15.6239,
+      "plates": 36,
+      "precipitation_mean_mm": 1116.33,
+      "sea_level_m": -1370.77,
+      "step": 310
+    },
+    {
+      "air_temperature_mean_c": -2.03716,
+      "land_fraction": 0.141732,
+      "nodes": 33285,
+      "ocean_temperature_mean_c": 15.6317,
+      "plates": 36,
+      "precipitation_mean_mm": 1117.95,
+      "sea_level_m": -1369.59,
+      "step": 311
+    },
+    {
+      "air_temperature_mean_c": -1.79743,
+      "land_fraction": 0.142809,
+      "nodes": 33301,
+      "ocean_temperature_mean_c": 15.6335,
+      "plates": 36,
+      "precipitation_mean_mm": 1114.2,
+      "sea_level_m": -1374.76,
+      "step": 312
+    },
+    {
+      "air_temperature_mean_c": -1.86244,
+      "land_fraction": 0.142253,
+      "nodes": 33284,
+      "ocean_temperature_mean_c": 15.6383,
+      "plates": 36,
+      "precipitation_mean_mm": 1121.04,
+      "sea_level_m": -1375.15,
+      "step": 313
+    },
+    {
+      "air_temperature_mean_c": -1.56729,
+      "land_fraction": 0.1439,
+      "nodes": 33262,
+      "ocean_temperature_mean_c": 15.6446,
+      "plates": 36,
+      "precipitation_mean_mm": 1119.51,
+      "sea_level_m": -1372.04,
+      "step": 314
+    },
+    {
+      "air_temperature_mean_c": -1.71223,
+      "land_fraction": 0.142836,
+      "nodes": 33281,
+      "ocean_temperature_mean_c": 15.6458,
+      "plates": 36,
+      "precipitation_mean_mm": 1118.6,
+      "sea_level_m": -1375.26,
+      "step": 315
+    },
+    {
+      "air_temperature_mean_c": -1.35686,
+      "land_fraction": 0.143549,
+      "nodes": 33255,
+      "ocean_temperature_mean_c": 15.6467,
+      "plates": 36,
+      "precipitation_mean_mm": 1119.14,
+      "sea_level_m": -1370.68,
+      "step": 316
+    },
+    {
+      "air_temperature_mean_c": -1.29673,
+      "land_fraction": 0.145297,
+      "nodes": 33277,
+      "ocean_temperature_mean_c": 15.6961,
+      "plates": 36,
+      "precipitation_mean_mm": 1128.44,
+      "sea_level_m": -1371.2,
+      "step": 317
+    },
+    {
+      "air_temperature_mean_c": -1.51076,
+      "land_fraction": 0.146208,
+      "nodes": 33265,
+      "ocean_temperature_mean_c": 15.7098,
+      "plates": 36,
+      "precipitation_mean_mm": 1119.27,
+      "sea_level_m": -1370.95,
+      "step": 318
+    },
+    {
+      "air_temperature_mean_c": -1.39824,
+      "land_fraction": 0.144965,
+      "nodes": 33244,
+      "ocean_temperature_mean_c": 15.6806,
+      "plates": 36,
+      "precipitation_mean_mm": 1122.86,
+      "sea_level_m": -1369.64,
+      "step": 319
+    },
+    {
+      "air_temperature_mean_c": -1.29026,
+      "land_fraction": 0.144591,
+      "nodes": 33244,
+      "ocean_temperature_mean_c": 15.6635,
+      "plates": 37,
+      "precipitation_mean_mm": 1124.69,
+      "sea_level_m": -1365.41,
+      "step": 320
+    },
+    {
+      "air_temperature_mean_c": -1.34111,
+      "land_fraction": 0.145116,
+      "nodes": 33226,
+      "ocean_temperature_mean_c": 15.6615,
+      "plates": 38,
+      "precipitation_mean_mm": 1123.41,
+      "sea_level_m": -1362.28,
+      "step": 321
+    },
+    {
+      "air_temperature_mean_c": -1.20495,
+      "land_fraction": 0.143997,
+      "nodes": 33176,
+      "ocean_temperature_mean_c": 15.6326,
+      "plates": 38,
+      "precipitation_mean_mm": 1125.9,
+      "sea_level_m": -1355.39,
+      "step": 322
+    },
+    {
+      "air_temperature_mean_c": -1.13008,
+      "land_fraction": 0.144008,
+      "nodes": 33180,
+      "ocean_temperature_mean_c": 15.6271,
+      "plates": 38,
+      "precipitation_mean_mm": 1116.34,
+      "sea_level_m": -1353.18,
+      "step": 323
+    },
+    {
+      "air_temperature_mean_c": -1.10263,
+      "land_fraction": 0.143561,
+      "nodes": 33149,
+      "ocean_temperature_mean_c": 15.6278,
+      "plates": 38,
+      "precipitation_mean_mm": 1123.09,
+      "sea_level_m": -1346.74,
+      "step": 324
+    },
+    {
+      "air_temperature_mean_c": -1.19219,
+      "land_fraction": 0.143758,
+      "nodes": 33139,
+      "ocean_temperature_mean_c": 15.6259,
+      "plates": 37,
+      "precipitation_mean_mm": 1118.66,
+      "sea_level_m": -1345.05,
+      "step": 325
+    },
+    {
+      "air_temperature_mean_c": -1.24446,
+      "land_fraction": 0.144155,
+      "nodes": 33172,
+      "ocean_temperature_mean_c": 15.6309,
+      "plates": 37,
+      "precipitation_mean_mm": 1113.5,
+      "sea_level_m": -1348.14,
+      "step": 326
+    },
+    {
+      "air_temperature_mean_c": -1.05311,
+      "land_fraction": 0.145089,
+      "nodes": 33111,
+      "ocean_temperature_mean_c": 15.631,
+      "plates": 37,
+      "precipitation_mean_mm": 1119.84,
+      "sea_level_m": -1338.78,
+      "step": 327
+    },
+    {
+      "air_temperature_mean_c": -1.11248,
+      "land_fraction": 0.14515,
+      "nodes": 33127,
+      "ocean_temperature_mean_c": 15.6259,
+      "plates": 38,
+      "precipitation_mean_mm": 1114.68,
+      "sea_level_m": -1344.43,
+      "step": 328
+    },
+    {
+      "air_temperature_mean_c": -1.06104,
+      "land_fraction": 0.145613,
+      "nodes": 33087,
+      "ocean_temperature_mean_c": 15.6351,
+      "plates": 38,
+      "precipitation_mean_mm": 1121.8,
+      "sea_level_m": -1335.86,
+      "step": 329
+    },
+    {
+      "air_temperature_mean_c": -1.08371,
+      "land_fraction": 0.145764,
+      "nodes": 33102,
+      "ocean_temperature_mean_c": 15.6303,
+      "plates": 38,
+      "precipitation_mean_mm": 1118.35,
+      "sea_level_m": -1337.68,
+      "step": 330
+    },
+    {
+      "air_temperature_mean_c": -0.95793,
+      "land_fraction": 0.145251,
+      "nodes": 33119,
+      "ocean_temperature_mean_c": 15.6341,
+      "plates": 38,
+      "precipitation_mean_mm": 1117.88,
+      "sea_level_m": -1339.48,
+      "step": 331
+    },
+    {
+      "air_temperature_mean_c": -0.977426,
+      "land_fraction": 0.145544,
+      "nodes": 33137,
+      "ocean_temperature_mean_c": 15.6367,
+      "plates": 38,
+      "precipitation_mean_mm": 1120.86,
+      "sea_level_m": -1341.14,
+      "step": 332
+    },
+    {
+      "air_temperature_mean_c": -0.979298,
+      "land_fraction": 0.145525,
+      "nodes": 33134,
+      "ocean_temperature_mean_c": 15.6367,
+      "plates": 38,
+      "precipitation_mean_mm": 1115.36,
+      "sea_level_m": -1341.21,
+      "step": 333
+    },
+    {
+      "air_temperature_mean_c": -0.954917,
+      "land_fraction": 0.145089,
+      "nodes": 33092,
+      "ocean_temperature_mean_c": 15.6335,
+      "plates": 38,
+      "precipitation_mean_mm": 1120.57,
+      "sea_level_m": -1338.25,
+      "step": 334
+    },
+    {
+      "air_temperature_mean_c": -0.742962,
+      "land_fraction": 0.145633,
+      "nodes": 33042,
+      "ocean_temperature_mean_c": 15.6314,
+      "plates": 38,
+      "precipitation_mean_mm": 1119.75,
+      "sea_level_m": -1333.4,
+      "step": 335
+    },
+    {
+      "air_temperature_mean_c": -0.529313,
+      "land_fraction": 0.144444,
+      "nodes": 33075,
+      "ocean_temperature_mean_c": 15.634,
+      "plates": 38,
+      "precipitation_mean_mm": 1117.99,
+      "sea_level_m": -1346.69,
+      "step": 336
+    },
+    {
+      "air_temperature_mean_c": -0.528861,
+      "land_fraction": 0.143789,
+      "nodes": 33072,
+      "ocean_temperature_mean_c": 15.6316,
+      "plates": 38,
+      "precipitation_mean_mm": 1119.61,
+      "sea_level_m": -1346.41,
+      "step": 337
+    },
+    {
+      "air_temperature_mean_c": -0.41082,
+      "land_fraction": 0.143198,
+      "nodes": 33037,
+      "ocean_temperature_mean_c": 15.6252,
+      "plates": 38,
+      "precipitation_mean_mm": 1122.36,
+      "sea_level_m": -1344.34,
+      "step": 338
+    },
+    {
+      "air_temperature_mean_c": -0.219169,
+      "land_fraction": 0.144113,
+      "nodes": 33034,
+      "ocean_temperature_mean_c": 15.6261,
+      "plates": 38,
+      "precipitation_mean_mm": 1124.08,
+      "sea_level_m": -1341.36,
+      "step": 339
+    },
+    {
+      "air_temperature_mean_c": -0.290616,
+      "land_fraction": 0.144016,
+      "nodes": 33043,
+      "ocean_temperature_mean_c": 15.6252,
+      "plates": 38,
+      "precipitation_mean_mm": 1130.48,
+      "sea_level_m": -1345.06,
+      "step": 340
+    },
+    {
+      "air_temperature_mean_c": -0.410277,
+      "land_fraction": 0.142388,
+      "nodes": 33033,
+      "ocean_temperature_mean_c": 15.6305,
+      "plates": 38,
+      "precipitation_mean_mm": 1125.31,
+      "sea_level_m": -1346.0,
+      "step": 341
+    },
+    {
+      "air_temperature_mean_c": -0.379075,
+      "land_fraction": 0.143156,
+      "nodes": 33051,
+      "ocean_temperature_mean_c": 15.63,
+      "plates": 38,
+      "precipitation_mean_mm": 1133.82,
+      "sea_level_m": -1349.39,
+      "step": 342
+    },
+    {
+      "air_temperature_mean_c": -0.299478,
+      "land_fraction": 0.143245,
+      "nodes": 33007,
+      "ocean_temperature_mean_c": 15.6269,
+      "plates": 38,
+      "precipitation_mean_mm": 1126.51,
+      "sea_level_m": -1342.05,
+      "step": 343
+    },
+    {
+      "air_temperature_mean_c": -0.148901,
+      "land_fraction": 0.143353,
+      "nodes": 33042,
+      "ocean_temperature_mean_c": 15.629,
+      "plates": 38,
+      "precipitation_mean_mm": 1129.62,
+      "sea_level_m": -1349.26,
+      "step": 344
+    },
+    {
+      "air_temperature_mean_c": -0.203316,
+      "land_fraction": 0.142431,
+      "nodes": 32995,
+      "ocean_temperature_mean_c": 15.63,
+      "plates": 38,
+      "precipitation_mean_mm": 1127.52,
+      "sea_level_m": -1346.4,
+      "step": 345
+    },
+    {
+      "air_temperature_mean_c": -0.202312,
+      "land_fraction": 0.143048,
+      "nodes": 33005,
+      "ocean_temperature_mean_c": 15.6361,
+      "plates": 38,
+      "precipitation_mean_mm": 1126.26,
+      "sea_level_m": -1357.95,
+      "step": 346
+    },
+    {
+      "air_temperature_mean_c": -0.36419,
+      "land_fraction": 0.141821,
+      "nodes": 33009,
+      "ocean_temperature_mean_c": 15.6451,
+      "plates": 38,
+      "precipitation_mean_mm": 1130.01,
+      "sea_level_m": -1367.85,
+      "step": 347
+    },
+    {
+      "air_temperature_mean_c": -0.509633,
+      "land_fraction": 0.140903,
+      "nodes": 33027,
+      "ocean_temperature_mean_c": 15.655,
+      "plates": 38,
+      "precipitation_mean_mm": 1131.52,
+      "sea_level_m": -1380.4,
+      "step": 348
+    },
+    {
+      "air_temperature_mean_c": -0.843094,
+      "land_fraction": 0.139938,
+      "nodes": 32953,
+      "ocean_temperature_mean_c": 15.6704,
+      "plates": 38,
+      "precipitation_mean_mm": 1130.93,
+      "sea_level_m": -1380.31,
+      "step": 349
+    },
+    {
+      "air_temperature_mean_c": -1.07337,
+      "land_fraction": 0.140085,
+      "nodes": 33019,
+      "ocean_temperature_mean_c": 15.6779,
+      "plates": 38,
+      "precipitation_mean_mm": 1129.38,
+      "sea_level_m": -1395.81,
+      "step": 350
+    },
+    {
+      "air_temperature_mean_c": -1.19085,
+      "land_fraction": 0.140579,
+      "nodes": 32977,
+      "ocean_temperature_mean_c": 15.6916,
+      "plates": 38,
+      "precipitation_mean_mm": 1130.7,
+      "sea_level_m": -1398.31,
+      "step": 351
+    },
+    {
+      "air_temperature_mean_c": -1.41687,
+      "land_fraction": 0.140328,
+      "nodes": 33007,
+      "ocean_temperature_mean_c": 15.6952,
+      "plates": 38,
+      "precipitation_mean_mm": 1123.02,
+      "sea_level_m": -1405.41,
+      "step": 352
+    },
+    {
+      "air_temperature_mean_c": -1.50448,
+      "land_fraction": 0.139842,
+      "nodes": 33016,
+      "ocean_temperature_mean_c": 15.7013,
+      "plates": 37,
+      "precipitation_mean_mm": 1127.47,
+      "sea_level_m": -1412.81,
+      "step": 353
+    },
+    {
+      "air_temperature_mean_c": -1.79905,
+      "land_fraction": 0.139205,
+      "nodes": 33027,
+      "ocean_temperature_mean_c": 15.7052,
+      "plates": 37,
+      "precipitation_mean_mm": 1132.97,
+      "sea_level_m": -1419.09,
+      "step": 354
+    },
+    {
+      "air_temperature_mean_c": -1.8857,
+      "land_fraction": 0.13897,
+      "nodes": 33026,
+      "ocean_temperature_mean_c": 15.7017,
+      "plates": 37,
+      "precipitation_mean_mm": 1135.7,
+      "sea_level_m": -1431.36,
+      "step": 355
+    },
+    {
+      "air_temperature_mean_c": -1.8897,
+      "land_fraction": 0.138202,
+      "nodes": 32999,
+      "ocean_temperature_mean_c": 15.7021,
+      "plates": 37,
+      "precipitation_mean_mm": 1130.02,
+      "sea_level_m": -1435.11,
+      "step": 356
+    },
+    {
+      "air_temperature_mean_c": -1.92602,
+      "land_fraction": 0.138075,
+      "nodes": 33013,
+      "ocean_temperature_mean_c": 15.7104,
+      "plates": 37,
+      "precipitation_mean_mm": 1133.78,
+      "sea_level_m": -1441.11,
+      "step": 357
+    },
+    {
+      "air_temperature_mean_c": -1.95325,
+      "land_fraction": 0.138376,
+      "nodes": 33010,
+      "ocean_temperature_mean_c": 15.7116,
+      "plates": 37,
+      "precipitation_mean_mm": 1134.05,
+      "sea_level_m": -1443.83,
+      "step": 358
+    },
+    {
+      "air_temperature_mean_c": -2.11991,
+      "land_fraction": 0.13816,
+      "nodes": 32998,
+      "ocean_temperature_mean_c": 15.7155,
+      "plates": 36,
+      "precipitation_mean_mm": 1130.43,
+      "sea_level_m": -1446.39,
+      "step": 359
+    },
+    {
+      "air_temperature_mean_c": -2.2063,
+      "land_fraction": 0.13789,
+      "nodes": 33010,
+      "ocean_temperature_mean_c": 15.7237,
+      "plates": 36,
+      "precipitation_mean_mm": 1137.36,
+      "sea_level_m": -1449.05,
+      "step": 360
+    },
+    {
+      "air_temperature_mean_c": -2.23661,
+      "land_fraction": 0.138326,
+      "nodes": 32967,
+      "ocean_temperature_mean_c": 15.7231,
+      "plates": 36,
+      "precipitation_mean_mm": 1139.03,
+      "sea_level_m": -1441.18,
+      "step": 361
+    },
+    {
+      "air_temperature_mean_c": -2.42387,
+      "land_fraction": 0.137863,
+      "nodes": 32963,
+      "ocean_temperature_mean_c": 15.7254,
+      "plates": 36,
+      "precipitation_mean_mm": 1136.87,
+      "sea_level_m": -1443.06,
+      "step": 362
+    },
+    {
+      "air_temperature_mean_c": -2.39936,
+      "land_fraction": 0.138194,
+      "nodes": 33004,
+      "ocean_temperature_mean_c": 15.7211,
+      "plates": 36,
+      "precipitation_mean_mm": 1128.4,
+      "sea_level_m": -1449.82,
+      "step": 363
+    },
+    {
+      "air_temperature_mean_c": -2.24294,
+      "land_fraction": 0.13841,
+      "nodes": 32988,
+      "ocean_temperature_mean_c": 15.7195,
+      "plates": 37,
+      "precipitation_mean_mm": 1134.45,
+      "sea_level_m": -1444.26,
+      "step": 364
+    },
+    {
+      "air_temperature_mean_c": -2.36534,
+      "land_fraction": 0.139024,
+      "nodes": 32961,
+      "ocean_temperature_mean_c": 15.715,
+      "plates": 37,
+      "precipitation_mean_mm": 1131.68,
+      "sea_level_m": -1455.65,
+      "step": 365
+    },
+    {
+      "air_temperature_mean_c": -2.1912,
+      "land_fraction": 0.139518,
+      "nodes": 32944,
+      "ocean_temperature_mean_c": 15.7223,
+      "plates": 36,
+      "precipitation_mean_mm": 1138.17,
+      "sea_level_m": -1457.65,
+      "step": 366
+    },
+    {
+      "air_temperature_mean_c": -2.29535,
+      "land_fraction": 0.14037,
+      "nodes": 32930,
+      "ocean_temperature_mean_c": 15.7206,
+      "plates": 36,
+      "precipitation_mean_mm": 1129.27,
+      "sea_level_m": -1465.69,
+      "step": 367
+    },
+    {
+      "air_temperature_mean_c": -2.3361,
+      "land_fraction": 0.140355,
+      "nodes": 32937,
+      "ocean_temperature_mean_c": 15.7209,
+      "plates": 35,
+      "precipitation_mean_mm": 1131.45,
+      "sea_level_m": -1469.8,
+      "step": 368
+    },
+    {
+      "air_temperature_mean_c": -2.30431,
+      "land_fraction": 0.139541,
+      "nodes": 32950,
+      "ocean_temperature_mean_c": 15.7127,
+      "plates": 35,
+      "precipitation_mean_mm": 1131.4,
+      "sea_level_m": -1476.08,
+      "step": 369
+    },
+    {
+      "air_temperature_mean_c": -2.31047,
+      "land_fraction": 0.139583,
+      "nodes": 32912,
+      "ocean_temperature_mean_c": 15.7104,
+      "plates": 35,
+      "precipitation_mean_mm": 1131.86,
+      "sea_level_m": -1480.13,
+      "step": 370
+    },
+    {
+      "air_temperature_mean_c": -2.40997,
+      "land_fraction": 0.13887,
+      "nodes": 32922,
+      "ocean_temperature_mean_c": 15.7086,
+      "plates": 35,
+      "precipitation_mean_mm": 1134.29,
+      "sea_level_m": -1485.98,
+      "step": 371
+    },
+    {
+      "air_temperature_mean_c": -2.17075,
+      "land_fraction": 0.139498,
+      "nodes": 32883,
+      "ocean_temperature_mean_c": 15.703,
+      "plates": 35,
+      "precipitation_mean_mm": 1132.5,
+      "sea_level_m": -1482.84,
+      "step": 372
+    },
+    {
+      "air_temperature_mean_c": -2.39073,
+      "land_fraction": 0.139275,
+      "nodes": 32860,
+      "ocean_temperature_mean_c": 15.7053,
+      "plates": 35,
+      "precipitation_mean_mm": 1134.16,
+      "sea_level_m": -1483.97,
+      "step": 373
+    },
+    {
+      "air_temperature_mean_c": -2.31947,
+      "land_fraction": 0.139317,
+      "nodes": 32878,
+      "ocean_temperature_mean_c": 15.7049,
+      "plates": 35,
+      "precipitation_mean_mm": 1132.9,
+      "sea_level_m": -1486.51,
+      "step": 374
+    },
+    {
+      "air_temperature_mean_c": -2.33177,
+      "land_fraction": 0.138916,
+      "nodes": 32860,
+      "ocean_temperature_mean_c": 15.6983,
+      "plates": 35,
+      "precipitation_mean_mm": 1134.97,
+      "sea_level_m": -1487.91,
+      "step": 375
+    },
+    {
+      "air_temperature_mean_c": -2.35257,
+      "land_fraction": 0.138854,
+      "nodes": 32805,
+      "ocean_temperature_mean_c": 15.6968,
+      "plates": 36,
+      "precipitation_mean_mm": 1139.11,
+      "sea_level_m": -1487.99,
+      "step": 376
+    },
+    {
+      "air_temperature_mean_c": -2.43392,
+      "land_fraction": 0.138287,
+      "nodes": 32883,
+      "ocean_temperature_mean_c": 15.6975,
+      "plates": 36,
+      "precipitation_mean_mm": 1136.43,
+      "sea_level_m": -1494.91,
+      "step": 377
+    },
+    {
+      "air_temperature_mean_c": -2.52633,
+      "land_fraction": 0.139194,
+      "nodes": 32885,
+      "ocean_temperature_mean_c": 15.698,
+      "plates": 36,
+      "precipitation_mean_mm": 1141.11,
+      "sea_level_m": -1495.92,
+      "step": 378
+    },
+    {
+      "air_temperature_mean_c": -2.49165,
+      "land_fraction": 0.139421,
+      "nodes": 32852,
+      "ocean_temperature_mean_c": 15.6972,
+      "plates": 36,
+      "precipitation_mean_mm": 1134.16,
+      "sea_level_m": -1492.98,
+      "step": 379
+    },
+    {
+      "air_temperature_mean_c": -2.73244,
+      "land_fraction": 0.139471,
+      "nodes": 32800,
+      "ocean_temperature_mean_c": 15.7018,
+      "plates": 36,
+      "precipitation_mean_mm": 1140.13,
+      "sea_level_m": -1482.98,
+      "step": 380
+    },
+    {
+      "air_temperature_mean_c": -2.89733,
+      "land_fraction": 0.140922,
+      "nodes": 32812,
+      "ocean_temperature_mean_c": 15.7005,
+      "plates": 36,
+      "precipitation_mean_mm": 1146.34,
+      "sea_level_m": -1486.82,
+      "step": 381
+    },
+    {
+      "air_temperature_mean_c": -2.86024,
+      "land_fraction": 0.140795,
+      "nodes": 32816,
+      "ocean_temperature_mean_c": 15.7011,
+      "plates": 36,
+      "precipitation_mean_mm": 1139.61,
+      "sea_level_m": -1487.54,
+      "step": 382
+    },
+    {
+      "air_temperature_mean_c": -2.78735,
+      "land_fraction": 0.141254,
+      "nodes": 32810,
+      "ocean_temperature_mean_c": 15.702,
+      "plates": 35,
+      "precipitation_mean_mm": 1140.75,
+      "sea_level_m": -1491.12,
+      "step": 383
+    },
+    {
+      "air_temperature_mean_c": -2.81216,
+      "land_fraction": 0.141879,
+      "nodes": 32791,
+      "ocean_temperature_mean_c": 15.706,
+      "plates": 35,
+      "precipitation_mean_mm": 1137.05,
+      "sea_level_m": -1489.99,
+      "step": 384
+    },
+    {
+      "air_temperature_mean_c": -2.89437,
+      "land_fraction": 0.141983,
+      "nodes": 32808,
+      "ocean_temperature_mean_c": 15.711,
+      "plates": 35,
+      "precipitation_mean_mm": 1143.44,
+      "sea_level_m": -1492.61,
+      "step": 385
+    },
+    {
+      "air_temperature_mean_c": -2.99637,
+      "land_fraction": 0.142566,
+      "nodes": 32826,
+      "ocean_temperature_mean_c": 15.7078,
+      "plates": 35,
+      "precipitation_mean_mm": 1138.39,
+      "sea_level_m": -1498.72,
+      "step": 386
+    },
+    {
+      "air_temperature_mean_c": -3.03752,
+      "land_fraction": 0.141609,
+      "nodes": 32771,
+      "ocean_temperature_mean_c": 15.7096,
+      "plates": 35,
+      "precipitation_mean_mm": 1139.12,
+      "sea_level_m": -1494.29,
+      "step": 387
+    },
+    {
+      "air_temperature_mean_c": -2.7896,
+      "land_fraction": 0.142689,
+      "nodes": 32778,
+      "ocean_temperature_mean_c": 15.7062,
+      "plates": 35,
+      "precipitation_mean_mm": 1142.75,
+      "sea_level_m": -1493.85,
+      "step": 388
+    },
+    {
+      "air_temperature_mean_c": -2.97689,
+      "land_fraction": 0.141613,
+      "nodes": 32770,
+      "ocean_temperature_mean_c": 15.7104,
+      "plates": 35,
+      "precipitation_mean_mm": 1140.66,
+      "sea_level_m": -1493.54,
+      "step": 389
+    },
+    {
+      "air_temperature_mean_c": -2.90569,
+      "land_fraction": 0.141624,
+      "nodes": 32773,
+      "ocean_temperature_mean_c": 15.7107,
+      "plates": 35,
+      "precipitation_mean_mm": 1145.36,
+      "sea_level_m": -1496.89,
+      "step": 390
+    },
+    {
+      "air_temperature_mean_c": -3.08795,
+      "land_fraction": 0.141555,
+      "nodes": 32765,
+      "ocean_temperature_mean_c": 15.7135,
+      "plates": 35,
+      "precipitation_mean_mm": 1138.83,
+      "sea_level_m": -1495.43,
+      "step": 391
+    },
+    {
+      "air_temperature_mean_c": -3.03893,
+      "land_fraction": 0.141902,
+      "nodes": 32747,
+      "ocean_temperature_mean_c": 15.7165,
+      "plates": 35,
+      "precipitation_mean_mm": 1141.8,
+      "sea_level_m": -1493.4,
+      "step": 392
+    },
+    {
+      "air_temperature_mean_c": -3.00929,
+      "land_fraction": 0.143083,
+      "nodes": 32685,
+      "ocean_temperature_mean_c": 15.7182,
+      "plates": 36,
+      "precipitation_mean_mm": 1133.7,
+      "sea_level_m": -1485.2,
+      "step": 393
+    },
+    {
+      "air_temperature_mean_c": -2.89265,
+      "land_fraction": 0.143086,
+      "nodes": 32709,
+      "ocean_temperature_mean_c": 15.7203,
+      "plates": 36,
+      "precipitation_mean_mm": 1137.55,
+      "sea_level_m": -1486.62,
+      "step": 394
+    },
+    {
+      "air_temperature_mean_c": -3.15715,
+      "land_fraction": 0.142272,
+      "nodes": 32678,
+      "ocean_temperature_mean_c": 15.7115,
+      "plates": 36,
+      "precipitation_mean_mm": 1143.6,
+      "sea_level_m": -1483.97,
+      "step": 395
+    },
+    {
+      "air_temperature_mean_c": -2.913,
+      "land_fraction": 0.14272,
+      "nodes": 32701,
+      "ocean_temperature_mean_c": 15.7117,
+      "plates": 36,
+      "precipitation_mean_mm": 1133.82,
+      "sea_level_m": -1487.52,
+      "step": 396
+    },
+    {
+      "air_temperature_mean_c": -2.9779,
+      "land_fraction": 0.141813,
+      "nodes": 32745,
+      "ocean_temperature_mean_c": 15.711,
+      "plates": 36,
+      "precipitation_mean_mm": 1136.23,
+      "sea_level_m": -1493.91,
+      "step": 397
+    },
+    {
+      "air_temperature_mean_c": -3.16197,
+      "land_fraction": 0.141003,
+      "nodes": 32687,
+      "ocean_temperature_mean_c": 15.7249,
+      "plates": 36,
+      "precipitation_mean_mm": 1136.82,
+      "sea_level_m": -1483.12,
+      "step": 398
+    },
+    {
+      "air_temperature_mean_c": -2.99412,
+      "land_fraction": 0.141485,
+      "nodes": 32705,
+      "ocean_temperature_mean_c": 15.7189,
+      "plates": 36,
+      "precipitation_mean_mm": 1136.15,
+      "sea_level_m": -1488.17,
+      "step": 399
+    },
+    {
+      "air_temperature_mean_c": -2.8073,
+      "land_fraction": 0.140687,
+      "nodes": 32721,
+      "ocean_temperature_mean_c": 15.7187,
+      "plates": 36,
+      "precipitation_mean_mm": 1137.79,
+      "sea_level_m": -1490.4,
+      "step": 400
+    }
+  ],
+  "surface": "quad",
+  "violations": []
+}
