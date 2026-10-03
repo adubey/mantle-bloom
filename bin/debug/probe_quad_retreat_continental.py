@@ -55,10 +55,10 @@ def main() -> int:
     original_accrete = quad_tectonics._accrete_onto_survivors
     current = {}
 
-    def accrete(plate, donors, survivors):
+    def accrete(plate, donors, survivors, world=None):
         before = continental_volume(plate, survivors)
         donated = continental_volume(plate, donors)
-        original_accrete(plate, donors, survivors)
+        original_accrete(plate, donors, survivors, world)
         gained = continental_volume(plate, survivors) - before
         current["accreted_kept"] = gained
         current["accretion_cap_loss"] = donated - gained

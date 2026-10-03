@@ -36,7 +36,8 @@ export type MapView =
   | "lakeInspector"
   | "platesAndFaults"
   | "hc"
-  | "hm";
+  | "hm"
+  | "craton";
 
 export interface WorldEvent {
   elapsed_years: number;
@@ -333,6 +334,14 @@ export interface WorldStats {
   sea_level_m: number;
   total_land_area_km2: number;
   total_continental_crust_volume_km3: number;
+  // Cratons (backend app/cratons.py). Absent on records captured before cratons existed.
+  craton_area_km2?: number;
+  craton_continental_fraction?: number;
+  craton_volume_km3?: number;
+  // Cumulative cratonic volume destroyed, every mechanism together; craton_ledger_km3 has
+  // the per-mechanism split.
+  craton_destroyed_km3?: number;
+  craton_ledger_km3?: Record<string, number>;
   land_fraction: number;
   ocean_fraction: number;
   // Raw `elevation > sea_level_m` node fraction -- unlike land_fraction/ocean_fraction above,

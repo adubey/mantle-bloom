@@ -216,6 +216,14 @@ const SIMULATION_ENTRIES: TabEntry[] = [
     (s) => s.total_continental_crust_volume_km3, 0, " km³",
   )),
   metricEntry(numMetric("sea_level_m", "Sea level", (s) => s.sea_level_m, 0, " m")),
+  // Cratons (backend app/cratons.py): their extent, and cumulative destruction across every
+  // ledgered mechanism -- a step in the latter is a destruction event.
+  metricEntry(pctMetric(
+    "craton_continental_fraction", "Craton share of continental crust",
+    (s) => s.craton_continental_fraction ?? null,
+  )),
+  metricEntry(numMetric("craton_volume_km3", "Craton volume", (s) => s.craton_volume_km3 ?? null, 0, " km³")),
+  metricEntry(numMetric("craton_destroyed_km3", "Craton destroyed (cumulative)", (s) => s.craton_destroyed_km3 ?? null, 0, " km³")),
 ];
 
 interface HistoryStats {

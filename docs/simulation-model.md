@@ -14,6 +14,7 @@
 - [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback](#gap-filling)
   - [Frontier gap-fill: an opt-in alternative at both sites](#frontier-gap-fill)
   - [Per-node crust type](#per-node-crust-type)
+  - [Cratons](#cratons)
 - [Volcanism](#volcanism)
 - [Faults (intraplate)](#faults)
 - [Boundary point reassignment (subsumed into deform)](#reassignment)
@@ -1249,6 +1250,68 @@ by its effective type, with the rare "anomaly" nodes -- an explicit code that ac
 disagrees with the plate it sits on -- in bright highlight colours distinct from the ordinary
 muted oceanic/continental tones, so a mixed-composition patch is directly visible for
 verification.
+
+<a id="cratons"></a>
+### Cratons (`cratons.py`)
+
+Cratons are old, buoyant, mechanically strong continental cores that come through ordinary
+tectonic cycles intact (GitHub issue #274). Without them, continents that keep colliding are
+ground down to small remnants over a few hundred Myr.
+
+**State.** Three per-node surface fields hold all craton state:
+
+- `craton_crust_m` -- the cratonic share of the column's crust, at most Hc. It is
+  `EXTENSIVE`, so merge, partition, defragmentation, relatticing and legacy conversion
+  conserve its volume the same way they conserve Hc. Crust added later (sediment, accreted
+  belts, arc magmatism) is ordinary continental crust.
+- `craton_formed_years` -- provenance: when the craton stabilised. It is negative for cratons
+  seeded at generation, and `HISTORY`-remapped, so a merged cell keeps its oldest date.
+- `stable_continental_myr` -- the formation clock.
+
+**Formation.** A column counts as quiet when it is genuine continental crust (Hc within
+`CRATON_HOST_MIN_HC_M`..`CRATON_HOST_MAX_HC_M`, so neither a drowned shelf nor an active orogen)
+and at least `CRATON_FORMATION_MARGIN_KM` from its plate's edge or any non-genuine cell. Its
+clock runs only while it stays quiet. After `CRATON_FORMATION_MYR` its whole Hc becomes
+cratonic. Generation seeds the interiors at least `CRATON_SEED_MARGIN_KM` from a margin as
+cratons that predate the run. A save from before cratons existed is seeded on its first step:
+loading never changes plate state. Line-backed plates carry the fields but neither seed nor
+form cratons; that surface is being retired (#251).
+
+**Resistance.** Strength rises linearly with cratonic thickness, reaching 1 at
+`CRATON_FULL_STRENGTH_HC_M`. At full strength a craton:
+
+- gives up only `1 - CRATON_EROSION_RESISTANCE` of the rock subaerial, sea-side and coastal-leveling
+  erosion would otherwise remove, scaled at the source so the routed sediment budget stays
+  conservative (`erosion.py`);
+- keeps `1 - CRATON_RIFT_RESISTANCE` of divergent thinning, so it melts through to oceanic
+  crust only when that slower thinning crosses the rift threshold (`deform_columns`);
+- donates only `1 - CRATON_STRETCH_RESISTANCE` of its share of a rift's stretched footprint,
+  with fresh magmatic crust filling the rest (`quad_tectonics._allocate_stretch`);
+- may be consumed by boundary retreat only after another plate has overlapped it for
+  `CRATON_RETREAT_DELAY_YEARS` (`cratons.retreat_allowed`), so the younger belts around it
+  take the shortening first.
+
+**Destruction is ledgered.** Every loss of cratonic volume is booked into
+`World.craton_ledger` under the mechanism responsible:
+
+| Account | Mechanism |
+|---|---|
+| `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
+| `subducted_m3` | boundary consumption down a trench |
+| `delaminated_m3` | suture overflow past the accretion belts, merge stacking past the suture cap, the column-cap clamp |
+| `collision_reworked_m3` | craton consumed into an orogenic belt as ordinary crust, or reworked by fault relief |
+| `eroded_m3` | erosional unroofing below the craton's top |
+| `topology_removed_m3` | a plate or stranded fragment removed outright |
+| `unattributed_m3` | signed; should stay ~0 |
+
+Sites that know their mechanism book it directly (`deform_columns`,
+`quad_tectonics._open_rift`, `_retreat`, `_accrete_onto_survivors`,
+`merge_split.maybe_split_plate`'s failed rift). `world.step_world` also wraps each phase in a
+`cratons.PhaseAudit`, which holds craton to its column and books whatever else vanished.
+`cratons.balance_error_m3` checks seeded + formed = live + destroyed. Boundary consumption
+also books the continental-derived material it removes into the continental-material ledger
+(`deeply_subducted_m3`, `delaminated_lower_crust_m3`). Suture accretion carries
+`continental_material_m` onto the cells that receive the crust.
 
 <a id="volcanism"></a>
 ## Volcanism (`volcanism.py`, plus `lithosphere_plate.py`'s own `LithospherePlate.deform`)

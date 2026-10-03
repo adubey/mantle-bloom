@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, cratons, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -66,6 +66,9 @@ class World:
     # Persistent source/sink accounts for the per-node continental-material tracer.  Live
     # inventories are derived from nodes; see continental_ledger.py.
     continental_material_ledger: dict[str, float] = field(default_factory=dict)
+    # Persistent craton source/sink accounts, one per formation and destruction mechanism;
+    # live craton volume is derived from nodes' craton_crust_m. See cratons.py.
+    craton_ledger: dict[str, float] = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
@@ -777,6 +780,8 @@ def finish_generation(world: World, log_message: str) -> None:
     from . import continental_ledger
 
     continental_ledger.ensure_initialized(world)
+    # Seed the starting continents' deep interiors as pre-existing cratons (cratons.py).
+    cratons.ensure_initialized(world)
     world.log_event(log_message)
     world.record_stats(force=True)  # the elapsed_years=0 baseline entry -- see World.stats_history
 
@@ -878,6 +883,11 @@ def step_world_progress(world: World, years: float):
     # that's a single unit rather than further subdivided.
     total_units = (2 * len(world.plates) if world.simulate_plate_movement else 0) + 1
     done_units = 0
+    # Cratons (cratons.py): every phase that can thin or remove crust is bracketed by a
+    # PhaseAudit that books any cratonic volume it lost to that phase's mechanism.
+    cratons.ensure_initialized(world)
+    craton_ledger_before = dict(world.craton_ledger)
+    craton_live_before = cratons.live_volume_m3(world)
     if world.simulate_plate_movement:
         distances = {}
         for plate in world.plates:
@@ -889,15 +899,21 @@ def step_world_progress(world: World, years: float):
         # in the same order -- not the same order every turn, which is the whole point (see
         # docstring above), but reproducible given the same seed and step history.
         np.random.default_rng((world.seed, round(world.elapsed_years))).shuffle(order)
+        # deform() books its own rifting, consumption and delamination at each site; any
+        # cratonic volume still vanishing (line plates' row retreat) lands in unattributed.
+        audit = cratons.PhaseAudit(world)
         for plate in order:
             others = [p for p in world.plates if p.plate_id != plate.plate_id]
             plate.deform(world, others, years, distances[plate.plate_id])
             done_units += 1
             yield done_units / total_units
+        audit.settle("rifted_m3")
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
         # changes so a fresh fault's relief is in place when merge/split geometry is judged.
+        audit = cratons.PhaseAudit(world)
         faults.update_faults(world, years)
+        audit.settle("collision_reworked_m3")
         # Lateral magma export (magma_transport.py) just banked this step's own share of
         # exported convergent-boundary melt into world.pending_magma_parcels above (inside
         # deform()) -- bank the elapsed time alongside it so the eventual transport-pass firing
@@ -905,8 +921,13 @@ def step_world_progress(world: World, years: float):
         world.magma_transport_banked_years += years
     world.elapsed_years += years
     if world.simulate_plate_movement:
+        # Topology: merges, splits and relattices conserve craton volume by remap; a plate or
+        # stranded fragment removed outright takes its craton with it (failed rifts book their
+        # own thinning, see merge_split.maybe_split_plate).
+        audit = cratons.PhaseAudit(world)
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
+        audit.settle("unattributed_m3", "topology_removed_m3")
         # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
         faults.reconcile_faults(world)
         # Stamp/clear ElevationLine.overlap_onset_years and advance World.overlap_progress
@@ -958,7 +979,9 @@ def step_world_progress(world: World, years: float):
         if world.debug_diagnostics:
             spacing_rad = line_spacing_rad(world.node_density)
             before_erosion = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
+        audit = cratons.PhaseAudit(world)
         erosion_result = erosion.apply_erosion(world, years, node_cloud=node_cloud)
+        audit.settle("eroded_m3")
         if world.debug_diagnostics:
             for plate in world.plates:
                 before = before_erosion.get(plate.plate_id)
@@ -978,7 +1001,13 @@ def step_world_progress(world: World, years: float):
     # Every Hc/Hm writer has run for this step: hold each column to its caps (issue #256), so
     # the hard invariant holds even where a writer misses one. Sea level below then sees the
     # clamped hypsometry.
+    audit = cratons.PhaseAudit(world)
     _clamp_column_caps(world)
+    audit.settle("delaminated_m3")
+    # Advance the craton formation clocks against this step's final columns, then report any
+    # mechanism that destroyed a noticeable share of the cratons this step.
+    cratons.update(world, years)
+    cratons.log_destruction(world, craton_ledger_before, craton_live_before)
 
     # Eustatic sea level: re-solve world.sea_level_m against this step's final hypsometry,
     # holding the conserved ocean water volume fixed (see eustasy.py). Unconditional -- both

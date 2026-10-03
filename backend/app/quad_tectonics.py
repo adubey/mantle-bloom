@@ -39,7 +39,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere, phase_budget, rheology, terrain_noise
+from . import continental_ledger, cratons, geometry, lithosphere, phase_budget, rheology, terrain_noise
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -199,7 +199,9 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
     survivor mask over the pre-retreat node order."""
     n = plate.node_count()
     survivors = np.ones(n, dtype=bool)
-    retreatable = ctx.shrinkable.copy()
+    # A craton cell holds out against consumption until it has been overlapped long enough
+    # (cratons.retreat_allowed), so the younger belts around it take the shortening first.
+    retreatable = ctx.shrinkable & cratons.retreat_allowed(world, plate)
     if not np.any(retreatable) or n <= 1:
         return survivors
 
@@ -248,8 +250,16 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
     # subducting them with their nominal owning plate (issue #253).
     terrane = continental if plate.crust_type == "oceanic" else np.zeros_like(continental)
     donors = removed & (ctx.accrete | terrane)
+    # Everything else removed goes down the trench: its craton and its continental-derived
+    # material leave the surface as deep subduction.
+    subducted = removed & ~donors
+    areas = plate.node_areas_m2()
+    cratons.record(world, "subducted_m3", float(np.dot(plate.collect("craton_crust_m")[subducted], areas[subducted])))
+    continental_ledger.record(
+        world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
+    )
     if np.any(donors):
-        _accrete_onto_survivors(plate, donors, ~removed)
+        _accrete_onto_survivors(plate, donors, ~removed, world)
     plate.remove_cells(removed)
     return ~removed
 
@@ -297,7 +307,9 @@ def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, 
     return carved
 
 
-def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarray, survivors: np.ndarray) -> None:
+def _accrete_onto_survivors(
+    plate: "PlateWithSparseQuadPatch", donors: np.ndarray, survivors: np.ndarray, world: "World | None" = None
+) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening -- the 2D form of
     `_redistribute_accreted_column`, which spreads a retreating line end's volume over that
@@ -307,7 +319,13 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
     silently clipped. Donors and receivers are matched by effective crust type, which keeps
     continental terranes on nominally oceanic plates in the continental reservoir. A regular
     suture's finite four-belt footprint still delaminates any remainder at the physical cap;
-    a terrane on an oceanic plate instead relocates onto oceanic footprint when necessary."""
+    a terrane on an oceanic plate instead relocates onto oceanic footprint when necessary.
+
+    Each front's continental-derived material (`continental_material_m`) travels with the Hc
+    it placed and its delaminated share is booked to the continental ledger; its cratonic
+    crust becomes ordinary orogenic crust (craton ledger: collision reworked) or delaminates.
+    A relocated terrane keeps both whole. Booking needs `world`; without one only the fields
+    move."""
     survivor_idx = np.flatnonzero(survivors)
     if not len(survivor_idx):
         return
@@ -324,6 +342,9 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
     elevation_before = elevation.copy()
     hc_before = hc.copy()
     hm_before = hm.copy()
+    material = plate.collect("continental_material_m")
+    craton = plate.collect("craton_crust_m")
+    formed = plate.collect("craton_formed_years")
 
     for donor_type in (False, True):
         typed_donors = donors & (continental == donor_type)
@@ -333,6 +354,9 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
         _, labels = connected_components(adjacency[donor_idx][:, donor_idx], directed=False)
         for label in np.unique(labels):
             front = donor_idx[labels == label]
+            hc_front_start = hc.copy()
+            material_volume = float(np.dot(material[front], areas[front]))
+            craton_volume = float(np.dot(craton[front], areas[front]))
             typed_survivors = survivors & (continental == donor_type)
             hc_volume = float(np.sum(hc[front] * areas[front]))
             hm_volume = float(np.sum(hm[front] * areas[front]))
@@ -361,11 +385,18 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
                 # the oceanic reservoir. This preserves both categorical Hc volume and total
                 # Hc instead of either losing the fragment or counting its oceanic substrate
                 # as newly continental.
+                was_continental = continental.copy()
                 relocated = _relocate_terrane_column(
                     hc, hm, codes, continental, areas, points, adjacency, front, survivors, hc_volume, hm_volume
                 )
                 if np.any(relocated):
                     changed |= relocated
+                    # The terrane's new footprint is the cells relocation retyped; the rest of
+                    # `relocated` received the oceanic columns it displaced.
+                    _relocate_tracers(
+                        material, craton, formed, areas, hc - hc_front_start, front, continental & ~was_continental,
+                        material_volume, craton_volume,
+                    )
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -382,6 +413,11 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
                 SUTURE_ACCRETION_MAX_HC_M,
                 SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION,
             )
+            placed_share = _carry_material(material, areas, hc - hc_front_start, hc_volume, material_volume)
+            if world is not None:
+                continental_ledger.record(world, "delaminated_lower_crust_m3", (1.0 - placed_share) * material_volume)
+                cratons.record(world, "collision_reworked_m3", placed_share * craton_volume)
+                cratons.record(world, "delaminated_m3", (1.0 - placed_share) * craton_volume)
             changed |= _spread_accretion_volume(
                 hm,
                 areas,
@@ -403,7 +439,51 @@ def _accrete_onto_survivors(plate: "PlateWithSparseQuadPatch", donors: np.ndarra
         mantle_lithosphere_thickness_m=hm,
         crust_type_code=codes,
         elevation=elevation,
+        continental_material_m=material,
+        craton_crust_m=craton,
+        craton_formed_years=formed,
     )
+
+
+def _carry_material(
+    material: np.ndarray, areas: np.ndarray, hc_gain: np.ndarray, hc_volume: float, material_volume: float
+) -> float:
+    """In place: give each receiver the front's continental-derived material in proportion to
+    the Hc volume it received (`hc_gain`, thickness). Returns the share of the front's Hc
+    that was placed rather than delaminated."""
+    gained = np.maximum(hc_gain, 0.0)
+    placed = float(np.dot(gained, areas))
+    if hc_volume <= 0.0 or placed <= 0.0:
+        return 0.0
+    share = min(placed / hc_volume, 1.0)
+    material += share * material_volume * gained / placed
+    return share
+
+
+def _relocate_tracers(
+    material: np.ndarray,
+    craton: np.ndarray,
+    formed: np.ndarray,
+    areas: np.ndarray,
+    hc_change: np.ndarray,
+    front: np.ndarray,
+    chosen: np.ndarray,
+    material_volume: float,
+    craton_volume: float,
+) -> None:
+    """In place: a relocated terrane (`_relocate_terrane_column`) carries its continental
+    material, cratonic crust and craton date onto the `chosen` cells; the oceanic columns it
+    displaced take their own material with them to the cells that received their Hc."""
+    chosen_area = float(areas[chosen].sum())
+    displaced = float(np.dot(material[chosen], areas[chosen]))
+    gained = np.where(chosen, 0.0, np.maximum(hc_change, 0.0))
+    placed = float(np.dot(gained, areas))
+    if placed > 0.0:
+        material += displaced * gained / placed
+    material[chosen] = material_volume / chosen_area
+    craton[chosen] = craton_volume / chosen_area
+    dated = formed[front][formed[front] != 0.0]
+    formed[chosen] = float(dated.min()) if len(dated) and craton_volume > 0.0 else 0.0
 
 
 def _relocate_terrane_column(
@@ -800,6 +880,7 @@ class _StretchTransfer:
     received_hc_volume: np.ndarray  # Hc volume each rifted cell receives from its donors
     received_hm_volume: np.ndarray  # Hm volume each rifted cell receives
     received_continental_hc_volume: np.ndarray  # the part of received_hc_volume that was continental
+    withheld_area: np.ndarray  # m^2 of each rifted cell's stretched share cratonic donors withheld
 
 
 def _allocate_stretch(
@@ -810,6 +891,7 @@ def _allocate_stretch(
     hc: np.ndarray,
     hm: np.ndarray,
     continental: np.ndarray,
+    craton: np.ndarray | None = None,
 ) -> _StretchTransfer:
     """Share each rifted cell's stretched footprint (`stretch_share` of its area) out over its
     donor band -- the pre-existing cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops,
@@ -818,7 +900,12 @@ def _allocate_stretch(
     A donor asked to cover `D` m^2 of new ground on top of its own area `a` thins by
     `a / (a + D)`; the volume that removes, `thickness * a * (1 - ratio)`, goes to the cells
     that asked, in proportion to how much each asked. Total volume is unchanged by
-    construction. A rifted cell with no pre-existing cell in reach asks for nothing."""
+    construction. A rifted cell with no pre-existing cell in reach asks for nothing.
+
+    A cratonic donor (`craton`, its cratonic thickness per node) is asked for only
+    `1 - CRATON_STRETCH_RESISTANCE * strength` of its area share; what it withholds is not
+    shifted onto the other donors but left to the rifted cell's magmatic share
+    (`withheld_area`), so the stretch concentrates in the younger crust beside a craton."""
     areas = plate.node_areas_m2()
     preexisting_mask = np.ones(plate.node_count(), dtype=bool)
     preexisting_mask[inserted_indices] = False
@@ -831,12 +918,18 @@ def _allocate_stretch(
         reach = reach @ preexisting_adjacency
         band = band + reach
     # band_area_by_donor[c, d]: donor d's area if it is in rifted cell c's band, else 0.
-    band_area_by_donor = (band > 0).astype(float).multiply(areas[preexisting][None, :]).tocsr()
+    in_band = (band > 0).astype(float)
+    band_area_by_donor = in_band.multiply(areas[preexisting][None, :]).tocsr()
     band_area = np.asarray(band_area_by_donor.sum(axis=1)).ravel()
     requested_area_by_cell = np.where(band_area > 0.0, stretch_share * areas[rifted], 0.0)
+    willing = np.ones(len(preexisting))
+    if craton is not None:
+        willing = 1.0 - cratons.CRATON_STRETCH_RESISTANCE * cratons.strength(craton[preexisting])
     # requested_area[c, d]: footprint rifted cell c asks of donor d, in m^2.
     requested_area = csr_matrix(
-        band_area_by_donor.multiply((requested_area_by_cell / np.where(band_area > 0.0, band_area, 1.0))[:, None])
+        in_band.multiply((areas[preexisting] * willing)[None, :]).multiply(
+            (requested_area_by_cell / np.where(band_area > 0.0, band_area, 1.0))[:, None]
+        )
     )
     requested_area_by_donor = np.asarray(requested_area.sum(axis=0)).ravel()
     donor_area = areas[preexisting]
@@ -855,6 +948,7 @@ def _allocate_stretch(
         received_hc_volume=share_of_donor @ lost_hc_volume,
         received_hm_volume=share_of_donor @ lost_hm_volume,
         received_continental_hc_volume=share_of_donor @ (lost_hc_volume * continental[preexisting]),
+        withheld_area=requested_area_by_cell - np.asarray(requested_area.sum(axis=1)).ravel(),
     )
 
 
@@ -887,8 +981,9 @@ def _open_rift(
     remaining = plate.collect("volcano_active_years_remaining")
     elevation = plate.collect("elevation")
     reason = plate.collect("elev_change_reason")
+    craton = plate.collect("craton_crust_m")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
-    transfer = _allocate_stretch(plate, inserted_indices, rifted, stretch_share, hc, hm, continental)
+    transfer = _allocate_stretch(plate, inserted_indices, rifted, stretch_share, hc, hm, continental, craton)
 
     # Donors: thin in place, erupting any column that thins through the rift threshold.
     donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
@@ -906,10 +1001,14 @@ def _open_rift(
         hc[donors], hm[donors] = new_hc, new_hm
         codes[donors], is_volcano[donors], remaining[donors] = sub_codes, sub_volcano, sub_remaining
         reason[donors[melting]] = ELEV_CHANGE_VOLCANO
+        # A donor's cratonic crust thins with it, and is gone where it melted through.
+        thinned = np.where(melting, 0.0, craton[donors] * ratio)
+        cratons.record(world, "rifted_m3", float(np.dot(craton[donors] - thinned, plate.node_areas_m2()[donors])))
+        craton[donors] = thinned
 
     # Rifted cells: stretched crust received from behind plus the magmatic remainder.
     cell_area = plate.node_areas_m2()[rifted]
-    magmatic_area = (1.0 - stretch_share) * cell_area
+    magmatic_area = (1.0 - stretch_share) * cell_area + np.maximum(transfer.withheld_area, 0.0)
     cell_hc = (transfer.received_hc_volume + magmatic_area * hc[rifted]) / cell_area
     cell_hm = np.maximum(
         (transfer.received_hm_volume + magmatic_area * hm[rifted]) / cell_area, lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M
@@ -933,6 +1032,7 @@ def _open_rift(
         volcano_active_years_remaining=remaining,
         elevation=elevation,
         elev_change_reason=reason,
+        craton_crust_m=craton,
     )
 
 

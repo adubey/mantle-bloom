@@ -156,6 +156,10 @@ def _backfill_added_fields(world: World) -> None:
 
         # Infer the tracer and opening balance only for saves that predate the ledger.
         continental_ledger.ensure_initialized(world)
+    from . import cratons
+
+    # Accounts only: a save from before cratons existed seeds them on its first step.
+    cratons.ensure_ledger(world)
 
 
 def _backfill_water_budget(world: World) -> None:

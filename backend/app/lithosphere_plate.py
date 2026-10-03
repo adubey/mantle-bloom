@@ -61,7 +61,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, cratons, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 
 # `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` and issue
@@ -812,6 +812,7 @@ COLUMN_FIELDS = (
     "volcano_active_years_remaining",
     "elev_change_reason",
     "crust_type_code",
+    "craton_crust_m",
 )
 
 
@@ -1003,15 +1004,20 @@ def deform_columns(
     prior_hc = hc.copy()
     melting = np.zeros(n, dtype=bool)
     newly_below_rift_onset = np.zeros(n, dtype=bool)
+    craton = fields["craton_crust_m"]
     if np.any(divergent):
         new_hc, new_hm, melt = rheology.apply_divergent_deformation(hc[divergent], hm[divergent], closing_rate[divergent], years_myr)
         # "fault" mode: scale the thinning delta by fault proximity (all-ones
         # otherwise). Melt (decompression volcanism) still fires on the geometric
         # rift threshold -- it's a discrete event, not a rate.
         infl = fault_influence[divergent]
-        hc[divergent] = hc[divergent] + infl * (new_hc - hc[divergent])
-        hm[divergent] = hm[divergent] + infl * (new_hm - hm[divergent])
-        melting[divergent] = melt
+        # A craton resists the thinning itself (cratons.CRATON_RIFT_RESISTANCE), so it only
+        # melts through once its own, slower thinning crosses the rift threshold.
+        resisted = cratons.strength(craton[divergent]) * cratons.CRATON_RIFT_RESISTANCE
+        old_hc = hc[divergent]
+        hc[divergent] = old_hc + infl * (1.0 - resisted) * (new_hc - old_hc)
+        hm[divergent] = hm[divergent] + infl * (1.0 - resisted) * (new_hm - hm[divergent])
+        melting[divergent] = np.where(resisted > 0.0, melt & (hc[divergent] < rheology.RIFT_CRITICAL_THICKNESS_M), melt)
 
         # Rift magmatic underplating (see rheology.apply_rift_magmatic_thickening): a
         # partial Hc offset for nodes that thinned past RIFT_VOLCANISM_ONSET_HC_M but
@@ -1122,6 +1128,14 @@ def deform_columns(
     reason[(transform_uplift > 0.0) & moved] = ELEV_CHANGE_TRANSFORM
     reason[melting] = ELEV_CHANGE_VOLCANO
 
+    # Cratonic crust thins with its column and is gone wherever the column melted through:
+    # both are rifting (cratons.py). Thickening leaves it unchanged.
+    new_craton = cratons.scale_with_column(craton, fields["crustal_thickness_m"], hc)
+    new_craton[melting] = 0.0
+    rifted = craton - new_craton
+    if np.any(rifted > 0.0):
+        cratons.record(world, "rifted_m3", float(np.sum(rifted * node_area_m2)))
+
     return {
         "elevation": new_elevation,
         "crustal_thickness_m": hc,
@@ -1131,6 +1145,7 @@ def deform_columns(
         "volcano_active_years_remaining": volcano_remaining,
         "elev_change_reason": reason,
         "crust_type_code": crust_type_code,
+        "craton_crust_m": new_craton,
     }
 
 

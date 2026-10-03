@@ -59,4 +59,10 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # coarsening, merge and partition conserve its area-integrated volume independently of
     # the receiving cell's binary crust type.
     "continental_material_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    # Cratons (cratons.py). The cratonic share of Hc is extensive so every remap conserves its
+    # volume; its formation date keeps the oldest contributor's (sentinel 0.0: no craton --
+    # seeded cratons predate year 0 and formed ones postdate it); the formation clock blends.
+    "craton_crust_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    "craton_formed_years": _field(float, 0.0, RemapClass.HISTORY, sentinel=0.0),
+    "stable_continental_myr": _field(float, 0.0, RemapClass.CLOCK),
 }

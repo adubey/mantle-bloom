@@ -72,7 +72,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, continental_ledger, faults, geometry, hydrology, lithosphere
+from . import biomes, climate, continental_ledger, cratons, faults, geometry, hydrology, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -1327,6 +1327,13 @@ def apply_erosion(
     has_column = prior_hc > 0.0
     removable_m = np.where(has_column, np.clip(prior_hc - lithosphere.MIN_CRUSTAL_THICKNESS_M, 0.0, None), np.inf)
     erosion_amount = np.minimum(erosion_amount, removable_m)
+    # Cratons (cratons.py) resist erosional unroofing: at full strength a craton column gives up
+    # only (1 - CRATON_EROSION_RESISTANCE) of what would otherwise be removed. Applied here, at
+    # the source, so everything routed downstream stays exactly what the sources gave up.
+    craton_keep = 1.0 - cratons.CRATON_EROSION_RESISTANCE * cratons.strength(
+        np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
+    )
+    erosion_amount = erosion_amount * craton_keep
     # channel_depth is the terrain's own carved-channel record, so it must never grow past
     # what actually got taken off this point's elevation: when the neighbor-drop cap above
     # holds erosion_amount below raw_erosion_total, scale river's contribution down by the
@@ -1375,7 +1382,7 @@ def apply_erosion(
     # ocean_erosion_multiplier scales both the sea-floor slump and the shoreline wave/frost
     # attack together (still capped at the remaining drop to the lowest neighbour).
     sea_side_erosion = np.minimum(
-        np.clip((submarine + coastal) * world.ocean_erosion_multiplier, 0.0, None), remaining_drop_m
+        np.clip((submarine + coastal) * world.ocean_erosion_multiplier * craton_keep, 0.0, None), remaining_drop_m
     )
 
     # Symmetric coastal leveling (see the COASTAL_OPENNESS_* / COASTAL_LEVELING_* / LEVELING_*
@@ -1401,7 +1408,7 @@ def apply_erosion(
     # drain) -- applied before the one-step "can't be shoved below its datum" safety cap, which
     # then still holds, and feeds through to leveling_source/erosion_amount consistently.
     ground_off = coastal_leveling_grind(elevation, world.sea_level_m, coastal_openness, leveling_datum, dt_myr, local_relief_m)
-    ground_off = ground_off * world.coastal_leveling_multiplier
+    ground_off = ground_off * world.coastal_leveling_multiplier * craton_keep
     ground_off = np.minimum(ground_off, np.clip(elevation - erosion_amount - leveling_datum, 0.0, None))
     ground_off = np.minimum(ground_off, np.clip(removable_m - erosion_amount - sea_side_erosion, 0.0, None))
 
