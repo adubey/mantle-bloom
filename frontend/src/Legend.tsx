@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import type { MapView, Projection } from "./api";
-import { faultKindForLegendLabel, legendFor } from "./legendData";
+import { CRATON_LEGEND_LABEL, faultKindForLegendLabel, legendFor } from "./legendData";
 import type { LegendGradient, LegendSymbol, SwatchKind } from "./legendData";
 import ScaleBar from "./ScaleBar";
 
@@ -181,7 +181,8 @@ export default function Legend({
 
   // Views with clickable swatches: Biome / Combined / "Last elevation change" match on exact
   // pixel colour (see the Props doc comment); "Plates & Faults" instead resolves a clicked
-  // fault-type row to a FaultKind the client-drawn view isolates (see faultKindForLegendLabel).
+  // fault-type row to a FaultKind the client-drawn view isolates (see faultKindForLegendLabel),
+  // or its Cratons row to isolating the craton layer.
   const clickable =
     (mapView === "biome" || mapView === "combined" || mapView === "elevReason" || mapView === "platesAndFaults") &&
     !!onBiomeClick;
@@ -234,12 +235,12 @@ export default function Legend({
               <SymbolRow key={sym.label} symbol={sym} onClick={terrainToggle.toggle} selected={!!terrainToggle.on} />
             );
           }
-          // On "Plates & Faults" only the three fault-type rows do anything; elsewhere every
-          // row but "Coastline" (a plain orientation cue) is clickable.
+          // On "Plates & Faults" only the three fault-type rows and the Cratons row do
+          // anything; elsewhere every row but "Coastline" (a plain orientation cue) is clickable.
           const rowClickable =
             clickable &&
             (mapView === "platesAndFaults"
-              ? faultKindForLegendLabel(sym.label) !== null
+              ? faultKindForLegendLabel(sym.label) !== null || sym.label === CRATON_LEGEND_LABEL
               : sym.label !== "Coastline");
           return (
             <SymbolRow

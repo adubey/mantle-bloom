@@ -305,6 +305,10 @@ unrecognized projection/view name, a width/height outside `[1, main.MAX_RENDER_D
   the healthy case. `"oceanCfdSediment"`/
   `"oceanCfdDeposition"` (from the retired ocean solver) are not valid `view` values
   (`/world/render` rejects them with `400`, same as any other unrecognized view name).
+  `"cratonLayer"` / `"waterLayer"` (`render_image.LAYER_VIEWS`) aren't maps of their own:
+  they return a transparent RGBA PNG painted only where there are cratons, or open ocean and
+  visible lakes/seas, for the client-drawn "Plates & Faults" view to composite under its
+  vectors. `/world/render` accepts them and `/world/animate` doesn't.
 - `rotation` is the map's current view orientation (see
   [simulation-model.md#rotating-the-view](simulation-model.md#rotating-the-view)): a
   row-major 3x3 rotation matrix as 9 comma-separated floats, applied to every real-world

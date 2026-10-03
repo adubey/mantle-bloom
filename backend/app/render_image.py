@@ -75,6 +75,10 @@ RESOURCE_VIEWS = ("resources", "soilQuality")
 # interior's formation clock has run. Its own dispatch branch (_render_craton_view).
 DEBUG_VIEWS = ("plates", "platesDetail", "speckle", "geomorph", "elevReason", "overlapAge", "crustType", "nodeAge", "craton")
 VIEWS = ("elevation", "combined", "biome") + CLIMATE_VIEWS + RESOURCE_VIEWS + DEBUG_VIEWS
+# Transparent RGBA layers (not standalone maps, so not in VIEWS -- /world/render accepts them,
+# /world/animate doesn't) that the client-drawn "Plates & Faults" view composites under its own
+# vector geometry. See _render_overlay_layer.
+LAYER_VIEWS = ("cratonLayer", "waterLayer")
 
 BACKGROUND_RGB = (11, 16, 32)  # #0b1020
 # Muddier/less saturated than ocean blue (elevation_colors' own deep-water stop) -- a lake
@@ -2352,6 +2356,8 @@ CRATON_VIEW_CONTINENTAL_RGB = np.array((128, 126, 118), dtype=float)
 CRATON_VIEW_PROTO_RGB = np.array((214, 186, 96), dtype=float)
 CRATON_VIEW_SEEDED_RGB = np.array((150, 34, 40), dtype=float)
 CRATON_VIEW_FORMED_RGB = np.array((232, 112, 38), dtype=float)
+# Open ocean on the "waterLayer" overlay (lakes/seas keep LAKE_COLOR_RGB / SEA_COLOR_RGB).
+WATER_LAYER_OCEAN_RGB = (40, 90, 170)
 
 
 def craton_colors(continental: np.ndarray, craton_m: np.ndarray, formed_years: np.ndarray, stable_myr: np.ndarray) -> np.ndarray:
@@ -2394,6 +2400,49 @@ def _render_craton_view(world: World, projection: str, width: int, height: int, 
     image = Image.fromarray(pixels, mode="RGB")
     _draw_coastline(ImageDraw.Draw(image), world, projection, scale, offset_x, offset_y, width / REFERENCE_WIDTH_PX, view_rotation)
     return _encode_image(image)
+
+
+def _render_overlay_layer(world: World, layer: str, projection: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
+    """Renders one of LAYER_VIEWS: a transparent RGBA PNG the client-drawn "Plates & Faults"
+    view composites under its vector geometry (PlatesAndFaults.tsx). "cratonLayer" paints only
+    craton cells, in craton_colors' own seeded/formed hues and fade; "waterLayer" paints open
+    ocean and visible lakes/seas opaque, the client choosing how translucent to draw it. Same
+    nearest-node resample onto the biome grid as _render_craton_view."""
+    pixels = np.zeros((height, width, 4), dtype=np.uint8)
+    node_cloud = _node_cloud_and_tree(world) if world.plates else None
+    if node_cloud is None:
+        return _encode_image(Image.fromarray(pixels, mode="RGBA"))
+    _points, all_elevation, _owner, tree = node_cloud
+    grid_h, grid_w = biome_grid_dimensions(world.climate_density)
+    lat_deg, lon_deg, world_xyz = _biome_grid(grid_h, grid_w)
+    _, idx = tree.query(world_xyz.reshape(-1, 3), workers=plates.query_workers(grid_h * grid_w))
+    live = [p for p in world.plates if p.node_count() > 0]
+    if layer == "cratonLayer":
+        craton_m = np.concatenate([p.collect("craton_crust_m") for p in live])[idx]
+        formed_years = np.concatenate([p.collect("craton_formed_years") for p in live])[idx]
+        rgb = craton_colors(np.ones(len(idx), dtype=bool), craton_m, formed_years, np.zeros(len(idx)))
+        visible = craton_m > 0.0
+    else:
+        elevation = all_elevation[idx].reshape(grid_h, grid_w)
+        is_ocean = hydrology.sample_is_ocean(world, world_xyz, elevation <= world.sea_level_m).reshape(-1)
+        is_lake = plates.collect_all_lake_depth(world.plates)[idx] > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+        is_sea = hydrology.sample_is_sea(world, world_xyz, np.zeros((grid_h, grid_w), dtype=bool)).reshape(-1)
+        rgb = np.where(
+            is_lake[:, None],
+            np.where(is_sea[:, None], np.array(SEA_COLOR_RGB), np.array(LAKE_COLOR_RGB)),
+            np.array(WATER_LAYER_OCEAN_RGB),
+        )
+        visible = is_ocean | is_lake
+    colors = np.concatenate([rgb, np.where(visible, 255, 0)[:, None]], axis=1)
+    padding_px = PADDING_PX * width / REFERENCE_WIDTH_PX
+    centers, half_w, half_h, _scale, _offset_x, _offset_y = _project_climate_grid(
+        lat_deg, lon_deg, world_xyz, projection, view_rotation, width, height, padding_px
+    )
+    # Only the painted cells -- cells overlap (CELL_OVERLAP_FACTOR), so a transparent one would
+    # punch holes in its painted neighbours.
+    n = len(centers)
+    _fill_rects(pixels, centers[visible], np.broadcast_to(half_w, (n,))[visible], np.broadcast_to(half_h, (n,))[visible], colors[visible])
+    return _encode_image(Image.fromarray(pixels, mode="RGBA"))
 
 
 def _render_thickness_view(world: World, projection: str, view: str, width: int, height: int, view_rotation: np.ndarray) -> bytes:
@@ -2616,6 +2665,8 @@ def render_png(
         return _render_thickness_view(world, projection, view, width, height, view_rotation)
     if view == "craton":
         return _render_craton_view(world, projection, width, height, view_rotation)
+    if view in LAYER_VIEWS:
+        return _render_overlay_layer(world, view, projection, width, height, view_rotation)
     if view == "nodeAge":
         return _render_node_age_view(world, projection, width, height, view_rotation)
 

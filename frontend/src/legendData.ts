@@ -582,6 +582,10 @@ export function faultKindForLegendLabel(label: string): FaultKind | null {
   }
 }
 
+// "Plates & Faults" legend row that isolates the craton layer (see App.tsx / PlatesAndFaults.tsx),
+// the same click-to-isolate gesture as the fault-type rows above.
+export const CRATON_LEGEND_LABEL = "Cratons (red = predate run, orange = formed)";
+
 export function legendFor(view: MapView): LegendSpec | null {
   switch (view) {
     case "elevation":
@@ -613,6 +617,10 @@ export function legendFor(view: MapView): LegendSpec | null {
           { kind: "line", color: rgb(230, 190, 70), label: "Fault: strike-slip" },
           { kind: "circle", color: rgb(255, 180, 70), label: "Recent earthquake (size ∝ magnitude)" },
           { kind: "circle", color: rgb(255, 120, 40), label: "Volcano (filled = active)" },
+          // render_image.py's CRATON_VIEW_SEEDED_RGB / WATER_LAYER_OCEAN_RGB (the layers the
+          // sidebar's Overlays checkboxes toggle).
+          { kind: "square", color: rgb(150, 34, 40), label: CRATON_LEGEND_LABEL },
+          { kind: "square", color: rgb(40, 90, 170), label: "Ocean / lake (translucent)" },
           COASTLINE_SYMBOL,
         ],
       };

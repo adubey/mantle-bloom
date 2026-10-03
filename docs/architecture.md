@@ -93,8 +93,11 @@ When the "Plate Inspector" or "Plates & Faults" map view is active, the browser 
     lat/lon to GET /world/plate_at, a nearest-node lookup answering "which plate is here."
   "Plates & Faults" also fetches GET /world/faults, GET /world/earthquakes and
     GET /world/volcanoes (fault traces + fault systems, recent earthquake epicentres, and
-    current volcano vents) and draws them over the plates; a sidebar toggle hides the
-    earthquake + volcano overlay. Faults are display-only there -- plate selection is what
+    current volcano vents) and draws them over the plates; sidebar toggles hide the
+    earthquake + volcano overlay and the faults. Its Cratons and Ocean / lake overlays are
+    GET /world/render's transparent "cratonLayer" / "waterLayer" PNGs, fetched only while
+    enabled (and, unlike the JSON above, refetched on projection/rotation changes), drawn
+    under the vectors with the water translucent so submerged cratons show through. Faults are display-only there -- plate selection is what
     click/Tab drives.
 
 When the "River Inspector" map view is active, the browser instead fetches (same cadence):

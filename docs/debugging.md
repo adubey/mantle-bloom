@@ -604,7 +604,9 @@ not here:
   [simulation-model.md#lake-inspector](simulation-model.md#lake-inspector).
 - **Plates & Faults** (`GET /world/faults`, `GET /world/earthquakes`,
   `frontend/src/PlatesAndFaults.tsx`) merges plate outlines with the fault-trace and
-  earthquake overlays -- see
+  earthquake overlays. Its Overlays panel also toggles faults, cratons and a translucent
+  ocean/lake layer (cratons show through it), and clicking the legend's Cratons row isolates
+  the cratons the way a fault-type row isolates that regime -- see
   [simulation-model.md#fault-inspector](simulation-model.md#fault-inspector).
 
 All four are primarily inspection/feature tools rather than pathology-hunting diagnostics, but

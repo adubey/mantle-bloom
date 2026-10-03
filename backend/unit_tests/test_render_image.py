@@ -6,7 +6,7 @@ import av
 import numpy as np
 import pytest
 from PIL import Image
-from app import climate, geometry, healpix_grid, hydrology, render_image
+from app import climate, cratons, geometry, healpix_grid, hydrology, render_image
 from app.world import World, generate_world, step_world
 
 
@@ -224,6 +224,20 @@ def test_render_png_is_decodable_at_requested_size():
         image = Image.open(io.BytesIO(png))
         assert image.format == "PNG"
         assert image.size == (320, 180)
+
+
+def test_overlay_layers_are_transparent_except_where_painted():
+    world = generate_world(7, num_plates=10, continental_fraction=0.4)
+    cratons.ensure_initialized(world)
+    for layer in render_image.LAYER_VIEWS:
+        image = Image.open(io.BytesIO(render_image.render_png(world, "behrmann", layer, 320, 180)))
+        assert image.mode == "RGBA"
+        assert image.size == (320, 180)
+        alpha = np.asarray(image)[:, :, 3]
+        # Some cells painted, and the rest (land for water, non-craton for cratons, the
+        # padding around the sphere for both) left see-through.
+        assert np.any(alpha == 255), layer
+        assert np.any(alpha == 0), layer
 
 
 def test_stream_animation_mp4_stop_event_ends_the_run_early_but_still_yields_a_video():
