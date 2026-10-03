@@ -605,6 +605,30 @@ def test_mass_wasting_fills_a_pit_to_its_room_and_spills_the_rest_over_the_rim()
     assert np.allclose(land_tagged, 0.5 * land)
 
 
+def test_capped_lake_spread_keeps_debris_off_a_member_at_the_hc_cap():
+    # One four-member lake; member 1 is at the cap. 10 units landed on member 0.
+    lake_depth = np.array([50.0, 50.0, 50.0, 50.0])
+    neighbor_idx = np.array([[1, 3], [0, 2], [1, 3], [2, 0]])
+    source = np.array([10.0, 0.0, 0.0, 0.0])
+    capacity = np.array([20.0, 0.0, 3.0, 20.0])
+    out, tagged = erosion._spread_lake_sediment_capped(lake_depth, neighbor_idx, source, 0.3 * source, capacity)
+    assert out[1] == 0.0
+    assert np.all(out <= capacity + 1e-12)
+    assert np.isclose(out[2], 3.0)  # filled to its room, the rest went to members with room
+    assert np.isclose(out.sum(), 10.0)
+    assert np.allclose(tagged, 0.3 * out)
+
+
+def test_capped_lake_spread_leaves_what_no_member_can_hold_where_it_landed():
+    lake_depth = np.array([50.0, 50.0, 0.0])
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1]])
+    source = np.array([6.0, 0.0, 2.0])  # node 2 is dry land: untouched
+    capacity = np.array([1.0, 2.0, 0.0])
+    out, tagged = erosion._spread_lake_sediment_capped(lake_depth, neighbor_idx, source, source, capacity)
+    assert np.allclose(out, [4.0, 2.0, 2.0])
+    assert np.allclose(tagged, out)
+
+
 def test_apply_erosion_routes_landslide_debris_into_basins_and_closes_the_ledger():
     world = _generate_world(seed=3, num_plates=8, surface="quad")
     world.seismic_erosion_multiplier = 4.0

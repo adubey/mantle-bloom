@@ -2843,7 +2843,9 @@ the cap takes none. So debris runs on past a saturated plateau instead of overfl
 no node takes more than the room it has below the cap. A land pit fills only to that room; the
 rest spills over the basin rim to hydrology's `spill_target` and runs on, for up to
 `MASS_WASTING_SPILL_PASSES` (4) sweeps. Debris still left after that, or in a pit with no
-spill outlet, settles in its pit even past the cap. Debris reaching the sea is spread by `_spread_marine_sediment` onto the shelf and down
+spill outlet, settles in its pit even past the cap. Debris that lands in a lake spreads across
+it like other lake sediment (`_spread_lake_sediment_capped`), but each member takes only up to
+its room below the cap, the rest going to members with room left. Debris reaching the sea is spread by `_spread_marine_sediment` onto the shelf and down
 into the ocean basin, under the same `ocean_deposition_multiplier` as the other marine sediment.
 Each deposit carries the continental fraction of the flux it came from. The budget reports
 `mass_wasting_removed_m3`, `mass_wasting_foreland_m3` and `mass_wasting_marine_m3`.

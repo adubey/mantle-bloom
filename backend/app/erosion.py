@@ -1085,13 +1085,61 @@ def _spread_lake_sediment(lake_depth: np.ndarray, neighbor_idx: np.ndarray, sour
         total = source_amount[members].sum()
         if total <= 0.0:
             continue
-        member_depth = lake_depth[members]
-        depth_sum = member_depth.sum()
-        uniform_share = np.full(len(members), 1.0 / len(members))
-        depth_share = (member_depth / depth_sum) if depth_sum > 0.0 else uniform_share
-        weight = LAKE_SEDIMENT_UNIFORM_FRACTION * uniform_share + (1.0 - LAKE_SEDIMENT_UNIFORM_FRACTION) * depth_share
-        result[members] += total * weight
+        result[members] += total * _lake_member_weights(lake_depth[members])
     return result
+
+
+def _lake_member_weights(member_depth: np.ndarray) -> np.ndarray:
+    """Each lake member's share of its lake's sediment: LAKE_SEDIMENT_UNIFORM_FRACTION spread
+    evenly, the rest by depth (evenly too if the lake has no depth at all)."""
+    uniform_share = np.full(len(member_depth), 1.0 / len(member_depth))
+    depth_sum = member_depth.sum()
+    depth_share = (member_depth / depth_sum) if depth_sum > 0.0 else uniform_share
+    return LAKE_SEDIMENT_UNIFORM_FRACTION * uniform_share + (1.0 - LAKE_SEDIMENT_UNIFORM_FRACTION) * depth_share
+
+
+def _spread_lake_sediment_capped(
+    lake_depth: np.ndarray,
+    neighbor_idx: np.ndarray,
+    source_amount: np.ndarray,
+    tagged_amount: np.ndarray,
+    capacity: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`_spread_lake_sediment` for a deposit that already respects per-node `capacity` (landslide
+    debris, see `_route_mass_wasting`), keeping it that way: a lake member takes its weighted
+    share only up to its capacity, and the remainder goes to the members with room left, by the
+    same weights. Whatever the lake as a whole has no room for stays where it was deposited.
+    The lake's load is mixed, so every member's deposit carries the lake's tagged fraction.
+    Returns (spread amount, spread tagged amount); conserves both totals exactly."""
+    result = np.where(source_amount > 0, source_amount, 0.0)
+    tagged = np.where(source_amount > 0, tagged_amount, 0.0)
+    is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    if not np.any(is_lake & (source_amount > 0)):
+        return result, tagged
+
+    for members in hydrology.lake_components(is_lake, neighbor_idx):
+        total = source_amount[members].sum()
+        if total <= 0.0:
+            continue
+        tagged_fraction = tagged_amount[members].sum() / total
+        weight = _lake_member_weights(lake_depth[members])
+        room = np.clip(capacity[members], 0.0, None)
+        placed = np.zeros(len(members))
+        remaining = total
+        # Each pass fills at least one member to capacity or places everything, so this ends.
+        for _ in range(len(members)):
+            open_weight = np.where(placed < room, weight, 0.0)
+            if remaining <= 0.0 or open_weight.sum() <= 0.0:
+                break
+            give = np.minimum(remaining * open_weight / open_weight.sum(), room - placed)
+            placed += give
+            remaining -= give.sum()
+        if remaining > 0.0:
+            # No room left in the lake: the unplaced share stays on the nodes it landed on.
+            placed += remaining * source_amount[members] / total
+        result[members] = placed
+        tagged[members] = placed * tagged_fraction
+    return result, tagged
 
 
 def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
@@ -1675,10 +1723,12 @@ def apply_erosion(
     )
 
     # Mass wasting (issue #275 phase 4): landslide debris runs out downslope by gravity and
-    # settles on the foreland, never past a column's Hc cap -- see `_route_mass_wasting`. What
+    # settles on the foreland, never past a column's Hc cap -- see `_route_mass_wasting`. Debris
+    # landing in a lake spreads across it the same capacity-aware way. What
     # reaches the sea spreads onto the shelf and into the basin like the other marine sediment,
     # under the same ocean_deposition_multiplier.
     mass_wasting_vol = applied_seismic * area
+    landslide_room = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc + removed_m, np.inf) * area
     landslide_land, landslide_arrival, landslide_land_tagged, landslide_arrival_tagged = _route_mass_wasting(
         elevation,
         is_ocean_node,
@@ -1686,12 +1736,13 @@ def apply_erosion(
         slope,
         mass_wasting_vol,
         mass_wasting_vol * tag,
-        capacity_vol=np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc + removed_m, np.inf) * area,
+        capacity_vol=landslide_room,
         headroom_m=np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc, np.inf),
         spill_target=hydro.spill_target,
     )
-    landslide_land = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, landslide_land)
-    landslide_land_tagged = _spread_lake_sediment(hydro.lake_depth, hydro.neighbor_idx, landslide_land_tagged)
+    landslide_land, landslide_land_tagged = _spread_lake_sediment_capped(
+        hydro.lake_depth, hydro.neighbor_idx, landslide_land, landslide_land_tagged, capacity=landslide_room
+    )
     landslide_marine_unscaled = _spread_marine_sediment(points, elevation, is_ocean_node, landslide_arrival)
     landslide_marine_tagged = _spread_marine_sediment(points, elevation, is_ocean_node, landslide_arrival_tagged)
     discarded_tagged_m3 += float(landslide_marine_tagged.sum()) * (1.0 - ocean_tag_keep)
