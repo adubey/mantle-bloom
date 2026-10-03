@@ -1072,6 +1072,9 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # own docstring warns about. A no-op array of zeros for v1 lines.
     new_crustal_thickness_m = np.interp(new_theta, line.theta, line.crustal_thickness_m)
     new_mantle_lithosphere_thickness_m = np.interp(new_theta, line.theta, line.mantle_lithosphere_thickness_m)
+    # Continental material is a continuous thickness, so interpolate it with the lithosphere
+    # columns above to preserve the ledger inventory across regularization.
+    new_continental_material_m = np.interp(new_theta, line.theta, line.continental_material_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
     # each resampled node from its nearest original node rather than np.interp'ing between two
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
@@ -1114,6 +1117,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         crustal_thickness_m=new_crustal_thickness_m,
         mantle_lithosphere_thickness_m=new_mantle_lithosphere_thickness_m,
         crust_type_code=new_crust_type_code,
+        continental_material_m=new_continental_material_m,
     )
 
 
