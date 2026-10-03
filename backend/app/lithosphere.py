@@ -31,6 +31,7 @@ RHO_OCEANIC_CRUST = 2900.0
 RHO_LITHOSPHERE_MANTLE = 3300.0
 RHO_ASTHENOSPHERE = 3250.0
 RHO_WATER = 1000.0
+RHO_ICE = 917.0
 
 # Reference column thicknesses (meters) new crust is seeded with -- Section 2.2's own
 # worked examples ("Hc ~= 7km" oceanic, "Hc >= 50km" orogens) anchor the oceanic/continental
@@ -126,7 +127,9 @@ def node_crust_density(crust_type_codes: np.ndarray, plate_crust_type: str) -> n
 ISOSTATIC_REFERENCE_OFFSET_M = -4184.615384615388
 
 
-def isostatic_elevation(hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float | np.ndarray) -> np.ndarray:
+def isostatic_elevation(
+    hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float | np.ndarray, surface_load_kg_m2: float | np.ndarray = 0.0
+) -> np.ndarray:
     """Airy isostatic elevation/bathymetry, Eq. 1/2 plus `ISOSTATIC_REFERENCE_OFFSET_M`
     (see above). `rho_c` is normally a scalar (this plate's own crust density) since a
     plate's crust type doesn't vary node-to-node -- but it broadcasts, so a caller spanning
@@ -140,12 +143,49 @@ def isostatic_elevation(hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float | np.nd
     level, confirmed directly as a real bug: thicker crust reading as *lower* elevation right
     across that boundary). Folding the offset in first keeps both branches equal to zero at
     the same crossing point by construction, so the whole piecewise function is continuous
-    and strictly increasing in Hc everywhere, not just within either branch alone."""
+    and strictly increasing in Hc everywhere, not just within either branch alone.
+
+    `surface_load_kg_m2` is extra mass resting on the column (an ice sheet, see
+    `ice_load_deflection`). It sinks the column by load / RHO_ASTHENOSPHERE, rescaled like
+    any other bracket term once the column is submerged."""
     bracket = hc_m * (1.0 - rho_c / RHO_ASTHENOSPHERE) + hm_m * (1.0 - RHO_LITHOSPHERE_MANTLE / RHO_ASTHENOSPHERE)
+    bracket = bracket - surface_load_kg_m2 / RHO_ASTHENOSPHERE
     shifted_bracket = bracket + ISOSTATIC_REFERENCE_OFFSET_M
     water_loaded = shifted_bracket * (RHO_ASTHENOSPHERE / (RHO_ASTHENOSPHERE - RHO_WATER))
     z = np.where(shifted_bracket <= 0.0, water_loaded, shifted_bracket)
     return np.clip(z, MIN_ELEVATION_M, MAX_ELEVATION_M)
+
+
+def grounded_ice_load_kg_m2(glacier_depth_m: np.ndarray, bed_elevation_m: np.ndarray, sea_level_m: float) -> np.ndarray:
+    """Mass per unit area an ice cover adds to its column (issue #275, phase 3). On land it's
+    the whole ice column. Below sea level the ice displaces water that was already loading the
+    bed, so only the excess over that water counts, and floating ice (sea ice, an ice shelf)
+    adds nothing. `glacier_depth_m` is ice thickness; `bed_elevation_m` should be the bed
+    *without* any ice depression, so the result doesn't feed back on its own deflection."""
+    water_depth = np.clip(sea_level_m - bed_elevation_m, 0.0, None)
+    return np.clip(RHO_ICE * np.clip(glacier_depth_m, 0.0, None) - RHO_WATER * water_depth, 0.0, None)
+
+
+def ice_load_deflection(
+    hc_m: np.ndarray, hm_m: np.ndarray, rho_c: float | np.ndarray, load_kg_m2: np.ndarray
+) -> np.ndarray:
+    """The (<= 0) Airy surface deflection `load_kg_m2` of ice causes on each column: the
+    loaded column's `isostatic_elevation` minus the unloaded one's. Columns with no Hc
+    tracking (v1/legacy, `hc_m <= 0`) take the plain dry-land response, load / rho_a.
+
+    Elevation carries this deflection explicitly in the persistent `ice_load_deflection_m`
+    field, and erosion.apply_erosion moves elevation by only the change in it each step, so
+    the surface rebounds by exactly what the ice pushed down once the ice melts. Glacial
+    isostatic adjustment takes ~10 kyr, far shorter than a step, so the column is taken to
+    be in equilibrium with its current load."""
+    load = np.asarray(load_kg_m2, dtype=float)
+    columned = isostatic_elevation(hc_m, hm_m, rho_c, load) - isostatic_elevation(hc_m, hm_m, rho_c)
+    return np.where(np.asarray(hc_m) > 0.0, columned, -load / RHO_ASTHENOSPHERE)
+
+
+def ice_load_pa(load_kg_m2: np.ndarray) -> np.ndarray:
+    """Vertical normal stress (Pa) an ice load puts on the crust beneath it."""
+    return np.asarray(load_kg_m2, dtype=float) * GRAVITY_M_S2
 
 
 def crustal_thickness_for_submerged_elevation(z_m: np.ndarray, hm_m: np.ndarray, rho_c: float) -> np.ndarray:
@@ -243,12 +283,22 @@ def back_elevation_gain(line, plate: "Plate", gain: np.ndarray | float, apply_ma
     )
 
 
+def _with_ice_deflection(bare_elevation: np.ndarray, deflection: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """`bare_elevation` plus the stored ice-load `deflection`, clipped to the elevation
+    bounds, and the deflection that clip actually let through -- stored back so a later
+    meltback rebounds by exactly what was applied (see erosion._apply_ice_load)."""
+    z = np.clip(bare_elevation + deflection, MIN_ELEVATION_M, MAX_ELEVATION_M)
+    return z, z - bare_elevation
+
+
 def sync_line_elevation(line, rho_c: float):
     """Recompute `line.elevation` from its current Hc/Hm columns -- call after any mutation
     to `crustal_thickness_m`/`mantle_lithosphere_thickness_m`. Returns a new `ElevationLine`
-    (this module never mutates a line's arrays in place)."""
-    z = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
-    return line.replace(elevation=z)
+    (this module never mutates a line's arrays in place). Keeps the line's current ice-load
+    deflection (see `ice_load_deflection`), so a resync doesn't silently unload the ice."""
+    bare = isostatic_elevation(line.crustal_thickness_m, line.mantle_lithosphere_thickness_m, rho_c)
+    z, deflection = _with_ice_deflection(bare, line.ice_load_deflection_m)
+    return line.replace(elevation=z, ice_load_deflection_m=deflection)
 
 
 def sync_plate_elevation(plate: "LithospherePlate") -> None:
@@ -256,11 +306,13 @@ def sync_plate_elevation(plate: "LithospherePlate") -> None:
     Density is per-node (`node_crust_density`, resolving each line's own `crust_type_code`
     against this plate's nominal `crust_type`) rather than one scalar for the whole plate, so
     a rift-typed or gap-filled patch whose composition genuinely differs from its plate isn't
-    isostatically floated as if it were the plate's own usual crust."""
+    isostatically floated as if it were the plate's own usual crust. Keeps each node's
+    current ice-load deflection, as `sync_line_elevation` does."""
     hc = plate.collect("crustal_thickness_m")
     hm = plate.collect("mantle_lithosphere_thickness_m")
     rho_c = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
-    plate.set_fields_on_plate(elevation=isostatic_elevation(hc, hm, rho_c))
+    z, deflection = _with_ice_deflection(isostatic_elevation(hc, hm, rho_c), plate.collect("ice_load_deflection_m"))
+    plate.set_fields_on_plate(elevation=z, ice_load_deflection_m=deflection)
 
 
 def clamp_column_caps(plate: "Plate") -> bool:
