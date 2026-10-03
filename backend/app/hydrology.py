@@ -912,10 +912,14 @@ def route_downstream(
             deposited[target] += through_flux[i]
         else:
             through_flux[target] += through_flux[i]
-    # A node on a flow cycle has no valid place in the sweep: it keeps what it received,
-    # like a sink, rather than losing it.
+    # A node on a flow cycle has no valid place in the sweep: it still loses/retains its own
+    # share like any other node, then keeps the remainder, like a sink, rather than losing it.
+    # Same loss -> retain -> dead-end sequence the sweep applies to a sink (target < 0).
     for i in stuck:
-        deposited[i] += through_flux[i]
+        through_flux[i] -= through_flux[i] * loss[i]
+        retained_here = through_flux[i] * retain[i]
+        through_flux[i] -= retained_here
+        deposited[i] += retained_here + through_flux[i]
 
     return np.array(through_flux), np.array(deposited)
 

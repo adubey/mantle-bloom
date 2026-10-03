@@ -831,3 +831,25 @@ def test_route_downstream_conserves_on_an_all_downhill_graph():
     source = rng.uniform(0.0, 1.0, n)
     flux, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, source)
     assert np.isclose(deposited.sum(), source[~is_ocean].sum())
+
+
+def test_route_downstream_applies_loss_and_retention_on_cycle_nodes():
+    # Review on #278: a node on a flow cycle must still evaporate/retain like any other node
+    # before keeping its remainder -- otherwise river water skips evaporation there.
+    elevation = np.array([100.0, 30.0, 31.0, 0.0])
+    is_ocean = np.array([False, False, False, True])
+    flow_target = np.array([1, 2, 1, -1])  # 0 feeds the 1 <-> 2 cycle
+    source = np.array([4.0, 2.0, 2.0, 0.0])
+    loss = np.array([0.0, 0.5, 0.25, 0.0])
+    retain = np.array([0.0, 0.5, 0.0, 0.0])
+    flux, deposited = hydrology.route_downstream(
+        elevation, is_ocean, flow_target, source, retain_fraction=retain, loss_fraction=loss
+    )
+    # Node 1 receives 2 + 4 = 6, loses half (3), retains half the rest; node 2 loses a quarter.
+    assert np.isclose(deposited[1], 3.0) and np.isclose(flux[1], 1.5)
+    assert np.isclose(deposited[2], 1.5) and np.isclose(flux[2], 1.5)
+    assert np.isclose(deposited.sum(), 4.5)  # 8 in, 3.5 evaporated
+
+    # Without loss, the cycle still conserves everything it received.
+    _, kept = hydrology.route_downstream(elevation, is_ocean, flow_target, source, retain_fraction=retain)
+    assert np.isclose(kept.sum(), source.sum())
