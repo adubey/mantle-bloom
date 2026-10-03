@@ -1,0 +1,78 @@
+{
+  "lines": {
+    "1": {
+      "climate_erosion_hydrology": 0.43554,
+      "deform": 0.980952,
+      "deform_topology": 1.04493,
+      "faults": 0.46412,
+      "fluid_dynamics": 1.65802e-06,
+      "gap_fill": 0.00564693,
+      "magma_transport": 0.0444046,
+      "overlap_tracking": 0.0109788,
+      "record_stats": 0.00486022,
+      "resource_formation": 0.011346,
+      "sea_level": 0.0276201,
+      "shift": 0.183042,
+      "step_total": 2.24318,
+      "stranded_basins": 7.36144e-06,
+      "topology": 0.0473505,
+      "volcanism": 0.0247982
+    },
+    "2": {
+      "climate_erosion_hydrology": 0.406168,
+      "deform": 1.33655,
+      "deform_topology": 1.4139,
+      "faults": 0.550232,
+      "fluid_dynamics": 1.51753e-06,
+      "gap_fill": 0.00574374,
+      "magma_transport": 0.0415008,
+      "overlap_tracking": 0.0134968,
+      "record_stats": 0.00523,
+      "resource_formation": 0.0129593,
+      "sea_level": 0.03368,
+      "shift": 0.23475,
+      "step_total": 2.73461,
+      "stranded_basins": 6.80521e-06,
+      "topology": 0.0581178,
+      "volcanism": 0.032863
+    }
+  },
+  "quad": {
+    "1": {
+      "climate_erosion_hydrology": 0.408663,
+      "deform": 0.221904,
+      "deform_topology": 0.51336,
+      "faults": 0.522607,
+      "fluid_dynamics": 1.35966e-06,
+      "gap_fill": 0.243652,
+      "magma_transport": 0.0397493,
+      "overlap_tracking": 0.0244183,
+      "record_stats": 0.00286818,
+      "resource_formation": 0.00376949,
+      "sea_level": 0.0210199,
+      "shift": 0.114001,
+      "step_total": 1.6322,
+      "stranded_basins": 8.57013e-06,
+      "topology": 0.023386,
+      "volcanism": 0.00532582
+    },
+    "2": {
+      "climate_erosion_hydrology": 0.368016,
+      "deform": 0.25002,
+      "deform_topology": 0.598069,
+      "faults": 0.568728,
+      "fluid_dynamics": 1.71246e-06,
+      "gap_fill": 0.295184,
+      "magma_transport": 0.0372542,
+      "overlap_tracking": 0.0286314,
+      "record_stats": 0.00256936,
+      "resource_formation": 0.00284742,
+      "sea_level": 0.0231917,
+      "shift": 0.126916,
+      "step_total": 1.73468,
+      "stranded_basins": 5.53988e-06,
+      "topology": 0.0242335,
+      "volcanism": 0.006172
+    }
+  }
+}

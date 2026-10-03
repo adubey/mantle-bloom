@@ -1,0 +1,42 @@
+{
+  "lines": {
+    "0": {
+      "climate_erosion_hydrology": 0.997268,
+      "deform": 1.75537,
+      "deform_topology": 2.01585,
+      "faults": 0.764085,
+      "fluid_dynamics": 5.49374e-06,
+      "gap_fill": 0.0436069,
+      "magma_transport": 5.48823,
+      "overlap_tracking": 0.0499966,
+      "record_stats": 0.00955436,
+      "resource_formation": 0.0410989,
+      "sea_level": 0.240076,
+      "shift": 0.563574,
+      "step_total": 10.1866,
+      "stranded_basins": 3.12534e-05,
+      "topology": 0.16688,
+      "volcanism": 0.0607878
+    }
+  },
+  "quad": {
+    "0": {
+      "climate_erosion_hydrology": 1.45383,
+      "deform": 1.48704,
+      "deform_topology": 2.9297,
+      "faults": 1.20343,
+      "fluid_dynamics": 1.5604e-05,
+      "gap_fill": 1.16539,
+      "magma_transport": 1.47102,
+      "overlap_tracking": 0.120068,
+      "record_stats": 0.00624998,
+      "resource_formation": 0.0393119,
+      "sea_level": 0.275587,
+      "shift": 0.975032,
+      "step_total": 8.37959,
+      "stranded_basins": 6.79917e-05,
+      "topology": 0.157191,
+      "volcanism": 0.0222612
+    }
+  }
+}
