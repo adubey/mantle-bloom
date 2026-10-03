@@ -543,15 +543,15 @@
       "gate": "R1",
       "name": "deform_topology_s_per_step",
       "results": 1,
-      "status": "warn",
+      "status": "pass",
       "worst": {
         "gate": "R1",
-        "lines": 2.01585,
+        "lines": 1.58315,
         "name": "deform_topology_s_per_step",
-        "quad": 2.9297,
-        "ratio": 1.45333,
+        "quad": 1.35986,
+        "ratio": 0.858958,
         "seed": 0,
-        "status": "warn",
+        "status": "pass",
         "warn_above": 1.25
       }
     },
@@ -562,10 +562,10 @@
       "status": "pass",
       "worst": {
         "gate": "R2",
-        "lines": 10.1866,
+        "lines": 8.5184,
         "name": "step_total_s_per_step",
-        "quad": 8.37959,
-        "ratio": 0.822612,
+        "quad": 4.06777,
+        "ratio": 0.477528,
         "seed": 0,
         "status": "pass",
         "warn_above": 1.25
@@ -1805,20 +1805,20 @@
     },
     {
       "gate": "R1",
-      "lines": 2.01585,
+      "lines": 1.58315,
       "name": "deform_topology_s_per_step",
-      "quad": 2.9297,
-      "ratio": 1.45333,
+      "quad": 1.35986,
+      "ratio": 0.858958,
       "seed": 0,
-      "status": "warn",
+      "status": "pass",
       "warn_above": 1.25
     },
     {
       "gate": "R2",
-      "lines": 10.1866,
+      "lines": 8.5184,
       "name": "step_total_s_per_step",
-      "quad": 8.37959,
-      "ratio": 0.822612,
+      "quad": 4.06777,
+      "ratio": 0.477528,
       "seed": 0,
       "status": "pass",
       "warn_above": 1.25

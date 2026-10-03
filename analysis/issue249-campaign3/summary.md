@@ -3,6 +3,7 @@
 | set | runs | verdict |
 |---|---:|---|
 | issue147 | 2 | fail |
+| issue147-clean | 2 | fail |
 | long | 10 | fail |
 | repro-equivalent | 2 | fail |
 | repro-saves | 2 | warn |
@@ -10,55 +11,55 @@
 
 ## Gate status by set
 
-| gate | issue147 | long | repro-equivalent | repro-saves | stress |
-|---|---|---|---|---|---|
-| H1:quad_topology | pass | pass | pass | pass | pass |
-| H2:quad_neighbours | pass | pass | pass | pass | pass |
-| H3:quad_folded | pass | pass | pass | pass | pass |
-| H4:fields | pass | pass | pass | pass | pass |
-| H5:frames | pass | pass | pass | pass | pass |
-| H6:derived_caches | pass | pass | pass | pass | pass |
-| H7:revisions | pass | pass | pass | pass | pass |
-| H8:load_round_trip | pass | pass | pass | pass | pass |
-| H9:load_continuation | pass | pass | pass | pass | pass |
-| H10:quad_no_stacked_nodes | pass | pass | pass | pass | pass |
-| H11:field_caps | pass | pass | pass | info (+1 line) | pass |
-| C1:uncovered | pass | pass | pass | pass | pass |
-| C2:void | pass | pass | pass | pass | pass |
-| C3:multiply_covered | pass | pass | pass | pass | warn |
-| C4:nodes_inside_other_plate | pass | pass | pass | pass | pass |
-| K1:hc_volume_km3_drift | pass | fail | fail | pass | fail |
-| K2:continental_hc_volume_km3_drift | pass | fail | warn | pass | fail |
-| K3:quad_area_accounting | pass | pass | pass | pass | pass |
-| K4:hm_volume_km3_drift | fail | fail | fail | pass | fail |
-| M1:anisotropic_fraction | pass | pass | pass | pass | warn |
-| M2:row_alignment | pass | pass | pass | pass | pass |
-| M3:thin_fraction | pass | warn | pass | pass | warn |
-| M4:aspect_gt_4 | pass | pass | pass | pass | pass |
-| M5:skew_gt_45 | pass | pass | pass | pass | pass |
-| M6:fragments | pass | warn | warn | warn | warn |
-| S1:climate_hydrology_finite | pass | pass | pass | pass | pass |
-| S2:stability_air_temperature_mean_c | pass | pass | warn | pass | pass |
-| S2:stability_land_fraction | pass | pass | pass | pass | pass |
-| S2:stability_ocean_temperature_mean_c | pass | pass | pass | pass | pass |
-| S2:stability_precipitation_mean_mm | pass | pass | pass | pass | pass |
-| S2:stability_sea_level_m | pass | pass | pass | pass | pass |
-| X1:healpix_all | pass | pass | pass | pass | pass |
-| X1:healpix_antimeridian | pass | pass | pass | pass | pass |
-| X1:healpix_coast | pass | pass | pass | pass | pass |
-| X1:healpix_hole | insufficient | warn | insufficient | pass | warn |
-| X1:healpix_plate_boundary | pass | pass | pass | pass | pass |
-| X1:healpix_pole | pass | pass | pass | pass | pass |
-| R1:deform_topology_s_per_step | warn | pass | pass | pass | pass |
-| R2:step_total_s_per_step | pass | pass | pass | pass | pass |
-| P1:continental_hc_volume_km3 | insufficient | pass | insufficient | insufficient | insufficient |
-| P1:elevation_p05 | insufficient | fail | insufficient | insufficient | insufficient |
-| P1:elevation_p50 | insufficient | pass | insufficient | insufficient | insufficient |
-| P1:elevation_p95 | insufficient | pass | insufficient | insufficient | insufficient |
-| P1:hc_volume_km3 | insufficient | pass | insufficient | insufficient | insufficient |
-| P1:land_fraction | insufficient | pass | insufficient | insufficient | insufficient |
-| P1:plates | insufficient | pass | insufficient | insufficient | insufficient |
-| P1:sea_level_m | insufficient | fail | insufficient | insufficient | insufficient |
+| gate | issue147 | issue147-clean | long | repro-equivalent | repro-saves | stress |
+|---|---|---|---|---|---|---|
+| H1:quad_topology | pass | pass | pass | pass | pass | pass |
+| H2:quad_neighbours | pass | pass | pass | pass | pass | pass |
+| H3:quad_folded | pass | pass | pass | pass | pass | pass |
+| H4:fields | pass | pass | pass | pass | pass | pass |
+| H5:frames | pass | pass | pass | pass | pass | pass |
+| H6:derived_caches | pass | pass | pass | pass | pass | pass |
+| H7:revisions | pass | pass | pass | pass | pass | pass |
+| H8:load_round_trip | pass | pass | pass | pass | pass | pass |
+| H9:load_continuation | pass | pass | pass | pass | pass | pass |
+| H10:quad_no_stacked_nodes | pass | pass | pass | pass | pass | pass |
+| H11:field_caps | pass | pass | pass | pass | info (+1 line) | pass |
+| C1:uncovered | pass | pass | pass | pass | pass | pass |
+| C2:void | pass | pass | pass | pass | pass | pass |
+| C3:multiply_covered | pass | pass | pass | pass | pass | warn |
+| C4:nodes_inside_other_plate | pass | pass | pass | pass | pass | pass |
+| K1:hc_volume_km3_drift | pass | pass | fail | fail | pass | fail |
+| K2:continental_hc_volume_km3_drift | pass | pass | fail | warn | pass | fail |
+| K3:quad_area_accounting | pass | pass | pass | pass | pass | pass |
+| K4:hm_volume_km3_drift | fail | fail | fail | fail | pass | fail |
+| M1:anisotropic_fraction | pass | pass | pass | pass | pass | warn |
+| M2:row_alignment | pass | pass | pass | pass | pass | pass |
+| M3:thin_fraction | pass | pass | warn | pass | pass | warn |
+| M4:aspect_gt_4 | pass | pass | pass | pass | pass | pass |
+| M5:skew_gt_45 | pass | pass | pass | pass | pass | pass |
+| M6:fragments | pass | pass | warn | warn | warn | warn |
+| S1:climate_hydrology_finite | pass | pass | pass | pass | pass | pass |
+| S2:stability_air_temperature_mean_c | pass | pass | pass | warn | pass | pass |
+| S2:stability_land_fraction | pass | pass | pass | pass | pass | pass |
+| S2:stability_ocean_temperature_mean_c | pass | pass | pass | pass | pass | pass |
+| S2:stability_precipitation_mean_mm | pass | pass | pass | pass | pass | pass |
+| S2:stability_sea_level_m | pass | pass | pass | pass | pass | pass |
+| X1:healpix_all | pass | pass | pass | pass | pass | pass |
+| X1:healpix_antimeridian | pass | pass | pass | pass | pass | pass |
+| X1:healpix_coast | pass | pass | pass | pass | pass | pass |
+| X1:healpix_hole | insufficient | insufficient | warn | insufficient | pass | warn |
+| X1:healpix_plate_boundary | pass | pass | pass | pass | pass | pass |
+| X1:healpix_pole | pass | pass | pass | pass | pass | pass |
+| R1:deform_topology_s_per_step | warn | pass | pass | pass | pass | pass |
+| R2:step_total_s_per_step | pass | pass | pass | pass | pass | pass |
+| P1:continental_hc_volume_km3 | insufficient | insufficient | pass | insufficient | insufficient | insufficient |
+| P1:elevation_p05 | insufficient | insufficient | fail | insufficient | insufficient | insufficient |
+| P1:elevation_p50 | insufficient | insufficient | pass | insufficient | insufficient | insufficient |
+| P1:elevation_p95 | insufficient | insufficient | pass | insufficient | insufficient | insufficient |
+| P1:hc_volume_km3 | insufficient | insufficient | pass | insufficient | insufficient | insufficient |
+| P1:land_fraction | insufficient | insufficient | pass | insufficient | insufficient | insufficient |
+| P1:plates | insufficient | insufficient | pass | insufficient | insufficient | insufficient |
+| P1:sea_level_m | insufficient | insufficient | fail | insufficient | insufficient | insufficient |
 
 ## issue147: seed means (seeds 0)
 
@@ -95,6 +96,42 @@
 | shift | 0.5636 | 0.975 | 1.73 |
 | climate_erosion_hydrology | 0.9973 | 1.454 | 1.458 |
 | magma_transport | 5.488 | 1.471 | 0.268 |
+
+## issue147-clean: seed means (seeds 0)
+
+| metric | 0 Myr lines | 0 Myr quad | 10 Myr lines | 10 Myr quad | 30 Myr lines | 30 Myr quad | 60 Myr lines | 60 Myr quad |
+|---|---|---|---|---|---|---|---|---|
+| plates | 19 | 19 | 28 | 27 | 31 | 28 | 38 | 31 |
+| land fraction | 0.153 | 0.153 | 0.1737 | 0.1637 | 0.1677 | 0.1556 | 0.156 | 0.1499 |
+| sea level (m) | 0 | 0 | -373.9 | -383.6 | -695.5 | -570.5 | -865.9 | -613.6 |
+| Hc drift since 0 Myr | 0 | 0 | -0.0102 | -0.02604 | 0.01493 | -0.0179 | 0.02745 | -0.002964 |
+| uncovered | 0.01328 | 0.003935 | 0.02469 | 0.005625 | 0.02671 | 0.00624 | 0.03074 | 0.00705 |
+| multiply covered | 0.01601 | 0.0038 | 0.00614 | 0.00425 | 0.001435 | 0.00476 | 0.001725 | 0.00518 |
+| nodes inside other plate | 0.01771 | 0.005561 | 0.007473 | 0.002135 | 0.004076 | 0.002616 | 0.005954 | 0.002047 |
+| stacked | 0 | 0 | 0.008937 | 0 | 0.07282 | 0 | 0.1344 | 0 |
+| anisotropic | 0.000145 | 3.19e-05 | 0.001019 | 0.00044 | 0.004386 | 0.00112 | 0.0137 | 0.001418 |
+| thin | 3.06e-05 | 2.39e-05 | 0.001226 | 0.000896 | 0.002352 | 0.001616 | 0.003608 | 0.002843 |
+| one-node lines | 0.002784 | — | 0.0404 | — | 0.08951 | — | 0.152 | — |
+| quad one-cell-thin | — | 0.00016 | — | 0.002623 | — | 0.003184 | — | 0.004364 |
+| quad hole loops | — | 0 | — | 0 | — | 1 | — | 1 |
+| air temperature (°C) | 5.78 | 5.798 | 3.999 | 4.32 | 0.3401 | -0.3207 | -2.967 | -5.172 |
+| precipitation (mm) | 1096 | 1096 | 1129 | 1135 | 1126 | 1139 | 1153 | 1156 |
+| river fraction of land | — | — | 0.08387 | 0.09397 | 0.1018 | 0.1212 | 0.1135 | 0.1364 |
+| HEALPix same node | 0.5559 | 0.5458 | 0.5557 | 0.5472 | 0.5477 | 0.5457 | 0.5414 | 0.5465 |
+| HEALPix p95 distance (s) | 1.183 | 1.211 | 1.196 | 1.213 | 1.207 | 1.221 | 1.205 | 1.231 |
+
+| s/step (seed mean) | lines | quad | quad / lines |
+|---|---:|---:|---:|
+| step_total | 8.518 | 4.068 | 0.4775 |
+| deform_topology | 1.583 | 1.36 | 0.859 |
+| deform | 1.358 | 0.5351 | 0.3941 |
+| topology | 0.1436 | 0.08609 | 0.5997 |
+| gap_fill | 0.03967 | 0.671 | 16.91 |
+| overlap_tracking | 0.04231 | 0.0677 | 1.6 |
+| faults | 0.6358 | 0.6206 | 0.976 |
+| shift | 0.4111 | 0.3133 | 0.762 |
+| climate_erosion_hydrology | 0.8442 | 0.7661 | 0.9076 |
+| magma_transport | 4.733 | 0.7909 | 0.1671 |
 
 ## long: seed means (seeds 1, 2, 3, 4, 5)
 

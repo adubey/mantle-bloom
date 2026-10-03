@@ -27,7 +27,7 @@ is faster than lines. What's left:
 ## Sets and commands
 
 All commands run from `backend/` with `.venv/bin/python ../bin/debug/surface_parity.py`.
-`run_campaign.sh` is the exact script used, and each set's `provenance*.json` records the command,
+`run_campaign.sh` and `run_perf_clean.sh` are the exact scripts used, and each set's `provenance*.json` records the command,
 commit and platform.
 
 | set | what | command | verdict |
@@ -36,7 +36,7 @@ commit and platform.
 | `repro-equivalent` | the 352.4 Myr reproducer's seed on both surfaces, to 352 Myr, with renders | `paired --preset long --checkpoints-myr 30,120,240,352 --seeds 804913535 --jobs 2 --render` | fail |
 | `stress` | seeds 1–2, density 0.5, to 800 Myr | `paired --preset long --node-density 0.5 --checkpoints-myr 100,200,400,600,800 --audit-every 10 --samples 100000 --seeds 1,2 --jobs 2` | fail |
 | `repro-saves` | the real 352.4 Myr line save, and its #248 quad conversion, each continued 1 Myr under every audit | `run --preset issue147 --seed 804913535 --surface lines\|quad --from-world <save> --step-years 100000 --checkpoints-myr 0.5,1 --audit-every 1 --render` | warn (M6 only) |
-| `issue147` | the #147 profile world (seed 0, density 4, climate 4, fluid 2, 100 kyr steps, to 60 Myr), one world at a time | `paired --preset issue147 --seeds 0 --jobs 1` | fail (K4, line side); R1 warn from contention |
+| `issue147-clean` | the #147 profile world (seed 0, density 4, climate 4, fluid 2, 100 kyr steps, to 60 Myr), one world at a time on a quiet machine | `paired --preset issue147 --seeds 0 --jobs 1` | fail (K4, line side) |
 
 The line save (`mantle-bloom-seed804913535-352400000y.mbworld`) isn't in the repo. Its quad
 conversion comes from `bin/debug/convert_legacy_saves.py <save> --steps 0 --write-converted`; the
@@ -45,10 +45,10 @@ log is `convert.log`.
 `summary.md` is `bin/debug/summarize_parity_campaign.py ../analysis/issue249-campaign3`.
 Per-step timings and logs aren't committed; `phase-means.json` keeps the per-phase means.
 
-**All timings in this campaign are indicative.** The correctness sets ran several worlds in
-parallel. `issue147` ran one world at a time, but the mantle-bloom desktop app was running alongside
-it the whole time, using about 75% of a core. Treat its numbers as quad/line ratios. The clean
-absolute comparison with #147 is campaign 2's (`analysis/issue249-final/README.md`).
+Only `issue147-clean` is a clean timing run. The correctness sets ran several worlds in parallel, so
+their timings only mean something as quad/line ratios within a set. `run_campaign.sh` also ran an
+`issue147` set, but the desktop app was competing with it for CPU, so it was discarded and rerun as
+`issue147-clean`.
 
 ## #228 quality gates
 
@@ -61,7 +61,7 @@ absolute comparison with #147 is campaign 2's (`analysis/issue249-final/README.m
 | Persistent fields survive remeshing with appropriate semantics | **pass** | H4 and H11 pass in every set. H8/H9 save/load and continuation are identical, including on the 130k-cell converted save. |
 | The 352.4 Myr reproducer no longer shows stretched-line/row-stub artifacts | **pass** | `repro-equivalent/renders/`: the 352 Myr line maps show row streaks and stubs; the quad maps don't. Quad has zero stacked nodes. On the converted save (`repro-saves/renders/`), conversion keeps the streaky relief the line world had already built up, but it adds no new artifacts, and the row-stub island cluster near the top centre is gone after 1 Myr. |
 | Coverage and overlap invariants at least as strong as lines | **pass** | C1, C2, C4 pass everywhere. C3 passes at densities 1 and 4 (worst about 1.4%) and warns at density 0.5 (worst 1.79%, under the 2.0% ceiling). In campaign 2 it failed at 2.23%; #268 is resolved. |
-| Performance measured against #147, no unaccepted dominant-phase regression | **pass** (indicative) | See the performance section. |
+| Performance measured against #147, no unaccepted dominant-phase regression | **pass, with one accepted regression** | See the performance section. |
 | Rendering/projection remain downstream and representation-neutral | **pass** | Both surfaces render through the same path. X1 HEALPix lookups pass, except for warnings on the few hundred samples that fall in holes. |
 | Climate and hydrology stable | **pass** | S1 and the S2 sea-level and land jitter gates pass everywhere. S2 air temperature warns on `repro-equivalent` (0.34 against a 0.30 limit); every other set passes it. |
 | Ensemble parity of world statistics (P1) | **fail: elevation p05 and sea level (#254)** | Long set, 5 seeds: land fraction, Hc, continental Hc, plates and elevation p50/p95 pass. Elevation p05 is 355 m shallower on quad at 60 Myr (limit 255 m), and sea level is 629 m higher at 240 Myr (limit 573 m). Both margins are slightly smaller than in campaign 2 (372 m and 703 m). |
@@ -95,41 +95,39 @@ more. Broken down by direction:
 
 ## Performance
 
-The `issue147` run in this campaign doesn't give clean timings. The desktop app slowed its quad
-half much more than its lines half. The table compares each phase with the same run in campaign 2,
-which was one world at a time on a quiet machine:
+`issue147-clean` ran one world at a time on a quiet machine. The #147 profile ran under cProfile,
+so compare its column by ratio only.
 
-| s/step | lines, c2 | lines, c3 | slowdown | quad, c2 | quad, c3 | slowdown |
-|---|---:|---:|---:|---:|---:|---:|
-| step total | 8.451 | 10.187 | 1.21× | 3.767 | 8.380 | 2.22× |
-| deform | 1.339 | 1.755 | 1.31× | 0.545 | 1.487 | 2.73× |
-| topology | 0.142 | 0.167 | 1.18× | 0.085 | 0.157 | 1.84× |
-| gap fill | 0.039 | 0.044 | 1.11× | 0.665 | 1.165 | 1.75× |
-| faults | 0.628 | 0.764 | 1.22× | 0.685 | 1.203 | 1.76× |
-| shift | 0.402 | 0.564 | 1.40× | 0.315 | 0.975 | 3.10× |
-| climate, erosion, hydrology | 0.832 | 0.997 | 1.20× | 0.742 | 1.454 | 1.96× |
-| magma transport | 4.721 | 5.488 | 1.16× | 0.446 | 1.471 | 3.30× |
+| s/step | lines | quad | quad / lines | campaign 2 quad / lines | #147 profile (cProfile) |
+|---|---:|---:|---:|---:|---:|
+| step total | 8.518 | 4.068 | **0.48** | 0.45 | 10.26 |
+| deform + topology | 1.583 | 1.360 | **0.86** | 0.87 | — |
+| — deform | 1.358 | 0.535 | 0.39 | 0.41 | 2.58 |
+| — topology | 0.144 | 0.086 | 0.60 | 0.60 | 0.20 |
+| — gap fill | 0.040 | 0.671 | 16.9 | 16.9 | — |
+| — overlap tracking | 0.042 | 0.068 | 1.60 | 1.66 | — |
+| magma transport | 4.733 | 0.791 | 0.17 | 0.09 | — |
+| faults | 0.636 | 0.621 | 0.98 | 1.09 | 1.16 |
+| shift | 0.411 | 0.313 | 0.76 | 0.78 | 0.81 |
+| climate, erosion, hydrology | 0.844 | 0.766 | 0.91 | 0.89 | 1.07 |
+| sea level | 0.215 | 0.180 | 0.84 | 0.84 | 0.24 |
 
-#270 changed only gap filling, yet every quad phase slowed down by 1.5–3.3×, including shift and
-climate, which #270 doesn't touch. So the R1 warning here (deform + topology at 1.45× lines) comes
-from contention, not code. Gap filling itself slowed down less than the untouched phases, so this
-run gives no sign that #270 made it slower.
+- The line timings are within 1% of campaign 2's in every phase. That confirms the machine was
+  quiet, and that nothing merged since `2bba51d` changed the line path's cost.
+- The #147 dominant phases are no slower on quad. Deform is 0.39× lines and the deform +
+  topology bucket is 0.86×.
+- **Accepted regression: gap fill.** It costs 0.67 s/step on quad (17× lines) and takes most of
+  the deform saving. It has run every step since #259, which fixed sea-level jitter. #270 didn't
+  change its cost (0.665 s/step before, 0.671 s/step now), and the bucket as a whole is still
+  faster than lines. It's the obvious next target if quad deformation needs to get faster.
+- Magma transport, the largest #147 hotspot, costs 4.7 s/step on lines but 0.79 s/step on quad.
+  That accounts for most of the 0.48× step total. In campaign 2 it was 0.45 s/step; the quad
+  trajectory differs after #270, and magma transport cost depends on the world's state. At
+  density 1 the two surfaces cost about the same. Why quad is cheaper at density 4 hasn't been
+  investigated, so don't count on that saving until it's explained.
 
-**The #147 comparison therefore rests on campaign 2** (`analysis/issue249-final/README.md`, PR #269,
-`2bba51d`), which was run cleanly:
-
-- whole step 0.45× lines, deform + topology 0.87×, deform alone 0.41×;
-- gap fill is the accepted regression, at 0.66 s/step (17× lines);
-- most of the whole-step saving comes from magma transport, at 0.09× lines, and that saving hasn't
-  been explained yet.
-
-The ratios from the parallel correctness sets agree. Step total is 0.73–0.77× lines and
-deform + topology 0.49–0.55× on long, stress and repro-equivalent, against 0.68–0.72× and
-0.45–0.46× in campaign 2.
-
-For clean absolute numbers on `fa7ecdf`, rerun the quad half alone on a quiet machine:
-`run --preset issue147 --seed 0 --surface quad --out ../analysis/issue249-campaign3/issue147`,
-then `compare` that directory.
+The ratios from the parallel correctness sets agree: step total 0.73–0.77× and deform + topology
+0.49–0.55× on long, stress and repro-equivalent.
 
 ## Changes since campaign 2 (PR #269)
 

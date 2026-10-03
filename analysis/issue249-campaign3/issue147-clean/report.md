@@ -4,7 +4,7 @@
 
 Reproduce:
 
-    bin/debug/surface_parity.py paired --preset issue147 --seeds 0 --jobs 1 --out ../analysis/issue249-campaign3/issue147
+    bin/debug/surface_parity.py paired --preset issue147 --seeds 0 --jobs 1 --out ../analysis/issue249-campaign3/issue147-clean
 
 Tolerances and gate definitions: docs/surface-parity.md. `info` rows are line-baseline
 findings; they never gate the quad surface.
@@ -80,8 +80,8 @@ findings; they never gate the quad surface.
 
 | gate | status | worst case |
 |---|---|---|
-| R1:deform_topology_s_per_step | warn | quad=2.93, lines=2.016, ratio=1.453, warn_above=1.25, seed=0 |
-| R2:step_total_s_per_step | pass | quad=8.38, lines=10.19, ratio=0.8226, warn_above=1.25, seed=0 |
+| R1:deform_topology_s_per_step | pass | quad=1.36, lines=1.583, ratio=0.859, warn_above=1.25, seed=0 |
+| R2:step_total_s_per_step | pass | quad=4.068, lines=8.518, ratio=0.4775, warn_above=1.25, seed=0 |
 
 ## Ensemble parity
 
@@ -126,22 +126,22 @@ findings; they never gate the quad surface.
 
 | s/step | seed 0 lines | seed 0 quad | #147 profile |
 |---|---|---|---|
-| step_total | 10.19 | 8.38 | 10.26 |
-| deform_topology | 2.016 | 2.93 | — |
-| climate_erosion_hydrology | 0.9973 | 1.454 | 1.073 |
-| deform | 1.755 | 1.487 | 2.58 |
-| faults | 0.7641 | 1.203 | 1.157 |
-| fluid_dynamics | 5.49e-06 | 1.56e-05 | — |
-| gap_fill | 0.04361 | 1.165 | — |
-| magma_transport | 5.488 | 1.471 | — |
-| overlap_tracking | 0.05 | 0.1201 | — |
-| record_stats | 0.009554 | 0.00625 | — |
-| resource_formation | 0.0411 | 0.03931 | — |
-| sea_level | 0.2401 | 0.2756 | 0.2404 |
-| shift | 0.5636 | 0.975 | 0.8096 |
-| stranded_basins | 3.13e-05 | 6.8e-05 | — |
-| topology | 0.1669 | 0.1572 | 0.2014 |
-| volcanism | 0.06079 | 0.02226 | 0.0845 |
+| step_total | 8.518 | 4.068 | 10.26 |
+| deform_topology | 1.583 | 1.36 | — |
+| climate_erosion_hydrology | 0.8442 | 0.7661 | 1.073 |
+| deform | 1.358 | 0.5351 | 2.58 |
+| faults | 0.6358 | 0.6206 | 1.157 |
+| fluid_dynamics | 3.28e-06 | 2.12e-06 | — |
+| gap_fill | 0.03967 | 0.671 | — |
+| magma_transport | 4.733 | 0.7909 | — |
+| overlap_tracking | 0.04231 | 0.0677 | — |
+| record_stats | 0.007814 | 0.003144 | — |
+| resource_formation | 0.03308 | 0.01809 | — |
+| sea_level | 0.2148 | 0.1795 | 0.2404 |
+| shift | 0.4111 | 0.3133 | 0.8096 |
+| stranded_basins | 1.78e-05 | 3.06e-05 | — |
+| topology | 0.1436 | 0.08609 | 0.2014 |
+| volcanism | 0.05042 | 0.01495 | 0.0845 |
 
 Index builds per step (mean):
 

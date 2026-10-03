@@ -1,6 +1,6 @@
 {
-  "command": "bin/debug/surface_parity.py paired --preset issue147 --seeds 0 --jobs 1 --out ../analysis/issue249-campaign3/issue147",
-  "git_commit": "fa7ecdf407704f385c208e2e60e7c0929c11c368",
+  "command": "bin/debug/surface_parity.py paired --preset issue147 --seeds 0 --jobs 1 --out ../analysis/issue249-campaign3/issue147-clean",
+  "git_commit": "e42c172c6da2e4b10ab61005028d0ba1a13c8977",
   "git_dirty": false,
   "python": "3.14.6",
   "numpy": "2.5.2",
