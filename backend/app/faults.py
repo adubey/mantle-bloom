@@ -330,19 +330,22 @@ EARTHQUAKE_RETAIN_MYR = 5.0
 # ruptured as the ice came off, in a craton with no other active faulting (Johnston 1987;
 # Wu & Hasegawa 1996; Lund 2015). So both active faults and inactive scars can be triggered.
 #
-# Growing ice is not modelled. It clamps thrusts and strike-slip faults, and a few MPa of
+# Growing ice is not modelled. On thrusts and strike-slip faults it clamps, and a few MPa of
 # clamping delays an active fault's next rupture by decades to centuries, far below a step,
-# while a scar has nothing to delay; on a normal fault its promoting effect is weak (~0.09 of
-# the load). Meltwater pore pressure is not modelled either: infiltration modulates
+# while a scar has nothing to delay. On a normal fault it does promote slip (~0.09 Pa per Pa
+# of load, so ~1 km of ice clears the trigger threshold below), but that is left out as a
+# scope choice: this pass models the end-glacial unloading signal. Meltwater pore pressure is not modelled either: infiltration modulates
 # seismicity on seasonal-to-decadal timescales and diffuses away well within a step, so at
 # Myr resolution the unloading itself is the only meltwater-driven stress that persists.
 COULOMB_EFFECTIVE_FRICTION = 0.4  # mu', the usual Coulomb-study value (King et al. 1994)
 ICE_LOAD_HORIZONTAL_STRESS_RATIO = 1.0 / 3.0  # nu / (1 - nu), nu = 0.25
 # A trace node triggers once this step's unloading raises its Coulomb stress past this:
 # 0.1 MPa, the usual static-triggering threshold for crust near failure (King et al. 1994;
-# Harris 1998) -- ~18 m of ice off a 30-degree thrust, ~85 m off a strike-slip fault. A sheet
-# that thins over several steps triggers on each, and since the slip released (below) is
-# proportional to the stress change, it sums to what one end-glacial rupture would release.
+# Harris 1998) -- ~18 m of ice off a 30-degree thrust, ~85 m off a strike-slip fault. The
+# threshold applies per step, and stress below it is not carried over: a sheet that thins over
+# several steps triggers on each step whose unloading clears it, and since the slip released
+# (below) is proportional to the stress change, those steps' slip adds up. A thrust under ice
+# thinning by less than ~18 m per step never triggers.
 UNLOADING_TRIGGER_STRESS_PA = 1.0e5
 # The triggered rupture releases the added stress across the seismogenic width:
 # slip = dCFS * W / G, moment M0 = G * L * W * slip, Mw = (2/3)(log10 M0 - 9.1). 5 MPa over a
@@ -444,7 +447,8 @@ class FaultSystem:
 
 @dataclass
 class Earthquake:
-    """One rupture on an active fault this-or-a-recent step. `epicenter_world` is a fixed
+    """One rupture on a fault this-or-a-recent step -- an active fault's own slip, or (see
+    `trigger`) ice unloading, which can also rupture an inactive scar. `epicenter_world` is a fixed
     unit vector in the true (un-rotated) world frame -- an earthquake is an event at a place,
     not a persistent crustal feature, so it is never re-homed across a merge/split; it just
     ages out of `World.earthquakes` after `EARTHQUAKE_RETAIN_MYR`. `magnitude` is a moment
@@ -1657,7 +1661,8 @@ def _generate_earthquakes(world: "World", years_myr: float) -> None:
 
 def unloading_coulomb_stress_pa(kind: str, dip_deg: float, vertical_stress_change_pa: np.ndarray) -> np.ndarray:
     """Coulomb failure stress change (Pa, > 0 promotes slip) that a change in vertical load
-    resolves onto a fault of this regime and dip -- see UNLOADING_TRIGGER_STRESS_PA's comment.
+    resolves onto a fault of this regime and dip -- see the comment above
+    COULOMB_EFFECTIVE_FRICTION.
     Compression is positive, so unloading is a negative `vertical_stress_change_pa`. The
     horizontal stress changes by ICE_LOAD_HORIZONTAL_STRESS_RATIO of the vertical one. A
     normal fault slips under sigma_v - sigma_h, a reverse fault under sigma_h - sigma_v, and a
@@ -1676,21 +1681,29 @@ def unloading_coulomb_stress_pa(kind: str, dip_deg: float, vertical_stress_chang
 def _moment_magnitude(rupture_length_m: float, slip_m: float) -> float:
     """Mw from M0 = G * L * W * slip, with W the seismogenic width (or L, if shorter)."""
     width_m = min(SEISMOGENIC_WIDTH_M, rupture_length_m)
-    moment = CRUST_SHEAR_MODULUS_PA * rupture_length_m * width_m * max(slip_m, 1e-6)
+    moment = max(CRUST_SHEAR_MODULUS_PA * rupture_length_m * width_m * slip_m, 1.0)
     return float(np.clip((2.0 / 3.0) * (np.log10(moment) - 9.1), QUAKE_MW_MIN, QUAKE_MW_MAX))
 
 
-def trigger_unloading_earthquakes(world: "World", points: np.ndarray, ice_load_change_pa: np.ndarray | None) -> list[Earthquake]:
+def trigger_unloading_earthquakes(
+    world: "World", points: np.ndarray, ice_load_change_pa: np.ndarray | None, years: float
+) -> list[Earthquake]:
     """Ruptures set off this step by ice coming off the crust (issue #275 phase 5). Every
     fault, active or an inactive scar, reads the load change at the column under each trace
     node and resolves it to a Coulomb stress change (`unloading_coulomb_stress_pa`). Trace
     nodes at or past UNLOADING_TRIGGER_STRESS_PA rupture together: the rupture length is that
     share of the trace, the slip releases their mean stress change over the seismogenic width,
     and the epicentre is the most-stressed node. The UNLOADING_MAX_QUAKES_PER_STEP largest are
-    appended to `World.earthquakes` (tagged TRIGGER_ICE_UNLOADING) and their slip added to the
-    fault's `cumulative_offset_m`. They feed next step's seismic-erosion burst like any other
-    quake. Called from world.step_world right after erosion, with that step's
-    `ErosionResult.points` / `ice_load_change_pa`. Deterministic: no random draws."""
+    appended to `World.earthquakes` (tagged TRIGGER_ICE_UNLOADING). An intraplate fault also adds
+    the slip to its `cumulative_offset_m` -- a record only, read by the API, not by relief;
+    a boundary fault is rebuilt next step, so it keeps none.
+
+    Called from world.step_world right after erosion (so only when climate is simulated), with
+    that step's `ErosionResult.points` / `ice_load_change_pa`. Erosion has already run, so these
+    quakes feed the *next* step's seismic-erosion burst, while `_generate_earthquakes`' quakes
+    feed this step's. They're stamped with the step's start time, `years` before
+    `world.elapsed_years`, the same as `_generate_earthquakes` (which runs before the clock
+    advances). Deterministic: no random draws."""
     if ice_load_change_pa is None or len(points) == 0 or not np.any(ice_load_change_pa < 0.0):
         return []
     all_faults = _all_faults(world)
@@ -1699,6 +1712,7 @@ def trigger_unloading_earthquakes(world: "World", points: np.ndarray, ice_load_c
     by_id = plate_by_id(world)
     tree = cached_node_position_tree(world, points)
     # A trace node reads the column it sits in; past a node spacing it's off the node cloud.
+    # (The tree measures chord length on the unit sphere, equal to the angle at this scale.)
     max_reach = line_spacing_rad(world.node_density)
 
     candidates: list[tuple[Fault, Earthquake]] = []
@@ -1707,9 +1721,12 @@ def trigger_unloading_earthquakes(world: "World", points: np.ndarray, ice_load_c
         if plate is None:
             continue
         trace = geometry.normalize(fault_world_points(fault, plate))
-        dist, idx = tree.query(trace)
-        # Unloading only -- see the module constants' comment on why loading isn't modelled.
-        load_change = np.where(dist <= max_reach, np.minimum(ice_load_change_pa[np.minimum(idx, len(points) - 1)], 0.0), 0.0)
+        # A miss past `max_reach` comes back as index len(points).
+        _, idx = tree.query(trace, distance_upper_bound=max_reach)
+        near = idx < len(points)
+        # Unloading only -- see the module constants' comment on why growing ice isn't modelled.
+        load_change = np.zeros(len(trace))
+        load_change[near] = np.minimum(ice_load_change_pa[idx[near]], 0.0)
         dcfs = unloading_coulomb_stress_pa(fault.kind, fault.dip_deg, load_change)
         hit = dcfs >= UNLOADING_TRIGGER_STRESS_PA
         if not np.any(hit):
@@ -1727,7 +1744,7 @@ def trigger_unloading_earthquakes(world: "World", points: np.ndarray, ice_load_c
                 epicenter_world=trace[int(np.argmax(dcfs))],
                 magnitude=_moment_magnitude(rupture_length_m, slip_m),
                 slip_m=slip_m,
-                birth_years=world.elapsed_years,
+                birth_years=world.elapsed_years - years,
                 trigger=TRIGGER_ICE_UNLOADING,
             ),
         ))
@@ -1735,7 +1752,8 @@ def trigger_unloading_earthquakes(world: "World", points: np.ndarray, ice_load_c
     candidates.sort(key=lambda fq: fq[1].magnitude, reverse=True)
     triggered: list[Earthquake] = []
     for fault, quake in candidates[:UNLOADING_MAX_QUAKES_PER_STEP]:
-        fault.cumulative_offset_m += quake.slip_m
+        if not fault.boundary:
+            fault.cumulative_offset_m += quake.slip_m
         quake.earthquake_id = world.next_earthquake_id
         world.next_earthquake_id += 1
         world.earthquakes.append(quake)

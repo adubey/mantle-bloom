@@ -225,7 +225,8 @@ class World:
     fault_systems: list = field(default_factory=list)
     next_fault_system_id: int = 0
     # Recent earthquakes (see faults.Earthquake) -- transient located events produced when an
-    # active fault ruptures (faults.update_faults), each with a true-world-frame epicenter, a
+    # active fault ruptures (faults.update_faults), or when ice unloading ruptures a fault or
+    # scar (faults.trigger_unloading_earthquakes, after erosion), each with a true-world-frame epicenter, a
     # magnitude, and the id of the fault that slipped. Not persistent geology: pruned once
     # older than faults.EARTHQUAKE_RETAIN_MYR every step, and never re-homed across topology
     # changes (an epicenter is a fixed point in space, and the window is short). Read by
@@ -992,7 +993,7 @@ def step_world_progress(world: World, years: float):
         # Issue #275 phase 5: ice that came off this step unloads the crust beneath it, which
         # can trigger ruptures on nearby faults and scars (see faults.trigger_unloading_earthquakes).
         if erosion_result is not None:
-            faults.trigger_unloading_earthquakes(world, erosion_result.points, erosion_result.ice_load_change_pa)
+            faults.trigger_unloading_earthquakes(world, erosion_result.points, erosion_result.ice_load_change_pa, years)
     if world.simulate_plate_movement:
         volcanism.apply_volcanic_activity(world, years)
     if erosion_result is not None:

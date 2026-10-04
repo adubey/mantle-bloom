@@ -742,7 +742,7 @@ def test_unloading_triggers_a_tagged_rupture_on_an_inactive_scar():
     world, points, load = _unloading_world(scar, load)
     offset_before = scar.cumulative_offset_m
 
-    quakes = faults.trigger_unloading_earthquakes(world, points, load)
+    quakes = faults.trigger_unloading_earthquakes(world, points, load, 1_000_000)
 
     assert len(quakes) == 1 and world.earthquakes == quakes
     q = quakes[0]
@@ -754,35 +754,45 @@ def test_unloading_triggers_a_tagged_rupture_on_an_inactive_scar():
     assert np.isclose(q.slip_m, expected_slip)
     assert np.isclose(scar.cumulative_offset_m - offset_before, expected_slip)
     assert faults.QUAKE_MW_MIN <= q.magnitude <= faults.QUAKE_MW_MAX
-    assert q.birth_years == world.elapsed_years and q.earthquake_id == 0 and world.next_earthquake_id == 1
+    # Stamped with the step's start, like _generate_earthquakes (it runs before the clock advances).
+    assert q.birth_years == world.elapsed_years - 1_000_000
+    assert q.earthquake_id == 0 and world.next_earthquake_id == 1
+
+
+def test_boundary_fault_unloading_rupture_keeps_no_offset():
+    # A boundary fault is rebuilt next step, so its offset would be thrown away anyway.
+    fault = _fault(boundary=True)
+    world, points, load = _unloading_world(fault, -2.0e6)
+    assert len(faults.trigger_unloading_earthquakes(world, points, load, 1_000_000)) == 1
+    assert fault.cumulative_offset_m == 0.0
 
 
 def test_bigger_unloading_triggers_a_bigger_rupture():
     mags = []
     for unload in (-0.5e6, -5.0e6):
         world, points, load = _unloading_world(_fault(n_nodes=8, local_phi=np.linspace(-0.4, 0.4, 8)), unload)
-        mags.append(faults.trigger_unloading_earthquakes(world, points, load)[0].magnitude)
+        mags.append(faults.trigger_unloading_earthquakes(world, points, load, 1_000_000)[0].magnitude)
     assert mags[1] > mags[0]
 
 
 def test_growing_ice_and_small_unloading_trigger_nothing():
     for kind, dip in ((_KIND_REVERSE, 30.0), (_KIND_NORMAL, 60.0), (_KIND_STRIKE_SLIP, 90.0)):
         world, points, load = _unloading_world(_fault(kind=kind, dip_deg=dip), +5.0e6)  # ice growing
-        assert faults.trigger_unloading_earthquakes(world, points, load) == []
+        assert faults.trigger_unloading_earthquakes(world, points, load, 1_000_000) == []
     # Unloading normal faults is stabilising.
     world, points, load = _unloading_world(_fault(kind=_KIND_NORMAL, dip_deg=60.0), -5.0e6)
-    assert faults.trigger_unloading_earthquakes(world, points, load) == []
+    assert faults.trigger_unloading_earthquakes(world, points, load, 1_000_000) == []
     # Just under the threshold on a thrust.
     per_pa = faults.unloading_coulomb_stress_pa(_KIND_REVERSE, 30.0, np.array([-1.0]))[0]
     world, points, load = _unloading_world(_fault(), -0.99 * faults.UNLOADING_TRIGGER_STRESS_PA / per_pa)
-    assert faults.trigger_unloading_earthquakes(world, points, load) == []
+    assert faults.trigger_unloading_earthquakes(world, points, load, 1_000_000) == []
     assert world.earthquakes == []
 
 
 def test_unloading_far_from_the_trace_triggers_nothing():
     world, points, load = _unloading_world(_fault(), -5.0e6)
     far = geometry.normalize(points * np.array([-1.0, 1.0, 1.0]))  # the antipodal side
-    assert faults.trigger_unloading_earthquakes(world, far, load) == []
+    assert faults.trigger_unloading_earthquakes(world, far, load, 1_000_000) == []
 
 
 def test_unloading_quakes_capped_per_step_largest_first(monkeypatch):
@@ -792,7 +802,7 @@ def test_unloading_quakes_capped_per_step_largest_first(monkeypatch):
     world, _, _ = _unloading_world(fs[0], 0.0)
     world.faults = fs
     points = np.concatenate([geometry.normalize(faults.fault_world_points(f, world.plates[0])) for f in fs])
-    quakes = faults.trigger_unloading_earthquakes(world, points, np.full(len(points), -2.0e6))
+    quakes = faults.trigger_unloading_earthquakes(world, points, np.full(len(points), -2.0e6), 1_000_000)
     assert [q.fault_id for q in quakes] == [1, 2]  # the two longest traces, biggest first
 
 
@@ -804,9 +814,10 @@ def test_old_earthquake_without_trigger_reads_as_tectonic():
 
 def test_step_world_hands_this_steps_unloading_to_the_faults(monkeypatch):
     calls = []
-    monkeypatch.setattr(faults, "trigger_unloading_earthquakes", lambda w, points, change: calls.append((points, change)) or [])
+    monkeypatch.setattr(faults, "trigger_unloading_earthquakes", lambda w, points, change, years: calls.append((points, change, years)) or [])
     world = generate_world(seed=3, num_plates=6)
     step_world(world, 1_000_000)
     assert len(calls) == 1
-    points, change = calls[0]
+    points, change, years = calls[0]
     assert points is world.erosion_cache.points and change is world.erosion_cache.ice_load_change_pa
+    assert years == 1_000_000

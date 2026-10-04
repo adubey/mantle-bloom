@@ -1581,8 +1581,9 @@ fades over the retention window. Exposed via `GET /world/earthquakes`, with each
 `trigger` (`"tectonic"` or `"ice_unloading"`).
 
 **Ice-unloading triggered earthquakes (`trigger_unloading_earthquakes`, issue #275 phase 5).**
-Right after erosion each step, `world.step_world` hands the step's `ErosionResult.points` and
-`ice_load_change_pa` (see [Glaciation](#glaciation)) to this pass. Every fault, active or an
+Right after erosion each step (so only when climate is simulated), `world.step_world_progress`
+hands the step's `ErosionResult.points` and `ice_load_change_pa` (see [Glaciation](#glaciation))
+to this pass. Every fault, active or an
 inactive scar, reads the load change at the column under each trace node. Only unloading
 counts. `unloading_coulomb_stress_pa` resolves it onto the fault plane as a Coulomb failure
 stress change, `dCFS = dτ − μ'·dσn`, with `μ'` = `COULOMB_EFFECTIVE_FRICTION` (0.4). The
@@ -1599,15 +1600,27 @@ usual static-triggering threshold) rupture together:
 - `Mw = ⅔(log10 M0 − 9.1)`, where `M0 = G·L·W·slip`;
 - the epicentre is the most-stressed node.
 
-Because slip is proportional to the stress change, a sheet that thins over several steps
-triggers on each, and the slip sums to what one end-glacial rupture would release. The
-`UNLOADING_MAX_QUAKES_PER_STEP` (40) largest are appended to `World.earthquakes`, tagged
-`TRIGGER_ICE_UNLOADING`, and add their slip to the fault's `cumulative_offset_m`. They feed
-next step's seismic-erosion burst like any other quake. Deterministic, with no random draws.
+The threshold applies per step, and stress below it isn't carried over. A sheet that thins
+over several steps triggers on each step whose unloading clears it, and because slip is
+proportional to the stress change, those steps' slip adds up. A thrust under ice thinning by
+less than ~18 m per step never triggers. The `UNLOADING_MAX_QUAKES_PER_STEP` (40) largest are
+appended to `World.earthquakes`, tagged `TRIGGER_ICE_UNLOADING`. Each boundary segment carries a
+master trace and two strands, so one ice patch can fire all three; they share the cap.
+
+- **Offset.** An intraplate fault or scar adds the slip to its `cumulative_offset_m`. That's a
+  record the API shows; relief doesn't read it. A boundary fault is rebuilt next step, so it
+  keeps none.
+- **Timing.** Erosion has already run, so these quakes feed the *next* step's seismic-erosion
+  burst, while tectonic quakes feed the current one. They're stamped with the step's start
+  time, the same as tectonic quakes.
+
+Deterministic, with no random draws.
 
 Two effects are left out:
-- **Growing ice.** It clamps faults, but that only delays an active fault's next rupture by
-  decades to centuries, far below a step.
+- **Growing ice.** On thrusts and strike-slip faults it clamps, which only delays an active
+  fault's next rupture by decades to centuries, far below a step. On a normal fault it does
+  promote slip (~1 km of ice clears the trigger threshold), but that is left out as a scope
+  choice: this pass models the end-glacial unloading signal.
 - **Meltwater pore pressure.** It modulates seismicity over seasons to decades and diffuses
   away well within a step.
 
