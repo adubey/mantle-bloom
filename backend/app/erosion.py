@@ -819,7 +819,10 @@ def _route_mass_wasting(
     capacity_vol: np.ndarray,
     headroom_m: np.ndarray,
     spill_target: np.ndarray | None = None,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    on_ice: np.ndarray | None = None,
+    inflow_vol: np.ndarray | None = None,
+    inflow_tagged: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Gravity runout of landslide debris (see MASS_WASTING_*). Each node hands its debris to
     its lowest strictly-lower `neighbor_idx` neighbour -- bare rock, frozen or not, with no
     lake-spill or ice edges, so elevation-descending order visits every node before its target.
@@ -832,7 +835,14 @@ def _route_mass_wasting(
     up to MASS_WASTING_SPILL_PASSES sweeps. Whatever is still left -- a pit with no spill
     target, or debris still spilling after the last sweep -- settles in its pit, room or not.
 
-    Returns (land deposit, ocean arrival, tagged land deposit, tagged ocean arrival), all
+    Debris that starts on, or runs onto, a land node marked `on_ice` stops there and is handed
+    back as "ice arrival": a glacier carries rockfall on and in the ice to its margin (lateral
+    and medial moraine), and out through a basin's outlet once the ice overtops the rim, so the
+    caller carries it along `ice_flow_target` and hands what the ice drops back here as
+    `inflow_vol`: debris arriving at a node rather than leaving one, so it can settle right
+    where it is put down.
+
+    Returns (land deposit, ocean arrival, ice arrival, and the tagged share of each), all
     volumes. `source_tagged` is the continental share of `source_vol`; it travels mixed with the
     rest, so every deposit carries the tagged fraction of the flux it came from. Conserves both
     totals exactly."""
@@ -841,8 +851,11 @@ def _route_mass_wasting(
     deposit_tagged = np.zeros(n)
     arrival = np.zeros(n)
     arrival_tagged = np.zeros(n)
-    if n == 0 or not np.any(source_vol > 0):
-        return deposit, arrival, deposit_tagged, arrival_tagged
+    ice = np.zeros(n)
+    ice_tagged = np.zeros(n)
+    inflow = inflow_vol if inflow_vol is not None else np.zeros(n)
+    if n == 0 or not (np.any(source_vol > 0) or np.any(inflow > 0)):
+        return deposit, arrival, ice, deposit_tagged, arrival_tagged, ice_tagged
 
     rows = np.arange(n)
     neighbor_elevation = elevation[neighbor_idx]
@@ -851,16 +864,23 @@ def _route_mass_wasting(
     settle = np.clip(1.0 - slope / MASS_WASTING_RUNOUT_SLOPE, 0.0, 1.0)
     settle = settle * np.clip(headroom_m / MASS_WASTING_HEADROOM_TAPER_M, 0.0, 1.0)
     spill = spill_target if spill_target is not None else np.full(n, -1)
+    glaciated = (on_ice if on_ice is not None else np.zeros(n, dtype=bool)) & ~is_ocean
 
-    # A source with nowhere lower to send its debris keeps it.
-    stays = (source_vol > 0) & (target < 0)
+    # Debris shed onto the ice rides it; a source with nowhere lower to send its debris keeps it.
+    rides = (source_vol > 0) & glaciated
+    ice[rides] += source_vol[rides]
+    ice_tagged[rides] += source_tagged[rides]
+    stays = (source_vol > 0) & (target < 0) & ~glaciated
     deposit[stays] += source_vol[stays]
     deposit_tagged[stays] += source_tagged[stays]
-    moves = (source_vol > 0) & (target >= 0)
+    moves = (source_vol > 0) & (target >= 0) & ~glaciated
     flux = np.zeros(n)
     flux_tagged = np.zeros(n)
     np.add.at(flux, target[moves], source_vol[moves])
     np.add.at(flux_tagged, target[moves], source_tagged[moves])
+    flux += inflow
+    if inflow_tagged is not None:
+        flux_tagged += inflow_tagged
 
     order = np.argsort(-elevation).tolist()
     target_list = target.tolist()
@@ -868,6 +888,7 @@ def _route_mass_wasting(
     settle_list = settle.tolist()
     room = np.clip(capacity_vol, 0.0, None).tolist()
     is_ocean_list = is_ocean.tolist()
+    glaciated_list = glaciated.tolist()
     deposit_list = [0.0] * n
     deposit_tagged_list = [0.0] * n
     flux_list = flux.tolist()
@@ -884,6 +905,10 @@ def _route_mass_wasting(
             if is_ocean_list[i]:
                 arrival[i] += f
                 arrival_tagged[i] += ft
+                continue
+            if glaciated_list[i]:
+                ice[i] += f
+                ice_tagged[i] += ft
                 continue
             j = target_list[i]
             if j >= 0:
@@ -913,7 +938,7 @@ def _route_mass_wasting(
             break
     deposit += np.array(deposit_list)
     deposit_tagged += np.array(deposit_tagged_list)
-    return deposit, arrival, deposit_tagged, arrival_tagged
+    return deposit, arrival, ice, deposit_tagged, arrival_tagged, ice_tagged
 
 
 def _route_wind_deposit(
@@ -1723,13 +1748,18 @@ def apply_erosion(
     )
 
     # Mass wasting (issue #275 phase 4): landslide debris runs out downslope by gravity and
-    # settles on the foreland, never past a column's Hc cap -- see `_route_mass_wasting`. Debris
-    # landing in a lake spreads across it the same capacity-aware way. What
-    # reaches the sea spreads onto the shelf and into the basin like the other marine sediment,
-    # under the same ocean_deposition_multiplier.
+    # settles on the foreland, never past a column's Hc cap -- see `_route_mass_wasting`.
+    # Debris that falls onto a glacier rides the ice instead: along ice_flow_target, the same
+    # path glacial debris takes, out to the ice margin -- and out through a basin's lowest
+    # outlet once the ice overtops its rim. Wherever the ice drops it, it runs out by gravity
+    # again from there, under the same Hc room, so the ice can't pile it past the cap. Debris
+    # landing in a lake spreads across it the same capacity-aware way. What reaches the sea
+    # spreads onto the shelf and into the basin like the other marine sediment, under the same
+    # ocean_deposition_multiplier.
     mass_wasting_vol = applied_seismic * area
     landslide_room = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc + removed_m, np.inf) * area
-    landslide_land, landslide_arrival, landslide_land_tagged, landslide_arrival_tagged = _route_mass_wasting(
+    headroom_m = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc, np.inf)
+    landslide_land, landslide_arrival, landslide_ice, landslide_land_tagged, landslide_arrival_tagged, landslide_ice_tagged = _route_mass_wasting(
         elevation,
         is_ocean_node,
         hydro.neighbor_idx,
@@ -1737,9 +1767,33 @@ def apply_erosion(
         mass_wasting_vol,
         mass_wasting_vol * tag,
         capacity_vol=landslide_room,
-        headroom_m=np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc, np.inf),
+        headroom_m=headroom_m,
         spill_target=hydro.spill_target,
+        on_ice=hydro.glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M,
     )
+    _, ice_dropped = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice, retain_fraction=at_glacier_margin
+    )
+    _, ice_dropped_tagged = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice_tagged, retain_fraction=at_glacier_margin
+    )
+    off_ice_land, off_ice_arrival, _, off_ice_land_tagged, off_ice_arrival_tagged, _ = _route_mass_wasting(
+        elevation,
+        is_ocean_node,
+        hydro.neighbor_idx,
+        slope,
+        np.zeros(n),
+        np.zeros(n),
+        capacity_vol=landslide_room - landslide_land,
+        headroom_m=headroom_m,
+        spill_target=hydro.spill_target,
+        inflow_vol=ice_dropped,
+        inflow_tagged=ice_dropped_tagged,
+    )
+    landslide_land = landslide_land + off_ice_land
+    landslide_land_tagged = landslide_land_tagged + off_ice_land_tagged
+    landslide_arrival = landslide_arrival + off_ice_arrival
+    landslide_arrival_tagged = landslide_arrival_tagged + off_ice_arrival_tagged
     landslide_land, landslide_land_tagged = _spread_lake_sediment_capped(
         hydro.lake_depth, hydro.neighbor_idx, landslide_land, landslide_land_tagged, capacity=landslide_room
     )
@@ -1870,10 +1924,12 @@ def apply_erosion(
         # Net material the ocean_deposition_multiplier knob adds (> 1) or withholds (< 1).
         "ocean_deposition_knob_m3": float(beach_deposit.sum() + marine_unscaled.sum() + landslide_marine_unscaled.sum())
         * (ocean_multiplier - 1.0),
-        # Landslide debris (phase 4): mobilized, settled on land (foreland), reaching the sea.
+        # Landslide debris (phase 4): mobilized, settled on land (foreland), reaching the sea,
+        # handed to the ice.
         "mass_wasting_removed_m3": float(mass_wasting_vol.sum()),
         "mass_wasting_foreland_m3": float(landslide_land.sum()),
         "mass_wasting_marine_m3": float(landslide_arrival.sum()),
+        "mass_wasting_on_ice_m3": float(landslide_ice.sum()),
         "lake_silt_m3": lake_silt_m3,
         "hc_cap_overflow_m3": float(np.sum(hc_cap_overflow_m * area)),
         "continental_removed_m3": float(np.sum(continental_removed_m * area)),

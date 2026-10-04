@@ -547,7 +547,7 @@ def test_mass_wasting_runs_off_the_flank_and_settles_on_the_foreland():
     capacity = np.array([np.inf, np.inf, np.inf, 3.0, 2.0, 1.0, np.inf])
     headroom = np.full(len(elevation), 1.0e4)
 
-    land, arrival, land_tagged, arrival_tagged = erosion._route_mass_wasting(
+    land, arrival, _, land_tagged, arrival_tagged, _ = erosion._route_mass_wasting(
         elevation, is_ocean, _profile_neighbors(len(elevation)), slope, source, tagged, capacity, headroom
     )
     # Nothing settles on the source or the steep flank; the flat foreland fills to capacity
@@ -568,7 +568,7 @@ def test_mass_wasting_runs_past_a_column_at_the_hc_cap():
     source = np.array([5.0, 0.0, 0.0, 0.0])
     headroom = np.array([0.0, 0.0, 1.0e4, 1.0e4])  # summit and next node sit at the cap
 
-    land, arrival, _, _ = erosion._route_mass_wasting(
+    land, arrival, *_ = erosion._route_mass_wasting(
         elevation, is_ocean, _profile_neighbors(4), slope, source, source, np.full(4, np.inf), headroom
     )
     assert land[1] == 0.0  # flat, but no headroom: debris runs on
@@ -581,7 +581,7 @@ def test_mass_wasting_debris_on_a_pit_or_from_a_low_source_stays_put():
     elevation = np.array([100.0, 900.0, 50.0, 800.0])
     neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
     source = np.array([1.0, 2.0, 0.0, 0.0])
-    land, arrival, _, _ = erosion._route_mass_wasting(
+    land, arrival, *_ = erosion._route_mass_wasting(
         elevation, np.zeros(4, dtype=bool), neighbors, np.full(4, 0.05), source, source, np.zeros(4), np.full(4, 1.0e4)
     )
     assert np.allclose(land, [1.0, 0.0, 2.0, 0.0])
@@ -597,12 +597,43 @@ def test_mass_wasting_fills_a_pit_to_its_room_and_spills_the_rest_over_the_rim()
     source = np.array([5.0, 0.0, 0.0, 0.0])
     capacity = np.array([np.inf, 2.0, 0.0, np.inf])
     spill = np.array([-1, 2, -1, -1])
-    land, arrival, land_tagged, _ = erosion._route_mass_wasting(
+    land, arrival, _, land_tagged, _, _ = erosion._route_mass_wasting(
         elevation, is_ocean, neighbors, np.full(4, 0.05), source, 0.5 * source, capacity, np.full(4, 1.0e4), spill_target=spill
     )
     assert np.allclose(land, [0.0, 2.0, 0.0, 0.0])
     assert np.isclose(arrival[3], 3.0)
     assert np.allclose(land_tagged, 0.5 * land)
+
+
+def test_mass_wasting_hands_debris_that_reaches_the_ice_to_the_glacier():
+    # A bare summit sheds onto a glaciated node (2); a glaciated summit's own debris (4) rides
+    # its ice from the start. Neither settles on the ice-free flat in between.
+    elevation = np.array([4000.0, 3000.0, 2000.0, 300.0, 3500.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 2], [3, 3]])
+    on_ice = np.array([False, False, True, False, True])
+    source = np.array([6.0, 0.0, 0.0, 0.0, 4.0])
+    land, arrival, ice, land_tagged, _, ice_tagged = erosion._route_mass_wasting(
+        elevation, np.zeros(5, dtype=bool), neighbors, np.full(5, 0.05), source, 0.5 * source,
+        np.full(5, np.inf), np.full(5, 1.0e4), on_ice=on_ice,
+    )
+    assert np.allclose(ice, [0.0, 0.0, 6.0, 0.0, 4.0])
+    assert land.sum() == 0.0 and arrival.sum() == 0.0
+    assert np.allclose(ice_tagged, 0.5 * ice)
+
+
+def test_mass_wasting_inflow_settles_where_the_ice_drops_it_up_to_its_room():
+    # The ice put 5 units down on flat margin node 1, which has room for 2; the rest runs on.
+    elevation = np.array([900.0, 400.0, 300.0, -100.0])
+    neighbors = _profile_neighbors(4)
+    inflow = np.array([0.0, 5.0, 0.0, 0.0])
+    land, arrival, ice, land_tagged, *_ = erosion._route_mass_wasting(
+        elevation, elevation < 0.0, neighbors, np.zeros(4), np.zeros(4), np.zeros(4),
+        np.array([np.inf, 2.0, 1.0, np.inf]), np.full(4, 1.0e4), inflow_vol=inflow, inflow_tagged=0.2 * inflow,
+    )
+    assert np.allclose(land, [0.0, 2.0, 1.0, 0.0])
+    assert np.isclose(arrival[3], 2.0)
+    assert ice.sum() == 0.0
+    assert np.allclose(land_tagged, 0.2 * land)
 
 
 def test_capped_lake_spread_keeps_debris_off_a_member_at_the_hc_cap():

@@ -2845,10 +2845,18 @@ rest spills over the basin rim to hydrology's `spill_target` and runs on, for up
 `MASS_WASTING_SPILL_PASSES` (4) sweeps. Debris still left after that, or in a pit with no
 spill outlet, settles in its pit even past the cap. Debris that lands in a lake spreads across
 it like other lake sediment (`_spread_lake_sediment_capped`), but each member takes only up to
-its room below the cap, the rest going to members with room left. Debris reaching the sea is spread by `_spread_marine_sediment` onto the shelf and down
+its room below the cap, the rest going to members with room left. Debris that starts on, or
+runs onto, a glacier (`glacier_depth` at least `GLACIER_VISIBLE_DEPTH_M`) rides the ice instead.
+A glacier carries rockfall on and in the ice to its margin (lateral and medial moraine), so the
+debris follows `ice_flow_target`, the same path glacially eroded material takes, until it reaches
+ice-free ground. Once the ice overtops a closed basin's rim, that path leaves through the basin's
+lowest outlet, as a filled lake's does. Wherever the ice puts the debris down, it runs out by
+gravity again from that node under the same Hc room, so the ice can't pile it past the cap.
+Debris reaching the sea is spread by `_spread_marine_sediment` onto the shelf and down
 into the ocean basin, under the same `ocean_deposition_multiplier` as the other marine sediment.
 Each deposit carries the continental fraction of the flux it came from. The budget reports
-`mass_wasting_removed_m3`, `mass_wasting_foreland_m3` and `mass_wasting_marine_m3`.
+`mass_wasting_removed_m3`, `mass_wasting_foreland_m3`, `mass_wasting_marine_m3` and
+`mass_wasting_on_ice_m3`.
 
 **Deposition.** The capped, combined erosion amount is routed downstream (see
 `hydrology.route_downstream`) with a `retain_fraction` wherever a river qualifies as "big and
