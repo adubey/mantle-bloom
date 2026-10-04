@@ -958,6 +958,7 @@ def test_quad_overlap_is_read_by_containment():
         inside = other.contains_batch(plate.all_points_and_elevation()[0])
         assert np.any(inside)
         np.testing.assert_array_equal(overlap[plate.plate_id]["overlap_mask"], inside)
+        np.testing.assert_array_equal(overlap[plate.plate_id]["cover_count"], inside.astype(int))
         assert overlap[plate.plate_id]["by_partner"] == {other.plate_id: int(inside.sum())}
 
 

@@ -1735,6 +1735,9 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
       `tol_rad` of some other plate's node.
     - `by_partner`: {other_plate_id: count of this plate's own unique nodes on top of it},
       sorted-desc when iterated is up to the caller.
+    - `cover_count`: int array aligned like `overlap_mask` -- how many *other* plates this
+      node sits on (`overlap_mask` is `cover_count > 0`). Whole-world area sums divide by
+      `1 + cover_count` to count overlapped ground once (issue #289).
 
     One global `cKDTree.query_pairs` over every node, so O(N log N) once rather than a
     per-pair envelope test -- the same construction main._plate_overlaps used inline before
@@ -1747,7 +1750,12 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
     of the nodes that really sit on another plate (issue #228 Phase 4)."""
     active = [p for p in plate_list if p.node_count() > 0]
     result: dict[int, dict] = {
-        p.plate_id: {"overlap_mask": np.zeros(p.node_count(), dtype=bool), "by_partner": {}} for p in active
+        p.plate_id: {
+            "overlap_mask": np.zeros(p.node_count(), dtype=bool),
+            "by_partner": {},
+            "cover_count": np.zeros(p.node_count(), dtype=np.int64),
+        }
+        for p in active
     }
     if len(active) < 2:
         return result
@@ -1779,7 +1787,9 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
                 on_j = dst_here == j
                 if not on_j.any():
                     continue
-                result[src_plate.plate_id]["by_partner"][dst_plate.plate_id] = int(len(np.unique(local[on_j])))
+                unique_local = np.unique(local[on_j])
+                result[src_plate.plate_id]["by_partner"][dst_plate.plate_id] = int(len(unique_local))
+                result[src_plate.plate_id]["cover_count"][unique_local] += 1
     return result
 
 
@@ -1804,6 +1814,7 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
             inside = other.contains_batch(clouds[i])
             if np.any(inside):
                 result[plate.plate_id]["overlap_mask"] |= inside
+                result[plate.plate_id]["cover_count"] += inside
                 result[plate.plate_id]["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
 
 

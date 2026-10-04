@@ -85,6 +85,13 @@ def _seen_checkpoints(out_path: Path, node_density: float, surface: str) -> dict
             # Rows predating the quad default (#250) carry no "surface" and were line-backed.
             if row.get("surface", "lines") != surface:
                 continue
+            # Before #289, land_volume_above_sea_km3 used nominal node areas and counted
+            # overlapped ground twice; resuming onto those rows would mix the two metrics.
+            if "land_volume_above_sea_nominal_km3" not in row:
+                raise SystemExit(
+                    f"{out_path} holds rows from before issue #289's land-volume fix; "
+                    "write to a new --out file instead of resuming onto it."
+                )
             key = (row["parameter"], row["multiplier"], row["seed"])
             seen_checkpoints.setdefault(key, set()).add(row["checkpoint_years"])
     return seen_checkpoints

@@ -154,18 +154,34 @@ def _land_volume_above_sea_km3(world: World) -> float:
     submergence), this is the "topographic excess" a collision pumping up a plateau adds to and
     erosion/land loss drains from, so it's the one stat here that can directly distinguish
     "land is disappearing" (this falls) from "land is fine but crust is just thicker/thinner
-    underwater" (the crust-volume stat would move, this wouldn't). Same node-area-times-height
-    approach as stats._total_land_area_and_continental_volume, restricted to the
-    above-sea-level slice of elevation."""
+    underwater" (the crust-volume stat would move, this wouldn't).
+
+    Each node is weighted by its accounting area (`Plate.accounting_areas_m2`: exact cells on
+    quads, which are not equal-area) times `stats.overlap_area_weights`, so ground two plates
+    overlap is counted once. Before issue #289 this used one nominal node area and summed every
+    plate in full; that version is kept as `_land_volume_above_sea_nominal_km3` for comparison
+    with earlier runs."""
+    spacing_rad = line_spacing_rad(world.node_density)
+    weights = stats.overlap_area_weights(world)
+    total_m3 = 0.0
+    for plate in world.plates:
+        if plate.plate_id not in weights:
+            continue
+        _, elevation = plate.all_points_and_elevation()
+        above = np.clip(elevation - world.sea_level_m, 0.0, None)
+        total_m3 += float(np.dot(above, plate.accounting_areas_m2(spacing_rad) * weights[plate.plate_id]))
+    return total_m3 / 1.0e9
+
+
+def _land_volume_above_sea_nominal_km3(world: World) -> float:
+    """The pre-#289 `_land_volume_above_sea_km3`: nominal node area, every plate summed in
+    full. Kept so new runs can still be lined up against earlier sweep results."""
     area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
     total_m3 = 0.0
     for plate in world.plates:
         _, elevation = plate.all_points_and_elevation()
-        if len(elevation) == 0:
-            continue
         above = elevation[elevation > world.sea_level_m] - world.sea_level_m
-        if above.size:
-            total_m3 += float(np.sum(above)) * area_m2
+        total_m3 += float(np.sum(above)) * area_m2
     return total_m3 / 1.0e9
 
 
@@ -206,10 +222,14 @@ def compute_outcome_stats(world: World) -> dict:
         "ice_cap_fraction": land_fraction * ice_share_of_land,
         "plains_fraction": _plains_fraction_of_world(world),
         "land_volume_above_sea_km3": _land_volume_above_sea_km3(world),
+        "land_volume_above_sea_nominal_km3": _land_volume_above_sea_nominal_km3(world),
+        "plate_overlap_area_fraction": snapshot["plate_overlap_area_fraction"],
+        "sea_level_m": world.sea_level_m,
         # Kept alongside for cross-checking the land-volume stat against the game's own
         # existing conservation-check metric (see stats.py's own module docstring, GitHub
         # issues #119/#120) -- not one of the four requested outcome stats itself.
         "total_continental_crust_volume_km3": snapshot["total_continental_crust_volume_km3"],
+        "total_continental_crust_volume_dedup_km3": snapshot["total_continental_crust_volume_dedup_km3"],
     }
 
 

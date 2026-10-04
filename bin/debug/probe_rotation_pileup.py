@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Where does the quad "pile-up" come from? (issue #177 follow-up)
+"""Where does the quad "pile-up" come from? (issue #289, found on #177)
 
-On quad worlds, `avg_rotation_rate` 4x leaves less land than 0.25x but much more
-`sweep_lib._land_volume_above_sea_km3`. That metric weights every node by the nominal
-`node_area_m2` and sums every plate, so part of the rise could be measurement: quad cells
+On quad worlds, `avg_rotation_rate` 4x leaves less land than 0.25x but much more land
+volume above sea level. The sweep's original land-volume metric weighted every node by the
+nominal `node_area_m2` and summed every plate, so part of the rise was measurement: quad cells
 aren't equal-area, and overlapping plates count the same ground twice. This probe splits the
 metric up per (surface, multiplier, seed, checkpoint):
 
-- `land_vol_nominal_km3`: the sweep metric as-is;
+- `land_vol_nominal_km3`: the pre-#289 sweep metric (`sweep_lib._land_volume_above_sea_nominal_km3`);
 - `land_vol_exact_km3`: the same, weighted by `Plate.accounting_areas_m2`;
-- `land_vol_exact_dedup_km3`: exact, with nodes inside another plate's territory
-  (`plates.compute_node_overlap`) weighted by half -- a first-order double-count correction;
+- `land_vol_exact_dedup_km3`: exact, with each node's area divided by the number of plates on
+  it (`stats.overlap_area_weights`) -- the sweep's current `land_volume_above_sea_km3`;
 - `represented_sphere_fraction` / `overlap_area_fraction`: total accounting area and the
   overlapped part of it, as fractions of the sphere;
 - land area, mean land elevation and mean Hc on land (exact areas);
@@ -18,7 +18,7 @@ metric up per (surface, multiplier, seed, checkpoint):
   volume, every source/sink account and the closure residual.
 
     backend/.venv/bin/python bin/debug/probe_rotation_pileup.py --seeds 350921662,57685824 \
-        --out bin/debug/results/rotation_pileup_probe.jsonl
+        --out results/rotation_pileup_probe.jsonl
 """
 
 from __future__ import annotations
@@ -34,19 +34,18 @@ import sweep_lib  # noqa: E402  (sets up sys.path for app)
 
 import numpy as np  # noqa: E402
 
-from app import continental_ledger, lithosphere, plates as plates_mod  # noqa: E402
+from app import continental_ledger, lithosphere, stats  # noqa: E402
 from app.elevation_lines import line_spacing_rad  # noqa: E402
-from app.sparse_quad_patch import PLANET_RADIUS_M  # noqa: E402
 from app.world import generate_world, step_world  # noqa: E402
 
-SPHERE_M2 = 4.0 * np.pi * PLANET_RADIUS_M**2
+SPHERE_M2 = stats.SPHERE_AREA_M2
 
 
 def measure(world) -> dict:
     spacing = line_spacing_rad(world.node_density)
     nominal = lithosphere.node_area_m2(spacing)
     live = [p for p in world.plates if p.node_count() > 0]
-    overlap = plates_mod.compute_node_overlap(live, plates_mod.OVERLAP_TOLERANCE_MULT * spacing)
+    weights = stats.overlap_area_weights(world)
     sea = world.sea_level_m
     out = dict.fromkeys(
         ("land_vol_nominal_km3", "land_vol_exact_km3", "land_vol_exact_dedup_km3", "land_area_exact_km2",
@@ -57,8 +56,8 @@ def measure(world) -> dict:
         _, elev = p.all_points_and_elevation()
         areas = p.accounting_areas_m2(spacing)
         hc = p.collect("crustal_thickness_m")
-        mask = overlap[p.plate_id]["overlap_mask"]
-        weight = np.where(mask, 0.5, 1.0)
+        weight = weights[p.plate_id]
+        mask = weight < 1.0
         above = np.clip(elev - sea, 0.0, None)
         land = elev > sea
         out["land_vol_nominal_km3"] += float(above.sum()) * nominal / 1e9
