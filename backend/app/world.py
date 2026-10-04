@@ -69,6 +69,9 @@ class World:
     # Persistent craton source/sink accounts, one per formation and destruction mechanism;
     # live craton volume is derived from nodes' craton_crust_m. See cratons.py.
     craton_ledger: dict[str, float] = field(default_factory=dict)
+    # Cumulative attempted / completed volume (m^3) of each orogenic relief process: suture
+    # belts, tectonic escape, delamination, collapse and ductile flow. See orogeny.py.
+    orogenic_relief_budget: dict[str, float] = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.

@@ -109,7 +109,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import biomes, climate, cratons, hydrology, lithosphere
+from . import biomes, climate, cratons, hydrology, lithosphere, orogeny
 from .elevation_lines import line_spacing_rad
 from .world import World
 
@@ -291,6 +291,8 @@ def compute_stats(world: World) -> dict:
 
     return {
         "continental_material_ledger": continental_ledger.inventories(world),
+        "orogenic_relief_budget": dict(orogeny.ensure_budget(world)),
+        "crust_state_area_m2": orogeny.crust_state_areas_m2(world),
         "hc_at_max_fraction": float(np.mean(hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1e-6)) if hc.size else None,
         **hc_stats.to_dict("hc", "_m"),
         "hm_at_max_fraction": float(np.mean(hm >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)) if hm.size else None,

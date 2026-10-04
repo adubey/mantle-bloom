@@ -11,8 +11,8 @@ module replaces all of them with two operations on the cell graph:
   wholly exposed side (the 2D analogue of a line end) is deactivated, then the newly exposed
   layer is considered, up to this step's displacement in cells. A continental suture's
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
-  conserved up to the usual accretion cap), exactly as `_redistribute_accreted_column` does
-  for a line end. An oceanic plate also carves out contested patches the peel can't reach
+  conserved), as `_redistribute_accreted_column` does for a line end. Past the receiving
+  belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`). An oceanic plate also carves out contested patches the peel can't reach
   from its edge (the line engine's interior-subduction carve-out, `_carve_interior`).
 - **Advance** activates the empty cell across each exposed side of an eligible boundary
   cell, wherever no neighbour already covers it, again in layers. Ordinary new ground is a
@@ -39,7 +39,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, cratons, geometry, lithosphere, phase_budget, rheology, terrain_noise
+from . import continental_ledger, cratons, geometry, lithosphere, orogeny, phase_budget, rheology, terrain_noise
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -95,13 +95,18 @@ _ADVANCE_RNG_INDEX = 1
 # depend on the centre point that the frontier's ordinary openness test already checks.
 _GAP_FILL_SAMPLE_FRACTIONS = np.array([0.125, 0.375, 0.625, 0.875])
 
-# A saturated suture may carry overflow through three additional belts of the same width.
-# Past that finite broad-orogen footprint, over-thickened lower crust delaminates at the
-# existing Hc cap instead of spreading without limit across the plate (issue #253).
+# A saturated suture may carry overflow through three additional belts of the same width:
+# the broad orogen's own lateral spreading (issue #253).
 SUTURE_ACCRETION_MAX_HOPS = 4 * SUTURE_ACCRETION_SPREAD_NODES
-# At most this share of any one donated column may delaminate after the finite belt fills.
-# Larger overflow must find room farther across the same crustal reservoir, preventing a
-# long-lived suture from becoming an effectively unbounded continental-crust sink.
+# Past the belts, tectonic escape (issue #290): crust squeezed out of a full orogen moves
+# along strike, collision-parallel, as Indochina and Anatolia did, not straight inland. It
+# reaches this many hops farther, into cells within `SUTURE_ESCAPE_MAX_ANGLE_DEG` of the
+# suture's strike as seen from the front.
+SUTURE_ESCAPE_EXTRA_HOPS = 4 * SUTURE_ACCRETION_SPREAD_NODES
+SUTURE_ESCAPE_MAX_ANGLE_DEG = 45.0
+# Only then may part of the donation delaminate, and only from the belts' eligible dense roots
+# (`orogeny.delamination_capacity_m`). At most this share of any one donation, which also
+# bounds cumulative suture delamination to this share of all donated crust.
 SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION = 0.20
 
 
@@ -178,7 +183,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
 
     max_cells = max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(world.node_density)))
     before = phase_budget.snapshot(plate, spacing_rad) if world.debug_diagnostics else None
-    survivors = _retreat(plate, world, ctx, max_distance, max_cells)
+    survivors = _retreat(plate, world, ctx, max_distance, max_cells, years)
     if world.debug_diagnostics:
         after = phase_budget.snapshot(plate, spacing_rad)
         phase_budget.record_snapshots(world, plate, "boundary_retreat", before, after)
@@ -192,12 +197,23 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         )
         _advance(plate, world, ctx, survivors, growth_neighbours, spacing_rad, max_cells)
         if world.debug_diagnostics:
-            phase_budget.record_snapshots(world, plate, "boundary_advance", before, phase_budget.snapshot(plate, spacing_rad))
+            after = phase_budget.snapshot(plate, spacing_rad)
+            phase_budget.record_snapshots(world, plate, "boundary_advance", before, after)
+            before = after
+
+    # Standing orogens collapse and flow into their surroundings (issue #290), making room
+    # for next step's suture accretion before any of it may delaminate.
+    orogeny.relax_orogens(plate, world, years)
+    if world.debug_diagnostics:
+        phase_budget.record_snapshots(world, plate, "orogenic_relief", before, phase_budget.snapshot(plate, spacing_rad))
 
 
-def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distance: float, max_cells: int) -> np.ndarray:
+def _retreat(
+    plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distance: float, max_cells: int, years: float = 0.0
+) -> np.ndarray:
     """Peel retreatable boundary cells, layer by layer -- see the module docstring. Returns the
-    survivor mask over the pre-retreat node order."""
+    survivor mask over the pre-retreat node order. `years` sets how much of the receiving
+    belts' dense roots may delaminate (none at 0)."""
     n = plate.node_count()
     survivors = np.ones(n, dtype=bool)
     # A craton cell holds out against consumption until it has been overlapped long enough
@@ -260,7 +276,10 @@ def _retreat(plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distanc
         world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
     )
     if np.any(donors):
-        _accrete_onto_survivors(plate, donors, ~removed, world)
+        _accrete_onto_survivors(
+            plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
+            overriders=ctx.neighbours,
+        )
     plate.remove_cells(removed)
     return ~removed
 
@@ -309,18 +328,34 @@ def _carve_interior(plate: "PlateWithSparseQuadPatch", retreatable: np.ndarray, 
 
 
 def _accrete_onto_survivors(
-    plate: "PlateWithSparseQuadPatch", donors: np.ndarray, survivors: np.ndarray, world: "World | None" = None
+    plate: "PlateWithSparseQuadPatch",
+    donors: np.ndarray,
+    survivors: np.ndarray,
+    world: "World | None" = None,
+    convergence_xyz: np.ndarray | None = None,
+    years: float = 0.0,
+    overriders: list | None = None,
 ) -> None:
     """Thrust each continental suture's consumed Hc/Hm volume onto the surviving cells within
     `SUTURE_ACCRETION_SPREAD_NODES` hops behind it, as a uniform thickening -- the 2D form of
     `_redistribute_accreted_column`, which spreads a retreating line end's volume over that
     many nodes *inward along the row*. Each edge-connected run of donor cells is one suture
-    front with its own band, so separate sutures on one plate don't share volume. When that
-    first band fills, the excess continues into successive graph-hop bands instead of being
-    silently clipped. Donors and receivers are matched by effective crust type, which keeps
-    continental terranes on nominally oceanic plates in the continental reservoir. A regular
-    suture's finite four-belt footprint still delaminates any remainder at the physical cap;
-    a terrane on an oceanic plate instead relocates onto oceanic footprint when necessary.
+    front with its own band, so separate sutures on one plate don't share volume. Donors and
+    receivers are matched by effective crust type, which keeps continental terranes on
+    nominally oceanic plates in the continental reservoir. A terrane on an oceanic plate
+    relocates onto oceanic footprint when its reservoir has no room.
+
+    When the first band fills, Hc goes where `_place_suture_crust` finds room, in order
+    (issue #290): three more belts (lateral spreading), cells along the suture's strike
+    (tectonic escape; strike from `convergence_xyz`, the world-frame direction to the
+    overriding plate per node, or the front's own long axis), the belts' eligible dense
+    roots (delamination, rate-limited over `years`), the nearest capacity farther across the
+    plate, then the plate's own non-continental cells (a foreland spill, retyping a cell
+    continental once continental crust makes up most of it), then the overriding plate among
+    `overriders` (`_hand_to_overrider`), and only what none of those can hold, a terminal
+    delamination remainder.
+    Hm spreads through the belts and delaminates past them, as an over-thickened mantle
+    root does.
 
     Each front's continental-derived material (`continental_material_m`) travels with the Hc
     it placed and its delaminated share is booked to the continental ledger; its cratonic
@@ -346,6 +381,14 @@ def _accrete_onto_survivors(
     material = plate.collect("continental_material_m")
     craton = plate.collect("craton_crust_m")
     formed = plate.collect("craton_formed_years")
+    # Dense-root volume each surviving continental column may shed this step, drawn down
+    # as fronts use it so two fronts sharing a belt can't both spend it.
+    root_capacity = np.where(
+        survivors & continental, orogeny.delamination_capacity_m(hc, hm, years / 1_000_000.0) * areas, 0.0
+    )
+    convergence_local = (
+        geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
+    )
 
     for donor_type in (False, True):
         typed_donors = donors & (continental == donor_type)
@@ -404,21 +447,68 @@ def _accrete_onto_survivors(
                 # preferred because it preserves the categorical reservoir, but the column's
                 # actual Hc/Hm volume must not vanish when that representation has no receiver.
                 typed_survivors = survivors
-            changed |= _spread_accretion_volume(
+            strike = _suture_strike(points, front, convergence_local)
+            shed = np.zeros(len(hc))
+            filled, stages = _place_suture_crust(
                 hc,
                 areas,
                 adjacency,
+                points,
                 front,
                 typed_survivors,
                 hc_volume,
                 SUTURE_ACCRETION_MAX_HC_M,
-                SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION,
+                strike,
+                root_capacity if donor_type else None,
+                shed,
             )
-            placed_share = _carry_material(material, areas, hc - hc_front_start, hc_volume, material_volume)
+            # The shed roots take their own columns' continental material and cratonic
+            # crust with them, in proportion to the column they left.
+            shed_material, shed_craton = _shed_provenance(material, craton, hc_front_start, shed)
+            changed |= filled
+            stuck = stages["no_outlet_delaminated_m3"]
+            spill_cells = survivors & ~continental
+            if donor_type and stuck > 0.0 and np.any(spill_cells):
+                # Every continental receiver is full -- typically a small plate whose whole
+                # continent sits at the cap, where collapse has no gradient to work with.
+                # The crust thrusts out over the plate's own drowned margin or oceanic
+                # foreland instead, nearest first; a cell left mostly continental crust is
+                # retyped continental.
+                hc_before_spill = hc.copy()
+                spilled, spill_stages = _place_suture_crust(
+                    hc, areas, adjacency, points, front, spill_cells, stuck, SUTURE_ACCRETION_MAX_HC_M, None, None
+                )
+                changed |= spilled
+                left = spill_stages["no_outlet_delaminated_m3"]
+                stages["foreland_spill_placed_m3"] = stuck - left
+                stages["no_outlet_delaminated_m3"] = left
+                retyped = spilled & (hc - hc_before_spill > 0.5 * hc)
+                codes[retyped] = CRUST_TYPE_CONTINENTAL
+                continental[retyped] = True
+            handed_share = 0.0
+            stuck = stages["no_outlet_delaminated_m3"]
+            if donor_type and stuck > 0.0 and overriders and hc_volume > 0.0:
+                # The plate is being consumed faster than it can hold its own crust -- a
+                # microcontinent ground into a collision. What it can't keep accretes to the
+                # plate overriding it, as real suture crust does.
+                share = stuck / hc_volume
+                handed = _hand_to_overrider(
+                    world, plate, front, overriders, stuck, share * material_volume, convergence_xyz, years,
+                )
+                handed_share = handed / hc_volume
+                stages["overrider_placed_m3"] = handed
+                stages["no_outlet_delaminated_m3"] = max(stuck - handed, 0.0)
+            placed_share = _carry_material(material, areas, hc - hc_front_start + shed, hc_volume, material_volume)
+            lost_share = max(1.0 - placed_share - handed_share, 0.0)
             if world is not None:
-                continental_ledger.record(world, "delaminated_lower_crust_m3", (1.0 - placed_share) * material_volume)
-                cratons.record(world, "collision_reworked_m3", placed_share * craton_volume)
-                cratons.record(world, "delaminated_m3", (1.0 - placed_share) * craton_volume)
+                continental_ledger.record(
+                    world, "delaminated_lower_crust_m3", lost_share * material_volume + float(shed_material @ areas)
+                )
+                cratons.record(world, "collision_reworked_m3", (1.0 - lost_share) * craton_volume)
+                cratons.record(world, "delaminated_m3", lost_share * craton_volume + float(shed_craton @ areas))
+                orogeny.record(world, "suture_donated_m3", hc_volume)
+                for account, volume in stages.items():
+                    orogeny.record(world, account, volume)
             changed |= _spread_accretion_volume(
                 hm,
                 areas,
@@ -444,6 +534,20 @@ def _accrete_onto_survivors(
         craton_crust_m=craton,
         craton_formed_years=formed,
     )
+
+
+def _shed_provenance(
+    material: np.ndarray, craton: np.ndarray, hc_before: np.ndarray, shed: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """In place: remove the continental material and cratonic crust that delaminated roots
+    (`shed`, thickness per cell) take with them -- each cell's own fractions of the column it
+    had before this front arrived. Returns the removed thicknesses (material, craton)."""
+    fraction = np.divide(shed, hc_before, out=np.zeros(len(shed)), where=(shed > 0.0) & (hc_before > 0.0))
+    shed_material = material * np.minimum(fraction, 1.0)
+    shed_craton = craton * np.minimum(fraction, 1.0)
+    material -= shed_material
+    craton -= shed_craton
+    return shed_material, shed_craton
 
 
 def _carry_material(
@@ -615,8 +719,9 @@ def _spread_accretion_volume(
     Within each accumulated band the added thickness is uniform except where a cell hits
     `cap`; water-filling then gives the rest to cells with remaining room. Anything the four
     belts cannot hold delaminates, up to `max_delamination_fraction` of this donation; larger
-    overflow must find room elsewhere in the same reservoir. Mantle lithosphere keeps the
-    pre-existing full-delamination default while issue #253 bounds continental-crust loss.
+    overflow must find room elsewhere in the same reservoir. A suture's mantle lithosphere
+    keeps the full-delamination default, and a relocated terrane's displaced oceanic columns
+    use 0. A suture's crust goes through `_place_suture_crust` instead (issue #290).
     Returns the cells whose thickness changed.
     """
     changed = np.zeros(len(thickness), dtype=bool)
@@ -663,6 +768,247 @@ def _spread_accretion_volume(
         frontier = next_frontier
         hops += 1
     return changed
+
+
+def _suture_strike(points: np.ndarray, front: np.ndarray, convergence_local: np.ndarray | None) -> np.ndarray | None:
+    """Unit tangent along a suture front's strike, in the plate's local frame: perpendicular to
+    the front's mean direction toward the overriding plate when that is known, else the
+    front's own long axis. None when neither defines one (a single cell with no direction)."""
+    centre = geometry.normalize(points[front].mean(axis=0))
+    if convergence_local is not None:
+        toward = convergence_local[front].mean(axis=0)
+        toward = toward - np.dot(toward, centre) * centre
+        if np.linalg.norm(toward) > 1e-9:
+            return geometry.normalize(np.cross(centre, toward))
+    if len(front) < 2:
+        return None
+    offsets = points[front] - points[front].mean(axis=0)
+    offsets = offsets - np.outer(offsets @ centre, centre)
+    _, singular, axes = np.linalg.svd(offsets, full_matrices=False)
+    if singular[0] <= 1e-12 or (len(singular) > 1 and singular[1] >= 0.999 * singular[0]):
+        return None  # no long axis: a compact front has no strike
+    return axes[0]
+
+
+def _hand_to_overrider(
+    world: "World | None",
+    plate: "PlateWithSparseQuadPatch",
+    front: np.ndarray,
+    overriders: list,
+    volume: float,
+    material_volume: float,
+    convergence_xyz: np.ndarray | None,
+    years: float,
+) -> float:
+    """Accrete `volume` of a consumed front's Hc onto the quad plate overriding it, through the
+    same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest the
+    front. The overrider is the candidate containing most of the front's cell centres (the
+    nearest one if none does). The front's continental material goes with the Hc it placed, in
+    proportion; its cratonic crust becomes ordinary orogenic crust, which the caller books. The
+    overrider's own belts may shed eligible roots to make room, booked here with their own
+    provenance. Whatever the overrider can't hold is left for the caller's terminal remainder.
+    Returns the Hc volume placed on the overrider."""
+    candidates = [p for p in overriders if p is not plate and hasattr(p, "adjacency") and p.node_count() > 0]
+    if not candidates or volume <= 0.0:
+        return 0.0
+    front_world = geometry.to_world(plate.frame, plate.surface_nodes().local_xyz[front])
+    centre = geometry.normalize(front_world.mean(axis=0))
+
+    def rank(candidate) -> tuple[int, float]:
+        inside = int(np.count_nonzero(candidate.contains_batch(front_world)))
+        nearest = float(cKDTree(candidate.all_points_and_elevation()[0]).query(centre)[0])
+        return -inside, nearest
+
+    over = min(candidates, key=rank)
+    over_world = over.all_points_and_elevation()[0]
+    _, seed = cKDTree(over_world).query(front_world)
+    seed = np.unique(seed)
+
+    areas = over.node_areas_m2()
+    hc = over.collect("crustal_thickness_m")
+    hm = over.collect("mantle_lithosphere_thickness_m")
+    codes = over.collect("crust_type_code")
+    material = over.collect("continental_material_m")
+    craton = over.collect("craton_crust_m")
+    elevation = over.collect("elevation")
+    continental = effective_is_continental_from_codes(codes, over.crust_type == "continental")
+    eligible = continental.copy() if np.any(continental) else np.ones(len(hc), dtype=bool)
+    root_capacity = np.where(continental, orogeny.delamination_capacity_m(hc, hm, years / 1_000_000.0) * areas, 0.0)
+    points = over.surface_nodes().local_xyz
+    convergence_local = None
+    if convergence_xyz is not None:
+        # The overrider converges on the front from the other side.
+        toward = -np.asarray(convergence_xyz, dtype=float)[front].mean(axis=0)
+        convergence_local = np.zeros_like(points)
+        convergence_local[seed] = geometry.to_local(over.frame, toward[None, :])[0]
+    strike = _suture_strike(points, seed, convergence_local)
+
+    hc_before = hc.copy()
+    shed = np.zeros(len(hc))
+    changed, stages = _place_suture_crust(
+        hc, areas, _adjacency_matrix(over), points, seed, eligible, volume, SUTURE_ACCRETION_MAX_HC_M, strike,
+        root_capacity, shed,
+    )
+    placed = max(volume - stages["no_outlet_delaminated_m3"], 0.0)
+    if placed <= 0.0:
+        return 0.0
+    shed_material, shed_craton = _shed_provenance(material, craton, hc_before, shed)
+    _carry_material(material, areas, hc - hc_before + shed, volume, material_volume)
+    if world is not None:
+        continental_ledger.record(world, "delaminated_lower_crust_m3", float(shed_material @ areas))
+        cratons.record(world, "delaminated_m3", float(shed_craton @ areas))
+        for account in (
+            "suture_belt_placed_m3", "escape_attempted_m3", "escape_placed_m3", "delamination_attempted_m3",
+            "delamination_completed_m3", "far_field_placed_m3",
+        ):
+            orogeny.record(world, account, stages[account])
+    density = lithosphere.node_crust_density(codes, over.crust_type)
+    gained = np.flatnonzero(changed)
+    shift = lithosphere.isostatic_elevation(hc[gained], hm[gained], density[gained]) - lithosphere.isostatic_elevation(
+        hc_before[gained], hm[gained], density[gained]
+    )
+    elevation[gained] = rheology.clip_elevation_bounds(elevation[gained] + shift)
+    over.set_fields_on_plate(crustal_thickness_m=hc, continental_material_m=material, craton_crust_m=craton, elevation=elevation)
+    return placed
+
+
+def _place_suture_crust(
+    thickness: np.ndarray,
+    areas: np.ndarray,
+    adjacency: csr_matrix,
+    points: np.ndarray,
+    front: np.ndarray,
+    eligible: np.ndarray,
+    volume: float,
+    cap: float,
+    strike: np.ndarray | None,
+    root_capacity: np.ndarray | None,
+    shed: np.ndarray | None = None,
+) -> tuple[np.ndarray, dict[str, float]]:
+    """Place one front's donated Hc `volume` under `cap`, in the order of issue #290:
+
+    1. **Belts** -- graph-hop bands up to `SUTURE_ACCRETION_MAX_HOPS` from the front, water-
+       filled band by band once the first `SUTURE_ACCRETION_SPREAD_NODES` hops are reached.
+    2. **Tectonic escape** -- the next `SUTURE_ESCAPE_EXTRA_HOPS` hops, but only cells within
+       `SUTURE_ESCAPE_MAX_ANGLE_DEG` of `strike` as seen from the front. Skipped without one.
+    3. **Delamination** -- the belts shed part of their own dense roots, drawn from
+       `root_capacity` (volume per cell, drawn down in place) up to
+       `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` of `volume`, and the donation takes the
+       room that frees. What sinks is the receivers' old lower crust, not the incoming crust:
+       each cell's shed thickness is added to `shed` for the caller to book with that cell's
+       own provenance. None when `root_capacity` is None.
+    4. **Far field** -- every eligible cell reached so far, then farther hops one at a time,
+       then (a plate the graph doesn't connect) any eligible cell.
+    5. **No outlet** -- whatever still has no room among `eligible`. The caller spills a
+       continental front's remainder onto the plate's non-continental cells before booking
+       any of it as terminal delamination.
+
+    Returns the cells whose thickness changed and the volume each stage handled, keyed by
+    `orogeny.BUDGET_ACCOUNTS` name."""
+    changed = np.zeros(len(thickness), dtype=bool)
+    stages = dict.fromkeys(
+        (
+            "suture_belt_placed_m3",
+            "escape_attempted_m3",
+            "escape_placed_m3",
+            "delamination_attempted_m3",
+            "delamination_completed_m3",
+            "far_field_placed_m3",
+            "foreland_spill_placed_m3",
+            "overrider_placed_m3",
+            "no_outlet_delaminated_m3",
+        ),
+        0.0,
+    )
+    if volume <= 0.0 or not np.any(eligible):
+        return changed, stages
+    tolerance = max(volume, 1.0) * 1e-12
+    remaining = volume
+
+    def fill(receivers: np.ndarray) -> float:
+        nonlocal remaining
+        before = remaining
+        remaining, filled = _fill_capped_volume(thickness, areas, receivers, remaining, cap)
+        changed[:] |= filled
+        return before - remaining
+
+    reached = np.zeros(len(thickness), dtype=bool)
+    reached[front] = True
+    frontier = reached.copy()
+    hops = 0
+
+    def step() -> bool:
+        nonlocal frontier, hops
+        next_frontier = (adjacency @ frontier.astype(np.int8) > 0) & ~reached
+        if not np.any(next_frontier):
+            return False
+        reached[:] |= next_frontier
+        frontier = next_frontier
+        hops += 1
+        return True
+
+    # 1. Belts.
+    belts = np.zeros(len(thickness), dtype=bool)
+    receivers = np.zeros(len(thickness), dtype=bool)
+    graph_open = True
+    while remaining > tolerance and hops < SUTURE_ACCRETION_MAX_HOPS:
+        graph_open = step()
+        if not graph_open:
+            break
+        receivers |= frontier & eligible
+        belts |= frontier & eligible
+        if hops >= SUTURE_ACCRETION_SPREAD_NODES and np.any(receivers):
+            stages["suture_belt_placed_m3"] += fill(receivers)
+            receivers[:] = False
+    if remaining > tolerance and np.any(receivers):
+        # The graph ended inside the first band.
+        stages["suture_belt_placed_m3"] += fill(receivers)
+
+    # 2. Tectonic escape along strike.
+    if remaining > tolerance and graph_open and strike is not None:
+        stages["escape_attempted_m3"] = remaining
+        centre = geometry.normalize(points[front].mean(axis=0))
+        offsets = points - centre
+        offsets -= np.outer(offsets @ centre, centre)
+        length = np.linalg.norm(offsets, axis=1)
+        alignment = np.abs(offsets @ strike) / np.where(length > 0.0, length, 1.0)
+        along_strike = alignment >= np.cos(np.radians(SUTURE_ESCAPE_MAX_ANGLE_DEG))
+        escape_end = hops + SUTURE_ESCAPE_EXTRA_HOPS
+        while remaining > tolerance and hops < escape_end:
+            graph_open = step()
+            if not graph_open:
+                break
+            stages["escape_placed_m3"] += fill(frontier & eligible & along_strike)
+
+    # 3. Delamination from the belts' eligible dense roots.
+    if remaining > tolerance and root_capacity is not None:
+        stages["delamination_attempted_m3"] = remaining
+        available = float(root_capacity[belts].sum())
+        take = min(remaining, available, SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION * volume)
+        if take > 0.0:
+            lost = root_capacity * np.where(belts, take / available, 0.0)
+            root_capacity -= lost
+            thickness -= lost / areas
+            if shed is not None:
+                shed += lost / areas
+            changed |= lost > 0.0
+            stages["delamination_completed_m3"] = take
+            fill(belts)
+
+    # 4. Far field: nearest remaining capacity first.
+    if remaining > tolerance:
+        stages["far_field_placed_m3"] += fill(reached & eligible)
+        while remaining > tolerance and graph_open:
+            graph_open = step()
+            if graph_open:
+                stages["far_field_placed_m3"] += fill(frontier & eligible)
+        if remaining > tolerance:
+            stages["far_field_placed_m3"] += fill(eligible)
+
+    # 5. No outlet anywhere on the plate.
+    if remaining > tolerance:
+        stages["no_outlet_delaminated_m3"] = remaining
+    return changed, stages
 
 
 def _fill_capped_volume(
