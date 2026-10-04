@@ -12,8 +12,11 @@ module replaces all of them with two operations on the cell graph:
   layer is considered, up to this step's displacement in cells. A continental suture's
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
   conserved), as `_redistribute_accreted_column` does for a line end. Past the receiving
-  belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`). An oceanic plate also carves out contested patches the peel can't reach
-  from its edge (the line engine's interior-subduction carve-out, `_carve_interior`).
+  belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`).
+  The melt of the convergent band's shortening past the Hc ceiling is placed the same way
+  (`_place_ceiling_overflow`). An oceanic plate also carves out contested patches the peel
+  can't reach from its edge (the line engine's interior-subduction carve-out,
+  `_carve_interior`).
 - **Advance** activates the empty cell across each exposed side of an eligible boundary
   cell, wherever no neighbour already covers it, again in layers. Ordinary new ground is a
   rift opening (`_open_rift`): the share of each new cell's footprint that lines up with the
@@ -167,19 +170,27 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         node_weight=areas / nominal_area_m2,
     )
     near_field_dist = hop_distance(plate, ctx.convergent, ctx.orogen_dilation_nodes) if ctx.orogen_dilation_nodes > 0 else None
+    fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
+    ceiling_overflow = np.zeros(plate.node_count())
+    strained: dict[str, np.ndarray] = {}
     columns = deform_columns(
         world,
         plate,
         ctx,
         slice(None),
-        {name: plate.collect(name) for name in COLUMN_FIELDS},
+        fields,
         near_field_dist,
         lambda: plate.surface_nodes().local_xyz,
         areas,
         _COLUMN_RNG_INDEX,
         years,
+        ceiling_overflow=ceiling_overflow,
+        strained=strained,
     )
+    columns.update(_column_thermal_state(plate, fields, strained, columns))
     plate.set_fields_on_plate(**columns)
+
+    _place_ceiling_overflow(plate, world, ceiling_overflow, ctx.inputs.direction_to_neighbor)
 
     max_cells = max(1, round(MAX_EXTEND_NODES_PER_STEP * np.sqrt(world.node_density)))
     before = phase_budget.snapshot(plate, spacing_rad) if world.debug_diagnostics else None
@@ -201,15 +212,134 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
             phase_budget.record_snapshots(world, plate, "boundary_advance", before, after)
             before = after
 
-    # Standing orogens collapse and flow into their surroundings (issue #290), making room
-    # for next step's suture accretion before any of it may delaminate.
-    orogeny.relax_orogens(plate, world, years)
+    # Standing orogens heat up, partially melt, and collapse and flow into their surroundings
+    # (issue #290), making room for next step's suture accretion before any of it may
+    # delaminate.
+    orogeny.evolve_standing_orogens(plate, world, years)
     if world.debug_diagnostics:
         phase_budget.record_snapshots(world, plate, "orogenic_relief", before, phase_budget.snapshot(plate, spacing_rad))
 
 
+def _column_thermal_state(
+    plate: "PlateWithSparseQuadPatch", before: dict, strained: dict, after: dict
+) -> dict[str, np.ndarray]:
+    """The thermal lag and restite after `deform_columns` (issue #290), from `strained`, its
+    columns with only this step's tectonic strain applied. Shortening buries the Moho with
+    its old temperature and rift thinning exhumes it (`orogeny.bury_moho`: a positive or a
+    negative lag); arc and rift magma arrive hot and leave the lag alone. Restite is a share
+    of its column, so it thickens and thins with the strain. A column that melted through was
+    reset: it starts at steady state, with no restite, as does one that is now oceanic."""
+    hc0, hm0 = before["crustal_thickness_m"], before["mantle_lithosphere_thickness_m"]
+    hc_strained, hm_strained = strained["crustal_thickness_m"], strained["mantle_lithosphere_thickness_m"]
+    lag = orogeny.bury_moho(plate.collect("moho_thermal_lag_c"), hc0, hm0, hc_strained, hm_strained)
+    restite = plate.collect("restite_m") * np.divide(hc_strained, hc0, out=np.ones(len(hc0)), where=hc0 > 0.0)
+    melted = strained["melted"]
+    continental = effective_is_continental_from_codes(after["crust_type_code"], plate.crust_type == "continental")
+    restite = np.where(continental & ~melted, np.clip(restite, 0.0, after["crustal_thickness_m"]), 0.0)
+    return {"moho_thermal_lag_c": np.where(melted, 0.0, lag), "restite_m": restite}
+
+
+def _place_ceiling_overflow(
+    plate: "PlateWithSparseQuadPatch",
+    world: "World",
+    overflow_hc: np.ndarray,
+    convergence_xyz: np.ndarray | None,
+) -> None:
+    """Melt out the convergent band's shortening past `MAX_CRUSTAL_THICKNESS_M`
+    (`deform_columns`' ceiling overflow, thickness per cell) -- issue #290. The overflow is
+    the bottom of its column, so it melts at that column's (lagged) Moho temperature:
+    `orogeny.melt_fraction` of it, nothing at all from a column still cold after thickening.
+    That melt rises and spreads, so each edge-connected run of overflowing cells places it
+    through the same staged `_place_suture_crust` a suture front uses, seeded at those cells:
+    belts, escape along strike, then the far field. It intrudes hot, so it neither sheds roots
+    to make room nor buries anyone's Moho. The refractory residue founders with the root it
+    came from (`ceiling_overflow_residue_m3`), and melt with no outlet is dropped
+    (`ceiling_overflow_no_outlet_m3`).
+
+    The shortening increment was never in the continental-material tracer, so none of this
+    touches the ledger. On quad plates this replaces `rheology.apply_delamination_melt_intrusion`,
+    which intruded a fixed 35% of the overflow into the near-field ring at a capped rate and
+    dropped the rest unbooked. Placing all of it instead fills the continents with crust the
+    tracer never counted and leaves sutures' real crust nowhere to go."""
+    areas = plate.node_areas_m2()
+    overflowing = np.flatnonzero(overflow_hc * areas > 0.0)
+    if not len(overflowing):
+        return
+    hc = plate.collect("crustal_thickness_m")
+    hm = plate.collect("mantle_lithosphere_thickness_m")
+    codes = plate.collect("crust_type_code")
+    continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    melt_fraction = orogeny.melt_fraction(orogeny.moho_temperature_c(hc, hm, plate.collect("moho_thermal_lag_c")))
+    adjacency = _adjacency_matrix(plate)
+    points = plate.surface_nodes().local_xyz
+    convergence_local = (
+        geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
+    )
+    hc_before = hc.copy()
+    changed = np.zeros(len(hc), dtype=bool)
+    _, labels = connected_components(adjacency[overflowing][:, overflowing], directed=False)
+    for label in np.unique(labels):
+        front = overflowing[labels == label]
+        volume = float(overflow_hc[front] @ areas[front])
+        melt = float((overflow_hc[front] * melt_fraction[front]) @ areas[front])
+        orogeny.record(world, "ceiling_overflow_m3", volume)
+        orogeny.record(world, "ceiling_overflow_residue_m3", volume - melt)
+        if melt <= 0.0:
+            continue
+        filled, stages = _place_suture_crust(
+            hc,
+            areas,
+            adjacency,
+            points,
+            front,
+            continental == bool(np.mean(continental[front]) >= 0.5),
+            melt,
+            SUTURE_ACCRETION_MAX_HC_M,
+            _suture_strike(points, front, convergence_local),
+            None,
+        )
+        changed |= filled
+        no_outlet = stages["no_outlet_delaminated_m3"]
+        orogeny.record(world, "ceiling_overflow_melt_placed_m3", max(melt - no_outlet, 0.0))
+        orogeny.record(world, "ceiling_overflow_no_outlet_m3", no_outlet)
+    if not np.any(changed):
+        return
+    density = lithosphere.node_crust_density(codes, plate.crust_type)
+    shift = lithosphere.isostatic_elevation(hc, hm, density) - lithosphere.isostatic_elevation(hc_before, hm, density)
+    plate.set_fields_on_plate(
+        crustal_thickness_m=hc,
+        elevation=rheology.clip_elevation_bounds(plate.collect("elevation") + shift),
+    )
+
+
+def _book_shed_roots(
+    world: "World | None",
+    material: np.ndarray,
+    craton: np.ndarray,
+    restite: np.ndarray,
+    areas: np.ndarray,
+    hc_before: np.ndarray,
+    shed: np.ndarray,
+) -> None:
+    """In place: delaminated roots (`shed`, thickness per cell) take their columns' continental
+    material and cratonic crust with them (`_shed_provenance`), and they are restite first --
+    the dense residue at the base of the column. Books all three."""
+    shed_material, shed_craton = _shed_provenance(material, craton, hc_before, shed)
+    shed_restite = np.minimum(restite, shed)
+    restite -= shed_restite
+    if world is not None:
+        continental_ledger.record(world, "delaminated_lower_crust_m3", float(shed_material @ areas))
+        cratons.record(world, "delaminated_m3", float(shed_craton @ areas))
+        orogeny.record(world, "restite_delaminated_m3", float(shed_restite @ areas))
+
+
 def _retreat(
-    plate: "PlateWithSparseQuadPatch", world: "World", ctx, max_distance: float, max_cells: int, years: float = 0.0
+    plate: "PlateWithSparseQuadPatch",
+    world: "World",
+    ctx,
+    max_distance: float,
+    max_cells: int,
+    years: float = 0.0,
 ) -> np.ndarray:
     """Peel retreatable boundary cells, layer by layer -- see the module docstring. Returns the
     survivor mask over the pre-retreat node order. `years` sets how much of the receiving
@@ -357,11 +487,12 @@ def _accrete_onto_survivors(
     Hm spreads through the belts and delaminates past them, as an over-thickened mantle
     root does.
 
-    Each front's continental-derived material (`continental_material_m`) travels with the Hc
-    it placed and its delaminated share is booked to the continental ledger; its cratonic
-    crust becomes ordinary orogenic crust (craton ledger: collision reworked) or delaminates.
-    A relocated terrane keeps both whole. Booking needs `world`; without one only the fields
-    move."""
+    Each front's continental-derived material (`continental_material_m`) and restite travel
+    with the Hc it placed and its delaminated share is booked to the continental ledger; its
+    cratonic crust becomes ordinary orogenic crust (craton ledger: collision reworked) or
+    delaminates. A relocated terrane keeps all three whole. Shed roots are restite first.
+    Receivers' Moho is buried under the crust they take (`orogeny.bury_moho`). Booking needs
+    `world`; without one only the fields move."""
     survivor_idx = np.flatnonzero(survivors)
     if not len(survivor_idx):
         return
@@ -381,11 +512,10 @@ def _accrete_onto_survivors(
     material = plate.collect("continental_material_m")
     craton = plate.collect("craton_crust_m")
     formed = plate.collect("craton_formed_years")
+    restite = plate.collect("restite_m")
     # Dense-root volume each surviving continental column may shed this step, drawn down
     # as fronts use it so two fronts sharing a belt can't both spend it.
-    root_capacity = np.where(
-        survivors & continental, orogeny.delamination_capacity_m(hc, hm, years / 1_000_000.0) * areas, 0.0
-    )
+    root_capacity = np.where(survivors, orogeny.plate_delamination_capacity_m3(plate, continental, years), 0.0)
     convergence_local = (
         geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
     )
@@ -401,6 +531,7 @@ def _accrete_onto_survivors(
             hc_front_start = hc.copy()
             material_volume = float(np.dot(material[front], areas[front]))
             craton_volume = float(np.dot(craton[front], areas[front]))
+            restite_volume = float(np.dot(restite[front], areas[front]))
             typed_survivors = survivors & (continental == donor_type)
             hc_volume = float(np.sum(hc[front] * areas[front]))
             hm_volume = float(np.sum(hm[front] * areas[front]))
@@ -441,6 +572,8 @@ def _accrete_onto_survivors(
                         material, craton, formed, areas, hc - hc_front_start, front, continental & ~was_continental,
                         material_volume, craton_volume,
                     )
+                    terrane_cells = continental & ~was_continental
+                    restite[terrane_cells] = restite_volume / float(areas[terrane_cells].sum())
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -463,8 +596,8 @@ def _accrete_onto_survivors(
                 shed,
             )
             # The shed roots take their own columns' continental material and cratonic
-            # crust with them, in proportion to the column they left.
-            shed_material, shed_craton = _shed_provenance(material, craton, hc_front_start, shed)
+            # crust with them, in proportion to the column they left, and are restite first.
+            _book_shed_roots(world, material, craton, restite, areas, hc_front_start, shed)
             changed |= filled
             stuck = stages["no_outlet_delaminated_m3"]
             spill_cells = survivors & ~continental
@@ -494,18 +627,18 @@ def _accrete_onto_survivors(
                 share = stuck / hc_volume
                 handed = _hand_to_overrider(
                     world, plate, front, overriders, stuck, share * material_volume, convergence_xyz, years,
+                    share * restite_volume,
                 )
                 handed_share = handed / hc_volume
                 stages["overrider_placed_m3"] = handed
                 stages["no_outlet_delaminated_m3"] = max(stuck - handed, 0.0)
             placed_share = _carry_material(material, areas, hc - hc_front_start + shed, hc_volume, material_volume)
+            _carry_material(restite, areas, hc - hc_front_start + shed, hc_volume, restite_volume)
             lost_share = max(1.0 - placed_share - handed_share, 0.0)
             if world is not None:
-                continental_ledger.record(
-                    world, "delaminated_lower_crust_m3", lost_share * material_volume + float(shed_material @ areas)
-                )
+                continental_ledger.record(world, "delaminated_lower_crust_m3", lost_share * material_volume)
                 cratons.record(world, "collision_reworked_m3", (1.0 - lost_share) * craton_volume)
-                cratons.record(world, "delaminated_m3", lost_share * craton_volume + float(shed_craton @ areas))
+                cratons.record(world, "delaminated_m3", lost_share * craton_volume)
                 orogeny.record(world, "suture_donated_m3", hc_volume)
                 for account, volume in stages.items():
                     orogeny.record(world, account, volume)
@@ -525,6 +658,8 @@ def _accrete_onto_survivors(
     before = lithosphere.isostatic_elevation(hc_before[gained], hm_before[gained], density_before)
     after = lithosphere.isostatic_elevation(hc[gained], hm[gained], density_after)
     elevation[gained] = rheology.clip_elevation_bounds(elevation_before[gained] + (after - before))
+    lag = plate.collect("moho_thermal_lag_c")
+    lag[gained] = orogeny.bury_moho(lag[gained], hc_before[gained], hm_before[gained], hc[gained], hm[gained])
     plate.set_fields_on_plate(
         crustal_thickness_m=hc,
         mantle_lithosphere_thickness_m=hm,
@@ -533,6 +668,8 @@ def _accrete_onto_survivors(
         continental_material_m=material,
         craton_crust_m=craton,
         craton_formed_years=formed,
+        restite_m=np.minimum(restite, hc),
+        moho_thermal_lag_c=lag,
     )
 
 
@@ -799,14 +936,16 @@ def _hand_to_overrider(
     material_volume: float,
     convergence_xyz: np.ndarray | None,
     years: float,
+    restite_volume: float = 0.0,
 ) -> float:
     """Accrete `volume` of a consumed front's Hc onto the quad plate overriding it, through the
     same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest the
     front. The overrider is the candidate containing most of the front's cell centres (the
     nearest one if none does). The front's continental material goes with the Hc it placed, in
-    proportion; its cratonic crust becomes ordinary orogenic crust, which the caller books. The
-    overrider's own belts may shed eligible roots to make room, booked here with their own
-    provenance. Whatever the overrider can't hold is left for the caller's terminal remainder.
+    proportion, and so does its `restite_volume`; its cratonic crust becomes ordinary orogenic
+    crust, which the caller books. The overrider's own belts may shed eligible roots to make
+    room, booked here with their own provenance, and the Moho of the cells that take crust is
+    buried under it. Whatever the overrider can't hold is left for the caller's terminal remainder.
     Returns the Hc volume placed on the overrider."""
     candidates = [p for p in overriders if p is not plate and hasattr(p, "adjacency") and p.node_count() > 0]
     if not candidates or volume <= 0.0:
@@ -830,10 +969,12 @@ def _hand_to_overrider(
     codes = over.collect("crust_type_code")
     material = over.collect("continental_material_m")
     craton = over.collect("craton_crust_m")
+    restite = over.collect("restite_m")
+    lag = over.collect("moho_thermal_lag_c")
     elevation = over.collect("elevation")
     continental = effective_is_continental_from_codes(codes, over.crust_type == "continental")
     eligible = continental.copy() if np.any(continental) else np.ones(len(hc), dtype=bool)
-    root_capacity = np.where(continental, orogeny.delamination_capacity_m(hc, hm, years / 1_000_000.0) * areas, 0.0)
+    root_capacity = orogeny.plate_delamination_capacity_m3(over, continental, years)
     points = over.surface_nodes().local_xyz
     convergence_local = None
     if convergence_xyz is not None:
@@ -852,11 +993,10 @@ def _hand_to_overrider(
     placed = max(volume - stages["no_outlet_delaminated_m3"], 0.0)
     if placed <= 0.0:
         return 0.0
-    shed_material, shed_craton = _shed_provenance(material, craton, hc_before, shed)
+    _book_shed_roots(world, material, craton, restite, areas, hc_before, shed)
     _carry_material(material, areas, hc - hc_before + shed, volume, material_volume)
+    _carry_material(restite, areas, hc - hc_before + shed, volume, restite_volume)
     if world is not None:
-        continental_ledger.record(world, "delaminated_lower_crust_m3", float(shed_material @ areas))
-        cratons.record(world, "delaminated_m3", float(shed_craton @ areas))
         for account in (
             "suture_belt_placed_m3", "escape_attempted_m3", "escape_placed_m3", "delamination_attempted_m3",
             "delamination_completed_m3", "far_field_placed_m3",
@@ -868,7 +1008,15 @@ def _hand_to_overrider(
         hc_before[gained], hm[gained], density[gained]
     )
     elevation[gained] = rheology.clip_elevation_bounds(elevation[gained] + shift)
-    over.set_fields_on_plate(crustal_thickness_m=hc, continental_material_m=material, craton_crust_m=craton, elevation=elevation)
+    lag[gained] = orogeny.bury_moho(lag[gained], hc_before[gained], hm[gained], hc[gained], hm[gained])
+    over.set_fields_on_plate(
+        crustal_thickness_m=hc,
+        continental_material_m=material,
+        craton_crust_m=craton,
+        restite_m=np.minimum(restite, hc),
+        moho_thermal_lag_c=lag,
+        elevation=elevation,
+    )
     return placed
 
 

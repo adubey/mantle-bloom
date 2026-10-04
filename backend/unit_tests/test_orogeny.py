@@ -1,5 +1,5 @@
-"""Orogenic relief before delamination (issue #290): the thermal proxy, crust states, and
-collapse / ductile flow on standing quad orogens -- see orogeny.py."""
+"""Orogenic relief before delamination (issue #290): the thermal proxy and its lag, crust
+states, anatexis, and collapse / ductile flow on standing quad orogens -- see orogeny.py."""
 
 import numpy as np
 import pytest
@@ -87,6 +87,148 @@ def test_delamination_capacity_is_rate_limited_and_zero_without_elapsed_time():
     assert orogeny.delamination_capacity_m(hc, hm, 1e6)[0] == pytest.approx(root)
 
 
+# --- Thermal lag --------------------------------------------------------------------------
+
+
+def test_thickening_buries_the_moho_with_its_old_temperature_and_the_lag_then_decays():
+    hc0, hm0 = np.array([REF_HC]), np.array([REF_HM])
+    hc1, hm1 = 2 * hc0, 1.5 * hm0
+    before = orogeny.moho_temperature_c(hc0, hm0)[0]
+    lag = orogeny.bury_moho(np.zeros(1), hc0, hm0, hc1, hm1)
+    assert orogeny.moho_temperature_c(hc1, hm1, lag)[0] == pytest.approx(before)
+    assert orogeny.moho_temperature_c(hc1, hm1)[0] > before + 200.0
+
+    decayed = orogeny.relax_thermal_lag(lag, orogeny.THERMAL_RELAXATION_MYR)
+    assert decayed[0] == pytest.approx(lag[0] / np.e)
+    # Exact decay: the same span in many steps lands in the same place.
+    stepped = lag
+    for _ in range(40):
+        stepped = orogeny.relax_thermal_lag(stepped, 1.0)
+    assert stepped[0] == pytest.approx(orogeny.relax_thermal_lag(lag, 40.0)[0], rel=1e-12)
+
+
+def test_thinning_leaves_the_moho_briefly_hotter_than_its_steady_state():
+    hc0, hm0 = np.array([2 * REF_HC]), np.array([REF_HM])
+    lag = orogeny.bury_moho(np.zeros(1), hc0, hm0, 0.8 * hc0, hm0)
+    assert lag[0] < 0.0
+    assert orogeny.moho_temperature_c(0.8 * hc0, hm0, lag)[0] == pytest.approx(orogeny.moho_temperature_c(hc0, hm0)[0])
+
+
+def test_freshly_thickened_crust_only_melts_and_delaminates_once_it_has_heated():
+    hc0, hm0 = np.array([REF_HC]), np.array([REF_HM])
+    hc1 = np.array([75_000.0])
+    lag = orogeny.bury_moho(np.zeros(1), hc0, hm0, hc1, hm0)
+    continental = np.array([True])
+
+    assert orogeny.crust_state(hc1, hm0, continental, lag)[0] == orogeny.CRUST_STATE_COLD_STRONG
+    assert orogeny.delaminable_root_m(hc1, hm0, lag)[0] == 0.0
+    assert orogeny.anatexis_yield_m(hc1, hm0, lag, np.zeros(1), 1.0)[0][0] == 0.0
+
+    warm = orogeny.relax_thermal_lag(lag, 4 * orogeny.THERMAL_RELAXATION_MYR)
+    assert orogeny.crust_state(hc1, hm0, continental, warm)[0] == orogeny.CRUST_STATE_DELAMINATION_ELIGIBLE
+    assert orogeny.anatexis_yield_m(hc1, hm0, warm, np.zeros(1), 1.0)[0][0] > 0.0
+
+
+# --- Anatexis and restite -----------------------------------------------------------------
+
+
+def test_anatexis_needs_a_hot_moho_and_is_rate_limited():
+    hm = np.array([REF_HM, REF_HM])
+    hc = np.array([REF_HC, 70_000.0])
+    melt, residue = orogeny.anatexis_yield_m(hc, hm, np.zeros(2), np.zeros(2), 1.0)
+    assert melt[0] == residue[0] == 0.0
+    assert melt[1] > 0.0 and residue[1] > melt[1]
+    # Never more than the rate allows of the zone above the solidus, and never more than
+    # `MAX_MELT_FRACTION` of what it processes.
+    moho = orogeny.moho_temperature_c(hc[1:], hm[1:])[0]
+    zone = hc[1] * (moho - orogeny.MELT_ONSET_MOHO_C) / (moho - orogeny.SURFACE_TEMPERATURE_C)
+    processed = melt[1] + residue[1]
+    assert processed == pytest.approx(zone * (1.0 - np.exp(-orogeny.ANATEXIS_RATE_PER_MYR)))
+    assert melt[1] <= orogeny.MAX_MELT_FRACTION * processed
+    assert orogeny.anatexis_yield_m(hc, hm, np.zeros(2), np.zeros(2), 0.0)[0][1] == 0.0
+
+
+def test_restite_cannot_melt_again():
+    hc, hm = np.array([70_000.0]), np.array([REF_HM])
+    fresh, _ = orogeny.anatexis_yield_m(hc, hm, np.zeros(1), np.zeros(1), 1.0)
+    depleted, _ = orogeny.anatexis_yield_m(hc, hm, np.zeros(1), np.array([5_000.0]), 1.0)
+    spent, _ = orogeny.anatexis_yield_m(hc, hm, np.zeros(1), hc.copy(), 1.0)
+    assert fresh[0] > depleted[0] > 0.0
+    assert spent[0] == 0.0
+
+
+def test_restite_adds_a_dense_root_above_the_eclogite_transition():
+    # 56 km of hot crust has only 6 km below 50 km -- too thin to founder -- until melting
+    # leaves 12 km of restite at its base.
+    hc, hm = np.array([56_000.0]), np.array([80_000.0])
+    lag = np.zeros(1)
+    assert orogeny.moho_temperature_c(hc, hm)[0] >= orogeny.DELAMINATION_MIN_MOHO_C
+    assert orogeny.delaminable_root_m(hc, hm, lag)[0] == 0.0
+    assert orogeny.delaminable_root_m(hc, hm, lag, np.array([12_000.0]))[0] == pytest.approx(12_000.0)
+    assert orogeny.delaminable_root_m(hc, hm, lag, np.array([3_000.0]))[0] == 0.0
+
+
+def test_anatexis_books_melt_and_residue_and_conserves_crust_and_provenance():
+    plate = _strip(12, _peak(72_000.0, width=3))
+    plate.set_fields_on_plate(continental_material_m=0.5 * plate.collect("crustal_thickness_m"))
+    world = _world(plate)
+    hc_before = plate.collect("crustal_thickness_m")
+    volume, material = _volume(plate), _volume(plate, "continental_material_m")
+
+    orogeny.anatexis(plate, world, 1_000_000.0)
+
+    budget = world.orogenic_relief_budget
+    assert budget["anatexis_melt_extracted_m3"] > 0.0
+    assert budget["anatexis_melt_relaminated_m3"] > 0.0
+    assert budget["anatexis_melt_emplaced_m3"] + budget["anatexis_melt_relaminated_m3"] == pytest.approx(
+        budget["anatexis_melt_extracted_m3"], rel=1e-12
+    )
+    assert _volume(plate, "restite_m") == pytest.approx(budget["anatexis_residue_m3"], rel=1e-12)
+    assert _volume(plate) == pytest.approx(volume, rel=1e-12)
+    assert _volume(plate, "continental_material_m") == pytest.approx(material, rel=1e-12)
+    hc = plate.collect("crustal_thickness_m")
+    # Only the plateau's edge column has a thinner neighbour to relaminate into, and only it
+    # sends `ANATEXIS_RELAMINATION_FRACTION` of its melt there; the interior keeps its melt.
+    melt, _ = orogeny.anatexis_yield_m(hc_before, plate.collect("mantle_lithosphere_thickness_m"), np.zeros(12), np.zeros(12), 1.0)
+    edge_melt = float(melt[2] * plate.node_areas_m2()[2])
+    assert budget["anatexis_melt_relaminated_m3"] == pytest.approx(orogeny.ANATEXIS_RELAMINATION_FRACTION * edge_melt, rel=1e-9)
+    assert np.array_equal(hc[:2], hc_before[:2])
+    assert hc[2] < hc_before[2] and hc[3] > hc_before[3]
+    assert np.array_equal(hc[4:], hc_before[4:])
+    continental_ledger.assert_closed(world)
+
+
+def test_relaminated_melt_never_enters_oceanic_cells():
+    def build(plate):
+        hc = np.full(plate.node_count(), 72_000.0)
+        hc[4] = 7_000.0
+        return hc
+
+    plate = _strip(5, build)
+    codes = plate.collect("crust_type_code")
+    codes[4] = CRUST_TYPE_OCEANIC
+    plate.set_fields_on_plate(crust_type_code=codes)
+    world = _world(plate)
+
+    orogeny.anatexis(plate, world, 1_000_000.0)
+
+    assert plate.collect("crustal_thickness_m")[4] == 7_000.0
+    assert plate.collect("restite_m")[4] == 0.0
+    budget = world.orogenic_relief_budget
+    assert budget["anatexis_melt_extracted_m3"] > 0.0
+    assert budget["anatexis_melt_relaminated_m3"] == 0.0
+
+
+def test_evolving_standing_orogens_relaxes_the_lag():
+    plate = _strip(4)
+    world = _world(plate)
+    plate.set_fields_on_plate(moho_thermal_lag_c=np.full(4, 200.0))
+
+    orogeny.evolve_standing_orogens(plate, world, 10_000_000.0)
+
+    np.testing.assert_allclose(plate.collect("moho_thermal_lag_c"), 200.0 * np.exp(-10.0 / orogeny.THERMAL_RELAXATION_MYR))
+
+
 # --- Collapse and ductile flow ------------------------------------------------------------
 
 
@@ -120,6 +262,18 @@ def test_crust_below_the_collapse_onset_does_not_flow():
     orogeny.relax_orogens(plate, world, 10_000_000.0)
 
     assert np.array_equal(plate.collect("crustal_thickness_m"), before)
+
+
+def test_a_lagging_moho_keeps_thickened_crust_from_flowing_ductilely():
+    def ductile(lag: float) -> float:
+        plate = _strip(12, _peak(70_000.0))
+        plate.set_fields_on_plate(moho_thermal_lag_c=np.full(plate.node_count(), lag))
+        world = _world(plate)
+        orogeny.relax_orogens(plate, world, 1_000_000.0)
+        return world.orogenic_relief_budget["ductile_flow_transferred_m3"]
+
+    assert ductile(0.0) > 0.0
+    assert ductile(400.0) == 0.0
 
 
 def test_hot_crust_flows_faster_than_cold_crust_of_the_same_thickness():

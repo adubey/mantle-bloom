@@ -339,6 +339,9 @@ def apply_arc_magmatic_thickening(
 # this is deliberately *not* a strict crustal-mass-conservation law (real crust isn't one
 # either, once magmatic transport is in the picture), only a bound on how fast new crust can
 # plausibly show up in one place.
+#
+# Line engine only. The quad engine places its ceiling overflow through the staged suture
+# placement and leaves melting to `orogeny.anatexis` (issue #290).
 GRANITIC_MELT_FRACTION = 0.35
 DELAMINATION_MELT_INTRUSION_RATE_M_PER_MYR = 300.0
 

@@ -51,9 +51,11 @@ def main() -> None:
         current.update(plate_id=plate.plate_id, step=world.steps_taken if world is not None else -1)
         return original_accrete(plate, donors, survivors, world, **kwargs)
 
-    def place(thickness, areas, adjacency, points, front, eligible, volume, cap, strike, root_capacity):
+    def place(thickness, areas, adjacency, points, front, eligible, volume, cap, strike, root_capacity, shed=None):
         room = float(np.dot(np.maximum(cap - thickness[eligible], 0.0), areas[eligible]))
-        changed, stages = original_place(thickness, areas, adjacency, points, front, eligible, volume, cap, strike, root_capacity)
+        changed, stages = original_place(
+            thickness, areas, adjacency, points, front, eligible, volume, cap, strike, root_capacity, shed
+        )
         if stages["no_outlet_delaminated_m3"] > 0.0:
             fronts.append({
                 **current,
