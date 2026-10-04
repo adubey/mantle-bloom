@@ -1,0 +1,32 @@
+{
+  "command": "bin/debug/surface_parity.py paired --preset long --checkpoints-myr 30,120,240,352 --seeds 804913535 --jobs 2 --render --out ../analysis/issue249-campaign3/repro-equivalent",
+  "git_commit": "fa7ecdf407704f385c208e2e60e7c0929c11c368",
+  "git_dirty": false,
+  "python": "3.14.6",
+  "numpy": "2.5.2",
+  "scipy": "1.18.0",
+  "machine": "arm64",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "config": {
+    "name": "long",
+    "node_density": 1.0,
+    "step_years": 1000000.0,
+    "checkpoints_myr": [
+      30.0,
+      120.0,
+      240.0,
+      352.0
+    ],
+    "audit_every": 10,
+    "samples": 200000,
+    "climate_density": null,
+    "fluid_density": 1.0,
+    "load_checks": true,
+    "render": true,
+    "render_size": [
+      720,
+      400
+    ]
+  },
+  "jobs": 2
+}
