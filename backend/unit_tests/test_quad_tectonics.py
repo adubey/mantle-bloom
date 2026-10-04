@@ -408,10 +408,14 @@ def test_suture_delamination_needs_an_eligible_root_and_is_bounded():
     areas = a.node_areas_m2()
     hc = a.collect("crustal_thickness_m")
     hm = a.collect("mantle_lithosphere_thickness_m")
-    donated = float(hc[0] * areas[0])
-    before = float(hc[survivors] @ areas[survivors])
+    # Belts half continental-derived, donor wholly: the delaminated material's fraction then
+    # tells whose crust sank.
     belts = np.zeros(len(hc), dtype=bool)
     belts[1 : quad_tectonics.SUTURE_ACCRETION_MAX_HOPS + 1] = True
+    material = np.where(belts, 0.5 * hc, hc)
+    a.set_fields_on_plate(continental_material_m=material)
+    donated = float(hc[0] * areas[0])
+    before = float(hc[survivors] @ areas[survivors])
     capacity = float(orogeny.delamination_capacity_m(hc[belts], hm[belts], 1.0) @ areas[belts])
     assert capacity > 0.0  # near-cap belts are hot and carry an eclogitic root
 
@@ -421,10 +425,12 @@ def test_suture_delamination_needs_an_eligible_root_and_is_bounded():
     budget = world.orogenic_relief_budget
     assert lost == pytest.approx(budget["delamination_completed_m3"], rel=1e-9)
     assert 0.0 < lost <= min(capacity, quad_tectonics.SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION * donated) * (1 + 1e-9)
+    # The belts' own roots sank, carrying their half-continental provenance; the donor's
+    # crust and all its material were placed.
+    delaminated = world.continental_material_ledger["delaminated_lower_crust_m3"]
+    assert delaminated == pytest.approx(0.5 * lost, rel=1e-9)
     material_after = float(a.collect("continental_material_m")[survivors] @ areas[survivors])
-    assert material_after + world.continental_material_ledger["delaminated_lower_crust_m3"] == pytest.approx(
-        float(hc @ areas), rel=1e-9
-    )
+    assert material_after + delaminated == pytest.approx(float(material @ areas), rel=1e-9)
 
 
 def test_full_belts_without_an_eclogitic_root_never_delaminate():
@@ -560,6 +566,38 @@ def test_a_consumed_saturated_plate_accretes_its_crust_onto_the_overriding_plate
     bi, _ = _columns(b)
     grew = b.collect("crustal_thickness_m") > lithosphere.REFERENCE_HC_CONTINENTAL_M + 1.0
     assert bi[grew].min() <= 13 + quad_tectonics.SUTURE_ACCRETION_MAX_HOPS
+
+
+def test_the_overriding_plate_sheds_its_own_roots_not_the_handed_crust():
+    a = _plate(1, _block((10, 14), (20, 24)), "continental",
+               crustal_thickness_m=np.full(16, SUTURE_ACCRETION_MAX_HC_M))
+    # A hot overrider whose whole continent is near the cap, half continental-derived.
+    b_hc = np.full(27 * 24, SUTURE_ACCRETION_MAX_HC_M - 500.0)
+    b = _plate(2, _block((13, 40), (10, 34)), "continental", crustal_thickness_m=b_hc)
+    b.set_fields_on_plate(continental_material_m=0.5 * b_hc)
+    world = _world(a, b)
+    continental_ledger.ensure_initialized(world)
+    i, _ = _columns(a)
+    donors = i == 13
+    a_areas, b_areas = a.node_areas_m2(), b.node_areas_m2()
+    donated = float(a.collect("crustal_thickness_m")[donors] @ a_areas[donors])
+    donor_material = float(a.collect("continental_material_m")[donors] @ a_areas[donors])
+    b_material_before = float(b.collect("continental_material_m") @ b_areas)
+    b_hc_before = float(b.collect("crustal_thickness_m") @ b_areas)
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world, years=1_000_000.0, overriders=[b])
+
+    budget = world.orogenic_relief_budget
+    handed = budget["overrider_placed_m3"]
+    assert handed > 0.0
+    # Whatever `b` didn't net-gain of what it was handed is root it shed to make room.
+    b_shed = handed - (float(b.collect("crustal_thickness_m") @ b_areas) - b_hc_before)
+    assert b_shed > 0.0
+    # `b` lost half-continental root and kept all the handed crust's material (wholly
+    # continental, in proportion to what was handed).
+    handed_material = donor_material * handed / donated
+    b_material_after = float(b.collect("continental_material_m") @ b_areas)
+    assert b_material_after == pytest.approx(b_material_before + handed_material - 0.5 * b_shed, rel=1e-9)
 
 
 def test_suture_accretion_conserves_volume_across_unequal_area_cells():

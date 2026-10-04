@@ -270,7 +270,7 @@ def test_subducted_cells_book_their_craton_and_continental_material(monkeypatch)
     assert world.continental_material_ledger["deeply_subducted_m3"] == pytest.approx(500.0 * float(areas[removed].sum()))
 
 
-def test_suture_accretion_moves_material_and_books_craton_rework_and_delamination(monkeypatch):
+def test_suture_accretion_reworks_the_donor_craton_and_delaminates_the_receivers_roots(monkeypatch):
     keys = _block((10, 30), (20, 21))
     near_cap = quad_tectonics.SUTURE_ACCRETION_MAX_HC_M - 1_500.0
     hc = np.full(len(keys), near_cap)
@@ -280,24 +280,27 @@ def test_suture_accretion_moves_material_and_books_craton_rework_and_delaminatio
     continental_ledger.ensure_initialized(world)
     donors = np.zeros(len(keys), dtype=bool)
     donors[0] = True
-    _set_craton(plate, donors)
+    # Both the donor and the receiving belt carry cratonic crust, so the test can tell whose
+    # crust is reworked and whose sinks.
+    craton = np.where(donors, hc, 5_000.0)
+    plate.set_fields_on_plate(craton_crust_m=craton)
     areas = plate.node_areas_m2()
     material_before = _volume(plate, "continental_material_m")
-    craton_volume = float(hc[0] * areas[0])
-    hc_before = float(np.dot(hc[~donors], areas[~donors]))
+    donor_craton = float(craton[0] * areas[0])
+    belt_craton_before = float(craton[~donors] @ areas[~donors])
 
     # The near-cap belts are hot enough to carry eligible dense roots (orogeny.py), so once
-    # they fill, part of the donor may delaminate over this 1 Myr.
+    # they fill, part of their own lower crust may founder over this 1 Myr to make room.
     quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, years=1_000_000.0)
 
-    placed = float(np.dot(plate.collect("crustal_thickness_m")[~donors], areas[~donors])) - hc_before
-    share = placed / craton_volume
-    assert 0.0 < share < 1.0
     ledger = world.craton_ledger
-    assert ledger["collision_reworked_m3"] == pytest.approx(share * craton_volume)
-    assert ledger["delaminated_m3"] == pytest.approx((1.0 - share) * craton_volume)
+    belt_craton_after = float(plate.collect("craton_crust_m")[~donors] @ areas[~donors])
+    assert ledger["collision_reworked_m3"] == pytest.approx(donor_craton)
+    assert ledger["delaminated_m3"] > 0.0
+    assert ledger["delaminated_m3"] == pytest.approx(belt_craton_before - belt_craton_after)
     material_after = float(np.dot(plate.collect("continental_material_m")[~donors], areas[~donors]))
     delaminated = world.continental_material_ledger["delaminated_lower_crust_m3"]
+    assert delaminated > 0.0
     assert material_after + delaminated == pytest.approx(material_before, rel=1e-9)
 
 

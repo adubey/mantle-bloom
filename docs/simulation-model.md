@@ -863,10 +863,13 @@ over-thickened crust of a suture or a standing orogen goes through these process
      within `SUTURE_ESCAPE_MAX_ANGLE_DEG` (45 degrees) of the suture's strike as seen from the
      front. The strike is perpendicular to the front's mean direction toward the overriding
      plate. A front without that direction uses its own long axis, and a compact one has none.
-  3. **Delamination.** It may delaminate from the belts' eligible roots, at most
-     `DELAMINATION_RATE_PER_MYR` (5%) of each root per Myr, integrated exactly over the step,
-     and at most `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` (20%) of the donation. Fronts
-     that share a belt share its roots.
+  3. **Delamination.** The belts shed part of their own eligible dense roots, and the incoming
+     crust takes the room that frees. What sinks is the receivers' old lower crust, with its
+     own continental material and cratonic crust in proportion; the incoming crust and its
+     provenance are all placed. A belt cell sheds at most `DELAMINATION_RATE_PER_MYR` (5%)
+     of its root per Myr, integrated exactly over the step, and a front frees at most
+     `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` (20%) of its donation this way. Fronts that
+     share a belt share its roots.
   4. **Far field.** It fills the nearest remaining capacity across the plate, one graph hop at
      a time.
   5. **Foreland spill.** When every continental receiver is full, the crust thrusts out over
