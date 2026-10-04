@@ -1028,7 +1028,7 @@ def _open_rift(
             removed = np.where(donor_oceanic, material[donors], 0.0)
             material[donors[donor_oceanic]] = 0.0
             continental_ledger.record(
-                world, "numerical_unplaced_m3",
+                world, "rift_thinned_m3",
                 float(np.dot(removed, plate.node_areas_m2()[donors])),
             )
         after = lithosphere.isostatic_elevation(new_hc, new_hm, lithosphere.node_crust_density(sub_codes, plate.crust_type))
@@ -1073,7 +1073,7 @@ def _open_rift(
         removed = np.where(cell_oceanic, cell_material, 0.0)
         cell_material[cell_oceanic] = 0.0
         continental_ledger.record(
-            world, "numerical_unplaced_m3", float(np.dot(removed, cell_area))
+            world, "rift_thinned_m3", float(np.dot(removed, cell_area))
         )
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes

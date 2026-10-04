@@ -39,6 +39,8 @@ class ContinentalMaterialLedger(TypedDict):
     delaminated_lower_crust_m3: float
     deeply_subducted_m3: float
     remelted_relaminated_returns_m3: float
+    # Rifting: stretch thinning a column's footprint can't hold on the fixed-area node, plus
+    # continental columns that melt through and reset to oceanic ridge crust.
     rift_thinned_m3: float
     numerical_unplaced_m3: float
     # Continental sediment the `ocean_deposition_multiplier` knob (< 1) declines to settle --

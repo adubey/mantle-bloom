@@ -1120,9 +1120,12 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         new_continental_material_m = np.minimum(new_continental_material_m, new_crustal_thickness_m)
         residual = material_total - float(np.sum(new_continental_material_m))
         if residual > 0.0:
+            # Spread the capped-off remainder into Hc headroom, never past it; whatever still
+            # doesn't fit is left for the caller to book (see LithospherePlate.deform).
             headroom = np.maximum(new_crustal_thickness_m - new_continental_material_m, 0.0)
-            if float(np.sum(headroom)) > 0.0:
-                new_continental_material_m += residual * headroom / float(np.sum(headroom))
+            total_headroom = float(np.sum(headroom))
+            if total_headroom > 0.0:
+                new_continental_material_m += headroom * min(residual / total_headroom, 1.0)
     # Interpolated like elevation, which it is a component of.
     new_ice_load_deflection_m = np.interp(new_theta, line.theta, line.ice_load_deflection_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto

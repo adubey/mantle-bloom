@@ -253,7 +253,7 @@ def _stretch_extend_line(
     removed = np.where(melting & ~continental, material[source_idx], 0.0)
     material[source_idx[melting & ~continental]] = 0.0
     continental_ledger.record(
-        world, "numerical_unplaced_m3", float(np.sum(removed)) * node_area
+        world, "rift_thinned_m3", float(np.sum(removed)) * node_area
     )
     crust_type_code[source_idx] = sub_crust_type
     hc[source_idx] = sub_hc

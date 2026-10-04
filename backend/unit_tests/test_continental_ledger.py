@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from app import continental_ledger, persistence
-from app.elevation_lines import CRUST_TYPE_OCEANIC, ElevationLine
+from app.elevation_lines import CRUST_TYPE_OCEANIC, ElevationLine, line_spacing_rad
 from app.plates import PlateWithLines
 from app.sparse_quad_patch import PlateWithSparseQuadPatch, pack_cell_keys
 from app.world import World
@@ -151,3 +151,84 @@ def test_balance_treats_relaminated_returns_as_a_surface_source():
         world, plate, delta, "remelted_relaminated_returns_m3"
     )
     continental_ledger.assert_closed(world)
+
+
+def test_suture_accretion_returns_material_over_the_cap():
+    from app.lithosphere import crust_density, isostatic_elevation
+    from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M, _redistribute_accreted_column
+
+    rho_c = crust_density("continental")
+    hc = np.full(6, 60_000.0)
+    fields = {
+        "crustal_thickness_m": hc,
+        "mantle_lithosphere_thickness_m": np.full(6, 100_000.0),
+        "continental_material_m": hc.copy(),
+    }
+    elevation = isostatic_elevation(hc, fields["mantle_lithosphere_thickness_m"], rho_c).copy()
+    material_before = fields["continental_material_m"].sum()
+    removed = np.full(5, 30_000.0)
+
+    unplaced = _redistribute_accreted_column(
+        fields, elevation, rho_c, removed, removed, removed, np.ones(5, dtype=bool), from_high=True,
+    )
+
+    assert np.all(fields["continental_material_m"] <= fields["crustal_thickness_m"] + 1e-9)
+    assert np.all(fields["crustal_thickness_m"] <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
+    assert unplaced > 0.0
+    assert fields["continental_material_m"].sum() + unplaced == pytest.approx(material_before + removed.sum())
+
+
+def test_regularize_line_never_lifts_material_above_host_crust():
+    """Halving a line's node count leaves less Hc than material; the remainder must stay out
+    of the one column with headroom rather than pile onto it (the caller books it)."""
+    from app.elevation_lines import regularize_line
+
+    spacing = line_spacing_rad(1.0)
+    material = np.full(9, 40_000.0)
+    material[4] = 0.0
+    line = ElevationLine(
+        phi=0.0,
+        theta=np.linspace(0.0, 4 * spacing, 9),
+        elevation=np.zeros(9),
+        crustal_thickness_m=np.full(9, 40_000.0),
+        mantle_lithosphere_thickness_m=np.full(9, 100_000.0),
+        continental_material_m=material,
+    )
+
+    regularized = regularize_line(line, spacing)
+
+    assert len(regularized) < len(line)
+    assert np.all(regularized.continental_material_m <= regularized.crustal_thickness_m + 1e-6)
+    assert regularized.continental_material_m.sum() < line.continental_material_m.sum()
+
+
+def test_leading_row_drop_books_material_it_cannot_place():
+    from app.lithosphere import MAX_CRUSTAL_THICKNESS_M, node_area_m2
+    from app.lithosphere_plate import LithospherePlate
+
+    spacing = line_spacing_rad(1.0)
+    hc = MAX_CRUSTAL_THICKNESS_M - 1_000.0
+    lines = [
+        ElevationLine(
+            phi=k * spacing,
+            theta=np.linspace(-0.1, 0.1, 20),
+            elevation=np.zeros(20),
+            crustal_thickness_m=np.full(20, hc),
+            mantle_lithosphere_thickness_m=np.full(20, 100_000.0),
+            continental_material_m=np.full(20, hc),
+        )
+        for k in range(4)
+    ]
+    plate = LithospherePlate(plate_id=0, frame=np.eye(3), crust_type="continental", lines=lines)
+    world = World(seed=0, plates=[plate], mantle_centers=[], node_density=1.0)
+    continental_ledger.ensure_initialized(world)
+    material_before = sum(float(ln.continental_material_m.sum()) for ln in lines)
+
+    kept = plate._accrete_dropped_row_volume(world, lines, {round(3 * spacing, 6): "hi"})
+
+    material_after = sum(float(ln.continental_material_m.sum()) for ln in kept)
+    ledger = world.continental_material_ledger
+    assert ledger["delaminated_lower_crust_m3"] > 0.0
+    assert (material_before - material_after) * node_area_m2(spacing) == pytest.approx(
+        ledger["delaminated_lower_crust_m3"] + ledger["deeply_subducted_m3"]
+    )
