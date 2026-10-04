@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import lithosphere, rheology
+from . import continental_ledger, lithosphere, rheology
 from .elevation_lines import (
     ELEV_CHANGE_LATERAL_MAGMA,
     ELEV_CHANGE_MIN_DELTA_M,
@@ -215,6 +215,7 @@ def run_magma_transport(world: "World", banked_myr: float) -> list[str]:
     keep their remaining volume banked; fully-placed or stale parcels are dropped -- see module
     docstring / `MAGMA_PARCEL_MAX_AGE_CYCLES`). Returns event strings for `world.log_event`;
     a no-op (returns `[]`, mutates nothing) when there are no pending parcels."""
+    continental_ledger.ensure_initialized(world)
     parcels = world.pending_magma_parcels
     if not parcels:
         return []
@@ -317,7 +318,8 @@ def _scatter_write_deposits(
         hm = plate.collect("mantle_lithosphere_thickness_m")
         rho_c = lithosphere.node_crust_density(plate.collect("crust_type_code")[node_idx], plate.crust_type)
         elevation_before = lithosphere.isostatic_elevation(hc[node_idx], hm[node_idx], rho_c)
-        new_hc_touched = np.minimum(hc[node_idx] + delta_hc, lithosphere.MAX_CRUSTAL_THICKNESS_M)
+        old_hc_touched = hc[node_idx].copy()
+        new_hc_touched = np.minimum(old_hc_touched + delta_hc, lithosphere.MAX_CRUSTAL_THICKNESS_M)
         elevation_after = lithosphere.isostatic_elevation(new_hc_touched, hm[node_idx], rho_c)
         hc[node_idx] = new_hc_touched
 
@@ -330,3 +332,8 @@ def _scatter_write_deposits(
         reason[node_idx[moved]] = ELEV_CHANGE_LATERAL_MAGMA
 
         plate.set_fields_on_plate(crustal_thickness_m=hc, elevation=elevation, elev_change_reason=reason)
+        material_delta = np.zeros(plate.node_count())
+        material_delta[node_idx] = new_hc_touched - old_hc_touched
+        continental_ledger.add_material_thickness(
+            world, plate, material_delta, "remelted_relaminated_returns_m3"
+        )

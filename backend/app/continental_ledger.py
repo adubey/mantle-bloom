@@ -26,6 +26,7 @@ LedgerAccount = Literal[
     "delaminated_lower_crust_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
+    "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
 ]
@@ -38,6 +39,9 @@ class ContinentalMaterialLedger(TypedDict):
     delaminated_lower_crust_m3: float
     deeply_subducted_m3: float
     remelted_relaminated_returns_m3: float
+    # Rifting: stretch thinning a column's footprint can't hold on the fixed-area node, plus
+    # continental columns that melt through and reset to oceanic ridge crust.
+    rift_thinned_m3: float
     numerical_unplaced_m3: float
     # Continental sediment the `ocean_deposition_multiplier` knob (< 1) declines to settle --
     # a deliberate user-tuned shelf-starving sink, kept apart from numerical clipping.
@@ -51,6 +55,7 @@ LEDGER_KEYS: tuple[LedgerAccount, ...] = (
     "delaminated_lower_crust_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
+    "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
 )
@@ -62,12 +67,12 @@ def empty_ledger() -> ContinentalMaterialLedger:
 
 def ensure_initialized(world: "World") -> None:
     """Backfill old saves and seed untracked line or quad surfaces."""
+    ledger_is_new = not hasattr(world, "continental_material_ledger") or not world.continental_material_ledger
     if not hasattr(world, "continental_material_ledger"):
-        world.continental_material_ledger = empty_ledger()
+        world.continental_material_ledger = {}
     for key in LEDGER_KEYS:
         world.continental_material_ledger.setdefault(key, 0.0)
 
-    ledger_is_new = not any(world.continental_material_ledger.values())
     tracer_is_empty = not any(
         np.any(plate.collect("continental_material_m"))
         for plate in world.plates
@@ -83,7 +88,7 @@ def ensure_initialized(world: "World") -> None:
                     is_continental, plate.collect("crustal_thickness_m"), 0.0
                 )
             )
-    if ledger_is_new and world.continental_material_ledger["initial_continental_m3"] == 0.0:
+    if ledger_is_new:
         world.continental_material_ledger["initial_continental_m3"] = surface_volume_m3(world)
 
 
@@ -109,6 +114,38 @@ def record(world: "World", account: LedgerAccount, volume_m3: float) -> None:
     world.continental_material_ledger[account] += float(volume_m3)
 
 
+def add_material_thickness(
+    world: "World",
+    plate,
+    delta_m: np.ndarray,
+    account: LedgerAccount,
+    *,
+    eligible: np.ndarray | None = None,
+) -> float:
+    """Add provenance thickness to existing nodes and book its exact volume.
+
+    ``delta_m`` is node-aligned and may contain zeros; negative values are rejected.  This is
+    the common write path for juvenile volcanism and recycled magma returns, keeping the
+    per-node tracer and the persisted volume account impossible to update separately.
+    """
+    ensure_initialized(world)
+    delta = np.asarray(delta_m, dtype=float)
+    if delta.shape != (plate.node_count(),):
+        raise ValueError(f"material thickness must have shape ({plate.node_count()},), got {delta.shape}")
+    if np.any(~np.isfinite(delta)) or np.any(delta < 0.0):
+        raise ValueError("material thickness must be finite and non-negative")
+    if eligible is not None:
+        delta = np.where(np.asarray(eligible, dtype=bool), delta, 0.0)
+    if not np.any(delta):
+        return 0.0
+    material = plate.collect("continental_material_m") + delta
+    plate.set_fields_on_plate(continental_material_m=material)
+    areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+    volume = float(np.dot(delta, areas))
+    record(world, account, volume)
+    return volume
+
+
 def inventories(world: "World") -> dict[str, float]:
     """Return current live inventories plus the persisted source/sink accounts."""
     ensure_initialized(world)
@@ -116,9 +153,7 @@ def inventories(world: "World") -> dict[str, float]:
     surface = 0.0
     sediment_on_ocean = 0.0
     for plate in world.plates:
-        material = np.clip(
-            plate.collect("continental_material_m"), 0.0, plate.collect("crustal_thickness_m")
-        )
+        material = plate.collect("continental_material_m")
         areas = plate.accounting_areas_m2(spacing)
         surface += float(np.sum(material * areas))
         host_continental = effective_is_continental_from_codes(
@@ -136,11 +171,17 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
     ledger = world.continental_material_ledger
     if surface is None:
         surface = surface_volume_m3(world)
-    sources = ledger["initial_continental_m3"] + ledger["juvenile_additions_m3"]
+    sources = (
+        ledger["initial_continental_m3"]
+        + ledger["juvenile_additions_m3"]
+        + ledger["accreted_thickened_m3"]
+        + ledger["remelted_relaminated_returns_m3"]
+    )
     sinks_and_live = (
         surface
         + ledger["delaminated_lower_crust_m3"]
         + ledger["deeply_subducted_m3"]
+        + ledger["rift_thinned_m3"]
         + ledger["numerical_unplaced_m3"]
         + ledger["discarded_marine_sediment_m3"]
     )
@@ -150,6 +191,11 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
 def assert_closed(world: "World", *, relative_tolerance: float = 1e-10) -> None:
     """Fail a diagnostic check when instrumented sources, live material and sinks differ."""
     ensure_initialized(world)
+    for plate in world.plates:
+        material = plate.collect("continental_material_m")
+        hc = plate.collect("crustal_thickness_m")
+        if np.any(~np.isfinite(material)) or np.any(material < -1e-9) or np.any(material > hc + 1e-9):
+            raise AssertionError("continental material must be finite and remain within [0, Hc]")
     ledger = world.continental_material_ledger
     error = balance_error_m3(world)
     tolerance = max(1.0, relative_tolerance * max(ledger["initial_continental_m3"], 1.0))

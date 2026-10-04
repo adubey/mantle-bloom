@@ -15,9 +15,10 @@ import numpy as np
 import pytest
 
 from app import faults, geometry, rheology
-from app.elevation_lines import ElevationLine, line_spacing_rad, regularize_line
+from app.elevation_lines import TARGET_LINE_SPACING_RAD, ElevationLine, line_spacing_rad, regularize_line
 from app.lithosphere import MIN_CRUSTAL_THICKNESS_M, MIN_MANTLE_LITHOSPHERE_THICKNESS_M
 from app.lithosphere_plate import K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION, new_plate
+from app.world import World
 
 ANGLES_DEG = [0, 15, 30, 45, 60, 75, 90, 120, 150, 180, 210, 240, 270, 300, 330, 350]
 
@@ -365,7 +366,7 @@ def test_claim_adjacent_territory_gates_and_conserves_mass_by_angle(angle_deg, m
 
     angle = np.radians(angle_deg)
     monkeypatch.setattr(plate, "_separation_components", lambda world, phi, theta, direction: (np.cos(angle), np.sin(angle)))
-    world = types.SimpleNamespace(fault_deformation_mode="boundary", seed=1, elapsed_years=0.0)
+    world = World(seed=1, plates=[plate], node_density=(TARGET_LINE_SPACING_RAD / spacing_rad) ** 2)
 
     plate._claim_adjacent_territory(world, neighbours=[], spacing_rad=spacing_rad)
 
@@ -404,7 +405,7 @@ def test_claim_adjacent_territory_never_thins_window_rows_below_the_column_floor
     ])
     lithosphere.sync_plate_elevation(plate)
     monkeypatch.setattr(plate, "_separation_components", lambda world, phi, theta, direction: (0.0, 1.0))
-    world = types.SimpleNamespace(fault_deformation_mode="boundary", seed=1, elapsed_years=0.0)
+    world = World(seed=1, plates=[plate], node_density=(TARGET_LINE_SPACING_RAD / spacing_rad) ** 2)
 
     plate._claim_adjacent_territory(world, neighbours=[], spacing_rad=spacing_rad)
 

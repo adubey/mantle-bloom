@@ -238,6 +238,8 @@ def _is_water(fields: "climate.ClimateFields", is_ocean: np.ndarray) -> np.ndarr
 
 
 def compute_stats(world: World) -> dict:
+    from . import continental_ledger
+
     hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
     hm = np.concatenate([p.collect("mantle_lithosphere_thickness_m") for p in world.plates]) if world.plates else np.empty(0)
     hc_stats = Stat4.of(hc)
@@ -288,6 +290,7 @@ def compute_stats(world: World) -> dict:
     }
 
     return {
+        "continental_material_ledger": continental_ledger.inventories(world),
         "hc_at_max_fraction": float(np.mean(hc >= lithosphere.MAX_CRUSTAL_THICKNESS_M - 1e-6)) if hc.size else None,
         **hc_stats.to_dict("hc", "_m"),
         "hm_at_max_fraction": float(np.mean(hm >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1e-6)) if hm.size else None,

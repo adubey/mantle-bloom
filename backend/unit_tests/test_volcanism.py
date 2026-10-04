@@ -1,5 +1,6 @@
 import numpy as np
-from app import lithosphere, volcanism
+import pytest
+from app import continental_ledger, lithosphere, volcanism
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World
 
@@ -48,6 +49,8 @@ def test_apply_volcanic_activity_backs_erupted_elevation_with_crustal_thickness(
     )
     plate = PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])
     world = World(seed=0, plates=[plate])
+    continental_ledger.ensure_initialized(world)
+    surface_before = continental_ledger.surface_volume_m3(world)
 
     original_hc = world.plates[0].lines[0].crustal_thickness_m.copy()
     original_elevation = world.plates[0].lines[0].elevation.copy()
@@ -61,6 +64,9 @@ def test_apply_volcanic_activity_backs_erupted_elevation_with_crustal_thickness(
     untouched = ~erupted & (new_line.elevation == original_elevation)
     if np.any(untouched):
         assert np.allclose(new_line.crustal_thickness_m[untouched], original_hc[untouched])
+    surface_gain = continental_ledger.surface_volume_m3(world) - surface_before
+    assert world.continental_material_ledger["juvenile_additions_m3"] == pytest.approx(surface_gain)
+    continental_ledger.assert_closed(world)
 
 
 def test_back_elevation_gain_does_not_launder_pre_existing_unbacked_drift_into_crust():

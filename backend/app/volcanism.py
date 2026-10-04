@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import geometry, lithosphere
+from . import continental_ledger, geometry, lithosphere
 from .elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_VOLCANIC_PLAIN,
@@ -31,6 +31,7 @@ from .elevation_lines import (
     ERUPTION_ELEVATION_M,
     MAX_ELEVATION_M,
     MIN_ELEVATION_M,
+    effective_is_continental_from_codes,
     PLANET_RADIUS_KM,
     VOLCANIC_PLAIN_ELEVATION_M,
     VOLCANIC_PLAIN_REACH_KM,
@@ -64,13 +65,26 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
     """Every step: rolls each individual active volcano's own eruption chance, adding
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain
     apron around each vent that erupted this step. Mutates world.plates in place."""
+    continental_ledger.ensure_initialized(world)
     for plate in world.plates:
+        hc_before = plate.collect("crustal_thickness_m")
         if isinstance(plate, PlateWithLines):
             erupted_points = _apply_volcanic_activity_to_lines(plate, world, years)
         else:
             erupted_points = _apply_volcanic_activity_to_surface(plate, world, years)
         if erupted_points:
             _spread_volcanic_plains(plate, world, years, erupted_points)
+        hc_after = plate.collect("crustal_thickness_m")
+        continental = effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        continental_ledger.add_material_thickness(
+            world,
+            plate,
+            np.maximum(hc_after - hc_before, 0.0),
+            "juvenile_additions_m3",
+            eligible=continental,
+        )
 
 
 def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", years: float) -> list[np.ndarray]:
