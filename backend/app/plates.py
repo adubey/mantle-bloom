@@ -1738,6 +1738,9 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
     - `cover_count`: int array aligned like `overlap_mask` -- how many *other* plates this
       node sits on (`overlap_mask` is `cover_count > 0`). Whole-world area sums divide by
       `1 + cover_count` to count overlapped ground once (issue #289).
+    - `continental_cover_count`: the same, counting only other plates whose `crust_type` is
+      continental -- the denominator for a continental-plates-only sum, where an oceanic
+      plate on top duplicates nothing.
 
     One global `cKDTree.query_pairs` over every node, so O(N log N) once rather than a
     per-pair envelope test -- the same construction main._plate_overlaps used inline before
@@ -1754,6 +1757,7 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
             "overlap_mask": np.zeros(p.node_count(), dtype=bool),
             "by_partner": {},
             "cover_count": np.zeros(p.node_count(), dtype=np.int64),
+            "continental_cover_count": np.zeros(p.node_count(), dtype=np.int64),
         }
         for p in active
     }
@@ -1790,6 +1794,8 @@ def compute_node_overlap(plate_list: list[Plate], tol_rad: float) -> dict[int, d
                 unique_local = np.unique(local[on_j])
                 result[src_plate.plate_id]["by_partner"][dst_plate.plate_id] = int(len(unique_local))
                 result[src_plate.plate_id]["cover_count"][unique_local] += 1
+                if dst_plate.crust_type == "continental":
+                    result[src_plate.plate_id]["continental_cover_count"][unique_local] += 1
     return result
 
 
@@ -1815,6 +1821,8 @@ def _contained_node_overlap(active: list[Plate], result: dict[int, dict]) -> Non
             if np.any(inside):
                 result[plate.plate_id]["overlap_mask"] |= inside
                 result[plate.plate_id]["cover_count"] += inside
+                if other.crust_type == "continental":
+                    result[plate.plate_id]["continental_cover_count"] += inside
                 result[plate.plate_id]["by_partner"][other.plate_id] = int(np.count_nonzero(inside))
 
 

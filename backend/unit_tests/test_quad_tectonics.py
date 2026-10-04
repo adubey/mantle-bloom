@@ -959,6 +959,8 @@ def test_quad_overlap_is_read_by_containment():
         assert np.any(inside)
         np.testing.assert_array_equal(overlap[plate.plate_id]["overlap_mask"], inside)
         np.testing.assert_array_equal(overlap[plate.plate_id]["cover_count"], inside.astype(int))
+        # Both plates are oceanic, so neither contributes to a continental cover count.
+        assert not overlap[plate.plate_id]["continental_cover_count"].any()
         assert overlap[plate.plate_id]["by_partner"] == {other.plate_id: int(inside.sum())}
 
 
@@ -971,6 +973,7 @@ def test_quad_overlap_sees_a_plate_buried_inside_another():
 
     assert overlap[2]["overlap_mask"].all()
     assert overlap[1]["by_partner"][2] > 0
+    assert (overlap[2]["continental_cover_count"] == 1).all()
 
 
 def test_overlap_tracking_stamps_onset_on_quad_plates():
