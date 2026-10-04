@@ -485,7 +485,13 @@ def test_apply_erosion_coastal_feedback_keeps_a_generated_world_sane():
 
 # --- Issue #275: conservative, provenance-aware redistribution -------------------------------
 
-_LEDGER_SINKS = ("delaminated_lower_crust_m3", "deeply_subducted_m3", "numerical_unplaced_m3", "discarded_marine_sediment_m3")
+_LEDGER_SINKS = (
+    "delaminated_lower_crust_m3",
+    "deeply_subducted_m3",
+    "numerical_unplaced_m3",
+    "discarded_marine_sediment_m3",
+    "overloaded_root_delaminated_m3",
+)
 
 
 def _tracked_continental_m3(world) -> float:
@@ -825,3 +831,238 @@ def test_ice_load_near_the_elevation_floor_stores_only_the_applied_deflection():
     melted, after, _ = erosion._apply_ice_load(loaded, deflection, zeros, zeros, zeros, rho, sea_level)
     assert np.all(after == 0.0)
     assert np.allclose(melted, bed)
+
+
+# --- Issue #288: depositional Hc-cap overflow is carried on, not clipped ----------------------
+
+
+def _carry(elevation, neighbors, room, excess, *, area=None, is_ocean=None, on_ice=None, lake_depth=None,
+           spill=None, ice_target=None, scour_limit=None, scour_material=None, points=None):
+    """`_carry_overflow` on a hand-built profile, with an all-river excess matrix built from
+    `excess` (volume per node) and a 0.4 continental share."""
+    n = len(elevation)
+    columns = len(erosion.OVERFLOW_PATHWAYS)
+    load = np.zeros((n, columns + 1))
+    load[:, 0] = excess
+    load[:, -1] = 0.4 * np.asarray(excess, dtype=float)
+    if points is None:
+        # Nodes ~1 km apart along the equator, so every marine/search range reaches them all.
+        lon = np.arange(n) * (1.0 / 6371.0)
+        points = np.stack([np.cos(lon), np.sin(lon), np.zeros(n)], axis=1)
+    return erosion._carry_overflow(
+        points,
+        np.asarray(elevation, dtype=float),
+        np.zeros(n, dtype=bool) if is_ocean is None else is_ocean,
+        np.zeros(n, dtype=bool) if on_ice is None else on_ice,
+        np.zeros(n) if lake_depth is None else lake_depth,
+        neighbors,
+        np.full(n, -1) if spill is None else spill,
+        np.full(n, -1) if ice_target is None else ice_target,
+        np.ones(n) if area is None else area,
+        np.asarray(room, dtype=float),
+        load,
+        np.zeros(n) if scour_limit is None else scour_limit,
+        np.zeros(n) if scour_material is None else scour_material,
+    ), load
+
+
+def test_overflow_runs_on_through_several_saturated_receivers():
+    # Node 0 overflows by 6; nodes 1 and 2 are already full; 3 and 4 have 2 and 1 of room;
+    # the rest reaches the sea at 5.
+    elevation = np.array([900.0, 800.0, 700.0, 600.0, 500.0, -100.0])
+    room = np.array([0.0, 0.0, 0.0, 2.0, 1.0, 1.0e9])
+    carry, load = _carry(elevation, _profile_neighbors(6), room, [6.0, 0, 0, 0, 0, 0], is_ocean=elevation < 0)
+    volume = carry.placed[:, :-1].sum(axis=1)
+    assert np.allclose(volume, [0.0, 0.0, 0.0, 2.0, 1.0, 3.0])
+    assert carry.terminal.sum() == 0.0
+    # The continental share and the pathway column travel with the load.
+    assert np.allclose(carry.placed[:, -1], 0.4 * volume)
+    assert np.allclose(carry.placed[:, 0], volume)
+
+
+def test_overflow_conserves_volume_on_unequal_area_cells():
+    # Thickness room is the same everywhere (1 m), so the large cell takes 4x the volume.
+    elevation = np.array([900.0, 800.0, 700.0, 600.0])
+    area = np.array([1.0e9, 4.0e9, 0.5e9, 2.0e9])
+    room = 1.0 * area * np.array([0.0, 1.0, 1.0, 1.0])
+    excess = np.array([5.0e9, 0.0, 0.0, 0.0])
+    carry, load = _carry(elevation, _profile_neighbors(4), room, excess, area=area)
+    volume = carry.placed[:, :-1].sum(axis=1)
+    assert np.allclose(volume / area, [0.0, 1.0, 1.0, 0.25])
+    assert np.isclose(volume.sum() + carry.terminal[:-1].sum(), excess.sum())
+    assert np.isclose(carry.placed[:, -1].sum(), 0.4 * excess.sum())
+
+
+def test_overflow_spreads_across_a_lake_and_leaves_over_its_spill_point():
+    # Pit 1 is a three-member lake (1, 2, 3) with 1 unit of room per member; its outlet spills
+    # to 4, which drains to the sea at 5.
+    elevation = np.array([900.0, 100.0, 120.0, 130.0, 400.0, -100.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [5, 5], [4, 4]])
+    lake_depth = np.array([0.0, 30.0, 20.0, 10.0, 0.0, 0.0])
+    spill = np.array([-1, 4, 4, 4, -1, -1])
+    room = np.array([0.0, 1.0, 1.0, 1.0, 0.0, 1.0e9])
+    carry, _ = _carry(elevation, neighbors, room, [5.0, 0, 0, 0, 0, 0], is_ocean=elevation < 0, lake_depth=lake_depth, spill=spill)
+    volume = carry.placed[:, :-1].sum(axis=1)
+    assert np.allclose(volume[1:4], 1.0)
+    assert np.isclose(volume[5], 2.0)
+    assert np.isclose(volume.sum(), 5.0)
+
+
+def test_overflow_at_sea_spreads_onto_lower_ocean_nodes_with_room():
+    elevation = np.array([-100.0, -200.0, -300.0, -400.0])
+    room = np.array([0.0, 1.0, 1.0, 10.0])
+    carry, _ = _carry(elevation, _profile_neighbors(4), room, [4.0, 0, 0, 0], is_ocean=np.ones(4, dtype=bool))
+    volume = carry.placed[:, :-1].sum(axis=1)
+    assert volume[0] == 0.0
+    assert np.all(volume <= room + 1e-9)
+    assert np.isclose(volume.sum(), 4.0)
+
+
+def test_overflow_rides_the_ice_and_its_scour_deepens_the_bed():
+    # Node 0's overflow lands on the ice (1, 2), which carries it to its margin at 3. Each ice
+    # node crossed gives up rock, up to its scour limit, all continental here.
+    elevation = np.array([3000.0, 2000.0, 1500.0, 500.0, 400.0])
+    on_ice = np.array([False, True, True, False, False])
+    ice_target = np.array([-1, 2, 3, -1, -1])
+    room = np.array([0.0, 50.0, 50.0, 100.0, 100.0])
+    scour_limit = np.array([0.0, 0.2, 0.3, 0.0, 0.0])
+    carry, _ = _carry(
+        elevation, _profile_neighbors(5), room, [10.0, 0, 0, 0, 0], on_ice=on_ice, ice_target=ice_target,
+        scour_limit=scour_limit, scour_material=np.full(5, 1.0e3),
+    )
+    volume = carry.placed[:, :-1].sum(axis=1)
+    assert volume[1] == 0.0 and volume[2] == 0.0  # nothing settles under the ice
+    assert np.allclose(carry.scour_m, [0.0, 0.2, 0.3, 0.0, 0.0])
+    assert np.isclose(volume[3], 10.5)
+    # The scoured rock rides as glacial load, carrying its own continental share.
+    assert np.isclose(carry.placed[:, erosion.OVERFLOW_GLACIAL].sum(), 0.5)
+    assert np.isclose(carry.placed[:, -1].sum(), 4.0 + 0.5)
+
+
+def test_overflow_caught_in_an_ice_loop_drains_off_by_gravity():
+    # The ice on 1 and 2 flows in a loop (as ice_flow_target can on a capped ice cap); the load
+    # still leaves it downhill, to the margin at 3.
+    elevation = np.array([3000.0, 2000.0, 1900.0, 500.0])
+    on_ice = np.array([False, True, True, False])
+    ice_target = np.array([-1, 2, 1, -1])
+    room = np.array([0.0, 0.0, 0.0, 100.0])
+    carry, _ = _carry(elevation, _profile_neighbors(4), room, [4.0, 0, 0, 0], on_ice=on_ice, ice_target=ice_target)
+    assert np.isclose(carry.placed[3, :-1].sum(), 4.0)
+    assert carry.stuck_m3["hop_limit"] == 0.0 and carry.terminal.sum() == 0.0
+
+
+def test_overflow_in_a_full_closed_basin_spills_over_its_lowest_saddle():
+    # Node 0's overflow drains into full pit 1, which has no spill target. The basin fills and
+    # overflows its saddle (2, also full) onto 3 below it -- not onto 4, higher up the far side,
+    # nor back up the flank it came down.
+    elevation = np.array([900.0, 100.0, 500.0, 200.0, 800.0])
+    room = np.array([0.0, 0.0, 0.0, 10.0, 10.0])
+    carry, _ = _carry(elevation, _profile_neighbors(5), room, [3.0, 0, 0, 0, 0])
+    assert np.isclose(carry.placed[3, :-1].sum(), 3.0)
+    assert carry.stuck_m3["pit"] == 3.0
+    assert np.isclose(carry.basin_fill_m3, 3.0) and carry.search_m3 == 0.0
+
+
+def test_overflow_with_no_receiver_in_reach_becomes_the_terminal_remainder():
+    # Every node full, a saturated pit with no outlet: nothing can take it.
+    elevation = np.array([900.0, 100.0, 500.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 1]])
+    carry, load = _carry(elevation, neighbors, np.zeros(3), [3.0, 0.0, 0.0])
+    assert carry.placed.sum() == 0.0
+    assert np.allclose(carry.terminal, load.sum(axis=0))
+
+
+def test_overflow_no_basin_fill_can_reach_goes_to_the_nearest_node_with_room():
+    # Same saturated pit, but the only room is on node 2, which no neighbour edge reaches.
+    elevation = np.array([900.0, 100.0, 500.0])
+    neighbors = np.array([[1, 1], [0, 0], [2, 2]])
+    carry, _ = _carry(elevation, neighbors, np.array([0.0, 0.0, 5.0]), [3.0, 0.0, 0.0])
+    assert np.isclose(carry.placed[2, :-1].sum(), 3.0)
+    assert carry.basin_fill_m3 == 0.0 and np.isclose(carry.search_m3, 3.0)
+    assert carry.terminal.sum() == 0.0
+
+
+def _saturate_lowlands(world, quantile=0.5):
+    """Push every land column below the `quantile` land elevation to the Hc cap -- the
+    foreland/basin receivers erosion deposits on."""
+    from app import lithosphere
+
+    sea = world.sea_level_m
+    land_elev = np.concatenate([p.collect("elevation") for p in world.plates])
+    cutoff = np.quantile(land_elev[land_elev > sea], quantile)
+    for plate in world.plates:
+        elev = plate.collect("elevation")
+        hc = plate.collect("crustal_thickness_m")
+        material = plate.collect("continental_material_m")
+        full = (elev > sea) & (elev < cutoff)
+        new_hc = np.where(full, lithosphere.MAX_CRUSTAL_THICKNESS_M, hc)
+        plate.set_fields_on_plate(crustal_thickness_m=new_hc, continental_material_m=np.where(full, new_hc, material))
+
+
+def test_apply_erosion_carries_cap_overflow_on_instead_of_booking_numerical_loss():
+    from app import continental_ledger, lithosphere
+
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    continental_ledger.ensure_initialized(world)
+    _saturate_lowlands(world)
+    for _ in range(2):
+        unplaced_before = world.continental_material_ledger["numerical_unplaced_m3"]
+        tracked_before = _tracked_continental_m3(world)
+        budget = erosion.apply_erosion(world, years=5_000_000).budget
+        assert budget["hc_cap_overflow_m3"] > 0.0 and budget["hc_cap_overflow_nodes"] > 0
+        assert budget["hc_cap_overflow_placed_m3"] > 0.0
+        # Round-off at most (columns land on the cap to ~1e-11 m), never the overflow itself.
+        assert world.continental_material_ledger["numerical_unplaced_m3"] - unplaced_before < 1e-9 * budget["continental_overflow_m3"]
+        assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
+        # Volume closes once the terminal reservoir is counted.
+        terminal_sediment = budget["hc_cap_overflow_terminal_m3"] - budget["hc_cap_overflow_lake_silt_terminal_m3"]
+        assert np.isclose(budget["removed_m3"], budget["deposited_m3"] + terminal_sediment, rtol=1e-9)
+        assert np.isclose(
+            budget["continental_removed_m3"],
+            budget["continental_deposited_m3"] + budget["continental_discarded_m3"] + budget["continental_overflow_terminal_m3"],
+            rtol=1e-9,
+        )
+        # The per-pathway diagnostics partition the totals.
+        pathways = erosion.OVERFLOW_PATHWAYS
+        assert np.isclose(sum(budget[f"hc_cap_overflow_{p}_m3"] for p in pathways), budget["hc_cap_overflow_m3"], rtol=1e-9)
+        assert np.isclose(
+            sum(budget[f"hc_cap_overflow_{p}_placed_m3"] + budget[f"hc_cap_overflow_{p}_terminal_m3"] for p in pathways),
+            budget["hc_cap_overflow_m3"] + budget["hc_cap_overflow_ice_scour_m3"],
+            rtol=1e-9,
+        )
+        hc = np.concatenate([p.collect("crustal_thickness_m") for p in world.plates])
+        assert hc.max() <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6
+
+
+def test_apply_erosion_books_unplaceable_overflow_as_overloaded_root_delamination(monkeypatch):
+    from app import continental_ledger
+
+    def nowhere(*args, **kwargs):
+        excess = args[10]
+        return erosion.OverflowCarry(np.zeros_like(excess), excess.sum(axis=0), np.zeros(len(excess)), np.zeros(len(excess)))
+
+    monkeypatch.setattr(erosion, "_carry_overflow", nowhere)
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    continental_ledger.ensure_initialized(world)
+    _saturate_lowlands(world)
+    unplaced_before = world.continental_material_ledger["numerical_unplaced_m3"]
+    tracked_before = _tracked_continental_m3(world)
+    budget = erosion.apply_erosion(world, years=5_000_000).budget
+    assert budget["continental_overflow_terminal_m3"] > 0.0
+    assert world.continental_material_ledger["overloaded_root_delaminated_m3"] == budget["continental_overflow_terminal_m3"]
+    # Round-off at most (columns land on the cap to ~1e-11 m).
+    assert world.continental_material_ledger["numerical_unplaced_m3"] - unplaced_before < 1e-9 * budget["continental_overflow_m3"]
+    assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
+
+
+def test_glacial_erosion_carves_channels_rivers_can_inherit():
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world.rain_erosion_multiplier = 0.0
+    world.river_erosion_multiplier = 0.0
+    for plate in world.plates:
+        plate.set_fields_on_plate(glacier_depth=np.where(plate.collect("elevation") > world.sea_level_m, 500.0, 0.0))
+    _, _, before, _, _, _ = erosion._gather_nodes(world)
+    erosion.apply_erosion(world, years=5_000_000)
+    _, _, after, _, _, _ = erosion._gather_nodes(world)
+    # No river erosion at all, so every metre of new channel is a glacial trough.
+    assert np.max(after - before) > 1.0

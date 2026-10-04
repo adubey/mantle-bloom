@@ -66,7 +66,8 @@ reuses the result for both erosion and the world's cached river/lake fields
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import heapq
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -548,6 +549,55 @@ BARRIER_ATTRACT_FLOOR = 0.35
 # _spread_* helper here; a sink with no real standing water yet (a dry playa/closed basin) is
 # left untouched, keeping this pathway's old, un-lake-aware single-point-pile behavior there.
 LAKE_SEDIMENT_UNIFORM_FRACTION = 0.5
+
+# Depositional Hc-cap overflow (issue #288). Every pathway above settles its load without
+# regard to the receiving column's room under lithosphere.MAX_CRUSTAL_THICKNESS_M (only
+# landslide runout looks at it), so a foreland, lake floor or shelf node that tectonics has
+# already driven to the cap used to have the excess clipped off at the Hc write-back -- and its
+# continental share booked as numerical loss. `_carry_overflow` instead carries what a full
+# receiver can't hold on to the next receiver with room, by the transport its location implies:
+# downhill (steepest descent, spilling over a basin rim) on land, a capped spread across the
+# whole lake in a flooded basin, a capped spread onto the lower shelf and basin at sea
+# (MARINE_SPREAD_*), and along the ice's own flow path under a glacier. The load travels mixed,
+# so every receiver gets its share of each pathway and of the continental tracer. Each name in
+# OVERFLOW_PATHWAYS is one diagnostic column in the erosion budget.
+OVERFLOW_PATHWAYS = ("river", "lake", "lake_silt", "glacial", "aeolian", "mass_wasting", "coastal_leveling", "marine")
+OVERFLOW_GLACIAL = OVERFLOW_PATHWAYS.index("glacial")
+OVERFLOW_LAKE_SILT = OVERFLOW_PATHWAYS.index("lake_silt")
+# Every column but lake silt: material some erosion source gave up this step.
+OVERFLOW_SEDIMENT = np.arange(len(OVERFLOW_PATHWAYS)) != OVERFLOW_LAKE_SILT
+# Hops the carried load may take before whatever is still moving counts as stuck -- far more
+# than any real descent path, so it only binds on a routing cycle.
+OVERFLOW_MAX_HOPS = 1024
+# Load still stuck after the transport above (a saturated pit with no outlet, a full lake with
+# no spill, a deep-sea node with nothing lower in range, a cycle) fills outward from there in
+# rising elevation order -- the full basin overflows its lowest saddle -- onto the first nodes
+# with room. What that can't place goes to the nearest receivers with room: the
+# OVERFLOW_SEARCH_NEIGHBOR_COUNT nearest nodes that still have room. Both stay within
+# OVERFLOW_SEARCH_RANGE_KM -- far enough to reach past the edge of a Tibet-scale saturated
+# plateau (~1000 km across; quad cells are ~125 km apart at the default density) to its
+# flanks. The search hands load out inverse-distance weighted, in capped passes that each fill
+# at least one oversubscribed receiver (OVERFLOW_FILL_PASSES, enough to reach every candidate,
+# so a load many receivers' room thick still finds them all). What even that can't place is
+# the terminal remainder: a column at the cap
+# that keeps being loaded sheds the excess from its root instead (load-driven delamination of
+# lower crust pushed past the eclogite transition), booked as the continental ledger's
+# `overloaded_root_delaminated_m3` -- distinct from suture-accretion delamination.
+OVERFLOW_STUCK_REASONS = ("pit", "closed_lake", "sea_floor", "hop_limit")
+OVERFLOW_SEARCH_RANGE_KM = 1000.0
+OVERFLOW_SEARCH_RANGE_RAD = OVERFLOW_SEARCH_RANGE_KM / PLANET_RADIUS_KM
+OVERFLOW_SEARCH_NEIGHBOR_COUNT = 128
+OVERFLOW_FILL_PASSES = OVERFLOW_SEARCH_NEIGHBOR_COUNT
+# Overflow carried under a glacier rides the ice rather than settling under it (the same rule
+# glacial transport and landslide debris follow), and the debris-laden ice scours its bed as it
+# goes: each node it crosses gives up OVERFLOW_ICE_SCOUR_FRACTION of the passing load's
+# thickness-equivalent, at most OVERFLOW_ICE_SCOUR_MAX_M_PER_MYR, within the node's remaining
+# Hc and neighbour-drop headroom. The scoured rock joins the load (conserved like everything
+# else here) and deepens channel_depth -- a glacial trough that rivers inherit once the ice is
+# gone, the same way glacial abrasion's own channel growth does. The per-node cap keeps the
+# load's growth along a long ice path additive rather than compounding.
+OVERFLOW_ICE_SCOUR_FRACTION = 0.1
+OVERFLOW_ICE_SCOUR_MAX_M_PER_MYR = 100.0
 
 
 @dataclass
@@ -1167,6 +1217,326 @@ def _spread_lake_sediment_capped(
     return result, tagged
 
 
+@dataclass
+class OverflowCarry:
+    """What `_carry_overflow` did with the load full receivers turned away. Load matrices have
+    one volume column per OVERFLOW_PATHWAYS entry, then the continental tracer's share of it."""
+
+    placed: np.ndarray  # (n, C) settled at each onward receiver
+    terminal: np.ndarray  # (C,) no receiver in reach: overloaded-root delamination
+    scour_m: np.ndarray  # (n,) rock the debris-laden ice scoured off each node it crossed
+    scour_tagged_m: np.ndarray  # (n,) continental share of scour_m
+    # Volume the transport left with nowhere to go, by why (before the nearest-receiver search):
+    # "pit" (land or ice with no way on), "closed_lake", "sea_floor" (nothing lower with room in
+    # range), "hop_limit".
+    stuck_m3: dict[str, float] = field(default_factory=lambda: dict.fromkeys(OVERFLOW_STUCK_REASONS, 0.0))
+    # How that stuck load was placed: by filling outward over the basin's saddle, or by the
+    # nearest-receiver search (the rest is `terminal`).
+    basin_fill_m3: float = 0.0
+    search_m3: float = 0.0
+
+
+def _capped_fill(
+    amount: np.ndarray, candidates: np.ndarray, weight: np.ndarray, room: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Hand each source's `amount` to its (m, k) `candidates` (-1 = none) in proportion to
+    `weight`, never past a receiver's `room` (a volume, decremented in place): OVERFLOW_FILL_
+    PASSES passes, each scaling back the gives to an oversubscribed receiver and offering the
+    rest to the receivers still open -- the capped water-fill `_spread_coastal_leveling` uses.
+    Returns (given (m, k), what each source could not place)."""
+    valid = candidates >= 0
+    safe = np.where(valid, candidates, 0)
+    base = np.where(valid, weight, 0.0)
+    given = np.zeros(candidates.shape)
+    left = np.array(amount, dtype=float)
+    for _ in range(OVERFLOW_FILL_PASSES):
+        if not np.any(left > 0.0):
+            break
+        open_weight = np.where(room[safe] > 0.0, base, 0.0)
+        weight_sum = open_weight.sum(axis=1)
+        want = np.divide(open_weight, weight_sum[:, None], out=np.zeros_like(open_weight), where=weight_sum[:, None] > 0) * left[:, None]
+        tentative = np.zeros(len(room))
+        np.add.at(tentative, safe.ravel(), want.ravel())
+        scale = np.divide(room, tentative, out=np.ones_like(tentative), where=tentative > room)
+        give = want * scale[safe]
+        np.add.at(room, safe.ravel(), -give.ravel())
+        np.maximum(room, 0.0, out=room)  # round-off
+        given += give
+        left = np.clip(left - give.sum(axis=1), 0.0, None)
+    return given, left
+
+
+def _carry_overflow(
+    points: np.ndarray,
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    on_ice: np.ndarray,
+    lake_depth: np.ndarray,
+    neighbor_idx: np.ndarray,
+    spill_target: np.ndarray,
+    ice_flow_target: np.ndarray,
+    area: np.ndarray,
+    room_vol: np.ndarray,
+    excess: np.ndarray,
+    scour_limit_m: np.ndarray,
+    scour_material_m: np.ndarray,
+    world: "World | None" = None,
+) -> OverflowCarry:
+    """Carry the load full receivers turned away (`excess`, (n, C): a volume per
+    OVERFLOW_PATHWAYS entry, then its continental share) on to receivers with room
+    (`room_vol`, per-node volume left under the Hc cap; inf for a node with no Hc column) --
+    issue #288, see OVERFLOW_* for the transport rules.
+
+    The load moves in hops, mixed, so every receiver takes the same pathway and tracer shares
+    as the load it came from. Each hop, a node holding load:
+
+    - at sea, settles what room it has, and spreads the rest onto up to
+      MARINE_SPREAD_NEIGHBOR_COUNT lower ocean nodes within MARINE_SPREAD_RANGE_RAD;
+    - under a glacier (`on_ice`), settles nothing and rides `ice_flow_target`, scouring its
+      bed by OVERFLOW_ICE_SCOUR_* within `scour_limit_m` (thickness; `scour_material_m` is how
+      much of that is continental tracer, given up first);
+    - in a lake, spreads across the whole lake up to each member's room, by
+      `_lake_member_weights`, and leaves over the lake's spill point once the lake is full;
+    - on other land, settles what room it has, and passes the rest to its lowest lower
+      neighbour, or over its basin rim (`spill_target`) from a pit.
+
+    Load arriving back at a node it already passed goes on by bare rock (downhill, or over the
+    rim), and strictly downhill after that, so an ice or spill loop can't trap it.
+
+    Load with nowhere to go after that -- a full basin or lake with no way out, a sea floor with
+    nothing lower, or load still moving after OVERFLOW_MAX_HOPS -- fills outward from where it
+    stuck in rising elevation order (a priority flood: the basin fills and overflows its lowest
+    saddle), settling on the first nodes with room; then whatever is left is offered to the
+    nearest nodes with room. Both stay within OVERFLOW_SEARCH_RANGE_KM; what neither can place
+    is `terminal`.
+    Conserves every column: excess.sum(0) + scour == placed.sum(0) + terminal."""
+    n, c = excess.shape
+    tag_col = c - 1
+    placed = np.zeros((n, c))
+    terminal = np.zeros(c)
+    scour_m = np.zeros(n)
+    scour_tagged_m = np.zeros(n)
+    idx = np.nonzero(excess[:, :tag_col].sum(axis=1) > 0.0)[0]
+    if len(idx) == 0:
+        return OverflowCarry(placed, terminal, scour_m, scour_tagged_m)
+    load = excess[idx].copy()
+    stuck_m3 = dict.fromkeys(OVERFLOW_STUCK_REASONS, 0.0)
+    basin_fill_m3 = 0.0
+    search_m3 = 0.0
+
+    room = np.array(room_vol, dtype=float)
+    scour_left = np.clip(np.array(scour_limit_m, dtype=float), 0.0, None)
+    material_left = np.clip(np.array(scour_material_m, dtype=float), 0.0, None)
+    rows = np.arange(n)
+    neighbor_elevation = elevation[neighbor_idx]
+    lowest = np.argmin(neighbor_elevation, axis=1)
+    descent = np.where(neighbor_elevation[rows, lowest] < elevation, neighbor_idx[rows, lowest], -1)
+    land_next = np.where(descent >= 0, descent, spill_target)
+    riding = on_ice & ~is_ocean
+    next_hop = np.where(riding & (ice_flow_target >= 0), ice_flow_target, land_next)
+    is_lake = (lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M) & ~is_ocean & ~riding
+
+    def place(at: np.ndarray, volume: np.ndarray, share: np.ndarray) -> None:
+        np.add.at(placed, at, volume[:, None] * share)
+
+    def place_given(candidates: np.ndarray, given: np.ndarray, share: np.ndarray) -> None:
+        hit = (candidates >= 0) & (given > 0.0)
+        place(candidates[hit], given[hit], np.broadcast_to(share[:, None, :], (*candidates.shape, c))[hit])
+
+    lake_of: np.ndarray | None = None
+    lakes: list[np.ndarray] = []
+    ocean_idx: np.ndarray | None = None
+    ocean_tree: cKDTree | None = None
+    moved_idx: list[np.ndarray] = []
+    moved_load: list[np.ndarray] = []
+    stuck_idx: list[np.ndarray] = []
+    stuck_load: list[np.ndarray] = []
+
+    def get_stuck(at: np.ndarray, rest: np.ndarray, reason: str) -> None:
+        stuck_idx.append(at)
+        stuck_load.append(rest)
+        stuck_m3[reason] += float(rest[:, :tag_col].sum())
+
+    # Ice and spill edges can point uphill and close a loop (see hydrology._routing_order), so
+    # a node the load comes back to sends it on by bare rock instead -- downhill or over its
+    # basin rim -- and from a third visit on strictly downhill, which can't loop: debris
+    # circling on an ice cap still drains off it by gravity.
+    visits = np.zeros(n, dtype=np.int64)
+
+    def move_on(at: np.ndarray, rest: np.ndarray) -> None:
+        seen = visits[at]
+        target = np.where(seen == 0, next_hop[at], np.where(seen == 1, land_next[at], descent[at]))
+        visits[at] += 1
+        moved_idx.append(target[target >= 0])
+        moved_load.append(rest[target >= 0])
+        get_stuck(at[target < 0], rest[target < 0], "pit")
+
+    def settle_here(at: np.ndarray, part: np.ndarray, volume: np.ndarray) -> np.ndarray:
+        take = np.minimum(volume, room[at])
+        room[at] -= take
+        share = part / volume[:, None]
+        place(at, take, share)
+        return (volume - take)[:, None] * share
+
+    for _ in range(OVERFLOW_MAX_HOPS):
+        if len(idx) == 0:
+            break
+        volume = load[:, :tag_col].sum(axis=1)
+        live = volume > 0.0
+        idx, load, volume = idx[live], load[live], volume[live]
+        moved_idx, moved_load = [], []
+
+        sea = is_ocean[idx]
+        if np.any(sea):
+            at = idx[sea]
+            rest = settle_here(at, load[sea], volume[sea])
+            rest_volume = rest[:, :tag_col].sum(axis=1)
+            go = rest_volume > 0.0
+            if np.any(go):
+                if ocean_tree is None:
+                    ocean_idx = np.nonzero(is_ocean)[0]
+                    ocean_tree = cKDTree(points[ocean_idx], balanced_tree=False, compact_nodes=False)
+                at, rest, rest_volume = at[go], rest[go], rest_volume[go]
+                k = min(MARINE_SPREAD_NEIGHBOR_COUNT + 1, len(ocean_idx))
+                dist, near = ocean_tree.query(points[at], k=k, workers=query_workers(len(at)))
+                dist, near = dist.reshape(len(at), k), near.reshape(len(at), k)
+                candidates = ocean_idx[near]
+                downslope = (dist <= MARINE_SPREAD_RANGE_RAD) & (elevation[candidates] < elevation[at][:, None])
+                candidates = np.where(downslope, candidates, -1)
+                share = rest / rest_volume[:, None]
+                given, left = _capped_fill(rest_volume, candidates, 1.0 / np.maximum(dist, 1e-9), room)
+                place_given(candidates, given, share)
+                get_stuck(at[left > 0.0], left[left > 0.0][:, None] * share[left > 0.0], "sea_floor")
+
+        ice = riding[idx]
+        if np.any(ice):
+            at, rest = idx[ice], load[ice].copy()
+            scour = np.minimum(OVERFLOW_ICE_SCOUR_FRACTION * volume[ice] / area[at], scour_left[at])
+            scour_tagged = np.minimum(scour, material_left[at])
+            scour_left[at] -= scour
+            material_left[at] -= scour_tagged
+            scour_m[at] += scour
+            scour_tagged_m[at] += scour_tagged
+            room[at] += scour * area[at]
+            rest[:, OVERFLOW_GLACIAL] += scour * area[at]
+            rest[:, tag_col] += scour_tagged * area[at]
+            move_on(at, rest)
+
+        lake = is_lake[idx]
+        if np.any(lake):
+            if lake_of is None:
+                lakes = hydrology.lake_components(is_lake, neighbor_idx)
+                lake_of = np.full(n, -1)
+                for component, members in enumerate(lakes):
+                    lake_of[members] = component
+            at, arriving = idx[lake], load[lake]
+            component_of = lake_of[at]
+            for component in np.unique(component_of):
+                members = lakes[component]
+                total = arriving[component_of == component].sum(axis=0)
+                total_volume = total[:tag_col].sum()
+                share = total / total_volume
+                weight = _lake_member_weights(lake_depth[members])
+                member_room = np.clip(room[members], 0.0, None)
+                taken = np.zeros(len(members))
+                remaining = total_volume
+                # Each pass fills at least one member to its room or places everything.
+                for _ in range(len(members)):
+                    open_weight = np.where(taken < member_room, weight, 0.0)
+                    if remaining <= 0.0 or open_weight.sum() <= 0.0:
+                        break
+                    give = np.minimum(remaining * open_weight / open_weight.sum(), member_room - taken)
+                    taken += give
+                    remaining -= give.sum()
+                room[members] -= taken
+                placed[members] += taken[:, None] * share
+                if remaining <= 0.0:
+                    continue
+                outlet = spill_target[members]
+                outlet = outlet[(outlet >= 0) & (lake_of[np.maximum(outlet, 0)] != component)]
+                if len(outlet):
+                    moved_idx.append(outlet[:1])
+                    moved_load.append(remaining * share[None, :])
+                else:
+                    get_stuck(at[component_of == component][:1], remaining * share[None, :], "closed_lake")
+
+        land = ~sea & ~ice & ~lake
+        if np.any(land):
+            at = idx[land]
+            rest = settle_here(at, load[land], volume[land])
+            go = rest[:, :tag_col].sum(axis=1) > 0.0
+            move_on(at[go], rest[go])
+
+        if not moved_idx:
+            idx = np.zeros(0, dtype=int)
+            break
+        all_idx = np.concatenate(moved_idx)
+        idx, inverse = np.unique(all_idx, return_inverse=True)
+        load = np.zeros((len(idx), c))
+        np.add.at(load, inverse, np.concatenate(moved_load))
+    if len(idx):
+        get_stuck(idx, load, "hop_limit")
+
+    if stuck_idx:
+        at, inverse = np.unique(np.concatenate(stuck_idx), return_inverse=True)
+        stuck = np.zeros((len(at), c))
+        np.add.at(stuck, inverse, np.concatenate(stuck_load))
+        stuck_volume = stuck[:, :tag_col].sum(axis=1)
+        live = stuck_volume > 0.0
+        at, stuck, stuck_volume = at[live], stuck[live], stuck_volume[live]
+        share = stuck / stuck_volume[:, None]
+        # Fill the full basin and overflow its lowest saddle: a priority flood out from where
+        # the load stuck, in rising elevation order, settling on the first nodes with room it
+        # reaches (never under the ice), within OVERFLOW_SEARCH_RANGE_KM.
+        neighbor_lists = neighbor_idx.tolist()
+        elevation_list = elevation.tolist()
+        can_settle = (~riding).tolist()
+        min_dot = float(np.cos(OVERFLOW_SEARCH_RANGE_RAD))
+        for row, start in enumerate(at.tolist()):
+            amount = float(stuck_volume[row])
+            heap = [(elevation_list[start], start)]
+            reached = {start}
+            to: list[int] = []
+            took: list[float] = []
+            while heap and amount > 0.0:
+                _, i = heapq.heappop(heap)
+                if can_settle[i] and room[i] > 0.0:
+                    take = min(float(room[i]), amount)
+                    room[i] -= take
+                    amount -= take
+                    to.append(i)
+                    took.append(take)
+                for j in neighbor_lists[i]:
+                    if j not in reached:
+                        reached.add(j)
+                        if float(points[j] @ points[start]) >= min_dot:
+                            heapq.heappush(heap, (elevation_list[j], j))
+            if to:
+                place(np.array(to), np.array(took), np.broadcast_to(share[row], (len(to), c)))
+                basin_fill_m3 += float(stuck_volume[row]) - amount
+            stuck_volume[row] = amount
+        stuck = stuck_volume[:, None] * share
+        live = stuck_volume > 0.0
+        at, stuck, stuck_volume = at[live], stuck[live], stuck_volume[live]
+        open_idx = np.nonzero(room > 0.0)[0]
+        if len(at) and len(open_idx) == 0:
+            terminal += stuck.sum(axis=0)
+        elif len(at):
+            share = stuck / stuck_volume[:, None]
+            # Only nodes that still have room are worth finding: inside a saturated plateau the
+            # nearest nodes of any kind are all full. This also reaches room under the ice.
+            tree = cKDTree(points[open_idx], balanced_tree=False, compact_nodes=False)
+            k = min(OVERFLOW_SEARCH_NEIGHBOR_COUNT, len(open_idx))
+            dist, near = tree.query(points[at], k=k, workers=query_workers(len(at)))
+            dist, near = dist.reshape(len(at), k), open_idx[near.reshape(len(at), k)]
+            candidates = np.where(dist <= OVERFLOW_SEARCH_RANGE_RAD, near, -1)
+            given, left = _capped_fill(stuck_volume, candidates, 1.0 / np.maximum(dist, 1e-9), room)
+            place_given(candidates, given, share)
+            search_m3 += float(given.sum())
+            terminal += (left[:, None] * share).sum(axis=0)
+    return OverflowCarry(placed, terminal, scour_m, scour_tagged_m, stuck_m3, basin_fill_m3, search_m3)
+
+
 def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
     """Per-node "wave exposure" proxy in [0, 1] -- the fraction of nodes within
     COASTAL_OPENNESS_RANGE_RAD that are open ocean (`is_ocean` here is hydrology's
@@ -1423,7 +1793,8 @@ def apply_erosion(
     glacier's actual melting margin -- a terminal moraine/outwash deposit pushed outside the
     ice by the glacier's own flow, see the comment above GLACIER_TILL_FRACTION. Separately
     relaxes elevation under thick ice toward its local neighborhood mean (glacial flattening,
-    see `_flatten`). Also grows channel_depth (from this step's river-erosion term) and
+    see `_flatten`). Also grows channel_depth (from this step's river- and glacier-erosion
+    terms, plus the scour of overflow-laden ice -- see OVERFLOW_ICE_SCOUR_*) and
     channel_width (from discharge alone -- larger flows carve a wider channel); lake_depth/
     glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
     World.hydrology_cache. All persistent, see plates.ElevationLine. Mutates world.plates'
@@ -1569,8 +1940,9 @@ def apply_erosion(
     erosion_amount = erosion_amount * craton_keep
     # channel_depth is the terrain's own carved-channel record, so it must never grow past
     # what actually got taken off this point's elevation: when the neighbor-drop cap above
-    # holds erosion_amount below raw_erosion_total, scale river's contribution down by the
-    # same factor rather than banking the full, unapplied amount -- otherwise a node pinned
+    # holds erosion_amount below raw_erosion_total, scale river's (and glacier's -- see
+    # new_channel_depth) contribution down by the same factor rather than banking the full,
+    # unapplied amount -- otherwise a node pinned
     # near its lowest neighbor (a valley floor at grade) would keep "carving" toward
     # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields.
     applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
@@ -1848,17 +2220,77 @@ def apply_erosion(
         + leveling_tagged
         + flatten_received_tagged
     )
+
+    # Depositional Hc-cap overflow (issue #288, see OVERFLOW_*). Lake / endorheic-basin
+    # siltation counts too: the sediment that settled out of standing water this step
+    # (hydrology.step_lakes -> silt_deposited) is folded straight into elevation, so a
+    # still-water basin genuinely fills in and stays filled -- a small non-continental source
+    # (it isn't drawn from any eroded pool), declared in the budget below. Each node's incoming
+    # load is split by pathway (columns in OVERFLOW_PATHWAYS order, then the continental share);
+    # whatever exceeds the room its column has left under the cap after this step's own
+    # removals is carried on to receivers with room instead of being clipped off.
+    is_lake_node = (~is_ocean_node) & (hydro.lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M)
+    land_sediment_vol = np.where(is_ocean_node, 0.0, sediment_vol)
+    incoming = np.stack(
+        [
+            np.where(is_lake_node, 0.0, land_sediment_vol),
+            np.where(is_lake_node, land_sediment_vol, 0.0),
+            hydro.silt_deposited * area,
+            till_vol + glacier_transport_deposit + flatten_received,
+            wind_deposit,
+            landslide_land + landslide_marine,
+            leveling_fill,
+            np.where(is_ocean_node, sediment_vol, 0.0) + marine_unscaled * ocean_multiplier,
+            deposited_tagged,
+        ],
+        axis=1,
+    )
+    incoming_vol = incoming[:, :-1].sum(axis=1)
+    cap_room_vol = np.where(has_column, np.clip((lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc + removed_m) * area, 0.0, None), np.inf)
+    excess_vol = np.clip(incoming_vol - cap_room_vol, 0.0, None)
+    excess = incoming * np.divide(excess_vol, incoming_vol, out=np.zeros(n), where=excess_vol > 0.0)[:, None]
+    # The ice can scour a node only within the drop to its lowest neighbour and the Hc headroom
+    # this step's removals left, scaled by craton resistance like every other removal.
+    scour_limit_m = (
+        np.minimum(
+            OVERFLOW_ICE_SCOUR_MAX_M_PER_MYR * dt_myr,
+            np.clip(np.minimum(drop_to_lowest_neighbor_m, removable_m) - removed_m, 0.0, None),
+        )
+        * craton_keep
+    )
+    carry = _carry_overflow(
+        points,
+        elevation,
+        is_ocean_node,
+        hydro.glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M,
+        hydro.lake_depth,
+        hydro.neighbor_idx,
+        hydro.spill_target,
+        hydro.ice_flow_target,
+        area,
+        np.where(has_column, np.clip(cap_room_vol - incoming_vol, 0.0, None), np.inf),
+        excess,
+        scour_limit_m,
+        prior_material - continental_removed_m,
+        world=world,
+    )
+    settled = incoming - excess + carry.placed
+    settled_tagged = settled[:, -1]
+    removed_m = removed_m + carry.scour_m
+    continental_removed_m = continental_removed_m + carry.scour_tagged_m
+    if carry.terminal[-1] > 0.0:
+        continental_ledger.record(world, "overloaded_root_delaminated_m3", float(carry.terminal[-1]))
+
     plain_deposition = plain_deposit_vol / area
     marine_deposit_m = marine_deposit / area
     leveling_fill_m = leveling_fill / area
     flatten_delta = flatten_received / area - flatten_removed
-    total_deposited = plain_deposition + marine_deposit_m + leveling_fill_m
+    # Net of the overflow: what full receivers turned away left them, what it was carried to
+    # gained it (including the rock the ice scoured on the way, a removal of its own).
+    overflow_net_m = (carry.placed[:, :-1] - excess[:, :-1])[:, OVERFLOW_SEDIMENT].sum(axis=1) / area
+    total_deposited = plain_deposition + marine_deposit_m + leveling_fill_m + overflow_net_m
 
-    # Lake / endorheic-basin siltation raises real terrain: the sediment that settled out of
-    # standing water this step (hydrology.step_lakes -> silt_deposited) is folded straight into
-    # elevation, so a still-water basin genuinely fills in and stays filled. A small
-    # non-continental source (it isn't drawn from any eroded pool), declared in the budget below.
-    geomorphic_delta = -removed_m + deposited_vol / area + hydro.silt_deposited
+    geomorphic_delta = -removed_m + settled[:, :-1].sum(axis=1) / area
 
     # Erosional isostatic compensation. Every term above moves rock between columns but, on
     # its own, never told isostasy: `elevation` used to absorb the whole change, drifting
@@ -1875,19 +2307,18 @@ def apply_erosion(
     rho_c_per_node = np.concatenate(
         [lithosphere.node_crust_density(p.collect("crust_type_code"), p.crust_type) for p in plates_in_order]
     )
-    # Upper-clipped at MAX_CRUSTAL_THICKNESS_M too (issue #161), same ceiling `rheology`'s
-    # tectonic thickening paths enforce -- ordinary sediment deposition piling onto a column
-    # deform() had already driven right up to that ceiling this same step could push it over.
-    # The removal caps above keep the lower clip from ever binding on a column that started
-    # above the floor; what the upper clip turns away is reported as `hc_cap_overflow_m3` in
-    # the budget, and its continental share goes to the ledger's numerical_unplaced_m3 sink.
+    # Clipped to [MIN, MAX]_CRUSTAL_THICKNESS_M (issue #161), the same ceiling `rheology`'s
+    # tectonic thickening paths enforce. The removal caps above keep the lower clip from
+    # binding on a column that started above the floor, and the overflow carry keeps deposits
+    # within the room under the upper one, so either clip only trims round-off now (reported
+    # as `hc_clip_residual_m3`, its continental share as numerical_unplaced_m3).
     raw_crustal_thickness = prior_hc + geomorphic_delta
     new_crustal_thickness = np.where(
         has_column,
         np.clip(raw_crustal_thickness, lithosphere.MIN_CRUSTAL_THICKNESS_M, lithosphere.MAX_CRUSTAL_THICKNESS_M),
         prior_hc,
     )
-    hc_cap_overflow_m = np.where(has_column, np.clip(raw_crustal_thickness - lithosphere.MAX_CRUSTAL_THICKNESS_M, 0.0, None), 0.0)
+    hc_clip_residual_m = np.where(has_column, np.clip(raw_crustal_thickness - lithosphere.MAX_CRUSTAL_THICKNESS_M, 0.0, None), 0.0)
     isostatic_delta = lithosphere.isostatic_elevation(
         new_crustal_thickness, prior_hm, rho_c_per_node
     ) - lithosphere.isostatic_elevation(prior_hc, prior_hm, rho_c_per_node)
@@ -1900,15 +2331,19 @@ def apply_erosion(
     new_elevation, new_deflection, ice_load = _apply_ice_load(
         eroded_elevation, prior_deflection, hydro.glacier_depth, new_crustal_thickness, prior_hm, rho_c_per_node, world.sea_level_m
     )
-    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + applied_river, 0.0, MAX_CHANNEL_DEPTH_M))
+    # Glaciers carve channels too: abrasion and the overflow-laden ice's scour both deepen the
+    # trough they cut, which rivers inherit (channel_boost, hydrology's channel-aware routing)
+    # once the ice retreats. Like river erosion, only rock actually removed here counts.
+    carved_m = applied_river + applied_glacier + carry.scour_m
+    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
     # The tracer moves with its rock and can never exceed the column holding it; whatever the
-    # column can't hold (Hc cap overflow, or a no-column v1 node) is declared, not dropped.
-    raw_material = prior_material - continental_removed_m + deposited_tagged / area
+    # column can't hold (clip round-off, or a no-column v1 node) is declared, not dropped.
+    raw_material = prior_material - continental_removed_m + settled_tagged / area
     new_material = np.clip(raw_material, 0.0, new_crustal_thickness)
     unplaced_tagged_m3 = float(np.sum((raw_material - new_material) * area))
     if unplaced_tagged_m3 > 0.0:
@@ -1916,8 +2351,34 @@ def apply_erosion(
     if discarded_tagged_m3 > 0.0:
         continental_ledger.record(world, "discarded_marine_sediment_m3", discarded_tagged_m3)
     removed_m3 = float(np.sum(removed_m * area))
-    deposited_m3 = float(deposited_vol.sum())
+    # Everything eroded this step that settled on the surface, after the overflow carry --
+    # removed_m3 == deposited_m3 + hc_cap_overflow_terminal_m3 less its lake-silt share (with
+    # the ocean knob at 1.0).
+    deposited_m3 = float(settled[:, :-1][:, OVERFLOW_SEDIMENT].sum())
     lake_silt_m3 = float(np.sum(hydro.silt_deposited * area))
+    overflow_hits = excess[:, :-1] > 0.0
+    overflow_budget = {
+        # Issue #288: depositional Hc-cap overflow -- how many receivers turned load away, how
+        # much, how much was carried on to a receiver with room, and how much found none (the
+        # overloaded_root_delaminated_m3 reservoir). Per pathway below; placed may exceed
+        # attempted for `glacial` by the rock the overflow-laden ice scoured.
+        "hc_cap_overflow_nodes": float(np.count_nonzero(overflow_hits.any(axis=1))),
+        "hc_cap_overflow_m3": float(excess_vol.sum()),
+        "hc_cap_overflow_placed_m3": float(carry.placed[:, :-1].sum()),
+        "hc_cap_overflow_terminal_m3": float(carry.terminal[:-1].sum()),
+        "hc_cap_overflow_ice_scour_m3": float(np.sum(carry.scour_m * area)),
+        "continental_overflow_m3": float(excess[:, -1].sum()),
+        "continental_overflow_terminal_m3": float(carry.terminal[-1]),
+        "hc_clip_residual_m3": float(np.sum(hc_clip_residual_m * area)),
+        **{f"hc_cap_overflow_stuck_{reason}_m3": volume for reason, volume in carry.stuck_m3.items()},
+        "hc_cap_overflow_basin_fill_m3": carry.basin_fill_m3,
+        "hc_cap_overflow_nearest_search_m3": carry.search_m3,
+    }
+    for column, pathway in enumerate(OVERFLOW_PATHWAYS):
+        overflow_budget[f"hc_cap_overflow_{pathway}_nodes"] = float(np.count_nonzero(overflow_hits[:, column]))
+        overflow_budget[f"hc_cap_overflow_{pathway}_m3"] = float(excess[:, column].sum())
+        overflow_budget[f"hc_cap_overflow_{pathway}_placed_m3"] = float(carry.placed[:, column].sum())
+        overflow_budget[f"hc_cap_overflow_{pathway}_terminal_m3"] = float(carry.terminal[column])
     budget = {
         "removed_m3": removed_m3,
         "deposited_m3": deposited_m3,
@@ -1931,9 +2392,9 @@ def apply_erosion(
         "mass_wasting_marine_m3": float(landslide_arrival.sum()),
         "mass_wasting_on_ice_m3": float(landslide_ice.sum()),
         "lake_silt_m3": lake_silt_m3,
-        "hc_cap_overflow_m3": float(np.sum(hc_cap_overflow_m * area)),
+        **overflow_budget,
         "continental_removed_m3": float(np.sum(continental_removed_m * area)),
-        "continental_deposited_m3": float(deposited_tagged.sum()),
+        "continental_deposited_m3": float(settled_tagged.sum()),
         "continental_discarded_m3": discarded_tagged_m3,
         "continental_unplaced_m3": unplaced_tagged_m3,
         "stale_tracer_excess_m3": float(np.sum((stored_material - prior_material) * area)),
@@ -1948,8 +2409,8 @@ def apply_erosion(
     # that's actually being planed flat now from land that was simply never built up.
     reason_contrib = np.stack(
         [
-            erosion_amount,
-            plain_deposition,
+            erosion_amount + carry.scour_m,
+            np.clip(plain_deposition + overflow_net_m, 0.0, None),
             ground_off + leveling_fill_m,
             sea_side_erosion + marine_deposit_m,
             np.abs(flatten_delta),
