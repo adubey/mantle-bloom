@@ -29,6 +29,7 @@ LedgerAccount = Literal[
     "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
+    "overloaded_root_delaminated_m3",
 ]
 
 
@@ -46,6 +47,10 @@ class ContinentalMaterialLedger(TypedDict):
     # Continental sediment the `ocean_deposition_multiplier` knob (< 1) declines to settle --
     # a deliberate user-tuned shelf-starving sink, kept apart from numerical clipping.
     discarded_marine_sediment_m3: float
+    # Sediment a column already at the Hc cap was loaded with after erosion's overflow carry
+    # found no receiver with room in reach (issue #288): the overloaded root sheds it instead.
+    # Kept apart from suture-accretion delamination and from numerical clipping.
+    overloaded_root_delaminated_m3: float
 
 
 LEDGER_KEYS: tuple[LedgerAccount, ...] = (
@@ -58,6 +63,7 @@ LEDGER_KEYS: tuple[LedgerAccount, ...] = (
     "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
+    "overloaded_root_delaminated_m3",
 )
 
 
@@ -184,6 +190,7 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
         + ledger["rift_thinned_m3"]
         + ledger["numerical_unplaced_m3"]
         + ledger["discarded_marine_sediment_m3"]
+        + ledger["overloaded_root_delaminated_m3"]
     )
     return sinks_and_live - sources
 
