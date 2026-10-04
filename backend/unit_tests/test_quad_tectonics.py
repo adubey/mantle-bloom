@@ -6,7 +6,7 @@ quad_tectonics.py."""
 import numpy as np
 import pytest
 
-from app import gaps, geometry, lithosphere, merge_split, plates, quad_tectonics, volcanism
+from app import continental_ledger, gaps, geometry, lithosphere, merge_split, orogeny, plates, quad_tectonics, volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
@@ -366,23 +366,221 @@ def test_suture_accretion_carries_cap_overflow_into_later_bands():
     assert np.all(after[survivors] <= SUTURE_ACCRETION_MAX_HC_M)
 
 
-def test_suture_delamination_is_bounded_when_the_local_belts_fill():
-    keys = _block((10, 30), (20, 21))
-    near_cap = SUTURE_ACCRETION_MAX_HC_M - 1_500.0
-    hc = np.full(len(keys), near_cap)
+def _strip_with_full_belts(length: int):
+    """A one-cell-wide continental strip: a 30 km donor at one end, near-cap belts out to
+    `SUTURE_ACCRETION_MAX_HOPS`, and reference crust with room beyond them."""
+    keys = _block((10, 10 + length), (20, 21))
+    hc = np.full(len(keys), lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    hc[1 : quad_tectonics.SUTURE_ACCRETION_MAX_HOPS + 1] = SUTURE_ACCRETION_MAX_HC_M - 1_500.0
     hc[0] = 30_000.0
     a = _plate(1, keys, "continental", crustal_thickness_m=hc)
     donors = np.zeros(len(keys), dtype=bool)
     donors[0] = True
+    return a, donors
+
+
+def test_a_cap_hit_alone_does_not_delaminate_suture_crust():
+    a, donors = _strip_with_full_belts(30)
+    world = _world(a)
     survivors = ~donors
     areas = a.node_areas_m2()
+    hc = a.collect("crustal_thickness_m")
+    expected = float(hc @ areas)
+
+    # No time has passed, so no root can founder: everything the full belts turn away
+    # reaches the reference crust beyond them.
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, world)
+
+    after = a.collect("crustal_thickness_m")
+    assert float(after[survivors] @ areas[survivors]) == pytest.approx(expected, rel=1e-11)
+    assert world.continental_material_ledger["delaminated_lower_crust_m3"] == 0.0
+    budget = world.orogenic_relief_budget
+    assert budget["far_field_placed_m3"] > 0.0
+    assert budget["delamination_completed_m3"] == 0.0
+    assert budget["no_outlet_delaminated_m3"] == 0.0
+
+
+def test_suture_delamination_needs_an_eligible_root_and_is_bounded():
+    a, donors = _strip_with_full_belts(30)
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    survivors = ~donors
+    areas = a.node_areas_m2()
+    hc = a.collect("crustal_thickness_m")
+    hm = a.collect("mantle_lithosphere_thickness_m")
     donated = float(hc[0] * areas[0])
-    before = float(np.sum(hc[survivors] * areas[survivors]))
+    before = float(hc[survivors] @ areas[survivors])
+    belts = np.zeros(len(hc), dtype=bool)
+    belts[1 : quad_tectonics.SUTURE_ACCRETION_MAX_HOPS + 1] = True
+    capacity = float(orogeny.delamination_capacity_m(hc[belts], hm[belts], 1.0) @ areas[belts])
+    assert capacity > 0.0  # near-cap belts are hot and carry an eclogitic root
 
-    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, world, years=1_000_000.0)
 
-    gained = float(np.sum(a.collect("crustal_thickness_m")[survivors] * areas[survivors])) - before
-    assert gained >= donated * (1.0 - quad_tectonics.SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION - 1e-10)
+    lost = donated - (float(a.collect("crustal_thickness_m")[survivors] @ areas[survivors]) - before)
+    budget = world.orogenic_relief_budget
+    assert lost == pytest.approx(budget["delamination_completed_m3"], rel=1e-9)
+    assert 0.0 < lost <= min(capacity, quad_tectonics.SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION * donated) * (1 + 1e-9)
+    material_after = float(a.collect("continental_material_m")[survivors] @ areas[survivors])
+    assert material_after + world.continental_material_ledger["delaminated_lower_crust_m3"] == pytest.approx(
+        float(hc @ areas), rel=1e-9
+    )
+
+
+def test_full_belts_without_an_eclogitic_root_never_delaminate():
+    # A belt full at a 55 km cap has only 5 km of crust below the eclogite transition, too
+    # thin to founder, so however much time passes the overflow must go elsewhere.
+    a, donors = _strip_with_full_belts(30)
+    hc = a.collect("crustal_thickness_m")
+    hm = a.collect("mantle_lithosphere_thickness_m")
+    cap = 55_000.0
+    hc[1 : quad_tectonics.SUTURE_ACCRETION_MAX_HOPS + 1] = cap
+    areas = a.node_areas_m2()
+    root_capacity = orogeny.delamination_capacity_m(hc, hm, 100.0) * areas
+    assert not np.any(root_capacity)
+    volume = float(hc[0] * areas[0])
+
+    _, stages = quad_tectonics._place_suture_crust(
+        hc, areas, quad_tectonics._adjacency_matrix(a), a.surface_nodes().local_xyz,
+        np.array([0]), ~donors, volume, cap, None, root_capacity,
+    )
+
+    assert stages["delamination_completed_m3"] == 0.0
+    assert stages["far_field_placed_m3"] == pytest.approx(volume, rel=1e-9)
+
+
+def test_tectonic_escape_moves_crust_along_strike_not_inland():
+    # A short suture front along j at i = 10; the overriding plate lies toward -i.
+    keys = _block((10, 40), (0, 50))
+    a = _plate(1, keys, "continental")
+    i, j = _columns(a)
+    donors = (i == 10) & (j >= 23) & (j < 28)
+    hops = quad_tectonics.hop_distance(a, donors, 40)
+    hc = a.collect("crustal_thickness_m")
+    hc[(hops > 0) & (hops <= quad_tectonics.SUTURE_ACCRETION_MAX_HOPS)] = SUTURE_ACCRETION_MAX_HC_M
+    hc[donors] = 60_000.0
+    a.set_fields_on_plate(crustal_thickness_m=hc)
+    points = a.surface_nodes().local_xyz
+    toward_overrider = geometry.normalize(points[(i == 10) & (j == 25)][0] - points[(i == 11) & (j == 25)][0])
+    convergence = np.tile(toward_overrider, (a.node_count(), 1))
+    world = _world(a)
+    areas = a.node_areas_m2()
+    expected = float(hc @ areas)
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world, convergence_xyz=convergence)
+
+    after = a.collect("crustal_thickness_m")
+    assert float(after[~donors] @ areas[~donors]) == pytest.approx(expected, rel=1e-11)
+    gained = (after > hc + 1e-6) & ~donors
+    assert world.orogenic_relief_budget["escape_placed_m3"] > 0.0
+    assert np.any(gained)
+    # Every receiver lies within 45 degrees of strike as seen from the front's centre, and
+    # the cells straight inland of the front receive nothing.
+    assert np.all(np.abs(j[gained] - 25) >= i[gained] - 10)
+    assert not np.any(gained & (j >= 23) & (j < 28))
+
+
+def test_a_saturated_plate_books_its_suture_remainder_as_terminal_delamination():
+    keys = _block((10, 20), (20, 21))
+    hc = np.full(len(keys), SUTURE_ACCRETION_MAX_HC_M)
+    hc[0] = 30_000.0
+    a = _plate(1, keys, "continental", crustal_thickness_m=hc)
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    areas = a.node_areas_m2()
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world)
+
+    donated = float(hc[0] * areas[0])
+    assert np.all(a.collect("crustal_thickness_m")[~donors] == SUTURE_ACCRETION_MAX_HC_M)
+    assert world.orogenic_relief_budget["no_outlet_delaminated_m3"] == pytest.approx(donated)
+    assert world.continental_material_ledger["delaminated_lower_crust_m3"] == pytest.approx(donated)
+
+
+def test_a_saturated_continent_spills_suture_crust_onto_its_oceanic_margin():
+    keys = _block((10, 24), (20, 21))
+    a = _plate(1, keys, "continental")
+    hc = a.collect("crustal_thickness_m")
+    codes = a.collect("crust_type_code")
+    hc[:10] = SUTURE_ACCRETION_MAX_HC_M
+    hc[0] = 40_000.0
+    codes[10:] = CRUST_TYPE_OCEANIC  # a drowned margin beyond the full continent
+    hc[10:] = lithosphere.REFERENCE_HC_OCEANIC_M
+    a.set_fields_on_plate(crustal_thickness_m=hc, crust_type_code=codes, continental_material_m=np.where(codes == CRUST_TYPE_OCEANIC, 0.0, hc))
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    donors = np.zeros(len(keys), dtype=bool)
+    donors[0] = True
+    areas = a.node_areas_m2()
+    material_before = float(a.collect("continental_material_m") @ areas)
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world)
+
+    after = a.collect("crustal_thickness_m")
+    assert float(after[~donors] @ areas[~donors]) == pytest.approx(float(hc @ areas), rel=1e-11)
+    budget = world.orogenic_relief_budget
+    assert budget["foreland_spill_placed_m3"] == pytest.approx(float(hc[0] * areas[0]), rel=1e-9)
+    assert budget["no_outlet_delaminated_m3"] == 0.0
+    assert world.continental_material_ledger["delaminated_lower_crust_m3"] == 0.0
+    material = a.collect("continental_material_m")
+    assert float(material[~donors] @ areas[~donors]) == pytest.approx(material_before, rel=1e-9)
+    # The nearest margin cell took most of it and now carries a continental column.
+    assert a.collect("crust_type_code")[10] == CRUST_TYPE_CONTINENTAL
+
+
+def test_a_consumed_saturated_plate_accretes_its_crust_onto_the_overriding_plate():
+    # A small continent with every cell at the cap, overridden along its i = 13 edge.
+    a = _plate(1, _block((10, 14), (20, 24)), "continental",
+               crustal_thickness_m=np.full(16, SUTURE_ACCRETION_MAX_HC_M))
+    b = _plate(2, _block((13, 40), (10, 34)), "continental")
+    world = _world(a, b)
+    continental_ledger.ensure_initialized(world)
+    i, _ = _columns(a)
+    donors = i == 13
+    a_areas, b_areas = a.node_areas_m2(), b.node_areas_m2()
+    donated = float(a.collect("crustal_thickness_m")[donors] @ a_areas[donors])
+    b_before = float(b.collect("crustal_thickness_m") @ b_areas)
+    material_before = continental_ledger.surface_volume_m3(world)
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world, overriders=[b])
+
+    gained = float(b.collect("crustal_thickness_m") @ b_areas) - b_before
+    assert gained == pytest.approx(donated, rel=1e-9)
+    budget = world.orogenic_relief_budget
+    assert budget["overrider_placed_m3"] == pytest.approx(donated, rel=1e-9)
+    assert budget["no_outlet_delaminated_m3"] == 0.0
+    assert world.continental_material_ledger["delaminated_lower_crust_m3"] == 0.0
+    # The donor cells are still on `a` here (retreat removes them next), so the material
+    # they hand over is counted twice until then: once on `a`, once on `b`.
+    handed_material = float(a.collect("continental_material_m")[donors] @ a_areas[donors])
+    assert continental_ledger.surface_volume_m3(world) == pytest.approx(material_before + handed_material, rel=1e-9)
+    # It lands next to the suture, not across the plate.
+    bi, _ = _columns(b)
+    grew = b.collect("crustal_thickness_m") > lithosphere.REFERENCE_HC_CONTINENTAL_M + 1.0
+    assert bi[grew].min() <= 13 + quad_tectonics.SUTURE_ACCRETION_MAX_HOPS
+
+
+def test_suture_accretion_conserves_volume_across_unequal_area_cells():
+    keys = _block((10, 30), (20, 22))
+    a = _plate(1, keys, "continental")
+    a.refine_cells(a.cell_keys[10:14])
+    i, j = _columns(a)
+    hc = a.collect("crustal_thickness_m")
+    donors = i == 10
+    hc[~donors] = SUTURE_ACCRETION_MAX_HC_M - 5_000.0
+    a.set_fields_on_plate(crustal_thickness_m=hc, continental_material_m=hc.copy())
+    world = _world(a)
+    areas = a.node_areas_m2()
+    assert np.ptp(areas) > 0.5 * areas.max()
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world)
+
+    after = a.collect("crustal_thickness_m")
+    assert float(after[~donors] @ areas[~donors]) == pytest.approx(float(hc @ areas), rel=1e-11)
+    material = a.collect("continental_material_m")
+    assert float(material[~donors] @ areas[~donors]) == pytest.approx(float(hc @ areas), rel=1e-9)
 
 
 def test_suture_accretion_reaches_a_distant_same_type_survivor_when_local_band_is_empty():

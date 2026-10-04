@@ -9,6 +9,7 @@
 - [Mantle flow](#mantle-flow)
 - [Plate motion: shift and deform](#boundary-evolution)
 - [Quad-surface deformation](#quad-deformation)
+  - [Orogenic relief before delamination](#orogenic-relief)
 - [Line regularization](#line-regularization)
 - [Merge and split](#merge-and-split)
 - [Whole-sphere coverage: local thinning-then-melting, plus a whole-sphere fallback](#gap-filling)
@@ -777,8 +778,10 @@ operations on the cell graph:
   wholly exposed side is removed. The newly exposed layer is considered next, up to this
   step's displacement in cells and the usual per-step cell cap. A continental suture's
   consumed volume goes onto the surviving cells within `SUTURE_ACCRETION_SPREAD_NODES` hops
-  behind that suture front, conserved by exact cell area up to the usual caps. This matches
-  the line engine, which spreads a retreating end over that many nodes inward along its row.
+  behind that suture front, conserved by exact cell area. This matches the line engine,
+  which spreads a retreating end over that many nodes inward along its row. Once that band
+  is full the crust spreads farther, escapes along strike, and only then may partly
+  delaminate; see [Orogenic relief before delamination](#orogenic-relief).
   The issue #177 retreat budget is spent in area-weighted Hc.
 
   An oceanic plate also subducts contested patches the peel can't reach (`_carve_interior`,
@@ -831,6 +834,85 @@ The whole-world passes read a quad world's territory from its cells
   key on quad plates), so adding or removing cells elsewhere on the plate doesn't change it.
 - **Relattice.** Quad plates have none. `relattice_continental_plates` repairs row-to-row
   phase drift, and cells never drift off their lattice.
+
+<a id="orogenic-relief"></a>
+### Orogenic relief before delamination (`orogeny.py`)
+
+Continental collision mostly shortens, thickens and moves crust around (issue #290). Lower-
+crustal delamination is real, but it needs a dense eclogitized root that is hot enough to
+detach. Reaching the numerical Hc cap is not one of those conditions. On quad plates, the
+over-thickened crust of a suture or a standing orogen goes through these processes:
+
+- **Thermal proxy.** `moho_temperature_c` is the steady-state conductive geotherm of a column
+  with uniform radiogenic heating in the crust (`CRUST_HEAT_PRODUCTION_W_M3`, 0.7 uW/m^3)
+  over a lid with none, between 10 C at the surface and 1330 C at the lithosphere's base. A
+  reference column (35 km crust, 100 km lid) gets a ~480 C Moho. Doubled crust on that lid
+  gets ~960 C, and on a doubled lid ~860 C. A freshly thickened column is treated as already
+  at steady state, which overstates how quickly a young orogen weakens.
+- **Crust states.** `crust_state` sorts continental columns into cold-strong, hot-weak (Moho
+  at least `DUCTILE_ONSET_MOHO_C`, 700 C), melt-eligible (`MELT_ONSET_MOHO_C`, 750 C), and
+  delamination-eligible. A delamination-eligible column has at least `DELAMINATION_MIN_ROOT_M`
+  (10 km) of crust below `ECLOGITE_DEPTH_M` (50 km) and a Moho at least
+  `DELAMINATION_MIN_MOHO_C` (750 C). `/world/stats` reports the area in each state
+  (`crust_state_area_m2`).
+- **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each
+  of these in turn, and only what one can't hold moves on to the next:
+  1. **Belts.** It fills the first `SUTURE_ACCRETION_SPREAD_NODES` hops, then three more belts
+     of that width (lateral spreading).
+  2. **Tectonic escape.** It moves into the next `SUTURE_ESCAPE_EXTRA_HOPS` hops, but only cells
+     within `SUTURE_ESCAPE_MAX_ANGLE_DEG` (45 degrees) of the suture's strike as seen from the
+     front. The strike is perpendicular to the front's mean direction toward the overriding
+     plate. A front without that direction uses its own long axis, and a compact one has none.
+  3. **Delamination.** It may delaminate from the belts' eligible roots, at most
+     `DELAMINATION_RATE_PER_MYR` (5%) of each root per Myr, integrated exactly over the step,
+     and at most `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` (20%) of the donation. Fronts
+     that share a belt share its roots.
+  4. **Far field.** It fills the nearest remaining capacity across the plate, one graph hop at
+     a time.
+  5. **Foreland spill.** When every continental receiver is full, the crust thrusts out over
+     the plate's own non-continental cells (a drowned margin or oceanic foreland), nearest
+     first. A cell left mostly continental crust is retyped continental. On seed 3, small
+     plates with their whole continent at the cap caused about three quarters of all suture
+     delamination before this stage existed.
+  6. **Overriding plate.** A plate consumed faster than it can hold its own crust (a
+     microcontinent ground into a collision) hands what's left to the quad plate overriding
+     it: the neighbour containing most of the front's cell centres. There it goes through the
+     same stages, seeded at the overrider's cells nearest the front, including that plate's
+     own eligible roots. Continental material moves with the Hc it places.
+  7. **No outlet.** Whatever still has nowhere to go is booked as terminal delamination.
+
+  Mantle lithosphere fills the belts and delaminates past them, as an over-thickened mantle
+  root does.
+- **Collapse and ductile flow** (`relax_orogens`, at the end of each quad `deform`). Crust
+  thicker than `COLLAPSE_ONSET_HC_M` (50 km, ~2.7 km of isostatic relief) spreads down
+  thickness gradients into neighbouring continental columns, never into oceanic ones. Only
+  the excess above the onset is mobile, so ordinary continent is never smoothed. The flux
+  across a shared cell edge is a thickness diffusivity times the thickness difference,
+  scaled by the edge's length over the distance between the cell centres:
+  - Gravitational collapse and normal faulting (`COLLAPSE_DIFFUSIVITY_M2_PER_YR`, 1e3 m^2/yr)
+    act on any such column.
+  - Ductile flow (`DUCTILE_DIFFUSIVITY_M2_PER_YR`, 3e3 m^2/yr, about Tibet's lower-crustal
+    channel) ramps in from 700 to 900 C of Moho temperature.
+  - Cratonic crust resists flow by `CRATON_FLOW_RESISTANCE` times its strength. Cratonic
+    crust that does flow becomes ordinary orogenic crust (`collision_reworked_m3`).
+
+  Hc moves with its own `continental_material_m` and craton fractions, and Hm stays in place.
+  The flow is subcycled at a Courant number of 0.1, so 1 x 4 Myr and 16 x 0.25 Myr give the
+  same result to within 1-2% of the relief.
+
+`world.orogenic_relief_budget` (also in `/world/stats`) accumulates the Hc volume each stage
+handled: `suture_donated_m3`, `suture_belt_placed_m3`, `escape_attempted_m3` /
+`escape_placed_m3`, `delamination_attempted_m3` / `delamination_completed_m3`,
+`far_field_placed_m3`, `foreland_spill_placed_m3`, `overrider_placed_m3`,
+`no_outlet_delaminated_m3`,
+`relief_mobile_excess_m3`,
+`collapse_transferred_m3` and `ductile_flow_transferred_m3`. The continental-material ledger
+books delaminated provenance in `delaminated_lower_crust_m3`.
+
+This is phase 1. Anatexis (melt, residue and relamination accounting, plus a thermal lag
+on the steady-state proxy) and the long-run recalibration of #276 are separate phases. The
+line engine, the convergent-ceiling overflow in `deform_columns`, and the quad merge's
+stacking cap are unchanged.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)
@@ -1298,8 +1380,8 @@ form cratons; that surface is being retired (#251).
 |---|---|
 | `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
 | `subducted_m3` | boundary consumption down a trench |
-| `delaminated_m3` | suture overflow past the accretion belts, merge stacking past the suture cap, the column-cap clamp |
-| `collision_reworked_m3` | craton consumed into an orogenic belt as ordinary crust, or reworked by fault relief |
+| `delaminated_m3` | suture delamination (quad: from eligible roots, or with no outlet on a saturated plate; line: overflow past the accretion belts), merge stacking past the suture cap, the column-cap clamp |
+| `collision_reworked_m3` | craton consumed into an orogenic belt as ordinary crust, carried off by orogenic collapse or ductile flow, or reworked by fault relief |
 | `eroded_m3` | erosional unroofing below the craton's top |
 | `topology_removed_m3` | a plate or stranded fragment removed outright |
 | `unattributed_m3` | signed; should stay ~0 |

@@ -286,11 +286,13 @@ def test_suture_accretion_moves_material_and_books_craton_rework_and_delaminatio
     craton_volume = float(hc[0] * areas[0])
     hc_before = float(np.dot(hc[~donors], areas[~donors]))
 
-    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world)
+    # The near-cap belts are hot enough to carry eligible dense roots (orogeny.py), so once
+    # they fill, part of the donor may delaminate over this 1 Myr.
+    quad_tectonics._accrete_onto_survivors(plate, donors, ~donors, world, years=1_000_000.0)
 
     placed = float(np.dot(plate.collect("crustal_thickness_m")[~donors], areas[~donors])) - hc_before
     share = placed / craton_volume
-    assert 0.0 < share < 1.0  # the belts fill, so part of the donor delaminates
+    assert 0.0 < share < 1.0
     ledger = world.craton_ledger
     assert ledger["collision_reworked_m3"] == pytest.approx(share * craton_volume)
     assert ledger["delaminated_m3"] == pytest.approx((1.0 - share) * craton_volume)
