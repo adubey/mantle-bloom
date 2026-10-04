@@ -40,6 +40,23 @@ def test_compute_node_overlap_flags_colocated_nodes_both_ways():
         assert info["overlap_mask"][:8].all()
         assert not info["overlap_mask"][8:].any()
         assert info["by_partner"] == {other: 8}
+        np.testing.assert_array_equal(info["cover_count"], [1] * 8 + [0, 0])
+        np.testing.assert_array_equal(info["continental_cover_count"], [1] * 8 + [0, 0])
+
+
+def test_compute_node_overlap_cover_count_counts_every_plate_on_a_node():
+    # A third plate stacked on the same row: each row node now sits on two other plates.
+    world = _overlapping_world()
+    world.plates.append(
+        _plate(2, [1.0, 0.0, 0.0], np.linspace(-0.05, 0.05, 8), crust_type="oceanic", filler_phi=0.5)
+    )
+    overlap = compute_node_overlap(world.plates, 0.5 * line_spacing_rad(world.node_density))
+
+    for pid in (0, 1, 2):
+        np.testing.assert_array_equal(overlap[pid]["cover_count"], [2] * 8 + [0, 0])
+    # Plate 2 is oceanic: the continental plates see one continental partner, plate 2 sees two.
+    for pid, expected in ((0, 1), (1, 1), (2, 2)):
+        np.testing.assert_array_equal(overlap[pid]["continental_cover_count"], [expected] * 8 + [0, 0])
 
 
 def test_update_overlap_tracking_stamps_once_then_clears():

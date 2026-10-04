@@ -110,7 +110,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from . import biomes, climate, cratons, hydrology, lithosphere, orogeny
-from .elevation_lines import line_spacing_rad
+from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 from .world import World
 
 
@@ -201,6 +201,60 @@ def _reconcile_land_ocean(fields: "climate.ClimateFields", sea_level_m: float) -
     is_ocean = fields.is_ocean & (elevation <= sea_level_m)
     is_ocean |= (~fields.is_ocean) & (elevation < sea_level_m - MAX_ENDORHEIC_BASIN_DEPTH_M)
     return is_ocean, ~is_ocean
+
+
+SPHERE_AREA_M2 = 4.0 * np.pi * (PLANET_RADIUS_KM * 1000.0) ** 2
+
+
+def _node_overlap(world: World) -> dict[int, dict]:
+    from .plates import OVERLAP_TOLERANCE_MULT, compute_node_overlap
+
+    return compute_node_overlap(world.plates, OVERLAP_TOLERANCE_MULT * line_spacing_rad(world.node_density))
+
+
+def overlap_area_weights(world: World, overlap: dict[int, dict] | None = None) -> dict[int, np.ndarray]:
+    """Per plate (keyed by plate_id, plates with nodes only), each node's share of its own
+    ground: 1 / (number of plates on that spot), from `plates.compute_node_overlap`'s
+    `cover_count`. Multiplying `Plate.accounting_areas_m2` by this counts overlapped ground
+    once in a whole-world sum over every plate (issue #289). Pass `overlap` to reuse an
+    existing `compute_node_overlap` result."""
+    overlap = _node_overlap(world) if overlap is None else overlap
+    return {plate_id: 1.0 / (1.0 + info["cover_count"]) for plate_id, info in overlap.items()}
+
+
+def _continental_overlap_weights(overlap: dict[int, dict]) -> dict[int, np.ndarray]:
+    """`overlap_area_weights` for a sum over continental plates only: the denominator counts
+    only continental plates on that spot, so a continental node under an oceanic plate keeps
+    its full area. Plate-level `crust_type`, matching which plates the continental sums here
+    include."""
+    return {plate_id: 1.0 / (1.0 + info["continental_cover_count"]) for plate_id, info in overlap.items()}
+
+
+def _overlap_once_totals(world: World) -> dict[str, float]:
+    """The overlap-aware sums described in this module's own docstring."""
+    spacing_rad = line_spacing_rad(world.node_density)
+    overlap = _node_overlap(world)
+    weights = overlap_area_weights(world, overlap)
+    continental_weights = _continental_overlap_weights(overlap)
+    land_area = continental_volume = represented = overlapped = 0.0
+    for plate in world.plates:
+        if plate.plate_id not in weights:
+            continue
+        _, elevation = plate.all_points_and_elevation()
+        area_m2 = plate.accounting_areas_m2(spacing_rad)
+        once_m2 = area_m2 * weights[plate.plate_id]
+        represented += float(area_m2.sum())
+        overlapped += float(area_m2[weights[plate.plate_id] < 1.0].sum())
+        land_area += float(once_m2[elevation > world.sea_level_m].sum())
+        if plate.crust_type == "continental":
+            continental_once_m2 = area_m2 * continental_weights[plate.plate_id]
+            continental_volume += float(np.dot(plate.collect("crustal_thickness_m"), continental_once_m2))
+    return {
+        "total_land_area_dedup_km2": land_area / 1.0e6,
+        "total_continental_crust_volume_dedup_km3": continental_volume / 1.0e9,
+        "plate_overlap_area_fraction": overlapped / SPHERE_AREA_M2,
+        "represented_area_fraction": represented / SPHERE_AREA_M2,
+    }
 
 
 def _total_land_area_and_continental_volume(world: World) -> tuple[float, float, int]:
@@ -303,6 +357,7 @@ def compute_stats(world: World) -> dict:
         "sea_level_m": world.sea_level_m,
         "total_land_area_km2": land_area_m2 / 1.0e6,
         "total_continental_crust_volume_km3": continental_crust_volume_m3 / 1.0e9,
+        **_overlap_once_totals(world),
         "land_fraction": _weighted_fraction(~is_water, area_weights),
         "ocean_fraction": _weighted_fraction(is_water, area_weights),
         # A raw `elevation > sea_level_m` node count (see `_total_land_area_and_continental_

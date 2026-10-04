@@ -132,6 +132,60 @@ def test_compute_stats_total_continental_crust_volume_matches_hand_computed_sum(
     assert result["total_land_area_km2"] == pytest.approx(n * area_m2 / 1.0e6)
 
 
+def test_overlap_once_totals_count_stacked_ground_once():
+    # Issue #289: two continental line plates whose 10-node rows sit exactly on top of each
+    # other. The plain totals count both plates in full (as the ledger does); the dedup
+    # totals count the shared ground once.
+    n = 10
+    theta = np.linspace(-0.05, 0.05, n)
+    hc = 35_000.0
+
+    def plate(plate_id):
+        line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(n, 500.0), crustal_thickness_m=np.full(n, hc))
+        return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type="continental", lines=[line])
+
+    world = World(seed=0, plates=[plate(0), plate(1)], next_plate_id=2)
+    result = stats.compute_stats(world)
+
+    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+    assert result["total_continental_crust_volume_km3"] == pytest.approx(2 * n * hc * area_m2 / 1.0e9)
+    assert result["total_continental_crust_volume_dedup_km3"] == pytest.approx(n * hc * area_m2 / 1.0e9)
+    assert result["total_land_area_km2"] == pytest.approx(2 * n * area_m2 / 1.0e6)
+    assert result["total_land_area_dedup_km2"] == pytest.approx(n * area_m2 / 1.0e6)
+    assert result["plate_overlap_area_fraction"] == pytest.approx(2 * n * area_m2 / stats.SPHERE_AREA_M2)
+    assert result["represented_area_fraction"] == pytest.approx(2 * n * area_m2 / stats.SPHERE_AREA_M2)
+
+
+def test_continental_dedup_volume_ignores_an_oceanic_plate_on_top():
+    # PR #295 review: an oceanic plate overlapping a continental one duplicates no continental
+    # crust, so the continental plate keeps its full volume; land area still counts once.
+    n = 10
+    theta = np.linspace(-0.05, 0.05, n)
+    hc = 35_000.0
+
+    def plate(plate_id, crust_type):
+        line = ElevationLine(phi=0.0, theta=theta, elevation=np.full(n, 500.0), crustal_thickness_m=np.full(n, hc))
+        return PlateWithLines(plate_id=plate_id, frame=np.eye(3), crust_type=crust_type, lines=[line])
+
+    world = World(seed=0, plates=[plate(0, "continental"), plate(1, "oceanic")], next_plate_id=2)
+    result = stats.compute_stats(world)
+
+    area_m2 = lithosphere.node_area_m2(line_spacing_rad(world.node_density))
+    assert result["total_continental_crust_volume_dedup_km3"] == pytest.approx(n * hc * area_m2 / 1.0e9)
+    assert result["total_land_area_dedup_km2"] == pytest.approx(n * area_m2 / 1.0e6)
+
+
+def test_overlap_once_totals_match_plain_totals_without_overlap():
+    line = ElevationLine(
+        phi=0.0, theta=np.linspace(-np.pi, np.pi, 20, endpoint=False),
+        elevation=np.full(20, 500.0), crustal_thickness_m=np.full(20, 35_000.0),
+    )
+    world = World(seed=0, plates=[PlateWithLines(plate_id=0, frame=np.eye(3), crust_type="continental", lines=[line])])
+    result = stats.compute_stats(world)
+    assert result["total_continental_crust_volume_dedup_km3"] == result["total_continental_crust_volume_km3"]
+    assert result["plate_overlap_area_fraction"] == 0.0
+
+
 def test_total_land_area_uses_each_quad_cells_own_area():
     # Issue #257: quad cells are not equal-area, so land area is the sum of the land cells'
     # own areas, not land-node count times the nominal area.
