@@ -75,4 +75,9 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # lithosphere.ice_load_deflection). It records what is baked into `elevation`, so it
     # remaps the way `elevation` does rather than the way `glacier_depth` does.
     "ice_load_deflection_m": _field(float, 0.0, RemapClass.INTENSIVE),
+    # Anatexis (orogeny.py, quad plates only): how far the Moho lags below its steady-state
+    # temperature (C; 0, the default, is steady state), and the refractory melt residue at
+    # the base of the crust (an extensive share of Hc, like the craton's).
+    "moho_thermal_lag_c": _field(float, 0.0, RemapClass.INTENSIVE),
+    "restite_m": _field(float, 0.0, RemapClass.EXTENSIVE),
 }

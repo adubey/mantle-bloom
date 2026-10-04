@@ -436,6 +436,10 @@ class ElevationLine:
         # The isostatic depression (<= 0, meters) the current ice load has applied to
         # `elevation` -- see lithosphere.ice_load_deflection. Zero wherever there's no ice.
         "ice_load_deflection_m",
+        # Anatexis state (orogeny.py) -- quad plates only, so always zero on a line: the
+        # Moho's lag below its steady-state temperature (C) and the restite thickness (m).
+        "moho_thermal_lag_c",
+        "restite_m",
     )
 
     def __init__(
@@ -468,6 +472,8 @@ class ElevationLine:
         craton_formed_years: np.ndarray | None = None,
         stable_continental_myr: np.ndarray | None = None,
         ice_load_deflection_m: np.ndarray | None = None,
+        moho_thermal_lag_c: np.ndarray | None = None,
+        restite_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -510,6 +516,8 @@ class ElevationLine:
         )
         self._stable_continental_myr = stable_continental_myr if stable_continental_myr is not None else np.zeros_like(theta)
         self._ice_load_deflection_m = ice_load_deflection_m if ice_load_deflection_m is not None else np.zeros_like(theta)
+        self._moho_thermal_lag_c = moho_thermal_lag_c if moho_thermal_lag_c is not None else np.zeros_like(theta)
+        self._restite_m = restite_m if restite_m is not None else np.zeros_like(theta)
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -649,6 +657,14 @@ class ElevationLine:
     @property
     def ice_load_deflection_m(self) -> np.ndarray:
         return self._ice_load_deflection_m
+
+    @property
+    def moho_thermal_lag_c(self) -> np.ndarray:
+        return self._moho_thermal_lag_c
+
+    @property
+    def restite_m(self) -> np.ndarray:
+        return self._restite_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -1128,6 +1144,8 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
                 new_continental_material_m += headroom * min(residual / total_headroom, 1.0)
     # Interpolated like elevation, which it is a component of.
     new_ice_load_deflection_m = np.interp(new_theta, line.theta, line.ice_load_deflection_m)
+    new_moho_thermal_lag_c = np.interp(new_theta, line.theta, line.moho_thermal_lag_c)
+    new_restite_m = np.interp(new_theta, line.theta, line.restite_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
     # each resampled node from its nearest original node rather than np.interp'ing between two
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
@@ -1181,6 +1199,8 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         craton_formed_years=new_craton_formed_years,
         stable_continental_myr=new_stable_continental_myr,
         ice_load_deflection_m=new_ice_load_deflection_m,
+        moho_thermal_lag_c=new_moho_thermal_lag_c,
+        restite_m=new_restite_m,
     )
 
 

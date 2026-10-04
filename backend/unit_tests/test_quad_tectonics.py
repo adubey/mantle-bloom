@@ -455,6 +455,149 @@ def test_full_belts_without_an_eclogitic_root_never_delaminate():
     assert stages["far_field_placed_m3"] == pytest.approx(volume, rel=1e-9)
 
 
+def test_suture_roots_shed_restite_first():
+    a, donors = _strip_with_full_belts(30)
+    belts = np.zeros(len(donors), dtype=bool)
+    belts[1 : quad_tectonics.SUTURE_ACCRETION_MAX_HOPS + 1] = True
+    restite = np.where(belts, 15_000.0, 0.0)
+    a.set_fields_on_plate(restite_m=restite)
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    areas = a.node_areas_m2()
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world, years=1_000_000.0)
+
+    budget = world.orogenic_relief_budget
+    assert budget["delamination_completed_m3"] > 0.0
+    assert budget["restite_delaminated_m3"] == pytest.approx(budget["delamination_completed_m3"], rel=1e-9)
+    left = float(a.collect("restite_m")[belts] @ areas[belts])
+    assert left == pytest.approx(float(restite @ areas) - budget["restite_delaminated_m3"], rel=1e-9)
+
+
+def test_belts_whose_moho_still_lags_have_no_root_to_shed():
+    a, donors = _strip_with_full_belts(30)
+    a.set_fields_on_plate(moho_thermal_lag_c=np.full(len(donors), 400.0))
+    world = _world(a)
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world, years=1_000_000.0)
+
+    assert world.orogenic_relief_budget["delamination_completed_m3"] == 0.0
+    assert world.orogenic_relief_budget["far_field_placed_m3"] > 0.0
+
+
+def test_accreted_crust_buries_its_receivers_moho():
+    a, donors = _strip_with_full_belts(30)
+    world = _world(a)
+    hc_before = a.collect("crustal_thickness_m")
+    moho_before = orogeny.moho_temperature_c(hc_before, a.collect("mantle_lithosphere_thickness_m"))
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world)
+
+    hc = a.collect("crustal_thickness_m")
+    moho = orogeny.moho_temperature_c(hc, a.collect("mantle_lithosphere_thickness_m"), a.collect("moho_thermal_lag_c"))
+    survivors = ~donors
+    np.testing.assert_allclose(moho[survivors], moho_before[survivors], atol=1e-9)
+    # The far field took stacked crust, so it now sits colder than its new steady state.
+    far = survivors & (hc > hc_before + 1_000.0) & (hc_before < 40_000.0)
+    assert np.any(far) and np.all(a.collect("moho_thermal_lag_c")[far] > 0.0)
+
+
+def _capped_strip(length: int, overflowing: int = 2):
+    keys = _block((10, 10 + length), (20, 21))
+    hc = np.full(len(keys), lithosphere.REFERENCE_HC_CONTINENTAL_M)
+    hc[:overflowing] = lithosphere.MAX_CRUSTAL_THICKNESS_M
+    a = _plate(1, keys, "continental", crustal_thickness_m=hc, continental_material_m=hc.copy())
+    overflow = np.zeros(len(keys))
+    overflow[:overflowing] = 4_000.0
+    return a, overflow
+
+
+def test_ceiling_overflow_places_its_melt_and_books_its_residue():
+    a, overflow = _capped_strip(30)
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    areas = a.node_areas_m2()
+    hc0 = a.collect("crustal_thickness_m")
+    volume = float(overflow @ areas)
+    fraction = orogeny.melt_fraction(orogeny.moho_temperature_c(hc0, a.collect("mantle_lithosphere_thickness_m")))
+    melt = float((overflow * fraction) @ areas)
+    assert 0.0 < melt < volume
+    material = float(a.collect("continental_material_m") @ areas)
+
+    quad_tectonics._place_ceiling_overflow(a, world, overflow, None)
+
+    hc = a.collect("crustal_thickness_m")
+    assert float(hc @ areas) == pytest.approx(float(hc0 @ areas) + melt, rel=1e-12)
+    assert np.all(hc <= lithosphere.MAX_CRUSTAL_THICKNESS_M + 1e-6)
+    assert hc[2] > hc0[2]
+    # Shortening was never in the material tracer, and melt intrudes hot.
+    assert float(a.collect("continental_material_m") @ areas) == pytest.approx(material, rel=1e-12)
+    assert not np.any(a.collect("moho_thermal_lag_c"))
+    budget = world.orogenic_relief_budget
+    assert budget["ceiling_overflow_m3"] == pytest.approx(volume)
+    assert budget["ceiling_overflow_melt_placed_m3"] == pytest.approx(melt)
+    assert budget["ceiling_overflow_residue_m3"] == pytest.approx(volume - melt)
+    assert budget["ceiling_overflow_no_outlet_m3"] == 0.0
+    continental_ledger.assert_closed(world)
+
+
+def test_a_cold_overflowing_column_has_no_melt_to_place():
+    a, overflow = _capped_strip(30)
+    a.set_fields_on_plate(moho_thermal_lag_c=np.full(a.node_count(), 600.0))
+    world = _world(a)
+    hc0 = a.collect("crustal_thickness_m")
+
+    quad_tectonics._place_ceiling_overflow(a, world, overflow, None)
+
+    np.testing.assert_array_equal(a.collect("crustal_thickness_m"), hc0)
+    budget = world.orogenic_relief_budget
+    assert budget["ceiling_overflow_residue_m3"] == pytest.approx(budget["ceiling_overflow_m3"])
+    assert budget["ceiling_overflow_melt_placed_m3"] == 0.0
+
+
+def _converging_ctx(n: int, convergent: np.ndarray):
+    from types import SimpleNamespace
+
+    zeros = np.zeros(n, dtype=bool)
+    return SimpleNamespace(
+        convergent=convergent, divergent=zeros, transform=zeros,
+        closing_rate=np.where(convergent, 0.1 / (365.25 * 86400.0), 0.0),
+        inputs=SimpleNamespace(neighbor_is_oceanic=zeros), arc_band=zeros, arc_intensity=np.zeros(n),
+        fault_influence=np.ones(n), orogen_dilation_nodes=3, orogen_contested_strength=1.0, orogen_amount=1.0,
+        fault_noise=None, own_points=np.zeros((n, 3)),
+    )
+
+
+def test_quad_column_pass_reports_ceiling_overflow_instead_of_intruding_melt():
+    from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
+
+    a, _ = _capped_strip(12)
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    n = a.node_count()
+    convergent = np.zeros(n, dtype=bool)
+    convergent[:2] = True
+    near_field_dist = quad_tectonics.hop_distance(a, convergent, 3)
+
+    def run(overflow):
+        fields = {name: a.collect(name) for name in COLUMN_FIELDS}
+        return deform_columns(
+            world, a, _converging_ctx(n, convergent), slice(None), fields, near_field_dist, lambda: None,
+            a.node_areas_m2(), 0, 1_000_000.0, ceiling_overflow=overflow,
+        )
+
+    line_engine = run(None)
+    overflow = np.zeros(n)
+    quad = run(overflow)
+
+    assert np.all(overflow[:2] > 0.0) and not np.any(overflow[2:])
+    ring = (near_field_dist > 0) & (near_field_dist <= 3)
+    # The line engine still intrudes part of the overflow as melt into the ring; the quad
+    # engine leaves the ring to its own shortening and places the overflow itself.
+    assert np.all(line_engine["crustal_thickness_m"][ring] > quad["crustal_thickness_m"][ring])
+    np.testing.assert_array_equal(line_engine["crustal_thickness_m"][convergent], quad["crustal_thickness_m"][convergent])
+
+
 def test_tectonic_escape_moves_crust_along_strike_not_inland():
     # A short suture front along j at i = 10; the overriding plate lies toward -i.
     keys = _block((10, 40), (0, 50))

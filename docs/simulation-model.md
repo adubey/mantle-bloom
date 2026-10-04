@@ -843,18 +843,48 @@ crustal delamination is real, but it needs a dense eclogitized root that is hot 
 detach. Reaching the numerical Hc cap is not one of those conditions. On quad plates, the
 over-thickened crust of a suture or a standing orogen goes through these processes:
 
-- **Thermal proxy.** `moho_temperature_c` is the steady-state conductive geotherm of a column
-  with uniform radiogenic heating in the crust (`CRUST_HEAT_PRODUCTION_W_M3`, 0.7 uW/m^3)
-  over a lid with none, between 10 C at the surface and 1330 C at the lithosphere's base. A
-  reference column (35 km crust, 100 km lid) gets a ~480 C Moho. Doubled crust on that lid
-  gets ~960 C, and on a doubled lid ~860 C. A freshly thickened column is treated as already
-  at steady state, which overstates how quickly a young orogen weakens.
+- **Thermal proxy.** `steady_moho_temperature_c` is the steady-state conductive geotherm of a
+  column with uniform radiogenic heating in the crust (`CRUST_HEAT_PRODUCTION_W_M3`, 0.7
+  uW/m^3) over a lid with none, between 10 C at the surface and 1330 C at the lithosphere's
+  base. A reference column (35 km crust, 100 km lid) gets a ~480 C Moho. Doubled crust on that
+  lid gets ~960 C, and on a doubled lid ~860 C.
+- **Thermal lag.** Each quad cell stores `moho_thermal_lag_c`, how far its Moho sits below
+  that steady state; `moho_temperature_c` subtracts it. Shortening and stacking bury the Moho
+  with its old temperature (`bury_moho`), so the lag grows by however much the steady state
+  rose. This applies to the convergent band and its near-field ring, and to suture and
+  overriding-plate receivers. The lag then decays with an
+  e-folding time of `THERMAL_RELAXATION_MYR` (25 Myr), integrated exactly. Freshly thickened
+  crust therefore starts cold, and it only weakens, melts or becomes able to delaminate as it
+  heats. Arc, rift and anatectic magma bring their heat with them and leave the lag alone, and
+  so does ductile flow. A thinned column gets a negative lag: it is briefly hotter than its
+  new steady state.
 - **Crust states.** `crust_state` sorts continental columns into cold-strong, hot-weak (Moho
   at least `DUCTILE_ONSET_MOHO_C`, 700 C), melt-eligible (`MELT_ONSET_MOHO_C`, 750 C), and
   delamination-eligible. A delamination-eligible column has at least `DELAMINATION_MIN_ROOT_M`
   (10 km) of crust below `ECLOGITE_DEPTH_M` (50 km) and a Moho at least
-  `DELAMINATION_MIN_MOHO_C` (750 C). `/world/stats` reports the area in each state
+  `DELAMINATION_MIN_MOHO_C` (750 C), or as much restite instead (below). All of these read
+  the lagged temperature. `/world/stats` reports the area in each state
   (`crust_state_area_m2`).
+- **Anatexis** (`anatexis`, each quad step before collapse). The crust hotter than
+  `MELT_ONSET_MOHO_C` is the melting zone. That is everything below the 750 C isotherm, taking
+  temperature as linear in depth down to the lagged Moho. The bottom of the zone is restite
+  (`restite_m`), which is already depleted and can't melt again. The fertile rest above it
+  is processed at `ANATEXIS_RATE_PER_MYR` (10% per Myr, integrated exactly). Each increment
+  gives up its mean melt fraction, which ramps from 0 at 750 C to `MAX_MELT_FRACTION` (35%)
+  at `MELT_FULL_C` (950 C), and leaves the rest behind as restite. The melt rises:
+  - `ANATEXIS_RELAMINATION_FRACTION` (30%) relaminates into thinner neighbouring continental
+    columns, carrying its column's continental-material fraction. A receiver can't be pushed
+    past the Hc cap; what it can't take stays home.
+  - The rest, and all the melt of a column with no thinner neighbour, is emplaced in the
+    column's own upper crust, which changes no thickness.
+
+  Cratonic crust that melts out becomes ordinary crust (`collision_reworked_m3`). Restite is
+  an extensive share of Hc. It thickens and thins with its column in `deform_columns`, travels
+  with suture crust, and stays put when crust flows, as Hm does.
+- **Residue feeds delamination.** A column's delaminable root is its crust below 50 km or
+  its restite, whichever reaches higher. Restite is garnet-rich and dense well above the
+  eclogite transition. Delaminating roots shed restite first, so roots that founder are
+  mostly restite rather than whatever lies below a fixed depth.
 - **Suture accretion** (`quad_tectonics._place_suture_crust`). A front's consumed Hc tries each
   of these in turn, and only what one can't hold moves on to the next:
   1. **Belts.** It fills the first `SUTURE_ACCRETION_SPREAD_NODES` hops, then three more belts
@@ -886,6 +916,24 @@ over-thickened crust of a suture or a standing orogen goes through these process
 
   Mantle lithosphere fills the belts and delaminates past them, as an over-thickened mantle
   root does.
+- **Convergent-ceiling overflow** (`quad_tectonics._place_ceiling_overflow`). Shortening in
+  `deform_columns` that would push a column past `MAX_CRUSTAL_THICKNESS_M` used to go to
+  `rheology.apply_delamination_melt_intrusion`. That intruded a fixed 35% of it as melt into
+  the near-field ring at a capped rate, and dropped the rest without booking it. On quad
+  plates, the overflow is now the bottom of its column, melting at that column's lagged Moho
+  temperature. Its `melt_fraction` (0-35%) is the melt; a column still cold after
+  thickening melts none of it. Each edge-connected run of overflowing cells places its melt
+  through stages 1, 2 and 4 above, seeded at those cells: belts, escape along strike, far
+  field. The melt intrudes hot, so it sheds no roots and buries no Moho. The residue founders
+  with its root (`ceiling_overflow_residue_m3`), and melt with no outlet is dropped
+  (`ceiling_overflow_no_outlet_m3`). The shortening increment was never in the continental-
+  material tracer, so none of this touches the ledger.
+
+  Placing all of the overflow conserves Hc, but it isn't material conservation. On seed 3,
+  Hc worth ~15% of the starting inventory reached the ceiling over 100 Myr. Placing all of it
+  raised continental Hc by 12.7% (4.6% without it) and left suture crust, which does carry
+  material, with no outlet: cumulative delamination rose to 7.6% of the inventory, against
+  6.4%. The line engine keeps the old intrusion.
 - **Collapse and ductile flow** (`relax_orogens`, at the end of each quad `deform`). Crust
   thicker than `COLLAPSE_ONSET_HC_M` (50 km, ~2.7 km of isostatic relief) spreads down
   thickness gradients into neighbouring continental columns, never into oceanic ones. Only
@@ -907,15 +955,16 @@ over-thickened crust of a suture or a standing orogen goes through these process
 handled: `suture_donated_m3`, `suture_belt_placed_m3`, `escape_attempted_m3` /
 `escape_placed_m3`, `delamination_attempted_m3` / `delamination_completed_m3`,
 `far_field_placed_m3`, `foreland_spill_placed_m3`, `overrider_placed_m3`,
-`no_outlet_delaminated_m3`,
-`relief_mobile_excess_m3`,
-`collapse_transferred_m3` and `ductile_flow_transferred_m3`. The continental-material ledger
-books delaminated provenance in `delaminated_lower_crust_m3`.
+`no_outlet_delaminated_m3`; `ceiling_overflow_m3` (= `ceiling_overflow_residue_m3` +
+`ceiling_overflow_melt_placed_m3` + `ceiling_overflow_no_outlet_m3`);
+`anatexis_melt_extracted_m3` (= `anatexis_melt_emplaced_m3` +
+`anatexis_melt_relaminated_m3`) and `anatexis_residue_m3`; `restite_delaminated_m3` (the
+restite share of every shed suture root); `relief_mobile_excess_m3`, `collapse_transferred_m3` and
+`ductile_flow_transferred_m3`. The continental-material ledger books delaminated provenance
+in `delaminated_lower_crust_m3`.
 
-This is phase 1. Anatexis (melt, residue and relamination accounting, plus a thermal lag
-on the steady-state proxy) and the long-run recalibration of #276 are separate phases. The
-line engine, the convergent-ceiling overflow in `deform_columns`, and the quad merge's
-stacking cap are unchanged.
+These are phases 1 and 2. The long-run recalibration of #276 is phase 3. The line engine
+and the quad merge's stacking cap are unchanged.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)

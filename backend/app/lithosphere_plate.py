@@ -847,6 +847,7 @@ def deform_columns(
     node_area_m2: np.ndarray | float,
     rng_index: int,
     years: float,
+    ceiling_overflow: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """This step's in-place lithospheric column update for the nodes `sl` selects out of
     `ctx`'s per-plate arrays -- convergent/near-field thickening, arc magmatism, divergent
@@ -859,7 +860,11 @@ def deform_columns(
     surfaces: `near_field_dist` (hop distance to the convergent band, within
     `ctx.orogen_dilation_nodes` -- along the line, or across the cell graph), `local_xyz()`
     (lazily, for the fault-noise texture), `node_area_m2` (scalar on the constant-area line
-    lattice, per node on quads) and `rng_index` (the eruption rng's per-plate stream key)."""
+    lattice, per node on quads) and `rng_index` (the eruption rng's per-plate stream key).
+
+    `ceiling_overflow`, when given, receives the convergent band's per-node Hc past
+    `MAX_CRUSTAL_THICKNESS_M` for the caller to place, instead of the near-field melt
+    intrusion that otherwise takes part of it (the quad engine, issue #290)."""
     convergent = ctx.convergent[sl]
     divergent = ctx.divergent[sl]
     transform = ctx.transform[sl]
@@ -999,7 +1004,9 @@ def deform_columns(
         # there's no near-field ring to receive it (reach knob at 0, or an oceanic
         # plate, which never gets one).
         overflow_total = float(np.sum(overflow_hc[convergent[thicken]]))
-        if overflow_total > 0.0 and np.any(near_field):
+        if ceiling_overflow is not None:
+            ceiling_overflow[np.flatnonzero(thicken)[convergent[thicken]]] = overflow_hc[convergent[thicken]]
+        elif overflow_total > 0.0 and np.any(near_field):
             hc[near_field] = rheology.apply_delamination_melt_intrusion(hc[near_field], overflow_total, years_myr)
 
     if world.debug_diagnostics:
