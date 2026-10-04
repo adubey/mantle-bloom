@@ -531,6 +531,172 @@ def test_apply_erosion_never_routes_more_than_a_column_can_give_up():
     assert hc_after.min() >= lithosphere.MIN_CRUSTAL_THICKNESS_M - 1e-6
 
 
+def _profile_neighbors(n: int) -> np.ndarray:
+    """Left/right neighbours along a 1-D profile (an end repeats itself)."""
+    idx = np.arange(n)
+    return np.stack([np.clip(idx - 1, 0, n - 1), np.clip(idx + 1, 0, n - 1)], axis=1)
+
+
+def test_mass_wasting_runs_off_the_flank_and_settles_on_the_foreland():
+    # Summit, two steep flank nodes, three flat foreland nodes, then the sea.
+    elevation = np.array([6000.0, 4000.0, 2000.0, 300.0, 200.0, 100.0, -500.0])
+    slope = np.array([0.05, 0.05, 0.05, 0.0, 0.0, 0.0, 0.0])
+    is_ocean = elevation < 0.0
+    source = np.array([10.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    tagged = 0.4 * source
+    capacity = np.array([np.inf, np.inf, np.inf, 3.0, 2.0, 1.0, np.inf])
+    headroom = np.full(len(elevation), 1.0e4)
+
+    land, arrival, _, land_tagged, arrival_tagged, _ = erosion._route_mass_wasting(
+        elevation, is_ocean, _profile_neighbors(len(elevation)), slope, source, tagged, capacity, headroom
+    )
+    # Nothing settles on the source or the steep flank; the flat foreland fills to capacity
+    # and the rest reaches the sea.
+    assert np.all(land[:3] == 0.0)
+    assert np.allclose(land[3:6], [3.0, 2.0, 1.0])
+    assert np.isclose(arrival[6], 4.0)
+    assert np.isclose(land.sum() + arrival.sum(), source.sum())
+    # The continental share travels with the debris.
+    assert np.allclose(land_tagged, 0.4 * land)
+    assert np.allclose(arrival_tagged, 0.4 * arrival)
+
+
+def test_mass_wasting_runs_past_a_column_at_the_hc_cap():
+    elevation = np.array([6000.0, 5000.0, 400.0, 300.0])
+    slope = np.zeros(4)
+    is_ocean = np.zeros(4, dtype=bool)
+    source = np.array([5.0, 0.0, 0.0, 0.0])
+    headroom = np.array([0.0, 0.0, 1.0e4, 1.0e4])  # summit and next node sit at the cap
+
+    land, arrival, *_ = erosion._route_mass_wasting(
+        elevation, is_ocean, _profile_neighbors(4), slope, source, source, np.full(4, np.inf), headroom
+    )
+    assert land[1] == 0.0  # flat, but no headroom: debris runs on
+    assert np.isclose(land[2], 5.0)
+    assert arrival.sum() == 0.0
+
+
+def test_mass_wasting_debris_on_a_pit_or_from_a_low_source_stays_put():
+    # Node 0 has no lower neighbour, so its own debris stays; node 1's debris reaches the pit at 2.
+    elevation = np.array([100.0, 900.0, 50.0, 800.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    source = np.array([1.0, 2.0, 0.0, 0.0])
+    land, arrival, *_ = erosion._route_mass_wasting(
+        elevation, np.zeros(4, dtype=bool), neighbors, np.full(4, 0.05), source, source, np.zeros(4), np.full(4, 1.0e4)
+    )
+    assert np.allclose(land, [1.0, 0.0, 2.0, 0.0])
+    assert arrival.sum() == 0.0
+
+
+def test_mass_wasting_fills_a_pit_to_its_room_and_spills_the_rest_over_the_rim():
+    # Summit 0 drains into pit 1, which has 2 units of room; its basin spills to 2, which
+    # drains to the sea at 3.
+    elevation = np.array([3000.0, 100.0, 500.0, -200.0])
+    neighbors = np.array([[1, 1], [0, 2], [3, 1], [2, 2]])
+    is_ocean = elevation < 0.0
+    source = np.array([5.0, 0.0, 0.0, 0.0])
+    capacity = np.array([np.inf, 2.0, 0.0, np.inf])
+    spill = np.array([-1, 2, -1, -1])
+    land, arrival, _, land_tagged, _, _ = erosion._route_mass_wasting(
+        elevation, is_ocean, neighbors, np.full(4, 0.05), source, 0.5 * source, capacity, np.full(4, 1.0e4), spill_target=spill
+    )
+    assert np.allclose(land, [0.0, 2.0, 0.0, 0.0])
+    assert np.isclose(arrival[3], 3.0)
+    assert np.allclose(land_tagged, 0.5 * land)
+
+
+def test_mass_wasting_hands_debris_that_reaches_the_ice_to_the_glacier():
+    # A bare summit sheds onto a glaciated node (2); a glaciated summit's own debris (4) rides
+    # its ice from the start. Neither settles on the ice-free flat in between.
+    elevation = np.array([4000.0, 3000.0, 2000.0, 300.0, 3500.0])
+    neighbors = np.array([[1, 1], [0, 2], [1, 3], [2, 2], [3, 3]])
+    on_ice = np.array([False, False, True, False, True])
+    source = np.array([6.0, 0.0, 0.0, 0.0, 4.0])
+    land, arrival, ice, land_tagged, _, ice_tagged = erosion._route_mass_wasting(
+        elevation, np.zeros(5, dtype=bool), neighbors, np.full(5, 0.05), source, 0.5 * source,
+        np.full(5, np.inf), np.full(5, 1.0e4), on_ice=on_ice,
+    )
+    assert np.allclose(ice, [0.0, 0.0, 6.0, 0.0, 4.0])
+    assert land.sum() == 0.0 and arrival.sum() == 0.0
+    assert np.allclose(ice_tagged, 0.5 * ice)
+
+
+def test_mass_wasting_inflow_settles_where_the_ice_drops_it_up_to_its_room():
+    # The ice put 5 units down on flat margin node 1, which has room for 2; the rest runs on.
+    elevation = np.array([900.0, 400.0, 300.0, -100.0])
+    neighbors = _profile_neighbors(4)
+    inflow = np.array([0.0, 5.0, 0.0, 0.0])
+    land, arrival, ice, land_tagged, *_ = erosion._route_mass_wasting(
+        elevation, elevation < 0.0, neighbors, np.zeros(4), np.zeros(4), np.zeros(4),
+        np.array([np.inf, 2.0, 1.0, np.inf]), np.full(4, 1.0e4), inflow_vol=inflow, inflow_tagged=0.2 * inflow,
+    )
+    assert np.allclose(land, [0.0, 2.0, 1.0, 0.0])
+    assert np.isclose(arrival[3], 2.0)
+    assert ice.sum() == 0.0
+    assert np.allclose(land_tagged, 0.2 * land)
+
+
+def test_capped_lake_spread_keeps_debris_off_a_member_at_the_hc_cap():
+    # One four-member lake; member 1 is at the cap. 10 units landed on member 0.
+    lake_depth = np.array([50.0, 50.0, 50.0, 50.0])
+    neighbor_idx = np.array([[1, 3], [0, 2], [1, 3], [2, 0]])
+    source = np.array([10.0, 0.0, 0.0, 0.0])
+    capacity = np.array([20.0, 0.0, 3.0, 20.0])
+    out, tagged = erosion._spread_lake_sediment_capped(lake_depth, neighbor_idx, source, 0.3 * source, capacity)
+    assert out[1] == 0.0
+    assert np.all(out <= capacity + 1e-12)
+    assert np.isclose(out[2], 3.0)  # filled to its room, the rest went to members with room
+    assert np.isclose(out.sum(), 10.0)
+    assert np.allclose(tagged, 0.3 * out)
+
+
+def test_capped_lake_spread_leaves_what_no_member_can_hold_where_it_landed():
+    lake_depth = np.array([50.0, 50.0, 0.0])
+    neighbor_idx = np.array([[1, 2], [0, 2], [0, 1]])
+    source = np.array([6.0, 0.0, 2.0])  # node 2 is dry land: untouched
+    capacity = np.array([1.0, 2.0, 0.0])
+    out, tagged = erosion._spread_lake_sediment_capped(lake_depth, neighbor_idx, source, source, capacity)
+    assert np.allclose(out, [4.0, 2.0, 2.0])
+    assert np.allclose(tagged, out)
+
+
+def test_apply_erosion_routes_landslide_debris_into_basins_and_closes_the_ledger():
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world.seismic_erosion_multiplier = 4.0
+    tracked_before = _tracked_continental_m3(world)
+    budget = erosion.apply_erosion(world, years=5_000_000).budget
+    assert budget["mass_wasting_removed_m3"] > 0.0
+    assert np.isclose(
+        budget["mass_wasting_foreland_m3"] + budget["mass_wasting_marine_m3"], budget["mass_wasting_removed_m3"], rtol=1e-9
+    )
+    assert np.isclose(budget["deposited_m3"], budget["removed_m3"], rtol=1e-9)
+    assert np.isclose(_tracked_continental_m3(world), tracked_before, rtol=1e-12)
+
+
+def test_landslides_lower_a_frozen_summit_that_water_cannot_drain(monkeypatch):
+    # Hydrology gives frozen land no flow target, so water-routed sediment eroded there settles
+    # straight back. Landslide debris moves by gravity and must still leave the summit.
+    import dataclasses
+
+    from app import hydrology
+
+    real = hydrology.compute_hydrology
+
+    def all_frozen(*args, **kwargs):
+        hydro = real(*args, **kwargs)
+        return dataclasses.replace(hydro, flow_target=np.where(hydro.is_ocean, hydro.flow_target, -1))
+
+    monkeypatch.setattr(hydrology, "compute_hydrology", all_frozen)
+    world = _generate_world(seed=3, num_plates=8, surface="quad")
+    world.glacier_erosion_multiplier = 0.0
+    world.wind_erosion_multiplier = 0.0
+    _, elevation, _, _, _, order = erosion._gather_nodes(world)
+    summit = int(np.argmax(elevation))
+    hc_before = plates.collect_all_crustal_thickness(order)[summit]
+    erosion.apply_erosion(world, years=5_000_000)
+    assert plates.collect_all_crustal_thickness(order)[summit] < hc_before - 1.0
+
+
 def test_ocean_deposition_knob_below_one_declares_the_continental_sediment_it_withholds():
     world = _generate_world(seed=3, num_plates=8, surface="quad")
     world.ocean_deposition_multiplier = 0.5

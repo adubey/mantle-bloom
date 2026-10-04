@@ -264,6 +264,27 @@ EARTHQUAKE_EROSION_PEAK_BOOST = 4.0
 EARTHQUAKE_EROSION_MW_REF = 6.5
 EARTHQUAKE_EROSION_REACH_KM_PER_MW = 12.0
 
+# Mass-wasting runout (issue #275 phase 4). Landslide and rockfall debris moves by gravity, not
+# with liquid water, so seismic erosion no longer joins the water-routed pool. That pool stops
+# dead at a frozen node (hydrology gives frozen land no flow target), and nearly every column
+# at the Hc cap is a frozen summit: its debris was "deposited" straight back where it came
+# from, so the highest belts never lost any net rock. `_route_mass_wasting` instead carries the
+# debris down the bare-rock steepest-descent path, frozen or not, and settles it where the
+# ground flattens out -- the foreland. On ground at or above MASS_WASTING_RUNOUT_SLOPE (a
+# mountain flank) none of it settles; on flat ground it all does, linearly in between. A
+# column within MASS_WASTING_HEADROOM_TAPER_M of the Hc cap takes proportionally less, and none
+# at the cap, so debris runs on past a saturated plateau rather than overflowing it. Debris
+# that reaches the sea spreads onto the shelf and down into the ocean basin like the other
+# marine sediment (_spread_marine_sediment) -- turbidity currents off a collision margin.
+# MASS_WASTING_RUNOUT_SLOPE sits between a mountain flank (~0.05) and a foreland plain (median
+# land slope ~3e-4, see WEATHERING_RELIEF_REFERENCE_SLOPE), a starting point like the others.
+MASS_WASTING_RUNOUT_SLOPE = 0.005
+MASS_WASTING_HEADROOM_TAPER_M = 2000.0
+# A land pit fills only to its Hc room; the rest spills over the basin rim (hydrology's
+# spill_target) and runs on. This many downhill sweeps, then any debris still spilling stays
+# in its pit.
+MASS_WASTING_SPILL_PASSES = 4
+
 # Submarine erosion (mantle-bloom-original): plates.CONVERGENT_MOUNTAIN_RATE_M_PER_MYR uplifts a
 # colliding node regardless of whether it sits above or below sea level, so two *submerged*
 # plates colliding will, unchecked, raise a range to the surface at the same rate a subaerial
@@ -547,7 +568,7 @@ class ErosionResult:
 
     `sediment_deposited` is every deposition pathway's combined total at each node -- ordinary
     river/runoff floodplain deposit, glacier till, glacier-transported moraine/outwash material,
-    wind-blown resettling, beach/nearshore spreading, and marine sediment shed onto the sea
+    landslide runout (see MASS_WASTING_*), wind-blown resettling, beach/nearshore spreading, and marine sediment shed onto the sea
     floor by submarine and coastal erosion, all summed together (see apply_erosion's own comment
     for how they're split and redistributed) -- not just the water-routed share alone.
 
@@ -788,6 +809,138 @@ def _apply_ice_load(
     return new_elevation, new_elevation - unloaded_bed, load
 
 
+def _route_mass_wasting(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    slope: np.ndarray,
+    source_vol: np.ndarray,
+    source_tagged: np.ndarray,
+    capacity_vol: np.ndarray,
+    headroom_m: np.ndarray,
+    spill_target: np.ndarray | None = None,
+    on_ice: np.ndarray | None = None,
+    inflow_vol: np.ndarray | None = None,
+    inflow_tagged: np.ndarray | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Gravity runout of landslide debris (see MASS_WASTING_*). Each node hands its debris to
+    its lowest strictly-lower `neighbor_idx` neighbour -- bare rock, frozen or not, with no
+    lake-spill or ice edges, so elevation-descending order visits every node before its target.
+    Debris leaves its source; from the first node downslope on, a share settles at each node it
+    passes (MASS_WASTING_RUNOUT_SLOPE's linear taper, scaled by the column's Hc headroom), never
+    more than `capacity_vol` there. Debris reaching an ocean node stops there.
+
+    A land pit fills up to its capacity, and the rest spills over the basin rim to
+    `spill_target` (hydrology's one-hop basin escape) and runs on from there in a further sweep,
+    up to MASS_WASTING_SPILL_PASSES sweeps. Whatever is still left -- a pit with no spill
+    target, or debris still spilling after the last sweep -- settles in its pit, room or not.
+
+    Debris that starts on, or runs onto, a land node marked `on_ice` stops there and is handed
+    back as "ice arrival": a glacier carries rockfall on and in the ice to its margin (lateral
+    and medial moraine), and out through a basin's outlet once the ice overtops the rim, so the
+    caller carries it along `ice_flow_target` and hands what the ice drops back here as
+    `inflow_vol`: debris arriving at a node rather than leaving one, so it can settle right
+    where it is put down.
+
+    Returns (land deposit, ocean arrival, ice arrival, and the tagged share of each), all
+    volumes. `source_tagged` is the continental share of `source_vol`; it travels mixed with the
+    rest, so every deposit carries the tagged fraction of the flux it came from. Conserves both
+    totals exactly."""
+    n = len(elevation)
+    deposit = np.zeros(n)
+    deposit_tagged = np.zeros(n)
+    arrival = np.zeros(n)
+    arrival_tagged = np.zeros(n)
+    ice = np.zeros(n)
+    ice_tagged = np.zeros(n)
+    inflow = inflow_vol if inflow_vol is not None else np.zeros(n)
+    if n == 0 or not (np.any(source_vol > 0) or np.any(inflow > 0)):
+        return deposit, arrival, ice, deposit_tagged, arrival_tagged, ice_tagged
+
+    rows = np.arange(n)
+    neighbor_elevation = elevation[neighbor_idx]
+    lowest = np.argmin(neighbor_elevation, axis=1)
+    target = np.where(neighbor_elevation[rows, lowest] < elevation, neighbor_idx[rows, lowest], -1)
+    settle = np.clip(1.0 - slope / MASS_WASTING_RUNOUT_SLOPE, 0.0, 1.0)
+    settle = settle * np.clip(headroom_m / MASS_WASTING_HEADROOM_TAPER_M, 0.0, 1.0)
+    spill = spill_target if spill_target is not None else np.full(n, -1)
+    glaciated = (on_ice if on_ice is not None else np.zeros(n, dtype=bool)) & ~is_ocean
+
+    # Debris shed onto the ice rides it; a source with nowhere lower to send its debris keeps it.
+    rides = (source_vol > 0) & glaciated
+    ice[rides] += source_vol[rides]
+    ice_tagged[rides] += source_tagged[rides]
+    stays = (source_vol > 0) & (target < 0) & ~glaciated
+    deposit[stays] += source_vol[stays]
+    deposit_tagged[stays] += source_tagged[stays]
+    moves = (source_vol > 0) & (target >= 0) & ~glaciated
+    flux = np.zeros(n)
+    flux_tagged = np.zeros(n)
+    np.add.at(flux, target[moves], source_vol[moves])
+    np.add.at(flux_tagged, target[moves], source_tagged[moves])
+    flux += inflow
+    if inflow_tagged is not None:
+        flux_tagged += inflow_tagged
+
+    order = np.argsort(-elevation).tolist()
+    target_list = target.tolist()
+    spill_list = spill.tolist()
+    settle_list = settle.tolist()
+    room = np.clip(capacity_vol, 0.0, None).tolist()
+    is_ocean_list = is_ocean.tolist()
+    glaciated_list = glaciated.tolist()
+    deposit_list = [0.0] * n
+    deposit_tagged_list = [0.0] * n
+    flux_list = flux.tolist()
+    tagged_list = flux_tagged.tolist()
+    for sweep in range(MASS_WASTING_SPILL_PASSES):
+        last = sweep == MASS_WASTING_SPILL_PASSES - 1
+        spilled = [0.0] * n
+        spilled_tagged = [0.0] * n
+        for i in order:
+            f = flux_list[i]
+            if f <= 0.0:
+                continue
+            ft = tagged_list[i]
+            if is_ocean_list[i]:
+                arrival[i] += f
+                arrival_tagged[i] += ft
+                continue
+            if glaciated_list[i]:
+                ice[i] += f
+                ice_tagged[i] += ft
+                continue
+            j = target_list[i]
+            if j >= 0:
+                dropped = min(f * settle_list[i], room[i])
+            elif last or spill_list[i] < 0:
+                dropped = f
+            else:
+                dropped = min(f, room[i])
+            if dropped > 0.0:
+                dropped_tagged = ft * (dropped / f)
+                deposit_list[i] += dropped
+                deposit_tagged_list[i] += dropped_tagged
+                room[i] -= dropped
+                f -= dropped
+                ft -= dropped_tagged
+            if f <= 0.0:
+                continue
+            if j >= 0:
+                flux_list[j] += f
+                tagged_list[j] += ft
+            else:
+                spilled[spill_list[i]] += f
+                spilled_tagged[spill_list[i]] += ft
+        flux_list = spilled
+        tagged_list = spilled_tagged
+        if not any(spilled):
+            break
+    deposit += np.array(deposit_list)
+    deposit_tagged += np.array(deposit_tagged_list)
+    return deposit, arrival, ice, deposit_tagged, arrival_tagged, ice_tagged
+
+
 def _route_wind_deposit(
     points: np.ndarray, wind_u: np.ndarray, wind_v: np.ndarray, source_amount: np.ndarray, world: "World | None" = None
 ) -> np.ndarray:
@@ -957,13 +1110,61 @@ def _spread_lake_sediment(lake_depth: np.ndarray, neighbor_idx: np.ndarray, sour
         total = source_amount[members].sum()
         if total <= 0.0:
             continue
-        member_depth = lake_depth[members]
-        depth_sum = member_depth.sum()
-        uniform_share = np.full(len(members), 1.0 / len(members))
-        depth_share = (member_depth / depth_sum) if depth_sum > 0.0 else uniform_share
-        weight = LAKE_SEDIMENT_UNIFORM_FRACTION * uniform_share + (1.0 - LAKE_SEDIMENT_UNIFORM_FRACTION) * depth_share
-        result[members] += total * weight
+        result[members] += total * _lake_member_weights(lake_depth[members])
     return result
+
+
+def _lake_member_weights(member_depth: np.ndarray) -> np.ndarray:
+    """Each lake member's share of its lake's sediment: LAKE_SEDIMENT_UNIFORM_FRACTION spread
+    evenly, the rest by depth (evenly too if the lake has no depth at all)."""
+    uniform_share = np.full(len(member_depth), 1.0 / len(member_depth))
+    depth_sum = member_depth.sum()
+    depth_share = (member_depth / depth_sum) if depth_sum > 0.0 else uniform_share
+    return LAKE_SEDIMENT_UNIFORM_FRACTION * uniform_share + (1.0 - LAKE_SEDIMENT_UNIFORM_FRACTION) * depth_share
+
+
+def _spread_lake_sediment_capped(
+    lake_depth: np.ndarray,
+    neighbor_idx: np.ndarray,
+    source_amount: np.ndarray,
+    tagged_amount: np.ndarray,
+    capacity: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`_spread_lake_sediment` for a deposit that already respects per-node `capacity` (landslide
+    debris, see `_route_mass_wasting`), keeping it that way: a lake member takes its weighted
+    share only up to its capacity, and the remainder goes to the members with room left, by the
+    same weights. Whatever the lake as a whole has no room for stays where it was deposited.
+    The lake's load is mixed, so every member's deposit carries the lake's tagged fraction.
+    Returns (spread amount, spread tagged amount); conserves both totals exactly."""
+    result = np.where(source_amount > 0, source_amount, 0.0)
+    tagged = np.where(source_amount > 0, tagged_amount, 0.0)
+    is_lake = lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    if not np.any(is_lake & (source_amount > 0)):
+        return result, tagged
+
+    for members in hydrology.lake_components(is_lake, neighbor_idx):
+        total = source_amount[members].sum()
+        if total <= 0.0:
+            continue
+        tagged_fraction = tagged_amount[members].sum() / total
+        weight = _lake_member_weights(lake_depth[members])
+        room = np.clip(capacity[members], 0.0, None)
+        placed = np.zeros(len(members))
+        remaining = total
+        # Each pass fills at least one member to capacity or places everything, so this ends.
+        for _ in range(len(members)):
+            open_weight = np.where(placed < room, weight, 0.0)
+            if remaining <= 0.0 or open_weight.sum() <= 0.0:
+                break
+            give = np.minimum(remaining * open_weight / open_weight.sum(), room - placed)
+            placed += give
+            remaining -= give.sum()
+        if remaining > 0.0:
+            # No room left in the lake: the unplaced share stays on the nodes it landed on.
+            placed += remaining * source_amount[members] / total
+        result[members] = placed
+        tagged[members] = placed * tagged_fraction
+    return result, tagged
 
 
 def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
@@ -1214,8 +1415,8 @@ def apply_erosion(
     (wind speed x humidity), glacier erosion (accumulated ice depth x slope, see
     GLACIER_EROSION_* for how ice's own weight drives this), and seismic erosion
     (earthquake-triggered landsliding, scaled by elevation as a stand-in for how tectonically
-    active a range is -- see SEISMIC_EROSION_* constants) -- then routes the combined eroded
-    material downstream, redepositing part of it wherever a big, slow river drops its load (a
+    active a range is -- see SEISMIC_EROSION_* constants; its debris runs out by gravity onto
+    the foreland, see MASS_WASTING_*) -- then routes the rest of the eroded material downstream, redepositing part of it wherever a big, slow river drops its load (a
     floodplain/delta) instead of losing everything to the coast. Glacially-eroded material
     (net of GLACIER_TILL_FRACTION's own immediate local deposit) is routed separately, along
     the ice's own real flow path rather than water's, settling only once it reaches the
@@ -1382,10 +1583,9 @@ def apply_erosion(
     # eroded material rides the wind rather than water (wind_redeposit_source, carried by
     # _route_wind_deposit below). All fractions are taken from the *applied* (post-neighbor-
     # drop-cap) amount, same applied_scale reasoning as applied_river above, so the split still
-    # exactly partitions erosion_amount. Seismic erosion has no distinct transport mechanism of
-    # its own (landslide debris that reaches a channel behaves like any other eroded material
-    # from here on) -- it joins the ordinary water-routed pool alongside rain, same as
-    # weathering's own water-routed remainder.
+    # exactly partitions erosion_amount. Seismic erosion's landslide debris moves by gravity
+    # rather than with water (issue #275 phase 4, see MASS_WASTING_*), so it stays out of the
+    # water-routed pool and runs out along its own path below.
     applied_weathering = weathering * applied_scale
     applied_glacier = glacier * applied_scale
     applied_seismic = seismic * applied_scale
@@ -1393,7 +1593,7 @@ def apply_erosion(
     glacier_carried = applied_glacier - glacier_till
     wind_redeposit_source = applied_weathering * WIND_DEPOSITION_FRACTION
     weathering_routed = applied_weathering - wind_redeposit_source
-    water_routed_amount = (rain * applied_scale) + applied_river + weathering_routed + applied_seismic
+    water_routed_amount = (rain * applied_scale) + applied_river + weathering_routed
 
     # Submarine + coastal erosion: the sea floor's and the shoreline's counterparts to the
     # subaerial sources above (all of which were just zeroed over ocean nodes). Submarine
@@ -1547,6 +1747,62 @@ def apply_erosion(
         elevation, is_ocean_node, hydro.ice_flow_target, glacier_carried_vol * tag, retain_fraction=at_glacier_margin
     )
 
+    # Mass wasting (issue #275 phase 4): landslide debris runs out downslope by gravity and
+    # settles on the foreland, never past a column's Hc cap -- see `_route_mass_wasting`.
+    # Debris that falls onto a glacier rides the ice instead: along ice_flow_target, the same
+    # path glacial debris takes, out to the ice margin -- and out through a basin's lowest
+    # outlet once the ice overtops its rim. Wherever the ice drops it, it runs out by gravity
+    # again from there, under the same Hc room, so the ice can't pile it past the cap. Debris
+    # landing in a lake spreads across it the same capacity-aware way. What reaches the sea
+    # spreads onto the shelf and into the basin like the other marine sediment, under the same
+    # ocean_deposition_multiplier.
+    mass_wasting_vol = applied_seismic * area
+    landslide_room = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc + removed_m, np.inf) * area
+    headroom_m = np.where(has_column, lithosphere.MAX_CRUSTAL_THICKNESS_M - prior_hc, np.inf)
+    landslide_land, landslide_arrival, landslide_ice, landslide_land_tagged, landslide_arrival_tagged, landslide_ice_tagged = _route_mass_wasting(
+        elevation,
+        is_ocean_node,
+        hydro.neighbor_idx,
+        slope,
+        mass_wasting_vol,
+        mass_wasting_vol * tag,
+        capacity_vol=landslide_room,
+        headroom_m=headroom_m,
+        spill_target=hydro.spill_target,
+        on_ice=hydro.glacier_depth >= hydrology.GLACIER_VISIBLE_DEPTH_M,
+    )
+    _, ice_dropped = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice, retain_fraction=at_glacier_margin
+    )
+    _, ice_dropped_tagged = hydrology.route_downstream(
+        elevation, is_ocean_node, hydro.ice_flow_target, landslide_ice_tagged, retain_fraction=at_glacier_margin
+    )
+    off_ice_land, off_ice_arrival, _, off_ice_land_tagged, off_ice_arrival_tagged, _ = _route_mass_wasting(
+        elevation,
+        is_ocean_node,
+        hydro.neighbor_idx,
+        slope,
+        np.zeros(n),
+        np.zeros(n),
+        capacity_vol=landslide_room - landslide_land,
+        headroom_m=headroom_m,
+        spill_target=hydro.spill_target,
+        inflow_vol=ice_dropped,
+        inflow_tagged=ice_dropped_tagged,
+    )
+    landslide_land = landslide_land + off_ice_land
+    landslide_land_tagged = landslide_land_tagged + off_ice_land_tagged
+    landslide_arrival = landslide_arrival + off_ice_arrival
+    landslide_arrival_tagged = landslide_arrival_tagged + off_ice_arrival_tagged
+    landslide_land, landslide_land_tagged = _spread_lake_sediment_capped(
+        hydro.lake_depth, hydro.neighbor_idx, landslide_land, landslide_land_tagged, capacity=landslide_room
+    )
+    landslide_marine_unscaled = _spread_marine_sediment(points, elevation, is_ocean_node, landslide_arrival)
+    landslide_marine_tagged = _spread_marine_sediment(points, elevation, is_ocean_node, landslide_arrival_tagged)
+    discarded_tagged_m3 += float(landslide_marine_tagged.sum()) * (1.0 - ocean_tag_keep)
+    landslide_marine = landslide_marine_unscaled * ocean_multiplier
+    landslide_marine_tagged = landslide_marine_tagged * ocean_tag_keep
+
     # Distributary redirect: route_downstream funnels a slow river's retained load down one
     # discretised channel and drops it on whichever single near-sea-level node that channel
     # runs through. A real delta splits into distributaries and spreads that load across the
@@ -1564,8 +1820,8 @@ def apply_erosion(
     marine_unscaled = _spread_marine_sediment(points, elevation, is_ocean_node, marine_source)
     marine_tagged = _spread_marine_sediment(points, elevation, is_ocean_node, marine_source * tag)
     discarded_tagged_m3 += float(marine_tagged.sum()) * (1.0 - ocean_tag_keep)
-    marine_deposit = marine_unscaled * ocean_multiplier
-    marine_tagged = marine_tagged * ocean_tag_keep
+    marine_deposit = marine_unscaled * ocean_multiplier + landslide_marine
+    marine_tagged = marine_tagged * ocean_tag_keep + landslide_marine_tagged
     leveling_fill, leveling_tagged = _spread_coastal_leveling(
         points, elevation, coastal_openness, dist_to_land, world.sea_level_m, leveling_datum, leveling_source, dt_myr, local_relief_m,
         area_m2=area, tagged_amount=leveling_source_tagged,
@@ -1580,10 +1836,17 @@ def apply_erosion(
 
     # Everything above is a volume per receiving node; back to thickness there.
     till_vol = glacier_till * area
-    plain_deposit_vol = sediment_vol + till_vol + glacier_transport_deposit + wind_deposit
+    plain_deposit_vol = sediment_vol + till_vol + glacier_transport_deposit + wind_deposit + landslide_land
     deposited_vol = plain_deposit_vol + marine_deposit + leveling_fill + flatten_received
     deposited_tagged = (
-        sediment_tagged + till_vol * tag + glacier_transport_tagged + wind_tagged + marine_tagged + leveling_tagged + flatten_received_tagged
+        sediment_tagged
+        + till_vol * tag
+        + glacier_transport_tagged
+        + wind_tagged
+        + landslide_land_tagged
+        + marine_tagged
+        + leveling_tagged
+        + flatten_received_tagged
     )
     plain_deposition = plain_deposit_vol / area
     marine_deposit_m = marine_deposit / area
@@ -1659,7 +1922,14 @@ def apply_erosion(
         "removed_m3": removed_m3,
         "deposited_m3": deposited_m3,
         # Net material the ocean_deposition_multiplier knob adds (> 1) or withholds (< 1).
-        "ocean_deposition_knob_m3": float(beach_deposit.sum() + marine_unscaled.sum()) * (ocean_multiplier - 1.0),
+        "ocean_deposition_knob_m3": float(beach_deposit.sum() + marine_unscaled.sum() + landslide_marine_unscaled.sum())
+        * (ocean_multiplier - 1.0),
+        # Landslide debris (phase 4): mobilized, settled on land (foreland), reaching the sea,
+        # handed to the ice.
+        "mass_wasting_removed_m3": float(mass_wasting_vol.sum()),
+        "mass_wasting_foreland_m3": float(landslide_land.sum()),
+        "mass_wasting_marine_m3": float(landslide_arrival.sum()),
+        "mass_wasting_on_ice_m3": float(landslide_ice.sum()),
         "lake_silt_m3": lake_silt_m3,
         "hc_cap_overflow_m3": float(np.sum(hc_cap_overflow_m * area)),
         "continental_removed_m3": float(np.sum(continental_removed_m * area)),
