@@ -1523,6 +1523,7 @@ def test_earthquakes_endpoint(client):
         assert len(q["epicenter"]) == 3
         assert 3.5 <= q["magnitude"] <= 9.5
         assert q["age_myr"] >= 0.0
+        assert q["trigger"] in ("tectonic", "ice_unloading")
 
 
 def test_controls_tuning_multipliers_round_trip_and_validate(client):

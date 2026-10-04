@@ -1577,7 +1577,52 @@ only the largest `BOUNDARY_FAULT_MAX_QUAKES_PER_STEP` are retained (they are num
 (5 Myr) at the top of the step. `erosion.py`'s seismic-erosion term is multiplied by
 `_earthquake_erosion_multiplier` -- `1 + Σ EARTHQUAKE_EROSION_PEAK_BOOST·10^(Mw −
 EARTHQUAKE_EROSION_MW_REF)·recency·taper` over nearby epicentres, a landsliding burst that
-fades over the retention window. Exposed via `GET /world/earthquakes`.
+fades over the retention window. Exposed via `GET /world/earthquakes`, with each quake's
+`trigger` (`"tectonic"` or `"ice_unloading"`).
+
+**Ice-unloading triggered earthquakes (`trigger_unloading_earthquakes`, issue #275 phase 5).**
+Right after erosion each step (so only when climate is simulated), `world.step_world_progress`
+hands the step's `ErosionResult.points` and `ice_load_change_pa` (see [Glaciation](#glaciation))
+to this pass. Every fault, active or an
+inactive scar, reads the load change at the column under each trace node. Only unloading
+counts. `unloading_coulomb_stress_pa` resolves it onto the fault plane as a Coulomb failure
+stress change, `dCFS = dτ − μ'·dσn`, with `μ'` = `COULOMB_EFFECTIVE_FRICTION` (0.4). The
+horizontal stress follows the vertical one at `ICE_LOAD_HORIZONTAL_STRESS_RATIO`
+(ν/(1−ν) = 1/3). Taking ice off strongly promotes a 30° thrust (+0.62 Pa per Pa of
+unloading), mildly promotes a strike-slip fault (+0.13), and slightly inhibits a 60° normal
+fault (−0.09). That matches Fennoscandia's end-glacial reverse faults, which ruptured in a
+craton as the ice came off. Trace nodes at or above `UNLOADING_TRIGGER_STRESS_PA` (0.1 MPa, the
+usual static-triggering threshold) rupture together:
+
+- the rupture length is that share of the trace;
+- the slip releases their mean stress change over `SEISMOGENIC_WIDTH_M` (15 km) at
+  `CRUST_SHEAR_MODULUS_PA` (30 GPa);
+- `Mw = ⅔(log10 M0 − 9.1)`, where `M0 = G·L·W·slip`;
+- the epicentre is the most-stressed node.
+
+The threshold applies per step, and stress below it isn't carried over. A sheet that thins
+over several steps triggers on each step whose unloading clears it, and because slip is
+proportional to the stress change, those steps' slip adds up. A thrust under ice thinning by
+less than ~18 m per step never triggers. The `UNLOADING_MAX_QUAKES_PER_STEP` (40) largest are
+appended to `World.earthquakes`, tagged `TRIGGER_ICE_UNLOADING`. Each boundary segment carries a
+master trace and two strands, so one ice patch can fire all three; they share the cap.
+
+- **Offset.** An intraplate fault or scar adds the slip to its `cumulative_offset_m`. That's a
+  record the API shows; relief doesn't read it. A boundary fault is rebuilt next step, so it
+  keeps none.
+- **Timing.** Erosion has already run, so these quakes feed the *next* step's seismic-erosion
+  burst, while tectonic quakes feed the current one. They're stamped with the step's start
+  time, the same as tectonic quakes.
+
+Deterministic, with no random draws.
+
+Two effects are left out:
+- **Growing ice.** On thrusts and strike-slip faults it clamps, which only delays an active
+  fault's next rupture by decades to centuries, far below a step. On a normal fault it does
+  promote slip (~1 km of ice clears the trigger threshold), but that is left out as a scope
+  choice: this pass models the end-glacial unloading signal.
+- **Meltwater pore pressure.** It modulates seismicity over seasons to decades and diffuses
+  away well within a step.
 
 **Persistence.** `World.faults` (a list of `Fault` dataclasses) and `World.next_fault_id`
 (the monotonic id source) -- `faults` is a `default_factory` field backfilled to `[]` on load
@@ -3773,7 +3818,8 @@ this module evaporates, since climate.py runs *before* this module each step).
   elevation moves by only its change each step, so meltback rebounds the surface by exactly
   what loading took. `sync_line_elevation`/`sync_plate_elevation` keep it when they recompute
   elevation from Hc/Hm. `ErosionResult.ice_load_pa`/`ice_load_change_pa` expose the vertical
-  load and this step's loading or unloading for fault coupling (phase 5).
+  load and this step's loading or unloading. Unloading can trigger earthquakes on nearby
+  faults; see [Faults](#faults) (`trigger_unloading_earthquakes`, phase 5).
 
 **Deliberately left out**: no rendering as a distinct color/
 layer beyond the same `LAKE_COLOR_RGB`-style baking treatment lakes get (mantle-bloom has no
