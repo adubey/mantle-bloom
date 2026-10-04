@@ -989,6 +989,10 @@ def step_world_progress(world: World, years: float):
                     continue
                 phase_budget.record_snapshots(world, plate, "erosion", before, phase_budget.snapshot(plate, spacing_rad))
         world.erosion_cache = erosion_result
+        # Issue #275 phase 5: ice that came off this step unloads the crust beneath it, which
+        # can trigger ruptures on nearby faults and scars (see faults.trigger_unloading_earthquakes).
+        if erosion_result is not None:
+            faults.trigger_unloading_earthquakes(world, erosion_result.points, erosion_result.ice_load_change_pa)
     if world.simulate_plate_movement:
         volcanism.apply_volcanic_activity(world, years)
     if erosion_result is not None:

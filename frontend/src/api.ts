@@ -209,6 +209,8 @@ export interface EarthquakeSummary {
   magnitude: number;
   age_myr: number;
   birth_years: number;
+  // "ice_unloading" for a rupture set off by ice melting off the crust (issue #275 phase 5).
+  trigger: "tectonic" | "ice_unloading";
 }
 
 export interface EarthquakesResponse {

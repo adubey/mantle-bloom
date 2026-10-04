@@ -1457,6 +1457,7 @@ def list_earthquakes() -> dict:
                 "magnitude": round(float(q.magnitude), 2),
                 "age_myr": round((elapsed - q.birth_years) / 1e6, 3),
                 "birth_years": q.birth_years,
+                "trigger": getattr(q, "trigger", faults.TRIGGER_TECTONIC),
             }
             for q in world.earthquakes
         ]
