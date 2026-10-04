@@ -848,6 +848,7 @@ def deform_columns(
     rng_index: int,
     years: float,
     ceiling_overflow: np.ndarray | None = None,
+    strained: dict[str, np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """This step's in-place lithospheric column update for the nodes `sl` selects out of
     `ctx`'s per-plate arrays -- convergent/near-field thickening, arc magmatism, divergent
@@ -864,7 +865,11 @@ def deform_columns(
 
     `ceiling_overflow`, when given, receives the convergent band's per-node Hc past
     `MAX_CRUSTAL_THICKNESS_M` for the caller to place, instead of the near-field melt
-    intrusion that otherwise takes part of it (the quad engine, issue #290)."""
+    intrusion that otherwise takes part of it (the quad engine, issue #290). `strained`, when
+    given, receives the columns with only this step's tectonic strain applied --
+    `crustal_thickness_m` and `mantle_lithosphere_thickness_m` after convergent shortening
+    and divergent thinning but before any arc or rift magma -- and `melted`, the nodes that
+    melted through and were reset, for the caller's thermal bookkeeping."""
     convergent = ctx.convergent[sl]
     divergent = ctx.divergent[sl]
     transform = ctx.transform[sl]
@@ -937,6 +942,7 @@ def deform_columns(
     # otherwise). `strength` scales apply_convergent_deformation's thickening rate.
     orogen_strength = orogen_strength * fault_influence
     thicken = orogen_strength > 0.0
+    strained_hc, strained_hm = hc.copy(), hm.copy()
     if np.any(thicken):
         fault_factor = (
             np.where(
@@ -989,6 +995,8 @@ def deform_columns(
         )
         hc[thicken] = new_hc
         hm[thicken] = new_hm
+        strained_hc[thicken] = new_hc
+        strained_hm[thicken] = new_hm
 
         # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
         # #161) -- but it also doesn't reappear whole and instant on the foreland
@@ -1070,6 +1078,8 @@ def deform_columns(
             melt & (hc[divergent] < rheology.RIFT_CRITICAL_THICKNESS_M),
             melt,
         )
+        strained_hc[divergent] = hc[divergent]
+        strained_hm[divergent] = hm[divergent]
 
         # Rift magmatic underplating (see rheology.apply_rift_magmatic_thickening): a
         # partial Hc offset for nodes that thinned past RIFT_VOLCANISM_ONSET_HC_M but
@@ -1218,6 +1228,9 @@ def deform_columns(
     rifted = craton - new_craton
     if np.any(rifted > 0.0):
         cratons.record(world, "rifted_m3", float(np.sum(rifted * node_area_m2)))
+
+    if strained is not None:
+        strained.update(crustal_thickness_m=strained_hc, mantle_lithosphere_thickness_m=strained_hm, melted=melting)
 
     return {
         "elevation": new_elevation,

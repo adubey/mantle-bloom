@@ -851,13 +851,14 @@ over-thickened crust of a suture or a standing orogen goes through these process
 - **Thermal lag.** Each quad cell stores `moho_thermal_lag_c`, how far its Moho sits below
   that steady state; `moho_temperature_c` subtracts it. Shortening and stacking bury the Moho
   with its old temperature (`bury_moho`), so the lag grows by however much the steady state
-  rose. This applies to the convergent band and its near-field ring, and to suture and
-  overriding-plate receivers. The lag then decays with an
+  rose. Rift thinning exhumes it the same way, leaving a negative lag: the column is briefly
+  hotter than its new steady state. This applies to the strain `deform_columns` applies
+  (convergent shortening and divergent thinning, before any arc or rift magma), and to
+  suture and overriding-plate receivers. The lag then decays with an
   e-folding time of `THERMAL_RELAXATION_MYR` (25 Myr), integrated exactly. Freshly thickened
   crust therefore starts cold, and it only weakens, melts or becomes able to delaminate as it
   heats. Arc, rift and anatectic magma bring their heat with them and leave the lag alone, and
-  so does ductile flow. A thinned column gets a negative lag: it is briefly hotter than its
-  new steady state.
+  so does ductile flow. A column that melts through to fresh crust starts at steady state.
 - **Crust states.** `crust_state` sorts continental columns into cold-strong, hot-weak (Moho
   at least `DUCTILE_ONSET_MOHO_C`, 700 C), melt-eligible (`MELT_ONSET_MOHO_C`, 750 C), and
   delamination-eligible. A delamination-eligible column has at least `DELAMINATION_MIN_ROOT_M`
@@ -879,7 +880,7 @@ over-thickened crust of a suture or a standing orogen goes through these process
     column's own upper crust, which changes no thickness.
 
   Cratonic crust that melts out becomes ordinary crust (`collision_reworked_m3`). Restite is
-  an extensive share of Hc. It thickens and thins with its column in `deform_columns`, travels
+  an extensive share of Hc. It thickens and thins with its column's strain, travels
   with suture crust, and stays put when crust flows, as Hm does.
 - **Residue feeds delamination.** A column's delaminable root is its crust below 50 km or
   its restite, whichever reaches higher. Restite is garnet-rich and dense well above the

@@ -555,14 +555,17 @@ def test_a_cold_overflowing_column_has_no_melt_to_place():
     assert budget["ceiling_overflow_melt_placed_m3"] == 0.0
 
 
-def _converging_ctx(n: int, convergent: np.ndarray):
+def _converging_ctx(n: int, convergent: np.ndarray, divergent: np.ndarray | None = None, arc: bool = False):
     from types import SimpleNamespace
 
     zeros = np.zeros(n, dtype=bool)
+    divergent = zeros if divergent is None else divergent
+    rate = 0.1 / (365.25 * 86400.0)
     return SimpleNamespace(
-        convergent=convergent, divergent=zeros, transform=zeros,
-        closing_rate=np.where(convergent, 0.1 / (365.25 * 86400.0), 0.0),
-        inputs=SimpleNamespace(neighbor_is_oceanic=zeros), arc_band=zeros, arc_intensity=np.zeros(n),
+        convergent=convergent, divergent=divergent, transform=zeros,
+        closing_rate=np.where(convergent, rate, np.where(divergent, -rate, 0.0)),
+        inputs=SimpleNamespace(neighbor_is_oceanic=zeros),
+        arc_band=convergent if arc else zeros, arc_intensity=np.where(convergent & arc, 1.0, 0.0),
         fault_influence=np.ones(n), orogen_dilation_nodes=3, orogen_contested_strength=1.0, orogen_amount=1.0,
         fault_noise=None, own_points=np.zeros((n, 3)),
     )
@@ -596,6 +599,66 @@ def test_quad_column_pass_reports_ceiling_overflow_instead_of_intruding_melt():
     # engine leaves the ring to its own shortening and places the overflow itself.
     assert np.all(line_engine["crustal_thickness_m"][ring] > quad["crustal_thickness_m"][ring])
     np.testing.assert_array_equal(line_engine["crustal_thickness_m"][convergent], quad["crustal_thickness_m"][convergent])
+
+
+def _thermal_state_after_columns(a, ctx):
+    from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
+
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    fields = {name: a.collect(name) for name in COLUMN_FIELDS}
+    strained: dict = {}
+    columns = deform_columns(
+        world, a, ctx, slice(None), fields, None, lambda: None, a.node_areas_m2(), 0, 1_000_000.0,
+        ceiling_overflow=np.zeros(a.node_count()), strained=strained,
+    )
+    return fields, strained, columns, quad_tectonics._column_thermal_state(a, fields, strained, columns)
+
+
+def test_shortening_buries_the_moho_but_arc_magma_on_top_does_not():
+    keys = _block((10, 16), (20, 21))
+    a = _plate(1, keys, "continental", restite_m=np.full(len(keys), 2_000.0))
+    convergent = np.zeros(len(keys), dtype=bool)
+    convergent[:3] = True
+
+    before, strained, columns, thermal = _thermal_state_after_columns(a, _converging_ctx(len(keys), convergent, arc=True))
+
+    hc0, hm0 = before["crustal_thickness_m"], before["mantle_lithosphere_thickness_m"]
+    hc = columns["crustal_thickness_m"]
+    shortened = strained["crustal_thickness_m"]
+    assert np.all(shortened[convergent] > hc0[convergent])
+    assert np.all(hc[convergent] > shortened[convergent])  # arc magma on top
+    lag = thermal["moho_thermal_lag_c"]
+    np.testing.assert_allclose(
+        lag, orogeny.bury_moho(np.zeros(len(keys)), hc0, hm0, shortened, strained["mantle_lithosphere_thickness_m"])
+    )
+    assert np.all(lag[convergent] > 0.0) and not np.any(lag[~convergent])
+    # The hot arc crust leaves the Moho warmer than shortening alone would.
+    moho = orogeny.moho_temperature_c(hc, columns["mantle_lithosphere_thickness_m"], lag)
+    assert np.all(moho[convergent] > orogeny.moho_temperature_c(hc0, hm0)[convergent])
+    # Restite thickens with the strain, not with the arc crust on top.
+    np.testing.assert_allclose(thermal["restite_m"], 2_000.0 * shortened / hc0)
+
+
+def test_rift_thinning_exhumes_the_moho_into_a_negative_lag():
+    keys = _block((10, 16), (20, 21))
+    a = _plate(1, keys, "continental", restite_m=np.full(len(keys), 2_000.0))
+    divergent = np.zeros(len(keys), dtype=bool)
+    divergent[:3] = True
+
+    before, strained, columns, thermal = _thermal_state_after_columns(
+        a, _converging_ctx(len(keys), np.zeros(len(keys), dtype=bool), divergent)
+    )
+
+    hc0, hm0 = before["crustal_thickness_m"], before["mantle_lithosphere_thickness_m"]
+    thinned_hc, thinned_hm = strained["crustal_thickness_m"], strained["mantle_lithosphere_thickness_m"]
+    assert np.all(thinned_hc[divergent] < hc0[divergent])
+    lag = thermal["moho_thermal_lag_c"]
+    assert np.all(lag[divergent] < 0.0) and not np.any(lag[~divergent])
+    np.testing.assert_allclose(
+        orogeny.moho_temperature_c(thinned_hc, thinned_hm, lag)[divergent], orogeny.moho_temperature_c(hc0, hm0)[divergent]
+    )
+    assert np.all(thermal["restite_m"][divergent] < 2_000.0)
 
 
 def test_tectonic_escape_moves_crust_along_strike_not_inland():

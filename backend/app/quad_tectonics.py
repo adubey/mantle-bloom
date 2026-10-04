@@ -172,6 +172,7 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
     near_field_dist = hop_distance(plate, ctx.convergent, ctx.orogen_dilation_nodes) if ctx.orogen_dilation_nodes > 0 else None
     fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
     ceiling_overflow = np.zeros(plate.node_count())
+    strained: dict[str, np.ndarray] = {}
     columns = deform_columns(
         world,
         plate,
@@ -184,8 +185,9 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         _COLUMN_RNG_INDEX,
         years,
         ceiling_overflow=ceiling_overflow,
+        strained=strained,
     )
-    columns.update(_column_thermal_state(plate, ctx, fields, columns, near_field_dist))
+    columns.update(_column_thermal_state(plate, fields, strained, columns))
     plate.set_fields_on_plate(**columns)
 
     _place_ceiling_overflow(plate, world, ceiling_overflow, ctx.inputs.direction_to_neighbor)
@@ -219,24 +221,22 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
 
 
 def _column_thermal_state(
-    plate: "PlateWithSparseQuadPatch", ctx, before: dict, after: dict, near_field_dist: np.ndarray | None
+    plate: "PlateWithSparseQuadPatch", before: dict, strained: dict, after: dict
 ) -> dict[str, np.ndarray]:
-    """The thermal lag and restite after `deform_columns` (issue #290). Shortening buries the
-    Moho of the convergent band and its near-field ring with its old temperature
-    (`orogeny.bury_moho`); arc and rift magma arrive hot and leave the lag alone. Restite is a
-    share of its column, so it thickens and thins with it, and a column that melted through
-    to oceanic crust has none."""
-    lag = plate.collect("moho_thermal_lag_c")
-    restite = plate.collect("restite_m")
-    near_field = near_field_dist <= ctx.orogen_dilation_nodes if near_field_dist is not None else False
-    shortened = (ctx.convergent | near_field) & ~ctx.divergent
-    hc0, hc1 = before["crustal_thickness_m"], after["crustal_thickness_m"]
-    hm0, hm1 = before["mantle_lithosphere_thickness_m"], after["mantle_lithosphere_thickness_m"]
-    lag = np.where(shortened, orogeny.bury_moho(lag, hc0, hm0, hc1, hm1), lag)
-    strained = shortened | ctx.divergent
-    restite = np.where(strained, restite * np.divide(hc1, hc0, out=np.ones(len(hc0)), where=hc0 > 0.0), restite)
+    """The thermal lag and restite after `deform_columns` (issue #290), from `strained`, its
+    columns with only this step's tectonic strain applied. Shortening buries the Moho with
+    its old temperature and rift thinning exhumes it (`orogeny.bury_moho`: a positive or a
+    negative lag); arc and rift magma arrive hot and leave the lag alone. Restite is a share
+    of its column, so it thickens and thins with the strain. A column that melted through was
+    reset: it starts at steady state, with no restite, as does one that is now oceanic."""
+    hc0, hm0 = before["crustal_thickness_m"], before["mantle_lithosphere_thickness_m"]
+    hc_strained, hm_strained = strained["crustal_thickness_m"], strained["mantle_lithosphere_thickness_m"]
+    lag = orogeny.bury_moho(plate.collect("moho_thermal_lag_c"), hc0, hm0, hc_strained, hm_strained)
+    restite = plate.collect("restite_m") * np.divide(hc_strained, hc0, out=np.ones(len(hc0)), where=hc0 > 0.0)
+    melted = strained["melted"]
     continental = effective_is_continental_from_codes(after["crust_type_code"], plate.crust_type == "continental")
-    return {"moho_thermal_lag_c": lag, "restite_m": np.where(continental, np.clip(restite, 0.0, hc1), 0.0)}
+    restite = np.where(continental & ~melted, np.clip(restite, 0.0, after["crustal_thickness_m"]), 0.0)
+    return {"moho_thermal_lag_c": np.where(melted, 0.0, lag), "restite_m": restite}
 
 
 def _place_ceiling_overflow(
