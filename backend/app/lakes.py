@@ -365,7 +365,12 @@ def _catchment_roots(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: 
     return catchment_root
 
 
-def build_lake_hierarchy(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray) -> list["Lake"]:
+def build_lake_hierarchy(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    interface_pass_elevation: np.ndarray | None = None,
+) -> list["Lake"]:
     """Returns the forest of top-level `Lake` roots: every lake that was either finalized by
     reaching the ocean (`max_depth` set) or is left as an unresolved closed/endorheic basin
     (`max_depth is None`, a legitimate "no known spill" case -- a real Caspian-Sea-style basin
@@ -373,13 +378,22 @@ def build_lake_hierarchy(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
     been processed. Every non-root `Lake` is still reachable by walking down through `children`.
     Ocean nodes, and any node whose own steepest descent drains straight to the ocean without
     passing through a land local minimum, never appear in any `Lake.members` -- see this
-    module's own docstring for the two-phase algorithm."""
+    module's own docstring for the two-phase algorithm. ``interface_pass_elevation``, when
+    supplied, contains caller-validated effective passes aligned with ``neighbor_idx`` and
+    replaces the default endpoint-maximum edge weight. It remains optional because the current
+    global quad hydrology path does not yet have terrain samples along shared cell edges."""
     n = len(elevation)
     if n == 0:
         return []
     k = neighbor_idx.shape[1] if neighbor_idx.ndim == 2 else 0
     if k == 0:
         return []
+    if interface_pass_elevation is not None:
+        interface_pass_elevation = np.asarray(interface_pass_elevation, dtype=float)
+        if interface_pass_elevation.shape != neighbor_idx.shape:
+            raise ValueError("interface_pass_elevation must match neighbor_idx")
+        if not np.all(np.isfinite(interface_pass_elevation)):
+            raise ValueError("interface_pass_elevation must be finite")
 
     catchment_root = _catchment_roots(elevation, is_ocean, neighbor_idx)
     catchment_members: dict[int, list[int]] = {}
@@ -432,7 +446,15 @@ def build_lake_hierarchy(elevation: np.ndarray, is_ocean: np.ndarray, neighbor_i
     boundary_edge = catchment_root_arr[rows_all] != catchment_root_arr[cols_all]
     rows = rows_all[boundary_edge]
     cols = cols_all[boundary_edge]
-    weight = np.maximum(elevation[rows], elevation[cols])
+    if interface_pass_elevation is None:
+        weight = np.maximum(elevation[rows], elevation[cols])
+    else:
+        # Index through the unfiltered directed edge array before applying the catchment-boundary
+        # mask so duplicate/reciprocal graph edges retain their exact alignment.
+        # An explicitly supplied pass field is trusted geometry from the caller. The global
+        # hydrology path does not currently provide one: quad cells have exact footprints, but
+        # their shared-edge terrain elevations are not yet reconstructed or persisted.
+        weight = interface_pass_elevation.ravel()[boundary_edge]
     order = np.argsort(weight, kind="stable")
     rows_list = rows[order].tolist()
     cols_list = cols[order].tolist()
