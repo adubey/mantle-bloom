@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from app import erosion, geometry, hydrology
+from app import erosion, geometry, hydrology, lakes
 from app.plates import ElevationLine, PlateWithLines
 from app.world import World, generate_world, step_world
 
@@ -255,8 +255,13 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
     elevation[0:15] = -100.0
     elevation[28:31] = 80.0
 
-    def run(precipitation=2000.0, temperature=10.0):
-        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+    def run(precipitation=2000.0, temperature=10.0, lake_depth=None):
+        plate = (
+            _flow_line_plate(0, theta, elevation)
+            if lake_depth is None
+            else _flow_line_plate_with_lake(0, theta, elevation, lake_depth)
+        )
+        world = World(seed=0, plates=[plate])
         return hydrology.compute_hydrology(world, np.full(40, precipitation), np.full(40, temperature), years=100_000)
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
@@ -266,7 +271,17 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
     breached = run()
-    assert breached.lake_depth[28:31].max() == 0.0
+    # The notch is cut to the pit's mean elevation, so the water stands no higher than that.
+    # Only the low ground inside each pit cell stays wet (partial-cell flooding): a mean depth
+    # of relief / 4, where a level at the cell's mean elevation leaves it.
+    relief = lakes.subcell_relief(breached.elevation, breached.neighbor_idx)
+    np.testing.assert_allclose(breached.lake_depth[28:31], relief[28:31] / 4.0)
+    # Closed, the same water keeps rising toward the 100 m rim on the next step, once the
+    # pit's cells have merged into one lake.
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    closed_again = run(lake_depth=closed.lake_depth)
+    assert closed_again.lake_depth[28:31].min() > 10.0
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
     assert breached.breach_notch_m.max() == pytest.approx(20.0)
     assert np.all(breached.filled_elevation[28:31] <= 80.0)
 

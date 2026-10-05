@@ -109,6 +109,7 @@ from .plates import (
     gather_node_positions,
     query_workers,
 )
+from .surface_fields import CHANNEL_REFERENCE_UNSET_M
 
 if TYPE_CHECKING:
     from .world import World
@@ -2432,10 +2433,16 @@ def apply_erosion(
     # once the ice retreats. Like river erosion, only rock actually removed here counts.
     carved_m = applied_river + applied_glacier + carry.scour_m
     # Old channels fade (issue #297). Sediment settling in a channel fills it back in: this
-    # step's deposition plus lake silt. Uplift since last step's erosion wears the notch away:
-    # that's the rise from the elevation recorded then (CHANNEL_REFERENCE_UNSET_M reads as none)
-    # to this step's pre-erosion elevation.
-    uplift_m = np.clip(elevation - collect_all_channel_reference_elevation(plates_in_order), 0.0, None)
+    # step's deposition plus lake silt. Uplift *across* a channel wears it away: how much more a
+    # node rose since last step's erosion than the node it drains to, as a scarp or bulge
+    # rising across the channel's path would. Even uplift raises a channel with its banks and
+    # leaves it intact. A node with no recorded reference (CHANNEL_REFERENCE_UNSET_M), or no
+    # downstream node, counts as no uplift.
+    reference = collect_all_channel_reference_elevation(plates_in_order)
+    rise = np.where(reference < 0.5 * CHANNEL_REFERENCE_UNSET_M, elevation - reference, np.nan)
+    downstream = np.where(hydro.flow_target >= 0, hydro.flow_target, hydro.ice_flow_target)
+    downstream_rise = np.where(downstream >= 0, rise[np.clip(downstream, 0, None)], np.nan)
+    uplift_m = np.nan_to_num(np.clip(rise - downstream_rise, 0.0, None), nan=0.0)
     channel_fill_m = np.clip(total_deposited, 0.0, None) + hydro.silt_deposited + uplift_m
     # Breach notches (issue #297, breaching.py) are sub-cell relief, not volume taken off the
     # cell mean, so they are kept apart from channel_depth: only the passage elevation reads

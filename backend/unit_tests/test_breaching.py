@@ -255,3 +255,21 @@ def test_a_persisted_notch_lowers_the_passage_and_new_cuts_are_only_the_incremen
     assert result.channel_passage_m[2] == pytest.approx(20.0)
     assert result.breached_pits.tolist() == [1]
     assert result.notch_m[2] == pytest.approx(20.0)
+
+
+def test_the_water_gate_uses_the_rim_height_not_the_rock_weighted_cost():
+    # Review repro (#301, second pass): a long wet slope drains into pit 6 behind a 90 m silt
+    # rim. Silt's low resistance makes that rim cost only 27 m of reference rock, but a lake
+    # at the real 90 m rim evaporates more than this catchment supplies, so the basin stays
+    # closed.
+    z = np.array([85.0, 70.0, 55.0, 40.0, 25.0, 10.0, 0.0, 90.0, -50.0])
+    n = len(z)
+    ocean = np.zeros(n, dtype=bool)
+    ocean[-1] = True
+    rate = breaching.carve_rate_m_per_myr(np.zeros(n), np.where(np.arange(n) >= 3, 100.0, 0.0))
+    water = breaching.WaterBalance(np.full(n, 1600.0), np.full(n, 12.0), np.full(n, 1e9))
+    result = breaching.breach_depressions(z, ocean, _chain(n), np.zeros(n), rate, 1_000_000, water=water)
+    assert result.cost_m[6] == pytest.approx(27.0, abs=1e-3)
+    assert result.breached_pits.tolist() == []
+    assert result.endorheic_pits.tolist() == [6]
+    assert not result.notch_m.any()

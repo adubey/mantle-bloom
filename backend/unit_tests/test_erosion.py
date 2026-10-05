@@ -1107,25 +1107,43 @@ def test_apply_erosion_records_the_reference_elevation_for_next_steps_uplift():
     np.testing.assert_allclose(plates.collect_all_channel_reference_elevation(plates_in_order), elevation)
 
 
-def test_uplift_since_last_step_wears_channels_down_by_the_rise(monkeypatch):
-    # Two identical worlds, one of which rose 300 m since its last erosion pass. Erosion
-    # itself doesn't read the reference, so the only difference is the fade. Breaching is off
-    # so no new notch takes part of the fill.
+def test_uplift_only_fades_channels_where_it_rises_across_them(monkeypatch):
+    # Three identical worlds. One rose 300 m evenly since its last erosion pass, which carries
+    # every channel up with its banks and fades nothing. The other rose 300 m only on every
+    # other node, so a node that rose above the node it drains to loses exactly that much
+    # channel. Breaching is off so no new notch takes part of the fill.
     from app import hydrology
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     still = generate_world(seed=21, num_plates=8)
-    risen = generate_world(seed=21, num_plates=8)
+    even = generate_world(seed=21, num_plates=8)
+    patchy = generate_world(seed=21, num_plates=8)
     _set_channel_state(still, 500.0, 0.0)
-    _set_channel_state(risen, 500.0, 300.0)
+    _set_channel_state(even, 500.0, 300.0)
+    _set_channel_state(patchy, 500.0, 0.0)
+    rise = np.zeros(len(plates.collect_all_elevation(patchy.plates)))
+    rise[::2] = 300.0
+    offset = 0
+    for p in patchy.plates:
+        for line in p.lines:
+            if len(line):
+                line.set_fields(channel_reference_elevation_m=line.elevation - rise[offset : offset + len(line)])
+                offset += len(line)
     erosion.apply_erosion(still, years=1_000_000)
-    erosion.apply_erosion(risen, years=1_000_000)
+    erosion.apply_erosion(even, years=1_000_000)
+    erosion.apply_erosion(patchy, years=1_000_000)
 
     still_depth = plates.collect_all_channel_depth(still.plates)
-    risen_depth = plates.collect_all_channel_depth(risen.plates)
+    np.testing.assert_allclose(plates.collect_all_channel_depth(even.plates), still_depth)
+
+    hydro = patchy.hydrology_cache
+    downstream = np.where(hydro.flow_target >= 0, hydro.flow_target, hydro.ice_flow_target)
+    across = np.where(downstream >= 0, np.clip(rise - rise[np.clip(downstream, 0, None)], 0.0, None), 0.0)
     land = still_depth > 0.0
-    assert land.any()
-    np.testing.assert_allclose(risen_depth[land], np.clip(still_depth[land] - 300.0, 0.0, None))
+    assert (land & (across > 0.0)).any()
+    np.testing.assert_allclose(
+        plates.collect_all_channel_depth(patchy.plates)[land], np.clip(still_depth[land] - across[land], 0.0, None)
+    )
 
 
 def test_deposition_fills_channels_back_in(monkeypatch):

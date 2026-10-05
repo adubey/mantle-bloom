@@ -1281,8 +1281,22 @@ def compute_hydrology(
     # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the
     # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
     # used (see lakes.resolve_lakes's own docstring).
+    # Lakes balance in real units (issue #297): area-weighted runoff (the same Budyko curve
+    # and open-water evaporation the breach gate uses) plus glacier melt, routed as volume
+    # along the same flow paths. A spilling lake's sink passes its water on, so its inflow
+    # is the flow through the sink, not what settles there.
+    evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
+    runoff_m3 = breaching.runoff_mm(liquid_precip, evaporation_mm) / 1000.0 * areas
+    melt_m3 = melt * areas / max(years, 1.0)
+    through_m3, settled_m3 = route_downstream(
+        elevation, is_ocean, flow_target, runoff_m3 + melt_m3, loss_fraction=river_evap_fraction
+    )
+    lake_climate = lakes.LakeClimate(
+        inflow_m3_per_yr=settled_m3 + np.where(should_spill, through_m3, 0.0),
+        evaporation_m_per_yr=evaporation_mm / 1000.0,
+    )
     fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen, hypsometry
+        forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen, hypsometry, lake_climate
     )
     fields.lake_forest = forest
     # Cumulative record only (erosion.py folds `silt_deposited` into real `elevation`); kept so

@@ -256,10 +256,12 @@ def breach_depressions(
     The drain check (step 3 of the module docstring) walks each candidate pit's least-cost
     path once along `next_hop`. That costs the path's length per candidate, not a search.
 
-    With `water`, pits that pass the cost test also have to pass the water-balance test (step
-    4 of the module docstring). The rim-level lake is estimated as every catchment member below
-    `pit passage + cost`. This overestimates the level, and so the evaporating area, on a path
-    with several barriers, so the estimate errs toward keeping a basin closed."""
+    With `water`, pits that pass the cost and drain tests also have to pass the water-balance
+    test (step 4 of the module docstring). The rim level is the highest passage on the pit's
+    least-cost path, found in the same walk as the drain check, in metres, unlike the
+    rock-weighted cost. The rim-level lake is every catchment member below it. That path
+    minimises total climb, not the highest point, so its top can sit above the basin's real
+    spill point but never below it. The estimate therefore errs toward keeping a basin closed."""
     elevation = np.asarray(elevation, dtype=float)
     n = len(elevation)
     dt_myr = years / 1_000_000.0
@@ -280,16 +282,17 @@ def breach_depressions(
     breachable = (pit_cost > _MIN_BREACH_CLIMB_M) & (pit_cost <= budget)
     closed_pits = pits[np.isfinite(pit_cost) & (pit_cost > budget)]
     endorheic_pits = np.zeros(0, dtype=np.int64)
-    if water is not None and np.any(breachable):
-        overflows = _overflows(elevation, is_ocean, neighbor_idx, channel_passage, cost, pits, water)
-        endorheic_pits = pits[breachable & ~overflows]
-        breachable &= overflows
     max_cut = np.minimum(np.asarray(carve_rate, dtype=float) * dt_myr, BREACH_MAX_NOTCH_M)
     if np.any(breachable):
-        drains = _paths_drain(pits[breachable], channel_passage, next_hop, max_cut)
         candidates = np.flatnonzero(breachable)
+        drains, rim_level = _walk_paths(pits[candidates], channel_passage, next_hop, max_cut)
         closed_pits = np.sort(np.concatenate([closed_pits, pits[candidates[~drains]]]))
         breachable[candidates[~drains]] = False
+        if water is not None and np.any(drains):
+            draining = candidates[drains]
+            overflows = _overflows(elevation, is_ocean, neighbor_idx, pits[draining], rim_level[drains], water)
+            endorheic_pits = pits[draining[~overflows]]
+            breachable[draining[~overflows]] = False
     breached_pits = pits[breachable]
 
     if len(breached_pits):
@@ -328,47 +331,52 @@ def breach_depressions(
     return BreachResult(cost, next_hop, channel_passage, notch, channel_passage - notch, breached_pits, closed_pits, endorheic_pits)
 
 
-def _paths_drain(pits: np.ndarray, passage: np.ndarray, next_hop: np.ndarray, max_cut: np.ndarray) -> np.ndarray:
-    """Whether each pit's least-cost path can be cut until it never rises, with every node
-    cut no deeper than its own `max_cut`. The water level starts at the pit's passage and only
-    falls along the path."""
+def _walk_paths(
+    pits: np.ndarray, passage: np.ndarray, next_hop: np.ndarray, max_cut: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(drains, rim_level)` for each pit, from one walk along its least-cost path.
+    `drains`: whether the path can be cut until it never rises, with every node cut no deeper
+    than its own `max_cut`. The water level starts at the pit's passage and only falls along
+    the path. `rim_level`: the highest passage on the path, in metres."""
     passage_list = passage.tolist()
     next_list = next_hop.tolist()
     max_cut_list = max_cut.tolist()
-    result = []
+    drains = []
+    rims = []
     for pit in pits.tolist():
         level = passage_list[pit]
+        rim = level
         node = next_list[pit]
         ok = True
         while node >= 0:
-            need = passage_list[node] - level
-            if need > max_cut_list[node] + 1e-9:
+            here = passage_list[node]
+            rim = max(rim, here)
+            if here - level > max_cut_list[node] + 1e-9:
                 ok = False
-                break
-            level = min(level, passage_list[node])
+            level = min(level, here)
             node = next_list[node]
-        result.append(ok)
-    return np.asarray(result, dtype=bool)
+        drains.append(ok)
+        rims.append(rim)
+    return np.asarray(drains, dtype=bool), np.asarray(rims, dtype=float)
 
 
 def _overflows(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
     neighbor_idx: np.ndarray,
-    passage: np.ndarray,
-    cost: np.ndarray,
     pits: np.ndarray,
+    rim_level: np.ndarray,
     water: WaterBalance,
 ) -> np.ndarray:
-    """Whether each pit's catchment runoff exceeds the evaporation of its rim-level lake,
-    scaled by ENDORHEIC_DEMAND_FACTOR. Both sides are in m^3/yr."""
+    """Whether each pit's catchment runoff exceeds the evaporation of a lake filled to
+    `rim_level` (metres), scaled by ENDORHEIC_DEMAND_FACTOR. Both sides are in m^3/yr."""
     n = len(elevation)
     sink = _catchment_sinks(elevation, neighbor_idx, is_ocean)
     area = np.asarray(water.area_m2, dtype=float)
     evaporation_mm = open_water_evaporation_mm(water.temperature_c)
     inflow = np.bincount(sink, weights=runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area, minlength=n)
     level = np.full(n, -np.inf)
-    level[pits] = passage[pits] + cost[pits]
+    level[pits] = rim_level
     flooded = elevation < level[sink]
     demand = np.bincount(sink[flooded], weights=(evaporation_mm / 1000.0 * area)[flooded], minlength=n)
     return inflow[pits] > ENDORHEIC_DEMAND_FACTOR * demand[pits]

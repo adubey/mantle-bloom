@@ -201,6 +201,56 @@ def subcell_relief(elevation: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarra
     return np.minimum(SUBCELL_RELIEF_FRACTION * spread, SUBCELL_RELIEF_MAX_M)
 
 
+# Lake evaporation (issue #297). Water held in a partly flooded cell is a shallow margin, which
+# warms faster and evaporates more than open deep water. A just-wetted cell evaporates up to
+# this much faster, falling to none once the cell is fully flooded. Kept below 1 so a lake's
+# total evaporation still rises with its level, which keeps the balanced level unique.
+SHALLOW_EVAPORATION_BOOST = 0.3
+
+
+@dataclass(frozen=True)
+class LakeClimate:
+    """Real-unit water balance inputs for `resolve_lakes`, all with shape (N,).
+
+    `inflow_m3_per_yr` is the water arriving at each node this step: routed runoff that
+    settles there, or that passes through a spilling lake's sink. `evaporation_m_per_yr` is the
+    open-water evaporation rate at each node. A lake fills in years to centuries, far shorter
+    than a step, so each step it is resolved at its balanced level: the level whose flooded
+    area evaporates exactly its inflow, capped at its rim."""
+
+    inflow_m3_per_yr: np.ndarray
+    evaporation_m_per_yr: np.ndarray
+
+
+def lake_evaporation_m3_per_yr(level: float, idx: np.ndarray, hyps: "CellHypsometry", climate: LakeClimate) -> float:
+    """Evaporation from the cells `idx` at water level `level`: each cell's wet area times its
+    open-water rate, raised for partly flooded cells (SHALLOW_EVAPORATION_BOOST)."""
+    wet = hyps.wet_fraction(level, idx)
+    rate = climate.evaporation_m_per_yr[idx] * (1.0 + SHALLOW_EVAPORATION_BOOST * (1.0 - wet))
+    return float((hyps.area_m2[idx] * wet * rate).sum())
+
+
+def balanced_level(lake: "Lake", hyps: "CellHypsometry", climate: LakeClimate, low: float, high: float) -> float:
+    """The level in `[low, high]` where the lake's evaporation equals its inflow, found by
+    bisection (evaporation never falls as the level rises). Returns `high` when even a full
+    lake can't evaporate the inflow, and `low` when there's no inflow."""
+    members = lake.members
+    inflow = float(climate.inflow_m3_per_yr[members].sum())
+    if inflow <= 0.0:
+        return low
+    if lake_evaporation_m3_per_yr(high, members, hyps, climate) <= inflow:
+        return high
+    for _ in range(60):
+        mid = 0.5 * (low + high)
+        if lake_evaporation_m3_per_yr(mid, members, hyps, climate) < inflow:
+            low = mid
+        else:
+            high = mid
+        if high - low <= 1e-6:
+            break
+    return 0.5 * (low + high)
+
+
 @dataclass(frozen=True)
 class CellHypsometry:
     """Per-cell area and sub-cell relief, used to turn a lake's water level into flooded
@@ -644,8 +694,13 @@ def _water_balance(
     is_sea: bool,
     out_lake_is_sea: np.ndarray,
     hypsometry: CellHypsometry | None = None,
+    climate: LakeClimate | None = None,
 ) -> float:
-    """This lake's new water elevation, a single scalar shared by every member. Last step's
+    """With `climate` (real-unit runoff and evaporation, issue #297), the new level is the
+    lake's balanced level (`balanced_level`): where its evaporation equals its inflow, capped
+    as below. Without it, the original model-unit balance below applies.
+
+    This lake's new water elevation, a single scalar shared by every member. Last step's
     stored volume is evaporated (same retention constant, with the baseline loss taken over
     the wet area). This step's inflow is added as a volume: the sum of `water_deposited`
     (route_downstream's per-node settled-water output) over every one of this lake's own
@@ -703,7 +758,9 @@ def _water_balance(
     cap_depth = tier_max_depth if rim_cap_depth is None else min(rim_cap_depth, tier_max_depth)
     dry_level = hyps.dry_level(members)
     cap_level = max(lake.floor_elevation + cap_depth, dry_level)
-    if target_m3 <= 0.0:
+    if climate is not None:
+        new_level = balanced_level(lake, hyps, climate, dry_level, cap_level)
+    elif target_m3 <= 0.0:
         new_level = dry_level
     elif target_m3 >= hyps.volume(cap_level, members):
         new_level = cap_level
@@ -872,6 +929,7 @@ def _resolve(
     node_area_km2: float,
     events: list[LakeEvent],
     hypsometry: CellHypsometry | None = None,
+    climate: LakeClimate | None = None,
 ) -> float:
     """Resolves one lake (and, for a parent, implicitly its whole subtree) into this step's
     actual water elevation, writing every member's own `out_lake_depth` exactly once, and
@@ -964,7 +1022,7 @@ def _resolve(
         is_sea, tier_max_depth = _classify_tier(node.members, prev_lake_depth, node_area_km2)
         new_level = _water_balance(
             node, prev_level, elevation, water_deposited, years_myr, node_is_frozen,
-            out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea, hyps,
+            out_silt_deposited, tier_max_depth, is_sea, out_lake_is_sea, hyps, climate,
         )
         if node.children and new_level < node.min_depth:
             events.append(LakeEvent(kind="split", node_count=len(node.members), elevation_m=node.min_depth, basin_count=len(node.children)))
@@ -1011,6 +1069,7 @@ def resolve_lakes(
     years: float,
     is_frozen: np.ndarray,
     hypsometry: CellHypsometry | None = None,
+    climate: LakeClimate | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[LakeEvent]]:
     """The back half of `step_lakes` -- everything after `build_lake_hierarchy` -- pulled out
     on its own so `compute_hydrology` can build the hierarchy once, early (before flow routing,
@@ -1032,7 +1091,8 @@ def resolve_lakes(
 
     `hypsometry` gives each cell's real area and sub-cell relief, for partial-cell flooding
     (see `CellHypsometry`). Without it every cell is an equal share of the sphere and floods
-    all at once."""
+    all at once. `climate`, when given, resolves each lake at its real-unit balanced level
+    (see `LakeClimate`). `water_deposited` then only sizes this step's silt."""
     n = len(elevation)
     lake_depth = np.zeros(n)
     silt_deposited = np.zeros(n)
@@ -1046,7 +1106,7 @@ def resolve_lakes(
     for root in forest:
         _resolve(
             root, elevation, prev_lake_depth, water_deposited, years_myr, is_frozen,
-            lake_depth, silt_deposited, lake_is_sea, node_area_km2, events, hypsometry,
+            lake_depth, silt_deposited, lake_is_sea, node_area_km2, events, hypsometry, climate,
         )
     return lake_depth, silt_deposited, lake_is_sea, events
 

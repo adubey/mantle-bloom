@@ -730,3 +730,61 @@ def test_silt_settles_in_a_lake_that_only_partly_floods_its_cells():
     assert new_level < 0.0
     assert silt[0] > 0.0
     assert silt[0] <= hyps.mean_depth(new_level, np.array([0]))[0]
+
+
+def _bowl_climate(inflow_m3_per_yr, evaporation_m_per_yr=1.2):
+    inflow = np.zeros(7)
+    inflow[0] = inflow_m3_per_yr
+    return lakes.LakeClimate(inflow, np.full(7, evaporation_m_per_yr))
+
+
+def test_balanced_level_evaporates_exactly_the_inflow():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    climate = _bowl_climate(2.0e10)
+    level = lakes.balanced_level(lake, hyps, climate, hyps.dry_level(lake.members), 200.0)
+    assert lakes.lake_evaporation_m3_per_yr(level, lake.members, hyps, climate) == pytest.approx(2.0e10, rel=1e-6)
+
+
+def test_balanced_level_rises_with_inflow_fills_to_the_rim_and_dries_without_water():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    dry = hyps.dry_level(lake.members)
+    levels = [lakes.balanced_level(lake, hyps, _bowl_climate(q), dry, 200.0) for q in (0.0, 5.0e9, 2.0e10, 1.0e13)]
+    assert levels[0] == dry
+    assert levels[0] < levels[1] < levels[2] < levels[3]
+    assert levels[3] == 200.0  # more than a full lake can evaporate: it fills and spills
+
+
+def test_a_hotter_climate_holds_a_smaller_lake():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    dry = hyps.dry_level(lake.members)
+    cool = lakes.balanced_level(lake, hyps, _bowl_climate(2.0e10, 0.6), dry, 200.0)
+    hot = lakes.balanced_level(lake, hyps, _bowl_climate(2.0e10, 1.8), dry, 200.0)
+    assert hot < cool
+
+
+def test_shallow_margins_evaporate_faster_but_total_evaporation_never_falls_as_the_level_rises():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    climate = _bowl_climate(0.0, 1.0)
+    floor = np.array([0])
+    # Half-flooded floor cell: its wet half evaporates faster than open water would.
+    half = lakes.lake_evaporation_m3_per_yr(0.0, floor, hyps, climate)
+    assert half == pytest.approx(0.5 * 1.0e10 * (1.0 + 0.5 * lakes.SHALLOW_EVAPORATION_BOOST))
+    levels = np.linspace(-15.0, 60.0, 3001)
+    evaporation = [lakes.lake_evaporation_m3_per_yr(h, lake.members, hyps, climate) for h in levels]
+    assert np.all(np.diff(evaporation) >= -1e-6)
+
+
+def test_water_balance_with_climate_uses_the_balanced_level():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    climate = _bowl_climate(2.0e10)
+    new_level = lakes._water_balance(
+        lake, hyps.dry_level(lake.members), elevation, np.zeros(7), years_myr=0.1, is_frozen=False,
+        out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps, climate=climate,
+    )
+    assert new_level == pytest.approx(lakes.balanced_level(lake, hyps, climate, hyps.dry_level(lake.members), 200.0))
