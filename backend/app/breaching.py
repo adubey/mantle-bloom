@@ -21,7 +21,13 @@ once, which pits get cut through and which stay closed:
    becomes non-increasing and the pit drains. The cuts can add up to more than the total
    climb, because a node past the rim can still stand above the pit floor. But no single cut
    is larger than the total climb. Each reach of the river carves its own cut at the same
-   time, so the budget limits each cut, not their sum. A pit that costs more stays closed. It is left
+   time, so the budget limits each cut, not their sum.
+4. **Only where water overflows.** A river carves an outlet only if the basin overflows. A
+   pit is breached only if its catchment's runoff exceeds what a lake filled to its rim would
+   evaporate. Otherwise the lake would level off below the rim, so the pit stays a real
+   endorheic basin, like the Great Basin, the Caspian or the Dead Sea. A dry pit always fails
+   this test. Runoff is precipitation minus evapotranspiration, from Fu's (1981) form of the
+   Budyko curve. Open-water evaporation rises with temperature. A pit that costs more stays closed. It is left
    to `lakes.py`, which fills it, spills it, or keeps it as an endorheic lake, depending on its
    water balance.
 
@@ -55,6 +61,17 @@ BREACH_WEAK_SILT_REFERENCE_M = 10.0
 # Same ceiling as erosion.MAX_CHANNEL_DEPTH_M, which caps every notch persisted into
 # channel_depth. It's repeated here because erosion.py imports hydrology.py, which imports this.
 BREACH_MAX_NOTCH_M = 2000.0
+# Water-balance gate (step 4 of the module docstring). Open-water (lake) evaporation is
+# roughly linear in mean annual temperature: about 0.3 m/yr at 0 C, 1.2 m/yr at 15 C, and
+# 1.8 m/yr at 25 C. Those are typical of the Caspian, the Great Basin and the Dead Sea.
+OPEN_WATER_EVAPORATION_MM_AT_0C = 300.0
+OPEN_WATER_EVAPORATION_MM_PER_C = 60.0
+OPEN_WATER_EVAPORATION_MIN_MM = 50.0
+# Fu's Budyko-curve shape parameter. 2.6 is the commonly fitted global mean.
+BUDYKO_FU_OMEGA = 2.6
+# How much more water a pit's catchment must deliver than its rim-level lake would evaporate
+# before the pit is breached. Raise it to keep more basins closed.
+ENDORHEIC_DEMAND_FACTOR = 1.0
 # Added to every graph step so that Dijkstra keeps zero-climb edges, and so that ties go to the
 # path with fewer hops. It also makes each node's cost strictly larger than its next hop's,
 # which `breach_depressions` relies on to visit paths in order.
@@ -84,6 +101,57 @@ class BreachResult:
     breached_pits: np.ndarray
     # Pit nodes whose cost was over budget, which stay closed and are left to lakes.py.
     closed_pits: np.ndarray
+    # Pit nodes cheap enough to breach whose water balance keeps them closed (endorheic).
+    # These stay closed too. Empty when no climate is given.
+    endorheic_pits: np.ndarray = None
+
+    def __post_init__(self) -> None:
+        if self.endorheic_pits is None:
+            self.endorheic_pits = np.zeros(0, dtype=np.int64)
+
+
+@dataclass
+class WaterBalance:
+    """Per-node climate inputs for the breach gate, all with shape (N,)."""
+
+    precipitation_mm: np.ndarray
+    temperature_c: np.ndarray
+    area_m2: np.ndarray
+
+
+def open_water_evaporation_mm(temperature_c: np.ndarray) -> np.ndarray:
+    """Annual evaporation from a lake surface (mm/yr), linear in mean temperature."""
+    rate = OPEN_WATER_EVAPORATION_MM_AT_0C + OPEN_WATER_EVAPORATION_MM_PER_C * np.asarray(temperature_c, dtype=float)
+    return np.maximum(rate, OPEN_WATER_EVAPORATION_MIN_MM)
+
+
+def runoff_mm(precipitation_mm: np.ndarray, potential_evaporation_mm: np.ndarray) -> np.ndarray:
+    """Annual runoff (mm/yr) from Fu's Budyko curve. Evapotranspiration is
+    `P * (1 + phi - (1 + phi**w) ** (1/w))` with aridity `phi = PET / P`, so runoff tends to
+    `P` in a cold, wet climate and to nothing in a hot, dry one."""
+    p = np.clip(np.asarray(precipitation_mm, dtype=float), 0.0, None)
+    pet = np.asarray(potential_evaporation_mm, dtype=float)
+    phi = np.divide(pet, p, out=np.full_like(p, np.inf), where=p > 0.0)
+    w = BUDYKO_FU_OMEGA
+    with np.errstate(over="ignore", invalid="ignore"):
+        et_ratio = 1.0 + phi - np.power(1.0 + np.power(phi, w), 1.0 / w)
+    et_ratio = np.where(np.isfinite(et_ratio), np.clip(et_ratio, 0.0, 1.0), 1.0)
+    return p * (1.0 - et_ratio)
+
+
+def _catchment_sinks(elevation: np.ndarray, neighbor_idx: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
+    """The node each node's steepest descent ends at: a pit, or an ocean node. Uses
+    vectorised pointer doubling, so it takes about log2(longest path) passes."""
+    n = len(elevation)
+    neighbor_elev = elevation[neighbor_idx]
+    col = np.argmin(neighbor_elev, axis=1)
+    lowest = neighbor_idx[np.arange(n), col]
+    receiver = np.where((neighbor_elev[np.arange(n), col] < elevation) & ~is_ocean, lowest, np.arange(n))
+    while True:
+        jumped = receiver[receiver]
+        if np.array_equal(jumped, receiver):
+            return receiver
+        receiver = jumped
 
 
 def carve_rate_m_per_myr(craton_strength: np.ndarray, silt_depth_m: np.ndarray) -> np.ndarray:
@@ -161,6 +229,7 @@ def breach_depressions(
     channel_depth: np.ndarray,
     carve_rate: np.ndarray,
     years: float,
+    water: WaterBalance | None = None,
 ) -> BreachResult:
     """Breach every pit whose least climb to the ocean fits this step's carving budget. See
     the module docstring.
@@ -170,7 +239,12 @@ def breach_depressions(
     node from upstream. Nodes are visited from the highest cost down, which is a valid
     upstream-to-downstream order because each node's cost is strictly larger than its next
     hop's (see `_HOP_EPSILON_M`). One pass visits each node on the breached paths once. It is
-    not a separate path search per pit."""
+    not a separate path search per pit.
+
+    With `water`, pits that pass the cost test also have to pass the water-balance test (step
+    4 of the module docstring). The rim-level lake is estimated as every catchment member below
+    `pit passage + cost`. This overestimates the level, and so the evaporating area, on a path
+    with several barriers, so the estimate errs toward keeping a basin closed."""
     elevation = np.asarray(elevation, dtype=float)
     n = len(elevation)
     dt_myr = years / 1_000_000.0
@@ -186,8 +260,13 @@ def breach_depressions(
     pits = _pits(elevation, is_ocean, neighbor_idx)
     pit_cost = cost[pits]
     breachable = (pit_cost > _MIN_BREACH_CLIMB_M) & (pit_cost <= budget)
-    breached_pits = pits[breachable]
     closed_pits = pits[np.isfinite(pit_cost) & (pit_cost > budget)]
+    endorheic_pits = np.zeros(0, dtype=np.int64)
+    if water is not None and np.any(breachable):
+        overflows = _overflows(elevation, is_ocean, neighbor_idx, channel_passage, cost, pits, water)
+        endorheic_pits = pits[breachable & ~overflows]
+        breachable &= overflows
+    breached_pits = pits[breachable]
 
     if len(breached_pits):
         # Mark every node on a breached path with vectorised pointer-chasing. Each round
@@ -223,7 +302,30 @@ def breach_depressions(
                 arriving_list[nxt] = out_level
         notch = np.asarray(notch_list)
 
-    return BreachResult(cost, next_hop, channel_passage, notch, channel_passage - notch, breached_pits, closed_pits)
+    return BreachResult(cost, next_hop, channel_passage, notch, channel_passage - notch, breached_pits, closed_pits, endorheic_pits)
+
+
+def _overflows(
+    elevation: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    passage: np.ndarray,
+    cost: np.ndarray,
+    pits: np.ndarray,
+    water: WaterBalance,
+) -> np.ndarray:
+    """Whether each pit's catchment runoff exceeds the evaporation of its rim-level lake,
+    scaled by ENDORHEIC_DEMAND_FACTOR. Both sides are in m^3/yr."""
+    n = len(elevation)
+    sink = _catchment_sinks(elevation, neighbor_idx, is_ocean)
+    area = np.asarray(water.area_m2, dtype=float)
+    evaporation_mm = open_water_evaporation_mm(water.temperature_c)
+    inflow = np.bincount(sink, weights=runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area, minlength=n)
+    level = np.full(n, -np.inf)
+    level[pits] = passage[pits] + cost[pits]
+    flooded = elevation < level[sink]
+    demand = np.bincount(sink[flooded], weights=(evaporation_mm / 1000.0 * area)[flooded], minlength=n)
+    return inflow[pits] > ENDORHEIC_DEMAND_FACTOR * demand[pits]
 
 
 def interface_pass_elevation(passage: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:

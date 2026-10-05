@@ -97,6 +97,7 @@ from .plates import (
     Plate,
     cached_node_position_tree,
     collect_all_channel_depth,
+    collect_all_channel_reference_elevation,
     collect_all_channel_width,
     collect_all_crustal_thickness,
     collect_all_elev_change_reason,
@@ -2429,12 +2430,18 @@ def apply_erosion(
     # trough they cut, which rivers inherit (channel_boost, hydrology's channel-aware routing)
     # once the ice retreats. Like river erosion, only rock actually removed here counts.
     carved_m = applied_river + applied_glacier + carry.scour_m
+    # Old channels fade (issue #297). Sediment settling in a channel fills it back in: this
+    # step's deposition plus lake silt. Uplift since last step's erosion wears the notch away:
+    # that's the rise from the elevation recorded then (CHANNEL_REFERENCE_UNSET_M reads as none)
+    # to this step's pre-erosion elevation.
+    uplift_m = np.clip(elevation - collect_all_channel_reference_elevation(plates_in_order), 0.0, None)
+    channel_fill_m = np.clip(total_deposited, 0.0, None) + hydro.silt_deposited + uplift_m
     # Breach notches hydrology invented this step (issue #297, breaching.py) are sub-cell relief,
     # not volume taken off the cell mean. Recording them in channel_depth keeps the breach open
     # on the next step, because channel_depth sets each cell's passage elevation.
     if len(hydro.breach_notch_m) == len(carved_m):
         carved_m = carved_m + hydro.breach_notch_m
-    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m, 0.0, MAX_CHANNEL_DEPTH_M))
+    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
@@ -2605,6 +2612,7 @@ def apply_erosion(
             crustal_thickness_m=new_crustal_thickness[offset : offset + n],
             channel_depth=new_channel_depth[offset : offset + n],
             channel_width=new_channel_width[offset : offset + n],
+            channel_reference_elevation_m=new_elevation[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=hydro.silt_depth[offset : offset + n],

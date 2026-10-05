@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Iterator, Protocol
 import numpy as np
 
 from . import geometry
-from .surface_fields import CRATON_UNFORMED_YEARS
+from .surface_fields import CHANNEL_REFERENCE_UNSET_M, CRATON_UNFORMED_YEARS
 
 if TYPE_CHECKING:
     from .plates import PlateWithLines
@@ -444,6 +444,9 @@ class ElevationLine:
         # column (m), and the continental-derived share of that (m).
         "mobile_cover_m",
         "mobile_cover_continental_m",
+        # Elevation right after last step's erosion, used to measure uplift that fades
+        # channel_depth (surface_fields.CHANNEL_REFERENCE_UNSET_M = no record yet).
+        "channel_reference_elevation_m",
     )
 
     def __init__(
@@ -480,6 +483,7 @@ class ElevationLine:
         restite_m: np.ndarray | None = None,
         mobile_cover_m: np.ndarray | None = None,
         mobile_cover_continental_m: np.ndarray | None = None,
+        channel_reference_elevation_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -528,6 +532,11 @@ class ElevationLine:
         self._mobile_cover_continental_m = (
             mobile_cover_continental_m if mobile_cover_continental_m is not None else np.zeros_like(theta)
         )
+        self._channel_reference_elevation_m = (
+            channel_reference_elevation_m
+            if channel_reference_elevation_m is not None
+            else np.full_like(theta, CHANNEL_REFERENCE_UNSET_M)
+        )
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -550,6 +559,8 @@ class ElevationLine:
                 value = np.full_like(self._theta, -1.0, dtype=dtype)
             elif name == "_craton_formed_years":
                 value = np.full_like(self._theta, CRATON_UNFORMED_YEARS, dtype=dtype)
+            elif name == "_channel_reference_elevation_m":
+                value = np.full_like(self._theta, CHANNEL_REFERENCE_UNSET_M, dtype=dtype)
             else:
                 value = np.zeros_like(self._theta, dtype=dtype)
             object.__setattr__(self, name, value)
@@ -683,6 +694,10 @@ class ElevationLine:
     @property
     def mobile_cover_continental_m(self) -> np.ndarray:
         return self._mobile_cover_continental_m
+
+    @property
+    def channel_reference_elevation_m(self) -> np.ndarray:
+        return self._channel_reference_elevation_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -1171,6 +1186,9 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         np.interp(new_theta, line.theta, line.mobile_cover_continental_m),
         np.minimum(new_mobile_cover_m, new_continental_material_m),
     )
+    # Interpolated like elevation. An unset sentinel blends into a huge value, which still
+    # reads as "no uplift".
+    new_channel_reference_elevation_m = np.interp(new_theta, line.theta, line.channel_reference_elevation_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
     # each resampled node from its nearest original node rather than np.interp'ing between two
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
@@ -1228,6 +1246,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         restite_m=new_restite_m,
         mobile_cover_m=new_mobile_cover_m,
         mobile_cover_continental_m=new_mobile_cover_continental_m,
+        channel_reference_elevation_m=new_channel_reference_elevation_m,
     )
 
 

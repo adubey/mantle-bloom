@@ -161,3 +161,52 @@ def test_breaching_is_independent_of_node_order():
     )
     np.testing.assert_allclose(permuted.cost_m, base.cost_m[perm], atol=1e-4)
     np.testing.assert_allclose(permuted.notch_m, base.notch_m[perm], atol=1e-4)
+
+
+def test_runoff_follows_the_budyko_limits():
+    # Cold and wet: almost all rain runs off. Hot and dry: almost none does.
+    wet = breaching.runoff_mm(np.array([2000.0]), np.array([100.0]))[0]
+    dry = breaching.runoff_mm(np.array([200.0]), np.array([2000.0]))[0]
+    assert wet > 0.9 * 2000.0
+    assert dry < 0.01 * 200.0
+    assert breaching.runoff_mm(np.array([0.0]), np.array([1000.0]))[0] == 0.0
+
+
+def _pit_water(n, precipitation, temperature, area=1.0e10):
+    return breaching.WaterBalance(np.full(n, precipitation), np.full(n, temperature), np.full(n, area))
+
+
+def test_a_cheap_pit_with_no_water_stays_closed():
+    elevation = np.array([30.0, 0.0, 20.0, 10.0, -50.0])
+    is_ocean = np.array([False, False, False, False, True])
+    result = breaching.breach_depressions(
+        elevation, is_ocean, _chain(5), np.zeros(5), _ordinary_rate(5), years=100_000,
+        water=_pit_water(5, precipitation=0.0, temperature=20.0),
+    )
+    assert result.breached_pits.tolist() == []
+    assert result.endorheic_pits.tolist() == [1]
+    assert not result.notch_m.any()
+
+
+def test_a_cheap_pit_breaches_only_when_its_catchment_outpaces_evaporation():
+    # Pit 3 drains a long slope (nodes 0-2). Wet and cool, the slope's runoff swamps a lake at
+    # the rim and the pit is breached. Hot and dry, the lake evaporates it all and stays closed.
+    elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
+    is_ocean = np.array([False] * 5 + [True])
+    args = (elevation, is_ocean, _chain(6), np.zeros(6), _ordinary_rate(6))
+    wet = breaching.breach_depressions(*args, years=100_000, water=_pit_water(6, 1500.0, 5.0))
+    dry = breaching.breach_depressions(*args, years=100_000, water=_pit_water(6, 250.0, 25.0))
+    assert wet.breached_pits.tolist() == [3]
+    assert wet.notch_m[4] == pytest.approx(15.0)
+    assert dry.breached_pits.tolist() == []
+    assert dry.endorheic_pits.tolist() == [3]
+
+
+def test_endorheic_demand_factor_keeps_more_basins_closed(monkeypatch):
+    elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
+    is_ocean = np.array([False] * 5 + [True])
+    args = (elevation, is_ocean, _chain(6), np.zeros(6), _ordinary_rate(6))
+    water = _pit_water(6, 1500.0, 5.0)
+    assert breaching.breach_depressions(*args, years=100_000, water=water).breached_pits.tolist() == [3]
+    monkeypatch.setattr(breaching, "ENDORHEIC_DEMAND_FACTOR", 100.0)
+    assert breaching.breach_depressions(*args, years=100_000, water=water).breached_pits.tolist() == []

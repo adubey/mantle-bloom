@@ -245,17 +245,19 @@ def test_compute_hydrology_treats_an_interior_pit_as_an_endorheic_basin_that_sil
 
 
 def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypatch):
-    # A 20 m deep pit on a 100 m plateau. One 100 kyr step carves 30 m of ordinary rock, so
-    # with breaching on the rim is notched and the pit drains. With it off, rain ponds there.
+    # A 20 m deep pit on a 100 m plateau, in a wet climate (2,000 mm/yr at 10 C), so its
+    # runoff outpaces a rim-level lake's evaporation. One 100 kyr step carves 30 m of ordinary
+    # rock, so with breaching on the rim is notched and the pit drains. With it off, rain
+    # ponds there.
     d = 0.05
     theta = d * np.arange(40)
     elevation = np.full(40, 100.0)
     elevation[0:15] = -100.0
     elevation[28:31] = 80.0
 
-    def run():
+    def run(precipitation=2000.0, temperature=10.0):
         world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
-        return hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+        return hydrology.compute_hydrology(world, np.full(40, precipitation), np.full(40, temperature), years=100_000)
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
     closed = run()
@@ -267,6 +269,12 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
     assert breached.lake_depth[28:31].max() == 0.0
     assert breached.breach_notch_m.max() == pytest.approx(20.0)
     assert np.all(breached.filled_elevation[28:31] <= 80.0)
+
+    # The same pit in a semi-arid climate (800 mm/yr at 15 C) would level off below its rim,
+    # so it stays a closed endorheic basin.
+    arid = run(precipitation=800.0, temperature=15.0)
+    assert arid.lake_depth[28:31].max() > 0.0
+    assert not arid.breach_notch_m.any()
 
 
 def test_compute_hydrology_populates_is_sea_once_a_basin_stays_flooded():

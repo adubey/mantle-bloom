@@ -3546,9 +3546,15 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   below its lowest neighbour. A pit whose climb fits this step's carving budget is breached:
   its path is notched down to the pit's level. The budget is 10-100 m per 100 kyr, from
   strong craton rock to loose lake silt, scaled by step length. Costlier pits stay closed and
-  are filled as lakes. The hierarchy's boundary edges use the notched passages
+  are filled as lakes. A pit is also breached only if it would overflow: its catchment's
+  runoff must exceed the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
+  Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature. Dry
+  and arid basins therefore stay real endorheic basins. The hierarchy's boundary edges use the notched passages
   (`build_lake_hierarchy(interface_pass_elevation=...)`). `erosion.py` adds the new notches to
-  `channel_depth` as sub-cell relief, so a breach stays open on later steps. Set
+  `channel_depth` as sub-cell relief, so a breach stays open on later steps. Channels also
+  fade: sediment and lake silt settling in a cell fill its channel back in, and uplift since
+  the last erosion pass wears it away. Uplift is measured against
+  `channel_reference_elevation_m`, the post-erosion elevation recorded each step. Set
   `hydrology.BREACH_DEPRESSIONS_ENABLED = False` for the old centre-only behaviour.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has

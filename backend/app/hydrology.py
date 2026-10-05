@@ -93,10 +93,11 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from . import breaching, cratons, geometry, healpix_grid, lakes
-from .elevation_lines import PLANET_RADIUS_KM
+from .elevation_lines import PLANET_RADIUS_KM, line_spacing_rad
 from .plates import (
     Plate,
     cached_node_position_tree,
+    collect_all_accounting_areas_m2,
     collect_all_channel_depth,
     collect_all_channel_width,
     collect_all_elevation,
@@ -1142,9 +1143,11 @@ def compute_hydrology(
     interface_pass = None
     if BREACH_DEPRESSIONS_ENABLED:
         craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
+        areas = collect_all_accounting_areas_m2(plates_in_order, line_spacing_rad(world.node_density))
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
             breaching.carve_rate_m_per_myr(craton_strength, prev_silt_depth), years,
+            water=breaching.WaterBalance(precipitation_at_nodes, temperature_at_nodes, areas),
         )
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass)

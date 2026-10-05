@@ -36,6 +36,11 @@ def _field(dtype, default, remap_class, *, sentinel=None, coupled_to=()):
 # far beyond any reachable simulation year.
 CRATON_UNFORMED_YEARS = 1.0e18
 
+# `channel_reference_elevation_m`'s "no record yet" value. It's finite for the same reason as
+# CRATON_UNFORMED_YEARS. Because it is so high, `max(0, elevation - reference)` reads as no
+# uplift, both for an unset node and for any area-weighted blend that includes one.
+CHANNEL_REFERENCE_UNSET_M = 1.0e18
+
 
 # Phase 3 owns the algorithms that consume these classes. Phase 1 centralizes the policy so
 # adding a persistent field without declaring its transfer semantics fails a contract test.
@@ -75,6 +80,10 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # lithosphere.ice_load_deflection). It records what is baked into `elevation`, so it
     # remaps the way `elevation` does rather than the way `glacier_depth` does.
     "ice_load_deflection_m": _field(float, 0.0, RemapClass.INTENSIVE),
+    # Each node's elevation right after last step's erosion (issue #297). Next step's erosion
+    # reads any rise since then as uplift, which wears down channel_depth. Remaps like
+    # elevation.
+    "channel_reference_elevation_m": _field(float, CHANNEL_REFERENCE_UNSET_M, RemapClass.INTENSIVE),
     # Anatexis (orogeny.py, quad plates only): how far the Moho lags below its steady-state
     # temperature (C; 0, the default, is steady state), and the refractory melt residue at
     # the base of the crust (an extensive share of Hc, like the craton's).

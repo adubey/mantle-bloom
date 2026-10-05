@@ -4,7 +4,8 @@
 For each seed this generates the world twice, once with `hydrology.BREACH_DEPRESSIONS_ENABLED`
 off and once with it on, and steps both identically. Every hydrology call records:
 
-- pits (land nodes with no lower neighbour), breached pits, and pits that stayed closed;
+- pits (land nodes with no lower neighbour), breached pits, pits too costly to carve, and
+  pits cheap enough to carve but kept closed by their water balance (endorheic);
 - invented notch depth (sum and max) and how many nodes were notched;
 - boundary passes lowered below the higher centre: hierarchy edges where the passage
   elevation lets water cross below `max(z_i, z_j)`, from an established channel or a new notch;
@@ -67,9 +68,11 @@ def main() -> None:
             strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates]))
             silt = np.concatenate([p.collect("silt_depth") for p in plates])
             channel = np.concatenate([p.collect("channel_depth") for p in plates])
+            areas = erosion._gather_areas(world, plates)
             breach = original_breach(
                 fields.elevation, fields.is_ocean, fields.neighbor_idx, channel,
                 breaching.carve_rate_m_per_myr(strength, silt), years,
+                water=breaching.WaterBalance(precipitation, temperature, areas),
             )
         current["record"] = _record(fields, breach, erosion._gather_areas(world, fields.plates_in_order), current, hydrology)
         return fields
@@ -109,13 +112,15 @@ def _record(fields, breach, area_m2, current, hydrology) -> dict:
     notched = breach.notch_m > 0.0
     return {
         "land_nodes": int(land.sum()),
-        "pits": int(len(breach.breached_pits) + len(breach.closed_pits)),
+        "pits": int(len(breach.breached_pits) + len(breach.closed_pits) + len(breach.endorheic_pits)),
         "breached_pits": int(len(breach.breached_pits)),
         "closed_pits": int(len(breach.closed_pits)),
+        "endorheic_pits": int(len(breach.endorheic_pits)),
         "notched_nodes": int(notched.sum()),
         "notch_sum_m": float(breach.notch_m.sum()),
         "notch_max_m": float(breach.notch_m.max(initial=0.0)),
         "lowered_pass_edges": int(lowered.sum()),
+        "lowered_pass_share": float(lowered.sum() / max(int(land.sum()) * nb.shape[1], 1)),
         "lake_nodes": int(lake.sum()),
         "lake_area_km2": float(area_m2[lake].sum() / 1e6),
         "lake_volume_km3": float((fields.lake_depth * area_m2).sum() / 1e9),

@@ -1086,3 +1086,53 @@ def test_glacial_erosion_carves_channels_rivers_can_inherit():
     _, _, after, _, _, _ = erosion._gather_nodes(world)
     # No river erosion at all, so every metre of new channel is a glacial trough.
     assert np.max(after - before) > 1.0
+
+
+def _set_channel_state(world, depth_m, uplift_m):
+    """Every node gets `depth_m` of channel and a reference elevation `uplift_m` below its
+    current elevation, as if it had risen that much since last step's erosion."""
+    for p in world.plates:
+        for line in p.lines:
+            if len(line):
+                line.set_fields(
+                    channel_depth=np.full(len(line), depth_m),
+                    channel_reference_elevation_m=line.elevation - uplift_m,
+                )
+
+
+def test_apply_erosion_records_the_reference_elevation_for_next_steps_uplift():
+    world = generate_world(seed=21, num_plates=8)
+    erosion.apply_erosion(world, years=1_000_000)
+    _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    np.testing.assert_allclose(plates.collect_all_channel_reference_elevation(plates_in_order), elevation)
+
+
+def test_uplift_since_last_step_wears_channels_down_by_the_rise():
+    # Two identical worlds, one of which rose 300 m since its last erosion pass. Erosion
+    # itself doesn't read the reference, so the only difference is the fade.
+    still = generate_world(seed=21, num_plates=8)
+    risen = generate_world(seed=21, num_plates=8)
+    _set_channel_state(still, 500.0, 0.0)
+    _set_channel_state(risen, 500.0, 300.0)
+    erosion.apply_erosion(still, years=1_000_000)
+    erosion.apply_erosion(risen, years=1_000_000)
+
+    still_depth = plates.collect_all_channel_depth(still.plates)
+    risen_depth = plates.collect_all_channel_depth(risen.plates)
+    land = still_depth > 0.0
+    assert land.any()
+    np.testing.assert_allclose(risen_depth[land], np.clip(still_depth[land] - 300.0, 0.0, None))
+
+
+def test_deposition_fills_channels_back_in():
+    # A fresh world has no ice, so wherever no river erodes nothing carves the channel. There
+    # the channel loses exactly what settled into it: deposited sediment plus lake silt.
+    world = generate_world(seed=21, num_plates=8)
+    _set_channel_state(world, 500.0, 0.0)
+    result = erosion.apply_erosion(world, years=1_000_000)
+
+    depth = plates.collect_all_channel_depth(world.plates)
+    filled = np.clip(result.sediment_deposited, 0.0, None) + world.hydrology_cache.silt_deposited
+    quiet = ~world.hydrology_cache.is_ocean & (result.river == 0.0) & (filled > 0.0)
+    assert quiet.any()
+    np.testing.assert_allclose(depth[quiet], np.clip(500.0 - filled[quiet], 0.0, None))
