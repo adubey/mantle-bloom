@@ -459,10 +459,10 @@ def evolve_standing_orogens(plate, world: "World", years: float) -> None:
 
 def relax_orogens(plate, world: "World", years: float) -> None:
     """Collapse and ductile flow on this quad plate's standing orogens -- see the module
-    docstring. Moves Hc, `continental_material_m` in proportion, and craton crust (which
-    becomes ordinary orogenic crust where it flows: craton ledger `collision_reworked_m3`)
-    from thicker to thinner continental columns across shared cell edges. Hm stays: the
-    crust flows over its mantle lid, decoupled from it."""
+    docstring. Moves Hc, `continental_material_m` and the mobile cover (mobile_cover.py) in
+    proportion, and craton crust (which becomes ordinary orogenic crust where it flows: craton
+    ledger `collision_reworked_m3`) from thicker to thinner continental columns across shared
+    cell edges. Hm stays: the crust flows over its mantle lid, decoupled from it."""
     if plate.node_count() == 0 or years <= 0.0 or not hasattr(plate, "adjacency"):
         return
     hc = plate.collect("crustal_thickness_m")
@@ -480,6 +480,8 @@ def relax_orogens(plate, world: "World", years: float) -> None:
     lag = plate.collect("moho_thermal_lag_c")
     material = plate.collect("continental_material_m")
     craton = plate.collect("craton_crust_m")
+    cover = plate.collect("mobile_cover_m")
+    cover_material = plate.collect("mobile_cover_continental_m")
     areas = plate.node_areas_m2()
     conductance = _edge_conductance(plate, i, j, areas)
     resistance = 1.0 - CRATON_FLOW_RESISTANCE * cratons.strength(craton)
@@ -514,6 +516,11 @@ def relax_orogens(plate, world: "World", years: float) -> None:
         thickness = flux / areas[donor]
         material_moved = flux * np.divide(material[donor], hc[donor], out=np.zeros(len(flux)), where=hc[donor] > 0.0)
         craton_moved = flux * np.divide(craton[donor], hc[donor], out=np.zeros(len(flux)), where=hc[donor] > 0.0)
+        fraction = np.divide(flux, hc[donor], out=np.zeros(len(flux)), where=hc[donor] > 0.0)
+        for layer in (cover, cover_material):
+            moved = fraction * layer[donor]
+            layer -= np.bincount(donor, moved, len(hc)) / areas
+            layer += np.bincount(receiver, moved, len(hc)) / areas
         hc -= np.bincount(donor, thickness, len(hc))
         hc += np.bincount(receiver, flux, len(hc)) / areas
         material -= np.bincount(donor, material_moved, len(hc)) / areas
@@ -526,6 +533,8 @@ def relax_orogens(plate, world: "World", years: float) -> None:
     # exceed its column; these clips only absorb round-off.
     material = np.maximum(material, 0.0)
     craton = np.maximum(craton, 0.0)
+    cover = np.maximum(cover, 0.0)
+    cover_material = np.clip(cover_material, 0.0, np.minimum(cover, material))
     record(world, "collapse_transferred_m3", collapse_total)
     record(world, "ductile_flow_transferred_m3", ductile_total)
     cratons.record(world, "collision_reworked_m3", float(np.dot(np.maximum(craton_start - craton, 0.0), areas)))
@@ -537,6 +546,8 @@ def relax_orogens(plate, world: "World", years: float) -> None:
         crustal_thickness_m=hc,
         continental_material_m=material,
         craton_crust_m=craton,
+        mobile_cover_m=cover,
+        mobile_cover_continental_m=cover_material,
         # Refractory restite stays at the base, like Hm; only a column thinned below it
         # loses any.
         restite_m=np.minimum(plate.collect("restite_m"), hc),

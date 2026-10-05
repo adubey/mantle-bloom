@@ -440,6 +440,10 @@ class ElevationLine:
         # Moho's lag below its steady-state temperature (C) and the restite thickness (m).
         "moho_thermal_lag_c",
         "restite_m",
+        # Mobile cover (erosion.py): the loose sediment/regolith share of Hc at the top of the
+        # column (m), and the continental-derived share of that (m).
+        "mobile_cover_m",
+        "mobile_cover_continental_m",
     )
 
     def __init__(
@@ -474,6 +478,8 @@ class ElevationLine:
         ice_load_deflection_m: np.ndarray | None = None,
         moho_thermal_lag_c: np.ndarray | None = None,
         restite_m: np.ndarray | None = None,
+        mobile_cover_m: np.ndarray | None = None,
+        mobile_cover_continental_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -518,6 +524,10 @@ class ElevationLine:
         self._ice_load_deflection_m = ice_load_deflection_m if ice_load_deflection_m is not None else np.zeros_like(theta)
         self._moho_thermal_lag_c = moho_thermal_lag_c if moho_thermal_lag_c is not None else np.zeros_like(theta)
         self._restite_m = restite_m if restite_m is not None else np.zeros_like(theta)
+        self._mobile_cover_m = mobile_cover_m if mobile_cover_m is not None else np.zeros_like(theta)
+        self._mobile_cover_continental_m = (
+            mobile_cover_continental_m if mobile_cover_continental_m is not None else np.zeros_like(theta)
+        )
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -665,6 +675,14 @@ class ElevationLine:
     @property
     def restite_m(self) -> np.ndarray:
         return self._restite_m
+
+    @property
+    def mobile_cover_m(self) -> np.ndarray:
+        return self._mobile_cover_m
+
+    @property
+    def mobile_cover_continental_m(self) -> np.ndarray:
+        return self._mobile_cover_continental_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -1146,6 +1164,13 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     new_ice_load_deflection_m = np.interp(new_theta, line.theta, line.ice_load_deflection_m)
     new_moho_thermal_lag_c = np.interp(new_theta, line.theta, line.moho_thermal_lag_c)
     new_restite_m = np.interp(new_theta, line.theta, line.restite_m)
+    # Mobile cover is the top share of Hc, interpolated like craton crust; its continental share
+    # is also a share of the tracer, which was rescaled above, so it is clipped to both.
+    new_mobile_cover_m = np.minimum(np.interp(new_theta, line.theta, line.mobile_cover_m), new_crustal_thickness_m)
+    new_mobile_cover_continental_m = np.minimum(
+        np.interp(new_theta, line.theta, line.mobile_cover_continental_m),
+        np.minimum(new_mobile_cover_m, new_continental_material_m),
+    )
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
     # each resampled node from its nearest original node rather than np.interp'ing between two
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
@@ -1201,6 +1226,8 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         ice_load_deflection_m=new_ice_load_deflection_m,
         moho_thermal_lag_c=new_moho_thermal_lag_c,
         restite_m=new_restite_m,
+        mobile_cover_m=new_mobile_cover_m,
+        mobile_cover_continental_m=new_mobile_cover_continental_m,
     )
 
 

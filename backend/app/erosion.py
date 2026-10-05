@@ -73,7 +73,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import biomes, climate, continental_ledger, cratons, faults, geometry, hydrology, lithosphere
+from . import biomes, climate, continental_ledger, cratons, faults, geometry, hydrology, lithosphere, mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_COASTAL_LEVELING,
     ELEV_CHANGE_COLLISION,
@@ -599,6 +599,31 @@ OVERFLOW_FILL_PASSES = OVERFLOW_SEARCH_NEIGHBOR_COUNT
 OVERFLOW_ICE_SCOUR_FRACTION = 0.1
 OVERFLOW_ICE_SCOUR_MAX_M_PER_MYR = 100.0
 
+# Mobile cover (issue #297 phase 2). Loose sediment and regolith is not intact rock: every
+# column carries `mobile_cover_m`, the unconsolidated share of its Hc at the top of the
+# column, and `mobile_cover_continental_m`, the continental-derived share of that cover (a
+# share of `continental_material_m`, so the existing ledger is unchanged). Everything any
+# pathway settles -- river, lake, till, moraine, wind, landslide, beach, marine, leveling fill,
+# flattening, overflow and lake silt -- enters the cover, so weathered rock joins it where it
+# settles, and every removal takes cover before substrate. The erosion laws above are
+# substrate laws: a rate law (subaerial, submarine and coastal erosion) entrains cover
+# MOBILE_COVER_ERODIBILITY_FACTOR times faster than the same forcing detaches substrate, and
+# reaches substrate only once the cover is gone (cover shields its bed; no tool effect is
+# modelled), so a bare column erodes exactly as it did before the cover existed. Craton
+# resistance is a property of coherent substrate, so it scales only the substrate share.
+# SPACE 1.0 (Shobe et al. 2017) makes the same split; sediment/bedrock erodibility ratios of
+# several-fold are typical, so this is a starting point. There is no in-place regolith
+# production yet: the laws above are calibrated against real denudation, and a production
+# term would let every low-relief column entrain up to this factor times its calibrated rate
+# -- a global retune, left to the coupled solve.
+MOBILE_COVER_ERODIBILITY_FACTOR = 5.0
+# Burial consolidates cover: what lies deeper than MOBILE_COVER_CONSOLIDATION_DEPTH_M below the
+# cover's top lithifies back into substrate with an e-folding time of
+# MOBILE_COVER_CONSOLIDATION_TIMESCALE_MYR. Hc does not change; the continental share goes with
+# it. Both starting points (diagenesis to rock takes km of burial and Myr-to-tens-of-Myr).
+MOBILE_COVER_CONSOLIDATION_DEPTH_M = 1000.0
+MOBILE_COVER_CONSOLIDATION_TIMESCALE_MYR = 20.0
+
 
 @dataclass
 class ErosionResult:
@@ -657,6 +682,19 @@ class ErosionResult:
     ice_load_pa: np.ndarray | None = None
     ice_load_change_pa: np.ndarray | None = None
     ice_deflection_change_m: np.ndarray | None = None
+
+
+def _strip_mobile_cover(cover_m: np.ndarray, capacity_m: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """One step of a rate law acting on a column with `cover_m` of mobile cover on top -- see
+    MOBILE_COVER_*. `capacity_m` is the substrate the step's forcing would detach from bare
+    rock. The cover goes first, MOBILE_COVER_ERODIBILITY_FACTOR times faster; whatever part of
+    the step is left once it is gone detaches substrate at the bare rate. Returns (cover
+    entrained, substrate detached), meters. Exact for constant forcing, so one long step and
+    several shorter ones agree."""
+    capacity = np.asarray(capacity_m, dtype=float)
+    entrained = np.minimum(cover_m, MOBILE_COVER_ERODIBILITY_FACTOR * capacity)
+    detached = np.clip(capacity - entrained / MOBILE_COVER_ERODIBILITY_FACTOR, 0.0, None)
+    return entrained, detached
 
 
 def _gather_nodes(
@@ -1234,6 +1272,12 @@ class OverflowCarry:
     # nearest-receiver search (the rest is `terminal`).
     basin_fill_m3: float = 0.0
     search_m3: float = 0.0
+    # (n,) the part of scour_m that was mobile cover (taken before substrate); none if omitted.
+    scour_cover_m: np.ndarray | None = None
+
+    def __post_init__(self) -> None:
+        if self.scour_cover_m is None:
+            self.scour_cover_m = np.zeros_like(self.scour_m)
 
 
 def _capped_fill(
@@ -1281,6 +1325,8 @@ def _carry_overflow(
     scour_limit_m: np.ndarray,
     scour_material_m: np.ndarray,
     world: "World | None" = None,
+    scour_cover_m: np.ndarray | None = None,
+    scour_cover_material_m: np.ndarray | None = None,
 ) -> OverflowCarry:
     """Carry the load full receivers turned away (`excess`, (n, C): a volume per
     OVERFLOW_PATHWAYS entry, then its continental share) on to receivers with room
@@ -1293,8 +1339,9 @@ def _carry_overflow(
     - at sea, settles what room it has, and spreads the rest onto up to
       MARINE_SPREAD_NEIGHBOR_COUNT lower ocean nodes within MARINE_SPREAD_RANGE_RAD;
     - under a glacier (`on_ice`), settles nothing and rides `ice_flow_target`, scouring its
-      bed by OVERFLOW_ICE_SCOUR_* within `scour_limit_m` (thickness; `scour_material_m` is how
-      much of that is continental tracer, given up first);
+      bed by OVERFLOW_ICE_SCOUR_* within `scour_limit_m` (thickness). It takes the mobile
+      cover first (`scour_cover_m`, continental share `scour_cover_material_m`, mixed through
+      it), then substrate, whose continental tracer (`scour_material_m`) is given up first;
     - in a lake, spreads across the whole lake up to each member's room, by
       `_lake_member_weights`, and leaves over the lake's spill point once the lake is full;
     - on other land, settles what room it has, and passes the rest to its lowest lower
@@ -1316,9 +1363,10 @@ def _carry_overflow(
     terminal = np.zeros(c)
     scour_m = np.zeros(n)
     scour_tagged_m = np.zeros(n)
+    scour_cover_taken = np.zeros(n)
     idx = np.nonzero(excess[:, :tag_col].sum(axis=1) > 0.0)[0]
     if len(idx) == 0:
-        return OverflowCarry(placed, terminal, scour_m, scour_tagged_m)
+        return OverflowCarry(placed, terminal, scour_m, scour_tagged_m, scour_cover_m=scour_cover_taken)
     load = excess[idx].copy()
     stuck_m3 = dict.fromkeys(OVERFLOW_STUCK_REASONS, 0.0)
     basin_fill_m3 = 0.0
@@ -1327,6 +1375,9 @@ def _carry_overflow(
     room = np.array(room_vol, dtype=float)
     scour_left = np.clip(np.array(scour_limit_m, dtype=float), 0.0, None)
     material_left = np.clip(np.array(scour_material_m, dtype=float), 0.0, None)
+    cover_left = np.zeros(n) if scour_cover_m is None else np.clip(np.array(scour_cover_m, dtype=float), 0.0, None)
+    cover_material = np.zeros(n) if scour_cover_material_m is None else np.asarray(scour_cover_material_m, dtype=float)
+    cover_fraction = np.clip(np.divide(cover_material, cover_left, out=np.zeros(n), where=cover_left > 0.0), 0.0, 1.0)
     rows = np.arange(n)
     neighbor_elevation = elevation[neighbor_idx]
     lowest = np.argmin(neighbor_elevation, axis=1)
@@ -1412,9 +1463,13 @@ def _carry_overflow(
         if np.any(ice):
             at, rest = idx[ice], load[ice].copy()
             scour = np.minimum(OVERFLOW_ICE_SCOUR_FRACTION * volume[ice] / area[at], scour_left[at])
-            scour_tagged = np.minimum(scour, material_left[at])
+            from_cover = np.minimum(scour, cover_left[at])
+            from_substrate = np.minimum(scour - from_cover, material_left[at])
+            scour_tagged = from_cover * cover_fraction[at] + from_substrate
             scour_left[at] -= scour
-            material_left[at] -= scour_tagged
+            cover_left[at] -= from_cover
+            material_left[at] -= from_substrate
+            scour_cover_taken[at] += from_cover
             scour_m[at] += scour
             scour_tagged_m[at] += scour_tagged
             room[at] += scour * area[at]
@@ -1534,7 +1589,7 @@ def _carry_overflow(
             place_given(candidates, given, share)
             search_m3 += float(given.sum())
             terminal += (left[:, None] * share).sum(axis=0)
-    return OverflowCarry(placed, terminal, scour_m, scour_tagged_m, stuck_m3, basin_fill_m3, search_m3)
+    return OverflowCarry(placed, terminal, scour_m, scour_tagged_m, stuck_m3, basin_fill_m3, search_m3, scour_cover_taken)
 
 
 def _coastal_openness(points: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
@@ -1797,7 +1852,9 @@ def apply_erosion(
     terms, plus the scour of overflow-laden ice -- see OVERFLOW_ICE_SCOUR_*) and
     channel_width (from discharge alone -- larger flows carve a wider channel); lake_depth/
     glacier_depth/silt_depth are hydrology.py's own state transitions, read directly from
-    World.hydrology_cache. All persistent, see plates.ElevationLine. Mutates world.plates'
+    World.hydrology_cache. Keeps each column's mobile cover (see MOBILE_COVER_*): removals take
+    it first and everything that settles adds to it. All persistent, see plates.ElevationLine.
+    Mutates world.plates'
     line elevations in place; never touches node positions or line topology, so this can't
     interact with line regularization or point reassignment at all (both of those are
     purely about node density/position/ownership).
@@ -1825,6 +1882,7 @@ def apply_erosion(
     # Seeds the continental-material tracer on a world that never had one (a hand-built test
     # world, or a save predating it) before this step starts moving it.
     continental_ledger.ensure_initialized(world)
+    mobile_cover.ensure_ledger(world)
     fields = climate.compute_climate(world, *climate.grid_dimensions(world.climate_density), node_cloud=node_cloud)
     world.climate_cache = fields
 
@@ -1913,14 +1971,12 @@ def apply_erosion(
     # Direct earthquake-driven landsliding burst around each recent epicentre (see
     # EARTHQUAKE_EROSION_* and faults.Earthquake). No-op when nothing has ruptured recently.
     seismic = seismic * _earthquake_erosion_multiplier(world, points)
-    # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
-    # valley floor it drains into. Zeroed over ocean nodes (elevation <= sea level, the same
-    # convention climate.py/plates.py use everywhere else): every source here is a subaerial
-    # process. The sea floor and the shoreline get their own erosion separately, below
-    # (submarine + coastal erosion -- see SUBMARINE_EROSION_* / COASTAL_EROSION_*).
+    # Zeroed over ocean nodes (elevation <= sea level, the same convention climate.py/plates.py
+    # use everywhere else): every source here is a subaerial process. The sea floor and the
+    # shoreline get their own erosion separately, below (submarine + coastal erosion -- see
+    # SUBMARINE_EROSION_* / COASTAL_EROSION_*).
     raw_erosion_total = rain + river + weathering + glacier + seismic
-    erosion_amount = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
-    erosion_amount = np.minimum(erosion_amount, drop_to_lowest_neighbor_m)
+    detach_capacity = np.where(is_ocean_node, 0.0, np.clip(raw_erosion_total, 0.0, None))
     # Issue #275: every removal below is also capped at its column's Hc headroom above
     # lithosphere.MIN_CRUSTAL_THICKNESS_M *before* anything is routed. The Hc floor clip at the
     # write-back used to be the only guard, so a column eroded to the floor still handed its
@@ -1930,21 +1986,46 @@ def apply_erosion(
     prior_hm = collect_all_mantle_lithosphere_thickness(plates_in_order)
     has_column = prior_hc > 0.0
     removable_m = np.where(has_column, np.clip(prior_hc - lithosphere.MIN_CRUSTAL_THICKNESS_M, 0.0, None), np.inf)
-    erosion_amount = np.minimum(erosion_amount, removable_m)
     # Cratons (cratons.py) resist erosional unroofing: at full strength a craton column gives up
-    # only (1 - CRATON_EROSION_RESISTANCE) of what would otherwise be removed. Applied here, at
-    # the source, so everything routed downstream stays exactly what the sources gave up.
+    # only (1 - CRATON_EROSION_RESISTANCE) of the substrate that would otherwise be removed.
+    # Applied here, at the source, so everything routed downstream stays exactly what the
+    # sources gave up.
     craton_keep = 1.0 - cratons.CRATON_EROSION_RESISTANCE * cratons.strength(
         np.concatenate([p.collect("craton_crust_m") for p in plates_in_order])
     )
-    erosion_amount = erosion_amount * craton_keep
-    # channel_depth is the terrain's own carved-channel record, so it must never grow past
-    # what actually got taken off this point's elevation: when the neighbor-drop cap above
-    # holds erosion_amount below raw_erosion_total, scale river's (and glacier's -- see
-    # new_channel_depth) contribution down by the same factor rather than banking the full,
-    # unapplied amount -- otherwise a node pinned
-    # near its lowest neighbor (a valley floor at grade) would keep "carving" toward
-    # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields.
+    # Mobile cover (issue #297 phase 2, see MOBILE_COVER_*) and the continental tracer
+    # (`continental_material_m`, see "Volume and provenance" below). A stored tracer or cover
+    # above its column's Hc is material some *other* step already removed without updating it
+    # (tectonic thinning, not yet instrumented -- see #272). The continental ledger's
+    # inventories never count tracer excess, so clipping it is budget-neutral and
+    # `stale_tracer_excess_m3` only reports it. The cover ledger's live inventory does count the
+    # cover's, so `stale_mobile_cover_excess_m3` is booked into its `clipped_m3` below. The
+    # cover's continental share is a share of both.
+    stored_material = np.concatenate([p.collect("continental_material_m") for p in plates_in_order])
+    prior_material = np.clip(stored_material, 0.0, prior_hc)
+    stored_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
+    prior_cover = np.clip(stored_cover, 0.0, np.where(has_column, prior_hc, np.inf))
+    prior_cover_material = np.clip(
+        np.concatenate([p.collect("mobile_cover_continental_m") for p in plates_in_order]),
+        0.0,
+        np.minimum(prior_cover, prior_material),
+    )
+    # Capped at the drop to the lowest neighbor so a single step can't erode a node below the
+    # valley floor it drains into, and at the Hc headroom. A cap cuts substrate before cover
+    # (the cover is on top, so it goes first).
+    erosion_cap_m = np.minimum(drop_to_lowest_neighbor_m, removable_m)
+    cover_entrained, substrate_detached = _strip_mobile_cover(prior_cover, detach_capacity)
+    cover_entrained = np.minimum(cover_entrained, erosion_cap_m)
+    erosion_amount = cover_entrained + np.minimum(substrate_detached, erosion_cap_m - cover_entrained) * craton_keep
+    cover_m = prior_cover - cover_entrained
+    # channel_depth is the terrain's own carved-channel record, so it must track what actually
+    # got taken off this point's elevation: river's (and glacier's -- see new_channel_depth)
+    # contribution is scaled by applied_scale, what came off over what the substrate laws
+    # asked for. The neighbor-drop cap pulls it below 1 -- otherwise a node pinned near its
+    # lowest neighbor (a valley floor at grade) would keep "carving" toward
+    # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields. Mobile
+    # cover can push it up to MOBILE_COVER_ERODIBILITY_FACTOR: a channel cuts through loose
+    # sediment that much faster than through rock.
     applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
     applied_river = river * applied_scale
 
@@ -1982,12 +2063,15 @@ def apply_erosion(
     # graph.
     submarine = submarine_erosion_amount(elevation, slope, is_ocean_node, dt_myr)
     coastal = coastal_erosion_amount(elevation, temperature, dt_myr)
-    remaining_drop_m = np.clip(np.minimum(drop_to_lowest_neighbor_m, removable_m) - erosion_amount, 0.0, None)
+    remaining_drop_m = np.clip(erosion_cap_m - erosion_amount, 0.0, None)
     # ocean_erosion_multiplier scales both the sea-floor slump and the shoreline wave/frost
-    # attack together (still capped at the remaining drop to the lowest neighbour).
-    sea_side_erosion = np.minimum(
-        np.clip((submarine + coastal) * world.ocean_erosion_multiplier * craton_keep, 0.0, None), remaining_drop_m
-    )
+    # attack together (still capped at the remaining drop to the lowest neighbour). Whatever
+    # cover the subaerial sources left goes first, at the cover's higher erodibility.
+    sea_cover, sea_substrate = _strip_mobile_cover(cover_m, np.clip((submarine + coastal) * world.ocean_erosion_multiplier, 0.0, None))
+    sea_cover = np.minimum(sea_cover, remaining_drop_m)
+    sea_side_erosion = sea_cover + np.minimum(sea_substrate * craton_keep, remaining_drop_m - sea_cover)
+    cover_entrained = cover_entrained + sea_cover
+    cover_m = cover_m - sea_cover
 
     # Symmetric coastal leveling (see the COASTAL_OPENNESS_* / COASTAL_LEVELING_* / LEVELING_*
     # / INFILL_* / BARRIER_* / PROMINENCE_* constants). `coastal_openness` is this step's
@@ -2040,15 +2124,21 @@ def apply_erosion(
     # tracer (it sits on top -- continental sediment draped over an oceanic host is the first
     # thing eroded off it), so `tag` is the continental fraction of everything leaving it this
     # step, and every pathway below moves `volume * tag` along exactly the same transfers.
+    #
+    # With mobile cover, the continental share of what a node gives up comes from two layers:
+    # the cover, well mixed, at its own continental fraction, then the substrate under it, by
+    # the same continental-first rule. The leveling grind and glacial flattening take cover
+    # first too.
     area = _gather_areas(world, plates_in_order)
-    # A stored tracer above its column's Hc is material some *other* step already removed
-    # without updating the tracer (tectonic thinning, not yet instrumented -- see #272). The
-    # ledger's inventories never count that excess, so writing back the clipped value is
-    # budget-neutral; `stale_tracer_excess_m3` reports how much of it this step made permanent.
-    stored_material = np.concatenate([p.collect("continental_material_m") for p in plates_in_order])
-    prior_material = np.clip(stored_material, 0.0, prior_hc)
     removed_m = erosion_amount + sea_side_erosion + ground_off + flatten_removed
-    continental_removed_m = np.minimum(removed_m, prior_material)
+    for removal in (ground_off, flatten_removed):
+        taken = np.minimum(cover_m, removal)
+        cover_entrained = cover_entrained + taken
+        cover_m = cover_m - taken
+    cover_fraction = np.divide(prior_cover_material, prior_cover, out=np.zeros(n), where=prior_cover > 0.0)
+    substrate_material = prior_material - prior_cover_material
+    substrate_removed_m = removed_m - cover_entrained
+    continental_removed_m = cover_entrained * cover_fraction + np.minimum(substrate_removed_m, substrate_material)
     tag = np.divide(continental_removed_m, removed_m, out=np.zeros(n), where=removed_m > 0)
 
     # ocean_deposition_multiplier scales the *settled* marine sediment (beach + marine below),
@@ -2271,13 +2361,17 @@ def apply_erosion(
         np.where(has_column, np.clip(cap_room_vol - incoming_vol, 0.0, None), np.inf),
         excess,
         scour_limit_m,
-        prior_material - continental_removed_m,
+        np.clip(substrate_material - substrate_removed_m, 0.0, None),
         world=world,
+        scour_cover_m=cover_m,
+        scour_cover_material_m=cover_m * cover_fraction,
     )
     settled = incoming - excess + carry.placed
     settled_tagged = settled[:, -1]
     removed_m = removed_m + carry.scour_m
     continental_removed_m = continental_removed_m + carry.scour_tagged_m
+    cover_entrained = cover_entrained + carry.scour_cover_m
+    cover_m = cover_m - carry.scour_cover_m
     if carry.terminal[-1] > 0.0:
         continental_ledger.record(world, "overloaded_root_delaminated_m3", float(carry.terminal[-1]))
 
@@ -2350,6 +2444,25 @@ def apply_erosion(
         continental_ledger.record(world, "numerical_unplaced_m3", unplaced_tagged_m3)
     if discarded_tagged_m3 > 0.0:
         continental_ledger.record(world, "discarded_marine_sediment_m3", discarded_tagged_m3)
+
+    # Everything that settled this step becomes mobile cover, carrying its continental share.
+    # The cover stays inside its column (and its continental share inside both the cover and
+    # the tracer) -- removals only reach substrate once the cover is gone, so the clips only
+    # trim round-off, reported as `mobile_cover_clip_m3`. Then burial consolidates whatever lies
+    # deeper than MOBILE_COVER_CONSOLIDATION_DEPTH_M back into substrate, its continental share
+    # with it -- Hc and the tracer are unchanged, only the split moves.
+    cover_deposited_m = settled[:, :-1].sum(axis=1) / area
+    raw_cover = cover_m + cover_deposited_m
+    new_cover = np.clip(raw_cover, 0.0, np.where(has_column, new_crustal_thickness, np.inf))
+    new_cover_material = np.clip(
+        cover_m * cover_fraction + settled_tagged / area, 0.0, np.minimum(new_cover, new_material)
+    )
+    consolidated_m = np.clip(new_cover - MOBILE_COVER_CONSOLIDATION_DEPTH_M, 0.0, None) * -np.expm1(
+        -dt_myr / MOBILE_COVER_CONSOLIDATION_TIMESCALE_MYR
+    )
+    consolidated_material_m = consolidated_m * np.divide(new_cover_material, new_cover, out=np.zeros(n), where=new_cover > 0.0)
+    new_cover = new_cover - consolidated_m
+    new_cover_material = np.clip(new_cover_material - consolidated_material_m, 0.0, new_cover)
     removed_m3 = float(np.sum(removed_m * area))
     # Everything eroded this step that settled on the surface, after the overflow carry --
     # removed_m3 == deposited_m3 + hc_cap_overflow_terminal_m3 less its lake-silt share (with
@@ -2379,6 +2492,30 @@ def apply_erosion(
         overflow_budget[f"hc_cap_overflow_{pathway}_m3"] = float(excess[:, column].sum())
         overflow_budget[f"hc_cap_overflow_{pathway}_placed_m3"] = float(carry.placed[:, column].sum())
         overflow_budget[f"hc_cap_overflow_{pathway}_terminal_m3"] = float(carry.terminal[column])
+    cover_entrained_m3 = float(np.sum(cover_entrained * area))
+    mobile_cover_budget = {
+        # Issue #297 phase 2: what this step's removals took from the cover and from substrate,
+        # what settled into the cover, what burial consolidated, what is left, and the
+        # continental share of each. prior + deposited - entrained - consolidated - clip ==
+        # remaining.
+        "bedrock_detached_m3": removed_m3 - cover_entrained_m3,
+        "mobile_cover_prior_m3": float(np.sum(prior_cover * area)),
+        "mobile_cover_entrained_m3": cover_entrained_m3,
+        "mobile_cover_deposited_m3": float(np.sum(cover_deposited_m * area)),
+        "mobile_cover_consolidated_m3": float(np.sum(consolidated_m * area)),
+        "mobile_cover_clip_m3": float(np.sum((raw_cover - new_cover - consolidated_m) * area)),
+        "mobile_cover_m3": float(np.sum(new_cover * area)),
+        "mobile_cover_continental_entrained_m3": float(np.sum(cover_entrained * cover_fraction * area)),
+        "mobile_cover_continental_consolidated_m3": float(np.sum(consolidated_material_m * area)),
+        "mobile_cover_continental_m3": float(np.sum(new_cover_material * area)),
+        "stale_mobile_cover_excess_m3": float(np.sum((stored_cover - prior_cover) * area)),
+    }
+    mobile_cover.record(world, "deposited_m3", mobile_cover_budget["mobile_cover_deposited_m3"])
+    mobile_cover.record(world, "entrained_m3", cover_entrained_m3)
+    mobile_cover.record(world, "consolidated_m3", mobile_cover_budget["mobile_cover_consolidated_m3"])
+    mobile_cover.record(
+        world, "clipped_m3", mobile_cover_budget["mobile_cover_clip_m3"] + mobile_cover_budget["stale_mobile_cover_excess_m3"]
+    )
     budget = {
         "removed_m3": removed_m3,
         "deposited_m3": deposited_m3,
@@ -2398,6 +2535,7 @@ def apply_erosion(
         "continental_discarded_m3": discarded_tagged_m3,
         "continental_unplaced_m3": unplaced_tagged_m3,
         "stale_tracer_excess_m3": float(np.sum((stored_material - prior_material) * area)),
+        **mobile_cover_budget,
     }
 
     # Elevation-change provenance (diagnostic only -- see elevation_lines.ELEV_CHANGE_* and
@@ -2468,6 +2606,8 @@ def apply_erosion(
             elev_change_reason=new_elev_change_reason[offset : offset + n],
             continental_material_m=new_material[offset : offset + n],
             ice_load_deflection_m=new_deflection[offset : offset + n],
+            mobile_cover_m=new_cover[offset : offset + n],
+            mobile_cover_continental_m=new_cover_material[offset : offset + n],
         )
         offset += n
 

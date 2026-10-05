@@ -34,7 +34,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import cratons, geometry, mantle, phase_budget, plates as plates_mod
+from . import cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
@@ -735,8 +735,14 @@ def defragment_plates(world: "World") -> list[str]:
 
     events: list[str] = []
     new_plates: list[Plate] = []
+    spacing_rad = line_spacing_rad(world.node_density)
+
+    def cover_m3(plate: Plate) -> float:
+        return float(np.dot(plate.collect("mobile_cover_m"), plate.accounting_areas_m2(spacing_rad)))
+
     for plate in world.plates:
         before = plate.node_count()
+        cover_before = cover_m3(plate)
         result = plate.defragment(world.next_plate_id, connect_radius_rad, min_fragment_nodes, world)
         if result is None:
             new_plates.append(plate)
@@ -745,6 +751,8 @@ def defragment_plates(world: "World") -> list[str]:
         replacements, ids_consumed = result
         world.next_plate_id += ids_consumed
         new_plates.extend(replacements)
+        # The stranded crust dropped below takes its mobile cover with it.
+        mobile_cover.record(world, "stranded_m3", max(cover_before - sum(cover_m3(p) for p in replacements), 0.0))
 
         shed = before - sum(p.node_count() for p in replacements)
         if len(replacements) > 1:

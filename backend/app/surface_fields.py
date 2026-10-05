@@ -80,4 +80,9 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # the base of the crust (an extensive share of Hc, like the craton's).
     "moho_thermal_lag_c": _field(float, 0.0, RemapClass.INTENSIVE),
     "restite_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    # Mobile cover (erosion.py, issue #297 phase 2): the loose sediment/regolith at the top of
+    # the crust column -- a share of Hc, so extensive like the craton's -- and the
+    # continental-derived share of it (a share of `continental_material_m`).
+    "mobile_cover_m": _field(float, 0.0, RemapClass.EXTENSIVE),
+    "mobile_cover_continental_m": _field(float, 0.0, RemapClass.EXTENSIVE),
 }

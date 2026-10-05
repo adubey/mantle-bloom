@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, geometry, lithosphere
+from . import continental_ledger, geometry, lithosphere, mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_VOLCANIC_PLAIN,
@@ -64,10 +64,13 @@ MAX_MINERAL_DEPOSIT_M = 20.0
 def apply_volcanic_activity(world: "World", years: float) -> None:
     """Every step: rolls each individual active volcano's own eruption chance, adding
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain
-    apron around each vent that erupted this step. Mutates world.plates in place."""
+    apron around each vent that erupted this step. Erupted crust buries the mobile cover it
+    lands on, consolidating it in proportion to the surface lava's thickness, the elevation it
+    adds (mobile_cover.VOLCANIC_SEAL_THICKNESS_M). Mutates world.plates in place."""
     continental_ledger.ensure_initialized(world)
     for plate in world.plates:
         hc_before = plate.collect("crustal_thickness_m")
+        elevation_before = plate.collect("elevation")
         if isinstance(plate, PlateWithLines):
             erupted_points = _apply_volcanic_activity_to_lines(plate, world, years)
         else:
@@ -85,6 +88,9 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
             "juvenile_additions_m3",
             eligible=continental,
         )
+        lava_m = np.maximum(plate.collect("elevation") - elevation_before, 0.0)
+        sealed = lava_m / mobile_cover.VOLCANIC_SEAL_THICKNESS_M
+        mobile_cover.end(world, plate, sealed, "volcanic_buried_m3")
 
 
 def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", years: float) -> list[np.ndarray]:
