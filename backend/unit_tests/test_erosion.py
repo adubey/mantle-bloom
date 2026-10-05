@@ -1195,3 +1195,27 @@ def test_breach_notches_persist_apart_from_channel_depth(monkeypatch):
     control_channel = plates.collect_all_channel_depth(control.plates)
     unfilled = land & (filled <= 7.0)
     np.testing.assert_allclose(channel[unfilled], np.clip(control_channel[unfilled] + filled[unfilled], 0.0, 2000.0))
+
+
+def test_a_reference_blended_with_the_unset_sentinel_counts_as_no_uplift(monkeypatch):
+    # A remap can blend a recorded reference with the 1e18 "unset" sentinel, e.g. to 2.5e17.
+    # That must read as unset, not as a hugely negative rise that would give every node
+    # draining into it an enormous across-channel uplift and wipe its channel.
+    from app import hydrology
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    still = generate_world(seed=21, num_plates=8)
+    blended = generate_world(seed=21, num_plates=8)
+    _set_channel_state(still, 500.0, 0.0)
+    _set_channel_state(blended, 500.0, 0.0)
+    for p in blended.plates:
+        for line in p.lines:
+            if len(line):
+                reference = line.channel_reference_elevation_m.copy()
+                reference[::2] = 2.5e17
+                line.set_fields(channel_reference_elevation_m=reference)
+    erosion.apply_erosion(still, years=1_000_000)
+    erosion.apply_erosion(blended, years=1_000_000)
+    np.testing.assert_allclose(
+        plates.collect_all_channel_depth(blended.plates), plates.collect_all_channel_depth(still.plates)
+    )

@@ -738,11 +738,19 @@ def _lake_component_sizes(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> np.n
     return sizes
 
 
+def river_evaporation_fraction(temperature_c: np.ndarray, years: float, excluded: np.ndarray) -> np.ndarray:
+    """Share of the water passing through each node lost to in-transit river evaporation this
+    step (see RIVER_EVAPORATION_*), zero where `excluded`."""
+    years_myr = years / 1_000_000.0
+    fraction = np.clip(temperature_c / RIVER_EVAPORATION_REFERENCE_TEMP_C, 0.0, 1.0) * RIVER_EVAPORATION_RATE_PER_MYR * years_myr
+    return np.where(excluded, 0.0, np.clip(fraction, 0.0, RIVER_EVAPORATION_MAX_FRACTION))
+
+
 def _compute_flow_direction(
     elevation: np.ndarray,
     is_ocean: np.ndarray,
     neighbor_idx: np.ndarray,
-    prev_lake_depth: np.ndarray,
+    water_surface_offset: np.ndarray,
     filled_elevation: np.ndarray,
     spill_target: np.ndarray,
     prev_channel_depth: np.ndarray,
@@ -758,8 +766,9 @@ def _compute_flow_direction(
     applied to routing itself, distinct from (and upstream of) erosion.py's own
     channel_boost, which only affects how *fast* a node erodes once water is already flowing
     there. -1 if there's no downhill candidate at all (a sink) -- unless the sink's current
-    water surface (elevation + the *previous* step's lake_depth, a one-step-lagged "memory"
-    of the water surface) has already reached its
+    water surface (elevation + `water_surface_offset`, the previous step's water surface above
+    the cell's centre, a one-step-lagged "memory" of the water surface; compute_hydrology
+    recovers it from lake_depth through lakes.CellHypsometry) has already reached its
     basin's true spill point, in which case it redirects to spill_target instead of staying
     a dead-end sink forever. Ocean nodes are never routed (they're a destination, not a
     source).
@@ -814,7 +823,7 @@ def _compute_flow_direction(
     flow_target = np.where(has_lower, neighbor_idx[rows, best_col], -1).astype(np.int64)
 
     is_sink = (flow_target < 0) & ~is_ocean
-    water_surface = elevation + prev_lake_depth
+    water_surface = elevation + water_surface_offset
     should_spill = is_sink & (water_surface >= filled_elevation)
     flow_target = np.where(should_spill, spill_target, flow_target).astype(np.int64)
     if apply_freeze:
@@ -1146,10 +1155,16 @@ def compute_hydrology(
     interface_pass = None
     if BREACH_DEPRESSIONS_ENABLED:
         craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
+        mobile_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
+        # The gate sees the same water budget the lakes are balanced with below, as far as it
+        # can before routing: liquid precipitation, and the same river losses.
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
-            breaching.carve_rate_m_per_myr(craton_strength, prev_silt_depth), years,
-            water=breaching.WaterBalance(precipitation_at_nodes, temperature_at_nodes, areas),
+            breaching.carve_rate_m_per_myr(craton_strength, mobile_cover), years,
+            water=breaching.WaterBalance(
+                np.where(is_frozen, 0.0, precipitation_at_nodes), temperature_at_nodes, areas,
+                loss_fraction=river_evaporation_fraction(temperature_at_nodes, years, is_frozen | is_ocean),
+            ),
             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
         )
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
@@ -1241,9 +1256,9 @@ def compute_hydrology(
     # concentrated overflow surge, sized purely from its surface area, not an ordinary trickle
     # that should also lose a further fraction to evaporation in the very same step it's cut
     # loose.
-    years_myr = years / 1_000_000.0
-    river_evap_fraction = np.clip(temperature_at_nodes / RIVER_EVAPORATION_REFERENCE_TEMP_C, 0.0, 1.0) * RIVER_EVAPORATION_RATE_PER_MYR * years_myr
-    river_evap_fraction = np.where(is_frozen | is_ocean | should_spill | is_rim_breach, 0.0, np.clip(river_evap_fraction, 0.0, RIVER_EVAPORATION_MAX_FRACTION))
+    river_evap_fraction = river_evaporation_fraction(
+        temperature_at_nodes, years, is_frozen | is_ocean | should_spill | is_rim_breach
+    )
 
     water_source = liquid_precip + melt + lake_breach_source + rim_breach_source
     flow_accum, water_deposited = route_downstream(elevation, is_ocean, flow_target, water_source, loss_fraction=river_evap_fraction)
@@ -1284,7 +1299,10 @@ def compute_hydrology(
     # Lakes balance in real units (issue #297): area-weighted runoff (the same Budyko curve
     # and open-water evaporation the breach gate uses) plus glacier melt, routed as volume
     # along the same flow paths. A spilling lake's sink passes its water on, so its inflow
-    # is the flow through the sink, not what settles there.
+    # is the flow through the sink, not what settles there. That through-flow also carries on
+    # to any lake downstream without the upstream lake's own evaporation taken off. That
+    # overfeeds lake chains a little, but only through lakes already full and spilling.
+    # Subtracting it would need lakes resolved during routing (follow-up on #297).
     evaporation_mm = breaching.open_water_evaporation_mm(temperature_at_nodes)
     runoff_m3 = breaching.runoff_mm(liquid_precip, evaporation_mm) / 1000.0 * areas
     melt_m3 = melt * areas / max(years, 1.0)

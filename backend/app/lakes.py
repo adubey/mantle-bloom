@@ -458,6 +458,27 @@ class Lake:
     # lake's own catchment, or the ocean itself for a land-ocean merge -- not a member of this
     # lake. -1 while unresolved (mirrors outlet_node_idx's own unresolved sentinel).
     outlet_target_idx: int = -1
+    # True when this lake's outlet sits at (or below) its own floor and leads to lower ground:
+    # a breached pit (breaching.py) whose notch is cut to its floor, or a lake merged at its
+    # floor into a basin that does. Water in the low ground inside the floor cell drains out
+    # through that same outlet, so the lake holds none. Set by `_mark_floor_drains`.
+    drains_at_floor: bool = False
+
+
+def _mark_floor_drains(roots: list["Lake"]) -> None:
+    """Sets `drains_at_floor` top-down. A root drains at its floor if it reaches the ocean
+    (`max_depth` set) at its floor. A child does if it merges at its floor and its parent
+    either sits lower or itself drains at its floor. Siblings merging at a shared floor inside
+    a closed basin therefore don't drain, and still pool into one lake."""
+    stack = [(root, None) for root in roots]
+    while stack:
+        lake, parent = stack.pop()
+        at_floor = lake.max_depth is not None and lake.max_depth <= lake.floor_elevation + 1e-9
+        if parent is None:
+            lake.drains_at_floor = at_floor
+        else:
+            lake.drains_at_floor = at_floor and (parent.floor_elevation < lake.floor_elevation or parent.drains_at_floor)
+        stack.extend((child, lake) for child in lake.children)
 
 
 def _make_leaf(lake_id: int, members: list[int], elevation_list: list[float], sink_node_idx: int) -> Lake:
@@ -668,6 +689,7 @@ def build_lake_hierarchy(
         component_lake[new_root] = merged
 
     roots.extend(component_lake.values())
+    _mark_floor_drains(roots)
     return roots
 
 
@@ -741,31 +763,37 @@ def _water_balance(
     into their neighbors)."""
     hyps = hypsometry if hypsometry is not None else CellHypsometry.whole_cells(elevation)
     members = lake.members
-    retention = np.exp(-LAKE_EVAPORATION_RATE_PER_MYR * years_myr)
-    baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
-    # The balance is in volume (issue #297): last step's water, less evaporation over its wet
-    # area, plus this step's inflow. The new level is whatever level holds that volume over
-    # the lake's partly flooded cells (CellHypsometry), so the level rises more slowly as the
-    # lake spreads over more area.
-    carried_m3 = max(
-        0.0,
-        hyps.volume(prev_level, members) * retention - baseline_loss * hyps.wet_area(prev_level, members),
-    )
+    # Model-unit inflow. It sizes this step's silt in both paths below, and the level only in
+    # the path without `climate`. With `climate` the level is set in real units, so silt and
+    # level use different units, which matters when tuning silt against lake size.
     inflow = float(water_deposited[members].sum())
-    target_m3 = carried_m3 + LAKE_FILL_RATE * inflow * years_myr * hyps.reference_area_m2
 
     rim_cap_depth = (lake.max_depth - lake.floor_elevation) if lake.max_depth is not None else None
     cap_depth = tier_max_depth if rim_cap_depth is None else min(rim_cap_depth, tier_max_depth)
     dry_level = hyps.dry_level(members)
-    cap_level = max(lake.floor_elevation + cap_depth, dry_level)
+    # A lake whose outlet is cut to its floor and leads lower holds no water at all, not even
+    # in the low ground inside its floor cell (see Lake.drains_at_floor).
+    cap_level = dry_level if lake.drains_at_floor else max(lake.floor_elevation + cap_depth, dry_level)
     if climate is not None:
         new_level = balanced_level(lake, hyps, climate, dry_level, cap_level)
-    elif target_m3 <= 0.0:
-        new_level = dry_level
-    elif target_m3 >= hyps.volume(cap_level, members):
-        new_level = cap_level
     else:
-        new_level = hyps.level_for_volume(target_m3, members, dry_level, cap_level)
+        # The balance is in volume (issue #297): last step's water, less evaporation over its
+        # wet area, plus this step's inflow. The new level is whatever level holds that volume
+        # over the lake's partly flooded cells (CellHypsometry), so the level rises more
+        # slowly as the lake spreads over more area.
+        retention = np.exp(-LAKE_EVAPORATION_RATE_PER_MYR * years_myr)
+        baseline_loss = LAKE_EVAPORATION_BASELINE_M_PER_MYR * years_myr
+        carried_m3 = max(
+            0.0,
+            hyps.volume(prev_level, members) * retention - baseline_loss * hyps.wet_area(prev_level, members),
+        )
+        target_m3 = carried_m3 + LAKE_FILL_RATE * inflow * years_myr * hyps.reference_area_m2
+        if target_m3 <= 0.0:
+            new_level = dry_level
+        elif target_m3 >= hyps.volume(cap_level, members):
+            new_level = cap_level
+        else:
+            new_level = hyps.level_for_volume(target_m3, members, dry_level, cap_level)
 
     wet_fraction = hyps.wet_fraction(new_level, members)
     is_wet = wet_fraction > 0.0

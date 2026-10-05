@@ -10,7 +10,8 @@ off and once with it on, and steps both identically. Every hydrology call record
 - boundary passes lowered below the higher centre: hierarchy edges where the passage
   elevation lets water cross below `max(z_i, z_j)`, from an established channel or a new notch;
 - standing lakes: flooded node count, flooded area (whole cells with > 1 m of water, and the
-  partial-cell wet area from lakes.CellHypsometry), and water volume;
+  partial-cell wet area from lakes.CellHypsometry), the visible area in lakes filled to their
+  rim and spilling, and water volume;
 - wall time of the breaching pass and of the whole hydrology call.
 
 The breaching statistics are computed in the "off" run too, as a diagnostic that doesn't feed
@@ -68,14 +69,19 @@ def main() -> None:
             # Breaching was off: compute it as a pure diagnostic on the same inputs.
             plates = fields.plates_in_order
             strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates]))
-            silt = np.concatenate([p.collect("silt_depth") for p in plates])
+            cover = np.concatenate([p.collect("mobile_cover_m") for p in plates])
             channel = np.concatenate([p.collect("channel_depth") for p in plates])
             prior_notch = np.concatenate([p.collect("breach_notch_depth_m") for p in plates])
             areas = erosion._gather_areas(world, plates)
             breach = original_breach(
                 fields.elevation, fields.is_ocean, fields.neighbor_idx, channel,
-                breaching.carve_rate_m_per_myr(strength, silt), years,
-                water=breaching.WaterBalance(precipitation, temperature, areas),
+                breaching.carve_rate_m_per_myr(strength, cover), years,
+                water=breaching.WaterBalance(
+                    np.where(temperature < hydrology.FREEZE_POINT_C, 0.0, precipitation), temperature, areas,
+                    loss_fraction=hydrology.river_evaporation_fraction(
+                        temperature, years, fields.is_ocean | (temperature < hydrology.FREEZE_POINT_C)
+                    ),
+                ),
                 prior_notch_m=prior_notch,
             )
         current["record"] = _record(fields, breach, erosion._gather_areas(world, fields.plates_in_order), current, hydrology, lakes)
@@ -127,10 +133,21 @@ def _record(fields, breach, area_m2, current, hydrology, lakes) -> dict:
         "lake_nodes": int(lake.sum()),
         "lake_area_km2": float(area_m2[lake].sum() / 1e6),
         "lake_wet_area_km2": _wet_area_km2(fields, area_m2, lakes),
+        "lake_at_rim_area_km2": _at_rim_area_km2(fields, area_m2, hydrology, lakes),
         "lake_volume_km3": float((fields.lake_depth * area_m2).sum() / 1e9),
         "breach_s": float(current.get("breach_s", 0.0)),
         "hydrology_s": float(current["hydrology_s"]),
     }
+
+
+def _at_rim_area_km2(fields, area_m2, hydrology, lakes) -> float:
+    """Visible lake area (cells > 1 m) in lakes filled to their rim and spilling this step."""
+    at_rim = np.zeros(len(area_m2), dtype=bool)
+    for lake in lakes.iter_all_lakes(fields.lake_forest):
+        if lake.is_spilling:
+            at_rim[lake.members] = True
+    visible = fields.lake_depth > hydrology.LAKE_MIN_VISIBLE_DEPTH_M
+    return float(area_m2[at_rim & visible].sum() / 1e6)
 
 
 def _wet_area_km2(fields, area_m2, lakes) -> float:

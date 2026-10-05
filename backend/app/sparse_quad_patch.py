@@ -812,7 +812,7 @@ class PlateWithSparseQuadPatch(Plate):
                 lithosphere.isostatic_elevation(np.array([new_hc]), np.array([new_hm]), new_density)[0]
                 + np.average(residual, weights=areas)
             )
-        if name == "channel_depth":
+        if name in ("channel_depth", "breach_notch_depth_m"):
             return float(np.max(values))
         if name == "channel_width":
             return float(values[np.argmax(all_fields.get("channel_depth", np.zeros(len(values))))])

@@ -58,13 +58,14 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import dijkstra
 
 # River incision rates into bedrock: roughly 10-100 m per 100 kyr, from strong to weak rock.
-# The reference rate is ordinary continental rock. Cratons are strong, and lake silt is loose
-# and weak. A step of `dt` Myr can cut rate * dt metres, so longer steps cut deeper notches.
+# The reference rate is ordinary continental rock. Cratons are strong, and loose mobile cover
+# (sediment, lake silt, regolith: erosion.py's `mobile_cover_m`) is weak. A step of `dt` Myr
+# can cut rate * dt metres, so longer steps cut deeper notches.
 BREACH_REFERENCE_CARVE_M_PER_MYR = 300.0
 BREACH_STRONG_CARVE_M_PER_MYR = 100.0
 BREACH_WEAK_CARVE_M_PER_MYR = 1000.0
-# Silt this thick or more makes a cell fully weak.
-BREACH_WEAK_SILT_REFERENCE_M = 10.0
+# Mobile cover this thick or more makes a cell fully weak.
+BREACH_WEAK_COVER_REFERENCE_M = 10.0
 # Same ceiling as erosion.MAX_CHANNEL_DEPTH_M, which caps every notch persisted into
 # channel_depth. It's repeated here because erosion.py imports hydrology.py, which imports this.
 BREACH_MAX_NOTCH_M = 2000.0
@@ -119,11 +120,19 @@ class BreachResult:
 
 @dataclass
 class WaterBalance:
-    """Per-node climate inputs for the breach gate, all with shape (N,)."""
+    """Per-node climate inputs for the breach gate, all with shape (N,).
+
+    `precipitation_mm` should be liquid precipitation, as the lake balance uses.
+    `loss_fraction` is the in-transit river evaporation each node takes from water passing
+    through it (`hydrology.river_evaporation_fraction`). The gate routes runoff to each pit
+    along steepest descent, losing that fraction at every node on the way, the same rule
+    `hydrology.route_downstream` applies when lakes are balanced. Glacier melt isn't included:
+    it's computed after breaching, from the ice routing that breaching feeds."""
 
     precipitation_mm: np.ndarray
     temperature_c: np.ndarray
     area_m2: np.ndarray
+    loss_fraction: np.ndarray | None = None
 
 
 def open_water_evaporation_mm(temperature_c: np.ndarray) -> np.ndarray:
@@ -146,27 +155,35 @@ def runoff_mm(precipitation_mm: np.ndarray, potential_evaporation_mm: np.ndarray
     return p * (1.0 - et_ratio)
 
 
-def _catchment_sinks(elevation: np.ndarray, neighbor_idx: np.ndarray, is_ocean: np.ndarray) -> np.ndarray:
-    """The node each node's steepest descent ends at: a pit, or an ocean node. Uses
+def _routed_to_sinks(
+    elevation: np.ndarray, neighbor_idx: np.ndarray, is_ocean: np.ndarray, keep: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(sink, carried)` for each node. `sink` is the node its steepest descent ends at: a
+    pit, or an ocean node. `carried` is the share of water starting at the node that reaches
+    the sink, after every node on the way, the sink included, keeps only `keep` of it. Uses
     vectorised pointer doubling, so it takes about log2(longest path) passes."""
     n = len(elevation)
     neighbor_elev = elevation[neighbor_idx]
     col = np.argmin(neighbor_elev, axis=1)
     lowest = neighbor_idx[np.arange(n), col]
     receiver = np.where((neighbor_elev[np.arange(n), col] < elevation) & ~is_ocean, lowest, np.arange(n))
-    while True:
-        jumped = receiver[receiver]
-        if np.array_equal(jumped, receiver):
-            return receiver
-        receiver = jumped
+    is_root = receiver == np.arange(n)
+    # `share[i]` is the product of `keep` from i up to, not including, `receiver[i]`.
+    share = np.where(is_root, 1.0, keep)
+    while not np.array_equal(receiver[receiver], receiver):
+        share = share * share[receiver]
+        receiver = receiver[receiver]
+    return receiver, share * keep[receiver]
 
 
-def carve_rate_m_per_myr(craton_strength: np.ndarray, silt_depth_m: np.ndarray) -> np.ndarray:
+def carve_rate_m_per_myr(craton_strength: np.ndarray, mobile_cover_m: np.ndarray) -> np.ndarray:
     """Each node's river-incision rate, interpolated in log space. Ordinary rock carves at the
     reference rate. Craton strength (0..1, `cratons.strength`) moves the rate toward the
-    strong-rock rate. Silt cover moves the remaining range toward the weak-rock rate."""
+    strong-rock rate. Loose mobile cover moves the remaining range toward the weak-rock rate.
+    Cover, unlike the cumulative `silt_depth` record, is gone once it's stripped, so exposed
+    bedrock carves as bedrock."""
     strong = np.clip(np.asarray(craton_strength, dtype=float), 0.0, 1.0)
-    weak = np.clip(np.asarray(silt_depth_m, dtype=float) / BREACH_WEAK_SILT_REFERENCE_M, 0.0, 1.0) * (1.0 - strong)
+    weak = np.clip(np.asarray(mobile_cover_m, dtype=float) / BREACH_WEAK_COVER_REFERENCE_M, 0.0, 1.0) * (1.0 - strong)
     log_rate = (
         np.log(BREACH_REFERENCE_CARVE_M_PER_MYR)
         + strong * np.log(BREACH_STRONG_CARVE_M_PER_MYR / BREACH_REFERENCE_CARVE_M_PER_MYR)
@@ -371,10 +388,12 @@ def _overflows(
     """Whether each pit's catchment runoff exceeds the evaporation of a lake filled to
     `rim_level` (metres), scaled by ENDORHEIC_DEMAND_FACTOR. Both sides are in m^3/yr."""
     n = len(elevation)
-    sink = _catchment_sinks(elevation, neighbor_idx, is_ocean)
+    loss = np.zeros(n) if water.loss_fraction is None else np.asarray(water.loss_fraction, dtype=float)
+    sink, carried = _routed_to_sinks(elevation, neighbor_idx, is_ocean, 1.0 - loss)
     area = np.asarray(water.area_m2, dtype=float)
     evaporation_mm = open_water_evaporation_mm(water.temperature_c)
-    inflow = np.bincount(sink, weights=runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area, minlength=n)
+    runoff_m3 = runoff_mm(water.precipitation_mm, evaporation_mm) / 1000.0 * area
+    inflow = np.bincount(sink, weights=runoff_m3 * carried, minlength=n)
     level = np.full(n, -np.inf)
     level[pits] = rim_level
     flooded = elevation < level[sink]

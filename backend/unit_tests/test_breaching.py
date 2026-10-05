@@ -273,3 +273,25 @@ def test_the_water_gate_uses_the_rim_height_not_the_rock_weighted_cost():
     assert result.breached_pits.tolist() == []
     assert result.endorheic_pits.tolist() == [6]
     assert not result.notch_m.any()
+
+
+def test_the_gate_routes_runoff_with_the_same_river_losses_as_route_downstream():
+    from app import hydrology
+
+    elevation = np.array([60.0, 40.0, 20.0, 0.0, 15.0, -50.0])
+    is_ocean = np.array([False] * 5 + [True])
+    neighbor_idx = _chain(6)
+    loss = np.array([0.1, 0.2, 0.3, 0.05, 0.0, 0.0])
+    sink, carried = breaching._routed_to_sinks(elevation, neighbor_idx, is_ocean, 1.0 - loss)
+    assert sink[:4].tolist() == [3, 3, 3, 3]
+    amount = np.array([1.0, 2.0, 3.0, 4.0, 0.0, 0.0])
+    flow_target = np.array([1, 2, 3, -1, 5, -1])
+    _, deposited = hydrology.route_downstream(elevation, is_ocean, flow_target, amount, loss_fraction=loss)
+    assert np.bincount(sink, weights=amount * carried, minlength=6)[3] == pytest.approx(deposited[3])
+
+
+def test_mobile_cover_not_silt_record_makes_rock_weak():
+    bare = breaching.carve_rate_m_per_myr(np.zeros(1), np.zeros(1))
+    covered = breaching.carve_rate_m_per_myr(np.zeros(1), np.full(1, 50.0))
+    assert bare[0] == pytest.approx(breaching.BREACH_REFERENCE_CARVE_M_PER_MYR)
+    assert covered[0] == pytest.approx(breaching.BREACH_WEAK_CARVE_M_PER_MYR)

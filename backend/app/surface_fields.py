@@ -37,9 +37,13 @@ def _field(dtype, default, remap_class, *, sentinel=None, coupled_to=()):
 CRATON_UNFORMED_YEARS = 1.0e18
 
 # `channel_reference_elevation_m`'s "no record yet" value. It's finite for the same reason as
-# CRATON_UNFORMED_YEARS. Because it is so high, `max(0, elevation - reference)` reads as no
-# uplift, both for an unset node and for any area-weighted blend that includes one.
+# CRATON_UNFORMED_YEARS. Erosion treats it, and any area-weighted blend that includes it, as no
+# record (see CHANNEL_REFERENCE_VALID_BELOW_M).
 CHANNEL_REFERENCE_UNSET_M = 1.0e18
+# A reference counts as recorded only below this, far above any real elevation. An
+# area-weighted blend that includes the unset sentinel is then also treated as unset, rather
+# than as a hugely negative rise.
+CHANNEL_REFERENCE_VALID_BELOW_M = 1.0e6
 
 
 # Phase 3 owns the algorithms that consume these classes. Phase 1 centralizes the policy so
@@ -85,8 +89,9 @@ SURFACE_FIELDS: dict[str, SurfaceField] = {
     # elevation.
     "channel_reference_elevation_m": _field(float, CHANNEL_REFERENCE_UNSET_M, RemapClass.INTENSIVE),
     # Breach notch depth (breaching.py, issue #297): sub-cell relief cut through a pit's rim.
-    # Only the passage elevation reads it. It fades like channel_depth. Remaps like
-    # channel_depth.
+    # Only the passage elevation reads it. It fades like channel_depth, and coarsens and merges
+    # by max like channel_depth (sparse_quad_patch, quad_merge), so a notch isn't averaged
+    # shut.
     "breach_notch_depth_m": _field(float, 0.0, RemapClass.INTENSIVE),
     # Anatexis (orogeny.py, quad plates only): how far the Moho lags below its steady-state
     # temperature (C; 0, the default, is steady state), and the refractory melt residue at

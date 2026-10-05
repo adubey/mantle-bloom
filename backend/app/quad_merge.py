@@ -233,7 +233,7 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
             new_values, added = extensive(values)
             merged[is_new] = new_values[is_new]
             merged[~is_new] += added[~is_new]
-        elif name == "channel_depth" or spec.remap_class == RemapClass.COUNTDOWN:
+        elif name in ("channel_depth", "breach_notch_depth_m") or spec.remap_class == RemapClass.COUNTDOWN:
             peak = np.where(is_new, -np.inf, own.astype(float))
             np.maximum.at(peak, target[mapped], values[mapped])
             merged[receiving] = peak[receiving]

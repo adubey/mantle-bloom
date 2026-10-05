@@ -109,7 +109,7 @@ from .plates import (
     gather_node_positions,
     query_workers,
 )
-from .surface_fields import CHANNEL_REFERENCE_UNSET_M
+from .surface_fields import CHANNEL_REFERENCE_VALID_BELOW_M
 
 if TYPE_CHECKING:
     from .world import World
@@ -2436,10 +2436,11 @@ def apply_erosion(
     # step's deposition plus lake silt. Uplift *across* a channel wears it away: how much more a
     # node rose since last step's erosion than the node it drains to, as a scarp or bulge
     # rising across the channel's path would. Even uplift raises a channel with its banks and
-    # leaves it intact. A node with no recorded reference (CHANNEL_REFERENCE_UNSET_M), or no
-    # downstream node, counts as no uplift.
+    # leaves it intact. A node with no recorded reference, or no downstream node, counts as no
+    # uplift. So does a reference blended with the unset sentinel by a remap
+    # (CHANNEL_REFERENCE_VALID_BELOW_M).
     reference = collect_all_channel_reference_elevation(plates_in_order)
-    rise = np.where(reference < 0.5 * CHANNEL_REFERENCE_UNSET_M, elevation - reference, np.nan)
+    rise = np.where(reference < CHANNEL_REFERENCE_VALID_BELOW_M, elevation - reference, np.nan)
     downstream = np.where(hydro.flow_target >= 0, hydro.flow_target, hydro.ice_flow_target)
     downstream_rise = np.where(downstream >= 0, rise[np.clip(downstream, 0, None)], np.nan)
     uplift_m = np.nan_to_num(np.clip(rise - downstream_rise, 0.0, None), nan=0.0)

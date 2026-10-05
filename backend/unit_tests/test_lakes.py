@@ -788,3 +788,24 @@ def test_water_balance_with_climate_uses_the_balanced_level():
         out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps, climate=climate,
     )
     assert new_level == pytest.approx(lakes.balanced_level(lake, hyps, climate, hyps.dry_level(lake.members), 200.0))
+
+
+def test_a_pit_breached_to_its_floor_drains_its_low_ground_but_equal_siblings_still_pool():
+    # Breached: pit 1 merges toward the ocean at its own floor, so it holds no water, even in
+    # the low ground of its partly flooded cell.
+    elevation = np.array([30.0, 0.0, 0.0, -50.0])
+    is_ocean = np.array([False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    passes = np.maximum(elevation[:, None], elevation[neighbor_idx])
+    passes[1, 1] = passes[2, 0] = 0.0
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=passes)
+    pit = [lake for lake in lakes.iter_all_lakes(forest) if 1 in lake.members.tolist()]
+    assert all(lake.drains_at_floor for lake in pit)
+
+    # Closed: two equal-floor sinks behind a 50 m rim merge at their shared floor, but the
+    # merged basin can't drain, so neither leaf drains at its floor.
+    elevation = np.array([50.0, 0.0, 0.0, 50.0])
+    is_ocean = np.zeros(4, dtype=bool)
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
+    assert not any(lake.drains_at_floor for lake in lakes.iter_all_lakes(forest))

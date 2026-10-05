@@ -271,11 +271,9 @@ def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypa
 
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
     breached = run()
-    # The notch is cut to the pit's mean elevation, so the water stands no higher than that.
-    # Only the low ground inside each pit cell stays wet (partial-cell flooding): a mean depth
-    # of relief / 4, where a level at the cell's mean elevation leaves it.
-    relief = lakes.subcell_relief(breached.elevation, breached.neighbor_idx)
-    np.testing.assert_allclose(breached.lake_depth[28:31], relief[28:31] / 4.0)
+    # The notch is cut to the pit's floor and leads lower, so even the low ground inside the
+    # pit's cells drains through it (lakes.Lake.drains_at_floor).
+    assert breached.lake_depth[28:31].max() == 0.0
     # Closed, the same water keeps rising toward the 100 m rim on the next step, once the
     # pit's cells have merged into one lake.
     monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
