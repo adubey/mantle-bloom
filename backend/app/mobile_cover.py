@@ -11,7 +11,8 @@ erosion.MOBILE_COVER_*). Erosion fills and strips it. Tectonics moves or ends it
 - cells consumed at a trench take it down with them (``subducted_m3``), and suture donors and
   a relocated terrane's displaced columns metamorphose it into the accreted crust
   (``accreted_m3``);
-- erupted crust buries it, consolidating it into substrate (``volcanic_buried_m3``);
+- erupted crust buries it, consolidating it into substrate (``volcanic_buried_m3``), in
+  proportion to how much of the cell the lava covers (VOLCANIC_SEAL_THICKNESS_M);
 - stranded fragments a plate's defragmentation drops take theirs with them (``stranded_m3``).
 
 Shortening, underplating, anatexis, fault relief and the column caps change Hc at depth or
@@ -40,6 +41,11 @@ if TYPE_CHECKING:
     from .world import World
 
 FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
+# Erupted crust seals the cover under it, but a cell-mean addition is not a uniform sheet:
+# the thin tail of a volcanic-plain apron is lava over part of the cell's footprint. A cell
+# gaining this much crust (a few stacked flood-basalt flows, each typically 5-30 m) counts as
+# fully sealed; less seals that fraction of its cover.
+VOLCANIC_SEAL_THICKNESS_M = 20.0
 SOURCES = ("initial_m3", "deposited_m3")
 SINKS = (
     "entrained_m3",
@@ -102,12 +108,15 @@ def book_removed(world: "World | None", plate: "Plate", mask: np.ndarray, accoun
     record(world, account, float(np.dot(plate.collect("mobile_cover_m")[mask], areas[mask])))
 
 
-def end(world: "World | None", plate: "Plate", mask: np.ndarray, account: str) -> None:
-    """Book and clear the cover on the `mask` cells, which stay: it is buried, consolidated
-    or reset into the substrate under it. Hc is unchanged."""
-    if not np.any(mask):
+def end(world: "World | None", plate: "Plate", fraction: np.ndarray, account: str) -> None:
+    """Book and clear `fraction` (per cell, in [0, 1]; a mask ends all of it) of each cell's
+    cover, which stays in its column: it is buried, consolidated or reset into the substrate
+    under it. Hc is unchanged."""
+    fraction = np.clip(np.asarray(fraction, dtype=float), 0.0, 1.0)
+    if not np.any(fraction > 0.0):
         return
-    book_removed(world, plate, mask, account)
-    plate.set_fields_on_plate(
-        **{name: np.where(mask, 0.0, plate.collect(name)) for name in FIELDS},
-    )
+    cover = plate.collect("mobile_cover_m")
+    if world is not None:
+        areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+        record(world, account, float(np.dot(cover * fraction, areas)))
+    plate.set_fields_on_plate(**{name: plate.collect(name) * (1.0 - fraction) for name in FIELDS})

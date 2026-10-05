@@ -3123,7 +3123,9 @@ Tectonics moves the cover too (`mobile_cover.py`):
 - Cells consumed at a trench subduct it (`subducted_m3`).
 - Suture donors and a relocated terrane's displaced columns metamorphose it into the accreted
   crust (`accreted_m3`).
-- Erupted crust buries it (`volcanic_buried_m3`).
+- Erupted crust buries it (`volcanic_buried_m3`), in proportion to the lava's thickness: a
+  cell gaining `VOLCANIC_SEAL_THICKNESS_M` (20 m) of crust is fully sealed, and the thin tail of
+  a volcanic-plain apron, lava over part of the cell, seals that fraction.
 - Stranded fragments that defragmentation drops take theirs with them (`stranded_m3`).
 
 Shortening, underplating, anatexis, fault relief and the column caps act at depth and leave
@@ -3132,7 +3134,9 @@ it alone. Anything left above a column is clipped at the next erosion step
 upstream node, which conserves no extensive field, Hc and the continental tracer included. Its
 net change to the cover is booked, signed, as `fault_advection_m3`. `World.mobile_cover_ledger`
 keeps these sources and sinks, so `mobile_cover.balance_error_m3` closes to round-off on quad
-worlds. The line engine's row trimming doesn't book what it removes. The budget reports `bedrock_detached_m3` plus the cover's
+worlds. The line engine's row trimming doesn't book what it removes.
+
+The budget reports `bedrock_detached_m3` plus the cover's
 `prior`, `entrained`, `deposited`, `consolidated`, `clip` and remaining volumes, with
 continental shares. Prior + deposited − entrained − consolidated − clip equals what remains.
 

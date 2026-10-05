@@ -308,3 +308,22 @@ def test_erupted_crust_buries_the_cover_under_it():
     assert np.all(cover[gained] == 0.0) and np.all(cover[~gained] == 20.0)
     assert world.mobile_cover_ledger["volcanic_buried_m3"] > 0.0
     assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_thin_lava_seals_only_its_share_of_the_cover():
+    plate = _plate(1, _block((10, 13), (20, 21)), "continental", cover=300.0)
+    world = _tectonic_world(plate)
+    seal = mobile_cover.VOLCANIC_SEAL_THICKNESS_M
+    # A thin apron tail, half a seal thickness, and a full sheet.
+    mobile_cover.end(world, plate, np.array([0.05, 0.5 * seal, 2.0 * seal]) / seal, "volcanic_buried_m3")
+    np.testing.assert_allclose(plate.collect("mobile_cover_m"), [300.0 * (1.0 - 0.05 / seal), 150.0, 0.0])
+    np.testing.assert_allclose(plate.collect("mobile_cover_continental_m"), plate.collect("mobile_cover_m") / 2.0)
+    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-6 * _cover_m3(plate) + 1e-3)
+
+
+def test_loading_a_save_from_before_the_cover_backfills_an_empty_ledger():
+    world = _quad_world()
+    world.__dict__.pop("mobile_cover_ledger", None)
+    loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
+    assert loaded.mobile_cover_ledger["initial_m3"] == 0.0
+    assert mobile_cover.balance_error_m3(loaded) == 0.0

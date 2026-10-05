@@ -1996,10 +1996,11 @@ def apply_erosion(
     # Mobile cover (issue #297 phase 2, see MOBILE_COVER_*) and the continental tracer
     # (`continental_material_m`, see "Volume and provenance" below). A stored tracer or cover
     # above its column's Hc is material some *other* step already removed without updating it
-    # (tectonic thinning, not yet instrumented -- see #272); the ledger's inventories never
-    # count that excess, so writing back the clipped value is budget-neutral, and
-    # `stale_tracer_excess_m3` / `stale_mobile_cover_excess_m3` report how much of it this step
-    # made permanent. The cover's continental share is a share of both.
+    # (tectonic thinning, not yet instrumented -- see #272). The continental ledger's
+    # inventories never count tracer excess, so clipping it is budget-neutral and
+    # `stale_tracer_excess_m3` only reports it. The cover ledger's live inventory does count the
+    # cover's, so `stale_mobile_cover_excess_m3` is booked into its `clipped_m3` below. The
+    # cover's continental share is a share of both.
     stored_material = np.concatenate([p.collect("continental_material_m") for p in plates_in_order])
     prior_material = np.clip(stored_material, 0.0, prior_hc)
     stored_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
@@ -2017,13 +2018,14 @@ def apply_erosion(
     cover_entrained = np.minimum(cover_entrained, erosion_cap_m)
     erosion_amount = cover_entrained + np.minimum(substrate_detached, erosion_cap_m - cover_entrained) * craton_keep
     cover_m = prior_cover - cover_entrained
-    # channel_depth is the terrain's own carved-channel record, so it must never grow past
-    # what actually got taken off this point's elevation: when the neighbor-drop cap above
-    # holds erosion_amount below raw_erosion_total, scale river's (and glacier's -- see
-    # new_channel_depth) contribution down by the same factor rather than banking the full,
-    # unapplied amount -- otherwise a node pinned
-    # near its lowest neighbor (a valley floor at grade) would keep "carving" toward
-    # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields.
+    # channel_depth is the terrain's own carved-channel record, so it must track what actually
+    # got taken off this point's elevation: river's (and glacier's -- see new_channel_depth)
+    # contribution is scaled by applied_scale, what came off over what the substrate laws
+    # asked for. The neighbor-drop cap pulls it below 1 -- otherwise a node pinned near its
+    # lowest neighbor (a valley floor at grade) would keep "carving" toward
+    # MAX_CHANNEL_DEPTH_M while its elevation barely moves, decoupling the two fields. Mobile
+    # cover can push it up to MOBILE_COVER_ERODIBILITY_FACTOR: a channel cuts through loose
+    # sediment that much faster than through rock.
     applied_scale = np.divide(erosion_amount, raw_erosion_total, out=np.zeros_like(raw_erosion_total), where=raw_erosion_total > 0)
     applied_river = river * applied_scale
 
