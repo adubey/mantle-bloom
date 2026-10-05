@@ -65,11 +65,12 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
     """Every step: rolls each individual active volcano's own eruption chance, adding
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain
     apron around each vent that erupted this step. Erupted crust buries the mobile cover it
-    lands on, consolidating it in proportion to the lava's thickness (mobile_cover.
-    VOLCANIC_SEAL_THICKNESS_M). Mutates world.plates in place."""
+    lands on, consolidating it in proportion to the surface lava's thickness, the elevation it
+    adds (mobile_cover.VOLCANIC_SEAL_THICKNESS_M). Mutates world.plates in place."""
     continental_ledger.ensure_initialized(world)
     for plate in world.plates:
         hc_before = plate.collect("crustal_thickness_m")
+        elevation_before = plate.collect("elevation")
         if isinstance(plate, PlateWithLines):
             erupted_points = _apply_volcanic_activity_to_lines(plate, world, years)
         else:
@@ -87,7 +88,8 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
             "juvenile_additions_m3",
             eligible=continental,
         )
-        sealed = np.maximum(hc_after - hc_before, 0.0) / mobile_cover.VOLCANIC_SEAL_THICKNESS_M
+        lava_m = np.maximum(plate.collect("elevation") - elevation_before, 0.0)
+        sealed = lava_m / mobile_cover.VOLCANIC_SEAL_THICKNESS_M
         mobile_cover.end(world, plate, sealed, "volcanic_buried_m3")
 
 

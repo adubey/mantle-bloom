@@ -327,3 +327,37 @@ def test_loading_a_save_from_before_the_cover_backfills_an_empty_ledger():
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert loaded.mobile_cover_ledger["initial_m3"] == 0.0
     assert mobile_cover.balance_error_m3(loaded) == 0.0
+
+
+def test_an_apron_tail_seals_only_the_share_its_surface_lava_covers(monkeypatch):
+    # Fine enough (44 km cells) that the 120 km plain apron's outer ring rises only metres.
+    density = 8.0
+    n = cells_per_face_edge(line_spacing_rad(density))
+    ii, jj = np.meshgrid(np.arange(60, 69), np.arange(60, 69), indexing="ij")
+    keys = pack_cell_keys(np.zeros(ii.size, dtype=int), ii.ravel(), jj.ravel())
+    hc, hm = lithosphere.reference_thickness("continental")
+    count = len(keys)
+    volcano = (ii.ravel() == 64) & (jj.ravel() == 64)
+    plate = PlateWithSparseQuadPatch(1, np.eye(3), "continental", n, keys, fields={
+        "crustal_thickness_m": np.full(count, hc), "mantle_lithosphere_thickness_m": np.full(count, hm),
+        "continental_material_m": np.full(count, hc), "mobile_cover_m": np.full(count, 300.0),
+        "is_volcano": volcano, "volcano_active_years_remaining": np.where(volcano, 1.0e7, 0.0),
+    })
+    lithosphere.sync_plate_elevation(plate)
+    world = World(seed=0, plates=[plate], next_plate_id=2, node_density=density)
+    continental_ledger.ensure_initialized(world)
+    mobile_cover.ensure_ledger(world)
+    monkeypatch.setattr(volcanism, "ERUPTION_RATE_PER_MYR", 1.0e9)  # the vent erupts
+    elevation_before = plate.collect("elevation")
+
+    volcanism.apply_volcanic_activity(world, 1_000_000)
+
+    lava = plate.collect("elevation") - elevation_before
+    sealed = np.clip(lava / mobile_cover.VOLCANIC_SEAL_THICKNESS_M, 0.0, 1.0)
+    np.testing.assert_allclose(plate.collect("mobile_cover_m"), 300.0 * (1.0 - sealed), atol=1e-9)
+    # The vent and the inner apron seal fully, the tail only partly, and beyond it nothing.
+    assert sealed[volcano][0] == 1.0
+    tail = (sealed > 0.0) & (sealed < 1.0)
+    assert np.any(tail) and np.all(lava[tail] < mobile_cover.VOLCANIC_SEAL_THICKNESS_M)
+    assert np.any(lava == 0.0)
+    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * 300.0 * plate.node_areas_m2().sum())

@@ -11,7 +11,7 @@ erosion.MOBILE_COVER_*). Erosion fills and strips it. Tectonics moves or ends it
 - cells consumed at a trench take it down with them (``subducted_m3``), and suture donors and
   a relocated terrane's displaced columns metamorphose it into the accreted crust
   (``accreted_m3``);
-- erupted crust buries it, consolidating it into substrate (``volcanic_buried_m3``), in
+- erupted lava buries it, consolidating it into substrate (``volcanic_buried_m3``), in
   proportion to how much of the cell the lava covers (VOLCANIC_SEAL_THICKNESS_M);
 - stranded fragments a plate's defragmentation drops take theirs with them (``stranded_m3``).
 
@@ -41,10 +41,12 @@ if TYPE_CHECKING:
     from .world import World
 
 FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
-# Erupted crust seals the cover under it, but a cell-mean addition is not a uniform sheet:
-# the thin tail of a volcanic-plain apron is lava over part of the cell's footprint. A cell
-# gaining this much crust (a few stacked flood-basalt flows, each typically 5-30 m) counts as
-# fully sealed; less seals that fraction of its cover.
+# Erupted lava seals the cover under it, but a cell-mean addition is not a uniform sheet: the
+# thin tail of a volcanic-plain apron is lava over part of the cell's footprint. A cell whose
+# surface rises this much (a few stacked flood-basalt flows, each typically 5-30 m) counts as
+# fully sealed; less seals that fraction of its cover. Measured as the eruption's elevation
+# gain, the surface lava -- not its Hc gain, most of which is the isostatic root backing it
+# (lithosphere.back_elevation_gain: ~6 m of continental Hc per metre of relief).
 VOLCANIC_SEAL_THICKNESS_M = 20.0
 SOURCES = ("initial_m3", "deposited_m3")
 SINKS = (
