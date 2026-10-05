@@ -447,6 +447,9 @@ class ElevationLine:
         # Elevation right after last step's erosion, used to measure uplift that fades
         # channel_depth (surface_fields.CHANNEL_REFERENCE_UNSET_M = no record yet).
         "channel_reference_elevation_m",
+        # Breach notch depth (breaching.py): sub-cell relief that lowers only the passage
+        # elevation, kept apart from channel_depth.
+        "breach_notch_depth_m",
     )
 
     def __init__(
@@ -484,6 +487,7 @@ class ElevationLine:
         mobile_cover_m: np.ndarray | None = None,
         mobile_cover_continental_m: np.ndarray | None = None,
         channel_reference_elevation_m: np.ndarray | None = None,
+        breach_notch_depth_m: np.ndarray | None = None,
     ) -> None:
         self._phi = phi
         self._theta = theta
@@ -537,6 +541,7 @@ class ElevationLine:
             if channel_reference_elevation_m is not None
             else np.full_like(theta, CHANNEL_REFERENCE_UNSET_M)
         )
+        self._breach_notch_depth_m = breach_notch_depth_m if breach_notch_depth_m is not None else np.zeros_like(theta)
 
     def __getattr__(self, name: str) -> np.ndarray:
         """A line unpickled from a save written before some OPTIONAL_FIELDS member existed has
@@ -698,6 +703,10 @@ class ElevationLine:
     @property
     def channel_reference_elevation_m(self) -> np.ndarray:
         return self._channel_reference_elevation_m
+
+    @property
+    def breach_notch_depth_m(self) -> np.ndarray:
+        return self._breach_notch_depth_m
 
     def world_xyz(self, frame: np.ndarray) -> np.ndarray:
         phi_arr = np.full_like(self.theta, self.phi)
@@ -1189,6 +1198,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
     # Interpolated like elevation. An unset sentinel blends into a huge value, which still
     # reads as "no uplift".
     new_channel_reference_elevation_m = np.interp(new_theta, line.theta, line.channel_reference_elevation_m)
+    new_breach_notch_depth_m = np.interp(new_theta, line.theta, line.breach_notch_depth_m)
     # elev_change_reason is a categorical ELEV_CHANGE_* code, not a quantity -- carry it onto
     # each resampled node from its nearest original node rather than np.interp'ing between two
     # unrelated code values. Provenance is diagnostic only, so an approximate carry is fine.
@@ -1247,6 +1257,7 @@ def regularize_line(line: ElevationLine, spacing_rad: float = TARGET_LINE_SPACIN
         mobile_cover_m=new_mobile_cover_m,
         mobile_cover_continental_m=new_mobile_cover_continental_m,
         channel_reference_elevation_m=new_channel_reference_elevation_m,
+        breach_notch_depth_m=new_breach_notch_depth_m,
     )
 
 

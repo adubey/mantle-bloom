@@ -210,3 +210,48 @@ def test_endorheic_demand_factor_keeps_more_basins_closed(monkeypatch):
     assert breaching.breach_depressions(*args, years=100_000, water=water).breached_pits.tolist() == [3]
     monkeypatch.setattr(breaching, "ENDORHEIC_DEMAND_FACTOR", 100.0)
     assert breaching.breach_depressions(*args, years=100_000, water=water).breached_pits.tolist() == []
+
+
+def test_a_pit_whose_path_crosses_rock_too_strong_to_drain_stays_closed():
+    # Review repro (#301): a silt pit and silt rim, then a craton node 80 m above the floor.
+    # The cost (27 m of reference rock) fits the 30 m budget, but the craton can only be cut
+    # 10 m this step, so the path can't reach the pit floor. The pit stays closed and no
+    # notches are banked.
+    elevation = np.array([100.0, 0.0, 90.0, 80.0, -50.0])
+    is_ocean = np.array([False, False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
+    rate = breaching.carve_rate_m_per_myr(np.array([0.0, 0.0, 0.0, 1.0, 0.0]), np.array([100.0, 100.0, 100.0, 0.0, 0.0]))
+    result = breaching.breach_depressions(elevation, is_ocean, neighbor_idx, np.zeros(5), rate, years=100_000)
+
+    assert result.cost_m[1] <= breaching.BREACH_REFERENCE_CARVE_M_PER_MYR * 0.1
+    assert result.breached_pits.tolist() == []
+    assert result.closed_pits.tolist() == [1]
+    assert not result.notch_m.any()
+
+
+def test_every_breached_pit_drains_to_its_floor():
+    # Mixed rock where every cut fits: the pit's lake hierarchy spills at the floor.
+    elevation = np.array([100.0, 0.0, 25.0, 8.0, -50.0])
+    is_ocean = np.array([False, False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
+    rate = breaching.carve_rate_m_per_myr(np.array([0.0, 0.0, 0.0, 1.0, 0.0]), np.zeros(5))
+    result = breaching.breach_depressions(elevation, is_ocean, neighbor_idx, np.zeros(5), rate, years=100_000)
+    assert result.breached_pits.tolist() == [1]
+    passes = breaching.interface_pass_elevation(result.passage_m, neighbor_idx)
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=passes)
+    filled, _, _ = lakes.compute_spill_routing(forest, elevation, np.zeros(5))
+    assert filled[1] == pytest.approx(0.0)
+
+
+def test_a_persisted_notch_lowers_the_passage_and_new_cuts_are_only_the_increment():
+    # A 50 m pit. Last step already notched the rim 30 m, so this step only needs 20 m more.
+    elevation = np.array([60.0, 0.0, 50.0, -50.0])
+    is_ocean = np.array([False, False, False, True])
+    neighbor_idx = _chain(4)
+    prior = np.array([0.0, 0.0, 30.0, 0.0])
+    result = breaching.breach_depressions(
+        elevation, is_ocean, neighbor_idx, np.zeros(4), _ordinary_rate(4), years=100_000, prior_notch_m=prior
+    )
+    assert result.channel_passage_m[2] == pytest.approx(20.0)
+    assert result.breached_pits.tolist() == [1]
+    assert result.notch_m[2] == pytest.approx(20.0)

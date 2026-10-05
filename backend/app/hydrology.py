@@ -98,6 +98,7 @@ from .plates import (
     Plate,
     cached_node_position_tree,
     collect_all_accounting_areas_m2,
+    collect_all_breach_notch_depth,
     collect_all_channel_depth,
     collect_all_channel_width,
     collect_all_elevation,
@@ -388,9 +389,10 @@ class HydrologyFields:
     # a cache loaded from a save written before this field existed has none of it, so a reader
     # detects the shape-0/mismatched array as "stale/absent" the same way is_sea's own guard does.
     channel_width: np.ndarray = field(default_factory=lambda: np.zeros(0))
-    # This step's invented breach notches (breaching.breach_depressions), in metres. erosion.py
-    # adds them to channel_depth so that the next step's passage elevation keeps them. Empty
-    # when breaching is off. Defaulted, for the same backward-compatibility reason as is_sea.
+    # This step's new breach notches (breaching.breach_depressions), in metres. erosion.py adds
+    # them to the persisted breach_notch_depth_m so that the next step's passage elevation
+    # keeps them. Empty when breaching is off. Defaulted, for the same backward-compatibility
+    # reason as is_sea.
     breach_notch_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
@@ -1148,6 +1150,7 @@ def compute_hydrology(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
             breaching.carve_rate_m_per_myr(craton_strength, prev_silt_depth), years,
             water=breaching.WaterBalance(precipitation_at_nodes, temperature_at_nodes, areas),
+            prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
         )
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass)

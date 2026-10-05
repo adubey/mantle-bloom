@@ -68,18 +68,19 @@ def main() -> None:
             strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates]))
             silt = np.concatenate([p.collect("silt_depth") for p in plates])
             channel = np.concatenate([p.collect("channel_depth") for p in plates])
+            prior_notch = np.concatenate([p.collect("breach_notch_depth_m") for p in plates])
             areas = erosion._gather_areas(world, plates)
             breach = original_breach(
                 fields.elevation, fields.is_ocean, fields.neighbor_idx, channel,
                 breaching.carve_rate_m_per_myr(strength, silt), years,
                 water=breaching.WaterBalance(precipitation, temperature, areas),
+                prior_notch_m=prior_notch,
             )
         current["record"] = _record(fields, breach, erosion._gather_areas(world, fields.plates_in_order), current, hydrology)
         return fields
 
     breaching.breach_depressions = timed_breach
     hydrology.compute_hydrology = wrapped
-    erosion.hydrology.compute_hydrology = wrapped
 
     results: dict = {}
     for seed in args.seeds:

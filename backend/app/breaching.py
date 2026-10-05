@@ -6,38 +6,45 @@ landscape a river would cut through the low barrier long before a lake filled to
 neighbouring cell's centre height. This module decides, once per step and for every node at
 once, which pits get cut through and which stay closed:
 
-1. **Passage elevation.** Water crosses a cell at its *passage* elevation: the centre elevation,
-   lowered by an established channel (`channel_depth`) that already notches the cell. The
-   notch floor never goes below the cell's lowest neighbour's centre, because a corridor
-   through a cell only has to connect that cell's neighbours.
+1. **Passage elevation.** Water crosses a cell at its *passage* elevation: the centre
+   elevation, lowered by its established channel (`channel_depth`) and by any breach notch
+   cut on an earlier step (`breach_notch_depth_m`). The notch floor never goes below the
+   cell's lowest neighbour's centre, because a corridor through a cell only has to connect
+   that cell's neighbours.
 2. **Least climb to the ocean.** One multi-source Dijkstra from every connected-ocean node,
    over the hydrology k-NN graph, gives every node the least total height its water would have
    to climb to reach the ocean. A step from `i` onto `j` costs `max(0, passage[j] -
    passage[i])`, divided by `j`'s relative erodibility, so the cost is in metres of
    reference-strength rock. A node on an ordinary downhill path costs zero.
-3. **Breach or fill.** A pit (a land node with no strictly lower neighbour) whose cost fits this
-   step's carving budget, `BREACH_REFERENCE_CARVE_M_PER_MYR * dt`, is breached. Every node on
-   its least-cost path is notched down to the water level arriving from upstream, so the path
-   becomes non-increasing and the pit drains. The cuts can add up to more than the total
-   climb, because a node past the rim can still stand above the pit floor. But no single cut
-   is larger than the total climb. Each reach of the river carves its own cut at the same
-   time, so the budget limits each cut, not their sum.
+3. **Breach or fill.** A pit (a land node with no strictly lower neighbour) is breached only
+   if two things hold. First, its cost fits this step's carving budget,
+   `BREACH_REFERENCE_CARVE_M_PER_MYR * dt`. Second, every node on its least-cost path can be
+   cut down to the water level arriving from the pit within that node's own carving limit
+   (`carve_rate * dt`). The second check matters because the cost counts only climbs, while
+   draining also means cutting nodes past the rim that still stand above the pit floor, and
+   those can be in stronger rock. A breached pit's path is notched until it never rises, so
+   the pit always drains. Each reach of the river carves at the same time, so each node's
+   limit applies to its own cut, not to the sum.
 4. **Only where water overflows.** A river carves an outlet only if the basin overflows. A
    pit is breached only if its catchment's runoff exceeds what a lake filled to its rim would
    evaporate. Otherwise the lake would level off below the rim, so the pit stays a real
    endorheic basin, like the Great Basin, the Caspian or the Dead Sea. A dry pit always fails
    this test. Runoff is precipitation minus evapotranspiration, from Fu's (1981) form of the
-   Budyko curve. Open-water evaporation rises with temperature. A pit that costs more stays closed. It is left
-   to `lakes.py`, which fills it, spills it, or keeps it as an endorheic lake, depending on its
-   water balance.
+   Budyko curve. Open-water evaporation rises with temperature.
+
+Every pit not breached stays closed. It is left to `lakes.py`, which fills it, spills it, or
+keeps it as an endorheic lake, depending on its water balance.
 
 This is Lindsay's (2016) breach-first depression treatment with a physical cost cap. The cap
 uses the carving rate of a river: 10-100 m per 100 kyr, depending on rock strength.
 
 The notches are returned per node. `hydrology.compute_hydrology` passes the notched passages to
-`lakes.build_lake_hierarchy` as interface passes. `erosion.py` adds the invented notches to
-`channel_depth`, which records them as sub-cell relief, not volume removed from the cell mean.
-A breach that needs more than one step's budget therefore never accumulates on its own. It
+`lakes.build_lake_hierarchy` as interface passes. `erosion.py` keeps them in their own
+persisted field, `breach_notch_depth_m`, which records sub-cell relief, not volume removed
+from the cell mean. Only the passage elevation reads that field. `channel_depth`, which drives
+erosion's channel boost, channel-preferring flow, river evaporation and rendering, keeps
+recording only rock that was actually carved. Notches are written only for pits that fully
+drain, so a breach that needs more than one step's carving never accumulates on its own. It
 opens only once the lake fills and spills, and the existing breach-erosion term cuts its rim.
 Later phases of #297 will carry the notch volume in the sediment ledger.
 """
@@ -169,8 +176,9 @@ def carve_rate_m_per_myr(craton_strength: np.ndarray, silt_depth_m: np.ndarray) 
 
 
 def channel_passage_elevation(elevation: np.ndarray, channel_depth: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
-    """Centre elevation, lowered by the cell's established channel. The result is never below
-    the lowest neighbour's centre and never above the cell's own centre."""
+    """Centre elevation, lowered by `channel_depth`: the cell's established channel plus any
+    persisted breach notch. The result is never below the lowest neighbour's centre and never
+    above the cell's own centre."""
     elevation = np.asarray(elevation, dtype=float)
     notched = elevation - np.clip(np.asarray(channel_depth, dtype=float), 0.0, None)
     if neighbor_idx.ndim != 2 or neighbor_idx.shape[1] == 0:
@@ -230,6 +238,7 @@ def breach_depressions(
     carve_rate: np.ndarray,
     years: float,
     water: WaterBalance | None = None,
+    prior_notch_m: np.ndarray | None = None,
 ) -> BreachResult:
     """Breach every pit whose least climb to the ocean fits this step's carving budget. See
     the module docstring.
@@ -241,6 +250,12 @@ def breach_depressions(
     hop's (see `_HOP_EPSILON_M`). One pass visits each node on the breached paths once. It is
     not a separate path search per pit.
 
+    `prior_notch_m` is the breach notch persisted from earlier steps. It lowers the passage
+    along with `channel_depth`. `notch_m` in the result is only this step's new cut.
+
+    The drain check (step 3 of the module docstring) walks each candidate pit's least-cost
+    path once along `next_hop`. That costs the path's length per candidate, not a search.
+
     With `water`, pits that pass the cost test also have to pass the water-balance test (step
     4 of the module docstring). The rim-level lake is estimated as every catchment member below
     `pit passage + cost`. This overestimates the level, and so the evaporating area, on a path
@@ -248,7 +263,10 @@ def breach_depressions(
     elevation = np.asarray(elevation, dtype=float)
     n = len(elevation)
     dt_myr = years / 1_000_000.0
-    channel_passage = channel_passage_elevation(elevation, channel_depth, neighbor_idx)
+    depth = np.asarray(channel_depth, dtype=float)
+    if prior_notch_m is not None:
+        depth = depth + np.clip(np.asarray(prior_notch_m, dtype=float), 0.0, None)
+    channel_passage = channel_passage_elevation(elevation, depth, neighbor_idx)
     resistance = BREACH_REFERENCE_CARVE_M_PER_MYR / np.asarray(carve_rate, dtype=float)
     cost, next_hop = least_climb_to_ocean(channel_passage, is_ocean, neighbor_idx, resistance)
     notch = np.zeros(n)
@@ -266,6 +284,12 @@ def breach_depressions(
         overflows = _overflows(elevation, is_ocean, neighbor_idx, channel_passage, cost, pits, water)
         endorheic_pits = pits[breachable & ~overflows]
         breachable &= overflows
+    max_cut = np.minimum(np.asarray(carve_rate, dtype=float) * dt_myr, BREACH_MAX_NOTCH_M)
+    if np.any(breachable):
+        drains = _paths_drain(pits[breachable], channel_passage, next_hop, max_cut)
+        candidates = np.flatnonzero(breachable)
+        closed_pits = np.sort(np.concatenate([closed_pits, pits[candidates[~drains]]]))
+        breachable[candidates[~drains]] = False
     breached_pits = pits[breachable]
 
     if len(breached_pits):
@@ -282,19 +306,18 @@ def breach_depressions(
         order = path_nodes[np.argsort(-cost[path_nodes], kind="stable")]
 
         # The lowest water level arriving at each node from a breached pit upstream. The
-        # node's cut takes its passage down to that level, but no further than its own rock
-        # can be carved this step.
+        # node's cut takes its passage down to that level. `_paths_drain` already checked
+        # that every breached pit's own cut fits each node's carving limit, and the combined
+        # cut is the largest of those, so it fits too.
         arriving = np.full(n, np.inf)
         arriving[breached_pits] = channel_passage[breached_pits]
-        max_cut = np.minimum(np.asarray(carve_rate, dtype=float) * dt_myr, BREACH_MAX_NOTCH_M)
         arriving_list = arriving.tolist()
         passage_list = channel_passage.tolist()
-        max_cut_list = max_cut.tolist()
         next_list = next_hop.tolist()
         notch_list = notch.tolist()
         for i in order.tolist():
             level = arriving_list[i]
-            cut = min(max(passage_list[i] - level, 0.0), max_cut_list[i])
+            cut = max(passage_list[i] - level, 0.0)
             notch_list[i] = cut
             out_level = passage_list[i] - cut
             nxt = next_list[i]
@@ -303,6 +326,29 @@ def breach_depressions(
         notch = np.asarray(notch_list)
 
     return BreachResult(cost, next_hop, channel_passage, notch, channel_passage - notch, breached_pits, closed_pits, endorheic_pits)
+
+
+def _paths_drain(pits: np.ndarray, passage: np.ndarray, next_hop: np.ndarray, max_cut: np.ndarray) -> np.ndarray:
+    """Whether each pit's least-cost path can be cut until it never rises, with every node
+    cut no deeper than its own `max_cut`. The water level starts at the pit's passage and only
+    falls along the path."""
+    passage_list = passage.tolist()
+    next_list = next_hop.tolist()
+    max_cut_list = max_cut.tolist()
+    result = []
+    for pit in pits.tolist():
+        level = passage_list[pit]
+        node = next_list[pit]
+        ok = True
+        while node >= 0:
+            need = passage_list[node] - level
+            if need > max_cut_list[node] + 1e-9:
+                ok = False
+                break
+            level = min(level, passage_list[node])
+            node = next_list[node]
+        result.append(ok)
+    return np.asarray(result, dtype=bool)
 
 
 def _overflows(

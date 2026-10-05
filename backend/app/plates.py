@@ -1851,6 +1851,10 @@ def collect_all_ice_load_deflection(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "ice_load_deflection_m")
 
 
+def collect_all_breach_notch_depth(plate_list: list[Plate]) -> np.ndarray:
+    return _collect_all(plate_list, "breach_notch_depth_m")
+
+
 def collect_all_channel_reference_elevation(plate_list: list[Plate]) -> np.ndarray:
     return _collect_all(plate_list, "channel_reference_elevation_m")
 

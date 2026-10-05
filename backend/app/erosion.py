@@ -96,6 +96,7 @@ from .elevation_lines import (
 from .plates import (
     Plate,
     cached_node_position_tree,
+    collect_all_breach_notch_depth,
     collect_all_channel_depth,
     collect_all_channel_reference_elevation,
     collect_all_channel_width,
@@ -2436,11 +2437,14 @@ def apply_erosion(
     # to this step's pre-erosion elevation.
     uplift_m = np.clip(elevation - collect_all_channel_reference_elevation(plates_in_order), 0.0, None)
     channel_fill_m = np.clip(total_deposited, 0.0, None) + hydro.silt_deposited + uplift_m
-    # Breach notches hydrology invented this step (issue #297, breaching.py) are sub-cell relief,
-    # not volume taken off the cell mean. Recording them in channel_depth keeps the breach open
-    # on the next step, because channel_depth sets each cell's passage elevation.
-    if len(hydro.breach_notch_m) == len(carved_m):
-        carved_m = carved_m + hydro.breach_notch_m
+    # Breach notches (issue #297, breaching.py) are sub-cell relief, not volume taken off the
+    # cell mean, so they are kept apart from channel_depth: only the passage elevation reads
+    # them. This step's new cuts add on. The passage is lowered by channel and notch together,
+    # so the fill fades them together: the notch first, then the channel takes what is left.
+    new_notch = hydro.breach_notch_m if len(hydro.breach_notch_m) == len(carved_m) else 0.0
+    notch_before_fill = collect_all_breach_notch_depth(plates_in_order) + new_notch
+    new_breach_notch_depth = np.where(is_ocean_node, 0.0, np.clip(notch_before_fill - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
+    channel_fill_m = np.clip(channel_fill_m - notch_before_fill, 0.0, None)
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
@@ -2613,6 +2617,7 @@ def apply_erosion(
             channel_depth=new_channel_depth[offset : offset + n],
             channel_width=new_channel_width[offset : offset + n],
             channel_reference_elevation_m=new_elevation[offset : offset + n],
+            breach_notch_depth_m=new_breach_notch_depth[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=hydro.silt_depth[offset : offset + n],
