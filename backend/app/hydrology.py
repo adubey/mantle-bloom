@@ -92,7 +92,7 @@ from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
-from . import geometry, healpix_grid, lakes
+from . import breaching, cratons, geometry, healpix_grid, lakes
 from .elevation_lines import PLANET_RADIUS_KM
 from .plates import (
     Plate,
@@ -300,6 +300,12 @@ RIVER_EVAPORATION_MAX_FRACTION = 0.6
 RIVER_SPEED_COEFFICIENT = 4.0
 RIVER_SPEED_DISCHARGE_EXPONENT = 0.2
 
+# Issue #297 part 1: least-cost depression breaching (see breaching.py). When on, each step's
+# depression hierarchy uses notched passage elevations: established channels plus the notches
+# this step invents through pits cheap enough to carve. Pits too costly to carve stay closed
+# and are filled by lakes.py as before.
+BREACH_DEPRESSIONS_ENABLED = True
+
 
 @dataclass
 class HydrologyFields:
@@ -381,6 +387,10 @@ class HydrologyFields:
     # a cache loaded from a save written before this field existed has none of it, so a reader
     # detects the shape-0/mismatched array as "stale/absent" the same way is_sea's own guard does.
     channel_width: np.ndarray = field(default_factory=lambda: np.zeros(0))
+    # This step's invented breach notches (breaching.breach_depressions), in metres. erosion.py
+    # adds them to channel_depth so that the next step's passage elevation keeps them. Empty
+    # when breaching is off. Defaulted, for the same backward-compatibility reason as is_sea.
+    breach_notch_m: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
 def _gather_nodes(
@@ -1123,7 +1133,21 @@ def compute_hydrology(
     # step's lake water-balance resolution (`lakes.resolve_lakes`, once water_deposited is
     # known) -- the exact same `forest` object threaded through both, rather than paying for a
     # second, redundant `build_lake_hierarchy` call and risking the two disagreeing.
-    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
+    #
+    # With breaching on, the hierarchy's boundary edges use notched passage elevations, not
+    # bare centres. A pit cheap enough to carve through this step then merges toward the ocean
+    # at its own floor, so it drains instead of ponding. A costlier pit keeps its centre-height
+    # rim and is filled or held as an endorheic lake as before (see breaching.py).
+    breach = None
+    interface_pass = None
+    if BREACH_DEPRESSIONS_ENABLED:
+        craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
+        breach = breaching.breach_depressions(
+            elevation, is_ocean, neighbor_idx, prev_channel_depth,
+            breaching.carve_rate_m_per_myr(craton_strength, prev_silt_depth), years,
+        )
+        interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass)
     filled_elevation, spill_target, rim_node_idx = lakes.compute_spill_routing(forest, elevation, lake_depth_adjusted)
 
     flow_target, should_spill = _compute_flow_direction(
@@ -1233,6 +1257,7 @@ def compute_hydrology(
         points, elevation, is_ocean, neighbor_idx, flow_target, flow_accum, water_deposited, filled_elevation, spill_target,
         np.zeros(n, dtype=bool), lake_depth_adjusted, new_glacier_depth, plates_in_order, ice_flow_target=ice_flow_target,
         channel_width=prev_channel_width,
+        breach_notch_m=breach.notch_m if breach is not None else np.zeros(0),
     )
     # Resolves the *same* forest built early (above, for spill routing) against this step's
     # actual water_deposited -- not a second lakes.step_lakes call, which would rebuild the

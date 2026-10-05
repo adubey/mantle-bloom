@@ -244,6 +244,31 @@ def test_compute_hydrology_treats_an_interior_pit_as_an_endorheic_basin_that_sil
     assert fields.silt_deposited[28:31].max() > 0.0
 
 
+def test_compute_hydrology_breaches_a_shallow_pit_instead_of_ponding_it(monkeypatch):
+    # A 20 m deep pit on a 100 m plateau. One 100 kyr step carves 30 m of ordinary rock, so
+    # with breaching on the rim is notched and the pit drains. With it off, rain ponds there.
+    d = 0.05
+    theta = d * np.arange(40)
+    elevation = np.full(40, 100.0)
+    elevation[0:15] = -100.0
+    elevation[28:31] = 80.0
+
+    def run():
+        world = World(seed=0, plates=[_flow_line_plate(0, theta, elevation)])
+        return hydrology.compute_hydrology(world, np.full(40, 800.0), np.full(40, 15.0), years=100_000)
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    closed = run()
+    assert closed.lake_depth[28:31].max() > 0.0
+    assert closed.breach_notch_m.shape == (0,)
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", True)
+    breached = run()
+    assert breached.lake_depth[28:31].max() == 0.0
+    assert breached.breach_notch_m.max() == pytest.approx(20.0)
+    assert np.all(breached.filled_elevation[28:31] <= 80.0)
+
+
 def test_compute_hydrology_populates_is_sea_once_a_basin_stays_flooded():
     # Same interior-pit fixture as the test above. is_sea is derived from *last* step's own
     # flooded extent (lakes._classify_tier), so it can't promote on the very first pass -- but

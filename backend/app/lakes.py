@@ -380,8 +380,9 @@ def build_lake_hierarchy(
     passing through a land local minimum, never appear in any `Lake.members` -- see this
     module's own docstring for the two-phase algorithm. ``interface_pass_elevation``, when
     supplied, contains caller-validated effective passes aligned with ``neighbor_idx`` and
-    replaces the default endpoint-maximum edge weight. It remains optional because the current
-    global quad hydrology path does not yet have terrain samples along shared cell edges."""
+    replaces the default endpoint-maximum edge weight. `hydrology.compute_hydrology` supplies
+    one built from `breaching.py`'s notched passage elevations (established channels plus this
+    step's breach notches). Without it, the endpoint maximum of bare centres is used."""
     n = len(elevation)
     if n == 0:
         return []
@@ -451,9 +452,8 @@ def build_lake_hierarchy(
     else:
         # Index through the unfiltered directed edge array before applying the catchment-boundary
         # mask so duplicate/reciprocal graph edges retain their exact alignment.
-        # An explicitly supplied pass field is trusted geometry from the caller. The global
-        # hydrology path does not currently provide one: quad cells have exact footprints, but
-        # their shared-edge terrain elevations are not yet reconstructed or persisted.
+        # An explicitly supplied pass field is trusted geometry from the caller (see
+        # breaching.interface_pass_elevation).
         weight = interface_pass_elevation.ravel()[boundary_edge]
     order = np.argsort(weight, kind="stable")
     rows_list = rows[order].tolist()

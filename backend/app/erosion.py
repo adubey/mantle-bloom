@@ -2429,6 +2429,11 @@ def apply_erosion(
     # trough they cut, which rivers inherit (channel_boost, hydrology's channel-aware routing)
     # once the ice retreats. Like river erosion, only rock actually removed here counts.
     carved_m = applied_river + applied_glacier + carry.scour_m
+    # Breach notches hydrology invented this step (issue #297, breaching.py) are sub-cell relief,
+    # not volume taken off the cell mean. Recording them in channel_depth keeps the breach open
+    # on the next step, because channel_depth sets each cell's passage elevation.
+    if len(hydro.breach_notch_m) == len(carved_m):
+        carved_m = carved_m + hydro.breach_notch_m
     new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.

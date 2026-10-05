@@ -3539,6 +3539,17 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   `filled_elevation`/`spill_target` directly from `lakes.py`'s own hierarchy -- see
   [Lakes](#lakes-are-an-explicit-tree) below for how, making that hierarchy the single source
   of truth for both where a lake *is* and where its water *goes*.
+- **Depression breaching** (`breaching.py`, issue #297): before the hierarchy is built, one
+  multi-source Dijkstra from the ocean gives every node the least total climb its water must
+  make to reach the sea. Each climb is weighted by the rock's strength. Water crosses a cell
+  at its *passage* elevation: its centre minus its established `channel_depth`, but never
+  below its lowest neighbour. A pit whose climb fits this step's carving budget is breached:
+  its path is notched down to the pit's level. The budget is 10-100 m per 100 kyr, from
+  strong craton rock to loose lake silt, scaled by step length. Costlier pits stay closed and
+  are filled as lakes. The hierarchy's boundary edges use the notched passages
+  (`build_lake_hierarchy(interface_pass_elevation=...)`). `erosion.py` adds the new notches to
+  `channel_depth` as sub-cell relief, so a breach stays open on later steps. Set
+  `hydrology.BREACH_DEPRESSIONS_ENABLED = False` for the old centre-only behaviour.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),
