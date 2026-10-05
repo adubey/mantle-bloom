@@ -9,7 +9,8 @@ off and once with it on, and steps both identically. Every hydrology call record
 - invented notch depth (sum and max) and how many nodes were notched;
 - boundary passes lowered below the higher centre: hierarchy edges where the passage
   elevation lets water cross below `max(z_i, z_j)`, from an established channel or a new notch;
-- standing lakes: flooded node count, flooded area, and water volume;
+- standing lakes: flooded node count, flooded area (whole cells with > 1 m of water, and the
+  partial-cell wet area from lakes.CellHypsometry), and water volume;
 - wall time of the breaching pass and of the whole hydrology call.
 
 The breaching statistics are computed in the "off" run too, as a diagnostic that doesn't feed
@@ -38,11 +39,12 @@ def main() -> None:
     parser.add_argument("--years", type=float, default=100_000.0)
     parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="print every Nth step")
+    parser.add_argument("--modes", default="off,on", help="breaching modes to run, e.g. 'on' for an A/B against another --backend")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
 
     sys.path.insert(0, str(args.backend.resolve()))
-    from app import breaching, cratons, erosion, hydrology  # noqa: E402
+    from app import breaching, cratons, erosion, hydrology, lakes  # noqa: E402
     from app.world import generate_world, step_world  # noqa: E402
 
     original_compute = hydrology.compute_hydrology
@@ -76,7 +78,7 @@ def main() -> None:
                 water=breaching.WaterBalance(precipitation, temperature, areas),
                 prior_notch_m=prior_notch,
             )
-        current["record"] = _record(fields, breach, erosion._gather_areas(world, fields.plates_in_order), current, hydrology)
+        current["record"] = _record(fields, breach, erosion._gather_areas(world, fields.plates_in_order), current, hydrology, lakes)
         return fields
 
     breaching.breach_depressions = timed_breach
@@ -84,7 +86,7 @@ def main() -> None:
 
     results: dict = {}
     for seed in args.seeds:
-        for enabled in (False, True):
+        for enabled in [mode.strip() == "on" for mode in args.modes.split(",")]:
             hydrology.BREACH_DEPRESSIONS_ENABLED = enabled
             label = f"seed={seed} breaching={'on' if enabled else 'off'}"
             world = generate_world(seed=seed, surface=args.surface)
@@ -102,7 +104,7 @@ def main() -> None:
         args.out.write_text(json.dumps(results, indent=1))
 
 
-def _record(fields, breach, area_m2, current, hydrology) -> dict:
+def _record(fields, breach, area_m2, current, hydrology, lakes) -> dict:
     land = ~fields.is_ocean
     z = fields.elevation
     nb = fields.neighbor_idx
@@ -124,10 +126,23 @@ def _record(fields, breach, area_m2, current, hydrology) -> dict:
         "lowered_pass_share": float(lowered.sum() / max(int(land.sum()) * nb.shape[1], 1)),
         "lake_nodes": int(lake.sum()),
         "lake_area_km2": float(area_m2[lake].sum() / 1e6),
+        "lake_wet_area_km2": _wet_area_km2(fields, area_m2, lakes),
         "lake_volume_km3": float((fields.lake_depth * area_m2).sum() / 1e9),
         "breach_s": float(current.get("breach_s", 0.0)),
         "hydrology_s": float(current["hydrology_s"]),
     }
+
+
+def _wet_area_km2(fields, area_m2, lakes) -> float:
+    """Flooded area counting partly flooded cells by their wet fraction. Falls back to whole
+    cells on a backend without lakes.CellHypsometry."""
+    wet = np.flatnonzero(fields.lake_depth > 0.0)
+    if not hasattr(lakes, "CellHypsometry"):
+        return float(area_m2[wet].sum() / 1e6)
+    hyps = lakes.CellHypsometry.from_terrain(fields.elevation, area_m2, fields.neighbor_idx)
+    levels = hyps.level_from_depth(fields.lake_depth[wet], wet)
+    fraction = np.array([hyps.wet_fraction(h, np.array([i]))[0] for h, i in zip(levels, wet)])
+    return float((fraction * area_m2[wet]).sum() / 1e6)
 
 
 def _means(rows: list[dict]) -> dict:

@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 
 from app import hydrology, lakes
@@ -623,3 +624,109 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
     )
     assert not any(e.kind == "split" for e in events2)  # no repeat split -- already independent
     assert forest2[0].current_water_elevation < 1800.0  # genuinely decaying, not stuck at the cap
+
+
+def _hyps(elevation, relief, area=1.0e10):
+    elevation = np.asarray(elevation, dtype=float)
+    return lakes.CellHypsometry(elevation, np.full(len(elevation), area), np.asarray(relief, dtype=float), area)
+
+
+def test_cell_hypsometry_floods_a_cell_gradually_and_continuously():
+    # One cell, mean 100 m, ground spread over 80-120 m.
+    hyps = _hyps([100.0], [20.0])
+    idx = np.array([0])
+    assert hyps.mean_depth(80.0, idx)[0] == 0.0
+    assert hyps.wet_fraction(80.0, idx)[0] == 0.0
+    assert hyps.wet_fraction(100.0, idx)[0] == pytest.approx(0.5)
+    assert hyps.mean_depth(100.0, idx)[0] == pytest.approx(5.0)  # 20^2 / (4 * 20)
+    # Continuous where the cell becomes fully flooded, and the mean depth there is h - z.
+    assert hyps.mean_depth(120.0 - 1e-9, idx)[0] == pytest.approx(20.0)
+    assert hyps.mean_depth(130.0, idx)[0] == pytest.approx(30.0)
+    # Mean depth inverts back to the level, partly or fully flooded.
+    for level in (85.0, 100.0, 119.0, 150.0):
+        depth = hyps.mean_depth(level, idx)
+        assert hyps.level_from_depth(depth, idx)[0] == pytest.approx(level)
+
+
+def test_cell_hypsometry_volume_and_area_have_no_whole_cell_jumps():
+    elevation = np.array([0.0, 10.0, 25.0, 40.0])
+    hyps = _hyps(elevation, [8.0, 8.0, 8.0, 8.0])
+    idx = np.arange(4)
+    levels = np.linspace(-10.0, 60.0, 7001)
+    area = np.array([hyps.wet_area(h, idx) for h in levels])
+    volume = np.array([hyps.volume(h, idx) for h in levels])
+    assert np.all(np.diff(area) >= 0.0) and np.all(np.diff(volume) >= 0.0)
+    # A 1 cm rise never adds more than a sliver of one cell's area.
+    assert np.max(np.diff(area)) < 0.01 * 1.0e10
+    # Whole cells, by contrast, jump by a full cell area at each centre.
+    whole = _hyps(elevation, np.zeros(4))
+    whole_area = np.array([whole.wet_area(h, idx) for h in levels])
+    assert np.max(np.diff(whole_area)) == pytest.approx(1.0e10)
+
+
+def test_level_for_volume_inverts_volume():
+    elevation = np.array([0.0, 10.0, 25.0, 40.0])
+    hyps = _hyps(elevation, [8.0, 3.0, 0.0, 12.0])
+    idx = np.arange(4)
+    for level in (-5.0, 4.0, 12.0, 26.0, 55.0):
+        target = hyps.volume(level, idx)
+        assert hyps.level_for_volume(target, idx, hyps.dry_level(idx), 100.0) == pytest.approx(level, abs=1e-6)
+
+
+def _bowl_lake():
+    # A bowl: floor cell 0, rising rings of cells. All one catchment, rim far above.
+    elevation = np.array([0.0, 20.0, 20.0, 40.0, 40.0, 40.0, 40.0])
+    lake = lakes._make_leaf(0, list(range(7)), elevation.tolist(), sink_node_idx=0)
+    lake.max_depth = 200.0
+    return lake, elevation
+
+
+def test_water_balance_fills_by_volume_and_slows_as_the_lake_spreads():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    water = np.zeros(7)
+    water[0] = 20.0
+    level = hyps.dry_level(lake.members)
+    rises, areas = [], []
+    for _ in range(12):
+        new_level = lakes._water_balance(
+            lake, level, elevation, water, years_myr=0.1, is_frozen=False,
+            out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+            out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps,
+        )
+        rises.append(new_level - level)
+        areas.append(hyps.wet_area(new_level, lake.members))
+        level = new_level
+    assert all(np.diff(areas) > 0.0)  # the flooded area keeps growing, step by step
+    assert rises[-1] < rises[1]  # and each step's rise shrinks as it spreads
+
+
+def test_water_balance_without_relief_spreads_inflow_over_wet_cells_only():
+    # Whole cells: a one-cell puddle in a seven-cell catchment rises by inflow / one cell,
+    # not inflow / seven.
+    lake, elevation = _bowl_lake()
+    water = np.zeros(7)
+    water[0] = 10.0
+    new_level = lakes._water_balance(
+        lake, 0.0, elevation, water, years_myr=1.0, is_frozen=False,
+        out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=np.zeros(7, dtype=bool),
+    )
+    assert new_level == pytest.approx(lakes.LAKE_FILL_RATE * 10.0)
+
+
+def test_silt_settles_in_a_lake_that_only_partly_floods_its_cells():
+    # The water stays below every cell centre, so whole-cell flooding would see no wet cell.
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    water = np.zeros(7)
+    water[0] = 1.0
+    silt = np.zeros(7)
+    new_level = lakes._water_balance(
+        lake, hyps.dry_level(lake.members), elevation, water, years_myr=0.1, is_frozen=False,
+        out_silt_deposited=silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps,
+    )
+    assert new_level < 0.0
+    assert silt[0] > 0.0
+    assert silt[0] <= hyps.mean_depth(new_level, np.array([0]))[0]

@@ -3559,6 +3559,15 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   back in (the notch first), and uplift since the last erosion pass wears them away. Uplift is measured against
   `channel_reference_elevation_m`, the post-erosion elevation recorded each step. Set
   `hydrology.BREACH_DEPRESSIONS_ENABLED = False` for the old centre-only behaviour.
+- **Partial-cell lake flooding** (`lakes.CellHypsometry`, issue #297): a cell's elevation is
+  its mean, so its ground is taken as spread evenly over `elevation +/- relief`. The relief is
+  half the mean height difference to its neighbours, capped at 500 m. A lake floods each cell
+  gradually from its lowest ground, and `lake_depth` is the cell's mean water depth (water
+  volume / cell area). Each step's water balance is in volume: last step's water, less
+  evaporation over the wet area, plus inflow. The new level is the one that holds that
+  volume. Flooded area and volume therefore grow continuously rather than by whole cells, and
+  a lake's level rises more slowly as it spreads. Lake silt settles over the wet area in
+  proportion to each cell's wet fraction.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),

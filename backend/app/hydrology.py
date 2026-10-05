@@ -1141,11 +1141,11 @@ def compute_hydrology(
     # bare centres. A pit cheap enough to carve through this step then merges toward the ocean
     # at its own floor, so it drains instead of ponding. A costlier pit keeps its centre-height
     # rim and is filled or held as an endorheic lake as before (see breaching.py).
+    areas = collect_all_accounting_areas_m2(plates_in_order, line_spacing_rad(world.node_density))
     breach = None
     interface_pass = None
     if BREACH_DEPRESSIONS_ENABLED:
         craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
-        areas = collect_all_accounting_areas_m2(plates_in_order, line_spacing_rad(world.node_density))
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
             breaching.carve_rate_m_per_myr(craton_strength, prev_silt_depth), years,
@@ -1154,10 +1154,22 @@ def compute_hydrology(
         )
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
     forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass)
-    filled_elevation, spill_target, rim_node_idx = lakes.compute_spill_routing(forest, elevation, lake_depth_adjusted)
+    # Partial-cell flooding (issue #297): lake_depth is each cell's mean water depth over its
+    # sub-cell relief, so the water surface is recovered through the same hypsometry rather
+    # than as elevation + depth.
+    hypsometry = lakes.CellHypsometry.from_terrain(elevation, areas, neighbor_idx)
+    filled_elevation, spill_target, rim_node_idx = lakes.compute_spill_routing(
+        forest, elevation, lake_depth_adjusted, hypsometry
+    )
+    # Water surface above each wet cell's centre, for _compute_flow_direction's spill test
+    # (`elevation + offset >= filled_elevation`). It's the mean depth itself without relief.
+    lake_surface_offset = np.zeros(n)
+    wet_lake = lake_depth_adjusted > 0.0
+    wet_idx = np.flatnonzero(wet_lake)
+    lake_surface_offset[wet_idx] = hypsometry.level_from_depth(lake_depth_adjusted[wet_idx], wet_idx) - elevation[wet_idx]
 
     flow_target, should_spill = _compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted, filled_elevation, spill_target, prev_channel_depth, is_frozen
+        elevation, is_ocean, neighbor_idx, lake_surface_offset, filled_elevation, spill_target, prev_channel_depth, is_frozen
     )
     # Ice moves under its own weight regardless of whether this step is literally below
     # freezing (unlike liquid water, gated above) -- see _compute_flow_direction's own
@@ -1172,7 +1184,7 @@ def compute_hydrology(
     # no release, and realistic frozen precipitation piles it into physically absurd
     # multi-hundred-km columns (see also GLACIER_BASAL_MELT_M_PER_MYR).
     ice_flow_target, _ = _compute_flow_direction(
-        elevation, is_ocean, neighbor_idx, lake_depth_adjusted + prev_glacier_depth, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
+        elevation, is_ocean, neighbor_idx, lake_surface_offset + prev_glacier_depth, filled_elevation, spill_target, prev_channel_depth, is_frozen, apply_freeze=False
     )
 
     frozen_precip = np.where(is_frozen, precipitation_at_nodes, 0.0)
@@ -1270,7 +1282,7 @@ def compute_hydrology(
     # hierarchy from scratch a second time and risk it disagreeing with what spill routing just
     # used (see lakes.resolve_lakes's own docstring).
     fields.lake_depth, fields.silt_deposited, fields.is_sea, fields.lake_events = lakes.resolve_lakes(
-        forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen
+        forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen, hypsometry
     )
     fields.lake_forest = forest
     # Cumulative record only (erosion.py folds `silt_deposited` into real `elevation`); kept so
