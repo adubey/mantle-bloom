@@ -1,6 +1,6 @@
 import numpy as np
 
-from app import lakes
+from app import hydrology, lakes
 
 
 def _leaves(roots):
@@ -41,6 +41,51 @@ def test_build_lake_hierarchy_single_depression():
     assert lake.sink_node_idx == 0
     assert lake.outlet_node_idx == 0
     assert lake.outlet_target_idx == 1
+
+
+def test_interface_pass_spills_to_a_higher_center_at_the_shared_saddle():
+    # The depression contains nodes 0 and 1.  Its downstream neighbour (2) has a 5 m centre,
+    # but an explicitly supplied interface geometry crosses a 4 m saddle.  The lake must spill
+    # at 4 m, rather than waiting for either boundary centre (10 m and 5 m) to be submerged.
+    elevation = np.array([0.0, 10.0, 5.0, -10.0])
+    is_ocean = np.array([False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    interface_pass = np.maximum(elevation[:, None], elevation[neighbor_idx])
+    interface_pass[1, 1] = 4.0
+    interface_pass[2, 0] = 4.0
+
+    forest = lakes.build_lake_hierarchy(
+        elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass
+    )
+    lake = forest[0]
+    assert lake.max_depth == 4.0
+    assert lake.outlet_node_idx == 1
+    assert lake.outlet_target_idx == 2
+
+    filled, spill, _ = lakes.compute_spill_routing(forest, elevation, np.zeros(4))
+    assert filled[0] == 4.0
+    assert spill[0] == 2
+
+
+def test_interface_pass_does_not_cross_a_genuinely_higher_divide():
+    elevation = np.array([0.0, 10.0, 5.0, -10.0])
+    is_ocean = np.array([False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    interface_pass = np.maximum(elevation[:, None], elevation[neighbor_idx])
+    interface_pass[1, 1] = 12.0
+    interface_pass[2, 0] = 12.0
+
+    forest = lakes.build_lake_hierarchy(
+        elevation, is_ocean, neighbor_idx, interface_pass_elevation=interface_pass
+    )
+    filled, spill, _ = lakes.compute_spill_routing(forest, elevation, np.zeros(4))
+    flow, spilling = hydrology._compute_flow_direction(
+        elevation, is_ocean, neighbor_idx, np.array([10.0, 0.0, 0.0, 0.0]), filled, spill,
+        np.zeros(4), np.zeros(4, dtype=bool),
+    )
+    assert filled[0] == 12.0
+    assert flow[0] == -1
+    assert not spilling[0]
 
 
 def test_build_lake_hierarchy_never_includes_ocean_nodes():
