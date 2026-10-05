@@ -390,5 +390,10 @@ def test_regularize_line_carries_every_optional_field():
         if name == "continental_material_m":
             assert np.sum(getattr(regularized, name)) == pytest.approx(np.sum(values))
             assert np.all(regularized.continental_material_m <= regularized.crustal_thickness_m)
+        elif name == "mobile_cover_continental_m":
+            # A share of both the cover and the (rescaled) tracer.
+            assert np.all(regularized.mobile_cover_continental_m > 0.0)
+            assert np.all(regularized.mobile_cover_continental_m <= regularized.mobile_cover_m)
+            assert np.all(regularized.mobile_cover_continental_m <= regularized.continental_material_m)
         else:
             assert np.all(getattr(regularized, name) == values[0]), name

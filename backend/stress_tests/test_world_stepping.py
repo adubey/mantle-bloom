@@ -337,3 +337,19 @@ def test_quad_merge_of_neighbouring_plates_in_a_stepped_world():
     assert after > 0.99 * before
     overlap_after = area_on_others([keep])
     assert overlap_after <= overlap_before * (1 + 1e-9)
+
+
+def test_mobile_cover_ledger_closes_over_full_quad_steps():
+    # Issue #297 phase 2: every process that moves or ends erosion's mobile cover books it
+    # (see mobile_cover.py), so the live inventory equals sources less sinks every step.
+    from app import mobile_cover
+
+    world = generate_world(seed=7, num_plates=8, surface="quad")
+    for _ in range(8):
+        step_world(world, 5_000_000)
+        live = mobile_cover.surface_volume_m3(world)
+        assert live > 0.0
+        assert abs(mobile_cover.balance_error_m3(world)) <= 1e-9 * live
+    ledger = world.mobile_cover_ledger
+    for account in ("deposited_m3", "entrained_m3", "subducted_m3", "volcanic_buried_m3"):
+        assert ledger[account] > 0.0, account

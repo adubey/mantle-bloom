@@ -837,7 +837,7 @@ def test_ice_load_near_the_elevation_floor_stores_only_the_applied_deflection():
 
 
 def _carry(elevation, neighbors, room, excess, *, area=None, is_ocean=None, on_ice=None, lake_depth=None,
-           spill=None, ice_target=None, scour_limit=None, scour_material=None, points=None):
+           spill=None, ice_target=None, scour_limit=None, scour_material=None, points=None, **cover):
     """`_carry_overflow` on a hand-built profile, with an all-river excess matrix built from
     `excess` (volume per node) and a 0.4 continental share."""
     n = len(elevation)
@@ -863,6 +863,7 @@ def _carry(elevation, neighbors, room, excess, *, area=None, is_ocean=None, on_i
         load,
         np.zeros(n) if scour_limit is None else scour_limit,
         np.zeros(n) if scour_material is None else scour_material,
+        **cover,
     ), load
 
 
@@ -937,6 +938,25 @@ def test_overflow_rides_the_ice_and_its_scour_deepens_the_bed():
     # The scoured rock rides as glacial load, carrying its own continental share.
     assert np.isclose(carry.placed[:, erosion.OVERFLOW_GLACIAL].sum(), 0.5)
     assert np.isclose(carry.placed[:, -1].sum(), 4.0 + 0.5)
+
+
+def test_overflow_ice_scour_takes_mobile_cover_before_substrate():
+    # As above, but node 1 has 0.15 m of cover (a third continental) over all-continental rock,
+    # and node 2 none: node 1's scour is mostly cover, tagged at the cover's own fraction.
+    elevation = np.array([3000.0, 2000.0, 1500.0, 500.0, 400.0])
+    on_ice = np.array([False, True, True, False, False])
+    ice_target = np.array([-1, 2, 3, -1, -1])
+    room = np.array([0.0, 50.0, 50.0, 100.0, 100.0])
+    scour_limit = np.array([0.0, 0.2, 0.3, 0.0, 0.0])
+    cover = np.array([0.0, 0.15, 0.0, 0.0, 0.0])
+    carry, _ = _carry(
+        elevation, _profile_neighbors(5), room, [10.0, 0, 0, 0, 0], on_ice=on_ice, ice_target=ice_target,
+        scour_limit=scour_limit, scour_material=np.full(5, 1.0e3), scour_cover_m=cover, scour_cover_material_m=cover / 3.0,
+    )
+    assert np.allclose(carry.scour_m, [0.0, 0.2, 0.3, 0.0, 0.0])
+    assert np.allclose(carry.scour_cover_m, [0.0, 0.15, 0.0, 0.0, 0.0])
+    assert np.allclose(carry.scour_tagged_m, [0.0, 0.05 + 0.05, 0.3, 0.0, 0.0])
+    assert np.isclose(carry.placed[:, -1].sum(), 4.0 + 0.4)
 
 
 def test_overflow_caught_in_an_ice_loop_drains_off_by_gravity():

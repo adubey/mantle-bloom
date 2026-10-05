@@ -62,7 +62,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, continental_ledger, cratons, lithosphere, magma_transport, mantle, phase_budget, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, continental_ledger, cratons, lithosphere, magma_transport, mantle, mobile_cover, phase_budget, rheology, terrain_noise, torque, worldsketch
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 
 # `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` and issue
@@ -833,6 +833,8 @@ COLUMN_FIELDS = (
     "crust_type_code",
     "craton_crust_m",
     "continental_material_m",
+    "mobile_cover_m",
+    "mobile_cover_continental_m",
 )
 
 
@@ -886,6 +888,10 @@ def deform_columns(
     hc = fields["crustal_thickness_m"].copy()
     hm = fields["mantle_lithosphere_thickness_m"].copy()
     continental_material = fields["continental_material_m"].copy()
+    # Mobile cover (mobile_cover.py) is the top of the column: stretching thins it with the
+    # column and a column that melts through loses it; shortening and underplating leave it.
+    cover = fields["mobile_cover_m"].copy()
+    cover_material = fields["mobile_cover_continental_m"].copy()
     # GitHub issue #216 Hc/Hm budget checkpoints -- see phase_budget.py. `codes0` is
     # this line's crust_type_code, unchanged until the decompression-melting checkpoint
     # below, so every intermediate checkpoint below reuses it for both before/after.
@@ -1073,6 +1079,15 @@ def deform_columns(
         continental_ledger.record(
             world, "rift_thinned_m3", float(np.dot(stretch_loss, budget_area_m2))
         )
+        stretch_ratio = np.clip(
+            np.divide(hc[divergent], prior_hc[divergent], out=np.zeros_like(hc[divergent]), where=prior_hc[divergent] > 0.0),
+            0.0,
+            1.0,
+        )
+        cover_before_stretch = cover.copy()
+        cover[divergent] *= stretch_ratio
+        cover_material[divergent] *= stretch_ratio
+        mobile_cover.record(world, "rift_thinned_m3", float(np.dot(cover_before_stretch - cover, budget_area_m2)))
         melting[divergent] = np.where(
             resisted > 0.0,
             melt & (hc[divergent] < rheology.RIFT_CRITICAL_THICKNESS_M),
@@ -1146,6 +1161,10 @@ def deform_columns(
     continental_ledger.record(
         world, "juvenile_additions_m3", float(np.dot(juvenile, budget_area_m2))
     )
+    if np.any(melting):
+        mobile_cover.record(world, "rift_reset_m3", float(np.dot(np.where(melting, cover, 0.0), budget_area_m2)))
+        cover[melting] = 0.0
+        cover_material[melting] = 0.0
     became_oceanic = melting & ~continental_after_melting
     if np.any(became_oceanic):
         removed = np.where(became_oceanic, continental_material, 0.0)
@@ -1243,6 +1262,8 @@ def deform_columns(
         "crust_type_code": crust_type_code,
         "craton_crust_m": new_craton,
         "continental_material_m": continental_material,
+        "mobile_cover_m": cover,
+        "mobile_cover_continental_m": np.minimum(cover_material, continental_material),
     }
 
 

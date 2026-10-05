@@ -3093,6 +3093,49 @@ can't be placed goes to declared ledger sinks: `numerical_unplaced_m3` for the H
 `discarded_marine_sediment_m3` for the ocean-deposition knob below 1. `bin/debug/
 measure_erosion_budget.py` measures closure per call.
 
+**Mobile cover ([issue #297](https://github.com/adubey/mantle-bloom/issues/297) phase 2).**
+Loose sediment is not intact rock. Each column persists `mobile_cover_m`, the unconsolidated
+share of its Hc at the top of the column, and `mobile_cover_continental_m`, the
+continental-derived share of that cover. Both are extensive surface fields, so quad
+refinement, coarsening, merge and partition conserve their volume. Everything that settles
+enters the cover: every deposition pathway, the overflow carry and lake silt. So does weathered
+rock, at the point where it settles. Every removal takes cover before substrate. The erosion
+laws are substrate laws. A rate law (subaerial, submarine and coastal) entrains cover
+`MOBILE_COVER_ERODIBILITY_FACTOR` (5) times faster than the same forcing detaches substrate.
+It only reaches substrate once the cover is gone, so a bare column erodes exactly as before.
+`_strip_mobile_cover` integrates this exactly over the step: one long step and several shorter
+ones with the same forcing agree. Craton resistance scales only the substrate share. The
+leveling grind, glacial flattening and overflow-laden ice scour take cover first too. The
+cover is well mixed, so its continental share leaves at the cover's own fraction. Substrate
+under it gives up its continental tracer first, as before. Cover buried deeper than
+`MOBILE_COVER_CONSOLIDATION_DEPTH_M` (1 km) consolidates back into substrate with a 20 Myr
+e-folding time. Consolidation leaves Hc and the tracer unchanged and only moves the split.
+
+There is no in-place regolith production yet. The erosion laws are calibrated against real
+denudation, so a soil-production term would let every low-relief column entrain up to five
+times its calibrated rate: a global retune, left to the coupled solve.
+
+Tectonics moves the cover too (`mobile_cover.py`):
+- Rift stretching (`deform_columns`, and `quad_tectonics._open_rift`) thins it with its
+  column. A rift's stretched share carries it onto the rifted cells.
+- A column that melts through loses its cover (`rift_reset_m3`).
+- Orogenic collapse and ductile flow carry it in proportion to the crust they move.
+- Cells consumed at a trench subduct it (`subducted_m3`).
+- Suture donors and a relocated terrane's displaced columns metamorphose it into the accreted
+  crust (`accreted_m3`).
+- Erupted crust buries it (`volcanic_buried_m3`).
+- Stranded fragments that defragmentation drops take theirs with them (`stranded_m3`).
+
+Shortening, underplating, anatexis, fault relief and the column caps act at depth and leave
+it alone. Anything left above a column is clipped at the next erosion step
+(`stale_mobile_cover_excess_m3`). Strike-slip advection copies every field from its nearest
+upstream node, which conserves no extensive field, Hc and the continental tracer included. Its
+net change to the cover is booked, signed, as `fault_advection_m3`. `World.mobile_cover_ledger`
+keeps these sources and sinks, so `mobile_cover.balance_error_m3` closes to round-off on quad
+worlds. The line engine's row trimming doesn't book what it removes. The budget reports `bedrock_detached_m3` plus the cover's
+`prior`, `entrained`, `deposited`, `consolidated`, `clip` and remaining volumes, with
+continental shares. Prior + deposited − entrained − consolidated − clip equals what remains.
+
 **Cadence: every step, no lag on climate -- but a deliberate change from erosion's own
 earlier no-hydrology version regarding flow routing.** This module still calls
 `climate.compute_climate(world)` fresh every step (no staleness to reason about, same as

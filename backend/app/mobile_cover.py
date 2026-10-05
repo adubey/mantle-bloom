@@ -1,0 +1,113 @@
+"""Persistent accounting for the mobile cover (issue #297 phase 2).
+
+``mobile_cover_m`` is the loose sediment/regolith share of each column's Hc, at the top of the
+column, and ``mobile_cover_continental_m`` the continental-derived share of that (see
+erosion.MOBILE_COVER_*). Erosion fills and strips it. Tectonics moves or ends it:
+
+- rift stretching thins it with its column, and spreads what it removes over the rifted cells
+  the stretch covers (`quad_tectonics._open_rift`); a column that melts through is reset to
+  fresh magmatic crust, so its cover is gone (``rift_reset_m3``);
+- orogenic collapse and ductile flow carry it with the crust they move, in proportion;
+- cells consumed at a trench take it down with them (``subducted_m3``), and suture donors and
+  a relocated terrane's displaced columns metamorphose it into the accreted crust
+  (``accreted_m3``);
+- erupted crust buries it, consolidating it into substrate (``volcanic_buried_m3``);
+- stranded fragments a plate's defragmentation drops take theirs with them (``stranded_m3``).
+
+Shortening, underplating, anatexis, fault relief and the column caps change Hc at depth or
+don't move material in this model, and leave it alone; what any of them leaves above its
+column is clipped at the next erosion step (``clipped_m3``). Quad merge, refinement and
+coarsening remap it as an extensive field, exactly. Strike-slip advection
+(`faults._apply_plate_fault_shear`) copies every field from its nearest upstream node, which
+conserves no extensive field -- Hc and the continental tracer included -- so its net change is
+booked, signed, as ``fault_advection_m3``.
+
+Like continental_ledger.py, the world stores only sources and sinks; the live inventory is
+recomputed from the nodes, so ``balance_error_m3`` is zero when every change is booked. The
+continental share is a share of ``continental_material_m``, whose own ledger covers it.
+Booking is quad-complete; the line engine's row trimming doesn't book what it removes."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+import numpy as np
+
+from .elevation_lines import line_spacing_rad
+
+if TYPE_CHECKING:
+    from .plates import Plate
+    from .world import World
+
+FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
+SOURCES = ("initial_m3", "deposited_m3")
+SINKS = (
+    "entrained_m3",
+    "consolidated_m3",
+    "clipped_m3",
+    "rift_thinned_m3",
+    "rift_reset_m3",
+    "subducted_m3",
+    "accreted_m3",
+    "volcanic_buried_m3",
+    "fault_advection_m3",
+    "stranded_m3",
+)
+# Accounts that may be negative: round-off clipped back up, and advection that gained volume.
+SIGNED = ("clipped_m3", "fault_advection_m3")
+ACCOUNTS = SOURCES + SINKS
+
+
+def surface_volume_m3(world: "World") -> float:
+    spacing = line_spacing_rad(world.node_density)
+    return sum(float(np.dot(p.collect("mobile_cover_m"), p.accounting_areas_m2(spacing))) for p in world.plates)
+
+
+def ensure_ledger(world: "World") -> dict[str, float]:
+    """Backfill the accounts; the first time, seed ``initial_m3`` with whatever cover the
+    world already holds (none, on any world from before the cover existed)."""
+    ledger = getattr(world, "mobile_cover_ledger", None)
+    if not isinstance(ledger, dict):
+        ledger = world.mobile_cover_ledger = {}
+    if "initial_m3" not in ledger:
+        ledger["initial_m3"] = surface_volume_m3(world)
+    for key in ACCOUNTS:
+        ledger.setdefault(key, 0.0)
+    return ledger
+
+
+def record(world: "World | None", account: str, volume_m3: float) -> None:
+    """Book `volume_m3` into one account. Only the SIGNED accounts may be negative."""
+    if world is None:
+        return
+    if account not in ACCOUNTS or account == "initial_m3":
+        raise KeyError(f"unknown mobile cover account: {account}")
+    volume_m3 = float(volume_m3)
+    if not np.isfinite(volume_m3) or (volume_m3 < 0.0 and account not in SIGNED):
+        raise ValueError(f"mobile cover volume must be finite and non-negative, got {volume_m3!r}")
+    ensure_ledger(world)[account] += volume_m3
+
+
+def balance_error_m3(world: "World") -> float:
+    ledger = ensure_ledger(world)
+    expected = sum(ledger[key] for key in SOURCES) - sum(ledger[key] for key in SINKS)
+    return surface_volume_m3(world) - expected
+
+
+def book_removed(world: "World | None", plate: "Plate", mask: np.ndarray, account: str) -> None:
+    """Book the cover on the `mask` cells, which the caller is about to remove."""
+    if world is None or not np.any(mask):
+        return
+    areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+    record(world, account, float(np.dot(plate.collect("mobile_cover_m")[mask], areas[mask])))
+
+
+def end(world: "World | None", plate: "Plate", mask: np.ndarray, account: str) -> None:
+    """Book and clear the cover on the `mask` cells, which stay: it is buried, consolidated
+    or reset into the substrate under it. Hc is unchanged."""
+    if not np.any(mask):
+        return
+    book_removed(world, plate, mask, account)
+    plate.set_fields_on_plate(
+        **{name: np.where(mask, 0.0, plate.collect(name)) for name in FIELDS},
+    )

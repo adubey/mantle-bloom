@@ -72,6 +72,9 @@ class World:
     # Cumulative attempted / completed volume (m^3) of each orogenic relief process: suture
     # belts, tectonic escape, delamination, collapse and ductile flow. See orogeny.py.
     orogenic_relief_budget: dict[str, float] = field(default_factory=dict)
+    # Persistent source/sink accounts for erosion's mobile cover; the live volume is derived
+    # from nodes' mobile_cover_m. See mobile_cover.py.
+    mobile_cover_ledger: dict[str, float] = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.

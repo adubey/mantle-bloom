@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, geometry, lithosphere
+from . import continental_ledger, geometry, lithosphere, mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_MIN_DELTA_M,
     ELEV_CHANGE_VOLCANIC_PLAIN,
@@ -64,7 +64,8 @@ MAX_MINERAL_DEPOSIT_M = 20.0
 def apply_volcanic_activity(world: "World", years: float) -> None:
     """Every step: rolls each individual active volcano's own eruption chance, adding
     ERUPTION_ELEVATION_M wherever it erupts, then spreads a broader, weaker volcanic-plain
-    apron around each vent that erupted this step. Mutates world.plates in place."""
+    apron around each vent that erupted this step. Erupted crust buries the mobile cover it
+    lands on, consolidating it (mobile_cover.py). Mutates world.plates in place."""
     continental_ledger.ensure_initialized(world)
     for plate in world.plates:
         hc_before = plate.collect("crustal_thickness_m")
@@ -85,6 +86,7 @@ def apply_volcanic_activity(world: "World", years: float) -> None:
             "juvenile_additions_m3",
             eligible=continental,
         )
+        mobile_cover.end(world, plate, hc_after > hc_before, "volcanic_buried_m3")
 
 
 def _apply_volcanic_activity_to_lines(plate: PlateWithLines, world: "World", years: float) -> list[np.ndarray]:

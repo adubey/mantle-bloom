@@ -61,7 +61,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import boundary, geometry, lithosphere
+from . import boundary, geometry, lithosphere, mobile_cover
 from .elevation_lines import (
     ELEV_CHANGE_FAULT_NORMAL,
     ELEV_CHANGE_FAULT_REVERSE,
@@ -1460,6 +1460,11 @@ def _apply_plate_fault_shear(world: "World", plate: Plate, years_myr: float, _ca
 
     if any_shifted:
         plate.set_fields_on_plate(**overrides)
+        # A nearest-upstream copy conserves no extensive field (issue #299); book the cover's
+        # net change so its ledger stays closed (see mobile_cover.py).
+        areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+        change = float(np.dot(originals["mobile_cover_m"] - overrides["mobile_cover_m"], areas))
+        mobile_cover.record(world, "fault_advection_m3", change)
 
 
 def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _cache: dict | None = None) -> None:

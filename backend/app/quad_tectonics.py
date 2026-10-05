@@ -42,7 +42,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, cratons, geometry, lithosphere, orogeny, phase_budget, rheology, terrain_noise
+from . import continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, terrain_noise
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -405,6 +405,10 @@ def _retreat(
     continental_ledger.record(
         world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
     )
+    # Their mobile cover goes down the trench with them; a suture donor's is metamorphosed
+    # into the crust it thrusts onto the survivors.
+    mobile_cover.book_removed(world, plate, subducted, "subducted_m3")
+    mobile_cover.book_removed(world, plate, donors, "accreted_m3")
     if np.any(donors):
         _accrete_onto_survivors(
             plate, donors, ~removed, world, convergence_xyz=ctx.inputs.direction_to_neighbor, years=years,
@@ -574,6 +578,9 @@ def _accrete_onto_survivors(
                     )
                     terrane_cells = continental & ~was_continental
                     restite[terrane_cells] = restite_volume / float(areas[terrane_cells].sum())
+                    # The oceanic columns the terrane displaced take their cover into the
+                    # crust they were thickened into.
+                    mobile_cover.end(world, plate, terrane_cells, "accreted_m3")
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -1385,6 +1392,9 @@ class _StretchTransfer:
     received_continental_hc_volume: np.ndarray  # the part of received_hc_volume that was continental
     withheld_area: np.ndarray  # m^2 of each rifted cell's stretched share cratonic donors withheld
     received_continental_material_volume: np.ndarray
+    # Mobile cover (mobile_cover.py) each rifted cell receives, and its continental share.
+    received_cover_volume: np.ndarray | None = None
+    received_cover_material_volume: np.ndarray | None = None
 
 
 def _allocate_stretch(
@@ -1397,6 +1407,8 @@ def _allocate_stretch(
     continental: np.ndarray,
     continental_material: np.ndarray,
     craton: np.ndarray | None = None,
+    cover: np.ndarray | None = None,
+    cover_material: np.ndarray | None = None,
 ) -> _StretchTransfer:
     """Share each rifted cell's stretched footprint (`stretch_share` of its area) out over its
     donor band -- the pre-existing cells within `K_NEIGHBOUR_ROWS_FOR_MASS_CONSERVATION` hops,
@@ -1410,7 +1422,9 @@ def _allocate_stretch(
     A cratonic donor (`craton`, its cratonic thickness per node) is asked for only
     `1 - CRATON_STRETCH_RESISTANCE * strength` of its area share; what it withholds is not
     shifted onto the other donors but left to the rifted cell's magmatic share
-    (`withheld_area`), so the stretch concentrates in the younger crust beside a craton."""
+    (`withheld_area`), so the stretch concentrates in the younger crust beside a craton.
+    Mobile cover (`cover`, its continental share `cover_material`) stretches with its column
+    the same way."""
     areas = plate.node_areas_m2()
     preexisting_mask = np.ones(plate.node_count(), dtype=bool)
     preexisting_mask[inserted_indices] = False
@@ -1444,7 +1458,8 @@ def _allocate_stretch(
         requested_area.multiply((1.0 / np.where(requested_area_by_donor > 0.0, requested_area_by_donor, 1.0))[None, :])
     )
 
-    lost_hc_volume = hc[preexisting] * donor_area * (1.0 - thinning_ratio)
+    lost_fraction = donor_area * (1.0 - thinning_ratio)
+    lost_hc_volume = hc[preexisting] * lost_fraction
     lost_hm_volume = hm[preexisting] * donor_area * (1.0 - thinning_ratio)
     is_donor = requested_area_by_donor > 0.0
     return _StretchTransfer(
@@ -1457,6 +1472,8 @@ def _allocate_stretch(
         received_continental_material_volume=share_of_donor @ (
             continental_material[preexisting] * donor_area * (1.0 - thinning_ratio)
         ),
+        received_cover_volume=None if cover is None else share_of_donor @ (cover[preexisting] * lost_fraction),
+        received_cover_material_volume=None if cover_material is None else share_of_donor @ (cover_material[preexisting] * lost_fraction),
     )
 
 
@@ -1491,10 +1508,13 @@ def _open_rift(
     reason = plate.collect("elev_change_reason")
     craton = plate.collect("craton_crust_m")
     material = plate.collect("continental_material_m")
+    cover = plate.collect("mobile_cover_m")
+    cover_material = plate.collect("mobile_cover_continental_m")
     continental = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
     transfer = _allocate_stretch(
-        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton
+        plate, inserted_indices, rifted, stretch_share, hc, hm, continental, material, craton, cover, cover_material
     )
+    areas = plate.node_areas_m2()
 
     # Donors: thin in place, erupting any column that thins through the rift threshold.
     donors, ratio = transfer.donor_indices, transfer.donor_thinning_ratio
@@ -1507,6 +1527,13 @@ def _open_rift(
         melting = (hc[donors] >= rheology.RIFT_CRITICAL_THICKNESS_M) & (new_hc < rheology.RIFT_CRITICAL_THICKNESS_M)
         sub_codes, sub_volcano, sub_remaining = codes[donors], is_volcano[donors], remaining[donors]
         material[donors] *= ratio
+        # A donor's mobile cover stretches with it (the rest goes to the rifted cells), and is
+        # gone where it melted through.
+        cover[donors] *= ratio
+        cover_material[donors] *= ratio
+        mobile_cover.record(world, "rift_reset_m3", float(np.dot(np.where(melting, cover[donors], 0.0), areas[donors])))
+        cover[donors[melting]] = 0.0
+        cover_material[donors[melting]] = 0.0
         hc_before_melting = new_hc.copy()
         _erupt_melted_nodes(world, plate.plate_id, rng_index + 1, new_hc, new_hm, sub_codes, sub_volcano, sub_remaining, melting, elevation[donors])
         donor_continental = effective_is_continental_from_codes(sub_codes, plate.crust_type == "continental")
@@ -1549,6 +1576,8 @@ def _open_rift(
         mostly_continental, magmatic_area * hc[rifted] / cell_area, 0.0
     )
     cell_material += magmatic_material
+    cell_cover = transfer.received_cover_volume / cell_area
+    cell_cover_material = transfer.received_cover_material_volume / cell_area
     cell_elevation = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
     melting = cell_hc < rheology.RIFT_CRITICAL_THICKNESS_M
     sub_volcano, sub_remaining = is_volcano[rifted], remaining[rifted]
@@ -1562,6 +1591,9 @@ def _open_rift(
         "juvenile_additions_m3",
         float(np.dot(magmatic_material + melt_juvenile, cell_area)),
     )
+    mobile_cover.record(world, "rift_reset_m3", float(np.dot(np.where(melting, cell_cover, 0.0), cell_area)))
+    cell_cover = np.where(melting, 0.0, cell_cover)
+    cell_cover_material = np.where(melting, 0.0, cell_cover_material)
     cell_oceanic = melting & ~cell_continental
     if np.any(cell_oceanic):
         removed = np.where(cell_oceanic, cell_material, 0.0)
@@ -1572,6 +1604,8 @@ def _open_rift(
     _ignite_early_rift_volcanoes(world, plate.plate_id, rng_index, sub_volcano, sub_remaining, ~melting & (stretch_share < 0.5))
     hc[rifted], hm[rifted], codes[rifted] = cell_hc, cell_hm, cell_codes
     material[rifted] = cell_material
+    cover[rifted] = cell_cover
+    cover_material[rifted] = np.minimum(cell_cover_material, cell_material)
     is_volcano[rifted], remaining[rifted] = sub_volcano, sub_remaining
     elevation[rifted] = lithosphere.isostatic_elevation(cell_hc, cell_hm, lithosphere.node_crust_density(cell_codes, plate.crust_type))
     reason[rifted] = np.where(melting, ELEV_CHANGE_VOLCANO, np.where(stretch_share >= 0.5, ELEV_CHANGE_RIFT, ELEV_CHANGE_NEW_CRUST))
@@ -1585,6 +1619,8 @@ def _open_rift(
         elev_change_reason=reason,
         craton_crust_m=craton,
         continental_material_m=material,
+        mobile_cover_m=cover,
+        mobile_cover_continental_m=np.minimum(cover_material, material),
     )
 
 
