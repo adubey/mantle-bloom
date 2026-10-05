@@ -3123,10 +3123,13 @@ Tectonics moves the cover too (`mobile_cover.py`):
 - Cells consumed at a trench subduct it (`subducted_m3`).
 - Suture donors and a relocated terrane's displaced columns metamorphose it into the accreted
   crust (`accreted_m3`).
-- Erupted lava buries it (`volcanic_buried_m3`), in proportion to the lava's thickness, the
-  elevation the eruption adds (not its Hc gain, mostly isostatic root). A cell rising
-  `VOLCANIC_SEAL_THICKNESS_M` (20 m) is fully sealed; the thin tail of a volcanic-plain apron,
-  lava over part of the cell, seals that fraction.
+- Erupted lava buries it (`volcanic_buried_m3`), in proportion to the lava's thickness. That
+  is measured as the elevation the eruption adds: large igneous provinces emplace roughly
+  5-10x more intrusive than extrusive volume, so surface lava is near a sixth of the Hc gain,
+  about what the elevation gain gives. A cell rising `VOLCANIC_SEAL_THICKNESS_M` (20 m) is
+  fully sealed; the thin tail of a volcanic-plain apron, lava over part of the cell, seals
+  that fraction.
+- A failed rift (aulacogen) thins it with its column (`rift_thinned_m3`).
 - Stranded fragments that defragmentation drops take theirs with them (`stranded_m3`).
 
 Shortening, underplating, anatexis, fault relief and the column caps act at depth and leave

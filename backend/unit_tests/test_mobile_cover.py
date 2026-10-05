@@ -361,3 +361,33 @@ def test_an_apron_tail_seals_only_the_share_its_surface_lava_covers(monkeypatch)
     assert np.any(tail) and np.all(lava[tail] < mobile_cover.VOLCANIC_SEAL_THICKNESS_M)
     assert np.any(lava == 0.0)
     assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * 300.0 * plate.node_areas_m2().sum())
+
+
+def test_a_failed_rift_thins_the_cover_with_its_column():
+    plate = _plate(1, _block((10, 20), (20, 30)), "continental", cover=500.0)
+    world = _tectonic_world(plate)
+    centre = plate.surface_nodes().local_xyz.mean(axis=0)
+    cut_normal = np.cross(centre, [0.0, 0.0, 1.0])
+    cut_normal /= np.linalg.norm(cut_normal)  # a rift plane through the plate's middle
+    hc_before = plate.collect("crustal_thickness_m")
+    before = _cover_m3(plate)
+
+    plate.apply_failed_rift(cut_normal, SPACING)
+    mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
+
+    ratio = plate.collect("crustal_thickness_m") / hc_before
+    assert np.any(ratio < 1.0)
+    np.testing.assert_allclose(plate.collect("mobile_cover_m"), 500.0 * ratio)
+    np.testing.assert_allclose(plate.collect("mobile_cover_continental_m"), 250.0 * ratio)
+    assert world.mobile_cover_ledger["rift_thinned_m3"] == pytest.approx(before - _cover_m3(plate))
+    assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * before)
+
+
+def test_silt_depth_never_outlives_the_cover_holding_it():
+    world = _quad_world()
+    for plate in world.plates:
+        # Old silt laid down before the cover existed, and a large record on top of thin cover.
+        plate.set_fields_on_plate(silt_depth=np.full(plate.node_count(), 100.0))
+    for _ in range(2):
+        erosion.apply_erosion(world, years=5_000_000)
+        assert np.all(_field(world, "silt_depth") <= _field(world, "mobile_cover_m"))

@@ -333,10 +333,11 @@ class HydrologyFields:
     # that predates lakes.py, including hand-built test fixtures, keeps working unchanged.
     lake_events: list["lakes.LakeEvent"] = field(default_factory=list)
     # Cumulative silt thickness laid down under standing water, end of this step
-    # (`prev_silt_depth + silt_deposited`). Monotonic, persisted on plates like channel_depth --
-    # now purely an informational record (a future "sediment thickness" view): lake floors are
-    # no longer measured against it, because `silt_deposited` below is folded straight into real
-    # `elevation` by erosion.py. Also defaulted, see lake_events' own comment for why.
+    # (`prev_silt_depth + silt_deposited`), persisted on plates -- purely an informational
+    # record: lake floors are not measured against it, because `silt_deposited` below is folded
+    # straight into real `elevation` by erosion.py, as mobile cover. erosion.py caps what it
+    # persists at the cell's mobile cover, so stripped silt leaves the record. Also defaulted,
+    # see lake_events' own comment for why.
     silt_depth: np.ndarray = field(default_factory=lambda: np.zeros(0))
     # This step's per-node silt *increment* (lakes.step_lakes) -- erosion.py adds it directly
     # into terrain `elevation`, so a lake/endorheic basin genuinely fills in over time. Always
@@ -1242,8 +1243,8 @@ def compute_hydrology(
         forest, elevation, lake_depth_adjusted, water_deposited, years, is_frozen
     )
     fields.lake_forest = forest
-    # Cumulative record only (erosion.py folds `silt_deposited` into real `elevation`); kept so
-    # the persisted per-node silt_depth field stays a running total.
+    # Record only (erosion.py folds `silt_deposited` into real `elevation` and caps the
+    # persisted silt_depth at the mobile cover holding it).
     fields.silt_depth = prev_silt_depth + fields.silt_deposited
 
     # A lake, however wide it's flooded, is never itself "a river" -- excluding it (not just

@@ -123,7 +123,7 @@ def test_apply_volcanic_activity_noop_for_empty_world():
 
 def test_apply_volcanic_activity_erupting_grows_mineral_deposit_monotonically():
     # Same setup as test_apply_volcanic_activity_can_erupt_and_add_elevation -- an eruption
-    # should also grow mineral_deposit_m, and never let it fall (monotonic, like silt_depth).
+    # should also grow mineral_deposit_m, and never let it fall (monotonic, like coal_deposit_m).
     n = 200
     line = ElevationLine(
         phi=0.0, theta=np.arange(n) * 0.001, elevation=np.full(n, 200.0),

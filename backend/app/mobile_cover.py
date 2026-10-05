@@ -5,8 +5,9 @@ column, and ``mobile_cover_continental_m`` the continental-derived share of that
 erosion.MOBILE_COVER_*). Erosion fills and strips it. Tectonics moves or ends it:
 
 - rift stretching thins it with its column, and spreads what it removes over the rifted cells
-  the stretch covers (`quad_tectonics._open_rift`); a column that melts through is reset to
-  fresh magmatic crust, so its cover is gone (``rift_reset_m3``);
+  the stretch covers (`quad_tectonics._open_rift`); a failed rift thins it in place
+  (`thin_with_column`, ``rift_thinned_m3``); a column that melts through is reset to fresh
+  magmatic crust, so its cover is gone (``rift_reset_m3``);
 - orogenic collapse and ductile flow carry it with the crust they move, in proportion;
 - cells consumed at a trench take it down with them (``subducted_m3``), and suture donors and
   a relocated terrane's displaced columns metamorphose it into the accreted crust
@@ -45,8 +46,11 @@ FIELDS = ("mobile_cover_m", "mobile_cover_continental_m")
 # thin tail of a volcanic-plain apron is lava over part of the cell's footprint. A cell whose
 # surface rises this much (a few stacked flood-basalt flows, each typically 5-30 m) counts as
 # fully sealed; less seals that fraction of its cover. Measured as the eruption's elevation
-# gain, the surface lava -- not its Hc gain, most of which is the isostatic root backing it
-# (lithosphere.back_elevation_gain: ~6 m of continental Hc per metre of relief).
+# gain. Under the model's isostasy, lava stacked on the surface raises it by only ~15% of its
+# thickness (lithosphere.back_elevation_gain backs each metre of relief with ~6 m of
+# continental Hc), so Hc gain bounds the lava thickness from above and elevation gain from
+# below. Elevation gain is the better proxy because large igneous provinces emplace roughly
+# 5-10x more intrusive than extrusive volume, which puts the surface lava near Hc gain / 6.
 VOLCANIC_SEAL_THICKNESS_M = 20.0
 SOURCES = ("initial_m3", "deposited_m3")
 SINKS = (
@@ -108,6 +112,18 @@ def book_removed(world: "World | None", plate: "Plate", mask: np.ndarray, accoun
         return
     areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
     record(world, account, float(np.dot(plate.collect("mobile_cover_m")[mask], areas[mask])))
+
+
+def thin_with_column(world: "World | None", plate: "Plate", hc_before: np.ndarray, account: str) -> None:
+    """After a whole-column thinning that kept node order (a failed rift), thin each node's
+    cover by its Hc ratio, as `cratons.thin_with_column` does the craton, and book the loss
+    to `account`. Thickening leaves it unchanged."""
+    ratio = np.clip(
+        np.divide(plate.collect("crustal_thickness_m"), hc_before, out=np.ones(len(hc_before)), where=hc_before > 0.0),
+        0.0,
+        1.0,
+    )
+    end(world, plate, 1.0 - ratio, account)
 
 
 def end(world: "World | None", plate: "Plate", fraction: np.ndarray, account: str) -> None:

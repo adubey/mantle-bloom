@@ -349,11 +349,9 @@ class ElevationLine:
         "channel_width",  # river channel width, grows with flow -- see erosion.py
         "lake_depth",  # standing lake water depth
         "glacier_depth",  # accumulated ice, meters ice-equivalent
-        # Sediment settled on a lake's own bed, monotonically increasing (never erodes back
-        # away, same self-reinforcing character as channel_depth) -- raises the *effective*
-        # floor a lake's own depth is measured against without touching real terrain
-        # `elevation` itself, see lakes.py's own module docstring for why. Always 0 outside
-        # an active lake.
+        # Sediment settled on a lake's own bed (meters). A record only: the silt itself is
+        # folded into `elevation`/Hc as mobile cover (erosion.py), and this is capped at
+        # `mobile_cover_m`, so it shrinks once the cover it describes is stripped.
         "silt_depth",
         # Two more of the same "rides along for free" persistent fields, see volcanism.py.
         # is_volcano never reverts to False once set (permanent provenance -- a dormant
