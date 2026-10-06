@@ -1086,3 +1086,136 @@ def test_glacial_erosion_carves_channels_rivers_can_inherit():
     _, _, after, _, _, _ = erosion._gather_nodes(world)
     # No river erosion at all, so every metre of new channel is a glacial trough.
     assert np.max(after - before) > 1.0
+
+
+def _set_channel_state(world, depth_m, uplift_m):
+    """Every node gets `depth_m` of channel and a reference elevation `uplift_m` below its
+    current elevation, as if it had risen that much since last step's erosion."""
+    for p in world.plates:
+        for line in p.lines:
+            if len(line):
+                line.set_fields(
+                    channel_depth=np.full(len(line), depth_m),
+                    channel_reference_elevation_m=line.elevation - uplift_m,
+                )
+
+
+def test_apply_erosion_records_the_reference_elevation_for_next_steps_uplift():
+    world = generate_world(seed=21, num_plates=8)
+    erosion.apply_erosion(world, years=1_000_000)
+    _, elevation, _, _, _, plates_in_order = erosion._gather_nodes(world)
+    np.testing.assert_allclose(plates.collect_all_channel_reference_elevation(plates_in_order), elevation)
+
+
+def test_uplift_only_fades_channels_where_it_rises_across_them(monkeypatch):
+    # Three identical worlds. One rose 300 m evenly since its last erosion pass, which carries
+    # every channel up with its banks and fades nothing. The other rose 300 m only on every
+    # other node, so a node that rose above the node it drains to loses exactly that much
+    # channel. Breaching is off so no new notch takes part of the fill.
+    from app import hydrology
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    still = generate_world(seed=21, num_plates=8)
+    even = generate_world(seed=21, num_plates=8)
+    patchy = generate_world(seed=21, num_plates=8)
+    _set_channel_state(still, 500.0, 0.0)
+    _set_channel_state(even, 500.0, 300.0)
+    _set_channel_state(patchy, 500.0, 0.0)
+    rise = np.zeros(len(plates.collect_all_elevation(patchy.plates)))
+    rise[::2] = 300.0
+    offset = 0
+    for p in patchy.plates:
+        for line in p.lines:
+            if len(line):
+                line.set_fields(channel_reference_elevation_m=line.elevation - rise[offset : offset + len(line)])
+                offset += len(line)
+    erosion.apply_erosion(still, years=1_000_000)
+    erosion.apply_erosion(even, years=1_000_000)
+    erosion.apply_erosion(patchy, years=1_000_000)
+
+    still_depth = plates.collect_all_channel_depth(still.plates)
+    np.testing.assert_allclose(plates.collect_all_channel_depth(even.plates), still_depth)
+
+    hydro = patchy.hydrology_cache
+    downstream = np.where(hydro.flow_target >= 0, hydro.flow_target, hydro.ice_flow_target)
+    across = np.where(downstream >= 0, np.clip(rise - rise[np.clip(downstream, 0, None)], 0.0, None), 0.0)
+    land = still_depth > 0.0
+    assert (land & (across > 0.0)).any()
+    np.testing.assert_allclose(
+        plates.collect_all_channel_depth(patchy.plates)[land], np.clip(still_depth[land] - across[land], 0.0, None)
+    )
+
+
+def test_deposition_fills_channels_back_in(monkeypatch):
+    # A fresh world has no ice, so wherever no river erodes nothing carves the channel. There
+    # the channel loses exactly what settled into it: deposited sediment plus lake silt.
+    # Breaching is off so no new notch takes part of the fill.
+    from app import hydrology
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    world = generate_world(seed=21, num_plates=8)
+    _set_channel_state(world, 500.0, 0.0)
+    result = erosion.apply_erosion(world, years=1_000_000)
+
+    depth = plates.collect_all_channel_depth(world.plates)
+    filled = np.clip(result.sediment_deposited, 0.0, None) + world.hydrology_cache.silt_deposited
+    quiet = ~world.hydrology_cache.is_ocean & (result.river == 0.0) & (filled > 0.0)
+    assert quiet.any()
+    np.testing.assert_allclose(depth[quiet], np.clip(500.0 - filled[quiet], 0.0, None))
+
+
+def test_breach_notches_persist_apart_from_channel_depth(monkeypatch):
+    # Hydrology reports a 7 m notch on every node. It lands in breach_notch_depth_m, faded by
+    # what settled there, and channel_depth comes out exactly as without it. Real breaching is
+    # off in both runs, so the injected notch is the only one.
+    from app import hydrology
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    original = hydrology.compute_hydrology
+
+    def with_notch(*args, **kwargs):
+        fields = original(*args, **kwargs)
+        fields.breach_notch_m = np.full(len(fields.elevation), 7.0)
+        return fields
+
+    control = generate_world(seed=21, num_plates=8)
+    notched = generate_world(seed=21, num_plates=8)
+    _set_channel_state(control, 500.0, 0.0)
+    _set_channel_state(notched, 500.0, 0.0)
+    erosion.apply_erosion(control, years=1_000_000)
+    monkeypatch.setattr(hydrology, "compute_hydrology", with_notch)
+    result = erosion.apply_erosion(notched, years=1_000_000)
+
+    land = ~notched.hydrology_cache.is_ocean
+    filled = np.clip(result.sediment_deposited, 0.0, None) + notched.hydrology_cache.silt_deposited
+    notch = plates.collect_all_breach_notch_depth(notched.plates)
+    np.testing.assert_allclose(notch[land], np.clip(7.0 - filled[land], 0.0, None))
+    # Where the fill used up the notch, the channel takes only what's left over.
+    channel = plates.collect_all_channel_depth(notched.plates)
+    control_channel = plates.collect_all_channel_depth(control.plates)
+    unfilled = land & (filled <= 7.0)
+    np.testing.assert_allclose(channel[unfilled], np.clip(control_channel[unfilled] + filled[unfilled], 0.0, 2000.0))
+
+
+def test_a_reference_blended_with_the_unset_sentinel_counts_as_no_uplift(monkeypatch):
+    # A remap can blend a recorded reference with the 1e18 "unset" sentinel, e.g. to 2.5e17.
+    # That must read as unset, not as a hugely negative rise that would give every node
+    # draining into it an enormous across-channel uplift and wipe its channel.
+    from app import hydrology
+
+    monkeypatch.setattr(hydrology, "BREACH_DEPRESSIONS_ENABLED", False)
+    still = generate_world(seed=21, num_plates=8)
+    blended = generate_world(seed=21, num_plates=8)
+    _set_channel_state(still, 500.0, 0.0)
+    _set_channel_state(blended, 500.0, 0.0)
+    for p in blended.plates:
+        for line in p.lines:
+            if len(line):
+                reference = line.channel_reference_elevation_m.copy()
+                reference[::2] = 2.5e17
+                line.set_fields(channel_reference_elevation_m=reference)
+    erosion.apply_erosion(still, years=1_000_000)
+    erosion.apply_erosion(blended, years=1_000_000)
+    np.testing.assert_allclose(
+        plates.collect_all_channel_depth(blended.plates), plates.collect_all_channel_depth(still.plates)
+    )

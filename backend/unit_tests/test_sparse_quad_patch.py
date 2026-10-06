@@ -397,6 +397,21 @@ def test_coarsen_applies_every_field_policy_and_conserves_extensive_integrals():
     assert plate.collect("node_created_years")[0] == 5.0
 
 
+def test_coarsening_keeps_the_deepest_channel_and_breach_notch():
+    # A notch through one of four children must survive coarsening, as channel_depth does,
+    # rather than being averaged to a quarter and closing the breach (issue #297).
+    root = int(pack_cell_keys(0, 4, 4))
+    children = child_cell_keys(np.array([root]))[0]
+    plate = _plate(
+        children,
+        channel_depth=np.array([0.0, 12.0, 0.0, 0.0]),
+        breach_notch_depth_m=np.array([0.0, 0.0, 40.0, 0.0]),
+    )
+    plate.coarsen_cells(np.array([root]))
+    assert plate.collect("channel_depth")[0] == 12.0
+    assert plate.collect("breach_notch_depth_m")[0] == 40.0
+
+
 def test_refinement_balances_a_coarser_neighbour():
     left_root = int(pack_cell_keys(0, 4, 4))
     right_root = int(pack_cell_keys(0, 5, 4))

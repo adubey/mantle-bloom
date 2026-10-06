@@ -3542,6 +3542,55 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   `filled_elevation`/`spill_target` directly from `lakes.py`'s own hierarchy -- see
   [Lakes](#lakes-are-an-explicit-tree) below for how, making that hierarchy the single source
   of truth for both where a lake *is* and where its water *goes*.
+- **Depression breaching** (`breaching.py`, issue #297): before the hierarchy is built, one
+  multi-source Dijkstra from the ocean gives every node the least total climb its water must
+  make to reach the sea. Each climb costs the time to cut it: through whatever of the cell's
+  loose mobile cover (`mobile_cover_m`) is left below its passage, at the weak-rock rate,
+  then bedrock at the cell's own rate (slower on cratons). A channel deeper than the cover
+  has already cut through it. Water crosses a cell at its *passage* elevation: its centre minus its
+  `channel_depth` and any persisted breach notch, but never below its lowest neighbour.
+  A pit is breached when three things hold:
+  - its climb fits this step's carving budget: 10-100 m per 100 kyr, from craton to loose
+    cover, scaled by step length;
+  - every node on its path can be cut down to the pit's level within its own carving limit
+    for the step, so a breached pit always drains;
+  - it would overflow: its catchment's runoff, routed with the same per-node river losses the
+    lakes use, exceeds the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
+    Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature.
+
+  Other pits stay closed and are filled as lakes, so dry and arid basins stay real endorheic
+  basins. The hierarchy's boundary edges use the notched passages
+  (`build_lake_hierarchy(interface_pass_elevation=...)`), and a lake whose outlet is cut to
+  its floor and leads lower holds no water. `erosion.py` keeps the notches in their own field,
+  `breach_notch_depth_m`, as sub-cell relief, so a breach stays open on later steps. Only the
+  passage elevation reads that field: `channel_depth`, which drives the channel boost,
+  channel-preferring flow, river evaporation and rendering, records only rock actually carved.
+  Both coarsen and merge by max. Channels and notches also fade: sediment and lake silt
+  settling in a cell fill them back in (the notch first). Uplift *across* a channel also wears
+  it away: how much more a cell rose since the last erosion pass than the cell it drains to,
+  as a scarp or bulge rising across the channel's path would. Even uplift raises a channel with
+  its banks and leaves it intact. Uplift is measured against `channel_reference_elevation_m`,
+  the post-erosion elevation recorded each step. Set `hydrology.BREACH_DEPRESSIONS_ENABLED =
+  False` for the old centre-only behaviour.
+- **Partial-cell lake flooding** (`lakes.CellHypsometry`, issue #297): a cell's elevation is
+  its mean, so its ground is taken as spread evenly over `elevation +/- relief`. The relief is
+  half the mean height difference to its neighbours, capped at 500 m. A lake floods each cell
+  gradually from its lowest ground, and `lake_depth` is the cell's mean water depth (water
+  volume / cell area). Flooded area and volume therefore change continuously rather than by
+  whole cells. Lake silt settles over the wet area in proportion to each cell's wet fraction.
+- **Balanced lakes** (`lakes.LakeClimate`, issue #297): lakes use real water-balance units.
+  Inflow is area-weighted runoff (the same Budyko curve the breach gate uses) plus glacier
+  melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows are a
+  fixed per-node fraction, taken at a 100 kyr reference step
+  (`hydrology.river_transit_loss_fraction`), so they don't grow with step length. A spilling lake's inflow is the flow through its sink.
+  Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
+  Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
+  (`SHALLOW_EVAPORATION_BOOST`). A real lake reaches balance in years to centuries, far
+  inside one step, so each step a lake sits at its balanced level: where its flooded area
+  evaporates exactly its inflow, capped at its rim. A lake whose inflow exceeds what it can
+  evaporate at the rim fills and spills. Its size is set by its climate, as for real closed
+  basins such as the Dead Sea or the Great Basin lakes. Without a `LakeClimate` (direct
+  `step_lakes` calls), the original model-unit fill and evaporation constants apply.
 - **Flow direction** (`_compute_flow_direction`): among each node's k nearest neighbors
   strictly below its own elevation (a downhill candidate), prefers whichever one already has
   the deepest established channel (`channel_depth > CHANNEL_PREFERENCE_THRESHOLD_M`),

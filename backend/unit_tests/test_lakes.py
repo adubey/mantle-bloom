@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 
 from app import hydrology, lakes
@@ -623,3 +624,188 @@ def test_a_composite_lake_held_below_its_own_saddle_by_the_tier_cap_splits():
     )
     assert not any(e.kind == "split" for e in events2)  # no repeat split -- already independent
     assert forest2[0].current_water_elevation < 1800.0  # genuinely decaying, not stuck at the cap
+
+
+def _hyps(elevation, relief, area=1.0e10):
+    elevation = np.asarray(elevation, dtype=float)
+    return lakes.CellHypsometry(elevation, np.full(len(elevation), area), np.asarray(relief, dtype=float), area)
+
+
+def test_cell_hypsometry_floods_a_cell_gradually_and_continuously():
+    # One cell, mean 100 m, ground spread over 80-120 m.
+    hyps = _hyps([100.0], [20.0])
+    idx = np.array([0])
+    assert hyps.mean_depth(80.0, idx)[0] == 0.0
+    assert hyps.wet_fraction(80.0, idx)[0] == 0.0
+    assert hyps.wet_fraction(100.0, idx)[0] == pytest.approx(0.5)
+    assert hyps.mean_depth(100.0, idx)[0] == pytest.approx(5.0)  # 20^2 / (4 * 20)
+    # Continuous where the cell becomes fully flooded, and the mean depth there is h - z.
+    assert hyps.mean_depth(120.0 - 1e-9, idx)[0] == pytest.approx(20.0)
+    assert hyps.mean_depth(130.0, idx)[0] == pytest.approx(30.0)
+    # Mean depth inverts back to the level, partly or fully flooded.
+    for level in (85.0, 100.0, 119.0, 150.0):
+        depth = hyps.mean_depth(level, idx)
+        assert hyps.level_from_depth(depth, idx)[0] == pytest.approx(level)
+
+
+def test_cell_hypsometry_volume_and_area_have_no_whole_cell_jumps():
+    elevation = np.array([0.0, 10.0, 25.0, 40.0])
+    hyps = _hyps(elevation, [8.0, 8.0, 8.0, 8.0])
+    idx = np.arange(4)
+    levels = np.linspace(-10.0, 60.0, 7001)
+    area = np.array([hyps.wet_area(h, idx) for h in levels])
+    volume = np.array([hyps.volume(h, idx) for h in levels])
+    assert np.all(np.diff(area) >= 0.0) and np.all(np.diff(volume) >= 0.0)
+    # A 1 cm rise never adds more than a sliver of one cell's area.
+    assert np.max(np.diff(area)) < 0.01 * 1.0e10
+    # Whole cells, by contrast, jump by a full cell area at each centre.
+    whole = _hyps(elevation, np.zeros(4))
+    whole_area = np.array([whole.wet_area(h, idx) for h in levels])
+    assert np.max(np.diff(whole_area)) == pytest.approx(1.0e10)
+
+
+def test_level_for_volume_inverts_volume():
+    elevation = np.array([0.0, 10.0, 25.0, 40.0])
+    hyps = _hyps(elevation, [8.0, 3.0, 0.0, 12.0])
+    idx = np.arange(4)
+    for level in (-5.0, 4.0, 12.0, 26.0, 55.0):
+        target = hyps.volume(level, idx)
+        assert hyps.level_for_volume(target, idx, hyps.dry_level(idx), 100.0) == pytest.approx(level, abs=1e-6)
+
+
+def _bowl_lake():
+    # A bowl: floor cell 0, rising rings of cells. All one catchment, rim far above.
+    elevation = np.array([0.0, 20.0, 20.0, 40.0, 40.0, 40.0, 40.0])
+    lake = lakes._make_leaf(0, list(range(7)), elevation.tolist(), sink_node_idx=0)
+    lake.max_depth = 200.0
+    return lake, elevation
+
+
+def test_water_balance_fills_by_volume_and_slows_as_the_lake_spreads():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    water = np.zeros(7)
+    water[0] = 20.0
+    level = hyps.dry_level(lake.members)
+    rises, areas = [], []
+    for _ in range(12):
+        new_level = lakes._water_balance(
+            lake, level, elevation, water, years_myr=0.1, is_frozen=False,
+            out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+            out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps,
+        )
+        rises.append(new_level - level)
+        areas.append(hyps.wet_area(new_level, lake.members))
+        level = new_level
+    assert all(np.diff(areas) > 0.0)  # the flooded area keeps growing, step by step
+    assert rises[-1] < rises[1]  # and each step's rise shrinks as it spreads
+
+
+def test_water_balance_without_relief_spreads_inflow_over_wet_cells_only():
+    # Whole cells: a one-cell puddle in a seven-cell catchment rises by inflow / one cell,
+    # not inflow / seven.
+    lake, elevation = _bowl_lake()
+    water = np.zeros(7)
+    water[0] = 10.0
+    new_level = lakes._water_balance(
+        lake, 0.0, elevation, water, years_myr=1.0, is_frozen=False,
+        out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=np.zeros(7, dtype=bool),
+    )
+    assert new_level == pytest.approx(lakes.LAKE_FILL_RATE * 10.0)
+
+
+def test_silt_settles_in_a_lake_that_only_partly_floods_its_cells():
+    # The water stays below every cell centre, so whole-cell flooding would see no wet cell.
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    water = np.zeros(7)
+    water[0] = 1.0
+    silt = np.zeros(7)
+    new_level = lakes._water_balance(
+        lake, hyps.dry_level(lake.members), elevation, water, years_myr=0.1, is_frozen=False,
+        out_silt_deposited=silt, tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps,
+    )
+    assert new_level < 0.0
+    assert silt[0] > 0.0
+    assert silt[0] <= hyps.mean_depth(new_level, np.array([0]))[0]
+
+
+def _bowl_climate(inflow_m3_per_yr, evaporation_m_per_yr=1.2):
+    inflow = np.zeros(7)
+    inflow[0] = inflow_m3_per_yr
+    return lakes.LakeClimate(inflow, np.full(7, evaporation_m_per_yr))
+
+
+def test_balanced_level_evaporates_exactly_the_inflow():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    climate = _bowl_climate(2.0e10)
+    level = lakes.balanced_level(lake, hyps, climate, hyps.dry_level(lake.members), 200.0)
+    assert lakes.lake_evaporation_m3_per_yr(level, lake.members, hyps, climate) == pytest.approx(2.0e10, rel=1e-6)
+
+
+def test_balanced_level_rises_with_inflow_fills_to_the_rim_and_dries_without_water():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    dry = hyps.dry_level(lake.members)
+    levels = [lakes.balanced_level(lake, hyps, _bowl_climate(q), dry, 200.0) for q in (0.0, 5.0e9, 2.0e10, 1.0e13)]
+    assert levels[0] == dry
+    assert levels[0] < levels[1] < levels[2] < levels[3]
+    assert levels[3] == 200.0  # more than a full lake can evaporate: it fills and spills
+
+
+def test_a_hotter_climate_holds_a_smaller_lake():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    dry = hyps.dry_level(lake.members)
+    cool = lakes.balanced_level(lake, hyps, _bowl_climate(2.0e10, 0.6), dry, 200.0)
+    hot = lakes.balanced_level(lake, hyps, _bowl_climate(2.0e10, 1.8), dry, 200.0)
+    assert hot < cool
+
+
+def test_shallow_margins_evaporate_faster_but_total_evaporation_never_falls_as_the_level_rises():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    climate = _bowl_climate(0.0, 1.0)
+    floor = np.array([0])
+    # Half-flooded floor cell: its wet half evaporates faster than open water would.
+    half = lakes.lake_evaporation_m3_per_yr(0.0, floor, hyps, climate)
+    assert half == pytest.approx(0.5 * 1.0e10 * (1.0 + 0.5 * lakes.SHALLOW_EVAPORATION_BOOST))
+    levels = np.linspace(-15.0, 60.0, 3001)
+    evaporation = [lakes.lake_evaporation_m3_per_yr(h, lake.members, hyps, climate) for h in levels]
+    assert np.all(np.diff(evaporation) >= -1e-6)
+
+
+def test_water_balance_with_climate_uses_the_balanced_level():
+    lake, elevation = _bowl_lake()
+    hyps = _hyps(elevation, np.full(7, 10.0))
+    climate = _bowl_climate(2.0e10)
+    new_level = lakes._water_balance(
+        lake, hyps.dry_level(lake.members), elevation, np.zeros(7), years_myr=0.1, is_frozen=False,
+        out_silt_deposited=np.zeros(7), tier_max_depth=lakes.LAKE_MAX_DEPTH_M, is_sea=False,
+        out_lake_is_sea=np.zeros(7, dtype=bool), hypsometry=hyps, climate=climate,
+    )
+    assert new_level == pytest.approx(lakes.balanced_level(lake, hyps, climate, hyps.dry_level(lake.members), 200.0))
+
+
+def test_a_pit_breached_to_its_floor_drains_its_low_ground_but_equal_siblings_still_pool():
+    # Breached: pit 1 merges toward the ocean at its own floor, so it holds no water, even in
+    # the low ground of its partly flooded cell.
+    elevation = np.array([30.0, 0.0, 0.0, -50.0])
+    is_ocean = np.array([False, False, False, True])
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    passes = np.maximum(elevation[:, None], elevation[neighbor_idx])
+    passes[1, 1] = passes[2, 0] = 0.0
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx, interface_pass_elevation=passes)
+    pit = [lake for lake in lakes.iter_all_lakes(forest) if 1 in lake.members.tolist()]
+    assert all(lake.drains_at_floor for lake in pit)
+
+    # Closed: two equal-floor sinks behind a 50 m rim merge at their shared floor, but the
+    # merged basin can't drain, so neither leaf drains at its floor.
+    elevation = np.array([50.0, 0.0, 0.0, 50.0])
+    is_ocean = np.zeros(4, dtype=bool)
+    neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    forest = lakes.build_lake_hierarchy(elevation, is_ocean, neighbor_idx)
+    assert not any(lake.drains_at_floor for lake in lakes.iter_all_lakes(forest))

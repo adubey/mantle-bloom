@@ -96,7 +96,9 @@ from .elevation_lines import (
 from .plates import (
     Plate,
     cached_node_position_tree,
+    collect_all_breach_notch_depth,
     collect_all_channel_depth,
+    collect_all_channel_reference_elevation,
     collect_all_channel_width,
     collect_all_crustal_thickness,
     collect_all_elev_change_reason,
@@ -107,6 +109,7 @@ from .plates import (
     gather_node_positions,
     query_workers,
 )
+from .surface_fields import CHANNEL_REFERENCE_VALID_BELOW_M
 
 if TYPE_CHECKING:
     from .world import World
@@ -2429,7 +2432,28 @@ def apply_erosion(
     # trough they cut, which rivers inherit (channel_boost, hydrology's channel-aware routing)
     # once the ice retreats. Like river erosion, only rock actually removed here counts.
     carved_m = applied_river + applied_glacier + carry.scour_m
-    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m, 0.0, MAX_CHANNEL_DEPTH_M))
+    # Old channels fade (issue #297). Sediment settling in a channel fills it back in: this
+    # step's deposition plus lake silt. Uplift *across* a channel wears it away: how much more a
+    # node rose since last step's erosion than the node it drains to, as a scarp or bulge
+    # rising across the channel's path would. Even uplift raises a channel with its banks and
+    # leaves it intact. A node with no recorded reference, or no downstream node, counts as no
+    # uplift. So does a reference blended with the unset sentinel by a remap
+    # (CHANNEL_REFERENCE_VALID_BELOW_M).
+    reference = collect_all_channel_reference_elevation(plates_in_order)
+    rise = np.where(reference < CHANNEL_REFERENCE_VALID_BELOW_M, elevation - reference, np.nan)
+    downstream = np.where(hydro.flow_target >= 0, hydro.flow_target, hydro.ice_flow_target)
+    downstream_rise = np.where(downstream >= 0, rise[np.clip(downstream, 0, None)], np.nan)
+    uplift_m = np.nan_to_num(np.clip(rise - downstream_rise, 0.0, None), nan=0.0)
+    channel_fill_m = np.clip(total_deposited, 0.0, None) + hydro.silt_deposited + uplift_m
+    # Breach notches (issue #297, breaching.py) are sub-cell relief, not volume taken off the
+    # cell mean, so they are kept apart from channel_depth: only the passage elevation reads
+    # them. This step's new cuts add on. The passage is lowered by channel and notch together,
+    # so the fill fades them together: the notch first, then the channel takes what is left.
+    new_notch = hydro.breach_notch_m if len(hydro.breach_notch_m) == len(carved_m) else 0.0
+    notch_before_fill = collect_all_breach_notch_depth(plates_in_order) + new_notch
+    new_breach_notch_depth = np.where(is_ocean_node, 0.0, np.clip(notch_before_fill - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
+    channel_fill_m = np.clip(channel_fill_m - notch_before_fill, 0.0, None)
+    new_channel_depth = np.where(is_ocean_node, 0.0, np.clip(prior_channel_depth + carved_m - channel_fill_m, 0.0, MAX_CHANNEL_DEPTH_M))
     # Width grows with discharge alone (no slope/channel_boost term -- see module constants'
     # own comment for why), same persistent/monotonic/capped shape as depth.
     width_growth = WIDTH_GROWTH_COEFFICIENT * np.power(np.clip(water_accum_m, 0.0, None), WIDTH_FLOW_EXPONENT) * dt_myr
@@ -2613,6 +2637,8 @@ def apply_erosion(
             crustal_thickness_m=new_crustal_thickness[offset : offset + n],
             channel_depth=new_channel_depth[offset : offset + n],
             channel_width=new_channel_width[offset : offset + n],
+            channel_reference_elevation_m=new_elevation[offset : offset + n],
+            breach_notch_depth_m=new_breach_notch_depth[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
             silt_depth=new_silt_depth[offset : offset + n],
