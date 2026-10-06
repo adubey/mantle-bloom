@@ -3541,27 +3541,33 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   of truth for both where a lake *is* and where its water *goes*.
 - **Depression breaching** (`breaching.py`, issue #297): before the hierarchy is built, one
   multi-source Dijkstra from the ocean gives every node the least total climb its water must
-  make to reach the sea. Each climb is weighted by the rock's strength. Water crosses a cell
-  at its *passage* elevation: its centre minus its established `channel_depth`, but never
-  below its lowest neighbour. A pit whose climb fits this step's carving budget is breached:
-  its path is notched down to the pit's level, provided every node on the path can be cut
-  that deep within its own carving limit, so a breached pit always drains. The budget is
-  10-100 m per 100 kyr, from strong craton rock to loose lake silt, scaled by step length.
-  Costlier pits stay closed and are filled as lakes. A pit is also breached only if it would overflow: its catchment's
-  runoff must exceed the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
-  Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature. Dry
-  and arid basins therefore stay real endorheic basins. The hierarchy's boundary edges use the notched passages
-  (`build_lake_hierarchy(interface_pass_elevation=...)`). `erosion.py` keeps the notches in
-  their own field, `breach_notch_depth_m`, as sub-cell relief, so a breach stays open on later
-  steps. Only the passage elevation reads that field: `channel_depth`, which drives the channel
-  boost, channel-preferring flow, river evaporation and rendering, records only rock actually
-  carved. Channels and notches also fade: sediment and lake silt settling in a cell fill them
-  back in (the notch first). Uplift *across* a channel also wears it away: how much more a
-  cell rose since the last erosion pass than the cell it drains to, as a scarp or bulge
-  rising across the channel's path would. Even uplift raises a channel with its banks and
-  leaves it intact. Uplift is measured against
-  `channel_reference_elevation_m`, the post-erosion elevation recorded each step. Set
-  `hydrology.BREACH_DEPRESSIONS_ENABLED = False` for the old centre-only behaviour.
+  make to reach the sea. Each climb costs the time to cut it: through the cell's loose mobile
+  cover (`mobile_cover_m`) at the weak-rock rate, then bedrock at the cell's own rate (slower
+  on cratons). Water crosses a cell at its *passage* elevation: its centre minus its
+  `channel_depth` and any persisted breach notch, but never below its lowest neighbour.
+  A pit is breached when three things hold:
+  - its climb fits this step's carving budget: 10-100 m per 100 kyr, from craton to loose
+    cover, scaled by step length;
+  - every node on its path can be cut down to the pit's level within its own carving limit
+    for the step, so a breached pit always drains;
+  - it would overflow: its catchment's runoff, routed with the same per-node river losses the
+    lakes use, exceeds the evaporation of a lake filled to its rim (`ENDORHEIC_DEMAND_FACTOR`).
+    Runoff comes from Fu's Budyko curve, and open-water evaporation rises with temperature.
+
+  Other pits stay closed and are filled as lakes, so dry and arid basins stay real endorheic
+  basins. The hierarchy's boundary edges use the notched passages
+  (`build_lake_hierarchy(interface_pass_elevation=...)`), and a lake whose outlet is cut to
+  its floor and leads lower holds no water. `erosion.py` keeps the notches in their own field,
+  `breach_notch_depth_m`, as sub-cell relief, so a breach stays open on later steps. Only the
+  passage elevation reads that field: `channel_depth`, which drives the channel boost,
+  channel-preferring flow, river evaporation and rendering, records only rock actually carved.
+  Both coarsen and merge by max. Channels and notches also fade: sediment and lake silt
+  settling in a cell fill them back in (the notch first). Uplift *across* a channel also wears
+  it away: how much more a cell rose since the last erosion pass than the cell it drains to,
+  as a scarp or bulge rising across the channel's path would. Even uplift raises a channel with
+  its banks and leaves it intact. Uplift is measured against `channel_reference_elevation_m`,
+  the post-erosion elevation recorded each step. Set `hydrology.BREACH_DEPRESSIONS_ENABLED =
+  False` for the old centre-only behaviour.
 - **Partial-cell lake flooding** (`lakes.CellHypsometry`, issue #297): a cell's elevation is
   its mean, so its ground is taken as spread evenly over `elevation +/- relief`. The relief is
   half the mean height difference to its neighbours, capped at 500 m. A lake floods each cell
@@ -3570,7 +3576,9 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   whole cells. Lake silt settles over the wet area in proportion to each cell's wet fraction.
 - **Balanced lakes** (`lakes.LakeClimate`, issue #297): lakes use real water-balance units.
   Inflow is area-weighted runoff (the same Budyko curve the breach gate uses) plus glacier
-  melt, routed as volume (m^3/yr). A spilling lake's inflow is the flow through its sink.
+  melt, routed as volume (m^3/yr). In-transit river losses on these real-unit flows are a
+  fixed per-node fraction, taken at a 100 kyr reference step
+  (`hydrology.river_transit_loss_fraction`), so they don't grow with step length. A spilling lake's inflow is the flow through its sink.
   Evaporation is the real open-water rate, about 0.3 m/yr at 0 C rising to 1.8 m/yr at 25 C.
   Partly flooded cells evaporate up to 30% faster, since shallow margins warm faster
   (`SHALLOW_EVAPORATION_BOOST`). A real lake reaches balance in years to centuries, far

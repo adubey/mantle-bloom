@@ -75,13 +75,14 @@ def main() -> None:
             areas = erosion._gather_areas(world, plates)
             breach = original_breach(
                 fields.elevation, fields.is_ocean, fields.neighbor_idx, channel,
-                breaching.carve_rate_m_per_myr(strength, cover), years,
+                breaching.bedrock_carve_rate_m_per_myr(strength), years,
                 water=breaching.WaterBalance(
                     np.where(temperature < hydrology.FREEZE_POINT_C, 0.0, precipitation), temperature, areas,
-                    loss_fraction=hydrology.river_evaporation_fraction(
-                        temperature, years, fields.is_ocean | (temperature < hydrology.FREEZE_POINT_C)
+                    loss_fraction=hydrology.river_transit_loss_fraction(
+                        temperature, fields.is_ocean | (temperature < hydrology.FREEZE_POINT_C)
                     ),
                 ),
+                mobile_cover_m=cover,
                 prior_notch_m=prior_notch,
             )
         current["record"] = _record(fields, breach, erosion._gather_areas(world, fields.plates_in_order), current, hydrology, lakes)

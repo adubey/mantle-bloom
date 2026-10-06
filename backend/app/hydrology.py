@@ -738,12 +738,25 @@ def _lake_component_sizes(is_lake: np.ndarray, neighbor_idx: np.ndarray) -> np.n
     return sizes
 
 
+# In-transit river evaporation on real-unit (m^3/yr) fluxes -- the breach gate and the lake
+# inflow -- is a property of the river, not of the step. Those paths take the per-node loss
+# at this reference step length (`river_transit_loss_fraction`). The model-unit routing of
+# `water_source` keeps `river_evaporation_fraction`'s step-scaled rule.
+RIVER_TRANSIT_LOSS_REFERENCE_YEARS = 100_000.0
+
+
 def river_evaporation_fraction(temperature_c: np.ndarray, years: float, excluded: np.ndarray) -> np.ndarray:
     """Share of the water passing through each node lost to in-transit river evaporation this
     step (see RIVER_EVAPORATION_*), zero where `excluded`."""
     years_myr = years / 1_000_000.0
     fraction = np.clip(temperature_c / RIVER_EVAPORATION_REFERENCE_TEMP_C, 0.0, 1.0) * RIVER_EVAPORATION_RATE_PER_MYR * years_myr
     return np.where(excluded, 0.0, np.clip(fraction, 0.0, RIVER_EVAPORATION_MAX_FRACTION))
+
+
+def river_transit_loss_fraction(temperature_c: np.ndarray, excluded: np.ndarray) -> np.ndarray:
+    """Per-node in-transit evaporation for real-unit fluxes, independent of step length (see
+    RIVER_TRANSIT_LOSS_REFERENCE_YEARS)."""
+    return river_evaporation_fraction(temperature_c, RIVER_TRANSIT_LOSS_REFERENCE_YEARS, excluded)
 
 
 def _compute_flow_direction(
@@ -1157,14 +1170,18 @@ def compute_hydrology(
         craton_strength = cratons.strength(np.concatenate([p.collect("craton_crust_m") for p in plates_in_order]))
         mobile_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
         # The gate sees the same water budget the lakes are balanced with below, as far as it
-        # can before routing: liquid precipitation, and the same river losses.
+        # can before routing: liquid precipitation, and the same per-node river losses. The
+        # lake routing also exempts should_spill sinks and rim-breach nodes, but those are
+        # only known after this hierarchy is built, so the gate exempts frozen and ocean
+        # nodes only.
         breach = breaching.breach_depressions(
             elevation, is_ocean, neighbor_idx, prev_channel_depth,
-            breaching.carve_rate_m_per_myr(craton_strength, mobile_cover), years,
+            breaching.bedrock_carve_rate_m_per_myr(craton_strength), years,
             water=breaching.WaterBalance(
                 np.where(is_frozen, 0.0, precipitation_at_nodes), temperature_at_nodes, areas,
-                loss_fraction=river_evaporation_fraction(temperature_at_nodes, years, is_frozen | is_ocean),
+                loss_fraction=river_transit_loss_fraction(temperature_at_nodes, is_frozen | is_ocean),
             ),
+            mobile_cover_m=mobile_cover,
             prior_notch_m=collect_all_breach_notch_depth(plates_in_order),
         )
         interface_pass = breaching.interface_pass_elevation(breach.passage_m, neighbor_idx)
@@ -1307,7 +1324,8 @@ def compute_hydrology(
     runoff_m3 = breaching.runoff_mm(liquid_precip, evaporation_mm) / 1000.0 * areas
     melt_m3 = melt * areas / max(years, 1.0)
     through_m3, settled_m3 = route_downstream(
-        elevation, is_ocean, flow_target, runoff_m3 + melt_m3, loss_fraction=river_evap_fraction
+        elevation, is_ocean, flow_target, runoff_m3 + melt_m3,
+        loss_fraction=river_transit_loss_fraction(temperature_at_nodes, is_frozen | is_ocean | should_spill | is_rim_breach),
     )
     lake_climate = lakes.LakeClimate(
         inflow_m3_per_yr=settled_m3 + np.where(should_spill, through_m3, 0.0),

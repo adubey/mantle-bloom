@@ -13,14 +13,16 @@ once, which pits get cut through and which stay closed:
    that cell's neighbours.
 2. **Least climb to the ocean.** One multi-source Dijkstra from every connected-ocean node,
    over the hydrology k-NN graph, gives every node the least total height its water would have
-   to climb to reach the ocean. A step from `i` onto `j` costs `max(0, passage[j] -
-   passage[i])`, divided by `j`'s relative erodibility, so the cost is in metres of
-   reference-strength rock. A node on an ordinary downhill path costs zero.
+   to climb to reach the ocean. A step from `i` onto `j` costs the time to cut `j` down by
+   that climb, `max(0, passage[j] - passage[i])`, expressed as metres of reference-strength
+   rock. The cut goes through `j`'s loose mobile cover first, at the weak-rock rate, then
+   through bedrock at `j`'s own rate. A node on an ordinary downhill path costs zero.
 3. **Breach or fill.** A pit (a land node with no strictly lower neighbour) is breached only
    if two things hold. First, its cost fits this step's carving budget,
    `BREACH_REFERENCE_CARVE_M_PER_MYR * dt`. Second, every node on its least-cost path can be
    cut down to the water level arriving from the pit within that node's own carving limit
-   (`carve_rate * dt`). The second check matters because the cost counts only climbs, while
+   for the step: its cover at the weak-rock rate, then bedrock at its own rate for the time
+   left (`_carve_limit_m`). The second check matters because the cost counts only climbs, while
    draining also means cutting nodes past the rim that still stand above the pit floor, and
    those can be in stronger rock. A breached pit's path is notched until it never rises, so
    the pit always drains. Each reach of the river carves at the same time, so each node's
@@ -64,8 +66,6 @@ from scipy.sparse.csgraph import dijkstra
 BREACH_REFERENCE_CARVE_M_PER_MYR = 300.0
 BREACH_STRONG_CARVE_M_PER_MYR = 100.0
 BREACH_WEAK_CARVE_M_PER_MYR = 1000.0
-# Mobile cover this thick or more makes a cell fully weak.
-BREACH_WEAK_COVER_REFERENCE_M = 10.0
 # Same ceiling as erosion.MAX_CHANNEL_DEPTH_M, which caps every notch persisted into
 # channel_depth. It's repeated here because erosion.py imports hydrology.py, which imports this.
 BREACH_MAX_NOTCH_M = 2000.0
@@ -124,7 +124,7 @@ class WaterBalance:
 
     `precipitation_mm` should be liquid precipitation, as the lake balance uses.
     `loss_fraction` is the in-transit river evaporation each node takes from water passing
-    through it (`hydrology.river_evaporation_fraction`). The gate routes runoff to each pit
+    through it (`hydrology.river_transit_loss_fraction`, independent of step length). The gate routes runoff to each pit
     along steepest descent, losing that fraction at every node on the way, the same rule
     `hydrology.route_downstream` applies when lakes are balanced. Glacier melt isn't included:
     it's computed after breaching, from the ice routing that breaching feeds."""
@@ -176,20 +176,37 @@ def _routed_to_sinks(
     return receiver, share * keep[receiver]
 
 
-def carve_rate_m_per_myr(craton_strength: np.ndarray, mobile_cover_m: np.ndarray) -> np.ndarray:
-    """Each node's river-incision rate, interpolated in log space. Ordinary rock carves at the
-    reference rate. Craton strength (0..1, `cratons.strength`) moves the rate toward the
-    strong-rock rate. Loose mobile cover moves the remaining range toward the weak-rock rate.
-    Cover, unlike the cumulative `silt_depth` record, is gone once it's stripped, so exposed
-    bedrock carves as bedrock."""
+def bedrock_carve_rate_m_per_myr(craton_strength: np.ndarray) -> np.ndarray:
+    """Each node's bedrock river-incision rate, interpolated in log space from the reference
+    rate (ordinary rock) toward the strong-rock rate by craton strength (0..1,
+    `cratons.strength`). Loose mobile cover on top carves at BREACH_WEAK_CARVE_M_PER_MYR; see
+    `_cut_time_myr`."""
     strong = np.clip(np.asarray(craton_strength, dtype=float), 0.0, 1.0)
-    weak = np.clip(np.asarray(mobile_cover_m, dtype=float) / BREACH_WEAK_COVER_REFERENCE_M, 0.0, 1.0) * (1.0 - strong)
-    log_rate = (
+    return np.exp(
         np.log(BREACH_REFERENCE_CARVE_M_PER_MYR)
         + strong * np.log(BREACH_STRONG_CARVE_M_PER_MYR / BREACH_REFERENCE_CARVE_M_PER_MYR)
-        + weak * np.log(BREACH_WEAK_CARVE_M_PER_MYR / BREACH_REFERENCE_CARVE_M_PER_MYR)
     )
-    return np.exp(log_rate)
+
+
+def _cut_time_myr(depth_m: np.ndarray, cover_m: np.ndarray, bedrock_rate: np.ndarray) -> np.ndarray:
+    """Time to cut `depth_m` down through a cell: its loose cover first, at the weak-rock
+    rate, then bedrock at `bedrock_rate`. Only the share of the cut that's actually in cover
+    gets the weak rate."""
+    depth_m = np.clip(depth_m, 0.0, None)
+    in_cover = np.minimum(depth_m, cover_m)
+    return in_cover / BREACH_WEAK_CARVE_M_PER_MYR + (depth_m - in_cover) / bedrock_rate
+
+
+def _carve_limit_m(cover_m: np.ndarray, bedrock_rate: np.ndarray, dt_myr: float) -> np.ndarray:
+    """How deep a river can cut each cell in `dt_myr`: through its cover at the weak-rock rate,
+    then into bedrock at its own rate for the time left. Capped at BREACH_MAX_NOTCH_M."""
+    cover_time = cover_m / BREACH_WEAK_CARVE_M_PER_MYR
+    limit = np.where(
+        cover_time >= dt_myr,
+        BREACH_WEAK_CARVE_M_PER_MYR * dt_myr,
+        cover_m + (dt_myr - cover_time) * bedrock_rate,
+    )
+    return np.minimum(limit, BREACH_MAX_NOTCH_M)
 
 
 def channel_passage_elevation(elevation: np.ndarray, channel_depth: np.ndarray, neighbor_idx: np.ndarray) -> np.ndarray:
@@ -205,11 +222,16 @@ def channel_passage_elevation(elevation: np.ndarray, channel_depth: np.ndarray, 
 
 
 def least_climb_to_ocean(
-    passage: np.ndarray, is_ocean: np.ndarray, neighbor_idx: np.ndarray, resistance: np.ndarray
+    passage: np.ndarray,
+    is_ocean: np.ndarray,
+    neighbor_idx: np.ndarray,
+    bedrock_rate: np.ndarray,
+    cover_m: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(cost_m, next_hop)` for every node, from one multi-source Dijkstra rooted at every
-    ocean node. Water moves from `i` to each `j` in `neighbor_idx[i]`. That step costs
-    `max(0, passage[j] - passage[i]) * resistance[j]`, plus `_HOP_EPSILON_M`. Dijkstra runs
+    ocean node. Water moves from `i` to each `j` in `neighbor_idx[i]`. That step costs the time
+    to cut `j` down by `max(0, passage[j] - passage[i])` (`_cut_time_myr`), times the reference
+    rate, so it's in metres of reference-strength rock. `_HOP_EPSILON_M` is added to every step. Dijkstra runs
     over the transposed graph, so a distance *from* the ocean there is a distance *to* the
     ocean here, and its predecessor is the next hop."""
     n = len(passage)
@@ -222,8 +244,10 @@ def least_climb_to_ocean(
     k = neighbor_idx.shape[1]
     rows = np.repeat(np.arange(n), k)
     cols = neighbor_idx.reshape(-1)
-    climb = np.clip(passage[cols] - passage[rows], 0.0, None) * resistance[cols]
-    weight = climb + _HOP_EPSILON_M
+    cover_m = np.zeros(n) if cover_m is None else np.clip(np.asarray(cover_m, dtype=float), 0.0, None)
+    bedrock_rate = np.asarray(bedrock_rate, dtype=float)
+    climb = np.clip(passage[cols] - passage[rows], 0.0, None)
+    weight = _cut_time_myr(climb, cover_m[cols], bedrock_rate[cols]) * BREACH_REFERENCE_CARVE_M_PER_MYR + _HOP_EPSILON_M
     # Water never leaves the ocean, so no edge starts there. This also stops a path from
     # running back out of the ocean.
     keep = ~is_ocean[rows]
@@ -256,6 +280,7 @@ def breach_depressions(
     years: float,
     water: WaterBalance | None = None,
     prior_notch_m: np.ndarray | None = None,
+    mobile_cover_m: np.ndarray | None = None,
 ) -> BreachResult:
     """Breach every pit whose least climb to the ocean fits this step's carving budget. See
     the module docstring.
@@ -266,6 +291,9 @@ def breach_depressions(
     upstream-to-downstream order because each node's cost is strictly larger than its next
     hop's (see `_HOP_EPSILON_M`). One pass visits each node on the breached paths once. It is
     not a separate path search per pit.
+
+    `carve_rate` is each node's bedrock incision rate (`bedrock_carve_rate_m_per_myr`), and
+    `mobile_cover_m` the loose cover on top of it, which carves at the weak-rock rate.
 
     `prior_notch_m` is the breach notch persisted from earlier steps. It lowers the passage
     along with `channel_depth`. `notch_m` in the result is only this step's new cut.
@@ -286,8 +314,9 @@ def breach_depressions(
     if prior_notch_m is not None:
         depth = depth + np.clip(np.asarray(prior_notch_m, dtype=float), 0.0, None)
     channel_passage = channel_passage_elevation(elevation, depth, neighbor_idx)
-    resistance = BREACH_REFERENCE_CARVE_M_PER_MYR / np.asarray(carve_rate, dtype=float)
-    cost, next_hop = least_climb_to_ocean(channel_passage, is_ocean, neighbor_idx, resistance)
+    bedrock_rate = np.asarray(carve_rate, dtype=float)
+    cover = np.zeros(n) if mobile_cover_m is None else np.clip(np.asarray(mobile_cover_m, dtype=float), 0.0, None)
+    cost, next_hop = least_climb_to_ocean(channel_passage, is_ocean, neighbor_idx, bedrock_rate, cover)
     notch = np.zeros(n)
     empty = np.zeros(0, dtype=np.int64)
     if n == 0 or neighbor_idx.ndim != 2 or neighbor_idx.shape[1] == 0:
@@ -299,7 +328,7 @@ def breach_depressions(
     breachable = (pit_cost > _MIN_BREACH_CLIMB_M) & (pit_cost <= budget)
     closed_pits = pits[np.isfinite(pit_cost) & (pit_cost > budget)]
     endorheic_pits = np.zeros(0, dtype=np.int64)
-    max_cut = np.minimum(np.asarray(carve_rate, dtype=float) * dt_myr, BREACH_MAX_NOTCH_M)
+    max_cut = _carve_limit_m(cover, bedrock_rate, dt_myr)
     if np.any(breachable):
         candidates = np.flatnonzero(breachable)
         drains, rim_level = _walk_paths(pits[candidates], channel_passage, next_hop, max_cut)

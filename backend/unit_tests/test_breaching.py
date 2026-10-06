@@ -22,7 +22,7 @@ def test_least_climb_sums_every_barrier_on_the_path():
     # node 3. Its total rise is 30 m, not the 20 m of the single highest barrier.
     elevation = np.array([0.0, 10.0, -5.0, 15.0, -100.0])
     is_ocean = np.array([False, False, False, False, True])
-    cost, next_hop = breaching.least_climb_to_ocean(elevation, is_ocean, _chain(5), np.ones(5))
+    cost, next_hop = breaching.least_climb_to_ocean(elevation, is_ocean, _chain(5), _ordinary_rate(5))
     assert cost[0] == pytest.approx(30.0, abs=1e-3)
     assert cost[2] == pytest.approx(20.0, abs=1e-3)
     assert cost[3] == pytest.approx(0.0, abs=1e-3)
@@ -34,7 +34,7 @@ def test_unreachable_nodes_cost_infinity():
     elevation = np.array([0.0, 5.0, -10.0, 3.0])
     is_ocean = np.array([False, False, True, False])
     neighbor_idx = np.array([[1], [0], [2], [3]])  # 0/1 and 3 never reach node 2
-    cost, next_hop = breaching.least_climb_to_ocean(elevation, is_ocean, neighbor_idx, np.ones(4))
+    cost, next_hop = breaching.least_climb_to_ocean(elevation, is_ocean, neighbor_idx, _ordinary_rate(4))
     assert np.isinf(cost[[0, 1, 3]]).all()
     assert (next_hop[[0, 1, 3]] == -1).all()
 
@@ -89,13 +89,16 @@ def test_a_longer_step_carves_a_deeper_breach():
 def test_rock_strength_decides_whether_the_same_barrier_is_cut():
     elevation = np.array([30.0, 0.0, 20.0, 10.0, -50.0])
     is_ocean = np.array([False, False, False, False, True])
-    craton = breaching.carve_rate_m_per_myr(np.ones(5), np.zeros(5))
-    silt = breaching.carve_rate_m_per_myr(np.zeros(5), np.full(5, 100.0))
+    craton = breaching.bedrock_carve_rate_m_per_myr(np.ones(5))
+    ordinary = breaching.bedrock_carve_rate_m_per_myr(np.zeros(5))
     assert craton[0] == pytest.approx(breaching.BREACH_STRONG_CARVE_M_PER_MYR)
-    assert silt[0] == pytest.approx(breaching.BREACH_WEAK_CARVE_M_PER_MYR)
+    assert ordinary[0] == pytest.approx(breaching.BREACH_REFERENCE_CARVE_M_PER_MYR)
 
     strong = breaching.breach_depressions(elevation, is_ocean, _chain(5), np.zeros(5), craton, years=100_000)
-    weak = breaching.breach_depressions(elevation, is_ocean, _chain(5), np.zeros(5), silt, years=100_000)
+    # Deep loose cover over ordinary rock: the whole 20 m climb is through cover.
+    weak = breaching.breach_depressions(
+        elevation, is_ocean, _chain(5), np.zeros(5), ordinary, years=100_000, mobile_cover_m=np.full(5, 100.0)
+    )
     assert strong.breached_pits.tolist() == []  # 20 m of craton costs 60 m of ordinary rock
     assert weak.breached_pits.tolist() == [1]
 
@@ -220,8 +223,11 @@ def test_a_pit_whose_path_crosses_rock_too_strong_to_drain_stays_closed():
     elevation = np.array([100.0, 0.0, 90.0, 80.0, -50.0])
     is_ocean = np.array([False, False, False, False, True])
     neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
-    rate = breaching.carve_rate_m_per_myr(np.array([0.0, 0.0, 0.0, 1.0, 0.0]), np.array([100.0, 100.0, 100.0, 0.0, 0.0]))
-    result = breaching.breach_depressions(elevation, is_ocean, neighbor_idx, np.zeros(5), rate, years=100_000)
+    rate = breaching.bedrock_carve_rate_m_per_myr(np.array([0.0, 0.0, 0.0, 1.0, 0.0]))
+    cover = np.array([100.0, 100.0, 100.0, 0.0, 0.0])
+    result = breaching.breach_depressions(
+        elevation, is_ocean, neighbor_idx, np.zeros(5), rate, years=100_000, mobile_cover_m=cover
+    )
 
     assert result.cost_m[1] <= breaching.BREACH_REFERENCE_CARVE_M_PER_MYR * 0.1
     assert result.breached_pits.tolist() == []
@@ -234,7 +240,7 @@ def test_every_breached_pit_drains_to_its_floor():
     elevation = np.array([100.0, 0.0, 25.0, 8.0, -50.0])
     is_ocean = np.array([False, False, False, False, True])
     neighbor_idx = np.array([[1, 1], [0, 2], [1, 3], [2, 4], [3, 3]])
-    rate = breaching.carve_rate_m_per_myr(np.array([0.0, 0.0, 0.0, 1.0, 0.0]), np.zeros(5))
+    rate = breaching.bedrock_carve_rate_m_per_myr(np.array([0.0, 0.0, 0.0, 1.0, 0.0]))
     result = breaching.breach_depressions(elevation, is_ocean, neighbor_idx, np.zeros(5), rate, years=100_000)
     assert result.breached_pits.tolist() == [1]
     passes = breaching.interface_pass_elevation(result.passage_m, neighbor_idx)
@@ -266,9 +272,12 @@ def test_the_water_gate_uses_the_rim_height_not_the_rock_weighted_cost():
     n = len(z)
     ocean = np.zeros(n, dtype=bool)
     ocean[-1] = True
-    rate = breaching.carve_rate_m_per_myr(np.zeros(n), np.where(np.arange(n) >= 3, 100.0, 0.0))
+    rate = breaching.bedrock_carve_rate_m_per_myr(np.zeros(n))
+    cover = np.where(np.arange(n) >= 3, 100.0, 0.0)
     water = breaching.WaterBalance(np.full(n, 1600.0), np.full(n, 12.0), np.full(n, 1e9))
-    result = breaching.breach_depressions(z, ocean, _chain(n), np.zeros(n), rate, 1_000_000, water=water)
+    result = breaching.breach_depressions(
+        z, ocean, _chain(n), np.zeros(n), rate, 1_000_000, water=water, mobile_cover_m=cover
+    )
     assert result.cost_m[6] == pytest.approx(27.0, abs=1e-3)
     assert result.breached_pits.tolist() == []
     assert result.endorheic_pits.tolist() == [6]
@@ -290,8 +299,16 @@ def test_the_gate_routes_runoff_with_the_same_river_losses_as_route_downstream()
     assert np.bincount(sink, weights=amount * carried, minlength=6)[3] == pytest.approx(deposited[3])
 
 
-def test_mobile_cover_not_silt_record_makes_rock_weak():
-    bare = breaching.carve_rate_m_per_myr(np.zeros(1), np.zeros(1))
-    covered = breaching.carve_rate_m_per_myr(np.zeros(1), np.full(1, 50.0))
-    assert bare[0] == pytest.approx(breaching.BREACH_REFERENCE_CARVE_M_PER_MYR)
-    assert covered[0] == pytest.approx(breaching.BREACH_WEAK_CARVE_M_PER_MYR)
+def test_only_the_share_of_a_cut_in_cover_carves_at_the_weak_rate():
+    # Review (#301, fourth pass): 15 m of sediment over ordinary rock must not make a 60 m
+    # climb weak all the way down.
+    weak = breaching.BREACH_WEAK_CARVE_M_PER_MYR
+    rock = breaching.BREACH_REFERENCE_CARVE_M_PER_MYR
+    elevation = np.array([100.0, 0.0, 60.0, -50.0])
+    is_ocean = np.array([False, False, False, True])
+    cover = np.array([0.0, 0.0, 15.0, 0.0])
+    cost, _ = breaching.least_climb_to_ocean(elevation, is_ocean, _chain(4), np.full(4, rock), cover)
+    assert cost[1] == pytest.approx((15.0 / weak + 45.0 / rock) * rock, abs=1e-3)
+    # In 100 kyr the river gets through the cover in 1.5 kyr, then cuts bedrock for the rest.
+    limit = breaching._carve_limit_m(np.array([0.0, 15.0, 500.0]), np.full(3, rock), 0.1)
+    np.testing.assert_allclose(limit, [rock * 0.1, 15.0 + (0.1 - 15.0 / weak) * rock, weak * 0.1])
