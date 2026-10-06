@@ -56,7 +56,7 @@ ERUPTION_RATE_PER_MYR = 5.0
 # here, at the same eruption roll that already adds ERUPTION_ELEVATION_M -- "an eruption
 # deposits mineral-rich material" is exactly what that mask already means, no separate
 # detection pass needed. Monotonically non-decreasing (see plates.ElevationLine), same
-# self-reinforcing convention silt_depth/coal_deposit_m/oil_gas_deposit_m already use.
+# self-reinforcing convention coal_deposit_m/oil_gas_deposit_m already use.
 MINERAL_DEPOSIT_PER_ERUPTION_M = 0.5
 MAX_MINERAL_DEPOSIT_M = 20.0
 

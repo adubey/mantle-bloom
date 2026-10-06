@@ -2461,6 +2461,7 @@ def apply_erosion(
         -dt_myr / MOBILE_COVER_CONSOLIDATION_TIMESCALE_MYR
     )
     consolidated_material_m = consolidated_m * np.divide(new_cover_material, new_cover, out=np.zeros(n), where=new_cover > 0.0)
+    settled_cover = new_cover
     new_cover = new_cover - consolidated_m
     new_cover_material = np.clip(new_cover_material - consolidated_material_m, 0.0, new_cover)
     removed_m3 = float(np.sum(removed_m * area))
@@ -2492,6 +2493,18 @@ def apply_erosion(
         overflow_budget[f"hc_cap_overflow_{pathway}_m3"] = float(excess[:, column].sum())
         overflow_budget[f"hc_cap_overflow_{pathway}_placed_m3"] = float(carry.placed[:, column].sum())
         overflow_budget[f"hc_cap_overflow_{pathway}_terminal_m3"] = float(carry.terminal[column])
+    # Lake silt settles into the mobile cover and is mixed through it like everything else,
+    # so the silt record follows it: removals take the prior silt in proportion to the cover
+    # they take, this step's settled silt joins, and consolidation takes its share of both.
+    # Silt laid down before the cover existed was already substrate (hydrology caps the prior
+    # record at the cover when it reads it, which also catches tectonic stripping).
+    prior_silt = np.clip(hydro.silt_depth - hydro.silt_deposited, 0.0, None)
+    kept_silt = prior_silt * np.divide(cover_m, prior_cover, out=np.zeros(n), where=prior_cover > 0.0)
+    settled_silt = settled[:, OVERFLOW_LAKE_SILT] / area
+    unconsolidated = np.divide(new_cover, settled_cover, out=np.zeros(n), where=settled_cover > 0.0)
+    new_silt_depth = np.minimum((kept_silt + settled_silt) * unconsolidated, new_cover)
+    # Keep this step's cached hydrology in step with what the plates now hold.
+    hydro.silt_depth = new_silt_depth
     cover_entrained_m3 = float(np.sum(cover_entrained * area))
     mobile_cover_budget = {
         # Issue #297 phase 2: what this step's removals took from the cover and from substrate,
@@ -2602,7 +2615,7 @@ def apply_erosion(
             channel_width=new_channel_width[offset : offset + n],
             lake_depth=hydro.lake_depth[offset : offset + n],
             glacier_depth=hydro.glacier_depth[offset : offset + n],
-            silt_depth=hydro.silt_depth[offset : offset + n],
+            silt_depth=new_silt_depth[offset : offset + n],
             elev_change_reason=new_elev_change_reason[offset : offset + n],
             continental_material_m=new_material[offset : offset + n],
             ice_load_deflection_m=new_deflection[offset : offset + n],

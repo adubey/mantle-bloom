@@ -675,6 +675,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
             hc_before = plate.collect("crustal_thickness_m")
             failed_rift(cut_normal, line_spacing_rad(world.node_density))
             cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
+            mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
             if world.debug_diagnostics:
                 after = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
                 phase_budget.record_snapshots(world, plate, "failed_rift_thinning", before, after)
