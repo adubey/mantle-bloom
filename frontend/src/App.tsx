@@ -12,6 +12,7 @@ import MapCanvas from "./MapCanvas";
 import SketchEditor from "./SketchEditor";
 import PlateInspector from "./PlateInspector";
 import RiverInspector from "./RiverInspector";
+import { isVisibleRiver } from "./riverVisibility";
 import LakeInspector from "./LakeInspector";
 import PlatesAndFaults from "./PlatesAndFaults";
 import type { PlatesLayers } from "./PlatesAndFaults";
@@ -1123,7 +1124,8 @@ export default function App() {
   }, [centerEditValue]);
 
   const selectedPlate = platesData.find((p) => p.plate_id === selectedPlateId) ?? null;
-  const selectedRiver = riversData.find((r) => r.river_id === selectedRiverId) ?? null;
+  const visibleRivers = riversData.filter(isVisibleRiver);
+  const selectedRiver = visibleRivers.find((r) => r.river_id === selectedRiverId) ?? null;
 
   // Re-render with the current world whenever the projection, map view, view rotation, or the
   // Elevation view's terrain-relief toggles change -- all baked server-side into the returned
@@ -1566,7 +1568,7 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ opacity: 0.6 }}>
-                  {riversData.length > 0 ? "Click a river, or press Tab." : "No rivers yet -- step the world forward."}
+                  {visibleRivers.length > 0 ? "Click a river, or press Tab." : "No rivers yet -- step the world forward."}
                 </div>
               )}
             </fieldset>
@@ -1665,7 +1667,7 @@ export default function App() {
             />
           ) : mapView === "riverInspector" ? (
             <RiverInspector
-              rivers={riversData}
+              rivers={visibleRivers}
               coastlineSegments={coastlineSegments}
               width={RENDER_WIDTH}
               height={RENDER_HEIGHT}

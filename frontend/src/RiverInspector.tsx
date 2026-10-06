@@ -5,6 +5,7 @@ import { fetchRiverAt } from "./api";
 import type { Mat3, RenderTransform, Vec3 } from "./rotation";
 import { getRenderTransform, latLonToXyz, matApply, matTranspose, project, toPixels, unproject, wrapLongitudeNear, xyzToLatLon } from "./rotation";
 import { useRotationDrag } from "./rotationDrag";
+import { isVisibleRiver } from "./riverVisibility";
 
 interface Props {
   rivers: RiverSummary[];
@@ -139,11 +140,12 @@ export default function RiverInspector({
       ctx.fill();
     };
 
-    for (const river of rivers) {
+    const visibleRivers = rivers.filter(isVisibleRiver);
+    for (const river of visibleRivers) {
       if (river.river_id === selectedRiverId) continue;
       drawOne(river, false);
     }
-    const selected = rivers.find((r) => r.river_id === selectedRiverId);
+    const selected = visibleRivers.find((r) => r.river_id === selectedRiverId);
     if (selected) drawOne(selected, true);
   };
 
@@ -163,7 +165,10 @@ export default function RiverInspector({
     const [trueLat, trueLon] = xyzToLatLon(trueXyz);
     fetchRiverAt((trueLat * 180) / Math.PI, (trueLon * 180) / Math.PI)
       .then(({ river_id }) => {
-        onSelectRiver(river_id);
+        const visibleRiverId = rivers.some(
+          (river) => river.river_id === river_id && isVisibleRiver(river),
+        ) ? river_id : null;
+        onSelectRiver(visibleRiverId);
         containerRef.current?.focus();
       })
       .catch(() => {
@@ -189,8 +194,8 @@ export default function RiverInspector({
   const handleKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "Tab") return;
     e.preventDefault();
-    if (rivers.length === 0) return;
-    const ids = rivers.map((r) => r.river_id).sort((a, b) => a - b);
+    const ids = rivers.filter(isVisibleRiver).map((r) => r.river_id).sort((a, b) => a - b);
+    if (ids.length === 0) return;
     const currentIndex = selectedRiverId == null ? -1 : ids.indexOf(selectedRiverId);
     const delta = e.shiftKey ? -1 : 1;
     const nextIndex = currentIndex === -1 ? (e.shiftKey ? ids.length - 1 : 0) : (currentIndex + delta + ids.length) % ids.length;
