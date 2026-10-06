@@ -34,7 +34,7 @@ import numpy as np
 from scipy.cluster.vq import kmeans2
 from scipy.spatial import cKDTree
 
-from . import cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
+from . import continental_ledger, cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
 from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
 from .plates import Plate, query_workers
@@ -271,8 +271,10 @@ def remove_defunct_plates(world: "World") -> None:
     just expressed through the abstract interface now instead of reaching into `.lines`
     directly, so this works for any `Plate` subclass, not just that one."""
     defunct = [p for p in world.plates if p.node_count() == 0 or p.has_negligible_territory()]
+    spacing_rad = line_spacing_rad(world.node_density)
     for plate in defunct:
         world.record_removed_points(plate.all_points_and_elevation()[0], plate.plate_id)
+        continental_ledger.record(world, "topology_removed_m3", _material_m3(plate, spacing_rad))
         if world.debug_diagnostics and plate.node_count() > 0:
             # GitHub issue #216 item 4: budget this cleanup deletion separately from actual
             # subduction -- a plate can reach here with real (if negligible) remaining
@@ -282,6 +284,13 @@ def remove_defunct_plates(world: "World") -> None:
             after = phase_budget.Snapshot(empty, empty, np.array([], dtype=before.codes.dtype), empty)
             phase_budget.record_snapshots(world, plate, "plate_cleanup_removal", before, after)
     world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
+
+
+def _material_m3(plate: Plate, spacing_rad: float) -> float:
+    """Continental-derived material (continental_ledger.py) a plate holds."""
+    if plate.node_count() == 0:
+        return 0.0
+    return float(np.dot(plate.collect("continental_material_m"), plate.accounting_areas_m2(spacing_rad)))
 
 
 def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
@@ -744,6 +753,7 @@ def defragment_plates(world: "World") -> list[str]:
     for plate in world.plates:
         before = plate.node_count()
         cover_before = cover_m3(plate)
+        material_before = _material_m3(plate, spacing_rad)
         result = plate.defragment(world.next_plate_id, connect_radius_rad, min_fragment_nodes, world)
         if result is None:
             new_plates.append(plate)
@@ -754,6 +764,12 @@ def defragment_plates(world: "World") -> list[str]:
         new_plates.extend(replacements)
         # The stranded crust dropped below takes its mobile cover with it.
         mobile_cover.record(world, "stranded_m3", max(cover_before - sum(cover_m3(p) for p in replacements), 0.0))
+        # ...and its continental material, which the ledger books rather than losing.
+        continental_ledger.record(
+            world,
+            "topology_removed_m3",
+            max(material_before - sum(_material_m3(p, spacing_rad) for p in replacements), 0.0),
+        )
 
         shed = before - sum(p.node_count() for p in replacements)
         if len(replacements) > 1:

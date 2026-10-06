@@ -1998,12 +1998,11 @@ def apply_erosion(
     )
     # Mobile cover (issue #297 phase 2, see MOBILE_COVER_*) and the continental tracer
     # (`continental_material_m`, see "Volume and provenance" below). A stored tracer or cover
-    # above its column's Hc is material some *other* step already removed without updating it
-    # (tectonic thinning, not yet instrumented -- see #272). The continental ledger's
-    # inventories never count tracer excess, so clipping it is budget-neutral and
-    # `stale_tracer_excess_m3` only reports it. The cover ledger's live inventory does count the
-    # cover's, so `stale_mobile_cover_excess_m3` is booked into its `clipped_m3` below. The
-    # cover's continental share is a share of both.
+    # above its column's Hc is material some *other* step thinned without moving it (fault
+    # relief did until issue #276). Both ledgers' live inventories count the stored values, so
+    # clipping is a sink: `stale_tracer_excess_m3` is booked as `numerical_unplaced_m3` below,
+    # and `stale_mobile_cover_excess_m3` into the cover ledger's `clipped_m3`. The cover's
+    # continental share is a share of both.
     stored_material = np.concatenate([p.collect("continental_material_m") for p in plates_in_order])
     prior_material = np.clip(stored_material, 0.0, prior_hc)
     stored_cover = np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order])
@@ -2460,10 +2459,13 @@ def apply_erosion(
     new_channel_width = np.where(is_ocean_node, 0.0, np.clip(prior_channel_width + width_growth, 0.0, MAX_CHANNEL_WIDTH_M))
 
     # The tracer moves with its rock and can never exceed the column holding it; whatever the
-    # column can't hold (clip round-off, or a no-column v1 node) is declared, not dropped.
+    # column can't hold (clip round-off, a no-column v1 node, or a stale excess above) is
+    # declared, not dropped.
     raw_material = prior_material - continental_removed_m + settled_tagged / area
     new_material = np.clip(raw_material, 0.0, new_crustal_thickness)
-    unplaced_tagged_m3 = float(np.sum((raw_material - new_material) * area))
+    unplaced_tagged_m3 = float(np.sum((raw_material - new_material) * area)) + float(
+        np.sum((stored_material - prior_material) * area)
+    )
     if unplaced_tagged_m3 > 0.0:
         continental_ledger.record(world, "numerical_unplaced_m3", unplaced_tagged_m3)
     if discarded_tagged_m3 > 0.0:

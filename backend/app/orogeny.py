@@ -144,7 +144,7 @@ BUDGET_ACCOUNTS = (
     "far_field_placed_m3",
     "foreland_spill_placed_m3",
     "overrider_placed_m3",
-    "no_outlet_delaminated_m3",
+    "no_outlet_subducted_m3",
     # Convergent shortening past the Hc ceiling (quad_tectonics._place_ceiling_overflow):
     # overflow = residue + melt placed + melt with no outlet.
     "ceiling_overflow_m3",
@@ -168,9 +168,13 @@ BUDGET_ACCOUNTS = (
 def ensure_budget(world: "World") -> dict[str, float]:
     if not isinstance(getattr(world, "orogenic_relief_budget", None), dict):
         world.orogenic_relief_budget = {}
+    budget = world.orogenic_relief_budget
+    # Saves from before issue #276 booked the terminal remainder as delaminated.
+    if "no_outlet_delaminated_m3" in budget:
+        budget["no_outlet_subducted_m3"] = budget.get("no_outlet_subducted_m3", 0.0) + budget.pop("no_outlet_delaminated_m3")
     for key in BUDGET_ACCOUNTS:
-        world.orogenic_relief_budget.setdefault(key, 0.0)
-    return world.orogenic_relief_budget
+        budget.setdefault(key, 0.0)
+    return budget
 
 
 def record(world: "World | None", account: str, volume_m3: float) -> None:

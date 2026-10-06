@@ -409,7 +409,7 @@ def test_two_fronts_sharing_a_belt_share_its_root_capacity():
     budget = world.orogenic_relief_budget
     assert budget["delamination_completed_m3"] == pytest.approx(capacity, rel=1e-9)
     donated = float(hc[donors] @ areas[donors])
-    assert budget["no_outlet_delaminated_m3"] == pytest.approx(donated - capacity, rel=1e-9)
+    assert budget["no_outlet_subducted_m3"] == pytest.approx(donated - capacity, rel=1e-9)
 
 
 def test_stepping_a_quad_world_books_finite_relief_budgets():

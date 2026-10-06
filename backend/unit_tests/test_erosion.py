@@ -487,10 +487,12 @@ def test_apply_erosion_coastal_feedback_keeps_a_generated_world_sane():
 
 _LEDGER_SINKS = (
     "delaminated_lower_crust_m3",
+    "collision_subducted_m3",
     "deeply_subducted_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
     "overloaded_root_delaminated_m3",
+    "topology_removed_m3",
 )
 
 

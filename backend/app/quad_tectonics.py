@@ -299,7 +299,7 @@ def _place_ceiling_overflow(
             None,
         )
         changed |= filled
-        no_outlet = stages["no_outlet_delaminated_m3"]
+        no_outlet = stages["no_outlet_subducted_m3"]
         orogeny.record(world, "ceiling_overflow_melt_placed_m3", max(melt - no_outlet, 0.0))
         orogeny.record(world, "ceiling_overflow_no_outlet_m3", no_outlet)
     if not np.any(changed):
@@ -606,7 +606,7 @@ def _accrete_onto_survivors(
             # crust with them, in proportion to the column they left, and are restite first.
             _book_shed_roots(world, material, craton, restite, areas, hc_front_start, shed)
             changed |= filled
-            stuck = stages["no_outlet_delaminated_m3"]
+            stuck = stages["no_outlet_subducted_m3"]
             spill_cells = survivors & ~continental
             if donor_type and stuck > 0.0 and np.any(spill_cells):
                 # Every continental receiver is full -- typically a small plate whose whole
@@ -619,14 +619,14 @@ def _accrete_onto_survivors(
                     hc, areas, adjacency, points, front, spill_cells, stuck, SUTURE_ACCRETION_MAX_HC_M, None, None
                 )
                 changed |= spilled
-                left = spill_stages["no_outlet_delaminated_m3"]
+                left = spill_stages["no_outlet_subducted_m3"]
                 stages["foreland_spill_placed_m3"] = stuck - left
-                stages["no_outlet_delaminated_m3"] = left
+                stages["no_outlet_subducted_m3"] = left
                 retyped = spilled & (hc - hc_before_spill > 0.5 * hc)
                 codes[retyped] = CRUST_TYPE_CONTINENTAL
                 continental[retyped] = True
             handed_share = 0.0
-            stuck = stages["no_outlet_delaminated_m3"]
+            stuck = stages["no_outlet_subducted_m3"]
             if donor_type and stuck > 0.0 and overriders and hc_volume > 0.0:
                 # The plate is being consumed faster than it can hold its own crust -- a
                 # microcontinent ground into a collision. What it can't keep accretes to the
@@ -638,14 +638,17 @@ def _accrete_onto_survivors(
                 )
                 handed_share = handed / hc_volume
                 stages["overrider_placed_m3"] = handed
-                stages["no_outlet_delaminated_m3"] = max(stuck - handed, 0.0)
+                stages["no_outlet_subducted_m3"] = max(stuck - handed, 0.0)
             placed_share = _carry_material(material, areas, hc - hc_front_start + shed, hc_volume, material_volume)
             _carry_material(restite, areas, hc - hc_front_start + shed, hc_volume, restite_volume)
             lost_share = max(1.0 - placed_share - handed_share, 0.0)
             if world is not None:
-                continental_ledger.record(world, "delaminated_lower_crust_m3", lost_share * material_volume)
+                # The terminal remainder is crust of a plate being consumed with no room
+                # anywhere: it goes down with the slab, as deep continental subduction in a
+                # collision does, rather than delaminating (issue #276).
+                continental_ledger.record(world, "collision_subducted_m3", lost_share * material_volume)
                 cratons.record(world, "collision_reworked_m3", (1.0 - lost_share) * craton_volume)
-                cratons.record(world, "delaminated_m3", lost_share * craton_volume)
+                cratons.record(world, "subducted_m3", lost_share * craton_volume)
                 orogeny.record(world, "suture_donated_m3", hc_volume)
                 for account, volume in stages.items():
                     orogeny.record(world, account, volume)
@@ -945,15 +948,16 @@ def _hand_to_overrider(
     years: float,
     restite_volume: float = 0.0,
 ) -> float:
-    """Accrete `volume` of a consumed front's Hc onto the quad plate overriding it, through the
-    same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest the
-    front. The overrider is the candidate containing most of the front's cell centres (the
-    nearest one if none does). The front's continental material goes with the Hc it placed, in
-    proportion, and so does its `restite_volume`; its cratonic crust becomes ordinary orogenic
-    crust, which the caller books. The overrider's own belts may shed eligible roots to make
-    room, booked here with their own provenance, and the Moho of the cells that take crust is
-    buried under it. Whatever the overrider can't hold is left for the caller's terminal remainder.
-    Returns the Hc volume placed on the overrider."""
+    """Accrete `volume` of a consumed front's Hc onto the quad plates overriding it, each
+    through `_place_on_overrider`. The first is the candidate containing most of the front's
+    cell centres (the nearest one if none does). What it can't hold goes on to the other
+    candidates with continental crust, most overlap first, then nearest. Two small plates
+    grinding each other down are often both saturated, and each is the other's only
+    overrider; the orogen they make spans their neighbours too, so the crust escapes into
+    those rather than stranding (issue #276). An oceanic neighbour is skipped, since its
+    cells aren't retyped. The front's continental material and `restite_volume` go with the
+    Hc each places, in proportion. Whatever none of them can hold is left for the caller's
+    terminal remainder. Returns the Hc volume placed."""
     candidates = [p for p in overriders if p is not plate and hasattr(p, "adjacency") and p.node_count() > 0]
     if not candidates or volume <= 0.0:
         return 0.0
@@ -965,7 +969,46 @@ def _hand_to_overrider(
         nearest = float(cKDTree(candidate.all_points_and_elevation()[0]).query(centre)[0])
         return -inside, nearest
 
-    over = min(candidates, key=rank)
+    ranked = [c for _, _, c in sorted(((rank(c), i, c) for i, c in enumerate(candidates)), key=lambda entry: entry[:2])]
+    order = ranked[:1] + [c for c in ranked[1:] if _has_continental_crust(c)]
+    placed = 0.0
+    tolerance = max(volume, 1.0) * 1e-12
+    for over in order:
+        remaining = volume - placed
+        if remaining <= tolerance:
+            break
+        share = remaining / volume
+        placed += _place_on_overrider(
+            world, over, front_world, front, remaining, share * material_volume, convergence_xyz, years,
+            share * restite_volume,
+        )
+    return placed
+
+
+def _has_continental_crust(plate: "PlateWithSparseQuadPatch") -> bool:
+    return bool(
+        np.any(effective_is_continental_from_codes(plate.collect("crust_type_code"), plate.crust_type == "continental"))
+    )
+
+
+def _place_on_overrider(
+    world: "World | None",
+    over: "PlateWithSparseQuadPatch",
+    front_world: np.ndarray,
+    front: np.ndarray,
+    volume: float,
+    material_volume: float,
+    convergence_xyz: np.ndarray | None,
+    years: float,
+    restite_volume: float,
+) -> float:
+    """Accrete `volume` of a consumed front's Hc onto one overriding quad plate `over`, through
+    the same staged `_place_suture_crust` placement on that plate, seeded at its cells nearest
+    the front (`front_world`). The front's continental material goes with the Hc it placed, in
+    proportion, and so does its `restite_volume`; its cratonic crust becomes ordinary orogenic
+    crust, which the caller books. The overrider's own belts may shed eligible roots to make
+    room, booked here with their own provenance, and the Moho of the cells that take crust is
+    buried under it. Returns the Hc volume placed."""
     over_world = over.all_points_and_elevation()[0]
     _, seed = cKDTree(over_world).query(front_world)
     seed = np.unique(seed)
@@ -997,7 +1040,7 @@ def _hand_to_overrider(
         hc, areas, _adjacency_matrix(over), points, seed, eligible, volume, SUTURE_ACCRETION_MAX_HC_M, strike,
         root_capacity, shed,
     )
-    placed = max(volume - stages["no_outlet_delaminated_m3"], 0.0)
+    placed = max(volume - stages["no_outlet_subducted_m3"], 0.0)
     if placed <= 0.0:
         return 0.0
     _book_shed_roots(world, material, craton, restite, areas, hc_before, shed)
@@ -1071,7 +1114,7 @@ def _place_suture_crust(
             "far_field_placed_m3",
             "foreland_spill_placed_m3",
             "overrider_placed_m3",
-            "no_outlet_delaminated_m3",
+            "no_outlet_subducted_m3",
         ),
         0.0,
     )
@@ -1162,7 +1205,7 @@ def _place_suture_crust(
 
     # 5. No outlet anywhere on the plate.
     if remaining > tolerance:
-        stages["no_outlet_delaminated_m3"] = remaining
+        stages["no_outlet_subducted_m3"] = remaining
     return changed, stages
 
 

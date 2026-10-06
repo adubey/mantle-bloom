@@ -912,8 +912,18 @@ over-thickened crust of a suture or a standing orogen goes through these process
      microcontinent ground into a collision) hands what's left to the quad plate overriding
      it: the neighbour containing most of the front's cell centres. There it goes through the
      same stages, seeded at the overrider's cells nearest the front, including that plate's
-     own eligible roots. Continental material moves with the Hc it places.
-  7. **No outlet.** Whatever still has nowhere to go is booked as terminal delamination.
+     own eligible roots. Continental material moves with the Hc it places. What that plate
+     can't hold goes on to the plate's other neighbours with continental crust, most overlap
+     with the front first, then nearest (issue #276). Two small plates grinding each other
+     down are often both saturated, and each is the other's only overrider; the orogen they
+     make spans their neighbours too. Oceanic neighbours are skipped, since this path doesn't
+     retype the cells it fills.
+  7. **No outlet.** Whatever still has nowhere to go goes down with the consumed plate, as
+     deep continental subduction in a collision does: `no_outlet_subducted_m3` in the budget,
+     `collision_subducted_m3` in the continental-material ledger, and `subducted_m3` for its
+     craton. It was booked as delamination before issue #276. Most of it is now the
+     oceanic-crust fronts of a continental suture, which have no spill or overriding-plate
+     stage.
 
   Mantle lithosphere fills the belts and delaminates past them, as an over-thickened mantle
   root does.
@@ -956,13 +966,15 @@ over-thickened crust of a suture or a standing orogen goes through these process
 handled: `suture_donated_m3`, `suture_belt_placed_m3`, `escape_attempted_m3` /
 `escape_placed_m3`, `delamination_attempted_m3` / `delamination_completed_m3`,
 `far_field_placed_m3`, `foreland_spill_placed_m3`, `overrider_placed_m3`,
-`no_outlet_delaminated_m3`; `ceiling_overflow_m3` (= `ceiling_overflow_residue_m3` +
+`no_outlet_subducted_m3` (saves from before issue #276 call it `no_outlet_delaminated_m3`,
+renamed on load); `ceiling_overflow_m3` (= `ceiling_overflow_residue_m3` +
 `ceiling_overflow_melt_placed_m3` + `ceiling_overflow_no_outlet_m3`);
 `anatexis_melt_extracted_m3` (= `anatexis_melt_emplaced_m3` +
 `anatexis_melt_relaminated_m3`) and `anatexis_residue_m3`; `restite_delaminated_m3` (the
 restite share of every shed suture root); `relief_mobile_excess_m3`, `collapse_transferred_m3` and
-`ductile_flow_transferred_m3`. The continental-material ledger books delaminated provenance
-in `delaminated_lower_crust_m3`.
+`ductile_flow_transferred_m3`. The continental-material ledger books delaminated roots'
+provenance in `delaminated_lower_crust_m3`, and the terminal remainder's in
+`collision_subducted_m3`.
 
 These are phases 1 and 2. The long-run recalibration of #276 is phase 3. The line engine
 and the quad merge's stacking cap are unchanged.
@@ -1432,8 +1444,8 @@ form cratons; that surface is being retired (#251).
 | Account | Mechanism |
 |---|---|
 | `rifted_m3` | divergent thinning, rift stretching, decompression melting, failed rifts |
-| `subducted_m3` | boundary consumption down a trench |
-| `delaminated_m3` | suture delamination (quad: from eligible roots, or with no outlet on a saturated plate; line: overflow past the accretion belts), merge stacking past the suture cap, the column-cap clamp |
+| `subducted_m3` | boundary consumption down a trench; on quad plates, suture crust with no outlet anywhere |
+| `delaminated_m3` | suture delamination (quad: from eligible roots; line: overflow past the accretion belts), merge stacking past the suture cap, the column-cap clamp |
 | `collision_reworked_m3` | craton consumed into an orogenic belt as ordinary crust, carried off by orogenic collapse or ductile flow, or reworked by fault relief |
 | `eroded_m3` | erosional unroofing below the craton's top |
 | `topology_removed_m3` | a plate or stranded fragment removed outright |
@@ -1445,8 +1457,12 @@ Sites that know their mechanism book it directly (`deform_columns`,
 `cratons.PhaseAudit`, which holds craton to its column and books whatever else vanished.
 `cratons.balance_error_m3` checks seeded + formed = live + destroyed. Boundary consumption
 also books the continental-derived material it removes into the continental-material ledger
-(`deeply_subducted_m3`, `delaminated_lower_crust_m3`). Suture accretion carries
-`continental_material_m` onto the cells that receive the crust.
+(`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
+accretion carries `continental_material_m` onto the cells that receive the crust. Dropping a
+stranded fragment in defragmentation, or a plate with no territory left, books its material
+as `topology_removed_m3`, geometric cleanup rather than physics (issue #276). Fault relief
+moves each donor's material with the crust it gives up, balancing the transfer by cell
+volume.
 
 <a id="volcanism"></a>
 ## Volcanism (`volcanism.py`, plus `lithosphere_plate.py`'s own `LithospherePlate.deform`)
@@ -3089,7 +3105,8 @@ step's area-weighted totals come back as `ErosionResult.budget`. With the defaul
 `removed_m3` equals `deposited_m3` to rounding. The remaining non-conservative terms are
 declared there: lake silt (a non-continental source), the `ocean_deposition_multiplier`
 knob, and deposition clipped at `MAX_CRUSTAL_THICKNESS_M`. Continental material that
-can't be placed goes to declared ledger sinks: `numerical_unplaced_m3` for the Hc cap, and
+can't be placed goes to declared ledger sinks: `numerical_unplaced_m3` for the Hc cap (and
+for any tracer some other pass left above its column's Hc, which erosion clips), and
 `discarded_marine_sediment_m3` for the ocean-deposition knob below 1. `bin/debug/
 measure_erosion_budget.py` measures closure per call.
 

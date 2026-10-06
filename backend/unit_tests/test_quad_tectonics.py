@@ -397,7 +397,7 @@ def test_a_cap_hit_alone_does_not_delaminate_suture_crust():
     budget = world.orogenic_relief_budget
     assert budget["far_field_placed_m3"] > 0.0
     assert budget["delamination_completed_m3"] == 0.0
-    assert budget["no_outlet_delaminated_m3"] == 0.0
+    assert budget["no_outlet_subducted_m3"] == 0.0
 
 
 def test_suture_delamination_needs_an_eligible_root_and_is_bounded():
@@ -692,7 +692,7 @@ def test_tectonic_escape_moves_crust_along_strike_not_inland():
     assert not np.any(gained & (j >= 23) & (j < 28))
 
 
-def test_a_saturated_plate_books_its_suture_remainder_as_terminal_delamination():
+def test_a_saturated_plate_books_its_suture_remainder_as_collision_subduction():
     keys = _block((10, 20), (20, 21))
     hc = np.full(len(keys), SUTURE_ACCRETION_MAX_HC_M)
     hc[0] = 30_000.0
@@ -707,8 +707,9 @@ def test_a_saturated_plate_books_its_suture_remainder_as_terminal_delamination()
 
     donated = float(hc[0] * areas[0])
     assert np.all(a.collect("crustal_thickness_m")[~donors] == SUTURE_ACCRETION_MAX_HC_M)
-    assert world.orogenic_relief_budget["no_outlet_delaminated_m3"] == pytest.approx(donated)
-    assert world.continental_material_ledger["delaminated_lower_crust_m3"] == pytest.approx(donated)
+    assert world.orogenic_relief_budget["no_outlet_subducted_m3"] == pytest.approx(donated)
+    assert world.continental_material_ledger["collision_subducted_m3"] == pytest.approx(donated)
+    assert world.continental_material_ledger["delaminated_lower_crust_m3"] == 0.0
 
 
 def test_a_saturated_continent_spills_suture_crust_onto_its_oceanic_margin():
@@ -734,7 +735,7 @@ def test_a_saturated_continent_spills_suture_crust_onto_its_oceanic_margin():
     assert float(after[~donors] @ areas[~donors]) == pytest.approx(float(hc @ areas), rel=1e-11)
     budget = world.orogenic_relief_budget
     assert budget["foreland_spill_placed_m3"] == pytest.approx(float(hc[0] * areas[0]), rel=1e-9)
-    assert budget["no_outlet_delaminated_m3"] == 0.0
+    assert budget["no_outlet_subducted_m3"] == 0.0
     assert world.continental_material_ledger["delaminated_lower_crust_m3"] == 0.0
     material = a.collect("continental_material_m")
     assert float(material[~donors] @ areas[~donors]) == pytest.approx(material_before, rel=1e-9)
@@ -762,7 +763,7 @@ def test_a_consumed_saturated_plate_accretes_its_crust_onto_the_overriding_plate
     assert gained == pytest.approx(donated, rel=1e-9)
     budget = world.orogenic_relief_budget
     assert budget["overrider_placed_m3"] == pytest.approx(donated, rel=1e-9)
-    assert budget["no_outlet_delaminated_m3"] == 0.0
+    assert budget["no_outlet_subducted_m3"] == 0.0
     assert world.continental_material_ledger["delaminated_lower_crust_m3"] == 0.0
     # The donor cells are still on `a` here (retreat removes them next), so the material
     # they hand over is counted twice until then: once on `a`, once on `b`.
@@ -772,6 +773,42 @@ def test_a_consumed_saturated_plate_accretes_its_crust_onto_the_overriding_plate
     bi, _ = _columns(b)
     grew = b.collect("crustal_thickness_m") > lithosphere.REFERENCE_HC_CONTINENTAL_M + 1.0
     assert bi[grew].min() <= 13 + quad_tectonics.SUTURE_ACCRETION_MAX_HOPS
+
+
+def test_a_saturated_overrider_passes_the_crust_on_to_a_continental_neighbour():
+    # Issue #276: two small saturated plates grinding each other down are each the other's
+    # only overrider. The crust escapes into a continental neighbour with room instead of
+    # stranding -- not into a nearer oceanic one, whose cells this path wouldn't retype.
+    full = SUTURE_ACCRETION_MAX_HC_M
+    a = _plate(1, _block((10, 14), (20, 24)), "continental", crustal_thickness_m=np.full(16, full))
+    b = _plate(2, _block((13, 16), (20, 24)), "continental", crustal_thickness_m=np.full(12, full))
+    ocean = _plate(3, _block((4, 10), (20, 24)), "oceanic")
+    c = _plate(4, _block((19, 40), (10, 34)), "continental")
+    world = _world(a, b, ocean, c)
+    continental_ledger.ensure_initialized(world)
+    i, _ = _columns(a)
+    donors = i == 13
+    donated = float(a.collect("crustal_thickness_m")[donors] @ a.node_areas_m2()[donors])
+    before = {p.plate_id: float(p.collect("crustal_thickness_m") @ p.node_areas_m2()) for p in (b, ocean, c)}
+
+    quad_tectonics._accrete_onto_survivors(a, donors, ~donors, world, overriders=[b, ocean, c])
+
+    after = {p.plate_id: float(p.collect("crustal_thickness_m") @ p.node_areas_m2()) for p in (b, ocean, c)}
+    assert after[2] == pytest.approx(before[2])
+    assert after[3] == pytest.approx(before[3])
+    assert after[4] - before[4] == pytest.approx(donated, rel=1e-9)
+    assert world.orogenic_relief_budget["no_outlet_subducted_m3"] == 0.0
+    assert world.continental_material_ledger["collision_subducted_m3"] == 0.0
+
+
+def test_old_saves_carry_their_terminal_remainder_into_the_renamed_account():
+    world = _world(_plate(1, _block((10, 12), (10, 12)), "continental"))
+    world.orogenic_relief_budget = {"no_outlet_delaminated_m3": 5.0}
+
+    budget = orogeny.ensure_budget(world)
+
+    assert "no_outlet_delaminated_m3" not in budget
+    assert budget["no_outlet_subducted_m3"] == 5.0
 
 
 def test_the_overriding_plate_sheds_its_own_roots_not_the_handed_crust():

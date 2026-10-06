@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from scipy.spatial import cKDTree
 
 from app import geometry, mantle, merge_split
@@ -743,6 +744,36 @@ def test_defragment_plates_sheds_stranded_nodes_and_logs_it():
     assert [p.plate_id for p in world.plates] == [0]
     assert world.plates[0].node_count() == before - 12
     assert events == ["Plate 0 shed 12 stranded nodes."]
+
+
+def test_dropped_fragments_and_defunct_plates_book_their_continental_material():
+    # Issue #276: dropping a stranded fragment or a plate with no territory left is a ledger
+    # sink, not an unbooked loss.
+    from app import continental_ledger
+
+    plate = _lobed_plate([(0.0, 10), (0.6, 1)], plate_id=0)
+    sliver = PlateWithLines(
+        plate_id=1,
+        frame=np.eye(3),
+        crust_type="continental",
+        lines=[ElevationLine(phi=0.0, theta=np.array([2.0, 2.1]), elevation=np.zeros(2))],
+    )
+    world = World(seed=0, plates=[plate, sliver], next_plate_id=2, node_density=1.0)
+    for p in world.plates:
+        p.set_fields_on_plate(continental_material_m=np.full(p.node_count(), 1_000.0))
+    continental_ledger.ensure_initialized(world)
+    areas = plate.accounting_areas_m2(line_spacing_rad(1.0))
+    sliver_m3 = float(1_000.0 * sliver.accounting_areas_m2(line_spacing_rad(1.0)).sum())
+
+    merge_split.defragment_plates(world)
+    stranded_m3 = float(1_000.0 * areas.sum()) - float(
+        1_000.0 * world.plates[0].accounting_areas_m2(line_spacing_rad(1.0)).sum()
+    )
+    merge_split.remove_defunct_plates(world)
+
+    assert stranded_m3 > 0.0
+    assert world.continental_material_ledger["topology_removed_m3"] == pytest.approx(stranded_m3 + sliver_m3)
+    assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * world.continental_material_ledger["initial_continental_m3"]
 
 
 def test_defragment_plates_leaves_a_contiguous_world_untouched():
