@@ -1484,6 +1484,12 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
     crust_type = plate.collect("crust_type_code")
     rho = lithosphere.node_crust_density(crust_type, plate.crust_type)
     original_hc = hc.copy()
+    # The transfer is balanced in volume, not thickness, since cells' areas differ, and each
+    # donor's continental material goes with the crust it gives up, as in
+    # `orogeny.relax_orogens`. Leaving it behind put the donor's tracer above its Hc, which
+    # erosion then clipped away unbooked (issue #276). The mobile cover stays on top.
+    areas = plate.accounting_areas_m2(line_spacing_rad(world.node_density))
+    material = plate.collect("continental_material_m")
     reason = np.zeros(len(own_points), dtype=float)
     for fault in active:
         trace = fault_world_points(fault, plate)
@@ -1536,13 +1542,21 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
             group = crust_type[affected] == kind
             donor = group & (requested < 0) & (hc[affected] > lithosphere.MIN_CRUSTAL_THICKNESS_M)
             receiver = group & (requested > 0) & (hc[affected] < lithosphere.MAX_CRUSTAL_THICKNESS_M)
-            debit = np.minimum(-requested[donor], hc[affected][donor] - lithosphere.MIN_CRUSTAL_THICKNESS_M)
-            credit = np.minimum(requested[receiver], lithosphere.MAX_CRUSTAL_THICKNESS_M - hc[affected][receiver])
-            amount = min(float(debit.sum()), float(credit.sum()))
+            donor_idx, receiver_idx = affected[donor], affected[receiver]
+            debit = np.minimum(-requested[donor], hc[donor_idx] - lithosphere.MIN_CRUSTAL_THICKNESS_M)
+            credit = np.minimum(requested[receiver], lithosphere.MAX_CRUSTAL_THICKNESS_M - hc[receiver_idx])
+            debit_volume = float(debit @ areas[donor_idx])
+            credit_volume = float(credit @ areas[receiver_idx])
+            amount = min(debit_volume, credit_volume)
             if amount <= 0:
                 continue
-            hc[affected[donor]] -= debit * (amount / debit.sum())
-            hc[affected[receiver]] += credit * (amount / credit.sum())
+            taken = debit * (amount / debit_volume)
+            given = credit * (amount / credit_volume)
+            moved = taken / hc[donor_idx] * material[donor_idx]
+            material[donor_idx] -= moved
+            material[receiver_idx] += float(moved @ areas[donor_idx]) * given / amount
+            hc[donor_idx] -= taken
+            hc[receiver_idx] += given
         # A boundary *reverse* fault sits exactly on a collision / subduction front, where
         # deform() already stamps the richer ELEV_CHANGE_COLLISION / _SUBDUCTION_ARC / _TRENCH
         # code (which also carries the oceanic-vs-continental distinction) -- relabelling it
@@ -1570,6 +1584,9 @@ def _apply_plate_fault_relief(world: "World", plate: Plate, years_myr: float, _c
         elevation=new_elevation,
         crustal_thickness_m=hc,
         elev_change_reason=new_reason,
+        continental_material_m=material,
+        # Refractory restite stays at the base; only a column thinned below it loses some.
+        restite_m=np.minimum(plate.collect("restite_m"), hc),
     )
 
 

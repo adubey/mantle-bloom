@@ -300,6 +300,47 @@ def test_fault_relief_backs_elevation_change_with_crustal_thickness():
     assert np.allclose(elev_delta, 0.0)
 
 
+@pytest.mark.parametrize("kind", [_KIND_NORMAL, _KIND_STRIKE_SLIP])
+def test_fault_relief_conserves_volume_and_carries_material_on_unequal_quad_cells(kind):
+    # Issue #276: the transfer balances volume on cells of unequal area, and a donor's
+    # continental material leaves with its crust, so no tracer is left above Hc for erosion
+    # to clip away unbooked.
+    world = generate_world(seed=2, num_plates=6, surface="quad")
+    step_world(world, 1_000_000)
+    world.boundary_faults = []
+    plate = max((p for p in world.plates if p.crust_type == "continental"), key=lambda p: p.node_count())
+    areas = plate.node_areas_m2()
+    assert np.ptp(areas) > 0.0
+    material = plate.collect("continental_material_m")
+    centre = plate.all_points_and_elevation()[0][int(np.argmax(material))]
+    local = centre @ plate.frame
+    phi0 = float(np.arcsin(np.clip(local[2], -1, 1)))
+    theta0 = float(np.arctan2(local[1], local[0]))
+    world.faults = [
+        _fault(
+            kind=kind,
+            local_phi=np.full(6, phi0),
+            local_theta=theta0 + np.linspace(-0.03, 0.03, 6),
+            dip_dir_local=np.array([np.cos(phi0 + 0.5), 0.0, np.sin(phi0 + 0.5)]),
+            slip_rate_m_per_myr=faults.SLIP_RATE_REF_M_PER_MYR,
+            lifespan_myr=1e9,
+            plate_id=plate.plate_id,
+        )
+    ]
+    hc_before = plate.collect("crustal_thickness_m")
+
+    faults._apply_plate_fault_relief(world, plate, years_myr=1.0)
+
+    hc_after = plate.collect("crustal_thickness_m")
+    material_after = plate.collect("continental_material_m")
+    assert np.any(hc_after < hc_before - 1.0)
+    assert float((hc_after - hc_before) @ areas) == pytest.approx(0.0, abs=1e-9 * float(hc_before @ areas))
+    assert float(material_after @ areas) == pytest.approx(float(material @ areas), rel=1e-12)
+    assert np.all(material_after <= hc_after + 1e-6)
+    gained = hc_after > hc_before + 1.0
+    assert np.any(material_after[gained] > material[gained])
+
+
 def test_strike_slip_fault_shears_the_field_along_strike_without_crossing_the_trace():
     # A distinctive "marker" value planted on one side of an active strike-slip trace should
     # move away from its original node and reappear one row over on the *same* side after a

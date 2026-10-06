@@ -56,7 +56,7 @@ def main() -> None:
         changed, stages = original_place(
             thickness, areas, adjacency, points, front, eligible, volume, cap, strike, root_capacity, shed
         )
-        if stages["no_outlet_delaminated_m3"] > 0.0:
+        if stages["no_outlet_subducted_m3"] > 0.0:
             fronts.append({
                 **current,
                 "spill_call": root_capacity is None and strike is None,
@@ -66,7 +66,7 @@ def main() -> None:
                 "plate_cells": int(len(thickness)),
                 "volume_m3": volume,
                 "room_m3": room,
-                "no_outlet_m3": stages["no_outlet_delaminated_m3"],
+                "no_outlet_m3": stages["no_outlet_subducted_m3"],
             })
         return changed, stages
 

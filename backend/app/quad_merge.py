@@ -21,8 +21,10 @@ onto that plate's lattice by exact area:
   is restored by one ratio per field across the new cells, so Hc/Hm and every other
   extensive field are conserved exactly by cell area. Where the absorbed plate overlapped
   the surviving one (the suture), its volume stacks onto the surviving column, with Hc
-  capped at `SUTURE_ACCRETION_MAX_HC_M` as in the line merge. That cap, and Hm's own
-  ceiling, are the only places volume can leave. Every other field follows its
+  capped at `SUTURE_ACCRETION_MAX_HC_M` as in the line merge. Hc stacked past the cap is
+  placed like suture crust, through `quad_tectonics._place_suture_crust`, with its share of
+  continental material (issue #276); only what that can't place, and Hm past its own
+  ceiling, leave. Every other field follows its
   `surface_fields.RemapClass`, with the same rules `coarsen_cells` uses; on a suture cell
   both plates' values combine that way, the survivor's weighted by its own cell area.
 """
@@ -63,8 +65,8 @@ def merge(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", 
     `omega` conserves angular momentum through the transfer: both plates' momentum before,
     solved against the merged plate's own inertia after -- the remap moves material to new
     cell centres, so the sum of the two plates' inertias isn't the merged plate's. Crust
-    removed at the suture cap takes its momentum with it; that is absorbed material stacked
-    over the cap, so it leaves moving with `absorb`."""
+    stacked over the suture cap that can't be placed elsewhere on the plate takes its
+    momentum with it; that is absorbed material, so it leaves moving with `absorb`."""
     momentum = lithosphere.angular_momentum(_inertia(keep), keep.omega) + lithosphere.angular_momentum(_inertia(absorb), absorb.omega)
     if absorb.node_count():
         lost = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3))
@@ -284,6 +286,9 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     # absorbed plate held at a cap past it, or lower one held at a floor below it (issue #256).
     hc[is_new] = np.clip(hc[is_new], lithosphere.MIN_CRUSTAL_THICKNESS_M, SUTURE_ACCRETION_MAX_HC_M)
     hm[is_new] = np.clip(hm[is_new], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+    overflow = np.where(stacked | is_new, np.maximum(uncapped_hc - hc, 0.0), 0.0)
+    capped_hc = hc.copy()
+    spread, placed = _place_stacking_overflow(keep, out, overflow, target_area)
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
     # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
@@ -298,22 +303,67 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     )
     total = own_weight + mapped_area
     residual = (own_weight * own_residual + summed(absorb_residual[source], sub_area)) / np.where(total > 0.0, total, 1.0)
-    changed = receiving | stacked
+    changed = receiving | stacked | spread
     elevation = out["elevation"]
     elevation[changed] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc, hm, density) + residual)[changed]
     out["elevation"] = elevation
     keep.set_fields_on_plate(**out)
 
     # The mass the caps removed (negative where a floor added some), as an inertia tensor at
-    # the cells it was removed from.
+    # the cells it was removed from. Overflow the placement kept on the plate didn't leave:
+    # the merged inertia already holds it where it landed.
     return lithosphere.moment_of_inertia_tensor(
         keep.all_points_and_elevation()[0],
-        uncapped_hc - hc,
+        uncapped_hc - capped_hc - placed * overflow,
         uncapped_hm - hm,
         density,
         0.0,
         area_m2=target_area,
     )
+
+
+def _place_stacking_overflow(
+    keep: "PlateWithSparseQuadPatch", out: dict[str, np.ndarray], overflow: np.ndarray, areas: np.ndarray
+) -> np.ndarray:
+    """In place on `out`: Hc stacked past the suture cap (`overflow`, thickness per cell, a new
+    cell's included) is suture crust like any other, so it goes through the same staged
+    placement (`quad_tectonics._place_suture_crust`: belts, then the far field) across the
+    merged plate's continental cells, carrying each overflowing cell's share of its
+    continental material (issue #276). What can't be placed leaves its material above the column for
+    `merge_split.merge_plates` to book. Returns the cells whose Hc the placement changed and
+    the share of `overflow` it placed, the same share on every overflowing cell."""
+    volume = float(overflow @ areas)
+    if volume <= 0.0:
+        return np.zeros(len(overflow), dtype=bool), 0.0
+    out.setdefault("continental_material_m", np.zeros(len(overflow)))
+    from . import quad_tectonics
+    from .elevation_lines import effective_is_continental_from_codes
+
+    hc = out["crustal_thickness_m"]
+    material = out["continental_material_m"]
+    continental = effective_is_continental_from_codes(out["crust_type_code"], keep.crust_type == "continental")
+    front = np.flatnonzero(overflow > 0.0)
+    share = np.divide(overflow, hc + overflow, out=np.zeros(len(hc)), where=overflow > 0.0)
+    moving = material * share
+    material_volume = float(moving @ areas)
+    material -= moving
+    hc_before = hc.copy()
+    changed, _ = quad_tectonics._place_suture_crust(
+        hc,
+        areas,
+        quad_tectonics._adjacency_matrix(keep),
+        keep.surface_nodes().local_xyz,
+        front,
+        continental if np.any(continental) else np.ones(len(hc), dtype=bool),
+        volume,
+        SUTURE_ACCRETION_MAX_HC_M,
+        None,
+        None,
+    )
+    placed = quad_tectonics._carry_material(material, areas, hc - hc_before, volume, material_volume)
+    # The unplaced share stays on the overflowing cells, in proportion.
+    material += (1.0 - placed) * moving
+    return changed, placed
 
 
 def _materialised(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch") -> list[str]:

@@ -24,12 +24,14 @@ LedgerAccount = Literal[
     "juvenile_additions_m3",
     "accreted_thickened_m3",
     "delaminated_lower_crust_m3",
+    "collision_subducted_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
     "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
     "overloaded_root_delaminated_m3",
+    "topology_removed_m3",
 ]
 
 
@@ -38,6 +40,10 @@ class ContinentalMaterialLedger(TypedDict):
     juvenile_additions_m3: float
     accreted_thickened_m3: float
     delaminated_lower_crust_m3: float
+    # Suture crust no receiver anywhere could hold (quad_tectonics._accrete_onto_survivors'
+    # terminal remainder), which goes down with the consumed plate (issue #276). Kept apart
+    # from trench subduction in `deeply_subducted_m3`.
+    collision_subducted_m3: float
     deeply_subducted_m3: float
     remelted_relaminated_returns_m3: float
     # Rifting: stretch thinning a column's footprint can't hold on the fixed-area node, plus
@@ -51,6 +57,10 @@ class ContinentalMaterialLedger(TypedDict):
     # found no receiver with room in reach (issue #288): the overloaded root sheds it instead.
     # Kept apart from suture-accretion delamination and from numerical clipping.
     overloaded_root_delaminated_m3: float
+    # Continental material on stranded fragments a plate's defragmentation drops, and on
+    # plates removed with no territory left (merge_split.py) -- geometric cleanup, not
+    # physics; kept apart so a save shows how much land it costs (issue #276).
+    topology_removed_m3: float
 
 
 LEDGER_KEYS: tuple[LedgerAccount, ...] = (
@@ -58,12 +68,14 @@ LEDGER_KEYS: tuple[LedgerAccount, ...] = (
     "juvenile_additions_m3",
     "accreted_thickened_m3",
     "delaminated_lower_crust_m3",
+    "collision_subducted_m3",
     "deeply_subducted_m3",
     "remelted_relaminated_returns_m3",
     "rift_thinned_m3",
     "numerical_unplaced_m3",
     "discarded_marine_sediment_m3",
     "overloaded_root_delaminated_m3",
+    "topology_removed_m3",
 )
 
 
@@ -152,6 +164,27 @@ def add_material_thickness(
     return volume
 
 
+def thin_with_column(world: "World", plate, hc_before: np.ndarray, account: LedgerAccount) -> float:
+    """After a whole-column thinning that kept node order (a failed rift), thin each node's
+    continental material by its Hc ratio, as `cratons.thin_with_column` does the craton, and
+    book the loss to `account`. Thickening leaves it unchanged. Returns the volume booked."""
+    ensure_initialized(world)
+    hc_before = np.asarray(hc_before, dtype=float)
+    ratio = np.clip(
+        np.divide(plate.collect("crustal_thickness_m"), hc_before, out=np.ones(len(hc_before)), where=hc_before > 0.0),
+        0.0,
+        1.0,
+    )
+    material = plate.collect("continental_material_m")
+    lost = material * (1.0 - ratio)
+    if not np.any(lost > 0.0):
+        return 0.0
+    plate.set_fields_on_plate(continental_material_m=material - lost)
+    volume = float(np.dot(lost, plate.accounting_areas_m2(line_spacing_rad(world.node_density))))
+    record(world, account, volume)
+    return volume
+
+
 def inventories(world: "World") -> dict[str, float]:
     """Return current live inventories plus the persisted source/sink accounts."""
     ensure_initialized(world)
@@ -186,11 +219,13 @@ def balance_error_m3(world: "World", *, surface: float | None = None) -> float:
     sinks_and_live = (
         surface
         + ledger["delaminated_lower_crust_m3"]
+        + ledger["collision_subducted_m3"]
         + ledger["deeply_subducted_m3"]
         + ledger["rift_thinned_m3"]
         + ledger["numerical_unplaced_m3"]
         + ledger["discarded_marine_sediment_m3"]
         + ledger["overloaded_root_delaminated_m3"]
+        + ledger["topology_removed_m3"]
     )
     return sinks_and_live - sources
 
