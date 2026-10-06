@@ -148,6 +148,10 @@ RIVER_BLUR_RADIUS_PX = 0.6
 # just expressed directly in physical channel_width now that color is a per-render percentile
 # rank rather than a direct function of it.
 RIVER_VISIBLE_MIN_WIDTH_M = 100.0
+# General-purpose terrain/biome maps omit short drainage networks unless they have at least
+# this many tributaries. The River Inspector intentionally remains exhaustive.
+RIVER_VISIBLE_MIN_NODES = 30
+RIVER_VISIBLE_MIN_TRIBUTARIES = 5
 # The floor on the percentile-rank color fraction above (RIVER_COLOR_BLEND_MIN_FRACTION) plus
 # (1 - floor) * (this segment's own percentile rank, see RIVER_COLOR_RGB's own comment) -- so
 # even this render's own narrowest visible channel still reads as a pale, visible trickle
@@ -1801,6 +1805,10 @@ def _render_biome_view(world: World, projection: str, width: int, height: int, v
     _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
 
     image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
+    image = _draw_rivers(
+        image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
+        hide_minor_networks=True,
+    )
     image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
 
     return _encode_image(image)
@@ -1897,7 +1905,10 @@ def _render_combined_view(world: World, projection: str, width: int, height: int
     _fill_rects(alpha_buf, centers, half_w, half_h, cell_alpha.reshape(-1, 1))
 
     image = Image.fromarray(pixels, mode="RGB").filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
-    image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    image = _draw_rivers(
+        image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
+        hide_minor_networks=True,
+    )
     image.putalpha(Image.fromarray(alpha_buf[:, :, 0], mode="L"))
 
     return _encode_image(image)
@@ -2482,7 +2493,13 @@ def _percentile_rank(values: np.ndarray) -> np.ndarray:
     return rank / max(len(values) - 1, 1)
 
 
-def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _river_network_is_visible(river: hydrology.RiverInfo) -> bool:
+    """Whether a network belongs on terrain/biome maps. The River Inspector does not use
+    this filter and continues to show every network."""
+    return len(river.member_idx) >= RIVER_VISIBLE_MIN_NODES or river.num_tributaries >= RIVER_VISIBLE_MIN_TRIBUTARIES
+
+
+def _rivers_to_draw(world: World, hide_minor_networks: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Selects which river segments the general-purpose map views draw, how strongly each
     tints toward RIVER_COLOR_RGB, and how much (if at all) each widens past 1px.
 
@@ -2512,6 +2529,12 @@ def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
 
     visible_mask = hydro.is_river & (hydro.flow_target >= 0) & (channel_width >= RIVER_VISIBLE_MIN_WIDTH_M)
+    if hide_minor_networks:
+        visible_members = np.zeros(len(hydro.points), dtype=bool)
+        for river in hydrology.group_rivers(hydro):
+            if _river_network_is_visible(river):
+                visible_members[river.member_idx] = True
+        visible_mask &= visible_members
     if not np.any(visible_mask):
         return np.empty(0, dtype=np.int64), np.empty(0), np.empty(0)
     candidates = np.where(visible_mask)[0]
@@ -2526,7 +2549,8 @@ def _rivers_to_draw(world: World) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def _draw_rivers(
-    image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray
+    image: Image.Image, world: World, projection: str, scale: float, offset_x: float, offset_y: float, pixel_scale: float, view_rotation: np.ndarray,
+    hide_minor_networks: bool = False,
 ) -> Image.Image:
     """Draws each selected river segment (see _rivers_to_draw for which segments and how
     strongly each tints toward RIVER_COLOR_RGB) as a short line from a river node to its own
@@ -2543,7 +2567,7 @@ def _draw_rivers(
     hydro = world.hydrology_cache
     if hydro is None:
         return image
-    river_idx, color_alpha, width_frac = _rivers_to_draw(world)
+    river_idx, color_alpha, width_frac = _rivers_to_draw(world, hide_minor_networks=hide_minor_networks)
     if len(river_idx) == 0:
         return image
     target_idx = hydro.flow_target[river_idx]
@@ -2801,7 +2825,10 @@ def render_png(
         # jaggies -- before rivers/graticule go on top -- makes coastlines and contours match
         # what "Elevation & Biome" shows. "plates" stays un-blurred: it's a categorical mosaic.
         image = image.filter(ImageFilter.GaussianBlur(radius=CELL_BLUR_RADIUS_PX * pixel_scale))
-    image = _draw_rivers(image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation)
+    image = _draw_rivers(
+        image, world, projection, scale, offset_x, offset_y, pixel_scale, view_rotation,
+        hide_minor_networks=view == "elevation",
+    )
     draw = ImageDraw.Draw(image)
 
     if view in ("plates", "platesDetail"):
@@ -2886,8 +2913,8 @@ def stream_animation_mp4(
     and volcanism's per-step eruption-chance roll all key off individual step calls, so a
     coarser render cadence (a bigger `steps_per_frame`) still simulates at the same
     granularity as `step_years` alone would, it just skips rendering most of the intermediate
-    states. `steps_per_frame=1` (a fresh animation's default) makes every frame a real step,
-    same as before this distinction existed. So this permanently advances `world` by
+    states. `steps_per_frame=1` makes every frame a real step, while the UI defaults to 10.
+    So this permanently advances `world` by
     `(num_frames - 1) * steps_per_frame * step_years` years total (see main.py's
     `/world/animate` -- deliberately not a side-effect-free preview, same "the map really did
     move forward" semantics manually clicking Step that many times would have).

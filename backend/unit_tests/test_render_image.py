@@ -709,7 +709,11 @@ def test_draw_rivers_wide_segment_has_a_dimmer_halo_than_its_own_core(monkeypatc
         plates_in_order=[],
         channel_width=np.array([5000.0, 0.0]),
     )
-    monkeypatch.setattr(render_image, "_rivers_to_draw", lambda w: (np.array([0]), np.array([1.0]), np.array([1.0])))
+    monkeypatch.setattr(
+        render_image,
+        "_rivers_to_draw",
+        lambda w, hide_minor_networks=False: (np.array([0]), np.array([1.0]), np.array([1.0])),
+    )
 
     image = Image.new("RGB", (300, 200), render_image.BACKGROUND_RGB)
     image = render_image._draw_rivers(image, world, "behrmann", 50.0, 150.0, 100.0, 10.0, np.eye(3))
@@ -800,6 +804,26 @@ def test_rivers_to_draw_treats_a_stale_pre_channel_width_cache_as_absent():
     assert len(src_idx2) == 0
     assert len(color_alpha2) == 0
     assert len(width_frac2) == 0
+
+
+@pytest.mark.parametrize(
+    ("num_nodes", "num_tributaries", "expected"),
+    [
+        (29, 4, False),
+        (30, 0, True),
+        (1, 5, True),
+    ],
+)
+def test_river_network_visibility_requires_30_nodes_or_5_tributaries(num_nodes, num_tributaries, expected):
+    river = hydrology.RiverInfo(
+        member_idx=np.arange(num_nodes),
+        mouth_idx=0,
+        mouth_type="ocean",
+        flow_rate=1.0,
+        speed=1.0,
+        num_tributaries=num_tributaries,
+    )
+    assert render_image._river_network_is_visible(river) is expected
 
 
 def test_rivers_to_draw_draws_every_wide_enough_network_regardless_of_count():
