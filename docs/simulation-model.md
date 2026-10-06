@@ -977,8 +977,19 @@ restite share of every shed suture root); `relief_mobile_excess_m3`, `collapse_t
 provenance in `delaminated_lower_crust_m3`, and the terminal remainder's in
 `collision_subducted_m3`.
 
-These are phases 1 and 2. The long-run recalibration of #276 is phase 3. The line engine
-and the quad merge's stacking cap are unchanged.
+Issue #276 recalibrated these against long runs. `bin/debug/calibrate_collision_sinks.py`
+steps a seed or a save and reports the retreat-processed loss (the share of donated suture
+crust that delaminates or subducts) apart from the whole-inventory loss, compounded per step,
+with any constant overridable for sensitivity sweeps. Earth's orogenic lower-crust
+delamination is ~1.1 km^3/yr (Clift, Vannucchi & Morgan 2009), ~0.015% of its continental
+inventory per Myr. On the #272 save, halving `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` cut
+collision loss from 0.21 to 0.15%/Myr; lowering `DELAMINATION_RATE_PER_MYR`, widening the
+belts or escape, or changing the anatexis constants or `DELAMINATION_MIN_ROOT_M` moved it less
+or not at all, and a higher Hc cap would pass Earth's ~80 km maximum. Over 500 Myr on seeds
+1-6, collision keeps 95-99.7% of donated crust and loses 1-14% of the starting inventory.
+That save still loses ~0.15%/Myr to collision because ~3% of its whole inventory passes
+through suture retreat every Myr (the quad rotation pile-up, issue #289), not because any
+one donation loses much. The line engine is unchanged.
 
 <a id="line-regularization"></a>
 ## Line regularization (`elevation_lines.py`)
