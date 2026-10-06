@@ -161,33 +161,32 @@ def test_suture_overlap_stacks_crust_and_conserves_it_below_the_cap():
     assert max(hc.values()) <= SUTURE_ACCRETION_MAX_HC_M
 
 
-def test_suture_cap_is_the_only_volume_that_leaves(monkeypatch):
+def test_crust_stacked_past_the_suture_cap_is_placed_not_lost(monkeypatch):
+    # Issue #276: Hc stacked past the cap goes through the staged suture placement with its
+    # continental material, so a merge with room elsewhere on the plate loses none of either.
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
     keep.set_fields_on_plate(crustal_thickness_m=np.full(keep.node_count(), 0.8 * SUTURE_ACCRETION_MAX_HC_M))
+    for plate in (keep, absorb):
+        plate.set_fields_on_plate(continental_material_m=plate.collect("crustal_thickness_m"))
     before = _volume([keep, absorb], "crustal_thickness_m")
-    old = dict(zip(map(int, keep.cell_keys), keep.collect("crustal_thickness_m")))
+    material_before = _volume([keep, absorb], "continental_material_m")
 
     quad_merge.merge(keep, absorb, np.zeros((0, 3)))
 
     hc = keep.collect("crustal_thickness_m")
-    capped = np.isclose(hc, SUTURE_ACCRETION_MAX_HC_M)
-    assert np.any(capped)
-    assert np.all([int(k) in old for k in keep.cell_keys[capped]])
-    lost = before - _volume([keep], "crustal_thickness_m")
-    assert lost > 0.0
-    # Exactly the stacked volume above the cap: the uncapped remap of this pair minus what
-    # the capped columns hold.
+    assert np.all(hc <= SUTURE_ACCRETION_MAX_HC_M + 1e-6)
+    assert _volume([keep], "crustal_thickness_m") == pytest.approx(before, rel=1e-9)
+    assert _volume([keep], "continental_material_m") == pytest.approx(material_before, rel=1e-9)
+    assert np.all(keep.collect("continental_material_m") <= hc + 1e-6)
+    # Without the cap the same pair stacks past it, so there was overflow to place.
     keep2 = _cap(1, np.eye(3), _direction(0.0))
     keep2.set_fields_on_plate(crustal_thickness_m=np.full(keep2.node_count(), 0.8 * SUTURE_ACCRETION_MAX_HC_M))
     absorb2 = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
     cap = SUTURE_ACCRETION_MAX_HC_M
     monkeypatch.setattr(quad_merge, "SUTURE_ACCRETION_MAX_HC_M", np.inf)
     quad_merge.merge(keep2, absorb2, np.zeros((0, 3)))
-    uncapped = keep2.collect("crustal_thickness_m")
-    assert np.array_equal(keep2.cell_keys, keep.cell_keys)
-    excess = np.sum(np.maximum(uncapped - cap, 0.0) * keep.node_areas_m2())
-    assert lost == pytest.approx(excess, rel=1e-9)
+    assert np.any(keep2.collect("crustal_thickness_m") > cap)
 
 
 @pytest.mark.parametrize("hc, hm", [

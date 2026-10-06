@@ -21,8 +21,10 @@ onto that plate's lattice by exact area:
   is restored by one ratio per field across the new cells, so Hc/Hm and every other
   extensive field are conserved exactly by cell area. Where the absorbed plate overlapped
   the surviving one (the suture), its volume stacks onto the surviving column, with Hc
-  capped at `SUTURE_ACCRETION_MAX_HC_M` as in the line merge. That cap, and Hm's own
-  ceiling, are the only places volume can leave. Every other field follows its
+  capped at `SUTURE_ACCRETION_MAX_HC_M` as in the line merge. Hc stacked past the cap is
+  placed like suture crust, through `quad_tectonics._place_suture_crust`, with its share of
+  continental material (issue #276); only what that can't place, and Hm past its own
+  ceiling, leave. Every other field follows its
   `surface_fields.RemapClass`, with the same rules `coarsen_cells` uses; on a suture cell
   both plates' values combine that way, the survivor's weighted by its own cell area.
 """
@@ -284,6 +286,7 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     # absorbed plate held at a cap past it, or lower one held at a floor below it (issue #256).
     hc[is_new] = np.clip(hc[is_new], lithosphere.MIN_CRUSTAL_THICKNESS_M, SUTURE_ACCRETION_MAX_HC_M)
     hm[is_new] = np.clip(hm[is_new], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
+    spread = _place_stacking_overflow(keep, out, np.where(stacked | is_new, uncapped_hc - hc, 0.0), target_area)
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
     # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
@@ -298,7 +301,7 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     )
     total = own_weight + mapped_area
     residual = (own_weight * own_residual + summed(absorb_residual[source], sub_area)) / np.where(total > 0.0, total, 1.0)
-    changed = receiving | stacked
+    changed = receiving | stacked | spread
     elevation = out["elevation"]
     elevation[changed] = rheology.clip_elevation_bounds(lithosphere.isostatic_elevation(hc, hm, density) + residual)[changed]
     out["elevation"] = elevation
@@ -314,6 +317,50 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
         0.0,
         area_m2=target_area,
     )
+
+
+def _place_stacking_overflow(
+    keep: "PlateWithSparseQuadPatch", out: dict[str, np.ndarray], overflow: np.ndarray, areas: np.ndarray
+) -> np.ndarray:
+    """In place on `out`: Hc stacked past the suture cap (`overflow`, thickness per cell, a new
+    cell's included) is suture crust like any other, so it goes through the same staged
+    placement (`quad_tectonics._place_suture_crust`: belts, then the far field) across the
+    merged plate's continental cells, carrying each overflowing cell's share of its
+    continental material (issue #276). What can't be placed leaves its material above the column for
+    `merge_split.merge_plates` to book. Returns the cells whose Hc the placement changed."""
+    overflow = np.maximum(overflow, 0.0)
+    volume = float(overflow @ areas)
+    if volume <= 0.0:
+        return np.zeros(len(overflow), dtype=bool)
+    out.setdefault("continental_material_m", np.zeros(len(overflow)))
+    from . import quad_tectonics
+    from .elevation_lines import effective_is_continental_from_codes
+
+    hc = out["crustal_thickness_m"]
+    material = out["continental_material_m"]
+    continental = effective_is_continental_from_codes(out["crust_type_code"], keep.crust_type == "continental")
+    front = np.flatnonzero(overflow > 0.0)
+    share = np.divide(overflow, hc + overflow, out=np.zeros(len(hc)), where=overflow > 0.0)
+    moving = material * share
+    material_volume = float(moving @ areas)
+    material -= moving
+    hc_before = hc.copy()
+    changed, _ = quad_tectonics._place_suture_crust(
+        hc,
+        areas,
+        quad_tectonics._adjacency_matrix(keep),
+        keep.surface_nodes().local_xyz,
+        front,
+        continental if np.any(continental) else np.ones(len(hc), dtype=bool),
+        volume,
+        SUTURE_ACCRETION_MAX_HC_M,
+        None,
+        None,
+    )
+    placed = quad_tectonics._carry_material(material, areas, hc - hc_before, volume, material_volume)
+    # The unplaced share stays on the overflowing cells, in proportion.
+    material += (1.0 - placed) * moving
+    return changed
 
 
 def _materialised(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch") -> list[str]:

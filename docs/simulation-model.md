@@ -899,7 +899,8 @@ over-thickened crust of a suture or a standing orogen goes through these process
      own continental material and cratonic crust in proportion; the incoming crust and its
      provenance are all placed. A belt cell sheds at most `DELAMINATION_RATE_PER_MYR` (5%)
      of its root per Myr, integrated exactly over the step, and a front frees at most
-     `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` (20%) of its donation this way. Fronts that
+     `SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION` (10%, calibrated in issue #276; see below)
+     of its donation this way. Fronts that
      share a belt share its roots.
   4. **Far field.** It fills the nearest remaining capacity across the plate, one graph hop at
      a time.
@@ -1458,7 +1459,9 @@ Sites that know their mechanism book it directly (`deform_columns`,
 `cratons.balance_error_m3` checks seeded + formed = live + destroyed. Boundary consumption
 also books the continental-derived material it removes into the continental-material ledger
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
-accretion carries `continental_material_m` onto the cells that receive the crust. Dropping a
+accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for
+crust stacked past the suture cap; material a merge still can't place is booked as
+`collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). Dropping a
 stranded fragment in defragmentation, or a plate with no territory left, books its material
 as `topology_removed_m3`, geometric cleanup rather than physics (issue #276). Fault relief
 moves each donor's material with the crust it gives up, balancing the transfer by cell

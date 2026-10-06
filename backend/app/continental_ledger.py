@@ -164,6 +164,27 @@ def add_material_thickness(
     return volume
 
 
+def thin_with_column(world: "World", plate, hc_before: np.ndarray, account: LedgerAccount) -> float:
+    """After a whole-column thinning that kept node order (a failed rift), thin each node's
+    continental material by its Hc ratio, as `cratons.thin_with_column` does the craton, and
+    book the loss to `account`. Thickening leaves it unchanged. Returns the volume booked."""
+    ensure_initialized(world)
+    hc_before = np.asarray(hc_before, dtype=float)
+    ratio = np.clip(
+        np.divide(plate.collect("crustal_thickness_m"), hc_before, out=np.ones(len(hc_before)), where=hc_before > 0.0),
+        0.0,
+        1.0,
+    )
+    material = plate.collect("continental_material_m")
+    lost = material * (1.0 - ratio)
+    if not np.any(lost > 0.0):
+        return 0.0
+    plate.set_fields_on_plate(continental_material_m=material - lost)
+    volume = float(np.dot(lost, plate.accounting_areas_m2(line_spacing_rad(world.node_density))))
+    record(world, account, volume)
+    return volume
+
+
 def inventories(world: "World") -> dict[str, float]:
     """Return current live inventories plus the persisted source/sink accounts."""
     ensure_initialized(world)

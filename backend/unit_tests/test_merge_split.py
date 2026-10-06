@@ -254,6 +254,35 @@ def test_merge_plates_leaves_one_plate_with_nonzero_nodes():
     assert world.plates[0].node_count() > 0
 
 
+def test_merge_plates_books_stacked_material_it_could_not_place(monkeypatch):
+    # Issue #276: material a merge leaves above its column (stacked past the suture cap with
+    # nowhere to go) is booked as collision subduction, not left for erosion to clip.
+    from app import continental_ledger
+
+    theta = np.linspace(-0.01, 0.01, 5)
+    keep = _test_plate(0, [1.0, 0.0, 0.0], "continental", theta, np.zeros(5))
+    seed_absorb = geometry.rotate_vectors(
+        np.array([1.0, 0.0, 0.0])[None, :], axis=np.array([0.0, 0.0, 1.0]), angle=merge_split.MERGE_CONTACT_DISTANCE_RAD * 0.3
+    )[0]
+    absorb = _test_plate(1, seed_absorb, "continental", theta, np.full(5, 50.0))
+    world = World(seed=0, plates=[keep, absorb], next_plate_id=2)
+    continental_ledger.ensure_initialized(world)
+    real_merge = type(keep).merge_with
+
+    def merge_leaving_excess(self, *args):
+        real_merge(self, *args)
+        self.set_fields_on_plate(continental_material_m=self.collect("crustal_thickness_m") + 100.0)
+
+    monkeypatch.setattr(type(keep), "merge_with", merge_leaving_excess)
+
+    merge_split.merge_plates(world, id_keep=0, id_absorb=1)
+
+    merged = world.plates[0]
+    assert np.allclose(merged.collect("continental_material_m"), merged.collect("crustal_thickness_m"))
+    expected = 100.0 * float(merged.accounting_areas_m2(line_spacing_rad(world.node_density)).sum())
+    assert world.continental_material_ledger["collision_subducted_m3"] == pytest.approx(expected)
+
+
 def test_merge_plates_does_not_claim_another_plates_territory():
     """Old bug: merge_plates' is_owned only checked distance to the merging pair's own old
     points, so if either parent carried a stray far-flung node (as a plate that's already
@@ -443,6 +472,26 @@ def test_a_failed_rift_thins_the_mobile_cover_with_its_column(monkeypatch):
     np.testing.assert_allclose(plate.collect("mobile_cover_continental_m"), 50.0 * ratio)
     assert world.mobile_cover_ledger["rift_thinned_m3"] > 0.0
     assert abs(mobile_cover.balance_error_m3(world)) <= 1e-9 * mobile_cover.surface_volume_m3(world)
+
+
+def test_a_failed_rift_thins_continental_material_with_its_column(monkeypatch):
+    """Issue #276: the failed-rift branch thins the continental tracer with the column too,
+    booked as `rift_thinned_m3`, rather than leaving it above Hc for erosion to clip."""
+    from app import continental_ledger
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)
+    world, plate = _engineered_split_world()
+    hc_before = plate.collect("crustal_thickness_m")
+    plate.set_fields_on_plate(continental_material_m=0.5 * hc_before)
+    continental_ledger.ensure_initialized(world)
+
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+    hc = plate.collect("crustal_thickness_m")
+    assert np.any(hc < hc_before)
+    np.testing.assert_allclose(plate.collect("continental_material_m"), 0.5 * hc)
+    assert world.continental_material_ledger["rift_thinned_m3"] > 0.0
+    assert abs(continental_ledger.balance_error_m3(world)) <= 1e-9 * continental_ledger.surface_volume_m3(world)
 
 
 def test_apply_failed_rift_thins_a_band_into_an_aulacogen_not_the_whole_plate():

@@ -577,6 +577,13 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
     world.plates = [p for p in world.plates if p.plate_id != id_absorb]
+    # Continental material stacked past the suture cap that the merge couldn't place leaves
+    # with the crust that carried it, booked as collision subduction (issue #276).
+    material = keep.collect("continental_material_m")
+    excess = np.maximum(material - keep.collect("crustal_thickness_m"), 0.0)
+    if np.any(excess > 0.0):
+        keep.set_fields_on_plate(continental_material_m=material - excess)
+        continental_ledger.record(world, "collision_subducted_m3", float(excess @ keep.accounting_areas_m2(spacing_rad)))
     if world.debug_diagnostics:
         phase_budget.record_snapshots(world, keep, "plate_merge", before, phase_budget.snapshot(keep, spacing_rad))
 
@@ -685,6 +692,7 @@ def maybe_split_plate(world: "World", plate: Plate) -> tuple[Plate, Plate] | Non
             failed_rift(cut_normal, line_spacing_rad(world.node_density))
             cratons.thin_with_column(world, plate, hc_before, "rifted_m3")
             mobile_cover.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
+            continental_ledger.thin_with_column(world, plate, hc_before, "rift_thinned_m3")
             if world.debug_diagnostics:
                 after = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
                 phase_budget.record_snapshots(world, plate, "failed_rift_thinning", before, after)

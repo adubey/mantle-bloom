@@ -109,8 +109,13 @@ SUTURE_ESCAPE_EXTRA_HOPS = 4 * SUTURE_ACCRETION_SPREAD_NODES
 SUTURE_ESCAPE_MAX_ANGLE_DEG = 45.0
 # Only then may part of the donation delaminate, and only from the belts' eligible dense roots
 # (`orogeny.delamination_capacity_m`). At most this share of any one donation, which also
-# bounds cumulative suture delamination to this share of all donated crust.
-SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION = 0.20
+# bounds cumulative suture delamination to this share of all donated crust. Calibrated in
+# issue #276 against Earth's ~1.1 km^3/yr of orogenic lower-crust delamination (Clift,
+# Vannucchi & Morgan 2009), ~0.015% of the continental inventory per Myr: at 0.20, the seeds
+# with the most suture churn delaminated ~0.05%/Myr over 500 Myr and the #272 save ~0.3%/Myr;
+# 0.10 cuts both by up to ~40% and leaves the quieter seeds' rates (~0.01%/Myr) about where
+# they were. See `bin/debug/calibrate_collision_sinks.py`.
+SUTURE_ACCRETION_MAX_DELAMINATION_FRACTION = 0.10
 
 
 def _adjacency_matrix(plate: "PlateWithSparseQuadPatch") -> csr_matrix:
