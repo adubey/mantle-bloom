@@ -65,8 +65,8 @@ def merge(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch", 
     `omega` conserves angular momentum through the transfer: both plates' momentum before,
     solved against the merged plate's own inertia after -- the remap moves material to new
     cell centres, so the sum of the two plates' inertias isn't the merged plate's. Crust
-    removed at the suture cap takes its momentum with it; that is absorbed material stacked
-    over the cap, so it leaves moving with `absorb`."""
+    stacked over the suture cap that can't be placed elsewhere on the plate takes its
+    momentum with it; that is absorbed material, so it leaves moving with `absorb`."""
     momentum = lithosphere.angular_momentum(_inertia(keep), keep.omega) + lithosphere.angular_momentum(_inertia(absorb), absorb.omega)
     if absorb.node_count():
         lost = _transfer(keep, absorb, np.asarray(other_points_xyz, dtype=float).reshape(-1, 3))
@@ -286,7 +286,9 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     # absorbed plate held at a cap past it, or lower one held at a floor below it (issue #256).
     hc[is_new] = np.clip(hc[is_new], lithosphere.MIN_CRUSTAL_THICKNESS_M, SUTURE_ACCRETION_MAX_HC_M)
     hm[is_new] = np.clip(hm[is_new], lithosphere.MIN_MANTLE_LITHOSPHERE_THICKNESS_M, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
-    spread = _place_stacking_overflow(keep, out, np.where(stacked | is_new, uncapped_hc - hc, 0.0), target_area)
+    overflow = np.where(stacked | is_new, np.maximum(uncapped_hc - hc, 0.0), 0.0)
+    capped_hc = hc.copy()
+    spread, placed = _place_stacking_overflow(keep, out, overflow, target_area)
 
     # Elevation: isostasy from the new column plus the carried erosion/texture residual, as in
     # `coarsen_cells`; on a stacked column both plates' residuals blend by area.
@@ -308,10 +310,11 @@ def _transfer(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatc
     keep.set_fields_on_plate(**out)
 
     # The mass the caps removed (negative where a floor added some), as an inertia tensor at
-    # the cells it was removed from.
+    # the cells it was removed from. Overflow the placement kept on the plate didn't leave:
+    # the merged inertia already holds it where it landed.
     return lithosphere.moment_of_inertia_tensor(
         keep.all_points_and_elevation()[0],
-        uncapped_hc - hc,
+        uncapped_hc - capped_hc - placed * overflow,
         uncapped_hm - hm,
         density,
         0.0,
@@ -327,11 +330,11 @@ def _place_stacking_overflow(
     placement (`quad_tectonics._place_suture_crust`: belts, then the far field) across the
     merged plate's continental cells, carrying each overflowing cell's share of its
     continental material (issue #276). What can't be placed leaves its material above the column for
-    `merge_split.merge_plates` to book. Returns the cells whose Hc the placement changed."""
-    overflow = np.maximum(overflow, 0.0)
+    `merge_split.merge_plates` to book. Returns the cells whose Hc the placement changed and
+    the share of `overflow` it placed, the same share on every overflowing cell."""
     volume = float(overflow @ areas)
     if volume <= 0.0:
-        return np.zeros(len(overflow), dtype=bool)
+        return np.zeros(len(overflow), dtype=bool), 0.0
     out.setdefault("continental_material_m", np.zeros(len(overflow)))
     from . import quad_tectonics
     from .elevation_lines import effective_is_continental_from_codes
@@ -360,7 +363,7 @@ def _place_stacking_overflow(
     placed = quad_tectonics._carry_material(material, areas, hc - hc_before, volume, material_volume)
     # The unplaced share stays on the overflowing cells, in proportion.
     material += (1.0 - placed) * moving
-    return changed
+    return changed, placed
 
 
 def _materialised(keep: "PlateWithSparseQuadPatch", absorb: "PlateWithSparseQuadPatch") -> list[str]:

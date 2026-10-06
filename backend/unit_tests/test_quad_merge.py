@@ -308,9 +308,11 @@ def test_merge_conserves_angular_momentum_against_the_merged_plates_own_inertia(
 
 
 def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentum():
+    # Both plates at the cap, so overflow has nowhere on the merged plate to go and leaves.
     keep = _cap(1, np.eye(3), _direction(0.0))
     absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
-    keep.set_fields_on_plate(crustal_thickness_m=np.full(keep.node_count(), 0.95 * SUTURE_ACCRETION_MAX_HC_M))
+    for plate in (keep, absorb):
+        plate.set_fields_on_plate(crustal_thickness_m=np.full(plate.node_count(), SUTURE_ACCRETION_MAX_HC_M))
     keep.set_omega(np.array([0.0, 0.0, 1e-9]))
     absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
     momentum = _momentum(keep, absorb)
@@ -323,6 +325,24 @@ def test_crust_removed_at_the_suture_cap_leaves_with_the_absorbed_plates_momentu
     retained = momentum - lost @ absorb.omega
     assert np.allclose(quad_merge._inertia(keep) @ keep.omega, retained, rtol=1e-12, atol=0.0)
     assert not np.allclose(retained, momentum, rtol=1e-6, atol=0.0)
+
+
+def test_overflow_placed_on_the_merged_plate_keeps_its_momentum():
+    # PR #306 review: Hc stacked past the cap and placed elsewhere on the merged plate never
+    # left it, so it mustn't be subtracted as lost momentum -- with room for all of it, the
+    # merge conserves both plates' momentum outright.
+    keep = _cap(1, np.eye(3), _direction(0.0))
+    absorb = _cap(2, ROTATED, _direction(2 * RADIUS - 3 * SPACING))
+    keep.set_fields_on_plate(crustal_thickness_m=np.full(keep.node_count(), 0.8 * SUTURE_ACCRETION_MAX_HC_M))
+    keep.set_omega(np.array([0.0, 0.0, 1e-9]))
+    absorb.set_omega(np.array([2e-9, 0.0, 0.0]))
+    momentum = _momentum(keep, absorb)
+    before = _volume([keep, absorb], "crustal_thickness_m")
+
+    quad_merge.merge(keep, absorb, np.zeros((0, 3)))
+
+    assert _volume([keep], "crustal_thickness_m") == pytest.approx(before, rel=1e-9)
+    assert np.allclose(quad_merge._inertia(keep) @ keep.omega, momentum, rtol=1e-12, atol=0.0)
 
 
 def _overlapping_pair():
