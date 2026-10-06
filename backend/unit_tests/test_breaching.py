@@ -312,3 +312,29 @@ def test_only_the_share_of_a_cut_in_cover_carves_at_the_weak_rate():
     # In 100 kyr the river gets through the cover in 1.5 kyr, then cuts bedrock for the rest.
     limit = breaching._carve_limit_m(np.array([0.0, 15.0, 500.0]), np.full(3, rock), 0.1)
     np.testing.assert_allclose(limit, [rock * 0.1, 15.0 + (0.1 - 15.0 / weak) * rock, weak * 0.1])
+
+
+def test_cover_above_an_existing_channel_floor_does_not_soften_the_cut():
+    # Review repro (#301, fifth pass): the rim's 280 m channel leaves its passage 20 m above
+    # the pit, far below its 15 m of surface cover. The remaining cut is all bedrock, so the
+    # cover changes nothing: 20 m of ordinary rock exceeds a 50 kyr step's 15 m budget.
+    z = np.array([400.0, 0.0, 300.0, -50.0])
+    ocean = np.array([False, False, False, True])
+    nb = np.array([[1, 1], [0, 2], [1, 3], [2, 2]])
+    channel = np.array([0.0, 0.0, 280.0, 0.0])
+    rate = breaching.bedrock_carve_rate_m_per_myr(np.zeros(4))
+    results = [
+        breaching.breach_depressions(z, ocean, nb, channel, rate, 50_000, mobile_cover_m=np.array([0.0, 0.0, cover, 0.0]))
+        for cover in (0.0, 15.0)
+    ]
+    for result in results:
+        assert result.cost_m[1] == pytest.approx(20.0, abs=1e-3)
+        assert result.breached_pits.tolist() == []
+        assert not result.notch_m.any()
+
+    # Cover thicker than the channel is deep still has some left below the passage: 300 m of
+    # cover over a 280 m channel leaves 20 m, so the same cut is all cover and fits.
+    thick = breaching.breach_depressions(z, ocean, nb, channel, rate, 50_000, mobile_cover_m=np.array([0.0, 0.0, 300.0, 0.0]))
+    weak, rock = breaching.BREACH_WEAK_CARVE_M_PER_MYR, breaching.BREACH_REFERENCE_CARVE_M_PER_MYR
+    assert thick.cost_m[1] == pytest.approx(20.0 / weak * rock, abs=1e-3)
+    assert thick.breached_pits.tolist() == [1]

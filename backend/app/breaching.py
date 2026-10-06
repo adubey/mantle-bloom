@@ -293,7 +293,9 @@ def breach_depressions(
     not a separate path search per pit.
 
     `carve_rate` is each node's bedrock incision rate (`bedrock_carve_rate_m_per_myr`), and
-    `mobile_cover_m` the loose cover on top of it, which carves at the weak-rock rate.
+    `mobile_cover_m` the loose cover on top of it, which carves at the weak-rock rate. Only
+    the cover below the passage counts: a channel or notch deeper than the cover has already
+    cut through it.
 
     `prior_notch_m` is the breach notch persisted from earlier steps. It lowers the passage
     along with `channel_depth`. `notch_m` in the result is only this step's new cut.
@@ -315,7 +317,11 @@ def breach_depressions(
         depth = depth + np.clip(np.asarray(prior_notch_m, dtype=float), 0.0, None)
     channel_passage = channel_passage_elevation(elevation, depth, neighbor_idx)
     bedrock_rate = np.asarray(carve_rate, dtype=float)
-    cover = np.zeros(n) if mobile_cover_m is None else np.clip(np.asarray(mobile_cover_m, dtype=float), 0.0, None)
+    # Cover is the top of the column, at the cell's mean surface, but a cut starts at the
+    # passage, which an existing channel or notch has already lowered. Only the cover left
+    # below the passage is still there to cut.
+    surface_cover = np.zeros(n) if mobile_cover_m is None else np.clip(np.asarray(mobile_cover_m, dtype=float), 0.0, None)
+    cover = np.clip(surface_cover - (elevation - channel_passage), 0.0, None)
     cost, next_hop = least_climb_to_ocean(channel_passage, is_ocean, neighbor_idx, bedrock_rate, cover)
     notch = np.zeros(n)
     empty = np.zeros(0, dtype=np.int64)

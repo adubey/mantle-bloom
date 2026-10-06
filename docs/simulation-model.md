@@ -3541,9 +3541,10 @@ thousand land nodes, a real chunk of a step's total cost), so `erosion.py` compu
   of truth for both where a lake *is* and where its water *goes*.
 - **Depression breaching** (`breaching.py`, issue #297): before the hierarchy is built, one
   multi-source Dijkstra from the ocean gives every node the least total climb its water must
-  make to reach the sea. Each climb costs the time to cut it: through the cell's loose mobile
-  cover (`mobile_cover_m`) at the weak-rock rate, then bedrock at the cell's own rate (slower
-  on cratons). Water crosses a cell at its *passage* elevation: its centre minus its
+  make to reach the sea. Each climb costs the time to cut it: through whatever of the cell's
+  loose mobile cover (`mobile_cover_m`) is left below its passage, at the weak-rock rate,
+  then bedrock at the cell's own rate (slower on cratons). A channel deeper than the cover
+  has already cut through it. Water crosses a cell at its *passage* elevation: its centre minus its
   `channel_depth` and any persisted breach notch, but never below its lowest neighbour.
   A pit is breached when three things hold:
   - its climb fits this step's carving budget: 10-100 m per 100 kyr, from craton to loose
