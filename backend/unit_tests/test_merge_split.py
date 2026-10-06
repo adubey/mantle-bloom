@@ -422,6 +422,28 @@ def test_maybe_split_plate_with_failed_outcome_returns_none_and_resets_cooldown(
     assert plate.node_count() == nodes_before  # still one plate, nothing removed
 
 
+def test_a_failed_rift_thins_the_mobile_cover_with_its_column(monkeypatch):
+    """`maybe_split_plate`'s failed-rift branch thins the mobile cover with the column, like
+    the craton, and books it to the cover ledger (issue #302)."""
+    from app import mobile_cover
+
+    monkeypatch.setattr(merge_split, "RIFT_SUCCESS_PROBABILITY", 0.0)  # every rift fails
+    world, plate = _engineered_split_world()
+    n = plate.node_count()
+    plate.set_fields_on_plate(mobile_cover_m=np.full(n, 200.0), mobile_cover_continental_m=np.full(n, 50.0))
+    mobile_cover.ensure_ledger(world)
+    hc_before = plate.collect("crustal_thickness_m")
+
+    assert merge_split.maybe_split_plate(world, plate) is None
+
+    ratio = plate.collect("crustal_thickness_m") / hc_before
+    assert np.any(ratio < 1.0)
+    np.testing.assert_allclose(plate.collect("mobile_cover_m"), 200.0 * ratio)
+    np.testing.assert_allclose(plate.collect("mobile_cover_continental_m"), 50.0 * ratio)
+    assert world.mobile_cover_ledger["rift_thinned_m3"] > 0.0
+    assert abs(mobile_cover.balance_error_m3(world)) <= 1e-9 * mobile_cover.surface_volume_m3(world)
+
+
 def test_apply_failed_rift_thins_a_band_into_an_aulacogen_not_the_whole_plate():
     """`LithospherePlate.apply_failed_rift` thins Hc/Hm within a band of the cut great circle
     (a sag basin) and subsides it, leaving the rest of the plate and the far side untouched --

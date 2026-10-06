@@ -411,7 +411,12 @@ def _gather_nodes(
     prev_glacier_depth = collect_all_glacier_depth(plates_in_order)
     prev_channel_depth = collect_all_channel_depth(plates_in_order)
     prev_channel_width = collect_all_channel_width(plates_in_order)
-    prev_silt_depth = collect_all_silt_depth(plates_in_order)
+    # The silt record describes lake silt still in the mobile cover (see erosion.py), so it
+    # never reads more than the cover holds -- tectonics can strip cover between steps.
+    prev_silt_depth = np.minimum(
+        collect_all_silt_depth(plates_in_order),
+        np.concatenate([p.collect("mobile_cover_m") for p in plates_in_order]),
+    )
     is_ocean = elevation <= world.sea_level_m
     return (
         points, elevation, prev_lake_depth, prev_glacier_depth, prev_channel_depth, prev_channel_width,

@@ -383,6 +383,35 @@ def test_a_failed_rift_thins_the_cover_with_its_column():
     assert mobile_cover.balance_error_m3(world) == pytest.approx(0.0, abs=1e-9 * before)
 
 
+def test_the_silt_record_is_removed_with_the_cover_it_is_mixed_through():
+    world = _quad_world()
+    for plate in world.plates:
+        cover = np.minimum(plate.collect("crustal_thickness_m"), 300.0)
+        plate.set_fields_on_plate(mobile_cover_m=cover, silt_depth=0.5 * cover)
+    result = erosion.apply_erosion(world, years=5_000_000)
+    cover, silt = _field(world, "mobile_cover_m"), _field(world, "silt_depth")
+    no_new_silt = world.hydrology_cache.silt_deposited == 0.0
+    ratio = np.divide(silt, cover, out=np.zeros_like(cover), where=cover > 0.0)
+    # Never more silt than its share of the cover it started in; where the cover was only
+    # stripped, exactly that share (a cap alone would leave the full 150 m on 200 m of cover).
+    assert np.all(ratio[no_new_silt] <= 0.5 + 1e-9)
+    stripped = no_new_silt & (cover > 0.0) & (cover < 299.0) & np.isclose(ratio, 0.5)
+    assert np.any(stripped)
+    np.testing.assert_allclose(world.hydrology_cache.silt_depth, silt)
+    assert result.budget["mobile_cover_entrained_m3"] > 0.0
+
+
+def test_hydrology_never_reads_more_silt_than_the_cover_holds():
+    from app import hydrology
+
+    world = _quad_world()
+    for plate in world.plates:
+        count = plate.node_count()
+        plate.set_fields_on_plate(mobile_cover_m=np.full(count, 10.0), silt_depth=np.full(count, 100.0))
+    prev_silt = hydrology._gather_nodes(world)[6]
+    np.testing.assert_array_equal(prev_silt, 10.0)
+
+
 def test_silt_depth_never_outlives_the_cover_holding_it():
     world = _quad_world()
     for plate in world.plates:
