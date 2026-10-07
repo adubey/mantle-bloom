@@ -162,7 +162,7 @@ TRANSFORM_UPLIFT_RATE_M_PER_MYR = 100.0
 # without dedicated erosion attention. So any *existing* positive debt on a line decays toward
 # zero every step (this step's own fresh contribution is added after, so it isn't clawed back
 # before it even shows up) -- same age/relax-toward-target idiom
-# `rheology.relax_young_oceanic_mantle_lithosphere` already uses for a different field. Picked
+# `rheology.relax_oceanic_mantle_lithosphere` already uses for a different field. Picked
 # so a node sitting continuously in a fully-active transform band (worst case, no relief from
 # ever leaving the band) settles at a steady-state debt on the order of a few thousand meters
 # -- consistent with transform relief being "modest"/"local" by design, not a second orogeny
@@ -1129,7 +1129,8 @@ def deform_columns(
     prior_age = fields["divergent_age_myr"]
     new_age = np.where(divergent, prior_age + years_myr, 0.0)
     if plate.crust_type == "oceanic":
-        hm = rheology.relax_young_oceanic_mantle_lithosphere(hm, new_age, years_myr)
+        oceanic_now = ~effective_is_continental_from_codes(codes0, False)
+        hm = rheology.relax_oceanic_mantle_lithosphere(hm, oceanic_now, years_myr)
         if world.debug_diagnostics:
             phase_budget.record(world, plate, "oceanic_cooling_relaxation", checkpoint_hc, checkpoint_hm, codes0, hc, hm, codes0, **budget_areas)
             checkpoint_hc, checkpoint_hm = hc.copy(), hm.copy()

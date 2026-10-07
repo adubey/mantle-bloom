@@ -412,17 +412,20 @@ def apply_rift_magmatic_thickening(
     return new_hc, hm_m
 
 
-def relax_young_oceanic_mantle_lithosphere(hm_m: np.ndarray, divergent_age_myr: np.ndarray, years_myr: float) -> np.ndarray:
-    """Freshly-formed ridge crust starts with thin mantle lithosphere (`lithosphere.
-    YOUNG_RIDGE_HM_M`) and thickens toward the reference oceanic value as it cools and ages
-    -- see `lithosphere.py`'s own note on why this (age-keyed relaxation toward one fixed
-    reference) stands in for real open-ended sqrt(age) thickening. Reuses the exact same
-    `divergent_age_myr` field/relax-toward-target shape v1's own elevation relaxation used."""
+def relax_oceanic_mantle_lithosphere(hm_m: np.ndarray, is_oceanic: np.ndarray, years_myr: float) -> np.ndarray:
+    """Oceanic mantle lithosphere relaxes toward the reference oceanic value every step:
+    freshly-formed ridge crust starts thin (`lithosphere.YOUNG_RIDGE_HM_M`) and thickens as it
+    cools, and an oceanic column thickened or thinned elsewhere settles back the same way --
+    see `lithosphere.py`'s own note on why one fixed reference stands in for real open-ended
+    sqrt(age) thickening. Only `is_oceanic` nodes relax: a continental terrane riding on an
+    oceanic plate keeps its own keel (issue #311).
+
+    Not age-gated. There's no seafloor-age field to gate on -- `divergent_age_myr` counts only
+    *continuous* divergence and resets to 0 the step a node leaves the divergent band, so the
+    old `divergent_age_myr < 30` gate passed nearly every node anyway (issue #311)."""
     target = lithosphere.REFERENCE_HM_OCEANIC_M
     relax_factor = 1.0 - np.exp(-0.1 * years_myr)  # same order of magnitude as v1's DIVERGENT_RELAX_RATE_PER_MYR
-    still_young = divergent_age_myr < 30.0  # Myr -- oceanic lithosphere is largely equilibrated well before this
-    new_hm = np.where(still_young, hm_m + (target - hm_m) * relax_factor, hm_m)
-    return new_hm
+    return np.where(is_oceanic, hm_m + (target - hm_m) * relax_factor, hm_m)
 
 
 def clip_elevation_bounds(z: np.ndarray) -> np.ndarray:

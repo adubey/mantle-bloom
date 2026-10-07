@@ -49,14 +49,15 @@ REFERENCE_HM_CONTINENTAL_M = 100_000.0
 # instead of the too-deep ~-6.3km a bare 7km/60km column gives -- a ~1km gentler
 # continent/ocean contrast, still unmistakably a deep ocean against a continent.
 REFERENCE_HC_OCEANIC_M = 11_000.0
-# The value young ridge Hm relaxes *toward* as sea floor ages (see rheology.
-# relax_young_oceanic_mantle_lithosphere / YOUNG_RIDGE_HM_M below). Trimmed from an initial
+# The value oceanic Hm relaxes *toward* every step (see rheology.
+# relax_oceanic_mantle_lithosphere / YOUNG_RIDGE_HM_M below). Trimmed from an initial
 # 60km: this is already a stand-in for real open-ended sqrt(age) thickening (see below), and
 # a thinner equilibrium lid keeps mature abyssal plains from isostatically over-deepening.
 REFERENCE_HM_OCEANIC_M = 40_000.0
 # Freshly-formed ridge crust starts thin (both crust and underlying mantle lid) and thickens
-# as it ages/cools -- see rheology.py's divergent-branch relaxation of Hm toward
-# REFERENCE_HM_OCEANIC_M keyed off the same `divergent_age_myr` field v1 already tracks.
+# as it cools -- see rheology.relax_oceanic_mantle_lithosphere, which relaxes every oceanic
+# node's Hm toward REFERENCE_HM_OCEANIC_M each step (no age gate; there's no seafloor-age
+# field to key one off).
 # This is a deliberate scope simplification: real oceanic lithosphere thickens with the
 # square root of age indefinitely; here it relaxes toward one fixed reference thickness
 # instead of an open-ended age-dependent curve, which is enough to give young ridge crust a
