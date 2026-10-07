@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, cratons, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, volcanism, worldsketch
+from . import atmosphere_cfd, climate, collision_polarity, cratons, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, torque, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -282,6 +282,24 @@ class World:
     # activity, and mirrors what the frontend already kept unbounded client-side before this.
     # `default_factory` field -> backfilled on load (see persistence._backfill_added_fields).
     stats_history: list[dict] = field(default_factory=list)
+    # Collision polarity (issue #318, collision_polarity.py): plate id -> that plate's binned
+    # subduction evidence in its own local frame, the persistent continental contact-front
+    # records with their frozen lower/upper plate, and cumulative diagnostics counters.
+    # `default_factory` fields -> backfilled on load; `next_collision_front_id` is a plain-int
+    # default, so an old pickle falls through to 0.
+    collision_evidence: dict = field(default_factory=dict)
+    collision_fronts: list = field(default_factory=list)
+    collision_polarity_stats: dict = field(default_factory=dict)
+    next_collision_front_id: int = 0
+    # This step's frozen polarity and per-plate lower/upper masks
+    # (`collision_polarity.PolarityFrame`), set by the prepass before any plate deforms and
+    # left in place until the next step's prepass replaces it.
+    collision_polarity_frame: object | None = None
+    # Step-scoped scratch, None outside the passes that use it: the boundary searches the
+    # prepass shares with deform() (`torque.BoundarySearchCache`), and the (parent, child)
+    # plate-id pairs topology changes record (`collision_polarity.note_lineage`).
+    boundary_search_cache: object | None = None
+    topology_lineage: list | None = None
     # This step's climate snapshot (see climate.py), populated by erosion.py -- which needs
     # a fresh one every step regardless -- and reused by /world/stats and a climate map
     # render so they don't each trigger their own (~50ms) recomputation the same turn. See
@@ -901,6 +919,12 @@ def step_world_progress(world: World, years: float):
             distances[plate.plate_id] = plate.shift(world, years)
             done_units += 1
             yield done_units / total_units
+        # Collision polarity prepass (issue #318): every plate has moved and none has deformed,
+        # so record subduction evidence and freeze each continental front's lower/upper plate
+        # now, independent of the deform order below. Its boundary searches stay cached for
+        # deform() -- see torque.BoundarySearchCache.
+        world.boundary_search_cache = torque.BoundarySearchCache()
+        collision_polarity.observe_contacts(world, years)
         order = list(world.plates)
         # Deterministic per (seed, elapsed_years) so a replayed session still deforms plates
         # in the same order -- not the same order every turn, which is the whole point (see
@@ -914,6 +938,7 @@ def step_world_progress(world: World, years: float):
             plate.deform(world, others, years, distances[plate.plate_id])
             done_units += 1
             yield done_units / total_units
+        collision_polarity.finish_deform_pass(world)
         audit.settle("rifted_m3")
         # Intraplate faults: age/spawn/retire and apply their own relief, on top of (never
         # replacing) deform()'s boundary classification -- see faults.py. Before topology
@@ -932,8 +957,11 @@ def step_world_progress(world: World, years: float):
         # stranded fragment removed outright takes its craton with it (failed rifts book their
         # own thinning, see merge_split.maybe_split_plate).
         audit = cratons.PhaseAudit(world)
+        frames_before = collision_polarity.begin_topology(world)
         for message in merge_split.apply_topology_changes(world, years):
             world.log_event(message)
+        # Hand collision evidence and front records to the plates now carrying them.
+        collision_polarity.end_topology(world, frames_before)
         audit.settle("unattributed_m3", "topology_removed_m3")
         # Re-home faults onto surviving plates after any merge/split, drop subducted ones.
         faults.reconcile_faults(world)

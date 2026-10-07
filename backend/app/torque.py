@@ -120,9 +120,116 @@ class BoundaryForceInputs:
     direction_to_neighbor: np.ndarray  # (N, 3) unit vector from own node toward that nearest neighbour point
     neighbor_is_oceanic: np.ndarray  # (N,) bool
     neighbor_omega: np.ndarray  # (N, 3) the owning neighbour plate's own omega, for relative-velocity terms
+    # Which plate that nearest neighbour node belongs to, and its index in that plate's own node
+    # order -- at any distance, not just within reach (a deep overlap's nearest node is still
+    # its overrider's), -1 where there's no neighbour at all. The collision-polarity prepass
+    # attributes evidence to the neighbour responsible (issue #318).
+    neighbor_plate_id: np.ndarray | None = None  # (N,) int64
+    neighbor_node_index: np.ndarray | None = None  # (N,) int64
+
+    def __post_init__(self) -> None:
+        n = len(self.own_points)
+        if self.neighbor_plate_id is None:
+            self.neighbor_plate_id = np.full(n, -1, dtype=np.int64)
+        if self.neighbor_node_index is None:
+            self.neighbor_node_index = np.full(n, -1, dtype=np.int64)
 
 
-def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, reach_rad: float) -> BoundaryForceInputs:
+class BoundarySearchCache:
+    """One step's per-(plate, neighbour) boundary searches, shared by the collision-polarity
+    prepass (collision_polarity.py, issue #318) and `deform()`'s own `boundary_context`, so the
+    prepass doesn't add a second full neighbour search to every step.
+
+    A cached result is reused only while both plates' node sets are unchanged, judged by the
+    identity of their cached node k-d trees (`Plate.get_node_kdtree`), which every geometry
+    change drops. A reused result is therefore exactly what a fresh search would return, and
+    `deform()` behaves as it did without the cache. A neighbour that already deformed this
+    step (cells peeled or grown) is searched afresh. Lives on `World.boundary_search_cache`
+    from the prepass to the end of the deform pass only."""
+
+    def __init__(self) -> None:
+        # (own id, neighbour id) -> (own tree, neighbour tree, dist, idx): nearest neighbour
+        # node of every own node.
+        self._nearest: dict[tuple[int, int], tuple] = {}
+        # (own id, neighbour id) -> (own tree, neighbour tree, evaluated, inside): which own
+        # nodes lie inside the neighbour's territory, over the nodes asked about so far.
+        self._inside: dict[tuple[int, int], tuple] = {}
+        # neighbour id -> (tree, centroid, radius) of its node cloud.
+        self._spheres: dict[int, tuple] = {}
+        # (own id, neighbour id, threshold) -> (own tree, neighbour tree, is neighbour).
+        self._within: dict[tuple[int, int, float], tuple] = {}
+        self.searches = 0
+        self.reused = 0
+        # (searches, reused) when the prepass finished, so the deform pass's share can be told
+        # apart -- see collision_polarity.finish_deform_pass.
+        self.prepass_mark = (0, 0)
+
+    def neighbours(self, plate, others: list, threshold_rad: float) -> list:
+        """`plate.get_neighbours(others, threshold_rad)`, pair by pair through the cache. The
+        test is per pair, so the result and its order match one call over `others`."""
+        own_tree = plate.get_node_kdtree()
+        others = [other for other in others if other.plate_id != plate.plate_id]
+        trees = [other.get_node_kdtree() for other in others]
+        keys = [(plate.plate_id, other.plate_id, float(threshold_rad)) for other in others]
+        stale = [
+            i
+            for i, key in enumerate(keys)
+            if own_tree is None
+            or (entry := self._within.get(key)) is None
+            or entry[0] is not own_tree
+            or entry[1] is not trees[i]
+        ]
+        if stale:
+            # One call over every pair the cache can't answer: the test is per pair, and one
+            # call computes this plate's own outline sphere once rather than per pair.
+            found = {other.plate_id for other in plate.get_neighbours([others[i] for i in stale], threshold_rad=threshold_rad)}
+            for i in stale:
+                self._within[keys[i]] = (own_tree, trees[i], others[i].plate_id in found)
+        return [other for other, key in zip(others, keys) if self._within[key][2]]
+
+    def nearest(self, plate, own_tree, neighbour, tree, own_points: np.ndarray, workers: int) -> tuple[np.ndarray, np.ndarray]:
+        key = (plate.plate_id, neighbour.plate_id)
+        entry = self._nearest.get(key)
+        if entry is not None and entry[0] is own_tree and entry[1] is tree and own_tree is not None:
+            self.reused += 1
+            return entry[2], entry[3]
+        self.searches += 1
+        dist, idx = tree.query(own_points, workers=workers)
+        self._nearest[key] = (own_tree, tree, dist, idx)
+        return dist, idx
+
+    def sphere(self, neighbour) -> tuple[np.ndarray, float] | None:
+        tree = neighbour.get_node_kdtree()
+        if tree is None:
+            return None
+        entry = self._spheres.get(neighbour.plate_id)
+        if entry is not None and entry[0] is tree:
+            return entry[1], entry[2]
+        centroid, radius = geometry.bounding_sphere(tree.data)
+        self._spheres[neighbour.plate_id] = (tree, centroid, radius)
+        return centroid, radius
+
+    def inside(self, plate, neighbour, own_points: np.ndarray, mask: np.ndarray) -> np.ndarray:
+        """`neighbour.contains_batch` over `own_points[mask]`, as a full-length mask (False off
+        `mask`). Only the masked nodes not yet tested against this neighbour are tested."""
+        own_tree = plate.get_node_kdtree()
+        tree = neighbour.get_node_kdtree()
+        key = (plate.plate_id, neighbour.plate_id)
+        entry = self._inside.get(key)
+        if entry is None or entry[0] is not own_tree or entry[1] is not tree or own_tree is None:
+            entry = (own_tree, tree, np.zeros(len(own_points), dtype=bool), np.zeros(len(own_points), dtype=bool))
+            self._inside[key] = entry
+        evaluated, inside = entry[2], entry[3]
+        need = mask & ~evaluated
+        if np.any(need):
+            inside[need] = neighbour.contains_batch(own_points[need])
+            evaluated |= need
+        return inside & mask
+
+
+def gather_boundary_force_inputs(
+    plate, neighbours: list, spacing_rad: float, reach_rad: float, cache: BoundarySearchCache | None = None
+) -> BoundaryForceInputs:
     own_points, _ = plate.all_points_and_elevation()
     own_hc = plate.collect("crustal_thickness_m")
     own_hm = plate.collect("mantle_lithosphere_thickness_m")
@@ -152,15 +259,21 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
     best_dist = np.full(n, np.inf)
     best_point = np.zeros((n, 3))
     best_owner = np.full(n, -1)
+    best_index = np.full(n, -1, dtype=np.int64)
+    own_tree = plate.get_node_kdtree() if cache is not None else None
     for i, neighbour in enumerate(neighbours):
         tree = neighbour.get_node_kdtree()
         if tree is None:
             continue
-        dist, idx = tree.query(own_points, workers=workers)
+        if cache is None:
+            dist, idx = tree.query(own_points, workers=workers)
+        else:
+            dist, idx = cache.nearest(plate, own_tree, neighbour, tree, own_points, workers)
         closer = dist < best_dist
         best_dist[closer] = dist[closer]
         best_point[closer] = tree.data[idx[closer]]
         best_owner[closer] = i
+        best_index[closer] = idx[closer]
 
     if not np.any(best_owner >= 0):
         return no_neighbour
@@ -168,14 +281,19 @@ def gather_boundary_force_inputs(plate, neighbours: list, spacing_rad: float, re
     direction = geometry.normalize(best_point - own_points)
     neighbor_is_oceanic = np.zeros(n, dtype=bool)
     neighbor_omega = np.zeros((n, 3))
+    neighbor_plate_id = np.full(n, -1, dtype=np.int64)
     for i, neighbour in enumerate(neighbours):
         owned = best_owner == i
         if not np.any(owned):
             continue
         neighbor_is_oceanic[owned] = neighbour.crust_type == "oceanic"
         neighbor_omega[owned] = neighbour.omega
+        neighbor_plate_id[owned] = neighbour.plate_id
     dist = np.where(best_dist <= reach_rad, best_dist, np.inf)
-    return BoundaryForceInputs(own_points, own_hc, own_hm, own_crust_type_codes, dist, direction, neighbor_is_oceanic, neighbor_omega)
+    return BoundaryForceInputs(
+        own_points, own_hc, own_hm, own_crust_type_codes, dist, direction, neighbor_is_oceanic, neighbor_omega,
+        neighbor_plate_id, best_index,
+    )
 
 
 def subducting_boundary_mask(plate, inputs: BoundaryForceInputs, reach_rad: float) -> np.ndarray:
@@ -433,7 +551,7 @@ def boundary_closing_rate_m_per_s(plate, inputs: BoundaryForceInputs) -> np.ndar
 
 
 def classify_boundary_nodes(
-    plate, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float
+    plate, neighbours: list, inputs: BoundaryForceInputs, reach_rad: float, cache: BoundarySearchCache | None = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """(convergent, divergent, transform, contested) for this plate's own nodes.
 
@@ -469,21 +587,33 @@ def classify_boundary_nodes(
     # deep oceanic overlap classifies contested -> subduction deletion -> the overlap heals.
     consider = inputs.dist_to_neighbor <= reach_rad
     for neighbour in neighbours:
-        npts, _ = neighbour.all_points_and_elevation()
-        if len(npts) == 0:
-            continue
-        centroid, radius = geometry.bounding_sphere(npts)
+        if cache is None:
+            npts, _ = neighbour.all_points_and_elevation()
+            if len(npts) == 0:
+                continue
+            centroid, radius = geometry.bounding_sphere(npts)
+        else:
+            sphere = cache.sphere(neighbour)
+            if sphere is None:
+                continue
+            centroid, radius = sphere
         consider |= geometry.angular_distance(own_points, centroid) <= radius
 
     contested = np.zeros(n, dtype=bool)
     if np.any(consider):
-        consider_points = own_points[consider]
-        consider_contested = np.zeros(len(consider_points), dtype=bool)
-        for neighbour in neighbours:
-            consider_contested |= neighbour.contains_batch(consider_points)
-            if np.all(consider_contested):
-                break
-        contested[consider] = consider_contested
+        if cache is None:
+            consider_points = own_points[consider]
+            consider_contested = np.zeros(len(consider_points), dtype=bool)
+            for neighbour in neighbours:
+                consider_contested |= neighbour.contains_batch(consider_points)
+                if np.all(consider_contested):
+                    break
+            contested[consider] = consider_contested
+        else:
+            for neighbour in neighbours:
+                contested |= cache.inside(plate, neighbour, own_points, consider)
+                if np.all(contested[consider]):
+                    break
 
     # Motion partition of the near-boundary band (not the deep-overlap extension above -- an
     # uncontested deep-interior node is just interior, not an active boundary).
