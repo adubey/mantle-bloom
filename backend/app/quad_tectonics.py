@@ -44,7 +44,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
+from . import continental_ledger, cratons, geometry, hm_ledger, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -342,6 +342,7 @@ def _place_ceiling_overflow(
     convergence_local = (
         geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
     )
+
     hc_before = hc.copy()
     changed = np.zeros(len(hc), dtype=bool)
     _, labels = connected_components(adjacency[overflowing][:, overflowing], directed=False)
@@ -468,6 +469,15 @@ def _retreat(
     # material leave the surface as deep subduction.
     subducted = removed & ~donors
     areas = plate.node_areas_m2()
+    hm_ledger.record_sink_by_mask(
+        world,
+        plate,
+        "oceanic_and_deep_subduction",
+        plate.collect("mantle_lithosphere_thickness_m"),
+        codes,
+        areas,
+        subducted,
+    )
     cratons.record(world, "subducted_m3", float(np.dot(plate.collect("craton_crust_m")[subducted], areas[subducted])))
     continental_ledger.record(
         world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
@@ -591,6 +601,19 @@ def _accrete_onto_survivors(
         geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
     )
 
+    def front_neighbour_ids(front: np.ndarray) -> list[int]:
+        """Current plates actually touching this connected front, not every reach neighbour."""
+        candidates = [p for p in (overriders or []) if p is not plate and p.node_count() > 0]
+        if not candidates or world is None or not world.debug_diagnostics:
+            return []
+        front_world = geometry.to_world(plate.frame, points[front])
+        touching = [p.plate_id for p in candidates if np.any(p.contains_batch(front_world))]
+        if touching:
+            return touching
+        centre = geometry.normalize(front_world.mean(axis=0))
+        nearest = min(candidates, key=lambda p: float(p.get_node_kdtree().query(centre)[0]))
+        return [nearest.plate_id]
+
     for donor_type in (False, True):
         typed_donors = donors & (continental == donor_type)
         donor_idx = np.flatnonzero(typed_donors)
@@ -600,6 +623,7 @@ def _accrete_onto_survivors(
         for label in np.unique(labels):
             front = donor_idx[labels == label]
             hc_front_start = hc.copy()
+            hm_front_start = hm.copy()
             material_volume = float(np.dot(material[front], areas[front]))
             craton_volume = float(np.dot(craton[front], areas[front]))
             restite_volume = float(np.dot(restite[front], areas[front]))
@@ -648,6 +672,14 @@ def _accrete_onto_survivors(
                     # The oceanic columns the terrane displaced take their cover into the
                     # crust they were thickened into.
                     mobile_cover.end(world, plate, terrane_cells, "accreted_m3")
+                    hm_ledger.record_suture_front(
+                        world,
+                        plate.plate_id,
+                        front_neighbour_ids(front),
+                        hm_volume,
+                        hm_volume,
+                        donor_is_continental=bool(donor_type),
+                    )
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -727,6 +759,15 @@ def _accrete_onto_survivors(
                 typed_survivors,
                 hm_volume,
                 lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
+            )
+            placed_hm_volume = float(np.dot(np.maximum(hm - hm_front_start, 0.0), areas))
+            hm_ledger.record_suture_front(
+                world,
+                plate.plate_id,
+                front_neighbour_ids(front),
+                hm_volume,
+                placed_hm_volume,
+                donor_is_continental=bool(donor_type),
             )
 
     gained = np.flatnonzero(changed)

@@ -63,6 +63,17 @@ def test_report_is_json_serializable(fresh_world):
     json.dumps(build_report(fresh_world, total_years=200_000))
 
 
+def test_hm_source_sink_identity_closes_and_stays_separate_from_phases(fresh_world):
+    report = build_report(fresh_world, total_years=200_000)
+    assert report["hm_source_sink_accounts"]
+    assert all("hm_cap_transitions" in row for row in report["phases"])
+    for row in report["hm_closure"].values():
+        assert row["live_change_m3"] == pytest.approx(
+            row["source_m3"] - row["sink_m3"] + row["reclassification_m3"] + row["signed_residual_m3"],
+            abs=1.0,
+        )
+
+
 def test_format_report_renders_both_tables(fresh_world):
     text = format_report(build_report(fresh_world, total_years=200_000))
     assert "mantle-bloom Hc/Hm phase budget" in text

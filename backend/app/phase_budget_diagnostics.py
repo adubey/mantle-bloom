@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import persistence
+from . import hm_ledger, persistence
 from .phase_budget import SCOPES
 from .world import World, generate_world, step_world
 
@@ -40,6 +40,7 @@ def build_report(world: World, total_years: float) -> dict:
     it); pass an already-loaded/generated world you're fine stepping forward."""
     world.debug_diagnostics = True
     world.reset_phase_budget()
+    opening_hm = hm_ledger.inventory_scopes_m3(world)
     steps = max(1, round(total_years / CONVENTIONAL_YEARS_PER_STEP))
     start_years = world.elapsed_years
 
@@ -64,11 +65,37 @@ def build_report(world: World, total_years: float) -> dict:
                 "delta_sum_hc": s["sum_hc_after"] - s["sum_hc_before"],
                 "delta_sum_hm": s["sum_hm_after"] - s["sum_hm_before"],
             }
-        phases.append({"phase": phase, "calls": totals["calls"], "scopes": scopes})
+        phases.append(
+            {
+                "phase": phase,
+                "calls": totals["calls"],
+                "scopes": scopes,
+                "hm_cap_transitions": totals.get("hm_cap_transitions", {}),
+            }
+        )
     # Biggest net Hc mover first -- the ordering the issue's own "which mechanism actually
     # moves the needle" question cares about. By volume, not the plain Hc sum: quad cells
     # differ in size (issue #257).
     phases.sort(key=lambda row: -abs(row["scopes"]["all"]["delta_hc_volume_m3"]))
+
+    closing_hm = hm_ledger.inventory_scopes_m3(world)
+    account_totals = hm_ledger.cumulative_scopes(world)
+    closure = {}
+    for scope in hm_ledger.SCOPES:
+        live_change = closing_hm[scope] - opening_hm[scope]
+        booked_change = (
+            account_totals[scope]["source_m3"]
+            - account_totals[scope]["sink_m3"]
+            + account_totals[scope]["reclassification_m3"]
+        )
+        closure[scope] = {
+            "opening_live_m3": opening_hm[scope],
+            "closing_live_m3": closing_hm[scope],
+            "live_change_m3": live_change,
+            **account_totals[scope],
+            "booked_change_m3": booked_change,
+            "signed_residual_m3": live_change - booked_change,
+        }
 
     return {
         "seed": world.seed,
@@ -78,6 +105,9 @@ def build_report(world: World, total_years: float) -> dict:
         "steps": steps,
         "phases": phases,
         "shortening": shortening,
+        "hm_source_sink_accounts": world.hm_source_sink_ledger,
+        "hm_closure": closure,
+        "hm_suture_budget": world.hm_suture_budget,
     }
 
 
@@ -127,6 +157,15 @@ def format_report(report: dict) -> str:
         lines.append(
             f"  absorbed Hc/Hm {shortening['absorbed_hc_m3'] / 1e9:,.1f} / {shortening['absorbed_hm_m3'] / 1e9:,.1f} km3;"
             f" returned Hc/Hm {shortening['returned_hc_m3'] / 1e9:,.1f} / {shortening['returned_hm_m3'] / 1e9:,.1f} km3"
+        )
+    lines.append("")
+    lines.append("Hm source/sink closure (thermal thickness; not a conservation claim)")
+    for scope, row in report["hm_closure"].items():
+        lines.append(
+            f"  {scope:<18} live {row['live_change_m3'] / 1e9:>14,.1f} km3 = "
+            f"sources {row['source_m3'] / 1e9:>14,.1f} - sinks {row['sink_m3'] / 1e9:>14,.1f} "
+            f"+ reclass {row['reclassification_m3'] / 1e9:>10,.1f} "
+            f"+ residual {row['signed_residual_m3'] / 1e9:>12,.1f}"
         )
     return "\n".join(line.rstrip() for line in lines)
 

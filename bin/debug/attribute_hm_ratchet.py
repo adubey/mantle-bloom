@@ -27,8 +27,12 @@ from __future__ import annotations
 
 import argparse
 import copy
+import functools
+import hashlib
 import inspect
 import json
+import resource
+import subprocess
 import sys
 import time
 from collections import defaultdict
@@ -38,7 +42,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from app import elevation_lines, lithosphere, persistence, rheology, world as world_mod  # noqa: E402
+from app import elevation_lines, hm_ledger, lithosphere, persistence, plates, quad_tectonics, rheology, world as world_mod  # noqa: E402
 
 HM_CAP = lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
 HC_CAP = lithosphere.MAX_CRUSTAL_THICKNESS_M
@@ -180,6 +184,134 @@ def hm_inventory_km3(world) -> dict:
     return out
 
 
+def hm_state(world) -> dict:
+    """Lightweight per-step live inventory and already-capped area, split by host state."""
+    spacing = elevation_lines.line_spacing_rad(world.node_density)
+    volume = defaultdict(float)
+    capped_area = defaultdict(float)
+    for plate in world.plates:
+        hm = np.asarray(plate.collect("mantle_lithosphere_thickness_m"), dtype=float)
+        if len(hm) == 0:
+            continue
+        area = np.asarray(plate.accounting_areas_m2(spacing), dtype=float)
+        cont = elevation_lines.effective_is_continental_from_codes(
+            plate.collect("crust_type_code"), plate.crust_type == "continental"
+        )
+        craton = np.asarray(plate.collect("craton_crust_m"), dtype=float) > 0.0
+        capped = hm >= HM_CAP - CAP_TOLERANCE_M
+        for name, mask in (
+            ("all", np.ones(len(hm), dtype=bool)),
+            ("continental_node", cont),
+            ("oceanic_node", ~cont),
+            ("continental_craton_node", cont & craton),
+            ("continental_non_craton_node", cont & ~craton),
+        ):
+            volume[name] += float(np.dot(hm[mask], area[mask])) / 1e9
+            capped_area[name] += float(area[mask & capped].sum()) / 1e6
+    return {"live_hm_km3": dict(volume), "already_capped_area_km2": dict(capped_area)}
+
+
+def cap_transition_totals_km2(budget: dict) -> dict:
+    out = {}
+    for phase, totals in budget.items():
+        cap = totals.get("hm_cap_transitions")
+        if not cap:
+            continue
+        out[phase] = {
+            scope: {key.replace("_m2", "_km2"): value / 1e6 for key, value in row.items()}
+            for scope, row in cap["scopes"].items()
+        }
+    return out
+
+
+def _nested_delta(after: dict, before: dict) -> dict:
+    out = {}
+    for outer, after_row in after.items():
+        before_row = before.get(outer, {})
+        rows = {}
+        for inner, values in after_row.items():
+            if not isinstance(values, dict):
+                continue
+            delta = {key: float(value) - float(before_row.get(inner, {}).get(key, 0.0)) for key, value in values.items()}
+            if any(value != 0.0 for value in delta.values()):
+                rows[inner] = delta
+        if rows:
+            out[outer] = rows
+    return out
+
+
+def account_totals_km3(world) -> dict:
+    return {
+        account: {
+            scope: {key.replace("_m3", "_km3"): value / 1e9 for key, value in row.items()}
+            for scope, row in entry["scopes"].items()
+        }
+        for account, entry in world.hm_source_sink_ledger.items()
+    }
+
+
+def suture_totals_km3(world) -> dict:
+    budget = world.hm_suture_budget
+    return {
+        "fronts": budget.get("fronts", 0),
+        "donor_hm_km3": budget.get("donor_hm_m3", 0.0) / 1e9,
+        "placed_hm_km3": budget.get("placed_hm_m3", 0.0) / 1e9,
+        "unplaced_hm_km3": budget.get("unplaced_hm_m3", 0.0) / 1e9,
+        "by_pair": {
+            key: {
+                "fronts": row["fronts"],
+                "donor_hm_km3": row["donor_hm_m3"] / 1e9,
+                "placed_hm_km3": row["placed_hm_m3"] / 1e9,
+                "unplaced_hm_km3": row["unplaced_hm_m3"] / 1e9,
+            }
+            for key, row in budget.get("by_pair", {}).items()
+        },
+    }
+
+
+class RuntimeProfile:
+    """Low-overhead debug-only timers for issue #317's replay cost comparison."""
+
+    def __init__(self):
+        self.stats = defaultdict(lambda: {"calls": 0, "seconds": 0.0})
+        self.originals = []
+
+    def _wrap(self, obj, name: str, label: str, *, only_when=None):
+        original = getattr(obj, name)
+        self.originals.append((obj, name, original))
+
+        @functools.wraps(original)
+        def wrapped(*args, **kwargs):
+            enabled = only_when is None or only_when(*args, **kwargs)
+            started = time.perf_counter() if enabled else 0.0
+            try:
+                return original(*args, **kwargs)
+            finally:
+                if enabled:
+                    row = self.stats[label]
+                    row["calls"] += 1
+                    row["seconds"] += time.perf_counter() - started
+
+        setattr(obj, name, wrapped)
+
+    def __enter__(self):
+        self._wrap(quad_tectonics, "boundary_context", "boundary_classification")
+        self._wrap(quad_tectonics, "_spread_accretion_volume", "hm_spreading")
+        self._wrap(quad_tectonics, "_place_suture_crust", "graph_traversal")
+        self._wrap(quad_tectonics, "_adjacency_matrix", "spatial_graph_builds")
+        self._wrap(
+            plates.Plate,
+            "get_node_kdtree",
+            "spatial_index_builds",
+            only_when=lambda plate, *args, **kwargs: getattr(plate, "_node_kdtree_cache", None) is None,
+        )
+        return self
+
+    def __exit__(self, *exc):
+        for obj, name, original in reversed(self.originals):
+            setattr(obj, name, original)
+
+
 def phase_deltas_km3(budget: dict) -> dict:
     """{phase: {scope: Hm volume after - before, km^3}} from a `World.phase_budget`."""
     return {
@@ -199,7 +331,20 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     args = ap.parse_args()
 
-    result = {"save": str(args.save), "step_years": args.step_years, "compare": {}, "checkpoints": []}
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=Path(__file__).resolve().parents[2], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    save_sha256 = hashlib.sha256(args.save.read_bytes()).hexdigest()
+    result = {
+        "issue": 317,
+        "commit": commit,
+        "save": str(args.save),
+        "save_sha256": save_sha256,
+        "step_years": args.step_years,
+        "compare": {},
+        "steps": [],
+        "checkpoints": [],
+    }
     for path in args.compare:
         result["compare"][str(path)] = metrics(load(path))
         print(f"compare {path.name}: {json.dumps({k: v for k, v in result['compare'][str(path)].items() if k != 'per_plate'})}", flush=True)
@@ -211,20 +356,56 @@ def main() -> None:
     per_checkpoint = max(1, int(round(args.checkpoint_myr * 1e6 / args.step_years)))
     inventory0 = hm_inventory_km3(world)
     unattributed = defaultdict(float)
-    result["checkpoints"].append({"metrics": metrics(world), "inventory_km3": inventory0})
+    result["checkpoints"].append({"metrics": metrics(world), "inventory_km3": inventory0, "hm_state": hm_state(world)})
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     started = time.time()
-    with ClipTap() as tap:
+    with ClipTap() as tap, RuntimeProfile() as profile:
         for i in range(1, steps + 1):
+            step_started = time.perf_counter()
             before_inv = hm_inventory_km3(world)
             before_phase = copy.deepcopy(phase_deltas_km3(world.phase_budget))
+            before_caps = cap_transition_totals_km2(world.phase_budget)
+            before_accounts = account_totals_km3(world)
+            before_suture = suture_totals_km3(world)
             world_mod.step_world(world, args.step_years)
             after_inv = hm_inventory_km3(world)
             after_phase = phase_deltas_km3(world.phase_budget)
+            after_caps = cap_transition_totals_km2(world.phase_budget)
+            after_accounts = account_totals_km3(world)
+            after_suture = suture_totals_km3(world)
+            step_seconds = time.perf_counter() - step_started
+            step_residual = {}
+            ledger_residual = {}
             for scope_inv, scope_phase in (("all", "all"), ("continental_node", "continental_node"), ("oceanic_node", "oceanic_node")):
                 recorded = sum(s.get(scope_phase, 0.0) for s in after_phase.values()) - sum(s.get(scope_phase, 0.0) for s in before_phase.values())
-                unattributed[scope_inv] += (after_inv[scope_inv] - before_inv[scope_inv]) - recorded
+                residual = (after_inv[scope_inv] - before_inv[scope_inv]) - recorded
+                unattributed[scope_inv] += residual
+                step_residual[scope_inv] = residual
+                scope_accounts = [row.get(scope_inv, {}) for row in after_accounts.values()]
+                prior_scope_accounts = [row.get(scope_inv, {}) for row in before_accounts.values()]
+                source_delta = sum(row.get("source_km3", 0.0) for row in scope_accounts) - sum(row.get("source_km3", 0.0) for row in prior_scope_accounts)
+                sink_delta = sum(row.get("sink_km3", 0.0) for row in scope_accounts) - sum(row.get("sink_km3", 0.0) for row in prior_scope_accounts)
+                reclass_delta = sum(row.get("reclassification_km3", 0.0) for row in scope_accounts) - sum(row.get("reclassification_km3", 0.0) for row in prior_scope_accounts)
+                ledger_residual[scope_inv] = (after_inv[scope_inv] - before_inv[scope_inv]) - source_delta + sink_delta - reclass_delta
+            result["steps"].append(
+                {
+                    "step": i,
+                    "elapsed_myr": world.elapsed_years / 1e6,
+                    "runtime_seconds": step_seconds,
+                    **hm_state(world),
+                    "newly_capped_by_phase_km2": _nested_delta(after_caps, before_caps),
+                    "hm_source_sink_delta_km3": _nested_delta(after_accounts, before_accounts),
+                    "hm_ledger_residual_km3": ledger_residual,
+                    "signed_residual_km3": step_residual,
+                    "suture_delta": {
+                        "fronts": after_suture["fronts"] - before_suture["fronts"],
+                        "donor_hm_km3": after_suture["donor_hm_km3"] - before_suture["donor_hm_km3"],
+                        "placed_hm_km3": after_suture["placed_hm_km3"] - before_suture["placed_hm_km3"],
+                        "unplaced_hm_km3": after_suture["unplaced_hm_km3"] - before_suture["unplaced_hm_km3"],
+                    },
+                }
+            )
             if i % per_checkpoint == 0 or i == steps:
                 entry = {
                     "step": i,
@@ -234,6 +415,10 @@ def main() -> None:
                     "convergent_clip_km3": dict(tap.totals),
                     "unattributed_hm_delta_km3": dict(unattributed),
                     "shortening": dict(world.phase_budget.get("convergent_shortening", {}).get("shortening", {})),
+                    "hm_source_sink_accounts_km3": after_accounts,
+                    "hm_cap_transitions_km2": after_caps,
+                    "hm_suture_budget_km3": after_suture,
+                    "runtime_profile": dict(profile.stats),
                 }
                 result["checkpoints"].append(entry)
                 m = entry["metrics"]
@@ -244,6 +429,27 @@ def main() -> None:
                     flush=True,
                 )
                 args.out.write_text(json.dumps(result, indent=1))
+    result["runtime_seconds"] = time.time() - started
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    result["peak_memory_mb"] = peak / (1024.0 * 1024.0) if sys.platform == "darwin" else peak / 1024.0
+    result["runtime_profile"] = dict(profile.stats)
+    closure_accounts = hm_ledger.cumulative_scopes(world)
+    final_inventory = hm_inventory_km3(world)
+    result["hm_closure_km3"] = {
+        scope: {
+            "live_change_km3": final_inventory[scope] - inventory0[scope],
+            "source_km3": closure_accounts[scope]["source_m3"] / 1e9,
+            "sink_km3": closure_accounts[scope]["sink_m3"] / 1e9,
+            "reclassification_km3": closure_accounts[scope]["reclassification_m3"] / 1e9,
+            "ledger_residual_km3": (final_inventory[scope] - inventory0[scope])
+            - closure_accounts[scope]["source_m3"] / 1e9
+            + closure_accounts[scope]["sink_m3"] / 1e9
+            - closure_accounts[scope]["reclassification_m3"] / 1e9,
+            "phase_budget_residual_km3": unattributed[scope],
+        }
+        for scope in ("all", "continental_node", "oceanic_node")
+    }
+    args.out.write_text(json.dumps(result, indent=1))
     print(f"wrote {args.out}")
 
 

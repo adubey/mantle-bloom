@@ -297,7 +297,15 @@ def remove_defunct_plates(world: "World") -> list[str]:
             # territory that never went through a retreat/carve phase at all.
             before = phase_budget.snapshot(plate, line_spacing_rad(world.node_density))
             empty = np.array([])
-            after = phase_budget.Snapshot(empty, empty, np.array([], dtype=before.codes.dtype), empty)
+            after = phase_budget.Snapshot(
+                empty,
+                empty,
+                np.array([], dtype=before.codes.dtype),
+                empty,
+                empty,
+                np.empty((0, before.node_ids.shape[1]), dtype=before.node_ids.dtype),
+                np.array([], dtype=bool),
+            )
             phase_budget.record_snapshots(world, plate, "plate_cleanup_removal", before, after)
     return events
 

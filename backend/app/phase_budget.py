@@ -42,7 +42,7 @@ import numpy as np
 
 from typing import NamedTuple
 
-from . import elevation_lines, lithosphere
+from . import elevation_lines, hm_ledger, lithosphere
 
 _SCOPE_FIELDS = (
     "count_before",
@@ -76,6 +76,19 @@ SHORTENING_FIELDS = (
     "returned_hm_m3",
 )
 
+CAP_SCOPES = (
+    "all",
+    "continental_node",
+    "oceanic_node",
+    "continental_craton_node",
+    "continental_non_craton_node",
+)
+_CAP_FIELDS = (
+    "newly_capped_area_m2",
+    "persistently_capped_area_m2",
+    "left_cap_area_m2",
+)
+
 
 class Snapshot(NamedTuple):
     """One plate's columns at an instant, in node order, with each node's accounting area."""
@@ -84,6 +97,9 @@ class Snapshot(NamedTuple):
     hm: np.ndarray
     codes: np.ndarray
     area_m2: np.ndarray
+    craton_m: np.ndarray
+    node_ids: np.ndarray
+    owning_plate_is_continental: np.ndarray
 
 
 def snapshot(plate, spacing_rad: float) -> Snapshot:
@@ -92,11 +108,15 @@ def snapshot(plate, spacing_rad: float) -> Snapshot:
     than one line at a time (row claiming, corner-notch fill, merge, relattice, cleanup
     removal, quad retreat/advance, erosion, the cap clamp), where no single line's local
     `hc`/`hm` arrays capture the whole effect."""
+    nodes = plate.surface_nodes()
     return Snapshot(
         plate.collect("crustal_thickness_m"),
         plate.collect("mantle_lithosphere_thickness_m"),
         plate.collect("crust_type_code"),
         plate.accounting_areas_m2(spacing_rad),
+        plate.collect("craton_crust_m"),
+        nodes.node_ids,
+        np.full(len(nodes.node_ids), plate.crust_type == "continental", dtype=bool),
     )
 
 
@@ -105,11 +125,101 @@ def record_snapshots(world, plate, phase: str, before: Snapshot, after: Snapshot
     record(
         world, plate, phase, before.hc, before.hm, before.codes, after.hc, after.hm, after.codes,
         area_before_m2=before.area_m2, area_after_m2=after.area_m2,
+        craton_before_m=before.craton_m, craton_after_m=after.craton_m,
+        node_ids_before=before.node_ids, node_ids_after=after.node_ids,
+        plate_is_continental_before=before.owning_plate_is_continental,
+        plate_is_continental_after=after.owning_plate_is_continental,
     )
 
 
 def _new_totals() -> dict:
-    return {"calls": 0, "scopes": {scope: dict.fromkeys(_SCOPE_FIELDS, 0.0) for scope in SCOPES}}
+    return {
+        "calls": 0,
+        "scopes": {scope: dict.fromkeys(_SCOPE_FIELDS, 0.0) for scope in SCOPES},
+        "hm_cap_transitions": {
+            "aligned_calls": 0,
+            "unaligned_calls": 0,
+            "scopes": {scope: dict.fromkeys(_CAP_FIELDS, 0.0) for scope in CAP_SCOPES},
+        },
+    }
+
+
+def _id_rows(ids: np.ndarray) -> np.ndarray:
+    ids = np.ascontiguousarray(ids)
+    if ids.ndim == 1:
+        ids = ids[:, None]
+    return ids.view(np.dtype((np.void, ids.dtype.itemsize * ids.shape[1]))).reshape(-1)
+
+
+def _record_cap_transitions(
+    totals: dict,
+    plate_is_continental: bool,
+    hm_before: np.ndarray,
+    hm_after: np.ndarray,
+    codes_before: np.ndarray,
+    codes_after: np.ndarray,
+    area_before: np.ndarray,
+    area_after: np.ndarray,
+    craton_before: np.ndarray | None,
+    craton_after: np.ndarray | None,
+    node_ids_before: np.ndarray | None,
+    node_ids_after: np.ndarray | None,
+    plate_is_continental_before: bool | np.ndarray,
+    plate_is_continental_after: bool | np.ndarray,
+) -> None:
+    """Book actual per-cell entries/exits at the Hm cap; never infer them from net volume."""
+    transitions = totals["hm_cap_transitions"]
+    if node_ids_before is None or node_ids_after is None:
+        if len(hm_before) != len(hm_after):
+            transitions["unaligned_calls"] += 1
+            return
+        before_index = after_index = np.arange(len(hm_before))
+        new_after = np.zeros(len(hm_after), dtype=bool)
+        removed_before = np.zeros(len(hm_before), dtype=bool)
+    else:
+        before_ids = _id_rows(np.asarray(node_ids_before))
+        after_ids = _id_rows(np.asarray(node_ids_after))
+        if np.array_equal(before_ids, after_ids):
+            before_index = after_index = np.arange(len(before_ids))
+            new_after = np.zeros(len(hm_after), dtype=bool)
+            removed_before = np.zeros(len(hm_before), dtype=bool)
+        elif len(np.unique(before_ids)) != len(before_ids) or len(np.unique(after_ids)) != len(after_ids):
+            transitions["unaligned_calls"] += 1
+            return
+        else:
+            _, before_index, after_index = np.intersect1d(before_ids, after_ids, return_indices=True)
+            new_after = np.ones(len(hm_after), dtype=bool)
+            new_after[after_index] = False
+            removed_before = np.ones(len(hm_before), dtype=bool)
+            removed_before[before_index] = False
+
+    transitions["aligned_calls"] += 1
+    before_capped = hm_before >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1.0
+    after_capped = hm_after >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1.0
+    newly_after = new_after & after_capped
+    persistent_after = np.zeros(len(hm_after), dtype=bool)
+    left_before = removed_before & before_capped
+    if len(before_index):
+        newly_after[after_index] |= ~before_capped[before_index] & after_capped[after_index]
+        persistent_after[after_index] = before_capped[before_index] & after_capped[after_index]
+        left_before[before_index] |= before_capped[before_index] & ~after_capped[after_index]
+
+    cont_before = elevation_lines.effective_is_continental_from_codes(codes_before, plate_is_continental_before)
+    cont_after = elevation_lines.effective_is_continental_from_codes(codes_after, plate_is_continental_after)
+    craton_before_mask = np.zeros(len(hm_before), dtype=bool) if craton_before is None else np.asarray(craton_before) > 0.0
+    craton_after_mask = np.zeros(len(hm_after), dtype=bool) if craton_after is None else np.asarray(craton_after) > 0.0
+    masks = {
+        "all": (np.ones(len(hm_before), dtype=bool), np.ones(len(hm_after), dtype=bool)),
+        "continental_node": (cont_before, cont_after),
+        "oceanic_node": (~cont_before, ~cont_after),
+        "continental_craton_node": (cont_before & craton_before_mask, cont_after & craton_after_mask),
+        "continental_non_craton_node": (cont_before & ~craton_before_mask, cont_after & ~craton_after_mask),
+    }
+    for scope, (before_mask, after_mask) in masks.items():
+        row = transitions["scopes"][scope]
+        row["newly_capped_area_m2"] += float(area_after[newly_after & after_mask].sum())
+        row["persistently_capped_area_m2"] += float(area_after[persistent_after & after_mask].sum())
+        row["left_cap_area_m2"] += float(area_before[left_before & before_mask].sum())
 
 
 def _add(scope_totals: dict, mask_before: np.ndarray, mask_after: np.ndarray, before: tuple, after: tuple) -> None:
@@ -137,6 +247,12 @@ def record(
     *,
     area_before_m2: np.ndarray | None = None,
     area_after_m2: np.ndarray | None = None,
+    craton_before_m: np.ndarray | None = None,
+    craton_after_m: np.ndarray | None = None,
+    node_ids_before: np.ndarray | None = None,
+    node_ids_after: np.ndarray | None = None,
+    plate_is_continental_before: bool | np.ndarray | None = None,
+    plate_is_continental_after: bool | np.ndarray | None = None,
 ) -> None:
     """Record one call's before/after Hc/Hm for `phase` against `world.phase_budget`, gated by
     `world.debug_diagnostics`. `hc_before`/`hm_before`/`codes_before` and their `_after`
@@ -160,8 +276,12 @@ def record(
             area_after_m2 = np.full(len(hc_after), nominal_m2)
 
     plate_is_continental = plate.crust_type == "continental"
-    cont_before = elevation_lines.effective_is_continental_from_codes(codes_before, plate_is_continental)
-    cont_after = elevation_lines.effective_is_continental_from_codes(codes_after, plate_is_continental)
+    if plate_is_continental_before is None:
+        plate_is_continental_before = plate_is_continental
+    if plate_is_continental_after is None:
+        plate_is_continental_after = plate_is_continental
+    cont_before = elevation_lines.effective_is_continental_from_codes(codes_before, plate_is_continental_before)
+    cont_after = elevation_lines.effective_is_continental_from_codes(codes_after, plate_is_continental_after)
 
     totals = world.phase_budget.setdefault(phase, _new_totals())
     totals["calls"] += 1
@@ -175,6 +295,37 @@ def record(
     _add(scopes["continental_plate" if plate_is_continental else "oceanic_plate"], all_before, all_after, before, after)
     _add(scopes["continental_node"], cont_before, cont_after, before, after)
     _add(scopes["oceanic_node"], ~cont_before, ~cont_after, before, after)
+    _record_cap_transitions(
+        totals,
+        plate_is_continental,
+        np.asarray(hm_before),
+        np.asarray(hm_after),
+        np.asarray(codes_before),
+        np.asarray(codes_after),
+        np.asarray(area_before_m2),
+        np.asarray(area_after_m2),
+        craton_before_m,
+        craton_after_m,
+        node_ids_before,
+        node_ids_after,
+        plate_is_continental_before,
+        plate_is_continental_after,
+    )
+    hm_ledger.record_change(
+        world,
+        plate,
+        phase,
+        np.asarray(hm_before),
+        np.asarray(codes_before),
+        np.asarray(hm_after),
+        np.asarray(codes_after),
+        np.asarray(area_before_m2),
+        np.asarray(area_after_m2),
+        node_ids_before,
+        node_ids_after,
+        plate_is_continental_before,
+        plate_is_continental_after,
+    )
 
 
 def record_shortening(world, demand_m2: np.ndarray, result, hc: np.ndarray, hm: np.ndarray) -> None:
