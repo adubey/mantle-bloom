@@ -825,6 +825,36 @@ def test_dropped_fragments_and_defunct_plates_book_their_continental_material():
     assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * world.continental_material_ledger["initial_continental_m3"]
 
 
+def test_a_line_surface_continental_fragment_is_dropped_and_booked_not_accreted():
+    # Issue #305 review: the line merge resample carries only Hc/Hm, so accreting a line
+    # fragment through it would erase its continental material unbooked. Line fragments are
+    # still dropped and booked, even when one touches a plate that could absorb it.
+    from app import continental_ledger
+
+    def rows(theta, crust_type):
+        return [_thick_line(r * _FRAG_SPACING_RAD, theta, 0.0, crust_type) for r in range(12)]
+
+    body = np.arange(10) * _FRAG_SPACING_RAD
+    islet = np.array([0.6])  # one node per row, well clear of the body: 12 stranded nodes
+    parent = LithospherePlate(
+        plate_id=0, frame=np.eye(3), crust_type="continental", lines=rows(np.concatenate([body, islet]), "continental")
+    )
+    # Its first column one spacing from the islet's -- in contact.
+    neighbour_theta = 0.6 + (1 + np.arange(8)) * _FRAG_SPACING_RAD
+    neighbour = LithospherePlate(plate_id=1, frame=np.eye(3), crust_type="oceanic", lines=rows(neighbour_theta, "oceanic"))
+    world = World(seed=0, plates=[parent, neighbour], next_plate_id=2, node_density=1.0)
+    continental_ledger.ensure_initialized(world)
+    start = world.continental_material_ledger["initial_continental_m3"]
+    neighbour_nodes = neighbour.node_count()
+
+    events = merge_split.defragment_plates(world)
+
+    assert events == ["Plate 0 shed 12 stranded nodes."]
+    assert world.plates[1].node_count() == neighbour_nodes
+    assert world.continental_material_ledger["topology_removed_m3"] > 0.0
+    assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * start
+
+
 def test_defragment_plates_leaves_a_contiguous_world_untouched():
     world = World(
         seed=0,

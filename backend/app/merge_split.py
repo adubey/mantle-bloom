@@ -36,7 +36,12 @@ from scipy.spatial import cKDTree
 
 from . import continental_ledger, cratons, geometry, mantle, mobile_cover, phase_budget, plates as plates_mod
 from .boundary import MERGE_THRESHOLD_RAD, TRANSFORM_RATE_THRESHOLD, closing_rate
-from .elevation_lines import DEFRAG_CONNECT_RADIUS_MULT, TARGET_LINE_SPACING_RAD, line_spacing_rad
+from .elevation_lines import (
+    DEFRAG_CONNECT_RADIUS_MULT,
+    TARGET_LINE_SPACING_RAD,
+    effective_is_continental_from_codes,
+    line_spacing_rad,
+)
 from .plates import Plate, query_workers
 
 if TYPE_CHECKING:
@@ -237,9 +242,10 @@ FAILED_RIFT_BAND_MULT = 2.5
 # LithospherePlate's own local divergent-boundary growth so new nodes it adds are guaranteed
 # to survive this same connected-components check) -- re-exported under this module's own
 # name since callers/tests already refer to it as merge_split.DEFRAG_CONNECT_RADIUS_MULT.
-# A component smaller than this becomes stranded crust and is dropped rather than promoted
-# to its own plate. A node count, not a distance -- scales with node_density directly (an
-# area), same reasoning as SPLIT_MIN_NODES.
+# A component smaller than this becomes stranded crust rather than its own plate: accreted
+# as a terrane onto the plate it touches when it carries continental material, dropped
+# otherwise (see defragment_plates). A node count, not a distance -- scales with
+# node_density directly (an area), same reasoning as SPLIT_MIN_NODES.
 DEFRAG_FRAGMENT_MIN_NODES = 50
 # Cadence: this is a whole-world O(nodes) k-d-tree pass, cheap but not free, and plate
 # topology doesn't fragment fast. cf. the removed reassign.py's REASSIGN_INTERVAL_STEPS = 5.
@@ -254,11 +260,14 @@ DEFRAG_INTERVAL_STEPS = 4
 RELATTICE_INTERVAL_STEPS = 20
 
 
-def remove_defunct_plates(world: "World") -> None:
+def remove_defunct_plates(world: "World") -> list[str]:
     """A plate whose every elevation node was deleted (fully subducted, see boundary.py), or
     that's been eroded down to a single line (or none) -- no real remaining territory, just
     a sliver along one latitude -- simply vanishes. No special-cased merge algorithm needed
-    either way; see apply_topology_changes for the distinct log messages for each case.
+    either way; see apply_topology_changes for the distinct log messages for each case. A
+    sliver still carrying continental material is accreted as a terrane onto the plate it
+    touches instead (see `_accrete_stranded_terrane`, issue #305); returns an event string
+    for each one.
 
     `node_count() > 0` is its own check, not implied by `not p.has_negligible_territory()`: a
     plate can have two or more lines that have each individually shrunk to zero nodes (see
@@ -271,9 +280,16 @@ def remove_defunct_plates(world: "World") -> None:
     just expressed through the abstract interface now instead of reaching into `.lines`
     directly, so this works for any `Plate` subclass, not just that one."""
     defunct = [p for p in world.plates if p.node_count() == 0 or p.has_negligible_territory()]
+    world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
     spacing_rad = line_spacing_rad(world.node_density)
+    connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * spacing_rad
+    events: list[str] = []
     for plate in defunct:
         world.record_removed_points(plate.all_points_and_elevation()[0], plate.plate_id)
+        receiver = _accrete_stranded_terrane(world, plate, connect_radius_rad, _ContactIndex(world.plates))
+        if receiver is not None:
+            events.append(f"Plate {plate.plate_id}'s last crust accreted onto plate {receiver.plate_id}.")
+            continue
         continental_ledger.record(world, "topology_removed_m3", _material_m3(plate, spacing_rad))
         if world.debug_diagnostics and plate.node_count() > 0:
             # GitHub issue #216 item 4: budget this cleanup deletion separately from actual
@@ -283,7 +299,7 @@ def remove_defunct_plates(world: "World") -> None:
             empty = np.array([])
             after = phase_budget.Snapshot(empty, empty, np.array([], dtype=before.codes.dtype), empty)
             phase_budget.record_snapshots(world, plate, "plate_cleanup_removal", before, after)
-    world.plates = [p for p in world.plates if p.node_count() > 0 and not p.has_negligible_territory()]
+    return events
 
 
 def _material_m3(plate: Plate, spacing_rad: float) -> float:
@@ -291,6 +307,88 @@ def _material_m3(plate: Plate, spacing_rad: float) -> float:
     if plate.node_count() == 0:
         return 0.0
     return float(np.dot(plate.collect("continental_material_m"), plate.accounting_areas_m2(spacing_rad)))
+
+
+class _ContactIndex:
+    """Per-plate node k-d trees over `plates`, built on first use, for finding which plate a
+    stranded fragment touches. `invalidate` after a plate's node set changes."""
+
+    def __init__(self, plates: list[Plate]):
+        self.plates = plates
+        self._points: dict[int, np.ndarray] = {}
+        self._spheres: dict[int, tuple[np.ndarray, float]] = {}
+        self._trees: dict[int, cKDTree] = {}
+
+    def invalidate(self, plate: Plate) -> None:
+        for cache in (self._points, self._spheres, self._trees):
+            cache.pop(id(plate), None)
+
+    def contact_counts(self, points: np.ndarray, radius_rad: float) -> list[tuple[Plate, int, float]]:
+        """(plate, nodes of `points` within `radius_rad` of it, nearest distance) for every
+        plate whose bounding sphere comes within `radius_rad` of the points' own."""
+        centre, spread = geometry.bounding_sphere(points)
+        found = []
+        for plate in self.plates:
+            key = id(plate)
+            if key not in self._points:
+                self._points[key] = plate.all_points_and_elevation()[0]
+                if len(self._points[key]):
+                    self._spheres[key] = geometry.bounding_sphere(self._points[key])
+            if key not in self._spheres:
+                continue
+            other_centre, other_spread = self._spheres[key]
+            if float(geometry.angular_distance(centre, other_centre)) - spread - other_spread > radius_rad:
+                continue
+            if key not in self._trees:
+                self._trees[key] = cKDTree(self._points[key])
+            # Chord distance; angles this small make it the arc to well within tolerance.
+            dist, _ = self._trees[key].query(points)
+            found.append((plate, int(np.count_nonzero(dist <= radius_rad)), float(dist.min())))
+        return found
+
+
+def _accrete_stranded_terrane(
+    world: "World", fragment: Plate, connect_radius_rad: float, contacts: _ContactIndex
+) -> Plate | None:
+    """Accrete a stranded piece of crust that carries continental material (a
+    defragmentation fragment, or a plate with negligible territory left) as a terrane onto
+    the live plate it touches -- the one with most of its nodes within `connect_radius_rad`,
+    ties to the nearest -- rather than deleting a microcontinent as geometric cleanup (issue
+    #305). The fusion is the collision merge's own (`_fuse_plates`), so the terrane keeps its
+    fields; the receiver keeps its own age, since a terrane this small doesn't make it a new
+    plate.
+
+    The test is the continental-material tracer, not crust type: over 300 Myr on seeds 2-4
+    and 6, all the material that a continental-crust test still dropped (0.3-1% of the
+    starting inventory) sat on fragments with no continental crust cells -- continental
+    sediment on oceanic slivers, every one of them touching a plate
+    (`bin/debug/attribute_topology_removed.py`). An oceanic fragment with no material on it
+    is still dropped.
+
+    Returns the receiver, or None -- for a fragment with no continental material, one no
+    plate touches, one no toucher can absorb (a different surface representation), or one on
+    a surface whose merge doesn't conserve every field (`Plate.merge_conserves_fields`; the
+    line resample would erase the tracer unbooked) -- leaving the caller to drop it and book
+    its material as `topology_removed_m3`. A fragment
+    no plate touches isn't handed to the nearest one anyway: it would sit there as another
+    disconnected lobe, cut off again by the next defragmentation."""
+    if not fragment.merge_conserves_fields or _material_m3(fragment, line_spacing_rad(world.node_density)) <= 0.0:
+        return None
+    points = fragment.all_points_and_elevation()[0]
+    merge_with = getattr(type(fragment), "merge_with", None)
+    touching = [
+        (count, -nearest, plate)
+        for plate, count, nearest in contacts.contact_counts(points, connect_radius_rad)
+        if count > 0 and plate is not fragment and getattr(type(plate), "merge_with", None) is merge_with
+    ]
+    if merge_with is None or not touching:
+        return None
+    receiver = max(touching, key=lambda entry: entry[:2])[2]
+    age = receiver.age_steps
+    _fuse_plates(world, receiver, fragment, "terrane_accretion")
+    receiver.set_age_steps(age)
+    contacts.invalidate(receiver)
+    return receiver
 
 
 def find_continental_collision_pairs(world: "World") -> list[tuple[int, int]]:
@@ -556,27 +654,33 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
     keep = next(p for p in world.plates if p.plate_id == id_keep)
     absorb = next(p for p in world.plates if p.plate_id == id_absorb)
 
-    spacing_rad = line_spacing_rad(world.node_density)
-    coverage_radius_rad = MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / TARGET_LINE_SPACING_RAD)
-
-    other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p.plate_id not in (id_keep, id_absorb)]
-    other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
-
     # The absorbed plate's own separate identity ends here, whether or not the fused resample
     # happens to re-adopt a given point at the same lattice position -- see
     # World.removed_points_log's own comment.
     world.record_removed_points(absorb.all_points_and_elevation()[0], absorb.plate_id)
+    _fuse_plates(world, keep, absorb, "plate_merge")
+    world.plates = [p for p in world.plates if p.plate_id != id_absorb]
+
+
+def _fuse_plates(world: "World", keep: Plate, absorb: Plate, phase: str) -> None:
+    """Fold `absorb`'s territory and fields into `keep` (Plate.merge_with), excluding every
+    other plate in `world.plates`. `absorb` needn't be live; removing it is the caller's job.
+    `phase` labels the debug phase budget."""
+    spacing_rad = line_spacing_rad(world.node_density)
+    coverage_radius_rad = MERGE_COVERAGE_RADIUS_RAD * (spacing_rad / TARGET_LINE_SPACING_RAD)
+
+    other_points_list = [p.all_points_and_elevation()[0] for p in world.plates if p is not keep and p is not absorb]
+    other_points = np.concatenate(other_points_list, axis=0) if other_points_list else np.zeros((0, 3))
+
     if world.debug_diagnostics:
         # GitHub issue #216 item 4: the whole-row resample folding the two node clouds
-        # together (Plate.merge_with) against both plates' own pre-merge totals. Keyed to
-        # `keep`'s own crust_type -- this path is only ever reached for a continental-
-        # continental pair (see this function's own docstring), so `absorb` shares it too.
-        # A quad merge remaps onto a rotated lattice whose cells differ in size from the
-        # absorbed plate's -- the snapshots' own cell areas keep that out of the volumes.
+        # together (Plate.merge_with) against both plates' own pre-merge totals, keyed to
+        # `keep`'s own crust_type. A quad merge remaps onto a rotated lattice whose cells
+        # differ in size from the absorbed plate's -- the snapshots' own cell areas keep that
+        # out of the volumes.
         pair = [phase_budget.snapshot(keep, spacing_rad), phase_budget.snapshot(absorb, spacing_rad)]
         before = phase_budget.Snapshot(*(np.concatenate(parts) for parts in zip(*pair)))
     keep.merge_with(absorb, spacing_rad, coverage_radius_rad, other_points)
-    world.plates = [p for p in world.plates if p.plate_id != id_absorb]
     # Continental material stacked past the suture cap that the merge couldn't place leaves
     # with the crust that carried it, booked as collision subduction (issue #276).
     material = keep.collect("continental_material_m")
@@ -585,7 +689,7 @@ def merge_plates(world: "World", id_keep: int, id_absorb: int) -> None:
         keep.set_fields_on_plate(continental_material_m=material - excess)
         continental_ledger.record(world, "collision_subducted_m3", float(excess @ keep.accounting_areas_m2(spacing_rad)))
     if world.debug_diagnostics:
-        phase_budget.record_snapshots(world, keep, "plate_merge", before, phase_budget.snapshot(keep, spacing_rad))
+        phase_budget.record_snapshots(world, keep, phase, before, phase_budget.snapshot(keep, spacing_rad))
 
 
 def _fit_residual_rms(points: np.ndarray, velocities: np.ndarray, omega: np.ndarray) -> float:
@@ -745,50 +849,59 @@ def relattice_continental_plates(world: "World") -> None:
 
 def defragment_plates(world: "World") -> list[str]:
     """Split any plate whose nodes form more than one disconnected landmass into that many
-    plates, and drop stranded sub-fragments -- the geometric cleanup ordinary deform()/
-    maybe_split_plate structurally can't do (see Plate.defragment). Mutates world.plates and
+    plates, and cut off stranded sub-fragments -- the geometric cleanup ordinary deform()/
+    maybe_split_plate structurally can't do (see Plate.defragment). A stranded fragment
+    carrying continental material is a microcontinent, not debris: it accretes as a terrane
+    onto the plate it touches (`_accrete_stranded_terrane`, issue #305). The rest are dropped,
+    their mobile cover and continental material booked. Mutates world.plates and
     world.next_plate_id in place; returns event strings for whatever actually changed."""
-    connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * line_spacing_rad(world.node_density)
+    spacing_rad = line_spacing_rad(world.node_density)
+    connect_radius_rad = DEFRAG_CONNECT_RADIUS_MULT * spacing_rad
     min_fragment_nodes = max(1, round(DEFRAG_FRAGMENT_MIN_NODES * world.node_density))
 
     events: list[str] = []
     new_plates: list[Plate] = []
-    spacing_rad = line_spacing_rad(world.node_density)
+    stranded: list[Plate] = []
 
     def cover_m3(plate: Plate) -> float:
         return float(np.dot(plate.collect("mobile_cover_m"), plate.accounting_areas_m2(spacing_rad)))
 
     for plate in world.plates:
-        before = plate.node_count()
-        cover_before = cover_m3(plate)
-        material_before = _material_m3(plate, spacing_rad)
         result = plate.defragment(world.next_plate_id, connect_radius_rad, min_fragment_nodes, world)
         if result is None:
             new_plates.append(plate)
             continue
 
-        replacements, ids_consumed = result
+        replacements, ids_consumed, fragments = result
         world.next_plate_id += ids_consumed
         new_plates.extend(replacements)
-        # The stranded crust dropped below takes its mobile cover with it.
-        mobile_cover.record(world, "stranded_m3", max(cover_before - sum(cover_m3(p) for p in replacements), 0.0))
-        # ...and its continental material, which the ledger books rather than losing.
-        continental_ledger.record(
-            world,
-            "topology_removed_m3",
-            max(material_before - sum(_material_m3(p, spacing_rad) for p in replacements), 0.0),
-        )
-
-        shed = before - sum(p.node_count() for p in replacements)
+        stranded.extend(fragments)
         if len(replacements) > 1:
             spawned = ", ".join(str(p.plate_id) for p in replacements[1:])
             events.append(
                 f"Plate {plate.plate_id} fragmented into disconnected landmasses; spawned plate(s) {spawned}."
             )
-        if shed > 0:
-            events.append(f"Plate {plate.plate_id} shed {shed} stranded nodes.")
 
     world.plates = new_plates
+
+    # Placed only once every plate is defragmented, so a terrane never lands on a lobe that's
+    # about to be cut off itself.
+    contacts = _ContactIndex(world.plates)
+    shed: dict[int, int] = {}
+    for fragment in stranded:
+        receiver = _accrete_stranded_terrane(world, fragment, connect_radius_rad, contacts)
+        if receiver is not None:
+            events.append(
+                f"Plate {fragment.plate_id}'s stranded fragment ({fragment.node_count()} nodes) "
+                f"accreted onto plate {receiver.plate_id}."
+            )
+            continue
+        shed[fragment.plate_id] = shed.get(fragment.plate_id, 0) + fragment.node_count()
+        # The stranded crust dropped takes its mobile cover with it...
+        mobile_cover.record(world, "stranded_m3", cover_m3(fragment))
+        # ...and its continental material, which the ledger books rather than losing.
+        continental_ledger.record(world, "topology_removed_m3", _material_m3(fragment, spacing_rad))
+    events.extend(f"Plate {plate_id} shed {count} stranded nodes." for plate_id, count in shed.items())
 
     # A fragmented/removed plate can leave stale cross-step tracker keys behind -- same
     # cleanup update_collision_progress / pop_ready_forced_merge do for their own dicts.
@@ -874,7 +987,7 @@ def apply_topology_changes(world: "World", years: float) -> list[str]:
     for p in no_land:
         events.append(f"Plate {p.plate_id} ({p.crust_type}) had no land left and disappeared.")
 
-    remove_defunct_plates(world)
+    events.extend(remove_defunct_plates(world))
 
     # Geometric cleanup before collision/split so a severed lobe or a ghost comb of stranded
     # nodes stops polluting neighbour polygons and collision detection. Gated to every

@@ -1472,9 +1472,12 @@ also books the continental-derived material it removes into the continental-mate
 (`deeply_subducted_m3`, `delaminated_lower_crust_m3`, `collision_subducted_m3`). Suture
 accretion carries `continental_material_m` onto the cells that receive the crust, and so does the quad merge for
 crust stacked past the suture cap; material a merge still can't place is booked as
-`collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). Dropping a
-stranded fragment in defragmentation, or a plate with no territory left, books its material
-as `topology_removed_m3`, geometric cleanup rather than physics (issue #276). Fault relief
+`collision_subducted_m3`. A failed rift thins the tracer with its column (`rift_thinned_m3`). A
+stranded fragment cut off in defragmentation, or a plate with no territory left, that still
+carries continental material (continental crust, or continental sediment on an oceanic sliver)
+accretes as a terrane onto the plate it touches, through the merge's own transfer (issue #305).
+One without any is dropped as before, and so is one no plate touches, booking its material as
+`topology_removed_m3`, geometric cleanup rather than physics (issue #276). Fault relief
 moves each donor's material with the crust it gives up, balancing the transfer by cell
 volume.
 

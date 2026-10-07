@@ -580,7 +580,7 @@ def test_defragment_splits_a_severed_plate_and_keeps_identity_on_the_largest():
 
     result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world)
     assert result is not None
-    replacements, consumed = result
+    replacements, consumed, _ = result
 
     assert consumed == 1
     assert [p.plate_id for p in replacements] == [7, 20]
@@ -608,7 +608,7 @@ def test_defragment_sheds_stranded_nodes_without_splitting():
 
     result = plate.defragment(next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world)
     assert result is not None
-    replacements, consumed = result
+    replacements, consumed, _ = result
 
     assert consumed == 0
     assert [p.plate_id for p in replacements] == [3]
@@ -650,7 +650,7 @@ def test_defragment_partition_carries_each_nodes_own_fields_to_the_right_fragmen
         offset += k
 
     world = World(seed=0, plates=[plate], mantle_centers=[])
-    replacements, _ = plate.defragment(
+    replacements, _, _ = plate.defragment(
         next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world
     )
     recombined = np.concatenate([p.collect("channel_depth") for p in replacements])
@@ -674,7 +674,7 @@ def test_defragment_freezes_inherited_crust_when_a_fragment_changes_type():
     density_before = node_crust_density(plate.collect("crust_type_code"), plate.crust_type)
 
     world = World(seed=0, plates=[plate], mantle_centers=[])
-    replacements, _ = plate.defragment(
+    replacements, _, _ = plate.defragment(
         next_id=20, connect_radius_rad=_DEFRAG_CONNECT_RAD, min_fragment_nodes=50, world=world
     )
     by_type = {p.crust_type: p for p in replacements}

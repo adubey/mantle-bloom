@@ -59,7 +59,9 @@ class ContinentalMaterialLedger(TypedDict):
     overloaded_root_delaminated_m3: float
     # Continental material on stranded fragments a plate's defragmentation drops, and on
     # plates removed with no territory left (merge_split.py) -- geometric cleanup, not
-    # physics; kept apart so a save shows how much land it costs (issue #276).
+    # physics; kept apart so a save shows how much land it costs (issue #276). Fragments
+    # carrying continental material accrete onto the plate they touch instead (issue #305),
+    # so this is only material on pieces no plate touches.
     topology_removed_m3: float
 
 
