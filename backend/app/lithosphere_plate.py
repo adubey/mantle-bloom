@@ -921,7 +921,13 @@ def deform_columns(
     # Every phase below changes columns in place on the same nodes, so before and after share
     # each node's area (issue #257: per-cell on quad plates).
     budget_area_m2 = np.broadcast_to(node_area_m2, hc.shape)
-    budget_areas = {"area_before_m2": budget_area_m2, "area_after_m2": budget_area_m2}
+    budget_craton_m = fields["craton_crust_m"]
+    budget_areas = {
+        "area_before_m2": budget_area_m2,
+        "area_after_m2": budget_area_m2,
+        "craton_before_m": budget_craton_m,
+        "craton_after_m": budget_craton_m,
+    }
     # Isostasy-driven elevation change is applied as a *delta* on top of whatever
     # elevation already holds (elevation_before -> below), not a wholesale overwrite
     # -- erosion.py (run later this same step_world call, and every step

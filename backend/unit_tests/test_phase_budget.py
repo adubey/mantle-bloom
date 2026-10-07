@@ -149,10 +149,12 @@ def test_snapshot_reads_hc_hm_and_codes_from_a_real_plate():
     world = generate_world(seed=3, num_plates=4)
     plate = world.plates[0]
     spacing_rad = elevation_lines.line_spacing_rad(world.node_density)
-    hc, hm, codes, area_m2 = phase_budget.snapshot(plate, spacing_rad)
+    hc, hm, codes, area_m2, craton_m, node_ids, owning_types = phase_budget.snapshot(plate, spacing_rad)
     assert len(hc) == len(hm) == len(codes) == len(area_m2) == plate.node_count()
     assert hc.sum() == pytest.approx(plate.collect("crustal_thickness_m").sum())
     assert np.allclose(area_m2, lithosphere.node_area_m2(spacing_rad))
+    assert len(craton_m) == len(node_ids) == len(owning_types) == plate.node_count()
+    assert np.all(owning_types == (plate.crust_type == "continental"))
 
 
 def test_record_weights_area_and_volume_by_each_nodes_own_area():

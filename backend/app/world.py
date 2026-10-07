@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.spatial import cKDTree
 
-from . import atmosphere_cfd, climate, collision_polarity, cratons, erosion, eustasy, faults, gaps, geology, healpix_grid, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, torque, volcanism, worldsketch
+from . import atmosphere_cfd, climate, collision_polarity, cratons, erosion, eustasy, faults, gaps, geology, healpix_grid, hm_ledger, hydrology, lithosphere, magma_transport, mantle, merge_split, phase_budget, stranded_basins, torque, volcanism, worldsketch
 from .elevation_lines import DEFAULT_NODE_DENSITY, line_spacing_rad
 from . import lithosphere_plate
 from .lithosphere_plate import generate_plates
@@ -75,6 +75,10 @@ class World:
     # Persistent source/sink accounts for erosion's mobile cover; the live volume is derived
     # from nodes' mobile_cover_m. See mobile_cover.py.
     mobile_cover_ledger: dict[str, float] = field(default_factory=dict)
+    # Debug-only Hm attribution. These are reset with phase_budget and remain empty during
+    # ordinary simulation; see hm_ledger.py.
+    hm_source_sink_ledger: dict[str, dict] = field(default_factory=dict)
+    hm_suture_budget: dict = field(default_factory=dict)
     # A fixed per-world property, like `seed` -- set once at generation and read again on
     # every future climate render (see climate.py's compute_insolation), not rendering/cache
     # state. The one deliberate exception to climate being otherwise fully stateless.
@@ -582,6 +586,7 @@ class World:
         measures only its own interval -- e.g. before replaying a fixed number of years from a
         saved world to attribute that interval's Hc/Hm change to specific phases."""
         self.phase_budget = {}
+        hm_ledger.reset(self)
 
     def distance_from_land_approx(self, points: np.ndarray) -> np.ndarray:
         """Approximate distance from each given world-xyz point (shape (n, 3)) to the
@@ -975,8 +980,27 @@ def step_world_progress(world: World, years: float):
         # cadence as defragment_plates above (a whole-world pass, not needed every step) on
         # line worlds; every step on quad worlds -- see gaps.gap_fill_due.
         if gaps.gap_fill_due(world):
+            if world.debug_diagnostics:
+                spacing_rad = line_spacing_rad(world.node_density)
+                before_gap_fill = {p.plate_id: phase_budget.snapshot(p, spacing_rad) for p in world.plates}
             for message in gaps.fill_gaps_by_growing_neighbours(world):
                 world.log_event(message)
+            if world.debug_diagnostics:
+                for plate in world.plates:
+                    after = phase_budget.snapshot(plate, spacing_rad)
+                    before = before_gap_fill.get(plate.plate_id)
+                    if before is None:
+                        empty = np.array([])
+                        before = phase_budget.Snapshot(
+                            empty,
+                            empty,
+                            np.array([], dtype=after.codes.dtype),
+                            empty,
+                            empty,
+                            np.empty((0, after.node_ids.shape[1]), dtype=after.node_ids.dtype),
+                            np.array([], dtype=bool),
+                        )
+                    phase_budget.record_snapshots(world, plate, "gap_fill", before, after)
         # Gap-age diagnostic (see docs/debugging.md's overlapAge section): reconciles
         # world.gap_tracks against this step's uncovered-lattice clusters -- the same
         # whole-sphere sweep as fill_gaps_by_growing_neighbours, kept on the interval on every
