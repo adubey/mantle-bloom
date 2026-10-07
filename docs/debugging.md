@@ -544,7 +544,8 @@ instead: `World.removed_points_log`, a `(world_xyz, removed_years, plate_id)` li
 by `World.record_removed_points` at every node-removal site --
 `_grow_or_shrink_line_for_deform`'s end-retreat and interior-subduction carve, `merge_split.
 merge_plates` (the absorbed plate's own points, recorded before the fused resample), `Plate.
-defragment` (stranded fragments shed below `min_fragment_nodes`), and `merge_split.
+defragment` (stranded fragments cut off below `min_fragment_nodes`, whether later accreted or
+dropped), and `merge_split.
 remove_defunct_plates` (a whole plate's points, when it's dropped). Capped by count
 (`MAX_REMOVED_POINTS_LOG`, 20,000), not age -- subduction removes nodes essentially every step
 on a full-size save, so an age-based window would grow unboundedly at high `node_density`.

@@ -632,6 +632,9 @@ class Plate(PlateSurface, abc.ABC):
     def reset_age(self) -> None:
         self._age_steps = 0
 
+    def set_age_steps(self, age_steps: int) -> None:
+        self._age_steps = age_steps
+
     @property
     def internal_stress(self) -> float:
         """Accumulated breakup pressure -- see merge_split.accumulate_plate_stress /
@@ -682,7 +685,7 @@ class Plate(PlateSurface, abc.ABC):
 
     def defragment(
         self, next_id: int, connect_radius_rad: float, min_fragment_nodes: int, world: "World"  # noqa: F821
-    ) -> tuple[list["Plate"], int] | None:
+    ) -> tuple[list["Plate"], int, list["Plate"]] | None:
         """Reconcile "one `Plate` object" with "one contiguous patch of crust."
 
         Ordinary per-step `deform()` only ever grows/shrinks a line's *ends*, and its shrink
@@ -695,17 +698,20 @@ class Plate(PlateSurface, abc.ABC):
         This finds those cases directly. Connected components of this plate's nodes at
         `connect_radius_rad` (see `node_components`); each component with at least
         `min_fragment_nodes` nodes becomes its own plate (the largest keeps this plate's own
-        id/frame/omega/age -- see `_plates_from_node_masks`), everything smaller is dropped
-        as stranded crust.
+        id/frame/omega/age -- see `_plates_from_node_masks`), everything smaller is cut off
+        as stranded crust, one fragment per component.
 
         Returns `None` -- nothing to do -- when the plate is already a single contiguous
         patch (the overwhelmingly common case), when it has exactly one component big
         enough to anchor a plate and no stranded nodes to shed, or when it's debris with no
         component large enough to anchor a plate at all (left for `has_negligible_territory`
         / `remove_defunct_plates` to prune). Otherwise returns
-        `(replacement_plates, n_new_ids_consumed)`, where `replacement_plates[0]` reuses
-        this plate's own id and `next_id, next_id + 1, ...` are consumed for the rest, in
-        descending component-size order. `next_id` is `World.next_plate_id`. `world` is used
+        `(replacement_plates, n_new_ids_consumed, stranded_fragments)`, where
+        `replacement_plates[0]` reuses this plate's own id and `next_id, next_id + 1, ...` are
+        consumed for the rest, in descending component-size order. `stranded_fragments` are
+        the cut-off components as plates that aren't live: they carry this plate's id, omega
+        and frame and age 0, for the caller to place or drop (see
+        `merge_split.defragment_plates`). `next_id` is `World.next_plate_id`. `world` is used
         only to record any stranded/dropped nodes into `World.removed_points_log` (see the
         "Added/Removed Points" debug view) -- never mutated otherwise."""
         points, _ = self.all_points_and_elevation()
@@ -735,9 +741,11 @@ class Plate(PlateSurface, abc.ABC):
             world.record_removed_points(points[dropped_mask], self.plate_id)
 
         n_new_ids = len(kept) - 1
-        masks = [labels == cid for cid in kept]
-        ids = [self.plate_id, *range(next_id, next_id + n_new_ids)]
-        return self._plates_from_node_masks(masks, ids), n_new_ids
+        stranded = [int(cid) for cid in component_ids if int(cid) not in kept]
+        masks = [labels == cid for cid in [*kept, *stranded]]
+        ids = [self.plate_id, *range(next_id, next_id + n_new_ids), *[self.plate_id] * len(stranded)]
+        plates = self._plates_from_node_masks(masks, ids)
+        return plates[: len(kept)], n_new_ids, plates[len(kept) :]
 
     def _plates_from_node_masks(self, masks: list[np.ndarray], ids: list[int]) -> list["Plate"]:
         """Build one plate per mask in `masks` (each a boolean array over this plate's nodes

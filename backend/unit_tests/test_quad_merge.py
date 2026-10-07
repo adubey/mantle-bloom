@@ -6,7 +6,7 @@ import copy
 import numpy as np
 import pytest
 
-from app import geometry, lithosphere, merge_split, quad_merge
+from app import continental_ledger, geometry, lithosphere, merge_split, quad_merge
 from app.elevation_lines import CRUST_TYPE_INHERIT, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import SUTURE_ACCRETION_MAX_HC_M, new_plate
 from app.sparse_quad_patch import PLANET_RADIUS_M, PlateWithSparseQuadPatch, unpack_cell_keys
@@ -463,3 +463,125 @@ def test_merge_across_a_cube_face_seam_of_the_survivors_lattice():
     faces = np.unique(unpack_cell_keys(keep.cell_keys)[0])
     assert len(faces) > 1
     keep._validate_leaf_topology()
+
+
+# Stranded continental fragments (issue #305): a defragmentation fragment or a plate with no
+# territory left that still carries continental material accretes onto the plate it touches
+# instead of being dropped as geometric cleanup.
+
+ISLET_ANGLE = RADIUS + 6 * SPACING  # 4 spacings clear of the parent body: its own component
+ISLET_RADIUS = 2 * SPACING
+
+
+def _islet_world(crust_type="continental", touching=True, material=None):
+    """Plate 1: a cap at angle 0 plus a small detached islet at ISLET_ANGLE. Plate 2: a cap
+    whose rim is one spacing from the islet's (or far away, `touching=False`)."""
+    body, islet = _direction(0.0), _direction(ISLET_ANGLE)
+    parent = PlateWithSparseQuadPatch.from_lattice(
+        1,
+        np.eye(3),
+        crust_type,
+        SPACING,
+        lambda pts: (pts @ body > np.cos(RADIUS)) | (pts @ islet > np.cos(ISLET_RADIUS)),
+    )
+    hc, hm = lithosphere.reference_thickness(crust_type)
+    if material is None:
+        material = hc if crust_type == "continental" else 0.0
+    parent.set_fields_on_plate(
+        crustal_thickness_m=np.full(parent.node_count(), hc),
+        mantle_lithosphere_thickness_m=np.full(parent.node_count(), hm),
+        continental_material_m=np.full(parent.node_count(), material),
+        mobile_cover_m=np.full(parent.node_count(), 10.0),
+    )
+    lithosphere.sync_plate_elevation(parent)
+    gap = 1 * SPACING if touching else 3.0
+    neighbour = _cap(2, ROTATED, _direction(ISLET_ANGLE + ISLET_RADIUS + gap + RADIUS), crust_type="oceanic")
+    neighbour.set_age_steps(17)
+    world = _world(parent, neighbour)
+    continental_ledger.ensure_initialized(world)
+    return world, parent, neighbour
+
+
+def _material(world) -> float:
+    return continental_ledger.surface_volume_m3(world)
+
+
+def test_a_stranded_continental_fragment_accretes_onto_the_plate_it_touches():
+    world, parent, neighbour = _islet_world()
+    material, hc = _material(world), _volume(world.plates, "crustal_thickness_m")
+    cover = _volume(world.plates, "mobile_cover_m")
+    neighbour_cells = neighbour.node_count()
+
+    events = merge_split.defragment_plates(world)
+
+    assert [p.plate_id for p in world.plates] == [1, 2]
+    assert world.next_plate_id == 3  # no tiny plate spawned
+    receiver = world.plates[1]
+    assert receiver.node_count() > neighbour_cells
+    assert receiver.age_steps == 17  # a terrane this small doesn't reset the split cooldown
+    assert len(events) == 1 and "stranded fragment" in events[0] and "onto plate 2" in events[0]
+    assert world.continental_material_ledger["topology_removed_m3"] == 0.0
+    assert world.mobile_cover_ledger.get("stranded_m3", 0.0) == 0.0
+    assert _material(world) == pytest.approx(material, rel=1e-12)
+    assert _volume(world.plates, "crustal_thickness_m") == pytest.approx(hc, rel=1e-12)
+    assert _volume(world.plates, "mobile_cover_m") == pytest.approx(cover, rel=1e-12)
+    assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * material
+
+
+def test_an_oceanic_fragment_carrying_continental_sediment_accretes_too():
+    world, parent, neighbour = _islet_world(crust_type="oceanic", material=200.0)
+    material = _material(world)
+    neighbour_cells = neighbour.node_count()
+
+    events = merge_split.defragment_plates(world)
+
+    assert world.plates[1].node_count() > neighbour_cells
+    assert len(events) == 1 and "accreted onto plate 2" in events[0]
+    assert world.continental_material_ledger["topology_removed_m3"] == 0.0
+    assert _material(world) == pytest.approx(material, rel=1e-12)
+
+
+def test_a_stranded_oceanic_fragment_without_continental_material_is_still_dropped():
+    world, parent, neighbour = _islet_world(crust_type="oceanic")
+    neighbour_cells = neighbour.node_count()
+
+    events = merge_split.defragment_plates(world)
+
+    assert world.plates[1].node_count() == neighbour_cells
+    assert len(events) == 1 and events[0].startswith("Plate 1 shed ")
+    assert world.mobile_cover_ledger["stranded_m3"] > 0.0
+
+
+def test_a_continental_fragment_no_plate_touches_is_dropped_and_booked():
+    world, parent, neighbour = _islet_world(touching=False)
+    material = _material(world)
+    neighbour_cells = neighbour.node_count()
+
+    events = merge_split.defragment_plates(world)
+
+    assert world.plates[1].node_count() == neighbour_cells
+    assert len(events) == 1 and events[0].startswith("Plate 1 shed ")
+    removed = world.continental_material_ledger["topology_removed_m3"]
+    assert removed > 0.0
+    assert _material(world) == pytest.approx(material - removed, rel=1e-12)
+    assert abs(continental_ledger.balance_error_m3(world)) < 1e-9 * material
+
+
+def test_a_continental_plate_with_no_territory_left_accretes_onto_its_neighbour():
+    world, parent, neighbour = _islet_world()
+    points = parent.all_points_and_elevation()[0]
+    rim = neighbour.all_points_and_elevation()[0]
+    # The islet's three cells nearest the neighbour: below OUTLINE_MIN_NODES_FOR_HULL.
+    nearest = np.argsort(-np.max(points @ rim.T, axis=1))[:3]
+    keep = np.zeros(parent.node_count(), dtype=bool)
+    keep[nearest] = True
+    parent.remove_cells(~keep)
+    assert parent.has_negligible_territory()
+    material = _material(world)
+
+    events = merge_split.remove_defunct_plates(world)
+
+    assert [p.plate_id for p in world.plates] == [2]
+    assert events == ["Plate 1's last crust accreted onto plate 2."]
+    assert world.continental_material_ledger["topology_removed_m3"] == 0.0
+    assert _material(world) == pytest.approx(material, rel=1e-12)
