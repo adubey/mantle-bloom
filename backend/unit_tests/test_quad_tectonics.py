@@ -601,6 +601,30 @@ def test_quad_column_pass_reports_ceiling_overflow_instead_of_intruding_melt():
     np.testing.assert_array_equal(line_engine["crustal_thickness_m"][convergent], quad["crustal_thickness_m"][convergent])
 
 
+def test_oceanic_relaxation_leaves_a_continental_terrane_keel_alone():
+    # Issue #311: the oceanic Hm relaxation used to pull every node on an oceanic plate
+    # toward REFERENCE_HM_OCEANIC_M, continental terranes included.
+    from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
+
+    keys = _block((10, 14), (20, 21))
+    codes = np.array([CRUST_TYPE_OCEANIC, 0, CRUST_TYPE_CONTINENTAL, CRUST_TYPE_CONTINENTAL], dtype=np.int8)
+    hm0 = np.array([lithosphere.YOUNG_RIDGE_HM_M, 60_000.0, 150_000.0, 150_000.0])
+    a = _plate(1, keys, "oceanic", crust_type_code=codes, mantle_lithosphere_thickness_m=hm0)
+    world = _world(a)
+    continental_ledger.ensure_initialized(world)
+    fields = {name: a.collect(name) for name in COLUMN_FIELDS}
+    n = len(keys)
+
+    columns = deform_columns(
+        world, a, _converging_ctx(n, np.zeros(n, dtype=bool)), slice(None), fields, None, lambda: None,
+        a.node_areas_m2(), 0, 1_000_000.0,
+    )
+
+    hm = columns["mantle_lithosphere_thickness_m"]
+    assert hm[0] > hm0[0] and hm[1] < hm0[1]  # oceanic nodes relax toward the reference, explicit or inherited
+    np.testing.assert_array_equal(hm[2:], hm0[2:])
+
+
 def _thermal_state_after_columns(a, ctx):
     from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
 

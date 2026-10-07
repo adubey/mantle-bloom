@@ -308,3 +308,13 @@ def test_rift_magmatism_flux_saturates_at_a_fast_extension_rate():
     )
     assert fast[0] > ref[0]
     assert (fast[0] - 12_000.0) <= rheology.RIFT_MAGMATIC_EXTENSION_CAP * (ref[0] - 12_000.0) + 1e-6
+
+
+def test_oceanic_mantle_lithosphere_relaxes_only_oceanic_nodes_regardless_of_age():
+    """Issue #311: no age gate, and continental nodes are left alone."""
+    hm = np.array([8_000.0, 80_000.0, 150_000.0])
+    is_oceanic = np.array([True, True, False])
+    out = rheology.relax_oceanic_mantle_lithosphere(hm, is_oceanic, 1.0)
+    factor = 1.0 - np.exp(-0.1)
+    np.testing.assert_allclose(out[:2], hm[:2] + (lithosphere.REFERENCE_HM_OCEANIC_M - hm[:2]) * factor)
+    assert out[2] == hm[2]
