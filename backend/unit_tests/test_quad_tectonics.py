@@ -1354,3 +1354,51 @@ def test_relattice_leaves_quad_plates_alone():
 
     np.testing.assert_array_equal(a.cell_keys, keys)
     np.testing.assert_array_equal(a.collect("crustal_thickness_m"), hc_before)
+
+
+def test_continental_shortening_reaches_the_interior_and_is_booked():
+    # Issue #314: a continental quad plate's convergent band hands its shortening to the
+    # cascade, which thickens the interior beyond the band and books what it returns.
+    from app import phase_budget
+    from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
+
+    keys = _block((0, 40), (20, 23))
+    a = _plate(1, keys, "continental")
+    world = _world(a)
+    world.debug_diagnostics = True
+    continental_ledger.ensure_initialized(world)
+    n = a.node_count()
+    i, _ = _columns(a)
+    convergent = i < 2
+    ctx = _converging_ctx(n, convergent)
+    ctx.contested = np.zeros(n, dtype=bool)
+    areas = a.node_areas_m2()
+    accommodate = quad_tectonics._shortening_accommodation(a, world, ctx, areas, SPACING)
+    fields = {name: a.collect(name) for name in COLUMN_FIELDS}
+    hc0 = fields["crustal_thickness_m"].copy()
+
+    columns = deform_columns(
+        world, a, ctx, slice(None), fields, None, lambda: None, areas, 0, 1_000_000.0,
+        ceiling_overflow=np.zeros(n), accommodate=accommodate,
+    )
+
+    hc = columns["crustal_thickness_m"]
+    assert np.all(hc[convergent] > hc0[convergent])
+    assert np.any(hc[~convergent] > hc0[~convergent] + 1.0)
+    assert np.all(hc <= lithosphere.MAX_CRUSTAL_THICKNESS_M)
+    book = world.phase_budget[phase_budget.SHORTENING_PHASE]["shortening"]
+    assert book["demand_m2"] > 0.0
+    assert book["absorbed_m2"] + book["returned_decay_m2"] + book["returned_unrouted_m2"] == pytest.approx(book["demand_m2"], rel=1e-12)
+    assert float((hc - hc0) @ areas) == pytest.approx(book["absorbed_hc_m3"], rel=1e-9)
+
+
+def test_continental_shortening_is_a_no_op_without_a_collision():
+    keys = _block((0, 10), (20, 22))
+    a = _plate(1, keys, "continental")
+    world = _world(a)
+    n = a.node_count()
+    ctx = _converging_ctx(n, np.zeros(n, dtype=bool))
+    ctx.contested = np.zeros(n, dtype=bool)
+    accommodate = quad_tectonics._shortening_accommodation(a, world, ctx, a.node_areas_m2(), SPACING)
+    hc, hm = a.collect("crustal_thickness_m"), a.collect("mantle_lithosphere_thickness_m")
+    assert not np.any(accommodate(np.zeros(n), hc, hm))

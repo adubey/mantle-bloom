@@ -13,8 +13,10 @@ module replaces all of them with two operations on the cell graph:
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
   conserved), as `_redistribute_accreted_column` does for a line end. Past the receiving
   belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`).
-  The melt of the convergent band's shortening past the Hc ceiling is placed the same way
-  (`_place_ceiling_overflow`). An oceanic plate also carves out contested patches the peel
+  A continental plate's convergent shortening is carried into its interior by the shortening
+  cascade (`shortening.py`, issue #314), which keeps every column under the caps; on an
+  oceanic plate, the melt of the band's shortening past the Hc ceiling is placed the same way
+  as suture crust (`_place_ceiling_overflow`). An oceanic plate also carves out contested patches the peel
   can't reach from its edge (the line engine's interior-subduction carve-out,
   `_carve_interior`).
 - **Advance** activates the empty cell across each exposed side of an eligible boundary
@@ -42,7 +44,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, terrain_noise
+from . import continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -174,7 +176,9 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         lambda contested: components_of_at_least(plate, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
         node_weight=areas / nominal_area_m2,
     )
-    near_field_dist = hop_distance(plate, ctx.convergent, ctx.orogen_dilation_nodes) if ctx.orogen_dilation_nodes > 0 else None
+    # Convergent shortening spreads into continental interiors through the shortening cascade
+    # (issue #314) instead of the line engine's fixed near-field ring.
+    accommodate = _shortening_accommodation(plate, world, ctx, areas, spacing_rad)
     fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
     ceiling_overflow = np.zeros(plate.node_count())
     strained: dict[str, np.ndarray] = {}
@@ -184,13 +188,14 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         ctx,
         slice(None),
         fields,
-        near_field_dist,
+        None,
         lambda: plate.surface_nodes().local_xyz,
         areas,
         _COLUMN_RNG_INDEX,
         years,
         ceiling_overflow=ceiling_overflow,
         strained=strained,
+        accommodate=accommodate,
     )
     columns.update(_column_thermal_state(plate, fields, strained, columns))
     plate.set_fields_on_plate(**columns)
@@ -223,6 +228,63 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
     orogeny.evolve_standing_orogens(plate, world, years)
     if world.debug_diagnostics:
         phase_budget.record_snapshots(world, plate, "orogenic_relief", before, phase_budget.snapshot(plate, spacing_rad))
+
+
+def _shortening_front(
+    plate: "PlateWithSparseQuadPatch", convergent: np.ndarray, contested: np.ndarray, host: np.ndarray
+) -> np.ndarray:
+    """The cells the shortening cascade's rings count out from: the convergent band's contact
+    with its neighbour -- cells already overlapped, or on the edge of the plate or of its
+    `host` crust. The whole band when no such cell exists."""
+    probe = plate._probe_neighbour_indices()
+    edge = np.any(np.any(probe < 0, axis=2), axis=1)
+    edge |= np.any(np.any((probe >= 0) & ~host[np.maximum(probe, 0)], axis=2), axis=1)
+    front = convergent & host & (contested | edge)
+    return front if np.any(front) else convergent & host
+
+
+def _shortening_accommodation(
+    plate: "PlateWithSparseQuadPatch", world: "World", ctx, areas: np.ndarray, spacing_rad: float
+):
+    """`deform_columns`' `accommodate` hook: carry the convergent band's demanded strain into
+    the plate's continental interior with `shortening.ring_cascade`, book it, and return the
+    strain each cell takes up. A continental plate routes through all of its cells; an oceanic
+    plate only through its continental terranes, its oceanic cells taking up their own demand
+    in place. None for an oceanic plate with no continental crust."""
+    codes = plate.collect("crust_type_code")
+    host = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    if not np.any(host):
+        return None
+    if plate.crust_type == "continental":
+        host = np.ones(len(host), dtype=bool)
+
+    def accommodate(strain: np.ndarray, hc: np.ndarray, hm: np.ndarray) -> np.ndarray:
+        demand = shortening.demand_m2(strain, areas, spacing_rad)
+        if not np.any(demand > 0.0):
+            return np.zeros(len(areas))
+        density = lithosphere.node_crust_density(codes, plate.crust_type)
+        relief = np.clip(lithosphere.isostatic_elevation(hc, hm, density) - torque.CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
+        result = shortening.ring_cascade(
+            shortening.ShorteningProblem(
+                adjacency=_adjacency_matrix(plate),
+                areas_m2=areas,
+                front=_shortening_front(plate, ctx.convergent, ctx.contested, host),
+                demand_m2=demand,
+                hc_m=hc,
+                hm_m=hm,
+                craton_strength=cratons.strength(plate.collect("craton_crust_m")),
+                relief_m=relief,
+                crust_density=density,
+                drive_stress_pa=shortening.drive_stress_pa(ctx.closing_rate, demand),
+                spacing_rad=spacing_rad,
+                reach_scale=world.collision_uplift_reach_multiplier,
+                host=None if np.all(host) else host,
+            )
+        )
+        phase_budget.record_shortening(world, demand, result, hc, hm)
+        return result.absorbed_m2 / areas
+
+    return accommodate
 
 
 def _column_thermal_state(

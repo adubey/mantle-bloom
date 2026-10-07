@@ -23,7 +23,8 @@ cratons that already exist, dated CRATON_SEED_AGE_YEARS before the start.
 
 Resistance. Strength rises linearly with cratonic thickness up to CRATON_FULL_STRENGTH_HC_M.
 It scales back erosional Hc removal (erosion.py), divergent thinning
-(lithosphere_plate.deform_columns), how much of a rift's stretched footprint a craton donates
+(lithosphere_plate.deform_columns), collisional shortening (a craton passes it on to weaker
+ground instead of thickening -- shortening.py), how much of a rift's stretched footprint a craton donates
 (quad_tectonics._allocate_stretch), and delays boundary consumption of a craton cell until it
 has been overlapped for CRATON_RETREAT_DELAY_YEARS (quad_tectonics._retreat), so shortening
 goes into the younger belts around it first.

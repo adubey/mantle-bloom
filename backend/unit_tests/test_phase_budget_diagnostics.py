@@ -90,3 +90,16 @@ def test_main_generates_a_fresh_world_when_no_save_is_given(capsys):
 def test_main_errors_on_a_missing_file(tmp_path):
     with pytest.raises(SystemExit):
         main([str(tmp_path / "nope.mbworld"), "--years", "100000"])
+
+
+def test_shortening_ledger_is_reported_apart_from_the_phases(fresh_world):
+    # Issue #314: the collisional-shortening entry has no Hc/Hm scopes of its own.
+    from app.phase_budget import SHORTENING_PHASE
+
+    report = build_report(fresh_world, CONVENTIONAL_YEARS_PER_STEP)
+    assert all(row["phase"] != SHORTENING_PHASE for row in report["phases"])
+    book = report["shortening"]
+    assert book["demand_m2"] > 0.0
+    returned = book["returned_decay_m2"] + book["returned_unrouted_m2"]
+    assert book["absorbed_m2"] + returned == pytest.approx(book["demand_m2"], rel=1e-12)
+    assert "collisional shortening" in format_report(report)

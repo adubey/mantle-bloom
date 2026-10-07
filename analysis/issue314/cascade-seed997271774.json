@@ -1,0 +1,4153 @@
+{
+ "save": "/Users/adubey/Downloads/mantle-bloom-seed997271774-87400000y.mbworld",
+ "step_years": 100000.0,
+ "compare": {},
+ "checkpoints": [
+  {
+   "metrics": {
+    "elapsed_myr": 87.4,
+    "plate_count": 18,
+    "sea_level_m": -408.1539494189735,
+    "land_area_km2": 148758068.15272066,
+    "continental_area_km2": 268552220.3766748,
+    "emergent_continental_area_km2": 147751349.5257197,
+    "land_elevation_m": {
+     "p10": 171.70922513454573,
+     "p50": 936.4485997937998,
+     "p90": 4502.414190046625,
+     "p99": 6971.983180517041
+    },
+    "continental_hc_km": {
+     "p50": 32.90936703996167,
+     "p90": 51.505311006415546,
+     "p99": 83.38807838697188
+    },
+    "continental_hc_above_50km_area_km2": 29508848.516100835,
+    "hc_cap_area_km2": 624392.2722811492,
+    "hm_cap_area_km2": 15977743.195559664,
+    "hm_volume_all_km3": 34067700921.57645,
+    "continental": {
+     "area_km2": 268552220.3766748,
+     "hm_cap_area_km2": 15963006.867482224,
+     "hm_cap_fraction": 0.0594409789093991,
+     "hm_mean_km": 107.81029242183513,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28952693409.342415,
+     "hm_above_0.8_cap_fraction": 0.0846806545407074,
+     "hm_above_0.9_cap_fraction": 0.07636560158522902,
+     "hm_above_0.99_cap_fraction": 0.06853429153904884
+    },
+    "continental_craton": {
+     "area_km2": 70133691.72235616,
+     "hm_cap_area_km2": 4897903.830432571,
+     "hm_cap_fraction": 0.06983667492967993,
+     "hm_mean_km": 111.14076077409723,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7794711853.918668,
+     "hm_above_0.8_cap_fraction": 0.0757399589702772,
+     "hm_above_0.9_cap_fraction": 0.07389708419047297,
+     "hm_above_0.99_cap_fraction": 0.07057158647906653
+    },
+    "continental_non_craton": {
+     "area_km2": 198418528.65431863,
+     "hm_cap_area_km2": 11065103.037049657,
+     "hm_cap_fraction": 0.05576648064116577,
+     "hm_mean_km": 106.6330936879631,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21157981555.423748,
+     "hm_above_0.8_cap_fraction": 0.08784086337388756,
+     "hm_above_0.9_cap_fraction": 0.07723813218581979,
+     "hm_above_0.99_cap_fraction": 0.0678141823020751
+    },
+    "oceanic": {
+     "area_km2": 242827064.78169495,
+     "hm_cap_area_km2": 14736.328077439692,
+     "hm_cap_fraction": 6.068651404524395e-05,
+     "hm_mean_km": 21.064404484040942,
+     "hm_p50_km": 18.358762137415003,
+     "hm_p95_km": 39.99487827558689,
+     "hm_p99_km": 41.17200331053237,
+     "hm_volume_km3": 5115007512.2340355,
+     "hm_above_0.8_cap_fraction": 0.000163482912460998,
+     "hm_above_0.9_cap_fraction": 9.402437844366648e-05,
+     "hm_above_0.99_cap_fraction": 7.608053594783959e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 54931941.90048037,
+      "hm_cap_fraction_of_continental": 0.13504660941435379
+     },
+     "3": {
+      "continental_area_km2": 41102900.80929429,
+      "hm_cap_fraction_of_continental": 0.10699854856574302
+     },
+     "1": {
+      "continental_area_km2": 70288012.03338553,
+      "hm_cap_fraction_of_continental": 0.03118389504828129
+     },
+     "4": {
+      "continental_area_km2": 18626770.831008114,
+      "hm_cap_fraction_of_continental": 0.0447203971003862
+     },
+     "2": {
+      "continental_area_km2": 5286879.06086454,
+      "hm_cap_fraction_of_continental": 0.11659666424394696
+     },
+     "9": {
+      "continental_area_km2": 19182787.568375953,
+      "hm_cap_fraction_of_continental": 0.0162601180012186
+     },
+     "21": {
+      "continental_area_km2": 33169480.260025773,
+      "hm_cap_fraction_of_continental": 0.005285836477232227
+     },
+     "20": {
+      "continental_area_km2": 25963447.913240228,
+      "hm_cap_fraction_of_continental": 0.0006993584726190235
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 34067700921.576454,
+    "continental_node": 28952693409.34242,
+    "oceanic_node": 5115007512.234034
+   }
+  },
+  {
+   "step": 25,
+   "metrics": {
+    "elapsed_myr": 89.9,
+    "plate_count": 18,
+    "sea_level_m": -406.6606360956055,
+    "land_area_km2": 148138126.5703607,
+    "continental_area_km2": 266941717.89064115,
+    "emergent_continental_area_km2": 147049381.9535335,
+    "land_elevation_m": {
+     "p10": 172.85969157933403,
+     "p50": 937.8887928884931,
+     "p90": 4664.962586355791,
+     "p99": 7037.377061876509
+    },
+    "continental_hc_km": {
+     "p50": 32.944504437587256,
+     "p90": 51.919439249002586,
+     "p99": 83.6593772397129
+    },
+    "continental_hc_above_50km_area_km2": 29956237.18916699,
+    "hc_cap_area_km2": 997300.2878817688,
+    "hm_cap_area_km2": 17723009.12412949,
+    "hm_volume_all_km3": 34026552210.246452,
+    "continental": {
+     "area_km2": 266941717.89064115,
+     "hm_cap_area_km2": 17703976.834746983,
+     "hm_cap_fraction": 0.06632150633719915,
+     "hm_mean_km": 108.49270691800946,
+     "hm_p50_km": 100.0030958224685,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28961229563.29929,
+     "hm_above_0.8_cap_fraction": 0.09029239168819558,
+     "hm_above_0.9_cap_fraction": 0.08303599645140625,
+     "hm_above_0.99_cap_fraction": 0.0753058394073223
+    },
+    "continental_craton": {
+     "area_km2": 70133691.72235616,
+     "hm_cap_area_km2": 4958662.374791578,
+     "hm_cap_fraction": 0.0707029995572147,
+     "hm_mean_km": 111.31193655245833,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7806717043.1885805,
+     "hm_above_0.8_cap_fraction": 0.07681769820622354,
+     "hm_above_0.9_cap_fraction": 0.07492632394416432,
+     "hm_above_0.99_cap_fraction": 0.0715486955780729
+    },
+    "continental_non_craton": {
+     "area_km2": 196808026.168285,
+     "hm_cap_area_km2": 12745314.459955407,
+     "hm_cap_fraction": 0.06476013559049289,
+     "hm_mean_km": 107.48805794140775,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21154512520.11071,
+     "hm_above_0.8_cap_fraction": 0.09509417755596197,
+     "hm_above_0.9_cap_fraction": 0.08592592570208549,
+     "hm_above_0.99_cap_fraction": 0.07664471959532752
+    },
+    "oceanic": {
+     "area_km2": 244639847.4656383,
+     "hm_cap_area_km2": 19032.28938250472,
+     "hm_cap_fraction": 7.779717646029829e-05,
+     "hm_mean_km": 20.705223206365133,
+     "hm_p50_km": 16.86440547246163,
+     "hm_p95_km": 39.99601119701639,
+     "hm_p99_km": 41.10193484980035,
+     "hm_volume_km3": 5065322646.94716,
+     "hm_above_0.8_cap_fraction": 0.00017983185296954244,
+     "hm_above_0.9_cap_fraction": 0.00011088800709080776,
+     "hm_above_0.99_cap_fraction": 9.307712857160538e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 54546671.627942905,
+      "hm_cap_fraction_of_continental": 0.14381060338261045
+     },
+     "3": {
+      "continental_area_km2": 40850895.62108691,
+      "hm_cap_fraction_of_continental": 0.11718944789151674
+     },
+     "1": {
+      "continental_area_km2": 69850785.91028641,
+      "hm_cap_fraction_of_continental": 0.03857606928177064
+     },
+     "4": {
+      "continental_area_km2": 18526640.429392163,
+      "hm_cap_fraction_of_continental": 0.05162615294029459
+     },
+     "2": {
+      "continental_area_km2": 5241409.685708667,
+      "hm_cap_fraction_of_continental": 0.13311263542782556
+     },
+     "21": {
+      "continental_area_km2": 32885282.36719947,
+      "hm_cap_fraction_of_continental": 0.01051547893422127
+     },
+     "9": {
+      "continental_area_km2": 19139039.14834322,
+      "hm_cap_fraction_of_continental": 0.017607410608129825
+     },
+     "20": {
+      "continental_area_km2": 25900993.100681383,
+      "hm_cap_fraction_of_continental": 0.0015742242424065047
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 34026552210.246456,
+    "continental_node": 28961229563.299294,
+    "oceanic_node": 5065322646.947161
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 29136285.629677568,
+     "continental_plate": 14908772.730404863,
+     "oceanic_plate": 14227512.899158016,
+     "continental_node": 14253690.07194112,
+     "oceanic_node": 14882595.557474304
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -9286291.7476352,
+     "continental_plate": -1839583.974129664,
+     "oceanic_plate": -7446707.77376768,
+     "continental_node": -428344.245092352,
+     "oceanic_node": -8857947.502444545
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 194440594.52044085,
+     "continental_plate": 0.0,
+     "oceanic_plate": 194440594.52044085,
+     "continental_node": 0.0,
+     "oceanic_node": 194440594.52044085
+    },
+    "decompression_melting": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "boundary_retreat": {
+     "all": -287063549.03528243,
+     "continental_plate": -4522894.644871168,
+     "oceanic_plate": -282540654.39046043,
+     "continental_node": -4505151.637291008,
+     "oceanic_node": -282558397.39789313
+    },
+    "boundary_advance": {
+     "all": 313756.207874048,
+     "continental_plate": 213368.544821248,
+     "oceanic_plate": 100387.66313472,
+     "continental_node": 211414.788079616,
+     "oceanic_node": 102341.419892736
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 14227512.899145817,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 31310493.094927162,
+    "continental_node": -995455.0207625293,
+    "oceanic_node": 32305948.115656927
+   },
+   "shortening": {
+    "demand_m2": 338835569161.35834,
+    "absorbed_m2": 221575677762.131,
+    "returned_decay_m2": 68883436963.96361,
+    "returned_unrouted_m2": 48376454435.26372,
+    "absorbed_hc_m3": 5320051345775240.0,
+    "absorbed_hm_m3": 1.4908772730383462e+16,
+    "returned_hc_m3": 4968368730732507.0,
+    "returned_hm_m3": 1.3202056700760616e+16
+   }
+  },
+  {
+   "step": 50,
+   "metrics": {
+    "elapsed_myr": 92.4,
+    "plate_count": 18,
+    "sea_level_m": -409.34480365804643,
+    "land_area_km2": 147913194.8174053,
+    "continental_area_km2": 265253737.5586965,
+    "emergent_continental_area_km2": 146761234.14391267,
+    "land_elevation_m": {
+     "p10": 174.5252327428902,
+     "p50": 945.2904746288621,
+     "p90": 4878.869182055678,
+     "p99": 7211.5064419017435
+    },
+    "continental_hc_km": {
+     "p50": 32.96777651356669,
+     "p90": 52.527335863491004,
+     "p99": 83.92941496969104
+    },
+    "continental_hc_above_50km_area_km2": 30596891.398490626,
+    "hc_cap_area_km2": 1647365.496363642,
+    "hm_cap_area_km2": 19258942.280294586,
+    "hm_volume_all_km3": 33978197550.79874,
+    "continental": {
+     "area_km2": 265253737.5586965,
+     "hm_cap_area_km2": 19248136.42659294,
+     "hm_cap_fraction": 0.07256499608166173,
+     "hm_mean_km": 109.20042110976827,
+     "hm_p50_km": 100.00755581969587,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28965819842.349613,
+     "hm_above_0.8_cap_fraction": 0.09545270741401107,
+     "hm_above_0.9_cap_fraction": 0.08862251591920814,
+     "hm_above_0.99_cap_fraction": 0.08103207960858194
+    },
+    "continental_craton": {
+     "area_km2": 70133691.72235616,
+     "hm_cap_area_km2": 5007423.74139102,
+     "hm_cap_fraction": 0.07139826263836657,
+     "hm_mean_km": 111.56286067109446,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7824315277.97071,
+     "hm_above_0.8_cap_fraction": 0.07847345612207379,
+     "hm_above_0.9_cap_fraction": 0.07630914434622312,
+     "hm_above_0.99_cap_fraction": 0.0722494711809977
+    },
+    "continental_non_craton": {
+     "area_km2": 195120045.83634037,
+     "hm_cap_area_km2": 14240712.685201917,
+     "hm_cap_fraction": 0.07298436521046386,
+     "hm_mean_km": 108.3512689522,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21141504564.378906,
+     "hm_above_0.8_cap_fraction": 0.10155570708624342,
+     "hm_above_0.9_cap_fraction": 0.09304841794409233,
+     "hm_above_0.99_cap_fraction": 0.08418888878899286
+    },
+    "oceanic": {
+     "area_km2": 246594949.1272022,
+     "hm_cap_area_km2": 10805.853701650552,
+     "hm_cap_fraction": 4.382025560497802e-05,
+     "hm_mean_km": 20.326359993138254,
+     "hm_p50_km": 15.110160352481177,
+     "hm_p95_km": 39.996893517112845,
+     "hm_p99_km": 41.10004401573554,
+     "hm_volume_km3": 5012377708.449126,
+     "hm_above_0.8_cap_fraction": 0.00016088252096426657,
+     "hm_above_0.9_cap_fraction": 7.664872912648251e-05,
+     "hm_above_0.99_cap_fraction": 5.897906225135499e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 54041950.87313917,
+      "hm_cap_fraction_of_continental": 0.15292348249594284
+     },
+     "3": {
+      "continental_area_km2": 40618023.15679906,
+      "hm_cap_fraction_of_continental": 0.13121182852965801
+     },
+     "1": {
+      "continental_area_km2": 69487007.188624,
+      "hm_cap_fraction_of_continental": 0.04110498776233519
+     },
+     "4": {
+      "continental_area_km2": 18439224.299472112,
+      "hm_cap_fraction_of_continental": 0.05361861589614342
+     },
+     "2": {
+      "continental_area_km2": 5187208.9615554875,
+      "hm_cap_fraction_of_continental": 0.15281132347515997
+     },
+     "21": {
+      "continental_area_km2": 32565577.465798553,
+      "hm_cap_fraction_of_continental": 0.019842033324063785
+     },
+     "9": {
+      "continental_area_km2": 19095363.045686554,
+      "hm_cap_fraction_of_continental": 0.01537161329925058
+     },
+     "20": {
+      "continental_area_km2": 25819382.567621566,
+      "hm_cap_fraction_of_continental": 0.002981545614747013
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33978197550.79874,
+    "continental_node": 28965819842.349617,
+    "oceanic_node": 5012377708.449127
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 57782388.202930175,
+     "continental_plate": 29293672.743305217,
+     "oceanic_plate": 28488715.46044416,
+     "continental_node": 27923645.649649665,
+     "oceanic_node": 29858742.55249408
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -18827274.995892223,
+     "continental_plate": -3745247.239340032,
+     "oceanic_plate": -15082027.757436927,
+     "continental_node": -936579.362717696,
+     "oceanic_node": -17890695.63035648
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 387846466.8556001,
+     "continental_plate": 0.0,
+     "oceanic_plate": 387846466.8556001,
+     "continental_node": 0.0,
+     "oceanic_node": 387846466.8556001
+    },
+    "decompression_melting": {
+     "all": -19296.94937088,
+     "continental_plate": -149.037252608,
+     "oceanic_plate": -19147.912282112,
+     "continental_node": 0.0,
+     "oceanic_node": -19296.949501952
+    },
+    "boundary_retreat": {
+     "all": -575028502.2545838,
+     "continental_plate": -7328095.129829376,
+     "oceanic_plate": -567700407.1254425,
+     "continental_node": -7310352.122380288,
+     "oceanic_node": -567718150.1329244
+    },
+    "boundary_advance": {
+     "all": 420923.471167488,
+     "continental_plate": 213368.544821248,
+     "oceanic_plate": 207554.92651008,
+     "continental_node": 211414.788079616,
+     "oceanic_node": 209508.683317248
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "failed_rift_thinning": {
+     "all": -5286686.813884416,
+     "continental_plate": -5286686.813884416,
+     "oceanic_plate": 0.0,
+     "continental_node": -5237286.394421248,
+     "oceanic_node": -49400.419463392
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 28488715.46012169,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 63608611.70631981,
+    "continental_node": -1524409.551011715,
+    "oceanic_node": 65133021.25592843
+   },
+   "shortening": {
+    "demand_m2": 692402798182.2476,
+    "absorbed_m2": 448399485282.7335,
+    "returned_decay_m2": 141911222821.1968,
+    "returned_unrouted_m2": 102092090078.31778,
+    "absorbed_hc_m3": 1.0463225478745672e+16,
+    "absorbed_hm_m3": 2.9293672743389944e+16,
+    "returned_hc_m3": 1.0383110588620884e+16,
+    "returned_hm_m3": 2.7965367491532452e+16
+   }
+  },
+  {
+   "step": 75,
+   "metrics": {
+    "elapsed_myr": 94.9,
+    "plate_count": 18,
+    "sea_level_m": -407.71590326741455,
+    "land_area_km2": 147503956.4140685,
+    "continental_area_km2": 263727280.5921017,
+    "emergent_continental_area_km2": 146274347.7555581,
+    "land_elevation_m": {
+     "p10": 172.4078529565993,
+     "p50": 949.7113032869512,
+     "p90": 5072.46465090489,
+     "p99": 7164.509587678288
+    },
+    "continental_hc_km": {
+     "p50": 32.99007882376265,
+     "p90": 53.25666997096886,
+     "p99": 83.97013079130998
+    },
+    "continental_hc_above_50km_area_km2": 31384027.423386578,
+    "hc_cap_area_km2": 1521077.443312406,
+    "hm_cap_area_km2": 20603665.21145223,
+    "hm_volume_all_km3": 33918308011.62133,
+    "continental": {
+     "area_km2": 263727280.5921017,
+     "hm_cap_area_km2": 20592859.35775058,
+     "hm_cap_fraction": 0.07808391802136266,
+     "hm_mean_km": 109.83886710434246,
+     "hm_p50_km": 100.0140234269689,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28967505724.74549,
+     "hm_above_0.8_cap_fraction": 0.10092912832648139,
+     "hm_above_0.9_cap_fraction": 0.09370736296400754,
+     "hm_above_0.99_cap_fraction": 0.08673812997333508
+    },
+    "continental_craton": {
+     "area_km2": 70120559.04891974,
+     "hm_cap_area_km2": 5125481.818348598,
+     "hm_cap_fraction": 0.07309527887210363,
+     "hm_mean_km": 111.84534748876052,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7842658292.93258,
+     "hm_above_0.8_cap_fraction": 0.08057146783999986,
+     "hm_above_0.9_cap_fraction": 0.07818165233966802,
+     "hm_above_0.99_cap_fraction": 0.07434390971691583
+    },
+    "continental_non_craton": {
+     "area_km2": 193606721.54318196,
+     "hm_cap_area_km2": 15467377.53940198,
+     "hm_cap_fraction": 0.07989070532322476,
+     "hm_mean_km": 109.11215924443636,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21124847431.812916,
+     "hm_above_0.8_cap_fraction": 0.10830227386018022,
+     "hm_above_0.9_cap_fraction": 0.09933047098387875,
+     "hm_above_0.99_cap_fraction": 0.09122707357213322
+    },
+    "oceanic": {
+     "area_km2": 248358833.75279093,
+     "hm_cap_area_km2": 10805.853701650552,
+     "hm_cap_fraction": 4.350903705888062e-05,
+     "hm_mean_km": 19.93406963653131,
+     "hm_p50_km": 13.714218353569667,
+     "hm_p95_km": 39.99758066869488,
+     "hm_p99_km": 41.100734844110846,
+     "hm_volume_km3": 4950802286.875837,
+     "hm_above_0.8_cap_fraction": 0.00014401582121568426,
+     "hm_above_0.9_cap_fraction": 5.856018340752713e-05,
+     "hm_above_0.99_cap_fraction": 5.856018340752713e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 53515190.39594336,
+      "hm_cap_fraction_of_continental": 0.1605010343686533
+     },
+     "3": {
+      "continental_area_km2": 40267141.676283725,
+      "hm_cap_fraction_of_continental": 0.14788140578428705
+     },
+     "1": {
+      "continental_area_km2": 69250006.377156,
+      "hm_cap_fraction_of_continental": 0.04424192790488418
+     },
+     "4": {
+      "continental_area_km2": 18381657.296294414,
+      "hm_cap_fraction_of_continental": 0.059620213047114186
+     },
+     "21": {
+      "continental_area_km2": 32368388.428018827,
+      "hm_cap_fraction_of_continental": 0.02680176362449017
+     },
+     "2": {
+      "continental_area_km2": 5137202.537145022,
+      "hm_cap_fraction_of_continental": 0.11645038967728362
+     },
+     "9": {
+      "continental_area_km2": 19047109.44145482,
+      "hm_cap_fraction_of_continental": 0.01628800054433131
+     },
+     "20": {
+      "continental_area_km2": 25760584.439805537,
+      "hm_cap_fraction_of_continental": 0.004393683361740154
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33918308011.62133,
+    "continental_node": 28967505724.745495,
+    "oceanic_node": 4950802286.875836
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 87111510.87674983,
+     "continental_plate": 44372513.128972284,
+     "oceanic_plate": 42738997.7486295,
+     "continental_node": 42211402.165518336,
+     "oceanic_node": 44900108.70861005
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -29388328.131362814,
+     "continental_plate": -6403337.220521984,
+     "oceanic_plate": -22984990.91444531,
+     "continental_node": -2157980.859498496,
+     "oceanic_node": -27230347.268784128
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 582999668.1390326,
+     "continental_plate": 0.0,
+     "oceanic_plate": 582999668.1390326,
+     "continental_node": 0.0,
+     "oceanic_node": 582999668.1390326
+    },
+    "decompression_melting": {
+     "all": -58918.273810432,
+     "continental_plate": -149.037252608,
+     "oceanic_plate": -58769.237016576,
+     "continental_node": 0.0,
+     "oceanic_node": -58918.274269184
+    },
+    "boundary_retreat": {
+     "all": -873258168.3632537,
+     "continental_plate": -11663593.752231937,
+     "oceanic_plate": -861594574.6091868,
+     "continental_node": -11613690.81479168,
+     "oceanic_node": -861644477.5463649
+    },
+    "boundary_advance": {
+     "all": 496041.1385856,
+     "continental_plate": 213368.54495232,
+     "oceanic_plate": 282672.59396096,
+     "continental_node": 211414.788079616,
+     "oceanic_node": 284626.350768128
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 42738997.748606056,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 94346733.29727614,
+    "continental_node": -2495481.099058613,
+    "oceanic_node": 96842214.39397886
+   },
+   "shortening": {
+    "demand_m2": 1075161730476.4106,
+    "absorbed_m2": 693947844114.2595,
+    "returned_decay_m2": 221488030270.0738,
+    "returned_unrouted_m2": 159725856092.07837,
+    "absorbed_hc_m3": 1.594614352910486e+16,
+    "absorbed_hm_m3": 4.437251312863484e+16,
+    "returned_hc_m3": 1.6309510900804356e+16,
+    "returned_hm_m3": 4.459665420311388e+16
+   }
+  },
+  {
+   "step": 100,
+   "metrics": {
+    "elapsed_myr": 97.4,
+    "plate_count": 18,
+    "sea_level_m": -411.06273971425423,
+    "land_area_km2": 147661138.5841351,
+    "continental_area_km2": 262130311.9507003,
+    "emergent_continental_area_km2": 146333774.89064676,
+    "land_elevation_m": {
+     "p10": 172.47693266676444,
+     "p50": 954.4735860748123,
+     "p90": 5186.207157033492,
+     "p99": 7164.347154784033
+    },
+    "continental_hc_km": {
+     "p50": 33.00236861936098,
+     "p90": 54.30077301727345,
+     "p99": 83.9966408059552
+    },
+    "continental_hc_above_50km_area_km2": 32398945.1503982,
+    "hc_cap_area_km2": 2122876.421426182,
+    "hm_cap_area_km2": 21904535.086436022,
+    "hm_volume_all_km3": 33857376624.970737,
+    "continental": {
+     "area_km2": 262130311.9507003,
+     "hm_cap_area_km2": 21893523.53096279,
+     "hm_cap_fraction": 0.08352152548874385,
+     "hm_mean_km": 110.48025252679096,
+     "hm_p50_km": 100.02111864911625,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28960223059.23986,
+     "hm_above_0.8_cap_fraction": 0.10600929164943997,
+     "hm_above_0.9_cap_fraction": 0.0987126287960573,
+     "hm_above_0.99_cap_fraction": 0.09184679903587789
+    },
+    "continental_craton": {
+     "area_km2": 70120559.04891974,
+     "hm_cap_area_km2": 5320002.797341287,
+     "hm_cap_fraction": 0.07586937225685518,
+     "hm_mean_km": 112.23262299351559,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7869814267.831958,
+     "hm_above_0.8_cap_fraction": 0.08322790412943222,
+     "hm_above_0.9_cap_fraction": 0.08089583163300346,
+     "hm_above_0.99_cap_fraction": 0.07695980635392105
+    },
+    "continental_non_craton": {
+     "area_km2": 192009752.90178058,
+     "hm_cap_area_km2": 16573520.733621504,
+     "hm_cap_fraction": 0.08631603594687931,
+     "hm_mean_km": 109.84029963413556,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21090408791.407906,
+     "hm_above_0.8_cap_fraction": 0.11432888794427074,
+     "hm_above_0.9_cap_fraction": 0.10521919296091832,
+     "hm_above_0.99_cap_fraction": 0.09728342000767809
+    },
+    "oceanic": {
+     "area_km2": 250290149.36667493,
+     "hm_cap_area_km2": 11011.555473231461,
+     "hm_cap_fraction": 4.3995161220266556e-05,
+     "hm_mean_km": 19.565906121844787,
+     "hm_p50_km": 12.485175480321727,
+     "hm_p95_km": 39.99811582288507,
+     "hm_p99_km": 41.08868084875074,
+     "hm_volume_km3": 4897153565.730871,
+     "hm_above_0.8_cap_fraction": 0.00012618450124456015,
+     "hm_above_0.9_cap_fraction": 7.687159100391211e-05,
+     "hm_above_0.99_cap_fraction": 4.3995161220266556e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 53126609.08620473,
+      "hm_cap_fraction_of_continental": 0.16811784163481686
+     },
+     "3": {
+      "continental_area_km2": 39978989.19410898,
+      "hm_cap_fraction_of_continental": 0.15559669721119873
+     },
+     "1": {
+      "continental_area_km2": 68879518.6109075,
+      "hm_cap_fraction_of_continental": 0.05008786649928083
+     },
+     "21": {
+      "continental_area_km2": 32123693.96008618,
+      "hm_cap_fraction_of_continental": 0.0356126822140785
+     },
+     "4": {
+      "continental_area_km2": 18268855.998896997,
+      "hm_cap_fraction_of_continental": 0.05807302993223889
+     },
+     "2": {
+      "continental_area_km2": 5141141.339729502,
+      "hm_cap_fraction_of_continental": 0.1031600382000338
+     },
+     "9": {
+      "continental_area_km2": 18959609.96509812,
+      "hm_cap_fraction_of_continental": 0.020248523504066713
+     },
+     "20": {
+      "continental_area_km2": 25651893.79566829,
+      "hm_cap_fraction_of_continental": 0.006711500500597949
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33857376624.97073,
+    "continental_node": 28960223059.23986,
+    "oceanic_node": 4897153565.73087
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 116191135.5441152,
+     "continental_plate": 59243200.279216126,
+     "oceanic_plate": 56947935.27492608,
+     "continental_node": 56261662.538203135,
+     "oceanic_node": 59929473.0118103
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -40987245.82653952,
+     "continental_plate": -10120955.136311296,
+     "oceanic_plate": -30866290.698092543,
+     "continental_node": -4388542.272765952,
+     "oceanic_node": -36598703.5536425
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 779696413.7728082,
+     "continental_plate": 0.0,
+     "oceanic_plate": 779696413.7728082,
+     "continental_node": 0.0,
+     "oceanic_node": 779696413.7728082
+    },
+    "decompression_melting": {
+     "all": -34692.061986816,
+     "continental_plate": 45032.222490624,
+     "oceanic_plate": -79724.284739584,
+     "continental_node": 0.0,
+     "oceanic_node": -34692.061790208
+    },
+    "boundary_retreat": {
+     "all": -1179688041.8390672,
+     "continental_plate": -30368488.514125824,
+     "oceanic_plate": -1149319553.315832,
+     "continental_node": -30318585.577472,
+     "oceanic_node": -1149369456.25301
+    },
+    "boundary_advance": {
+     "all": 595817.037561856,
+     "continental_plate": 263618.70286848,
+     "oceanic_plate": 332198.335414272,
+     "continental_node": 134485.037285376,
+     "oceanic_node": 461332.00125952
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 56947935.27483971,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 125543765.40572506,
+    "continental_node": -2816021.050635701,
+    "oceanic_node": 128359786.44057
+   },
+   "shortening": {
+    "demand_m2": 1477925702755.851,
+    "absorbed_m2": 942314193538.3792,
+    "returned_decay_m2": 305758073675.9724,
+    "returned_unrouted_m2": 229853435541.50095,
+    "absorbed_hc_m3": 2.1457299080560936e+16,
+    "absorbed_hm_m3": 5.92432002800554e+16,
+    "returned_hc_m3": 2.3341099526704564e+16,
+    "returned_hm_m3": 6.384705391883872e+16
+   }
+  },
+  {
+   "step": 125,
+   "metrics": {
+    "elapsed_myr": 99.9,
+    "plate_count": 17,
+    "sea_level_m": -412.44605515234014,
+    "land_area_km2": 147259629.07922763,
+    "continental_area_km2": 260574891.03122926,
+    "emergent_continental_area_km2": 145877086.391293,
+    "land_elevation_m": {
+     "p10": 174.1951564472167,
+     "p50": 966.2338226932546,
+     "p90": 5252.961073630701,
+     "p99": 7296.9129390632
+    },
+    "continental_hc_km": {
+     "p50": 33.019842579675064,
+     "p90": 55.22578104089197,
+     "p99": 83.99691249299528
+    },
+    "continental_hc_above_50km_area_km2": 33221568.25511365,
+    "hc_cap_area_km2": 2119494.2266739653,
+    "hm_cap_area_km2": 23425393.179309297,
+    "hm_volume_all_km3": 33793386684.856033,
+    "continental": {
+     "area_km2": 260574891.03122926,
+     "hm_cap_area_km2": 23414381.623836067,
+     "hm_cap_fraction": 0.08985663020398198,
+     "hm_mean_km": 111.10551545330821,
+     "hm_p50_km": 100.03023416867153,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28951307582.214344,
+     "hm_above_0.8_cap_fraction": 0.11070339922508052,
+     "hm_above_0.9_cap_fraction": 0.10423245312366314,
+     "hm_above_0.99_cap_fraction": 0.09730837527974005
+    },
+    "continental_craton": {
+     "area_km2": 70120559.04891974,
+     "hm_cap_area_km2": 5612999.860275638,
+     "hm_cap_fraction": 0.08004784811198837,
+     "hm_mean_km": 112.75698037131627,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7906582500.304767,
+     "hm_above_0.8_cap_fraction": 0.0866798551228325,
+     "hm_above_0.9_cap_fraction": 0.08466279736360002,
+     "hm_above_0.99_cap_fraction": 0.08106988501747338
+    },
+    "continental_non_craton": {
+     "area_km2": 190454331.98230952,
+     "hm_cap_area_km2": 17801381.76356043,
+     "hm_cap_fraction": 0.09346798037239669,
+     "hm_mean_km": 110.49748705040916,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21044725081.909576,
+     "hm_above_0.8_cap_fraction": 0.11954827203659774,
+     "hm_above_0.9_cap_fraction": 0.1114375147676167,
+     "hm_above_0.99_cap_fraction": 0.10328698444787565
+    },
+    "oceanic": {
+     "area_km2": 252268317.66853538,
+     "hm_cap_area_km2": 11011.555473231461,
+     "hm_cap_fraction": 4.3650172066790995e-05,
+     "hm_mean_km": 19.194162578131888,
+     "hm_p50_km": 11.25225530548583,
+     "hm_p95_km": 39.998532601387446,
+     "hm_p99_km": 41.10044996248855,
+     "hm_volume_km3": 4842079102.641688,
+     "hm_above_0.8_cap_fraction": 0.00014057621676977016,
+     "hm_above_0.9_cap_fraction": 7.626880050670301e-05,
+     "hm_above_0.99_cap_fraction": 4.3650172066790995e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 52772163.90067991,
+      "hm_cap_fraction_of_continental": 0.17422567215500145
+     },
+     "3": {
+      "continental_area_km2": 39635881.468694694,
+      "hm_cap_fraction_of_continental": 0.17037007128853038
+     },
+     "1": {
+      "continental_area_km2": 68519253.4425363,
+      "hm_cap_fraction_of_continental": 0.055172091318171586
+     },
+     "21": {
+      "continental_area_km2": 31898230.87839358,
+      "hm_cap_fraction_of_continental": 0.03991757367062569
+     },
+     "4": {
+      "continental_area_km2": 18175872.19495846,
+      "hm_cap_fraction_of_continental": 0.06013198625383813
+     },
+     "2": {
+      "continental_area_km2": 5113733.733302958,
+      "hm_cap_fraction_of_continental": 0.13203333883225574
+     },
+     "9": {
+      "continental_area_km2": 18865763.259478472,
+      "hm_cap_fraction_of_continental": 0.02293434402135461
+     },
+     "20": {
+      "continental_area_km2": 25593992.15318489,
+      "hm_cap_fraction_of_continental": 0.008317925353228043
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33793386684.856037,
+    "continental_node": 28951307582.214348,
+    "oceanic_node": 4842079102.641689
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 144870250.83377254,
+     "continental_plate": 73790733.03996007,
+     "oceanic_plate": 71079517.8089513,
+     "continental_node": 69992325.20126463,
+     "oceanic_node": 74877925.6414208
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -50888466.29463655,
+     "continental_plate": -12148774.544080896,
+     "oceanic_plate": -38739691.75527424,
+     "continental_node": -5030824.536702976,
+     "oceanic_node": -45857641.74364672
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 977438484.2291937,
+     "continental_plate": 0.0,
+     "oceanic_plate": 977438484.2291937,
+     "continental_node": 0.0,
+     "oceanic_node": 977438484.2291937
+    },
+    "decompression_melting": {
+     "all": 10312.008859648,
+     "continental_plate": 90036.293337088,
+     "oceanic_plate": -79724.284739584,
+     "continental_node": 0.0,
+     "oceanic_node": 10312.008728576
+    },
+    "boundary_retreat": {
+     "all": -1492799955.9647887,
+     "continental_plate": -52759370.44168704,
+     "oceanic_plate": -1440040585.5122228,
+     "continental_node": -52709467.50450893,
+     "oceanic_node": -1440090488.4490075
+    },
+    "boundary_advance": {
+     "all": 1122312.941207552,
+     "continental_plate": 672623.569666048,
+     "oceanic_plate": 449689.37291776,
+     "continental_node": 510047.539429376,
+     "oceanic_node": 612265.403088896
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -107531.106697216,
+     "continental_plate": -107531.10669312,
+     "oceanic_plate": 0.0,
+     "continental_node": 12263.821697024,
+     "oceanic_node": -119794.928390656
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 71079517.80874832,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 157681805.27101308,
+    "continental_node": -2816822.872076971,
+    "oceanic_node": 160498628.1074373
+   },
+   "shortening": {
+    "demand_m2": 1878158662799.3193,
+    "absorbed_m2": 1189044288814.3906,
+    "returned_decay_m2": 392165942985.2465,
+    "returned_unrouted_m2": 296948430999.6835,
+    "absorbed_hc_m3": 2.689648342502249e+16,
+    "absorbed_hm_m3": 7.37907330408123e+16,
+    "returned_hc_m3": 3.029470098669922e+16,
+    "returned_hm_m3": 8.349761781502538e+16
+   }
+  },
+  {
+   "step": 150,
+   "metrics": {
+    "elapsed_myr": 102.4,
+    "plate_count": 17,
+    "sea_level_m": -414.9786426884492,
+    "land_area_km2": 147381938.2269502,
+    "continental_area_km2": 259054219.1755226,
+    "emergent_continental_area_km2": 145858776.34260532,
+    "land_elevation_m": {
+     "p10": 170.8934996222047,
+     "p50": 968.900414072952,
+     "p90": 5368.609069200051,
+     "p99": 7413.236931203921
+    },
+    "continental_hc_km": {
+     "p50": 33.04059257183366,
+     "p90": 56.06039594028054,
+     "p99": 83.99578150745633
+    },
+    "continental_hc_above_50km_area_km2": 33957045.849581406,
+    "hc_cap_area_km2": 1707248.315599371,
+    "hm_cap_area_km2": 25693025.16908561,
+    "hm_volume_all_km3": 33730023555.978302,
+    "continental": {
+     "area_km2": 259054219.1755226,
+     "hm_cap_area_km2": 25673288.862684228,
+     "hm_cap_fraction": 0.09910392096447289,
+     "hm_mean_km": 111.7028367838755,
+     "hm_p50_km": 100.04053516133791,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28937091162.73771,
+     "hm_above_0.8_cap_fraction": 0.11533199436213973,
+     "hm_above_0.9_cap_fraction": 0.10924826571119739,
+     "hm_above_0.99_cap_fraction": 0.10339231120857875
+    },
+    "continental_craton": {
+     "area_km2": 70111846.92921923,
+     "hm_cap_area_km2": 5814953.711496283,
+     "hm_cap_fraction": 0.08293824747430655,
+     "hm_mean_km": 113.1546715017307,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7933483007.655428,
+     "hm_above_0.8_cap_fraction": 0.08913233752547979,
+     "hm_above_0.9_cap_fraction": 0.08715293192602683,
+     "hm_above_0.99_cap_fraction": 0.08401174737894987
+    },
+    "continental_non_craton": {
+     "area_km2": 188942372.24630338,
+     "hm_cap_area_km2": 19858335.151187945,
+     "hm_cap_fraction": 0.1051026030587825,
+     "hm_mean_km": 111.16409678450627,
+     "hm_p50_km": 100.0,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 21003608155.08228,
+     "hm_above_0.8_cap_fraction": 0.1250540398085439,
+     "hm_above_0.9_cap_fraction": 0.11744729826159023,
+     "hm_above_0.99_cap_fraction": 0.11058395969097194
+    },
+    "oceanic": {
+     "area_km2": 254265516.83896372,
+     "hm_cap_area_km2": 19736.30640138459,
+     "hm_cap_fraction": 7.762085337700103e-05,
+     "hm_mean_km": 18.850107764617338,
+     "hm_p50_km": 10.284600583938095,
+     "hm_p95_km": 39.99885718881147,
+     "hm_p99_km": 41.08377312877098,
+     "hm_volume_km3": 4792932393.24059,
+     "hm_above_0.8_cap_fraction": 0.00018821635566285822,
+     "hm_above_0.9_cap_fraction": 0.00010998326973408483,
+     "hm_above_0.99_cap_fraction": 7.762085337700103e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 52352805.790067546,
+      "hm_cap_fraction_of_continental": 0.1813639848124876
+     },
+     "3": {
+      "continental_area_km2": 39272227.421984404,
+      "hm_cap_fraction_of_continental": 0.2001974276430756
+     },
+     "1": {
+      "continental_area_km2": 68129407.73832342,
+      "hm_cap_fraction_of_continental": 0.06114517581801702
+     },
+     "21": {
+      "continental_area_km2": 31720353.063784923,
+      "hm_cap_fraction_of_continental": 0.046701827020052676
+     },
+     "4": {
+      "continental_area_km2": 18100643.079441633,
+      "hm_cap_fraction_of_continental": 0.06525713591239232
+     },
+     "2": {
+      "continental_area_km2": 5095425.06566923,
+      "hm_cap_fraction_of_continental": 0.15483232086249868
+     },
+     "9": {
+      "continental_area_km2": 18842982.817623757,
+      "hm_cap_fraction_of_continental": 0.024100647828162212
+     },
+     "20": {
+      "continental_area_km2": 25540374.198627688,
+      "hm_cap_fraction_of_continental": 0.00958218996295204
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33730023555.978302,
+    "continental_node": 28937091162.73771,
+    "oceanic_node": 4792932393.240593
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 172762472.31430656,
+     "continental_plate": 87638881.09407437,
+     "oceanic_plate": 85123591.22848973,
+     "continental_node": 83003592.34931917,
+     "oceanic_node": 89758879.97075456
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -60394019.205677055,
+     "continental_plate": -13860551.556333568,
+     "oceanic_plate": -46533467.6544553,
+     "continental_node": -5375190.400237568,
+     "oceanic_node": -55018828.792856574
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 1176399181.2974837,
+     "continental_plate": 0.0,
+     "oceanic_plate": 1176399181.2974837,
+     "continental_node": 0.0,
+     "oceanic_node": 1176399181.2974837
+    },
+    "decompression_melting": {
+     "all": -28090.21333504,
+     "continental_plate": 103517.446995968,
+     "oceanic_plate": -131607.661248512,
+     "continental_node": 0.0,
+     "oceanic_node": -28090.214252544
+    },
+    "boundary_retreat": {
+     "all": -1804058513.5692186,
+     "continental_plate": -79546629.82418431,
+     "oceanic_plate": -1724511883.7358592,
+     "continental_node": -78775561.57127066,
+     "oceanic_node": -1725282951.9886417
+    },
+    "boundary_advance": {
+     "all": 1250125.399195648,
+     "continental_plate": 716787.08154368,
+     "oceanic_plate": 533338.318307328,
+     "continental_node": 318481.203986432,
+     "oceanic_node": 931644.195864576
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -107531.106697216,
+     "continental_plate": -107531.10669312,
+     "oceanic_plate": 0.0,
+     "continental_node": 56959.229485056,
+     "oceanic_node": -164490.336178176
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 85123591.22847384,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 188140458.12413102,
+    "continental_node": -3487178.6388190687,
+    "oceanic_node": 191627636.73555422
+   },
+   "shortening": {
+    "demand_m2": 2278542982992.1978,
+    "absorbed_m2": 1432800854352.7307,
+    "returned_decay_m2": 477406328215.2625,
+    "returned_unrouted_m2": 368335800424.205,
+    "absorbed_hc_m3": 3.2256700697846776e+16,
+    "absorbed_hm_m3": 8.763888109950866e+16,
+    "returned_hc_m3": 3.761811241404247e+16,
+    "returned_hm_m3": 1.0434164466288435e+17
+   }
+  },
+  {
+   "step": 175,
+   "metrics": {
+    "elapsed_myr": 104.9,
+    "plate_count": 17,
+    "sea_level_m": -416.5063111794584,
+    "land_area_km2": 147369555.4667202,
+    "continental_area_km2": 257373350.8569628,
+    "emergent_continental_area_km2": 145656326.97081092,
+    "land_elevation_m": {
+     "p10": 168.09700858643944,
+     "p50": 976.7828066463185,
+     "p90": 5495.500425322438,
+     "p99": 7394.734671347456
+    },
+    "continental_hc_km": {
+     "p50": 33.06493512321248,
+     "p90": 57.004435812472195,
+     "p99": 83.99849498960923
+    },
+    "continental_hc_above_50km_area_km2": 34476912.278448544,
+    "hc_cap_area_km2": 2326839.617018248,
+    "hm_cap_area_km2": 26845621.487066846,
+    "hm_volume_all_km3": 33647268301.606995,
+    "continental": {
+     "area_km2": 257373350.8569628,
+     "hm_cap_area_km2": 26826581.587983653,
+     "hm_cap_fraction": 0.10423216505772864,
+     "hm_mean_km": 112.29980674154059,
+     "hm_p50_km": 100.05195627877981,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28902977561.659645,
+     "hm_above_0.8_cap_fraction": 0.11952482696561376,
+     "hm_above_0.9_cap_fraction": 0.11387217198601642,
+     "hm_above_0.99_cap_fraction": 0.10768019440925256
+    },
+    "continental_craton": {
+     "area_km2": 70111846.92921923,
+     "hm_cap_area_km2": 6006606.336192797,
+     "hm_cap_fraction": 0.08567177444714459,
+     "hm_mean_km": 113.69919971957535,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 7971660886.713593,
+     "hm_above_0.8_cap_fraction": 0.0931387193791253,
+     "hm_above_0.9_cap_fraction": 0.09036813890310173,
+     "hm_above_0.99_cap_fraction": 0.0865124217835407
+    },
+    "continental_non_craton": {
+     "area_km2": 187261503.9277436,
+     "hm_cap_area_km2": 20819975.251790855,
+     "hm_cap_fraction": 0.11118128827922055,
+     "hm_mean_km": 111.77586549247503,
+     "hm_p50_km": 100.00000000002866,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20931316674.946056,
+     "hm_above_0.8_cap_fraction": 0.12940394625793566,
+     "hm_above_0.9_cap_fraction": 0.12267222504104514,
+     "hm_above_0.99_cap_fraction": 0.11560553732831337
+    },
+    "oceanic": {
+     "area_km2": 256136142.0362758,
+     "hm_cap_area_km2": 19039.899083194054,
+     "hm_cap_fraction": 7.433507404237192e-05,
+     "hm_mean_km": 18.522535329182208,
+     "hm_p50_km": 9.262804970436719,
+     "hm_p95_km": 39.99910997775146,
+     "hm_p99_km": 41.09439305015318,
+     "hm_volume_km3": 4744290739.94735,
+     "hm_above_0.8_cap_fraction": 0.00020301556683704797,
+     "hm_above_0.9_cap_fraction": 8.912390384597186e-05,
+     "hm_above_0.99_cap_fraction": 8.912390384597186e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 51994791.90384934,
+      "hm_cap_fraction_of_continental": 0.18620864942096121
+     },
+     "3": {
+      "continental_area_km2": 38743650.5166728,
+      "hm_cap_fraction_of_continental": 0.21514820783560432
+     },
+     "1": {
+      "continental_area_km2": 67669685.04393253,
+      "hm_cap_fraction_of_continental": 0.0665792794870532
+     },
+     "21": {
+      "continental_area_km2": 31607396.24635355,
+      "hm_cap_fraction_of_continental": 0.04872602692915505
+     },
+     "4": {
+      "continental_area_km2": 18007843.060246065,
+      "hm_cap_fraction_of_continental": 0.0676781299490046
+     },
+     "2": {
+      "continental_area_km2": 5099950.377616252,
+      "hm_cap_fraction_of_continental": 0.15025205688802085
+     },
+     "9": {
+      "continental_area_km2": 18777038.805848125,
+      "hm_cap_fraction_of_continental": 0.026268449454355764
+     },
+     "20": {
+      "continental_area_km2": 25472994.902444158,
+      "hm_cap_fraction_of_continental": 0.011200648070403621
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33647268301.606995,
+    "continental_node": 28902977561.659645,
+    "oceanic_node": 4744290739.9473505
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 200128227.13650382,
+     "continental_plate": 101079984.99137126,
+     "oceanic_plate": 99048242.15168615,
+     "continental_node": 95560925.44928972,
+     "oceanic_node": 104567301.68223335
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -69919625.64879975,
+     "continental_plate": -15605266.80752128,
+     "oceanic_plate": -54314358.852419585,
+     "continental_node": -5813438.415634432,
+     "oceanic_node": -64106187.213635586
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 1376335790.187217,
+     "continental_plate": 0.0,
+     "oceanic_plate": 1376335790.187217,
+     "continental_node": 0.0,
+     "oceanic_node": 1376335790.187217
+    },
+    "decompression_melting": {
+     "all": -3912.518074368,
+     "continental_plate": 127695.142780928,
+     "oceanic_plate": -131607.661248512,
+     "continental_node": 0.0,
+     "oceanic_node": -3912.518991872
+    },
+    "boundary_retreat": {
+     "all": -2135248968.5981593,
+     "continental_plate": -126190620.6790779,
+     "oceanic_plate": -2009058347.9082024,
+     "continental_node": -125073592.7328768,
+     "oceanic_node": -2010175375.8574183
+    },
+    "boundary_advance": {
+     "all": 1770918.508494848,
+     "continental_plate": 1147710.900535296,
+     "oceanic_plate": 623207.6091392,
+     "continental_node": 708085.801811968,
+     "oceanic_node": 1062832.707862528
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -107531.106697216,
+     "continental_plate": -107531.106689024,
+     "oceanic_plate": 0.0,
+     "continental_node": 56959.229485056,
+     "oceanic_node": -164490.336178176
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 99048242.15283543,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 218253930.70839655,
+    "continental_node": -3811438.2376761213,
+    "oceanic_node": 222065368.9233966
+   },
+   "shortening": {
+    "demand_m2": 2689096518918.6587,
+    "absorbed_m2": 1677858108507.8945,
+    "returned_decay_m2": 564104622045.1854,
+    "returned_unrouted_m2": 447133788365.57965,
+    "absorbed_hc_m3": 3.757012334707587e+16,
+    "absorbed_hm_m3": 1.0107998498710763e+17,
+    "returned_hc_m3": 4.553068508391923e+16,
+    "returned_hm_m3": 1.2661147816889616e+17
+   }
+  },
+  {
+   "step": 200,
+   "metrics": {
+    "elapsed_myr": 107.4,
+    "plate_count": 17,
+    "sea_level_m": -415.9431973863441,
+    "land_area_km2": 147207380.91232082,
+    "continental_area_km2": 255593735.4833802,
+    "emergent_continental_area_km2": 145280592.0368128,
+    "land_elevation_m": {
+     "p10": 164.6522790327415,
+     "p50": 984.1578486696019,
+     "p90": 5675.273291918001,
+     "p99": 7668.303719404389
+    },
+    "continental_hc_km": {
+     "p50": 33.09796352041319,
+     "p90": 58.10411571354612,
+     "p99": 83.99645618490732
+    },
+    "continental_hc_above_50km_area_km2": 35168244.93951604,
+    "hc_cap_area_km2": 1391093.7950383658,
+    "hm_cap_area_km2": 28025862.03471122,
+    "hm_volume_all_km3": 33556168613.762833,
+    "continental": {
+     "area_km2": 255593735.4833802,
+     "hm_cap_area_km2": 28010611.390219312,
+     "hm_cap_fraction": 0.10959036745265098,
+     "hm_mean_km": 112.89510047120045,
+     "hm_p50_km": 100.06350964970235,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28855280447.20564,
+     "hm_above_0.8_cap_fraction": 0.12416189914485655,
+     "hm_above_0.9_cap_fraction": 0.11837504926066698,
+     "hm_above_0.99_cap_fraction": 0.11245399860183292
+    },
+    "continental_craton": {
+     "area_km2": 70108018.64206848,
+     "hm_cap_area_km2": 6365808.591949939,
+     "hm_cap_fraction": 0.09080000712115575,
+     "hm_mean_km": 114.40883573214228,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8020976788.326382,
+     "hm_above_0.8_cap_fraction": 0.09843965013109043,
+     "hm_above_0.9_cap_fraction": 0.09591692781357355,
+     "hm_above_0.99_cap_fraction": 0.09184416991934083
+    },
+    "continental_non_craton": {
+     "area_km2": 185485716.84131175,
+     "hm_cap_area_km2": 21644802.798269376,
+     "hm_cap_fraction": 0.11669255814876092,
+     "hm_mean_km": 112.32295409949863,
+     "hm_p50_km": 100.00000000118672,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20834303658.879257,
+     "hm_above_0.8_cap_fraction": 0.13388413514276815,
+     "hm_above_0.9_cap_fraction": 0.12686354327460597,
+     "hm_above_0.99_cap_fraction": 0.12024389357643173
+    },
+    "oceanic": {
+     "area_km2": 258183279.14847216,
+     "hm_cap_area_km2": 15250.644491906383,
+     "hm_cap_fraction": 5.906906342736577e-05,
+     "hm_mean_km": 18.20756240319451,
+     "hm_p50_km": 8.449781083246576,
+     "hm_p95_km": 39.999306849975895,
+     "hm_p99_km": 41.06128697005847,
+     "hm_volume_km3": 4700888166.557195,
+     "hm_above_0.8_cap_fraction": 0.00018637704260786168,
+     "hm_above_0.9_cap_fraction": 8.841723975932515e-05,
+     "hm_above_0.99_cap_fraction": 8.841723975932515e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 51416764.494040735,
+      "hm_cap_fraction_of_continental": 0.1970196282971647
+     },
+     "3": {
+      "continental_area_km2": 38308779.87788814,
+      "hm_cap_fraction_of_continental": 0.2253921991954946
+     },
+     "1": {
+      "continental_area_km2": 67370865.7058375,
+      "hm_cap_fraction_of_continental": 0.06809539229609896
+     },
+     "21": {
+      "continental_area_km2": 31417414.013563696,
+      "hm_cap_fraction_of_continental": 0.052199509793578965
+     },
+     "4": {
+      "continental_area_km2": 17887490.222396594,
+      "hm_cap_fraction_of_continental": 0.07670701096727069
+     },
+     "2": {
+      "continental_area_km2": 5099764.803208764,
+      "hm_cap_fraction_of_continental": 0.15283894279887375
+     },
+     "9": {
+      "continental_area_km2": 18699954.724123955,
+      "hm_cap_fraction_of_continental": 0.027946517316277893
+     },
+     "20": {
+      "continental_area_km2": 25392701.64232081,
+      "hm_cap_fraction_of_continental": 0.013556773231791637
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33556168613.76284,
+    "continental_node": 28855280447.20564,
+    "oceanic_node": 4700888166.557194
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 226984552.78708327,
+     "continental_plate": 114312722.82534707,
+     "oceanic_plate": 112671829.96396442,
+     "continental_node": 107864434.15991092,
+     "oceanic_node": 119120118.62494412
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -79599174.82318233,
+     "continental_plate": -17531033.824002046,
+     "oceanic_plate": -62068141.007962115,
+     "continental_node": -6396889.43599616,
+     "oceanic_node": -73202285.37407897
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 1577033209.7452443,
+     "continental_plate": 0.0,
+     "oceanic_plate": 1577033209.7452443,
+     "continental_node": 0.0,
+     "oceanic_node": 1577033209.7452443
+    },
+    "decompression_melting": {
+     "all": -22273.855586304,
+     "continental_plate": 127695.142780928,
+     "oceanic_plate": -149968.999153664,
+     "continental_node": 0.0,
+     "oceanic_node": -22273.856897024
+    },
+    "boundary_retreat": {
+     "all": -2475111751.993,
+     "continental_plate": -185545482.6599547,
+     "oceanic_plate": -2289566269.3259673,
+     "continental_node": -184399164.43244955,
+     "oceanic_node": -2290712587.5518994
+    },
+    "boundary_advance": {
+     "all": 2222976.814022656,
+     "continental_plate": 1420836.697800704,
+     "oceanic_plate": 802140.118581248,
+     "continental_node": 823117.510868992,
+     "oceanic_node": 1399859.304988672
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -107531.106697216,
+     "continental_plate": -107531.106689024,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": 56959.229485056,
+     "oceanic_node": -164490.336178176
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 112671829.96697077,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 248709133.25684297,
+    "continental_node": -4018070.3914260417,
+    "oceanic_node": 252727203.62820542
+   },
+   "shortening": {
+    "demand_m2": 3112566460759.268,
+    "absorbed_m2": 1925755679193.382,
+    "returned_decay_m2": 653320715201.1462,
+    "returned_unrouted_m2": 533490066364.7391,
+    "absorbed_hc_m3": 4.296233313714469e+16,
+    "absorbed_hm_m3": 1.1431272282678026e+17,
+    "returned_hc_m3": 5.414504399386913e+16,
+    "returned_hm_m3": 1.5100767138947674e+17
+   }
+  },
+  {
+   "step": 225,
+   "metrics": {
+    "elapsed_myr": 109.9,
+    "plate_count": 17,
+    "sea_level_m": -416.9235163961134,
+    "land_area_km2": 147815840.7185307,
+    "continental_area_km2": 253975435.86674702,
+    "emergent_continental_area_km2": 145644700.5925393,
+    "land_elevation_m": {
+     "p10": 156.4529133573654,
+     "p50": 981.992123822793,
+     "p90": 5734.705644625061,
+     "p99": 7605.694100089409
+    },
+    "continental_hc_km": {
+     "p50": 33.140053886748966,
+     "p90": 59.151393310594976,
+     "p99": 83.9991426894517
+    },
+    "continental_hc_above_50km_area_km2": 35488804.34917854,
+    "hc_cap_area_km2": 2669850.453608365,
+    "hm_cap_area_km2": 28741762.28317986,
+    "hm_volume_all_km3": 33463981948.220783,
+    "continental": {
+     "area_km2": 253975435.86674702,
+     "hm_cap_area_km2": 28710576.88946292,
+     "hm_cap_fraction": 0.11304469974224776,
+     "hm_mean_km": 113.43628645301807,
+     "hm_p50_km": 100.07585229845321,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28810030295.010433,
+     "hm_above_0.8_cap_fraction": 0.12815942263414565,
+     "hm_above_0.9_cap_fraction": 0.12163313167489602,
+     "hm_above_0.99_cap_fraction": 0.11575548827244671
+    },
+    "continental_craton": {
+     "area_km2": 70089458.23973879,
+     "hm_cap_area_km2": 6638068.974474117,
+     "hm_cap_fraction": 0.09470852166910479,
+     "hm_mean_km": 114.96318167430341,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8057707121.068594,
+     "hm_above_0.8_cap_fraction": 0.10231568528314215,
+     "hm_above_0.9_cap_fraction": 0.09996619273479644,
+     "hm_above_0.99_cap_fraction": 0.09538004574319137
+    },
+    "continental_non_craton": {
+     "area_km2": 183885977.62700826,
+     "hm_cap_area_km2": 22072507.914988805,
+     "hm_cap_fraction": 0.12003366542586717,
+     "hm_mean_km": 112.85429939652913,
+     "hm_p50_km": 100.00000024541622,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20752323173.941845,
+     "hm_above_0.8_cap_fraction": 0.13800994834141897,
+     "hm_above_0.9_cap_fraction": 0.1298916407337294,
+     "hm_above_0.99_cap_fraction": 0.12352173421843823
+    },
+    "oceanic": {
+     "area_km2": 260273696.33245805,
+     "hm_cap_area_km2": 31185.393716938368,
+     "hm_cap_fraction": 0.00011981769251512843,
+     "hm_mean_km": 17.880991121229815,
+     "hm_p50_km": 7.898233925830411,
+     "hm_p95_km": 39.99943688573214,
+     "hm_p99_km": 41.07003895814619,
+     "hm_volume_km3": 4653951653.210347,
+     "hm_above_0.8_cap_fraction": 0.00019883566753146784,
+     "hm_above_0.9_cap_fraction": 0.0001343329605858804,
+     "hm_above_0.99_cap_fraction": 0.00011981769251512843
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 51059200.607150674,
+      "hm_cap_fraction_of_continental": 0.20051934930157556
+     },
+     "3": {
+      "continental_area_km2": 37957619.66864011,
+      "hm_cap_fraction_of_continental": 0.22682102817099684
+     },
+     "1": {
+      "continental_area_km2": 66887653.55186042,
+      "hm_cap_fraction_of_continental": 0.0748085248131868
+     },
+     "21": {
+      "continental_area_km2": 31195413.66802855,
+      "hm_cap_fraction_of_continental": 0.05672835474999014
+     },
+     "4": {
+      "continental_area_km2": 17834641.832384005,
+      "hm_cap_fraction_of_continental": 0.07847829422608606
+     },
+     "2": {
+      "continental_area_km2": 5054683.806276164,
+      "hm_cap_fraction_of_continental": 0.16602151538952986
+     },
+     "9": {
+      "continental_area_km2": 18657705.86573496,
+      "hm_cap_fraction_of_continental": 0.0266437022710788
+     },
+     "20": {
+      "continental_area_km2": 25328516.86667217,
+      "hm_cap_fraction_of_continental": 0.013947631097828329
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33463981948.220787,
+    "continental_node": 28810030295.010437,
+    "oceanic_node": 4653951653.210348
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 253316782.47387135,
+     "continental_plate": 127169415.27587226,
+     "oceanic_plate": 126147367.20586343,
+     "continental_node": 119749800.80553165,
+     "oceanic_node": 133566981.66716006
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -89180128.9621504,
+     "continental_plate": -19420355.390078977,
+     "oceanic_plate": -69759773.5862272,
+     "continental_node": -6938772.933443584,
+     "oceanic_node": -82241356.00747316
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 1778147966.0723896,
+     "continental_plate": 0.0,
+     "oceanic_plate": 1778147966.0723896,
+     "continental_node": 0.0,
+     "oceanic_node": 1778147966.0723896
+    },
+    "decompression_melting": {
+     "all": -1001.585115136,
+     "continental_plate": 148967.413252096,
+     "oceanic_plate": -149968.999153664,
+     "continental_node": 0.0,
+     "oceanic_node": -1001.587212288
+    },
+    "boundary_retreat": {
+     "all": -2815287893.871821,
+     "continental_plate": -242211202.7462861,
+     "oceanic_plate": -2573076691.1108546,
+     "continental_node": -241032490.57834598,
+     "oceanic_node": -2574255403.2766976
+    },
+    "boundary_advance": {
+     "all": 2548196.443160576,
+     "continental_plate": 1601596.077637632,
+     "oceanic_plate": 946600.367489024,
+     "continental_node": 1003876.89070592,
+     "oceanic_node": 1544319.553896448
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -107531.106697216,
+     "continental_plate": -107531.106689024,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": 56959.229476864,
+     "oceanic_node": -164490.336178176
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 126147367.20739736,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 278486085.8190361,
+    "continental_node": -4159138.9687335193,
+    "oceanic_node": 282645224.75159836
+   },
+   "shortening": {
+    "demand_m2": 3543862984632.413,
+    "absorbed_m2": 2174993256249.512,
+    "returned_decay_m2": 743823573601.6566,
+    "returned_unrouted_m2": 625046154781.2457,
+    "absorbed_hc_m3": 4.834376413239232e+16,
+    "absorbed_hm_m3": 1.2716941527589018e+17,
+    "returned_hc_m3": 6.312150228489688e+16,
+    "returned_hm_m3": 1.7631984919948307e+17
+   }
+  },
+  {
+   "step": 250,
+   "metrics": {
+    "elapsed_myr": 112.4,
+    "plate_count": 17,
+    "sea_level_m": -417.40340199353426,
+    "land_area_km2": 147282791.1536463,
+    "continental_area_km2": 252289792.5064602,
+    "emergent_continental_area_km2": 144891929.33220756,
+    "land_elevation_m": {
+     "p10": 164.48412383714037,
+     "p50": 1002.668332097177,
+     "p90": 5830.508640606894,
+     "p99": 8021.904160825386
+    },
+    "continental_hc_km": {
+     "p50": 33.1866706008626,
+     "p90": 60.19028507713178,
+     "p99": 83.99916250116564
+    },
+    "continental_hc_above_50km_area_km2": 36398544.53860289,
+    "hc_cap_area_km2": 2712816.804643041,
+    "hm_cap_area_km2": 29411758.38872871,
+    "hm_volume_all_km3": 33360088298.95244,
+    "continental": {
+     "area_km2": 252289792.5064602,
+     "hm_cap_area_km2": 29388933.12769669,
+     "hm_cap_fraction": 0.11648879186003591,
+     "hm_mean_km": 113.91695905658308,
+     "hm_p50_km": 100.09100645277287,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28740085963.35227,
+     "hm_above_0.8_cap_fraction": 0.13126939504828314,
+     "hm_above_0.9_cap_fraction": 0.12532420651602866,
+     "hm_above_0.99_cap_fraction": 0.11922863010782563
+    },
+    "continental_craton": {
+     "area_km2": 70085099.05202779,
+     "hm_cap_area_km2": 6960706.060209541,
+     "hm_cap_fraction": 0.09931791713731115,
+     "hm_mean_km": 115.66401198440147,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8106323736.681707,
+     "hm_above_0.8_cap_fraction": 0.10713236277880071,
+     "hm_above_0.9_cap_fraction": 0.1044565040831051,
+     "hm_above_0.99_cap_fraction": 0.1005088669447089
+    },
+    "continental_non_craton": {
+     "area_km2": 182204693.45443237,
+     "hm_cap_area_km2": 22428227.067487147,
+     "hm_cap_fraction": 0.12309357482657948,
+     "hm_mean_km": 113.24495453697449,
+     "hm_p50_km": 100.00000135578871,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20633762226.670567,
+     "hm_above_0.8_cap_fraction": 0.14055371295116814,
+     "hm_above_0.9_cap_fraction": 0.13335097555403616,
+     "hm_above_0.99_cap_fraction": 0.12642919355459356
+    },
+    "oceanic": {
+     "area_km2": 262121370.41734523,
+     "hm_cap_area_km2": 22825.26103202682,
+     "hm_cap_fraction": 8.707897793943632e-05,
+     "hm_mean_km": 17.625431792319258,
+     "hm_p50_km": 7.670438484090671,
+     "hm_p95_km": 39.999284158901496,
+     "hm_p99_km": 41.04848213068867,
+     "hm_volume_km3": 4620002335.600169,
+     "hm_above_0.8_cap_fraction": 0.00021377872750998156,
+     "hm_above_0.9_cap_fraction": 0.00014973069535813058,
+     "hm_above_0.99_cap_fraction": 8.707897793943632e-05
+    },
+    "per_plate": {
+     "22": {
+      "continental_area_km2": 50501864.92563697,
+      "hm_cap_fraction_of_continental": 0.2065314784620425
+     },
+     "3": {
+      "continental_area_km2": 37505422.626396924,
+      "hm_cap_fraction_of_continental": 0.22833784590517947
+     },
+     "1": {
+      "continental_area_km2": 66660370.56714844,
+      "hm_cap_fraction_of_continental": 0.07819912342576191
+     },
+     "21": {
+      "continental_area_km2": 30997360.25576657,
+      "hm_cap_fraction_of_continental": 0.06252062298244017
+     },
+     "4": {
+      "continental_area_km2": 17733344.82045069,
+      "hm_cap_fraction_of_continental": 0.08146820781903963
+     },
+     "2": {
+      "continental_area_km2": 5023920.472555766,
+      "hm_cap_fraction_of_continental": 0.16883486158647096
+     },
+     "9": {
+      "continental_area_km2": 18646311.08261445,
+      "hm_cap_fraction_of_continental": 0.027179898888965607
+     },
+     "20": {
+      "continental_area_km2": 25221197.755890384,
+      "hm_cap_fraction_of_continental": 0.017617025301843652
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33360088298.952435,
+    "continental_node": 28740085963.352272,
+    "oceanic_node": 4620002335.600168
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 279361658.9119816,
+     "continental_plate": 139903190.52187237,
+     "oceanic_plate": 139458468.39718708,
+     "continental_node": 131501753.41785908,
+     "oceanic_node": 147859905.49569535
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -98925227.01304626,
+     "continental_plate": -21559143.78870784,
+     "oceanic_plate": -77366083.24177101,
+     "continental_node": -7704045.075562496,
+     "oceanic_node": -91221181.92463872
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 1978842084.5308478,
+     "continental_plate": 0.0,
+     "oceanic_plate": 1978842084.5308478,
+     "continental_node": 0.0,
+     "oceanic_node": 1978842084.5308478
+    },
+    "decompression_melting": {
+     "all": -23579.603238912,
+     "continental_plate": 148967.413252096,
+     "oceanic_plate": -172547.016753152,
+     "continental_node": 0.0,
+     "oceanic_node": -23579.604811776
+    },
+    "boundary_retreat": {
+     "all": -3167196206.976729,
+     "continental_plate": -323675287.49039614,
+     "oceanic_plate": -2843520919.4765024,
+     "continental_node": -322489472.3797811,
+     "oceanic_node": -2844706734.5856757
+    },
+    "boundary_advance": {
+     "all": 2889436.35955712,
+     "continental_plate": 1843537.537662976,
+     "oceanic_plate": 1045898.823073792,
+     "continental_node": 1257298.420826112,
+     "oceanic_node": 1632137.939386368
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -162089.55686912,
+     "continental_plate": -162089.556860928,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": 60606.846214144,
+     "oceanic_node": -222696.403085312
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 139458468.3991595,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 309242749.3618182,
+    "continental_node": -3890238.4425293505,
+    "oceanic_node": 313132987.77958524
+   },
+   "shortening": {
+    "demand_m2": 3975073681754.5864,
+    "absorbed_m2": 2421439854628.174,
+    "returned_decay_m2": 835518043907.7579,
+    "returned_unrouted_m2": 718115783218.6564,
+    "absorbed_hc_m3": 5.3743721594210504e+16,
+    "absorbed_hm_m3": 1.3990319051880245e+17,
+    "returned_hc_m3": 7.232561380064643e+16,
+    "returned_hm_m3": 2.0254937963609933e+17
+   }
+  },
+  {
+   "step": 275,
+   "metrics": {
+    "elapsed_myr": 114.9,
+    "plate_count": 16,
+    "sea_level_m": -415.82470110686353,
+    "land_area_km2": 142229329.53679493,
+    "continental_area_km2": 245939455.1646316,
+    "emergent_continental_area_km2": 139857379.1880111,
+    "land_elevation_m": {
+     "p10": 164.66482650471826,
+     "p50": 975.6209083096421,
+     "p90": 6746.1934344385845,
+     "p99": 8714.525032791618
+    },
+    "continental_hc_km": {
+     "p50": 33.10235416498036,
+     "p90": 70.94584003983735,
+     "p99": 84.0
+    },
+    "continental_hc_above_50km_area_km2": 39827485.07479899,
+    "hc_cap_area_km2": 5386937.700555906,
+    "hm_cap_area_km2": 28521302.630487077,
+    "hm_volume_all_km3": 33131539295.537205,
+    "continental": {
+     "area_km2": 245939455.1646316,
+     "hm_cap_area_km2": 28505890.81823033,
+     "hm_cap_fraction": 0.1159061314466543,
+     "hm_mean_km": 116.02831658574459,
+     "hm_p50_km": 100.16164236321173,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28535940964.767414,
+     "hm_above_0.8_cap_fraction": 0.1487427623735443,
+     "hm_above_0.9_cap_fraction": 0.12836744483653648,
+     "hm_above_0.99_cap_fraction": 0.11910020440682119
+    },
+    "continental_craton": {
+     "area_km2": 66617987.65095912,
+     "hm_cap_area_km2": 7107286.047153009,
+     "hm_cap_fraction": 0.10668719211981005,
+     "hm_mean_km": 123.277846730107,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8212522071.103099,
+     "hm_above_0.8_cap_fraction": 0.17025648816479064,
+     "hm_above_0.9_cap_fraction": 0.119013864779587,
+     "hm_above_0.99_cap_fraction": 0.1092332874149015
+    },
+    "continental_non_craton": {
+     "area_km2": 179321467.5136725,
+     "hm_cap_area_km2": 21398604.771077324,
+     "hm_cap_fraction": 0.1193309706181485,
+     "hm_mean_km": 113.33511361161898,
+     "hm_p50_km": 100.00006064811387,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20323418893.664314,
+     "hm_above_0.8_cap_fraction": 0.1407504057474304,
+     "hm_above_0.9_cap_fraction": 0.13184230308616912,
+     "hm_above_0.99_cap_fraction": 0.12276576750662477
+    },
+    "oceanic": {
+     "area_km2": 264114749.5098965,
+     "hm_cap_area_km2": 15411.812256745114,
+     "hm_cap_fraction": 5.8352713301108636e-05,
+     "hm_mean_km": 17.400006396074424,
+     "hm_p50_km": 7.333030374134882,
+     "hm_p95_km": 39.999041312166966,
+     "hm_p99_km": 41.11114406700186,
+     "hm_volume_km3": 4595598330.769793,
+     "hm_above_0.8_cap_fraction": 0.00020015152626157414,
+     "hm_above_0.9_cap_fraction": 0.00015111692779270445,
+     "hm_above_0.99_cap_fraction": 5.8352713301108636e-05
+    },
+    "per_plate": {
+     "1": {
+      "continental_area_km2": 111738564.72675028,
+      "hm_cap_fraction_of_continental": 0.13149729671495033
+     },
+     "3": {
+      "continental_area_km2": 37063232.94113184,
+      "hm_cap_fraction_of_continental": 0.22691854526436223
+     },
+     "21": {
+      "continental_area_km2": 30761503.778759383,
+      "hm_cap_fraction_of_continental": 0.0680596211011832
+     },
+     "4": {
+      "continental_area_km2": 17662102.168938242,
+      "hm_cap_fraction_of_continental": 0.08459978961260232
+     },
+     "2": {
+      "continental_area_km2": 5001206.414859895,
+      "hm_cap_fraction_of_continental": 0.16321213240200982
+     },
+     "20": {
+      "continental_area_km2": 25078608.88594429,
+      "hm_cap_fraction_of_continental": 0.02042115089984603
+     },
+     "9": {
+      "continental_area_km2": 18634236.248247687,
+      "hm_cap_fraction_of_continental": 0.026082028279566564
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33131539295.5372,
+    "continental_node": 28535940964.76741,
+    "oceanic_node": 4595598330.7697935
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 304309514.7540644,
+     "continental_plate": 151536239.37528628,
+     "oceanic_plate": 152773275.3994875,
+     "continental_node": 142149857.81189018,
+     "oceanic_node": 162159656.96
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -108399291.73154202,
+     "continental_plate": -23471704.79262925,
+     "oceanic_plate": -84927586.96211252,
+     "continental_node": -8263553.051000832,
+     "oceanic_node": -100135738.67267686
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 2178259653.827887,
+     "continental_plate": 0.0,
+     "oceanic_plate": 2178259653.827887,
+     "continental_node": 0.0,
+     "oceanic_node": 2178259653.827887
+    },
+    "decompression_melting": {
+     "all": -4784.293675008,
+     "continental_plate": 169667.195830272,
+     "oceanic_plate": -174451.48884992,
+     "continental_node": 0.0,
+     "oceanic_node": -4784.29446144
+    },
+    "boundary_retreat": {
+     "all": -3512579120.9019146,
+     "continental_plate": -397588207.35555995,
+     "oceanic_plate": -3114990913.5399323,
+     "continental_node": -396376260.54508543,
+     "oceanic_node": -3116202860.3481784
+    },
+    "boundary_advance": {
+     "all": 3817593.428246528,
+     "continental_plate": 2721325.646872576,
+     "oceanic_plate": 1096267.786616832,
+     "continental_node": 2135086.530035712,
+     "oceanic_node": 1682506.903191552
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -162089.55686912,
+     "continental_plate": -162089.556860928,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": 60606.846214144,
+     "oceanic_node": -222696.403085312
+    },
+    "failed_rift_thinning": {
+     "all": -11641448.63834112,
+     "continental_plate": -11641448.63834112,
+     "oceanic_plate": 0.0,
+     "continental_node": -11343348.777172992,
+     "oceanic_node": -298099.86116864
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 152773275.40167603,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 339786325.665673,
+    "continental_node": -4272112.397412002,
+    "oceanic_node": 344058438.0245539
+   },
+   "shortening": {
+    "demand_m2": 4387272442784.3857,
+    "absorbed_m2": 2656225775542.111,
+    "returned_decay_m2": 920442989735.0239,
+    "returned_unrouted_m2": 810603677507.2563,
+    "absorbed_hc_m3": 5.888648924502588e+16,
+    "absorbed_hm_m3": 1.5153623936888906e+17,
+    "returned_hc_m3": 8.121970136968482e+16,
+    "returned_hm_m3": 2.276908987191242e+17
+   }
+  },
+  {
+   "step": 300,
+   "metrics": {
+    "elapsed_myr": 117.4,
+    "plate_count": 16,
+    "sea_level_m": -412.81540799120046,
+    "land_area_km2": 142469359.36710063,
+    "continental_area_km2": 244897684.536442,
+    "emergent_continental_area_km2": 139763377.38989633,
+    "land_elevation_m": {
+     "p10": 162.78221758240795,
+     "p50": 987.084317985053,
+     "p90": 6713.6560668318325,
+     "p99": 8204.841724453298
+    },
+    "continental_hc_km": {
+     "p50": 33.13539800854526,
+     "p90": 70.59204415234746,
+     "p99": 83.99420886797623
+    },
+    "continental_hc_above_50km_area_km2": 40893813.369529046,
+    "hc_cap_area_km2": 1704084.6605783647,
+    "hm_cap_area_km2": 27904270.35733546,
+    "hm_volume_all_km3": 33000904147.096077,
+    "continental": {
+     "area_km2": 244897684.536442,
+     "hm_cap_area_km2": 27867202.68208,
+     "hm_cap_fraction": 0.11379120523262122,
+     "hm_mean_km": 116.20048671161446,
+     "hm_p50_km": 100.16164236321173,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28457230137.681976,
+     "hm_above_0.8_cap_fraction": 0.15069737376731152,
+     "hm_above_0.9_cap_fraction": 0.13070138967314063,
+     "hm_above_0.99_cap_fraction": 0.11707413209057287
+    },
+    "continental_craton": {
+     "area_km2": 66617987.65095912,
+     "hm_cap_area_km2": 6276489.976187369,
+     "hm_cap_fraction": 0.09421614488075887,
+     "hm_mean_km": 123.21110534500792,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8208075894.334761,
+     "hm_above_0.8_cap_fraction": 0.17113503518211703,
+     "hm_above_0.9_cap_fraction": 0.11983249532250928,
+     "hm_above_0.99_cap_fraction": 0.09770989354656744
+    },
+    "continental_non_craton": {
+     "area_km2": 178279696.88548288,
+     "hm_cap_area_km2": 21590712.70589263,
+     "hm_cap_fraction": 0.12110584145631188,
+     "hm_mean_km": 113.58082045850774,
+     "hm_p50_km": 100.00007434640385,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20249154243.347214,
+     "hm_above_0.8_cap_fraction": 0.1430604083723088,
+     "hm_above_0.9_cap_fraction": 0.13476278243002332,
+     "hm_above_0.99_cap_fraction": 0.12430999027706849
+    },
+    "oceanic": {
+     "area_km2": 265454745.6877695,
+     "hm_cap_area_km2": 37067.67525545923,
+     "hm_cap_fraction": 0.00013963839734497946,
+     "hm_mean_km": 17.116567261368225,
+     "hm_p50_km": 7.021878372979081,
+     "hm_p95_km": 39.99825513420825,
+     "hm_p99_km": 41.06873486896268,
+     "hm_volume_km3": 4543674009.4141035,
+     "hm_above_0.8_cap_fraction": 0.00021631021308975547,
+     "hm_above_0.9_cap_fraction": 0.00016752313769440093,
+     "hm_above_0.99_cap_fraction": 0.00013963839734497946
+    },
+    "per_plate": {
+     "1": {
+      "continental_area_km2": 111518878.26634511,
+      "hm_cap_fraction_of_continental": 0.12227635377849454
+     },
+     "3": {
+      "continental_area_km2": 36636059.944943205,
+      "hm_cap_fraction_of_continental": 0.23150188004047142
+     },
+     "21": {
+      "continental_area_km2": 30662351.574374825,
+      "hm_cap_fraction_of_continental": 0.06921045847676727
+     },
+     "4": {
+      "continental_area_km2": 17577279.132408503,
+      "hm_cap_fraction_of_continental": 0.0920803820481089
+     },
+     "2": {
+      "continental_area_km2": 4906156.66397247,
+      "hm_cap_fraction_of_continental": 0.18293987007530577
+     },
+     "20": {
+      "continental_area_km2": 24992890.81134619,
+      "hm_cap_fraction_of_continental": 0.023931853995304182
+     },
+     "9": {
+      "continental_area_km2": 18604068.143051703,
+      "hm_cap_fraction_of_continental": 0.02759763331950841
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 33000904147.09608,
+    "continental_node": 28457230137.681976,
+    "oceanic_node": 4543674009.4141035
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 325967655.6640911,
+     "continental_plate": 159818798.0980224,
+     "oceanic_plate": 166148857.6051282,
+     "continental_node": 149529228.8119603,
+     "oceanic_node": 176438426.8848988
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -117360071.2387461,
+     "continental_plate": -25016354.683748353,
+     "oceanic_plate": -92343716.58252288,
+     "continental_node": -8715618.58383872,
+     "oceanic_node": -108644452.632363
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 2376130828.725387,
+     "continental_plate": 0.0,
+     "oceanic_plate": 2376130828.725387,
+     "continental_node": 0.0,
+     "oceanic_node": 2376130828.725387
+    },
+    "decompression_melting": {
+     "all": 1918.77873664,
+     "continental_plate": 209813.947547648,
+     "oceanic_plate": -207895.166189568,
+     "continental_node": 0.0,
+     "oceanic_node": 1918.778998784
+    },
+    "boundary_retreat": {
+     "all": -3848532195.236905,
+     "continental_plate": -453751970.00341916,
+     "oceanic_plate": -3394780225.2308645,
+     "continental_node": -450792688.40020376,
+     "oceanic_node": -3397739506.836177
+    },
+    "boundary_advance": {
+     "all": 4074642.191941632,
+     "continental_plate": 2753622.82471424,
+     "oceanic_plate": 1321019.370110976,
+     "continental_node": 2135086.530035712,
+     "oceanic_node": 1939555.664265216
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -162089.55686912,
+     "continental_plate": -162089.556860928,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": 60606.846214144,
+     "oceanic_node": -222696.403085312
+    },
+    "failed_rift_thinning": {
+     "all": -45428284.478140414,
+     "continental_plate": -43254728.015712254,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -42828936.54484583,
+     "oceanic_node": -2599347.933298176
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 166148857.6059502,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 368058799.2629132,
+    "continental_node": -4008229.3272870183,
+    "oceanic_node": 372067028.5317453
+   },
+   "shortening": {
+    "demand_m2": 4673250877178.156,
+    "absorbed_m2": 2854744173731.4946,
+    "returned_decay_m2": 970813312929.0903,
+    "returned_unrouted_m2": 847693390517.5763,
+    "absorbed_hc_m3": 6.291318408348752e+16,
+    "absorbed_hm_m3": 1.5981879809396064e+17,
+    "returned_hc_m3": 8.446955265540491e+16,
+    "returned_hm_m3": 2.380866298175517e+17
+   }
+  },
+  {
+   "step": 325,
+   "metrics": {
+    "elapsed_myr": 119.9,
+    "plate_count": 18,
+    "sea_level_m": -413.3264608820229,
+    "land_area_km2": 142001559.48014656,
+    "continental_area_km2": 243403386.14750236,
+    "emergent_continental_area_km2": 139142416.96100876,
+    "land_elevation_m": {
+     "p10": 161.01754000368624,
+     "p50": 1000.8302558350217,
+     "p90": 6722.547247224551,
+     "p99": 7988.622234163846
+    },
+    "continental_hc_km": {
+     "p50": 33.174479228473196,
+     "p90": 71.8633068140292,
+     "p99": 83.99832675297365
+    },
+    "continental_hc_above_50km_area_km2": 41363317.81193975,
+    "hc_cap_area_km2": 1896715.0432314384,
+    "hm_cap_area_km2": 28329065.910204373,
+    "hm_volume_all_km3": 32906157490.296608,
+    "continental": {
+     "area_km2": 243403386.14750236,
+     "hm_cap_area_km2": 28292802.20815603,
+     "hm_cap_fraction": 0.11623832624502028,
+     "hm_mean_km": 116.71341790656508,
+     "hm_p50_km": 100.16164236321174,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28408441127.306477,
+     "hm_above_0.8_cap_fraction": 0.1545328438001037,
+     "hm_above_0.9_cap_fraction": 0.13434609561675145,
+     "hm_above_0.99_cap_fraction": 0.12182618790359331
+    },
+    "continental_craton": {
+     "area_km2": 66617987.65095913,
+     "hm_cap_area_km2": 6551059.870734843,
+     "hm_cap_fraction": 0.09833770279971112,
+     "hm_mean_km": 123.68665841622155,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8239756282.960247,
+     "hm_above_0.8_cap_fraction": 0.17448367326149336,
+     "hm_above_0.9_cap_fraction": 0.12342416560814334,
+     "hm_above_0.99_cap_fraction": 0.10342826037493805
+    },
+    "continental_non_craton": {
+     "area_km2": 176785398.49654326,
+     "hm_cap_area_km2": 21741742.337421186,
+     "hm_cap_fraction": 0.12298381270354922,
+     "hm_mean_km": 114.08569381786695,
+     "hm_p50_km": 100.00015227729301,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20168684844.34623,
+     "hm_above_0.8_cap_fraction": 0.14701477883552894,
+     "hm_above_0.9_cap_fraction": 0.1384618031617517,
+     "hm_above_0.99_cap_fraction": 0.1287590733077641
+    },
+    "oceanic": {
+     "area_km2": 266868462.99546826,
+     "hm_cap_area_km2": 36263.70204834366,
+     "hm_cap_fraction": 0.00013588605278158874,
+     "hm_mean_km": 16.85368256895348,
+     "hm_p50_km": 6.792293453777669,
+     "hm_p95_km": 39.99747824909177,
+     "hm_p99_km": 40.99379786785002,
+     "hm_volume_km3": 4497716362.99013,
+     "hm_above_0.8_cap_fraction": 0.00024358166413419164,
+     "hm_above_0.9_cap_fraction": 0.00021145698845612603,
+     "hm_above_0.99_cap_fraction": 0.00016642373198029334
+    },
+    "per_plate": {
+     "3": {
+      "continental_area_km2": 36149010.33239934,
+      "hm_cap_fraction_of_continental": 0.23555992770279455
+     },
+     "23": {
+      "continental_area_km2": 44053237.01312714,
+      "hm_cap_fraction_of_continental": 0.17453193456096264
+     },
+     "1": {
+      "continental_area_km2": 66912652.225638874,
+      "hm_cap_fraction_of_continental": 0.09796099051752222
+     },
+     "21": {
+      "continental_area_km2": 30559442.01478317,
+      "hm_cap_fraction_of_continental": 0.07101318180963778
+     },
+     "4": {
+      "continental_area_km2": 17487608.68395216,
+      "hm_cap_fraction_of_continental": 0.08610590715724883
+     },
+     "20": {
+      "continental_area_km2": 24837255.535297483,
+      "hm_cap_fraction_of_continental": 0.028761624347592454
+     },
+     "2": {
+      "continental_area_km2": 4811297.400573316,
+      "hm_cap_fraction_of_continental": 0.12612884809915448
+     },
+     "9": {
+      "continental_area_km2": 18592882.9417309,
+      "hm_cap_fraction_of_continental": 0.0288768958311429
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 32906157490.29661,
+    "continental_node": 28408441127.306473,
+    "oceanic_node": 4497716362.99013
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 348663551.45120156,
+     "continental_plate": 169199871.2454185,
+     "oceanic_plate": 179463680.24510464,
+     "continental_node": 157974429.69914573,
+     "oceanic_node": 190689121.76096871
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -128493664.32533708,
+     "continental_plate": -28665331.545276415,
+     "oceanic_plate": -99828332.79998362,
+     "continental_node": -11051840.761233408,
+     "oceanic_node": -117441823.51665561
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 2573608179.278545,
+     "continental_plate": 0.0,
+     "oceanic_plate": 2573608179.278545,
+     "continental_node": 0.0,
+     "oceanic_node": 2573608179.278545
+    },
+    "decompression_melting": {
+     "all": 1918.77873664,
+     "continental_plate": 209813.948596224,
+     "oceanic_plate": -207895.166189568,
+     "continental_node": 0.0,
+     "oceanic_node": 1918.778998784
+    },
+    "boundary_retreat": {
+     "all": -4174794685.486727,
+     "continental_plate": -501125206.6962637,
+     "oceanic_plate": -3673669478.7831235,
+     "continental_node": -498131664.48286104,
+     "oceanic_node": -3676663020.9994097
+    },
+    "boundary_advance": {
+     "all": 4564964.81042432,
+     "continental_plate": 2966758.06019584,
+     "oceanic_plate": 1598206.752587776,
+     "continental_node": 2322907.325792256,
+     "oceanic_node": 2242057.487777792
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -2032009.560178688,
+     "continental_plate": -2032009.560170496,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": -1596218.723827712,
+     "oceanic_node": -435790.836350976
+    },
+    "failed_rift_thinning": {
+     "all": -51134081.48825702,
+     "continental_plate": -48960525.02582886,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -48251605.39269529,
+     "oceanic_node": -2882476.0955648
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 179463680.24527875,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 397620373.8545325,
+    "continental_node": -4675568.707789302,
+    "oceanic_node": 402295942.4980897
+   },
+   "shortening": {
+    "demand_m2": 5015627382634.095,
+    "absorbed_m2": 3066003003416.265,
+    "returned_decay_m2": 1049923316240.5251,
+    "returned_unrouted_m2": 899701062977.3135,
+    "absorbed_hc_m3": 6.743945054973785e+16,
+    "absorbed_hm_m3": 1.691998712230652e+17,
+    "returned_hc_m3": 9.077346291418718e+16,
+    "returned_hm_m3": 2.5573055034796752e+17
+   }
+  },
+  {
+   "step": 350,
+   "metrics": {
+    "elapsed_myr": 122.4,
+    "plate_count": 18,
+    "sea_level_m": -415.7766079022798,
+    "land_area_km2": 142204256.5409688,
+    "continental_area_km2": 242088760.63470656,
+    "emergent_continental_area_km2": 139056254.58159116,
+    "land_elevation_m": {
+     "p10": 159.64955077942233,
+     "p50": 1011.63391635194,
+     "p90": 6725.693824413152,
+     "p99": 7868.850125579408
+    },
+    "continental_hc_km": {
+     "p50": 33.20310127070261,
+     "p90": 72.86263079280128,
+     "p99": 83.99592644969488
+    },
+    "continental_hc_above_50km_area_km2": 41649511.46476892,
+    "hc_cap_area_km2": 1217239.2463644291,
+    "hm_cap_area_km2": 29117718.93674261,
+    "hm_volume_all_km3": 32807376270.45253,
+    "continental": {
+     "area_km2": 242088760.63470656,
+     "hm_cap_area_km2": 29073625.867803056,
+     "hm_cap_fraction": 0.12009490152115296,
+     "hm_mean_km": 117.18652993270422,
+     "hm_p50_km": 100.16164237540993,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28369541794.490307,
+     "hm_above_0.8_cap_fraction": 0.15763435716283902,
+     "hm_above_0.9_cap_fraction": 0.13683953011906017,
+     "hm_above_0.99_cap_fraction": 0.12495782445667147
+    },
+    "continental_craton": {
+     "area_km2": 66609938.158410564,
+     "hm_cap_area_km2": 6943190.728062431,
+     "hm_cap_fraction": 0.1042365586881384,
+     "hm_mean_km": 123.88514838576936,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8251982072.721613,
+     "hm_above_0.8_cap_fraction": 0.17527684339613386,
+     "hm_above_0.9_cap_fraction": 0.12420162214759928,
+     "hm_above_0.99_cap_fraction": 0.10842103542477996
+    },
+    "continental_non_craton": {
+     "area_km2": 175478822.476296,
+     "hm_cap_area_km2": 22130435.139740624,
+     "hm_cap_fraction": 0.126114563725945,
+     "hm_mean_km": 114.64380395238982,
+     "hm_p50_km": 100.00025764703283,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20117559721.768692,
+     "hm_above_0.8_cap_fraction": 0.15093745265677466,
+     "hm_above_0.9_cap_fraction": 0.14163674870390908,
+     "hm_above_0.99_cap_fraction": 0.13123501779093705
+    },
+    "oceanic": {
+     "area_km2": 268827557.90154356,
+     "hm_cap_area_km2": 44093.06893955489,
+     "hm_cap_fraction": 0.00016401989916414635,
+     "hm_mean_km": 16.508108434283198,
+     "hm_p50_km": 6.602010030522227,
+     "hm_p95_km": 39.99734696375839,
+     "hm_p99_km": 41.04074978047384,
+     "hm_volume_km3": 4437834475.962225,
+     "hm_above_0.8_cap_fraction": 0.0002669232436388044,
+     "hm_above_0.9_cap_fraction": 0.0002209792734860574,
+     "hm_above_0.99_cap_fraction": 0.00017741917094423013
+    },
+    "per_plate": {
+     "3": {
+      "continental_area_km2": 35732428.925365314,
+      "hm_cap_fraction_of_continental": 0.2361396871404972
+     },
+     "23": {
+      "continental_area_km2": 43914740.180127256,
+      "hm_cap_fraction_of_continental": 0.17713517427768594
+     },
+     "1": {
+      "continental_area_km2": 66547625.98819485,
+      "hm_cap_fraction_of_continental": 0.10569948382144216
+     },
+     "21": {
+      "continental_area_km2": 30323233.204287734,
+      "hm_cap_fraction_of_continental": 0.08229917169912973
+     },
+     "4": {
+      "continental_area_km2": 17415797.27197973,
+      "hm_cap_fraction_of_continental": 0.08468230260509993
+     },
+     "20": {
+      "continental_area_km2": 24760832.20143717,
+      "hm_cap_fraction_of_continental": 0.029216297906628184
+     },
+     "2": {
+      "continental_area_km2": 4842782.000617685,
+      "hm_cap_fraction_of_continental": 0.1196989144130346
+     },
+     "9": {
+      "continental_area_km2": 18551320.86269682,
+      "hm_cap_fraction_of_continental": 0.029615358611355176
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 32807376270.45253,
+    "continental_node": 28369541794.49031,
+    "oceanic_node": 4437834475.962224
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 374585849.641173,
+     "continental_plate": 180168277.22642228,
+     "oceanic_plate": 194417572.47766528,
+     "continental_node": 167922088.65755135,
+     "oceanic_node": 206663761.01298177
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -142148378.98418584,
+     "continental_plate": -34177628.543909885,
+     "oceanic_plate": -107970750.46701466,
+     "continental_node": -14912454.972669952,
+     "oceanic_node": -127235923.95594138
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 2772236661.527937,
+     "continental_plate": 0.0,
+     "oceanic_plate": 2772236661.527937,
+     "continental_node": 0.0,
+     "oceanic_node": 2772236661.527937
+    },
+    "decompression_melting": {
+     "all": -25855.719899136,
+     "continental_plate": 213881.358123008,
+     "oceanic_plate": -239737.074876416,
+     "continental_node": 0.0,
+     "oceanic_node": -25855.721209856
+    },
+    "boundary_retreat": {
+     "all": -4517462826.11304,
+     "continental_plate": -545859908.8666706,
+     "oceanic_plate": -3971602917.237719,
+     "continental_node": -542291658.9898957,
+     "oceanic_node": -3975171167.1155424
+    },
+    "boundary_advance": {
+     "all": 4658888.668348416,
+     "continental_plate": 2966758.06019584,
+     "oceanic_plate": 1692130.611298304,
+     "continental_node": 2322907.325792256,
+     "oceanic_node": 2335981.34648832
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -2032009.560178688,
+     "continental_plate": -2032009.560162304,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": -1596218.723827712,
+     "oceanic_node": -435790.836350976
+    },
+    "failed_rift_thinning": {
+     "all": -51134081.48825702,
+     "continental_plate": -48960525.02582886,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -48251605.39269529,
+     "oceanic_node": -2882476.0955648
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 194417572.4784189,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 430545079.4969604,
+    "continental_node": -5501951.763885736,
+    "oceanic_node": 436047031.1656947
+   },
+   "shortening": {
+    "demand_m2": 5431662098700.505,
+    "absorbed_m2": 3302102659381.365,
+    "returned_decay_m2": 1154627537105.8281,
+    "returned_unrouted_m2": 974931902213.3243,
+    "absorbed_hc_m3": 7.268773306568413e+16,
+    "absorbed_hm_m3": 1.8016827719622986e+17,
+    "returned_hc_m3": 1.0034290390445979e+17,
+    "returned_hm_m3": 2.816394432722892e+17
+   }
+  },
+  {
+   "step": 375,
+   "metrics": {
+    "elapsed_myr": 124.9,
+    "plate_count": 19,
+    "sea_level_m": -430.03569159224594,
+    "land_area_km2": 142858985.80365804,
+    "continental_area_km2": 240210963.83906147,
+    "emergent_continental_area_km2": 139469352.71665356,
+    "land_elevation_m": {
+     "p10": 157.80430377157109,
+     "p50": 1014.0682224739014,
+     "p90": 6743.468344941359,
+     "p99": 7786.233387498367
+    },
+    "continental_hc_km": {
+     "p50": 33.247565756469136,
+     "p90": 74.3004851504818,
+     "p99": 83.9995083798007
+    },
+    "continental_hc_above_50km_area_km2": 42033596.51216294,
+    "hc_cap_area_km2": 2796788.910813354,
+    "hm_cap_area_km2": 30001133.06704878,
+    "hm_volume_all_km3": 32787032249.484344,
+    "continental": {
+     "area_km2": 240210963.83906147,
+     "hm_cap_area_km2": 29964896.160394806,
+     "hm_cap_fraction": 0.12474408195818629,
+     "hm_mean_km": 117.84112356785536,
+     "hm_p50_km": 100.17995994772488,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28306729872.11248,
+     "hm_above_0.8_cap_fraction": 0.16186398887572814,
+     "hm_above_0.9_cap_fraction": 0.14078817851801134,
+     "hm_above_0.99_cap_fraction": 0.13004294683116735
+    },
+    "continental_craton": {
+     "area_km2": 66609938.158410564,
+     "hm_cap_area_km2": 7365411.023259718,
+     "hm_cap_fraction": 0.11057525688949642,
+     "hm_mean_km": 124.68255946652272,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8305097575.497426,
+     "hm_above_0.8_cap_fraction": 0.18106834463495466,
+     "hm_above_0.9_cap_fraction": 0.12923406799199177,
+     "hm_above_0.99_cap_fraction": 0.11413973492931413
+    },
+    "continental_non_craton": {
+     "area_km2": 173601025.68065095,
+     "hm_cap_area_km2": 22599485.137135085,
+     "hm_cap_fraction": 0.13018059685147332,
+     "hm_mean_km": 115.21609517105739,
+     "hm_p50_km": 100.00068327983577,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 20001632296.615055,
+     "hm_above_0.8_cap_fraction": 0.15449536334786193,
+     "hm_above_0.9_cap_fraction": 0.14522143911999277,
+     "hm_above_0.99_cap_fraction": 0.13614493820563772
+    },
+    "oceanic": {
+     "area_km2": 271278564.53260833,
+     "hm_cap_area_km2": 36236.90665397749,
+     "hm_cap_fraction": 0.00013357821586976778,
+     "hm_mean_km": 16.515504588764962,
+     "hm_p50_km": 7.841022935940661,
+     "hm_p95_km": 39.99483525539208,
+     "hm_p99_km": 41.099314046367915,
+     "hm_volume_km3": 4480302377.371865,
+     "hm_above_0.8_cap_fraction": 0.00028096254861239287,
+     "hm_above_0.9_cap_fraction": 0.0002235707246470605,
+     "hm_above_0.99_cap_fraction": 0.00016338507545794512
+    },
+    "per_plate": {
+     "3": {
+      "continental_area_km2": 35347080.03877481,
+      "hm_cap_fraction_of_continental": 0.2280392117960228
+     },
+     "23": {
+      "continental_area_km2": 43768257.69319925,
+      "hm_cap_fraction_of_continental": 0.1783053417479413
+     },
+     "1": {
+      "continental_area_km2": 66147348.18477005,
+      "hm_cap_fraction_of_continental": 0.11407196146567525
+     },
+     "21": {
+      "continental_area_km2": 30071425.208657958,
+      "hm_cap_fraction_of_continental": 0.07890335675777825
+     },
+     "4": {
+      "continental_area_km2": 17348429.76640371,
+      "hm_cap_fraction_of_continental": 0.0886249694665371
+     },
+     "2": {
+      "continental_area_km2": 4381741.732744326,
+      "hm_cap_fraction_of_continental": 0.2809078148725828
+     },
+     "20": {
+      "continental_area_km2": 24618398.16745296,
+      "hm_cap_fraction_of_continental": 0.035230902319299914
+     },
+     "9": {
+      "continental_area_km2": 18528283.04705842,
+      "hm_cap_fraction_of_continental": 0.029483015906915735
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 32787032249.484352,
+    "continental_node": 28306729872.112484,
+    "oceanic_node": 4480302377.371866
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 400950722.4173937,
+     "continental_plate": 190770357.36642355,
+     "oceanic_plate": 210180365.15425485,
+     "continental_node": 178548200.49852824,
+     "oceanic_node": 222402521.96867278
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -154096626.59448013,
+     "continental_plate": -37488160.183156736,
+     "oceanic_plate": -116608466.43544064,
+     "continental_node": -17179556.525899775,
+     "oceanic_node": -136917069.98469427
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 3053459474.918146,
+     "continental_plate": 0.0,
+     "oceanic_plate": 3053459474.918146,
+     "continental_node": 0.0,
+     "oceanic_node": 3053459474.918146
+    },
+    "decompression_melting": {
+     "all": -106453.056618496,
+     "continental_plate": 237126.530629632,
+     "oceanic_plate": -343579.584626688,
+     "continental_node": 0.0,
+     "oceanic_node": -106453.059239936
+    },
+    "boundary_retreat": {
+     "all": -4869027509.892547,
+     "continental_plate": -614425427.4332262,
+     "oceanic_plate": -4254602082.4564366,
+     "continental_node": -613049498.1904794,
+     "oceanic_node": -4255978011.6955137
+    },
+    "boundary_advance": {
+     "all": 5515128.21989376,
+     "continental_plate": 3629682.417205248,
+     "oceanic_plate": 1885445.806358528,
+     "continental_node": 2985831.682801664,
+     "oceanic_node": 2529296.541548544
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -2032009.560178688,
+     "continental_plate": -2032009.560162304,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": -1439839.197642752,
+     "oceanic_node": -592170.362537984
+    },
+    "failed_rift_thinning": {
+     "all": -51134081.48825702,
+     "continental_plate": -48960525.02582886,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -48251605.39269529,
+     "oceanic_node": -2882476.0955648
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 208973846.74668542,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 465350661.53732777,
+    "continental_node": -6734349.112070203,
+    "oceanic_node": 472085010.5073178
+   },
+   "shortening": {
+    "demand_m2": 5882415852262.439,
+    "absorbed_m2": 3555225765808.7935,
+    "returned_decay_m2": 1251768912913.8186,
+    "returned_unrouted_m2": 1075421173539.8342,
+    "absorbed_hc_m3": 7.850513448604694e+16,
+    "absorbed_hm_m3": 1.9197687574475578e+17,
+    "returned_hc_m3": 1.1150051473009893e+17,
+    "returned_hm_m3": 3.1220960186686784e+17
+   }
+  },
+  {
+   "step": 400,
+   "metrics": {
+    "elapsed_myr": 127.4,
+    "plate_count": 19,
+    "sea_level_m": -447.83716282868477,
+    "land_area_km2": 141603559.089967,
+    "continental_area_km2": 237830933.84683862,
+    "emergent_continental_area_km2": 138069037.426295,
+    "land_elevation_m": {
+     "p10": 170.7368651266048,
+     "p50": 1042.4399193508955,
+     "p90": 6771.196660458924,
+     "p99": 7877.447487483944
+    },
+    "continental_hc_km": {
+     "p50": 33.28328537158696,
+     "p90": 75.90561935647865,
+     "p99": 83.9998356812388
+    },
+    "continental_hc_above_50km_area_km2": 42404114.66670937,
+    "hc_cap_area_km2": 4646798.403845112,
+    "hm_cap_area_km2": 31094759.836814225,
+    "hm_volume_all_km3": 32757302037.960655,
+    "continental": {
+     "area_km2": 237830933.84683862,
+     "hm_cap_area_km2": 31053435.61287249,
+     "hm_cap_fraction": 0.13056937174064445,
+     "hm_mean_km": 118.62428926336392,
+     "hm_p50_km": 100.1799599477249,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28212525492.42335,
+     "hm_above_0.8_cap_fraction": 0.16761642016927372,
+     "hm_above_0.9_cap_fraction": 0.14659197065067234,
+     "hm_above_0.99_cap_fraction": 0.13590466714936925
+    },
+    "continental_craton": {
+     "area_km2": 66556677.79149392,
+     "hm_cap_area_km2": 7778195.933922855,
+     "hm_cap_fraction": 0.1168657479913597,
+     "hm_mean_km": 125.44104174340863,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8348938997.145387,
+     "hm_above_0.8_cap_fraction": 0.18673868718177636,
+     "hm_above_0.9_cap_fraction": 0.13527539106024444,
+     "hm_above_0.99_cap_fraction": 0.12140821286770229
+    },
+    "continental_non_craton": {
+     "area_km2": 171274256.05534476,
+     "hm_cap_area_km2": 23275239.678949628,
+     "hm_cap_fraction": 0.135894560075792,
+     "hm_mean_km": 115.97531907456857,
+     "hm_p50_km": 100.00122799910724,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 19863586495.277966,
+     "hm_above_0.8_cap_fraction": 0.16018556282091193,
+     "hm_above_0.9_cap_fraction": 0.15098956056785473,
+     "hm_above_0.99_cap_fraction": 0.14153794712363607
+    },
+    "oceanic": {
+     "area_km2": 273939717.58248144,
+     "hm_cap_area_km2": 41324.22394174192,
+     "hm_cap_fraction": 0.00015085152422010317,
+     "hm_mean_km": 16.590425753683935,
+     "hm_p50_km": 7.706046654656996,
+     "hm_p95_km": 39.99167923001781,
+     "hm_p99_km": 41.087295857236654,
+     "hm_volume_km3": 4544776545.537305,
+     "hm_above_0.8_cap_fraction": 0.00022260739378123968,
+     "hm_above_0.9_cap_fraction": 0.00016541979603331827,
+     "hm_above_0.99_cap_fraction": 0.00015085152422010317
+    },
+    "per_plate": {
+     "3": {
+      "continental_area_km2": 34938216.99955314,
+      "hm_cap_fraction_of_continental": 0.230910731398489
+     },
+     "23": {
+      "continental_area_km2": 43558410.60604631,
+      "hm_cap_fraction_of_continental": 0.18198906206023177
+     },
+     "1": {
+      "continental_area_km2": 65552471.05659504,
+      "hm_cap_fraction_of_continental": 0.12032710836053227
+     },
+     "21": {
+      "continental_area_km2": 29747308.28232176,
+      "hm_cap_fraction_of_continental": 0.09078042866110396
+     },
+     "4": {
+      "continental_area_km2": 17244991.726383034,
+      "hm_cap_fraction_of_continental": 0.0916268757791403
+     },
+     "2": {
+      "continental_area_km2": 3765618.097553199,
+      "hm_cap_fraction_of_continental": 0.3763465144981314
+     },
+     "20": {
+      "continental_area_km2": 24522253.09819949,
+      "hm_cap_fraction_of_continental": 0.03706682644622641
+     },
+     "9": {
+      "continental_area_km2": 18501663.98018668,
+      "hm_cap_fraction_of_continental": 0.030495383306008077
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 32757302037.960655,
+    "continental_node": 28212525492.423344,
+    "oceanic_node": 4544776545.537305
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 428142014.27656704,
+     "continental_plate": 202168666.2093865,
+     "oceanic_plate": 225973348.1838346,
+     "continental_node": 190539380.7969485,
+     "oceanic_node": 237602633.5585239
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -167852377.49845198,
+     "continental_plate": -41955044.79430246,
+     "oceanic_plate": -125897332.72879104,
+     "continental_node": -21120243.785007104,
+     "oceanic_node": -146732133.6468603
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 3354329293.2626843,
+     "continental_plate": 0.0,
+     "oceanic_plate": 3354329293.2626843,
+     "continental_node": 0.0,
+     "oceanic_node": 3354329293.2634706
+    },
+    "decompression_melting": {
+     "all": -106453.056618496,
+     "continental_plate": 237126.530629632,
+     "oceanic_plate": -343579.584626688,
+     "continental_node": 0.0,
+     "oceanic_node": -106453.059239936
+    },
+    "boundary_retreat": {
+     "all": -5241590458.760561,
+     "continental_plate": -688755105.9917537,
+     "oceanic_plate": -4552835352.740496,
+     "continental_node": -709699403.5620905,
+     "oceanic_node": -4531891055.163342
+    },
+    "boundary_advance": {
+     "all": 5946408.473460736,
+     "continental_plate": 3849815.789142016,
+     "oceanic_plate": 2096592.690610176,
+     "continental_node": 3200534.800498688,
+     "oceanic_node": 2745873.680039936
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -2032009.560162304,
+     "continental_plate": -2032009.56014592,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": -1425608.828665856,
+     "oceanic_node": -606400.731518976
+    },
+    "failed_rift_thinning": {
+     "all": -56511375.941312514,
+     "continental_plate": -54337819.478888445,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -53530147.89584486,
+     "oceanic_node": -2981228.045473536
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 222813994.30803114,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 498824053.78137755,
+    "continental_node": -7289707.452436686,
+    "oceanic_node": 506113761.0479741
+   },
+   "shortening": {
+    "demand_m2": 6354165292306.125,
+    "absorbed_m2": 3826888369515.7207,
+    "returned_decay_m2": 1344456623178.8557,
+    "returned_unrouted_m2": 1182820299611.557,
+    "absorbed_hc_m3": 8.473545205669171e+16,
+    "absorbed_hm_m3": 2.0532802005165546e+17,
+    "returned_hc_m3": 1.226045656803312e+17,
+    "returned_hm_m3": 3.4322641923938534e+17
+   }
+  },
+  {
+   "step": 425,
+   "metrics": {
+    "elapsed_myr": 129.9,
+    "plate_count": 19,
+    "sea_level_m": -467.27338113822185,
+    "land_area_km2": 141903056.3048376,
+    "continental_area_km2": 235549088.6276615,
+    "emergent_continental_area_km2": 138083251.5043805,
+    "land_elevation_m": {
+     "p10": 175.07842281046283,
+     "p50": 1072.039758395334,
+     "p90": 6795.803057237532,
+     "p99": 8094.2960589215945
+    },
+    "continental_hc_km": {
+     "p50": 33.2972722676898,
+     "p90": 77.50401428916115,
+     "p99": 83.99976418558614
+    },
+    "continental_hc_above_50km_area_km2": 43230713.61960911,
+    "hc_cap_area_km2": 3650995.4048803523,
+    "hm_cap_area_km2": 32066995.699198876,
+    "hm_volume_all_km3": 32683260600.551785,
+    "continental": {
+     "area_km2": 235549088.6276615,
+     "hm_cap_area_km2": 32021801.742463484,
+     "hm_cap_fraction": 0.13594534340602424,
+     "hm_mean_km": 119.24928119884815,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28089059505.892414,
+     "hm_above_0.8_cap_fraction": 0.17237440016805505,
+     "hm_above_0.9_cap_fraction": 0.1518235120945765,
+     "hm_above_0.99_cap_fraction": 0.14144986184873162
+    },
+    "continental_craton": {
+     "area_km2": 66437587.20814535,
+     "hm_cap_area_km2": 7764410.96063014,
+     "hm_cap_fraction": 0.1168677444035507,
+     "hm_mean_km": 125.57346282595596,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8342797887.528247,
+     "hm_above_0.8_cap_fraction": 0.18777376700805284,
+     "hm_above_0.9_cap_fraction": 0.13600806054093798,
+     "hm_above_0.99_cap_fraction": 0.12179131250438041
+    },
+    "continental_non_craton": {
+     "area_km2": 169111501.41951612,
+     "hm_cap_area_km2": 24257390.781833343,
+     "hm_cap_fraction": 0.14344021889828687,
+     "hm_mean_km": 116.76474664712173,
+     "hm_p50_km": 100.00166899569766,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 19746261618.364166,
+     "hm_above_0.8_cap_fraction": 0.16632456459333228,
+     "hm_above_0.9_cap_fraction": 0.1580368117992754,
+     "hm_above_0.99_cap_fraction": 0.14917297101332358
+    },
+    "oceanic": {
+     "area_km2": 276757814.5575996,
+     "hm_cap_area_km2": 45193.9567353942,
+     "hm_cap_fraction": 0.00016329785233937198,
+     "hm_mean_km": 16.600077226376605,
+     "hm_p50_km": 7.458483007985413,
+     "hm_p95_km": 39.98738792107442,
+     "hm_p99_km": 41.03971860243565,
+     "hm_volume_km3": 4594201094.659369,
+     "hm_above_0.8_cap_fraction": 0.00026488183992708954,
+     "hm_above_0.9_cap_fraction": 0.00020814210925457717,
+     "hm_above_0.99_cap_fraction": 0.00016329785233937198
+    },
+    "per_plate": {
+     "23": {
+      "continental_area_km2": 43347178.46389111,
+      "hm_cap_fraction_of_continental": 0.1858123042441929
+     },
+     "1": {
+      "continental_area_km2": 65014219.894899465,
+      "hm_cap_fraction_of_continental": 0.12296167102889728
+     },
+     "3": {
+      "continental_area_km2": 34612908.86210407,
+      "hm_cap_fraction_of_continental": 0.22957494713827947
+     },
+     "21": {
+      "continental_area_km2": 29428449.957024023,
+      "hm_cap_fraction_of_continental": 0.10207476049550226
+     },
+     "2": {
+      "continental_area_km2": 3191062.0145631917,
+      "hm_cap_fraction_of_continental": 0.5454224856475334
+     },
+     "4": {
+      "continental_area_km2": 17102757.28391728,
+      "hm_cap_fraction_of_continental": 0.0979109468373005
+     },
+     "20": {
+      "continental_area_km2": 24420666.495051697,
+      "hm_cap_fraction_of_continental": 0.039721121798612875
+     },
+     "9": {
+      "continental_area_km2": 18431845.65621065,
+      "hm_cap_fraction_of_continental": 0.0346089271719959
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 32683260600.551785,
+    "continental_node": 28089059505.89241,
+    "oceanic_node": 4594201094.65937
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 453688852.7777956,
+     "continental_plate": 212464376.77963674,
+     "oceanic_plate": 241224476.1271337,
+     "continental_node": 200873184.7239926,
+     "oceanic_node": 252815668.14765057
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -180549792.60304588,
+     "continental_plate": -45534960.374775805,
+     "oceanic_plate": -135014832.23534796,
+     "continental_node": -24110435.7687296,
+     "oceanic_node": -156439356.75593522
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 3636950586.5032005,
+     "continental_plate": 0.0,
+     "oceanic_plate": 3636950586.5032005,
+     "continental_node": 0.0,
+     "oceanic_node": 3636950586.5026765
+    },
+    "decompression_melting": {
+     "all": -106453.056618496,
+     "continental_plate": 237126.530629632,
+     "oceanic_plate": -343579.584626688,
+     "continental_node": 0.0,
+     "oceanic_node": -106453.059239936
+    },
+    "boundary_retreat": {
+     "all": -5618316886.623125,
+     "continental_plate": -768570976.093864,
+     "oceanic_plate": -4849745910.517465,
+     "continental_node": -812836621.4926827,
+     "oceanic_node": -4805480265.105015
+    },
+    "boundary_advance": {
+     "all": 6941055.404474368,
+     "continental_plate": 4733117.263773696,
+     "oceanic_plate": 2207938.144108544,
+     "continental_node": 4053708.023267328,
+     "oceanic_node": 2887347.386712064
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -29625393.294557184,
+     "continental_plate": -29625393.2945408,
+     "oceanic_plate": -5.12e-07,
+     "continental_node": -30466233.33503795,
+     "oceanic_node": 840840.040424448
+    },
+    "failed_rift_thinning": {
+     "all": -56511375.941312514,
+     "continental_plate": -54337819.478888445,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -53530147.89584486,
+     "oceanic_node": -2981228.045473536
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 236482736.9478687,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 532637064.4013014,
+    "continental_node": -6774636.712496042,
+    "oceanic_node": 539411700.9138387
+   },
+   "shortening": {
+    "demand_m2": 6820234496480.23,
+    "absorbed_m2": 4086062769968.876,
+    "returned_decay_m2": 1439921144056.804,
+    "returned_unrouted_m2": 1294250582454.5698,
+    "absorbed_hc_m3": 9.048822925511776e+16,
+    "absorbed_hm_m3": 2.172061159179914e+17,
+    "returned_hc_m3": 1.345008734244137e+17,
+    "returned_hm_m3": 3.7640036835275264e+17
+   }
+  },
+  {
+   "step": 431,
+   "metrics": {
+    "elapsed_myr": 130.5,
+    "plate_count": 19,
+    "sea_level_m": -469.56631967044086,
+    "land_area_km2": 141535473.7954616,
+    "continental_area_km2": 235133252.01540536,
+    "emergent_continental_area_km2": 137766919.43102565,
+    "land_elevation_m": {
+     "p10": 182.67264504321645,
+     "p50": 1085.9116303487044,
+     "p90": 6796.360344108149,
+     "p99": 8043.311612396963
+    },
+    "continental_hc_km": {
+     "p50": 33.306693472125815,
+     "p90": 77.58219617957683,
+     "p99": 83.99957488796237
+    },
+    "continental_hc_above_50km_area_km2": 43537104.92453963,
+    "hc_cap_area_km2": 3129279.3241013866,
+    "hm_cap_area_km2": 32060909.911943898,
+    "hm_volume_all_km3": 32675977376.977444,
+    "continental": {
+     "area_km2": 235133252.01540536,
+     "hm_cap_area_km2": 32015715.9552085,
+     "hm_cap_fraction": 0.13615988245299696,
+     "hm_mean_km": 119.38895534137292,
+     "hm_p50_km": 100.17995994772491,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 28072313324.13901,
+     "hm_above_0.8_cap_fraction": 0.1735673870048622,
+     "hm_above_0.9_cap_fraction": 0.1524626052605821,
+     "hm_above_0.99_cap_fraction": 0.14215120620319288
+    },
+    "continental_craton": {
+     "area_km2": 66437587.20814535,
+     "hm_cap_area_km2": 7724372.226338327,
+     "hm_cap_fraction": 0.11626509256180975,
+     "hm_mean_km": 125.64729389052363,
+     "hm_p50_km": 100.17995994772494,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 8347703045.319132,
+     "hm_above_0.8_cap_fraction": 0.18831509156016754,
+     "hm_above_0.9_cap_fraction": 0.1365492319328928,
+     "hm_above_0.99_cap_fraction": 0.12222370729689584
+    },
+    "continental_non_craton": {
+     "area_km2": 168695664.80726,
+     "hm_cap_area_km2": 24291343.728870172,
+     "hm_cap_fraction": 0.14399506802159842,
+     "hm_mean_km": 116.92422743261277,
+     "hm_p50_km": 100.00181966122408,
+     "hm_p95_km": 240.0,
+     "hm_p99_km": 240.0,
+     "hm_volume_km3": 19724610278.819878,
+     "hm_above_0.8_cap_fraction": 0.16775928334889378,
+     "hm_above_0.9_cap_fraction": 0.15872978544830105,
+     "hm_above_0.99_cap_fraction": 0.1499992735968628
+    },
+    "oceanic": {
+     "area_km2": 277301530.4293661,
+     "hm_cap_area_km2": 45193.9567353942,
+     "hm_cap_fraction": 0.00016297766790330045,
+     "hm_mean_km": 16.601653967470895,
+     "hm_p50_km": 7.4205437685656195,
+     "hm_p95_km": 39.98666334125296,
+     "hm_p99_km": 41.052318316887224,
+     "hm_volume_km3": 4603664052.838437,
+     "hm_above_0.8_cap_fraction": 0.00026427872175388176,
+     "hm_above_0.9_cap_fraction": 0.00020773399694373114,
+     "hm_above_0.99_cap_fraction": 0.00016297766790330045
+    },
+    "per_plate": {
+     "23": {
+      "continental_area_km2": 43275154.04166903,
+      "hm_cap_fraction_of_continental": 0.18723590268947443
+     },
+     "1": {
+      "continental_area_km2": 64975981.11380393,
+      "hm_cap_fraction_of_continental": 0.12294622224647454
+     },
+     "3": {
+      "continental_area_km2": 34537489.10981528,
+      "hm_cap_fraction_of_continental": 0.2301837053301452
+     },
+     "21": {
+      "continental_area_km2": 29355143.96058501,
+      "hm_cap_fraction_of_continental": 0.1040116133674052
+     },
+     "2": {
+      "continental_area_km2": 3089589.4187951726,
+      "hm_cap_fraction_of_continental": 0.5350483737235205
+     },
+     "4": {
+      "continental_area_km2": 17102273.609979305,
+      "hm_cap_fraction_of_continental": 0.09630040278385495
+     },
+     "20": {
+      "continental_area_km2": 24412236.21109056,
+      "hm_cap_fraction_of_continental": 0.03918610261451663
+     },
+     "9": {
+      "continental_area_km2": 18385384.549667045,
+      "hm_cap_fraction_of_continental": 0.036148435364346705
+     }
+    }
+   },
+   "inventory_km3": {
+    "all": 32675977376.977448,
+    "continental_node": 28072313324.13901,
+    "oceanic_node": 4603664052.838437
+   },
+   "phase_hm_delta_km3": {
+    "convergent_deformation": {
+     "all": 459648926.2265794,
+     "continental_plate": 214806594.28887758,
+     "oceanic_plate": 244842332.06903604,
+     "continental_node": 203168433.0538926,
+     "oceanic_node": 256480493.24949503
+    },
+    "arc_magmatism": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "divergent_deformation": {
+     "all": -183424406.15909785,
+     "continental_plate": -46267230.93086208,
+     "oceanic_plate": -137157175.2397701,
+     "continental_node": -24691522.203025408,
+     "oceanic_node": -158732883.87428352
+    },
+    "oceanic_cooling_relaxation": {
+     "all": 3702348530.666963,
+     "continental_plate": 0.0,
+     "oceanic_plate": 3702348530.666963,
+     "continental_node": 0.0,
+     "oceanic_node": 3702348530.6664386
+    },
+    "decompression_melting": {
+     "all": -106453.056618496,
+     "continental_plate": 237126.530629632,
+     "oceanic_plate": -343579.584626688,
+     "continental_node": 0.0,
+     "oceanic_node": -106453.059239936
+    },
+    "boundary_retreat": {
+     "all": -5702477860.011246,
+     "continental_plate": -782982576.3221177,
+     "oceanic_plate": -4919495283.677332,
+     "continental_node": -831431070.4265953,
+     "oceanic_node": -4871046789.565776
+    },
+    "boundary_advance": {
+     "all": 6989911.150297088,
+     "continental_plate": 4733117.263773696,
+     "oceanic_plate": 2256793.88966912,
+     "continental_node": 4053708.023267328,
+     "oceanic_node": 2936203.13227264
+    },
+    "orogenic_relief": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "erosion": {
+     "all": 0.0,
+     "continental_plate": 0.0,
+     "oceanic_plate": 0.0,
+     "continental_node": 0.0,
+     "oceanic_node": 0.0
+    },
+    "terrane_accretion": {
+     "all": -29625393.294557184,
+     "continental_plate": -29625393.2945408,
+     "oceanic_plate": -1.024e-06,
+     "continental_node": -30466233.33503795,
+     "oceanic_node": 840840.040424448
+    },
+    "failed_rift_thinning": {
+     "all": -56511375.941312514,
+     "continental_plate": -54337819.478888445,
+     "oceanic_plate": -2173556.462430464,
+     "continental_node": -53530147.89584486,
+     "oceanic_node": -2981228.045473536
+    },
+    "plate_merge": {
+     "all": -129547978.59278233,
+     "continental_plate": -129547978.59278233,
+     "oceanic_plate": 0.0,
+     "continental_node": -140842720.99247718,
+     "oceanic_node": 11294742.399698015
+    }
+   },
+   "convergent_clip_km3": {
+    "continental_hm_added_km3": 0.0,
+    "continental_hm_clipped_km3": 0.0,
+    "continental_hc_clipped_km3": 0.0,
+    "continental_craton_hm_added_km3": 0.0,
+    "continental_craton_hm_clipped_km3": 0.0,
+    "continental_craton_hc_clipped_km3": 0.0,
+    "oceanic_hm_added_km3": 239743118.46156898,
+    "oceanic_hm_clipped_km3": 0.0,
+    "oceanic_hc_clipped_km3": 0.0
+   },
+   "unattributed_hm_delta_km3": {
+    "all": 540982554.4127679,
+    "continental_node": -6640531.4275865555,
+    "oceanic_node": 547623085.6608477
+   },
+   "shortening": {
+    "demand_m2": 6933704260060.137,
+    "absorbed_m2": 4148872066333.0913,
+    "returned_decay_m2": 1463161320283.8965,
+    "returned_unrouted_m2": 1321670873443.1704,
+    "absorbed_hc_m3": 9.18652705651624e+16,
+    "absorbed_hm_m3": 2.199058078439848e+17,
+    "returned_hc_m3": 1.3740507426771629e+17,
+    "returned_hm_m3": 3.845208762181474e+17
+   }
+  }
+ ]
+}

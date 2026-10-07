@@ -101,6 +101,16 @@ def plastic_strain_rate_per_myr(closing_rate_m_per_s: np.ndarray) -> np.ndarray:
     return sign * normalized_excess * PLASTIC_THICKENING_RATE_PER_MYR_PER_YIELD_EXCESS
 
 
+def convergent_strain(
+    closing_rate_m_per_s: np.ndarray, years_myr: float, fault_factor: np.ndarray, strength: np.ndarray | float = 1.0
+) -> np.ndarray:
+    """The fractional thickening a convergent node takes on this step, before any cap --
+    `apply_convergent_deformation`'s strain, and the shortening a quad plate's band demands of
+    its interior (shortening.py, issue #314)."""
+    rate = np.clip(plastic_strain_rate_per_myr(closing_rate_m_per_s), 0.0, None)  # convergent branch only ever thickens
+    return rate * years_myr * fault_factor * strength
+
+
 def apply_convergent_deformation(
     hc_m: np.ndarray,
     hm_m: np.ndarray,
@@ -133,9 +143,7 @@ def apply_convergent_deformation(
     for suture retreat. Hm's own overflow is not returned/conserved -- unlike buoyant crust, an
     over-thickened mantle-lithosphere root has nowhere to spread to; it delaminates (sinks into
     the asthenosphere), a real geodynamic sink, not a modeling shortcut."""
-    rate = plastic_strain_rate_per_myr(closing_rate_m_per_s)
-    rate = np.clip(rate, 0.0, None)  # convergent branch only ever thickens
-    fractional_change = rate * years_myr * fault_factor * strength
+    fractional_change = convergent_strain(closing_rate_m_per_s, years_myr, fault_factor, strength)
     uncapped_new_hc = hc_m * (1.0 + fractional_change)
     new_hc = np.clip(uncapped_new_hc, None, lithosphere.MAX_CRUSTAL_THICKNESS_M)
     new_hm = np.clip(hm_m * (1.0 + fractional_change), None, lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M)
