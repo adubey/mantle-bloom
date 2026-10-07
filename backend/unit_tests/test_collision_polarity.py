@@ -199,6 +199,71 @@ def test_contradictory_consumption_is_ambiguous():
     assert record.fallback_basis == "motion" and record.lower_plate_id == 2
 
 
+def _long_contact():
+    j_range = (0, 50)
+    a = _plate(1, _block((10, 20), j_range))
+    b = _plate(2, _block((20, 30), j_range))
+    world = _world(a, b)
+    _drive(b, _plate_centroid(a), 3.0)
+    return world, a, b
+
+
+def _far_end(plate, other, j_lo: int):
+    """`plate`'s nodes facing `other` at lattice columns j >= `j_lo`."""
+    points = plate.all_points_and_elevation()[0]
+    dist, _ = other.get_node_kdtree().query(points)
+    _, _, _, j = unpack_cell_keys(plate.cell_keys)
+    return points[(dist <= 1.5 * SPACING) & (j >= j_lo)]
+
+
+def test_pair_evidence_from_elsewhere_on_the_boundary_decides():
+    # The pair's subduction was recorded far along the boundary from where the continents
+    # meet: B overrode A's ocean floor there. The motion fallback alone would put B down.
+    world, a, b = _long_contact()
+    cp.add_evidence(world, b, _far_end(b, a, 40), cp.SOURCE_CONSUMPTION, cp.ROLE_UPPER, 1)
+    # Evidence naming a third plate, however close, doesn't count at pair scope.
+    cp.add_evidence(world, a, _far_end(a, b, 40), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _, _, _, j = unpack_cell_keys(b.cell_keys)
+    b.remove_cells(j >= 15)
+    _step(world)
+    (record,) = _records(world, (1, 2))
+    assert (record.scope, record.source, record.lower_plate_id) == ("pair", "consumption", 1)
+    assert world.collision_polarity_stats["scope_pair"] == 1
+
+
+def test_front_evidence_outranks_pair_evidence():
+    world, a, b = _long_contact()
+    _, _, _, j = unpack_cell_keys(b.cell_keys)
+    b.remove_cells(j >= 15)
+    cp.add_evidence(world, a, _near(a, b), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    cp.add_evidence(world, b, _far_end(_plate(2, _block((20, 30), (0, 50))), a, 40), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 1)
+    _step(world)
+    (record,) = _records(world, (1, 2))
+    assert (record.scope, record.lower_plate_id) == ("front", 1)
+
+
+def test_new_front_without_evidence_inherits_the_pairs_existing_polarity():
+    world, a, b = _long_contact()
+    _, _, _, j = unpack_cell_keys(b.cell_keys)
+    b.remove_cells((j >= 15) & (j < 35))
+    # Two fronts, decided by front evidence at the j < 15 end only.
+    cp.add_evidence(world, a, _near(a, b)[:3], cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    first_only = _plate(2, _block((20, 30), (0, 15)))
+    first_only.set_omega(b.omega.copy())
+    world.plates = [a, first_only]
+    _step(world)
+    (established,) = _records(world, (1, 2))
+    assert established.lower_plate_id == 1
+    # The far stretch of B now touches A too: no evidence there, so it takes the pair's
+    # established polarity rather than the motion fallback (which would put B down).
+    world.plates = [a, b]
+    _step(world)
+    (inherited,) = [r for r in _records(world, (1, 2)) if r.front_id != established.front_id]
+    assert (inherited.source, inherited.scope, inherited.lower_plate_id) == ("inherited", "record", 1)
+    assert inherited.parent_id == established.front_id
+    assert world.collision_polarity_stats["decided_fallback"] == 0
+
+
 # --- Fallback --------------------------------------------------------------------------------
 
 

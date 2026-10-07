@@ -38,7 +38,9 @@ a front.
 **Decision.** A new front looks up the evidence near it on both plates. The physical sources
 (`consumption`, `slab`) decide when they agree; the `arc` cue decides only when no physical
 evidence is present, and never overrules it. Evidence pointing both ways, or arcs on both
-sides, is ambiguous. With no usable evidence, a labelled heuristic decides (`_fallback`).
+sides, is ambiguous. With nothing near the front, the pair's own evidence from elsewhere
+along their boundary decides, then the polarity of another front of the same pair; only
+then a labelled heuristic (`_fallback`). See `_decide`.
 
 **Freezing.** `observe_contacts` runs after every plate has shifted and before the first
 `deform()`. It visits plates in id order, so its records and its per-plate lower/upper masks
@@ -142,7 +144,8 @@ class CollisionFront:
     front_id: int
     plate_ids: tuple[int, int]  # ascending
     lower_plate_id: int
-    # "consumption", "slab" or "arc" when evidence decided; "fallback" otherwise.
+    # "consumption", "slab" or "arc" when evidence decided; "inherited" when copied from
+    # another front of the same pair; "fallback" otherwise.
     source: str
     # Evidence was present but contradictory (both physical directions, or arcs on both
     # sides), so the fallback decided.
@@ -155,7 +158,12 @@ class CollisionFront:
     established_years: float
     last_contact_years: float
     contact_steps: int = 1
+    # The record this one took its polarity from: the record it split off, or the same-pair
+    # front it inherited from.
     parent_id: int | None = None
+    # Where the deciding evidence came from: "front" (near this front), "pair" (elsewhere along
+    # the pair's boundary), "record" (inherited), "fallback" -- see `_decide`.
+    scope: str = "front"
     # plate id -> (k, 3) sample of this front's nodes, in that plate's local frame.
     side_points: dict[int, np.ndarray] = field(default_factory=dict)
 
@@ -345,7 +353,11 @@ _STAT_KEYS = (
     "decided_consumption",
     "decided_slab",
     "decided_arc",
+    "decided_inherited",
     "decided_fallback",
+    "scope_front",
+    "scope_pair",
+    "scope_record",
     "fallback_no_evidence",
     "fallback_ambiguous",
     "ambiguous_physical",
@@ -593,6 +605,7 @@ def _match_fronts(
                 record.votes = dict(parent.votes)
                 record.established_years = parent.established_years
                 record.parent_id = parent.front_id
+                record.scope = parent.scope
                 stats["fronts_split"] += 1
             else:
                 record = _new_record(world, pair, now)
@@ -635,30 +648,31 @@ def _verdict(positive: float, negative: float) -> str | None:
     return "a" if positive > negative else "b"
 
 
-def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray], contacts: dict[int, _Contact], spacing_rad: float) -> None:
-    """Set a new record's polarity from the evidence near the front, else the fallback."""
-    stats = _stats(world)
-    a, b = record.plate_ids
-    radius = EVIDENCE_LOOKUP_SPACINGS * spacing_rad
-    # Signed weight per source; positive means plate `a` is the upper plate.
+def _tally(world: "World", pair: tuple[int, int], select) -> tuple[np.ndarray, np.ndarray]:
+    """Evidence weight per source on both plates of `pair`, over the rows `select(side, store)`
+    picks: (toward `pair[0]` upper, toward `pair[1]` upper)."""
+    a, b = pair
     positive = np.zeros(len(SOURCE_NAMES))
     negative = np.zeros(len(SOURCE_NAMES))
-    for side in (a, b):
+    for side in pair:
         store = world.collision_evidence.get(side)
         if store is None or not len(store):
             continue
-        other = b if side == a else a
-        look = contacts[side].points[front[side]] if len(front[side]) else contacts[other].points[front[other]]
-        rows = geometry.to_world(contacts[side].plate.frame, store.local_points())
-        near = np.isfinite(cKDTree(look).query(rows, distance_upper_bound=radius)[0])
-        if not np.any(near):
+        rows = select(side, store)
+        if not np.any(rows):
             continue
         # Upper on `a` (or lower on `b`) says `a` is upper.
-        toward_a = (store.role[near] == ROLE_UPPER) == (side == a)
-        np.add.at(positive, store.source[near][toward_a], store.count[near][toward_a])
-        np.add.at(negative, store.source[near][~toward_a], store.count[near][~toward_a])
-    record.votes = {name: float(positive[k] - negative[k]) for k, name in enumerate(SOURCE_NAMES)}
+        toward_a = (store.role[rows] == ROLE_UPPER) == (side == a)
+        np.add.at(positive, store.source[rows][toward_a], store.count[rows][toward_a])
+        np.add.at(negative, store.source[rows][~toward_a], store.count[rows][~toward_a])
+    return positive, negative
 
+
+def _judge(world: "World", record: CollisionFront, positive: np.ndarray, negative: np.ndarray) -> str | None:
+    """Apply one tier's evidence to `record`: physical sources decide when they agree, the arc
+    cue only without them. Returns "decided", "ambiguous" or None (no evidence)."""
+    stats = _stats(world)
+    a, b = record.plate_ids
     physical = list(_PHYSICAL_SOURCES)
     verdict = _verdict(float(positive[physical].sum()), float(negative[physical].sum()))
     arc_verdict = _verdict(float(positive[SOURCE_ARC]), float(negative[SOURCE_ARC]))
@@ -668,24 +682,101 @@ def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray]
         record.lower_plate_id = b if verdict == "a" else a
         if arc_verdict in ("a", "b") and arc_verdict != verdict:
             stats["arc_overruled"] += 1
-        stats[f"decided_{record.source}"] += 1
-        return
+        return "decided"
     if verdict == "ambiguous":
         stats["ambiguous_physical"] += 1
-        record.ambiguous = True
-    elif arc_verdict in ("a", "b"):
+        return "ambiguous"
+    if arc_verdict in ("a", "b"):
         record.source = "arc"
         record.lower_plate_id = b if arc_verdict == "a" else a
-        stats["decided_arc"] += 1
-        return
-    elif arc_verdict == "ambiguous":
+        return "decided"
+    if arc_verdict == "ambiguous":
         stats["ambiguous_opposing_arcs"] += 1
+        return "ambiguous"
+    return None
+
+
+def _decide(world: "World", record: CollisionFront, front: dict[int, np.ndarray], contacts: dict[int, _Contact], spacing_rad: float) -> None:
+    """Set a new record's polarity, from the first of these that can decide:
+
+    1. "front": evidence on either plate within `EVIDENCE_LOOKUP_SPACINGS` of the front.
+    2. "pair": evidence anywhere on either plate that names the other as the neighbour --
+       still this pair's own recent history, from elsewhere along their shared boundary. A
+       collision often starts as a few continental cells touching along a margin whose
+       subduction was recorded a few hundred km away.
+    3. "record": the nearest live front of the same pair, whose polarity this one copies, so
+       the pieces of one collision agree with each other.
+    4. "fallback": `_fallback`'s heuristic.
+
+    Contradictory evidence at the front stops the search there: it is ambiguous, and evidence
+    from farther away can't be trusted over it, so the fallback decides."""
+    stats = _stats(world)
+    a, b = record.plate_ids
+    radius = EVIDENCE_LOOKUP_SPACINGS * spacing_rad
+
+    def near_front(side: int, store: EvidenceStore) -> np.ndarray:
+        other = b if side == a else a
+        look = contacts[side].points[front[side]] if len(front[side]) else contacts[other].points[front[other]]
+        rows = geometry.to_world(contacts[side].plate.frame, store.local_points())
+        return np.isfinite(cKDTree(look).query(rows, distance_upper_bound=radius)[0])
+
+    def naming_other(side: int, store: EvidenceStore) -> np.ndarray:
+        return store.neighbour == (b if side == a else a)
+
+    for scope, select in (("front", near_front), ("pair", naming_other)):
+        positive, negative = _tally(world, record.plate_ids, select)
+        outcome = _judge(world, record, positive, negative)
+        if outcome is None:
+            continue
+        record.votes = {name: float(positive[k] - negative[k]) for k, name in enumerate(SOURCE_NAMES)}
+        record.scope = scope
+        if outcome == "decided":
+            stats[f"decided_{record.source}"] += 1
+            stats[f"scope_{scope}"] += 1
+            return
         record.ambiguous = True
+        break
+
+    if not record.ambiguous:
+        sibling = _nearest_pair_record(world, record, front, contacts)
+        if sibling is not None:
+            record.lower_plate_id = sibling.lower_plate_id
+            record.source = "inherited"
+            record.scope = "record"
+            record.parent_id = sibling.front_id
+            stats["decided_inherited"] += 1
+            stats["scope_record"] += 1
+            return
+
     record.source = "fallback"
+    record.scope = "fallback"
     record.lower_plate_id, record.fallback_basis = _fallback(record.plate_ids, front, contacts, spacing_rad)
     stats["decided_fallback"] += 1
     stats["fallback_ambiguous" if record.ambiguous else "fallback_no_evidence"] += 1
     stats[f"fallback_{record.fallback_basis}"] += 1
+
+
+def _nearest_pair_record(
+    world: "World", record: CollisionFront, front: dict[int, np.ndarray], contacts: dict[int, _Contact]
+) -> CollisionFront | None:
+    """The live record of the same pair whose stored nodes come closest to this front, ties to
+    the lower id; None if the pair has no other record."""
+    best: tuple[float, int] | None = None
+    chosen = None
+    for other in world.collision_fronts:
+        if other.plate_ids != record.plate_ids or other.front_id == record.front_id:
+            continue
+        gap = np.inf
+        for side in record.plate_ids:
+            stored = other.side_points.get(side)
+            if stored is None or not len(stored) or not len(front[side]):
+                continue
+            stored_world = geometry.to_world(contacts[side].plate.frame, stored)
+            gap = min(gap, float(cKDTree(stored_world).query(contacts[side].points[front[side]])[0].min()))
+        key = (gap, other.front_id)
+        if best is None or key < best:
+            best, chosen = key, other
+    return chosen
 
 
 def _fallback(pair: tuple[int, int], front: dict[int, np.ndarray], contacts: dict[int, _Contact], spacing_rad: float) -> tuple[int, str]:
@@ -850,7 +941,8 @@ def summary(world: "World") -> dict:
     """The replay diagnostics: decision-source shares, fallback and ambiguity rates, record
     churn, and what the prepass cost and saved."""
     stats = dict(_stats(world))
-    decided = sum(stats[f"decided_{name}"] for name in ("consumption", "slab", "arc", "fallback"))
+    sources = ("consumption", "slab", "arc", "inherited", "fallback")
+    decided = sum(stats[f"decided_{name}"] for name in sources)
     share = (lambda n: n / decided) if decided else (lambda n: 0.0)
     observed = sum(stats[f"evidence_obs_{name}"] for name in SOURCE_NAMES)
     deform_total = stats["deform_searches"] + stats["deform_searches_reused"]
@@ -859,7 +951,8 @@ def summary(world: "World") -> dict:
         "fronts_active": len(world.collision_polarity_frame.polarity) if world.collision_polarity_frame is not None else 0,
         "front_records": len(world.collision_fronts),
         "evidence_bins": int(sum(len(s) for s in world.collision_evidence.values())),
-        "decision_share": {name: share(stats[f"decided_{name}"]) for name in ("consumption", "slab", "arc", "fallback")},
+        "decision_share": {name: share(stats[f"decided_{name}"]) for name in sources},
+        "scope_share": {name: share(stats[f"scope_{name}"]) for name in ("front", "pair", "record")},
         "fallback_rate": share(stats["decided_fallback"]),
         "ambiguity_rate": share(stats["ambiguous_physical"] + stats["ambiguous_opposing_arcs"]),
         "evidence_obs_share": {name: (stats[f"evidence_obs_{name}"] / observed if observed else 0.0) for name in SOURCE_NAMES},
