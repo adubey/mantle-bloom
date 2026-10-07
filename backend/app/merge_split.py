@@ -366,11 +366,13 @@ def _accrete_stranded_terrane(
     is still dropped.
 
     Returns the receiver, or None -- for a fragment with no continental material, one no
-    plate touches, or one no toucher can absorb (a different surface representation) --
-    leaving the caller to drop it and book its material as `topology_removed_m3`. A fragment
+    plate touches, one no toucher can absorb (a different surface representation), or one on
+    a surface whose merge doesn't conserve every field (`Plate.merge_conserves_fields`; the
+    line resample would erase the tracer unbooked) -- leaving the caller to drop it and book
+    its material as `topology_removed_m3`. A fragment
     no plate touches isn't handed to the nearest one anyway: it would sit there as another
     disconnected lobe, cut off again by the next defragmentation."""
-    if _material_m3(fragment, line_spacing_rad(world.node_density)) <= 0.0:
+    if not fragment.merge_conserves_fields or _material_m3(fragment, line_spacing_rad(world.node_density)) <= 0.0:
         return None
     points = fragment.all_points_and_elevation()[0]
     merge_with = getattr(type(fragment), "merge_with", None)

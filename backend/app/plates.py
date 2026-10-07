@@ -122,6 +122,13 @@ class PlateSurface(abc.ABC):
     # territory is exact, and by node proximity otherwise.
     territory_is_exact: bool = False
 
+    # Whether `merge_with` carries every surface field (continental material, cover, craton,
+    # crust type, ...) across conservatively -- true for cells (quad_merge.py's exact-area
+    # remap), false for line rows, whose merge resample carries only Hc/Hm. Terrane accretion
+    # of stranded fragments (merge_split._accrete_stranded_terrane) needs it: a lossy merge
+    # would erase the tracer it exists to keep, unbooked.
+    merge_conserves_fields: bool = False
+
     @property
     @abc.abstractmethod
     def topology_revision(self) -> int: ...

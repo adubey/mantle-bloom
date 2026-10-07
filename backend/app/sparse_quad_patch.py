@@ -308,6 +308,7 @@ class PlateWithSparseQuadPatch(Plate):
     deformed (quad_tectonics.py), merged with another quad plate (quad_merge.py), and saved."""
 
     territory_is_exact = True
+    merge_conserves_fields = True
 
     # Derived state rebuilt on demand from (`_n`, `_keys`, `_frame`); never pickled.
     _TOPOLOGY_CACHES = (
