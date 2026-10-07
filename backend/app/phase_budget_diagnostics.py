@@ -47,7 +47,11 @@ def build_report(world: World, total_years: float) -> dict:
         step_world(world, years=CONVENTIONAL_YEARS_PER_STEP)
 
     phases = []
+    shortening = None
     for phase, totals in world.phase_budget.items():
+        if "scopes" not in totals:
+            shortening = {"calls": totals["calls"], **totals["shortening"]}
+            continue
         scopes = {}
         for scope in SCOPES:
             s = totals["scopes"][scope]
@@ -73,6 +77,7 @@ def build_report(world: World, total_years: float) -> dict:
         "end_elapsed_years": world.elapsed_years,
         "steps": steps,
         "phases": phases,
+        "shortening": shortening,
     }
 
 
@@ -110,6 +115,18 @@ def format_report(report: dict) -> str:
         lines.append(
             f"  {row['phase']:<28} {cont['delta_hc_volume_m3'] / 1e9:>16,.1f}  {ocean['delta_hc_volume_m3'] / 1e9:>16,.1f}"
             f"  {cont['delta_hm_volume_m3'] / 1e9:>16,.1f}  {ocean['delta_hm_volume_m3'] / 1e9:>16,.1f}"
+        )
+    shortening = report.get("shortening")
+    if shortening:
+        lines.append("")
+        lines.append(f"collisional shortening (issue #314), {shortening['calls']:,} plate-steps")
+        lines.append(
+            f"  demanded {shortening['demand_m2'] / 1e6:,.0f} km2 = absorbed {shortening['absorbed_m2'] / 1e6:,.0f}"
+            f" + returned to drag {shortening['returned_decay_m2'] / 1e6:,.0f} + returned unrouted {shortening['returned_unrouted_m2'] / 1e6:,.0f}"
+        )
+        lines.append(
+            f"  absorbed Hc/Hm {shortening['absorbed_hc_m3'] / 1e9:,.1f} / {shortening['absorbed_hm_m3'] / 1e9:,.1f} km3;"
+            f" returned Hc/Hm {shortening['returned_hc_m3'] / 1e9:,.1f} / {shortening['returned_hm_m3'] / 1e9:,.1f} km3"
         )
     return "\n".join(line.rstrip() for line in lines)
 

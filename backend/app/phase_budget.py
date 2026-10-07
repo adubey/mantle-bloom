@@ -27,6 +27,13 @@ are not equal-area and a phase can swap large cells for small ones, so on a quad
 the area-weighted fields measure real crust gained or lost (issue #257). They have to be
 weighted per node as each call is recorded -- the aggregate counts can't be converted
 afterwards. A caller passing bare arrays (line-level phases) gets the nominal area per node.
+
+One entry is not an Hc/Hm phase: `SHORTENING_PHASE` (issue #314) books a quad plate's
+collisional shortening -- demanded by its convergent band, absorbed into its columns, or
+returned to the boundary overlap -- as shortening area (m^2: metres of convergence times
+metres of boundary) and as the Hc/Hm volume it builds or would have built. It carries a
+`shortening` dict instead of `scopes`; the absorbed share's Hc/Hm change is already inside
+`convergent_deformation`.
 """
 
 from __future__ import annotations
@@ -56,6 +63,18 @@ _SCOPE_FIELDS = (
 # own *effective* type (crust_type_code resolved against the plate), which can disagree with
 # the plate bucket for e.g. an accreted terrane or a freshly-melted node stamped the other way.
 SCOPES = ("all", "continental_plate", "oceanic_plate", "continental_node", "oceanic_node")
+
+SHORTENING_PHASE = "convergent_shortening"
+SHORTENING_FIELDS = (
+    "demand_m2",
+    "absorbed_m2",
+    "returned_decay_m2",
+    "returned_unrouted_m2",
+    "absorbed_hc_m3",
+    "absorbed_hm_m3",
+    "returned_hc_m3",
+    "returned_hm_m3",
+)
 
 
 class Snapshot(NamedTuple):
@@ -156,3 +175,24 @@ def record(
     _add(scopes["continental_plate" if plate_is_continental else "oceanic_plate"], all_before, all_after, before, after)
     _add(scopes["continental_node"], cont_before, cont_after, before, after)
     _add(scopes["oceanic_node"], ~cont_before, ~cont_after, before, after)
+
+
+def record_shortening(world, demand_m2: np.ndarray, result, hc: np.ndarray, hm: np.ndarray) -> None:
+    """Book one plate's `shortening.ShorteningResult` against `SHORTENING_PHASE`, gated by
+    `world.debug_diagnostics`. Shortening area `A` taken up by (or leaving the cascade at) a
+    column of thickness `H` is `A * H` of volume, so `hc`/`hm` are the columns before the
+    shortening."""
+    if not getattr(world, "debug_diagnostics", False):
+        return
+    totals = world.phase_budget.setdefault(SHORTENING_PHASE, {"calls": 0, "shortening": dict.fromkeys(SHORTENING_FIELDS, 0.0)})
+    totals["calls"] += 1
+    book = totals["shortening"]
+    returned = result.returned_decay_m2 + result.returned_unrouted_m2
+    book["demand_m2"] += float(np.sum(demand_m2))
+    book["absorbed_m2"] += float(np.sum(result.absorbed_m2))
+    book["returned_decay_m2"] += float(np.sum(result.returned_decay_m2))
+    book["returned_unrouted_m2"] += float(np.sum(result.returned_unrouted_m2))
+    book["absorbed_hc_m3"] += float(np.dot(result.absorbed_m2, hc))
+    book["absorbed_hm_m3"] += float(np.dot(result.absorbed_m2, hm))
+    book["returned_hc_m3"] += float(np.dot(returned, hc))
+    book["returned_hm_m3"] += float(np.dot(returned, hm))
