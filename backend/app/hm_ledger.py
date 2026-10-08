@@ -215,6 +215,26 @@ def record_typed_sink(world: "World | None", account: str, volume_m3: float, *, 
     entry["scopes"][scope]["sink_m3"] += volume
 
 
+def record_reclassification(
+    world: "World | None",
+    account: str,
+    volume_m3: float,
+    *,
+    from_continental: bool,
+    to_continental: bool,
+) -> None:
+    """Book live Hm transferred between typed-node scopes without changing total Hm."""
+    if world is None or not getattr(world, "debug_diagnostics", False) or from_continental == to_continental:
+        return
+    volume = max(float(volume_m3), 0.0)
+    entry = world.hm_source_sink_ledger.setdefault(account, _new_account())
+    entry["calls"] += 1
+    source_scope = "continental_node" if from_continental else "oceanic_node"
+    destination_scope = "continental_node" if to_continental else "oceanic_node"
+    entry["scopes"][source_scope]["reclassification_m3"] -= volume
+    entry["scopes"][destination_scope]["reclassification_m3"] += volume
+
+
 def record_suture_front(
     world: "World | None",
     donor_plate_id: int,
@@ -223,6 +243,7 @@ def record_suture_front(
     placed_hm_m3: float,
     *,
     donor_is_continental: bool,
+    placed_hm_continental_m3: float,
 ) -> None:
     """Record one connected donor front without feeding the closure accounts again.
 
@@ -240,6 +261,16 @@ def record_suture_front(
     placed = min(max(float(placed_hm_m3), 0.0), donor)
     unplaced = donor - placed
     record_typed_sink(world, "suture_delamination", unplaced, continental=donor_is_continental)
+    placed_continental = min(max(float(placed_hm_continental_m3), 0.0), placed)
+    placed_oceanic = placed - placed_continental
+    cross_type_placed = placed_oceanic if donor_is_continental else placed_continental
+    record_reclassification(
+        world,
+        "subduction_and_suture_transfer",
+        cross_type_placed,
+        from_continental=donor_is_continental,
+        to_continental=not donor_is_continental,
+    )
     budget["fronts"] += 1
     budget["donor_hm_m3"] += donor
     budget["placed_hm_m3"] += placed

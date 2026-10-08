@@ -120,3 +120,66 @@ def test_inherited_node_type_uses_the_before_and_after_plate_defaults():
     volume = 40_000.0 * 12.0
     assert accounts["continental_node"]["reclassification_m3"] == pytest.approx(volume)
     assert accounts["oceanic_node"]["reclassification_m3"] == pytest.approx(-volume)
+
+
+def test_unaligned_topology_snapshot_does_not_pair_reused_ids_for_cap_transitions():
+    world = _World()
+    cap = lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M
+    phase_budget.record(
+        world,
+        _Plate(),
+        "plate_merge",
+        np.array([35_000.0]),
+        np.array([cap]),
+        np.array([INHERIT]),
+        np.array([35_000.0]),
+        np.array([cap]),
+        np.array([INHERIT]),
+        area_before_m2=np.array([3.0]),
+        area_after_m2=np.array([5.0]),
+        node_ids_before=np.array([[9, 1]], dtype=np.uint64),
+        node_ids_after=np.array([[9, 1]], dtype=np.uint64),
+    )
+
+    transitions = world.phase_budget["plate_merge"]["hm_cap_transitions"]
+    assert transitions["aligned_calls"] == 0
+    assert transitions["unaligned_calls"] == 1
+    assert transitions["scopes"]["all"]["newly_capped_area_m2"] == pytest.approx(5.0)
+    assert transitions["scopes"]["all"]["left_cap_area_m2"] == pytest.approx(3.0)
+    assert transitions["scopes"]["all"]["persistently_capped_area_m2"] == 0.0
+
+
+def test_suture_placement_books_cross_type_volume_as_reclassification():
+    world = _World()
+    hm_ledger.record_suture_front(
+        world,
+        donor_plate_id=1,
+        neighbour_plate_ids=[2],
+        donor_hm_m3=100.0,
+        placed_hm_m3=80.0,
+        donor_is_continental=False,
+        placed_hm_continental_m3=25.0,
+    )
+
+    accounts = hm_ledger.cumulative_scopes(world)
+    assert accounts["all"]["sink_m3"] == pytest.approx(20.0)
+    assert accounts["oceanic_node"]["sink_m3"] == pytest.approx(20.0)
+    assert accounts["continental_node"]["reclassification_m3"] == pytest.approx(25.0)
+    assert accounts["oceanic_node"]["reclassification_m3"] == pytest.approx(-25.0)
+
+
+def test_direct_retreat_reclassification_books_existing_hm_without_phase_double_count():
+    world = _World()
+    hm_ledger.record_reclassification(
+        world,
+        "subduction_and_suture_transfer",
+        6.0 * 14.0,
+        from_continental=False,
+        to_continental=True,
+    )
+
+    accounts = hm_ledger.cumulative_scopes(world)
+    assert accounts["all"]["source_m3"] == 0.0
+    assert accounts["all"]["sink_m3"] == 0.0
+    assert accounts["continental_node"]["reclassification_m3"] == pytest.approx(84.0)
+    assert accounts["oceanic_node"]["reclassification_m3"] == pytest.approx(-84.0)
