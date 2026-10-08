@@ -418,7 +418,7 @@ def main() -> None:
                     "hm_source_sink_accounts_km3": after_accounts,
                     "hm_cap_transitions_km2": after_caps,
                     "hm_suture_budget_km3": after_suture,
-                    "runtime_profile": dict(profile.stats),
+                    "runtime_profile": {key: dict(row) for key, row in profile.stats.items()},
                 }
                 result["checkpoints"].append(entry)
                 m = entry["metrics"]
