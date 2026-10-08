@@ -783,7 +783,6 @@ def _accrete_onto_survivors(
                 placed_hm_volume,
                 donor_is_continental=bool(donor_type),
                 placed_hm_continental_m3=placed_hm_continental_volume,
-                sink_account="suture_hm_subducted_m3" if hm_subducted_volume > 0 else "suture_delamination",
                 subducted_hm_m3=hm_subducted_volume,
             )
 

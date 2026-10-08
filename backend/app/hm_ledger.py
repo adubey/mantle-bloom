@@ -57,7 +57,10 @@ def account_for_phase(phase: str) -> str:
 
 def reset(world: "World") -> None:
     world.hm_source_sink_ledger = {}
-    world.hm_suture_budget = {"fronts": 0, "donor_hm_m3": 0.0, "placed_hm_m3": 0.0, "unplaced_hm_m3": 0.0, "by_pair": {}}
+    world.hm_suture_budget = {
+        "fronts": 0, "donor_hm_m3": 0.0, "placed_hm_m3": 0.0,
+        "subducted_hm_m3": 0.0, "unplaced_hm_m3": 0.0, "by_pair": {},
+    }
 
 
 def _new_account() -> dict:
@@ -237,27 +240,30 @@ def record_suture_front(
     *,
     donor_is_continental: bool,
     placed_hm_continental_m3: float,
-    sink_account: str = "suture_delamination",
     subducted_hm_m3: float = 0.0,
 ) -> None:
     """Record one connected donor front without feeding the closure accounts again.
 
     ``boundary_retreat`` already accounts for the resulting live change.  These counters are
-    a transfer diagnostic: donor volume, survivor placement and the unplaced (delaminated)
-    remainder, including bilateral consumption grouped by donor/neighbor pair.
+    a transfer diagnostic: donor volume, survivor placement, subducted donor Hm, and the
+    unplaced (delaminated) remainder, including bilateral consumption grouped by pair.
     """
     if world is None or not getattr(world, "debug_diagnostics", False):
         return
     budget = getattr(world, "hm_suture_budget", None)
     if not isinstance(budget, dict) or "by_pair" not in budget:
-        reset_suture = {"fronts": 0, "donor_hm_m3": 0.0, "placed_hm_m3": 0.0, "unplaced_hm_m3": 0.0, "by_pair": {}}
+        reset_suture = {
+            "fronts": 0, "donor_hm_m3": 0.0, "placed_hm_m3": 0.0,
+            "subducted_hm_m3": 0.0, "unplaced_hm_m3": 0.0, "by_pair": {},
+        }
         world.hm_suture_budget = budget = reset_suture
+    budget.setdefault("subducted_hm_m3", 0.0)
     donor = max(float(donor_hm_m3), 0.0)
     placed = min(max(float(placed_hm_m3), 0.0), donor)
     unplaced = donor - placed
     subducted = min(max(float(subducted_hm_m3), 0.0), unplaced)
     if subducted > 0.0:
-        record_typed_sink(world, sink_account, subducted, continental=donor_is_continental)
+        record_typed_sink(world, "suture_hm_subducted_m3", subducted, continental=donor_is_continental)
     if unplaced > subducted:
         record_typed_sink(world, "suture_delamination", unplaced - subducted, continental=donor_is_continental)
     placed_continental = min(max(float(placed_hm_continental_m3), 0.0), placed)
@@ -273,18 +279,25 @@ def record_suture_front(
     budget["fronts"] += 1
     budget["donor_hm_m3"] += donor
     budget["placed_hm_m3"] += placed
-    budget["unplaced_hm_m3"] += unplaced
+    budget["subducted_hm_m3"] += subducted
+    delaminated = unplaced - subducted
+    budget["unplaced_hm_m3"] += delaminated
     neighbours = sorted(set(int(i) for i in neighbour_plate_ids)) or [-1]
     # A front can touch several candidates.  Keep the full front under the stable donor ->
     # candidate-set key instead of fractionally inventing attribution among them.
     key = f"{int(donor_plate_id)}->{'|'.join(map(str, neighbours))}"
     row = budget["by_pair"].setdefault(
-        key, {"fronts": 0, "donor_hm_m3": 0.0, "placed_hm_m3": 0.0, "unplaced_hm_m3": 0.0}
+        key, {
+            "fronts": 0, "donor_hm_m3": 0.0, "placed_hm_m3": 0.0,
+            "subducted_hm_m3": 0.0, "unplaced_hm_m3": 0.0,
+        }
     )
+    row.setdefault("subducted_hm_m3", 0.0)
     row["fronts"] += 1
     row["donor_hm_m3"] += donor
     row["placed_hm_m3"] += placed
-    row["unplaced_hm_m3"] += unplaced
+    row["subducted_hm_m3"] += subducted
+    row["unplaced_hm_m3"] += delaminated
 
 
 def cumulative_scopes(world: "World") -> dict[str, dict[str, float]]:
