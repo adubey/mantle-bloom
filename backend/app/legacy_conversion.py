@@ -142,10 +142,13 @@ CANDIDATE_DILATION_CELLS = 2
 COVERAGE_SAMPLES = 200_000
 
 # The legacy classes a line-backed save pickles. Retiring them (#251) leaves the converter
-# reading their state through `legacy_unpickler`.
+# reading their state through `legacy_unpickler`. `_RowLookup` is a line plate's cached row
+# index (`_row_lookup_cache`, dropped on conversion), pickled by any plate whose containment
+# fast path had run -- 20 of the 51 real saves in docs/save-compatibility.md hold one.
 LEGACY_LINE_CLASSES = frozenset(
     {
         ("app.plates", "PlateWithLines"),
+        ("app.plates", "_RowLookup"),
         ("app.lithosphere_plate", "LithospherePlate"),
         ("app.elevation_lines", "ElevationLine"),
     }

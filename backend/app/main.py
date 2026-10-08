@@ -1054,7 +1054,7 @@ def set_controls(req: ControlsRequest) -> dict:
 
 @app.get("/world/plates")
 def list_plates() -> dict:
-    """Every plate's outline + metadata (row/point counts, bounding ellipse) as JSON, for the
+    """Every plate's outline + metadata (point count, bounding ellipse) as JSON, for the
     "Plate Inspector" map mode -- unlike /world/render, the client renders this itself
     interactively rather than receiving a baked PNG. Un-rotated/true-frame throughout (no
     `rotation` param): the client applies its current view rotation only at draw time, same

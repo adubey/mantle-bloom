@@ -184,8 +184,10 @@ def _backfill_added_fields(world: World) -> None:
 def _drop_retired_state(world: World) -> None:
     """Drop `World` attributes the line surface (retired in #251) kept, so a loaded world --
     and anything it is saved as -- carries no line state. `corner_notch_log` recorded the line
-    engine's corner-notch filler; every save before #251, quad ones included, pickled it."""
+    engine's corner-notch filler; every save before #251, quad ones included, pickled it.
+    `gap_fill_algorithm` chose the line engine's gap filler, in saves older still."""
     world.__dict__.pop("corner_notch_log", None)
+    world.__dict__.pop("gap_fill_algorithm", None)
 
 
 def _backfill_water_budget(world: World) -> None:

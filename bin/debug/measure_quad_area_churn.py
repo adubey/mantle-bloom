@@ -35,11 +35,10 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--steps", type=int, default=40)
     parser.add_argument("--density", type=float, default=1.0)
-    parser.add_argument("--surface", choices=("quad", "lines"), default="quad")
     parser.add_argument("--years", type=float, default=1_000_000.0)
     args = parser.parse_args()
 
-    world = generate_world(seed=args.seed, node_density=args.density, surface=args.surface)
+    world = generate_world(seed=args.seed, node_density=args.density)
     area, sea = [], []
     for step in range(args.steps):
         step_world(world, years=args.years)
@@ -53,7 +52,6 @@ def main() -> None:
         json.dumps(
             {
                 "seed": args.seed,
-                "surface": args.surface,
                 "area_range": [round(min(area), 5), round(max(area), 5)],
                 "std_d_area": round(float(np.std(d_area)), 6),
                 "std_d_sea_level_m": round(float(np.std(d_sea)), 2),

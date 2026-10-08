@@ -142,8 +142,8 @@ class World:
     stranded_basin_tracks: list = field(default_factory=list)
     # Cross-step memory for the gap-age diagnostic (docs/debugging.md's overlapAge section):
     # one `gaps.GapTrack` per currently-uncovered lattice cluster, reconciled by centroid
-    # proximity at the same cadence as gaps.fill_gaps_by_growing_neighbours (see
-    # gaps.reconcile_gap_tracks) -- the same "lightweight per-key first-seen tracker" role
+    # proximity every gaps.GAP_FILL_INTERVAL_STEPS steps, right after that step's gap fill
+    # (see gaps.reconcile_gap_tracks) -- the same "lightweight per-key first-seen tracker" role
     # stranded_basin_tracks plays for
     # basins, since a gap cluster has no persistent identity across steps any more than a
     # basin does. Diagnostic only, nothing in the physics reads it back. A `default_factory`

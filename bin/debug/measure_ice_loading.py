@@ -77,7 +77,6 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[1])
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="print every Nth step")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -90,7 +89,7 @@ def main() -> None:
     modules = (hydrology, lithosphere, plates, line_spacing_rad)
     rows = []
     for seed in args.seeds:
-        world = generate_world(seed=seed, surface=args.surface)
+        world = generate_world(seed=seed)
         start = time.perf_counter()
         for step in range(1, args.steps + 1):
             step_world(world, args.years)

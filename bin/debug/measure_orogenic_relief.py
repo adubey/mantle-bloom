@@ -37,7 +37,6 @@ def main() -> None:
     parser.add_argument("--seeds", type=int, nargs="+", default=[1])
     parser.add_argument("--steps", type=int, default=20)
     parser.add_argument("--years", type=float, default=1_000_000.0)
-    parser.add_argument("--surface", default="quad")
     parser.add_argument("--every", type=int, default=10, help="snapshot every Nth step")
     parser.add_argument("--out", type=Path)
     args = parser.parse_args()
@@ -59,7 +58,7 @@ def main() -> None:
     rows = []
     first_hc_volume: dict[int, float] = {}
     for seed in args.seeds:
-        world = generate_world(seed=seed, surface=args.surface)
+        world = generate_world(seed=seed)
         continental_ledger.ensure_initialized(world)
         initial = world.continental_material_ledger["initial_continental_m3"]
         start = time.perf_counter()

@@ -6,7 +6,7 @@ from app import persistence
 from app.elevation_lines import line_spacing_rad
 from app.world import generate_world, step_world
 
-from .legacy_lines import line_world_like, retired_class_names
+from .legacy_lines import LegacyRowLookup, line_world_like, retired_class_names
 
 
 def _line_world(seed=3, num_plates=4):
@@ -121,14 +121,17 @@ def test_loading_a_world_pickled_before_pending_magma_parcels_existed_defaults_t
     assert loaded.pending_magma_parcels == []
 
 
-def test_loading_a_save_drops_the_retired_corner_notch_log():
-    # #251: every save before the line surface was retired pickled the line engine's
-    # corner-notch log; a loaded world, and so its next save, carries no line state.
+def test_loading_a_save_drops_the_retired_line_engine_state():
+    # #251: saves from before the line surface was retired pickled the line engine's
+    # corner-notch log and gap-fill choice; a loaded world, and so its next save, carries no
+    # line state.
     world = generate_world(seed=3, num_plates=4)
     world.__dict__["corner_notch_log"] = [{"plate_id": 0, "outcome": "claimed"}]
+    world.__dict__["gap_fill_algorithm"] = "frontier"
 
     loaded = persistence.load_world_bytes(persistence.save_world_bytes(world))
     assert "corner_notch_log" not in loaded.__dict__
+    assert "gap_fill_algorithm" not in loaded.__dict__
 
 
 def test_loading_a_save_with_the_old_water_column_budget_rebuilds_it_in_m3():
@@ -266,6 +269,18 @@ def test_a_line_save_converts_to_quads_on_load():
     again = persistence.load_world_bytes(persistence.save_world_bytes(converted))
     assert again.surface_conversion == converted.surface_conversion
     assert persistence.load_world_bytes(persistence.save_world_bytes(generate_world(seed=3, num_plates=4))).surface_conversion is None
+
+
+def test_a_line_save_holding_a_cached_row_lookup_converts_on_load():
+    # A line plate whose containment fast path had run pickled its `_RowLookup` cache, a
+    # class #251 deleted; 20 of the 51 real saves #248 inventoried hold one.
+    world = _line_world()
+    for plate in world.plates:
+        plate._row_lookup_cache = LegacyRowLookup([line.phi for line in plate.lines])
+
+    converted = persistence.load_world_bytes(_line_pickle(world))
+    assert persistence.world_surface(converted) == "quad"
+    assert len(converted.plates) == len(world.plates)
 
 
 def test_a_line_save_the_converter_refuses_is_a_corrupt_save():

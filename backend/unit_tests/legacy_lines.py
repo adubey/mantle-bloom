@@ -143,8 +143,20 @@ def line_world_like(world, spacing_rad: float):
     return lines
 
 
+class LegacyRowLookup:
+    """A line plate's cached row index (`_row_lookup_cache`), which a line save pickled
+    whenever the plate's containment fast path had run."""
+
+    def __init__(self, phi):
+        self.phi = np.asarray(phi, dtype=float)
+
+
 # The names a real line save pickled its classes under.
-_RETIRED = ((LegacyLinePlate, "app.lithosphere_plate", "LithospherePlate"), (LegacyLine, "app.elevation_lines", "ElevationLine"))
+_RETIRED = (
+    (LegacyLinePlate, "app.lithosphere_plate", "LithospherePlate"),
+    (LegacyLine, "app.elevation_lines", "ElevationLine"),
+    (LegacyRowLookup, "app.plates", "_RowLookup"),
+)
 
 
 @contextmanager

@@ -22,7 +22,8 @@ long-lived line loader for legacy saves after #251.
 
 Since #251 the line classes no longer exist. `persistence.load_world_bytes` unpickles every
 save through `legacy_conversion.legacy_unpickler`, which loads the retired line classes
-(`PlateWithLines`, `LithospherePlate`, `ElevationLine`) as inert `LegacyRecord`s, and converts
+(`PlateWithLines`, `LithospherePlate`, `ElevationLine`, and `_RowLookup`, the cached row index
+a line plate pickled once its containment fast path had run) as inert `LegacyRecord`s, and converts
 a line-backed world before anything else reads it. There is no opt-in and no way to load a
 line world as one. The converter reads line state structurally (§3), never through line-class
 methods, so it never depended on those classes. `legacy_conversion.py`, `LegacyRecord` and
@@ -66,8 +67,9 @@ backfilled lazily. The eustatic water budget, if missing or in its pre-#257
 units, is re-snapshotted from the save's own hypsometry and sea level, so the shoreline
 doesn't move. Attributes an older build set on `World` that this build no longer declares
 (found in real saves: `gap_fill_algorithm`, `volcanic_field_plate_ids`, the old
-`ocean_water_column_m`, the line engine's `corner_notch_log`) are inert; the last two are
-dropped, so a loaded world and its next save carry no line state.
+`ocean_water_column_m`, the line engine's `corner_notch_log`) are inert. All but
+`volcanic_field_plate_ids` are dropped on load, so a loaded world and its next save carry no
+line state.
 
 **Fields from a newer build.** A save from a newer build has a newer envelope version and is
 refused. Conversion separately refuses line state it doesn't recognise (§3) instead of
@@ -220,8 +222,9 @@ backend/.venv/bin/python bin/debug/convert_legacy_saves.py --out analysis/issue2
 ### Inventory of real saves
 
 All 51 `.mbworld` files on hand (`analysis/issue248/save_inventory.json`, written by an
-inventory script #251 removed with the line classes) are version 1 (bare pickles), hold only
-`LithospherePlate`s, and load in this build. Older ones lack up to 44
+inventory script #251 removed with the line classes) are version 1 (bare pickles) and hold
+only `LithospherePlate`s; 20 of them also pickle a `_RowLookup` cache. All of them load and
+convert in this build; every `.mbworld` on hand (54 files, these 51 included) loads. Older ones lack up to 44
 `World` fields (all backfilled) and up to four line fields (`crust_type_code`,
 `node_created_years`, `elev_change_reason`, `overlap_onset_years`; all defaulted). No line
 carries a field this build doesn't know. The only line-only plate state is
