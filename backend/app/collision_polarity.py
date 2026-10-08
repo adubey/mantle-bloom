@@ -107,8 +107,6 @@ FRONT_MIN_NODES = CONTINENTAL_CONTESTED_RETREAT_MIN_RUN
 # A new front with no evidence of its own copies a same-pair front this close (see `_decide`):
 # twice the evidence lookup, comfortably past the matching tolerance.
 FRONT_INHERIT_SPACINGS = 8.0
-# Node samples kept per side of a record, for matching.
-FRONT_SAMPLE_POINTS = 64
 # A record with no matching front for this long expires: contact was lost, or the boundary
 # stopped converging.
 FRONT_EXPIRY_YEARS = 5_000_000.0
@@ -169,7 +167,9 @@ class CollisionFront:
     # Where the deciding evidence came from: "front" (near this front), "pair" (elsewhere along
     # the pair's boundary), "record" (inherited), "fallback" -- see `_decide`.
     scope: str = "front"
-    # plate id -> (k, 3) sample of this front's nodes, in that plate's local frame.
+    # plate id -> (k, 3) every node of this front on that plate at its last contact, in that
+    # plate's local frame. All of them, not a sample: a topology split must see every
+    # stretch of contact each descendant holds (`end_topology`).
     side_points: dict[int, np.ndarray] = field(default_factory=dict)
 
     @property
@@ -354,6 +354,7 @@ _STAT_KEYS = (
     "conflicts_kept_apart",
     "fronts_expired",
     "fronts_dropped_topology",
+    "fronts_split_topology",
     "fronts_fused",
     "decided_consumption",
     "decided_slab",
@@ -533,12 +534,6 @@ def _detect_fronts(contacts: dict[int, _Contact], spacing_rad: float) -> dict[tu
     return out
 
 
-def _sample(points: np.ndarray) -> np.ndarray:
-    if len(points) <= FRONT_SAMPLE_POINTS:
-        return points.copy()
-    return points[np.unique(np.linspace(0, len(points) - 1, FRONT_SAMPLE_POINTS).round().astype(int))]
-
-
 def _overlap(front_points: np.ndarray, record_points: np.ndarray, tol: float) -> float:
     """Dice overlap of two point sets on one plate: the share of both sets lying within `tol`
     of the other."""
@@ -643,7 +638,7 @@ def _match_fronts(
             record.last_contact_years = now
             for side in pair:
                 if len(segment[side]):
-                    record.side_points[side] = _sample(geometry.to_local(contacts[side].plate.frame, contacts[side].points[segment[side]]))
+                    record.side_points[side] = geometry.to_local(contacts[side].plate.frame, contacts[side].points[segment[side]])
             out.append((segment, record))
     return out
 
@@ -881,8 +876,9 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
     """Move evidence and front records onto the plates that now carry them. A plate that
     merged into another, split, or fragmented hands each stored point to whichever of its
     descendants now holds that ground; a plate that vanished with no descendant takes its
-    evidence and fronts with it. A front whose two sides end up on one plate is dropped:
-    the suture is now internal."""
+    evidence and fronts with it. A front split between descendants keeps a record for every
+    stretch of contact that survives, all with the parent's frozen decision. A stretch whose
+    two sides end up on one plate is dropped: the suture is now internal."""
     lineage = world.topology_lineage or []
     world.topology_lineage = None
     live = {p.plate_id: p for p in world.plates}
@@ -955,32 +951,69 @@ def end_topology(world: "World", frames_before: dict[int, np.ndarray]) -> None:
         if not any(changed(side) for side in record.plate_ids):
             kept.append(record)
             continue
-        new_sides: dict[int, np.ndarray] = {}
-        mapping: dict[int, int] = {}
+        # Each side's parts: (plate now holding them, their world positions), one per
+        # descendant holding at least FRONT_MIN_NODES of the front's nodes.
+        parts: dict[int, list[tuple[int, np.ndarray]]] = {}
         for side in record.plate_ids:
+            stored = record.side_points.get(side, np.zeros((0, 3)))
             if not changed(side):
-                new_sides[side] = record.side_points.get(side, np.zeros((0, 3)))
-                mapping[side] = side
+                parts[side] = [(side, geometry.to_world(live[side].frame, stored))] if len(stored) else []
                 continue
-            world_xyz, owner = owners(side, record.side_points.get(side, np.zeros((0, 3))))
-            held = owner[owner >= 0]
-            if not len(held):
-                break
-            ids, counts = np.unique(held, return_counts=True)
-            new_pid = int(ids[np.argmax(counts)])  # ties to the lowest id: np.unique sorts
-            new_sides[new_pid] = geometry.to_local(live[new_pid].frame, world_xyz[owner == new_pid])
-            mapping[side] = new_pid
-        if len(mapping) < 2:
+            world_xyz, owner = owners(side, stored)
+            parts[side] = [
+                (int(pid), world_xyz[owner == pid])
+                for pid in np.unique(owner[owner >= 0])
+                if np.count_nonzero(owner == pid) >= FRONT_MIN_NODES
+            ]
+        a, b = record.plate_ids
+        if not parts[a] or not parts[b]:
             stats["fronts_dropped_topology"] += 1
             continue
-        if len(set(mapping.values())) < 2:
-            stats["fronts_fused"] += 1
+        # Pair each part with the nearest part across the contact, from both sides, so a split
+        # on either side (or both) leaves one record per surviving stretch of contact.
+        combos: set[tuple[int, int]] = set()
+        for k, (_, points) in enumerate(parts[a]):
+            combos.add((k, _nearest_part(points, parts[b])))
+        for k, (_, points) in enumerate(parts[b]):
+            combos.add((_nearest_part(points, parts[a]), k))
+        pieces = []
+        for ka, kb in sorted(combos):
+            (pid_a, points_a), (pid_b, points_b) = parts[a][ka], parts[b][kb]
+            if pid_a == pid_b:
+                stats["fronts_fused"] += 1
+                continue
+            pieces.append((len(points_a) + len(points_b), pid_a, pid_b, points_a, points_b))
+        if not pieces:
             continue
-        record.lower_plate_id = mapping[record.lower_plate_id]
-        record.plate_ids = tuple(sorted(mapping.values()))
-        record.side_points = new_sides
-        kept.append(record)
+        # The largest piece keeps the record; every other surviving stretch is a child with the
+        # same frozen decision.
+        pieces.sort(key=lambda piece: (-piece[0], piece[1], piece[2]))
+        for n, (_, pid_a, pid_b, points_a, points_b) in enumerate(pieces):
+            target = record if n == 0 else _new_record(world, record.plate_ids, record.established_years)
+            if n > 0:
+                target.source = record.source
+                target.ambiguous = record.ambiguous
+                target.fallback_basis = record.fallback_basis
+                target.votes = dict(record.votes)
+                target.scope = record.scope
+                target.last_contact_years = record.last_contact_years
+                target.contact_steps = record.contact_steps
+                target.parent_id = record.front_id
+                stats["fronts_split_topology"] += 1
+            target.lower_plate_id = pid_a if record.lower_plate_id == a else pid_b
+            target.plate_ids = (min(pid_a, pid_b), max(pid_a, pid_b))
+            target.side_points = {
+                pid_a: geometry.to_local(live[pid_a].frame, points_a),
+                pid_b: geometry.to_local(live[pid_b].frame, points_b),
+            }
+            kept.append(target)
     world.collision_fronts = kept
+
+
+def _nearest_part(points: np.ndarray, parts: list[tuple[int, np.ndarray]]) -> int:
+    """Index of the part in `parts` with a point nearest any of `points`, ties to the first."""
+    gaps = [float(cKDTree(other).query(points)[0].min()) for _, other in parts]
+    return int(np.argmin(gaps))
 
 
 def note_lineage(world: "World", parent_id: int, child_id: int) -> None:
@@ -1013,7 +1046,7 @@ def summary(world: "World") -> dict:
         "fallback_rate": share(stats["decided_fallback"]),
         "ambiguity_rate": share(stats["ambiguous_physical"] + stats["ambiguous_opposing_arcs"]),
         "evidence_obs_share": {name: (stats[f"evidence_obs_{name}"] / observed if observed else 0.0) for name in SOURCE_NAMES},
-        "churn": {key: stats[key] for key in ("fronts_created", "fronts_split", "fronts_merged", "conflicts_kept_apart", "fronts_expired", "fronts_dropped_topology", "fronts_fused")},
+        "churn": {key: stats[key] for key in ("fronts_created", "fronts_split", "fronts_merged", "conflicts_kept_apart", "fronts_expired", "fronts_dropped_topology", "fronts_split_topology", "fronts_fused")},
         "prepass_seconds_per_step": stats["prepass_seconds"] / stats["prepass_calls"] if stats["prepass_calls"] else 0.0,
         # Searches deform() would have run without the cache, and how many the cache answered.
         "deform_search_reuse": stats["deform_searches_reused"] / deform_total if deform_total else 0.0,

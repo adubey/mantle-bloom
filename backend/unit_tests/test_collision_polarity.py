@@ -528,6 +528,65 @@ def test_plate_split_hands_the_front_to_the_daughter_carrying_the_contact():
     assert world.collision_polarity_stats["fronts_created"] == 1
 
 
+def _front_with_lower_a(j_range=(0, 50)):
+    """A long A-B front where evidence puts A down, though B drives into A -- so the motion
+    fallback alone would decide the opposite."""
+    a = _plate(1, _block((10, 20), j_range))
+    b = _plate(2, _block((20, 30), j_range))
+    world = _world(a, b)
+    world.next_plate_id = 10
+    _drive(b, _plate_centroid(a), 3.0)
+    cp.add_evidence(world, a, _near(a, b), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _step(world)
+    (record,) = world.collision_fronts
+    assert record.lower_plate_id == 1
+    return world, a, b, record
+
+
+def _split_a(world: World, pieces: dict[int, tuple[int, int]], j_range=(0, 50)) -> None:
+    """Replace plate 1 by daughters, each a j-range of its cells, all descending from 1."""
+    frames = cp.begin_topology(world)
+    b = next(p for p in world.plates if p.plate_id == 2)
+    daughters = [_plate(pid, _block((10, 20), span)) for pid, span in pieces.items()]
+    world.plates = [*daughters, b]
+    for pid in pieces:
+        cp.note_lineage(world, 1, pid)
+    cp.end_topology(world, frames)
+
+
+def test_plate_split_across_a_front_keeps_the_decision_on_every_daughter():
+    world, a, b, record = _front_with_lower_a()
+    _split_a(world, {1: (0, 25), 10: (25, 50)})
+
+    lowers = {r.plate_ids: r.lower_plate_id for r in world.collision_fronts}
+    assert lowers == {(1, 2): 1, (2, 10): 10}
+    (child,) = [r for r in world.collision_fronts if r.front_id != record.front_id]
+    assert child.parent_id == record.front_id and child.source == record.source
+    assert world.collision_polarity_stats["fronts_split_topology"] == 1
+
+    # Both stretches match their records next step: nothing is decided afresh.
+    frame = _step(world)
+    assert world.collision_polarity_stats["fronts_created"] == 1
+    assert sorted(frame.polarity.values()) == [(1, 2), (10, 2)]
+
+
+def test_narrow_stretch_left_on_a_daughter_keeps_the_decision():
+    # A long front split so one daughter holds only a two-column stretch of the contact: four
+    # front nodes on A, a valid front, but only two of every 64 evenly spaced samples would
+    # land on it -- so mapping the split through a sample would drop it.
+    world, a, b, record = _front_with_lower_a()
+    assert len(record.side_points[1]) > 64
+    _split_a(world, {1: (0, 30), 10: (30, 32), 11: (32, 50)})
+
+    lowers = {r.plate_ids: r.lower_plate_id for r in world.collision_fronts}
+    assert lowers == {(1, 2): 1, (2, 10): 10, (2, 11): 11}
+    narrow = next(r for r in world.collision_fronts if r.plate_ids == (2, 10))
+    assert len(narrow.side_points[10]) >= cp.FRONT_MIN_NODES
+    _step(world)
+    assert world.collision_polarity_stats["fronts_created"] == 1
+    assert {r.plate_ids: r.lower_plate_id for r in world.collision_fronts} == lowers
+
+
 def test_merging_the_pair_drops_the_front_and_merging_a_third_plate_rehomes_it():
     world, a, b = _front_with_history()
     frames = cp.begin_topology(world)
