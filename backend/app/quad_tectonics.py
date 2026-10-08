@@ -679,6 +679,7 @@ def _accrete_onto_survivors(
                         hm_volume,
                         hm_volume,
                         donor_is_continental=bool(donor_type),
+                        placed_hm_continental_m3=hm_volume,
                     )
                     continue
             if not np.any(typed_survivors):
@@ -724,6 +725,13 @@ def _accrete_onto_survivors(
                 retyped = spilled & (hc - hc_before_spill > 0.5 * hc)
                 codes[retyped] = CRUST_TYPE_CONTINENTAL
                 continental[retyped] = True
+                hm_ledger.record_reclassification(
+                    world,
+                    "subduction_and_suture_transfer",
+                    float(np.dot(hm[retyped], areas[retyped])),
+                    from_continental=False,
+                    to_continental=True,
+                )
             handed_share = 0.0
             stuck = stages["no_outlet_subducted_m3"]
             if donor_type and stuck > 0.0 and overriders and hc_volume > 0.0:
@@ -760,7 +768,9 @@ def _accrete_onto_survivors(
                 hm_volume,
                 lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
             )
-            placed_hm_volume = float(np.dot(np.maximum(hm - hm_front_start, 0.0), areas))
+            placed_hm_by_node = np.maximum(hm - hm_front_start, 0.0) * areas
+            placed_hm_volume = float(placed_hm_by_node.sum())
+            placed_hm_continental_volume = float(placed_hm_by_node[continental].sum())
             hm_ledger.record_suture_front(
                 world,
                 plate.plate_id,
@@ -768,6 +778,7 @@ def _accrete_onto_survivors(
                 hm_volume,
                 placed_hm_volume,
                 donor_is_continental=bool(donor_type),
+                placed_hm_continental_m3=placed_hm_continental_volume,
             )
 
     gained = np.flatnonzero(changed)

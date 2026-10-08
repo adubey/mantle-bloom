@@ -88,6 +88,9 @@ _CAP_FIELDS = (
     "persistently_capped_area_m2",
     "left_cap_area_m2",
 )
+# These snapshots can change the physical identity behind a node ID. Do not infer per-cell
+# cap entries/exits from a coincidental ID match across a merge or lattice rebuild.
+_UNALIGNED_CAP_TRANSITION_PHASES = {"plate_merge", "forced_plate_merge", "continental_relattice"}
 
 
 class Snapshot(NamedTuple):
@@ -166,10 +169,19 @@ def _record_cap_transitions(
     node_ids_after: np.ndarray | None,
     plate_is_continental_before: bool | np.ndarray,
     plate_is_continental_after: bool | np.ndarray,
+    force_unaligned: bool = False,
 ) -> None:
     """Book actual per-cell entries/exits at the Hm cap; never infer them from net volume."""
     transitions = totals["hm_cap_transitions"]
-    if node_ids_before is None or node_ids_after is None:
+    if force_unaligned:
+        # The phase has no trustworthy one-to-one cell correspondence. Conservatively treat
+        # every capped after-cell as new and every capped before-cell as removed; persistent
+        # coverage is not claimed across a topology identity reset.
+        transitions["unaligned_calls"] += 1
+        before_index = after_index = np.zeros(0, dtype=int)
+        new_after = np.ones(len(hm_after), dtype=bool)
+        removed_before = np.ones(len(hm_before), dtype=bool)
+    elif node_ids_before is None or node_ids_after is None:
         if len(hm_before) != len(hm_after):
             transitions["unaligned_calls"] += 1
             return
@@ -193,7 +205,8 @@ def _record_cap_transitions(
             removed_before = np.ones(len(hm_before), dtype=bool)
             removed_before[before_index] = False
 
-    transitions["aligned_calls"] += 1
+    if not force_unaligned:
+        transitions["aligned_calls"] += 1
     before_capped = hm_before >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1.0
     after_capped = hm_after >= lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M - 1.0
     newly_after = new_after & after_capped
@@ -310,6 +323,7 @@ def record(
         node_ids_after,
         plate_is_continental_before,
         plate_is_continental_after,
+        force_unaligned=phase in _UNALIGNED_CAP_TRANSITION_PHASES,
     )
     hm_ledger.record_change(
         world,
