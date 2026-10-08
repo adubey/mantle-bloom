@@ -776,9 +776,11 @@ def test_retreat_records_consumed_ocean_floor_on_both_sides():
 
 
 def test_polarized_quad_retreat_books_exact_donor_hm_sink_and_closes_inventory():
-    from app import cratons, hm_ledger
+    from app import hm_ledger
 
     world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
     world.debug_diagnostics = True
     ctx = boundary_context(
         world,
@@ -805,6 +807,8 @@ def test_polarized_quad_retreat_books_exact_donor_hm_sink_and_closes_inventory()
 
 def test_collision_front_falls_back_to_bilateral_retreat_when_lower_is_cratonic():
     world, lower, upper, _ = _front_with_lower_a()
+    _move(upper, _column(20), _column(19))
+    cp.observe_contacts(world, STEP_YEARS)
     frame = world.collision_polarity_frame
     lower_mask = frame.masks[lower.plate_id]
     craton = lower.collect("craton_crust_m")
@@ -833,6 +837,7 @@ def test_continental_terrane_on_oceanic_carrier_can_be_frozen_lower_donor():
     world = _world(lower, upper)
     _drive(upper, _plate_centroid(lower), 3.0)
     cp.add_evidence(world, lower, _near(lower, upper), cp.SOURCE_CONSUMPTION, cp.ROLE_LOWER, 99)
+    _move(upper, _column(20), _column(19))
     _step(world)
     context = boundary_context(
         world,

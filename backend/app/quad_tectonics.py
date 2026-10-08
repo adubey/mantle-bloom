@@ -631,8 +631,8 @@ def _accrete_onto_survivors(
             typed_survivors = survivors & (continental == donor_type)
             hc_volume = float(np.sum(hc[front] * areas[front]))
             hm_front_volume = float(np.sum(hm[front] * areas[front]))
-            hm_sink_mask = np.zeros(len(hm), dtype=bool) if hm_subduct_mask is None else front & hm_subduct_mask
-            hm_subducted_volume = float(np.sum(hm[hm_sink_mask] * areas[hm_sink_mask]))
+            hm_sink_idx = np.array([], dtype=int) if hm_subduct_mask is None else front[hm_subduct_mask[front]]
+            hm_subducted_volume = float(np.sum(hm[hm_sink_idx] * areas[hm_sink_idx]))
             hm_volume = max(hm_front_volume - hm_subducted_volume, 0.0)
             hc_room = float(
                 np.sum(
