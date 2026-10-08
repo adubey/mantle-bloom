@@ -13,8 +13,10 @@ module replaces all of them with two operations on the cell graph:
   consumed crust is thrust onto the nearest surviving cells (area-weighted, so volume is
   conserved), as `_redistribute_accreted_column` does for a line end. Past the receiving
   belts it escapes along strike before any of it may delaminate (issue #290; `orogeny.py`).
-  The melt of the convergent band's shortening past the Hc ceiling is placed the same way
-  (`_place_ceiling_overflow`). An oceanic plate also carves out contested patches the peel
+  A continental plate's convergent shortening is carried into its interior by the shortening
+  cascade (`shortening.py`, issue #314), which keeps every column under the caps; on an
+  oceanic plate, the melt of the band's shortening past the Hc ceiling is placed the same way
+  as suture crust (`_place_ceiling_overflow`). An oceanic plate also carves out contested patches the peel
   can't reach from its edge (the line engine's interior-subduction carve-out,
   `_carve_interior`).
 - **Advance** activates the empty cell across each exposed side of an eligible boundary
@@ -42,7 +44,7 @@ from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import breadth_first_order, connected_components
 from scipy.spatial import cKDTree
 
-from . import collision_polarity, continental_ledger, cratons, geometry, lithosphere, mobile_cover, orogeny, phase_budget, rheology, terrain_noise
+from . import collision_polarity, continental_ledger, cratons, geometry, hm_ledger, lithosphere, mobile_cover, orogeny, phase_budget, rheology, shortening, terrain_noise, torque
 from .elevation_lines import (
     COVERAGE_RADIUS_MULT,
     CRUST_TYPE_CONTINENTAL,
@@ -174,7 +176,9 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         lambda contested: components_of_at_least(plate, contested, CONTINENTAL_CONTESTED_RETREAT_MIN_RUN),
         node_weight=areas / nominal_area_m2,
     )
-    near_field_dist = hop_distance(plate, ctx.convergent, ctx.orogen_dilation_nodes) if ctx.orogen_dilation_nodes > 0 else None
+    # Convergent shortening spreads into continental interiors through the shortening cascade
+    # (issue #314) instead of the line engine's fixed near-field ring.
+    accommodate = _shortening_accommodation(plate, world, ctx, areas, spacing_rad)
     fields = {name: plate.collect(name) for name in COLUMN_FIELDS}
     ceiling_overflow = np.zeros(plate.node_count())
     strained: dict[str, np.ndarray] = {}
@@ -184,13 +188,14 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
         ctx,
         slice(None),
         fields,
-        near_field_dist,
+        None,
         lambda: plate.surface_nodes().local_xyz,
         areas,
         _COLUMN_RNG_INDEX,
         years,
         ceiling_overflow=ceiling_overflow,
         strained=strained,
+        accommodate=accommodate,
     )
     columns.update(_column_thermal_state(plate, fields, strained, columns))
     plate.set_fields_on_plate(**columns)
@@ -223,6 +228,63 @@ def deform(plate: "PlateWithSparseQuadPatch", world: "World", other_plates: list
     orogeny.evolve_standing_orogens(plate, world, years)
     if world.debug_diagnostics:
         phase_budget.record_snapshots(world, plate, "orogenic_relief", before, phase_budget.snapshot(plate, spacing_rad))
+
+
+def _shortening_front(
+    plate: "PlateWithSparseQuadPatch", convergent: np.ndarray, contested: np.ndarray, host: np.ndarray
+) -> np.ndarray:
+    """The cells the shortening cascade's rings count out from: the convergent band's contact
+    with its neighbour -- cells already overlapped, or on the edge of the plate or of its
+    `host` crust. The whole band when no such cell exists."""
+    probe = plate._probe_neighbour_indices()
+    edge = np.any(np.any(probe < 0, axis=2), axis=1)
+    edge |= np.any(np.any((probe >= 0) & ~host[np.maximum(probe, 0)], axis=2), axis=1)
+    front = convergent & host & (contested | edge)
+    return front if np.any(front) else convergent & host
+
+
+def _shortening_accommodation(
+    plate: "PlateWithSparseQuadPatch", world: "World", ctx, areas: np.ndarray, spacing_rad: float
+):
+    """`deform_columns`' `accommodate` hook: carry the convergent band's demanded strain into
+    the plate's continental interior with `shortening.ring_cascade`, book it, and return the
+    strain each cell takes up. A continental plate routes through all of its cells; an oceanic
+    plate only through its continental terranes, its oceanic cells taking up their own demand
+    in place. None for an oceanic plate with no continental crust."""
+    codes = plate.collect("crust_type_code")
+    host = effective_is_continental_from_codes(codes, plate.crust_type == "continental")
+    if not np.any(host):
+        return None
+    if plate.crust_type == "continental":
+        host = np.ones(len(host), dtype=bool)
+
+    def accommodate(strain: np.ndarray, hc: np.ndarray, hm: np.ndarray) -> np.ndarray:
+        demand = shortening.demand_m2(strain, areas, spacing_rad)
+        if not np.any(demand > 0.0):
+            return np.zeros(len(areas))
+        density = lithosphere.node_crust_density(codes, plate.crust_type)
+        relief = np.clip(lithosphere.isostatic_elevation(hc, hm, density) - torque.CONTINENTAL_REFERENCE_ELEVATION_M, 0.0, None)
+        result = shortening.ring_cascade(
+            shortening.ShorteningProblem(
+                adjacency=_adjacency_matrix(plate),
+                areas_m2=areas,
+                front=_shortening_front(plate, ctx.convergent, ctx.contested, host),
+                demand_m2=demand,
+                hc_m=hc,
+                hm_m=hm,
+                craton_strength=cratons.strength(plate.collect("craton_crust_m")),
+                relief_m=relief,
+                crust_density=density,
+                drive_stress_pa=shortening.drive_stress_pa(ctx.closing_rate, demand),
+                spacing_rad=spacing_rad,
+                reach_scale=world.collision_uplift_reach_multiplier,
+                host=None if np.all(host) else host,
+            )
+        )
+        phase_budget.record_shortening(world, demand, result, hc, hm)
+        return result.absorbed_m2 / areas
+
+    return accommodate
 
 
 def _column_thermal_state(
@@ -280,6 +342,7 @@ def _place_ceiling_overflow(
     convergence_local = (
         geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
     )
+
     hc_before = hc.copy()
     changed = np.zeros(len(hc), dtype=bool)
     _, labels = connected_components(adjacency[overflowing][:, overflowing], directed=False)
@@ -411,6 +474,15 @@ def _retreat(
     # material leave the surface as deep subduction.
     subducted = removed & ~donors
     areas = plate.node_areas_m2()
+    hm_ledger.record_sink_by_mask(
+        world,
+        plate,
+        "oceanic_and_deep_subduction",
+        plate.collect("mantle_lithosphere_thickness_m"),
+        codes,
+        areas,
+        subducted,
+    )
     cratons.record(world, "subducted_m3", float(np.dot(plate.collect("craton_crust_m")[subducted], areas[subducted])))
     continental_ledger.record(
         world, "deeply_subducted_m3", float(np.dot(plate.collect("continental_material_m")[subducted], areas[subducted]))
@@ -534,6 +606,19 @@ def _accrete_onto_survivors(
         geometry.to_local(plate.frame, np.asarray(convergence_xyz, dtype=float)) if convergence_xyz is not None else None
     )
 
+    def front_neighbour_ids(front: np.ndarray) -> list[int]:
+        """Current plates actually touching this connected front, not every reach neighbour."""
+        candidates = [p for p in (overriders or []) if p is not plate and p.node_count() > 0]
+        if not candidates or world is None or not world.debug_diagnostics:
+            return []
+        front_world = geometry.to_world(plate.frame, points[front])
+        touching = [p.plate_id for p in candidates if np.any(p.contains_batch(front_world))]
+        if touching:
+            return touching
+        centre = geometry.normalize(front_world.mean(axis=0))
+        nearest = min(candidates, key=lambda p: float(p.get_node_kdtree().query(centre)[0]))
+        return [nearest.plate_id]
+
     for donor_type in (False, True):
         typed_donors = donors & (continental == donor_type)
         donor_idx = np.flatnonzero(typed_donors)
@@ -543,6 +628,7 @@ def _accrete_onto_survivors(
         for label in np.unique(labels):
             front = donor_idx[labels == label]
             hc_front_start = hc.copy()
+            hm_front_start = hm.copy()
             material_volume = float(np.dot(material[front], areas[front]))
             craton_volume = float(np.dot(craton[front], areas[front]))
             restite_volume = float(np.dot(restite[front], areas[front]))
@@ -591,6 +677,15 @@ def _accrete_onto_survivors(
                     # The oceanic columns the terrane displaced take their cover into the
                     # crust they were thickened into.
                     mobile_cover.end(world, plate, terrane_cells, "accreted_m3")
+                    hm_ledger.record_suture_front(
+                        world,
+                        plate.plate_id,
+                        front_neighbour_ids(front),
+                        hm_volume,
+                        hm_volume,
+                        donor_is_continental=bool(donor_type),
+                        placed_hm_continental_m3=hm_volume,
+                    )
                     continue
             if not np.any(typed_survivors):
                 # Preserve the old any-type nearest-survivor fallback. Same-type placement is
@@ -635,6 +730,13 @@ def _accrete_onto_survivors(
                 retyped = spilled & (hc - hc_before_spill > 0.5 * hc)
                 codes[retyped] = CRUST_TYPE_CONTINENTAL
                 continental[retyped] = True
+                hm_ledger.record_reclassification(
+                    world,
+                    "subduction_and_suture_transfer",
+                    float(np.dot(hm[retyped], areas[retyped])),
+                    from_continental=False,
+                    to_continental=True,
+                )
             handed_share = 0.0
             stuck = stages["no_outlet_subducted_m3"]
             if donor_type and stuck > 0.0 and overriders and hc_volume > 0.0:
@@ -670,6 +772,18 @@ def _accrete_onto_survivors(
                 typed_survivors,
                 hm_volume,
                 lithosphere.MAX_MANTLE_LITHOSPHERE_THICKNESS_M,
+            )
+            placed_hm_by_node = np.maximum(hm - hm_front_start, 0.0) * areas
+            placed_hm_volume = float(placed_hm_by_node.sum())
+            placed_hm_continental_volume = float(placed_hm_by_node[continental].sum())
+            hm_ledger.record_suture_front(
+                world,
+                plate.plate_id,
+                front_neighbour_ids(front),
+                hm_volume,
+                placed_hm_volume,
+                donor_is_continental=bool(donor_type),
+                placed_hm_continental_m3=placed_hm_continental_volume,
             )
 
     gained = np.flatnonzero(changed)

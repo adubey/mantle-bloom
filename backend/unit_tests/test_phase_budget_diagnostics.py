@@ -63,6 +63,17 @@ def test_report_is_json_serializable(fresh_world):
     json.dumps(build_report(fresh_world, total_years=200_000))
 
 
+def test_hm_source_sink_identity_closes_and_stays_separate_from_phases(fresh_world):
+    report = build_report(fresh_world, total_years=200_000)
+    assert report["hm_source_sink_accounts"]
+    assert all("hm_cap_transitions" in row for row in report["phases"])
+    for row in report["hm_closure"].values():
+        assert row["live_change_m3"] == pytest.approx(
+            row["source_m3"] - row["sink_m3"] + row["reclassification_m3"] + row["signed_residual_m3"],
+            abs=1.0,
+        )
+
+
 def test_format_report_renders_both_tables(fresh_world):
     text = format_report(build_report(fresh_world, total_years=200_000))
     assert "mantle-bloom Hc/Hm phase budget" in text
@@ -90,3 +101,16 @@ def test_main_generates_a_fresh_world_when_no_save_is_given(capsys):
 def test_main_errors_on_a_missing_file(tmp_path):
     with pytest.raises(SystemExit):
         main([str(tmp_path / "nope.mbworld"), "--years", "100000"])
+
+
+def test_shortening_ledger_is_reported_apart_from_the_phases(fresh_world):
+    # Issue #314: the collisional-shortening entry has no Hc/Hm scopes of its own.
+    from app.phase_budget import SHORTENING_PHASE
+
+    report = build_report(fresh_world, CONVENTIONAL_YEARS_PER_STEP)
+    assert all(row["phase"] != SHORTENING_PHASE for row in report["phases"])
+    book = report["shortening"]
+    assert book["demand_m2"] > 0.0
+    returned = book["returned_decay_m2"] + book["returned_unrouted_m2"]
+    assert book["absorbed_m2"] + returned == pytest.approx(book["demand_m2"], rel=1e-12)
+    assert "collisional shortening" in format_report(report)

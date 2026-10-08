@@ -235,6 +235,14 @@ phase, split by both plate type (`crust_type`) and per-node type (`crust_type_co
 mean-thickness decline can be attributed to a specific mechanism, to changing node population,
 or to reclassification, rather than treated as one undifferentiated trend.
 
+For issue #317 the same observations also feed a separate debug-only Hm source/sink ledger
+([`hm_ledger.py`](../backend/app/hm_ledger.py)). Hm is a thermal/mechanical thickness, so this
+is an attribution identity, not rock-mass conservation: `live change = sources - sinks +
+type reclassification + signed residual`. The JSON report keeps `hm_source_sink_accounts` separate from `phases` to
+prevent double booking, reports closure independently for continental and oceanic nodes, and
+includes actual per-cell Hm-cap entries/exits under each phase's `hm_cap_transitions`. Gap
+filling is bracketed as `gap_fill`; it was the large previously-unattributed oceanic writer.
+
 Unlike the other three tools above, this one *replays* rather than only reads: it takes
 `--years` (required) and steps the world forward that far, in ordinary 100 ky increments,
 with `debug_diagnostics` turned on and the budget reset first -- so the report always
@@ -296,6 +304,11 @@ continental/oceanic node-type split (per phase, resolved against crust_type_code
   `area_*_m2` and `hc_volume_*_m3`/`hm_volume_*_m3` totals behind the table. The area fields
   are recorded per node as each phase runs (issue #257) -- on a quad world they can't be
   recovered from the counts afterwards.
+- **`hm_closure`** in JSON gives the opening and closing live Hm inventories, booked source,
+  sink, signed node-type reclassification totals, and residual. `hm_suture_budget` separately reports
+  connected donor-front Hm, the volume placed on survivors, the unplaced remainder, and
+  bilateral donor→neighbor totals. Those transfer counters are diagnostic only; the live
+  change is already booked by `boundary_retreat`.
 - This tool answers issue #216's first acceptance-criteria item (instrumentation); it does not
   by itself separate genuine geological sinks from numerical drift -- that's a reading exercise
   against the mechanism list in the issue itself, using this tool's own numbers as the evidence.

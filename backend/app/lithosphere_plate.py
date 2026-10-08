@@ -16,6 +16,7 @@ deformation engine lives entirely on this subclass.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 from scipy.spatial import cKDTree
@@ -62,7 +63,7 @@ from .plates import (
     _row_median_step,
     query_workers,
 )
-from . import bathymetry, continental_ledger, cratons, lithosphere, magma_transport, mantle, mobile_cover, phase_budget, rheology, terrain_noise, torque, worldsketch
+from . import bathymetry, continental_ledger, cratons, lithosphere, magma_transport, mantle, mobile_cover, phase_budget, rheology, shortening, terrain_noise, torque, worldsketch
 from .sparse_quad_patch import PlateWithSparseQuadPatch
 
 # `generate_plates`' `surface` choices: the legacy line-backed `LithospherePlate` and issue
@@ -863,6 +864,7 @@ def deform_columns(
     years: float,
     ceiling_overflow: np.ndarray | None = None,
     strained: dict[str, np.ndarray] | None = None,
+    accommodate: Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray] | None = None,
 ) -> dict[str, np.ndarray]:
     """This step's in-place lithospheric column update for the nodes `sl` selects out of
     `ctx`'s per-plate arrays -- convergent/near-field thickening, arc magmatism, divergent
@@ -883,7 +885,14 @@ def deform_columns(
     given, receives the columns with only this step's tectonic strain applied --
     `crustal_thickness_m` and `mantle_lithosphere_thickness_m` after convergent shortening
     and divergent thinning but before any arc or rift magma -- and `melted`, the nodes that
-    melted through and were reset, for the caller's thermal bookkeeping."""
+    melted through and were reset, for the caller's thermal bookkeeping.
+
+    `accommodate`, when given, takes the convergent band's shortening off the band (issue
+    #314): it is called with each node's demanded strain (`rheology.convergent_strain`, after
+    the magma-export skim) and its pre-shortening Hc/Hm, and returns the strain each node
+    actually takes up -- spread into the plate's interior and kept under the caps
+    (shortening.py). The band then never overflows its ceiling, and `near_field_dist` should
+    be None."""
     convergent = ctx.convergent[sl]
     divergent = ctx.divergent[sl]
     transform = ctx.transform[sl]
@@ -912,7 +921,13 @@ def deform_columns(
     # Every phase below changes columns in place on the same nodes, so before and after share
     # each node's area (issue #257: per-cell on quad plates).
     budget_area_m2 = np.broadcast_to(node_area_m2, hc.shape)
-    budget_areas = {"area_before_m2": budget_area_m2, "area_after_m2": budget_area_m2}
+    budget_craton_m = fields["craton_crust_m"]
+    budget_areas = {
+        "area_before_m2": budget_area_m2,
+        "area_after_m2": budget_area_m2,
+        "craton_before_m": budget_craton_m,
+        "craton_after_m": budget_craton_m,
+    }
     # Isostasy-driven elevation change is applied as a *delta* on top of whatever
     # elevation already holds (elevation_before -> below), not a wholesale overwrite
     # -- erosion.py (run later this same step_world call, and every step
@@ -1007,14 +1022,21 @@ def deform_columns(
                     for i in range(len(node_idx))
                 )
 
-        new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
-            hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
-            fault_factor[thicken], strength=used_strength,
-        )
-        hc[thicken] = new_hc
-        hm[thicken] = new_hm
-        strained_hc[thicken] = new_hc
-        strained_hm[thicken] = new_hm
+        if accommodate is not None:
+            demanded = np.zeros(n)
+            demanded[thicken] = rheology.convergent_strain(closing_rate[thicken], years_myr, fault_factor[thicken], used_strength)
+            hc, hm = shortening.apply_strain(hc, hm, accommodate(demanded, hc, hm))
+            strained_hc, strained_hm = hc.copy(), hm.copy()
+            overflow_hc = np.zeros(int(np.count_nonzero(thicken)))
+        else:
+            new_hc, new_hm, overflow_hc = rheology.apply_convergent_deformation(
+                hc[thicken], hm[thicken], closing_rate[thicken], years_myr,
+                fault_factor[thicken], strength=used_strength,
+            )
+            hc[thicken] = new_hc
+            hm[thicken] = new_hm
+            strained_hc[thicken] = new_hc
+            strained_hm[thicken] = new_hm
 
         # Hc that hit MAX_CRUSTAL_THICKNESS_M this step didn't just vanish (issue
         # #161) -- but it also doesn't reappear whole and instant on the foreland

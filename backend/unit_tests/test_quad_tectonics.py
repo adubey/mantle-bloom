@@ -6,7 +6,7 @@ quad_tectonics.py."""
 import numpy as np
 import pytest
 
-from app import continental_ledger, gaps, geometry, lithosphere, merge_split, orogeny, plates, quad_tectonics, volcanism
+from app import continental_ledger, gaps, geometry, hm_ledger, lithosphere, merge_split, orogeny, plates, quad_tectonics, volcanism
 from app.elevation_lines import CRUST_TYPE_CONTINENTAL, CRUST_TYPE_OCEANIC, line_spacing_rad
 from app.lithosphere_plate import (
     CONTINENTAL_CONTESTED_RETREAT_MIN_RUN,
@@ -923,13 +923,45 @@ def test_accretion_falls_back_to_any_type_when_no_same_type_survivor_exists():
     hm_before = a.collect("mantle_lithosphere_thickness_m")
     expected = float(np.dot(hc_before, areas))
     expected_hm = float(np.dot(hm_before, areas))
+    world = _world(a)
+    world.debug_diagnostics = True
+    world.reset_phase_budget()
 
-    quad_tectonics._accrete_onto_survivors(a, donors, survivors)
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, world)
 
     actual = float(a.collect("crustal_thickness_m")[survivors] @ areas[survivors])
     assert actual == pytest.approx(expected, rel=1e-11)
     actual_hm = float(a.collect("mantle_lithosphere_thickness_m")[survivors] @ areas[survivors])
     assert actual_hm == pytest.approx(expected_hm, rel=1e-11)
+    transfer = world.hm_source_sink_ledger["subduction_and_suture_transfer"]["scopes"]
+    placed = world.hm_suture_budget["placed_hm_m3"]
+    assert transfer["continental_node"]["reclassification_m3"] == pytest.approx(placed)
+    assert transfer["oceanic_node"]["reclassification_m3"] == pytest.approx(-placed)
+
+
+def test_foreland_spill_retypes_cells_and_books_their_existing_hm():
+    keys = _block((10, 13), (20, 21))
+    hc = np.array([SUTURE_ACCRETION_MAX_HC_M, 30_000.0, 7_000.0])
+    hm = np.array([100_000.0, 90_000.0, 60_000.0])
+    a = _plate(1, keys, "continental", crustal_thickness_m=hc, mantle_lithosphere_thickness_m=hm)
+    codes = a.collect("crust_type_code")
+    codes[1] = CRUST_TYPE_CONTINENTAL  # consumed continental donor
+    codes[2] = CRUST_TYPE_OCEANIC  # foreland cell with room; it will become continental
+    a.set_fields_on_plate(crust_type_code=codes)
+    donors = np.array([False, True, False])
+    survivors = ~donors
+    world = _world(a)
+    world.debug_diagnostics = True
+    world.reset_phase_budget()
+    area = a.node_areas_m2()[2]
+    existing_oceanic_hm = hm[2] * area
+
+    quad_tectonics._accrete_onto_survivors(a, donors, survivors, world)
+
+    assert a.collect("crust_type_code")[2] == CRUST_TYPE_CONTINENTAL
+    scopes = world.hm_source_sink_ledger["subduction_and_suture_transfer"]["scopes"]
+    assert scopes["continental_node"]["reclassification_m3"] == pytest.approx(existing_oceanic_hm)
+    assert scopes["oceanic_node"]["reclassification_m3"] == pytest.approx(-existing_oceanic_hm)
 
 
 def test_oceanic_plate_retreat_accretes_continental_terrane_onto_terrane_survivors():
@@ -1354,3 +1386,51 @@ def test_relattice_leaves_quad_plates_alone():
 
     np.testing.assert_array_equal(a.cell_keys, keys)
     np.testing.assert_array_equal(a.collect("crustal_thickness_m"), hc_before)
+
+
+def test_continental_shortening_reaches_the_interior_and_is_booked():
+    # Issue #314: a continental quad plate's convergent band hands its shortening to the
+    # cascade, which thickens the interior beyond the band and books what it returns.
+    from app import phase_budget
+    from app.lithosphere_plate import COLUMN_FIELDS, deform_columns
+
+    keys = _block((0, 40), (20, 23))
+    a = _plate(1, keys, "continental")
+    world = _world(a)
+    world.debug_diagnostics = True
+    continental_ledger.ensure_initialized(world)
+    n = a.node_count()
+    i, _ = _columns(a)
+    convergent = i < 2
+    ctx = _converging_ctx(n, convergent)
+    ctx.contested = np.zeros(n, dtype=bool)
+    areas = a.node_areas_m2()
+    accommodate = quad_tectonics._shortening_accommodation(a, world, ctx, areas, SPACING)
+    fields = {name: a.collect(name) for name in COLUMN_FIELDS}
+    hc0 = fields["crustal_thickness_m"].copy()
+
+    columns = deform_columns(
+        world, a, ctx, slice(None), fields, None, lambda: None, areas, 0, 1_000_000.0,
+        ceiling_overflow=np.zeros(n), accommodate=accommodate,
+    )
+
+    hc = columns["crustal_thickness_m"]
+    assert np.all(hc[convergent] > hc0[convergent])
+    assert np.any(hc[~convergent] > hc0[~convergent] + 1.0)
+    assert np.all(hc <= lithosphere.MAX_CRUSTAL_THICKNESS_M)
+    book = world.phase_budget[phase_budget.SHORTENING_PHASE]["shortening"]
+    assert book["demand_m2"] > 0.0
+    assert book["absorbed_m2"] + book["returned_decay_m2"] + book["returned_unrouted_m2"] == pytest.approx(book["demand_m2"], rel=1e-12)
+    assert float((hc - hc0) @ areas) == pytest.approx(book["absorbed_hc_m3"], rel=1e-9)
+
+
+def test_continental_shortening_is_a_no_op_without_a_collision():
+    keys = _block((0, 10), (20, 22))
+    a = _plate(1, keys, "continental")
+    world = _world(a)
+    n = a.node_count()
+    ctx = _converging_ctx(n, np.zeros(n, dtype=bool))
+    ctx.contested = np.zeros(n, dtype=bool)
+    accommodate = quad_tectonics._shortening_accommodation(a, world, ctx, a.node_areas_m2(), SPACING)
+    hc, hm = a.collect("crustal_thickness_m"), a.collect("mantle_lithosphere_thickness_m")
+    assert not np.any(accommodate(np.zeros(n), hc, hm))
